@@ -37,6 +37,7 @@ dependencies = [
   "mainsequence",
   "numpy",
   "pandas",
+  "pip>=26.1.1",
   "pydantic",
   "pytz",
   "QuantLib",
