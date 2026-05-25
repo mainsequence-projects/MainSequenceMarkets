@@ -6,7 +6,14 @@ import uuid
 from msm.meta_tables import markets_meta_table_fullname
 from msm.models import Asset, Order, markets_sqlalchemy_models
 from msm.repositories import MarketsRepositoryContext
-from msm.repositories.assets import build_create_asset_operation, build_upsert_asset_operation
+from msm.repositories.assets import (
+    build_create_asset_operation,
+    build_delete_asset_operation,
+    build_get_asset_by_uid_operation,
+    build_get_asset_by_unique_identifier_operation,
+    build_search_assets_operation,
+    build_upsert_asset_operation,
+)
 from msm.repositories.crud import build_search_model_operation
 from msm.repositories.execution import build_create_order_operation
 
@@ -63,6 +70,66 @@ def test_asset_upsert_operation_uses_compiled_upsert_protocol() -> None:
     assert operation.operation == "upsert"
     assert operation.scope.tables[0].access == "write"
     assert "ON CONFLICT" in operation.statement.sql
+
+
+def test_asset_get_by_unique_identifier_operation_uses_read_scope() -> None:
+    context = _repository_context()
+
+    operation = build_get_asset_by_unique_identifier_operation(
+        context,
+        unique_identifier="example-asset-btc",
+    )
+
+    assert operation.operation == "select"
+    assert operation.scope.tables[0].access == "read"
+    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(Asset)
+    assert Asset.__table__.name in operation.statement.sql
+    assert operation.statement.parameters["unique_identifier_1"] == "example-asset-btc"
+
+
+def test_asset_get_by_uid_operation_uses_read_scope() -> None:
+    context = _repository_context()
+    asset_uid = uuid.uuid4()
+
+    operation = build_get_asset_by_uid_operation(context, uid=asset_uid)
+
+    assert operation.operation == "select"
+    assert operation.scope.tables[0].access == "read"
+    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(Asset)
+    assert Asset.__table__.name in operation.statement.sql
+    assert operation.statement.parameters["uid_1"] == asset_uid
+
+
+def test_asset_search_operation_filters_by_identifier_and_type() -> None:
+    context = _repository_context()
+
+    operation = build_search_assets_operation(
+        context,
+        unique_identifier_contains="example-asset-",
+        asset_type="crypto",
+        limit=20,
+    )
+
+    assert operation.operation == "select"
+    assert operation.scope.tables[0].access == "read"
+    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(Asset)
+    assert Asset.__table__.name in operation.statement.sql
+    assert operation.statement.parameters["asset_type_1"] == "crypto"
+    assert operation.statement.parameters["unique_identifier_1"] == "example-asset-"
+    assert operation.statement.parameters["param_1"] == 20
+
+
+def test_asset_delete_operation_uses_write_scope() -> None:
+    context = _repository_context()
+    asset_uid = uuid.uuid4()
+
+    operation = build_delete_asset_operation(context, uid=asset_uid)
+
+    assert operation.operation == "delete"
+    assert operation.scope.tables[0].access == "write"
+    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(Asset)
+    assert Asset.__table__.name in operation.statement.sql
+    assert operation.statement.parameters["uid_1"] == asset_uid
 
 
 def test_order_create_operation_compiles_required_execution_fields() -> None:

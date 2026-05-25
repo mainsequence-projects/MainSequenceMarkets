@@ -72,7 +72,7 @@ Documentation should explain the new contract or workflow, not just list files.
 
 ### 3. Add Or Update An Example
 
-For implementation changes, add or update an example under `examplezs/`.
+For implementation changes, add or update an example under `examples/`.
 
 Examples should:
 

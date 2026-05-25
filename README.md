@@ -64,7 +64,7 @@ Repository areas:
 
 - `docs/`: MkDocs documentation, tutorials, knowledge guides, ADRs, and API
   reference scaffold
-- `examplezs/`: migrated market examples from the SDK
+- `examples/`: migrated market examples from the SDK
 - `.agents/skills/`: local agent skills for market-domain workflows
 - `tests/`: automated tests
 - `src/cli/`: placeholder for a future command-line interface

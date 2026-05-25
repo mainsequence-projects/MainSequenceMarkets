@@ -7,7 +7,15 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
-No changes yet.
+### Added
+
+- Added an asset CRUD example covering creation, lookup by identifier and UID,
+  search, and deletion of temporary custom assets.
+- Documented the asset CRUD workflow in the asset knowledge docs and market
+  workflow tutorial.
+- Corrected the examples directory name to `examples/`.
+- Removed MetaTable registration snippets from `examples/` because that setup
+  belongs to the Main Sequence platform boundary, not library examples.
 
 ## [0.0.1] - 2026-05-25
 
@@ -17,7 +25,7 @@ No changes yet.
 - Added MkDocs documentation, ADRs, tutorial scaffold, and GitHub Pages
   deployment workflow.
 - Migrated market-domain code from the SDK into `src/msm`.
-- Migrated market-domain examples into `examplezs/`.
+- Migrated market-domain examples into `examples/`.
 - Migrated market-domain agent skills into `.agents/skills/`.
 - Added a future CLI package scaffold under `src/cli`.
 - Added the initial `docs/knowledge` concept documentation area for `msm`

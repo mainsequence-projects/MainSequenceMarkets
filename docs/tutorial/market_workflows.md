@@ -31,6 +31,50 @@ call `register_markets_meta_tables(..., management_mode="external_registered")`.
 
 ## Assets And Categories
 
+Start with assets before building reusable universes. Asset identity is the
+stable contract consumed by holdings, target positions, pricing details, and
+portfolio workflows.
+
+```python
+from msm.services import (
+    delete_asset,
+    get_asset_by_uid,
+    get_asset_by_unique_identifier,
+    search_assets,
+    upsert_asset,
+)
+
+btc = upsert_asset(
+    context,
+    unique_identifier="example-asset-btc",
+    asset_type="crypto",
+    metadata_json={"ticker": "BTC", "source": "tutorial"},
+)
+
+btc_by_identifier = get_asset_by_unique_identifier(
+    context,
+    unique_identifier="example-asset-btc",
+)
+btc_by_uid = get_asset_by_uid(context, uid=btc["uid"])
+crypto_assets = search_assets(
+    context,
+    unique_identifier_contains="example-asset-",
+    asset_type="crypto",
+    limit=20,
+)
+
+delete_asset(context, uid=btc["uid"])
+```
+
+Use deletion for temporary or organization-owned custom assets only. Shared
+public/mastered assets should remain stable so downstream workflows do not lose
+their canonical identity.
+
+See `examples/assets/asset_crud_workflow.py` for the focused asset CRUD example.
+
+When the universe itself should be a reusable platform object, create an asset
+category and manage memberships separately:
+
 ```python
 from msm.services import (
     create_asset_category,
@@ -104,4 +148,3 @@ targets = build_target_positions_frame(
 
 The DataNode frame helpers validate the dynamic-table contract locally. The
 actual table provisioning and writes remain generic TDAG/DataNode behavior.
-

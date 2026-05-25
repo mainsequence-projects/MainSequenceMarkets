@@ -41,6 +41,54 @@ Pricing details are not the same thing as market prices. Pricing details store
 terms needed to rebuild priceable instruments, while price histories live in
 market-data workflows.
 
+## Creating, Querying, And Deleting Assets
+
+Use the service helpers in `msm.services` for normal application workflows. They
+compile operations against registered markets MetaTables and execute them through
+the platform-controlled MetaTable API.
+
+```python
+from msm.services import (
+    delete_asset,
+    get_asset_by_uid,
+    get_asset_by_unique_identifier,
+    search_assets,
+    upsert_asset,
+)
+
+
+asset = upsert_asset(
+    context,
+    unique_identifier="example-asset-btc",
+    asset_type="crypto",
+    metadata_json={"ticker": "BTC", "source": "example"},
+)
+asset_by_identifier = get_asset_by_unique_identifier(
+    context,
+    unique_identifier="example-asset-btc",
+)
+asset_by_uid = get_asset_by_uid(context, uid=asset["uid"])
+crypto_assets = search_assets(
+    context,
+    unique_identifier_contains="example-asset-",
+    asset_type="crypto",
+)
+delete_asset(context, uid=asset["uid"])
+```
+
+Prefer `upsert_asset(...)` in setup scripts and repeatable examples because it is
+safe to rerun for the same `unique_identifier`. Use `create_asset(...)` only when
+a duplicate asset should fail the workflow.
+
+Only delete assets that the current workflow owns, such as temporary test assets
+or custom organization-owned records. Public or shared mastered assets should be
+treated as reference data; remove category memberships or downstream references
+instead of deleting the canonical identity row.
+
+See `examples/assets/asset_crud_workflow.py` for a focused example that creates
+temporary custom assets, queries them by identifier and UID, searches by type,
+and deletes one of the temporary rows.
+
 ## Extension Notes
 
 Add new DataNode schemas under `msm.data_nodes.assets` when the output is

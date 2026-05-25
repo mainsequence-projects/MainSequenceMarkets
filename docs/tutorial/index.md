@@ -20,7 +20,7 @@ The maintenance loop for any meaningful implementation change is:
 
 1. Classify the affected `msm` concept area.
 2. Update the closest knowledge documentation under `docs/knowledge/`.
-3. Add or update an example under `examplezs/`.
+3. Add or update an example under `examples/`.
 4. Update this tutorial section or add a focused tutorial page.
 5. Update `CHANGELOG.md` for maintainer- or user-facing changes.
 6. Run focused validation and report any skipped maintenance item explicitly.
@@ -49,5 +49,5 @@ from msm.models import Asset
 from msm.services.assets.openfigi import normalize_openfigi_result
 ```
 
-See `examplezs/assets/openfigi_asset_rows.py` for a small offline example that
+See `examples/assets/openfigi_asset_rows.py` for a small offline example that
 normalizes an OpenFIGI-style row and builds the corresponding library objects.

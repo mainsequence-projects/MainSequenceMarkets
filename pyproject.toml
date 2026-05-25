@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ms-markets"
-version = "0.0.1"
+version = "0.0.2"
 description = "Financial markets ORM, engines, and application management extensions for Main Sequence."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -94,7 +94,7 @@ include = [
   "/LICENSE",
   "/README.md",
   "/docs",
-  "/examplezs",
+  "/examples",
   "/mkdocs.yml",
   "/pyproject.toml",
   "/src",

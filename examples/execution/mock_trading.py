@@ -4,6 +4,7 @@ This script is used to Mock the Process of integrating and execution engine into
 """
 
 import datetime
+import random
 from decimal import Decimal
 
 import numpy as np
@@ -99,8 +100,6 @@ order_manager = OrderManager.create(
 )
 
 # build the orders
-import random
-
 all_orders = []
 for target_position in order_manager.target_rebalance:
     asset = target_position.asset
