@@ -1,0 +1,113 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ms-markets"
+description = "Financial markets ORM, engines, and application management extensions for Main Sequence."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Main Sequence GmbH", email = "dev@main-sequence.io" },
+]
+dynamic = ["version"]
+keywords = [
+  "financial-markets",
+  "mainsequence",
+  "orm",
+  "portfolios",
+  "pricing",
+  "quantlib",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Financial and Insurance Industry",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Office/Business :: Financial",
+  "Typing :: Typed",
+]
+dependencies = [
+  "cachetools",
+  "mainsequence",
+  "numpy",
+  "pandas",
+  "pydantic",
+  "pytz",
+  "QuantLib",
+  "requests",
+  "SQLAlchemy",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mkdocs>=1.6",
+  "mkdocs-autorefs>=1.2",
+  "mkdocs-material>=9.5",
+  "mkdocs-mermaid2-plugin>=1.1",
+  "mkdocstrings[python]>=0.26",
+  "pymdown-extensions>=10.0",
+  "pytest>=8",
+  "ruff>=0.5",
+]
+docs = [
+  "mkdocs>=1.6",
+  "mkdocs-autorefs>=1.2",
+  "mkdocs-material>=9.5",
+  "mkdocs-mermaid2-plugin>=1.1",
+  "mkdocstrings[python]>=0.26",
+  "pymdown-extensions>=10.0",
+]
+portfolios = [
+  "docstring-parser",
+  "joblib",
+  "pandas-market-calendars",
+  "scikit-learn",
+  "tqdm",
+]
+pricing = [
+  "matplotlib",
+]
+"pricing-streamlit" = [
+  "streamlit",
+  "streamlit-aggrid",
+]
+
+[project.urls]
+Changelog = "https://github.com/mainsequence-projects/MainSequenceMarkets/blob/main/CHANGELOG.md"
+Source = "https://github.com/mainsequence-projects/MainSequenceMarkets"
+Homepage = "https://github.com/mainsequence-projects/MainSequenceMarkets"
+Documentation = "https://mainsequence-projects.github.io/MainSequenceMarkets/"
+Issues = "https://github.com/mainsequence-projects/MainSequenceMarkets/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/msm"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/CHANGELOG.md",
+  "/LICENSE",
+  "/README.md",
+  "/docs",
+  "/examplezs",
+  "/mkdocs.yml",
+  "/pyproject.toml",
+  "/src",
+  "/tests",
+]
+
+[tool.hatch.version]
+path = "src/msm/__about__.py"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

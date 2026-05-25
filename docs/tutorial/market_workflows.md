@@ -1,0 +1,107 @@
+# Market Workflows
+
+These examples show the intended runtime boundary.
+
+1. Register the markets SQLAlchemy models as MetaTables.
+2. Build a `MarketsRepositoryContext` from the returned MetaTable UID mapping.
+3. Use services for market records.
+4. Use DataNode helpers for historical tables such as holdings and target
+   positions.
+
+## Register Tables
+
+```python
+from msm.meta_tables import register_markets_meta_tables
+from msm.repositories import MarketsRepositoryContext
+
+registration = register_markets_meta_tables(
+    data_source_uid=configured_data_source_uid,
+    management_mode="platform_managed",
+    labels=["markets"],
+)
+
+context = MarketsRepositoryContext(
+    target_meta_table_uid_by_fullname=registration.target_meta_table_uid_by_fullname,
+    limits={"max_rows": 1000, "statement_timeout_ms": 15000},
+)
+```
+
+For externally managed tables, create/migrate the tables in application code and
+call `register_markets_meta_tables(..., management_mode="external_registered")`.
+
+## Assets And Categories
+
+```python
+from msm.services import (
+    create_asset_category,
+    replace_asset_category_memberships,
+    upsert_asset,
+)
+
+btc = upsert_asset(context, unique_identifier="BTC", asset_type="crypto")
+eth = upsert_asset(context, unique_identifier="ETH", asset_type="crypto")
+category = create_asset_category(
+    context,
+    unique_identifier="crypto-majors",
+    display_name="Crypto Majors",
+)
+
+replace_asset_category_memberships(
+    context,
+    category_uid=category["uid"],
+    asset_uids=[btc["uid"], eth["uid"]],
+)
+```
+
+## Accounts, Funds, And Portfolios
+
+```python
+from msm.services import create_account, create_fund, create_portfolio
+
+account = create_account(
+    context,
+    unique_identifier="acct-main",
+    display_name="Main Account",
+)
+portfolio = create_portfolio(
+    context,
+    unique_identifier="btc-eth-target",
+    calendar_name="24/7",
+)
+fund = create_fund(
+    context,
+    unique_identifier="fund-core",
+    account_uid=account["uid"],
+    portfolio_uid=portfolio["uid"],
+)
+```
+
+## Holdings And Target Positions
+
+```python
+from uuid import uuid4
+
+from msm.services import build_account_holdings_frame, build_target_positions_frame
+
+holdings = build_account_holdings_frame(
+    holdings_date="2026-05-25T00:00:00Z",
+    account_uid=account["uid"],
+    positions=[
+        {"unique_identifier": "BTC", "quantity": "1.0"},
+        {"unique_identifier": "ETH", "quantity": "10.0"},
+    ],
+)
+
+targets = build_target_positions_frame(
+    target_positions_date="2026-05-25T00:00:00Z",
+    position_set_uid=uuid4(),
+    positions=[
+        {"unique_identifier": "BTC", "weight_notional_exposure": "0.6"},
+        {"unique_identifier": "ETH", "weight_notional_exposure": "0.4"},
+    ],
+)
+```
+
+The DataNode frame helpers validate the dynamic-table contract locally. The
+actual table provisioning and writes remain generic TDAG/DataNode behavior.
+

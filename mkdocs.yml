@@ -1,0 +1,94 @@
+site_name: MainSequence Markets
+site_description: Financial markets ORM, engines, and application management extensions for Main Sequence.
+site_url: https://mainsequence-projects.github.io/MainSequenceMarkets/
+repo_url: https://github.com/mainsequence-projects/MainSequenceMarkets
+repo_name: mainsequence-projects/MainSequenceMarkets
+edit_uri: edit/main/docs/
+dev_addr: 127.0.0.1:8004
+
+theme:
+  name: material
+  logo: https://main-sequence.app/static/media/logos/MS_logo_long_black.png
+  palette:
+    scheme: slate
+    primary: black
+    toggle:
+      icon: material/weather-sunny
+      name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.footer
+    - navigation.indexes
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Tutorial:
+      - Overview: tutorial/index.md
+      - Market Workflows: tutorial/market_workflows.md
+  - Knowledge:
+      - Overview: knowledge/index.md
+      - Accounts: knowledge/accounts/index.md
+      - Assets: knowledge/assets/index.md
+      - AssetMasterList: knowledge/assets/asset_master_lists.md
+      - Client: knowledge/client/index.md
+      - Execution: knowledge/execution/index.md
+      - Models: knowledge/models/index.md
+      - Platform: knowledge/platform/index.md
+      - MetaTable Registration: knowledge/platform/meta_table_registration.md
+      - Portfolios: knowledge/portfolios/index.md
+      - Pricing: knowledge/pricing/index.md
+      - Repositories: knowledge/repositories/index.md
+      - Services: knowledge/services/index.md
+  - Architecture:
+      - ADR: ADR/README.md
+      - ADR Template: ADR/0000-template.md
+      - Project Scaffold: ADR/0001-project-scaffold.md
+      - Import Package Name: ADR/0002-import-package-name.md
+      - SDK Markets Migration: ADR/0003-sdk-markets-migration.md
+      - Pricing Package Refactor: ADR/0005-pricing-package-refactor.md
+      - Asset Package Boundary: ADR/0006-asset-package-boundary.md
+      - VAM Markets Ownership Transfer: ADR/0004-vam-markets-ownership-transfer.md
+  - Changelog: changelog.md
+  - Reference:
+      - API Reference: reference/index.md
+
+plugins:
+  - search
+  - autorefs
+  - mermaid2
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: numpy
+            heading_level: 3
+            allow_inspection: false
+            show_bases: true
+            show_source: false
+            show_root_heading: true
+
+extra_javascript:
+  - https://unpkg.com/mermaid@10.9.0/dist/mermaid.min.js
+
+extra_css:
+  - stylesheets/custom.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.snippets:
+      base_path:
+        - docs
+        - .
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
