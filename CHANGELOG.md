@@ -43,6 +43,7 @@ No changes yet.
   documentation site and GitHub project files.
 - Added explicit source distribution include rules so PyPI source artifacts do
   not ship local IDE, workflow, or agent-maintenance files.
+- Declared the first release version directly in `pyproject.toml` as `0.0.1`.
 - Refactored instrument valuation code into `msm.pricing`.
 - Renamed pricing model helpers from the old `pricing_models` package to
   `msm.pricing.models`.

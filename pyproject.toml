@@ -4,6 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ms-markets"
+version = "0.0.1"
 description = "Financial markets ORM, engines, and application management extensions for Main Sequence."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -11,7 +12,6 @@ license = { file = "LICENSE" }
 authors = [
   { name = "Main Sequence GmbH", email = "dev@main-sequence.io" },
 ]
-dynamic = ["version"]
 keywords = [
   "financial-markets",
   "mainsequence",
@@ -100,9 +100,6 @@ include = [
   "/src",
   "/tests",
 ]
-
-[tool.hatch.version]
-path = "src/msm/__about__.py"
 
 [tool.ruff]
 line-length = 100
