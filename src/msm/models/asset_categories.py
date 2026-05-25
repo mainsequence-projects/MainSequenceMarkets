@@ -12,7 +12,6 @@ from msm.base import (
     markets_fk_name,
     markets_index_name,
     markets_table_args,
-    markets_table_name,
     new_markets_uid,
 )
 
@@ -23,7 +22,6 @@ class AssetCategory(MarketsMetaTableMixin, MarketsBase):
     """Client-owned category used to group assets in the markets catalog."""
 
     __metatable_identifier__ = "AssetCategory"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -52,7 +50,6 @@ class AssetCategoryMembership(MarketsMetaTableMixin, MarketsBase):
     """Many-to-many membership row between assets and asset categories."""
 
     __metatable_identifier__ = "AssetCategoryMembership"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

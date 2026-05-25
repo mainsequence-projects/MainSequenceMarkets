@@ -61,7 +61,6 @@ asset = upsert_asset(
     context,
     unique_identifier="example-asset-btc",
     asset_type="crypto",
-    metadata_json={"ticker": "BTC", "source": "example"},
 )
 asset_by_identifier = get_asset_by_unique_identifier(
     context,
@@ -88,6 +87,26 @@ instead of deleting the canonical identity row.
 See `examples/assets/asset_crud_workflow.py` for a focused example that creates
 temporary custom assets, queries them by identifier and UID, searches by type,
 and deletes one of the temporary rows.
+
+## Asset Snapshots
+
+`AssetSnapshot` stores timestamped asset display facts as a DataNode. It should
+not be modeled as fields on the `Asset` MetaTable. Use service helpers to build
+validated frames or a configured DataNode:
+
+```python
+from msm.services import build_asset_snapshot_node
+
+snapshot_node = build_asset_snapshot_node(
+    {"unique_identifier": "example-asset-btc", "ticker": "BTC"},
+    identifier="examples.mainsequence.markets.asset_snapshots",
+    hash_namespace="examples",
+)
+snapshot_frame = snapshot_node.update()
+```
+
+See `examples/assets/asset_snapshot_workflow.py` for a focused AssetSnapshot
+DataNode example that uses an example-scoped identifier.
 
 ## Extension Notes
 

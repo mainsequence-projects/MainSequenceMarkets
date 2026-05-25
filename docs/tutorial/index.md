@@ -44,10 +44,38 @@ The package boundary is deliberate: asset models own identity, DataNodes own
 time-indexed market facts, and services own external provider integration.
 
 ```python
-from msm.data_nodes.assets import AssetSnapshot
-from msm.models import Asset
-from msm.services.assets.openfigi import normalize_openfigi_result
+from msm.services import build_asset_snapshot_node
+from msm.services.assets.openfigi import (
+    build_asset_rows_from_openfigi_result,
+    normalize_openfigi_result,
+)
 ```
 
 See `examples/assets/openfigi_asset_rows.py` for a small offline example that
 normalizes an OpenFIGI-style row and builds the corresponding library objects.
+
+## Markets MetaTable Models
+
+Use this workflow when adding or reviewing a market-domain relational table:
+
+1. Define the SQLAlchemy model under `msm.models` with
+   `MarketsMetaTableMixin` and `MarketsBase`.
+2. Set `__metatable_identifier__` to the stable logical table name.
+3. Put schema, table info, indexes, and constraints in `__table_args__`.
+4. Do not set `__tablename__`; the SDK `PlatformManagedMetaTable` mixin derives
+   the platform-managed physical table name from the resolved table contract.
+5. Add the model to `markets_sqlalchemy_models()` in foreign-key dependency
+   order.
+6. Register through `msm.start(...)` or `register_markets_meta_tables(...)`
+   before constructing repository/service workflows.
+
+Examples that create platform-managed MetaTables must set the logical namespace
+to `mainsequence.examples` before importing `msm.models`. `msm.start(...)` is
+the process preflight for that: call it once at startup with
+`namespace="mainsequence.examples"` or use
+`examples.platform.bootstrap.start_examples_runtime(...)`. A repeated call with
+the same startup arguments returns the cached runtime; a different namespace or
+registration configuration is rejected for the already-initialized process.
+
+See `examples/platform/inspect_markets_metatable_models.py` for a small offline
+inspection example that prints the SDK-derived table names.

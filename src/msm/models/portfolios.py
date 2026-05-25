@@ -12,7 +12,6 @@ from msm.base import (
     markets_fk_name,
     markets_index_name,
     markets_table_args,
-    markets_table_name,
     new_markets_uid,
 )
 
@@ -23,7 +22,6 @@ class Portfolio(MarketsMetaTableMixin, MarketsBase):
     """Portfolio identity and relational configuration metadata."""
 
     __metatable_identifier__ = "Portfolio"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -93,7 +91,6 @@ class PortfolioAssetDetail(MarketsMetaTableMixin, MarketsBase):
     """Explicit portfolio-to-asset relation for portfolio index asset details."""
 
     __metatable_identifier__ = "PortfolioAssetDetail"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -138,7 +135,6 @@ class PortfolioMetadata(MarketsMetaTableMixin, MarketsBase):
     """Human-facing portfolio metadata keyed by stable portfolio identifier."""
 
     __metatable_identifier__ = "PortfolioMetadata"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

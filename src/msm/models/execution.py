@@ -14,7 +14,6 @@ from msm.base import (
     markets_fk_name,
     markets_index_name,
     markets_table_args,
-    markets_table_name,
     new_markets_uid,
 )
 
@@ -27,7 +26,6 @@ class OrderManager(MarketsMetaTableMixin, MarketsBase):
     """Order-manager or rebalance execution batch row."""
 
     __metatable_identifier__ = "OrderManager"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -77,7 +75,6 @@ class OrderTargetQuantity(MarketsMetaTableMixin, MarketsBase):
     """Target quantity for one asset inside an order-manager batch."""
 
     __metatable_identifier__ = "OrderTargetQuantity"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -128,7 +125,6 @@ class Order(MarketsMetaTableMixin, MarketsBase):
     """Broker or venue order emitted by a markets execution workflow."""
 
     __metatable_identifier__ = "Order"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -224,7 +220,6 @@ class OrderStatusEvent(MarketsMetaTableMixin, MarketsBase):
     """Status transition event observed for an order."""
 
     __metatable_identifier__ = "OrderStatusEvent"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(markets_index_name(__metatable_identifier__, "event_time"), "event_time"),
@@ -256,7 +251,6 @@ class Trade(MarketsMetaTableMixin, MarketsBase):
     """Executed trade produced by a broker or venue."""
 
     __metatable_identifier__ = "Trade"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -349,7 +343,6 @@ class ExecutionError(MarketsMetaTableMixin, MarketsBase):
     """Execution error captured by an order or broker integration."""
 
     __metatable_identifier__ = "ExecutionError"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(markets_index_name(__metatable_identifier__, "error_code"), "error_code"),

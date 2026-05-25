@@ -56,6 +56,7 @@ def test_asset_create_operation_uses_write_scope() -> None:
     assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(Asset)
     assert Asset.__table__.name in operation.statement.sql
     assert operation.statement.parameters["unique_identifier"] == "BTC"
+    assert "metadata_json" not in operation.statement.parameters
 
 
 def test_asset_upsert_operation_uses_compiled_upsert_protocol() -> None:
@@ -70,6 +71,8 @@ def test_asset_upsert_operation_uses_compiled_upsert_protocol() -> None:
     assert operation.operation == "upsert"
     assert operation.scope.tables[0].access == "write"
     assert "ON CONFLICT" in operation.statement.sql
+    assert "metadata_json" not in operation.statement.sql
+    assert "metadata_json" not in operation.statement.parameters
 
 
 def test_asset_get_by_unique_identifier_operation_uses_read_scope() -> None:

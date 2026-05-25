@@ -11,7 +11,6 @@ from msm.base import (
     MarketsMetaTableMixin,
     markets_index_name,
     markets_table_args,
-    markets_table_name,
     new_markets_uid,
 )
 
@@ -20,7 +19,6 @@ class InstrumentsConfiguration(MarketsMetaTableMixin, MarketsBase):
     """DataNode bindings used by instrument pricing and curve construction."""
 
     __metatable_identifier__ = "InstrumentsConfiguration"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

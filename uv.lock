@@ -6,10 +6,10 @@ resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
     "python_full_version == '3.13.*' and sys_platform == 'win32'",
-    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
     "python_full_version < '3.13' and sys_platform == 'win32'",
+    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
     "python_full_version < '3.13' and sys_platform == 'emscripten'",
+    "python_full_version == '3.13.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
     "python_full_version < '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
@@ -858,7 +858,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "3.21.0"
+version = "4.0.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cachetools" },
@@ -879,9 +879,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1b/5d/fc9941dd1b625a9be98be0a2bdd8323592b918a78e6e70fbec97efa91098/mainsequence-3.21.0.tar.gz", hash = "sha256:17cb9d45fec88a151f6064d4cfee56f691db7c33352758df7b650929d91d9930", size = 597498, upload-time = "2026-05-22T20:45:46.306Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ab/63/dd38938335f1d101bc82a9d21d5db825e75027dc8e3bd0c3e6ff35e43b71/mainsequence-4.0.5.tar.gz", hash = "sha256:fcb83c1e7947a8cfd6e60263421a1895f5c603151c157bc6024252c08a2fb7bd", size = 413892, upload-time = "2026-05-25T16:58:57.161Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/63/14/75d3014301a2f13705990e24e44b5ed369745d87ef04af817074543846f9/mainsequence-3.21.0-py3-none-any.whl", hash = "sha256:4cb16a8388f455cebdc792cdea2b60bf6a2903fb6f89209bc935b9d789758490", size = 574771, upload-time = "2026-05-22T20:45:44.358Z" },
+    { url = "https://files.pythonhosted.org/packages/08/d0/6c182c4569b0b367c1d66f9af2c5592634450ceb366988b662eb579abafd/mainsequence-4.0.5-py3-none-any.whl", hash = "sha256:8fdbb68a9dc32180ab0dfd242e057cdc4b589cdeb0f8402a066ca2fb7cb2ee63", size = 376449, upload-time = "2026-05-25T16:58:55.218Z" },
 ]
 
 [[package]]

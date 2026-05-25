@@ -293,6 +293,9 @@ Applications should import market functionality from `msm`, not from
 - [x] Ensure every relational model uses `MarketsMetaTableMixin`,
   `markets_table_name(...)`, UUID primary keys, SQLAlchemy `JSON` for JSON
   fields, and explicit SQLAlchemy indexes/foreign keys where portable.
+  - Superseded after the SDK introduced `PlatformManagedMetaTable`: markets
+    models now inherit SDK platform-managed naming through
+    `MarketsMetaTableMixin` and no longer hand-write `__tablename__`.
 
 ### Phase 2: Complete MetaTable Registration
 

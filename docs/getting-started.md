@@ -38,6 +38,19 @@ Implementation decisions should be recorded under `docs/ADR`.
 
 ## First Market Setup
 
-Start by registering the markets SQLAlchemy models as MetaTables. See
+Start by bootstrapping the markets runtime:
+
+```python
+import msm
+
+runtime = msm.start()
+context = runtime.context
+```
+
+This registers the markets SQLAlchemy models as MetaTables and returns the
+repository context used by service helpers. Treat it as process startup work:
+run it once before importing MetaTable-backed models, repositories, or services.
+Repeated calls with the same arguments return the cached runtime; different
+arguments are rejected for that process. See
 [MetaTable Registration](knowledge/platform/meta_table_registration.md) and
 [Market Workflows](tutorial/market_workflows.md).

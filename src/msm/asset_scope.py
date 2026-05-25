@@ -10,15 +10,15 @@ _MISSING = object()
 
 
 def asset_field(asset: Any, field_name: str, default: Any = _MISSING) -> Any:
-    """Read an asset field from an object, mapping, or metadata_json payload."""
+    """Read an asset field from an object, mapping, or metadata payload."""
 
     value = _MISSING
     if isinstance(asset, Mapping):
         value = asset.get(field_name, _MISSING)
-        metadata = asset.get("metadata_json") or asset.get("metadata") or {}
+        metadata = asset.get("metadata") or {}
     else:
         value = getattr(asset, field_name, _MISSING)
-        metadata = getattr(asset, "metadata_json", None) or getattr(asset, "metadata", None) or {}
+        metadata = getattr(asset, "metadata", None) or {}
 
     if value is _MISSING and isinstance(metadata, Mapping):
         value = metadata.get(field_name, _MISSING)

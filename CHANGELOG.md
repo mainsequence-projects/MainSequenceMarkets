@@ -11,11 +11,31 @@ and this project follows versioned releases.
 
 - Added an asset CRUD example covering creation, lookup by identifier and UID,
   search, and deletion of temporary custom assets.
+- Added an offline platform example for inspecting SDK-derived markets
+  MetaTable model names.
+- Added `msm.start(...)` to bootstrap markets MetaTables and return a repository
+  runtime context for examples and applications.
+- Added process-idempotent `msm.start(...)` behavior: repeated calls with the
+  same startup configuration reuse the runtime, while different second calls
+  fail before changing table namespace or execution context.
+- Added AssetSnapshot service entrypoints for validated DataNode frame/node
+  updates.
+- Added an AssetSnapshot example using an example-scoped DataNode identifier.
+- Added `examples/platform/bootstrap.py` as the example preflight entrypoint
+  for example MetaTable namespace and runtime initialization.
 - Documented the asset CRUD workflow in the asset knowledge docs and market
   workflow tutorial.
 - Corrected the examples directory name to `examples/`.
-- Removed MetaTable registration snippets from `examples/` because that setup
-  belongs to the Main Sequence platform boundary, not library examples.
+- Added the `mainsequence.examples` MetaTable namespace bootstrap for examples
+  that create platform resources.
+
+### Changed
+
+- Updated markets MetaTable models to inherit SDK `PlatformManagedMetaTable`
+  naming through `MarketsMetaTableMixin` instead of hand-writing
+  `__tablename__`.
+- Removed the arbitrary `metadata_json` column and create/update/upsert payload
+  from the core `Asset` MetaTable model.
 
 ## [0.0.1] - 2026-05-25
 

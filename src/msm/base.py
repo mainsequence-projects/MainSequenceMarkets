@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any, ClassVar
 
 from mainsequence.tdag.meta_tables import (
+    PlatformManagedMetaTable,
     POSTGRES_IDENTIFIER_MAX_LENGTH,
     metatable_tablename,
     slugify_identifier,
@@ -31,7 +32,11 @@ def markets_table_name(
     hash_namespace: str | None = None,
     extra_hash_components: Mapping[str, Any] | None = None,
 ) -> str:
-    """Return the platform-managed physical table name for a markets MetaTable."""
+    """Return the low-level explicit MetaTable name for a markets identifier.
+
+    Normal markets models inherit `MarketsMetaTableMixin` and let the SDK derive
+    `__tablename__` from the resolved SQLAlchemy table contract.
+    """
 
     return metatable_tablename(
         namespace=MARKETS_NAMESPACE,
@@ -93,7 +98,7 @@ class MarketsBase(DeclarativeBase):
     metadata = MetaData()
 
 
-class MarketsMetaTableMixin:
+class MarketsMetaTableMixin(PlatformManagedMetaTable):
     """Shared metadata contract for markets SQLAlchemy MetaTable models."""
 
     __abstract__ = True

@@ -25,7 +25,6 @@ def build_create_asset_operation(
     *,
     unique_identifier: str,
     asset_type: str | None = None,
-    metadata_json: dict[str, Any] | None = None,
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
@@ -33,7 +32,6 @@ def build_create_asset_operation(
         values={
             "unique_identifier": unique_identifier,
             "asset_type": asset_type,
-            "metadata_json": metadata_json,
         },
     )
 
@@ -50,20 +48,17 @@ def build_upsert_asset_operation(
     *,
     unique_identifier: str,
     asset_type: str | None = None,
-    metadata_json: dict[str, Any] | None = None,
 ) -> MetaTableCompiledSQLOperation:
     statement = (
         postgresql_insert(Asset)
         .values(
             unique_identifier=unique_identifier,
             asset_type=asset_type,
-            metadata_json=metadata_json,
         )
         .on_conflict_do_update(
             index_elements=[Asset.unique_identifier],
             set_={
                 "asset_type": asset_type,
-                "metadata_json": metadata_json,
             },
         )
         .returning(Asset)
@@ -160,7 +155,6 @@ def build_update_asset_operation(
     *,
     uid: uuid.UUID | str,
     asset_type: str | None = None,
-    metadata_json: dict[str, Any] | None = None,
 ) -> MetaTableCompiledSQLOperation:
     return build_update_model_operation(
         context,
@@ -168,7 +162,6 @@ def build_update_asset_operation(
         uid=uid,
         values={
             "asset_type": asset_type,
-            "metadata_json": metadata_json,
         },
     )
 

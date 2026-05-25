@@ -11,7 +11,6 @@ from msm.base import (
     MarketsMetaTableMixin,
     markets_index_name,
     markets_table_args,
-    markets_table_name,
     new_markets_uid,
 )
 
@@ -20,7 +19,6 @@ class AssetMasterList(MarketsMetaTableMixin, MarketsBase):
     """Control-plane table selecting the canonical asset reference MetaTable."""
 
     __metatable_identifier__ = "AssetMasterList"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

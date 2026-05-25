@@ -12,7 +12,6 @@ from msm.base import (
     markets_fk_name,
     markets_index_name,
     markets_table_args,
-    markets_table_name,
     new_markets_uid,
 )
 
@@ -21,7 +20,6 @@ class AccountModelPortfolio(MarketsMetaTableMixin, MarketsBase):
     """Named model portfolio grouping account groups."""
 
     __metatable_identifier__ = "AccountModelPortfolio"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -45,7 +43,6 @@ class AccountGroup(MarketsMetaTableMixin, MarketsBase):
     """Account grouping metadata used by market workflows."""
 
     __metatable_identifier__ = "AccountGroup"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

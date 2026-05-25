@@ -2,8 +2,28 @@ from __future__ import annotations
 
 import uuid
 
+from mainsequence.tdag.meta_tables import (
+    PlatformManagedMetaTable,
+    metatable_configured_tablename,
+)
+
 from msm.meta_tables import build_markets_registration_requests, markets_meta_table_fullname
-from msm.models import AssetMasterList, markets_sqlalchemy_models
+from msm.models import Asset, AssetMasterList, markets_sqlalchemy_models
+
+
+def test_markets_models_use_platform_managed_table_mixin() -> None:
+    table_names: dict[str, type] = {}
+
+    for model in markets_sqlalchemy_models():
+        assert issubclass(model, PlatformManagedMetaTable)
+        assert "__tablename__" not in model.__dict__
+        assert model.__table__.name == metatable_configured_tablename(model)
+        assert model.__table__.name not in table_names
+        table_names[model.__table__.name] = model
+
+
+def test_asset_model_does_not_store_arbitrary_metadata_json() -> None:
+    assert "metadata_json" not in Asset.__table__.c
 
 
 def test_markets_models_build_platform_registration_requests_in_dependency_order() -> None:

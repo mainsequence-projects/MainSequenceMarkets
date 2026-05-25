@@ -1,27 +1,31 @@
 from __future__ import annotations
 
-from msm.repositories import MarketsRepositoryContext
-from msm.services import (
-    create_asset_category,
-    replace_asset_category_memberships,
-    upsert_asset,
-)
+from typing import TYPE_CHECKING
+
+from examples.platform.bootstrap import start_examples_runtime
+
+if TYPE_CHECKING:
+    from msm.repositories.base import MarketsRepositoryContext
 
 
-def create_crypto_category(context: MarketsRepositoryContext) -> None:
+def create_crypto_category(context: "MarketsRepositoryContext") -> None:
     """Create assets and a category through MetaTable-backed services."""
+
+    from msm.services import (
+        create_asset_category,
+        replace_asset_category_memberships,
+        upsert_asset,
+    )
 
     btc = upsert_asset(
         context,
         unique_identifier="BTC",
         asset_type="crypto",
-        metadata_json={"ticker": "BTC", "name": "Bitcoin", "calendar": "24/7"},
     )
     eth = upsert_asset(
         context,
         unique_identifier="ETH",
         asset_type="crypto",
-        metadata_json={"ticker": "ETH", "name": "Ethereum", "calendar": "24/7"},
     )
     category = create_asset_category(
         context,
@@ -47,3 +51,14 @@ def _uid(result: dict) -> str:
     if isinstance(rows, list) and rows and "uid" in rows[0]:
         return str(rows[0]["uid"])
     raise KeyError("Could not resolve uid from MetaTable operation result.")
+
+
+def main() -> None:
+    runtime = start_examples_runtime(
+        labels=["asset-category-example"],
+    )
+    create_crypto_category(runtime.context)
+
+
+if __name__ == "__main__":
+    main()

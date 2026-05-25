@@ -42,6 +42,12 @@ case.
 Every model returned by `markets_sqlalchemy_models()` must be registerable as a
 MetaTable in both platform-managed and external-registered modes.
 
+Platform-managed models inherit `MarketsMetaTableMixin`, which delegates table
+name derivation to the SDK `PlatformManagedMetaTable` mixin. Model classes should
+declare `__metatable_identifier__` and SQLAlchemy `__table_args__`, but should
+not hand-write `__tablename__`; the physical name is the SDK configured storage
+hash for the resolved table contract.
+
 ## Extension Notes
 
 When adding a model:

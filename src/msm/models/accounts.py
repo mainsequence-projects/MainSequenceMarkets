@@ -12,7 +12,6 @@ from msm.base import (
     markets_fk_name,
     markets_index_name,
     markets_table_args,
-    markets_table_name,
     new_markets_uid,
 )
 
@@ -21,7 +20,6 @@ class Account(MarketsMetaTableMixin, MarketsBase):
     """Client account or execution account registered as a markets MetaTable."""
 
     __metatable_identifier__ = "Account"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -59,7 +57,6 @@ class AccountTargetPositionAssignment(MarketsMetaTableMixin, MarketsBase):
     """Binding from an account to a reusable target-position set."""
 
     __metatable_identifier__ = "AccountTargetPositionAssignment"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

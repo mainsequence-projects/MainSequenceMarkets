@@ -20,6 +20,8 @@ Services answer these questions:
 - `msm.services.assets.openfigi`: OpenFIGI provider integration for search,
   mapping, normalization, MetaTable row construction, and asset snapshot frame
   construction.
+- `msm.services.asset_snapshots`: application-facing AssetSnapshot DataNode
+  frame and node builders.
 - `msm.services.funds`: fund creation and lookup workflows over repository
   operations.
 - `msm.services.portfolios`: portfolio and portfolio asset detail workflows over
@@ -38,6 +40,11 @@ Provider services may compose models and DataNodes when the provider response
 needs to produce multiple library-owned objects. For example, the OpenFIGI
 service builds `msm.models.Asset`, `msm.models.OpenFigiDetails`, and an
 `msm.data_nodes.assets.AssetSnapshot` frame from the same provider row.
+
+Use `build_asset_snapshot_frame(...)`, `build_asset_snapshot_node(...)`, or
+`update_asset_snapshot_frame(...)` when application code needs an easy
+entrypoint for AssetSnapshot updates without mixing DataNode logic into the
+`Asset` MetaTable model.
 
 The `msm.services` package export surface is lazy. Importing a provider helper
 such as `msm.services.assets.openfigi` should not initialize unrelated

@@ -11,23 +11,32 @@ These examples show the intended runtime boundary.
 ## Register Tables
 
 ```python
-from msm.meta_tables import register_markets_meta_tables
-from msm.repositories import MarketsRepositoryContext
+import msm
 
-registration = register_markets_meta_tables(
-    data_source_uid=configured_data_source_uid,
-    management_mode="platform_managed",
+runtime = msm.start(
     labels=["markets"],
 )
 
-context = MarketsRepositoryContext(
-    target_meta_table_uid_by_fullname=registration.target_meta_table_uid_by_fullname,
-    limits={"max_rows": 1000, "statement_timeout_ms": 15000},
-)
+context = runtime.context
 ```
+
+`msm.start(...)` is intended to run once per Python process, before importing
+MetaTable-backed `msm.models`, repositories, or services. It performs the table
+registration preflight and caches the resulting runtime. Repeating the same call
+returns the cached runtime; changing startup arguments later raises because the
+MetaTable namespace and SQLAlchemy table mapping are already fixed.
 
 For externally managed tables, create/migrate the tables in application code and
 call `register_markets_meta_tables(..., management_mode="external_registered")`.
+
+Examples that register MetaTables use the platform namespace
+`mainsequence.examples`:
+
+```python
+from examples.platform.bootstrap import start_examples_runtime
+
+runtime = start_examples_runtime(labels=["asset-crud-example"])
+```
 
 ## Assets And Categories
 
@@ -48,7 +57,6 @@ btc = upsert_asset(
     context,
     unique_identifier="example-asset-btc",
     asset_type="crypto",
-    metadata_json={"ticker": "BTC", "source": "tutorial"},
 )
 
 btc_by_identifier = get_asset_by_unique_identifier(
@@ -71,6 +79,29 @@ public/mastered assets should remain stable so downstream workflows do not lose
 their canonical identity.
 
 See `examples/assets/asset_crud_workflow.py` for the focused asset CRUD example.
+
+## Asset Snapshots
+
+`AssetSnapshot` is a DataNode, not a MetaTable. Build validated snapshot frames
+or a configured node through the service entrypoints:
+
+```python
+from msm.services import build_asset_snapshot_node
+
+snapshot_node = build_asset_snapshot_node(
+    {
+        "unique_identifier": "example-asset-btc",
+        "ticker": "BTC",
+        "venue_specific_properties": {"source": "example"},
+    },
+    identifier="examples.mainsequence.markets.asset_snapshots",
+    hash_namespace="examples",
+)
+snapshot_frame = snapshot_node.update()
+```
+
+See `examples/assets/asset_snapshot_workflow.py` for the focused DataNode
+example.
 
 When the universe itself should be a reusable platform object, create an asset
 category and manage memberships separately:

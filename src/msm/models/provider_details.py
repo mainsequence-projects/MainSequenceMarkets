@@ -12,7 +12,6 @@ from msm.base import (
     markets_fk_name,
     markets_index_name,
     markets_table_args,
-    markets_table_name,
     new_markets_uid,
 )
 
@@ -23,7 +22,6 @@ class OpenFigiDetails(MarketsMetaTableMixin, MarketsBase):
     """OpenFIGI/provider detail row linked to a markets asset."""
 
     __metatable_identifier__ = "OpenFigiDetails"
-    __tablename__ = markets_table_name(__metatable_identifier__)
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

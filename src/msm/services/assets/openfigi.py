@@ -108,7 +108,7 @@ def build_asset_snapshot_frame_from_openfigi_result(
 ) -> pd.DataFrame:
     """Build one AssetSnapshot DataNode frame row from an OpenFIGI result."""
 
-    from msm.data_nodes.assets import AssetSnapshot
+    from msm.services.asset_snapshots import build_asset_snapshot_frame
 
     normalized = (
         item
@@ -119,27 +119,23 @@ def build_asset_snapshot_frame_from_openfigi_result(
     if not unique_identifier:
         raise ValueError("OpenFIGI result does not include `figi`.")
 
-    effective_time = time_index or dt.datetime.now(dt.UTC)
-    frame = pd.DataFrame(
-        [
-            {
-                "time_index": effective_time,
-                "unique_identifier": unique_identifier,
-                "name": normalized.get("name") or "",
-                "ticker": normalized.get("ticker") or "",
-                "exchange_code": normalized.get("exchange_code") or "",
-                "asset_ticker_group_id": normalized.get("share_class") or "",
-                "venue_specific_properties": {
-                    "openfigi": {
-                        key: value
-                        for key, value in normalized.items()
-                        if key not in {"raw_payload"}
-                    }
-                },
-            }
-        ]
+    return build_asset_snapshot_frame(
+        {
+            "unique_identifier": unique_identifier,
+            "name": normalized.get("name") or "",
+            "ticker": normalized.get("ticker") or "",
+            "exchange_code": normalized.get("exchange_code") or "",
+            "asset_ticker_group_id": normalized.get("share_class") or "",
+            "venue_specific_properties": {
+                "openfigi": {
+                    key: value
+                    for key, value in normalized.items()
+                    if key not in {"raw_payload"}
+                }
+            },
+        },
+        time_index=time_index,
     )
-    return AssetSnapshot.validate_frame(frame)
 
 
 def search_figi(

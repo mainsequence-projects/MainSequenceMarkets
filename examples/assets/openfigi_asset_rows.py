@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from msm.data_nodes.assets import AssetSnapshot
-from msm.models import Asset
-from msm.services.assets.openfigi import (
+from examples.platform.bootstrap import configure_examples_metatable_namespace
+
+configure_examples_metatable_namespace()
+
+from msm.data_nodes.assets import AssetSnapshot  # noqa: E402
+from msm.models import Asset  # noqa: E402
+from msm.services.assets.openfigi import (  # noqa: E402
     build_asset_rows_from_openfigi_result,
     normalize_openfigi_result,
 )

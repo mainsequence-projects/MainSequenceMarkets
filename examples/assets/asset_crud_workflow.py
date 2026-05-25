@@ -1,41 +1,35 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from msm.repositories import MarketsRepositoryContext
-from msm.services import (
-    delete_asset,
-    get_asset_by_uid,
-    get_asset_by_unique_identifier,
-    search_assets,
-    upsert_asset,
-)
+from examples.platform.bootstrap import start_examples_runtime
+
+if TYPE_CHECKING:
+    from msm.repositories.base import MarketsRepositoryContext
 
 
 EXAMPLE_ASSETS = [
     {
         "unique_identifier": "example-asset-btc",
         "asset_type": "crypto",
-        "metadata_json": {
-            "ticker": "BTC",
-            "name": "Example Bitcoin",
-            "source": "msm-docs-example",
-        },
     },
     {
         "unique_identifier": "example-asset-eth",
         "asset_type": "crypto",
-        "metadata_json": {
-            "ticker": "ETH",
-            "name": "Example Ethereum",
-            "source": "msm-docs-example",
-        },
     },
 ]
 
 
-def create_query_delete_assets(context: MarketsRepositoryContext) -> dict[str, Any]:
+def create_query_delete_assets(context: "MarketsRepositoryContext") -> dict[str, Any]:
     """Create temporary custom assets, query them, then delete one."""
+
+    from msm.services import (
+        delete_asset,
+        get_asset_by_uid,
+        get_asset_by_unique_identifier,
+        search_assets,
+        upsert_asset,
+    )
 
     created_assets = [upsert_asset(context, **payload) for payload in EXAMPLE_ASSETS]
 
@@ -76,8 +70,13 @@ def _uid(result: dict[str, Any]) -> str:
     raise KeyError("Could not resolve uid from MetaTable operation result.")
 
 
-if __name__ == "__main__":
-    raise SystemExit(
-        "Create a MarketsRepositoryContext from registered markets MetaTables, "
-        "then call create_query_delete_assets(context)."
+def main() -> None:
+    runtime = start_examples_runtime(
+        labels=["asset-crud-example"],
     )
+    result = create_query_delete_assets(runtime.context)
+    print(result)
+
+
+if __name__ == "__main__":
+    main()

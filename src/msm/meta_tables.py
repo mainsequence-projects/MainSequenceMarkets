@@ -7,9 +7,7 @@ from typing import Any, Literal
 from mainsequence.client.models_metatables import MetaTable, MetaTableRegistrationRequest
 from mainsequence.tdag.meta_tables import (
     external_registered_registration_request_from_sqlalchemy_model,
-    platform_managed_registration_request_from_sqlalchemy_model,
     register_external_sqlalchemy_model,
-    register_platform_managed_sqlalchemy_model,
 )
 
 from .base import MARKETS_SCHEMA, MarketsBase
@@ -43,7 +41,7 @@ def markets_foreign_key_target_fullnames(model: type[MarketsBase]) -> list[str]:
 
 def build_markets_registration_requests(
     *,
-    data_source_uid: str,
+    data_source_uid: str | None = None,
     management_mode: MarketsManagementMode = "platform_managed",
     target_meta_table_uid_by_fullname: Mapping[str, Any] | None = None,
     labels: Sequence[str] | None = None,
@@ -62,25 +60,26 @@ def build_markets_registration_requests(
     """
 
     resolved_models = list(models or markets_meta_table_models())
+    if management_mode == "external_registered" and not data_source_uid:
+        raise ValueError("external_registered MetaTables require data_source_uid.")
     target_mapping = dict(target_meta_table_uid_by_fullname or {})
     storage_hash_mapping = dict(storage_hash_by_fullname or {})
     requests: list[MetaTableRegistrationRequest] = []
 
     for model in resolved_models:
-        common_kwargs = {
+        platform_kwargs = {
             "data_source_uid": data_source_uid,
             "labels": labels,
             "open_for_everyone": open_for_everyone,
             "protect_from_deletion": protect_from_deletion,
             "target_meta_table_uid_by_fullname": target_mapping,
-            "schema": MARKETS_SCHEMA,
         }
+        external_kwargs = {**platform_kwargs, "schema": MARKETS_SCHEMA}
         if management_mode == "platform_managed":
             requests.append(
-                platform_managed_registration_request_from_sqlalchemy_model(
-                    model,
+                model.build_registration_request(
                     introspect=False if introspect is None else introspect,
-                    **common_kwargs,
+                    **platform_kwargs,
                 )
             )
             continue
@@ -90,7 +89,7 @@ def build_markets_registration_requests(
                     model,
                     introspect=True if introspect is None else introspect,
                     storage_hash=storage_hash_mapping.get(markets_meta_table_fullname(model)),
-                    **common_kwargs,
+                    **external_kwargs,
                 )
             )
             continue
@@ -103,7 +102,7 @@ def build_markets_registration_requests(
 
 def register_markets_meta_tables(
     *,
-    data_source_uid: str,
+    data_source_uid: str | None = None,
     management_mode: MarketsManagementMode = "platform_managed",
     target_meta_table_uid_by_fullname: Mapping[str, Any] | None = None,
     labels: Sequence[str] | None = None,
@@ -116,6 +115,9 @@ def register_markets_meta_tables(
 ) -> MarketsMetaTableRegistrationResult:
     """Register markets SQLAlchemy models as MetaTables in FK dependency order."""
 
+    if management_mode == "external_registered" and not data_source_uid:
+        raise ValueError("external_registered MetaTables require data_source_uid.")
+
     target_mapping = {
         str(key): _meta_table_uid(value)
         for key, value in (target_meta_table_uid_by_fullname or {}).items()
@@ -124,27 +126,26 @@ def register_markets_meta_tables(
     storage_hash_mapping = dict(storage_hash_by_fullname or {})
 
     for model in list(models or markets_meta_table_models()):
-        common_kwargs = {
+        platform_kwargs = {
             "data_source_uid": data_source_uid,
             "labels": labels,
             "open_for_everyone": open_for_everyone,
             "protect_from_deletion": protect_from_deletion,
             "target_meta_table_uid_by_fullname": target_mapping,
-            "schema": MARKETS_SCHEMA,
             "timeout": timeout,
         }
+        external_kwargs = {**platform_kwargs, "schema": MARKETS_SCHEMA}
         if management_mode == "platform_managed":
-            meta_table = register_platform_managed_sqlalchemy_model(
-                model,
+            meta_table = model.register(
                 introspect=False if introspect is None else introspect,
-                **common_kwargs,
+                **platform_kwargs,
             )
         elif management_mode == "external_registered":
             meta_table = register_external_sqlalchemy_model(
                 model,
                 introspect=True if introspect is None else introspect,
                 storage_hash=storage_hash_mapping.get(markets_meta_table_fullname(model)),
-                **common_kwargs,
+                **external_kwargs,
             )
         else:
             raise ValueError(

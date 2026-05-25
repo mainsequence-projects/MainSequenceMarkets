@@ -1,19 +1,24 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from msm.repositories import MarketsRepositoryContext
-from msm.services import (
-    build_account_holdings_frame,
-    build_target_positions_frame,
-    create_account,
-    create_fund,
-    create_portfolio,
-)
+from examples.platform.bootstrap import start_examples_runtime
+
+if TYPE_CHECKING:
+    from msm.repositories.base import MarketsRepositoryContext
 
 
-def create_account_fund_portfolio_workflow(context: MarketsRepositoryContext) -> dict:
+def create_account_fund_portfolio_workflow(context: "MarketsRepositoryContext") -> dict:
     """Create core records and build DataNode-ready frames."""
+
+    from msm.services import (
+        build_account_holdings_frame,
+        build_target_positions_frame,
+        create_account,
+        create_fund,
+        create_portfolio,
+    )
 
     account = create_account(
         context,
@@ -71,3 +76,15 @@ def _uid(result: dict) -> str:
     if isinstance(rows, list) and rows and "uid" in rows[0]:
         return str(rows[0]["uid"])
     raise KeyError("Could not resolve uid from MetaTable operation result.")
+
+
+def main() -> None:
+    runtime = start_examples_runtime(
+        labels=["account-fund-portfolio-example"],
+    )
+    result = create_account_fund_portfolio_workflow(runtime.context)
+    print(result)
+
+
+if __name__ == "__main__":
+    main()
