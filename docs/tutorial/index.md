@@ -34,25 +34,26 @@ Use this workflow when ingesting external asset metadata:
 
 1. Resolve or normalize provider data through a service module, for example
    `msm.services.assets.openfigi`.
-2. Persist canonical identity through the `Asset` MetaTable model in
-   `msm.models.assets` and repository/service helpers in
-   `msm.repositories.assets` or `msm.services.assets`.
+2. Persist canonical identity through the user-facing `msm.api.assets.Asset`
+   row API. Row operations attach to registered MetaTables lazily.
 3. Store timestamped asset facts through DataNode schemas in
    `msm.data_nodes.assets`.
 
-The package boundary is deliberate: asset models own identity, DataNodes own
+The package boundary is deliberate: `msm.api` owns user row operations,
+`msm.models.*Table` owns SQLAlchemy schema declarations, DataNodes own
 time-indexed market facts, and services own external provider integration.
 
 ```python
 from msm.services import build_asset_snapshot_node
 from msm.services.assets.openfigi import (
-    build_asset_rows_from_openfigi_result,
-    normalize_openfigi_result,
+    query_by_figi,
 )
 ```
 
-See `examples/assets/openfigi_asset_rows.py` for a small offline example that
-normalizes an OpenFIGI-style row and builds the corresponding library objects.
+See `examples/assets/openfigi_asset_rows.py` for a small example that resolves a
+FIGI through OpenFIGI and registers the resulting `Asset` and `OpenFigiDetails`
+through `msm.api.assets`. The OpenFIGI helpers read the API key from the Main
+Sequence secret `OPEN_FIGI_API_KEY`.
 
 ## Markets MetaTable Models
 
@@ -66,22 +67,21 @@ Use this workflow when adding or reviewing a market-domain relational table:
    the platform-managed physical table name from the resolved table contract.
 5. Add the model to `markets_sqlalchemy_models()` in foreign-key dependency
    order.
-6. Register through `msm.create_schemas(...)` or `register_markets_meta_tables(...)`
-   before constructing repository/service workflows.
+6. Use `msm.create_schemas(...)` or `register_markets_meta_tables(...)` only
+   when the workflow explicitly owns schema preflight.
 
-Examples that create platform-managed MetaTables must set the logical namespace
-to `mainsequence.examples` before importing `msm.models`. `msm.create_schemas(...)`
-is the process initialization preflight for that: call it once at startup with
-`namespace="mainsequence.examples"` or with the
-`examples.platform.bootstrap.EXAMPLE_METATABLE_NAMESPACE` constant. A repeated
-call with the same startup arguments returns the cached runtime; a different
-namespace or registration configuration is rejected for the already-initialized
-process.
+Examples that should self-register platform-managed MetaTables must set
+`MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` before importing
+MetaTable-backed `msm.api` or `msm.models` modules. The first row operation then
+registers the row class's required tables and caches the runtime for the
+process. A different namespace or registration configuration is rejected for
+the already-initialized process.
 
-Pass `models=[...]` when a workflow only needs a subset of tables, for example
-`msm.create_schemas(models=["Asset"])`. Use `runtime.table("Asset")` for
-single-table asset service calls and `runtime.context` for operations that touch
-multiple MetaTables.
+Pass `models=[...]` to explicit preflight when a workflow only needs a subset of
+tables, for example `msm.create_schemas(models=["Asset"])`. Normal examples and
+application code should use typed row classes such as
+`msm.api.assets.Asset.upsert(...)`. Use `runtime.table(...)` and
+`runtime.context` only for lower-level repository or service internals.
 
 See `examples/platform/inspect_markets_metatable_models.py` for a small offline
 inspection example that prints the SDK-derived table names.

@@ -98,12 +98,7 @@ class AssetCategoryMembershipTable(MarketsMetaTableMixin, MarketsBase):
     )
 
 
-AssetCategory = AssetCategoryTable
-AssetCategoryMembership = AssetCategoryMembershipTable
-
 __all__ = [
-    "AssetCategory",
-    "AssetCategoryMembership",
     "AssetCategoryMembershipTable",
     "AssetCategoryTable",
 ]

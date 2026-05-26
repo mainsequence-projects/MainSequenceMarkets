@@ -1,56 +1,51 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-import msm
+from examples.platform.bootstrap import (
+    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_METATABLE_NAMESPACE,
+)
 
-from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
-
-if TYPE_CHECKING:
-    from msm.repositories.base import MarketsRepositoryContext
+os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
 
-def create_account_fund_portfolio_workflow(context: "MarketsRepositoryContext") -> dict:
-    """Create core records and build DataNode-ready frames."""
+def create_account_fund_portfolio_workflow() -> dict:
+    """Create typed MetaTable records and build DataNode-ready frames."""
 
+    from msm.api.accounts import Account
+    from msm.api.portfolios import Fund, Portfolio
     from msm.services import (
         build_account_holdings_frame,
         build_target_positions_frame,
-        create_account,
-        create_fund,
-        create_portfolio,
     )
 
-    account = create_account(
-        context,
+    account = Account.upsert(
         unique_identifier="account-main",
-        display_name="Main Account",
+        account_name="Main Account",
         metadata_json={"venue": "example"},
     )
-    portfolio = create_portfolio(
-        context,
+    portfolio = Portfolio.upsert(
         unique_identifier="portfolio-btc-eth",
         calendar_name="24/7",
         portfolio_index_asset_unique_identifier="portfolio-btc-eth",
     )
-    fund = create_fund(
-        context,
+    fund = Fund.upsert(
         unique_identifier="fund-core",
-        account_uid=_uid(account),
-        portfolio_uid=_uid(portfolio),
-        display_name="Core Fund",
+        target_account_uid=account.uid,
+        target_portfolio_uid=portfolio.uid,
     )
 
     holdings = build_account_holdings_frame(
         holdings_date="2026-05-25T00:00:00Z",
-        account_uid=_uid(account),
+        account_uid=account.uid,
         positions=[
             {"unique_identifier": "BTC", "quantity": "1.0"},
             {"unique_identifier": "ETH", "quantity": "10.0"},
@@ -73,23 +68,8 @@ def create_account_fund_portfolio_workflow(context: "MarketsRepositoryContext") 
     }
 
 
-def _uid(result: dict) -> str:
-    if "uid" in result:
-        return str(result["uid"])
-    for key in ("row", "data"):
-        row = result.get(key)
-        if isinstance(row, dict) and "uid" in row:
-            return str(row["uid"])
-    rows = result.get("rows") or result.get("results")
-    if isinstance(rows, list) and rows and "uid" in rows[0]:
-        return str(rows[0]["uid"])
-    raise KeyError("Could not resolve uid from MetaTable operation result.")
-
-
 def main() -> None:
-    runtime = msm.create_schemas(namespace=EXAMPLE_METATABLE_NAMESPACE)
-    context = runtime.context
-    result = create_account_fund_portfolio_workflow(context)
+    result = create_account_fund_portfolio_workflow()
     print(result)
 
 

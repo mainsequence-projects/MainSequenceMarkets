@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+EXAMPLE_AUTO_REGISTER_ENV = "MSM_AUTO_REGISTER_NAMESPACE"
 EXAMPLE_METATABLE_NAMESPACE = "mainsequence.examples"
 
 
 __all__ = [
+    "EXAMPLE_AUTO_REGISTER_ENV",
     "EXAMPLE_METATABLE_NAMESPACE",
 ]

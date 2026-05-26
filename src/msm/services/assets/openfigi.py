@@ -17,8 +17,15 @@ if TYPE_CHECKING:
 
 OPENFIGI_MAPPING_URL = "https://api.openfigi.com/v3/mapping"
 OPENFIGI_SEARCH_URL = "https://api.openfigi.com/v3/search"
-OPENFIGI_API_KEY_ENV = "FIGI_API_KEY"
+OPENFIGI_API_KEY_SECRET_NAME = "OPEN_FIGI_API_KEY"
+OPENFIGI_SECRET_SETUP_URL = (
+    "https://www.main-sequence.app/app/main_sequence_workbench/secrets"
+)
 OPENFIGI_API_URL_ENV = "FIGI_API_URL"
+
+
+class OpenFigiConfigurationError(RuntimeError):
+    """Raised when OpenFIGI credentials are not configured for the workflow."""
 
 
 @dataclass(frozen=True)
@@ -265,14 +272,47 @@ def get_open_figi_definitions() -> dict[str, list[Any]]:
     return load_openfigi_lists()
 
 
+def get_openfigi_api_key(
+    *,
+    secret_name: str = OPENFIGI_API_KEY_SECRET_NAME,
+) -> str:
+    """Read the OpenFIGI API key from Main Sequence Secrets."""
+
+    try:
+        secret = _get_mainsequence_secret(secret_name)
+    except Exception as exc:
+        if exc.__class__.__name__ == "DoesNotExist":
+            message = _missing_openfigi_secret_message(secret_name)
+            raise OpenFigiConfigurationError(message) from exc
+        raise
+
+    raw_value = getattr(secret, "value", None)
+    if hasattr(raw_value, "get_secret_value"):
+        raw_value = raw_value.get_secret_value()
+    if raw_value is None or not str(raw_value).strip():
+        raise OpenFigiConfigurationError(_missing_openfigi_secret_message(secret_name))
+    return str(raw_value)
+
+
 def _openfigi_headers(*, api_key: str | None = None) -> dict[str, str]:
-    resolved_api_key = api_key or os.getenv(OPENFIGI_API_KEY_ENV)
-    if not resolved_api_key:
-        raise ValueError(f"{OPENFIGI_API_KEY_ENV} is required for OpenFIGI requests.")
+    resolved_api_key = api_key or get_openfigi_api_key()
     return {
         "Content-Type": "application/json",
         "X-OPENFIGI-APIKEY": resolved_api_key,
     }
+
+
+def _get_mainsequence_secret(secret_name: str) -> Any:
+    from mainsequence.client import Secret
+
+    return Secret.get(name=secret_name)
+
+
+def _missing_openfigi_secret_message(secret_name: str) -> str:
+    return (
+        f"{secret_name} needs to be set in {OPENFIGI_SECRET_SETUP_URL} "
+        "before using OpenFIGI."
+    )
 
 
 def _openfigi_mapping_batches(
@@ -362,14 +402,17 @@ def _rate_limit_wait(response: requests.Response, *, default: float) -> float:
 
 
 __all__ = [
-    "OPENFIGI_API_KEY_ENV",
+    "OPENFIGI_API_KEY_SECRET_NAME",
     "OPENFIGI_API_URL_ENV",
     "OPENFIGI_MAPPING_URL",
     "OPENFIGI_SEARCH_URL",
+    "OPENFIGI_SECRET_SETUP_URL",
+    "OpenFigiConfigurationError",
     "OpenFigiAssetRows",
     "build_asset_rows_from_openfigi_result",
     "build_asset_snapshot_frame_from_openfigi_result",
     "get_open_figi_definitions",
+    "get_openfigi_api_key",
     "load_openfigi_lists",
     "normalize_openfigi_result",
     "query_by_figi",

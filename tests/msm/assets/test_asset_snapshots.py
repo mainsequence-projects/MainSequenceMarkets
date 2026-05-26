@@ -12,6 +12,8 @@ os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
+from mainsequence.tdag.data_nodes import SourceTableForeignKey
+
 from msm.data_nodes.assets import AssetSnapshot
 from msm.services.asset_snapshots import (
     build_asset_snapshot_frame,
@@ -24,6 +26,11 @@ from msm.services.assets.openfigi import build_asset_snapshot_frame_from_openfig
 @pytest.fixture
 def offline_asset_snapshot_node(monkeypatch):
     monkeypatch.setattr(AssetSnapshot, "set_data_source", lambda self, data_source=None: None)
+    monkeypatch.setattr(
+        SourceTableForeignKey,
+        "target_meta_table_uid",
+        lambda self, **kwargs: "asset-metatable-uid",
+    )
 
 
 def test_build_asset_snapshot_frame_validates_datanode_index() -> None:

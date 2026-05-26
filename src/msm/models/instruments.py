@@ -49,6 +49,4 @@ class InstrumentsConfigurationTable(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-InstrumentsConfiguration = InstrumentsConfigurationTable
-
-__all__ = ["InstrumentsConfiguration", "InstrumentsConfigurationTable"]
+__all__ = ["InstrumentsConfigurationTable"]

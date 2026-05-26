@@ -68,6 +68,4 @@ class FundTable(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-Fund = FundTable
-
-__all__ = ["Fund", "FundTable"]
+__all__ = ["FundTable"]

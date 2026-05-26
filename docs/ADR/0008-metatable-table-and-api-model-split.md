@@ -193,29 +193,23 @@ multi-table operation that touches portfolio identity, index-asset details, and
 asset identity. The class declares its required tables and should raise a clear
 bootstrap error if the active runtime was initialized without those tables.
 
-The refactor should provide compatibility aliases for one release cycle where
-the blast radius is high:
-
-```python
-Asset = AssetTable
-```
-
-Those aliases are only for old MetaTable imports. New documentation, examples,
-and service signatures must use `Asset` for the Pydantic row object and
-`AssetTable` for the MetaTable declaration.
+The refactor initially used compatibility aliases to reduce migration risk.
+Those aliases are now removed so `msm.models` only exports SQLAlchemy
+`*Table` declarations and `msm.api.*` owns user-facing row names.
 
 ## Non-Goals
 
-This ADR does not require every MetaTable to receive a Pydantic row API in one
-change. It defines the target architecture and the staged path.
+This ADR no longer leaves any markets MetaTable without a Pydantic row API. It
+records the target architecture and the staged path used to implement it.
 
 This ADR does not move deployable FastAPI route modules into `src/msm/api`.
 `src/msm/api` is the packaged library API contract layer. Repository-level
 FastAPI apps still belong under the project-level `api/` directory when needed.
 
-This ADR does not make row mutation methods silently bootstrap schemas.
-`create_schemas(...)` is explicit. Mutation and lookup methods use the active
-runtime and fail clearly when no compatible runtime has been initialized.
+This ADR originally did not make row mutation methods bootstrap schemas.
+ADR 0009 supersedes that part of the decision: row operations should lazily
+attach to already-registered schemas by default, and may auto-register only
+when the opt-in auto-registration environment variable is set.
 
 This ADR does not remove lower-level repository helpers. Repositories remain
 useful for compiled operation construction, multi-table internals, and workflows
@@ -230,10 +224,10 @@ from msm.api.assets import Asset
 from msm.models import AssetTable
 ```
 
-Old schema-oriented imports should move as follows:
+Old schema-oriented imports must move as follows:
 
 ```python
-# old compatibility import
+# removed legacy import
 from msm.models import Asset
 
 # new schema import
@@ -254,9 +248,9 @@ registration, or compiled SQL construction, use the `*Table` declaration:
 from msm.models import AssetTable
 ```
 
-Compatibility aliases such as `msm.models.Asset = AssetTable` may remain during
-the transition, but they are not the preferred import path and must not be used
-in new examples or docs.
+Compatibility aliases such as `msm.models.Asset = AssetTable` have been
+removed. New code must import row objects from `msm.api.*` and schema
+declarations from `msm.models.*Table`.
 
 ## Implementation Tasks
 
@@ -264,6 +258,10 @@ The implementation should move in dependency-aware stages. Each stage must keep
 the `Table` declarations registerable, add Pydantic row contracts only for the
 public operations being exposed, update examples/docs for that stage, and add
 focused tests before moving to the next group.
+
+Checklist status is strict: checked items are implemented and validated in the
+repository; unchecked items are planned rollout work and must stay unchecked
+until the corresponding code, docs, examples, and tests exist.
 
 ### Stage 1: Shared Infrastructure
 
@@ -273,9 +271,15 @@ focused tests before moving to the next group.
 - [x] Make `msm.create_schemas(...)` accept selected table models.
 - [x] Add `MarketsRuntime.table(...)` so lower-level repository/service code can
   still obtain a registered table handle when needed.
+- [x] Add `msm.get_runtime()` so row APIs can use the active runtime after
+  explicit bootstrap.
 - [x] Rename current SQLAlchemy MetaTable declarations to `*Table` class names.
 - [x] Add temporary import aliases where needed to avoid breaking all existing
-  callers in one release.
+  callers during the first refactor slice.
+- [x] Update MetaTable model registration tests for `*Table` declarations,
+  model selection, and legacy alias removal.
+- [x] Update repository internals to compile operations against `*Table`
+  declarations.
 
 ### Stage 2: Asset Identity API
 
@@ -291,27 +295,40 @@ market workflows.
 - [x] Add `Asset.get_by_uid(...) -> Asset | None`.
 - [x] Add `Asset.get_by_unique_identifier(...) -> Asset | None`.
 - [x] Add `Asset.filter(...) -> list[Asset]`.
+- [x] Keep platform operation-result normalization private inside
+  `msm.api.assets`; public asset APIs return typed row objects.
+- [x] Add focused tests for asset row contracts, runtime bootstrap selection,
+  required-runtime failures, active-runtime usage, and operation-result
+  normalization.
 - [x] Move the focused asset example and tutorial excerpts to the new API
   vocabulary: user-facing code imports `Asset`, schema/bootstrap code imports
   `AssetTable`.
+- [x] Update the asset CRUD workflow example to initialize only the required
+  asset schema and list typed `Asset` rows.
+- [x] Update the existing OpenFIGI asset row-building code to use the renamed
+  SQLAlchemy schema classes `AssetTable` and `OpenFigiDetailsTable`; this is
+  only a table-name cleanup and does not implement the Stage 3 OpenFIGI API row.
+- [x] Document the library-wide API style in the ADR, docs home page, knowledge
+  base, getting started guide, asset docs, model docs, service docs, tutorial,
+  and changelog.
 
 ### Stage 3: Asset Reference Data API
 
 This stage should complete the asset catalog surface after the core `Asset`
 row is stable.
 
-- [ ] Add Pydantic row and mutation contracts for:
+- [x] Add Pydantic row and mutation contracts for:
   `AssetMasterList`, `AssetCategory`, `AssetCategoryMembership`, and
   `OpenFigiDetails`.
-- [ ] Add class-level `create_schemas(...)` for each row model with explicit
+- [x] Add class-level `create_schemas(...)` for each row model with explicit
   `__required_tables__`.
-- [ ] Add `AssetCategory.upsert(...)` and category lookup/filter helpers.
-- [ ] Add `AssetCategory.replace_memberships(...)` as the category-owned
+- [x] Add `AssetCategory.upsert(...)` and category lookup/filter helpers.
+- [x] Add `AssetCategory.replace_memberships(...)` as the category-owned
   multi-table operation requiring `[AssetCategoryTable,
   AssetCategoryMembershipTable, AssetTable]`.
-- [ ] Add `OpenFigiDetails.upsert(...)` or provider-specific registration helper
+- [x] Add `OpenFigiDetails.upsert(...)` or provider-specific registration helper
   requiring `[OpenFigiDetailsTable, AssetTable]`.
-- [ ] Update OpenFIGI examples so provider row-building uses API rows when the
+- [x] Update OpenFIGI examples so provider row-building uses API rows when the
   result is intended for user-facing code and `*Table` declarations only when
   authoring MetaTable contracts.
 
@@ -320,16 +337,16 @@ row is stable.
 This stage covers the operational identity tables needed before funds,
 portfolios, and execution workflows can expose typed APIs.
 
-- [ ] Add Pydantic row and mutation contracts for:
+- [x] Add Pydantic row and mutation contracts for:
   `Calendar`, `AccountModelPortfolio`, `AccountGroup`, `Account`, and
   `AccountTargetPositionAssignment`.
-- [ ] Add `Calendar.create_schemas(...)`, `Calendar.upsert(...)`, and
+- [x] Add `Calendar.create_schemas(...)`, `Calendar.upsert(...)`, and
   lookup/filter helpers.
-- [ ] Add `Account.create_schemas(...)`, `Account.upsert(...)`, and
+- [x] Add `Account.create_schemas(...)`, `Account.upsert(...)`, and
   lookup/filter helpers.
-- [ ] Add account-group helpers after account-model-portfolio contracts are in
+- [x] Add account-group helpers after account-model-portfolio contracts are in
   place.
-- [ ] Keep account target-position assignment as an explicit relationship API;
+- [x] Keep account target-position assignment as an explicit relationship API;
   do not hide it inside `Account.upsert(...)` unless a workflow clearly owns
   that mutation.
 
@@ -338,19 +355,19 @@ portfolios, and execution workflows can expose typed APIs.
 This is the first larger multi-table API stage. It should prove that
 class-owned operations scale beyond single-table assets.
 
-- [ ] Add Pydantic row and mutation contracts for:
+- [x] Add Pydantic row and mutation contracts for:
   `Portfolio`, `PortfolioAssetDetail`, `PortfolioMetadata`, and `Fund`.
-- [ ] Add `Portfolio.__required_tables__ = [PortfolioTable, AssetTable,
+- [x] Add `Portfolio.__required_tables__ = [PortfolioTable, AssetTable,
   PortfolioAssetDetailTable]` for workflows that maintain index asset details.
-- [ ] Add `Portfolio.create_schemas(...)`.
-- [ ] Add `Portfolio.upsert(...)` as a domain-specific operation, not a generic
+- [x] Add `Portfolio.create_schemas(...)`.
+- [x] Add `Portfolio.upsert(...)` as a domain-specific operation, not a generic
   table upsert. It may resolve or validate asset identity and write
   `PortfolioAssetDetail` when required by the payload.
-- [ ] Add `Portfolio.filter(...)`, `Portfolio.get_by_unique_identifier(...)`,
+- [x] Add `Portfolio.filter(...)`, `Portfolio.get_by_unique_identifier(...)`,
   and typed portfolio asset detail helpers.
-- [ ] Add `Fund.__required_tables__ = [FundTable, AccountTable,
+- [x] Add `Fund.__required_tables__ = [FundTable, AccountTable,
   PortfolioTable]`.
-- [ ] Add `Fund.upsert(...)` and lookup helpers after account and portfolio APIs
+- [x] Add `Fund.upsert(...)` and lookup helpers after account and portfolio APIs
   are stable.
 
 ### Stage 6: Signals, Rebalance, And Instrument Configuration API
@@ -358,12 +375,12 @@ class-owned operations scale beyond single-table assets.
 These are metadata/configuration surfaces. They should remain thin unless a
 larger service workflow exists.
 
-- [ ] Add Pydantic row and mutation contracts for:
+- [x] Add Pydantic row and mutation contracts for:
   `SignalMetadata`, `RebalanceStrategyMetadata`, and
   `InstrumentsConfiguration`.
-- [ ] Add class-level `create_schemas(...)`, upsert, lookup, and filter helpers
+- [x] Add class-level `create_schemas(...)`, upsert, lookup, and filter helpers
   for each table.
-- [ ] Keep pricing-runtime and strategy construction outside these row models;
+- [x] Keep pricing-runtime and strategy construction outside these row models;
   row APIs should only own persisted metadata/configuration mutations.
 
 ### Stage 7: Execution API
@@ -371,24 +388,24 @@ larger service workflow exists.
 Execution tables have stronger workflow semantics and should not be treated as
 generic CRUD only.
 
-- [ ] Add Pydantic row and mutation contracts for:
+- [x] Add Pydantic row and mutation contracts for:
   `OrderManager`, `OrderTargetQuantity`, `Order`, `OrderStatusEvent`, `Trade`,
   and `ExecutionError`.
-- [ ] Add `OrderManager.create_schemas(...)` with required tables for account,
+- [x] Add `OrderManager.create_schemas(...)` with required tables for account,
   asset, fund, and order dependencies.
-- [ ] Add workflow-specific class methods such as `OrderManager.create_batch(...)`
+- [x] Add workflow-specific class methods such as `OrderManager.create_batch(...)`
   or `Order.record_status(...)` only where the lifecycle is clear.
-- [ ] Avoid hiding execution side effects behind generic `upsert(...)` when the
+- [x] Avoid hiding execution side effects behind generic `upsert(...)` when the
   domain operation is append-only or event-oriented.
 
 ### Stage 8: Compatibility Removal
 
-- [ ] Mark legacy `msm.models.Asset`-style aliases as deprecated in docs and
+- [x] Document legacy `msm.models.Asset`-style aliases as removed in docs and
   release notes.
-- [ ] Audit all examples and docs so new code imports row objects from
+- [x] Audit all examples and docs so new code imports row objects from
   `msm.api.*` and table declarations from `msm.models.*Table`.
-- [ ] Remove compatibility aliases on a planned breaking release boundary.
-- [ ] Run full package tests, docs build, and example smoke checks after alias
+- [x] Remove compatibility aliases on a planned breaking release boundary.
+- [x] Run full package tests, docs build, and example smoke checks after alias
   removal.
 
 ## Stage Exit Criteria
@@ -411,19 +428,19 @@ Each stage is complete only when:
 
 ## Current Implementation State
 
-The repository currently implements the shared infrastructure and the first
-asset identity slice:
+The repository currently implements the full `Table`/API row split:
 
 - SQLAlchemy MetaTable declarations have `*Table` names.
-- Compatibility aliases remain in `msm.models`.
-- `msm.api.assets.Asset` is the user-facing Pydantic row object.
-- `Asset.create_schemas(...)`, `Asset.upsert(...)`,
-  `Asset.get_by_uid(...)`, `Asset.get_by_unique_identifier(...)`, and
-  `Asset.filter(...)` are implemented.
-- Focused asset examples and tutorial excerpts use the new typed row API.
-
-The remaining stages are future implementation work. They should proceed in the
-order listed above unless a specific user workflow requires a narrower slice.
+- `msm.models` no longer exports unsuffixed legacy aliases.
+- `msm.api.*` exposes user-facing Pydantic row objects for every markets
+  MetaTable in the ADR inventory.
+- Row classes declare `__table__`, `__required_tables__`, and upsert keys where
+  generic upsert is appropriate.
+- `AssetCategory.replace_memberships(...)`, `Portfolio.upsert(...)`,
+  `OrderManager.create_batch(...)`, and `Order.record_status(...)` cover the
+  first domain-specific class methods.
+- Focused examples and tutorial excerpts use typed row APIs for user-facing code
+  and `*Table` declarations only for schema or provider row construction.
 
 ## Consequences
 
@@ -443,6 +460,6 @@ This ADR supersedes the naming assumption in ADR 0006 that `Asset` is the
 MetaTable-backed model. ADR 0006 still applies to the package-boundary decision
 that asset identity, DataNodes, and provider services are separate concepts.
 
-Compatibility aliases reduce immediate breakage but also create ambiguity while
-they exist. They should be documented as deprecated and removed on a planned
-breaking release boundary.
+Removing compatibility aliases is a breaking import change for callers that used
+`msm.models.Asset` as a schema declaration. Those callers must now import
+`msm.models.AssetTable`; application code should import `msm.api.assets.Asset`.

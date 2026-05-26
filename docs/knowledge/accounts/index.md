@@ -18,6 +18,9 @@ Accounts answer these questions:
   virtual fund holdings.
 - `msm.models.accounts`: SQLAlchemy account and account assignment models.
 - `msm.models.funds`: SQLAlchemy fund model.
+- `msm.api.accounts`: Pydantic row APIs for `Account`,
+  `AccountModelPortfolio`, `AccountGroup`, and
+  `AccountTargetPositionAssignment`.
 - `msm.repositories.accounts` and `msm.services.accounts`: MetaTable operation
   builders and service helpers for account records.
 
@@ -30,6 +33,23 @@ are scoped by fund identifiers.
 DataNode inputs should normalize identifiers to stable string values before
 publishing. Amount-like values should be normalized before storage so downstream
 portfolio and reporting code does not need to guess representation.
+
+Use typed row APIs for account registry records:
+
+```python
+from msm.api.accounts import Account
+
+account = Account.upsert(
+    unique_identifier="acct-main",
+    account_name="Main Account",
+    is_paper=True,
+)
+active_accounts = Account.filter(account_is_active=True)
+```
+
+Relationship tables stay explicit. For example,
+`AccountTargetPositionAssignment.upsert(...)` owns the binding from an account to
+a target-position set; `Account.upsert(...)` does not hide that mutation.
 
 ## Extension Notes
 

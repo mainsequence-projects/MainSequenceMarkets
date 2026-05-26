@@ -17,6 +17,9 @@ Execution answers these questions:
 - `msm.execution.data_nodes`: DataNodes for orders, order events, trades, and
   execution errors.
 - `msm.models.execution`: SQLAlchemy execution models.
+- `msm.api.execution`: typed row APIs for `OrderManager`,
+  `OrderTargetQuantity`, `Order`, `OrderStatusEvent`, `Trade`, and
+  `ExecutionError`.
 - `msm.repositories.execution` and `msm.services.execution`: MetaTable operation
   builders and service helpers for execution records.
 
@@ -31,6 +34,29 @@ Execution DataNodes use explicit time indexes for each event family:
 
 Execution records should preserve enough raw platform or broker payload in JSON
 fields for audit, but normalized identifiers should still be present for joins.
+
+Use class-owned lifecycle methods where they express the domain operation:
+
+```python
+import datetime as dt
+
+from msm.api.execution import Order, OrderManager
+
+manager = OrderManager.create_batch(
+    unique_identifier="rebalance-2026-05-26",
+    target_account_uid="00000000-0000-0000-0000-000000000000",
+    target_time=dt.datetime.now(dt.UTC),
+    status="created",
+)
+event = Order.record_status(
+    order_status="accepted",
+    order_unique_identifier=manager.unique_identifier,
+)
+```
+
+Append-only rows such as `OrderStatusEvent` and `ExecutionError` use explicit
+creation methods and do not pretend that every lifecycle event is a generic
+upsert.
 
 ## Extension Notes
 

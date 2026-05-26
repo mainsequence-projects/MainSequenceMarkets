@@ -41,6 +41,4 @@ class AssetTable(MarketsMetaTableMixin, MarketsBase):
     asset_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
-Asset = AssetTable
-
-__all__ = ["Asset", "AssetTable"]
+__all__ = ["AssetTable"]

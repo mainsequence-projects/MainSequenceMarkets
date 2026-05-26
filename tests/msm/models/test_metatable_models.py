@@ -3,16 +3,16 @@ from __future__ import annotations
 import uuid
 from types import SimpleNamespace
 
+import pytest
 from mainsequence.tdag.meta_tables import (
     PlatformManagedMetaTable,
     metatable_configured_tablename,
 )
 
 import msm.meta_tables as meta_tables
+import msm.models as models
 from msm.meta_tables import build_markets_registration_requests, markets_meta_table_fullname
 from msm.models import (
-    Asset,
-    AssetMasterList,
     AssetMasterListTable,
     AssetTable,
     markets_sqlalchemy_models,
@@ -34,9 +34,9 @@ def test_asset_model_does_not_store_arbitrary_metadata_json() -> None:
     assert "metadata_json" not in AssetTable.__table__.c
 
 
-def test_legacy_model_aliases_point_to_table_declarations() -> None:
-    assert Asset is AssetTable
-    assert AssetMasterList is AssetMasterListTable
+def test_legacy_model_aliases_are_removed() -> None:
+    assert not hasattr(models, "Asset")
+    assert not hasattr(models, "AssetMasterList")
 
 
 def test_selected_metatable_models_resolve_in_dependency_order() -> None:
@@ -90,8 +90,8 @@ def test_markets_models_build_external_registration_requests_in_dependency_order
 
 
 def test_asset_master_list_is_control_plane_reference_without_database_fk() -> None:
-    assert "reference_meta_table_uid" in AssetMasterList.__table__.c
-    assert not AssetMasterList.__table__.foreign_keys
+    assert "reference_meta_table_uid" in AssetMasterListTable.__table__.c
+    assert not AssetMasterListTable.__table__.foreign_keys
 
 
 def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
@@ -135,3 +135,59 @@ def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
     assert registering_event["table_fullname"] == "public.fake_asset"
     registered_event = spy_logger.events[1][1]
     assert registered_event["meta_table_uid"] == "fake-meta-table-uid"
+
+
+def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monkeypatch) -> None:
+    calls = []
+    meta_table = SimpleNamespace(
+        uid="fake-meta-table-uid",
+        namespace="mainsequence.markets",
+        identifier="FakeModel",
+    )
+
+    class FakeModel:
+        __metatable_namespace__ = "mainsequence.markets"
+        __metatable_identifier__ = "FakeModel"
+        __table__ = SimpleNamespace(
+            fullname="public.fake_asset",
+            name="fake_storage_hash",
+        )
+
+    def fake_filter(**kwargs):
+        calls.append(kwargs)
+        return [meta_table]
+
+    monkeypatch.setattr(meta_tables.MetaTable, "filter", fake_filter)
+
+    result = meta_tables.resolve_registered_markets_meta_tables(
+        data_source_uid="data-source-uid",
+        models=[FakeModel],
+    )
+
+    assert result.target_meta_table_uid_by_fullname == {"public.fake_asset": "fake-meta-table-uid"}
+    assert result.meta_table_by_fullname["public.fake_asset"] is meta_table
+    assert calls == [
+        {
+            "timeout": None,
+            "storage_hash": "fake_storage_hash",
+            "identifier": "FakeModel",
+            "namespace": "mainsequence.markets",
+            "management_mode": "platform_managed",
+            "data_source__uid": "data-source-uid",
+        }
+    ]
+
+
+def test_resolve_registered_markets_meta_tables_rejects_missing_table(monkeypatch) -> None:
+    class FakeModel:
+        __metatable_namespace__ = "mainsequence.markets"
+        __metatable_identifier__ = "FakeModel"
+        __table__ = SimpleNamespace(
+            fullname="public.fake_asset",
+            name="fake_storage_hash",
+        )
+
+    monkeypatch.setattr(meta_tables.MetaTable, "filter", lambda **_kwargs: [])
+
+    with pytest.raises(LookupError, match="Could not resolve registered"):
+        meta_tables.resolve_registered_markets_meta_tables(models=[FakeModel])

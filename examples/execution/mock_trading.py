@@ -1,164 +1,124 @@
-"""
-This script is used to Mock the Process of integrating and execution engine into the Main Sequence
+from __future__ import annotations
 
-"""
-
-import datetime
-import random
+import datetime as dt
+import os
+import sys
 from decimal import Decimal
+from pathlib import Path
 
-import numpy as np
-import pandas as pd
-import pytz
+if __package__ in {None, ""}:
+    _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-## GEt
-from mainsequence.client import (
-    Account,
-    AssetOnlyPortfolio,
-    Order,
-    OrderManager,
-    OrderManagerTargetQuantity,
-    OrderSide,
-    OrderStatus,
-    OrderTimeInForce,
-    OrderType,
-    Portfolio,
-    RebalanceTargetPosition,
-    Trade,
-    TradeSide,
+from examples.platform.bootstrap import (
+    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_METATABLE_NAMESPACE,
 )
 
-# %% Configuration
-PORTFOLIO_TICKER = "portfo53B"
-ACCOUNT_NAME = "Default MainSequence Portfolios Account"
+os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
 
-# %%
+def create_mock_execution() -> dict:
+    """Create a small execution lifecycle through the typed row API."""
 
-portfolio_to_mock_trading = Portfolio.get(portfolio_ticker=PORTFOLIO_TICKER)
+    from msm.api.accounts import Account
+    from msm.api.assets import Asset
+    from msm.api.execution import Order, OrderManager, OrderTargetQuantity, Trade
+    from msm.api.portfolios import Fund, Portfolio
 
-
-# %% Get Account to rebalance the portfolio
-account = Account.get(account_name=ACCOUNT_NAME, timeout=10000000)
-asset_only_portfolio = AssetOnlyPortfolio.get(tracking_asset__id=account.cash_asset.id)
-print("Account Latest Holdings")
-print(account.latest_holdings)
-print("Account Target Positions")
-print(account.account_target_portfolio.latest_positions)
-
-make_rebalance = True
-for p in account.account_target_portfolio.latest_positions.positions:
-    if p.target_portfolio == portfolio_to_mock_trading.id:
-        make_rebalance = False
-        break
-
-if make_rebalance:
-    rebalance_target_position_port = RebalanceTargetPosition(
-        target_portfolio_id=portfolio_to_mock_trading.id, weight_notional_exposure=0.2
+    asset = Asset.upsert(
+        unique_identifier="example-execution-btc",
+        asset_type="crypto",
     )
-    rebalance_target_position_cash = RebalanceTargetPosition(
-        target_portfolio_id=asset_only_portfolio.id, weight_notional_exposure=0.8
+    account = Account.upsert(
+        unique_identifier="example-execution-account",
+        account_name="Example Execution Account",
+        is_paper=True,
     )
-    scheduled_rebalance = account.rebalance(
-        target_positions=[rebalance_target_position_port, rebalance_target_position_cash],
-        scheduled_time=None,
+    portfolio = Portfolio.upsert(
+        unique_identifier="example-execution-portfolio",
+        calendar_name="24/7",
+        asset_detail={
+            "asset_uid": asset.uid,
+            "asset_unique_identifier": asset.unique_identifier,
+        },
+    )
+    fund = Fund.upsert(
+        unique_identifier="example-execution-fund",
+        target_account_uid=account.uid,
+        target_portfolio_uid=portfolio.uid,
     )
 
-# A this point we should have a new target portfolio set and a scheduled rebalance that should have happened
-
-# we are going to mock an execution engine that is always forcing to match  the tracking error of our portfolio with
-# first lets snapshot the account to guaranteed las valuation
-account.snapshot_account(timeout=1000000)
-
-# second lets get the tracking error detail
-fund_summary, account_tracking_error = account.get_tracking_error_details(timeout=1000000)
-fund_summary = pd.DataFrame(fund_summary["data"])
-print(pd.DataFrame(fund_summary))  # give us the state of the fund
-
-rebalance_df = pd.DataFrame(account_tracking_error["data"])
-
-# %%
-# Mock Execution
-target_rebalance = []
-for _, row in rebalance_df.iterrows():
-    tmp_quantity = OrderManagerTargetQuantity(
-        asset=row["asset_id"],
-        quantity=Decimal(row["asset_required_net_rebalance"]),
+    now = dt.datetime.now(dt.UTC).replace(microsecond=0)
+    order_manager = OrderManager.create_batch(
+        unique_identifier="example-execution-batch",
+        target_account_uid=account.uid,
+        target_time=now,
+        order_received_time=now,
+        status="created",
     )
-    target_rebalance.append(tmp_quantity)
-
-
-# Create Order Manager
-order_manager = OrderManager.create(
-    target_time=datetime.datetime.now(pytz.utc).replace(tzinfo=pytz.utc),  # target for now
-    order_received_time=datetime.datetime.now(pytz.utc).replace(
-        tzinfo=pytz.utc
-    ),  # Order just received now
-    related_account=account.id,
-    target_rebalance=target_rebalance,
-    timeout=100000,
-)
-
-# build the orders
-all_orders = []
-for target_position in order_manager.target_rebalance:
-    asset = target_position.asset
-
-    order_remote_id = str(datetime.datetime.now(pytz.utc).replace(tzinfo=pytz.utc).timestamp())
-    if np.random.rand() > 0.9999:  # send as market order
-        tmp_order = Order.create_or_update(
-            order_type=OrderType.MARKET,
-            order_manager=order_manager.id,
-            order_remote_id=order_remote_id,
-            client_order_id=f"{order_manager.id}_{asset.id}",
-            order_time_stamp=datetime.datetime.now(pytz.utc).replace(tzinfo=pytz.utc).timestamp(),
-            expires_time=None,
-            order_side=OrderSide.BUY if target_position.quantity > 0 else OrderSide.SELL,
-            quantity=float(target_position.quantity),
-            status=OrderStatus.LIVE,
-            asset=asset.id,
-            related_account=account.id,
-            time_in_force=OrderTimeInForce.GOOD_TILL_CANCELED,
-            comments="Mock Order",
-        )
-    else:
-        tmp_order = Order.create_or_update(
-            order_type=OrderType.LIMIT,
-            order_manager=order_manager.id,
-            order_remote_id=order_remote_id,
-            client_order_id=f"{order_manager.id}_{asset.id}",
-            order_time_stamp=datetime.datetime.now(pytz.utc).replace(tzinfo=pytz.utc).timestamp(),
-            expires_time=None,
-            order_side=OrderSide.BUY if target_position.quantity > 0 else OrderSide.SELL,
-            quantity=float(target_position.quantity),
-            limit_price=np.floor(float(row["price"]) * 100) / 100,
-            status=OrderStatus.LIVE,
-            asset=asset.id,
-            related_account=account.id,
-            time_in_force=OrderTimeInForce.GOOD_TILL_CANCELED,
-            comments="Mock Order",
-        )
-    # mock a trade
-    trade_q = float(target_position.quantity) * random.uniform(0.95, 1.05)
-    price = rebalance_df[rebalance_df.asset_id == asset.id]["price"].iloc[0]
-    new_trade = Trade.create(
-        trade_time=datetime.datetime.now(pytz.utc).replace(tzinfo=pytz.utc),
-        trade_side=TradeSide.BUY if target_position.quantity > 0 else TradeSide.SELL,
-        asset=asset.id,
-        quantity=trade_q,
-        price=price,
-        commission=0,
-        commission_asset=account.cash_asset.id,
-        settlement_asset=account.cash_asset.id,
-        settlement_cost=float(target_position.quantity) * float(price),
-        related_account=account.id,
-        related_order=tmp_order.id,
-        comments="Mock Trade",
-        timeout=10000000,
+    target_quantity = OrderTargetQuantity.upsert(
+        order_manager_uid=order_manager.uid,
+        asset_uid=asset.uid,
+        quantity=Decimal("1.25"),
     )
-    # update order
-    tmp_order.patch(
-        status=OrderStatus.PARTIALLY_FILLED, filled_price=price, filled_quantity=trade_q
+    order = Order.upsert(
+        order_remote_id=f"example-{int(now.timestamp())}",
+        client_order_id=f"{order_manager.uid}:{asset.unique_identifier}",
+        order_type="market",
+        order_time=now,
+        order_side=1,
+        quantity=Decimal("1.25"),
+        status="partially_filled",
+        filled_quantity=Decimal("1.00"),
+        filled_price=Decimal("65000.00"),
+        order_manager_uid=order_manager.uid,
+        asset_uid=asset.uid,
+        asset_unique_identifier=asset.unique_identifier,
+        related_fund_uid=fund.uid,
+        related_account_uid=account.uid,
+        time_in_force="gtc",
+        comments="Example typed API order.",
+    )
+    status_event = Order.record_status(
+        order_uid=order.uid,
+        order_status="partially_filled",
+        event_time=now,
+        extra_info={"source": "example"},
+    )
+    trade = Trade.upsert(
+        trade_time=now,
+        trade_side=1,
+        asset_uid=asset.uid,
+        asset_unique_identifier=asset.unique_identifier,
+        quantity=Decimal("1.00"),
+        price=Decimal("65000.00"),
+        related_fund_uid=fund.uid,
+        related_account_uid=account.uid,
+        related_order_uid=order.uid,
+        commission=Decimal("0"),
+        settlement_cost=Decimal("65000.00"),
+        settlement_asset_unique_identifier="USD",
+        comments="Example typed API fill.",
     )
 
-    all_orders.append(tmp_order)
+    return {
+        "asset": asset,
+        "account": account,
+        "portfolio": portfolio,
+        "fund": fund,
+        "order_manager": order_manager,
+        "target_quantity": target_quantity,
+        "order": order,
+        "status_event": status_event,
+        "trade": trade,
+    }
+
+
+def main() -> None:
+    result = create_mock_execution()
+    print(result)
+
+
+if __name__ == "__main__":
+    main()

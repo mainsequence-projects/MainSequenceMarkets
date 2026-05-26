@@ -4,25 +4,30 @@ import datetime as dt
 from typing import Any
 
 import pandas as pd
-from pydantic import Field
+from pydantic import Field, model_validator
 
-from msm.markets_data_node import (
-    MarketDataNode,
-    MarketDataNodeConfiguration,
+from msm.asset_indexed_data_node import (
+    AssetIndexedDataNode,
+    AssetIndexedDataNodeConfiguration,
+    asset_indexed_foreign_keys,
 )
+from msm.settings import ASSET_UNIQUE_IDENTIFIER_DIMENSION
 from mainsequence.tdag.data_nodes import (
     DataNodeMetaData,
     RecordDefinition,
 )
 
 ASSET_DATA_NODE_TIME_INDEX_NAME = "time_index"
-ASSET_DATA_NODE_INDEX_NAMES = ["time_index", "unique_identifier"]
+ASSET_DATA_NODE_INDEX_NAMES = [
+    ASSET_DATA_NODE_TIME_INDEX_NAME,
+    ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+]
 ASSET_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER = "__schema_bootstrap__"
 ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX = dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
 
 ASSET_SNAPSHOT_COLUMN_DTYPES_MAP = {
-    "time_index": "datetime64[ns, UTC]",
-    "unique_identifier": "string",
+    ASSET_DATA_NODE_TIME_INDEX_NAME: "datetime64[ns, UTC]",
+    ASSET_UNIQUE_IDENTIFIER_DIMENSION: "string",
     "name": "string",
     "ticker": "string",
     "exchange_code": "string",
@@ -30,8 +35,8 @@ ASSET_SNAPSHOT_COLUMN_DTYPES_MAP = {
     "venue_specific_properties": "jsonb",
 }
 ASSET_SNAPSHOT_COLUMN_LABELS = {
-    "time_index": "Time Index",
-    "unique_identifier": "Unique Identifier",
+    ASSET_DATA_NODE_TIME_INDEX_NAME: "Time Index",
+    ASSET_UNIQUE_IDENTIFIER_DIMENSION: "Unique Identifier",
     "name": "Name",
     "ticker": "Ticker",
     "exchange_code": "Exchange Code",
@@ -39,8 +44,10 @@ ASSET_SNAPSHOT_COLUMN_LABELS = {
     "venue_specific_properties": "Venue Specific Properties",
 }
 ASSET_SNAPSHOT_COLUMN_DESCRIPTIONS = {
-    "time_index": "UTC timestamp for the asset display snapshot.",
-    "unique_identifier": "Asset unique identifier from the selected master-list table.",
+    ASSET_DATA_NODE_TIME_INDEX_NAME: "UTC timestamp for the asset display snapshot.",
+    ASSET_UNIQUE_IDENTIFIER_DIMENSION: (
+        "Asset unique identifier from the selected master-list table."
+    ),
     "name": "Security name as recorded by the asset data provider.",
     "ticker": "Ticker or display symbol.",
     "exchange_code": "Exchange or market code.",
@@ -49,23 +56,25 @@ ASSET_SNAPSHOT_COLUMN_DESCRIPTIONS = {
 }
 
 ASSET_PRICING_DETAIL_COLUMN_DTYPES_MAP = {
-    "time_index": "datetime64[ns, UTC]",
-    "unique_identifier": "string",
+    ASSET_DATA_NODE_TIME_INDEX_NAME: "datetime64[ns, UTC]",
+    ASSET_UNIQUE_IDENTIFIER_DIMENSION: "string",
     "instrument_dump": "jsonb",
 }
 ASSET_PRICING_DETAIL_COLUMN_LABELS = {
-    "time_index": "Time Index",
-    "unique_identifier": "Unique Identifier",
+    ASSET_DATA_NODE_TIME_INDEX_NAME: "Time Index",
+    ASSET_UNIQUE_IDENTIFIER_DIMENSION: "Unique Identifier",
     "instrument_dump": "Instrument Dump",
 }
 ASSET_PRICING_DETAIL_COLUMN_DESCRIPTIONS = {
-    "time_index": "UTC timestamp for the pricing metadata payload.",
-    "unique_identifier": "Asset unique identifier from the selected master-list table.",
+    ASSET_DATA_NODE_TIME_INDEX_NAME: "UTC timestamp for the pricing metadata payload.",
+    ASSET_UNIQUE_IDENTIFIER_DIMENSION: (
+        "Asset unique identifier from the selected master-list table."
+    ),
     "instrument_dump": "Provider-specific pricing instrument payload.",
 }
 
 
-class AssetDataNodeConfiguration(MarketDataNodeConfiguration):
+class AssetDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
     """Configuration for timestamped asset DataNodes."""
 
     time_index_name: str = Field(
@@ -84,6 +93,14 @@ class AssetDataNodeConfiguration(MarketDataNodeConfiguration):
     @property
     def column_dtypes_map(self) -> dict[str, str]:
         return {record.column_name: record.dtype for record in self.records}
+
+    @model_validator(mode="after")
+    def _ensure_asset_foreign_key(self) -> AssetDataNodeConfiguration:
+        self.foreign_keys = asset_indexed_foreign_keys(
+            records=self.records,
+            foreign_keys=self.foreign_keys,
+        )
+        return self
 
 
 class AssetTimestampedFrameMixin:
@@ -186,7 +203,7 @@ class AssetTimestampedFrameMixin:
         resolved_config = config or cls.default_config()
         row = {
             resolved_config.time_index_name: time_index,
-            "unique_identifier": unique_identifier,
+            ASSET_UNIQUE_IDENTIFIER_DIMENSION: unique_identifier,
         }
         for record in resolved_config.records:
             if record.column_name not in row:
@@ -199,8 +216,8 @@ class AssetTimestampedFrameMixin:
         return cls.build_schema_bootstrap_frame(**kwargs)
 
 
-class AssetTimestampedDataNode(AssetTimestampedFrameMixin, MarketDataNode):
-    """Base MarketDataNode for timestamped asset facts keyed by unique_identifier."""
+class AssetTimestampedDataNode(AssetTimestampedFrameMixin, AssetIndexedDataNode):
+    """Base asset-indexed DataNode for timestamped facts keyed by unique_identifier."""
 
     def dependencies(self) -> dict:
         return {}
@@ -215,10 +232,7 @@ class AssetSnapshot(AssetTimestampedDataNode):
 
     @classmethod
     def _default_description(cls) -> str:
-        return (
-            "Timestamped asset display snapshots keyed by time_index and "
-            "unique_identifier."
-        )
+        return "Timestamped asset display snapshots keyed by time_index and unique_identifier."
 
     @classmethod
     def _required_records(cls) -> list[RecordDefinition]:
@@ -238,10 +252,7 @@ class AssetPricingDetail(AssetTimestampedDataNode):
 
     @classmethod
     def _default_description(cls) -> str:
-        return (
-            "Timestamped asset pricing metadata keyed by time_index and "
-            "unique_identifier."
-        )
+        return "Timestamped asset pricing metadata keyed by time_index and unique_identifier."
 
     @classmethod
     def _required_records(cls) -> list[RecordDefinition]:
@@ -287,14 +298,15 @@ def _validate_asset_data_frame(
         normalized[config.time_index_name],
         utc=True,
     )
-    normalized["unique_identifier"] = normalized["unique_identifier"].astype("string")
+    normalized[ASSET_UNIQUE_IDENTIFIER_DIMENSION] = normalized[
+        ASSET_UNIQUE_IDENTIFIER_DIMENSION
+    ].astype("string")
     normalized = normalized[[record.column_name for record in config.records]]
     normalized = normalized.set_index(config.index_names)
 
     if normalized.index.has_duplicates:
         raise ValueError(
-            "Asset DataNode frame contains duplicate rows for "
-            f"{config.index_names!r}."
+            f"Asset DataNode frame contains duplicate rows for {config.index_names!r}."
         )
     return normalized.sort_index()
 
@@ -307,13 +319,10 @@ def _reset_frame_index(
     missing_index_names = [
         index_name
         for index_name in index_names
-        if index_name not in frame.columns
-        and index_name not in (frame.index.names or [])
+        if index_name not in frame.columns and index_name not in (frame.index.names or [])
     ]
     if missing_index_names:
-        raise ValueError(
-            f"Asset DataNode frame is missing index columns: {missing_index_names!r}."
-        )
+        raise ValueError(f"Asset DataNode frame is missing index columns: {missing_index_names!r}.")
     has_required_index = any(name in index_names for name in frame.index.names)
     return frame.reset_index() if has_required_index else frame
 

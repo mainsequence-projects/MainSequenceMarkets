@@ -18,10 +18,17 @@ collection of SQLAlchemy internals. For row-oriented MetaTable data:
   schema set through `__required_tables__`;
 - row class methods such as `create_schemas(...)`, `upsert(...)`, `filter(...)`,
   and lookups are the preferred ergonomic surface;
+- row operations attach to already-registered MetaTables by default, with
+  `MSM_AUTO_REGISTER_NAMESPACE` reserved for opt-in example/development
+  auto-registration;
 - repository helpers remain lower-level building blocks for compiled MetaTable
   operations and can return raw platform payloads;
 - services own broader workflows that compose providers, repositories,
   DataNodes, and row APIs.
+
+This split is enforced across the markets MetaTables. `msm.models` exports
+`*Table` declarations only; row names such as `Asset`, `Portfolio`, `Fund`,
+`Order`, and `Trade` live in `msm.api.*`.
 
 This pattern is recorded in
 [ADR 0008](../ADR/0008-metatable-table-and-api-model-split.md) and should guide

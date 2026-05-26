@@ -18,7 +18,8 @@ Services answer these questions:
 - `msm.services.assets`: asset CRUD-oriented service helpers over repository
   operations.
 - `msm.services.assets.openfigi`: OpenFIGI provider integration for search,
-  mapping, normalization, MetaTable row construction, and asset snapshot frame
+  mapping, API-key resolution from the `OPEN_FIGI_API_KEY` Main Sequence
+  secret, normalization, MetaTable row construction, and asset snapshot frame
   construction.
 - `msm.services.asset_snapshots`: application-facing AssetSnapshot DataNode
   frame and node builders.
@@ -40,10 +41,16 @@ Provider services may compose table declarations and DataNodes when the provider
 needs to produce multiple library-owned objects. For example, the OpenFIGI
 service builds `msm.models.AssetTable`, `msm.models.OpenFigiDetailsTable`, and an
 `msm.data_nodes.assets.AssetSnapshot` frame from the same provider row.
+OpenFIGI requests read credentials from the Main Sequence secret
+`OPEN_FIGI_API_KEY`; set it in
+`www.main-sequence.app/app/main_sequence_workbench/secrets` before using the
+provider query helpers.
 
 Typed row operations that should return FastAPI-ready Pydantic objects belong in
-`msm.api`, for example `msm.api.assets.Asset.upsert(...)`. Services remain the
-place for workflows that compose providers, repositories, and DataNodes.
+`msm.api`, for example `msm.api.assets.Asset.upsert(...)`,
+`msm.api.portfolios.Portfolio.upsert(...)`, or
+`msm.api.execution.OrderManager.create_batch(...)`. Services remain the place
+for workflows that compose providers, repositories, and DataNodes.
 
 Use `build_asset_snapshot_frame(...)`, `build_asset_snapshot_node(...)`, or
 `update_asset_snapshot_frame(...)` when application code needs an easy

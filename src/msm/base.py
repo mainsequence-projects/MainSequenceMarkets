@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import uuid
 from collections.abc import Mapping
 from typing import Any, ClassVar
@@ -23,6 +24,13 @@ except ImportError as exc:  # pragma: no cover - exercised only in partial envs.
 
 MARKETS_NAMESPACE = "mainsequence.markets"
 MARKETS_SCHEMA = "public"
+MSM_AUTO_REGISTER_NAMESPACE_ENV = "MSM_AUTO_REGISTER_NAMESPACE"
+
+
+def markets_runtime_namespace() -> str:
+    """Return the namespace used when markets models are mapped."""
+
+    return os.getenv(MSM_AUTO_REGISTER_NAMESPACE_ENV) or MARKETS_NAMESPACE
 
 
 def markets_table_name(
@@ -87,7 +95,7 @@ def markets_table_args(
         {
             "schema": schema,
             "info": {
-                "namespace": MARKETS_NAMESPACE,
+                "namespace": markets_runtime_namespace(),
                 "identifier": identifier,
             },
         },
@@ -102,7 +110,7 @@ class MarketsMetaTableMixin(PlatformManagedMetaTable):
     """Shared metadata contract for markets SQLAlchemy MetaTable models."""
 
     __abstract__ = True
-    __metatable_namespace__: ClassVar[str] = MARKETS_NAMESPACE
+    __metatable_namespace__: ClassVar[str] = markets_runtime_namespace()
     __metatable_schema__: ClassVar[str] = MARKETS_SCHEMA
     __metatable_identifier__: ClassVar[str]
 
@@ -118,6 +126,7 @@ def new_markets_uid() -> uuid.UUID:
 __all__ = [
     "MARKETS_NAMESPACE",
     "MARKETS_SCHEMA",
+    "MSM_AUTO_REGISTER_NAMESPACE_ENV",
     "MarketsBase",
     "MarketsMetaTableMixin",
     "markets_fk_name",
@@ -125,5 +134,6 @@ __all__ = [
     "markets_postgres_identifier",
     "markets_table_args",
     "markets_table_name",
+    "markets_runtime_namespace",
     "new_markets_uid",
 ]

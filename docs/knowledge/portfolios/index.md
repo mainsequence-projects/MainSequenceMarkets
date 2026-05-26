@@ -25,6 +25,10 @@ Portfolios answer these questions:
 - `msm.models.portfolios`, `msm.models.rebalancing`, and `msm.models.signals`:
   SQLAlchemy models for portfolio metadata, rebalance metadata, and signal
   metadata.
+- `msm.api.portfolios`: typed row APIs for `Portfolio`,
+  `PortfolioAssetDetail`, `PortfolioMetadata`, and `Fund`.
+- `msm.api.market_metadata`: typed row APIs for `SignalMetadata`,
+  `RebalanceStrategyMetadata`, and `InstrumentsConfiguration`.
 - `msm.services.portfolios`: service helpers for portfolio rows and portfolio
   asset details.
 - `msm.portfolios.contrib`: contributed price and signal DataNodes.
@@ -38,6 +42,28 @@ for equivalent configuration payloads.
 
 Forward-fill behavior, price source selection, signal semantics, and rebalance
 frequency should be explicit in configuration rather than inferred from data.
+
+Use the typed row API for registry records:
+
+```python
+from msm.api.accounts import Account
+from msm.api.portfolios import Fund, Portfolio
+
+account = Account.upsert(unique_identifier="acct-main", account_name="Main")
+portfolio = Portfolio.upsert(
+    unique_identifier="btc-eth-target",
+    calendar_name="24/7",
+)
+fund = Fund.upsert(
+    unique_identifier="fund-core",
+    target_account_uid=account.uid,
+    target_portfolio_uid=portfolio.uid,
+)
+```
+
+`Portfolio.upsert(...)` is the first domain-specific multi-table row operation:
+when an `asset_detail` payload is provided, it also upserts the
+`PortfolioAssetDetail` row after the portfolio identity exists.
 
 ## Extension Notes
 

@@ -386,24 +386,11 @@ class ExecutionErrorTable(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-OrderManager = OrderManagerTable
-OrderTargetQuantity = OrderTargetQuantityTable
-Order = OrderTable
-OrderStatusEvent = OrderStatusEventTable
-Trade = TradeTable
-ExecutionError = ExecutionErrorTable
-
 __all__ = [
-    "ExecutionError",
     "ExecutionErrorTable",
-    "Order",
-    "OrderManager",
     "OrderManagerTable",
-    "OrderStatusEvent",
     "OrderStatusEventTable",
     "OrderTable",
-    "OrderTargetQuantity",
     "OrderTargetQuantityTable",
-    "Trade",
     "TradeTable",
 ]

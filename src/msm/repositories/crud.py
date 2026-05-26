@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from sqlalchemy import delete, insert, select, update
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
 
@@ -35,6 +36,67 @@ def build_create_model_operation(
         operation="insert",
         models=[model],
         access="write",
+    )
+
+
+def build_upsert_model_operation(
+    context: MarketsOperationContext,
+    *,
+    model: type[MarketsBase],
+    values: Mapping[str, Any],
+    conflict_columns: Sequence[str],
+) -> MetaTableCompiledSQLOperation:
+    """Build a PostgreSQL upsert operation for a markets MetaTable model."""
+
+    if not conflict_columns:
+        raise ValueError("Upsert operations require at least one conflict column.")
+
+    payload = {key: value for key, value in dict(values).items() if key != "uid"}
+    statement = postgresql_insert(model).values(**payload)
+    update_values = {
+        key: value
+        for key, value in payload.items()
+        if key not in set(conflict_columns)
+    }
+    if not update_values:
+        first_conflict_column = conflict_columns[0]
+        update_values = {
+            first_conflict_column: getattr(statement.excluded, first_conflict_column)
+        }
+    statement = (
+        statement.on_conflict_do_update(
+            index_elements=[
+                _model_attribute(model, conflict_column)
+                for conflict_column in conflict_columns
+            ],
+            set_=update_values,
+        )
+        .returning(model)
+    )
+    return compile_markets_statement(
+        statement,
+        context=context,
+        operation="upsert",
+        models=[model],
+        access="write",
+    )
+
+
+def upsert_model(
+    context: MarketsOperationContext,
+    *,
+    model: type[MarketsBase],
+    values: Mapping[str, Any],
+    conflict_columns: Sequence[str],
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_upsert_model_operation(
+            context,
+            model=model,
+            values=values,
+            conflict_columns=conflict_columns,
+        ),
+        context=context,
     )
 
 
@@ -259,11 +321,13 @@ __all__ = [
     "build_get_model_by_uid_operation",
     "build_get_model_by_unique_identifier_operation",
     "build_search_model_operation",
+    "build_upsert_model_operation",
     "build_update_model_operation",
     "create_model",
     "delete_model",
     "get_model_by_uid",
     "get_model_by_unique_identifier",
     "search_model",
+    "upsert_model",
     "update_model",
 ]

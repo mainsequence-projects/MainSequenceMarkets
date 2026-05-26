@@ -18,8 +18,9 @@ Assets answer these questions:
 
 - `msm.models.assets`: SQLAlchemy/MetaTable declaration. The `AssetTable`
   schema model lives here.
-- `msm.api.assets`: user-facing Pydantic `Asset` row model and typed class
-  operations.
+- `msm.api.assets`: user-facing Pydantic rows and typed class operations for
+  `Asset`, `AssetMasterList`, `AssetCategory`, `AssetCategoryMembership`, and
+  `OpenFigiDetails`.
 - `msm.data_nodes.assets`: DataNodes for asset snapshots and asset pricing
   details.
 - `msm.services.assets`: application-facing asset service helpers over
@@ -45,14 +46,13 @@ market-data workflows.
 
 ## Creating, Querying, And Deleting Assets
 
-Use the Pydantic row model in `msm.api.assets` for normal application workflows.
-It exposes class methods over the active markets runtime and returns typed
-`Asset` objects.
+Use Pydantic row models in `msm.api.assets` for normal application workflows.
+They expose class methods over the active markets runtime and return typed
+objects.
 
 ```python
 from msm.api.assets import Asset
 
-Asset.create_schemas()
 asset = Asset.upsert(
     unique_identifier="example-asset-btc",
     asset_type="crypto",
@@ -66,34 +66,40 @@ crypto_assets = Asset.filter(
     asset_type="crypto",
 )
 # Optional cleanup for temporary custom assets only:
-# from msm.services import delete_asset
-# delete_asset(msm.get_runtime().table("Asset"), uid=asset.uid)
+# Asset.delete(asset.uid)
 ```
 
-Production code normally calls `msm.create_schemas()` once during process
-initialization without a runtime namespace override. Example and test workflows
-that need isolated MetaTables add the namespace during initialization. For
-asset-only workflows, register only the `Asset` MetaTable and pass the returned
-single-table handle into lower-level repository or service helpers. For the
-typed API, the row model can initialize its own required schemas:
+Production code normally assumes the `Asset` MetaTable is already registered.
+The first row operation attaches to the existing table and caches that runtime
+for the process. If the table is missing, the row API raises with instructions
+to run explicit startup preflight or to enable development auto-registration.
+
+Example and test workflows that need isolated MetaTables can opt into
+self-registration by setting `MSM_AUTO_REGISTER_NAMESPACE` before importing
+`msm.api` row classes:
 
 ```python
-from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
+import os
+
+from examples.platform.bootstrap import (
+    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_METATABLE_NAMESPACE,
+)
+
+os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+
 from msm.api.assets import Asset
 
-Asset.create_schemas(
-    namespace=EXAMPLE_METATABLE_NAMESPACE,
-)
 asset = Asset.upsert(
     unique_identifier="example-asset-btc",
     asset_type="crypto",
 )
 ```
 
-The namespace is part of runtime/table registration, not an asset payload field,
-and row operations never create schemas implicitly. If `Asset.upsert(...)` is
-called before `Asset.create_schemas(...)` or `msm.create_schemas(...)`, it raises
-with bootstrap guidance.
+The namespace is part of runtime/table registration, not an asset payload field.
+Explicit bootstrap remains available for controlled startup preflight:
+`Asset.create_schemas(...)` registers only the `Asset` dependency set, while
+`msm.create_schemas(models=[...])` can register a selected multi-table set.
 
 Use `runtime.context` or `runtime.table(...)` for lower-level multi-table
 repository operations that need to compile statements across registered models.
@@ -102,16 +108,42 @@ Prefer `Asset.upsert(...)` in setup scripts and repeatable examples because it
 is safe to rerun for the same `unique_identifier`. Use lower-level
 `create_asset(...)` only when a duplicate asset should fail the workflow.
 
+Use `AssetCategory` and `AssetCategoryMembership` when the universe itself is a
+named reusable object:
+
+```python
+from msm.api.assets import Asset, AssetCategory
+
+btc = Asset.upsert(unique_identifier="BTC", asset_type="crypto")
+eth = Asset.upsert(unique_identifier="ETH", asset_type="crypto")
+category = AssetCategory.upsert(
+    unique_identifier="crypto-majors",
+    display_name="Crypto Majors",
+)
+memberships = AssetCategory.replace_memberships(
+    category_uid=category.uid,
+    asset_uids=[btc.uid, eth.uid],
+)
+```
+
+Use `OpenFigiDetails.upsert(...)` for typed provider metadata rows when the
+asset row already exists. Provider services may still build `AssetTable` or
+`OpenFigiDetailsTable` instances internally when authoring SQLAlchemy schema
+rows.
+
 Do not delete assets as part of the normal setup path. Only use cleanup for
 temporary test assets or custom organization-owned records. Public or shared
 mastered assets should be treated as reference data; remove category memberships
 or downstream references instead of deleting the canonical identity row.
 
 See `examples/assets/asset_crud_workflow.py` for a focused example that creates
-temporary custom assets, registers OpenFIGI details for `BBG00FNFPQH4`, writes an
-example AssetSnapshot frame, searches by type, and lists the created assets. The
-example only registers the `Asset` and `OpenFigiDetails` MetaTables and cleanup
-is opt-in through `--delete-temporary-assets`.
+temporary custom assets, resolves `BBG00FNFPQH4` through OpenFIGI, registers the
+returned provider details, writes an example AssetSnapshot frame, searches by
+type, and lists the created assets. FIGI resolution requires the Main Sequence
+secret `OPEN_FIGI_API_KEY`; create it in
+`www.main-sequence.app/app/main_sequence_workbench/secrets` before running the
+example. The example only registers the `Asset` and `OpenFigiDetails` MetaTables
+and cleanup is opt-in through `--delete-temporary-assets`.
 
 ## Asset Snapshots
 
@@ -129,6 +161,11 @@ snapshot_node = build_asset_snapshot_node(
 )
 snapshot_frame = snapshot_node.update()
 ```
+
+`AssetSnapshot` and `AssetPricingDetail` configurations declare a canonical
+source-table foreign key from their `unique_identifier` record to
+`AssetTable.unique_identifier`. The `Asset` MetaTable must be registered before
+source-table initialization resolves that FK.
 
 See `examples/assets/asset_snapshot_workflow.py` for a focused AssetSnapshot
 DataNode example that uses an example-scoped identifier.

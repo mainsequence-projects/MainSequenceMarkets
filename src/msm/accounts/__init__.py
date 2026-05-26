@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from msm.models import Account, AccountTargetPositionAssignment
+from msm.api.accounts import Account, AccountTargetPositionAssignment
 from msm.repositories.accounts import (
     build_create_account_operation,
     build_create_account_target_position_assignment_operation,

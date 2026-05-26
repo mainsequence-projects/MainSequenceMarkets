@@ -79,12 +79,7 @@ class AccountGroupTable(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-AccountModelPortfolio = AccountModelPortfolioTable
-AccountGroup = AccountGroupTable
-
 __all__ = [
-    "AccountGroup",
     "AccountGroupTable",
-    "AccountModelPortfolio",
     "AccountModelPortfolioTable",
 ]

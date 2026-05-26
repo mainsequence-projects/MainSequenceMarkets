@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -98,54 +98,45 @@ SourceTableForeignKey(
 ```
 
 The helper must only apply to DataNodes whose persisted records include the
-canonical `unique_identifier` column. `AssetIndexedDataNodeConfiguration` should
-own asset-indexed runtime scope such as `asset_list` and the canonical Asset FK.
-Non-asset-indexed market DataNodes should use a separate, smaller base or the SDK
-`DataNodeConfiguration` directly.
+canonical `unique_identifier` column. `AssetIndexedDataNodeConfiguration` owns
+asset-indexed runtime scope such as `asset_list`, while concrete configurations
+that persist canonical asset rows add the Asset FK during configuration
+validation. This avoids silently adding an Asset FK through the temporary
+`MarketDataNodeConfiguration` compatibility alias to holdings, execution, or
+other schemas that need separate review.
 
-## Plan
+## Implementation Tasks
 
-1. Add `src/msm/settings.py` with `ASSET_UNIQUE_IDENTIFIER_DIMENSION`.
-2. Introduce `src/msm/asset_indexed_data_node.py` with
+1. [x] Add `src/msm/settings.py` with
+   `ASSET_UNIQUE_IDENTIFIER_DIMENSION`.
+2. [x] Introduce `src/msm/asset_indexed_data_node.py` with
    `AssetIndexedDataNodeConfiguration` and `AssetIndexedDataNode`.
-3. Keep `src/msm/markets_data_node.py` as a compatibility shim that imports and
-   re-exports the new names under the old names, then remove that shim in a
-   later breaking release.
-4. Replace local hard-coded asset identity constants in asset-indexed DataNode
-   code, `asset_scope.py`, and asset DataNode contracts with the settings
-   constant.
-5. Add a helper, for example
-   `asset_unique_identifier_foreign_key()`, that returns the canonical
+3. [x] Keep `src/msm/markets_data_node.py` as a compatibility shim that imports
+   and re-exports the new names under the old names.
+4. [x] Replace local hard-coded asset identity constants in
+   `msm.data_nodes.assets` and `msm.asset_scope` with the settings constant.
+5. [x] Add `asset_unique_identifier_foreign_key()` returning the canonical
    `SourceTableForeignKey` to `AssetTable.unique_identifier`.
-6. Add an asset-indexed DataNode configuration base or mixin that:
-   - requires `records`;
-   - verifies the canonical asset identity record exists;
-   - supplies the canonical Asset foreign key by default;
-   - preserves any additional explicit foreign keys declared by a concrete
-     DataNode.
-7. Migrate DataNodes whose persisted table identity is truly
-   `(time_index, unique_identifier)` to that configuration path first:
-   - `AssetSnapshot`;
-   - `AssetPricingDetail`;
-   - market price/curve nodes that use canonical asset identity.
-8. Evaluate holdings and execution DataNodes separately:
-   - holdings currently use additional owner dimensions such as `account_uid`
-     or `fund_uid` and may still include `unique_identifier`;
-   - execution DataNodes currently use fields such as `asset_unique_identifier`,
-     which should not be silently treated as the canonical dimension until the
-     schema is intentionally migrated.
-9. Update imports in new code to use `AssetIndexedDataNode` and
-   `AssetIndexedDataNodeConfiguration`. Existing imports from
-   `msm.markets_data_node` remain temporarily valid through the compatibility
-   shim.
-10. Update examples so `msm.create_schemas(models=["Asset", ...])` runs before
-   any DataNode source-table initialization that resolves the Asset FK.
-11. Add tests that prove:
-   - the settings constant is the only source for the asset identity dimension;
-   - asset-indexed DataNode configs include one FK to `AssetTable.unique_identifier`;
-   - FK source columns are present in `records`;
-   - DataNode frame validation still enforces the expected index shape;
-   - non-asset-indexed DataNodes do not receive a hidden Asset FK.
+6. [x] Add configuration validation for concrete asset DataNodes that requires
+   `records`, verifies the canonical asset identity record exists, supplies the
+   canonical Asset FK, and preserves additional explicit FKs.
+7. [x] Migrate `AssetSnapshot` and `AssetPricingDetail` to the asset-indexed
+   configuration path.
+8. [ ] Migrate market price/curve nodes that use canonical
+   `(time_index, unique_identifier)` identity.
+9. [ ] Evaluate holdings and execution DataNodes separately before adding Asset
+   FKs. Holdings use additional owner dimensions such as `account_uid` or
+   `fund_uid`; execution uses fields such as `asset_unique_identifier`.
+10. [x] Update new asset DataNode code to import `AssetIndexedDataNode` and
+   `AssetIndexedDataNodeConfiguration`; keep existing imports from
+   `msm.markets_data_node` temporarily valid through the compatibility shim.
+11. [ ] Update examples so `msm.create_schemas(models=["Asset", ...])` runs
+   before any DataNode source-table initialization that resolves the Asset FK.
+12. [x] Add tests proving the shared settings constant, canonical FK shape,
+   record validation, frame validation, explicit-FK preservation, and no hidden
+   FK on the compatibility base.
+13. [ ] Perform live platform source-table initialization verification after the
+   project is authenticated.
 
 ## Consequences
 

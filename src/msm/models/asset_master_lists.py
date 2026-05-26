@@ -53,6 +53,4 @@ class AssetMasterListTable(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-AssetMasterList = AssetMasterListTable
-
-__all__ = ["AssetMasterList", "AssetMasterListTable"]
+__all__ = ["AssetMasterListTable"]

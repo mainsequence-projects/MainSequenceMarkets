@@ -18,7 +18,7 @@ from .data_nodes import (
     Orders,
     Trades,
 )
-from msm.models import (
+from msm.api.execution import (
     ExecutionError,
     Order,
     OrderManager,

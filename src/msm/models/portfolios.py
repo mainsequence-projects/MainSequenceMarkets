@@ -153,15 +153,8 @@ class PortfolioMetadataTable(MarketsMetaTableMixin, MarketsBase):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-Portfolio = PortfolioTable
-PortfolioAssetDetail = PortfolioAssetDetailTable
-PortfolioMetadata = PortfolioMetadataTable
-
 __all__ = [
-    "Portfolio",
-    "PortfolioAssetDetail",
     "PortfolioAssetDetailTable",
-    "PortfolioMetadata",
     "PortfolioMetadataTable",
     "PortfolioTable",
 ]

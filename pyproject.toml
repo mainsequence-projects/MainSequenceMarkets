@@ -34,6 +34,7 @@ classifiers = [
 ]
 dependencies = [
   "cachetools",
+  "fastapi>=0.136.3",
   "mainsequence",
   "numpy",
   "pandas",
@@ -43,6 +44,7 @@ dependencies = [
   "QuantLib",
   "requests",
   "SQLAlchemy",
+  "uvicorn>=0.48.0",
 ]
 
 [project.optional-dependencies]
@@ -109,3 +111,8 @@ target-version = "py311"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+]

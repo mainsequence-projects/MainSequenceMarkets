@@ -38,6 +38,4 @@ class CalendarTable(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-Calendar = CalendarTable
-
-__all__ = ["Calendar", "CalendarTable"]
+__all__ = ["CalendarTable"]

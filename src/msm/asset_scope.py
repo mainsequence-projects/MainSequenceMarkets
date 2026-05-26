@@ -3,7 +3,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-ASSET_UNIQUE_IDENTIFIER = "unique_identifier"
+from msm.settings import ASSET_UNIQUE_IDENTIFIER_DIMENSION
+
+ASSET_UNIQUE_IDENTIFIER = ASSET_UNIQUE_IDENTIFIER_DIMENSION
 DEFAULT_MARKET_CALENDAR = "24/7"
 
 _MISSING = object()

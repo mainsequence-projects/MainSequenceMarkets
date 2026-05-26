@@ -42,6 +42,4 @@ class RebalanceStrategyMetadataTable(MarketsMetaTableMixin, MarketsBase):
     configuration_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-RebalanceStrategyMetadata = RebalanceStrategyMetadataTable
-
-__all__ = ["RebalanceStrategyMetadata", "RebalanceStrategyMetadataTable"]
+__all__ = ["RebalanceStrategyMetadataTable"]

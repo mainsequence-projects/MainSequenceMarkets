@@ -30,20 +30,22 @@ into `src/msm`.
 ## Library Style
 
 The general style of `msm` is to keep user-facing code typed and domain-oriented.
-Application code should operate on Pydantic row objects such as `Asset`, while
-schema registration code works with SQLAlchemy MetaTable declarations such as
-`AssetTable`.
+Application code should operate on Pydantic row objects such as `Asset`,
+`Portfolio`, and `Order`, while schema registration code works with SQLAlchemy
+MetaTable declarations such as `AssetTable`, `PortfolioTable`, and `OrderTable`.
 
 ```python
 from msm.api.assets import Asset
 from msm.models import AssetTable
 ```
 
-Row objects may expose explicit class methods such as `Asset.create_schemas()`,
-`Asset.upsert(...)`, and `Asset.filter(...)`. Mutation and lookup methods use the
-active runtime; they do not silently create schemas. Lower-level repository
-helpers remain available when a workflow needs direct access to registered table
-handles or raw platform operation payloads.
+Row objects expose class methods such as `upsert(...)`, `filter(...)`, and
+lifecycle helpers where the domain needs them. Mutation and lookup methods
+lazily attach to already-registered MetaTables; they only create schemas when a
+development or example process opts in through `MSM_AUTO_REGISTER_NAMESPACE`.
+`create_schemas()` remains available for explicit startup preflight.
+Lower-level repository helpers remain available when a workflow needs direct
+access to registered table handles or raw platform operation payloads.
 
 ## Documentation Map
 

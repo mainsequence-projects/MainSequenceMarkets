@@ -389,6 +389,22 @@ wheels = [
 ]
 
 [[package]]
+name = "fastapi"
+version = "0.136.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "pydantic" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/81/2d/ff8d91d7b564d464629a0fd50a4489c97fcb836ac230bf3a7269232a9b1f/fastapi-0.136.3.tar.gz", hash = "sha256:e487fae93ad408e6f47641ee4dfe389864fd7bec92e547ea8498fc13f43e83ab", size = 396410, upload-time = "2026-05-23T18:53:15.192Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e0/82/45359b62a067409bd929ae8a56b8ed13e5a8c8a61194b3c236920999ab83/fastapi-0.136.3-py3-none-any.whl", hash = "sha256:3d2a69bdf04b7e9f3afa292c3bc7a98816bbfafa10bc9b45f3f3700d2f761620", size = 117481, upload-time = "2026-05-23T18:53:16.924Z" },
+]
+
+[[package]]
 name = "fonttools"
 version = "4.63.0"
 source = { registry = "https://pypi.org/simple" }
@@ -618,6 +634,19 @@ wheels = [
 ]
 
 [[package]]
+name = "httpcore"
+version = "1.0.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "h11" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/06/94/82699a10bca87a5556c9c59b5963f2d039dbd239f25bc2a63907a05a14cb/httpcore-1.0.9.tar.gz", hash = "sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8", size = 85484, upload-time = "2025-04-24T22:06:22.219Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl", hash = "sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55", size = 78784, upload-time = "2025-04-24T22:06:20.566Z" },
+]
+
+[[package]]
 name = "httptools"
 version = "0.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -651,6 +680,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4d/31/14df99e1c43bd132eec921c2e7e11cda7852f65619bc0fc5bdc2d0cb126c/httptools-0.7.1-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:f084813239e1eb403ddacd06a30de3d3e09a9b76e7894dcda2b22f8a726e9c60", size = 452631, upload-time = "2025-10-10T03:54:58.219Z" },
     { url = "https://files.pythonhosted.org/packages/22/d2/b7e131f7be8d854d48cb6d048113c30f9a46dca0c9a8b08fcb3fcd588cdc/httptools-0.7.1-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:7347714368fb2b335e9063bc2b96f2f87a9ceffcd9758ac295f8bbcd3ffbc0ca", size = 452910, upload-time = "2025-10-10T03:54:59.366Z" },
     { url = "https://files.pythonhosted.org/packages/53/cf/878f3b91e4e6e011eff6d1fa9ca39f7eb17d19c9d7971b04873734112f30/httptools-0.7.1-cp314-cp314-win_amd64.whl", hash = "sha256:cfabda2a5bb85aa2a904ce06d974a3f30fb36cc63d7feaddec05d2050acede96", size = 88205, upload-time = "2025-10-10T03:55:00.389Z" },
+]
+
+[[package]]
+name = "httpx"
+version = "0.28.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "certifi" },
+    { name = "httpcore" },
+    { name = "idna" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b1/df/48c586a5fe32a0f01324ee087459e112ebb7224f646c0b5023f5e79e9956/httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc", size = 141406, upload-time = "2024-12-06T15:37:23.222Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517, upload-time = "2024-12-06T15:37:21.509Z" },
 ]
 
 [[package]]
@@ -858,7 +902,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "4.0.5"
+version = "4.0.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cachetools" },
@@ -879,9 +923,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ab/63/dd38938335f1d101bc82a9d21d5db825e75027dc8e3bd0c3e6ff35e43b71/mainsequence-4.0.5.tar.gz", hash = "sha256:fcb83c1e7947a8cfd6e60263421a1895f5c603151c157bc6024252c08a2fb7bd", size = 413892, upload-time = "2026-05-25T16:58:57.161Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/1c/893dd4b19618c71ca16de4fc6d8ad988a5f0135d44f1b07cbaf89a739dfb/mainsequence-4.0.6.tar.gz", hash = "sha256:1e845423047d9102653b5e139863d74d98d86676c74c1e64caad645055faec31", size = 426598, upload-time = "2026-05-26T14:27:51.648Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/08/d0/6c182c4569b0b367c1d66f9af2c5592634450ceb366988b662eb579abafd/mainsequence-4.0.5-py3-none-any.whl", hash = "sha256:8fdbb68a9dc32180ab0dfd242e057cdc4b589cdeb0f8402a066ca2fb7cb2ee63", size = 376449, upload-time = "2026-05-25T16:58:55.218Z" },
+    { url = "https://files.pythonhosted.org/packages/18/6d/f17ffb585303273fc2d58a2c46e0e2e0ef6126c79e688054c9aaae98ac05/mainsequence-4.0.6-py3-none-any.whl", hash = "sha256:577260a73a4616b78f980e8bef9ed3ab00a57d806025c9b783a8859ada0d3b68", size = 386318, upload-time = "2026-05-26T14:27:49.74Z" },
 ]
 
 [[package]]
@@ -1203,6 +1247,7 @@ version = "0.0.2"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
+    { name = "fastapi" },
     { name = "mainsequence" },
     { name = "numpy" },
     { name = "pandas" },
@@ -1212,6 +1257,7 @@ dependencies = [
     { name = "quantlib" },
     { name = "requests" },
     { name = "sqlalchemy" },
+    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
@@ -1248,10 +1294,16 @@ pricing-streamlit = [
     { name = "streamlit-aggrid" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "cachetools" },
     { name = "docstring-parser", marker = "extra == 'portfolios'" },
+    { name = "fastapi", specifier = ">=0.136.3" },
     { name = "joblib", marker = "extra == 'portfolios'" },
     { name = "mainsequence" },
     { name = "matplotlib", marker = "extra == 'pricing'" },
@@ -1282,8 +1334,12 @@ requires-dist = [
     { name = "streamlit", marker = "extra == 'pricing-streamlit'" },
     { name = "streamlit-aggrid", marker = "extra == 'pricing-streamlit'" },
     { name = "tqdm", marker = "extra == 'portfolios'" },
+    { name = "uvicorn", specifier = ">=0.48.0" },
 ]
 provides-extras = ["dev", "docs", "portfolios", "pricing", "pricing-streamlit"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "httpx", specifier = ">=0.28.1" }]
 
 [[package]]
 name = "narwhals"

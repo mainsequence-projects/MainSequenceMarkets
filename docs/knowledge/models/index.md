@@ -6,6 +6,11 @@ in which dependency order. Table declaration class names use the `Table` suffix;
 for example, `AssetTable` is the SQLAlchemy MetaTable declaration while
 `msm.api.assets.Asset` is the user-facing Pydantic row object.
 
+`msm.models` does not export unsuffixed row names. Imports such as
+`from msm.models import Asset` are removed; use `from msm.models import
+AssetTable` for schema work or `from msm.api.assets import Asset` for row
+operations.
+
 ## Scope
 
 Models answer these questions:
@@ -30,6 +35,8 @@ Models answer these questions:
 - `msm.models.provider_details`: provider-specific metadata.
 - `msm.models.rebalancing`: rebalance strategy metadata.
 - `msm.models.signals`: signal metadata.
+- `msm.api.*`: user-facing Pydantic rows and class-owned row operations for all
+  markets MetaTables.
 
 ## Key Contracts
 

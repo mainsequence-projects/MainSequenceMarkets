@@ -51,6 +51,7 @@ nav:
       - Asset Package Boundary: ADR/0006-asset-package-boundary.md
       - AssetIndexedDataNode Asset Foreign Keys: ADR/0007-market-data-node-asset-foreign-keys.md
       - MetaTable Table And API Model Split: ADR/0008-metatable-table-and-api-model-split.md
+      - Lazy MetaTable Runtime Resolution: ADR/0009-lazy-metatable-runtime-resolution.md
       - VAM Markets Ownership Transfer: ADR/0004-vam-markets-ownership-transfer.md
   - Changelog: changelog.md
   - Reference:

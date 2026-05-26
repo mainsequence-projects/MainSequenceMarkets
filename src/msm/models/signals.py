@@ -37,6 +37,4 @@ class SignalMetadataTable(MarketsMetaTableMixin, MarketsBase):
     signal_description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-SignalMetadata = SignalMetadataTable
-
-__all__ = ["SignalMetadata", "SignalMetadataTable"]
+__all__ = ["SignalMetadataTable"]

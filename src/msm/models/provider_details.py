@@ -65,6 +65,4 @@ class OpenFigiDetailsTable(MarketsMetaTableMixin, MarketsBase):
     raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-OpenFigiDetails = OpenFigiDetailsTable
-
-__all__ = ["OpenFigiDetails", "OpenFigiDetailsTable"]
+__all__ = ["OpenFigiDetailsTable"]

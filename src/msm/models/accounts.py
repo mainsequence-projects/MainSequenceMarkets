@@ -98,12 +98,7 @@ class AccountTargetPositionAssignmentTable(MarketsMetaTableMixin, MarketsBase):
     position_set_uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
 
 
-Account = AccountTable
-AccountTargetPositionAssignment = AccountTargetPositionAssignmentTable
-
 __all__ = [
-    "Account",
     "AccountTable",
-    "AccountTargetPositionAssignment",
     "AccountTargetPositionAssignmentTable",
 ]

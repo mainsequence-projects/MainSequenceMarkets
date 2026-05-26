@@ -18,8 +18,12 @@ Platform utilities answer these questions:
 
 - `msm.base`: shared SQLAlchemy base, market schema settings, and model mixins.
 - `msm.meta_tables`: MetaTable registration helpers for market-domain models.
-- `msm.markets_data_node`: shared DataNode and configuration behavior for
-  market-domain publishers.
+- `msm.settings`: shared markets constants such as the canonical asset identity
+  dimension.
+- `msm.asset_indexed_data_node`: shared DataNode and configuration behavior for
+  publishers whose persisted identity includes an asset `unique_identifier`.
+- `msm.markets_data_node`: temporary compatibility shim for the old
+  `MarketDataNode` and `MarketDataNodeConfiguration` imports.
 
 ## Key Contracts
 
@@ -27,8 +31,11 @@ Platform primitives should stay low-level. They should not know about business
 logic for a specific concept such as pricing, portfolio construction, or asset
 translation.
 
-Market DataNode subclasses should use the shared base behavior for consistent
-configuration, record definitions, and storage metadata.
+Asset-indexed DataNode subclasses should use `AssetIndexedDataNode` and
+`AssetIndexedDataNodeConfiguration` for consistent asset scope, record
+definitions, and storage metadata. New code should not import the old
+`MarketDataNode` names unless it is intentionally preserving compatibility with
+existing callers.
 
 See [MetaTable Registration](meta_table_registration.md) for the registration
 workflow and the two supported management modes.

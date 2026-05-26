@@ -45,13 +45,15 @@ Main package areas:
 
 - `msm.accounts`: account identity, holdings, virtual funds, and account target
   assignments
+- `msm.api`: user-facing Pydantic row objects and typed class methods for
+  markets MetaTable records
 - `msm.client`: client-facing Main Sequence market models and API wrappers
 - `msm.data_nodes`: market DataNode contracts, including asset snapshots and
   asset pricing details
 - `msm.execution`: order managers, target quantities, orders, events, trades,
   and execution errors
-- `msm.models`: SQLAlchemy market-domain models, including the `Asset`
-  MetaTable model, and MetaTable registration order
+- `msm.models`: SQLAlchemy market-domain `*Table` declarations and MetaTable
+  registration order
 - `msm.portfolios`: portfolio configuration, signal weights, rebalance
   strategies, and Virtual Fund Builder workflows
 - `msm.pricing`: QuantLib-backed instruments, curves, fixings, and pricing

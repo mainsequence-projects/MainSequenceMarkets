@@ -9,6 +9,15 @@ and this project follows versioned releases.
 
 ### Added
 
+- Added user-facing Pydantic row APIs under `msm.api.*` for every markets
+  MetaTable, including asset reference data, accounts, portfolios, funds,
+  metadata/configuration, and execution records.
+- Added shared typed row helpers for explicit schema bootstrap, create/upsert,
+  lookup, filter, update, and delete operations over the active markets runtime.
+- Added `examples/api/typed_metatable_rows.py` to demonstrate the class-owned
+  row API across multi-table markets workflows.
+- Added the initial local FastAPI asset list endpoint at `GET /api/v1/asset/`
+  under `apps/v1/`.
 - Added a GitHub Actions workflow to build and publish `ms-markets` to PyPI
   when a `v*` tag is pushed, using GitHub OIDC trusted publishing.
 - Added an asset CRUD example covering asset creation, lookup by identifier and
@@ -24,6 +33,10 @@ and this project follows versioned releases.
 - Added structured Main Sequence `info` logs to `msm.create_schemas(...)` so
   initialization reports namespace configuration, one line per MetaTable
   registration, context creation, runtime creation, and cached-runtime reuse.
+- Added lazy row-operation runtime resolution: `msm.api.*` row methods now
+  attach to already-registered MetaTables by default, and
+  `MSM_AUTO_REGISTER_NAMESPACE` enables opt-in example/development
+  auto-registration.
 - Exposed registered MetaTable handles and DataNode class handles on the
   `msm.create_schemas(...)` runtime instead of accepting broad labels on startup.
 - Added `models=[...]` support to `msm.create_schemas(...)` so narrow workflows
@@ -40,10 +53,9 @@ and this project follows versioned releases.
   updates.
 - Added an AssetSnapshot example using an example-scoped DataNode identifier.
 - Added `examples/platform/bootstrap.py` as the home for the example MetaTable
-  namespace constant used before direct `msm.create_schemas(...)` bootstrap calls.
-- Documented the direct example bootstrap pattern so calls like
-  `upsert_asset(asset_table, ...)` route to example-scoped MetaTables through
-  the returned table handle while production startup remains namespace-free.
+  namespace and auto-registration environment constants.
+- Documented the attach-first row API pattern, explicit schema preflight option,
+  and example-scoped auto-registration flow.
 - Documented the asset CRUD workflow in the asset knowledge docs and market
   workflow tutorial.
 - Corrected the examples directory name to `examples/`.
@@ -52,6 +64,14 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Implemented the first ADR 0007 slice: `AssetSnapshot` and
+  `AssetPricingDetail` now use `AssetIndexedDataNode` configuration and declare
+  a canonical source-table FK from `unique_identifier` to
+  `AssetTable.unique_identifier`, with `msm.markets_data_node` kept as a
+  compatibility shim.
+- Updated OpenFIGI helpers to read `OPEN_FIGI_API_KEY` from Main Sequence
+  Secrets by default and updated FIGI examples to call OpenFIGI instead of
+  relying on hardcoded provider response payloads.
 - Updated markets MetaTable models to inherit SDK `PlatformManagedMetaTable`
   naming through `MarketsMetaTableMixin` instead of hand-writing
   `__tablename__`.
@@ -59,6 +79,12 @@ and this project follows versioned releases.
   from the core `Asset` MetaTable model.
 - Updated asset service helpers to accept the registered asset table handle
   while keeping the full repository context available for multi-table workflows.
+- Updated examples and asset notebooks so MetaTable row CRUD goes through
+  `msm.api.*` with example-scoped auto-registration instead of explicit
+  bootstrap in normal workflows.
+- Removed legacy unsuffixed `msm.models.*` aliases such as `msm.models.Asset`;
+  schema code must import `*Table` declarations and user-facing code must import
+  row objects from `msm.api.*`.
 
 ## [0.0.1] - 2026-05-25
 

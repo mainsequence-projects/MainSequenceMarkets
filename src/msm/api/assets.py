@@ -1,81 +1,31 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
 from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from msm.models import AssetTable
-from msm.repositories.assets import (
-    get_asset_by_uid as repository_get_asset_by_uid,
-    get_asset_by_unique_identifier as repository_get_asset_by_unique_identifier,
-    search_assets as repository_search_assets,
-    upsert_asset as repository_upsert_asset,
+from msm.api.base import MarketsRow, operation_result_rows
+from msm.models import (
+    AssetCategoryMembershipTable,
+    AssetCategoryTable,
+    AssetMasterListTable,
+    AssetTable,
+    OpenFigiDetailsTable,
 )
 
+_operation_result_rows = operation_result_rows
 
-class Asset(BaseModel):
+
+class Asset(MarketsRow):
     """User-facing asset row returned by typed markets API helpers."""
-
-    model_config = ConfigDict(extra="ignore", frozen=True)
 
     __table__: ClassVar[type[AssetTable]] = AssetTable
     __required_tables__: ClassVar[list[type[AssetTable]]] = [AssetTable]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
 
-    uid: uuid.UUID
     unique_identifier: str
     asset_type: str | None = None
-
-    @classmethod
-    def create_schemas(cls, **kwargs: Any):
-        """Create the MetaTable schemas required by asset row operations."""
-
-        from msm.bootstrap import create_schemas
-
-        requested_models = kwargs.pop("models", None)
-        models = list(cls.__required_tables__)
-        if requested_models is not None:
-            models.extend(requested_models)
-        return create_schemas(models=models, **kwargs)
-
-    @classmethod
-    def upsert(cls, payload: AssetUpsert | None = None, **kwargs: Any) -> Asset:
-        """Upsert one asset through the active markets runtime."""
-
-        return _upsert_asset_row(_active_asset_table(cls), payload or AssetUpsert(**kwargs))
-
-    @classmethod
-    def get_by_uid(cls, uid: uuid.UUID | str) -> Asset | None:
-        """Return one asset by UID from the active markets runtime."""
-
-        return _get_asset_row_by_uid(_active_asset_table(cls), uid=uid)
-
-    @classmethod
-    def get_by_unique_identifier(cls, unique_identifier: str) -> Asset | None:
-        """Return one asset by stable business identifier."""
-
-        return _get_asset_row_by_unique_identifier(
-            _active_asset_table(cls),
-            unique_identifier=unique_identifier,
-        )
-
-    @classmethod
-    def filter(
-        cls,
-        *,
-        unique_identifier_contains: str | None = None,
-        asset_type: str | None = None,
-        limit: int = 500,
-    ) -> list[Asset]:
-        """Filter assets through the active markets runtime."""
-
-        return _search_asset_rows(
-            _active_asset_table(cls),
-            unique_identifier_contains=unique_identifier_contains,
-            asset_type=asset_type,
-            limit=limit,
-        )
 
 
 class AssetCreate(BaseModel):
@@ -99,122 +49,232 @@ class AssetUpdate(BaseModel):
     asset_type: str | None = Field(default=None, max_length=64)
 
 
-def _upsert_asset_row(
-    asset_table: Any,
-    asset: AssetUpsert,
-) -> Asset:
-    """Upsert one asset and return the typed row object."""
+class AssetMasterList(MarketsRow):
+    """Typed row selecting a canonical asset reference MetaTable."""
 
-    result = repository_upsert_asset(
-        asset_table,
-        **asset.model_dump(exclude_unset=True),
+    __table__: ClassVar[type[AssetMasterListTable]] = AssetMasterListTable
+    __required_tables__: ClassVar[list[type[AssetMasterListTable]]] = [
+        AssetMasterListTable
+    ]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
+
+    unique_identifier: str
+    name: str
+    description: str = ""
+    reference_meta_table_uid: uuid.UUID
+    is_default: bool = False
+    validation_version: str = "v1"
+    metadata_json: dict[str, Any] | None = None
+
+
+class AssetMasterListCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    unique_identifier: str = Field(min_length=1, max_length=255)
+    name: str = Field(min_length=1, max_length=255)
+    description: str = ""
+    reference_meta_table_uid: uuid.UUID | str
+    is_default: bool = False
+    validation_version: str = "v1"
+    metadata_json: dict[str, Any] | None = None
+
+
+class AssetMasterListUpsert(AssetMasterListCreate):
+    """Payload for inserting or updating an asset master-list row."""
+
+
+class AssetMasterListUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, max_length=255)
+    description: str | None = None
+    reference_meta_table_uid: uuid.UUID | str | None = None
+    is_default: bool | None = None
+    validation_version: str | None = None
+    metadata_json: dict[str, Any] | None = None
+
+
+class AssetCategory(MarketsRow):
+    """Typed asset universe row."""
+
+    __table__: ClassVar[type[AssetCategoryTable]] = AssetCategoryTable
+    __required_tables__: ClassVar[list[type[AssetCategoryTable]]] = [
+        AssetCategoryTable
+    ]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
+
+    unique_identifier: str
+    display_name: str
+    description: str | None = None
+    metadata_json: dict[str, Any] | None = None
+
+    @classmethod
+    def replace_memberships(
+        cls,
+        *,
+        category_uid: uuid.UUID | str,
+        asset_uids: list[uuid.UUID | str],
+    ) -> list[AssetCategoryMembership]:
+        """Replace the asset membership set for one category."""
+
+        from msm.repositories.asset_categories import (
+            replace_asset_category_memberships,
+        )
+
+        context = AssetCategoryMembership._active_context()
+        results = replace_asset_category_memberships(
+            context,
+            category_uid=category_uid,
+            asset_uids=asset_uids,
+        )
+        rows: list[AssetCategoryMembership] = []
+        for result in results:
+            row = AssetCategoryMembership._from_operation_result(
+                result,
+                required=False,
+            )
+            if row is not None:
+                rows.append(row)
+        return rows
+
+
+class AssetCategoryCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    unique_identifier: str = Field(min_length=1, max_length=255)
+    display_name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    metadata_json: dict[str, Any] | None = None
+
+
+class AssetCategoryUpsert(AssetCategoryCreate):
+    """Payload for inserting or updating an asset category row."""
+
+
+class AssetCategoryUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, max_length=255)
+    description: str | None = None
+    metadata_json: dict[str, Any] | None = None
+
+
+class AssetCategoryMembership(MarketsRow):
+    """Typed membership row between an asset category and an asset."""
+
+    __table__: ClassVar[type[AssetCategoryMembershipTable]] = (
+        AssetCategoryMembershipTable
     )
-    return _asset_from_operation_result(result)
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        AssetTable,
+        AssetCategoryTable,
+        AssetCategoryMembershipTable,
+    ]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("category_uid", "asset_uid")
+
+    category_uid: uuid.UUID
+    asset_uid: uuid.UUID
 
 
-def _get_asset_row_by_uid(
-    asset_table: Any,
-    *,
-    uid: uuid.UUID | str,
-) -> Asset | None:
-    """Return one typed asset row by UID, or None when no row is returned."""
+class AssetCategoryMembershipCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    result = repository_get_asset_by_uid(asset_table, uid=uid)
-    return _asset_from_operation_result(result, required=False)
+    category_uid: uuid.UUID | str
+    asset_uid: uuid.UUID | str
 
 
-def _get_asset_row_by_unique_identifier(
-    asset_table: Any,
-    *,
-    unique_identifier: str,
-) -> Asset | None:
-    """Return one typed asset row by business identifier, or None."""
-
-    result = repository_get_asset_by_unique_identifier(
-        asset_table,
-        unique_identifier=unique_identifier,
-    )
-    return _asset_from_operation_result(result, required=False)
+class AssetCategoryMembershipUpsert(AssetCategoryMembershipCreate):
+    """Payload for inserting or updating an asset category membership row."""
 
 
-def _search_asset_rows(
-    asset_table: Any,
-    *,
-    unique_identifier_contains: str | None = None,
-    asset_type: str | None = None,
-    limit: int = 500,
-) -> list[Asset]:
-    """Search assets and return typed row objects."""
+class OpenFigiDetails(MarketsRow):
+    """Typed OpenFIGI/provider detail row linked to an asset."""
 
-    result = repository_search_assets(
-        asset_table,
-        unique_identifier_contains=unique_identifier_contains,
-        asset_type=asset_type,
-        limit=limit,
-    )
-    return [Asset.model_validate(row) for row in _operation_result_rows(result)]
+    __table__: ClassVar[type[OpenFigiDetailsTable]] = OpenFigiDetailsTable
+    __required_tables__: ClassVar[list[type[Any]]] = [AssetTable, OpenFigiDetailsTable]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("asset_uid",)
 
-
-def _asset_from_operation_result(
-    result: Mapping[str, Any],
-    *,
-    required: bool = True,
-) -> Asset | None:
-    """Extract one asset row from a platform MetaTable operation result."""
-
-    rows = _operation_result_rows(result)
-    if rows:
-        return Asset.model_validate(rows[0])
-    if required:
-        raise LookupError("MetaTable operation result did not include an Asset row.")
-    return None
+    asset_uid: uuid.UUID
+    figi: str | None = None
+    composite: str | None = None
+    share_class: str | None = None
+    isin: str | None = None
+    ticker: str | None = None
+    name: str | None = None
+    exchange_code: str | None = None
+    security_type: str | None = None
+    security_type_2: str | None = None
+    security_market_sector: str | None = None
+    security_description: str | None = None
+    unique_id: str | None = None
+    unique_id_fut_opt: str | None = None
+    metadata_text: str | None = None
+    raw_payload: dict[str, Any] | None = None
 
 
-def _operation_result_rows(result: Mapping[str, Any] | list[Any] | None) -> list[dict[str, Any]]:
-    """Normalize common MetaTable operation result envelopes to row dictionaries."""
+class OpenFigiDetailsCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    if result is None:
-        return []
-    if isinstance(result, list):
-        return [row for row in result if isinstance(row, dict)]
-    if not isinstance(result, Mapping):
-        return []
-
-    for key in ("rows", "results"):
-        rows = result.get(key)
-        if isinstance(rows, list):
-            return [row for row in rows if isinstance(row, dict)]
-
-    for key in ("row", "data"):
-        value = result.get(key)
-        if isinstance(value, Mapping):
-            nested_rows = _operation_result_rows(value)
-            if nested_rows:
-                return nested_rows
-            if _looks_like_asset_row(value):
-                return [dict(value)]
-        if isinstance(value, list):
-            return [row for row in value if isinstance(row, dict)]
-
-    if _looks_like_asset_row(result):
-        return [dict(result)]
-    return []
+    asset_uid: uuid.UUID | str
+    figi: str | None = Field(default=None, max_length=12)
+    composite: str | None = Field(default=None, max_length=12)
+    share_class: str | None = Field(default=None, max_length=12)
+    isin: str | None = Field(default=None, max_length=12)
+    ticker: str | None = Field(default=None, max_length=50)
+    name: str | None = Field(default=None, max_length=255)
+    exchange_code: str | None = Field(default=None, max_length=50)
+    security_type: str | None = Field(default=None, max_length=50)
+    security_type_2: str | None = Field(default=None, max_length=50)
+    security_market_sector: str | None = Field(default=None, max_length=50)
+    security_description: str | None = Field(default=None, max_length=255)
+    unique_id: str | None = Field(default=None, max_length=255)
+    unique_id_fut_opt: str | None = Field(default=None, max_length=255)
+    metadata_text: str | None = None
+    raw_payload: dict[str, Any] | None = None
 
 
-def _looks_like_asset_row(value: Mapping[str, Any]) -> bool:
-    return "uid" in value and "unique_identifier" in value
+class OpenFigiDetailsUpsert(OpenFigiDetailsCreate):
+    """Payload for inserting or updating OpenFIGI details by asset UID."""
 
 
-def _active_asset_table(asset_model: type[Asset]):
-    from msm.bootstrap import get_runtime
+class OpenFigiDetailsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    runtime = get_runtime()
-    return runtime.table(asset_model.__table__)
+    figi: str | None = Field(default=None, max_length=12)
+    composite: str | None = Field(default=None, max_length=12)
+    share_class: str | None = Field(default=None, max_length=12)
+    isin: str | None = Field(default=None, max_length=12)
+    ticker: str | None = Field(default=None, max_length=50)
+    name: str | None = Field(default=None, max_length=255)
+    exchange_code: str | None = Field(default=None, max_length=50)
+    security_type: str | None = Field(default=None, max_length=50)
+    security_type_2: str | None = Field(default=None, max_length=50)
+    security_market_sector: str | None = Field(default=None, max_length=50)
+    security_description: str | None = Field(default=None, max_length=255)
+    unique_id: str | None = Field(default=None, max_length=255)
+    unique_id_fut_opt: str | None = Field(default=None, max_length=255)
+    metadata_text: str | None = None
+    raw_payload: dict[str, Any] | None = None
 
 
 __all__ = [
     "Asset",
+    "AssetCategory",
+    "AssetCategoryCreate",
+    "AssetCategoryMembership",
+    "AssetCategoryMembershipCreate",
+    "AssetCategoryMembershipUpsert",
+    "AssetCategoryUpdate",
+    "AssetCategoryUpsert",
     "AssetCreate",
+    "AssetMasterList",
+    "AssetMasterListCreate",
+    "AssetMasterListUpdate",
+    "AssetMasterListUpsert",
     "AssetUpdate",
     "AssetUpsert",
+    "OpenFigiDetails",
+    "OpenFigiDetailsCreate",
+    "OpenFigiDetailsUpdate",
+    "OpenFigiDetailsUpsert",
 ]

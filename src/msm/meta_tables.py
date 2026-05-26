@@ -231,6 +231,92 @@ def register_markets_meta_tables(
     )
 
 
+def resolve_registered_markets_meta_tables(
+    *,
+    data_source_uid: str | None = None,
+    management_mode: MarketsManagementMode = "platform_managed",
+    namespace: str | None = None,
+    timeout: int | float | tuple[float, float] | None = None,
+    models: Sequence[type[MarketsBase]] | None = None,
+) -> MarketsMetaTableRegistrationResult:
+    """Resolve already-registered markets MetaTables without creating schemas."""
+
+    resolved_models = list(models or markets_meta_table_models())
+    target_mapping: dict[str, str] = {}
+    meta_tables: list[MetaTable] = []
+    meta_table_by_fullname: dict[str, MetaTable] = {}
+
+    for model in resolved_models:
+        filters = _registered_meta_table_filters(
+            model,
+            data_source_uid=data_source_uid,
+            management_mode=management_mode,
+            namespace=namespace,
+        )
+        logger.info(
+            "Resolving registered markets MetaTable schema",
+            management_mode=management_mode,
+            model=model.__name__,
+            namespace=filters.get("namespace"),
+            identifier=filters.get("identifier"),
+            table_fullname=markets_meta_table_fullname(model),
+            storage_hash=filters.get("storage_hash"),
+            data_source_uid=data_source_uid,
+        )
+        matches = MetaTable.filter(timeout=timeout, **filters)
+        if not matches:
+            raise LookupError(
+                "Could not resolve registered markets MetaTable for "
+                f"{model.__name__} with filters {filters!r}."
+            )
+        if len(matches) > 1:
+            raise LookupError(
+                "Multiple registered markets MetaTables matched "
+                f"{model.__name__} with filters {filters!r}. Pass data_source_uid "
+                "or use explicit schema initialization."
+            )
+
+        meta_table = matches[0]
+        table_fullname = markets_meta_table_fullname(model)
+        meta_tables.append(meta_table)
+        meta_table_by_fullname[table_fullname] = meta_table
+        target_mapping[table_fullname] = _meta_table_uid(meta_table)
+        logger.info(
+            "Resolved registered markets MetaTable schema",
+            management_mode=management_mode,
+            model=model.__name__,
+            namespace=getattr(meta_table, "namespace", None),
+            identifier=getattr(meta_table, "identifier", None),
+            table_fullname=table_fullname,
+            meta_table_uid=target_mapping[table_fullname],
+        )
+
+    return MarketsMetaTableRegistrationResult(
+        meta_tables=meta_tables,
+        target_meta_table_uid_by_fullname=target_mapping,
+        models=resolved_models,
+        meta_table_by_fullname=meta_table_by_fullname,
+    )
+
+
+def _registered_meta_table_filters(
+    model: type[MarketsBase],
+    *,
+    data_source_uid: str | None,
+    management_mode: MarketsManagementMode,
+    namespace: str | None,
+) -> dict[str, Any]:
+    filters: dict[str, Any] = {
+        "storage_hash": model.__table__.name,
+        "identifier": getattr(model, "__metatable_identifier__", model.__name__),
+        "namespace": namespace or getattr(model, "__metatable_namespace__", None),
+        "management_mode": management_mode,
+    }
+    if data_source_uid:
+        filters["data_source__uid"] = data_source_uid
+    return {key: value for key, value in filters.items() if value not in (None, "")}
+
+
 def _meta_table_uid(value: Any) -> str:
     uid = getattr(value, "uid", value)
     if uid in (None, ""):
@@ -247,6 +333,7 @@ __all__ = [
     "markets_meta_table_fullname",
     "markets_meta_table_models",
     "register_markets_meta_tables",
+    "resolve_registered_markets_meta_tables",
     "resolve_markets_meta_table_model",
     "resolve_markets_meta_table_models",
 ]

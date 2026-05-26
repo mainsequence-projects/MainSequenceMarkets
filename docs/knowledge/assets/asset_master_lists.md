@@ -27,7 +27,6 @@ Use `validate_asset_master_list_reference_meta_table(...)` when a UI or setup
 job needs to validate a candidate table before saving it.
 
 This design keeps asset reference ownership flexible. The reference table can be
-an `msm.models.Asset` MetaTable, a platform-managed table, or an externally
-registered table created by the application, as long as it satisfies the asset
-identity contract.
-
+the `msm.models.AssetTable` MetaTable, a platform-managed table, or an
+externally registered table created by the application, as long as it satisfies
+the asset identity contract.

@@ -1,0 +1,1 @@
+"""Typed API row tests."""

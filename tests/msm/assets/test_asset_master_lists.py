@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from msm.models import AssetMasterList
+from msm.models import AssetMasterListTable
 from msm.repositories import MarketsRepositoryContext, build_create_asset_master_list_operation
 from msm.services import (
     AssetMasterListValidationError,
@@ -62,7 +62,7 @@ def test_build_create_asset_master_list_operation_compiles_to_write_scope() -> N
     meta_table_uid = str(uuid.uuid4())
     context = MarketsRepositoryContext(
         target_meta_table_uid_by_fullname={
-            str(AssetMasterList.__table__.fullname): meta_table_uid,
+            str(AssetMasterListTable.__table__.fullname): meta_table_uid,
         }
     )
 
@@ -76,4 +76,4 @@ def test_build_create_asset_master_list_operation_compiles_to_write_scope() -> N
     assert operation.operation == "insert"
     assert operation.scope.tables[0].meta_table_uid == meta_table_uid
     assert operation.scope.tables[0].access == "write"
-    assert AssetMasterList.__table__.name in operation.statement.sql
+    assert AssetMasterListTable.__table__.name in operation.statement.sql

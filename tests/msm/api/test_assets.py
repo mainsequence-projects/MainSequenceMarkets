@@ -7,6 +7,7 @@ import pytest
 
 from msm.api.assets import Asset, AssetUpsert, _operation_result_rows
 from msm.models import AssetTable
+from msm.meta_tables import markets_meta_table_fullname
 
 
 def test_asset_api_declares_table_contract() -> None:
@@ -49,15 +50,22 @@ def test_asset_create_schemas_merges_additional_models(monkeypatch) -> None:
 
 def test_asset_upsert_uses_active_runtime(monkeypatch) -> None:
     asset_uid = uuid.uuid4()
-    table_handle = object()
-    runtime = SimpleNamespace(table=lambda model: table_handle)
+    context = object()
+    runtime = SimpleNamespace(
+        context=context,
+        target_meta_table_uid_by_fullname={
+            markets_meta_table_fullname(AssetTable): str(uuid.uuid4()),
+        },
+    )
     calls = []
 
-    def fake_get_runtime():
+    def fake_resolve_runtime(**kwargs):
+        assert kwargs["models"] == Asset.__required_tables__
+        assert kwargs["row_model_name"] == "Asset"
         return runtime
 
-    def fake_repository_upsert(asset_table, **kwargs):
-        calls.append((asset_table, kwargs))
+    def fake_upsert_model(active_context, *, model, values, conflict_columns):
+        calls.append((active_context, model, values, conflict_columns))
         return {
             "row": {
                 "uid": str(asset_uid),
@@ -66,30 +74,35 @@ def test_asset_upsert_uses_active_runtime(monkeypatch) -> None:
             }
         }
 
-    monkeypatch.setattr("msm.bootstrap.get_runtime", fake_get_runtime)
-    monkeypatch.setattr("msm.api.assets.repository_upsert_asset", fake_repository_upsert)
+    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    monkeypatch.setattr("msm.api.base.upsert_model", fake_upsert_model)
 
     asset = Asset.upsert(AssetUpsert(unique_identifier="BTC", asset_type="crypto"))
 
     assert asset == Asset(uid=asset_uid, unique_identifier="BTC", asset_type="crypto")
     assert calls == [
         (
-            table_handle,
+            context,
+            AssetTable,
             {
                 "unique_identifier": "BTC",
                 "asset_type": "crypto",
             },
+            ("unique_identifier",),
         )
     ]
 
 
 def test_asset_operation_requires_initialized_runtime(monkeypatch) -> None:
-    def fake_get_runtime():
-        raise RuntimeError("Markets schemas are not initialized.")
+    def fake_resolve_runtime(**kwargs):
+        raise RuntimeError(
+            "Asset requires registered markets MetaTables for AssetTable. "
+            "Set MSM_AUTO_REGISTER_NAMESPACE."
+        )
 
-    monkeypatch.setattr("msm.bootstrap.get_runtime", fake_get_runtime)
+    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
 
-    with pytest.raises(RuntimeError, match="not initialized"):
+    with pytest.raises(RuntimeError, match="MSM_AUTO_REGISTER_NAMESPACE"):
         Asset.filter(asset_type="crypto")
 
 

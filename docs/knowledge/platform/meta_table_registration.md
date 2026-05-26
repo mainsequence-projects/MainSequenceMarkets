@@ -33,43 +33,59 @@ def register_platform_managed_markets():
 batch helper threads already-registered parent UIDs into child registration
 requests so SQLAlchemy foreign-key contracts resolve deterministically.
 
-Applications and examples should use `msm.create_schemas(...)` as the process
-initialization preflight when they need the complete MetaTable bootstrap:
+User-facing row operations attach to already-registered MetaTables lazily. In
+production, the normal path is to deploy schemas separately and use the typed
+API directly:
 
 ```python
-import msm
+from msm.api.assets import Asset
 
-runtime = msm.create_schemas()
-context = runtime.context
+asset = Asset.upsert(
+    unique_identifier="example-asset-btc",
+    asset_type="crypto",
+)
 ```
 
-For narrow workflows, pass `models=[...]` to register only the tables the
-process needs. String selectors avoid importing `msm.models` before an example
-namespace is configured:
+If the tables are missing, row operations raise with bootstrap guidance instead
+of creating schemas by default.
+
+Use `msm.create_schemas(...)` as an explicit startup preflight when an
+application wants to verify or create the complete MetaTable set during process
+initialization:
 
 ```python
 import msm
 
-runtime = msm.create_schemas(models=["Asset"])
-asset_table = runtime.table("Asset")
+msm.create_schemas()
+```
+
+For narrow explicit preflight, pass `models=[...]` to register only the tables
+the process needs:
+
+```python
+import msm
+
+msm.create_schemas(models=["Asset"])
 ```
 
 `runtime.table("Asset")` returns a single registered MetaTable handle with the
 SQLAlchemy model, MetaTable UID, optional registered `MetaTable` object, limits,
-timeout, and namespace. Prefer that handle for single-table service helpers.
-Use `runtime.context` when compiling operations that touch multiple registered
-models.
+timeout, and namespace. It remains available for lower-level repository or
+service internals. User-facing examples should operate through typed
+`msm.api.*` class methods and avoid passing table handles around.
 
 Production applications normally do not pass a runtime namespace override. They
-use the library's built-in MetaTable identity and keep
-`runtime.context.namespace` as `None`.
+use the library's built-in MetaTable identity. They also normally leave
+`MSM_AUTO_REGISTER_NAMESPACE` unset, so a missing table remains a deployment
+error.
 
-Call this once during application or example initialization, before importing
-MetaTable-backed models, repositories, or services. The call registers the
-markets table set, builds the repository context, and caches the runtime for the
-current Python process. A second call with the same arguments returns the cached
-runtime; a second call with different arguments raises instead of silently
-rotating table names or execution context.
+When explicit schema creation is used, call it once during application
+initialization, before row operations, repositories, or services depend on the
+registered tables. The call registers the selected markets table set, builds the
+repository context, and caches the runtime for the current Python process. A
+second call with the same arguments returns the cached runtime; a second call
+with different arguments raises instead of silently rotating table names or
+execution context.
 
 Schema creation emits structured Main Sequence `info` logs for the namespace
 selection, each MetaTable model being registered, registered MetaTable handles,
@@ -85,54 +101,49 @@ DataNodes need labels or other follow-up handling. When `models=[...]` is used,
 `runtime.meta_tables` and `runtime.meta_table_models` contain only the selected
 registered models.
 
-Example platform resources must use the example MetaTable namespace before any
-`msm.models` import maps the SQLAlchemy classes:
+Examples and notebooks that should self-register can opt into lazy
+auto-registration by setting `MSM_AUTO_REGISTER_NAMESPACE` before importing
+`msm.api` or `msm.models`:
 
 ```python
-import msm
+import os
 
-runtime = msm.create_schemas(
-    namespace="mainsequence.examples",
+from examples.platform.bootstrap import (
+    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_METATABLE_NAMESPACE,
 )
+
+os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+
+from msm.api.assets import Asset
+
+Asset.upsert(unique_identifier="example-asset-btc", asset_type="crypto")
 ```
 
-The namespace cannot be changed safely after `msm.models` is imported because
+With the environment variable set, the first row operation registers only that
+row class's required tables and caches the runtime for the process. The
+namespace cannot be changed safely after `msm.models` is imported because
 `PlatformManagedMetaTable` derives the physical storage hash while SQLAlchemy
-maps each model class. Examples keep the namespace in a plain constant and call
-the real bootstrap directly:
+maps each model class.
+
+Examples can still use explicit bootstrap when the workflow is specifically
+demonstrating schema registration:
 
 ```python
 import msm
 
 from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
 
-runtime = msm.create_schemas(namespace=EXAMPLE_METATABLE_NAMESPACE)
-context = runtime.context
-```
-
-Asset-only examples can register and use just the asset table:
-
-```python
-import msm
-
-from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
-from msm.services import upsert_asset
-
-runtime = msm.create_schemas(
+msm.create_schemas(
     namespace=EXAMPLE_METATABLE_NAMESPACE,
     models=["Asset"],
 )
-asset_table = runtime.table("Asset")
-upsert_asset(
-    asset_table,
-    unique_identifier="example-asset-btc",
-    asset_type="crypto",
-)
 ```
 
-Service helpers such as `upsert_asset(asset_table, ...)` receive the table
-handle, not a namespace argument. The handle already points at the MetaTable UID
-registered for the selected namespace.
+Repository and service helpers receive table handles or context objects, not a
+namespace argument. Those lower-level objects already point at the MetaTable UID
+registered for the selected namespace. Normal examples should avoid exposing
+that plumbing and use the `msm.api` row API instead.
 
 ## External Registered
 
