@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from examples.platform.bootstrap import start_examples_runtime
+if __package__ in {None, ""}:
+    _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
+
+import msm
+
+from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
 
 if TYPE_CHECKING:
     from msm.repositories.base import MarketsRepositoryContext
@@ -71,10 +79,9 @@ def _uid(result: dict[str, Any]) -> str:
 
 
 def main() -> None:
-    runtime = start_examples_runtime(
-        labels=["asset-crud-example"],
-    )
-    result = create_query_delete_assets(runtime.context)
+    runtime = msm.create_schemas(namespace=EXAMPLE_METATABLE_NAMESPACE)
+    context = runtime.context
+    result = create_query_delete_assets(context)
     print(result)
 
 

@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+if __package__ in {None, ""}:
+    _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
+
 from mainsequence.tdag.meta_tables import metatable_configured_tablename
 
-from examples.platform.bootstrap import configure_examples_metatable_namespace
+from msm.bootstrap import configure_metatable_namespace
 
-configure_examples_metatable_namespace()
+from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
+
+configure_metatable_namespace(EXAMPLE_METATABLE_NAMESPACE)
 
 from msm.models import markets_sqlalchemy_models  # noqa: E402
 

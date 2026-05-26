@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from mainsequence.client.models_metatables import MetaTable, MetaTableRegistrationRequest
+from mainsequence.logconf import logger as _mainsequence_logger
 from mainsequence.tdag.meta_tables import (
     external_registered_registration_request_from_sqlalchemy_model,
     register_external_sqlalchemy_model,
@@ -15,6 +16,7 @@ from .models import markets_sqlalchemy_models
 
 
 MarketsManagementMode = Literal["platform_managed", "external_registered"]
+logger = _mainsequence_logger.bind(sub_application="markets", component="meta_tables")
 
 
 @dataclass(frozen=True)
@@ -125,7 +127,8 @@ def register_markets_meta_tables(
     registered_meta_tables: list[MetaTable] = []
     storage_hash_mapping = dict(storage_hash_by_fullname or {})
 
-    for model in list(models or markets_meta_table_models()):
+    resolved_models = list(models or markets_meta_table_models())
+    for position, model in enumerate(resolved_models, start=1):
         platform_kwargs = {
             "data_source_uid": data_source_uid,
             "labels": labels,
@@ -135,6 +138,20 @@ def register_markets_meta_tables(
             "timeout": timeout,
         }
         external_kwargs = {**platform_kwargs, "schema": MARKETS_SCHEMA}
+        storage_hash = storage_hash_mapping.get(markets_meta_table_fullname(model))
+        logger.info(
+            "Registering markets MetaTable schema",
+            management_mode=management_mode,
+            model=model.__name__,
+            namespace=getattr(model, "__metatable_namespace__", None),
+            identifier=getattr(model, "__metatable_identifier__", None),
+            model_index=position,
+            model_count=len(resolved_models),
+            table_fullname=markets_meta_table_fullname(model),
+            table_name=model.__table__.name,
+            storage_hash=storage_hash,
+            target_meta_table_count=len(target_mapping),
+        )
         if management_mode == "platform_managed":
             meta_table = model.register(
                 introspect=False if introspect is None else introspect,
@@ -144,7 +161,7 @@ def register_markets_meta_tables(
             meta_table = register_external_sqlalchemy_model(
                 model,
                 introspect=True if introspect is None else introspect,
-                storage_hash=storage_hash_mapping.get(markets_meta_table_fullname(model)),
+                storage_hash=storage_hash,
                 **external_kwargs,
             )
         else:
@@ -153,7 +170,20 @@ def register_markets_meta_tables(
             )
 
         registered_meta_tables.append(meta_table)
-        target_mapping[markets_meta_table_fullname(model)] = _meta_table_uid(meta_table)
+        meta_table_uid = _meta_table_uid(meta_table)
+        target_mapping[markets_meta_table_fullname(model)] = meta_table_uid
+        logger.info(
+            "Registered markets MetaTable schema",
+            management_mode=management_mode,
+            model=model.__name__,
+            namespace=getattr(model, "__metatable_namespace__", None),
+            identifier=getattr(model, "__metatable_identifier__", None),
+            model_index=position,
+            model_count=len(resolved_models),
+            table_fullname=markets_meta_table_fullname(model),
+            table_name=model.__table__.name,
+            meta_table_uid=meta_table_uid,
+        )
 
     return MarketsMetaTableRegistrationResult(
         meta_tables=registered_meta_tables,

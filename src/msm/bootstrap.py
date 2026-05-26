@@ -6,27 +6,70 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import TYPE_CHECKING, Any, Literal
 
+from mainsequence.logconf import logger as _mainsequence_logger
+
 if TYPE_CHECKING:
     from msm.meta_tables import MarketsMetaTableRegistrationResult
     from msm.repositories.base import MarketsRepositoryContext
 
 MarketsManagementMode = Literal["platform_managed", "external_registered"]
+DATA_NODE_HANDLE_NAMES = (
+    "AccountHoldings",
+    "AssetPricingDetail",
+    "AssetSnapshot",
+    "PortfolioWeights",
+    "PortfoliosDataNode",
+    "SignalWeights",
+    "VirtualFundHoldings",
+)
 
-_START_LOCK = Lock()
+_CREATE_SCHEMAS_LOCK = Lock()
 _RUNTIME: MarketsRuntime | None = None
-_START_CONFIG: tuple[tuple[str, Any], ...] | None = None
+_CREATE_SCHEMAS_CONFIG: tuple[tuple[str, Any], ...] | None = None
+logger = _mainsequence_logger.bind(sub_application="markets", component="bootstrap")
 
 
 @dataclass(frozen=True)
 class MarketsRuntime:
-    """Runtime handles created by `msm.start()`."""
+    """Runtime handles created by `msm.create_schemas()`."""
 
     registration: "MarketsMetaTableRegistrationResult"
     context: "MarketsRepositoryContext"
+    namespace: str | None = None
+
+    @property
+    def meta_tables(self) -> list[Any]:
+        return self.registration.meta_tables
 
     @property
     def target_meta_table_uid_by_fullname(self) -> dict[str, str]:
         return self.registration.target_meta_table_uid_by_fullname
+
+    @property
+    def meta_table_models(self) -> list[type[Any]]:
+        from msm.meta_tables import markets_meta_table_models
+
+        return markets_meta_table_models()
+
+    @property
+    def data_nodes(self) -> dict[str, type[Any]]:
+        from msm.accounts.data_nodes import AccountHoldings, VirtualFundHoldings
+        from msm.data_nodes import AssetPricingDetail, AssetSnapshot
+        from msm.portfolios.data_nodes import (
+            PortfolioWeights,
+            PortfoliosDataNode,
+            SignalWeights,
+        )
+
+        return {
+            "AccountHoldings": AccountHoldings,
+            "AssetPricingDetail": AssetPricingDetail,
+            "AssetSnapshot": AssetSnapshot,
+            "PortfolioWeights": PortfolioWeights,
+            "PortfoliosDataNode": PortfoliosDataNode,
+            "SignalWeights": SignalWeights,
+            "VirtualFundHoldings": VirtualFundHoldings,
+        }
 
 
 def configure_metatable_namespace(namespace: str) -> None:
@@ -50,32 +93,25 @@ def configure_metatable_namespace(namespace: str) -> None:
     MarketsMetaTableMixin.__metatable_namespace__ = namespace
 
 
-def start(
+def create_schemas(
     *,
     data_source_uid: str | None = None,
     management_mode: MarketsManagementMode = "platform_managed",
     namespace: str | None = None,
-    metatable_namespace: str | None = None,
     target_meta_table_uid_by_fullname: Mapping[str, Any] | None = None,
-    labels: Sequence[str] | None = None,
     open_for_everyone: bool = False,
     protect_from_deletion: bool = False,
     introspect: bool | None = None,
     storage_hash_by_fullname: Mapping[str, str] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRuntime:
-    """Register markets MetaTables once and return a repository runtime context."""
+    """Create markets schemas once and return a repository runtime context."""
 
-    resolved_namespace = _resolve_namespace_alias(
-        namespace=namespace,
-        metatable_namespace=metatable_namespace,
-    )
-    start_config = _start_config(
+    schema_config = _schema_config(
         data_source_uid=data_source_uid,
         management_mode=management_mode,
-        namespace=resolved_namespace,
+        namespace=namespace,
         target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
-        labels=labels,
         open_for_everyone=open_for_everyone,
         protect_from_deletion=protect_from_deletion,
         introspect=introspect,
@@ -83,60 +119,88 @@ def start(
         timeout=timeout,
     )
 
-    global _RUNTIME, _START_CONFIG
-    with _START_LOCK:
+    global _RUNTIME, _CREATE_SCHEMAS_CONFIG
+    with _CREATE_SCHEMAS_LOCK:
         if _RUNTIME is not None:
-            if _START_CONFIG == start_config:
+            if _CREATE_SCHEMAS_CONFIG == schema_config:
+                logger.info(
+                    "Reusing cached markets runtime; no MetaTables registered",
+                    management_mode=management_mode,
+                    namespace=namespace,
+                    meta_table_count=len(_RUNTIME.meta_tables),
+                )
                 return _RUNTIME
             raise RuntimeError(
-                "msm.start() has already initialized this process with different "
-                "bootstrap arguments. Run it once at process startup before "
+                "msm.create_schemas() has already initialized this process with "
+                "different schema arguments. Run it once at process startup before "
                 "importing MetaTable-backed models, repositories, or services."
             )
 
-        if resolved_namespace is not None:
-            configure_metatable_namespace(resolved_namespace)
+        logger.info(
+            "Starting markets bootstrap",
+            management_mode=management_mode,
+            namespace=namespace,
+            data_source_uid=data_source_uid,
+            target_meta_table_count=len(target_meta_table_uid_by_fullname or {}),
+            storage_hash_count=len(storage_hash_by_fullname or {}),
+            open_for_everyone=open_for_everyone,
+            protect_from_deletion=protect_from_deletion,
+            introspect=introspect,
+            timeout=timeout,
+        )
+        if namespace is not None:
+            logger.info("Configuring markets MetaTable namespace", namespace=namespace)
+            configure_metatable_namespace(namespace)
 
-        from msm.meta_tables import register_markets_meta_tables
+        from msm.meta_tables import markets_meta_table_models, register_markets_meta_tables
         from msm.repositories.base import MarketsRepositoryContext
 
+        meta_table_models = markets_meta_table_models()
         registration = register_markets_meta_tables(
             data_source_uid=data_source_uid,
             management_mode=management_mode,
             target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
-            labels=labels,
             open_for_everyone=open_for_everyone,
             protect_from_deletion=protect_from_deletion,
             introspect=introspect,
             storage_hash_by_fullname=storage_hash_by_fullname,
             timeout=timeout,
+            models=meta_table_models,
+        )
+        logger.info(
+            "Registered markets MetaTables",
+            management_mode=management_mode,
+            namespace=namespace,
+            meta_table_count=len(registration.meta_tables),
+            target_meta_table_count=len(registration.target_meta_table_uid_by_fullname),
+        )
+        context = MarketsRepositoryContext(
+            target_meta_table_uid_by_fullname=registration.target_meta_table_uid_by_fullname,
+            timeout=timeout,
+            namespace=namespace,
+        )
+        logger.info(
+            "Created markets repository context",
+            namespace=namespace,
+            target_meta_table_count=len(context.target_meta_table_uid_by_fullname),
+            timeout=timeout,
         )
         _RUNTIME = MarketsRuntime(
             registration=registration,
-            context=MarketsRepositoryContext(
-                target_meta_table_uid_by_fullname=registration.target_meta_table_uid_by_fullname,
-                timeout=timeout,
-            ),
+            context=context,
+            namespace=namespace,
         )
-        _START_CONFIG = start_config
+        _CREATE_SCHEMAS_CONFIG = schema_config
+        logger.info(
+            "Created markets runtime",
+            namespace=namespace,
+            meta_table_count=len(_RUNTIME.meta_tables),
+            data_node_handles=list(DATA_NODE_HANDLE_NAMES),
+        )
         return _RUNTIME
 
 
-def _resolve_namespace_alias(
-    *,
-    namespace: str | None,
-    metatable_namespace: str | None,
-) -> str | None:
-    if namespace is None:
-        return metatable_namespace
-    if metatable_namespace is None:
-        return namespace
-    if namespace != metatable_namespace:
-        raise ValueError("Pass either namespace or metatable_namespace, not both.")
-    return namespace
-
-
-def _start_config(**kwargs: Any) -> tuple[tuple[str, Any], ...]:
+def _schema_config(**kwargs: Any) -> tuple[tuple[str, Any], ...]:
     return tuple((key, _freeze_start_value(value)) for key, value in kwargs.items())
 
 
@@ -154,7 +218,8 @@ def _freeze_start_value(value: Any) -> Any:
 
 
 __all__ = [
+    "DATA_NODE_HANDLE_NAMES",
     "MarketsRuntime",
     "configure_metatable_namespace",
-    "start",
+    "create_schemas",
 ]

@@ -19,11 +19,9 @@ markets namespace.
 from msm.meta_tables import register_markets_meta_tables
 
 
-def register_platform_managed_markets(data_source_uid: str):
+def register_platform_managed_markets():
     return register_markets_meta_tables(
-        data_source_uid=data_source_uid,
         management_mode="platform_managed",
-        labels=["markets"],
         open_for_everyone=False,
         protect_from_deletion=True,
     )
@@ -35,22 +33,38 @@ def register_platform_managed_markets(data_source_uid: str):
 batch helper threads already-registered parent UIDs into child registration
 requests so SQLAlchemy foreign-key contracts resolve deterministically.
 
-Applications and examples should use `msm.start(...)` as the process preflight
-step when they need the complete MetaTable bootstrap:
+Applications and examples should use `msm.create_schemas(...)` as the process
+initialization preflight when they need the complete MetaTable bootstrap:
 
 ```python
 import msm
 
-runtime = msm.start(labels=["markets"])
+runtime = msm.create_schemas()
 context = runtime.context
 ```
 
-Call this once near application or example startup, before importing
+Production applications normally do not pass a runtime namespace override. They
+use the library's built-in MetaTable identity and keep
+`runtime.context.namespace` as `None`.
+
+Call this once during application or example initialization, before importing
 MetaTable-backed models, repositories, or services. The call registers the
 markets table set, builds the repository context, and caches the runtime for the
 current Python process. A second call with the same arguments returns the cached
 runtime; a second call with different arguments raises instead of silently
 rotating table names or execution context.
+
+Schema creation emits structured Main Sequence `info` logs for the namespace
+selection, each MetaTable model being registered, registered MetaTable handles,
+repository context creation, final runtime creation, and cached-runtime reuse.
+These logs make the initialization preflight visible without changing the table
+registration flow.
+
+`msm.create_schemas(...)` does not accept labels because initialization should
+not broadcast the same labels to every platform resource. The returned runtime
+exposes `runtime.meta_tables`, `runtime.meta_table_models`, and
+`runtime.data_nodes` so callers can decide which concrete MetaTables or
+DataNodes need labels or other follow-up handling.
 
 Example platform resources must use the example MetaTable namespace before any
 `msm.models` import maps the SQLAlchemy classes:
@@ -58,23 +72,28 @@ Example platform resources must use the example MetaTable namespace before any
 ```python
 import msm
 
-runtime = msm.start(
+runtime = msm.create_schemas(
     namespace="mainsequence.examples",
-    labels=["asset-crud-example"],
 )
 ```
 
 The namespace cannot be changed safely after `msm.models` is imported because
 `PlatformManagedMetaTable` derives the physical storage hash while SQLAlchemy
-maps each model class. Use the independent example bootstrap module when running
-examples:
+maps each model class. Examples keep the namespace in a plain constant and call
+the real bootstrap directly:
 
 ```python
-from examples.platform.bootstrap import start_examples_runtime
+import msm
 
-runtime = start_examples_runtime(labels=["asset-crud-example"])
+from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
+
+runtime = msm.create_schemas(namespace=EXAMPLE_METATABLE_NAMESPACE)
 context = runtime.context
 ```
+
+Service helpers such as `upsert_asset(context, ...)` receive that context. They
+do not take a namespace argument directly; the context already points at the
+MetaTable UID mapping registered for the selected namespace.
 
 ## External Registered
 
@@ -91,7 +110,6 @@ def register_external_markets(data_source_uid: str, storage_hash_by_fullname: di
         data_source_uid=data_source_uid,
         management_mode="external_registered",
         storage_hash_by_fullname=storage_hash_by_fullname,
-        labels=["markets"],
         introspect=True,
     )
 ```

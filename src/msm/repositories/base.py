@@ -18,11 +18,16 @@ from msm.base import MarketsBase
 
 @dataclass(frozen=True)
 class MarketsRepositoryContext:
-    """MetaTable execution context for markets repositories."""
+    """MetaTable execution context for markets repositories.
+
+    `namespace` records the runtime namespace override selected during
+    bootstrap. `None` means the library's normal MetaTable namespace was used.
+    """
 
     target_meta_table_uid_by_fullname: Mapping[str, str]
     limits: MetaTableOperationLimits | Mapping[str, Any] | None = None
     timeout: int | float | tuple[float, float] | None = None
+    namespace: str | None = None
 
     def meta_table_uid_for_model(self, model: type[MarketsBase]) -> str:
         fullname = str(model.__table__.fullname)

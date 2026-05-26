@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 
 from mainsequence.tdag.meta_tables import (
     PlatformManagedMetaTable,
     metatable_configured_tablename,
 )
 
+import msm.meta_tables as meta_tables
 from msm.meta_tables import build_markets_registration_requests, markets_meta_table_fullname
 from msm.models import Asset, AssetMasterList, markets_sqlalchemy_models
 
@@ -70,3 +72,46 @@ def test_markets_models_build_external_registration_requests_in_dependency_order
 def test_asset_master_list_is_control_plane_reference_without_database_fk() -> None:
     assert "reference_meta_table_uid" in AssetMasterList.__table__.c
     assert not AssetMasterList.__table__.foreign_keys
+
+
+def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
+    class SpyLogger:
+        def __init__(self) -> None:
+            self.events = []
+
+        def info(self, event: str, **kwargs) -> None:
+            self.events.append((event, kwargs))
+
+    class FakeModel:
+        __metatable_namespace__ = "mainsequence.test"
+        __metatable_identifier__ = "FakeModel"
+        __table__ = SimpleNamespace(fullname="public.fake_asset", name="fake_asset")
+
+        @classmethod
+        def register(cls, **_kwargs):
+            return SimpleNamespace(uid="fake-meta-table-uid")
+
+    spy_logger = SpyLogger()
+    monkeypatch.setattr(meta_tables, "logger", spy_logger)
+
+    result = meta_tables.register_markets_meta_tables(
+        data_source_uid="data-source-uid",
+        models=[FakeModel],
+    )
+
+    assert result.target_meta_table_uid_by_fullname == {
+        "public.fake_asset": "fake-meta-table-uid"
+    }
+    assert [event for event, _kwargs in spy_logger.events] == [
+        "Registering markets MetaTable schema",
+        "Registered markets MetaTable schema",
+    ]
+    registering_event = spy_logger.events[0][1]
+    assert registering_event["model"] == "FakeModel"
+    assert registering_event["namespace"] == "mainsequence.test"
+    assert registering_event["identifier"] == "FakeModel"
+    assert registering_event["model_index"] == 1
+    assert registering_event["model_count"] == 1
+    assert registering_event["table_fullname"] == "public.fake_asset"
+    registered_event = spy_logger.events[1][1]
+    assert registered_event["meta_table_uid"] == "fake-meta-table-uid"

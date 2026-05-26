@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from examples.platform.bootstrap import start_examples_runtime
+if __package__ in {None, ""}:
+    _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
+
+import msm
+
+from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
 
 if TYPE_CHECKING:
     from msm.repositories.base import MarketsRepositoryContext
@@ -79,10 +87,9 @@ def _uid(result: dict) -> str:
 
 
 def main() -> None:
-    runtime = start_examples_runtime(
-        labels=["account-fund-portfolio-example"],
-    )
-    result = create_account_fund_portfolio_workflow(runtime.context)
+    runtime = msm.create_schemas(namespace=EXAMPLE_METATABLE_NAMESPACE)
+    context = runtime.context
+    result = create_account_fund_portfolio_workflow(context)
     print(result)
 
 

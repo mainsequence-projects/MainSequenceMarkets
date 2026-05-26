@@ -139,6 +139,18 @@ Build the package:
 uv build
 ```
 
+Publish a tagged release to PyPI:
+
+```bash
+git tag v0.0.2
+git push origin v0.0.2
+```
+
+Pushing a `v*` tag triggers
+`.github/workflows/publish-to-pypi.yml`, which builds the distribution and
+publishes it to PyPI through GitHub Actions using trusted publishing for the
+repository `pypi` environment.
+
 ## Core Dependencies
 
 Runtime dependencies are declared in

@@ -1,12 +1,7 @@
 from __future__ import annotations
 
 from msm.__about__ import __version__
-
-
-def start(*args, **kwargs):
-    from msm.bootstrap import start as _start
-
-    return _start(*args, **kwargs)
+from msm.bootstrap import create_schemas
 
 
 __all__ = [
@@ -16,5 +11,5 @@ __all__ = [
     "portfolios",
     "pricing",
     "services",
-    "start",
+    "create_schemas",
 ]

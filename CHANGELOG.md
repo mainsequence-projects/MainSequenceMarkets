@@ -9,20 +9,30 @@ and this project follows versioned releases.
 
 ### Added
 
+- Added a GitHub Actions workflow to build and publish `ms-markets` to PyPI
+  when a `v*` tag is pushed, using GitHub OIDC trusted publishing.
 - Added an asset CRUD example covering creation, lookup by identifier and UID,
   search, and deletion of temporary custom assets.
 - Added an offline platform example for inspecting SDK-derived markets
   MetaTable model names.
-- Added `msm.start(...)` to bootstrap markets MetaTables and return a repository
-  runtime context for examples and applications.
-- Added process-idempotent `msm.start(...)` behavior: repeated calls with the
+- Added `msm.create_schemas(...)` to bootstrap markets MetaTables and return a
+  repository runtime context for examples and applications.
+- Added process-idempotent `msm.create_schemas(...)` behavior: repeated calls with the
   same startup configuration reuse the runtime, while different second calls
   fail before changing table namespace or execution context.
+- Added structured Main Sequence `info` logs to `msm.create_schemas(...)` so
+  initialization reports namespace configuration, one line per MetaTable
+  registration, context creation, runtime creation, and cached-runtime reuse.
+- Exposed registered MetaTable handles and DataNode class handles on the
+  `msm.create_schemas(...)` runtime instead of accepting broad labels on startup.
 - Added AssetSnapshot service entrypoints for validated DataNode frame/node
   updates.
 - Added an AssetSnapshot example using an example-scoped DataNode identifier.
-- Added `examples/platform/bootstrap.py` as the example preflight entrypoint
-  for example MetaTable namespace and runtime initialization.
+- Added `examples/platform/bootstrap.py` as the home for the example MetaTable
+  namespace constant used before direct `msm.create_schemas(...)` bootstrap calls.
+- Documented the direct example bootstrap pattern so calls like
+  `upsert_asset(context, ...)` route to example-scoped MetaTables through the
+  returned context while production startup remains namespace-free.
 - Documented the asset CRUD workflow in the asset knowledge docs and market
   workflow tutorial.
 - Corrected the examples directory name to `examples/`.

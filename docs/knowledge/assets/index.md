@@ -48,6 +48,8 @@ compile operations against registered markets MetaTables and execute them throug
 the platform-controlled MetaTable API.
 
 ```python
+import msm
+
 from msm.services import (
     delete_asset,
     get_asset_by_uid,
@@ -56,6 +58,8 @@ from msm.services import (
     upsert_asset,
 )
 
+runtime = msm.create_schemas()
+context = runtime.context
 
 asset = upsert_asset(
     context,
@@ -74,6 +78,30 @@ crypto_assets = search_assets(
 )
 delete_asset(context, uid=asset["uid"])
 ```
+
+Production code normally calls `msm.create_schemas()` once during process
+initialization without a runtime namespace override. Example and test workflows
+that need isolated MetaTables add the namespace during initialization, then pass
+the returned context into the same production `upsert_asset(...)` helper:
+
+```python
+import msm
+
+from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
+from msm.services import upsert_asset
+
+runtime = msm.create_schemas(namespace=EXAMPLE_METATABLE_NAMESPACE)
+context = runtime.context
+asset = upsert_asset(
+    context,
+    unique_identifier="example-asset-btc",
+    asset_type="crypto",
+)
+```
+
+The namespace is part of runtime/table registration, not an asset payload field.
+That keeps `upsert_asset(...)` stable while still routing the operation to the
+example-scoped MetaTables through `context`.
 
 Prefer `upsert_asset(...)` in setup scripts and repeatable examples because it is
 safe to rerun for the same `unique_identifier`. Use `create_asset(...)` only when

@@ -13,18 +13,24 @@ These examples show the intended runtime boundary.
 ```python
 import msm
 
-runtime = msm.start(
-    labels=["markets"],
-)
-
+runtime = msm.create_schemas()
 context = runtime.context
 ```
 
-`msm.start(...)` is intended to run once per Python process, before importing
-MetaTable-backed `msm.models`, repositories, or services. It performs the table
-registration preflight and caches the resulting runtime. Repeating the same call
-returns the cached runtime; changing startup arguments later raises because the
-MetaTable namespace and SQLAlchemy table mapping are already fixed.
+`msm.create_schemas(...)` is initialization code. Run it once per Python process
+before importing MetaTable-backed `msm.models`, repositories, or services. It
+performs the table registration preflight and caches the resulting runtime.
+Repeating the same call returns the cached runtime; changing startup arguments
+later raises because the MetaTable namespace and SQLAlchemy table mapping are
+already fixed.
+
+The preflight uses the Main Sequence logger at `info` level to report which
+MetaTable model is being registered on each line, what context was created, and
+when a cached runtime is reused.
+
+Schema creation does not take labels. Use `runtime.meta_tables`,
+`runtime.meta_table_models`, and `runtime.data_nodes` after bootstrap when a
+specific returned resource needs follow-up labeling or handling.
 
 For externally managed tables, create/migrate the tables in application code and
 call `register_markets_meta_tables(..., management_mode="external_registered")`.
@@ -33,10 +39,17 @@ Examples that register MetaTables use the platform namespace
 `mainsequence.examples`:
 
 ```python
-from examples.platform.bootstrap import start_examples_runtime
+import msm
 
-runtime = start_examples_runtime(labels=["asset-crud-example"])
+from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
+
+runtime = msm.create_schemas(namespace=EXAMPLE_METATABLE_NAMESPACE)
+context = runtime.context
 ```
+
+The service call path stays the same after that. For example,
+`upsert_asset(context, ...)` writes to the example-scoped `Asset` MetaTable
+because the context came from the example bootstrap.
 
 ## Assets And Categories
 

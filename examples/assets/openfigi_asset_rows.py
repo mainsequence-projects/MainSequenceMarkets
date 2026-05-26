@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from uuid import UUID
 
-from examples.platform.bootstrap import configure_examples_metatable_namespace
+if __package__ in {None, ""}:
+    _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-configure_examples_metatable_namespace()
+from msm.bootstrap import configure_metatable_namespace
+
+from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
+
+configure_metatable_namespace(EXAMPLE_METATABLE_NAMESPACE)
 
 from msm.data_nodes.assets import AssetSnapshot  # noqa: E402
 from msm.models import Asset  # noqa: E402

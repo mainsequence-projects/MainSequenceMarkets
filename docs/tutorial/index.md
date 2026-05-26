@@ -66,16 +66,17 @@ Use this workflow when adding or reviewing a market-domain relational table:
    the platform-managed physical table name from the resolved table contract.
 5. Add the model to `markets_sqlalchemy_models()` in foreign-key dependency
    order.
-6. Register through `msm.start(...)` or `register_markets_meta_tables(...)`
+6. Register through `msm.create_schemas(...)` or `register_markets_meta_tables(...)`
    before constructing repository/service workflows.
 
 Examples that create platform-managed MetaTables must set the logical namespace
-to `mainsequence.examples` before importing `msm.models`. `msm.start(...)` is
-the process preflight for that: call it once at startup with
-`namespace="mainsequence.examples"` or use
-`examples.platform.bootstrap.start_examples_runtime(...)`. A repeated call with
-the same startup arguments returns the cached runtime; a different namespace or
-registration configuration is rejected for the already-initialized process.
+to `mainsequence.examples` before importing `msm.models`. `msm.create_schemas(...)`
+is the process initialization preflight for that: call it once at startup with
+`namespace="mainsequence.examples"` or with the
+`examples.platform.bootstrap.EXAMPLE_METATABLE_NAMESPACE` constant. A repeated
+call with the same startup arguments returns the cached runtime; a different
+namespace or registration configuration is rejected for the already-initialized
+process.
 
 See `examples/platform/inspect_markets_metatable_models.py` for a small offline
 inspection example that prints the SDK-derived table names.
