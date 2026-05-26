@@ -5,7 +5,7 @@ from typing import Any
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
 
-from msm.models import Calendar
+from msm.models import CalendarTable
 
 from .base import MarketsRepositoryContext, execute_markets_operation
 from .crud import (
@@ -26,7 +26,7 @@ def build_create_calendar_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=Calendar,
+        model=CalendarTable,
         values={
             "name": name,
             "calendar_dates": calendar_dates,
@@ -47,7 +47,7 @@ def build_get_calendar_by_uid_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_get_model_by_uid_operation(context, model=Calendar, uid=uid)
+    return build_get_model_by_uid_operation(context, model=CalendarTable, uid=uid)
 
 
 def get_calendar_by_uid(
@@ -73,7 +73,7 @@ def build_search_calendars_operation(
         filters["name"] = name
     return build_search_model_operation(
         context,
-        model=Calendar,
+        model=CalendarTable,
         filters=filters,
         contains_filters={"name": name_contains or ""},
         limit=limit,
@@ -96,7 +96,7 @@ def build_update_calendar_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_update_model_operation(
         context,
-        model=Calendar,
+        model=CalendarTable,
         uid=uid,
         values={
             "calendar_dates": calendar_dates,
@@ -117,7 +117,7 @@ def build_delete_calendar_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(context, model=Calendar, uid=uid)
+    return build_delete_model_operation(context, model=CalendarTable, uid=uid)
 
 
 def delete_calendar(

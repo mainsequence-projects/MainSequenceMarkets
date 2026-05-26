@@ -36,10 +36,14 @@ Services should be thin until there is a real workflow to orchestrate. They
 should not duplicate repository query construction, DataNode normalization, or
 pricing runtime logic.
 
-Provider services may compose models and DataNodes when the provider response
+Provider services may compose table declarations and DataNodes when the provider response
 needs to produce multiple library-owned objects. For example, the OpenFIGI
-service builds `msm.models.Asset`, `msm.models.OpenFigiDetails`, and an
+service builds `msm.models.AssetTable`, `msm.models.OpenFigiDetailsTable`, and an
 `msm.data_nodes.assets.AssetSnapshot` frame from the same provider row.
+
+Typed row operations that should return FastAPI-ready Pydantic objects belong in
+`msm.api`, for example `msm.api.assets.Asset.upsert(...)`. Services remain the
+place for workflows that compose providers, repositories, and DataNodes.
 
 Use `build_asset_snapshot_frame(...)`, `build_asset_snapshot_node(...)`, or
 `update_asset_snapshot_frame(...)` when application code needs an easy

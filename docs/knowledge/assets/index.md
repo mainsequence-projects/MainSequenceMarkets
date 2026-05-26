@@ -16,8 +16,10 @@ Assets answer these questions:
 
 ## Primary Modules
 
-- `msm.models.assets`: SQLAlchemy/MetaTable asset model. The `Asset` model lives
-  here.
+- `msm.models.assets`: SQLAlchemy/MetaTable declaration. The `AssetTable`
+  schema model lives here.
+- `msm.api.assets`: user-facing Pydantic `Asset` row model and typed class
+  operations.
 - `msm.data_nodes.assets`: DataNodes for asset snapshots and asset pricing
   details.
 - `msm.services.assets`: application-facing asset service helpers over
@@ -43,78 +45,73 @@ market-data workflows.
 
 ## Creating, Querying, And Deleting Assets
 
-Use the service helpers in `msm.services` for normal application workflows. They
-compile operations against registered markets MetaTables and execute them through
-the platform-controlled MetaTable API.
+Use the Pydantic row model in `msm.api.assets` for normal application workflows.
+It exposes class methods over the active markets runtime and returns typed
+`Asset` objects.
 
 ```python
-import msm
+from msm.api.assets import Asset
 
-from msm.services import (
-    delete_asset,
-    get_asset_by_uid,
-    get_asset_by_unique_identifier,
-    search_assets,
-    upsert_asset,
-)
-
-runtime = msm.create_schemas()
-context = runtime.context
-
-asset = upsert_asset(
-    context,
+Asset.create_schemas()
+asset = Asset.upsert(
     unique_identifier="example-asset-btc",
     asset_type="crypto",
 )
-asset_by_identifier = get_asset_by_unique_identifier(
-    context,
+asset_by_identifier = Asset.get_by_unique_identifier(
     unique_identifier="example-asset-btc",
 )
-asset_by_uid = get_asset_by_uid(context, uid=asset["uid"])
-crypto_assets = search_assets(
-    context,
+asset_by_uid = Asset.get_by_uid(asset.uid)
+crypto_assets = Asset.filter(
     unique_identifier_contains="example-asset-",
     asset_type="crypto",
 )
-delete_asset(context, uid=asset["uid"])
+# Optional cleanup for temporary custom assets only:
+# from msm.services import delete_asset
+# delete_asset(msm.get_runtime().table("Asset"), uid=asset.uid)
 ```
 
 Production code normally calls `msm.create_schemas()` once during process
 initialization without a runtime namespace override. Example and test workflows
-that need isolated MetaTables add the namespace during initialization, then pass
-the returned context into the same production `upsert_asset(...)` helper:
+that need isolated MetaTables add the namespace during initialization. For
+asset-only workflows, register only the `Asset` MetaTable and pass the returned
+single-table handle into lower-level repository or service helpers. For the
+typed API, the row model can initialize its own required schemas:
 
 ```python
-import msm
-
 from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
-from msm.services import upsert_asset
+from msm.api.assets import Asset
 
-runtime = msm.create_schemas(namespace=EXAMPLE_METATABLE_NAMESPACE)
-context = runtime.context
-asset = upsert_asset(
-    context,
+Asset.create_schemas(
+    namespace=EXAMPLE_METATABLE_NAMESPACE,
+)
+asset = Asset.upsert(
     unique_identifier="example-asset-btc",
     asset_type="crypto",
 )
 ```
 
-The namespace is part of runtime/table registration, not an asset payload field.
-That keeps `upsert_asset(...)` stable while still routing the operation to the
-example-scoped MetaTables through `context`.
+The namespace is part of runtime/table registration, not an asset payload field,
+and row operations never create schemas implicitly. If `Asset.upsert(...)` is
+called before `Asset.create_schemas(...)` or `msm.create_schemas(...)`, it raises
+with bootstrap guidance.
 
-Prefer `upsert_asset(...)` in setup scripts and repeatable examples because it is
-safe to rerun for the same `unique_identifier`. Use `create_asset(...)` only when
-a duplicate asset should fail the workflow.
+Use `runtime.context` or `runtime.table(...)` for lower-level multi-table
+repository operations that need to compile statements across registered models.
 
-Only delete assets that the current workflow owns, such as temporary test assets
-or custom organization-owned records. Public or shared mastered assets should be
-treated as reference data; remove category memberships or downstream references
-instead of deleting the canonical identity row.
+Prefer `Asset.upsert(...)` in setup scripts and repeatable examples because it
+is safe to rerun for the same `unique_identifier`. Use lower-level
+`create_asset(...)` only when a duplicate asset should fail the workflow.
+
+Do not delete assets as part of the normal setup path. Only use cleanup for
+temporary test assets or custom organization-owned records. Public or shared
+mastered assets should be treated as reference data; remove category memberships
+or downstream references instead of deleting the canonical identity row.
 
 See `examples/assets/asset_crud_workflow.py` for a focused example that creates
-temporary custom assets, queries them by identifier and UID, searches by type,
-and deletes one of the temporary rows.
+temporary custom assets, registers OpenFIGI details for `BBG00FNFPQH4`, writes an
+example AssetSnapshot frame, searches by type, and lists the created assets. The
+example only registers the `Asset` and `OpenFigiDetails` MetaTables and cleanup
+is opt-in through `--delete-temporary-assets`.
 
 ## Asset Snapshots
 

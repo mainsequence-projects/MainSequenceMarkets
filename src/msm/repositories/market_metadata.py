@@ -5,7 +5,7 @@ from typing import Any
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
 
-from msm.models import PortfolioMetadata, RebalanceStrategyMetadata, SignalMetadata
+from msm.models import PortfolioMetadataTable, RebalanceStrategyMetadataTable, SignalMetadataTable
 
 from .base import MarketsRepositoryContext, execute_markets_operation
 from .crud import (
@@ -25,7 +25,7 @@ def build_create_portfolio_metadata_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=PortfolioMetadata,
+        model=PortfolioMetadataTable,
         values={
             "unique_identifier": unique_identifier,
             "description": description,
@@ -50,7 +50,7 @@ def build_get_portfolio_metadata_by_unique_identifier_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_get_model_by_unique_identifier_operation(
         context,
-        model=PortfolioMetadata,
+        model=PortfolioMetadataTable,
         unique_identifier=unique_identifier,
     )
 
@@ -63,7 +63,7 @@ def build_search_portfolio_metadata_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_search_model_operation(
         context,
-        model=PortfolioMetadata,
+        model=PortfolioMetadataTable,
         contains_filters={"unique_identifier": unique_identifier_contains or ""},
         limit=limit,
     )
@@ -77,7 +77,7 @@ def build_update_portfolio_metadata_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_update_model_operation(
         context,
-        model=PortfolioMetadata,
+        model=PortfolioMetadataTable,
         uid=uid,
         values={"description": description},
     )
@@ -88,7 +88,7 @@ def build_delete_portfolio_metadata_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(context, model=PortfolioMetadata, uid=uid)
+    return build_delete_model_operation(context, model=PortfolioMetadataTable, uid=uid)
 
 
 def build_create_signal_metadata_operation(
@@ -99,7 +99,7 @@ def build_create_signal_metadata_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=SignalMetadata,
+        model=SignalMetadataTable,
         values={
             "signal_uid": signal_uid,
             "signal_description": signal_description,
@@ -119,7 +119,7 @@ def build_search_signal_metadata_operation(
         filters["signal_uid"] = signal_uid
     return build_search_model_operation(
         context,
-        model=SignalMetadata,
+        model=SignalMetadataTable,
         filters=filters,
         contains_filters={"signal_uid": signal_uid_contains or ""},
         limit=limit,
@@ -134,7 +134,7 @@ def build_update_signal_metadata_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_update_model_operation(
         context,
-        model=SignalMetadata,
+        model=SignalMetadataTable,
         uid=uid,
         values={"signal_description": signal_description},
     )
@@ -145,7 +145,7 @@ def build_delete_signal_metadata_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(context, model=SignalMetadata, uid=uid)
+    return build_delete_model_operation(context, model=SignalMetadataTable, uid=uid)
 
 
 def build_create_rebalance_strategy_metadata_operation(
@@ -157,7 +157,7 @@ def build_create_rebalance_strategy_metadata_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=RebalanceStrategyMetadata,
+        model=RebalanceStrategyMetadataTable,
         values={
             "rebalance_strategy_uid": rebalance_strategy_uid,
             "rebalance_strategy_description": rebalance_strategy_description,
@@ -178,7 +178,7 @@ def build_search_rebalance_strategy_metadata_operation(
         filters["rebalance_strategy_uid"] = rebalance_strategy_uid
     return build_search_model_operation(
         context,
-        model=RebalanceStrategyMetadata,
+        model=RebalanceStrategyMetadataTable,
         filters=filters,
         contains_filters={"rebalance_strategy_uid": rebalance_strategy_uid_contains or ""},
         limit=limit,
@@ -194,7 +194,7 @@ def build_update_rebalance_strategy_metadata_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_update_model_operation(
         context,
-        model=RebalanceStrategyMetadata,
+        model=RebalanceStrategyMetadataTable,
         uid=uid,
         values={
             "rebalance_strategy_description": rebalance_strategy_description,
@@ -208,7 +208,7 @@ def build_delete_rebalance_strategy_metadata_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(context, model=RebalanceStrategyMetadata, uid=uid)
+    return build_delete_model_operation(context, model=RebalanceStrategyMetadataTable, uid=uid)
 
 
 def execute_market_metadata_operation(

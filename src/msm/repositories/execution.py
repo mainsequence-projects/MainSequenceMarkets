@@ -8,12 +8,12 @@ from typing import Any
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
 
 from msm.models import (
-    ExecutionError,
-    Order,
-    OrderManager,
-    OrderStatusEvent,
-    OrderTargetQuantity,
-    Trade,
+    ExecutionErrorTable,
+    OrderTable,
+    OrderManagerTable,
+    OrderStatusEventTable,
+    OrderTargetQuantityTable,
+    TradeTable,
 )
 
 from .base import MarketsRepositoryContext, execute_markets_operation
@@ -39,7 +39,7 @@ def build_create_order_manager_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=OrderManager,
+        model=OrderManagerTable,
         values={
             "unique_identifier": unique_identifier,
             "target_account_uid": target_account_uid,
@@ -67,7 +67,7 @@ def build_search_order_managers_operation(
         filters["status"] = status
     return build_search_model_operation(
         context,
-        model=OrderManager,
+        model=OrderManagerTable,
         filters=filters,
         contains_filters={"unique_identifier": unique_identifier_contains or ""},
         limit=limit,
@@ -80,7 +80,7 @@ def build_update_order_manager_operation(
     uid: uuid.UUID | str,
     **values: Any,
 ) -> MetaTableCompiledSQLOperation:
-    return build_update_model_operation(context, model=OrderManager, uid=uid, values=values)
+    return build_update_model_operation(context, model=OrderManagerTable, uid=uid, values=values)
 
 
 def build_delete_order_manager_operation(
@@ -88,7 +88,7 @@ def build_delete_order_manager_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(context, model=OrderManager, uid=uid)
+    return build_delete_model_operation(context, model=OrderManagerTable, uid=uid)
 
 
 def build_create_order_target_quantity_operation(
@@ -100,7 +100,7 @@ def build_create_order_target_quantity_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=OrderTargetQuantity,
+        model=OrderTargetQuantityTable,
         values={
             "order_manager_uid": order_manager_uid,
             "asset_uid": asset_uid,
@@ -123,7 +123,7 @@ def build_search_order_target_quantities_operation(
         filters["asset_uid"] = asset_uid
     return build_search_model_operation(
         context,
-        model=OrderTargetQuantity,
+        model=OrderTargetQuantityTable,
         filters=filters,
         limit=limit,
     )
@@ -153,7 +153,7 @@ def build_create_order_operation(
             "asset_unique_identifier": asset_unique_identifier,
         }
     )
-    return build_create_model_operation(context, model=Order, values=payload)
+    return build_create_model_operation(context, model=OrderTable, values=payload)
 
 
 def build_search_orders_operation(
@@ -178,7 +178,7 @@ def build_search_orders_operation(
     }.items():
         if value not in (None, ""):
             filters[key] = value
-    return build_search_model_operation(context, model=Order, filters=filters, limit=limit)
+    return build_search_model_operation(context, model=OrderTable, filters=filters, limit=limit)
 
 
 def build_update_order_operation(
@@ -187,7 +187,7 @@ def build_update_order_operation(
     uid: uuid.UUID | str,
     **values: Any,
 ) -> MetaTableCompiledSQLOperation:
-    return build_update_model_operation(context, model=Order, uid=uid, values=values)
+    return build_update_model_operation(context, model=OrderTable, uid=uid, values=values)
 
 
 def build_create_order_status_event_operation(
@@ -201,7 +201,7 @@ def build_create_order_status_event_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=OrderStatusEvent,
+        model=OrderStatusEventTable,
         values={
             "event_time": event_time,
             "order_status": order_status,
@@ -226,7 +226,7 @@ def build_search_order_status_events_operation(
         filters["order_status"] = order_status
     return build_search_model_operation(
         context,
-        model=OrderStatusEvent,
+        model=OrderStatusEventTable,
         filters=filters,
         limit=limit,
     )
@@ -252,7 +252,7 @@ def build_create_trade_operation(
             "price": price,
         }
     )
-    return build_create_model_operation(context, model=Trade, values=payload)
+    return build_create_model_operation(context, model=TradeTable, values=payload)
 
 
 def build_search_trades_operation(
@@ -275,7 +275,7 @@ def build_search_trades_operation(
     }.items():
         if value not in (None, ""):
             filters[key] = value
-    return build_search_model_operation(context, model=Trade, filters=filters, limit=limit)
+    return build_search_model_operation(context, model=TradeTable, filters=filters, limit=limit)
 
 
 def build_create_execution_error_operation(
@@ -291,7 +291,7 @@ def build_create_execution_error_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=ExecutionError,
+        model=ExecutionErrorTable,
         values={
             "error_code": error_code,
             "error_traceback": error_traceback,
@@ -322,7 +322,7 @@ def build_search_execution_errors_operation(
             filters[key] = value
     return build_search_model_operation(
         context,
-        model=ExecutionError,
+        model=ExecutionErrorTable,
         filters=filters,
         limit=limit,
     )

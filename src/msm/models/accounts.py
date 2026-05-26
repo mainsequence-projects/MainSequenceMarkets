@@ -16,7 +16,7 @@ from msm.base import (
 )
 
 
-class Account(MarketsMetaTableMixin, MarketsBase):
+class AccountTable(MarketsMetaTableMixin, MarketsBase):
     """Client account or execution account registered as a markets MetaTable."""
 
     __metatable_identifier__ = "Account"
@@ -53,7 +53,7 @@ class Account(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-class AccountTargetPositionAssignment(MarketsMetaTableMixin, MarketsBase):
+class AccountTargetPositionAssignmentTable(MarketsMetaTableMixin, MarketsBase):
     """Binding from an account to a reusable target-position set."""
 
     __metatable_identifier__ = "AccountTargetPositionAssignment"
@@ -88,7 +88,7 @@ class AccountTargetPositionAssignment(MarketsMetaTableMixin, MarketsBase):
     account_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Account.__table__.fullname}.uid",
+            f"{AccountTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Account", "account_uid"),
             ondelete="CASCADE",
         ),
@@ -98,4 +98,12 @@ class AccountTargetPositionAssignment(MarketsMetaTableMixin, MarketsBase):
     position_set_uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
 
 
-__all__ = ["Account", "AccountTargetPositionAssignment"]
+Account = AccountTable
+AccountTargetPositionAssignment = AccountTargetPositionAssignmentTable
+
+__all__ = [
+    "Account",
+    "AccountTable",
+    "AccountTargetPositionAssignment",
+    "AccountTargetPositionAssignmentTable",
+]

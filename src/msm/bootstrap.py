@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from threading import Lock
 from typing import TYPE_CHECKING, Any, Literal
 
 from mainsequence.logconf import logger as _mainsequence_logger
 
 if TYPE_CHECKING:
-    from msm.meta_tables import MarketsMetaTableRegistrationResult
-    from msm.repositories.base import MarketsRepositoryContext
+    from msm.meta_tables import MarketsMetaTableRegistrationResult, MarketsModelSelector
+    from msm.repositories.base import MarketsMetaTableHandle, MarketsRepositoryContext
 
 MarketsManagementMode = Literal["platform_managed", "external_registered"]
 DATA_NODE_HANDLE_NAMES = (
@@ -47,9 +47,16 @@ class MarketsRuntime:
 
     @property
     def meta_table_models(self) -> list[type[Any]]:
-        from msm.meta_tables import markets_meta_table_models
+        return list(self.registration.models)
 
-        return markets_meta_table_models()
+    def table(self, model: "MarketsModelSelector") -> "MarketsMetaTableHandle":
+        handle = self.context.table(model)
+        meta_table = self.registration.meta_table_by_fullname.get(
+            str(handle.model.__table__.fullname)
+        )
+        if meta_table is None:
+            return handle
+        return replace(handle, meta_table=meta_table)
 
     @property
     def data_nodes(self) -> dict[str, type[Any]]:
@@ -98,6 +105,7 @@ def create_schemas(
     data_source_uid: str | None = None,
     management_mode: MarketsManagementMode = "platform_managed",
     namespace: str | None = None,
+    models: Sequence["MarketsModelSelector"] | None = None,
     target_meta_table_uid_by_fullname: Mapping[str, Any] | None = None,
     open_for_everyone: bool = False,
     protect_from_deletion: bool = False,
@@ -111,6 +119,7 @@ def create_schemas(
         data_source_uid=data_source_uid,
         management_mode=management_mode,
         namespace=namespace,
+        models=models,
         target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
         open_for_everyone=open_for_everyone,
         protect_from_deletion=protect_from_deletion,
@@ -143,6 +152,7 @@ def create_schemas(
             data_source_uid=data_source_uid,
             target_meta_table_count=len(target_meta_table_uid_by_fullname or {}),
             storage_hash_count=len(storage_hash_by_fullname or {}),
+            requested_model_count=None if models is None else len(models),
             open_for_everyone=open_for_everyone,
             protect_from_deletion=protect_from_deletion,
             introspect=introspect,
@@ -152,10 +162,19 @@ def create_schemas(
             logger.info("Configuring markets MetaTable namespace", namespace=namespace)
             configure_metatable_namespace(namespace)
 
-        from msm.meta_tables import markets_meta_table_models, register_markets_meta_tables
+        from msm.meta_tables import (
+            register_markets_meta_tables,
+            resolve_markets_meta_table_models,
+        )
         from msm.repositories.base import MarketsRepositoryContext
 
-        meta_table_models = markets_meta_table_models()
+        meta_table_models = resolve_markets_meta_table_models(models)
+        logger.info(
+            "Resolved markets MetaTable models",
+            namespace=namespace,
+            model_count=len(meta_table_models),
+            models=[_model_name(model) for model in meta_table_models],
+        )
         registration = register_markets_meta_tables(
             data_source_uid=data_source_uid,
             management_mode=management_mode,
@@ -200,18 +219,31 @@ def create_schemas(
         return _RUNTIME
 
 
+def get_runtime() -> MarketsRuntime:
+    """Return the initialized markets runtime or fail with bootstrap guidance."""
+
+    if _RUNTIME is None:
+        raise RuntimeError(
+            "Markets schemas are not initialized. Call msm.create_schemas(...) "
+            "or the row model's create_schemas(...) classmethod before calling "
+            "row operations."
+        )
+    return _RUNTIME
+
+
 def _schema_config(**kwargs: Any) -> tuple[tuple[str, Any], ...]:
     return tuple((key, _freeze_start_value(value)) for key, value in kwargs.items())
 
 
+def _model_name(model: Any) -> str:
+    return str(getattr(model, "__name__", model))
+
+
 def _freeze_start_value(value: Any) -> Any:
+    if isinstance(value, type):
+        return f"{value.__module__}.{value.__qualname__}"
     if isinstance(value, Mapping):
-        return tuple(
-            sorted(
-                (str(key), _freeze_start_value(item))
-                for key, item in value.items()
-            )
-        )
+        return tuple(sorted((str(key), _freeze_start_value(item)) for key, item in value.items()))
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return tuple(_freeze_start_value(item) for item in value)
     return value
@@ -222,4 +254,5 @@ __all__ = [
     "MarketsRuntime",
     "configure_metatable_namespace",
     "create_schemas",
+    "get_runtime",
 ]

@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import delete, insert, select, update
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
-from msm.models import Account, AccountTargetPositionAssignment
+from msm.models import AccountTable, AccountTargetPositionAssignmentTable
 
 from .base import (
     MarketsRepositoryContext,
@@ -31,7 +31,7 @@ def build_create_account_operation(
     metadata_json: MappingOrDict | None = None,
 ) -> MetaTableCompiledSQLOperation:
     statement = (
-        insert(Account)
+        insert(AccountTable)
         .values(
             unique_identifier=unique_identifier,
             account_name=account_name,
@@ -40,13 +40,13 @@ def build_create_account_operation(
             holdings_data_node_uid=holdings_data_node_uid,
             metadata_json=metadata_json,
         )
-        .returning(Account)
+        .returning(AccountTable)
     )
     return compile_markets_statement(
         statement,
         context=context,
         operation="insert",
-        models=[Account],
+        models=[AccountTable],
         access="write",
     )
 
@@ -66,12 +66,14 @@ def build_get_account_by_unique_identifier_operation(
     *,
     unique_identifier: str,
 ) -> MetaTableCompiledSQLOperation:
-    statement = select(Account).where(Account.unique_identifier == unique_identifier).limit(1)
+    statement = (
+        select(AccountTable).where(AccountTable.unique_identifier == unique_identifier).limit(1)
+    )
     return compile_markets_statement(
         statement,
         context=context,
         operation="select",
-        models=[Account],
+        models=[AccountTable],
         access="read",
     )
 
@@ -98,20 +100,20 @@ def build_search_accounts_operation(
     account_is_active: bool | None = None,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
-    statement = select(Account).limit(limit)
+    statement = select(AccountTable).limit(limit)
     if unique_identifier_contains not in (None, ""):
         statement = statement.where(
-            Account.unique_identifier.contains(str(unique_identifier_contains))
+            AccountTable.unique_identifier.contains(str(unique_identifier_contains))
         )
     if account_name_contains not in (None, ""):
-        statement = statement.where(Account.account_name.contains(str(account_name_contains)))
+        statement = statement.where(AccountTable.account_name.contains(str(account_name_contains)))
     if account_is_active is not None:
-        statement = statement.where(Account.account_is_active.is_(bool(account_is_active)))
+        statement = statement.where(AccountTable.account_is_active.is_(bool(account_is_active)))
     return compile_markets_statement(
         statement,
         context=context,
         operation="select",
-        models=[Account],
+        models=[AccountTable],
         access="read",
     )
 
@@ -147,12 +149,14 @@ def build_update_account_operation(
         }.items()
         if value is not None
     }
-    statement = update(Account).where(Account.uid == uid).values(**values).returning(Account)
+    statement = (
+        update(AccountTable).where(AccountTable.uid == uid).values(**values).returning(AccountTable)
+    )
     return compile_markets_statement(
         statement,
         context=context,
         operation="update",
-        models=[Account],
+        models=[AccountTable],
         access="write",
     )
 
@@ -172,12 +176,12 @@ def build_delete_account_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    statement = delete(Account).where(Account.uid == uid)
+    statement = delete(AccountTable).where(AccountTable.uid == uid)
     return compile_markets_statement(
         statement,
         context=context,
         operation="delete",
-        models=[Account],
+        models=[AccountTable],
         access="write",
     )
 
@@ -202,7 +206,7 @@ def build_create_account_target_position_assignment_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=AccountTargetPositionAssignment,
+        model=AccountTargetPositionAssignmentTable,
         values={
             "account_uid": account_uid,
             "target_positions_time": target_positions_time,
@@ -239,7 +243,7 @@ def build_search_account_target_position_assignments_operation(
             filters[key] = value
     return build_search_model_operation(
         context,
-        model=AccountTargetPositionAssignment,
+        model=AccountTargetPositionAssignmentTable,
         filters=filters,
         limit=limit,
     )
@@ -262,7 +266,7 @@ def build_delete_account_target_position_assignment_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_delete_model_operation(
         context,
-        model=AccountTargetPositionAssignment,
+        model=AccountTargetPositionAssignmentTable,
         uid=uid,
     )
 

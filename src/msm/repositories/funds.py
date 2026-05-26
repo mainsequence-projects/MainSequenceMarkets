@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import delete, insert, select, update
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
-from msm.models import Fund
+from msm.models import FundTable
 
 from .base import (
     MarketsRepositoryContext,
@@ -25,7 +25,7 @@ def build_create_fund_operation(
     metadata_json: dict[str, Any] | None = None,
 ) -> MetaTableCompiledSQLOperation:
     statement = (
-        insert(Fund)
+        insert(FundTable)
         .values(
             unique_identifier=unique_identifier,
             target_account_uid=target_account_uid,
@@ -33,13 +33,13 @@ def build_create_fund_operation(
             requires_nav_adjustment=requires_nav_adjustment,
             metadata_json=metadata_json,
         )
-        .returning(Fund)
+        .returning(FundTable)
     )
     return compile_markets_statement(
         statement,
         context=context,
         operation="insert",
-        models=[Fund],
+        models=[FundTable],
         access="write",
     )
 
@@ -59,12 +59,12 @@ def build_get_fund_by_unique_identifier_operation(
     *,
     unique_identifier: str,
 ) -> MetaTableCompiledSQLOperation:
-    statement = select(Fund).where(Fund.unique_identifier == unique_identifier).limit(1)
+    statement = select(FundTable).where(FundTable.unique_identifier == unique_identifier).limit(1)
     return compile_markets_statement(
         statement,
         context=context,
         operation="select",
-        models=[Fund],
+        models=[FundTable],
         access="read",
     )
 
@@ -90,15 +90,13 @@ def build_get_funds_by_portfolio_operation(
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
     statement = (
-        select(Fund)
-        .where(Fund.target_portfolio_uid == target_portfolio_uid)
-        .limit(limit)
+        select(FundTable).where(FundTable.target_portfolio_uid == target_portfolio_uid).limit(limit)
     )
     return compile_markets_statement(
         statement,
         context=context,
         operation="select",
-        models=[Fund],
+        models=[FundTable],
         access="read",
     )
 
@@ -125,12 +123,14 @@ def build_get_funds_by_account_operation(
     target_account_uid: uuid.UUID | str,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
-    statement = select(Fund).where(Fund.target_account_uid == target_account_uid).limit(limit)
+    statement = (
+        select(FundTable).where(FundTable.target_account_uid == target_account_uid).limit(limit)
+    )
     return compile_markets_statement(
         statement,
         context=context,
         operation="select",
-        models=[Fund],
+        models=[FundTable],
         access="read",
     )
 
@@ -158,16 +158,16 @@ def build_update_fund_operation(
     **values: Any,
 ) -> MetaTableCompiledSQLOperation:
     statement = (
-        update(Fund)
-        .where(Fund.uid == uid)
+        update(FundTable)
+        .where(FundTable.uid == uid)
         .values(**{key: value for key, value in values.items() if value is not None})
-        .returning(Fund)
+        .returning(FundTable)
     )
     return compile_markets_statement(
         statement,
         context=context,
         operation="update",
-        models=[Fund],
+        models=[FundTable],
         access="write",
     )
 
@@ -187,12 +187,12 @@ def build_delete_fund_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    statement = delete(Fund).where(Fund.uid == uid)
+    statement = delete(FundTable).where(FundTable.uid == uid)
     return compile_markets_statement(
         statement,
         context=context,
         operation="delete",
-        models=[Fund],
+        models=[FundTable],
         access="write",
     )
 

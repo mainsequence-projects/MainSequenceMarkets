@@ -5,7 +5,7 @@ from typing import Any
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
 
-from msm.models import InstrumentsConfiguration
+from msm.models import InstrumentsConfigurationTable
 
 from .base import MarketsRepositoryContext, execute_markets_operation
 from .crud import (
@@ -27,7 +27,7 @@ def build_create_instruments_configuration_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=InstrumentsConfiguration,
+        model=InstrumentsConfigurationTable,
         values={
             "configuration_key": configuration_key,
             "discount_curves_data_node_uid": discount_curves_data_node_uid,
@@ -52,7 +52,7 @@ def build_get_instruments_configuration_by_uid_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_get_model_by_uid_operation(context, model=InstrumentsConfiguration, uid=uid)
+    return build_get_model_by_uid_operation(context, model=InstrumentsConfigurationTable, uid=uid)
 
 
 def build_search_instruments_configurations_operation(
@@ -66,7 +66,7 @@ def build_search_instruments_configurations_operation(
         filters["configuration_key"] = configuration_key
     return build_search_model_operation(
         context,
-        model=InstrumentsConfiguration,
+        model=InstrumentsConfigurationTable,
         filters=filters,
         limit=limit,
     )
@@ -92,7 +92,7 @@ def build_update_instruments_configuration_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_update_model_operation(
         context,
-        model=InstrumentsConfiguration,
+        model=InstrumentsConfigurationTable,
         uid=uid,
         values={
             "discount_curves_data_node_uid": discount_curves_data_node_uid,
@@ -117,7 +117,7 @@ def build_delete_instruments_configuration_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(context, model=InstrumentsConfiguration, uid=uid)
+    return build_delete_model_operation(context, model=InstrumentsConfigurationTable, uid=uid)
 
 
 def delete_instruments_configuration(

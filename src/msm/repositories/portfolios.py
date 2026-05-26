@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import delete, insert, select, update
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
-from msm.models import Portfolio, PortfolioAssetDetail
+from msm.models import PortfolioTable, PortfolioAssetDetailTable
 
 from .base import (
     MarketsRepositoryContext,
@@ -40,7 +40,7 @@ def build_create_portfolio_operation(
     metadata_json: dict[str, Any] | None = None,
 ) -> MetaTableCompiledSQLOperation:
     statement = (
-        insert(Portfolio)
+        insert(PortfolioTable)
         .values(
             unique_identifier=unique_identifier,
             calendar_name=calendar_name,
@@ -59,13 +59,13 @@ def build_create_portfolio_operation(
             stats_json=stats_json,
             metadata_json=metadata_json,
         )
-        .returning(Portfolio)
+        .returning(PortfolioTable)
     )
     return compile_markets_statement(
         statement,
         context=context,
         operation="insert",
-        models=[Portfolio],
+        models=[PortfolioTable],
         access="write",
     )
 
@@ -85,12 +85,14 @@ def build_get_portfolio_by_unique_identifier_operation(
     *,
     unique_identifier: str,
 ) -> MetaTableCompiledSQLOperation:
-    statement = select(Portfolio).where(Portfolio.unique_identifier == unique_identifier).limit(1)
+    statement = (
+        select(PortfolioTable).where(PortfolioTable.unique_identifier == unique_identifier).limit(1)
+    )
     return compile_markets_statement(
         statement,
         context=context,
         operation="select",
-        models=[Portfolio],
+        models=[PortfolioTable],
         access="read",
     )
 
@@ -116,18 +118,18 @@ def build_search_portfolios_operation(
     calendar_name: str | None = None,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
-    statement = select(Portfolio).limit(limit)
+    statement = select(PortfolioTable).limit(limit)
     if unique_identifier_contains not in (None, ""):
         statement = statement.where(
-            Portfolio.unique_identifier.contains(str(unique_identifier_contains))
+            PortfolioTable.unique_identifier.contains(str(unique_identifier_contains))
         )
     if calendar_name not in (None, ""):
-        statement = statement.where(Portfolio.calendar_name == str(calendar_name))
+        statement = statement.where(PortfolioTable.calendar_name == str(calendar_name))
     return compile_markets_statement(
         statement,
         context=context,
         operation="select",
-        models=[Portfolio],
+        models=[PortfolioTable],
         access="read",
     )
 
@@ -149,16 +151,16 @@ def build_update_portfolio_operation(
     **values: Any,
 ) -> MetaTableCompiledSQLOperation:
     statement = (
-        update(Portfolio)
-        .where(Portfolio.uid == uid)
+        update(PortfolioTable)
+        .where(PortfolioTable.uid == uid)
         .values(**{key: value for key, value in values.items() if value is not None})
-        .returning(Portfolio)
+        .returning(PortfolioTable)
     )
     return compile_markets_statement(
         statement,
         context=context,
         operation="update",
-        models=[Portfolio],
+        models=[PortfolioTable],
         access="write",
     )
 
@@ -178,12 +180,12 @@ def build_delete_portfolio_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    statement = delete(Portfolio).where(Portfolio.uid == uid)
+    statement = delete(PortfolioTable).where(PortfolioTable.uid == uid)
     return compile_markets_statement(
         statement,
         context=context,
         operation="delete",
-        models=[Portfolio],
+        models=[PortfolioTable],
         access="write",
     )
 
@@ -209,7 +211,7 @@ def build_create_portfolio_asset_detail_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=PortfolioAssetDetail,
+        model=PortfolioAssetDetailTable,
         values={
             "portfolio_uid": portfolio_uid,
             "asset_uid": asset_uid,
@@ -247,7 +249,7 @@ def build_search_portfolio_asset_details_operation(
             filters[key] = value
     return build_search_model_operation(
         context,
-        model=PortfolioAssetDetail,
+        model=PortfolioAssetDetailTable,
         filters=filters,
         limit=limit,
     )
@@ -273,7 +275,7 @@ def build_update_portfolio_asset_detail_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_update_model_operation(
         context,
-        model=PortfolioAssetDetail,
+        model=PortfolioAssetDetailTable,
         uid=uid,
         values={
             "asset_uid": asset_uid,
@@ -298,7 +300,7 @@ def build_delete_portfolio_asset_detail_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(context, model=PortfolioAssetDetail, uid=uid)
+    return build_delete_model_operation(context, model=PortfolioAssetDetailTable, uid=uid)
 
 
 def delete_portfolio_asset_detail(

@@ -32,10 +32,10 @@ msm.services.assets.openfigi
 msm.data_nodes.assets
 ```
 
-The `Asset` model remains the MetaTable-backed model at:
+The `AssetTable` model remains the MetaTable-backed schema declaration at:
 
 ```python
-from msm.models import Asset
+from msm.models import AssetTable
 ```
 
 Asset snapshot and pricing-detail DataNode schemas move to:

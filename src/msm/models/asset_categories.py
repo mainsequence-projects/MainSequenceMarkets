@@ -15,10 +15,10 @@ from msm.base import (
     new_markets_uid,
 )
 
-from .assets import Asset
+from .assets import AssetTable
 
 
-class AssetCategory(MarketsMetaTableMixin, MarketsBase):
+class AssetCategoryTable(MarketsMetaTableMixin, MarketsBase):
     """Client-owned category used to group assets in the markets catalog."""
 
     __metatable_identifier__ = "AssetCategory"
@@ -46,7 +46,7 @@ class AssetCategory(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-class AssetCategoryMembership(MarketsMetaTableMixin, MarketsBase):
+class AssetCategoryMembershipTable(MarketsMetaTableMixin, MarketsBase):
     """Many-to-many membership row between assets and asset categories."""
 
     __metatable_identifier__ = "AssetCategoryMembership"
@@ -77,7 +77,7 @@ class AssetCategoryMembership(MarketsMetaTableMixin, MarketsBase):
     category_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{AssetCategory.__table__.fullname}.uid",
+            f"{AssetCategoryTable.__table__.fullname}.uid",
             name=markets_fk_name(
                 __metatable_identifier__,
                 "AssetCategory",
@@ -90,7 +90,7 @@ class AssetCategoryMembership(MarketsMetaTableMixin, MarketsBase):
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Asset.__table__.fullname}.uid",
+            f"{AssetTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="CASCADE",
         ),
@@ -98,4 +98,12 @@ class AssetCategoryMembership(MarketsMetaTableMixin, MarketsBase):
     )
 
 
-__all__ = ["AssetCategory", "AssetCategoryMembership"]
+AssetCategory = AssetCategoryTable
+AssetCategoryMembership = AssetCategoryMembershipTable
+
+__all__ = [
+    "AssetCategory",
+    "AssetCategoryMembership",
+    "AssetCategoryMembershipTable",
+    "AssetCategoryTable",
+]

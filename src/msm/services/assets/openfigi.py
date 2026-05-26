@@ -13,7 +13,7 @@ import pandas as pd
 import requests
 
 if TYPE_CHECKING:
-    from msm.models import Asset, OpenFigiDetails
+    from msm.models import AssetTable, OpenFigiDetailsTable
 
 OPENFIGI_MAPPING_URL = "https://api.openfigi.com/v3/mapping"
 OPENFIGI_SEARCH_URL = "https://api.openfigi.com/v3/search"
@@ -25,8 +25,8 @@ OPENFIGI_API_URL_ENV = "FIGI_API_URL"
 class OpenFigiAssetRows:
     """Client-owned rows derived from one OpenFIGI result."""
 
-    asset: Asset
-    open_figi_details: OpenFigiDetails
+    asset: AssetTable
+    open_figi_details: OpenFigiDetailsTable
     snapshot_frame: pd.DataFrame
 
 
@@ -61,7 +61,7 @@ def build_asset_rows_from_openfigi_result(
 ) -> OpenFigiAssetRows:
     """Build SQLAlchemy/MetaTable asset rows from one OpenFIGI result."""
 
-    from msm.models import Asset, OpenFigiDetails
+    from msm.models import AssetTable, OpenFigiDetailsTable
 
     normalized = normalize_openfigi_result(item)
     unique_identifier = normalized.get("unique_identifier")
@@ -71,8 +71,8 @@ def build_asset_rows_from_openfigi_result(
         raise ValueError("asset_uid is required to build OpenFigiDetails.")
 
     resolved_asset_uid = UUID(str(asset_uid))
-    asset = Asset(uid=resolved_asset_uid, unique_identifier=unique_identifier)
-    open_figi_details = OpenFigiDetails(
+    asset = AssetTable(uid=resolved_asset_uid, unique_identifier=unique_identifier)
+    open_figi_details = OpenFigiDetailsTable(
         asset_uid=resolved_asset_uid,
         figi=normalized.get("figi"),
         composite=normalized.get("composite"),
@@ -110,11 +110,7 @@ def build_asset_snapshot_frame_from_openfigi_result(
 
     from msm.services.asset_snapshots import build_asset_snapshot_frame
 
-    normalized = (
-        item
-        if "unique_identifier" in item
-        else normalize_openfigi_result(item)
-    )
+    normalized = item if "unique_identifier" in item else normalize_openfigi_result(item)
     unique_identifier = normalized.get("unique_identifier")
     if not unique_identifier:
         raise ValueError("OpenFIGI result does not include `figi`.")
@@ -128,9 +124,7 @@ def build_asset_snapshot_frame_from_openfigi_result(
             "asset_ticker_group_id": normalized.get("share_class") or "",
             "venue_specific_properties": {
                 "openfigi": {
-                    key: value
-                    for key, value in normalized.items()
-                    if key not in {"raw_payload"}
+                    key: value for key, value in normalized.items() if key not in {"raw_payload"}
                 }
             },
         },
@@ -250,8 +244,7 @@ def query_by_isin(
     )
     if len(rows) != 1:
         raise ValueError(
-            "Expected one OpenFIGI row for "
-            f"ISIN {isin_code!r}/{exchange_code!r}, got {len(rows)}."
+            f"Expected one OpenFIGI row for ISIN {isin_code!r}/{exchange_code!r}, got {len(rows)}."
         )
     return rows[0]
 
@@ -296,7 +289,7 @@ def _openfigi_mapping_batches(
     rows: list[dict[str, Any]] = []
 
     for start in range(0, len(payload_items), 100):
-        batch = payload_items[start:start + 100]
+        batch = payload_items[start : start + 100]
         elapsed = time.time() - last_call
         if elapsed < min_interval:
             time.sleep(min_interval - elapsed)
@@ -349,10 +342,7 @@ def _paged_openfigi_search(
         last_call_time = now
 
         response_data = response.json()
-        rows.extend(
-            normalize_openfigi_result(item)
-            for item in response_data.get("data", [])
-        )
+        rows.extend(normalize_openfigi_result(item) for item in response_data.get("data", []))
 
         next_cursor = response_data.get("next")
         if not next_cursor:
@@ -367,9 +357,7 @@ def _paged_openfigi_search(
 
 
 def _rate_limit_wait(response: requests.Response, *, default: float) -> float:
-    reset = response.headers.get("X-RateLimit-Reset") or response.headers.get(
-        "ratelimit-reset"
-    )
+    reset = response.headers.get("X-RateLimit-Reset") or response.headers.get("ratelimit-reset")
     return float(reset) if reset else default
 
 

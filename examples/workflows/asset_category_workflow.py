@@ -25,13 +25,14 @@ def create_crypto_category(context: "MarketsRepositoryContext") -> None:
         upsert_asset,
     )
 
+    asset = context.table("Asset")
     btc = upsert_asset(
-        context,
+        asset,
         unique_identifier="BTC",
         asset_type="crypto",
     )
     eth = upsert_asset(
-        context,
+        asset,
         unique_identifier="ETH",
         asset_type="crypto",
     )
@@ -62,7 +63,10 @@ def _uid(result: dict) -> str:
 
 
 def main() -> None:
-    runtime = msm.create_schemas(namespace=EXAMPLE_METATABLE_NAMESPACE)
+    runtime = msm.create_schemas(
+        namespace=EXAMPLE_METATABLE_NAMESPACE,
+        models=["Asset", "AssetCategory", "AssetCategoryMembership"],
+    )
     context = runtime.context
     create_crypto_category(context)
 

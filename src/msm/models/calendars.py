@@ -15,7 +15,7 @@ from msm.base import (
 )
 
 
-class Calendar(MarketsMetaTableMixin, MarketsBase):
+class CalendarTable(MarketsMetaTableMixin, MarketsBase):
     """Named market calendar used by portfolio and execution workflows."""
 
     __metatable_identifier__ = "Calendar"
@@ -38,4 +38,6 @@ class Calendar(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-__all__ = ["Calendar"]
+Calendar = CalendarTable
+
+__all__ = ["Calendar", "CalendarTable"]

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from .base import (
+    MarketsMetaTableHandle,
+    MarketsOperationContext,
     MarketsRepositoryContext,
     compile_markets_statement,
     execute_markets_operation,
@@ -75,6 +77,8 @@ from .portfolios import (
 )
 
 __all__ = [
+    "MarketsMetaTableHandle",
+    "MarketsOperationContext",
     "MarketsRepositoryContext",
     "build_create_account_operation",
     "build_create_asset_master_list_operation",

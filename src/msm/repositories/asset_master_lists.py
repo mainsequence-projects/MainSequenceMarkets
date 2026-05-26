@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
 
-from msm.models import AssetMasterList
+from msm.models import AssetMasterListTable
 
 from .base import (
     MarketsRepositoryContext,
@@ -37,7 +37,7 @@ def build_create_asset_master_list_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=AssetMasterList,
+        model=AssetMasterListTable,
         values={
             "unique_identifier": unique_identifier,
             "name": name,
@@ -65,7 +65,7 @@ def build_get_asset_master_list_by_uid_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_get_model_by_uid_operation(context, model=AssetMasterList, uid=uid)
+    return build_get_model_by_uid_operation(context, model=AssetMasterListTable, uid=uid)
 
 
 def get_asset_master_list_by_uid(
@@ -86,7 +86,7 @@ def build_get_asset_master_list_by_unique_identifier_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_get_model_by_unique_identifier_operation(
         context,
-        model=AssetMasterList,
+        model=AssetMasterListTable,
         unique_identifier=unique_identifier,
     )
 
@@ -108,12 +108,14 @@ def get_asset_master_list_by_unique_identifier(
 def build_get_default_asset_master_list_operation(
     context: MarketsRepositoryContext,
 ) -> MetaTableCompiledSQLOperation:
-    statement = select(AssetMasterList).where(AssetMasterList.is_default.is_(True)).limit(1)
+    statement = (
+        select(AssetMasterListTable).where(AssetMasterListTable.is_default.is_(True)).limit(1)
+    )
     return compile_markets_statement(
         statement,
         context=context,
         operation="select",
-        models=[AssetMasterList],
+        models=[AssetMasterListTable],
         access="read",
     )
 
@@ -141,7 +143,7 @@ def build_search_asset_master_lists_operation(
         filters["reference_meta_table_uid"] = reference_meta_table_uid
     return build_search_model_operation(
         context,
-        model=AssetMasterList,
+        model=AssetMasterListTable,
         filters=filters,
         contains_filters={
             "unique_identifier": unique_identifier_contains or "",
@@ -174,7 +176,7 @@ def build_update_asset_master_list_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_update_model_operation(
         context,
-        model=AssetMasterList,
+        model=AssetMasterListTable,
         uid=uid,
         values={
             "name": name,
@@ -202,7 +204,7 @@ def build_delete_asset_master_list_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(context, model=AssetMasterList, uid=uid)
+    return build_delete_model_operation(context, model=AssetMasterListTable, uid=uid)
 
 
 def delete_asset_master_list(

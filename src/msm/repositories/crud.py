@@ -11,14 +11,14 @@ from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
 from msm.base import MarketsBase
 
 from .base import (
-    MarketsRepositoryContext,
+    MarketsOperationContext,
     compile_markets_statement,
     execute_markets_operation,
 )
 
 
 def build_create_model_operation(
-    context: MarketsRepositoryContext,
+    context: MarketsOperationContext,
     *,
     model: type[MarketsBase],
     values: Mapping[str, Any],
@@ -39,7 +39,7 @@ def build_create_model_operation(
 
 
 def create_model(
-    context: MarketsRepositoryContext,
+    context: MarketsOperationContext,
     *,
     model: type[MarketsBase],
     values: Mapping[str, Any],
@@ -57,7 +57,7 @@ def create_model(
 
 
 def build_get_model_by_uid_operation(
-    context: MarketsRepositoryContext,
+    context: MarketsOperationContext,
     *,
     model: type[MarketsBase],
     uid: uuid.UUID | str,
@@ -73,7 +73,7 @@ def build_get_model_by_uid_operation(
 
 
 def get_model_by_uid(
-    context: MarketsRepositoryContext,
+    context: MarketsOperationContext,
     *,
     model: type[MarketsBase],
     uid: uuid.UUID | str,
@@ -85,7 +85,7 @@ def get_model_by_uid(
 
 
 def build_get_model_by_unique_identifier_operation(
-    context: MarketsRepositoryContext,
+    context: MarketsOperationContext,
     *,
     model: type[MarketsBase],
     unique_identifier: str,
@@ -105,7 +105,7 @@ def build_get_model_by_unique_identifier_operation(
 
 
 def get_model_by_unique_identifier(
-    context: MarketsRepositoryContext,
+    context: MarketsOperationContext,
     *,
     model: type[MarketsBase],
     unique_identifier: str,
@@ -121,7 +121,7 @@ def get_model_by_unique_identifier(
 
 
 def build_search_model_operation(
-    context: MarketsRepositoryContext,
+    context: MarketsOperationContext,
     *,
     model: type[MarketsBase],
     filters: Mapping[str, Any] | None = None,
@@ -154,7 +154,7 @@ def build_search_model_operation(
 
 
 def search_model(
-    context: MarketsRepositoryContext,
+    context: MarketsOperationContext,
     *,
     model: type[MarketsBase],
     filters: Mapping[str, Any] | None = None,
@@ -176,7 +176,7 @@ def search_model(
 
 
 def build_update_model_operation(
-    context: MarketsRepositoryContext,
+    context: MarketsOperationContext,
     *,
     model: type[MarketsBase],
     uid: uuid.UUID | str,
@@ -200,7 +200,7 @@ def build_update_model_operation(
 
 
 def update_model(
-    context: MarketsRepositoryContext,
+    context: MarketsOperationContext,
     *,
     model: type[MarketsBase],
     uid: uuid.UUID | str,
@@ -220,7 +220,7 @@ def update_model(
 
 
 def build_delete_model_operation(
-    context: MarketsRepositoryContext,
+    context: MarketsOperationContext,
     *,
     model: type[MarketsBase],
     uid: uuid.UUID | str,
@@ -236,7 +236,7 @@ def build_delete_model_operation(
 
 
 def delete_model(
-    context: MarketsRepositoryContext,
+    context: MarketsOperationContext,
     *,
     model: type[MarketsBase],
     uid: uuid.UUID | str,

@@ -15,7 +15,7 @@ from msm.base import (
 )
 
 
-class Asset(MarketsMetaTableMixin, MarketsBase):
+class AssetTable(MarketsMetaTableMixin, MarketsBase):
     """Relational asset catalog row owned by markets MetaTables."""
 
     __metatable_identifier__ = "Asset"
@@ -41,4 +41,6 @@ class Asset(MarketsMetaTableMixin, MarketsBase):
     asset_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
-__all__ = ["Asset"]
+Asset = AssetTable
+
+__all__ = ["Asset", "AssetTable"]

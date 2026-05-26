@@ -78,5 +78,10 @@ call with the same startup arguments returns the cached runtime; a different
 namespace or registration configuration is rejected for the already-initialized
 process.
 
+Pass `models=[...]` when a workflow only needs a subset of tables, for example
+`msm.create_schemas(models=["Asset"])`. Use `runtime.table("Asset")` for
+single-table asset service calls and `runtime.context` for operations that touch
+multiple MetaTables.
+
 See `examples/platform/inspect_markets_metatable_models.py` for a small offline
 inspection example that prints the SDK-derived table names.

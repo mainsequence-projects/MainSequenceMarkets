@@ -23,3 +23,5 @@ Current decisions:
 - [0004. VAM Markets Ownership Transfer](0004-vam-markets-ownership-transfer.md)
 - [0005. Pricing Package Refactor](0005-pricing-package-refactor.md)
 - [0006. Asset Package Boundary](0006-asset-package-boundary.md)
+- [0007. AssetIndexedDataNode Asset Foreign Keys](0007-market-data-node-asset-foreign-keys.md)
+- [0008. MetaTable Table And API Model Split](0008-metatable-table-and-api-model-split.md)

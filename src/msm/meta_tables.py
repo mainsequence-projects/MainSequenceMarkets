@@ -16,6 +16,7 @@ from .models import markets_sqlalchemy_models
 
 
 MarketsManagementMode = Literal["platform_managed", "external_registered"]
+MarketsModelSelector = str | type[MarketsBase]
 logger = _mainsequence_logger.bind(sub_application="markets", component="meta_tables")
 
 
@@ -23,6 +24,8 @@ logger = _mainsequence_logger.bind(sub_application="markets", component="meta_ta
 class MarketsMetaTableRegistrationResult:
     meta_tables: list[MetaTable]
     target_meta_table_uid_by_fullname: dict[str, str]
+    models: list[type[MarketsBase]]
+    meta_table_by_fullname: dict[str, MetaTable]
 
 
 def markets_meta_table_models() -> list[type[MarketsBase]]:
@@ -31,6 +34,42 @@ def markets_meta_table_models() -> list[type[MarketsBase]]:
 
 def markets_meta_table_fullname(model: type[MarketsBase]) -> str:
     return str(model.__table__.fullname)
+
+
+def resolve_markets_meta_table_model(model: MarketsModelSelector) -> type[MarketsBase]:
+    """Resolve a markets MetaTable model class by class, name, identifier, or fullname."""
+
+    if isinstance(model, type):
+        return model
+
+    model_key = str(model)
+    for candidate in markets_meta_table_models():
+        keys = {
+            candidate.__name__,
+            str(getattr(candidate, "__metatable_identifier__", "")),
+            markets_meta_table_fullname(candidate),
+        }
+        if model_key in keys:
+            return candidate
+    raise ValueError(f"Unknown markets MetaTable model {model_key!r}.")
+
+
+def resolve_markets_meta_table_models(
+    models: Sequence[MarketsModelSelector] | None = None,
+) -> list[type[MarketsBase]]:
+    """Resolve selected markets MetaTable models in library dependency order."""
+
+    all_models = markets_meta_table_models()
+    if models is None:
+        return all_models
+
+    selected = {resolve_markets_meta_table_model(model) for model in models}
+    resolved = [model for model in all_models if model in selected]
+    missing = selected.difference(resolved)
+    if missing:
+        missing_names = ", ".join(sorted(model.__name__ for model in missing))
+        raise ValueError(f"Unsupported markets MetaTable model selection: {missing_names}.")
+    return resolved
 
 
 def markets_foreign_key_target_fullnames(model: type[MarketsBase]) -> list[str]:
@@ -95,9 +134,7 @@ def build_markets_registration_requests(
                 )
             )
             continue
-        raise ValueError(
-            "management_mode must be 'platform_managed' or 'external_registered'."
-        )
+        raise ValueError("management_mode must be 'platform_managed' or 'external_registered'.")
 
     return requests
 
@@ -125,6 +162,7 @@ def register_markets_meta_tables(
         for key, value in (target_meta_table_uid_by_fullname or {}).items()
     }
     registered_meta_tables: list[MetaTable] = []
+    meta_table_by_fullname: dict[str, MetaTable] = {}
     storage_hash_mapping = dict(storage_hash_by_fullname or {})
 
     resolved_models = list(models or markets_meta_table_models())
@@ -165,13 +203,13 @@ def register_markets_meta_tables(
                 **external_kwargs,
             )
         else:
-            raise ValueError(
-                "management_mode must be 'platform_managed' or 'external_registered'."
-            )
+            raise ValueError("management_mode must be 'platform_managed' or 'external_registered'.")
 
         registered_meta_tables.append(meta_table)
         meta_table_uid = _meta_table_uid(meta_table)
-        target_mapping[markets_meta_table_fullname(model)] = meta_table_uid
+        table_fullname = markets_meta_table_fullname(model)
+        target_mapping[table_fullname] = meta_table_uid
+        meta_table_by_fullname[table_fullname] = meta_table
         logger.info(
             "Registered markets MetaTable schema",
             management_mode=management_mode,
@@ -188,6 +226,8 @@ def register_markets_meta_tables(
     return MarketsMetaTableRegistrationResult(
         meta_tables=registered_meta_tables,
         target_meta_table_uid_by_fullname=target_mapping,
+        models=resolved_models,
+        meta_table_by_fullname=meta_table_by_fullname,
     )
 
 
@@ -200,10 +240,13 @@ def _meta_table_uid(value: Any) -> str:
 
 __all__ = [
     "MarketsManagementMode",
+    "MarketsModelSelector",
     "MarketsMetaTableRegistrationResult",
     "build_markets_registration_requests",
     "markets_foreign_key_target_fullnames",
     "markets_meta_table_fullname",
     "markets_meta_table_models",
     "register_markets_meta_tables",
+    "resolve_markets_meta_table_model",
+    "resolve_markets_meta_table_models",
 ]

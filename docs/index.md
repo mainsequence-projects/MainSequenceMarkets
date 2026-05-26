@@ -27,6 +27,24 @@ import msm
 The initial core modules were migrated from `mainsequence-sdk/mainsequence/markets`
 into `src/msm`.
 
+## Library Style
+
+The general style of `msm` is to keep user-facing code typed and domain-oriented.
+Application code should operate on Pydantic row objects such as `Asset`, while
+schema registration code works with SQLAlchemy MetaTable declarations such as
+`AssetTable`.
+
+```python
+from msm.api.assets import Asset
+from msm.models import AssetTable
+```
+
+Row objects may expose explicit class methods such as `Asset.create_schemas()`,
+`Asset.upsert(...)`, and `Asset.filter(...)`. Mutation and lookup methods use the
+active runtime; they do not silently create schemas. Lower-level repository
+helpers remain available when a workflow needs direct access to registered table
+handles or raw platform operation payloads.
+
 ## Documentation Map
 
 - [Getting Started](getting-started.md)

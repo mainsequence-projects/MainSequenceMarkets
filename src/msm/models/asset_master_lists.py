@@ -15,7 +15,7 @@ from msm.base import (
 )
 
 
-class AssetMasterList(MarketsMetaTableMixin, MarketsBase):
+class AssetMasterListTable(MarketsMetaTableMixin, MarketsBase):
     """Control-plane table selecting the canonical asset reference MetaTable."""
 
     __metatable_identifier__ = "AssetMasterList"
@@ -53,4 +53,6 @@ class AssetMasterList(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-__all__ = ["AssetMasterList"]
+AssetMasterList = AssetMasterListTable
+
+__all__ = ["AssetMasterList", "AssetMasterListTable"]

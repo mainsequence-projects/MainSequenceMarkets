@@ -15,7 +15,7 @@ from msm.base import (
 )
 
 
-class RebalanceStrategyMetadata(MarketsMetaTableMixin, MarketsBase):
+class RebalanceStrategyMetadataTable(MarketsMetaTableMixin, MarketsBase):
     """Metadata row for a canonical portfolios rebalance strategy."""
 
     __metatable_identifier__ = "RebalanceStrategyMetadata"
@@ -42,4 +42,6 @@ class RebalanceStrategyMetadata(MarketsMetaTableMixin, MarketsBase):
     configuration_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-__all__ = ["RebalanceStrategyMetadata"]
+RebalanceStrategyMetadata = RebalanceStrategyMetadataTable
+
+__all__ = ["RebalanceStrategyMetadata", "RebalanceStrategyMetadataTable"]

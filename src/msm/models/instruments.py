@@ -15,7 +15,7 @@ from msm.base import (
 )
 
 
-class InstrumentsConfiguration(MarketsMetaTableMixin, MarketsBase):
+class InstrumentsConfigurationTable(MarketsMetaTableMixin, MarketsBase):
     """DataNode bindings used by instrument pricing and curve construction."""
 
     __metatable_identifier__ = "InstrumentsConfiguration"
@@ -49,4 +49,6 @@ class InstrumentsConfiguration(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-__all__ = ["InstrumentsConfiguration"]
+InstrumentsConfiguration = InstrumentsConfigurationTable
+
+__all__ = ["InstrumentsConfiguration", "InstrumentsConfigurationTable"]

@@ -15,10 +15,10 @@ from msm.base import (
     new_markets_uid,
 )
 
-from .assets import Asset
+from .assets import AssetTable
 
 
-class Portfolio(MarketsMetaTableMixin, MarketsBase):
+class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
     """Portfolio identity and relational configuration metadata."""
 
     __metatable_identifier__ = "Portfolio"
@@ -49,7 +49,7 @@ class Portfolio(MarketsMetaTableMixin, MarketsBase):
     portfolio_index_asset_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Asset.__table__.fullname}.uid",
+            f"{AssetTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Asset", "portfolio_index_asset_uid"),
             ondelete="SET NULL",
         ),
@@ -87,7 +87,7 @@ class Portfolio(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-class PortfolioAssetDetail(MarketsMetaTableMixin, MarketsBase):
+class PortfolioAssetDetailTable(MarketsMetaTableMixin, MarketsBase):
     """Explicit portfolio-to-asset relation for portfolio index asset details."""
 
     __metatable_identifier__ = "PortfolioAssetDetail"
@@ -112,7 +112,7 @@ class PortfolioAssetDetail(MarketsMetaTableMixin, MarketsBase):
     portfolio_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Portfolio.__table__.fullname}.uid",
+            f"{PortfolioTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Portfolio", "portfolio_uid"),
             ondelete="CASCADE",
         ),
@@ -121,7 +121,7 @@ class PortfolioAssetDetail(MarketsMetaTableMixin, MarketsBase):
     asset_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Asset.__table__.fullname}.uid",
+            f"{AssetTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="SET NULL",
         ),
@@ -131,7 +131,7 @@ class PortfolioAssetDetail(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-class PortfolioMetadata(MarketsMetaTableMixin, MarketsBase):
+class PortfolioMetadataTable(MarketsMetaTableMixin, MarketsBase):
     """Human-facing portfolio metadata keyed by stable portfolio identifier."""
 
     __metatable_identifier__ = "PortfolioMetadata"
@@ -153,4 +153,15 @@ class PortfolioMetadata(MarketsMetaTableMixin, MarketsBase):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-__all__ = ["Portfolio", "PortfolioAssetDetail", "PortfolioMetadata"]
+Portfolio = PortfolioTable
+PortfolioAssetDetail = PortfolioAssetDetailTable
+PortfolioMetadata = PortfolioMetadataTable
+
+__all__ = [
+    "Portfolio",
+    "PortfolioAssetDetail",
+    "PortfolioAssetDetailTable",
+    "PortfolioMetadata",
+    "PortfolioMetadataTable",
+    "PortfolioTable",
+]

@@ -15,7 +15,7 @@ from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
 configure_metatable_namespace(EXAMPLE_METATABLE_NAMESPACE)
 
 from msm.data_nodes.assets import AssetSnapshot  # noqa: E402
-from msm.models import Asset  # noqa: E402
+from msm.models import AssetTable  # noqa: E402
 from msm.services.assets.openfigi import (  # noqa: E402
     build_asset_rows_from_openfigi_result,
     normalize_openfigi_result,
@@ -43,7 +43,7 @@ def main() -> None:
         asset_uid=UUID("00000000-0000-0000-0000-000000000001"),
     )
 
-    assert isinstance(asset_rows.asset, Asset)
+    assert isinstance(asset_rows.asset, AssetTable)
     assert asset_rows.asset.unique_identifier == normalized["unique_identifier"]
     assert asset_rows.snapshot_frame.index.names == AssetSnapshot.default_config().index_names
 

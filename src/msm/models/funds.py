@@ -15,11 +15,11 @@ from msm.base import (
     new_markets_uid,
 )
 
-from .accounts import Account
-from .portfolios import Portfolio
+from .accounts import AccountTable
+from .portfolios import PortfolioTable
 
 
-class Fund(MarketsMetaTableMixin, MarketsBase):
+class FundTable(MarketsMetaTableMixin, MarketsBase):
     """Fund runtime model for account-bound portfolio tracking."""
 
     __metatable_identifier__ = "Fund"
@@ -49,7 +49,7 @@ class Fund(MarketsMetaTableMixin, MarketsBase):
     target_account_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Account.__table__.fullname}.uid",
+            f"{AccountTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Account", "target_account_uid"),
             ondelete="CASCADE",
         ),
@@ -58,7 +58,7 @@ class Fund(MarketsMetaTableMixin, MarketsBase):
     target_portfolio_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Portfolio.__table__.fullname}.uid",
+            f"{PortfolioTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Portfolio", "target_portfolio_uid"),
             ondelete="CASCADE",
         ),
@@ -68,4 +68,6 @@ class Fund(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-__all__ = ["Fund"]
+Fund = FundTable
+
+__all__ = ["Fund", "FundTable"]

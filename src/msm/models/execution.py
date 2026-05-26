@@ -17,12 +17,12 @@ from msm.base import (
     new_markets_uid,
 )
 
-from .accounts import Account
-from .assets import Asset
-from .funds import Fund
+from .accounts import AccountTable
+from .assets import AssetTable
+from .funds import FundTable
 
 
-class OrderManager(MarketsMetaTableMixin, MarketsBase):
+class OrderManagerTable(MarketsMetaTableMixin, MarketsBase):
     """Order-manager or rebalance execution batch row."""
 
     __metatable_identifier__ = "OrderManager"
@@ -52,7 +52,7 @@ class OrderManager(MarketsMetaTableMixin, MarketsBase):
     target_account_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Account.__table__.fullname}.uid",
+            f"{AccountTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Account", "target_account_uid"),
             ondelete="CASCADE",
         ),
@@ -71,7 +71,7 @@ class OrderManager(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-class OrderTargetQuantity(MarketsMetaTableMixin, MarketsBase):
+class OrderTargetQuantityTable(MarketsMetaTableMixin, MarketsBase):
     """Target quantity for one asset inside an order-manager batch."""
 
     __metatable_identifier__ = "OrderTargetQuantity"
@@ -99,7 +99,7 @@ class OrderTargetQuantity(MarketsMetaTableMixin, MarketsBase):
     order_manager_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{OrderManager.__table__.fullname}.uid",
+            f"{OrderManagerTable.__table__.fullname}.uid",
             name=markets_fk_name(
                 __metatable_identifier__,
                 "OrderManager",
@@ -112,7 +112,7 @@ class OrderTargetQuantity(MarketsMetaTableMixin, MarketsBase):
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Asset.__table__.fullname}.uid",
+            f"{AssetTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="RESTRICT",
         ),
@@ -121,7 +121,7 @@ class OrderTargetQuantity(MarketsMetaTableMixin, MarketsBase):
     quantity: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
 
 
-class Order(MarketsMetaTableMixin, MarketsBase):
+class OrderTable(MarketsMetaTableMixin, MarketsBase):
     """Broker or venue order emitted by a markets execution workflow."""
 
     __metatable_identifier__ = "Order"
@@ -176,7 +176,7 @@ class Order(MarketsMetaTableMixin, MarketsBase):
     order_manager_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{OrderManager.__table__.fullname}.uid",
+            f"{OrderManagerTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "OrderManager", "order_manager_uid"),
             ondelete="CASCADE",
         ),
@@ -185,7 +185,7 @@ class Order(MarketsMetaTableMixin, MarketsBase):
     asset_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Asset.__table__.fullname}.uid",
+            f"{AssetTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="SET NULL",
         ),
@@ -195,7 +195,7 @@ class Order(MarketsMetaTableMixin, MarketsBase):
     related_fund_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Fund.__table__.fullname}.uid",
+            f"{FundTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Fund", "related_fund_uid"),
             ondelete="CASCADE",
         ),
@@ -204,7 +204,7 @@ class Order(MarketsMetaTableMixin, MarketsBase):
     related_account_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Account.__table__.fullname}.uid",
+            f"{AccountTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Account", "related_account_uid"),
             ondelete="CASCADE",
         ),
@@ -216,7 +216,7 @@ class Order(MarketsMetaTableMixin, MarketsBase):
     venue_specific_properties: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-class OrderStatusEvent(MarketsMetaTableMixin, MarketsBase):
+class OrderStatusEventTable(MarketsMetaTableMixin, MarketsBase):
     """Status transition event observed for an order."""
 
     __metatable_identifier__ = "OrderStatusEvent"
@@ -238,7 +238,7 @@ class OrderStatusEvent(MarketsMetaTableMixin, MarketsBase):
     order_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Order.__table__.fullname}.uid",
+            f"{OrderTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Order", "order_uid"),
             ondelete="CASCADE",
         ),
@@ -247,7 +247,7 @@ class OrderStatusEvent(MarketsMetaTableMixin, MarketsBase):
     order_unique_identifier: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
-class Trade(MarketsMetaTableMixin, MarketsBase):
+class TradeTable(MarketsMetaTableMixin, MarketsBase):
     """Executed trade produced by a broker or venue."""
 
     __metatable_identifier__ = "Trade"
@@ -276,7 +276,9 @@ class Trade(MarketsMetaTableMixin, MarketsBase):
             markets_index_name(__metatable_identifier__, "related_account_uid"),
             "related_account_uid",
         ),
-        Index(markets_index_name(__metatable_identifier__, "related_order_uid"), "related_order_uid"),
+        Index(
+            markets_index_name(__metatable_identifier__, "related_order_uid"), "related_order_uid"
+        ),
     )
 
     uid: Mapped[uuid.UUID] = mapped_column(
@@ -289,7 +291,7 @@ class Trade(MarketsMetaTableMixin, MarketsBase):
     asset_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Asset.__table__.fullname}.uid",
+            f"{AssetTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="SET NULL",
         ),
@@ -301,7 +303,7 @@ class Trade(MarketsMetaTableMixin, MarketsBase):
     related_fund_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Fund.__table__.fullname}.uid",
+            f"{FundTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Fund", "related_fund_uid"),
             ondelete="CASCADE",
         ),
@@ -310,7 +312,7 @@ class Trade(MarketsMetaTableMixin, MarketsBase):
     related_account_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Account.__table__.fullname}.uid",
+            f"{AccountTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Account", "related_account_uid"),
             ondelete="CASCADE",
         ),
@@ -319,7 +321,7 @@ class Trade(MarketsMetaTableMixin, MarketsBase):
     related_order_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Order.__table__.fullname}.uid",
+            f"{OrderTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Order", "related_order_uid"),
             ondelete="CASCADE",
         ),
@@ -339,7 +341,7 @@ class Trade(MarketsMetaTableMixin, MarketsBase):
     )
 
 
-class ExecutionError(MarketsMetaTableMixin, MarketsBase):
+class ExecutionErrorTable(MarketsMetaTableMixin, MarketsBase):
     """Execution error captured by an order or broker integration."""
 
     __metatable_identifier__ = "ExecutionError"
@@ -365,7 +367,7 @@ class ExecutionError(MarketsMetaTableMixin, MarketsBase):
     related_account_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Account.__table__.fullname}.uid",
+            f"{AccountTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Account", "related_account_uid"),
             ondelete="CASCADE",
         ),
@@ -374,7 +376,7 @@ class ExecutionError(MarketsMetaTableMixin, MarketsBase):
     related_fund_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Fund.__table__.fullname}.uid",
+            f"{FundTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Fund", "related_fund_uid"),
             ondelete="CASCADE",
         ),
@@ -384,11 +386,24 @@ class ExecutionError(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
+OrderManager = OrderManagerTable
+OrderTargetQuantity = OrderTargetQuantityTable
+Order = OrderTable
+OrderStatusEvent = OrderStatusEventTable
+Trade = TradeTable
+ExecutionError = ExecutionErrorTable
+
 __all__ = [
     "ExecutionError",
+    "ExecutionErrorTable",
     "Order",
     "OrderManager",
+    "OrderManagerTable",
     "OrderStatusEvent",
+    "OrderStatusEventTable",
+    "OrderTable",
     "OrderTargetQuantity",
+    "OrderTargetQuantityTable",
     "Trade",
+    "TradeTable",
 ]

@@ -15,10 +15,10 @@ from msm.base import (
     new_markets_uid,
 )
 
-from .assets import Asset
+from .assets import AssetTable
 
 
-class OpenFigiDetails(MarketsMetaTableMixin, MarketsBase):
+class OpenFigiDetailsTable(MarketsMetaTableMixin, MarketsBase):
     """OpenFIGI/provider detail row linked to a markets asset."""
 
     __metatable_identifier__ = "OpenFigiDetails"
@@ -42,7 +42,7 @@ class OpenFigiDetails(MarketsMetaTableMixin, MarketsBase):
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{Asset.__table__.fullname}.uid",
+            f"{AssetTable.__table__.fullname}.uid",
             name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="CASCADE",
         ),
@@ -65,4 +65,6 @@ class OpenFigiDetails(MarketsMetaTableMixin, MarketsBase):
     raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-__all__ = ["OpenFigiDetails"]
+OpenFigiDetails = OpenFigiDetailsTable
+
+__all__ = ["OpenFigiDetails", "OpenFigiDetailsTable"]

@@ -49,6 +49,8 @@ nav:
       - SDK Markets Migration: ADR/0003-sdk-markets-migration.md
       - Pricing Package Refactor: ADR/0005-pricing-package-refactor.md
       - Asset Package Boundary: ADR/0006-asset-package-boundary.md
+      - AssetIndexedDataNode Asset Foreign Keys: ADR/0007-market-data-node-asset-foreign-keys.md
+      - MetaTable Table And API Model Split: ADR/0008-metatable-table-and-api-model-split.md
       - VAM Markets Ownership Transfer: ADR/0004-vam-markets-ownership-transfer.md
   - Changelog: changelog.md
   - Reference:

@@ -10,7 +10,13 @@ from mainsequence.tdag.meta_tables import (
 
 import msm.meta_tables as meta_tables
 from msm.meta_tables import build_markets_registration_requests, markets_meta_table_fullname
-from msm.models import Asset, AssetMasterList, markets_sqlalchemy_models
+from msm.models import (
+    Asset,
+    AssetMasterList,
+    AssetMasterListTable,
+    AssetTable,
+    markets_sqlalchemy_models,
+)
 
 
 def test_markets_models_use_platform_managed_table_mixin() -> None:
@@ -25,7 +31,23 @@ def test_markets_models_use_platform_managed_table_mixin() -> None:
 
 
 def test_asset_model_does_not_store_arbitrary_metadata_json() -> None:
-    assert "metadata_json" not in Asset.__table__.c
+    assert "metadata_json" not in AssetTable.__table__.c
+
+
+def test_legacy_model_aliases_point_to_table_declarations() -> None:
+    assert Asset is AssetTable
+    assert AssetMasterList is AssetMasterListTable
+
+
+def test_selected_metatable_models_resolve_in_dependency_order() -> None:
+    models = meta_tables.resolve_markets_meta_table_models(
+        ["AssetCategoryMembership", "Asset"],
+    )
+
+    assert models == [
+        AssetTable,
+        meta_tables.resolve_markets_meta_table_model("AssetCategoryMembership"),
+    ]
 
 
 def test_markets_models_build_platform_registration_requests_in_dependency_order() -> None:
@@ -39,14 +61,14 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
             target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
         )[0]
         requests.append(request)
-        target_meta_table_uid_by_fullname[markets_meta_table_fullname(model)] = str(
-            uuid.uuid4()
-        )
+        target_meta_table_uid_by_fullname[markets_meta_table_fullname(model)] = str(uuid.uuid4())
 
-    assert AssetMasterList in markets_sqlalchemy_models()
+    assert AssetMasterListTable in markets_sqlalchemy_models()
     assert requests
     assert all(request.management_mode == "platform_managed" for request in requests)
-    assert all(request.storage_hash == request.table_contract.physical.table_name for request in requests)
+    assert all(
+        request.storage_hash == request.table_contract.physical.table_name for request in requests
+    )
 
 
 def test_markets_models_build_external_registration_requests_in_dependency_order() -> None:
@@ -61,9 +83,7 @@ def test_markets_models_build_external_registration_requests_in_dependency_order
             target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
         )[0]
         requests.append(request)
-        target_meta_table_uid_by_fullname[markets_meta_table_fullname(model)] = str(
-            uuid.uuid4()
-        )
+        target_meta_table_uid_by_fullname[markets_meta_table_fullname(model)] = str(uuid.uuid4())
 
     assert requests
     assert all(request.management_mode == "external_registered" for request in requests)
@@ -99,9 +119,9 @@ def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
         models=[FakeModel],
     )
 
-    assert result.target_meta_table_uid_by_fullname == {
-        "public.fake_asset": "fake-meta-table-uid"
-    }
+    assert result.target_meta_table_uid_by_fullname == {"public.fake_asset": "fake-meta-table-uid"}
+    assert result.models == [FakeModel]
+    assert result.meta_table_by_fullname["public.fake_asset"].uid == "fake-meta-table-uid"
     assert [event for event, _kwargs in spy_logger.events] == [
         "Registering markets MetaTable schema",
         "Registered markets MetaTable schema",

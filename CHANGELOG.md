@@ -11,8 +11,9 @@ and this project follows versioned releases.
 
 - Added a GitHub Actions workflow to build and publish `ms-markets` to PyPI
   when a `v*` tag is pushed, using GitHub OIDC trusted publishing.
-- Added an asset CRUD example covering creation, lookup by identifier and UID,
-  search, and deletion of temporary custom assets.
+- Added an asset CRUD example covering asset creation, lookup by identifier and
+  UID, OpenFIGI detail registration, AssetSnapshot frame updates, created asset
+  listing, and optional cleanup of temporary custom assets.
 - Added an offline platform example for inspecting SDK-derived markets
   MetaTable model names.
 - Added `msm.create_schemas(...)` to bootstrap markets MetaTables and return a
@@ -25,14 +26,24 @@ and this project follows versioned releases.
   registration, context creation, runtime creation, and cached-runtime reuse.
 - Exposed registered MetaTable handles and DataNode class handles on the
   `msm.create_schemas(...)` runtime instead of accepting broad labels on startup.
+- Added `models=[...]` support to `msm.create_schemas(...)` so narrow workflows
+  can register only the required markets MetaTables.
+- Added `runtime.table("Asset")` / `MarketsMetaTableHandle` for single-table
+  service calls without passing the full repository context.
+- Added an ADR for making `AssetIndexedDataNode` configurations declare
+  canonical foreign keys to the `Asset` MetaTable.
+- Added an ADR for splitting SQLAlchemy MetaTable declarations such as
+  `AssetTable` from user-facing Pydantic API row models such as `Asset`.
+- Documented the library-wide API style: users work with typed `msm.api` row
+  objects, while schema code works with `msm.models.*Table` declarations.
 - Added AssetSnapshot service entrypoints for validated DataNode frame/node
   updates.
 - Added an AssetSnapshot example using an example-scoped DataNode identifier.
 - Added `examples/platform/bootstrap.py` as the home for the example MetaTable
   namespace constant used before direct `msm.create_schemas(...)` bootstrap calls.
 - Documented the direct example bootstrap pattern so calls like
-  `upsert_asset(context, ...)` route to example-scoped MetaTables through the
-  returned context while production startup remains namespace-free.
+  `upsert_asset(asset_table, ...)` route to example-scoped MetaTables through
+  the returned table handle while production startup remains namespace-free.
 - Documented the asset CRUD workflow in the asset knowledge docs and market
   workflow tutorial.
 - Corrected the examples directory name to `examples/`.
@@ -46,6 +57,8 @@ and this project follows versioned releases.
   `__tablename__`.
 - Removed the arbitrary `metadata_json` column and create/update/upsert payload
   from the core `Asset` MetaTable model.
+- Updated asset service helpers to accept the registered asset table handle
+  while keeping the full repository context available for multi-table workflows.
 
 ## [0.0.1] - 2026-05-25
 

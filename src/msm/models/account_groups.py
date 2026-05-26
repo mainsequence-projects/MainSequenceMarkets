@@ -16,7 +16,7 @@ from msm.base import (
 )
 
 
-class AccountModelPortfolio(MarketsMetaTableMixin, MarketsBase):
+class AccountModelPortfolioTable(MarketsMetaTableMixin, MarketsBase):
     """Named model portfolio grouping account groups."""
 
     __metatable_identifier__ = "AccountModelPortfolio"
@@ -39,7 +39,7 @@ class AccountModelPortfolio(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-class AccountGroup(MarketsMetaTableMixin, MarketsBase):
+class AccountGroupTable(MarketsMetaTableMixin, MarketsBase):
     """Account grouping metadata used by market workflows."""
 
     __metatable_identifier__ = "AccountGroup"
@@ -66,7 +66,7 @@ class AccountGroup(MarketsMetaTableMixin, MarketsBase):
     account_model_portfolio_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{AccountModelPortfolio.__table__.fullname}.uid",
+            f"{AccountModelPortfolioTable.__table__.fullname}.uid",
             name=markets_fk_name(
                 __metatable_identifier__,
                 "AccountModelPortfolio",
@@ -79,4 +79,12 @@ class AccountGroup(MarketsMetaTableMixin, MarketsBase):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-__all__ = ["AccountGroup", "AccountModelPortfolio"]
+AccountModelPortfolio = AccountModelPortfolioTable
+AccountGroup = AccountGroupTable
+
+__all__ = [
+    "AccountGroup",
+    "AccountGroupTable",
+    "AccountModelPortfolio",
+    "AccountModelPortfolioTable",
+]

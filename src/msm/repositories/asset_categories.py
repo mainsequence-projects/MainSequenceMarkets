@@ -8,7 +8,7 @@ from sqlalchemy import delete
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
 
-from msm.models import AssetCategory, AssetCategoryMembership
+from msm.models import AssetCategoryTable, AssetCategoryMembershipTable
 
 from .base import MarketsRepositoryContext, compile_markets_statement, execute_markets_operation
 from .crud import (
@@ -31,7 +31,7 @@ def build_create_asset_category_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=AssetCategory,
+        model=AssetCategoryTable,
         values={
             "unique_identifier": unique_identifier,
             "display_name": display_name,
@@ -53,7 +53,7 @@ def build_get_asset_category_by_uid_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_get_model_by_uid_operation(context, model=AssetCategory, uid=uid)
+    return build_get_model_by_uid_operation(context, model=AssetCategoryTable, uid=uid)
 
 
 def get_asset_category_by_uid(
@@ -74,7 +74,7 @@ def build_get_asset_category_by_unique_identifier_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_get_model_by_unique_identifier_operation(
         context,
-        model=AssetCategory,
+        model=AssetCategoryTable,
         unique_identifier=unique_identifier,
     )
 
@@ -102,7 +102,7 @@ def build_search_asset_categories_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_search_model_operation(
         context,
-        model=AssetCategory,
+        model=AssetCategoryTable,
         contains_filters={
             "unique_identifier": unique_identifier_contains or "",
             "display_name": display_name_contains or "",
@@ -128,7 +128,7 @@ def build_update_asset_category_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_update_model_operation(
         context,
-        model=AssetCategory,
+        model=AssetCategoryTable,
         uid=uid,
         values={
             "display_name": display_name,
@@ -150,7 +150,7 @@ def build_delete_asset_category_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(context, model=AssetCategory, uid=uid)
+    return build_delete_model_operation(context, model=AssetCategoryTable, uid=uid)
 
 
 def delete_asset_category(
@@ -172,7 +172,7 @@ def build_create_asset_category_membership_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=AssetCategoryMembership,
+        model=AssetCategoryMembershipTable,
         values={
             "category_uid": category_uid,
             "asset_uid": asset_uid,
@@ -204,7 +204,7 @@ def build_search_asset_category_memberships_operation(
         filters["asset_uid"] = asset_uid
     return build_search_model_operation(
         context,
-        model=AssetCategoryMembership,
+        model=AssetCategoryMembershipTable,
         filters=filters,
         limit=limit,
     )
@@ -225,7 +225,7 @@ def build_delete_asset_category_membership_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(context, model=AssetCategoryMembership, uid=uid)
+    return build_delete_model_operation(context, model=AssetCategoryMembershipTable, uid=uid)
 
 
 def build_delete_asset_category_membership_by_pair_operation(
@@ -234,15 +234,15 @@ def build_delete_asset_category_membership_by_pair_operation(
     category_uid: uuid.UUID | str,
     asset_uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    statement = delete(AssetCategoryMembership).where(
-        AssetCategoryMembership.category_uid == category_uid,
-        AssetCategoryMembership.asset_uid == asset_uid,
+    statement = delete(AssetCategoryMembershipTable).where(
+        AssetCategoryMembershipTable.category_uid == category_uid,
+        AssetCategoryMembershipTable.asset_uid == asset_uid,
     )
     return compile_markets_statement(
         statement,
         context=context,
         operation="delete",
-        models=[AssetCategoryMembership],
+        models=[AssetCategoryMembershipTable],
         access="write",
     )
 
@@ -252,14 +252,14 @@ def build_delete_asset_category_memberships_for_category_operation(
     *,
     category_uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    statement = delete(AssetCategoryMembership).where(
-        AssetCategoryMembership.category_uid == category_uid
+    statement = delete(AssetCategoryMembershipTable).where(
+        AssetCategoryMembershipTable.category_uid == category_uid
     )
     return compile_markets_statement(
         statement,
         context=context,
         operation="delete",
-        models=[AssetCategoryMembership],
+        models=[AssetCategoryMembershipTable],
         access="write",
     )
 

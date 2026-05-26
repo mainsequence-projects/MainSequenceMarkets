@@ -24,6 +24,8 @@ def install_fake_bootstrap_modules(monkeypatch):
     registration = SimpleNamespace(
         target_meta_table_uid_by_fullname={"public.asset": "asset-meta-table-uid"},
         meta_tables=["asset-meta-table"],
+        models=["Asset"],
+        meta_table_by_fullname={"public.asset": "asset-meta-table"},
     )
 
     class FakeMarketsRepositoryContext:
@@ -46,6 +48,7 @@ def install_fake_bootstrap_modules(monkeypatch):
         "msm.meta_tables",
         SimpleNamespace(
             markets_meta_table_models=lambda: ["Asset"],
+            resolve_markets_meta_table_models=lambda models=None: list(models or ["Asset"]),
             register_markets_meta_tables=fake_register_markets_meta_tables,
         ),
     )
@@ -82,7 +85,21 @@ def test_create_schemas_registers_metatables_and_returns_repository_context(
     assert runtime.namespace is None
     assert runtime.context.namespace is None
     assert calls[0]["data_source_uid"] == "data-source-uid"
+    assert calls[0]["models"] == ["Asset"]
     assert "labels" not in calls[0]
+
+
+def test_create_schemas_can_register_selected_models(monkeypatch) -> None:
+    calls, _registration = install_fake_bootstrap_modules(monkeypatch)
+    monkeypatch.setattr(bootstrap, "configure_metatable_namespace", lambda namespace: None)
+
+    runtime = bootstrap.create_schemas(
+        namespace="mainsequence.examples",
+        models=["Asset"],
+    )
+
+    assert runtime.meta_table_models == ["Asset"]
+    assert calls[0]["models"] == ["Asset"]
 
 
 def test_create_schemas_logs_bootstrap_resources(monkeypatch) -> None:
@@ -98,15 +115,19 @@ def test_create_schemas_logs_bootstrap_resources(monkeypatch) -> None:
     assert event_names == [
         "Starting markets bootstrap",
         "Configuring markets MetaTable namespace",
+        "Resolved markets MetaTable models",
         "Registered markets MetaTables",
         "Created markets repository context",
         "Created markets runtime",
         "Reusing cached markets runtime; no MetaTables registered",
     ]
-    registered_event = spy_logger.events[2][1]
+    resolved_event = spy_logger.events[2][1]
+    assert resolved_event["model_count"] == 1
+    assert resolved_event["models"] == ["Asset"]
+    registered_event = spy_logger.events[3][1]
     assert registered_event["meta_table_count"] == 1
     assert registered_event["target_meta_table_count"] == 1
-    runtime_event = spy_logger.events[4][1]
+    runtime_event = spy_logger.events[5][1]
     assert runtime_event["data_node_handles"] == list(bootstrap.DATA_NODE_HANDLE_NAMES)
 
 

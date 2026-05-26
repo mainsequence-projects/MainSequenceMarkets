@@ -4,7 +4,7 @@ These examples show the intended runtime boundary.
 
 1. Register the markets SQLAlchemy models as MetaTables.
 2. Build a `MarketsRepositoryContext` from the returned MetaTable UID mapping.
-3. Use services for market records.
+3. Use typed row APIs or services for market records.
 4. Use DataNode helpers for historical tables such as holdings and target
    positions.
 
@@ -43,13 +43,16 @@ import msm
 
 from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
 
-runtime = msm.create_schemas(namespace=EXAMPLE_METATABLE_NAMESPACE)
+runtime = msm.create_schemas(
+    namespace=EXAMPLE_METATABLE_NAMESPACE,
+    models=["Asset"],
+)
 context = runtime.context
+asset_table = runtime.table("Asset")
 ```
 
-The service call path stays the same after that. For example,
-`upsert_asset(context, ...)` writes to the example-scoped `Asset` MetaTable
-because the context came from the example bootstrap.
+Use the table handle for asset-only service calls. It carries the registered
+MetaTable UID and namespace without carrying unrelated table state.
 
 ## Assets And Categories
 
@@ -58,40 +61,35 @@ stable contract consumed by holdings, target positions, pricing details, and
 portfolio workflows.
 
 ```python
-from msm.services import (
-    delete_asset,
-    get_asset_by_uid,
-    get_asset_by_unique_identifier,
-    search_assets,
-    upsert_asset,
-)
+from msm.api.assets import Asset
 
-btc = upsert_asset(
-    context,
+btc = Asset.upsert(
     unique_identifier="example-asset-btc",
     asset_type="crypto",
 )
 
-btc_by_identifier = get_asset_by_unique_identifier(
-    context,
+btc_by_identifier = Asset.get_by_unique_identifier(
     unique_identifier="example-asset-btc",
 )
-btc_by_uid = get_asset_by_uid(context, uid=btc["uid"])
-crypto_assets = search_assets(
-    context,
+btc_by_uid = Asset.get_by_uid(btc.uid)
+crypto_assets = Asset.filter(
     unique_identifier_contains="example-asset-",
     asset_type="crypto",
     limit=20,
 )
-
-delete_asset(context, uid=btc["uid"])
+# Optional cleanup for temporary custom assets only:
+# from msm.services import delete_asset
+# delete_asset(asset_table, uid=btc.uid)
 ```
 
-Use deletion for temporary or organization-owned custom assets only. Shared
-public/mastered assets should remain stable so downstream workflows do not lose
-their canonical identity.
+Do not delete assets during normal setup. Use cleanup only for temporary or
+organization-owned custom assets. Shared public/mastered assets should remain
+stable so downstream workflows do not lose their canonical identity.
 
-See `examples/assets/asset_crud_workflow.py` for the focused asset CRUD example.
+See `examples/assets/asset_crud_workflow.py` for the focused workflow. It
+registers only the `Asset` and `OpenFigiDetails` MetaTables, creates assets,
+adds OpenFIGI details for `BBG00FNFPQH4`, writes an AssetSnapshot frame, and
+lists the created assets. Cleanup is disabled by default.
 
 ## Asset Snapshots
 
@@ -126,8 +124,16 @@ from msm.services import (
     upsert_asset,
 )
 
-btc = upsert_asset(context, unique_identifier="BTC", asset_type="crypto")
-eth = upsert_asset(context, unique_identifier="ETH", asset_type="crypto")
+# Multi-table workflows need a runtime that registered every model they touch.
+runtime = msm.create_schemas(
+    namespace=EXAMPLE_METATABLE_NAMESPACE,
+    models=["Asset", "AssetCategory", "AssetCategoryMembership"],
+)
+context = runtime.context
+asset_table = runtime.table("Asset")
+
+btc = upsert_asset(asset_table, unique_identifier="BTC", asset_type="crypto")
+eth = upsert_asset(asset_table, unique_identifier="ETH", asset_type="crypto")
 category = create_asset_category(
     context,
     unique_identifier="crypto-majors",

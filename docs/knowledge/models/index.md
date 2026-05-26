@@ -1,8 +1,10 @@
 # Models
 
 The models concept owns SQLAlchemy definitions for the market-domain schema.
-These models define what can be registered as Main Sequence MetaTables and in
-which dependency order.
+These declarations define what can be registered as Main Sequence MetaTables and
+in which dependency order. Table declaration class names use the `Table` suffix;
+for example, `AssetTable` is the SQLAlchemy MetaTable declaration while
+`msm.api.assets.Asset` is the user-facing Pydantic row object.
 
 ## Scope
 
@@ -36,8 +38,8 @@ updated when adding persistent market objects so schema registration stays
 deterministic.
 
 Models should represent durable schema. Runtime-only behavior belongs in
-DataNodes, services, pricing classes, or client helpers depending on the use
-case.
+DataNodes, services, pricing classes, or `msm.api` row helpers depending on the
+use case.
 
 Every model returned by `markets_sqlalchemy_models()` must be registerable as a
 MetaTable in both platform-managed and external-registered modes.
@@ -52,10 +54,13 @@ hash for the resolved table contract.
 
 When adding a model:
 
-1. Define the SQLAlchemy class in the relevant module.
+1. Define the SQLAlchemy class in the relevant module with a `Table` suffix.
 2. Add it to `markets_sqlalchemy_models()` in dependency order.
 3. Add repository operations if application code needs compiled database access.
-4. Add service wrappers if the operation is part of an application workflow.
+4. Add a Pydantic row model under `msm.api` when users should manipulate typed
+   row objects.
+5. Add service wrappers if the operation is part of a broader application
+   workflow.
 
 ## Related Concepts
 

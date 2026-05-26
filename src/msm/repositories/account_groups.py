@@ -5,7 +5,7 @@ from typing import Any
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
 
-from msm.models import AccountGroup, AccountModelPortfolio
+from msm.models import AccountGroupTable, AccountModelPortfolioTable
 
 from .base import MarketsRepositoryContext, execute_markets_operation
 from .crud import (
@@ -26,7 +26,7 @@ def build_create_account_model_portfolio_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=AccountModelPortfolio,
+        model=AccountModelPortfolioTable,
         values={
             "model_portfolio_name": model_portfolio_name,
             "model_portfolio_description": model_portfolio_description,
@@ -53,7 +53,7 @@ def build_search_account_model_portfolios_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_search_model_operation(
         context,
-        model=AccountModelPortfolio,
+        model=AccountModelPortfolioTable,
         contains_filters={
             "model_portfolio_name": model_portfolio_name_contains or "",
         },
@@ -81,7 +81,7 @@ def build_create_account_group_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=AccountGroup,
+        model=AccountGroupTable,
         values={
             "group_name": group_name,
             "group_description": group_description,
@@ -103,7 +103,7 @@ def build_get_account_group_by_uid_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_get_model_by_uid_operation(context, model=AccountGroup, uid=uid)
+    return build_get_model_by_uid_operation(context, model=AccountGroupTable, uid=uid)
 
 
 def build_search_account_groups_operation(
@@ -118,7 +118,7 @@ def build_search_account_groups_operation(
         filters["account_model_portfolio_uid"] = account_model_portfolio_uid
     return build_search_model_operation(
         context,
-        model=AccountGroup,
+        model=AccountGroupTable,
         filters=filters,
         contains_filters={"group_name": group_name_contains or ""},
         limit=limit,
@@ -146,7 +146,7 @@ def build_update_account_group_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_update_model_operation(
         context,
-        model=AccountGroup,
+        model=AccountGroupTable,
         uid=uid,
         values={
             "group_name": group_name,
@@ -169,7 +169,7 @@ def build_delete_account_group_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(context, model=AccountGroup, uid=uid)
+    return build_delete_model_operation(context, model=AccountGroupTable, uid=uid)
 
 
 def delete_account_group(

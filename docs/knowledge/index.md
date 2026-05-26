@@ -7,6 +7,26 @@ and future tutorials have a stable place to live.
 Use these pages before adding new modules. They define what each concept owns,
 what it should not own, and which package should be extended for common changes.
 
+## General Library Spirit
+
+The library should feel like a typed market-domain API to users, not like a
+collection of SQLAlchemy internals. For row-oriented MetaTable data:
+
+- user-facing code imports Pydantic row objects from `msm.api.*`;
+- schema/bootstrap code imports SQLAlchemy declarations from `msm.models.*Table`;
+- row classes declare their backing table through `__table__` and required
+  schema set through `__required_tables__`;
+- row class methods such as `create_schemas(...)`, `upsert(...)`, `filter(...)`,
+  and lookups are the preferred ergonomic surface;
+- repository helpers remain lower-level building blocks for compiled MetaTable
+  operations and can return raw platform payloads;
+- services own broader workflows that compose providers, repositories,
+  DataNodes, and row APIs.
+
+This pattern is recorded in
+[ADR 0008](../ADR/0008-metatable-table-and-api-model-split.md) and should guide
+new MetaTable-facing APIs unless a more specific ADR overrides it.
+
 ## Concept Map
 
 - [Accounts](accounts/index.md): account identity, holdings, virtual funds, and

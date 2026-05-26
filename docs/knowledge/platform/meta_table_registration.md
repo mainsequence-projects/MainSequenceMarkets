@@ -43,6 +43,23 @@ runtime = msm.create_schemas()
 context = runtime.context
 ```
 
+For narrow workflows, pass `models=[...]` to register only the tables the
+process needs. String selectors avoid importing `msm.models` before an example
+namespace is configured:
+
+```python
+import msm
+
+runtime = msm.create_schemas(models=["Asset"])
+asset_table = runtime.table("Asset")
+```
+
+`runtime.table("Asset")` returns a single registered MetaTable handle with the
+SQLAlchemy model, MetaTable UID, optional registered `MetaTable` object, limits,
+timeout, and namespace. Prefer that handle for single-table service helpers.
+Use `runtime.context` when compiling operations that touch multiple registered
+models.
+
 Production applications normally do not pass a runtime namespace override. They
 use the library's built-in MetaTable identity and keep
 `runtime.context.namespace` as `None`.
@@ -64,7 +81,9 @@ registration flow.
 not broadcast the same labels to every platform resource. The returned runtime
 exposes `runtime.meta_tables`, `runtime.meta_table_models`, and
 `runtime.data_nodes` so callers can decide which concrete MetaTables or
-DataNodes need labels or other follow-up handling.
+DataNodes need labels or other follow-up handling. When `models=[...]` is used,
+`runtime.meta_tables` and `runtime.meta_table_models` contain only the selected
+registered models.
 
 Example platform resources must use the example MetaTable namespace before any
 `msm.models` import maps the SQLAlchemy classes:
@@ -91,9 +110,29 @@ runtime = msm.create_schemas(namespace=EXAMPLE_METATABLE_NAMESPACE)
 context = runtime.context
 ```
 
-Service helpers such as `upsert_asset(context, ...)` receive that context. They
-do not take a namespace argument directly; the context already points at the
-MetaTable UID mapping registered for the selected namespace.
+Asset-only examples can register and use just the asset table:
+
+```python
+import msm
+
+from examples.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE
+from msm.services import upsert_asset
+
+runtime = msm.create_schemas(
+    namespace=EXAMPLE_METATABLE_NAMESPACE,
+    models=["Asset"],
+)
+asset_table = runtime.table("Asset")
+upsert_asset(
+    asset_table,
+    unique_identifier="example-asset-btc",
+    asset_type="crypto",
+)
+```
+
+Service helpers such as `upsert_asset(asset_table, ...)` receive the table
+handle, not a namespace argument. The handle already points at the MetaTable UID
+registered for the selected namespace.
 
 ## External Registered
 
@@ -118,10 +157,11 @@ External mode does not import application ORM code into the backend. The
 application registers a neutral table contract derived from the `msm` SQLAlchemy
 model metadata.
 
-## Repository Context
+## Table Handles And Repository Context
 
-Repository and service functions need the MetaTable UID mapping returned by
-registration.
+Repository and service functions need registered MetaTable UIDs. Single-table
+helpers should receive a `MarketsMetaTableHandle`; multi-table helpers should
+receive the full `MarketsRepositoryContext`.
 
 ```python
 from msm.repositories.base import MarketsRepositoryContext
@@ -130,6 +170,7 @@ context = MarketsRepositoryContext(
     target_meta_table_uid_by_fullname=result.target_meta_table_uid_by_fullname,
     limits={"max_rows": 1000, "statement_timeout_ms": 15000},
 )
+asset_table = context.table("Asset")
 ```
 
 Operations compiled by repositories use the `compiled-sql.v1` platform protocol.

@@ -15,7 +15,7 @@ from msm.base import (
 )
 
 
-class SignalMetadata(MarketsMetaTableMixin, MarketsBase):
+class SignalMetadataTable(MarketsMetaTableMixin, MarketsBase):
     """Metadata row for a canonical portfolios signal."""
 
     __metatable_identifier__ = "SignalMetadata"
@@ -37,4 +37,6 @@ class SignalMetadata(MarketsMetaTableMixin, MarketsBase):
     signal_description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-__all__ = ["SignalMetadata"]
+SignalMetadata = SignalMetadataTable
+
+__all__ = ["SignalMetadata", "SignalMetadataTable"]
