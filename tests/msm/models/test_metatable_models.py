@@ -4,6 +4,7 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from mainsequence.client.exceptions import ConflictError
 from mainsequence.tdag.meta_tables import (
     PlatformManagedMetaTable,
     metatable_configured_tablename,
@@ -137,6 +138,50 @@ def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
     assert registered_event["meta_table_uid"] == "fake-meta-table-uid"
 
 
+def test_register_markets_meta_tables_reuses_duplicate_physical_table_conflict(
+    monkeypatch,
+) -> None:
+    class FakeModel:
+        __metatable_namespace__ = "mainsequence.examples"
+        __metatable_identifier__ = "FakeModel"
+        __table__ = SimpleNamespace(
+            fullname="public.fake_asset",
+            name="fake_asset",
+        )
+
+        @classmethod
+        def register(cls, **_kwargs):
+            raise ConflictError(
+                "duplicate",
+                payload={
+                    "code": "duplicate_meta_table",
+                    "existing_meta_table_uid": "existing-meta-table-uid",
+                    "storage_hash": "fake_asset",
+                    "physical_table_name": "fake_asset",
+                    "data_source_uid": "data-source-uid",
+                },
+            )
+
+    monkeypatch.setattr(
+        meta_tables.MetaTable,
+        "get_by_uid",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("not visible")),
+    )
+
+    result = meta_tables.register_markets_meta_tables(
+        data_source_uid="data-source-uid",
+        models=[FakeModel],
+    )
+
+    meta_table = result.meta_table_by_fullname["public.fake_asset"]
+    assert result.target_meta_table_uid_by_fullname == {
+        "public.fake_asset": "existing-meta-table-uid"
+    }
+    assert meta_table.uid == "existing-meta-table-uid"
+    assert meta_table.physical_table_name == "fake_asset"
+    assert meta_table.storage_hash == "fake_asset"
+
+
 def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monkeypatch) -> None:
     calls = []
     meta_table = SimpleNamespace(
@@ -167,12 +212,12 @@ def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monk
     assert result.target_meta_table_uid_by_fullname == {"public.fake_asset": "fake-meta-table-uid"}
     assert result.meta_table_by_fullname["public.fake_asset"] is meta_table
     assert calls == [
-        {
-            "timeout": None,
-            "storage_hash": "fake_storage_hash",
-            "identifier": "FakeModel",
-            "namespace": "mainsequence.markets",
-            "management_mode": "platform_managed",
+            {
+                "timeout": None,
+                "physical_table_name": "fake_storage_hash",
+                "identifier": "FakeModel",
+                "namespace": "mainsequence.markets",
+                "management_mode": "platform_managed",
             "data_source__uid": "data-source-uid",
         }
     ]

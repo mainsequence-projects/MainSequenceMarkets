@@ -110,7 +110,11 @@ def test_missing_required_table_fails_before_operation(monkeypatch) -> None:
         },
     )
 
-    monkeypatch.setattr("msm.bootstrap.get_runtime", lambda: runtime)
+    def fake_attach_schemas(**kwargs):
+        raise RuntimeError("offline unit test")
+
+    monkeypatch.setattr("msm.bootstrap._RUNTIME", runtime)
+    monkeypatch.setattr("msm.bootstrap.attach_schemas", fake_attach_schemas)
 
     with pytest.raises(RuntimeError, match="AssetTable"):
         Portfolio.filter(unique_identifier_contains="demo")

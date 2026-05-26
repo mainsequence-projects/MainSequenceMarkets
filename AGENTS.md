@@ -51,8 +51,6 @@ Core responsibilities:
 - translate user business logic into reusable code under `src/` so it can be reused by APIs,
   dashboards, jobs, and other project components instead of duplicating logic in integration
   layers
-- maintain the repository through the maintenance skills, including project-state reconciliation,
-  journaling, blocker tracking, and bug auditing
 
 Typical outcomes include:
 
@@ -64,7 +62,6 @@ Typical outcomes include:
   surface before building it
 - build reusable business logic in `src/` and keep thin integration layers in APIs, jobs, and
   dashboards
-- keep the repository auditable through maintenance, journaling, and bug reporting
 
 Working rules for this role:
 
@@ -92,9 +89,7 @@ User-resolution rule for agents:
 
 Delegation rules:
 
-- when work is delegated or queued for later, write the task in `.agents/tasks.md` according to
-  the skill that should execute it
-- each delegated or queued task in `.agents/tasks.md` must state:
+- when work is delegated or queued for later, state:
   - the exact task scope
   - the owning skill
   - the expected output, decision, or artifact
@@ -164,9 +159,6 @@ Typical routing:
   `.agents/skills/mainsequence/project_builder/SKILL.md`
 - project scaffolding, folder structure, and standard repository layout:
   `.agents/skills/mainsequence/project_builder/SKILL.md`
-- project-state reconciliation, milestone logging, blocker recording, and next-step updates under
-  `.agents/`:
-  `.agents/skills/mainsequence/maintenance/local_journal/SKILL.md`
 - project status audits, blocker analysis, failure classification, and upstream SDK assessment:
   `.agents/skills/mainsequence/maintenance/bug_auditor/SKILL.md`
 - DataNodes, updates, identifiers, schema, metadata:
@@ -198,24 +190,19 @@ For any non-trivial Main Sequence task:
 
 1. Read the latest relevant Main Sequence documentation.
 2. Compare the implementation against the latest documented behavior.
-3. Check `.agents/status.md` for the latest verified state.
-4. Check `.agents/tasks.md` for current priorities.
-5. Check `.agents/record.md` for project identifiers, checkout path, and orchestration notes.
-6. If an error appears, check `.agents/journal.md` for the same or related error and any prior
-   fix.
-7. Confirm you are in the correct project checkout, or use `--path` explicitly.
-8. Confirm platform context with:
+3. Confirm you are in the correct project checkout, or use `--path` explicitly.
+4. Confirm platform context with:
    `mainsequence project current --debug`
-9. Before validations or live checks, run:
+5. Before validations or live checks, run:
    `mainsequence project refresh_token --path .`
-10. If git push or pull is required, use:
+6. If git push or pull is required, use:
     `mainsequence project open-signed-terminal <PROJECT_ID>`
-11. Before proceeding with non-trivial Main Sequence work, update the project SDK:
+7. Before proceeding with non-trivial Main Sequence work, update the project SDK:
     `mainsequence project update-sdk --path .`
-12. After updating the SDK, refresh the installed Main Sequence scaffold files:
+8. After updating the SDK, refresh the installed Main Sequence scaffold files:
     `mainsequence project update AGENTS.md --path .`
     `mainsequence project update_agent_skills --path .`
-13. Verify platform state with the CLI or platform tooling instead of guessing.
+9. Verify platform state with the CLI or platform tooling instead of guessing.
 
 ## Orchestrator Rule
 
@@ -225,13 +212,6 @@ Default pattern:
 
 1. `.agents/skills/mainsequence/project_builder/SKILL.md`
 2. the relevant domain skill
-3. `.agents/skills/mainsequence/maintenance/local_journal/SKILL.md` after material work if verified state,
-   blockers, scope, next actions, stable references, or historical notes changed
-
-Before the final response:
-
-- consult the maintenance skill whenever project understanding, verified state, or historical
-  record changed during the turn
 
 Always use `.agents/skills/mainsequence/project_builder/SKILL.md` as the source of truth for project
 scaffolding, folder structure, and standard repository layout.
@@ -312,9 +292,7 @@ If something may be a Main Sequence SDK, documentation, or platform issue:
 - record what failed
 - explain why it may be a Main Sequence issue
 - suggest a concrete improvement
-- append the issue to `.agents/journal.md`
-- add actionable follow-up to `.agents/tasks.md` if still open
-- reflect the latest blocker in `.agents/status.md`
+- report any still-open follow-up or blocker clearly to the user
 
 ## Output Style
 
@@ -322,26 +300,4 @@ If something may be a Main Sequence SDK, documentation, or platform issue:
 - prefer explicit facts over vague statements
 - surface failures early
 - distinguish verified facts from assumptions
-
-## Project-State Files Under `.agents/`
-
-The repository keeps project-state files under `.agents/`:
-
-- `.agents/brief.md`
-- `.agents/tasks.md`
-- `.agents/record.md`
-- `.agents/status.md`
-- `.agents/journal.md`
-
-These files are owned by:
-
-- `.agents/skills/mainsequence/maintenance/local_journal/SKILL.md` for:
-  - `.agents/brief.md`
-  - `.agents/tasks.md`
-  - `.agents/record.md`
-  - `.agents/status.md`
-  - `.agents/journal.md`
-
-Do not improvise their meaning in domain skills. Use the maintenance skill to reconcile them after
-material work.
 <!-- mainsequence-agent-scaffold:end -->

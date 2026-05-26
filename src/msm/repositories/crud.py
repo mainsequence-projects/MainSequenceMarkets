@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import delete, insert, inspect, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
@@ -27,7 +27,7 @@ def build_create_model_operation(
 ) -> MetaTableCompiledSQLOperation:
     """Build an insert operation for a markets MetaTable SQLAlchemy model."""
 
-    statement = insert(model).values(**dict(values))
+    statement = insert(model).values(_model_value_mapping(model, values))
     if returning:
         statement = statement.returning(model)
     return compile_markets_statement(
@@ -52,16 +52,24 @@ def build_upsert_model_operation(
         raise ValueError("Upsert operations require at least one conflict column.")
 
     payload = {key: value for key, value in dict(values).items() if key != "uid"}
-    statement = postgresql_insert(model).values(**payload)
+    statement = postgresql_insert(model).values(_model_value_mapping(model, payload))
+    conflict_property_keys = {
+        _model_column_property(model, conflict_column).key
+        for conflict_column in conflict_columns
+    }
     update_values = {
-        key: value
+        _model_attribute(model, key): value
         for key, value in payload.items()
-        if key not in set(conflict_columns)
+        if _model_column_property(model, key).key not in conflict_property_keys
     }
     if not update_values:
         first_conflict_column = conflict_columns[0]
+        first_conflict_property = _model_column_property(model, first_conflict_column)
+        first_conflict_physical_name = first_conflict_property.columns[0].name
         update_values = {
-            first_conflict_column: getattr(statement.excluded, first_conflict_column)
+            _model_attribute(model, first_conflict_column): statement.excluded[
+                first_conflict_physical_name
+            ]
         }
     statement = (
         statement.on_conflict_do_update(
@@ -248,7 +256,13 @@ def build_update_model_operation(
     statement = (
         update(model)
         .where(_model_attribute(model, "uid") == uid)
-        .values(**{key: value for key, value in values.items() if value is not None})
+        .values(
+            _model_value_mapping(
+                model,
+                values,
+                include_none=False,
+            )
+        )
     )
     if returning:
         statement = statement.returning(model)
@@ -309,10 +323,40 @@ def delete_model(
     )
 
 
-def _model_attribute(model: type[MarketsBase], field_name: str) -> Any:
-    if field_name not in model.__table__.c:
+def _model_value_mapping(
+    model: type[MarketsBase],
+    values: Mapping[str, Any],
+    *,
+    include_none: bool = True,
+) -> dict[Any, Any]:
+    return {
+        _model_attribute(model, key): value
+        for key, value in values.items()
+        if include_none or value is not None
+    }
+
+
+def _model_column_property(model: type[MarketsBase], field_name: str) -> Any:
+    matches = []
+    for column_property in inspect(model).column_attrs:
+        names = {column_property.key}
+        for column in column_property.columns:
+            names.add(str(column.key))
+            names.add(str(column.name))
+        if field_name in names:
+            matches.append(column_property)
+
+    if not matches:
         raise ValueError(f"{model.__name__} has no SQLAlchemy column {field_name!r}.")
-    return getattr(model, field_name)
+    if len(matches) > 1:
+        raise ValueError(
+            f"{model.__name__} column reference {field_name!r} is ambiguous."
+        )
+    return matches[0]
+
+
+def _model_attribute(model: type[MarketsBase], field_name: str) -> Any:
+    return getattr(model, _model_column_property(model, field_name).key)
 
 
 __all__ = [

@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from mainsequence.client.exceptions import ConflictError
 from mainsequence.client.models_metatables import MetaTable, MetaTableRegistrationRequest
 from mainsequence.logconf import logger as _mainsequence_logger
 from mainsequence.tdag.meta_tables import (
@@ -190,20 +191,44 @@ def register_markets_meta_tables(
             storage_hash=storage_hash,
             target_meta_table_count=len(target_mapping),
         )
-        if management_mode == "platform_managed":
-            meta_table = model.register(
-                introspect=False if introspect is None else introspect,
-                **platform_kwargs,
+        try:
+            if management_mode == "platform_managed":
+                meta_table = model.register(
+                    introspect=False if introspect is None else introspect,
+                    **platform_kwargs,
+                )
+            elif management_mode == "external_registered":
+                meta_table = register_external_sqlalchemy_model(
+                    model,
+                    introspect=True if introspect is None else introspect,
+                    storage_hash=storage_hash,
+                    **external_kwargs,
+                )
+            else:
+                raise ValueError(
+                    "management_mode must be 'platform_managed' or 'external_registered'."
+                )
+        except ConflictError as exc:
+            meta_table = _duplicate_meta_table_from_conflict(
+                exc,
+                model=model,
+                management_mode=management_mode,
+                timeout=timeout,
             )
-        elif management_mode == "external_registered":
-            meta_table = register_external_sqlalchemy_model(
-                model,
-                introspect=True if introspect is None else introspect,
-                storage_hash=storage_hash,
-                **external_kwargs,
+            if meta_table is None:
+                raise
+            logger.info(
+                "Reusing existing markets MetaTable schema after duplicate registration",
+                management_mode=management_mode,
+                model=model.__name__,
+                namespace=getattr(model, "__metatable_namespace__", None),
+                identifier=getattr(model, "__metatable_identifier__", None),
+                model_index=position,
+                model_count=len(resolved_models),
+                table_fullname=markets_meta_table_fullname(model),
+                table_name=model.__table__.name,
+                meta_table_uid=_meta_table_uid(meta_table),
             )
-        else:
-            raise ValueError("management_mode must be 'platform_managed' or 'external_registered'.")
 
         registered_meta_tables.append(meta_table)
         meta_table_uid = _meta_table_uid(meta_table)
@@ -247,32 +272,39 @@ def resolve_registered_markets_meta_tables(
     meta_table_by_fullname: dict[str, MetaTable] = {}
 
     for model in resolved_models:
-        filters = _registered_meta_table_filters(
+        filter_candidates = _registered_meta_table_filter_candidates(
             model,
             data_source_uid=data_source_uid,
             management_mode=management_mode,
             namespace=namespace,
         )
-        logger.info(
-            "Resolving registered markets MetaTable schema",
-            management_mode=management_mode,
-            model=model.__name__,
-            namespace=filters.get("namespace"),
-            identifier=filters.get("identifier"),
-            table_fullname=markets_meta_table_fullname(model),
-            storage_hash=filters.get("storage_hash"),
-            data_source_uid=data_source_uid,
-        )
-        matches = MetaTable.filter(timeout=timeout, **filters)
+        matches = []
+        matched_filters: dict[str, Any] | None = None
+        for filters in filter_candidates:
+            logger.info(
+                "Resolving registered markets MetaTable schema",
+                management_mode=management_mode,
+                model=model.__name__,
+                namespace=filters.get("namespace"),
+                identifier=filters.get("identifier"),
+                table_fullname=markets_meta_table_fullname(model),
+                physical_table_name=filters.get("physical_table_name"),
+                storage_hash=filters.get("storage_hash"),
+                data_source_uid=data_source_uid,
+            )
+            matches = MetaTable.filter(timeout=timeout, **filters)
+            if matches:
+                matched_filters = filters
+                break
         if not matches:
             raise LookupError(
                 "Could not resolve registered markets MetaTable for "
-                f"{model.__name__} with filters {filters!r}."
+                f"{model.__name__} with filters {filter_candidates!r}."
             )
         if len(matches) > 1:
             raise LookupError(
                 "Multiple registered markets MetaTables matched "
-                f"{model.__name__} with filters {filters!r}. Pass data_source_uid "
+                f"{model.__name__} with filters {matched_filters!r}. Pass data_source_uid "
                 "or use explicit schema initialization."
             )
 
@@ -299,22 +331,78 @@ def resolve_registered_markets_meta_tables(
     )
 
 
-def _registered_meta_table_filters(
+def _registered_meta_table_filter_candidates(
     model: type[MarketsBase],
     *,
     data_source_uid: str | None,
     management_mode: MarketsManagementMode,
     namespace: str | None,
-) -> dict[str, Any]:
-    filters: dict[str, Any] = {
-        "storage_hash": model.__table__.name,
+) -> list[dict[str, Any]]:
+    base_filters: dict[str, Any] = {
         "identifier": getattr(model, "__metatable_identifier__", model.__name__),
         "namespace": namespace or getattr(model, "__metatable_namespace__", None),
         "management_mode": management_mode,
     }
     if data_source_uid:
-        filters["data_source__uid"] = data_source_uid
+        base_filters["data_source__uid"] = data_source_uid
+
+    table_name = model.__table__.name
+    return [
+        _clean_filters({**base_filters, "physical_table_name": table_name}),
+        _clean_filters({**base_filters, "storage_hash": table_name}),
+    ]
+
+
+def _clean_filters(filters: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in filters.items() if value not in (None, "")}
+
+
+def _duplicate_meta_table_from_conflict(
+    exc: ConflictError,
+    *,
+    model: type[MarketsBase],
+    management_mode: MarketsManagementMode,
+    timeout: int | float | tuple[float, float] | None,
+) -> MetaTable | None:
+    payload = _conflict_payload(exc)
+    if payload.get("code") != "duplicate_meta_table":
+        return None
+
+    existing_uid = payload.get("existing_meta_table_uid")
+    if not existing_uid:
+        return None
+
+    try:
+        return MetaTable.get_by_uid(uid=str(existing_uid), timeout=timeout)
+    except Exception:
+        table_name = str(payload.get("physical_table_name") or model.__table__.name)
+        storage_hash = str(payload.get("storage_hash") or table_name)
+        return MetaTable(
+            uid=str(existing_uid),
+            data_source_uid=payload.get("data_source_uid"),
+            storage_hash=storage_hash,
+            identifier=getattr(model, "__metatable_identifier__", model.__name__),
+            namespace=getattr(model, "__metatable_namespace__", None),
+            management_mode=management_mode,
+            physical_table_name=table_name,
+        )
+
+
+def _conflict_payload(exc: ConflictError) -> dict[str, Any]:
+    payload = getattr(exc, "payload", None)
+    if isinstance(payload, Mapping):
+        return dict(payload)
+
+    response = getattr(exc, "response", None)
+    if response is None:
+        return {}
+    try:
+        response_payload = response.json()
+    except Exception:
+        return {}
+    if isinstance(response_payload, Mapping):
+        return dict(response_payload)
+    return {}
 
 
 def _meta_table_uid(value: Any) -> str:

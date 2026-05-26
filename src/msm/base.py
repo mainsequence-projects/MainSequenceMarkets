@@ -13,6 +13,8 @@ from mainsequence.tdag.meta_tables import (
     slugify_identifier,
 )
 
+from msm.settings import DEFAULT_MARKETS_NAMESPACE
+
 try:
     from sqlalchemy import MetaData
     from sqlalchemy.orm import DeclarativeBase
@@ -22,7 +24,7 @@ except ImportError as exc:  # pragma: no cover - exercised only in partial envs.
     ) from exc
 
 
-MARKETS_NAMESPACE = "mainsequence.markets"
+MARKETS_NAMESPACE = DEFAULT_MARKETS_NAMESPACE
 MARKETS_SCHEMA = "public"
 MSM_AUTO_REGISTER_NAMESPACE_ENV = "MSM_AUTO_REGISTER_NAMESPACE"
 

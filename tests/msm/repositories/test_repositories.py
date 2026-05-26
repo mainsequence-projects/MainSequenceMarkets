@@ -4,7 +4,7 @@ import datetime as dt
 import uuid
 
 from msm.meta_tables import markets_meta_table_fullname
-from msm.models import AssetTable, OrderTable, markets_sqlalchemy_models
+from msm.models import AssetTable, OpenFigiDetailsTable, OrderTable, markets_sqlalchemy_models
 from msm.repositories import MarketsMetaTableHandle, MarketsRepositoryContext
 from msm.repositories.assets import (
     build_create_asset_operation,
@@ -14,7 +14,7 @@ from msm.repositories.assets import (
     build_search_assets_operation,
     build_upsert_asset_operation,
 )
-from msm.repositories.crud import build_search_model_operation
+from msm.repositories.crud import build_search_model_operation, build_upsert_model_operation
 from msm.repositories.execution import build_create_order_operation
 
 
@@ -77,6 +77,28 @@ def test_asset_upsert_operation_uses_compiled_upsert_protocol() -> None:
     assert "ON CONFLICT" in operation.statement.sql
     assert "metadata_json" not in operation.statement.sql
     assert "metadata_json" not in operation.statement.parameters
+
+
+def test_generic_upsert_operation_uses_physical_name_for_aliased_columns() -> None:
+    context = _repository_context()
+
+    operation = build_upsert_model_operation(
+        context,
+        model=OpenFigiDetailsTable,
+        values={
+            "asset_uid": uuid.uuid4(),
+            "metadata_text": None,
+            "raw_payload": {"figi": "BBG00FNFPQH4"},
+        },
+        conflict_columns=["asset_uid"],
+    )
+
+    assert operation.operation == "upsert"
+    assert "metadata_text" not in operation.statement.sql
+    assert " metadata," in operation.statement.sql
+    assert "metadata =" in operation.statement.sql
+    assert operation.statement.parameters["metadata"] is None
+    assert operation.statement.parameters["raw_payload"] == {"figi": "BBG00FNFPQH4"}
 
 
 def test_asset_get_by_unique_identifier_operation_uses_read_scope() -> None:
