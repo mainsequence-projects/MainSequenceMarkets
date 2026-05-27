@@ -14,7 +14,9 @@ certifi==2026.5.20
 charset-normalizer==3.4.7
     # via requests
 click==8.4.1
-    # via typer
+    # via
+    #   mainsequence
+    #   typer
 cloudpickle==3.1.2
     # via mainsequence
 colorama==0.4.6 ; sys_platform == 'win32'
@@ -33,7 +35,7 @@ grpcio==1.80.0
     # via opentelemetry-exporter-otlp-proto-grpc
 idna==3.16
     # via requests
-mainsequence==4.0.6
+mainsequence==4.0.12
     # via ms-markets
 markdown-it-py==4.2.0
     # via rich
