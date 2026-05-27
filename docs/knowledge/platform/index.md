@@ -46,8 +46,8 @@ workflow and the two supported management modes.
 The `msm` import path is side-effect free. Installing the package makes the
 ms-markets skill bundle available as package data, but skills are copied into a
 host project only when a user runs `msm copy-msm-skills --path <project>`.
-That command writes to `.agents/ms_markets/` and leaves Main Sequence scaffold
-skills and project-state files untouched.
+That command writes to `.agents/skills/ms_markets/` and leaves Main Sequence
+scaffold skills and project-state files untouched.
 
 ## Extension Notes
 

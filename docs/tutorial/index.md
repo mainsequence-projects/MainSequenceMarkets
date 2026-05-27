@@ -38,8 +38,8 @@ ms-markets agent skills:
 msm copy-msm-skills --path .
 ```
 
-The command copies the packaged bundle into `.agents/ms_markets/` and overwrites
-only matching skill folders under that namespace. It does not touch
+The command copies the packaged bundle into `.agents/skills/ms_markets/` and
+overwrites only matching skill folders under that namespace. It does not touch
 `.agents/skills/mainsequence`, project-state files, or `AGENTS.md`.
 
 Do not rely on `import msm` for this setup. Imports are side-effect free and do
@@ -69,9 +69,9 @@ from msm.services.assets.openfigi import (
 )
 ```
 
-See `examples/assets/openfigi_asset_rows.py` for a small example that resolves a
-FIGI through OpenFIGI and registers the resulting `Asset` and `OpenFigiDetails`
-through `msm.api.assets`. The OpenFIGI helpers read the API key from the Main
+See `examples/assets/asset_crud_workflow.py` for the asset workflow covering
+OpenFIGI resolution, `Asset` registration, `OpenFigiDetails`, and
+`AssetSnapshot` writes. The OpenFIGI helpers read the API key from the Main
 Sequence secret `OPEN_FIGI_API_KEY`.
 
 ## Markets MetaTable Models

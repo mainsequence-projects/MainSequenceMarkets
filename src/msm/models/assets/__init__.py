@@ -5,6 +5,7 @@ from .categories import (
     AssetCategoryTable,
 )
 from .core import AssetTable
+from .currency_spot import CurrencySpotTable
 from .provider_details import OpenFigiDetailsTable
 from .types import AssetTypeTable
 
@@ -13,5 +14,6 @@ __all__ = [
     "AssetCategoryTable",
     "AssetTable",
     "AssetTypeTable",
+    "CurrencySpotTable",
     "OpenFigiDetailsTable",
 ]

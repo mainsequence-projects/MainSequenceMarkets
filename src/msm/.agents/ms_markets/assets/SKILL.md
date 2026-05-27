@@ -24,6 +24,8 @@ This skill is for:
 - choose whether an asset should come from the public master or be created as a custom asset
 - explain that public assets usually use FIGI as `unique_identifier`
 - explain that custom asset identity is owned by the organization and must remain stable
+- explain that `msm.api.assets.CurrencySpot` creates pair assets through a
+  relational base/quote detail row instead of widening `AssetTable`
 - choose between `Asset.filter(...)` and `Asset.query(...)`
 - review or implement the standard registration pattern:
   - look up existing assets
@@ -117,6 +119,31 @@ For custom assets:
 - keep it stable, meaningful, and reusable
 
 Do not create disposable or ambiguous asset identifiers.
+
+### 1a. Currency spot pairs are asset extensions
+
+For spot pair assets such as `EUR/USD`, create or resolve the base and quote
+currency assets first, then use the class-owned workflow:
+
+```python
+from msm.api.assets import Asset, CurrencySpot
+
+EUR = {"code": "EUR", "currency_name": "Euro"}
+USD = {"code": "USD", "currency_name": "US Dollar"}
+
+eur = Asset.upsert(unique_identifier=EUR["code"], asset_type="currency")
+usd = Asset.upsert(unique_identifier=USD["code"], asset_type="currency")
+
+pair = CurrencySpot.upsert(
+    unique_identifier="BBG0013HGRV5",
+    base_currency_uid=eur.uid,
+    quote_currency_uid=usd.uid,
+)
+```
+
+The pair itself is an `Asset` with normalized `asset_type="currency_spot"`.
+`CurrencySpotTable` owns `base_currency_uid` and `quote_currency_uid`; do not
+add those fields to `AssetTable`.
 
 ### 2. Register only what is missing
 

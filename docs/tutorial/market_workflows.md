@@ -94,6 +94,36 @@ Main Sequence secret `OPEN_FIGI_API_KEY` in
 `www.main-sequence.app/app/main_sequence_workbench/secrets` before running the
 workflow. Cleanup is disabled by default.
 
+## Currency Assets
+
+Single currencies and currency spot pairs are separate assets. Create or resolve
+the component currency assets first, then let `CurrencySpot.upsert(...)` own the
+spot-pair asset and `CurrencySpotTable` write:
+
+```python
+from msm.api.assets import Asset, CurrencySpot
+
+USD = {"code": "USD", "currency_name": "US Dollar"}
+EUR = {"code": "EUR", "currency_name": "Euro"}
+
+usd = Asset.upsert(unique_identifier=USD["code"], asset_type="currency")
+eur = Asset.upsert(unique_identifier=EUR["code"], asset_type="currency")
+
+eur_usd = CurrencySpot.upsert(
+    unique_identifier="BBG0013HGRV5",
+    base_currency_uid=eur.uid,
+    quote_currency_uid=usd.uid,
+)
+```
+
+Typed asset APIs normalize asset type keys before writing them, so `"Currency"`
+is stored as `currency`, `"Currency Spot"` is stored as `currency_spot`, and
+`"Asset Future"` is stored as `asset_future`.
+
+See `examples/assets/currency_spot_workflow.py` and
+[Currency Assets](../knowledge/assets/currency.md) for the detailed schema and
+workflow.
+
 ## Asset Snapshots
 
 `AssetSnapshot` is a DataNode, not a MetaTable. Build validated snapshot frames
@@ -134,8 +164,8 @@ incoming `(time_index, unique_identifier)` tuples and fails if any tuple already
 exists. Publish corrections as a new timestamped snapshot instead of overwriting
 the existing row.
 
-See `examples/assets/asset_snapshot_workflow.py` for the focused DataNode
-example. See
+See `examples/assets/asset_crud_workflow.py` for the workflow that also writes
+an `AssetSnapshot` frame. See
 [Asset-Indexed DataNodes](../knowledge/assets/asset_indexed_data_nodes.md) for
 the detailed `AssetIndexedDataNode` contract and how `AssetSnapshot` implements
 it.

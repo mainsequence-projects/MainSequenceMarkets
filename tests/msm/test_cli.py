@@ -28,7 +28,9 @@ def test_copy_msm_skills_dry_run_writes_nothing(tmp_path, capsys) -> None:
     assert not (tmp_path / ".agents").exists()
     payload = json.loads(capsys.readouterr().out)
     assert payload["dry_run"] is True
-    assert payload["destination_root"] == str(tmp_path / ".agents" / "ms_markets")
+    assert payload["destination_root"] == str(
+        tmp_path / ".agents" / "skills" / "ms_markets"
+    )
     assert sorted(item["name"] for item in payload["updated"]) == _bundled_skill_names()
 
 
@@ -38,7 +40,7 @@ def test_copy_msm_skills_copies_only_ms_markets_namespace(tmp_path) -> None:
     sentinel = mainsequence_skill / "SKILL.md"
     sentinel.write_text("keep me", encoding="utf-8")
 
-    stale_skill = tmp_path / ".agents" / "ms_markets" / _bundled_skill_names()[0]
+    stale_skill = tmp_path / ".agents" / "skills" / "ms_markets" / _bundled_skill_names()[0]
     stale_skill.mkdir(parents=True)
     stale_file = stale_skill / "stale.txt"
     stale_file.write_text("remove me", encoding="utf-8")
@@ -48,6 +50,9 @@ def test_copy_msm_skills_copies_only_ms_markets_namespace(tmp_path) -> None:
     assert exit_code == 0
     assert sentinel.read_text(encoding="utf-8") == "keep me"
     assert not stale_file.exists()
+    assert not (tmp_path / ".agents" / "ms_markets").exists()
     for skill_name in _bundled_skill_names():
-        skill_file = tmp_path / ".agents" / "ms_markets" / skill_name / "SKILL.md"
+        skill_file = (
+            tmp_path / ".agents" / "skills" / "ms_markets" / skill_name / "SKILL.md"
+        )
         assert skill_file.exists()

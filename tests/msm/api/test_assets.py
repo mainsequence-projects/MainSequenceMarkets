@@ -10,10 +10,13 @@ from msm.api.assets import (
     AssetType,
     AssetTypeUpsert,
     AssetUpsert,
+    CurrencySpot,
+    CurrencySpotUpsert,
     OpenFigiDetails,
     _operation_result_rows,
+    normalize_asset_type,
 )
-from msm.models import AssetTable, AssetTypeTable, OpenFigiDetailsTable
+from msm.models import AssetTable, AssetTypeTable, CurrencySpotTable, OpenFigiDetailsTable
 from msm.meta_tables import markets_meta_table_fullname
 
 
@@ -26,6 +29,28 @@ def test_asset_type_api_declares_table_contract() -> None:
     assert AssetType.__table__ is AssetTypeTable
     assert AssetType.__required_tables__ == [AssetTypeTable]
     assert AssetType.__upsert_keys__ == ("asset_type",)
+
+
+def test_currency_spot_api_declares_required_table_contract() -> None:
+    assert CurrencySpot.__required_tables__ == [
+        AssetTypeTable,
+        AssetTable,
+        CurrencySpotTable,
+    ]
+
+
+def test_asset_type_normalization_for_typed_payloads() -> None:
+    assert normalize_asset_type(" Asset Future ") == "asset_future"
+    assert normalize_asset_type("Currency Pair") == "currency_pair"
+    assert AssetUpsert(unique_identifier="BTC", asset_type="Crypto Asset").asset_type == (
+        "crypto_asset"
+    )
+    assert AssetTypeUpsert(asset_type="Currency Pair").asset_type == "currency_pair"
+
+
+def test_asset_type_normalization_rejects_empty_values() -> None:
+    with pytest.raises(ValueError, match="asset_type"):
+        normalize_asset_type(" ")
 
 
 def test_openfigi_details_api_uses_asset_uid_as_row_identity() -> None:
@@ -111,6 +136,36 @@ def test_asset_type_upsert_uses_active_runtime(monkeypatch) -> None:
     ]
 
 
+def test_asset_type_upsert_normalizes_keyword_payload(monkeypatch) -> None:
+    asset_type_uid = uuid.uuid4()
+    context = object()
+    runtime = SimpleNamespace(context=context)
+    calls = []
+
+    def fake_resolve_runtime(**kwargs):
+        assert kwargs["models"] == AssetType.__required_tables__
+        assert kwargs["row_model_name"] == "AssetType"
+        return runtime
+
+    def fake_upsert_model(active_context, *, model, values, conflict_columns):
+        calls.append((active_context, model, values, conflict_columns))
+        return {
+            "row": {
+                "uid": str(asset_type_uid),
+                "asset_type": values["asset_type"],
+                "display_name": values["display_name"],
+            }
+        }
+
+    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    monkeypatch.setattr("msm.api.base.upsert_model", fake_upsert_model)
+
+    asset_type = AssetType.upsert(asset_type="Asset Future", display_name="Asset Future")
+
+    assert asset_type.asset_type == "asset_future"
+    assert calls[0][2]["asset_type"] == "asset_future"
+
+
 def test_asset_create_schemas_merges_additional_models(monkeypatch) -> None:
     calls = []
 
@@ -170,6 +225,92 @@ def test_asset_upsert_uses_active_runtime(monkeypatch) -> None:
     ]
 
 
+def test_currency_spot_upsert_owns_multitable_workflow(monkeypatch) -> None:
+    pair_uid = uuid.uuid4()
+    base_uid = uuid.uuid4()
+    quote_uid = uuid.uuid4()
+    context = object()
+    runtime = SimpleNamespace(context=context)
+    calls = []
+
+    def fake_resolve_runtime(**kwargs):
+        assert kwargs["models"] == CurrencySpot.__required_tables__
+        assert kwargs["row_model_name"] == "CurrencySpot"
+        return runtime
+
+    def fake_upsert_model(active_context, *, model, values, conflict_columns):
+        calls.append((active_context, model, values, conflict_columns))
+        if model is AssetTypeTable:
+            return {"row": {"uid": str(uuid.uuid4()), **values}}
+        if model is AssetTable:
+            return {"row": {"uid": str(pair_uid), **values}}
+        if model is CurrencySpotTable:
+            return {"row": {**values}}
+        raise AssertionError(model)
+
+    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    monkeypatch.setattr("msm.api.assets.upsert_model", fake_upsert_model)
+
+    currency_spot = CurrencySpot.upsert(
+        CurrencySpotUpsert(
+            unique_identifier="BTC/USDT",
+            base_currency_uid=base_uid,
+            quote_currency_uid=quote_uid,
+        )
+    )
+
+    assert currency_spot == CurrencySpot(
+        uid=pair_uid,
+        asset_uid=pair_uid,
+        unique_identifier="BTC/USDT",
+        asset_type="currency_spot",
+        base_currency_uid=base_uid,
+        quote_currency_uid=quote_uid,
+    )
+    assert calls == [
+        (
+            context,
+            AssetTypeTable,
+            {
+                "asset_type": "currency_spot",
+                "display_name": "Currency Spot",
+                "description": "Tradable currency spot pair asset.",
+            },
+            ("asset_type",),
+        ),
+        (
+            context,
+            AssetTable,
+            {
+                "unique_identifier": "BTC/USDT",
+                "asset_type": "currency_spot",
+            },
+            ("unique_identifier",),
+        ),
+        (
+            context,
+            CurrencySpotTable,
+            {
+                "asset_uid": pair_uid,
+                "base_currency_uid": base_uid,
+                "quote_currency_uid": quote_uid,
+            },
+            ("asset_uid",),
+        ),
+    ]
+
+
+def test_currency_spot_payload_rejects_same_base_and_quote_asset() -> None:
+    asset_uid = uuid.uuid4()
+
+    with pytest.raises(ValueError, match="must differ"):
+        CurrencySpotUpsert(
+            unique_identifier="BTC/BTC",
+            base_currency_uid=asset_uid,
+            quote_currency_uid=asset_uid,
+        )
+
+
 def test_asset_operation_requires_initialized_runtime(monkeypatch) -> None:
     def fake_resolve_runtime(**kwargs):
         raise RuntimeError(
@@ -185,7 +326,9 @@ def test_asset_operation_requires_initialized_runtime(monkeypatch) -> None:
 
 def test_operation_result_rows_accepts_common_envelopes() -> None:
     row = {"uid": str(uuid.uuid4()), "unique_identifier": "BTC"}
+    detail_row = {"asset_uid": str(uuid.uuid4()), "base_currency_uid": str(uuid.uuid4())}
 
     assert _operation_result_rows({"row": row}) == [row]
+    assert _operation_result_rows({"row": detail_row}) == [detail_row]
     assert _operation_result_rows({"data": {"rows": [row]}}) == [row]
     assert _operation_result_rows({"results": [row]}) == [row]

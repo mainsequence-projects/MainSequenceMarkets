@@ -138,8 +138,9 @@ msm copy-msm-skills --path /path/to/project
 ```
 
 Importing `msm` never mutates the current directory or auto-copies skills. The
-command writes only to `<project>/.agents/ms_markets/` and leaves unrelated
-`.agents` content alone. Use `--dry-run` or `--json` to inspect the copy plan.
+command writes only to `<project>/.agents/skills/ms_markets/` and leaves
+unrelated `.agents` content alone. Use `--dry-run` or `--json` to inspect the
+copy plan.
 
 ## Common Development Commands
 

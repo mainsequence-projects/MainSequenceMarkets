@@ -38,7 +38,7 @@ def copy_msm_skills_command(
         raise SystemExit(f"Packaged ms-markets skill bundle is missing: {source_root}")
 
     project_dir = path.expanduser().resolve()
-    destination_root = project_dir / ".agents" / "ms_markets"
+    destination_root = project_dir / ".agents" / "skills" / "ms_markets"
     skill_sources = _iter_skill_roots(source_root)
 
     copied = [
@@ -68,7 +68,7 @@ def copy_msm_skills_command(
         return 0
 
     action = "Would update" if dry_run else "Updated"
-    print(f"{action} .agents/ms_markets from packaged ms-markets skills.")
+    print(f"{action} .agents/skills/ms_markets from packaged ms-markets skills.")
     _print_table(
         "MS Markets Skills",
         ["Skill Folder", "Destination"],

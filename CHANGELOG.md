@@ -12,9 +12,15 @@ and this project follows versioned releases.
 - Added `AssetTypeTable` plus the `msm.api.assets.AssetType` row API as a
   minimal asset type registry with unique `asset_type`, optional
   `display_name`, optional `description`, and optional `metadata_json`.
+- Added `CurrencySpotTable` plus the `msm.api.assets.CurrencySpot` workflow for
+  currency spot pair assets keyed by canonical base and quote currency `Asset`
+  rows.
+- Added typed asset-type normalization so API payloads store lowercase
+  underscore-separated `asset_type` keys.
 - Added the `msm` console command with `copy-msm-skills` to explicitly copy the
-  packaged ms-markets agent skills into a host project's `.agents/ms_markets/`
-  directory without import-time filesystem mutation.
+  packaged ms-markets agent skills into a host project's
+  `.agents/skills/ms_markets/` directory without import-time filesystem
+  mutation.
 - Added user-facing Pydantic row APIs under `msm.api.*` for every markets
   MetaTable, including asset reference data, accounts, portfolios, funds,
   metadata/configuration, and execution records.
@@ -64,11 +70,12 @@ and this project follows versioned releases.
   canonical foreign keys to the `Asset` MetaTable.
 - Added an ADR for splitting SQLAlchemy MetaTable declarations such as
   `AssetTable` from user-facing Pydantic API row models such as `Asset`.
+- Added an ADR for the first asset extension: currency spot pair assets with
+  normalized asset types and relational base/quote asset references.
 - Documented the library-wide API style: users work with typed `msm.api` row
   objects, while schema code works with `msm.models.*Table` declarations.
 - Added AssetSnapshot DataNode methods for validated frame construction and
   row binding before DataNode runs.
-- Added an AssetSnapshot example using the default markets DataNode namespace.
 - Added `examples/platform/bootstrap.py` as the home for the example MetaTable
   namespace and auto-registration environment constants.
 - Documented the attach-first row API pattern, explicit schema preflight option,
@@ -121,6 +128,8 @@ and this project follows versioned releases.
 - Updated examples and asset notebooks so MetaTable row CRUD goes through
   `msm.api.*` with example-scoped auto-registration instead of explicit
   bootstrap in normal workflows.
+- Removed redundant standalone `asset_snapshot_workflow.py` and
+  `openfigi_asset_rows.py` examples now covered by `asset_crud_workflow.py`.
 - Updated markets DataNodes to derive default published identifiers and
   `hash_namespace` values from the active markets namespace plus class-owned
   `__data_node_identifier__` values unless callers explicitly override them.

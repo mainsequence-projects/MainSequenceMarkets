@@ -35,26 +35,28 @@ Current contract:
 - `Asset.asset_type` should match a registered `AssetType.asset_type`.
 - In this release, `Asset.asset_type` is a logical classification string, not a
   database foreign key.
+- Typed `msm.api.assets` payloads normalize asset type keys by stripping
+  whitespace, lowercasing, and replacing whitespace runs with `_`.
 
 Agent workflow:
 
 1. Register or upsert the needed `AssetType` before creating assets of that
    type.
-2. Use short, stable type keys such as `equity`, `crypto`, or `AssetFuture`.
+2. Use short, stable type keys such as `equity`, `crypto`, or `asset_future`.
 3. Put explanatory text in `display_name` and `description`, not in the key.
 
 ```python
 from msm.api.assets import Asset, AssetType
 
 AssetType.upsert(
-    asset_type="AssetFuture",
+    asset_type="asset_future",
     display_name="Asset Future",
     description="Futures contracts represented as market assets.",
 )
 
 asset = Asset.upsert(
     unique_identifier="asset-future-example",
-    asset_type="AssetFuture",
+    asset_type="asset_future",
 )
 ```
 
@@ -104,6 +106,36 @@ Application code should work through the Pydantic row API:
 If the detail model subclasses the common row base and generic row helpers expect
 `uid`, expose `uid` as an alias of `asset_uid` in the Pydantic row model. Do not
 change the SQL table shape just to satisfy generic helpers.
+
+## Currency Spot Reference Pattern
+
+`CurrencySpotTable` is the built-in currency spot extension pattern. Single
+currencies such as `USD` and `EUR` are normal `Asset` rows with
+`asset_type="currency"`. The spot pair is a normal `Asset` with
+`asset_type="currency_spot"`; the detail table stores `asset_uid`,
+`base_currency_uid`, and `quote_currency_uid` as references to `AssetTable.uid`.
+
+Use the class-owned API workflow instead of requiring callers to pass table
+handles:
+
+```python
+from msm.api.assets import Asset, CurrencySpot
+
+EUR = {"code": "EUR", "currency_name": "Euro"}
+USD = {"code": "USD", "currency_name": "US Dollar"}
+
+eur = Asset.upsert(unique_identifier=EUR["code"], asset_type="currency")
+usd = Asset.upsert(unique_identifier=USD["code"], asset_type="currency")
+
+pair = CurrencySpot.upsert(
+    unique_identifier="BBG0013HGRV5",
+    base_currency_uid=eur.uid,
+    quote_currency_uid=usd.uid,
+)
+```
+
+Do not widen `AssetTable` with `base_currency_uid` or `quote_currency_uid`;
+those are extension detail fields.
 
 ## OpenFIGI Reference Pattern
 

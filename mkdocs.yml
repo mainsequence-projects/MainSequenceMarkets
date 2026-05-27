@@ -32,6 +32,7 @@ nav:
       - Accounts: knowledge/accounts/index.md
       - Assets:
           - Overview: knowledge/assets/index.md
+          - Currency And Spot Assets: knowledge/assets/currency.md
           - Asset-Indexed DataNodes: knowledge/assets/asset_indexed_data_nodes.md
       - Client: knowledge/client/index.md
       - Execution: knowledge/execution/index.md
@@ -53,6 +54,7 @@ nav:
       - AssetIndexedDataNode Asset Foreign Keys: ADR/0007-market-data-node-asset-foreign-keys.md
       - MetaTable Table And API Model Split: ADR/0008-metatable-table-and-api-model-split.md
       - Lazy MetaTable Runtime Resolution: ADR/0009-lazy-metatable-runtime-resolution.md
+      - Currency Asset Extension: ADR/0010-currency-asset-extension.md
       - VAM Markets Ownership Transfer: ADR/0004-vam-markets-ownership-transfer.md
   - Changelog: changelog.md
   - Reference:

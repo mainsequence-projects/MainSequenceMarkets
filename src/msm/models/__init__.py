@@ -13,6 +13,7 @@ from .assets import (
     AssetCategoryTable,
     AssetTable,
     AssetTypeTable,
+    CurrencySpotTable,
     OpenFigiDetailsTable,
 )
 from .calendars import CalendarTable
@@ -41,6 +42,7 @@ def markets_sqlalchemy_models() -> list[type]:
     return [
         AssetTypeTable,
         AssetTable,
+        CurrencySpotTable,
         CalendarTable,
         AccountModelPortfolioTable,
         AccountGroupTable,
@@ -75,6 +77,7 @@ __all__ = [
     "AssetTable",
     "AssetTypeTable",
     "CalendarTable",
+    "CurrencySpotTable",
     "ExecutionErrorTable",
     "FundTable",
     "InstrumentsConfigurationTable",

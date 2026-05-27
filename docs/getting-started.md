@@ -32,8 +32,9 @@ CLI command:
 msm copy-msm-skills --path .
 ```
 
-This copies the packaged skill bundle into `.agents/ms_markets/`. Importing
-`msm` does not write files, create `.agents/`, or auto-install skills.
+This copies the packaged skill bundle into `.agents/skills/ms_markets/`.
+Importing `msm` does not write files, create `.agents/`, or auto-install
+skills.
 
 ## Documentation
 

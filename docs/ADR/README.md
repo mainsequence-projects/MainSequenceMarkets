@@ -26,3 +26,4 @@ Current decisions:
 - [0007. AssetIndexedDataNode Asset Foreign Keys](0007-market-data-node-asset-foreign-keys.md)
 - [0008. MetaTable Table And API Model Split](0008-metatable-table-and-api-model-split.md)
 - [0009. Lazy MetaTable Runtime Resolution](0009-lazy-metatable-runtime-resolution.md)
+- [0010. Currency Asset Extension](0010-currency-asset-extension.md)

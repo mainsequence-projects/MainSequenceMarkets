@@ -17,6 +17,7 @@ from msm.meta_tables import build_markets_registration_requests, markets_meta_ta
 from msm.models import (
     AssetTypeTable,
     AssetTable,
+    CurrencySpotTable,
     OpenFigiDetailsTable,
     markets_sqlalchemy_models,
 )
@@ -73,6 +74,7 @@ def test_asset_related_models_are_grouped_under_assets_package() -> None:
         AssetCategoryTable as PackageAssetCategoryTable,
         AssetTable as PackageAssetTable,
         AssetTypeTable as PackageAssetTypeTable,
+        CurrencySpotTable as PackageCurrencySpotTable,
         OpenFigiDetailsTable as PackageOpenFigiDetailsTable,
     )
     from msm.models.assets.categories import (
@@ -80,6 +82,7 @@ def test_asset_related_models_are_grouped_under_assets_package() -> None:
         AssetCategoryTable as CategoriesAssetCategoryTable,
     )
     from msm.models.assets.core import AssetTable as CoreAssetTable
+    from msm.models.assets.currency_spot import CurrencySpotTable as CurrencyAssetSpotTable
     from msm.models.assets.provider_details import (
         OpenFigiDetailsTable as ProviderOpenFigiDetailsTable,
     )
@@ -89,6 +92,8 @@ def test_asset_related_models_are_grouped_under_assets_package() -> None:
     assert CoreAssetTable is AssetTable
     assert PackageAssetTypeTable is AssetTypeTable
     assert TypesAssetTypeTable is AssetTypeTable
+    assert PackageCurrencySpotTable is CurrencySpotTable
+    assert CurrencyAssetSpotTable is CurrencySpotTable
     assert PackageAssetCategoryTable is CategoriesAssetCategoryTable
     assert PackageAssetCategoryMembershipTable is CategoriesAssetCategoryMembershipTable
     assert PackageOpenFigiDetailsTable is OpenFigiDetailsTable
@@ -116,6 +121,12 @@ def test_asset_type_resolves_before_asset_when_selected() -> None:
     assert models == [AssetTypeTable, AssetTable]
 
 
+def test_currency_spot_resolves_after_asset_dependencies_when_selected() -> None:
+    models = meta_tables.resolve_markets_meta_table_models(["CurrencySpot", "Asset", "AssetType"])
+
+    assert models == [AssetTypeTable, AssetTable, CurrencySpotTable]
+
+
 def test_openfigi_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
     table = OpenFigiDetailsTable.__table__
 
@@ -124,6 +135,32 @@ def test_openfigi_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
     assert table.c.asset_uid.foreign_keys
     foreign_key = next(iter(table.c.asset_uid.foreign_keys))
     assert foreign_key.column is AssetTable.__table__.c.uid
+
+
+def test_currency_spot_uses_asset_uid_as_one_to_one_primary_key() -> None:
+    table = CurrencySpotTable.__table__
+
+    assert "uid" not in table.c
+    assert [column.name for column in table.primary_key.columns] == ["asset_uid"]
+    assert any(
+        index.unique
+        and [column.name for column in index.columns] == [
+            "base_currency_uid",
+            "quote_currency_uid",
+        ]
+        for index in table.indexes
+    )
+
+    asset_uid_fk = next(iter(table.c.asset_uid.foreign_keys))
+    base_currency_uid_fk = next(iter(table.c.base_currency_uid.foreign_keys))
+    quote_currency_uid_fk = next(iter(table.c.quote_currency_uid.foreign_keys))
+
+    assert asset_uid_fk.column is AssetTable.__table__.c.uid
+    assert asset_uid_fk.ondelete == "CASCADE"
+    assert base_currency_uid_fk.column is AssetTable.__table__.c.uid
+    assert base_currency_uid_fk.ondelete == "RESTRICT"
+    assert quote_currency_uid_fk.column is AssetTable.__table__.c.uid
+    assert quote_currency_uid_fk.ondelete == "RESTRICT"
 
 
 def test_markets_models_build_platform_registration_requests_in_dependency_order() -> None:

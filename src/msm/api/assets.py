@@ -1,20 +1,63 @@
 from __future__ import annotations
 
+import re
 import uuid
+from collections.abc import Mapping
 from typing import Any, ClassVar
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
-from msm.api.base import MarketsRow, operation_result_rows
+from msm.api.base import MarketsRow, _dedupe_models, operation_result_rows
 from msm.models import (
     AssetCategoryMembershipTable,
     AssetCategoryTable,
     AssetTypeTable,
     AssetTable,
+    CurrencySpotTable,
     OpenFigiDetailsTable,
 )
+from msm.repositories.crud import upsert_model
 
 _operation_result_rows = operation_result_rows
+CURRENCY_ASSET_TYPE = "currency"
+CURRENCY_SPOT_ASSET_TYPE = "currency_spot"
+
+
+def normalize_asset_type(asset_type: str | None) -> str | None:
+    """Return the canonical asset type key stored by the typed API."""
+
+    if asset_type is None:
+        return None
+
+    normalized = re.sub(r"\s+", "_", str(asset_type).strip().lower())
+    if not normalized:
+        raise ValueError("asset_type cannot be empty.")
+    return normalized
+
+
+def _validate_payload(
+    payload_model: type[BaseModel],
+    payload: BaseModel | Mapping[str, Any] | None,
+    kwargs: Mapping[str, Any],
+) -> BaseModel:
+    if payload is None:
+        return payload_model(**dict(kwargs))
+    if kwargs:
+        raise TypeError("Pass either a payload object or keyword fields, not both.")
+    if isinstance(payload, payload_model):
+        return payload
+    if isinstance(payload, BaseModel):
+        return payload_model.model_validate(payload.model_dump(exclude_unset=True))
+    if isinstance(payload, Mapping):
+        return payload_model.model_validate(dict(payload))
+    raise TypeError("Payload must be a Pydantic model, mapping, or None.")
 
 
 class Asset(MarketsRow):
@@ -27,6 +70,32 @@ class Asset(MarketsRow):
     unique_identifier: str
     asset_type: str | None = None
 
+    @field_validator("asset_type", mode="before")
+    @classmethod
+    def _normalize_row_asset_type(cls, value: str | None) -> str | None:
+        return normalize_asset_type(value)
+
+    @classmethod
+    def create(cls, payload: AssetCreate | Mapping[str, Any] | None = None, **kwargs: Any) -> Asset:
+        return super().create(_validate_payload(AssetCreate, payload, kwargs))
+
+    @classmethod
+    def upsert(
+        cls,
+        payload: AssetUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Asset:
+        return super().upsert(_validate_payload(AssetUpsert, payload, kwargs))
+
+    @classmethod
+    def update(
+        cls,
+        uid: uuid.UUID | str,
+        payload: AssetUpdate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Asset:
+        return super().update(uid, _validate_payload(AssetUpdate, payload, kwargs))
+
 
 class AssetCreate(BaseModel):
     """Payload for creating an asset row."""
@@ -35,6 +104,11 @@ class AssetCreate(BaseModel):
 
     unique_identifier: str = Field(min_length=1, max_length=255)
     asset_type: str | None = Field(default=None, max_length=64)
+
+    @field_validator("asset_type", mode="before")
+    @classmethod
+    def _normalize_asset_type(cls, value: str | None) -> str | None:
+        return normalize_asset_type(value)
 
 
 class AssetUpsert(AssetCreate):
@@ -47,6 +121,11 @@ class AssetUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     asset_type: str | None = Field(default=None, max_length=64)
+
+    @field_validator("asset_type", mode="before")
+    @classmethod
+    def _normalize_asset_type(cls, value: str | None) -> str | None:
+        return normalize_asset_type(value)
 
 
 class AssetType(MarketsRow):
@@ -61,6 +140,39 @@ class AssetType(MarketsRow):
     description: str | None = None
     metadata_json: dict[str, Any] | None = None
 
+    @field_validator("asset_type", mode="before")
+    @classmethod
+    def _normalize_row_asset_type(cls, value: str) -> str:
+        normalized = normalize_asset_type(value)
+        if normalized is None:
+            raise ValueError("asset_type cannot be empty.")
+        return normalized
+
+    @classmethod
+    def create(
+        cls,
+        payload: AssetTypeCreate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AssetType:
+        return super().create(_validate_payload(AssetTypeCreate, payload, kwargs))
+
+    @classmethod
+    def upsert(
+        cls,
+        payload: AssetTypeUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AssetType:
+        return super().upsert(_validate_payload(AssetTypeUpsert, payload, kwargs))
+
+    @classmethod
+    def update(
+        cls,
+        uid: uuid.UUID | str,
+        payload: AssetTypeUpdate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AssetType:
+        return super().update(uid, _validate_payload(AssetTypeUpdate, payload, kwargs))
+
 
 class AssetTypeCreate(BaseModel):
     """Payload for creating an asset type registry row."""
@@ -71,6 +183,14 @@ class AssetTypeCreate(BaseModel):
     display_name: str | None = Field(default=None, max_length=255)
     description: str | None = None
     metadata_json: dict[str, Any] | None = None
+
+    @field_validator("asset_type", mode="before")
+    @classmethod
+    def _normalize_asset_type(cls, value: str) -> str:
+        normalized = normalize_asset_type(value)
+        if normalized is None:
+            raise ValueError("asset_type cannot be empty.")
+        return normalized
 
 
 class AssetTypeUpsert(AssetTypeCreate):
@@ -85,6 +205,123 @@ class AssetTypeUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=255)
     description: str | None = None
     metadata_json: dict[str, Any] | None = None
+
+
+class CurrencySpot(BaseModel):
+    """Typed currency spot asset with base and quote currency references."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        AssetTypeTable,
+        AssetTable,
+        CurrencySpotTable,
+    ]
+
+    uid: uuid.UUID = Field(validation_alias=AliasChoices("uid", "asset_uid"))
+    asset_uid: uuid.UUID
+    unique_identifier: str
+    asset_type: str = CURRENCY_SPOT_ASSET_TYPE
+    base_currency_uid: uuid.UUID
+    quote_currency_uid: uuid.UUID
+
+    @classmethod
+    def create_schemas(cls, **kwargs: Any):
+        """Create the MetaTable schemas required by the currency spot API."""
+
+        from msm.bootstrap import create_schemas
+
+        requested_models = kwargs.pop("models", None)
+        models = _dedupe_models([*cls.__required_tables__, *(requested_models or [])])
+        return create_schemas(models=models, **kwargs)
+
+    @classmethod
+    def upsert(
+        cls,
+        payload: CurrencySpotUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> CurrencySpot:
+        """Upsert a currency spot asset and its base/quote relationship."""
+
+        values = _validate_payload(CurrencySpotUpsert, payload, kwargs).model_dump()
+        context = cls._active_context()
+
+        upsert_model(
+            context,
+            model=AssetTypeTable,
+            values={
+                "asset_type": CURRENCY_SPOT_ASSET_TYPE,
+                "display_name": "Currency Spot",
+                "description": "Tradable currency spot pair asset.",
+            },
+            conflict_columns=("asset_type",),
+        )
+        pair_asset = Asset._from_operation_result(
+            upsert_model(
+                context,
+                model=AssetTable,
+                values={
+                    "unique_identifier": values["unique_identifier"],
+                    "asset_type": CURRENCY_SPOT_ASSET_TYPE,
+                },
+                conflict_columns=("unique_identifier",),
+            )
+        )
+        detail_rows = operation_result_rows(
+            upsert_model(
+                context,
+                model=CurrencySpotTable,
+                values={
+                    "asset_uid": pair_asset.uid,
+                    "base_currency_uid": values["base_currency_uid"],
+                    "quote_currency_uid": values["quote_currency_uid"],
+                },
+                conflict_columns=("asset_uid",),
+            )
+        )
+        if not detail_rows:
+            raise LookupError("CurrencySpot upsert did not return a row.")
+
+        return cls.model_validate(
+            {
+                **detail_rows[0],
+                "uid": detail_rows[0].get("asset_uid"),
+                "unique_identifier": pair_asset.unique_identifier,
+                "asset_type": pair_asset.asset_type,
+            }
+        )
+
+    @classmethod
+    def _active_context(cls):
+        from msm.bootstrap import resolve_runtime
+
+        runtime = resolve_runtime(
+            models=cls.__required_tables__,
+            row_model_name=cls.__name__,
+        )
+        return runtime.context
+
+
+class CurrencySpotCreate(BaseModel):
+    """Payload for creating a currency spot asset and relationship row."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    unique_identifier: str = Field(min_length=1, max_length=255)
+    base_currency_uid: uuid.UUID
+    quote_currency_uid: uuid.UUID
+
+    @model_validator(mode="after")
+    def _base_and_quote_must_differ(self) -> CurrencySpotCreate:
+        if self.base_currency_uid == self.quote_currency_uid:
+            raise ValueError(
+                "CurrencySpot base_currency_uid and quote_currency_uid must differ."
+            )
+        return self
+
+
+class CurrencySpotUpsert(CurrencySpotCreate):
+    """Payload for inserting or updating a currency spot pair by unique identifier."""
 
 
 class AssetCategory(MarketsRow):
@@ -263,8 +500,14 @@ __all__ = [
     "AssetTypeUpsert",
     "AssetUpdate",
     "AssetUpsert",
+    "CURRENCY_ASSET_TYPE",
+    "CurrencySpot",
+    "CurrencySpotCreate",
+    "CurrencySpotUpsert",
+    "CURRENCY_SPOT_ASSET_TYPE",
     "OpenFigiDetails",
     "OpenFigiDetailsCreate",
     "OpenFigiDetailsUpdate",
     "OpenFigiDetailsUpsert",
+    "normalize_asset_type",
 ]

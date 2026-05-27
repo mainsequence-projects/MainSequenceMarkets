@@ -264,7 +264,7 @@ parallel runs that must not collide on a shared backend.
   and canonical foreign-key helpers.
 - `src/msm/data_nodes/assets.py`: `AssetSnapshot`, `AssetPricingDetail`,
   `AssetDataNodeConfiguration`, and timestamped asset frame validation.
-- `examples/assets/asset_snapshot_workflow.py`: focused `AssetSnapshot` frame
-  construction example.
+- `examples/assets/asset_crud_workflow.py`: asset workflow that includes
+  `AssetSnapshot` frame construction and DataNode execution.
 - `docs/ADR/0007-market-data-node-asset-foreign-keys.md`: ADR for canonical
   asset foreign keys on asset-indexed DataNodes.

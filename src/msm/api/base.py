@@ -194,6 +194,8 @@ def operation_result_rows(result: Mapping[str, Any] | list[Any] | None) -> list[
             nested_rows = operation_result_rows(value)
             if nested_rows:
                 return nested_rows
+            if key == "row":
+                return [dict(value)]
             if "uid" in value:
                 return [dict(value)]
         if isinstance(value, list):

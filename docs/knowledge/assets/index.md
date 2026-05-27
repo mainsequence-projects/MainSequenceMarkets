@@ -20,7 +20,7 @@ store every instrument-specific field. The stable identity fields are:
 - `uid`: internal row identity used by relational detail tables.
 - `unique_identifier`: the canonical public handle for the asset.
 - `asset_type`: a short classification string, such as `crypto`, `equity`, or
-  `AssetFuture`.
+  `asset_future`.
 
 `AssetType` is the type registry. Register an `asset_type` before using it in
 new asset workflows so the meaning of the string is discoverable. In the current
@@ -66,6 +66,41 @@ a SQLAlchemy `AssetFutureDetailsTable` for schema work and a Pydantic
 `AssetFutureDetails` row model for application code. For one-to-one instrument
 details, the detail table's `asset_uid` should be both the primary key and the
 foreign key to `AssetTable.uid`; a separate detail-row `uid` is unnecessary.
+
+## Currency Assets
+
+Single currency code/name metadata is user or provider-owned data. Keep it in
+the workflow using it, then register single currencies as normal `Asset` rows
+with `asset_type="currency"`.
+
+`CurrencySpot` is the built-in extension for tradable spot pairs such as
+`EUR/USD`. The pair is stored as a normal `Asset` with
+`asset_type="currency_spot"`, while `CurrencySpotTable` stores the base and
+quote currency references:
+
+```python
+from msm.api.assets import Asset, CurrencySpot
+
+USD = {"code": "USD", "currency_name": "US Dollar"}
+EUR = {"code": "EUR", "currency_name": "Euro"}
+
+usd = Asset.upsert(unique_identifier=USD["code"], asset_type="currency")
+eur = Asset.upsert(unique_identifier=EUR["code"], asset_type="currency")
+
+eur_usd = CurrencySpot.upsert(
+    unique_identifier="BBG0013HGRV5",
+    base_currency_uid=eur.uid,
+    quote_currency_uid=usd.uid,
+)
+```
+
+The typed asset API normalizes asset type strings before writing them:
+`"Currency"` becomes `currency`, `"Currency Spot"` becomes `currency_spot`, and
+`"Asset Future"` becomes `asset_future`. Friendly display names belong in
+`AssetType.display_name`.
+
+See [Currency Assets](currency.md) for the schema, registration dependency
+order, and the exact `CurrencySpot.upsert(...)` workflow.
 
 ## OpenFIGI As Asset Properties
 
@@ -147,9 +182,10 @@ Assets answer these questions:
   provider detail tables.
 - `msm.models.assets.core`: core asset registry model.
 - `msm.models.assets.types`: asset type registry model.
+- `msm.models.assets.currency_spot`: currency spot relationship detail model.
 - `msm.api.assets`: user-facing Pydantic rows and typed class operations for
-  `Asset`, `AssetType`, `AssetCategory`, `AssetCategoryMembership`, and
-  `OpenFigiDetails`.
+  `Asset`, `AssetType`, `AssetCategory`, `AssetCategoryMembership`,
+  `CurrencySpot`, and `OpenFigiDetails`.
 - `msm.data_nodes.assets`: asset-indexed DataNodes such as `AssetSnapshot`.
 - `msm.services.assets`: application-facing asset service helpers over
   repositories.
@@ -293,6 +329,11 @@ resolution requires the Main Sequence secret `OPEN_FIGI_API_KEY`; create it in
 `www.main-sequence.app/app/main_sequence_workbench/secrets` before running the
 example. Cleanup is opt-in through `--delete-temporary-assets`.
 
+See `examples/assets/currency_spot_workflow.py` for a focused currency example
+that creates `EUR` and `USD` assets, resolves `BBG0013HGRV5` through OpenFIGI,
+uses `CurrencySpot.upsert(...)` to create the `EUR/USD` pair, and writes
+matching `AssetSnapshot` rows.
+
 ## Asset-Indexed DataNodes
 
 Timestamped asset facts, such as snapshots and pricing details, belong in
@@ -316,6 +357,7 @@ DataNodes, and external provider integration belongs to services.
 
 - [Accounts](../accounts/index.md)
 - [Asset-Indexed DataNodes](asset_indexed_data_nodes.md)
+- [Currency Assets](currency.md)
 - [Portfolios](../portfolios/index.md)
 - [Pricing](../pricing/index.md)
 - [Platform](../platform/index.md)
