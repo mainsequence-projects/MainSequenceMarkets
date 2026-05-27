@@ -12,6 +12,21 @@ This API is intentionally thin:
 - the current route composition is backed by
   `src/msm/services/asset_master_lists.py`
 
+## Runtime Bootstrap
+
+When `MSM_AUTO_REGISTER_NAMESPACE` is set for local development, `apps/v1`
+now performs startup-time schema bootstrap instead of waiting for the first
+request to hit a row operation.
+
+Current local-dev behavior:
+
+- the app calls `msm.create_schemas(...)` during startup for the `apps/v1`
+  table set
+- the app uses the real project/session data source already configured for the
+  Main Sequence client session
+- if the session cannot resolve a valid DynamicTable data source, startup
+  should fail instead of redirecting writes into an ad hoc local store
+
 ## Implemented Routes
 
 ### Assets

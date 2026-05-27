@@ -12,7 +12,7 @@ import pytz
 import mainsequence.tdag.data_nodes.build_operations as build_operations
 from mainsequence.client.models_tdag import UpdateStatistics
 from mainsequence.tdag.data_nodes import APIDataNode, DataNode, RecordDefinition
-from msm.asset_scope import dedupe_asset_scope
+from msm.portfolios.asset_scope import dedupe_asset_scope
 from msm.settings import markets_data_node_identifier
 
 from .base import (

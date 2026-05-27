@@ -17,7 +17,7 @@ from msm.api.assets import (
     normalize_asset_type,
 )
 from msm.models import AssetTable, AssetTypeTable, CurrencySpotTable, OpenFigiDetailsTable
-from msm.meta_tables import markets_meta_table_fullname
+from msm.models.registration import markets_meta_table_fullname
 
 
 def test_asset_api_declares_table_contract() -> None:

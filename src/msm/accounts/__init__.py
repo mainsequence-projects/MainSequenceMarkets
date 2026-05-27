@@ -22,7 +22,7 @@ from msm.services.accounts import (
     update_account,
 )
 
-from .data_nodes import (
+from msm.data_nodes.accounts import (
     ACCOUNT_HOLDINGS_COLUMN_DTYPES_MAP,
     ACCOUNT_HOLDINGS_INDEX_NAMES,
     ACCOUNT_HOLDINGS_TIME_INDEX_NAME,

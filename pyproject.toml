@@ -95,10 +95,10 @@ Documentation = "https://mainsequence-projects.github.io/MainSequenceMarkets/"
 Issues = "https://github.com/mainsequence-projects/MainSequenceMarkets/issues"
 
 [project.scripts]
-msm = "msm.cli:main"
+msm = "cli.main:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/msm", "src/msm_pricing"]
+packages = ["src/cli", "src/msm", "src/msm_pricing"]
 
 [tool.hatch.build.targets.sdist]
 include = [

@@ -5,7 +5,7 @@ from datetime import timedelta
 import pandas as pd
 
 from mainsequence.client.models_tdag import Artifact
-from msm.asset_scope import asset_field
+from msm.portfolios.asset_scope import asset_field
 from msm.portfolios.data_nodes import SignalWeights
 from msm.portfolios.models import (
     AssetsConfiguration,

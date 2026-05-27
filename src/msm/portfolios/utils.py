@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from tqdm import tqdm
 
 from mainsequence.logconf import logger as _mainsequence_logger
-from msm.asset_scope import asset_display_name, asset_unique_identifier
+from msm.portfolios.asset_scope import asset_display_name, asset_unique_identifier
 
 
 def get_vfb_logger():

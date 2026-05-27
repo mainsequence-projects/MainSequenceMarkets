@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import datetime
+import uuid
 from typing import Any
 
 import pandas as pd
 import QuantLib as ql
 from pydantic import Field, PrivateAttr
 
-from msm_pricing.models.indices import build_zero_curve, get_index
-from msm_pricing.models.swap_pricer import (
+from msm_pricing.pricing_engine.resolvers import resolve_quantlib_index
+from msm_pricing.pricing_engine.swap_pricer import (
     get_swap_cashflows,
     price_vanilla_swap_with_curve,
 )
@@ -29,8 +30,8 @@ from .ql_fields import (
 class InterestRateSwap(InstrumentModel):
     """Plain-vanilla fixed-for-floating interest rate swap.
 
-    Indices are referenced by NAME (string) to keep the model stateless/JSON-friendly.
-    The actual QuantLib index is materialized lazily after set_valuation_date().
+    Indices are referenced by canonical IndexTable.uid values. The actual
+    QuantLib index is materialized lazily after set_valuation_date().
     """
 
     # ---- core economics ----
@@ -47,7 +48,7 @@ class InterestRateSwap(InstrumentModel):
     # ---- floating leg ----
     float_leg_tenor: QPeriod = Field(...)
     float_leg_spread: float = Field(...)
-    float_leg_index_name: str = Field()
+    float_leg_index_uid: uuid.UUID = Field()
 
     tenor: ql.Period | None = Field(
         default=None,
@@ -71,10 +72,9 @@ class InterestRateSwap(InstrumentModel):
             return
         if self.valuation_date is None:
             raise ValueError("Set valuation_date before pricing: set_valuation_date(dt).")
-        # Date-aware registry (TIIE picks Valmer curve by default)
-        self._float_leg_index = get_index(
-            self.float_leg_index_name,
-            target_date=self.valuation_date,
+        self._float_leg_index = resolve_quantlib_index(
+            self.float_leg_index_uid,
+            valuation_date=self.valuation_date,
             hydrate_fixings=True,
         )
 
@@ -89,9 +89,9 @@ class InterestRateSwap(InstrumentModel):
     def reset_curve(self, curve: ql.YieldTermStructure) -> None:
         if self.valuation_date is None:
             raise ValueError("Set valuation_date before reset_curve().")
-        self._float_leg_index = get_index(
-            self.float_leg_index_name,
-            target_date=self.valuation_date,
+        self._float_leg_index = resolve_quantlib_index(
+            self.float_leg_index_uid,
+            valuation_date=self.valuation_date,
             forwarding_curve=ql.YieldTermStructureHandle(curve),
             hydrate_fixings=True,
         )
@@ -99,16 +99,12 @@ class InterestRateSwap(InstrumentModel):
 
     # ---------- pricing ----------
     def _setup_pricer(self) -> None:
-        """Sets up the initial pricer using the default Valmer curve."""
+        """Set up the pricer using the curve resolved from the floating index UID."""
         if self._swap is not None:
             return
         assert self.valuation_date is not None
-        # Build the default  curve.
         self._ensure_index()
-        default_curve = build_zero_curve(
-            target_date=self.valuation_date,
-            index_identifier=self.float_leg_index_name,
-        )
+        default_curve = self._float_leg_index.forwardingTermStructure()
 
         # Call the common swap construction logic.
         self._build_swap(default_curve)
@@ -174,6 +170,7 @@ class InterestRateSwap(InstrumentModel):
         notional: float,
         start_date: datetime.date,
         fixed_rate: float,
+        float_leg_index_uid: uuid.UUID | str,
         float_leg_spread: float = 0.0,
         # choose exactly one of (tenor, maturity_date)
         tenor: ql.Period | None = None,
@@ -183,7 +180,7 @@ class InterestRateSwap(InstrumentModel):
         Build a MXN TIIE(28D) IRS with standard conventions:
 
         - Fixed leg: tenor=28D, daycount=ACT/360, BDC=ModifiedFollowing
-        - Float leg: tenor=28D, index name='TIIE_28D'
+        - Float leg: tenor=28D, index UID supplied by caller
         - Effective start: T+1 adjusted on Mexico calendar from trade_date
         - Maturity: eff_start + tenor (if tenor provided) OR explicit maturity_date
         """
@@ -210,5 +207,5 @@ class InterestRateSwap(InstrumentModel):
             fixed_leg_daycount=ql.Actual360(),
             float_leg_tenor=ql.Period("28D"),
             float_leg_spread=float_leg_spread,
-            float_leg_index_name="TIIE_28D",
+            float_leg_index_uid=uuid.UUID(str(float_leg_index_uid)),
         )

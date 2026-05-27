@@ -36,12 +36,15 @@ Use these subpackages:
 ```text
 msm_pricing.instruments
 msm_pricing.models
+msm_pricing.pricing_engine
 msm_pricing.data_interface
-msm_pricing.interest_rates
+msm_pricing.data_nodes
 msm_pricing.streamlit
 ```
 
-The old `pricing_models` package is renamed to `models`.
+The old `pricing_models` package is renamed to `pricing_engine`. The
+`msm_pricing.models` package follows the same convention as core `msm.models`
+and is reserved for SQLAlchemy MetaTable declarations.
 
 The old nested `instruments/instruments` package is lifted to
 `pricing/instruments`.
@@ -55,7 +58,7 @@ Examples:
 
 ```python
 from msm_pricing.instruments import FixedRateBond
-from msm_pricing.models import get_index
+from msm_pricing.pricing_engine import get_index
 ```
 
 The optional dependency extras are renamed from `instruments` to `pricing`, and

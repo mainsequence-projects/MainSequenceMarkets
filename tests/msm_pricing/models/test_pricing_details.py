@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from mainsequence.tdag.meta_tables import PlatformManagedMetaTable
 
-from msm.models import AssetTable
-from msm_pricing.models import AssetCurrentPricingDetailsTable
+from msm.models import AssetTable, IndexTable
+from msm_pricing.models import (
+    AssetCurrentPricingDetailsTable,
+    CurveTable,
+    IndexConventionDetailsTable,
+)
 
 
 def test_asset_current_pricing_details_is_platform_managed_table() -> None:
@@ -60,3 +64,62 @@ def test_asset_current_pricing_details_columns_and_indexes() -> None:
         [column.name for column in index.columns] == ["pricing_details_date"]
         for index in table.indexes
     )
+
+
+def test_index_convention_details_uses_index_uid_as_one_to_one_primary_key() -> None:
+    assert issubclass(IndexConventionDetailsTable, PlatformManagedMetaTable)
+
+    table = IndexConventionDetailsTable.__table__
+
+    assert "uid" not in table.c
+    assert [column.name for column in table.primary_key.columns] == ["index_uid"]
+
+    index_uid_fk = next(iter(table.c.index_uid.foreign_keys))
+    assert index_uid_fk.column is IndexTable.__table__.c.uid
+    assert index_uid_fk.ondelete == "CASCADE"
+
+    assert set(table.c.keys()) == {
+        "index_uid",
+        "index_family",
+        "convention_dump",
+        "serialization_format",
+        "source",
+        "metadata",
+    }
+
+
+def test_curve_table_references_index_convention_details() -> None:
+    assert issubclass(CurveTable, PlatformManagedMetaTable)
+
+    table = CurveTable.__table__
+
+    assert [column.name for column in table.primary_key.columns] == ["uid"]
+    assert set(table.c.keys()) == {
+        "uid",
+        "unique_identifier",
+        "display_name",
+        "curve_type",
+        "index_uid",
+        "interpolation_method",
+        "compounding",
+        "source",
+        "metadata",
+    }
+    assert "day_counter_code" not in table.c
+    assert "currency_code" not in table.c
+
+    index_uid_fk = next(iter(table.c.index_uid.foreign_keys))
+    assert index_uid_fk.column is IndexConventionDetailsTable.__table__.c.index_uid
+    assert index_uid_fk.ondelete == "RESTRICT"
+
+    expected_indexes = {
+        ("unique_identifier",),
+        ("index_uid",),
+        ("curve_type",),
+        ("source",),
+    }
+    actual_indexes = {
+        tuple(column.name for column in index.columns)
+        for index in table.indexes
+    }
+    assert expected_indexes.issubset(actual_indexes)

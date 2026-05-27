@@ -11,11 +11,11 @@ from pydantic import ConfigDict, Field
 from tqdm import tqdm
 
 from mainsequence.client.models_tdag import UpdateStatistics
-from msm.asset_indexed_data_node import (
+from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
 )
-from msm.asset_scope import (
+from msm.portfolios.asset_scope import (
     asset_calendar,
     asset_field,
     require_asset_category_scope,

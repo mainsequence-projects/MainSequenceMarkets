@@ -17,7 +17,7 @@ The codebase is currently in a transition state. The `msm` package already has
 the right new platform foundations:
 
 - SQLAlchemy models under `src/msm/models`;
-- MetaTable registration helpers under `src/msm/meta_tables.py`;
+- MetaTable registration helpers under `src/msm/models/registration.py`;
 - repository execution helpers that compile SQLAlchemy/Core statements into
   platform `compiled-sql.v1` MetaTable operations;
 - DataNode classes for market time-series data.

@@ -8,17 +8,17 @@ from uuid import UUID
 import pandas as pd
 
 from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
-from msm.asset_indexed_data_node import (
+from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
 )
-from msm.data_nodes._time import normalize_datetime64_ns_utc
+from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
 from mainsequence.tdag.data_nodes import (
     DataNode,
     DataNodeMetaData,
     RecordDefinition,
 )
-from msm.data_nodes import (
+from msm.data_nodes.utils import (
     ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT,
     FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT,
 )

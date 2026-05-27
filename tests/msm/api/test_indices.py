@@ -4,7 +4,7 @@ import uuid
 from types import SimpleNamespace
 
 from msm.api.indices import Index, IndexUpsert
-from msm.meta_tables import markets_meta_table_fullname
+from msm.models.registration import markets_meta_table_fullname
 from msm.models import IndexTable
 
 

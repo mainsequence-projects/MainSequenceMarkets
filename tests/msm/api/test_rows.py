@@ -21,7 +21,7 @@ from msm.api.market_metadata import (
     SignalMetadata,
 )
 from msm.api.portfolios import Fund, Portfolio, PortfolioAssetDetail, PortfolioMetadata
-from msm.meta_tables import markets_meta_table_fullname
+from msm.models.registration import markets_meta_table_fullname
 from msm.models import (
     AccountGroupTable,
     AccountTable,

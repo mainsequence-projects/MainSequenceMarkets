@@ -53,7 +53,7 @@ def install_fake_bootstrap_modules(monkeypatch):
 
     monkeypatch.setitem(
         sys.modules,
-        "msm.meta_tables",
+        "msm.models.registration",
         SimpleNamespace(
             markets_meta_table_fullname=lambda model: "public.asset",
             markets_meta_table_models=lambda: ["Asset"],
@@ -161,19 +161,19 @@ def test_create_schemas_logs_bootstrap_resources(monkeypatch) -> None:
 
 def test_runtime_exposes_data_node_classes(monkeypatch) -> None:
     install_fake_bootstrap_modules(monkeypatch)
-    account_data_nodes_module = ModuleType("msm.accounts.data_nodes")
+    account_data_nodes_module = ModuleType("msm.data_nodes.accounts")
     account_data_nodes_module.AccountHoldings = type("AccountHoldings", (), {})
     account_data_nodes_module.VirtualFundHoldings = type("VirtualFundHoldings", (), {})
-    data_nodes_module = ModuleType("msm.data_nodes")
-    data_nodes_module.AssetSnapshot = type("AssetSnapshot", (), {})
+    asset_data_nodes_module = ModuleType("msm.data_nodes.assets")
+    asset_data_nodes_module.AssetSnapshot = type("AssetSnapshot", (), {})
     pricing_data_nodes_module = ModuleType("msm_pricing.data_nodes")
     pricing_data_nodes_module.AssetPricingDetail = type("AssetPricingDetail", (), {})
     portfolio_data_nodes_module = ModuleType("msm.portfolios.data_nodes")
     portfolio_data_nodes_module.PortfolioWeights = type("PortfolioWeights", (), {})
     portfolio_data_nodes_module.PortfoliosDataNode = type("PortfoliosDataNode", (), {})
     portfolio_data_nodes_module.SignalWeights = type("SignalWeights", (), {})
-    monkeypatch.setitem(sys.modules, "msm.accounts.data_nodes", account_data_nodes_module)
-    monkeypatch.setitem(sys.modules, "msm.data_nodes", data_nodes_module)
+    monkeypatch.setitem(sys.modules, "msm.data_nodes.accounts", account_data_nodes_module)
+    monkeypatch.setitem(sys.modules, "msm.data_nodes.assets", asset_data_nodes_module)
     monkeypatch.setitem(sys.modules, "msm_pricing.data_nodes", pricing_data_nodes_module)
     monkeypatch.setitem(
         sys.modules,
@@ -186,7 +186,7 @@ def test_runtime_exposes_data_node_classes(monkeypatch) -> None:
     assert runtime.data_nodes == {
         "AccountHoldings": account_data_nodes_module.AccountHoldings,
         "AssetPricingDetail": pricing_data_nodes_module.AssetPricingDetail,
-        "AssetSnapshot": data_nodes_module.AssetSnapshot,
+        "AssetSnapshot": asset_data_nodes_module.AssetSnapshot,
         "PortfolioWeights": portfolio_data_nodes_module.PortfolioWeights,
         "PortfoliosDataNode": portfolio_data_nodes_module.PortfoliosDataNode,
         "SignalWeights": portfolio_data_nodes_module.SignalWeights,
@@ -289,7 +289,7 @@ def test_resolve_runtime_auto_registers_when_enabled(monkeypatch) -> None:
     monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
     monkeypatch.setitem(
         sys.modules,
-        "msm.meta_tables",
+        "msm.models.registration",
         SimpleNamespace(resolve_markets_meta_table_models=lambda models=None: list(models or [])),
     )
     monkeypatch.setattr(
@@ -317,7 +317,7 @@ def test_resolve_runtime_auto_registers_when_enabled(monkeypatch) -> None:
 def test_resolve_runtime_missing_tables_error_names_registration_options(monkeypatch) -> None:
     monkeypatch.setitem(
         sys.modules,
-        "msm.meta_tables",
+        "msm.models.registration",
         SimpleNamespace(resolve_markets_meta_table_models=lambda models=None: list(models or [])),
     )
     monkeypatch.setattr(

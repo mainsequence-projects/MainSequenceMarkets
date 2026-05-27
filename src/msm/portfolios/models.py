@@ -11,7 +11,7 @@ from pydantic import (
     field_serializer,
 )
 
-from msm.asset_scope import require_asset_category_scope
+from msm.portfolios.asset_scope import require_asset_category_scope
 from msm.portfolios.data_nodes import (
     REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS,
     SignalWeights,

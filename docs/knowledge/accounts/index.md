@@ -14,7 +14,7 @@ Accounts answer these questions:
 
 ## Primary Modules
 
-- `msm.accounts.data_nodes`: canonical holdings DataNodes for account and
+- `msm.data_nodes.accounts`: canonical holdings DataNodes for account and
   virtual fund holdings.
 - `msm.models.accounts`: SQLAlchemy account and account assignment models.
 - `msm.models.funds`: SQLAlchemy fund model.
@@ -54,7 +54,7 @@ a target-position set; `Account.upsert(...)` does not hide that mutation.
 ## Extension Notes
 
 Add account registry behavior in `msm.models`, `msm.repositories`, and
-`msm.services`. Add time-series holdings behavior in `data_nodes`. Add
+`msm.services`. Add time-series holdings behavior in `msm.data_nodes.accounts`. Add
 persistence schema changes in `msm.models`, then surface repository or service
 operations only when application code needs a stable operation boundary.
 

@@ -10,7 +10,10 @@ import pandas as pd
 
 from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
 
-from msm.data_nodes import POSITION_EXPOSURE_TABLE_CONTRACT, source_table_initialization_kwargs
+from msm.data_nodes.utils import (
+    POSITION_EXPOSURE_TABLE_CONTRACT,
+    source_table_initialization_kwargs,
+)
 
 
 TARGET_POSITION_EXPOSURE_FIELDS = (

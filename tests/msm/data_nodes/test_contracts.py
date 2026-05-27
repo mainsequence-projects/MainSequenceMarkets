@@ -8,8 +8,8 @@ import pytest
 
 from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
 
-from msm.accounts.data_nodes import AccountHoldings, VirtualFundHoldings
-from msm.data_nodes import (
+from msm.data_nodes.accounts import AccountHoldings, VirtualFundHoldings
+from msm.data_nodes.utils import (
     ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT,
     FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT,
     POSITION_EXPOSURE_TABLE_CONTRACT,

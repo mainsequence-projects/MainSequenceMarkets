@@ -17,12 +17,21 @@ Platform utilities answer these questions:
 ## Primary Modules
 
 - `msm.base`: shared SQLAlchemy base, market schema settings, and model mixins.
-- `msm.meta_tables`: MetaTable registration helpers for market-domain models.
+- `msm.models.registration`: MetaTable registration helpers for market-domain models.
 - `msm.settings`: shared markets constants such as the canonical asset identity
   dimension.
-- `msm.asset_indexed_data_node`: shared DataNode and configuration behavior for
-  publishers whose persisted identity includes an asset `unique_identifier`.
-- `msm.cli`: explicit command-line helpers, including
+- `msm.data_nodes.accounts`: account and virtual-fund holdings DataNodes.
+- `msm.data_nodes.assets`: asset-specific DataNode package, including
+  `AssetSnapshot` and shared asset-indexed behavior in
+  `msm.data_nodes.assets.asset_indexed`.
+- `msm.data_nodes.execution`: execution DataNodes for orders, order events,
+  trades, and execution errors.
+- `msm.data_nodes.indices`: index-specific DataNode package, including
+  timestamped index facts and canonical `IndexTable` source-table foreign keys.
+- `msm.data_nodes.utils`: shared DataNode utilities that are not tied to one
+  model concept, including source-table contracts, timestamp normalization,
+  stamped-frame behavior, and namespace defaulting.
+- `cli`: explicit command-line helpers, including
   `msm copy-msm-skills` for installing packaged ms-markets agent skills into a
   host project.
 
@@ -50,8 +59,9 @@ scaffold skills and project-state files untouched.
 ## Extension Notes
 
 Add behavior here only when at least two concept packages need the same platform
-primitive. If behavior is specific to one concept, keep it in that concept
-package first.
+primitive. If DataNode behavior is specific to one concept, keep it in that
+concept package first. If it is shared DataNode machinery and not model-shaped,
+place it under `msm.data_nodes.utils`.
 
 Repository-level maintenance workflows live in Open Agent skills under
 `.agents/skills/`. Use `.agents/skills/library_maintenance/SKILL.md` when making

@@ -74,6 +74,68 @@ OpenFIGI resolution, `Asset` registration, `OpenFigiDetails`, and
 `AssetSnapshot` writes. The OpenFIGI helpers read the API key from the Main
 Sequence secret `OPEN_FIGI_API_KEY`.
 
+For timestamped facts keyed to index reference rows, use the same stamped
+DataNode workflow with `msm.data_nodes.indices.IndexTimestampedDataNode` and an
+`IndexDataNodeConfiguration` subclass. The frame contract is still
+`["time_index", "unique_identifier"]`, but the canonical source-table foreign
+key points to `IndexTable.unique_identifier` instead of `AssetTable`.
+
+## Pricing Instrument Identity
+
+Use this workflow when connecting pricing terms to a canonical asset:
+
+1. Persist or resolve the asset through `msm.api.assets.Asset`.
+2. Store the asset-to-pricing relationship in pricing-owned persistence, keyed
+   by the asset UID.
+3. Keep `InstrumentModel` payloads limited to priceable terms. Do not include
+   `main_sequence_asset_id`, `uid`, or `asset_uid` in serialized instrument
+   terms.
+
+This keeps instrument reconstruction independent from Main Sequence persistence
+identity. The pricing details row decides which asset currently uses a given
+serialized instrument definition. See
+`examples/pricing/instrument_identity_boundary.py` for a minimal payload
+boundary example.
+
+When the pricing persistence tables are needed, register them through
+`msm_pricing.meta_tables.register_pricing_meta_tables(...)`. That registration
+flow includes the core asset table first, then pricing extension tables, so the
+foreign-key dependency from pricing details to assets is resolved before writes.
+
+The user-facing write and read path belongs to instrument classes:
+
+```python
+from msm_pricing import Instrument, ZeroCouponBond
+
+bond = ZeroCouponBond(...)
+bond.attach_to_asset(asset)
+
+loaded = Instrument.load_from_asset(asset)
+```
+
+Use `Instrument.load_from_asset(asset)` when the asset is known but the concrete
+pricing instrument is not. Use a typed loader such as
+`ZeroCouponBond.load_from_asset(asset)` when the caller expects a specific
+instrument family and wants a type check.
+
+When an instrument references a market index, register the pricing registry rows
+before publishing curve observations:
+
+1. Persist the canonical index through `msm.api.indices.Index`.
+2. Upsert `msm_pricing.api.IndexConventionDetails` with the index UID and the
+   serializable convention payload needed to rebuild the pricing index.
+3. Upsert `msm_pricing.api.Curve` with a stable curve `unique_identifier`, the
+   index UID, and curve construction metadata.
+4. Publish curve observations through `DiscountCurvesNode` keyed by the same
+   curve `unique_identifier`.
+
+See `examples/pricing/pricing_registry_rows.py` for the row API workflow.
+
+Serialized pricing instruments should reference these rows by UUID, not by
+mutable names. Use `floating_rate_index_uid` on floating-rate bonds and
+`float_leg_index_uid` on swaps. The runtime resolver turns those UUIDs into the
+correct convention row, curve row, QuantLib index, curve, and fixing series.
+
 ## Markets MetaTable Models
 
 Use this workflow when adding or reviewing a market-domain relational table:

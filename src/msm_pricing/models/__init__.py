@@ -1,4 +1,4 @@
-"""Pricing persistence models plus lazy runtime helper exports."""
+"""Pricing-owned SQLAlchemy MetaTable declarations."""
 
 from __future__ import annotations
 
@@ -7,16 +7,8 @@ from typing import Any
 
 _EXPORTS = {
     "AssetCurrentPricingDetailsTable": ".pricing_details",
-    "IndexSpec": ".indices",
-    "add_historical_fixings": ".indices",
-    "build_zero_curve": ".indices",
-    "build_zero_curve_with_effective_date": ".indices",
-    "clear_index_cache": ".indices",
-    "clear_index_spec_cache": ".indices",
-    "get_index": ".indices",
-    "get_index_spec": ".indices",
-    "index_by_name": ".indices",
-    "register_index_spec": ".indices",
+    "CurveTable": ".curves",
+    "IndexConventionDetailsTable": ".index_convention_details",
 }
 
 
@@ -34,14 +26,6 @@ def __dir__() -> list[str]:
 
 __all__ = [
     "AssetCurrentPricingDetailsTable",
-    "IndexSpec",
-    "add_historical_fixings",
-    "build_zero_curve",
-    "build_zero_curve_with_effective_date",
-    "clear_index_cache",
-    "clear_index_spec_cache",
-    "get_index",
-    "get_index_spec",
-    "index_by_name",
-    "register_index_spec",
+    "CurveTable",
+    "IndexConventionDetailsTable",
 ]

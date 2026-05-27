@@ -67,11 +67,13 @@ guessing.
 
 Before changing code, inspect the current local implementation:
 
-1. `src/msm/asset_indexed_data_node.py`
-2. `src/msm/data_nodes/assets.py`
-3. `src/msm/settings.py`
-4. `docs/knowledge/assets/asset_indexed_data_nodes.md`
-5. `docs/ADR/0007-market-data-node-asset-foreign-keys.md`
+1. `src/msm/data_nodes/assets/asset_indexed.py`
+2. `src/msm/data_nodes/assets/snapshots.py`
+3. `src/msm/data_nodes/utils/stamped.py`
+4. `src/msm/data_nodes/indices/timestamped.py`
+5. `src/msm/settings.py`
+6. `docs/knowledge/assets/asset_indexed_data_nodes.md`
+7. `docs/ADR/0007-market-data-node-asset-foreign-keys.md`
 
 For generic SDK behavior, verify against the latest Main Sequence DataNode docs
 and the `mainsequence-data-nodes` skill.
@@ -113,7 +115,7 @@ Configuration must declare records directly:
 from pydantic import Field, model_validator
 
 from mainsequence.tdag.data_nodes import DataNodeMetaData, RecordDefinition
-from msm.asset_indexed_data_node import (
+from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
     asset_indexed_foreign_keys,
@@ -183,7 +185,7 @@ class ExampleAssetMetric(AssetIndexedDataNode):
 ```
 
 For timestamped asset fact nodes, prefer the local timestamped base pattern from
-`src/msm/data_nodes/assets.py`:
+`src/msm/data_nodes/assets/snapshots.py`:
 
 - config subclass declares records
 - class owns `__data_node_identifier__`
@@ -195,6 +197,17 @@ For timestamped asset fact nodes, prefer the local timestamped base pattern from
 
 Do not create free-floating service functions when the behavior naturally
 belongs to the DataNode class.
+
+The timestamped frame/config mechanics are shared in
+`src/msm/data_nodes/utils/stamped.py`. Keep new asset and index timestamped nodes
+on that base instead of copying validation, schema bootstrap, namespace, or
+`datetime64[ns, UTC]` normalization logic. Asset-specific DataNodes belong under
+`src/msm/data_nodes/assets/`, and index-specific DataNodes belong under
+`src/msm/data_nodes/indices/`. Non-model-specific helpers belong under
+`src/msm/data_nodes/utils/`. For timestamped facts keyed to `IndexTable`, use
+`IndexTimestampedDataNode` and `IndexDataNodeConfiguration` from
+`src/msm/data_nodes/indices/timestamped.py`; the only intended difference is the
+canonical source-table foreign key target.
 
 ## Namespaces And Identifiers
 

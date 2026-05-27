@@ -16,8 +16,12 @@ Current market runtime boundaries are:
 - `msm.repositories`: compiled SQL operation builders for MetaTable execution.
 - `msm.services`: workflow helpers built on repository operations and DataNode
   contracts.
-- `msm.asset_indexed_data_node` and domain DataNodes: historical and
-  timestamped table behavior.
+- `msm.data_nodes.accounts`, `msm.data_nodes.assets`,
+  `msm.data_nodes.execution`, and `msm.data_nodes.indices`: concept-specific
+  DataNode modules. Shared asset-indexed behavior lives in
+  `msm.data_nodes.assets.asset_indexed`.
+- `msm.data_nodes.utils`: shared DataNode support code that is not a model
+  concept package.
 
 ## Removed Runtime Surface
 

@@ -71,7 +71,7 @@ class MarketsRepositoryContext:
         return str(meta_table_uid)
 
     def table(self, model: type[MarketsBase] | str) -> MarketsMetaTableHandle:
-        from msm.meta_tables import resolve_markets_meta_table_model
+        from msm.models.registration import resolve_markets_meta_table_model
 
         resolved_model = resolve_markets_meta_table_model(model)
         return MarketsMetaTableHandle(

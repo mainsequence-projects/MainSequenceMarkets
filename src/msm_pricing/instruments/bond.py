@@ -4,16 +4,17 @@ import hashlib
 import json
 import math
 import threading
+import uuid
 from collections import OrderedDict
-from typing import Any
+from typing import Any, ClassVar
 
 import QuantLib as ql
 from pydantic import Field, PrivateAttr
 
-from msm_pricing.models.bond_pricer import (
+from msm_pricing.pricing_engine.bond_pricer import (
     create_floating_rate_bond_with_curve,
 )
-from msm_pricing.models.indices import get_index
+from msm_pricing.pricing_engine.resolvers import resolve_quantlib_index
 from msm_pricing.utils import to_py_date, to_ql_date
 
 from .base_instrument import InstrumentModel
@@ -77,6 +78,8 @@ class Bond(InstrumentModel):
       - _create_bond(discount_curve: ql.YieldTermStructureHandle) -> ql.Bond
         (return a ql.FixedRateBond or ql.FloatingRateBond, etc. *without* assuming any global state)
     """
+
+    expected_asset_type: ClassVar[str] = "bond"
 
     face_value: float = Field(...,gt=0,
         description="Notional (face amount) repaid at maturity. Expressed in currency units.",
@@ -145,16 +148,16 @@ class Bond(InstrumentModel):
         json_schema_extra={"semantic_type": "schedule", "nullable": True},
     )
 
-    benchmark_rate_index_name: str | None = Field(
+    benchmark_rate_index_uid: uuid.UUID | None = Field(
         default=None,
         description=(
-            "Optional benchmark index label for analytics/mapping (does not change instrument cashflows by itself). "
-            "Examples: 'SOFR', 'ESTR', 'EURIBOR-3M'."
+            "Optional canonical IndexTable.uid for benchmark analytics/mapping "
+            "(does not change instrument cashflows by itself)."
         ),
-        examples=["SOFR", "ESTR", "EURIBOR-3M", None],
+        examples=["550e8400-e29b-41d4-a716-446655440000", None],
         json_schema_extra={
             "semantic_type": "benchmark_rate",
-            "synonyms": ["benchmark", "index", "reference_rate"],
+            "synonyms": ["benchmark", "index_uid", "reference_rate_uid"],
         },
     )
     model_config = {"arbitrary_types_allowed": True}
@@ -242,24 +245,22 @@ class Bond(InstrumentModel):
         self._curve_observer.registerWith(handle)
 
     # ---- index helpers shared by all bonds (DRY) ----
-    def _get_index_by_name(
+    def _get_index_by_uid(
             self,
-            index_name: str,
+            index_uid: uuid.UUID | str,
             *,
             forwarding_curve: ql.YieldTermStructureHandle | None = None,
             hydrate_fixings: bool = True,
     ) -> ql.IborIndex:
         """
-        Build a QuantLib index by name for the bond's valuation_date, optionally
-        with a custom forwarding curve. This centralizes the get_index() usage.
+        Build a QuantLib index by backend index UID for the bond's valuation_date,
+        optionally with a custom forwarding curve.
         """
         if self.valuation_date is None:
             raise ValueError("Set valuation_date before requesting an index: set_valuation_date(dt).")
-        if not index_name:
-            raise ValueError("Index name is empty.")
-        return get_index(
-            index_name,
-            target_date=self.valuation_date,
+        return resolve_quantlib_index(
+            index_uid,
+            valuation_date=self.valuation_date,
             forwarding_curve=forwarding_curve,
             hydrate_fixings=hydrate_fixings,
         )
@@ -267,17 +268,17 @@ class Bond(InstrumentModel):
     def get_benchmark_index_curve(self) -> ql.YieldTermStructureHandle:
         """
         Return the forwarding term structure for the bond's benchmark index
-        (given by benchmark_rate_index_name). Mirrors FloatingRateBond.get_index_curve().
+        (given by benchmark_rate_index_uid). Mirrors FloatingRateBond.get_index_curve().
         """
-        if not self.benchmark_rate_index_name:
-            raise ValueError("benchmark_rate_index_name is not set for this instrument.")
-        idx = self._get_index_by_name(self.benchmark_rate_index_name, hydrate_fixings=True)
+        if not self.benchmark_rate_index_uid:
+            raise ValueError("benchmark_rate_index_uid is not set for this instrument.")
+        idx = self._get_index_by_uid(self.benchmark_rate_index_uid, hydrate_fixings=True)
         return idx.forwardingTermStructure()
 
     def get_benchmark_index(self) -> ql.IborIndex:
-        if not self.benchmark_rate_index_name:
-            raise ValueError("benchmark_rate_index_name is not set.")
-        return self._get_index_by_name(self.benchmark_rate_index_name, hydrate_fixings=True)
+        if not self.benchmark_rate_index_uid:
+            raise ValueError("benchmark_rate_index_uid is not set.")
+        return self._get_index_by_uid(self.benchmark_rate_index_uid, hydrate_fixings=True)
 
     def _val_ordinal(self) -> int:
         """Use day granularity for pricing context."""
@@ -577,7 +578,7 @@ class Bond(InstrumentModel):
                     h = None
 
             # 2) Benchmark curve (if configured)
-            if h is None and self.benchmark_rate_index_name:
+            if h is None and self.benchmark_rate_index_uid:
                 try:
                     h = self.get_benchmark_index_curve()
                 except Exception:
@@ -591,7 +592,7 @@ class Bond(InstrumentModel):
                 raise ValueError(
                     "No discount curve available for z-spread. "
                     "Pass `discount_curve=...`, implement get_index_curve(), "
-                    "or set benchmark_rate_index_name / default curve."
+                    "or set benchmark_rate_index_uid / default curve."
                 )
 
         # Build cache keys
@@ -1742,11 +1743,14 @@ class _FloatingRateBondCommon(Bond):
         json_schema_extra={"semantic_type": "coupon_frequency", "quantlib_class": "Period"},
     )
 
-    floating_rate_index_name: str = Field(
+    floating_rate_index_uid: uuid.UUID = Field(
         ...,
-        description="Floating rate index identifier used by your index builder/mapper.",
-        examples=["SOFR", "EURIBOR-3M", "USD-LIBOR-3M"],
-        json_schema_extra={"semantic_type": "rate_index", "synonyms": ["index", "reference_rate", "ibor_index"]},
+        description="Canonical IndexTable.uid for the floating rate index.",
+        examples=["550e8400-e29b-41d4-a716-446655440000"],
+        json_schema_extra={
+            "semantic_type": "rate_index_uid",
+            "synonyms": ["index_uid", "reference_rate_uid", "ibor_index_uid"],
+        },
     )
 
     spread: float = Field(
@@ -1786,7 +1790,7 @@ class _FloatingRateBondCommon(Bond):
             return
         if self.valuation_date is None:
             raise ValueError("Set valuation_date before pricing: set_valuation_date(dt).")
-        self._index = self._get_index_by_name(self.floating_rate_index_name, hydrate_fixings=True)
+        self._index = self._get_index_by_uid(self.floating_rate_index_uid, hydrate_fixings=True)
         self._register_index_observer()
 
     def _register_index_observer(self) -> None:
@@ -1814,6 +1818,8 @@ class _FloatingRateBondCommon(Bond):
     def _on_valuation_date_set(self) -> None:
         old_handle = self._last_discount_curve_handle
         old_observer = self._curve_observer
+        old_index = self._index
+        old_index_observer = self._index_observer
 
         self._bond = None
         self._engine = None
@@ -1821,21 +1827,28 @@ class _FloatingRateBondCommon(Bond):
         self._with_yield = None
         self._flat_compounding = None
         self._flat_frequency = None
+        self._index = None
 
         if old_observer is not None and old_handle is not None:
             try:
                 old_observer.unregisterWith(old_handle)
             except Exception:
                 pass
+        if old_index_observer is not None and old_index is not None:
+            try:
+                old_index_observer.unregisterWith(old_index)
+            except Exception:
+                pass
 
         self._curve_observer = None
+        self._index_observer = None
 
     def reset_curve(self, curve: ql.YieldTermStructureHandle) -> None:
         if self.valuation_date is None:
             raise ValueError("Set valuation_date before reset_curve().")
 
-        self._index = self._get_index_by_name(
-            self.floating_rate_index_name,
+        self._index = self._get_index_by_uid(
+            self.floating_rate_index_uid,
             forwarding_curve=curve,
             hydrate_fixings=True,
         )

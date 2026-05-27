@@ -110,11 +110,11 @@ shared base to holdings, execution, or other schemas that need separate review.
 
 1. [x] Add `src/msm/settings.py` with
    `ASSET_UNIQUE_IDENTIFIER_DIMENSION`.
-2. [x] Introduce `src/msm/asset_indexed_data_node.py` with
+2. [x] Introduce `src/msm/data_nodes/assets/asset_indexed.py` with
    `AssetIndexedDataNodeConfiguration` and `AssetIndexedDataNode`.
 3. [x] Remove the old compatibility shim and broad aliases.
 4. [x] Replace local hard-coded asset identity constants in
-   `msm.data_nodes.assets` and `msm.asset_scope` with the settings constant.
+   `msm.data_nodes.assets` and `msm.portfolios.asset_scope` with the settings constant.
 5. [x] Add `asset_unique_identifier_foreign_key()` returning the canonical
    `SourceTableForeignKey` to `AssetTable.unique_identifier`.
 6. [x] Add configuration validation for concrete asset DataNodes that requires

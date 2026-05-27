@@ -12,8 +12,8 @@ from mainsequence.tdag.meta_tables import (
     register_external_sqlalchemy_model,
 )
 
-from .base import MARKETS_SCHEMA, MarketsBase
-from .models import markets_sqlalchemy_models
+from msm.base import MARKETS_SCHEMA, MarketsBase
+from msm.models import markets_sqlalchemy_models
 
 
 MarketsManagementMode = Literal["platform_managed", "external_registered"]

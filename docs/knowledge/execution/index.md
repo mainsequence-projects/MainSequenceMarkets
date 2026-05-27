@@ -14,7 +14,7 @@ Execution answers these questions:
 
 ## Primary Modules
 
-- `msm.execution.data_nodes`: DataNodes for orders, order events, trades, and
+- `msm.data_nodes.execution`: DataNodes for orders, order events, trades, and
   execution errors.
 - `msm.models.execution`: SQLAlchemy execution models.
 - `msm.api.execution`: typed row APIs for `OrderManager`,
@@ -60,9 +60,9 @@ upsert.
 
 ## Extension Notes
 
-Add new execution storage shapes in `data_nodes`. Add new registry or manager
-metadata in `msm.models.execution`, then expose it through repository and
-service functions.
+Add new execution storage shapes in `msm.data_nodes.execution`. Add new
+registry or manager metadata in `msm.models.execution`, then expose it through
+repository and service functions.
 
 ## Related Concepts
 

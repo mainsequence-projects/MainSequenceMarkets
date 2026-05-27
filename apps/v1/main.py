@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from importlib.metadata import version
 
 from fastapi import FastAPI
@@ -8,6 +9,7 @@ from fastapi.openapi.utils import get_openapi
 from apps.v1.routers.asset_categories import router as asset_categories_router
 from apps.v1.routers.assets import router as assets_router
 from apps.v1.routers.indices import router as indices_router
+from apps.v1.runtime_bootstrap import ensure_apps_v1_runtime
 
 API_TITLE = "MainSequence Markets Public API"
 API_VERSION = version("ms-markets")
@@ -32,11 +34,18 @@ API_TAGS = [
 ]
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    ensure_apps_v1_runtime()
+    yield
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title=API_TITLE,
         version=API_VERSION,
         description=API_DESCRIPTION,
+        lifespan=lifespan,
         openapi_tags=API_TAGS,
         openapi_url="/openapi.json",
         docs_url="/docs",

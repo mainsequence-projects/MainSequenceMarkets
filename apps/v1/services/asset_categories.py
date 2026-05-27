@@ -61,14 +61,13 @@ def bulk_delete_asset_categories(*, payload: Mapping[str, Any]) -> BulkDeleteAss
 
 
 def _get_runtime():
-    from msm.bootstrap import resolve_runtime
-    from msm.models import AssetCategoryMembershipTable, AssetCategoryTable, AssetTable
+    from apps.v1.runtime_bootstrap import resolve_apps_v1_runtime
 
-    return resolve_runtime(
+    return resolve_apps_v1_runtime(
         models=[
-            AssetTable,
-            AssetCategoryTable,
-            AssetCategoryMembershipTable,
+            "Asset",
+            "AssetCategory",
+            "AssetCategoryMembership",
         ],
         row_model_name="AssetCategory apps/v1",
     )

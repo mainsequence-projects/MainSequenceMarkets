@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import importlib
 import json
 
-from msm.cli import bundled_msm_skills_root, main
+import pytest
+
+from cli.main import bundled_msm_skills_root, main
 
 
 def _bundled_skill_names() -> list[str]:
@@ -19,6 +22,11 @@ def test_import_msm_does_not_copy_skills(tmp_path, monkeypatch) -> None:
     import msm  # noqa: F401
 
     assert not (tmp_path / ".agents").exists()
+
+
+def test_msm_cli_module_is_not_runtime_surface() -> None:
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("msm.cli")
 
 
 def test_copy_msm_skills_dry_run_writes_nothing(tmp_path, capsys) -> None:

@@ -10,10 +10,10 @@ from mainsequence.tdag.meta_tables import (
     metatable_configured_tablename,
 )
 
-import msm.meta_tables as meta_tables
+import msm.models.registration as meta_tables
 import msm.models as models
 from msm.base import MarketsMetaTableMixin
-from msm.meta_tables import build_markets_registration_requests, markets_meta_table_fullname
+from msm.models.registration import build_markets_registration_requests, markets_meta_table_fullname
 from msm.models import (
     AssetTypeTable,
     AssetTable,
@@ -146,6 +146,11 @@ def test_asset_related_models_are_grouped_under_assets_package() -> None:
 
 def test_legacy_model_aliases_are_removed() -> None:
     assert not hasattr(models, "Asset")
+
+
+def test_legacy_root_metatable_registration_module_is_removed() -> None:
+    with pytest.raises(ModuleNotFoundError):
+        __import__("msm.meta_tables")
 
 
 def test_selected_metatable_models_resolve_in_dependency_order() -> None:

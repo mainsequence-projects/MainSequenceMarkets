@@ -10,9 +10,9 @@ os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
-from msm.accounts.data_nodes import AccountHoldings
+from msm.data_nodes.accounts import AccountHoldings
 from msm.data_nodes.assets import AssetSnapshot
-from msm.execution.data_nodes import Orders
+from msm.data_nodes.execution import Orders
 from msm.portfolios.data_nodes.portfolio_weights import PortfolioWeights
 
 MICROSECOND_TIME = dt.datetime(2026, 5, 26, 18, 50, 19, 240235, tzinfo=dt.UTC)

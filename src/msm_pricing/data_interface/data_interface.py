@@ -7,9 +7,11 @@ from typing import Any, Callable, TypedDict
 import pandas as pd
 from cachetools import LRUCache, cachedmethod
 
-from ..interest_rates.etl.curve_codec import (
+from msm.settings import INDEX_UNIQUE_IDENTIFIER_DIMENSION
+from msm_pricing.data_nodes.curve_codec import (
     decompress_string_to_curve as _decompress_string_to_curve,
 )
+from msm_pricing.data_nodes.curves import CURVE_UNIQUE_IDENTIFIER_DIMENSION
 
 
 class DateInfo(TypedDict, total=False):
@@ -22,6 +24,20 @@ class DateInfo(TypedDict, total=False):
 
 
 UniqueIdentifierRangeMap = dict[str, DateInfo]
+
+
+def dimension_range_for_identity(
+    *,
+    identity_dimension: str,
+    identity: str,
+    date_info: DateInfo,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "coordinate": {identity_dimension: identity},
+            **date_info,
+        }
+    ]
 
 
 class MSInterface:
@@ -101,15 +117,17 @@ class MSInterface:
 
         limit = target_date + datetime.timedelta(days=1)
 
-        curve = data_node.get_ranged_data_per_asset(
-            range_descriptor={
-                curve_name: {
+        curve = data_node.get_df_between_dates(
+            dimension_range_map=dimension_range_for_identity(
+                identity_dimension=CURVE_UNIQUE_IDENTIFIER_DIMENSION,
+                identity=curve_name,
+                date_info={
                     "start_date": target_date,
                     "start_date_operand": ">=",
                     "end_date": limit,
                     "end_date_operand": "<",
-                }
-            }
+                },
+            )
         )
 
         if curve.empty:
@@ -159,15 +177,17 @@ class MSInterface:
             table_id=reference_rates_fixings_data_node_uid
         )
 
-        fixings_df = data_node.get_ranged_data_per_asset(
-            range_descriptor={
-                reference_rate_uid: {
+        fixings_df = data_node.get_df_between_dates(
+            dimension_range_map=dimension_range_for_identity(
+                identity_dimension=INDEX_UNIQUE_IDENTIFIER_DIMENSION,
+                identity=reference_rate_uid,
+                date_info={
                     "start_date": start_date,
                     "start_date_operand": ">=",
                     "end_date": end_date,
                     "end_date_operand": "<=",
-                }
-            }
+                },
+            )
         )
         if fixings_df.empty:
 
@@ -176,18 +196,21 @@ class MSInterface:
             )
             if use_last_observation:
                 logger.warning("Fixings are using last observation and filled forward")
-                fixings_df = data_node.get_ranged_data_per_asset(
-                    range_descriptor={
-                        reference_rate_uid: {
+                fixings_df = data_node.get_df_between_dates(
+                    dimension_range_map=dimension_range_for_identity(
+                        identity_dimension=INDEX_UNIQUE_IDENTIFIER_DIMENSION,
+                        identity=reference_rate_uid,
+                        date_info={
                             "start_date": datetime.datetime(1900, 1, 1, tzinfo=pytz.utc),
                             "start_date_operand": ">=",
-                        }
-                    }
+                        },
+                    )
                 )
 
-            raise Exception(
-                f"{reference_rate_uid} has not data between {start_date} and {end_date}."
-            )
+            if fixings_df.empty:
+                raise Exception(
+                    f"{reference_rate_uid} has not data between {start_date} and {end_date}."
+                )
         fixings_df = fixings_df.reset_index().rename(columns={"time_index": "date"})
         fixings_df["date"] = fixings_df["date"].dt.date
         return fixings_df.set_index("date")["rate"].to_dict()

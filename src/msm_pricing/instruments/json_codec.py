@@ -8,7 +8,7 @@ from typing import Any
 
 import QuantLib as ql
 
-from msm_pricing.models.indices import get_index as _index_by_name
+from msm_pricing.pricing_engine.indices import get_index as _index_by_name
 
 # ----------------------------- ql.Period -------------------------------------
 

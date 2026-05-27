@@ -15,7 +15,7 @@ from msm.settings import (
 )
 
 if TYPE_CHECKING:
-    from msm.meta_tables import MarketsMetaTableRegistrationResult, MarketsModelSelector
+    from msm.models.registration import MarketsMetaTableRegistrationResult, MarketsModelSelector
     from msm.repositories.base import MarketsMetaTableHandle, MarketsRepositoryContext
 
 MarketsManagementMode = Literal["platform_managed", "external_registered"]
@@ -67,8 +67,8 @@ class MarketsRuntime:
 
     @property
     def data_nodes(self) -> dict[str, type[Any]]:
-        from msm.accounts.data_nodes import AccountHoldings, VirtualFundHoldings
-        from msm.data_nodes import AssetSnapshot
+        from msm.data_nodes.accounts import AccountHoldings, VirtualFundHoldings
+        from msm.data_nodes.assets import AssetSnapshot
         from msm.portfolios.data_nodes import (
             PortfolioWeights,
             PortfoliosDataNode,
@@ -95,12 +95,11 @@ def configure_metatable_namespace(namespace: str) -> None:
         for module_name in sys.modules
         if module_name == "msm.models"
         or module_name.startswith("msm.models.")
-        or module_name == "msm.meta_tables"
     )
     if loaded_model_modules:
         raise RuntimeError(
             "Configure the MetaTable namespace before importing msm.models or "
-            f"msm.meta_tables. Already loaded: {loaded_model_modules!r}."
+            f"msm.models.registration. Already loaded: {loaded_model_modules!r}."
         )
 
     from msm.base import MarketsMetaTableMixin
@@ -178,7 +177,7 @@ def create_schemas(
             logger.info("Configuring markets MetaTable namespace", namespace=namespace)
             configure_metatable_namespace(namespace)
 
-        from msm.meta_tables import (
+        from msm.models.registration import (
             register_markets_meta_tables,
             resolve_markets_meta_table_models,
         )
@@ -268,7 +267,7 @@ def attach_schemas(
             )
             return cached_runtime
 
-        from msm.meta_tables import (
+        from msm.models.registration import (
             resolve_markets_meta_table_models,
             resolve_registered_markets_meta_tables,
         )
@@ -312,7 +311,7 @@ def resolve_runtime(
 ) -> MarketsRuntime:
     """Resolve runtime for row operations with attach-first semantics."""
 
-    from msm.meta_tables import resolve_markets_meta_table_models
+    from msm.models.registration import resolve_markets_meta_table_models
 
     resolved_models = resolve_markets_meta_table_models(models)
     missing_from_active = _missing_models_from_runtime(_RUNTIME, resolved_models)
@@ -383,7 +382,7 @@ def auto_register_schemas(
             )
             return cached_runtime
 
-        from msm.meta_tables import (
+        from msm.models.registration import (
             register_markets_meta_tables,
             resolve_markets_meta_table_models,
         )
@@ -438,7 +437,7 @@ def _missing_models_from_runtime(
     if runtime is None:
         return list(models)
 
-    from msm.meta_tables import markets_meta_table_fullname
+    from msm.models.registration import markets_meta_table_fullname
 
     return [
         model

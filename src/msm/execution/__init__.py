@@ -1,4 +1,4 @@
-from .data_nodes import (
+from msm.data_nodes.execution import (
     EXECUTION_ERRORS_COLUMN_DTYPES_MAP,
     EXECUTION_ERRORS_INDEX_NAMES,
     EXECUTION_ERRORS_TIME_INDEX_NAME,

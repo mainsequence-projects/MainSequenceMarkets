@@ -7,6 +7,12 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Reorganized `msm.data_nodes` so account, asset, execution, and index
+  DataNodes live under model-shaped modules, while non-model shared DataNode
+  helpers live under `msm.data_nodes.utils`.
+
 ### Added
 
 - Added `AssetTypeTable` plus the `msm.api.assets.AssetType` row API as a
@@ -98,6 +104,43 @@ and this project follows versioned releases.
 - Added `msm_pricing.meta_tables.pricing_sqlalchemy_models()` so pricing
   MetaTable registration can discover `AssetTable` before pricing extension
   tables.
+- Added `msm_pricing.meta_tables.register_pricing_meta_tables()` to register the
+  pricing MetaTable graph while resolving the core asset-table dependency.
+- Added `msm_pricing.api` current-pricing-detail row helpers plus
+  `InstrumentModel.attach_to_asset(...)` and `Instrument.load_from_asset(...)`
+  for asset-first pricing workflows.
+- Added pricing-owned `IndexConventionDetailsTable` and `CurveTable` MetaTables
+  plus a stamped `DiscountCurvesNode` keyed by `curve_unique_identifier` instead
+  of asset identity.
+- Added `msm_pricing.api.IndexConventionDetails` and `msm_pricing.api.Curve`
+  row APIs for registering pricing index conventions and curve identities
+  through the pricing MetaTable runtime.
+- Added UID-based pricing resolvers so bonds and swaps materialize QuantLib
+  indices and curves from `IndexTable.uid`, `IndexConventionDetails`, and
+  `CurveTable` instead of raw index-name strings.
+- Added rich configuration-owned discovery metadata for `DiscountCurvesNode`
+  describing its row grain, Curve MetaTable identity link, compressed curve
+  payload, and pricing use.
+- Added an index-stamped `FixingRatesNode` helper with hashable observation
+  frequency configuration so pricing fixings reference `IndexTable` identity
+  instead of asset identity.
+- Moved compressed curve serialization helpers into
+  `msm_pricing.data_nodes.curve_codec` and removed the obsolete
+  `msm_pricing.interest_rates.etl.curve_codec` module.
+- Removed the obsolete Constant-based
+  `msm_pricing.interest_rates.etl.registry` builder registry; curve and fixing
+  DataNodes now use `CurveTable.unique_identifier` and
+  `IndexTable.unique_identifier` directly with runtime builder callables or
+  subclass hooks.
+- Removed the obsolete `msm_pricing.interest_rates` package and its
+  `interest_rates.etl.nodes` compatibility path; pricing DataNodes are exported
+  from `msm_pricing.data_nodes`.
+- Removed the legacy `main_sequence_asset_id` field from `InstrumentModel` so
+  serialized pricing instruments remain identity-free and asset linkage stays
+  in pricing persistence.
+- Removed stale serialized `*_index_name` pricing relationships from bond and
+  swap payloads; persisted instruments now require backend index UUID fields
+  such as `floating_rate_index_uid` and `float_leg_index_uid`.
 - Added an ADR for `bond` assets, issuer reference data, and the planned
   one-to-one bond detail table.
 - Implemented `IssuerTable`, `BondDetailsTable`, `msm.api.issuers.Issuer`, and
@@ -115,6 +158,9 @@ and this project follows versioned releases.
   objects, while schema code works with `msm.models.*Table` declarations.
 - Added AssetSnapshot DataNode methods for validated frame construction and
   row binding before DataNode runs.
+- Added a shared `StampedDataNode` frame/config base plus
+  `IndexTimestampedDataNode` and `IndexDataNodeConfiguration` for timestamped
+  facts keyed to `IndexTable.unique_identifier`.
 - Added `examples/platform/bootstrap.py` as the home for the example MetaTable
   namespace and auto-registration environment constants.
 - Documented the attach-first row API pattern, explicit schema preflight option,
@@ -130,6 +176,10 @@ and this project follows versioned releases.
 - Grouped asset-related SQLAlchemy model declarations under the
   `msm.models.assets` package while keeping aggregate `msm.models` table exports
   stable.
+- Updated the local `apps/v1` startup flow so `MSM_AUTO_REGISTER_NAMESPACE`
+  performs startup-time schema bootstrap against the real project/session
+  data source instead of waiting for the first request to trigger row-level
+  runtime resolution.
 - Moved the `apps/v1` asset and asset-category catalog composition into
   `src/msm/services/asset_master_lists.py` so the FastAPI layer stays a thin
   resolver over reusable `src/` workflows.
@@ -143,6 +193,9 @@ and this project follows versioned releases.
 - Moved the QuantLib-backed pricing runtime out of core `msm` into the
   separate `msm_pricing` import package, removed the `msm.pricing` path, and
   made QuantLib a `pricing` extra instead of a core dependency.
+- Moved QuantLib-backed runtime helpers from `msm_pricing.models` to
+  `msm_pricing.pricing_engine` so `msm_pricing.models` follows the same
+  MetaTable-only convention as core `msm.models`.
 - Moved FastAPI and Uvicorn out of core dependencies into the `public_api`
   optional extra used by the project-level `apps/v1` surface.
 - Removed the obsolete asset reference-list MetaTable, row API, repository,
@@ -184,6 +237,17 @@ and this project follows versioned releases.
   microsecond inference from Python datetimes cannot fail SDK update validation.
 - Replaced AssetSnapshot and AssetPricingDetail parallel dtype/label/description
   maps with configuration-owned `RecordDefinition` default factories.
+- Moved markets DataNode hash-namespace defaulting into a shared wrapper used by
+  asset-indexed, index-stamped, and canonical portfolio DataNode bases.
+- Moved asset-indexed DataNode machinery from the root `msm` package into
+  `msm.data_nodes.assets.asset_indexed` and kept index-stamped foreign-key
+  helpers in `msm.data_nodes.indices`.
+- Moved asset-scope adapter helpers from the root `msm` package into
+  `msm.portfolios.asset_scope`.
+- Moved the packaged console implementation from `msm.cli` into the top-level
+  `cli` package while keeping the installed command name `msm`.
+- Moved markets MetaTable registration and resolution helpers from
+  `msm.meta_tables` into `msm.models.registration`.
 - Removed legacy unsuffixed `msm.models.*` aliases such as `msm.models.Asset`;
   schema code must import `*Table` declarations and user-facing code must import
   row objects from `msm.api.*`.

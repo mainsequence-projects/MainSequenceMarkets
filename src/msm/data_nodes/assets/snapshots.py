@@ -1,26 +1,31 @@
 from __future__ import annotations
 
-import datetime as dt
 from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar
 
 import pandas as pd
 from pydantic import Field, model_validator
 
-from msm.data_nodes._time import normalize_datetime64_ns_utc, normalize_timestamp_ns_utc
-from msm.asset_indexed_data_node import (
+from mainsequence.tdag.data_nodes import RecordDefinition
+from msm.data_nodes.utils.time import normalize_datetime64_ns_utc, normalize_timestamp_ns_utc
+from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
     asset_indexed_foreign_keys,
 )
-from msm.settings import ASSET_UNIQUE_IDENTIFIER_DIMENSION, markets_data_node_identifier
-from mainsequence.tdag.data_nodes import (
-    DataNodeMetaData,
-    RecordDefinition,
+from msm.data_nodes.utils.stamped import (
+    STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX,
+    STAMPED_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER,
+    StampedDataNodeConfiguration,
+    StampedFrameMixin,
+    reset_frame_index,
+    schema_bootstrap_value,
+    validate_stamped_data_frame,
 )
+from msm.settings import ASSET_UNIQUE_IDENTIFIER_DIMENSION, markets_data_node_identifier
 
-ASSET_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER = "__schema_bootstrap__"
-ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX = dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
+ASSET_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER = STAMPED_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER
+ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX = STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX
 AssetSnapshotInput = Mapping[str, Any] | Any
 
 
@@ -73,25 +78,16 @@ def asset_snapshot_records() -> list[RecordDefinition]:
     ]
 
 
-class AssetDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
+class AssetDataNodeConfiguration(StampedDataNodeConfiguration, AssetIndexedDataNodeConfiguration):
     """Configuration for timestamped asset DataNodes."""
 
-    time_index_name: str = Field(
-        default="time_index",
-        description="Timestamp column used as the DataNode time index.",
-    )
+    reference_dimension: ClassVar[str] = ASSET_UNIQUE_IDENTIFIER_DIMENSION
+    frame_label: ClassVar[str] = "Asset DataNode"
+
     index_names: list[str] = Field(
         default_factory=lambda: ["time_index", ASSET_UNIQUE_IDENTIFIER_DIMENSION],
         description="Canonical DataFrame index columns for the asset DataNode.",
     )
-    records: list[RecordDefinition] = Field(
-        ...,
-        description="Output schema for the asset DataNode.",
-    )
-
-    @property
-    def column_dtypes_map(self) -> dict[str, str]:
-        return {record.column_name: record.dtype for record in self.records}
 
     @model_validator(mode="after")
     def _ensure_asset_foreign_key(self) -> AssetDataNodeConfiguration:
@@ -111,114 +107,11 @@ class AssetSnapshotConfiguration(AssetDataNodeConfiguration):
     )
 
 
-class AssetTimestampedFrameMixin:
+class AssetTimestampedFrameMixin(StampedFrameMixin):
     """Shared frame/config behavior for timestamped asset DataNodes."""
 
     configuration_class: ClassVar[type[AssetDataNodeConfiguration]] = AssetDataNodeConfiguration
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-
-    def __init__(
-        self,
-        config: AssetDataNodeConfiguration | None = None,
-        *args: Any,
-        **kwargs: Any,
-    ):
-        super().__init__(config=config or self.default_config(), *args, **kwargs)
-
-    @classmethod
-    def default_config(
-        cls,
-        *,
-        identifier: str | None = None,
-        description: str | None = None,
-        extra_records: list[RecordDefinition] | None = None,
-    ) -> AssetDataNodeConfiguration:
-        config_kwargs: dict[str, Any] = {
-            "node_metadata": DataNodeMetaData(
-                identifier=identifier or cls._default_identifier(),
-                description=description or cls._default_description(),
-            ),
-        }
-        if extra_records:
-            config_kwargs["records"] = cls._records_with_extra(extra_records=extra_records)
-        return cls.configuration_class(**config_kwargs)
-
-    @classmethod
-    def _records_with_extra(
-        cls,
-        *,
-        extra_records: list[RecordDefinition] | None = None,
-    ) -> list[RecordDefinition]:
-        required_records = cls.configuration_class().records
-        if not extra_records:
-            return list(required_records)
-
-        by_name = {record.column_name: record for record in required_records}
-        for record in extra_records:
-            by_name.setdefault(record.column_name, record)
-        return list(by_name.values())
-
-    @classmethod
-    def _default_identifier(cls) -> str:
-        raise NotImplementedError
-
-    @classmethod
-    def _default_description(cls) -> str:
-        raise NotImplementedError
-
-    def set_frame(self, frame: pd.DataFrame) -> AssetTimestampedFrameMixin:
-        self._asset_data_frame = frame
-        return self
-
-    def get_frame(self) -> pd.DataFrame:
-        frame = getattr(self, "_asset_data_frame", None)
-        if frame is None:
-            return self.build_schema_bootstrap_frame(config=self.config)
-        return frame
-
-    def update(self) -> pd.DataFrame:
-        return _validate_asset_data_frame(self.get_frame(), config=self.config)
-
-    @classmethod
-    def validate_frame(
-        cls,
-        frame: pd.DataFrame,
-        *,
-        config: AssetDataNodeConfiguration | None = None,
-    ) -> pd.DataFrame:
-        return _validate_asset_data_frame(frame, config=config or cls.default_config())
-
-    @classmethod
-    def build_initialization_frame(
-        cls,
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        return cls.build_schema_bootstrap_frame(**kwargs)
-
-    @classmethod
-    def build_schema_bootstrap_frame(
-        cls,
-        *,
-        config: AssetDataNodeConfiguration | None = None,
-        unique_identifier: str = ASSET_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER,
-        time_index: dt.datetime | pd.Timestamp = ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX,
-    ) -> pd.DataFrame:
-        resolved_config = config or cls.default_config()
-        row = {
-            resolved_config.time_index_name: time_index,
-            ASSET_UNIQUE_IDENTIFIER_DIMENSION: unique_identifier,
-        }
-        for record in resolved_config.records:
-            if record.column_name not in row:
-                row[record.column_name] = _schema_bootstrap_value(record.dtype)
-        frame = pd.DataFrame([row])
-        return _validate_asset_data_frame(frame, config=resolved_config)
-
-    @classmethod
-    def build_mock_frame(cls, **kwargs: Any) -> pd.DataFrame:
-        return cls.build_schema_bootstrap_frame(**kwargs)
+    frame_label: ClassVar[str] = "Asset DataNode"
 
 
 class AssetTimestampedDataNode(AssetTimestampedFrameMixin, AssetIndexedDataNode):
@@ -367,30 +260,11 @@ def _validate_asset_data_frame(
     if not isinstance(config, AssetDataNodeConfiguration):
         raise TypeError("Asset DataNodes require AssetDataNodeConfiguration.")
 
-    normalized = _reset_frame_index(frame.copy(), index_names=config.index_names)
-    required_columns = {record.column_name for record in config.records}
-    missing = sorted(required_columns.difference(normalized.columns))
-    if missing:
-        raise ValueError(f"Asset DataNode frame is missing columns: {missing!r}.")
-
-    normalized[config.time_index_name] = normalize_datetime64_ns_utc(
-        normalized[config.time_index_name]
-    )
-    normalized[ASSET_UNIQUE_IDENTIFIER_DIMENSION] = normalized[
-        ASSET_UNIQUE_IDENTIFIER_DIMENSION
-    ].astype("string")
-    normalized = normalized[[record.column_name for record in config.records]]
-    normalized = normalized.set_index(config.index_names)
-
-    if normalized.index.has_duplicates:
-        raise ValueError(
-            f"Asset DataNode frame contains duplicate rows for {config.index_names!r}."
-        )
-    return normalized.sort_index()
+    return validate_stamped_data_frame(frame, config=config, frame_label="Asset DataNode")
 
 
 def _asset_snapshot_index_keys(frame: pd.DataFrame) -> list[tuple[pd.Timestamp, str]]:
-    flat = _reset_frame_index(
+    flat = reset_frame_index(
         frame.copy(),
         index_names=[
             "time_index",
@@ -422,7 +296,7 @@ def _backend_frame_contains_asset_snapshot_key(
     if frame is None or frame.empty:
         return False
 
-    flat = _reset_frame_index(
+    flat = reset_frame_index(
         frame.copy(),
         index_names=[
             "time_index",
@@ -435,9 +309,7 @@ def _backend_frame_contains_asset_snapshot_key(
         return True
 
     flat["time_index"] = normalize_datetime64_ns_utc(flat["time_index"])
-    flat[ASSET_UNIQUE_IDENTIFIER_DIMENSION] = flat[
-        ASSET_UNIQUE_IDENTIFIER_DIMENSION
-    ].astype(str)
+    flat[ASSET_UNIQUE_IDENTIFIER_DIMENSION] = flat[ASSET_UNIQUE_IDENTIFIER_DIMENSION].astype(str)
     return (
         (flat["time_index"] == time_index)
         & (flat[ASSET_UNIQUE_IDENTIFIER_DIMENSION] == unique_identifier)
@@ -495,34 +367,8 @@ def _optional_snapshot_string(payload: Mapping[str, Any], field_name: str) -> st
     return str(value)
 
 
-def _reset_frame_index(
-    frame: pd.DataFrame,
-    *,
-    index_names: list[str],
-) -> pd.DataFrame:
-    missing_index_names = [
-        index_name
-        for index_name in index_names
-        if index_name not in frame.columns and index_name not in (frame.index.names or [])
-    ]
-    if missing_index_names:
-        raise ValueError(f"Asset DataNode frame is missing index columns: {missing_index_names!r}.")
-    has_required_index = any(name in index_names for name in frame.index.names)
-    return frame.reset_index() if has_required_index else frame
-
-
-def _schema_bootstrap_value(dtype: str) -> Any:
-    if dtype == "datetime64[ns, UTC]":
-        return ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX
-    if dtype in {"jsonb", "json"}:
-        return {"_mainsequence_reserved": "schema_bootstrap", "semantic": False}
-    if dtype in {"float64", "decimal"}:
-        return "0"
-    if dtype in {"int64", "Int64"}:
-        return 0
-    if dtype == "bool":
-        return False
-    return ""
+_reset_frame_index = reset_frame_index
+_schema_bootstrap_value = schema_bootstrap_value
 
 
 __all__ = [

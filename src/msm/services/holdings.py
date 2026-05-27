@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 import pandas as pd
 
 from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
-from msm.data_nodes import (
+from msm.data_nodes.utils import (
     ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT,
     DataNodeTableContract,
     FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT,

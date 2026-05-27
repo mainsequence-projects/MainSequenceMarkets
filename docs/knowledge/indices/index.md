@@ -89,6 +89,36 @@ Index.create_schemas()
 Examples and development scripts can instead set `MSM_AUTO_REGISTER_NAMESPACE`
 before importing the API classes.
 
+## Timestamped Index DataNodes
+
+Use `msm.data_nodes.indices.IndexTimestampedDataNode` when a table stores
+time-varying facts keyed to `IndexTable.unique_identifier`. The implementation
+lives in `msm.data_nodes.indices.timestamped` and is re-exported by the
+`msm.data_nodes.indices` package for normal user imports. It is the IndexTable
+counterpart to the asset timestamped base and reuses the shared
+`msm.data_nodes.utils.stamped` frame/config implementation.
+
+An index-stamped table should use this shape:
+
+```text
++-----------------------------+      source-table FK       +-----------------------------+
+| IndexTimestampedDataNode   |--------------------------->| IndexTable                  |
+|-----------------------------| unique_identifier          |-----------------------------|
+| time_index           index  |                            | unique_identifier unique    |
+| unique_identifier    index  |                            | display_name                |
+| value columns               |                            | provider                    |
++-----------------------------+                            +-----------------------------+
+```
+
+Configuration classes should inherit `IndexDataNodeConfiguration`, declare
+their output schema with `RecordDefinition`, and let
+`index_indexed_foreign_keys(...)` add the canonical source-table foreign key.
+The shared stamped base validates required columns, normalizes timestamps to
+`datetime64[ns, UTC]`, sets the
+`["time_index", "unique_identifier"]` MultiIndex, rejects duplicate keys, and
+uses the active markets namespace for default DataNode identifiers and
+`hash_namespace`.
+
 ## Boundaries
 
 Do not widen `AssetTable` with index fields. Do not put index reference rows in

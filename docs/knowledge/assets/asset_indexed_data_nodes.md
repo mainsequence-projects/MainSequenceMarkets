@@ -94,7 +94,7 @@ already present.
 from pydantic import Field, model_validator
 
 from mainsequence.tdag.data_nodes import DataNodeMetaData, RecordDefinition
-from msm.asset_indexed_data_node import (
+from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
     asset_indexed_foreign_keys,
@@ -157,7 +157,9 @@ resolve this relationship.
 ## AssetSnapshot
 
 `AssetSnapshot` is the live implementation of the asset-indexed pattern in
-`msm.data_nodes.assets`. It stores timestamped display facts about an asset,
+`msm.data_nodes.assets`. Its implementation lives in
+`msm.data_nodes.assets.snapshots`, while the package re-exports the public
+classes for normal user imports. It stores timestamped display facts about an asset,
 such as name, ticker, exchange code, and share-class grouping. These are not
 columns on `AssetTable` because they can change through time and can differ by
 provider or observation date.
@@ -243,6 +245,28 @@ Before a run persists rows, `AssetSnapshot` checks the backend for existing
 exists. Publish corrections as a new timestamped snapshot instead of overwriting
 the previous observation.
 
+## Shared Stamped Base
+
+Timestamped reference-data facts share the same frame mechanics whether the
+reference row is an asset or an index. Non-model-specific DataNode helpers live
+under `msm.data_nodes.utils`; the generic stamped base lives in
+`msm.data_nodes.utils.stamped`:
+
+- `StampedDataNodeConfiguration` owns the common `time_index`,
+  `index_names`, `records`, metadata, and dtype map behavior.
+- `StampedFrameMixin` owns frame binding, schema bootstrap frames,
+  mock frames, validation, and `datetime64[ns, UTC]` normalization.
+- `StampedDataNode` owns the empty dependency default and the markets
+  `hash_namespace` defaulting rule.
+
+Asset-specific classes live under `msm.data_nodes.assets` and add the
+`AssetTable.unique_identifier` foreign key. Index-specific classes live under
+`msm.data_nodes.indices` and reuse the same stamped base while adding the
+`IndexTable.unique_identifier` foreign key. Shared utility modules such as
+`msm.data_nodes.utils.stamped`, `msm.data_nodes.utils.contracts`, and
+`msm.data_nodes.utils.namespaces` stay concept-neutral and do not sit beside
+model-specific packages at the `msm.data_nodes` root.
+
 ## Namespaces And Identifiers
 
 Markets DataNodes use the same namespace rule as markets MetaTables. With the
@@ -259,11 +283,20 @@ parallel runs that must not collide on a shared backend.
 
 ## Related Code
 
-- `src/msm/asset_indexed_data_node.py`: base class, asset scope validation,
+- `src/msm/data_nodes/assets/asset_indexed.py`: base class, asset scope validation,
   namespace behavior, asset dimension filters, per-asset update range helpers,
   and canonical foreign-key helpers.
-- `src/msm/data_nodes/assets.py`: `AssetSnapshot`,
+- `src/msm/data_nodes/utils/stamped.py`: shared timestamped frame/config
+  behavior for reference-keyed markets DataNodes.
+- `src/msm/data_nodes/utils/contracts.py`: backend-independent source-table
+  contracts used by holdings and target-position DataNodes.
+- `src/msm/data_nodes/utils/namespaces.py`: shared markets hash-namespace
+  defaulting for DataNodes.
+- `src/msm/data_nodes/assets/snapshots.py`: `AssetSnapshot`,
   `AssetDataNodeConfiguration`, and timestamped asset frame validation.
+- `src/msm/data_nodes/indices/timestamped.py`: `IndexTimestampedDataNode`,
+  `IndexDataNodeConfiguration`, and canonical `IndexTable` source-table
+  foreign-key helpers for timestamped facts keyed to `IndexTable`.
 - `src/msm_pricing/data_nodes/pricing_details.py`: `AssetPricingDetail` and
   its pricing-specific configuration.
 - `examples/assets/asset_crud_workflow.py`: asset workflow that includes

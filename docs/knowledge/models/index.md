@@ -23,6 +23,8 @@ Models answer these questions:
 ## Primary Modules
 
 - `msm.models.__init__`: aggregate model exports and `markets_sqlalchemy_models`.
+- `msm.models.registration`: registration and resolution helpers for turning
+  SQLAlchemy table declarations into Main Sequence MetaTables.
 - `msm.models.accounts`: accounts and account target position assignments.
 - `msm.models.assets`: asset-related models, including the core asset registry,
   registered asset types, categories, memberships, and provider details.

@@ -16,7 +16,7 @@ SQLAlchemy metadata, including columns, indexes, foreign keys, schema, and the
 markets namespace.
 
 ```python
-from msm.meta_tables import register_markets_meta_tables
+from msm.models.registration import register_markets_meta_tables
 
 
 def register_platform_managed_markets():
@@ -152,7 +152,7 @@ SQLAlchemy, Alembic, Terraform, or another migration system. TS Manager still
 registers the tables, enforces auth, and executes compiled operations.
 
 ```python
-from msm.meta_tables import register_markets_meta_tables
+from msm.models.registration import register_markets_meta_tables
 
 
 def register_external_markets(data_source_uid: str, storage_hash_by_fullname: dict[str, str]):

@@ -9,7 +9,7 @@ import pandas as pd
 from sklearn.linear_model import ElasticNet, Lasso, LinearRegression
 from tqdm import tqdm
 
-from msm.asset_scope import asset_field, asset_unique_identifier
+from msm.portfolios.asset_scope import asset_field, asset_unique_identifier
 from msm.portfolios import TIMEDELTA
 from msm.portfolios.contrib.prices.data_nodes import (
     get_interpolated_prices_timeseries,

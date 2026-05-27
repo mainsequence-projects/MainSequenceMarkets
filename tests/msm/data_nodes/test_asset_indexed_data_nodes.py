@@ -13,18 +13,18 @@ os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
 from mainsequence.tdag.data_nodes import RecordDefinition, SourceTableForeignKey
 
-from msm.asset_indexed_data_node import (
+from msm.data_nodes.assets.asset_indexed import (
     ASSET_UNIQUE_IDENTIFIER_DIMENSION,
     AssetIndexedDataNodeConfiguration,
     asset_unique_identifier_foreign_key,
 )
-from msm.asset_scope import ASSET_UNIQUE_IDENTIFIER
-from msm.accounts.data_nodes import AccountHoldings, VirtualFundHoldings
+from msm.portfolios.asset_scope import ASSET_UNIQUE_IDENTIFIER
+from msm.data_nodes.accounts import AccountHoldings, VirtualFundHoldings
 from msm.data_nodes.assets import (
     AssetDataNodeConfiguration,
     AssetSnapshot,
 )
-from msm.execution.data_nodes import ExecutionErrors, OrderEvents, Orders, Trades
+from msm.data_nodes.execution import ExecutionErrors, OrderEvents, Orders, Trades
 from msm.models import AssetTable
 from msm.portfolios.data_nodes.portfolio_weights import PortfolioWeights
 from msm.portfolios.data_nodes.portfolios import PortfoliosDataNode
@@ -68,7 +68,7 @@ def test_asset_identity_dimension_is_shared_with_settings() -> None:
 
 
 def test_market_data_node_compatibility_names_are_removed() -> None:
-    asset_indexed_module = importlib.import_module("msm.asset_indexed_data_node")
+    asset_indexed_module = importlib.import_module("msm.data_nodes.assets.asset_indexed")
     asset_data_nodes_module = importlib.import_module("msm.data_nodes.assets")
 
     legacy_node_name = "Market" + "DataNode"
@@ -80,7 +80,16 @@ def test_market_data_node_compatibility_names_are_removed() -> None:
     assert not hasattr(asset_data_nodes_module, "AssetPricingDetail")
     assert not hasattr(asset_data_nodes_module, "AssetPricingDetailConfiguration")
     with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("msm.data_nodes.asset_indexed")
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("msm.asset_indexed_data_node")
+    with pytest.raises(ModuleNotFoundError):
         importlib.import_module(legacy_module_name)
+
+
+def test_root_asset_scope_module_is_removed() -> None:
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("msm.asset_scope")
 
 
 @pytest.mark.parametrize(
@@ -150,6 +159,7 @@ def test_asset_unique_identifier_foreign_key_targets_asset_table() -> None:
 def test_timestamped_asset_nodes_include_canonical_asset_foreign_key(node_cls) -> None:
     config = node_cls.default_config()
 
+    assert isinstance(config, AssetIndexedDataNodeConfiguration)
     assert config.foreign_keys is not None
     assert len(config.foreign_keys) == 1
     [foreign_key] = config.foreign_keys

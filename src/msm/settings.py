@@ -5,6 +5,7 @@ import os
 DEFAULT_MARKETS_NAMESPACE = "mainsequence.markets"
 MSM_AUTO_REGISTER_NAMESPACE_ENV = "MSM_AUTO_REGISTER_NAMESPACE"
 ASSET_UNIQUE_IDENTIFIER_DIMENSION = "unique_identifier"
+INDEX_UNIQUE_IDENTIFIER_DIMENSION = "unique_identifier"
 
 
 def markets_namespace(namespace: str | None = None) -> str:
@@ -46,6 +47,7 @@ def markets_data_node_identifier(identifier: str, namespace: str | None = None) 
 __all__ = [
     "ASSET_UNIQUE_IDENTIFIER_DIMENSION",
     "DEFAULT_MARKETS_NAMESPACE",
+    "INDEX_UNIQUE_IDENTIFIER_DIMENSION",
     "MSM_AUTO_REGISTER_NAMESPACE_ENV",
     "markets_auto_register_namespace",
     "markets_data_node_identifier",

@@ -7,11 +7,9 @@ import pandas as pd
 from pydantic import Field
 
 from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
-from msm.asset_indexed_data_node import (
-    AssetIndexedDataNode,
-    _wrap_default_markets_hash_namespace,
-)
-from msm.data_nodes._time import normalize_datetime64_ns_utc
+from msm.data_nodes.assets.asset_indexed import AssetIndexedDataNode
+from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
+from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
 from mainsequence.tdag.data_nodes import (
     DataNode,
     DataNodeConfiguration,
@@ -62,7 +60,7 @@ class PortfolioCanonicalDataNode(DataNode):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        cls.__init__ = _wrap_default_markets_hash_namespace(cls, cls.__init__)
+        cls.__init__ = wrap_default_markets_hash_namespace(cls, cls.__init__)
 
     def __init__(
         self,

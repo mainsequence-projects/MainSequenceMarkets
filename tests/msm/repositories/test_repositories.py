@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
-from msm.meta_tables import markets_meta_table_fullname
+from msm.models.registration import markets_meta_table_fullname
 from msm.models import AssetTable, OpenFigiDetailsTable, OrderTable, markets_sqlalchemy_models
 from msm.repositories import MarketsMetaTableHandle, MarketsRepositoryContext
 from msm.repositories.assets import (

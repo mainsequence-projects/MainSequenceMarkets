@@ -33,11 +33,10 @@ def delete_index(*, uid: str) -> bool:
 
 
 def _get_runtime():
-    from msm.bootstrap import resolve_runtime
-    from msm.models import IndexTable
+    from apps.v1.runtime_bootstrap import resolve_apps_v1_runtime
 
-    return resolve_runtime(
-        models=[IndexTable],
+    return resolve_apps_v1_runtime(
+        models=["Index"],
         row_model_name="Index apps/v1",
     )
 

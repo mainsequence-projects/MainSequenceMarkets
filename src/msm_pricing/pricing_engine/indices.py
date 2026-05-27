@@ -1,4 +1,4 @@
-# models/indices.py
+# pricing_engine/indices.py
 """
 Index factory for QuantLib (identifier-driven).
 
@@ -13,10 +13,10 @@ Usage
 -----
 >>> from datetime import date
 >>> import QuantLib as ql
->>> from msm_pricing.models.indices import (
+>>> from msm_pricing.pricing_engine.indices import (
 ...     register_index_spec, get_index
 ... )
->>> from msm_pricing.models.indices_builders import (
+>>> from msm_pricing.pricing_engine.indices_builders import (
 ...     tiie_spec, mx_calendar, mx_currency
 ... )
 >>>
@@ -58,7 +58,7 @@ import QuantLib as ql
 from msm_pricing.data_interface import data_interface
 
 # IndexSpec (and builders like tiie_spec/cete_spec) live here.
-from msm_pricing.models.indices_builders import IndexSpec
+from msm_pricing.pricing_engine.indices_builders import IndexSpec
 from msm_pricing.utils import to_py_date, to_ql_date
 
 # ----------------------------- Identifier normalization ----------------------------------- #
