@@ -98,7 +98,12 @@ The local FastAPI surface under `apps/v1` now exposes the migrated asset and
 asset-category registry routes. Keep the route layer thin and put reusable
 catalog/category logic under `src/msm/services`. The implemented category detail
 flow uses `GET /api/v1/asset-category/{uid}/` plus the nested asset list route
-`GET /api/v1/asset/?categories__uid=<uid>`.
+`GET /api/v1/asset/?categories__uid=<uid>`. The same local API surface now also
+exposes the simple index registry routes:
+
+- `GET /api/v1/index/`
+- `GET /api/v1/index/{uid}/`
+- `DELETE /api/v1/index/{uid}/`
 
 See [FastAPI v1](../fast_api/v1/index.md) for the current route inventory and
 contract notes.
@@ -131,6 +136,41 @@ is stored as `currency`, `"Currency Spot"` is stored as `currency_spot`, and
 
 See `examples/assets/currency_spot_workflow.py` and
 [Currency Assets](../knowledge/assets/currency.md) for the detailed schema and
+workflow.
+
+## Bond Assets
+
+Bond setup uses reference issuers plus canonical asset rows. Create the issuer
+and denomination currency first, then let `Bond.upsert(...)` own the bond asset
+and `BondDetailsTable` write:
+
+```python
+import datetime as dt
+
+from msm.api.assets import Asset, AssetType, Bond
+from msm.api.issuers import Issuer
+
+AssetType.upsert(asset_type="currency", display_name="Currency")
+AssetType.upsert(asset_type="bond", display_name="Bond")
+
+issuer = Issuer.upsert(
+    unique_identifier="example-issuer",
+    display_name="Example Issuer",
+)
+usd = Asset.upsert(unique_identifier="USD", asset_type="currency")
+
+bond = Bond.upsert(
+    unique_identifier="example-usd-bond-2031",
+    issuer_uid=issuer.uid,
+    currency_asset_uid=usd.uid,
+    issue_date=dt.date(2026, 5, 27),
+    maturity_date=dt.date(2031, 5, 27),
+    status="ACTIVE",
+)
+```
+
+See `examples/assets/bond_workflow.py` and
+[Bond Assets](../knowledge/assets/bonds.md) for the detailed schema and
 workflow.
 
 ## Asset Snapshots

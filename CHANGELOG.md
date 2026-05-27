@@ -29,6 +29,9 @@ and this project follows versioned releases.
 - Added the migrated `apps/v1` asset-category API surface, including list,
   detail, create, patch, delete, and bulk-delete routes plus
   `categories__uid` filtering on `GET /api/v1/asset/`.
+- Added the local `apps/v1` index registry API surface with
+  `GET /api/v1/index/`, `GET /api/v1/index/{uid}/`, and
+  `DELETE /api/v1/index/{uid}/`.
 - Added an ADR for a simple `GET /api/v1/index/` route that mirrors the asset
   list boundary while returning index registry rows from `IndexTable`.
 - Added shared typed row helpers for explicit schema bootstrap, create/upsert,
@@ -88,8 +91,14 @@ and this project follows versioned releases.
 - Added an ADR for pricing-owned current asset pricing details, moving
   pricing-detail DataNodes into `msm_pricing`, and the `msm_pricing` runtime
   package boundary cleanup.
+- Added `msm_pricing.data_nodes.pricing_details` as the canonical home for the
+  `AssetPricingDetail` DataNode and its configuration.
+- Added `AssetCurrentPricingDetailsTable` under `msm_pricing.models` for the
+  current one-to-one priceable definition attached to a canonical asset.
 - Added an ADR for `bond` assets, issuer reference data, and the planned
   one-to-one bond detail table.
+- Implemented `IssuerTable`, `BondDetailsTable`, `msm.api.issuers.Issuer`, and
+  `msm.api.assets.Bond` for registering bonds through the user-facing API.
 - Added OpenFIGI helpers to register index rows from FIGI and create
   index-underlying futures from index/future FIGIs while keeping contract terms
   explicit.

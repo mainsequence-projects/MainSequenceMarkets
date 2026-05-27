@@ -165,14 +165,16 @@ def test_runtime_exposes_data_node_classes(monkeypatch) -> None:
     account_data_nodes_module.AccountHoldings = type("AccountHoldings", (), {})
     account_data_nodes_module.VirtualFundHoldings = type("VirtualFundHoldings", (), {})
     data_nodes_module = ModuleType("msm.data_nodes")
-    data_nodes_module.AssetPricingDetail = type("AssetPricingDetail", (), {})
     data_nodes_module.AssetSnapshot = type("AssetSnapshot", (), {})
+    pricing_data_nodes_module = ModuleType("msm_pricing.data_nodes")
+    pricing_data_nodes_module.AssetPricingDetail = type("AssetPricingDetail", (), {})
     portfolio_data_nodes_module = ModuleType("msm.portfolios.data_nodes")
     portfolio_data_nodes_module.PortfolioWeights = type("PortfolioWeights", (), {})
     portfolio_data_nodes_module.PortfoliosDataNode = type("PortfoliosDataNode", (), {})
     portfolio_data_nodes_module.SignalWeights = type("SignalWeights", (), {})
     monkeypatch.setitem(sys.modules, "msm.accounts.data_nodes", account_data_nodes_module)
     monkeypatch.setitem(sys.modules, "msm.data_nodes", data_nodes_module)
+    monkeypatch.setitem(sys.modules, "msm_pricing.data_nodes", pricing_data_nodes_module)
     monkeypatch.setitem(
         sys.modules,
         "msm.portfolios.data_nodes",
@@ -183,7 +185,7 @@ def test_runtime_exposes_data_node_classes(monkeypatch) -> None:
 
     assert runtime.data_nodes == {
         "AccountHoldings": account_data_nodes_module.AccountHoldings,
-        "AssetPricingDetail": data_nodes_module.AssetPricingDetail,
+        "AssetPricingDetail": pricing_data_nodes_module.AssetPricingDetail,
         "AssetSnapshot": data_nodes_module.AssetSnapshot,
         "PortfolioWeights": portfolio_data_nodes_module.PortfolioWeights,
         "PortfoliosDataNode": portfolio_data_nodes_module.PortfoliosDataNode,

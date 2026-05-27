@@ -137,6 +137,45 @@ pair = CurrencySpot.upsert(
 Do not widen `AssetTable` with `base_currency_uid` or `quote_currency_uid`;
 those are extension detail fields.
 
+## Bond Reference Pattern
+
+`BondDetailsTable` is the built-in bond extension pattern. A bond is a normal
+`Asset` row with `asset_type="bond"`. The detail table stores `asset_uid`,
+`issuer_uid`, `currency_asset_uid`, `issue_date`, `maturity_date`, and
+`status`.
+
+Issuers are reference rows in `IssuerTable`, not assets and not loose strings.
+Use `Issuer` for issuer reference data, then link bonds through `issuer_uid`.
+
+Use the class-owned API workflow:
+
+```python
+import datetime as dt
+
+from msm.api.assets import Asset, Bond
+from msm.api.issuers import Issuer
+
+issuer = Issuer.upsert(
+    unique_identifier="example-issuer",
+    display_name="Example Issuer",
+)
+usd = Asset.upsert(unique_identifier="USD", asset_type="currency")
+
+bond = Bond.upsert(
+    unique_identifier="example-usd-bond-2031",
+    issuer_uid=issuer.uid,
+    currency_asset_uid=usd.uid,
+    issue_date=dt.date(2026, 5, 27),
+    maturity_date=dt.date(2031, 5, 27),
+    status="ACTIVE",
+)
+```
+
+Do not widen `AssetTable` with issuer, currency, issue date, maturity date, or
+status fields. Those belong to `BondDetailsTable`. Pricing terms, coupons,
+schedules, and instrument dumps belong to pricing/instrument contracts, not the
+minimal bond asset extension.
+
 ## OpenFIGI Reference Pattern
 
 `OpenFigiDetailsTable` is the built-in example of this extension pattern.

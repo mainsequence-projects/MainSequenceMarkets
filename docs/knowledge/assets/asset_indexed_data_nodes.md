@@ -262,8 +262,10 @@ parallel runs that must not collide on a shared backend.
 - `src/msm/asset_indexed_data_node.py`: base class, asset scope validation,
   namespace behavior, asset dimension filters, per-asset update range helpers,
   and canonical foreign-key helpers.
-- `src/msm/data_nodes/assets.py`: `AssetSnapshot`, `AssetPricingDetail`,
+- `src/msm/data_nodes/assets.py`: `AssetSnapshot`,
   `AssetDataNodeConfiguration`, and timestamped asset frame validation.
+- `src/msm_pricing/data_nodes/pricing_details.py`: `AssetPricingDetail` and
+  its pricing-specific configuration.
 - `examples/assets/asset_crud_workflow.py`: asset workflow that includes
   `AssetSnapshot` frame construction and DataNode execution.
 - `docs/ADR/0007-market-data-node-asset-foreign-keys.md`: ADR for canonical

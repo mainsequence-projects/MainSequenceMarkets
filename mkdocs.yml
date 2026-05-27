@@ -34,6 +34,7 @@ nav:
       - Accounts: knowledge/accounts/index.md
       - Assets:
           - Overview: knowledge/assets/index.md
+          - Bond Assets: knowledge/assets/bonds.md
           - Currency And Spot Assets: knowledge/assets/currency.md
           - Asset-Indexed DataNodes: knowledge/assets/asset_indexed_data_nodes.md
       - Client: knowledge/client/index.md

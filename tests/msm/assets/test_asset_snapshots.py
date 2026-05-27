@@ -15,13 +15,12 @@ os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 from mainsequence.tdag.data_nodes import SourceTableForeignKey
 
 from msm.data_nodes.assets import (
-    AssetPricingDetail,
-    AssetPricingDetailConfiguration,
     AssetSnapshot,
     AssetSnapshotConfiguration,
 )
 from msm.services.assets.openfigi import build_asset_snapshot_frame_from_openfigi_result
 from msm.settings import DEFAULT_MARKETS_NAMESPACE, markets_data_node_identifier
+from msm_pricing.data_nodes import AssetPricingDetail, AssetPricingDetailConfiguration
 
 
 @pytest.fixture

@@ -6,7 +6,9 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from msm.base import slugify_identifier
+from msm.models import IndexTable
 from msm.repositories import MarketsRepositoryContext
+from msm.repositories.crud import delete_model, get_model_by_uid, search_model
 from msm.services.asset_categories import (
     create_asset_category as service_create_asset_category,
     delete_asset_category as service_delete_asset_category,
@@ -24,6 +26,50 @@ DEFAULT_SCAN_FLOOR = 100
 MAX_SCAN_LIMIT = 500
 DEFAULT_FRONTEND_PAGE_SIZE = 50
 _UNSET = object()
+
+
+def list_index_catalog_rows(
+    context: MarketsRepositoryContext,
+    *,
+    search: str = "",
+    limit: int = DEFAULT_FRONTEND_PAGE_SIZE,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    scan_limit = _scan_limit(offset=offset, limit=limit)
+    index_rows = _operation_result_rows(
+        search_model(context, model=IndexTable, limit=scan_limit)
+    )
+    normalized_rows = [
+        _build_index_list_row(index_row)
+        for index_row in index_rows
+        if isinstance(index_row, Mapping) and index_row.get("uid") not in (None, "")
+    ]
+    normalized_rows.sort(
+        key=lambda row: (
+            str(row["display_name"]).lower(),
+            str(row["unique_identifier"]).lower(),
+            str(row["uid"]),
+        )
+    )
+
+    normalized_search = search.strip().lower()
+    if normalized_search:
+        normalized_rows = [
+            row
+            for row in normalized_rows
+            if _matches_search(
+                values=(
+                    row["uid"],
+                    row["unique_identifier"],
+                    row["display_name"],
+                    row.get("description"),
+                    row.get("provider"),
+                ),
+                normalized_search=normalized_search,
+            )
+        ]
+
+    return normalized_rows[offset : offset + limit]
 
 
 def list_asset_catalog_rows(
@@ -226,6 +272,17 @@ def get_asset_category_frontend_detail(
     }
 
 
+def get_index_record(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+) -> dict[str, Any] | None:
+    row = _first_operation_row(get_model_by_uid(context, model=IndexTable, uid=uid))
+    if row is None:
+        return None
+    return _build_index_record(row)
+
+
 def create_asset_category_record(
     context: MarketsRepositoryContext,
     *,
@@ -305,6 +362,19 @@ def delete_asset_category_record(
         return False
 
     service_delete_asset_category(context, uid=uid)
+    return True
+
+
+def delete_index_record(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+) -> bool:
+    existing_row = _first_operation_row(get_model_by_uid(context, model=IndexTable, uid=uid))
+    if existing_row is None:
+        return False
+
+    delete_model(context, model=IndexTable, uid=uid)
     return True
 
 
@@ -411,6 +481,23 @@ def _build_asset_list_row(
         "security_type": _string_or_none(detail.get("security_type"))
         or _string_or_none(asset_row.get("asset_type")),
         "is_custom_by_organization": True,
+    }
+
+
+def _build_index_list_row(index_row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "uid": str(index_row["uid"]),
+        "unique_identifier": _string_or_empty(index_row.get("unique_identifier")),
+        "display_name": _string_or_empty(index_row.get("display_name")),
+        "description": _string_or_none(index_row.get("description")),
+        "provider": _string_or_none(index_row.get("provider")),
+    }
+
+
+def _build_index_record(index_row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        **_build_index_list_row(index_row),
+        "metadata_json": _mapping_or_none(index_row.get("metadata_json")),
     }
 
 
@@ -715,6 +802,12 @@ def _string_or_empty(value: Any) -> str:
     return _string_or_none(value) or ""
 
 
+def _mapping_or_none(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    return dict(value)
+
+
 def _scan_limit(*, offset: int, limit: int) -> int:
     return min(max(offset + limit, DEFAULT_SCAN_FLOOR), MAX_SCAN_LIMIT)
 
@@ -723,9 +816,12 @@ __all__ = [
     "bulk_delete_asset_category_records",
     "create_asset_category_record",
     "delete_asset_category_record",
+    "delete_index_record",
     "get_asset_category_frontend_detail",
     "get_asset_category_record",
+    "get_index_record",
     "list_asset_catalog_rows",
     "list_asset_category_rows_response",
+    "list_index_catalog_rows",
     "update_asset_category_record",
 ]

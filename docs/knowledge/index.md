@@ -39,8 +39,8 @@ new MetaTable-facing APIs unless a more specific ADR overrides it.
 - [Accounts](accounts/index.md): account identity, holdings, virtual funds, and
   account-to-target assignments.
 - [Assets](assets/index.md): asset identity, type registration, category
-  membership, relational extensions such as currency pairs and OpenFIGI, and
-  links to asset-indexed DataNode workflows.
+  membership, relational extensions such as bonds, currency pairs, and
+  OpenFIGI, and links to asset-indexed DataNode workflows.
 - [Asset-Indexed DataNodes](assets/asset_indexed_data_nodes.md): market
   DataNode tables keyed by `Asset.unique_identifier`, including `AssetSnapshot`.
 - [Client](client/index.md): client-facing models and HTTP/platform object

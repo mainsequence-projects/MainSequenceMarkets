@@ -38,10 +38,16 @@ The `AssetTable` model remains the MetaTable-backed schema declaration at:
 from msm.models import AssetTable
 ```
 
-Asset snapshot and pricing-detail DataNode schemas move to:
+Asset snapshot DataNode schemas move to:
 
 ```python
-from msm.data_nodes.assets import AssetSnapshot, AssetPricingDetail
+from msm.data_nodes.assets import AssetSnapshot
+```
+
+Pricing-detail DataNodes belong to the optional pricing runtime:
+
+```python
+from msm_pricing.data_nodes import AssetPricingDetail
 ```
 
 OpenFIGI helpers move to:

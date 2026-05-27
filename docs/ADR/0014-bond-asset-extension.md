@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -180,10 +180,12 @@ bond = Bond.upsert(
 
 `Bond.upsert(...)` should:
 
-1. ensure or upsert `AssetType(asset_type="bond")`;
-2. upsert the canonical `Asset` with `asset_type="bond"`;
-3. upsert `BondDetailsTable` keyed by `asset_uid`;
-4. return a typed `Bond` object with the asset identity and bond detail fields.
+1. verify `issuer_uid` resolves to an `IssuerTable` row;
+2. verify `currency_asset_uid` resolves to an `AssetTable` row;
+3. ensure or upsert `AssetType(asset_type="bond")`;
+4. upsert the canonical `Asset` with `asset_type="bond"`;
+5. upsert `BondDetailsTable` keyed by `asset_uid`;
+6. return a typed `Bond` object with the asset identity and bond detail fields.
 
 Users should not pass MetaTable handles or repository contexts.
 
@@ -234,40 +236,40 @@ bond asset identity extension.
 
 ## Implementation Tasks
 
-- [ ] Add `IssuerTable` under `src/msm/models/issuers.py` or a dedicated
+- [x] Add `IssuerTable` under `src/msm/models/issuers.py` or a dedicated
   reference-data module.
-- [ ] Add `uid`, `unique_identifier`, `display_name`, and `metadata_json`
+- [x] Add `uid`, `unique_identifier`, `display_name`, and `metadata_json`
   columns to `IssuerTable`.
-- [ ] Add unique and lookup indexes for `IssuerTable.unique_identifier` and
+- [x] Add unique and lookup indexes for `IssuerTable.unique_identifier` and
   `IssuerTable.display_name`.
-- [ ] Add the user-facing `msm.api.issuers.Issuer` row model and payload
+- [x] Add the user-facing `msm.api.issuers.Issuer` row model and payload
   models.
-- [ ] Add `BondDetailsTable` under `src/msm/models/assets/` or a dedicated
+- [x] Add `BondDetailsTable` under `src/msm/models/assets/` or a dedicated
   assets submodule.
-- [ ] Use `asset_uid` as the only primary key and as a foreign key to
+- [x] Use `asset_uid` as the only primary key and as a foreign key to
   `AssetTable.uid` with `ondelete="CASCADE"`.
-- [ ] Add `issuer_uid`, `currency_asset_uid`, `issue_date`, `maturity_date`, and
+- [x] Add `issuer_uid`, `currency_asset_uid`, `issue_date`, `maturity_date`, and
   `status` columns.
-- [ ] Add a foreign key from `issuer_uid` to `IssuerTable.uid` without cascade
+- [x] Add a foreign key from `issuer_uid` to `IssuerTable.uid` without cascade
   delete.
-- [ ] Add a foreign key from `currency_asset_uid` to `AssetTable.uid` without
+- [x] Add a foreign key from `currency_asset_uid` to `AssetTable.uid` without
   cascade delete.
-- [ ] Add indexes for `issuer_uid`, `currency_asset_uid`, `status`, and
+- [x] Add indexes for `issuer_uid`, `currency_asset_uid`, `status`, and
   `maturity_date`.
-- [ ] Add the user-facing `msm.api.assets.Bond` row model and payload models.
-- [ ] Add `BondStatus` enum values: `ACTIVE`, `MATURED`, `DEFAULTED`, `CALLED`,
+- [x] Add the user-facing `msm.api.assets.Bond` row model and payload models.
+- [x] Add `BondStatus` enum values: `ACTIVE`, `MATURED`, `DEFAULTED`, `CALLED`,
   `REDEEMED`, and `UNKNOWN`.
-- [ ] Add `Bond.upsert(...)` as the class-owned multi-table workflow.
-- [ ] Add typed validation for status normalization and
+- [x] Add `Bond.upsert(...)` as the class-owned multi-table workflow.
+- [x] Add typed validation for status normalization and
   `maturity_date >= issue_date` when maturity is present.
-- [ ] Add runtime validation for `issuer_uid` and `currency_asset_uid`
+- [x] Add runtime validation for `issuer_uid` and `currency_asset_uid`
   resolution if this project chooses to reject missing references before backend
   FK enforcement.
-- [ ] Add tests under `tests/msm/api/` and `tests/msm/models/` for table shape,
+- [x] Add tests under `tests/msm/api/` and `tests/msm/models/` for table shape,
   dependency order, enum normalization, validation, and the upsert workflow.
-- [ ] Add dedicated bond docs under `docs/knowledge/assets/bonds.md` and link
+- [x] Add dedicated bond docs under `docs/knowledge/assets/bonds.md` and link
   them from the asset knowledge page.
-- [ ] Add an example under `examples/assets/` using the user-facing API only.
-- [ ] Update tutorial material and changelog when implemented.
-- [ ] Update ms-markets asset skills if the final implementation changes the
+- [x] Add an example under `examples/assets/` using the user-facing API only.
+- [x] Update tutorial material and changelog when implemented.
+- [x] Update ms-markets asset skills if the final implementation changes the
   asset-extension workflow described there.

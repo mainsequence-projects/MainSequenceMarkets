@@ -8,8 +8,6 @@ _EXPORTS = {
     "ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX": ".assets",
     "ASSET_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER": ".assets",
     "AssetDataNodeConfiguration": ".assets",
-    "AssetPricingDetail": ".assets",
-    "AssetPricingDetailConfiguration": ".assets",
     "AssetSnapshot": ".assets",
     "AssetSnapshotConfiguration": ".assets",
     "AssetSnapshotInput": ".assets",

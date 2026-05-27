@@ -102,6 +102,37 @@ The typed asset API normalizes asset type strings before writing them:
 See [Currency Assets](currency.md) for the schema, registration dependency
 order, and the exact `CurrencySpot.upsert(...)` workflow.
 
+## Bond Assets
+
+Bonds are normal `Asset` rows with `asset_type="bond"` plus a one-to-one
+`BondDetailsTable` row. Issuers are separate reference rows in `IssuerTable`,
+not assets and not loose strings.
+
+```python
+import datetime as dt
+
+from msm.api.assets import Asset, Bond
+from msm.api.issuers import Issuer
+
+issuer = Issuer.upsert(
+    unique_identifier="example-issuer",
+    display_name="Example Issuer",
+)
+usd = Asset.upsert(unique_identifier="USD", asset_type="currency")
+
+bond = Bond.upsert(
+    unique_identifier="example-usd-bond-2031",
+    issuer_uid=issuer.uid,
+    currency_asset_uid=usd.uid,
+    issue_date=dt.date(2026, 5, 27),
+    maturity_date=dt.date(2031, 5, 27),
+    status="ACTIVE",
+)
+```
+
+See [Bond Assets](bonds.md) for the issuer table, bond detail schema, lifecycle
+status values, and registration dependency order.
+
 ## OpenFIGI As Asset Properties
 
 OpenFIGI metadata is the built-in example of extending the asset model with
@@ -183,9 +214,13 @@ Assets answer these questions:
 - `msm.models.assets.core`: core asset registry model.
 - `msm.models.assets.types`: asset type registry model.
 - `msm.models.assets.currency_spot`: currency spot relationship detail model.
+- `msm.models.assets.bonds`: bond relationship and lifecycle detail model.
+- `msm.models.issuers`: issuer reference data used by bond assets.
 - `msm.api.assets`: user-facing Pydantic rows and typed class operations for
   `Asset`, `AssetType`, `AssetCategory`, `AssetCategoryMembership`,
-  `CurrencySpot`, and `OpenFigiDetails`.
+  `Bond`, `CurrencySpot`, and `OpenFigiDetails`.
+- `msm.api.issuers`: user-facing Pydantic rows and typed class operations for
+  issuer reference data.
 - `msm.data_nodes.assets`: asset-indexed DataNodes such as `AssetSnapshot`.
 - `msm.services.assets`: application-facing asset service helpers over
   repositories.
@@ -365,6 +400,7 @@ DataNodes, and external provider integration belongs to services.
 
 - [Accounts](../accounts/index.md)
 - [Asset-Indexed DataNodes](asset_indexed_data_nodes.md)
+- [Bond Assets](bonds.md)
 - [Currency Assets](currency.md)
 - [Portfolios](../portfolios/index.md)
 - [Pricing](../pricing/index.md)

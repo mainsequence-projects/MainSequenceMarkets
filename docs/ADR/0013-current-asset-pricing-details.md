@@ -266,28 +266,28 @@ table prematurely.
 
 ## Implementation Tasks
 
-- [ ] Move `AssetPricingDetail`, `AssetPricingDetailConfiguration`, and
+- [x] Move `AssetPricingDetail`, `AssetPricingDetailConfiguration`, and
   `asset_pricing_detail_records` from `src/msm/data_nodes/assets.py` to
   `src/msm_pricing/data_nodes/pricing_details.py`.
-- [ ] Add `src/msm_pricing/data_nodes/__init__.py` and export the pricing
+- [x] Add `src/msm_pricing/data_nodes/__init__.py` and export the pricing
   details DataNode from it.
-- [ ] Update imports, docs, and tests to use
+- [x] Update imports, docs, and tests to use
   `msm_pricing.data_nodes.pricing_details.AssetPricingDetail` as the canonical
   path.
-- [ ] Decide whether `msm.data_nodes.assets.AssetPricingDetail` is removed
+- [x] Decide whether `msm.data_nodes.assets.AssetPricingDetail` is removed
   immediately or kept as a temporary compatibility alias that does not import
   QuantLib.
-- [ ] Add `AssetCurrentPricingDetailsTable` under
+- [x] Add `AssetCurrentPricingDetailsTable` under
   `src/msm_pricing/models/pricing_details.py`.
-- [ ] Use `asset_uid` as the only primary key and as a foreign key to
+- [x] Use `asset_uid` as the only primary key and as a foreign key to
   `AssetTable.uid` with `ondelete="CASCADE"`.
-- [ ] Add columns for `instrument_type`, `instrument_dump`,
+- [x] Add columns for `instrument_type`, `instrument_dump`,
   `pricing_details_date`, `serialization_format`, `pricing_package_version`,
   `source`, and physical `metadata` via a Python-safe SQLAlchemy attribute such
   as `metadata_json = mapped_column("metadata", JSON, nullable=True)`.
-- [ ] Add intentional indexes for `instrument_type` and
+- [x] Add intentional indexes for `instrument_type` and
   `pricing_details_date`.
-- [ ] Export the table from `msm_pricing.models`.
+- [x] Export the table from `msm_pricing.models`.
 - [ ] Add `msm_pricing.meta_tables.pricing_sqlalchemy_models()` in dependency
   order, including `AssetTable` before `AssetCurrentPricingDetailsTable`.
 - [ ] Add `msm_pricing.meta_tables.register_pricing_meta_tables(...)` or an

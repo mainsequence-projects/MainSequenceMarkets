@@ -69,3 +69,35 @@ def test_openapi_json_documents_asset_category_routes() -> None:
     assert asset_category_bulk_delete_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/BulkDeleteAssetCategoriesResponse"
     }
+
+
+def test_openapi_json_documents_index_routes() -> None:
+    client = TestClient(app)
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    index_list_operation = payload["paths"]["/api/v1/index/"]["get"]
+    assert index_list_operation["summary"] == "List indexes"
+    assert index_list_operation["operationId"] == "listIndexes"
+    assert index_list_operation["tags"] == ["index"]
+    assert index_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "items": {"$ref": "#/components/schemas/IndexListRow"},
+        "type": "array",
+        "title": "Response Listindexes",
+    }
+
+    index_detail_operation = payload["paths"]["/api/v1/index/{uid}/"]["get"]
+    assert index_detail_operation["summary"] == "Get index"
+    assert index_detail_operation["operationId"] == "getIndex"
+    assert index_detail_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/IndexRecord"
+    }
+
+    index_delete_operation = payload["paths"]["/api/v1/index/{uid}/"]["delete"]
+    assert index_delete_operation["summary"] == "Delete index"
+    assert index_delete_operation["operationId"] == "deleteIndex"
+    assert index_delete_operation["responses"]["404"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorResponse"
+    }

@@ -28,10 +28,12 @@ Models answer these questions:
   registered asset types, categories, memberships, and provider details.
 - `msm.models.assets.core`: core asset registry.
 - `msm.models.assets.types`: registered asset type definitions.
+- `msm.models.assets.bonds`: one-to-one bond asset detail rows.
 - `msm.models.assets.categories`: categories and memberships.
 - `msm.models.calendars`: calendars.
 - `msm.models.execution`: execution tables.
 - `msm.models.funds`: funds.
+- `msm.models.issuers`: issuer reference data used by bond assets.
 - `msm.models.instruments`: pricing and instruments configuration.
 - `msm.models.portfolios`: portfolios and portfolio metadata.
 - `msm.models.assets.provider_details`: provider-specific asset metadata.

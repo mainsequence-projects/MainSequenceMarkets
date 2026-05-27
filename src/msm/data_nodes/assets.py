@@ -73,19 +73,6 @@ def asset_snapshot_records() -> list[RecordDefinition]:
     ]
 
 
-def asset_pricing_detail_records() -> list[RecordDefinition]:
-    return [
-        asset_time_index_record(),
-        asset_unique_identifier_record(),
-        RecordDefinition(
-            column_name="instrument_dump",
-            dtype="jsonb",
-            label="Instrument Dump",
-            description="Provider-specific pricing instrument payload.",
-        ),
-    ]
-
-
 class AssetDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
     """Configuration for timestamped asset DataNodes."""
 
@@ -121,15 +108,6 @@ class AssetSnapshotConfiguration(AssetDataNodeConfiguration):
     records: list[RecordDefinition] = Field(
         default_factory=asset_snapshot_records,
         description="Output schema for the AssetSnapshot DataNode.",
-    )
-
-
-class AssetPricingDetailConfiguration(AssetDataNodeConfiguration):
-    """Configuration for the canonical AssetPricingDetail DataNode."""
-
-    records: list[RecordDefinition] = Field(
-        default_factory=asset_pricing_detail_records,
-        description="Output schema for the AssetPricingDetail DataNode.",
     )
 
 
@@ -381,21 +359,6 @@ class AssetSnapshot(AssetTimestampedDataNode):
         )
 
 
-class AssetPricingDetail(AssetTimestampedDataNode):
-    """Timestamped provider pricing metadata keyed by asset unique_identifier."""
-
-    __data_node_identifier__ = "asset_pricing_details"
-    configuration_class = AssetPricingDetailConfiguration
-
-    @classmethod
-    def _default_identifier(cls) -> str:
-        return markets_data_node_identifier(cls.__data_node_identifier__)
-
-    @classmethod
-    def _default_description(cls) -> str:
-        return "Timestamped asset pricing metadata keyed by time_index and unique_identifier."
-
-
 def _validate_asset_data_frame(
     frame: pd.DataFrame,
     *,
@@ -566,14 +529,11 @@ __all__ = [
     "ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX",
     "ASSET_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER",
     "AssetDataNodeConfiguration",
-    "AssetPricingDetail",
-    "AssetPricingDetailConfiguration",
     "AssetSnapshot",
     "AssetSnapshotConfiguration",
     "AssetSnapshotInput",
     "AssetTimestampedDataNode",
     "AssetTimestampedFrameMixin",
-    "asset_pricing_detail_records",
     "asset_snapshot_records",
     "asset_time_index_record",
     "asset_unique_identifier_record",

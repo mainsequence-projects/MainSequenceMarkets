@@ -44,6 +44,19 @@ This API is intentionally thin:
   - deletes by explicit `uids`
   - also supports compatibility filters with `select_all=true`
 
+### Indexes
+
+- `GET /api/v1/index/`
+  - supports `response_format=frontend_list`
+  - supports `search`, `limit`, and `offset`
+  - returns the simple index registry list contract
+- `GET /api/v1/index/{uid}/`
+  - returns one index registry record by `uid`
+  - includes `metadata_json` when present on the underlying row
+- `DELETE /api/v1/index/{uid}/`
+  - deletes one index registry record
+  - returns `null` on success
+
 ## Compatibility Notes
 
 The category detail payload advertises:

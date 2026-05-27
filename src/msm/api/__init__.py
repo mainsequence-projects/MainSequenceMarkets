@@ -34,6 +34,10 @@ from .assets import (
     AssetTypeUpsert,
     AssetUpdate,
     AssetUpsert,
+    Bond,
+    BondCreate,
+    BondStatus,
+    BondUpsert,
     CurrencySpot,
     CurrencySpotCreate,
     CurrencySpotUpsert,
@@ -74,6 +78,7 @@ from .execution import (
     TradeUpsert,
 )
 from .indices import Index, IndexCreate, IndexUpdate, IndexUpsert
+from .issuers import Issuer, IssuerCreate, IssuerUpdate, IssuerUpsert
 from .market_metadata import (
     InstrumentsConfiguration,
     InstrumentsConfigurationCreate,
@@ -139,6 +144,10 @@ __all__ = [
     "AssetTypeUpsert",
     "AssetUpdate",
     "AssetUpsert",
+    "Bond",
+    "BondCreate",
+    "BondStatus",
+    "BondUpsert",
     "Calendar",
     "CalendarCreate",
     "CalendarUpdate",
@@ -162,6 +171,10 @@ __all__ = [
     "IndexCreate",
     "IndexUpdate",
     "IndexUpsert",
+    "Issuer",
+    "IssuerCreate",
+    "IssuerUpdate",
+    "IssuerUpsert",
     "InstrumentsConfiguration",
     "InstrumentsConfigurationCreate",
     "InstrumentsConfigurationUpdate",

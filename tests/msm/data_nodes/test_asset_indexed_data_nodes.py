@@ -22,7 +22,6 @@ from msm.asset_scope import ASSET_UNIQUE_IDENTIFIER
 from msm.accounts.data_nodes import AccountHoldings, VirtualFundHoldings
 from msm.data_nodes.assets import (
     AssetDataNodeConfiguration,
-    AssetPricingDetail,
     AssetSnapshot,
 )
 from msm.execution.data_nodes import ExecutionErrors, OrderEvents, Orders, Trades
@@ -35,6 +34,7 @@ from msm.settings import (
     DEFAULT_MARKETS_NAMESPACE,
     markets_data_node_identifier,
 )
+from msm_pricing.data_nodes import AssetPricingDetail
 
 
 def _record(column_name: str, dtype: str = "string") -> RecordDefinition:
@@ -69,6 +69,7 @@ def test_asset_identity_dimension_is_shared_with_settings() -> None:
 
 def test_market_data_node_compatibility_names_are_removed() -> None:
     asset_indexed_module = importlib.import_module("msm.asset_indexed_data_node")
+    asset_data_nodes_module = importlib.import_module("msm.data_nodes.assets")
 
     legacy_node_name = "Market" + "DataNode"
     legacy_config_name = legacy_node_name + "Configuration"
@@ -76,6 +77,8 @@ def test_market_data_node_compatibility_names_are_removed() -> None:
 
     assert not hasattr(asset_indexed_module, legacy_node_name)
     assert not hasattr(asset_indexed_module, legacy_config_name)
+    assert not hasattr(asset_data_nodes_module, "AssetPricingDetail")
+    assert not hasattr(asset_data_nodes_module, "AssetPricingDetailConfiguration")
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module(legacy_module_name)
 

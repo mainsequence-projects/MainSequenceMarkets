@@ -68,12 +68,13 @@ class MarketsRuntime:
     @property
     def data_nodes(self) -> dict[str, type[Any]]:
         from msm.accounts.data_nodes import AccountHoldings, VirtualFundHoldings
-        from msm.data_nodes import AssetPricingDetail, AssetSnapshot
+        from msm.data_nodes import AssetSnapshot
         from msm.portfolios.data_nodes import (
             PortfolioWeights,
             PortfoliosDataNode,
             SignalWeights,
         )
+        from msm_pricing.data_nodes import AssetPricingDetail
 
         return {
             "AccountHoldings": AccountHoldings,

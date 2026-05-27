@@ -25,6 +25,8 @@ Pricing answers these questions:
 
 - `msm_pricing.instruments`: Pydantic wrappers for priceable instruments and
   positions.
+- `msm_pricing.data_nodes`: pricing-owned DataNodes such as
+  `AssetPricingDetail`.
 - `msm_pricing.models`: QuantLib curve, index, bond, and swap helper functions.
 - `msm_pricing.data_interface`: Main Sequence data reads for curves and fixings.
 - `msm_pricing.interest_rates`: interest-rate ETL helpers for curves and fixing
@@ -49,7 +51,8 @@ instrument or position.
 
 Add new instruments under `msm_pricing.instruments`. Add reusable QuantLib
 helpers under `msm_pricing.models`. Add storage-facing pricing data reads under
-`msm_pricing.data_interface`. Add market-data publishing logic under
+`msm_pricing.data_interface`. Add pricing-specific DataNodes under
+`msm_pricing.data_nodes`. Add market-data publishing logic under
 `msm_pricing.interest_rates`.
 
 ## Related Concepts

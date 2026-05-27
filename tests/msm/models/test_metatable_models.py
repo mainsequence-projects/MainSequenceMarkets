@@ -17,9 +17,11 @@ from msm.meta_tables import build_markets_registration_requests, markets_meta_ta
 from msm.models import (
     AssetTypeTable,
     AssetTable,
+    BondDetailsTable,
     CurrencySpotTable,
     FutureDetailsTable,
     IndexTable,
+    IssuerTable,
     OpenFigiDetailsTable,
     markets_sqlalchemy_models,
 )
@@ -87,15 +89,36 @@ def test_index_model_is_reference_table() -> None:
     )
 
 
+def test_issuer_model_is_reference_table() -> None:
+    table = IssuerTable.__table__
+
+    assert IssuerTable.__markets_base_identifier__ == "Issuer"
+    assert IssuerTable.__metatable_identifier__ == "Issuer"
+    assert "uid" in table.c
+    assert "unique_identifier" in table.c
+    assert "display_name" in table.c
+    assert "metadata_json" in table.c
+    assert any(
+        index.unique and [column.name for column in index.columns] == ["unique_identifier"]
+        for index in table.indexes
+    )
+    assert any(
+        [column.name for column in index.columns] == ["display_name"]
+        for index in table.indexes
+    )
+
+
 def test_asset_related_models_are_grouped_under_assets_package() -> None:
     from msm.models.assets import (
         AssetCategoryMembershipTable as PackageAssetCategoryMembershipTable,
         AssetCategoryTable as PackageAssetCategoryTable,
         AssetTable as PackageAssetTable,
         AssetTypeTable as PackageAssetTypeTable,
+        BondDetailsTable as PackageBondDetailsTable,
         CurrencySpotTable as PackageCurrencySpotTable,
         OpenFigiDetailsTable as PackageOpenFigiDetailsTable,
     )
+    from msm.models.assets.bonds import BondDetailsTable as BondsBondDetailsTable
     from msm.models.assets.categories import (
         AssetCategoryMembershipTable as CategoriesAssetCategoryMembershipTable,
         AssetCategoryTable as CategoriesAssetCategoryTable,
@@ -113,6 +136,8 @@ def test_asset_related_models_are_grouped_under_assets_package() -> None:
     assert TypesAssetTypeTable is AssetTypeTable
     assert PackageCurrencySpotTable is CurrencySpotTable
     assert CurrencyAssetSpotTable is CurrencySpotTable
+    assert PackageBondDetailsTable is BondDetailsTable
+    assert BondsBondDetailsTable is BondDetailsTable
     assert PackageAssetCategoryTable is CategoriesAssetCategoryTable
     assert PackageAssetCategoryMembershipTable is CategoriesAssetCategoryMembershipTable
     assert PackageOpenFigiDetailsTable is OpenFigiDetailsTable
@@ -152,6 +177,14 @@ def test_future_details_resolves_after_asset_and_index_dependencies_when_selecte
     )
 
     assert models == [AssetTypeTable, AssetTable, IndexTable, FutureDetailsTable]
+
+
+def test_bond_details_resolves_after_asset_and_issuer_dependencies_when_selected() -> None:
+    models = meta_tables.resolve_markets_meta_table_models(
+        ["BondDetails", "Issuer", "Asset", "AssetType"]
+    )
+
+    assert models == [AssetTypeTable, AssetTable, IssuerTable, BondDetailsTable]
 
 
 def test_openfigi_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
@@ -239,6 +272,48 @@ def test_future_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
     )
     assert any(
         [column.name for column in index.columns] == ["expires_at"]
+        for index in table.indexes
+    )
+
+
+def test_bond_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
+    table = BondDetailsTable.__table__
+
+    assert "uid" not in table.c
+    assert [column.name for column in table.primary_key.columns] == ["asset_uid"]
+    assert set(table.c.keys()) == {
+        "asset_uid",
+        "issuer_uid",
+        "currency_asset_uid",
+        "issue_date",
+        "maturity_date",
+        "status",
+    }
+
+    asset_uid_fk = next(iter(table.c.asset_uid.foreign_keys))
+    issuer_uid_fk = next(iter(table.c.issuer_uid.foreign_keys))
+    currency_asset_uid_fk = next(iter(table.c.currency_asset_uid.foreign_keys))
+
+    assert asset_uid_fk.column is AssetTable.__table__.c.uid
+    assert asset_uid_fk.ondelete == "CASCADE"
+    assert issuer_uid_fk.column is IssuerTable.__table__.c.uid
+    assert issuer_uid_fk.ondelete == "RESTRICT"
+    assert currency_asset_uid_fk.column is AssetTable.__table__.c.uid
+    assert currency_asset_uid_fk.ondelete == "RESTRICT"
+    assert any(
+        [column.name for column in index.columns] == ["issuer_uid"]
+        for index in table.indexes
+    )
+    assert any(
+        [column.name for column in index.columns] == ["currency_asset_uid"]
+        for index in table.indexes
+    )
+    assert any(
+        [column.name for column in index.columns] == ["status"]
+        for index in table.indexes
+    )
+    assert any(
+        [column.name for column in index.columns] == ["maturity_date"]
         for index in table.indexes
     )
 

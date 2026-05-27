@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import datetime as dt
 import re
 import uuid
 from collections.abc import Mapping
+from enum import Enum
 from typing import Any, ClassVar
 
 from pydantic import (
@@ -20,14 +22,17 @@ from msm.models import (
     AssetCategoryTable,
     AssetTypeTable,
     AssetTable,
+    BondDetailsTable,
     CurrencySpotTable,
+    IssuerTable,
     OpenFigiDetailsTable,
 )
-from msm.repositories.crud import upsert_model
+from msm.repositories.crud import get_model_by_uid, upsert_model
 
 _operation_result_rows = operation_result_rows
 CURRENCY_ASSET_TYPE = "currency"
 CURRENCY_SPOT_ASSET_TYPE = "currency_spot"
+BOND_ASSET_TYPE = "bond"
 
 
 def normalize_asset_type(asset_type: str | None) -> str | None:
@@ -324,6 +329,184 @@ class CurrencySpotUpsert(CurrencySpotCreate):
     """Payload for inserting or updating a currency spot pair by unique identifier."""
 
 
+class BondStatus(str, Enum):
+    """Canonical bond lifecycle status values."""
+
+    ACTIVE = "ACTIVE"
+    MATURED = "MATURED"
+    DEFAULTED = "DEFAULTED"
+    CALLED = "CALLED"
+    REDEEMED = "REDEEMED"
+    UNKNOWN = "UNKNOWN"
+
+
+def _normalize_bond_status(value: BondStatus | str) -> str:
+    if isinstance(value, BondStatus):
+        return str(value.value)
+    normalized = str(value).strip().upper()
+    if not normalized:
+        raise ValueError("Bond status cannot be empty.")
+    valid_values = {str(member.value) for member in BondStatus}
+    if normalized not in valid_values:
+        valid_display = ", ".join(sorted(valid_values))
+        raise ValueError(f"Bond status must be one of: {valid_display}.")
+    return normalized
+
+
+class Bond(BaseModel):
+    """Typed bond asset with issuer, currency, and lifecycle detail."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True, use_enum_values=True)
+
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        AssetTypeTable,
+        AssetTable,
+        IssuerTable,
+        BondDetailsTable,
+    ]
+
+    uid: uuid.UUID = Field(validation_alias=AliasChoices("uid", "asset_uid"))
+    asset_uid: uuid.UUID
+    unique_identifier: str
+    asset_type: str = BOND_ASSET_TYPE
+    issuer_uid: uuid.UUID
+    currency_asset_uid: uuid.UUID
+    issue_date: dt.date
+    maturity_date: dt.date | None = None
+    status: BondStatus
+
+    @classmethod
+    def create_schemas(cls, **kwargs: Any):
+        """Create the MetaTable schemas required by the bond API."""
+
+        from msm.bootstrap import create_schemas
+
+        requested_models = kwargs.pop("models", None)
+        models = _dedupe_models([*cls.__required_tables__, *(requested_models or [])])
+        return create_schemas(models=models, **kwargs)
+
+    @classmethod
+    def upsert(
+        cls,
+        payload: BondUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Bond:
+        """Upsert a bond asset and its detail row."""
+
+        values = _validate_payload(BondUpsert, payload, kwargs).model_dump()
+        context = cls._active_context()
+
+        _require_existing_reference(
+            context,
+            model=IssuerTable,
+            uid=values["issuer_uid"],
+            field_name="issuer_uid",
+        )
+        _require_existing_reference(
+            context,
+            model=AssetTable,
+            uid=values["currency_asset_uid"],
+            field_name="currency_asset_uid",
+        )
+        upsert_model(
+            context,
+            model=AssetTypeTable,
+            values={
+                "asset_type": BOND_ASSET_TYPE,
+                "display_name": "Bond",
+                "description": "Debt instruments represented as tradable assets.",
+            },
+            conflict_columns=("asset_type",),
+        )
+        bond_asset = Asset._from_operation_result(
+            upsert_model(
+                context,
+                model=AssetTable,
+                values={
+                    "unique_identifier": values["unique_identifier"],
+                    "asset_type": BOND_ASSET_TYPE,
+                },
+                conflict_columns=("unique_identifier",),
+            )
+        )
+        detail_rows = operation_result_rows(
+            upsert_model(
+                context,
+                model=BondDetailsTable,
+                values={
+                    "asset_uid": bond_asset.uid,
+                    "issuer_uid": values["issuer_uid"],
+                    "currency_asset_uid": values["currency_asset_uid"],
+                    "issue_date": values["issue_date"],
+                    "maturity_date": values["maturity_date"],
+                    "status": values["status"],
+                },
+                conflict_columns=("asset_uid",),
+            )
+        )
+        if not detail_rows:
+            raise LookupError("Bond upsert did not return a row.")
+
+        return cls.model_validate(
+            {
+                **detail_rows[0],
+                "uid": detail_rows[0].get("asset_uid"),
+                "unique_identifier": bond_asset.unique_identifier,
+                "asset_type": bond_asset.asset_type,
+            }
+        )
+
+    @classmethod
+    def _active_context(cls):
+        from msm.bootstrap import resolve_runtime
+
+        runtime = resolve_runtime(
+            models=cls.__required_tables__,
+            row_model_name=cls.__name__,
+        )
+        return runtime.context
+
+
+class BondCreate(BaseModel):
+    """Payload for creating a bond asset and detail row."""
+
+    model_config = ConfigDict(extra="forbid", use_enum_values=True)
+
+    unique_identifier: str = Field(min_length=1, max_length=255)
+    issuer_uid: uuid.UUID | str
+    currency_asset_uid: uuid.UUID | str
+    issue_date: dt.date
+    maturity_date: dt.date | None = None
+    status: BondStatus
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _normalize_status(cls, value: BondStatus | str) -> str:
+        return _normalize_bond_status(value)
+
+    @model_validator(mode="after")
+    def _maturity_must_not_precede_issue(self) -> BondCreate:
+        if self.maturity_date is not None and self.maturity_date < self.issue_date:
+            raise ValueError("Bond maturity_date must not be earlier than issue_date.")
+        return self
+
+
+class BondUpsert(BondCreate):
+    """Payload for inserting or updating a bond by unique identifier."""
+
+
+def _require_existing_reference(
+    context: Any,
+    *,
+    model: type[Any],
+    uid: uuid.UUID | str,
+    field_name: str,
+) -> None:
+    if operation_result_rows(get_model_by_uid(context, model=model, uid=uid)):
+        return
+    raise LookupError(f"Bond {field_name}={uid!s} does not reference an existing row.")
+
+
 class AssetCategory(MarketsRow):
     """Typed asset universe row."""
 
@@ -500,6 +683,11 @@ __all__ = [
     "AssetTypeUpsert",
     "AssetUpdate",
     "AssetUpsert",
+    "BOND_ASSET_TYPE",
+    "Bond",
+    "BondCreate",
+    "BondStatus",
+    "BondUpsert",
     "CURRENCY_ASSET_TYPE",
     "CurrencySpot",
     "CurrencySpotCreate",
