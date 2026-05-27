@@ -95,10 +95,15 @@ and this project follows versioned releases.
   `AssetPricingDetail` DataNode and its configuration.
 - Added `AssetCurrentPricingDetailsTable` under `msm_pricing.models` for the
   current one-to-one priceable definition attached to a canonical asset.
+- Added `msm_pricing.meta_tables.pricing_sqlalchemy_models()` so pricing
+  MetaTable registration can discover `AssetTable` before pricing extension
+  tables.
 - Added an ADR for `bond` assets, issuer reference data, and the planned
   one-to-one bond detail table.
 - Implemented `IssuerTable`, `BondDetailsTable`, `msm.api.issuers.Issuer`, and
   `msm.api.assets.Bond` for registering bonds through the user-facing API.
+- Added `examples/assets/us_treasury_bond_workflow.py` showing how CUSIP, FIGI,
+  issuer, maturity, coupon, and tenor fields map to the current bond API.
 - Added OpenFIGI helpers to register index rows from FIGI and create
   index-underlying futures from index/future FIGIs while keeping contract terms
   explicit.

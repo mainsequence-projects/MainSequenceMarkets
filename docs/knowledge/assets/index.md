@@ -133,6 +133,11 @@ bond = Bond.upsert(
 See [Bond Assets](bonds.md) for the issuer table, bond detail schema, lifecycle
 status values, and registration dependency order.
 
+See `examples/assets/us_treasury_bond_workflow.py` for a Treasury note example
+that uses CUSIP `91282CQQ7` as the canonical asset identifier, stores FIGI
+`BBG0221YLR31` in `OpenFigiDetails`, and keeps coupon/tenor terms out of the
+minimal bond detail schema.
+
 ## OpenFIGI As Asset Properties
 
 OpenFIGI metadata is the built-in example of extending the asset model with

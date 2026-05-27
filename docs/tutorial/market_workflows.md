@@ -171,7 +171,10 @@ bond = Bond.upsert(
 
 See `examples/assets/bond_workflow.py` and
 [Bond Assets](../knowledge/assets/bonds.md) for the detailed schema and
-workflow.
+workflow. `examples/assets/us_treasury_bond_workflow.py` shows the same API on
+a US Treasury note where CUSIP maps to canonical asset identity, FIGI maps to
+provider details, and coupon/tenor fields stay outside the minimal bond detail
+table.
 
 ## Asset Snapshots
 

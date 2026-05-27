@@ -134,3 +134,19 @@ before importing the API classes.
 
 See `examples/assets/bond_workflow.py` for a minimal workflow that creates an
 issuer, a USD currency asset, and a USD bond using the user-facing API.
+
+See `examples/assets/us_treasury_bond_workflow.py` for a concrete US Treasury
+example using:
+
+- issuer `US_TREASURY`;
+- CUSIP `91282CQQ7` as the canonical bond `Asset.unique_identifier`;
+- FIGI `BBG0221YLR31` in `OpenFigiDetails`;
+- inferred `issue_date=2026-05-15` because the source provides `10Y` tenor and
+  `maturity_date=2036-05-15`;
+- `maturity_date=2036-05-15` in `BondDetailsTable`.
+
+The Treasury example deliberately does not add `coupon_rate` or
+`maturity_tenor_at_issue` to `BondDetailsTable`. `coupon_rate` is a
+pricing/instrument term, and tenor is a source/reference term. The example
+preserves both in provider/raw metadata while keeping the canonical bond detail
+schema minimal.

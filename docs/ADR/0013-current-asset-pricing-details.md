@@ -288,12 +288,12 @@ table prematurely.
 - [x] Add intentional indexes for `instrument_type` and
   `pricing_details_date`.
 - [x] Export the table from `msm_pricing.models`.
-- [ ] Add `msm_pricing.meta_tables.pricing_sqlalchemy_models()` in dependency
+- [x] Add `msm_pricing.meta_tables.pricing_sqlalchemy_models()` in dependency
   order, including `AssetTable` before `AssetCurrentPricingDetailsTable`.
 - [ ] Add `msm_pricing.meta_tables.register_pricing_meta_tables(...)` or an
   equivalent helper that registers pricing MetaTables while resolving core
   asset-table dependencies.
-- [ ] Add tests proving the table uses `asset_uid` as the one-to-one primary
+- [x] Add tests proving the table uses `asset_uid` as the one-to-one primary
   key, has no separate `uid`, and points at `AssetTable.uid` with cascade
   delete.
 - [ ] Add registration-request tests proving pricing models build in dependency
