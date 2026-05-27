@@ -13,6 +13,7 @@ import mainsequence.tdag.data_nodes.build_operations as build_operations
 from mainsequence.client.models_tdag import UpdateStatistics
 from mainsequence.tdag.data_nodes import APIDataNode, DataNode, RecordDefinition
 from msm.asset_scope import dedupe_asset_scope
+from msm.settings import markets_data_node_identifier
 
 from .base import (
     AssetScopedPortfolioCanonicalDataNode,
@@ -63,6 +64,7 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
     """Canonical portfolio values DataNode and portfolio workflow orchestrator."""
 
     OFFSET_START = datetime(2018, 1, 1, tzinfo=pytz.utc)
+    __data_node_identifier__ = "portfolios"
 
     def __init__(
         self,
@@ -750,7 +752,7 @@ rebalance details:"""
 
     @classmethod
     def _default_identifier(cls) -> str:
-        return "mainsequence.markets.portfolios"
+        return markets_data_node_identifier(cls.__data_node_identifier__)
 
     @classmethod
     def _default_description(cls) -> str:

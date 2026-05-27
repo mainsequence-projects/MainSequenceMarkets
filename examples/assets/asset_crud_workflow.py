@@ -21,18 +21,20 @@ os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
 if TYPE_CHECKING:
     from msm.api.assets import OpenFigiDetails
 
+EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX = "example-asset-"
+EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER = f"{EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX}btc"
+EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER = f"{EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX}eth"
 EXAMPLE_ASSETS = [
     {
-        "unique_identifier": "example-asset-btc",
+        "unique_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
         "asset_type": "crypto",
     },
     {
-        "unique_identifier": "example-asset-eth",
+        "unique_identifier": EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
         "asset_type": "crypto",
     },
 ]
 EXAMPLE_OPENFIGI_FIGI = "BBG00FNFPQH4"
-EXAMPLE_ASSET_SNAPSHOT_IDENTIFIER = "examples.mainsequence.markets.asset_snapshots"
 
 
 def create_query_assets(
@@ -42,7 +44,7 @@ def create_query_assets(
     """Create example assets, register FIGI details, write snapshots, and list them."""
 
     from msm.api.assets import Asset
-    from msm.services import update_asset_snapshot_frame
+    from msm.data_nodes.assets import AssetSnapshot
     from msm.services.assets.openfigi import query_by_figi
 
     normalized_openfigi = query_by_figi(EXAMPLE_OPENFIGI_FIGI)
@@ -54,14 +56,16 @@ def create_query_assets(
     created_assets.append(openfigi_asset)
 
     btc_by_identifier = Asset.get_by_unique_identifier(
-        unique_identifier="example-asset-btc",
+        unique_identifier=EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
     )
     if btc_by_identifier is None:
-        raise RuntimeError("Expected example-asset-btc to exist after upsert.")
+        raise RuntimeError(
+            f"Expected {EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER} to exist after upsert."
+        )
 
     btc_by_uid = Asset.get_by_uid(btc_by_identifier.uid)
     crypto_examples = Asset.filter(
-        unique_identifier_contains="example-asset-",
+        unique_identifier_contains=EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX,
         asset_type="crypto",
         limit=20,
     )
@@ -69,43 +73,14 @@ def create_query_assets(
         asset_uid=str(openfigi_asset.uid),
         normalized_openfigi=normalized_openfigi,
     )
-    snapshot_frame = update_asset_snapshot_frame(
-        [
-            {
-                "unique_identifier": "example-asset-btc",
-                "name": "Bitcoin",
-                "ticker": "BTC",
-                "exchange_code": "CRYPTO",
-                "asset_ticker_group_id": "crypto-majors",
-                "venue_specific_properties": {"source": "example"},
-            },
-            {
-                "unique_identifier": "example-asset-eth",
-                "name": "Ethereum",
-                "ticker": "ETH",
-                "exchange_code": "CRYPTO",
-                "asset_ticker_group_id": "crypto-majors",
-                "venue_specific_properties": {"source": "example"},
-            },
-            {
-                "unique_identifier": normalized_openfigi["unique_identifier"],
-                "name": normalized_openfigi["name"],
-                "ticker": normalized_openfigi["ticker"],
-                "exchange_code": normalized_openfigi["exchange_code"],
-                "asset_ticker_group_id": normalized_openfigi["share_class"],
-                "venue_specific_properties": {
-                    "openfigi": {
-                        key: value
-                        for key, value in normalized_openfigi.items()
-                        if key != "raw_payload"
-                    }
-                },
-            },
-        ],
-        time_index=dt.datetime.now(dt.UTC),
-        identifier=EXAMPLE_ASSET_SNAPSHOT_IDENTIFIER,
-        hash_namespace="examples",
+    asset_snapshot_time = dt.datetime.now(dt.UTC).replace(microsecond=0)
+    asset_snapshot_node = AssetSnapshot().set_snapshots(
+        _asset_snapshot_payloads(
+            normalized_openfigi,
+            snapshot_time=asset_snapshot_time,
+        ),
     )
+    snapshot_frame = asset_snapshot_node.run(debug_mode=True, force_update=True)
     created_asset_listing = [
         Asset.get_by_unique_identifier(unique_identifier=payload["unique_identifier"])
         for payload in [
@@ -118,7 +93,7 @@ def create_query_assets(
         deleted_assets = [
             Asset.delete(result.uid)
             for result in created_assets
-            if result.unique_identifier.startswith("example-asset-")
+            if result.unique_identifier.startswith(EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX)
         ]
 
     return {
@@ -127,6 +102,8 @@ def create_query_assets(
         "btc_by_uid": btc_by_uid,
         "crypto_examples": crypto_examples,
         "openfigi_details": figi_details,
+        "asset_snapshot_time": asset_snapshot_time,
+        "asset_snapshot_node_identifier": asset_snapshot_node.config.node_metadata.identifier,
         "asset_snapshot_frame": snapshot_frame,
         "created_asset_listing": created_asset_listing,
         "deleted_assets": deleted_assets,
@@ -166,12 +143,48 @@ def _ensure_openfigi_details(
     )
 
 
+def _asset_snapshot_payloads(
+    normalized_openfigi: dict[str, Any],
+    *,
+    snapshot_time: dt.datetime,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "time_index": snapshot_time,
+            "unique_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
+            "name": "Bitcoin",
+            "ticker": "BTC",
+            "exchange_code": "CRYPTO",
+            "asset_ticker_group_id": "crypto-majors",
+        },
+        {
+            "time_index": snapshot_time,
+            "unique_identifier": EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
+            "name": "Ethereum",
+            "ticker": "ETH",
+            "exchange_code": "CRYPTO",
+            "asset_ticker_group_id": "crypto-majors",
+        },
+        {
+            "time_index": snapshot_time,
+            "unique_identifier": normalized_openfigi["unique_identifier"],
+            "name": normalized_openfigi["name"],
+            "ticker": normalized_openfigi["ticker"],
+            "exchange_code": normalized_openfigi["exchange_code"],
+            "asset_ticker_group_id": normalized_openfigi["share_class"],
+        },
+    ]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--delete-temporary-assets",
         action="store_true",
-        help="Delete only the temporary example-asset-* custom assets after listing them.",
+        help=(
+            "Delete only the temporary "
+            f"{EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX}* custom assets after listing them."
+        ),
     )
     args = parser.parse_args()
     result = create_query_assets(

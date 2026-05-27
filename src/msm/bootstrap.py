@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -9,7 +8,11 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from mainsequence.logconf import logger as _mainsequence_logger
 
-from msm.base import MSM_AUTO_REGISTER_NAMESPACE_ENV
+from msm.settings import (
+    MSM_AUTO_REGISTER_NAMESPACE_ENV,
+    markets_auto_register_namespace,
+    markets_namespace,
+)
 
 if TYPE_CHECKING:
     from msm.meta_tables import MarketsMetaTableRegistrationResult, MarketsModelSelector
@@ -119,6 +122,8 @@ def create_schemas(
 ) -> MarketsRuntime:
     """Create markets schemas once and return a repository runtime context."""
 
+    requested_namespace = namespace
+    namespace = markets_namespace(namespace)
     schema_config = _schema_config(
         data_source_uid=data_source_uid,
         management_mode=management_mode,
@@ -168,7 +173,7 @@ def create_schemas(
             introspect=introspect,
             timeout=timeout,
         )
-        if namespace is not None:
+        if _should_configure_metatable_namespace(requested_namespace):
             logger.info("Configuring markets MetaTable namespace", namespace=namespace)
             configure_metatable_namespace(namespace)
 
@@ -240,6 +245,7 @@ def attach_schemas(
 ) -> MarketsRuntime:
     """Attach to already-registered markets MetaTables without creating schemas."""
 
+    namespace = markets_namespace(namespace)
     schema_config = _schema_config(
         action="attach",
         data_source_uid=data_source_uid,
@@ -312,7 +318,7 @@ def resolve_runtime(
     if _RUNTIME is not None and not missing_from_active:
         return _RUNTIME
 
-    auto_namespace = os.getenv(MSM_AUTO_REGISTER_NAMESPACE_ENV)
+    auto_namespace = markets_auto_register_namespace()
     namespace = auto_namespace or _common_model_namespace(resolved_models)
     try:
         return attach_schemas(
@@ -451,6 +457,10 @@ def _common_model_namespace(models: Sequence[Any]) -> str | None:
     if not namespaces:
         return None
     return None
+
+
+def _should_configure_metatable_namespace(requested_namespace: str | None) -> bool:
+    return requested_namespace is not None or markets_auto_register_namespace() is not None
 
 
 def _schema_resolution_error_message(

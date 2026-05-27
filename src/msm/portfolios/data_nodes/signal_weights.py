@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 import mainsequence.tdag.data_nodes.build_operations as build_operations
 from mainsequence.tdag.data_nodes import DataNodeMetaData, RecordDefinition
+from msm.settings import markets_data_node_identifier
 
 from .base import (
     AssetScopedPortfolioCanonicalDataNode,
@@ -40,6 +41,8 @@ from .metadata import emit_signal_metadata, extract_signal_description
 
 class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
     """Canonical DataNode for Portfolios signal weights."""
+
+    __data_node_identifier__ = "signal_weights"
 
     def __init__(
         self,
@@ -387,7 +390,7 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
 
     @classmethod
     def _default_identifier(cls) -> str:
-        return "mainsequence.markets.signal_weights"
+        return markets_data_node_identifier(cls.__data_node_identifier__)
 
     @classmethod
     def _default_description(cls) -> str:

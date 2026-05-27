@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import datetime as dt
 from typing import Any
 
 import pandas as pd
 from pydantic import Field
 
 from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
+from msm.asset_indexed_data_node import _wrap_default_markets_hash_namespace
+from msm.data_nodes._time import normalize_datetime64_ns_utc
 from msm.markets_data_node import MarketDataNode
 from mainsequence.tdag.data_nodes import (
     DataNode,
@@ -13,8 +16,13 @@ from mainsequence.tdag.data_nodes import (
     DataNodeMetaData,
     RecordDefinition,
 )
+from msm.settings import markets_namespace
 
-from .constants import *
+from .constants import (
+    ASSET_UNIQUE_IDENTIFIER,
+    PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
+    SCHEMA_BOOTSTRAP_TIME_INDEX,
+)
 
 
 class PortfolioCanonicalDataNodeConfiguration(DataNodeConfiguration):
@@ -50,6 +58,10 @@ class PortfolioCanonicalDataNode(DataNode):
 
     _HASH_NAMESPACE_ALIASES = ("namespace",)
 
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.__init__ = _wrap_default_markets_hash_namespace(cls, cls.__init__)
+
     def __init__(
         self,
         config: PortfolioCanonicalDataNodeConfiguration | None = None,
@@ -64,6 +76,8 @@ class PortfolioCanonicalDataNode(DataNode):
         it is intentionally not forwarded as a separate config field.
         """
         resolved_config = self._validate_config(config or self.default_config())
+        if kwargs.get("hash_namespace") in (None, ""):
+            kwargs["hash_namespace"] = markets_namespace(namespace)
         super().__init__(resolved_config, *args, **kwargs)
 
     def dependencies(self) -> dict[str, DataNode]:
@@ -549,11 +563,11 @@ def _validate_identity_values(
 
 
 def _normalize_time_index(values: Any) -> pd.Series:
-    return pd.to_datetime(values, utc=True).astype("datetime64[ns, UTC]")
+    return normalize_datetime64_ns_utc(values)
 
 
 def _normalize_datetime_column(values: Any) -> pd.Series:
-    return pd.to_datetime(values, utc=True).astype("datetime64[ns, UTC]")
+    return normalize_datetime64_ns_utc(values)
 
 
 def _normalize_float64(values: Any, *, column_name: str) -> pd.Series:

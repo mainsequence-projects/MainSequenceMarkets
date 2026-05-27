@@ -20,7 +20,7 @@ collection of SQLAlchemy internals. For row-oriented MetaTable data:
   and lookups are the preferred ergonomic surface;
 - row operations attach to already-registered MetaTables by default, with
   `MSM_AUTO_REGISTER_NAMESPACE` reserved for opt-in example/development
-  auto-registration;
+  auto-registration and default markets DataNode namespacing;
 - repository helpers remain lower-level building blocks for compiled MetaTable
   operations and can return raw platform payloads;
 - services own broader workflows that compose providers, repositories,

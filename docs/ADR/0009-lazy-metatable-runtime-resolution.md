@@ -93,6 +93,13 @@ Auto-registration must be narrow:
 - preserve dependency order through the existing bootstrap/model selection
   machinery;
 - use the environment namespace as the registration namespace;
+- use the same environment namespace for default DataNode identifiers and
+  `hash_namespace` values created in the process;
+- implement that rule through the shared `msm.settings.markets_namespace(...)`
+  resolver rather than separate MetaTable and DataNode namespace code paths;
+- keep logical identifiers bare when the active namespace is the default
+  markets namespace, and prefix identifiers as `<namespace>.<identifier>` only
+  for non-default namespaces such as `mainsequence.examples.Asset`;
 - fail loudly if another incompatible runtime already exists in the process;
 - never accept row payload fields as namespace or registration configuration.
 

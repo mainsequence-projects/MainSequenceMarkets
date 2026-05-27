@@ -21,8 +21,6 @@ Services answer these questions:
   mapping, API-key resolution from the `OPEN_FIGI_API_KEY` Main Sequence
   secret, normalization, MetaTable row construction, and asset snapshot frame
   construction.
-- `msm.services.asset_snapshots`: application-facing AssetSnapshot DataNode
-  frame and node builders.
 - `msm.services.funds`: fund creation and lookup workflows over repository
   operations.
 - `msm.services.portfolios`: portfolio and portfolio asset detail workflows over
@@ -52,10 +50,11 @@ Typed row operations that should return FastAPI-ready Pydantic objects belong in
 `msm.api.execution.OrderManager.create_batch(...)`. Services remain the place
 for workflows that compose providers, repositories, and DataNodes.
 
-Use `build_asset_snapshot_frame(...)`, `build_asset_snapshot_node(...)`, or
-`update_asset_snapshot_frame(...)` when application code needs an easy
-entrypoint for AssetSnapshot updates without mixing DataNode logic into the
-`Asset` MetaTable model.
+Use `msm.data_nodes.assets.AssetSnapshot` directly for snapshot rows:
+`AssetSnapshot.build_frame(...)` validates row payloads, and
+`AssetSnapshot().set_snapshots(...)` binds rows to a node before running it.
+Each snapshot payload must carry its own `time_index`; the DataNode does not
+apply one timestamp to a batch.
 
 The `msm.services` package export surface is lazy. Importing a provider helper
 such as `msm.services.assets.openfigi` should not initialize unrelated

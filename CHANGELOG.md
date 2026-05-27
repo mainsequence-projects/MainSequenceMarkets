@@ -37,6 +37,15 @@ and this project follows versioned releases.
   attach to already-registered MetaTables by default, and
   `MSM_AUTO_REGISTER_NAMESPACE` enables opt-in example/development
   auto-registration.
+- Updated `MSM_AUTO_REGISTER_NAMESPACE` so it also drives default markets
+  DataNode identifiers and `hash_namespace` values, not only MetaTable runtime
+  registration.
+- Centralized markets namespace resolution in `msm.settings.markets_namespace`
+  so MetaTables, bootstrap attach/register flows, and DataNodes use the same
+  environment/default rule.
+- Added shared markets identifier resolution: the default namespace keeps bare
+  identifiers such as `Asset`, while non-default namespaces prefix identifiers
+  as `<namespace>.<identifier>`.
 - Exposed registered MetaTable handles and DataNode class handles on the
   `msm.create_schemas(...)` runtime instead of accepting broad labels on startup.
 - Added `models=[...]` support to `msm.create_schemas(...)` so narrow workflows
@@ -49,9 +58,9 @@ and this project follows versioned releases.
   `AssetTable` from user-facing Pydantic API row models such as `Asset`.
 - Documented the library-wide API style: users work with typed `msm.api` row
   objects, while schema code works with `msm.models.*Table` declarations.
-- Added AssetSnapshot service entrypoints for validated DataNode frame/node
-  updates.
-- Added an AssetSnapshot example using an example-scoped DataNode identifier.
+- Added AssetSnapshot DataNode methods for validated frame construction and
+  row binding before DataNode runs.
+- Added an AssetSnapshot example using the default markets DataNode namespace.
 - Added `examples/platform/bootstrap.py` as the home for the example MetaTable
   namespace and auto-registration environment constants.
 - Documented the attach-first row API pattern, explicit schema preflight option,
@@ -64,6 +73,9 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Removed `venue_specific_properties` from the `AssetSnapshot` DataNode schema;
+  provider-specific payloads belong in provider detail tables such as
+  `OpenFigiDetails`.
 - Implemented the first ADR 0007 slice: `AssetSnapshot` and
   `AssetPricingDetail` now use `AssetIndexedDataNode` configuration and declare
   a canonical source-table FK from `unique_identifier` to
@@ -82,6 +94,16 @@ and this project follows versioned releases.
 - Updated examples and asset notebooks so MetaTable row CRUD goes through
   `msm.api.*` with example-scoped auto-registration instead of explicit
   bootstrap in normal workflows.
+- Updated markets DataNodes to derive default published identifiers and
+  `hash_namespace` values from the active markets namespace plus class-owned
+  `__data_node_identifier__` values unless callers explicitly override them.
+- Split AssetSnapshot node construction from snapshot row binding, made
+  `time_index` a required per-row snapshot field, and added a backend duplicate
+  check before persisting `(time_index, unique_identifier)` rows.
+- Normalized DataNode datetime columns to `datetime64[ns, UTC]` so pandas
+  microsecond inference from Python datetimes cannot fail SDK update validation.
+- Replaced AssetSnapshot and AssetPricingDetail parallel dtype/label/description
+  maps with configuration-owned `RecordDefinition` default factories.
 - Removed legacy unsuffixed `msm.models.*` aliases such as `msm.models.Asset`;
   schema code must import `*Table` declarations and user-facing code must import
   row objects from `msm.api.*`.

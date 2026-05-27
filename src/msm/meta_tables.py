@@ -47,6 +47,7 @@ def resolve_markets_meta_table_model(model: MarketsModelSelector) -> type[Market
     for candidate in markets_meta_table_models():
         keys = {
             candidate.__name__,
+            str(getattr(candidate, "__markets_base_identifier__", "")),
             str(getattr(candidate, "__metatable_identifier__", "")),
             markets_meta_table_fullname(candidate),
         }

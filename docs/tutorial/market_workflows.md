@@ -97,28 +97,42 @@ workflow. Cleanup is disabled by default.
 ## Asset Snapshots
 
 `AssetSnapshot` is a DataNode, not a MetaTable. Build validated snapshot frames
-or a configured node through the service entrypoints:
+or a configured node through `AssetSnapshot` methods. Construct the node first,
+then bind rows whose payloads each carry their own `time_index`:
 
 ```python
-from msm.services import build_asset_snapshot_node
+from datetime import datetime, UTC
 
-snapshot_node = build_asset_snapshot_node(
+from msm.data_nodes.assets import AssetSnapshot
+
+snapshot_node = AssetSnapshot().set_snapshots(
     {
+        "time_index": datetime.now(UTC),
         "unique_identifier": "example-asset-btc",
         "ticker": "BTC",
-        "venue_specific_properties": {"source": "example"},
     },
-    identifier="examples.mainsequence.markets.asset_snapshots",
-    hash_namespace="examples",
 )
-snapshot_frame = snapshot_node.update()
+snapshot_frame = snapshot_node.run(debug_mode=True, force_update=True)
 ```
+
+Markets DataNodes use the same identifier rule as MetaTables. With the default
+markets namespace, logical identifiers stay bare, such as `Asset` and
+`asset_snapshots`. With `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`,
+the published identifiers become `mainsequence.examples.Asset` and
+`mainsequence.examples.asset_snapshots`; the default DataNode `hash_namespace`
+is also `mainsequence.examples`. Pass explicit `identifier` or `hash_namespace`
+only when a test or experiment needs isolation.
 
 Asset snapshot source tables have a canonical foreign key from
 `unique_identifier` to `AssetTable.unique_identifier`, so the `Asset` MetaTable
 must exist before a snapshot DataNode initializes its source table. In examples
 that perform source-table initialization, run `msm.create_schemas(models=["Asset"])`
 or use the example auto-registration namespace first.
+
+Before the write path persists rows, `AssetSnapshot` checks the backend for the
+incoming `(time_index, unique_identifier)` tuples and fails if any tuple already
+exists. Publish corrections as a new timestamped snapshot instead of overwriting
+the existing row.
 
 See `examples/assets/asset_snapshot_workflow.py` for the focused DataNode
 example.

@@ -131,9 +131,13 @@ def _string_or_none(value: Any) -> str | None:
 
 
 def _get_runtime():
-    from msm.bootstrap import get_runtime
+    from msm.bootstrap import resolve_runtime
+    from msm.models import AssetTable, OpenFigiDetailsTable
 
-    return get_runtime()
+    return resolve_runtime(
+        models=[AssetTable, OpenFigiDetailsTable],
+        row_model_name="GET /api/v1/asset/",
+    )
 
 
 def _search_assets(context, **kwargs: Any):

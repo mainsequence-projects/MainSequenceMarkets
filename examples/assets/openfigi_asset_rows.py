@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import os
 import sys
 from pathlib import Path
@@ -50,7 +51,10 @@ def main() -> None:
         metadata_text=normalized.get("metadata"),
         raw_payload=normalized.get("raw_payload"),
     )
-    snapshot_frame = build_asset_snapshot_frame_from_openfigi_result(normalized)
+    snapshot_frame = build_asset_snapshot_frame_from_openfigi_result(
+        normalized,
+        time_index=dt.datetime.now(dt.UTC).replace(microsecond=0),
+    )
 
     print(asset.unique_identifier)
     print(open_figi_details.figi)

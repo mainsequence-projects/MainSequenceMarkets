@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import datetime
+from functools import wraps
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
@@ -16,7 +17,10 @@ from mainsequence.tdag.data_nodes import (
     SourceTableForeignKey,
 )
 from msm.models import AssetTable
-from msm.settings import ASSET_UNIQUE_IDENTIFIER_DIMENSION
+from msm.settings import (
+    ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+    markets_namespace,
+)
 
 MarketAssetScopeItem = str | Mapping[str, Any] | Any
 
@@ -87,6 +91,33 @@ def _is_canonical_asset_foreign_key(foreign_key: SourceTableForeignKey) -> bool:
     return target is AssetTable or target_table == AssetTable.__table__.name
 
 
+def _wrap_default_markets_hash_namespace(cls: type, original_init):
+    @wraps(original_init)
+    def wrapped_init(self, *args, **kwargs):
+        _default_markets_hash_namespace_kwargs(cls, kwargs)
+        return original_init(self, *args, **kwargs)
+
+    return wrapped_init
+
+
+def _default_markets_hash_namespace_kwargs(cls: type, kwargs: dict[str, Any]) -> None:
+    if kwargs.get("test_node"):
+        return
+
+    namespace_aliases = tuple(getattr(cls, "_HASH_NAMESPACE_ALIASES", ()) or ())
+    for namespace_alias in namespace_aliases:
+        if namespace_alias not in kwargs:
+            continue
+        namespace = kwargs[namespace_alias]
+        if namespace not in (None, ""):
+            return
+        kwargs.pop(namespace_alias)
+
+    hash_namespace = kwargs.get("hash_namespace")
+    if hash_namespace in (None, ""):
+        kwargs["hash_namespace"] = markets_namespace()
+
+
 class AssetIndexedDataNodeConfiguration(DataNodeConfiguration):
     """Base configuration for DataNodes scoped to platform assets."""
 
@@ -109,6 +140,15 @@ class AssetIndexedDataNode(DataNode):
     """
 
     asset_identity_dimension = ASSET_UNIQUE_IDENTIFIER_DIMENSION
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.__init__ = _wrap_default_markets_hash_namespace(cls, cls.__init__)
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        if kwargs.get("hash_namespace") in (None, ""):
+            kwargs["hash_namespace"] = markets_namespace()
+        super().__init__(*args, **kwargs)
 
     @classmethod
     def _asset_unique_identifier(cls, asset: MarketAssetScopeItem) -> str:

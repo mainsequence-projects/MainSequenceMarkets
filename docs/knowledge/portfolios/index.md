@@ -40,6 +40,12 @@ Portfolio DataNodes use canonical time-indexed frames. Portfolio identity should
 be deterministic: configuration hashes and signal/rebalance UIDs must be stable
 for equivalent configuration payloads.
 
+Canonical markets DataNodes derive their published identifiers from the same
+rule as MetaTables: the default markets namespace keeps bare logical
+identifiers, while a non-default `MSM_AUTO_REGISTER_NAMESPACE` prefixes them.
+That namespace also becomes the default DataNode `hash_namespace`. Pass an
+explicit namespace only for isolated tests or experiments.
+
 Forward-fill behavior, price source selection, signal semantics, and rebalance
 frequency should be explicit in configuration rather than inferred from data.
 

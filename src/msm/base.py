@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import uuid
 from collections.abc import Mapping
 from typing import Any, ClassVar
@@ -13,7 +12,12 @@ from mainsequence.tdag.meta_tables import (
     slugify_identifier,
 )
 
-from msm.settings import DEFAULT_MARKETS_NAMESPACE
+from msm.settings import (
+    DEFAULT_MARKETS_NAMESPACE,
+    MSM_AUTO_REGISTER_NAMESPACE_ENV,
+    markets_identifier,
+    markets_namespace,
+)
 
 try:
     from sqlalchemy import MetaData
@@ -26,13 +30,6 @@ except ImportError as exc:  # pragma: no cover - exercised only in partial envs.
 
 MARKETS_NAMESPACE = DEFAULT_MARKETS_NAMESPACE
 MARKETS_SCHEMA = "public"
-MSM_AUTO_REGISTER_NAMESPACE_ENV = "MSM_AUTO_REGISTER_NAMESPACE"
-
-
-def markets_runtime_namespace() -> str:
-    """Return the namespace used when markets models are mapped."""
-
-    return os.getenv(MSM_AUTO_REGISTER_NAMESPACE_ENV) or MARKETS_NAMESPACE
 
 
 def markets_table_name(
@@ -49,8 +46,8 @@ def markets_table_name(
     """
 
     return metatable_tablename(
-        namespace=MARKETS_NAMESPACE,
-        identifier=identifier,
+        namespace=markets_namespace(),
+        identifier=markets_identifier(identifier),
         schema=schema,
         hash_namespace=hash_namespace,
         extra_hash_components=extra_hash_components,
@@ -97,8 +94,8 @@ def markets_table_args(
         {
             "schema": schema,
             "info": {
-                "namespace": markets_runtime_namespace(),
-                "identifier": identifier,
+                "namespace": markets_namespace(),
+                "identifier": markets_identifier(identifier),
             },
         },
     )
@@ -112,9 +109,24 @@ class MarketsMetaTableMixin(PlatformManagedMetaTable):
     """Shared metadata contract for markets SQLAlchemy MetaTable models."""
 
     __abstract__ = True
-    __metatable_namespace__: ClassVar[str] = markets_runtime_namespace()
+    __metatable_namespace__: ClassVar[str] = markets_namespace()
     __metatable_schema__: ClassVar[str] = MARKETS_SCHEMA
     __metatable_identifier__: ClassVar[str]
+    __markets_base_identifier__: ClassVar[str]
+
+    def __init_subclass__(cls, **kwargs: Any):
+        super().__init_subclass__(**kwargs)
+        base_identifier = (
+            cls.__dict__.get("__markets_base_identifier__")
+            or cls.__dict__.get("__metatable_identifier__")
+            or getattr(cls, "__markets_base_identifier__", None)
+            or getattr(cls, "__metatable_identifier__", cls.__name__)
+        )
+        cls.__markets_base_identifier__ = str(base_identifier).strip(".")
+        cls.__metatable_identifier__ = markets_identifier(
+            cls.__markets_base_identifier__,
+            namespace=getattr(cls, "__metatable_namespace__", None),
+        )
 
     @classmethod
     def metatable_identifier(cls) -> str:
@@ -133,9 +145,10 @@ __all__ = [
     "MarketsMetaTableMixin",
     "markets_fk_name",
     "markets_index_name",
+    "markets_identifier",
     "markets_postgres_identifier",
     "markets_table_args",
     "markets_table_name",
-    "markets_runtime_namespace",
+    "markets_namespace",
     "new_markets_uid",
 ]

@@ -8,6 +8,7 @@ from uuid import UUID
 import pandas as pd
 
 from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
+from msm.data_nodes._time import normalize_datetime64_ns_utc
 from msm.markets_data_node import (
     MarketDataNode,
     MarketDataNodeConfiguration,
@@ -28,6 +29,7 @@ from msm.services.holdings import (
     build_fund_holdings_frame as build_fund_holdings_service_frame,
 )
 from msm.services.holdings import initialize_data_node_source_table
+from msm.settings import markets_data_node_identifier
 
 ACCOUNT_HOLDINGS_TIME_INDEX_NAME = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.time_index_name
 ACCOUNT_HOLDINGS_INDEX_NAMES = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.dynamic_table_index_names
@@ -380,9 +382,11 @@ class HoldingsDataNode(MarketDataNode):
 class AccountHoldings(HoldingsDataNode):
     """DataNode users can subclass to import account holdings."""
 
+    __data_node_identifier__ = "account_historical_holdings"
+
     @classmethod
     def _default_identifier(cls) -> str:
-        return "mainsequence.markets.account_historical_holdings"
+        return markets_data_node_identifier(cls.__data_node_identifier__)
 
     @classmethod
     def _default_description(cls) -> str:
@@ -485,9 +489,11 @@ class AccountHoldings(HoldingsDataNode):
 class VirtualFundHoldings(HoldingsDataNode):
     """DataNode users can subclass to import virtual-fund holdings."""
 
+    __data_node_identifier__ = "virtual_fund_historical_holdings"
+
     @classmethod
     def _default_identifier(cls) -> str:
-        return "mainsequence.markets.virtual_fund_historical_holdings"
+        return markets_data_node_identifier(cls.__data_node_identifier__)
 
     @classmethod
     def _default_description(cls) -> str:
@@ -740,7 +746,7 @@ def _normalize_config_values(
         elif dtype == "jsonb":
             normalized[column_name] = values.map(_normalize_jsonb)
         elif dtype == "datetime64[ns, UTC]":
-            normalized[column_name] = values.map(_normalize_datetime_payload)
+            normalized[column_name] = _normalize_datetime_payload_column(values)
         elif dtype == "string":
             normalized[column_name] = values.fillna("").map(str)
         elif dtype == "object":
@@ -781,14 +787,12 @@ def _normalize_jsonb(value: Any) -> dict[str, Any] | list[Any]:
     raise ValueError(f"Invalid jsonb holdings value {value!r}.")
 
 
-def _normalize_datetime_payload(value: Any) -> str:
-    if value is None or pd.isna(value):
-        return pd.Timestamp(SCHEMA_BOOTSTRAP_TIME_INDEX).isoformat()
-    return pd.to_datetime(value, utc=True).isoformat()
+def _normalize_datetime_payload_column(values: pd.Series) -> pd.Series:
+    return normalize_datetime64_ns_utc(values.fillna(SCHEMA_BOOTSTRAP_TIME_INDEX))
 
 
 def _normalize_time_index(values: Any) -> pd.Series:
-    return pd.to_datetime(values, utc=True).astype("datetime64[ns, UTC]")
+    return normalize_datetime64_ns_utc(values)
 
 
 def _attach_logical_dtype_contract(

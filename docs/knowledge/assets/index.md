@@ -148,27 +148,51 @@ and cleanup is opt-in through `--delete-temporary-assets`.
 ## Asset Snapshots
 
 `AssetSnapshot` stores timestamped asset display facts as a DataNode. It should
-not be modeled as fields on the `Asset` MetaTable. Use service helpers to build
-validated frames or a configured DataNode:
+not be modeled as fields on the `Asset` MetaTable. Use DataNode methods to build
+validated frames or configure the node. Node construction and row loading are
+separate so the DataNode owns table identity while each snapshot row owns its
+own timestamp:
 
 ```python
-from msm.services import build_asset_snapshot_node
+from datetime import datetime, UTC
 
-snapshot_node = build_asset_snapshot_node(
-    {"unique_identifier": "example-asset-btc", "ticker": "BTC"},
-    identifier="examples.mainsequence.markets.asset_snapshots",
-    hash_namespace="examples",
+from msm.data_nodes.assets import AssetSnapshot
+
+snapshot_node = AssetSnapshot().set_snapshots(
+    {
+        "time_index": datetime.now(UTC),
+        "unique_identifier": "example-asset-btc",
+        "ticker": "BTC",
+    },
 )
-snapshot_frame = snapshot_node.update()
+snapshot_frame = snapshot_node.run(debug_mode=True, force_update=True)
 ```
+
+Markets resources derive their identifiers from the same runtime namespace rule.
+With no environment override, or when the namespace is the default markets
+namespace, logical identifiers stay bare, such as `Asset` and
+`asset_snapshots`. When
+`MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` is set before import,
+`Asset` resolves to `mainsequence.examples.Asset` and
+`AssetSnapshot.__data_node_identifier__ = "asset_snapshots"` resolves to
+`mainsequence.examples.asset_snapshots`. The DataNode `hash_namespace` also
+defaults to the active runtime namespace. Pass an explicit `hash_namespace` only
+for isolated experiments or tests.
 
 `AssetSnapshot` and `AssetPricingDetail` configurations declare a canonical
 source-table foreign key from their `unique_identifier` record to
 `AssetTable.unique_identifier`. The `Asset` MetaTable must be registered before
 source-table initialization resolves that FK.
+Their schemas are declared as `RecordDefinition` lists on
+`AssetSnapshotConfiguration` and `AssetPricingDetailConfiguration`, not as
+parallel dtype, label, and description maps.
+
+Before an `AssetSnapshot` run persists rows, it queries the backend and rejects
+any incoming `(time_index, unique_identifier)` tuple that already exists. Use a
+new `time_index` when publishing a revised snapshot for the same asset.
 
 See `examples/assets/asset_snapshot_workflow.py` for a focused AssetSnapshot
-DataNode example that uses an example-scoped identifier.
+DataNode example that uses the default markets DataNode namespace.
 
 ## Extension Notes
 

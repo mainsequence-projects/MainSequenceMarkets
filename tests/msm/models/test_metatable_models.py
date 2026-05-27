@@ -12,6 +12,7 @@ from mainsequence.tdag.meta_tables import (
 
 import msm.meta_tables as meta_tables
 import msm.models as models
+from msm.base import MarketsMetaTableMixin
 from msm.meta_tables import build_markets_registration_requests, markets_meta_table_fullname
 from msm.models import (
     AssetMasterListTable,
@@ -29,6 +30,23 @@ def test_markets_models_use_platform_managed_table_mixin() -> None:
         assert model.__table__.name == metatable_configured_tablename(model)
         assert model.__table__.name not in table_names
         table_names[model.__table__.name] = model
+
+
+def test_default_namespace_keeps_bare_metatable_identifier() -> None:
+    assert AssetTable.__markets_base_identifier__ == "Asset"
+    assert AssetTable.__metatable_identifier__ == "Asset"
+    assert AssetTable.metatable_identifier() == "Asset"
+
+
+def test_non_default_namespace_prefixes_metatable_identifier() -> None:
+    class ExampleNamespacedTable(MarketsMetaTableMixin):
+        __abstract__ = True
+        __metatable_namespace__ = "mainsequence.examples"
+        __metatable_identifier__ = "Asset"
+
+    assert ExampleNamespacedTable.__markets_base_identifier__ == "Asset"
+    assert ExampleNamespacedTable.__metatable_identifier__ == "mainsequence.examples.Asset"
+    assert ExampleNamespacedTable.metatable_identifier() == "mainsequence.examples.Asset"
 
 
 def test_asset_model_does_not_store_arbitrary_metadata_json() -> None:

@@ -69,7 +69,9 @@ asset_table = runtime.table("Asset")
 ```
 
 For development examples that should self-register missing tables, set
-`MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`.
+`MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`. That namespace also
+becomes the default namespace for markets DataNode identifiers and
+`hash_namespace` values created in the same process.
 
 Every markets MetaTable now has a user-facing row model under `msm.api.*`.
 Legacy imports such as `from msm.models import Asset` have been removed; use

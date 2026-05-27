@@ -43,6 +43,8 @@ Row objects expose class methods such as `upsert(...)`, `filter(...)`, and
 lifecycle helpers where the domain needs them. Mutation and lookup methods
 lazily attach to already-registered MetaTables; they only create schemas when a
 development or example process opts in through `MSM_AUTO_REGISTER_NAMESPACE`.
+That same environment namespace is also used for default markets DataNode
+identifiers and `hash_namespace` values in the process.
 `create_schemas()` remains available for explicit startup preflight.
 Lower-level repository helpers remain available when a workflow needs direct
 access to registered table handles or raw platform operation payloads.

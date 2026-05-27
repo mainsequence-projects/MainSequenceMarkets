@@ -63,8 +63,8 @@ def normalize_openfigi_result(item: dict[str, Any]) -> dict[str, Any]:
 def build_asset_rows_from_openfigi_result(
     item: dict[str, Any],
     *,
-    asset_uid: UUID | str | None = None,
-    time_index: dt.datetime | pd.Timestamp | None = None,
+    asset_uid: UUID | str,
+    time_index: dt.datetime | pd.Timestamp | str,
 ) -> OpenFigiAssetRows:
     """Build SQLAlchemy/MetaTable asset rows from one OpenFIGI result."""
 
@@ -74,9 +74,6 @@ def build_asset_rows_from_openfigi_result(
     unique_identifier = normalized.get("unique_identifier")
     if not unique_identifier:
         raise ValueError("OpenFIGI result does not include `figi`.")
-    if asset_uid is None:
-        raise ValueError("asset_uid is required to build OpenFigiDetails.")
-
     resolved_asset_uid = UUID(str(asset_uid))
     asset = AssetTable(uid=resolved_asset_uid, unique_identifier=unique_identifier)
     open_figi_details = OpenFigiDetailsTable(
@@ -111,31 +108,26 @@ def build_asset_rows_from_openfigi_result(
 def build_asset_snapshot_frame_from_openfigi_result(
     item: dict[str, Any],
     *,
-    time_index: dt.datetime | pd.Timestamp | None = None,
+    time_index: dt.datetime | pd.Timestamp | str,
 ) -> pd.DataFrame:
     """Build one AssetSnapshot DataNode frame row from an OpenFIGI result."""
 
-    from msm.services.asset_snapshots import build_asset_snapshot_frame
+    from msm.data_nodes.assets import AssetSnapshot
 
     normalized = item if "unique_identifier" in item else normalize_openfigi_result(item)
     unique_identifier = normalized.get("unique_identifier")
     if not unique_identifier:
         raise ValueError("OpenFIGI result does not include `figi`.")
 
-    return build_asset_snapshot_frame(
+    return AssetSnapshot.build_frame(
         {
+            "time_index": time_index,
             "unique_identifier": unique_identifier,
             "name": normalized.get("name") or "",
             "ticker": normalized.get("ticker") or "",
             "exchange_code": normalized.get("exchange_code") or "",
             "asset_ticker_group_id": normalized.get("share_class") or "",
-            "venue_specific_properties": {
-                "openfigi": {
-                    key: value for key, value in normalized.items() if key not in {"raw_payload"}
-                }
-            },
         },
-        time_index=time_index,
     )
 
 

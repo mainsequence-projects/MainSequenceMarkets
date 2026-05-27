@@ -11,6 +11,7 @@ os.environ["MAIN_SEQUENCE_PROJECT_UID"] = " "
 os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 
 import msm.bootstrap as bootstrap
+from msm.settings import DEFAULT_MARKETS_NAMESPACE
 
 
 @pytest.fixture(autouse=True)
@@ -91,8 +92,8 @@ def test_create_schemas_registers_metatables_and_returns_repository_context(
     assert runtime.context.target_meta_table_uid_by_fullname == {
         "public.asset": "asset-meta-table-uid"
     }
-    assert runtime.namespace is None
-    assert runtime.context.namespace is None
+    assert runtime.namespace == DEFAULT_MARKETS_NAMESPACE
+    assert runtime.context.namespace == DEFAULT_MARKETS_NAMESPACE
     assert calls[0]["data_source_uid"] == "data-source-uid"
     assert calls[0]["models"] == ["Asset"]
     assert "labels" not in calls[0]
@@ -108,6 +109,24 @@ def test_create_schemas_can_register_selected_models(monkeypatch) -> None:
     )
 
     assert runtime.meta_table_models == ["Asset"]
+    assert calls[0]["models"] == ["Asset"]
+
+
+def test_create_schemas_uses_auto_register_namespace_when_omitted(monkeypatch) -> None:
+    calls, _attach_calls, _registration = install_fake_bootstrap_modules(monkeypatch)
+    configured_namespaces = []
+    monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
+    monkeypatch.setattr(
+        bootstrap,
+        "configure_metatable_namespace",
+        lambda namespace: configured_namespaces.append(namespace),
+    )
+
+    runtime = bootstrap.create_schemas(models=["Asset"])
+
+    assert runtime.namespace == "mainsequence.examples"
+    assert runtime.context.namespace == "mainsequence.examples"
+    assert configured_namespaces == ["mainsequence.examples"]
     assert calls[0]["models"] == ["Asset"]
 
 
@@ -225,6 +244,26 @@ def test_attach_schemas_resolves_registered_metatables_without_registering(monke
             "data_source_uid": None,
             "management_mode": "platform_managed",
             "namespace": "mainsequence.markets",
+            "timeout": None,
+            "models": ["Asset"],
+        }
+    ]
+
+
+def test_attach_schemas_uses_auto_register_namespace_when_omitted(monkeypatch) -> None:
+    register_calls, attach_calls, _registration = install_fake_bootstrap_modules(monkeypatch)
+    monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
+
+    runtime = bootstrap.attach_schemas(models=["Asset"])
+
+    assert runtime.namespace == "mainsequence.examples"
+    assert runtime.context.namespace == "mainsequence.examples"
+    assert register_calls == []
+    assert attach_calls == [
+        {
+            "data_source_uid": None,
+            "management_mode": "platform_managed",
+            "namespace": "mainsequence.examples",
             "timeout": None,
             "models": ["Asset"],
         }

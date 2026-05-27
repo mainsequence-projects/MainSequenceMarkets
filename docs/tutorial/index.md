@@ -44,7 +44,7 @@ The package boundary is deliberate: `msm.api` owns user row operations,
 time-indexed market facts, and services own external provider integration.
 
 ```python
-from msm.services import build_asset_snapshot_node
+from msm.data_nodes.assets import AssetSnapshot
 from msm.services.assets.openfigi import (
     query_by_figi,
 )
@@ -61,7 +61,9 @@ Use this workflow when adding or reviewing a market-domain relational table:
 
 1. Define the SQLAlchemy model under `msm.models` with
    `MarketsMetaTableMixin` and `MarketsBase`.
-2. Set `__metatable_identifier__` to the stable logical table name.
+2. Set `__metatable_identifier__` to the stable bare logical table name.
+   The shared markets identifier rule prefixes it only for non-default runtime
+   namespaces such as `mainsequence.examples`.
 3. Put schema, table info, indexes, and constraints in `__table_args__`.
 4. Do not set `__tablename__`; the SDK `PlatformManagedMetaTable` mixin derives
    the platform-managed physical table name from the resolved table contract.

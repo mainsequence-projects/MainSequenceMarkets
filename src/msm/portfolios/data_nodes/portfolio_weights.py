@@ -5,6 +5,7 @@ from typing import Any
 import pandas as pd
 
 from mainsequence.tdag.data_nodes import RecordDefinition
+from msm.settings import markets_data_node_identifier
 
 from .base import (
     AssetScopedPortfolioCanonicalDataNode,
@@ -35,6 +36,8 @@ from .portfolio_identity import (
 
 class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
     """Canonical DataNode for executed Portfolios portfolio weights."""
+
+    __data_node_identifier__ = "portfolio_weights"
 
     def set_weights_frame(
         self,
@@ -163,7 +166,7 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
 
     @classmethod
     def _default_identifier(cls) -> str:
-        return "mainsequence.markets.portfolio_weights"
+        return markets_data_node_identifier(cls.__data_node_identifier__)
 
     @classmethod
     def _default_description(cls) -> str:

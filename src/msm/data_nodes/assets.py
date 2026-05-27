@@ -1,88 +1,100 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import Any, ClassVar
 
 import pandas as pd
 from pydantic import Field, model_validator
 
+from msm.data_nodes._time import normalize_datetime64_ns_utc, normalize_timestamp_ns_utc
 from msm.asset_indexed_data_node import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
     asset_indexed_foreign_keys,
 )
-from msm.settings import ASSET_UNIQUE_IDENTIFIER_DIMENSION
+from msm.settings import ASSET_UNIQUE_IDENTIFIER_DIMENSION, markets_data_node_identifier
 from mainsequence.tdag.data_nodes import (
     DataNodeMetaData,
     RecordDefinition,
 )
 
-ASSET_DATA_NODE_TIME_INDEX_NAME = "time_index"
-ASSET_DATA_NODE_INDEX_NAMES = [
-    ASSET_DATA_NODE_TIME_INDEX_NAME,
-    ASSET_UNIQUE_IDENTIFIER_DIMENSION,
-]
 ASSET_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER = "__schema_bootstrap__"
 ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX = dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
+AssetSnapshotInput = Mapping[str, Any] | Any
 
-ASSET_SNAPSHOT_COLUMN_DTYPES_MAP = {
-    ASSET_DATA_NODE_TIME_INDEX_NAME: "datetime64[ns, UTC]",
-    ASSET_UNIQUE_IDENTIFIER_DIMENSION: "string",
-    "name": "string",
-    "ticker": "string",
-    "exchange_code": "string",
-    "asset_ticker_group_id": "string",
-    "venue_specific_properties": "jsonb",
-}
-ASSET_SNAPSHOT_COLUMN_LABELS = {
-    ASSET_DATA_NODE_TIME_INDEX_NAME: "Time Index",
-    ASSET_UNIQUE_IDENTIFIER_DIMENSION: "Unique Identifier",
-    "name": "Name",
-    "ticker": "Ticker",
-    "exchange_code": "Exchange Code",
-    "asset_ticker_group_id": "Asset Ticker Group ID",
-    "venue_specific_properties": "Venue Specific Properties",
-}
-ASSET_SNAPSHOT_COLUMN_DESCRIPTIONS = {
-    ASSET_DATA_NODE_TIME_INDEX_NAME: "UTC timestamp for the asset display snapshot.",
-    ASSET_UNIQUE_IDENTIFIER_DIMENSION: (
-        "Asset unique identifier from the selected master-list table."
-    ),
-    "name": "Security name as recorded by the asset data provider.",
-    "ticker": "Ticker or display symbol.",
-    "exchange_code": "Exchange or market code.",
-    "asset_ticker_group_id": "Highest aggregation level for share-class grouping.",
-    "venue_specific_properties": "JSON payload for exchange-specific metadata.",
-}
 
-ASSET_PRICING_DETAIL_COLUMN_DTYPES_MAP = {
-    ASSET_DATA_NODE_TIME_INDEX_NAME: "datetime64[ns, UTC]",
-    ASSET_UNIQUE_IDENTIFIER_DIMENSION: "string",
-    "instrument_dump": "jsonb",
-}
-ASSET_PRICING_DETAIL_COLUMN_LABELS = {
-    ASSET_DATA_NODE_TIME_INDEX_NAME: "Time Index",
-    ASSET_UNIQUE_IDENTIFIER_DIMENSION: "Unique Identifier",
-    "instrument_dump": "Instrument Dump",
-}
-ASSET_PRICING_DETAIL_COLUMN_DESCRIPTIONS = {
-    ASSET_DATA_NODE_TIME_INDEX_NAME: "UTC timestamp for the pricing metadata payload.",
-    ASSET_UNIQUE_IDENTIFIER_DIMENSION: (
-        "Asset unique identifier from the selected master-list table."
-    ),
-    "instrument_dump": "Provider-specific pricing instrument payload.",
-}
+def asset_time_index_record() -> RecordDefinition:
+    return RecordDefinition(
+        column_name="time_index",
+        dtype="datetime64[ns, UTC]",
+        label="Time Index",
+        description="UTC timestamp for the asset fact row.",
+    )
+
+
+def asset_unique_identifier_record() -> RecordDefinition:
+    return RecordDefinition(
+        column_name=ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+        dtype="string",
+        label="Unique Identifier",
+        description="Asset unique identifier from the selected master-list table.",
+    )
+
+
+def asset_snapshot_records() -> list[RecordDefinition]:
+    return [
+        asset_time_index_record(),
+        asset_unique_identifier_record(),
+        RecordDefinition(
+            column_name="name",
+            dtype="string",
+            label="Name",
+            description="Security name as recorded by the asset data provider.",
+        ),
+        RecordDefinition(
+            column_name="ticker",
+            dtype="string",
+            label="Ticker",
+            description="Ticker or display symbol.",
+        ),
+        RecordDefinition(
+            column_name="exchange_code",
+            dtype="string",
+            label="Exchange Code",
+            description="Exchange or market code.",
+        ),
+        RecordDefinition(
+            column_name="asset_ticker_group_id",
+            dtype="string",
+            label="Asset Ticker Group ID",
+            description="Highest aggregation level for share-class grouping.",
+        ),
+    ]
+
+
+def asset_pricing_detail_records() -> list[RecordDefinition]:
+    return [
+        asset_time_index_record(),
+        asset_unique_identifier_record(),
+        RecordDefinition(
+            column_name="instrument_dump",
+            dtype="jsonb",
+            label="Instrument Dump",
+            description="Provider-specific pricing instrument payload.",
+        ),
+    ]
 
 
 class AssetDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
     """Configuration for timestamped asset DataNodes."""
 
     time_index_name: str = Field(
-        ...,
+        default="time_index",
         description="Timestamp column used as the DataNode time index.",
     )
     index_names: list[str] = Field(
-        ...,
+        default_factory=lambda: ["time_index", ASSET_UNIQUE_IDENTIFIER_DIMENSION],
         description="Canonical DataFrame index columns for the asset DataNode.",
     )
     records: list[RecordDefinition] = Field(
@@ -103,8 +115,28 @@ class AssetDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
         return self
 
 
+class AssetSnapshotConfiguration(AssetDataNodeConfiguration):
+    """Configuration for the canonical AssetSnapshot DataNode."""
+
+    records: list[RecordDefinition] = Field(
+        default_factory=asset_snapshot_records,
+        description="Output schema for the AssetSnapshot DataNode.",
+    )
+
+
+class AssetPricingDetailConfiguration(AssetDataNodeConfiguration):
+    """Configuration for the canonical AssetPricingDetail DataNode."""
+
+    records: list[RecordDefinition] = Field(
+        default_factory=asset_pricing_detail_records,
+        description="Output schema for the AssetPricingDetail DataNode.",
+    )
+
+
 class AssetTimestampedFrameMixin:
     """Shared frame/config behavior for timestamped asset DataNodes."""
+
+    configuration_class: ClassVar[type[AssetDataNodeConfiguration]] = AssetDataNodeConfiguration
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -125,16 +157,15 @@ class AssetTimestampedFrameMixin:
         description: str | None = None,
         extra_records: list[RecordDefinition] | None = None,
     ) -> AssetDataNodeConfiguration:
-        records = cls._records_with_extra(extra_records=extra_records)
-        return AssetDataNodeConfiguration(
-            time_index_name=ASSET_DATA_NODE_TIME_INDEX_NAME,
-            index_names=list(ASSET_DATA_NODE_INDEX_NAMES),
-            records=records,
-            node_metadata=DataNodeMetaData(
+        config_kwargs: dict[str, Any] = {
+            "node_metadata": DataNodeMetaData(
                 identifier=identifier or cls._default_identifier(),
                 description=description or cls._default_description(),
             ),
-        )
+        }
+        if extra_records:
+            config_kwargs["records"] = cls._records_with_extra(extra_records=extra_records)
+        return cls.configuration_class(**config_kwargs)
 
     @classmethod
     def _records_with_extra(
@@ -142,7 +173,7 @@ class AssetTimestampedFrameMixin:
         *,
         extra_records: list[RecordDefinition] | None = None,
     ) -> list[RecordDefinition]:
-        required_records = cls._required_records()
+        required_records = cls.configuration_class().records
         if not extra_records:
             return list(required_records)
 
@@ -157,10 +188,6 @@ class AssetTimestampedFrameMixin:
 
     @classmethod
     def _default_description(cls) -> str:
-        raise NotImplementedError
-
-    @classmethod
-    def _required_records(cls) -> list[RecordDefinition]:
         raise NotImplementedError
 
     def set_frame(self, frame: pd.DataFrame) -> AssetTimestampedFrameMixin:
@@ -226,58 +253,147 @@ class AssetTimestampedDataNode(AssetTimestampedFrameMixin, AssetIndexedDataNode)
 class AssetSnapshot(AssetTimestampedDataNode):
     """Timestamped asset display snapshots keyed by asset unique_identifier."""
 
+    __data_node_identifier__ = "asset_snapshots"
+    configuration_class = AssetSnapshotConfiguration
+
+    @classmethod
+    def build_frame(
+        cls,
+        snapshots: AssetSnapshotInput | Sequence[AssetSnapshotInput],
+        *,
+        config: AssetDataNodeConfiguration | None = None,
+    ) -> pd.DataFrame:
+        """Build a validated frame from row payloads with per-row `time_index`."""
+
+        rows = []
+        for snapshot in _snapshot_items(snapshots):
+            payload = _snapshot_payload(snapshot)
+            unique_identifier = _required_snapshot_string(payload, "unique_identifier")
+            rows.append(
+                {
+                    "time_index": _required_snapshot_time(payload),
+                    "unique_identifier": unique_identifier,
+                    "name": _optional_snapshot_string(payload, "name"),
+                    "ticker": _optional_snapshot_string(payload, "ticker"),
+                    "exchange_code": _optional_snapshot_string(payload, "exchange_code"),
+                    "asset_ticker_group_id": _optional_snapshot_string(
+                        payload,
+                        "asset_ticker_group_id",
+                    ),
+                }
+            )
+
+        if not rows:
+            raise ValueError("At least one asset snapshot is required.")
+        return cls.validate_frame(pd.DataFrame(rows), config=config)
+
+    def set_snapshots(
+        self,
+        snapshots: AssetSnapshotInput | Sequence[AssetSnapshotInput],
+    ) -> AssetSnapshot:
+        """Validate snapshot row payloads and attach them to this DataNode."""
+
+        return self.set_frame(self.build_frame(snapshots, config=self.config))
+
+    def _execute_local_update(self, historical_update: Any):
+        self._verify_backend_snapshot_index = True
+        try:
+            return super()._execute_local_update(historical_update=historical_update)
+        finally:
+            self._verify_backend_snapshot_index = False
+
+    def update(self) -> pd.DataFrame:
+        frame = super().update()
+        if getattr(self, "_verify_backend_snapshot_index", False):
+            self.verify_backend_index_available(frame)
+        return frame
+
+    def verify_backend_index_available(self, frame: pd.DataFrame) -> None:
+        """Raise when any `(time_index, unique_identifier)` key already exists."""
+
+        existing_keys = self.existing_backend_index_keys(frame)
+        if existing_keys:
+            formatted_keys = ", ".join(
+                f"({time_index}, {unique_identifier})"
+                for time_index, unique_identifier in existing_keys
+            )
+            raise ValueError(
+                "AssetSnapshot rows already exist for "
+                f"(time_index, unique_identifier): {formatted_keys}."
+            )
+
+    def existing_backend_index_keys(self, frame: pd.DataFrame) -> list[tuple[str, str]]:
+        """Return existing backend keys that would collide with `frame`."""
+
+        candidate_keys = _asset_snapshot_index_keys(
+            self.validate_frame(frame, config=self.config)
+        )
+        existing_keys: list[tuple[str, str]] = []
+        for time_index, unique_identifier in candidate_keys:
+            existing_frame = self.get_df_between_dates(
+                start_date=time_index.to_pydatetime(),
+                end_date=time_index.to_pydatetime(),
+                great_or_equal=True,
+                less_or_equal=True,
+                dimension_filters={
+                    ASSET_UNIQUE_IDENTIFIER_DIMENSION: [unique_identifier],
+                },
+            )
+            if _backend_frame_contains_asset_snapshot_key(
+                existing_frame,
+                time_index=time_index,
+                unique_identifier=unique_identifier,
+            ):
+                self._log_existing_asset_snapshot_key(
+                    time_index=time_index,
+                    unique_identifier=unique_identifier,
+                )
+                existing_keys.append((time_index.isoformat(), unique_identifier))
+        return existing_keys
+
+    def _log_existing_asset_snapshot_key(
+        self,
+        *,
+        time_index: pd.Timestamp,
+        unique_identifier: str,
+    ) -> None:
+        try:
+            logger = self.logger
+        except Exception:
+            return
+        logger.info(
+            "AssetSnapshot row already exists",
+            time_index=time_index.isoformat(),
+            unique_identifier=unique_identifier,
+        )
+
     @classmethod
     def _default_identifier(cls) -> str:
-        return "mainsequence.markets.asset_snapshots"
+        return markets_data_node_identifier(cls.__data_node_identifier__)
 
     @classmethod
     def _default_description(cls) -> str:
-        return "Timestamped asset display snapshots keyed by time_index and unique_identifier."
-
-    @classmethod
-    def _required_records(cls) -> list[RecordDefinition]:
-        return _record_definitions_from_dtype_map(
-            ASSET_SNAPSHOT_COLUMN_DTYPES_MAP,
-            labels=ASSET_SNAPSHOT_COLUMN_LABELS,
-            descriptions=ASSET_SNAPSHOT_COLUMN_DESCRIPTIONS,
+        return (
+            "Historical asset representation snapshots keyed by time_index and "
+            "unique_identifier. Use this DataNode to preserve how an asset's "
+            "display attributes change over time, such as ticker, exchange code, "
+            "name, or share-class grouping."
         )
 
 
 class AssetPricingDetail(AssetTimestampedDataNode):
     """Timestamped provider pricing metadata keyed by asset unique_identifier."""
 
+    __data_node_identifier__ = "asset_pricing_details"
+    configuration_class = AssetPricingDetailConfiguration
+
     @classmethod
     def _default_identifier(cls) -> str:
-        return "mainsequence.markets.asset_pricing_details"
+        return markets_data_node_identifier(cls.__data_node_identifier__)
 
     @classmethod
     def _default_description(cls) -> str:
         return "Timestamped asset pricing metadata keyed by time_index and unique_identifier."
-
-    @classmethod
-    def _required_records(cls) -> list[RecordDefinition]:
-        return _record_definitions_from_dtype_map(
-            ASSET_PRICING_DETAIL_COLUMN_DTYPES_MAP,
-            labels=ASSET_PRICING_DETAIL_COLUMN_LABELS,
-            descriptions=ASSET_PRICING_DETAIL_COLUMN_DESCRIPTIONS,
-        )
-
-
-def _record_definitions_from_dtype_map(
-    dtype_map: dict[str, str],
-    *,
-    labels: dict[str, str] | None = None,
-    descriptions: dict[str, str] | None = None,
-) -> list[RecordDefinition]:
-    return [
-        RecordDefinition(
-            column_name=column_name,
-            dtype=dtype,
-            label=(labels or {}).get(column_name),
-            description=(descriptions or {}).get(column_name),
-        )
-        for column_name, dtype in dtype_map.items()
-    ]
 
 
 def _validate_asset_data_frame(
@@ -294,9 +410,8 @@ def _validate_asset_data_frame(
     if missing:
         raise ValueError(f"Asset DataNode frame is missing columns: {missing!r}.")
 
-    normalized[config.time_index_name] = pd.to_datetime(
-        normalized[config.time_index_name],
-        utc=True,
+    normalized[config.time_index_name] = normalize_datetime64_ns_utc(
+        normalized[config.time_index_name]
     )
     normalized[ASSET_UNIQUE_IDENTIFIER_DIMENSION] = normalized[
         ASSET_UNIQUE_IDENTIFIER_DIMENSION
@@ -309,6 +424,112 @@ def _validate_asset_data_frame(
             f"Asset DataNode frame contains duplicate rows for {config.index_names!r}."
         )
     return normalized.sort_index()
+
+
+def _asset_snapshot_index_keys(frame: pd.DataFrame) -> list[tuple[pd.Timestamp, str]]:
+    flat = _reset_frame_index(
+        frame.copy(),
+        index_names=[
+            "time_index",
+            ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+        ],
+    )
+    flat["time_index"] = normalize_datetime64_ns_utc(flat["time_index"])
+    keys = flat[
+        [
+            "time_index",
+            ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+        ]
+    ].drop_duplicates()
+    return [
+        (
+            normalize_timestamp_ns_utc(row["time_index"]),
+            str(row[ASSET_UNIQUE_IDENTIFIER_DIMENSION]),
+        )
+        for _, row in keys.iterrows()
+    ]
+
+
+def _backend_frame_contains_asset_snapshot_key(
+    frame: pd.DataFrame,
+    *,
+    time_index: pd.Timestamp,
+    unique_identifier: str,
+) -> bool:
+    if frame is None or frame.empty:
+        return False
+
+    flat = _reset_frame_index(
+        frame.copy(),
+        index_names=[
+            "time_index",
+            ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+        ],
+    )
+    if "time_index" not in flat.columns:
+        return True
+    if ASSET_UNIQUE_IDENTIFIER_DIMENSION not in flat.columns:
+        return True
+
+    flat["time_index"] = normalize_datetime64_ns_utc(flat["time_index"])
+    flat[ASSET_UNIQUE_IDENTIFIER_DIMENSION] = flat[
+        ASSET_UNIQUE_IDENTIFIER_DIMENSION
+    ].astype(str)
+    return (
+        (flat["time_index"] == time_index)
+        & (flat[ASSET_UNIQUE_IDENTIFIER_DIMENSION] == unique_identifier)
+    ).any()
+
+
+def _snapshot_items(
+    snapshots: AssetSnapshotInput | Sequence[AssetSnapshotInput],
+) -> list[AssetSnapshotInput]:
+    if isinstance(snapshots, Mapping) or not isinstance(snapshots, Sequence):
+        return [snapshots]
+    if isinstance(snapshots, (str, bytes)):
+        return [snapshots]
+    return list(snapshots)
+
+
+def _snapshot_payload(snapshot: AssetSnapshotInput) -> dict[str, Any]:
+    if isinstance(snapshot, Mapping):
+        return dict(snapshot)
+    return {
+        field_name: getattr(snapshot, field_name)
+        for field_name in (
+            "time_index",
+            "unique_identifier",
+            "name",
+            "ticker",
+            "exchange_code",
+            "asset_ticker_group_id",
+        )
+        if hasattr(snapshot, field_name)
+    }
+
+
+def _required_snapshot_string(payload: Mapping[str, Any], field_name: str) -> str:
+    value = payload.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"Asset snapshots require a non-empty {field_name}.")
+    return value.strip()
+
+
+def _required_snapshot_time(payload: Mapping[str, Any]) -> Any:
+    value = payload.get("time_index")
+    if value is None:
+        raise ValueError("Asset snapshots require a per-row time_index.")
+    try:
+        return normalize_timestamp_ns_utc(value)
+    except Exception as exc:
+        raise ValueError(f"Invalid AssetSnapshot time_index: {value!r}.") from exc
+
+
+def _optional_snapshot_string(payload: Mapping[str, Any], field_name: str) -> str:
+    value = payload.get(field_name)
+    if value is None:
+        return ""
+    return str(value)
 
 
 def _reset_frame_index(
@@ -344,17 +565,16 @@ def _schema_bootstrap_value(dtype: str) -> Any:
 __all__ = [
     "ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX",
     "ASSET_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER",
-    "ASSET_DATA_NODE_INDEX_NAMES",
-    "ASSET_DATA_NODE_TIME_INDEX_NAME",
-    "ASSET_PRICING_DETAIL_COLUMN_DESCRIPTIONS",
-    "ASSET_PRICING_DETAIL_COLUMN_DTYPES_MAP",
-    "ASSET_PRICING_DETAIL_COLUMN_LABELS",
-    "ASSET_SNAPSHOT_COLUMN_DESCRIPTIONS",
-    "ASSET_SNAPSHOT_COLUMN_DTYPES_MAP",
-    "ASSET_SNAPSHOT_COLUMN_LABELS",
     "AssetDataNodeConfiguration",
     "AssetPricingDetail",
+    "AssetPricingDetailConfiguration",
     "AssetSnapshot",
+    "AssetSnapshotConfiguration",
+    "AssetSnapshotInput",
     "AssetTimestampedDataNode",
     "AssetTimestampedFrameMixin",
+    "asset_pricing_detail_records",
+    "asset_snapshot_records",
+    "asset_time_index_record",
+    "asset_unique_identifier_record",
 ]

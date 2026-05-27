@@ -57,6 +57,11 @@ declare `__metatable_identifier__` and SQLAlchemy `__table_args__`, but should
 not hand-write `__tablename__`; the physical name is the SDK configured storage
 hash for the resolved table contract.
 
+`__metatable_identifier__` is authored as the bare logical name, such as
+`Asset`. At runtime the shared markets identifier rule keeps the bare name for
+the default markets namespace and prefixes non-default namespaces, such as
+`mainsequence.examples.Asset`.
+
 ## Extension Notes
 
 When adding a model:

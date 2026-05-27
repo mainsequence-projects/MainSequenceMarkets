@@ -6,6 +6,7 @@ from typing import Any
 import pandas as pd
 
 from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
+from msm.data_nodes._time import normalize_datetime64_ns_utc
 from msm.markets_data_node import (
     MarketDataNode,
     MarketDataNodeConfiguration,
@@ -15,6 +16,7 @@ from mainsequence.tdag.data_nodes import (
     DataNodeMetaData,
     RecordDefinition,
 )
+from msm.settings import markets_data_node_identifier
 
 EXECUTION_SCHEMA_BOOTSTRAP_TIME_INDEX = dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
 EXECUTION_SCHEMA_BOOTSTRAP_IDENTIFIER = "__schema_bootstrap_execution__"
@@ -304,9 +306,11 @@ class ExecutionDataNode(MarketDataNode):
 class Orders(ExecutionDataNode):
     """Timestamped order records replacing Django Order, MarketOrder, and LimitOrder."""
 
+    __data_node_identifier__ = "execution.orders"
+
     @classmethod
     def _default_identifier(cls) -> str:
-        return "mainsequence.markets.execution.orders"
+        return markets_data_node_identifier(cls.__data_node_identifier__)
 
     @classmethod
     def _default_description(cls) -> str:
@@ -336,9 +340,11 @@ class Orders(ExecutionDataNode):
 class OrderEvents(ExecutionDataNode):
     """Timestamped order status events."""
 
+    __data_node_identifier__ = "execution.order_events"
+
     @classmethod
     def _default_identifier(cls) -> str:
-        return "mainsequence.markets.execution.order_events"
+        return markets_data_node_identifier(cls.__data_node_identifier__)
 
     @classmethod
     def _default_description(cls) -> str:
@@ -364,9 +370,11 @@ class OrderEvents(ExecutionDataNode):
 class Trades(ExecutionDataNode):
     """Timestamped trade execution records."""
 
+    __data_node_identifier__ = "execution.trades"
+
     @classmethod
     def _default_identifier(cls) -> str:
-        return "mainsequence.markets.execution.trades"
+        return markets_data_node_identifier(cls.__data_node_identifier__)
 
     @classmethod
     def _default_description(cls) -> str:
@@ -396,9 +404,11 @@ class Trades(ExecutionDataNode):
 class ExecutionErrors(ExecutionDataNode):
     """Timestamped execution error records."""
 
+    __data_node_identifier__ = "execution.errors"
+
     @classmethod
     def _default_identifier(cls) -> str:
-        return "mainsequence.markets.execution.errors"
+        return markets_data_node_identifier(cls.__data_node_identifier__)
 
     @classmethod
     def _default_description(cls) -> str:
@@ -503,7 +513,7 @@ def _normalize_execution_values(
     for column_name, dtype in config.column_dtypes_map.items():
         values = normalized[column_name]
         if dtype == "datetime64[ns, UTC]":
-            normalized[column_name] = pd.to_datetime(values, utc=True)
+            normalized[column_name] = normalize_datetime64_ns_utc(values)
         elif dtype == "string":
             normalized[column_name] = values.fillna("").map(str)
         elif dtype == "float64":
