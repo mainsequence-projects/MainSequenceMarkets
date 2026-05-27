@@ -4,6 +4,13 @@ The pricing concept owns instrument valuation. It contains priceable instrument
 terms, QuantLib helpers, curve and fixing access, and registration utilities
 needed to turn stored market data into runtime valuation objects.
 
+Pricing is not part of the core `msm` import package. Install it explicitly with
+`ms-markets[pricing]` and import it through `msm_pricing`. The core
+`ms-markets` install does not require QuantLib.
+
+See `examples/pricing/import_pricing_runtime.py` for the minimal optional
+pricing import example.
+
 ## Scope
 
 Pricing answers these questions:
@@ -16,14 +23,14 @@ Pricing answers these questions:
 
 ## Primary Modules
 
-- `msm.pricing.instruments`: Pydantic wrappers for priceable instruments and
+- `msm_pricing.instruments`: Pydantic wrappers for priceable instruments and
   positions.
-- `msm.pricing.models`: QuantLib curve, index, bond, and swap helper functions.
-- `msm.pricing.data_interface`: Main Sequence data reads for curves and fixings.
-- `msm.pricing.interest_rates`: interest-rate ETL helpers for curves and fixing
+- `msm_pricing.models`: QuantLib curve, index, bond, and swap helper functions.
+- `msm_pricing.data_interface`: Main Sequence data reads for curves and fixings.
+- `msm_pricing.interest_rates`: interest-rate ETL helpers for curves and fixing
   storage.
-- `msm.pricing.streamlit`: form helpers for pricing UIs.
-- `msm.pricing.settings` and `msm.pricing.utils`: runtime settings and shared
+- `msm_pricing.streamlit`: form helpers for pricing UIs.
+- `msm_pricing.settings` and `msm_pricing.utils`: runtime settings and shared
   date conversion utilities.
 
 ## Key Contracts
@@ -40,10 +47,10 @@ instrument or position.
 
 ## Extension Notes
 
-Add new instruments under `msm.pricing.instruments`. Add reusable QuantLib
-helpers under `msm.pricing.models`. Add storage-facing pricing data reads under
-`msm.pricing.data_interface`. Add market-data publishing logic under
-`msm.pricing.interest_rates`.
+Add new instruments under `msm_pricing.instruments`. Add reusable QuantLib
+helpers under `msm_pricing.models`. Add storage-facing pricing data reads under
+`msm_pricing.data_interface`. Add market-data publishing logic under
+`msm_pricing.interest_rates`.
 
 ## Related Concepts
 

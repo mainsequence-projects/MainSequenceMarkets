@@ -1,4 +1,4 @@
-# msm/pricing/instruments/json_codec.py
+# msm_pricing/instruments/json_codec.py
 from __future__ import annotations
 
 import hashlib
@@ -8,7 +8,7 @@ from typing import Any
 
 import QuantLib as ql
 
-from msm.pricing.models.indices import get_index as _index_by_name
+from msm_pricing.models.indices import get_index as _index_by_name
 
 # ----------------------------- ql.Period -------------------------------------
 

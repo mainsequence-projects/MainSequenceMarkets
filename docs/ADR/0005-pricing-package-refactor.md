@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted, amended to remove pricing from the core `msm` import package.
 
 ## Context
 
@@ -25,20 +25,20 @@ from msm.instruments.pricing_models import get_index
 
 ## Decision
 
-Rename the package to:
+Rename the package to a separate import root:
 
 ```text
-msm.pricing
+msm_pricing
 ```
 
 Use these subpackages:
 
 ```text
-msm.pricing.instruments
-msm.pricing.models
-msm.pricing.data_interface
-msm.pricing.interest_rates
-msm.pricing.streamlit
+msm_pricing.instruments
+msm_pricing.models
+msm_pricing.data_interface
+msm_pricing.interest_rates
+msm_pricing.streamlit
 ```
 
 The old `pricing_models` package is renamed to `models`.
@@ -48,14 +48,17 @@ The old nested `instruments/instruments` package is lifted to
 
 ## Consequences
 
-Public imports should use `msm.pricing`.
+Public imports should use `msm_pricing`. No compatibility module for the old
+import root is kept; pricing is intentionally outside core `msm`.
 
 Examples:
 
 ```python
-from msm.pricing.instruments import FixedRateBond
-from msm.pricing.models import get_index
+from msm_pricing.instruments import FixedRateBond
+from msm_pricing.models import get_index
 ```
 
 The optional dependency extras are renamed from `instruments` to `pricing`, and
 from `instruments-streamlit` to `pricing-streamlit`.
+Core `ms-markets` does not depend on QuantLib; users install
+`ms-markets[pricing]` when they need pricing capabilities.

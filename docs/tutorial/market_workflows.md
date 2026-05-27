@@ -135,7 +135,10 @@ exists. Publish corrections as a new timestamped snapshot instead of overwriting
 the existing row.
 
 See `examples/assets/asset_snapshot_workflow.py` for the focused DataNode
-example.
+example. See
+[Asset-Indexed DataNodes](../knowledge/assets/asset_indexed_data_nodes.md) for
+the detailed `AssetIndexedDataNode` contract and how `AssetSnapshot` implements
+it.
 
 When the universe itself should be a reusable platform object, create an asset
 category and manage memberships separately:

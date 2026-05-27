@@ -7,12 +7,12 @@ import pandas as pd
 import QuantLib as ql
 from pydantic import Field, PrivateAttr
 
-from msm.pricing.models.indices import build_zero_curve, get_index
-from msm.pricing.models.swap_pricer import (
+from msm_pricing.models.indices import build_zero_curve, get_index
+from msm_pricing.models.swap_pricer import (
     get_swap_cashflows,
     price_vanilla_swap_with_curve,
 )
-from msm.pricing.utils import to_py_date, to_ql_date
+from msm_pricing.utils import to_py_date, to_ql_date
 
 from .base_instrument import InstrumentModel
 from .ql_fields import (

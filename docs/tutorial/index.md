@@ -8,8 +8,9 @@ Planned tutorial areas:
 - working with assets and asset categories
 - building market data nodes
 - constructing portfolios
-- using pricing workflows and priceable instruments
-- exposing markets workflows through Main Sequence applications
+- installing the optional pricing extra and using `msm_pricing` priceable instruments
+- exposing markets workflows through Main Sequence applications with the
+  optional `public_api` extra
 
 ## Library Maintenance Workflow
 

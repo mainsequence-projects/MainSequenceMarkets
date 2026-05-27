@@ -13,7 +13,6 @@ __all__ = [
     "data_nodes",
     "models",
     "portfolios",
-    "pricing",
     "services",
     "create_schemas",
     "get_runtime",

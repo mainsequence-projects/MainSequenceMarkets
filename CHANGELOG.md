@@ -81,6 +81,21 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Grouped asset-related SQLAlchemy model declarations under the
+  `msm.models.assets` package while keeping aggregate `msm.models` table exports
+  stable.
+- Moved detailed `AssetSnapshot` documentation from the asset identity overview
+  into a dedicated Asset-Indexed DataNodes knowledge page covering
+  `AssetIndexedDataNode`, canonical asset source-table foreign keys, namespace
+  behavior, and `AssetSnapshot`.
+- Updated `OpenFigiDetailsTable` to use `asset_uid` as the one-to-one
+  primary-key/foreign-key asset detail identity instead of a separate detail
+  `uid`.
+- Moved the QuantLib-backed pricing runtime out of core `msm` into the
+  separate `msm_pricing` import package, removed the `msm.pricing` path, and
+  made QuantLib a `pricing` extra instead of a core dependency.
+- Moved FastAPI and Uvicorn out of core dependencies into the `public_api`
+  optional extra used by the project-level `apps/v1` surface.
 - Removed the obsolete asset reference-list MetaTable, row API, repository,
   service helpers, tests, and documentation page from the markets library.
 - Removed duplicate runtime version constants; `msm.__version__` now reads the
@@ -155,9 +170,9 @@ and this project follows versioned releases.
 - Added explicit source distribution include rules so PyPI source artifacts do
   not ship local IDE, workflow, or agent-maintenance files.
 - Declared the first release version directly in `pyproject.toml` as `0.0.1`.
-- Refactored instrument valuation code into `msm.pricing`.
+- Refactored instrument valuation code into `msm_pricing`.
 - Renamed pricing model helpers from the old `pricing_models` package to
-  `msm.pricing.models`.
+  `msm_pricing.models`.
 
 ### Removed
 

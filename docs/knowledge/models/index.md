@@ -24,15 +24,17 @@ Models answer these questions:
 
 - `msm.models.__init__`: aggregate model exports and `markets_sqlalchemy_models`.
 - `msm.models.accounts`: accounts and account target position assignments.
-- `msm.models.assets`: assets.
-- `msm.models.asset_types`: registered asset type definitions.
-- `msm.models.asset_categories`: categories and memberships.
+- `msm.models.assets`: asset-related models, including the core asset registry,
+  registered asset types, categories, memberships, and provider details.
+- `msm.models.assets.core`: core asset registry.
+- `msm.models.assets.types`: registered asset type definitions.
+- `msm.models.assets.categories`: categories and memberships.
 - `msm.models.calendars`: calendars.
 - `msm.models.execution`: execution tables.
 - `msm.models.funds`: funds.
 - `msm.models.instruments`: pricing and instruments configuration.
 - `msm.models.portfolios`: portfolios and portfolio metadata.
-- `msm.models.provider_details`: provider-specific metadata.
+- `msm.models.assets.provider_details`: provider-specific asset metadata.
 - `msm.models.rebalancing`: rebalance strategy metadata.
 - `msm.models.signals`: signal metadata.
 - `msm.api.*`: user-facing Pydantic rows and class-owned row operations for all

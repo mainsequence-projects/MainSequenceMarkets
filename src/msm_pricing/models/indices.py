@@ -13,10 +13,10 @@ Usage
 -----
 >>> from datetime import date
 >>> import QuantLib as ql
->>> from msm.pricing.models.indices import (
+>>> from msm_pricing.models.indices import (
 ...     register_index_spec, get_index
 ... )
->>> from msm.pricing.models.indices_builders import (
+>>> from msm_pricing.models.indices_builders import (
 ...     tiie_spec, mx_calendar, mx_currency
 ... )
 >>>
@@ -55,11 +55,11 @@ from threading import RLock
 
 import QuantLib as ql
 
-from msm.pricing.data_interface import data_interface
+from msm_pricing.data_interface import data_interface
 
 # IndexSpec (and builders like tiie_spec/cete_spec) live here.
-from msm.pricing.models.indices_builders import IndexSpec
-from msm.pricing.utils import to_py_date, to_ql_date
+from msm_pricing.models.indices_builders import IndexSpec
+from msm_pricing.utils import to_py_date, to_ql_date
 
 # ----------------------------- Identifier normalization ----------------------------------- #
 

@@ -1,8 +1,8 @@
 # Knowledge Base
 
-The knowledge base describes the domain concepts inside `msm`. It is organized
-around the package boundaries in `src/msm` so implementation details, workflows,
-and future tutorials have a stable place to live.
+The knowledge base describes the domain concepts in `ms-markets`. It is
+organized around package boundaries so implementation details, workflows, and
+future tutorials have a stable place to live.
 
 Use these pages before adding new modules. They define what each concept owns,
 what it should not own, and which package should be extended for common changes.
@@ -38,8 +38,11 @@ new MetaTable-facing APIs unless a more specific ADR overrides it.
 
 - [Accounts](accounts/index.md): account identity, holdings, virtual funds, and
   account-to-target assignments.
-- [Assets](assets/index.md): asset identity, category membership, DataNode
-  snapshots, pricing details, and provider services such as OpenFIGI.
+- [Assets](assets/index.md): asset identity, type registration, category
+  membership, relational provider details such as OpenFIGI, and links to
+  asset-indexed DataNode workflows.
+- [Asset-Indexed DataNodes](assets/asset_indexed_data_nodes.md): market
+  DataNode tables keyed by `Asset.unique_identifier`, including `AssetSnapshot`.
 - [Client](client/index.md): client-facing models and HTTP/platform object
   wrappers.
 - [Execution](execution/index.md): order managers, target quantities, orders,
@@ -50,8 +53,8 @@ new MetaTable-facing APIs unless a more specific ADR overrides it.
   MetaTable helpers, and market DataNode base behavior.
 - [Portfolios](portfolios/index.md): portfolio configuration, signal weights,
   rebalance strategies, canonical portfolio data, and VFB workflows.
-- [Pricing](pricing/index.md): priceable instruments, QuantLib helpers, curves,
-  fixings, and pricing data interfaces.
+- [Pricing](pricing/index.md): optional `msm_pricing` priceable instruments,
+  QuantLib helpers, curves, fixings, and pricing data interfaces.
 - [Repositories](repositories/index.md): compiled database operations and CRUD
   boundaries over market-domain models.
 - [Services](services/index.md): application-level orchestration over repository

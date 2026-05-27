@@ -17,6 +17,7 @@ from msm.meta_tables import build_markets_registration_requests, markets_meta_ta
 from msm.models import (
     AssetTypeTable,
     AssetTable,
+    OpenFigiDetailsTable,
     markets_sqlalchemy_models,
 )
 
@@ -66,6 +67,34 @@ def test_asset_type_model_is_registry_table() -> None:
     )
 
 
+def test_asset_related_models_are_grouped_under_assets_package() -> None:
+    from msm.models.assets import (
+        AssetCategoryMembershipTable as PackageAssetCategoryMembershipTable,
+        AssetCategoryTable as PackageAssetCategoryTable,
+        AssetTable as PackageAssetTable,
+        AssetTypeTable as PackageAssetTypeTable,
+        OpenFigiDetailsTable as PackageOpenFigiDetailsTable,
+    )
+    from msm.models.assets.categories import (
+        AssetCategoryMembershipTable as CategoriesAssetCategoryMembershipTable,
+        AssetCategoryTable as CategoriesAssetCategoryTable,
+    )
+    from msm.models.assets.core import AssetTable as CoreAssetTable
+    from msm.models.assets.provider_details import (
+        OpenFigiDetailsTable as ProviderOpenFigiDetailsTable,
+    )
+    from msm.models.assets.types import AssetTypeTable as TypesAssetTypeTable
+
+    assert PackageAssetTable is AssetTable
+    assert CoreAssetTable is AssetTable
+    assert PackageAssetTypeTable is AssetTypeTable
+    assert TypesAssetTypeTable is AssetTypeTable
+    assert PackageAssetCategoryTable is CategoriesAssetCategoryTable
+    assert PackageAssetCategoryMembershipTable is CategoriesAssetCategoryMembershipTable
+    assert PackageOpenFigiDetailsTable is OpenFigiDetailsTable
+    assert ProviderOpenFigiDetailsTable is OpenFigiDetailsTable
+
+
 def test_legacy_model_aliases_are_removed() -> None:
     assert not hasattr(models, "Asset")
 
@@ -85,6 +114,16 @@ def test_asset_type_resolves_before_asset_when_selected() -> None:
     models = meta_tables.resolve_markets_meta_table_models(["Asset", "AssetType"])
 
     assert models == [AssetTypeTable, AssetTable]
+
+
+def test_openfigi_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
+    table = OpenFigiDetailsTable.__table__
+
+    assert "uid" not in table.c
+    assert [column.name for column in table.primary_key.columns] == ["asset_uid"]
+    assert table.c.asset_uid.foreign_keys
+    foreign_key = next(iter(table.c.asset_uid.foreign_keys))
+    assert foreign_key.column is AssetTable.__table__.c.uid
 
 
 def test_markets_models_build_platform_registration_requests_in_dependency_order() -> None:

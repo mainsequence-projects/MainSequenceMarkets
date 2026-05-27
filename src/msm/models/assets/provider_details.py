@@ -12,10 +12,9 @@ from msm.base import (
     markets_fk_name,
     markets_index_name,
     markets_table_args,
-    new_markets_uid,
 )
 
-from .assets import AssetTable
+from .core import AssetTable
 
 
 class OpenFigiDetailsTable(MarketsMetaTableMixin, MarketsBase):
@@ -24,21 +23,11 @@ class OpenFigiDetailsTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "OpenFigiDetails"
     __table_args__ = markets_table_args(
         __metatable_identifier__,
-        Index(
-            markets_index_name(__metatable_identifier__, "asset_uid", unique=True),
-            "asset_uid",
-            unique=True,
-        ),
         Index(markets_index_name(__metatable_identifier__, "figi"), "figi"),
         Index(markets_index_name(__metatable_identifier__, "ticker"), "ticker"),
         Index(markets_index_name(__metatable_identifier__, "isin"), "isin"),
     )
 
-    uid: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True),
-        primary_key=True,
-        default=new_markets_uid,
-    )
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
@@ -46,6 +35,7 @@ class OpenFigiDetailsTable(MarketsMetaTableMixin, MarketsBase):
             name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="CASCADE",
         ),
+        primary_key=True,
         nullable=False,
     )
     figi: Mapped[str | None] = mapped_column(String(12), nullable=True)

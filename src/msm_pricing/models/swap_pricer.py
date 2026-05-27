@@ -4,8 +4,8 @@ from typing import Any
 
 import QuantLib as ql
 
-from msm.pricing.data_interface import data_interface
-from msm.pricing.utils import to_py_date, to_ql_date
+from msm_pricing.data_interface import data_interface
+from msm_pricing.utils import to_py_date, to_ql_date
 
 
 def _coerce_to_ql_date(x, fallback: ql.Date) -> ql.Date:

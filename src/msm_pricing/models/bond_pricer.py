@@ -1,4 +1,4 @@
-# msm/pricing/models/bond_pricer.py
+# msm_pricing/models/bond_pricer.py
 
 import QuantLib as ql
 

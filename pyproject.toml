@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ms-markets"
-version = "0.0.3"
+version = "0.0.4"
 description = "Financial markets ORM, engines, and application management extensions for Main Sequence."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,21 +34,19 @@ classifiers = [
 ]
 dependencies = [
   "cachetools",
-  "fastapi>=0.136.3",
   "mainsequence",
   "numpy",
   "pandas",
   "pip>=26.1.1",
   "pydantic",
   "pytz",
-  "QuantLib",
   "requests",
   "SQLAlchemy",
-  "uvicorn>=0.48.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+  "fastapi>=0.136.3",
   "mkdocs>=1.6",
   "mkdocs-autorefs>=1.2",
   "mkdocs-material>=9.5",
@@ -57,6 +55,7 @@ dev = [
   "pymdown-extensions>=10.0",
   "pytest>=8",
   "ruff>=0.5",
+  "uvicorn>=0.48.0",
 ]
 docs = [
   "mkdocs>=1.6",
@@ -73,10 +72,17 @@ portfolios = [
   "scikit-learn",
   "tqdm",
 ]
+public_api = [
+  "fastapi>=0.136.3",
+  "uvicorn>=0.48.0",
+]
 pricing = [
   "matplotlib",
+  "QuantLib",
 ]
 "pricing-streamlit" = [
+  "matplotlib",
+  "QuantLib",
   "streamlit",
   "streamlit-aggrid",
 ]
@@ -92,7 +98,7 @@ Issues = "https://github.com/mainsequence-projects/MainSequenceMarkets/issues"
 msm = "msm.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/msm"]
+packages = ["src/msm", "src/msm_pricing"]
 
 [tool.hatch.build.targets.sdist]
 include = [

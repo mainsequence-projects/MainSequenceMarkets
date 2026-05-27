@@ -1,4 +1,4 @@
-# msm/pricing/instruments/base_instrument.py
+# msm_pricing/instruments/base_instrument.py
 import datetime
 import inspect
 import json
@@ -71,7 +71,7 @@ class InstrumentModel(BaseModel, JSONMixin):
         Optional `registry` maps instrument_type -> InstrumentModel subclass.
         Falls back to InstrumentModel._DEFAULT_REGISTRY.
         """
-        import msm.pricing as msp
+        import msm_pricing as msp
 
         # Parse JSON if needed
         if isinstance(data, str):

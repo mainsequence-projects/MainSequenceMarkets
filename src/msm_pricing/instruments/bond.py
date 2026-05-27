@@ -1,4 +1,4 @@
-# msm/pricing/instruments/bond.py
+# msm_pricing/instruments/bond.py
 import datetime
 import hashlib
 import json
@@ -10,11 +10,11 @@ from typing import Any
 import QuantLib as ql
 from pydantic import Field, PrivateAttr
 
-from msm.pricing.models.bond_pricer import (
+from msm_pricing.models.bond_pricer import (
     create_floating_rate_bond_with_curve,
 )
-from msm.pricing.models.indices import get_index
-from msm.pricing.utils import to_py_date, to_ql_date
+from msm_pricing.models.indices import get_index
+from msm_pricing.utils import to_py_date, to_ql_date
 
 from .base_instrument import InstrumentModel
 from .callability import AmortizationParameters, CallabilityItem, DiscountParameters

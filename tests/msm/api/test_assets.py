@@ -5,8 +5,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from msm.api.assets import Asset, AssetType, AssetTypeUpsert, AssetUpsert, _operation_result_rows
-from msm.models import AssetTable, AssetTypeTable
+from msm.api.assets import (
+    Asset,
+    AssetType,
+    AssetTypeUpsert,
+    AssetUpsert,
+    OpenFigiDetails,
+    _operation_result_rows,
+)
+from msm.models import AssetTable, AssetTypeTable, OpenFigiDetailsTable
 from msm.meta_tables import markets_meta_table_fullname
 
 
@@ -19,6 +26,21 @@ def test_asset_type_api_declares_table_contract() -> None:
     assert AssetType.__table__ is AssetTypeTable
     assert AssetType.__required_tables__ == [AssetTypeTable]
     assert AssetType.__upsert_keys__ == ("asset_type",)
+
+
+def test_openfigi_details_api_uses_asset_uid_as_row_identity() -> None:
+    asset_uid = uuid.uuid4()
+
+    details = OpenFigiDetails.model_validate(
+        {
+            "asset_uid": str(asset_uid),
+            "figi": "BBG00FNFPQH4",
+        }
+    )
+
+    assert OpenFigiDetails.__table__ is OpenFigiDetailsTable
+    assert details.uid == asset_uid
+    assert details.asset_uid == asset_uid
 
 
 def test_asset_create_schemas_delegates_to_required_table(monkeypatch) -> None:

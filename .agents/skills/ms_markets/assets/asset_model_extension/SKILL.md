@@ -1,6 +1,150 @@
 ---
-name: mainsequence-assets-and-translation
-description: Use this skill when the task is about market asset identity in a Main Sequence project. This skill owns public vs custom asset registration, asset lookup strategy, asset categories, translation tables, and the decision rules that connect assets to upstream market data. It does not own DataNode implementation, portfolio construction, or pricing-runtime internals.
+name: mainsequence-asset-model-extension
+description: Use this skill when extending or reviewing the ms-markets Asset model, including AssetType registration and one-to-one asset property/detail tables. This skill owns the rule that AssetTable stays small and extension data belongs in relational detail tables keyed by AssetTable.uid. It does not own AssetIndexedDataNode design, price history, portfolios, or general DataNode implementation.
 ---
 
-# Main Sequence Markets Assets
+# Main Sequence Markets Asset Model Extension
+
+Use this skill when an agent needs to add, review, or document asset identity
+extensions in `ms-markets`.
+
+## Core Rule
+
+`AssetTable` is the canonical asset registry. Keep it small.
+
+Do not add instrument, venue, provider, or lifecycle columns to `AssetTable`.
+Examples of fields that do not belong there: maturity, expiry, strike, issuer,
+exchange metadata, FIGI payloads, pricing terms, provider tickers, or raw
+provider responses.
+
+Extend the asset model with relational composition:
+
+```text
+AssetTable.uid 1 ---- 1 ExtensionDetailsTable.asset_uid
+```
+
+## AssetType
+
+Use `AssetType` to register what an `Asset.asset_type` string means.
+
+Current contract:
+
+- `AssetTypeTable.asset_type` is unique.
+- `AssetTypeTable` may also store `display_name`, `description`, and
+  `metadata_json`.
+- `Asset.asset_type` should match a registered `AssetType.asset_type`.
+- In this release, `Asset.asset_type` is a logical classification string, not a
+  database foreign key.
+
+Agent workflow:
+
+1. Register or upsert the needed `AssetType` before creating assets of that
+   type.
+2. Use short, stable type keys such as `equity`, `crypto`, or `AssetFuture`.
+3. Put explanatory text in `display_name` and `description`, not in the key.
+
+```python
+from msm.api.assets import Asset, AssetType
+
+AssetType.upsert(
+    asset_type="AssetFuture",
+    display_name="Asset Future",
+    description="Futures contracts represented as market assets.",
+)
+
+asset = Asset.upsert(
+    unique_identifier="asset-future-example",
+    asset_type="AssetFuture",
+)
+```
+
+## One-To-One Asset Detail Tables
+
+For one-to-one asset properties, use `asset_uid` as both:
+
+- the primary key of the detail table
+- the foreign key to `AssetTable.uid`
+
+Do not add a separate `uid` column to one-to-one detail tables.
+
+Recommended SQLAlchemy shape:
+
+```python
+class AssetFutureDetailsTable(MarketsMetaTableMixin, MarketsBase):
+    __metatable_identifier__ = "AssetFutureDetails"
+
+    asset_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.uid",
+            name=markets_fk_name(
+                __metatable_identifier__,
+                "Asset",
+                "asset_uid",
+            ),
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+        nullable=False,
+    )
+```
+
+Add only fields that belong to that specific extension. Use indexed columns for
+lookup keys and JSON/text columns for provider payloads when the payload is not
+part of the canonical asset identity.
+
+## Public API Pattern
+
+Application code should work through the Pydantic row API:
+
+1. Upsert the `AssetType`.
+2. Upsert the canonical `Asset`.
+3. Upsert the detail row with `asset_uid=asset.uid`.
+
+If the detail model subclasses the common row base and generic row helpers expect
+`uid`, expose `uid` as an alias of `asset_uid` in the Pydantic row model. Do not
+change the SQL table shape just to satisfy generic helpers.
+
+## OpenFIGI Reference Pattern
+
+`OpenFigiDetailsTable` is the built-in example of this extension pattern.
+
+Required architecture:
+
+```text
++-----------------------------+        one-to-one provider      +-----------------------------+
+| AssetTable                  |-------------------------------->| OpenFigiDetailsTable        |
+| uid                  PK     |        asset_uid PK/FK          | asset_uid            PK/FK  |
+| unique_identifier    unique |                                 | figi                        |
+| asset_type                 |                                 | isin / ticker / metadata    |
++-----------------------------+                                 +-----------------------------+
+```
+
+For OpenFIGI and similar providers:
+
+- keep canonical identity in `Asset`
+- keep provider-specific facts in the provider detail table
+- store raw provider response separately from normalized lookup columns
+- preserve existing column mappings such as `metadata_text =
+  mapped_column("metadata", Text, nullable=True)`
+
+## Boundaries
+
+- For timestamped or panel data keyed by assets, use the
+  `AssetIndexedDataNode` skill and docs instead.
+- For price histories, do not add price columns to asset or detail tables.
+- For portfolio or holding semantics, use portfolio-specific models.
+- For provider lookup services, keep API-key and normalization logic in
+  services, then persist only normalized asset/detail rows.
+
+## Validation Checklist
+
+When changing asset extension code, verify:
+
+- `AssetTable` did not gain extension columns.
+- new asset type strings are represented by `AssetType`.
+- one-to-one detail tables use `asset_uid` as the only primary key.
+- detail table foreign keys point to `AssetTable.uid` and use cascade delete when
+  the detail row should not outlive the asset.
+- Pydantic row models, repository helpers, tests, docs, and examples match the
+  table identity shape.

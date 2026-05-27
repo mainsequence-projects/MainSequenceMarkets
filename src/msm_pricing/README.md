@@ -1,22 +1,24 @@
-# `msm.pricing`
+# `msm_pricing`
 
-`msm.pricing` contains the QuantLib-backed pricing runtime for Main Sequence
+`msm_pricing` contains the QuantLib-backed pricing runtime for Main Sequence
 Markets. It is the package for priceable instrument definitions, pricing model
 helpers, market-data access used by pricing, and interest-rate curve/fixing
 registration helpers.
 
-The package intentionally stays inside `msm` so installed users import it as:
+The package intentionally uses a separate import root so core `msm` users do
+not import or install the QuantLib-backed pricing runtime unless they choose the
+pricing extra:
 
 ```python
-import msm.pricing as pricing
-from msm.pricing import FixedRateBond, FloatingRateBond, InterestRateSwap
-from msm.pricing.models import get_index, register_index_spec
+import msm_pricing as pricing
+from msm_pricing import FixedRateBond, FloatingRateBond, InterestRateSwap
+from msm_pricing.models import get_index, register_index_spec
 ```
 
 ## Package Layout
 
 ```text
-src/msm/pricing/
+src/msm_pricing/
 ├── data_interface/      # Main Sequence market-data reads for curves/fixings
 ├── instruments/         # Pydantic wrappers for priceable instruments
 ├── interest_rates/      # ETL helpers for curves and fixing storage

@@ -7,7 +7,7 @@ Accepted
 ## Context
 
 The project needs to start as a standalone Python package that depends on
-MainSequence libraries and QuantLib while keeping the import name short.
+Main Sequence libraries while keeping the import name short.
 
 ## Decision
 
@@ -22,8 +22,10 @@ import msm
 The initial runtime dependencies are:
 
 - `mainsequence`
-- `QuantLib`
 - `SQLAlchemy`
+
+QuantLib-backed pricing is optional and lives behind the `pricing` extra under
+the separate `msm_pricing` import package.
 
 The source tree uses the `src/` layout to avoid accidental imports from the
 repository root during development. The canonical package lives at

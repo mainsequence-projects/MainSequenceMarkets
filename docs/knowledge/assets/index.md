@@ -2,8 +2,8 @@
 
 The assets concept owns market asset identity. `Asset` is the user-facing API
 model for registering and querying canonical market assets. It connects external
-identifiers, asset categories, snapshots, pricing details, and provider metadata
-into a consistent Main Sequence representation.
+identifiers, asset categories, provider metadata, and asset-indexed data
+products into a consistent Main Sequence representation.
 
 Most application code should work with `msm.api.assets.Asset`. That Pydantic row
 model is backed by `msm.models.assets.AssetTable`, the SQLAlchemy MetaTable
@@ -20,7 +20,7 @@ store every instrument-specific field. The stable identity fields are:
 - `uid`: internal row identity used by relational detail tables.
 - `unique_identifier`: the canonical public handle for the asset.
 - `asset_type`: a short classification string, such as `crypto`, `equity`, or
-  `binance_future_usdm`.
+  `AssetFuture`.
 
 `AssetType` is the type registry. Register an `asset_type` before using it in
 new asset workflows so the meaning of the string is discoverable. In the current
@@ -41,30 +41,95 @@ match rows in `AssetType`; it is not a database foreign key in this release.
 
 The intended extension model is relational composition. Do not extend
 `AssetTable` by adding columns such as maturity, strike, expiry, issuer, or
-venue-specific payloads. Instead, add a detail table with a foreign key to the
-asset row and keep the core `AssetTable` stable.
+venue-specific payloads. Instead, add a detail table keyed by the asset row and
+keep the core `AssetTable` stable.
 
 Example extension shape for futures:
 
 ```text
-+-----------------------------+        one asset may have       +-----------------------------+
-| AssetTable                  |-------------------------------->| FutureAssetDetailsTable     |
-|-----------------------------|        asset_uid FK             |-----------------------------|
-| uid                  PK     |                                 | uid                  PK     |
-| unique_identifier    unique |                                 | asset_uid            FK     |
-| asset_type                 |                                 | exchange_code               |
-+-----------------------------+                                 | contract_code               |
-                                                                | maturity_date               |
++-----------------------------+        one-to-one detail        +-----------------------------+
+| AssetTable                  |-------------------------------->| AssetFutureDetailsTable     |
+|-----------------------------|        asset_uid PK/FK          |-----------------------------|
+| uid                  PK     |                                 | asset_uid            PK/FK  |
+| unique_identifier    unique |                                 | exchange_code               |
+| asset_type                 |                                 | contract_code               |
++-----------------------------+                                 | maturity_date               |
                                                                 | last_trade_date             |
                                                                 | contract_size               |
                                                                 | metadata_json               |
                                                                 +-----------------------------+
 ```
 
-A future-specific table like that would belong in an extension package or a
-future `msm.models` module. Its public API should mirror the current pattern: a
-SQLAlchemy `FutureAssetDetailsTable` for schema work and a Pydantic
-`FutureAssetDetails` row model for application code.
+An `AssetFuture` detail table like that would belong in an extension package or
+a future `msm.models` module. Its public API should mirror the current pattern:
+a SQLAlchemy `AssetFutureDetailsTable` for schema work and a Pydantic
+`AssetFutureDetails` row model for application code. For one-to-one instrument
+details, the detail table's `asset_uid` should be both the primary key and the
+foreign key to `AssetTable.uid`; a separate detail-row `uid` is unnecessary.
+
+## OpenFIGI As Asset Properties
+
+OpenFIGI metadata is the built-in example of extending the asset model with
+provider-specific properties. `OpenFigiDetails` is not part of `AssetTable`; it
+is a one-to-one detail table keyed by the asset row. This keeps canonical asset
+identity small while still allowing provider facts such as FIGI, ISIN, ticker,
+security type, exchange, and raw provider payload to be stored relationally.
+
+```text
++-----------------------------+        one-to-one provider      +-----------------------------+
+| AssetTable                  |-------------------------------->| OpenFigiDetailsTable        |
+|-----------------------------|        asset_uid PK/FK          |-----------------------------|
+| uid                  PK     |                                 | asset_uid            PK/FK  |
+| unique_identifier    unique |                                 | figi                        |
+| asset_type                 |                                 | composite                   |
++-----------------------------+                                 | share_class                 |
+                                                                | isin                        |
+                                                                | ticker                      |
+                                                                | security_type               |
+                                                                | metadata                    |
+                                                                | raw_payload                 |
+                                                                +-----------------------------+
+```
+
+Application code should still start with the `Asset` API. Resolve provider data,
+upsert the canonical asset, then upsert its OpenFIGI detail row using
+`asset_uid=asset.uid`:
+
+```python
+from msm.api.assets import Asset, AssetType, OpenFigiDetails
+from msm.services.assets.openfigi import query_by_figi
+
+AssetType.upsert(asset_type="equity", display_name="Equity")
+
+normalized = query_by_figi("BBG00FNFPQH4")
+asset = Asset.upsert(
+    unique_identifier=normalized["unique_identifier"],
+    asset_type="equity",
+)
+details = OpenFigiDetails.upsert(
+    asset_uid=asset.uid,
+    figi=normalized["figi"],
+    composite=normalized["composite"],
+    share_class=normalized["share_class"],
+    isin=normalized["isin"],
+    ticker=normalized["ticker"],
+    name=normalized["name"],
+    exchange_code=normalized["exchange_code"],
+    security_type=normalized["security_type"],
+    security_type_2=normalized["security_type_2"],
+    security_market_sector=normalized["security_market_sector"],
+    security_description=normalized["security_description"],
+    unique_id=normalized["unique_id"],
+    unique_id_fut_opt=normalized["unique_id_fut_opt"],
+    metadata_text=normalized["metadata"],
+    raw_payload=normalized["raw_payload"],
+)
+```
+
+`OpenFigiDetailsTable.asset_uid` is both the primary key and the foreign key to
+`AssetTable.uid`. There is no separate `uid` column on the detail table.
+`OpenFigiDetails.uid` in the Pydantic row API resolves to the same value as
+`asset_uid` so generic row identity helpers still have a stable row identifier.
 
 ## Scope
 
@@ -73,25 +138,26 @@ Assets answer these questions:
 - What is the canonical `unique_identifier` for an asset?
 - Which registered asset type classifies the asset?
 - Which categories or category memberships describe the asset?
-- Which snapshots and pricing details are attached to the asset?
 - Which provider details, such as OpenFIGI metadata, were used to resolve it?
 
 ## Primary Modules
 
-- `msm.models.assets`: SQLAlchemy/MetaTable declaration. The `AssetTable`
-  schema model lives here.
-- `msm.models.asset_types`: asset type registry model.
+- `msm.models.assets`: asset-related SQLAlchemy/MetaTable declarations,
+  including `AssetTable`, `AssetTypeTable`, asset categories, memberships, and
+  provider detail tables.
+- `msm.models.assets.core`: core asset registry model.
+- `msm.models.assets.types`: asset type registry model.
 - `msm.api.assets`: user-facing Pydantic rows and typed class operations for
   `Asset`, `AssetType`, `AssetCategory`, `AssetCategoryMembership`, and
   `OpenFigiDetails`.
-- `msm.data_nodes.assets`: DataNodes for asset snapshots and asset pricing
-  details.
+- `msm.data_nodes.assets`: asset-indexed DataNodes such as `AssetSnapshot`.
 - `msm.services.assets`: application-facing asset service helpers over
   repositories.
 - `msm.services.assets.openfigi`: OpenFIGI query, normalization, and row-building
   helpers.
-- `msm.models.asset_categories`: category and membership models.
-- `msm.models.provider_details`: provider metadata such as OpenFIGI details.
+- `msm.models.assets.categories`: category and membership models.
+- `msm.models.assets.provider_details`: provider metadata such as OpenFIGI
+  details.
 - `msm.repositories.assets`, `msm.repositories.asset_categories`, and
   `msm.repositories.provider_details`: MetaTable operation builders for asset
   control-plane records.
@@ -209,7 +275,8 @@ memberships = AssetCategory.replace_memberships(
 ```
 
 Use `OpenFigiDetails.upsert(...)` for typed provider metadata rows when the
-asset row already exists. Provider services may still build `AssetTable` or
+asset row already exists. The OpenFIGI section above shows the provider-detail
+extension pattern. Provider services may still build `AssetTable` or
 `OpenFigiDetailsTable` instances internally when authoring SQLAlchemy schema
 rows.
 
@@ -226,54 +293,13 @@ resolution requires the Main Sequence secret `OPEN_FIGI_API_KEY`; create it in
 `www.main-sequence.app/app/main_sequence_workbench/secrets` before running the
 example. Cleanup is opt-in through `--delete-temporary-assets`.
 
-## Asset Snapshots
+## Asset-Indexed DataNodes
 
-`AssetSnapshot` stores timestamped asset display facts as a DataNode. It should
-not be modeled as fields on the `Asset` MetaTable. Use DataNode methods to build
-validated frames or configure the node. Node construction and row loading are
-separate so the DataNode owns table identity while each snapshot row owns its
-own timestamp:
-
-```python
-from datetime import datetime, UTC
-
-from msm.data_nodes.assets import AssetSnapshot
-
-snapshot_node = AssetSnapshot().set_snapshots(
-    {
-        "time_index": datetime.now(UTC),
-        "unique_identifier": "example-asset-btc",
-        "ticker": "BTC",
-    },
-)
-snapshot_frame = snapshot_node.run(debug_mode=True, force_update=True)
-```
-
-Markets resources derive their identifiers from the same runtime namespace rule.
-With no environment override, or when the namespace is the default markets
-namespace, logical identifiers stay bare, such as `Asset` and
-`asset_snapshots`. When
-`MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` is set before import,
-`Asset` resolves to `mainsequence.examples.Asset` and
-`AssetSnapshot.__data_node_identifier__ = "asset_snapshots"` resolves to
-`mainsequence.examples.asset_snapshots`. The DataNode `hash_namespace` also
-defaults to the active runtime namespace. Pass an explicit `hash_namespace` only
-for isolated experiments or tests.
-
-`AssetSnapshot` and `AssetPricingDetail` configurations declare a canonical
-source-table foreign key from their `unique_identifier` record to
-`AssetTable.unique_identifier`. The `Asset` MetaTable must be registered before
-source-table initialization resolves that FK.
-Their schemas are declared as `RecordDefinition` lists on
-`AssetSnapshotConfiguration` and `AssetPricingDetailConfiguration`, not as
-parallel dtype, label, and description maps.
-
-Before an `AssetSnapshot` run persists rows, it queries the backend and rejects
-any incoming `(time_index, unique_identifier)` tuple that already exists. Use a
-new `time_index` when publishing a revised snapshot for the same asset.
-
-See `examples/assets/asset_snapshot_workflow.py` for a focused AssetSnapshot
-DataNode example that uses the default markets DataNode namespace.
+Timestamped asset facts, such as snapshots and pricing details, belong in
+asset-indexed DataNodes instead of columns on `AssetTable`. See
+[Asset-Indexed DataNodes](asset_indexed_data_nodes.md) for the detailed
+`AssetIndexedDataNode` contract, the difference from a generic Main Sequence
+`DataNode`, and `AssetSnapshot` as the concrete implementation.
 
 ## Extension Notes
 
@@ -289,6 +315,7 @@ DataNodes, and external provider integration belongs to services.
 ## Related Concepts
 
 - [Accounts](../accounts/index.md)
+- [Asset-Indexed DataNodes](asset_indexed_data_nodes.md)
 - [Portfolios](../portfolios/index.md)
 - [Pricing](../pricing/index.md)
 - [Platform](../platform/index.md)

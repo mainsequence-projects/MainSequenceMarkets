@@ -14,7 +14,11 @@ from msm.repositories.assets import (
     build_search_assets_operation,
     build_upsert_asset_operation,
 )
-from msm.repositories.crud import build_search_model_operation, build_upsert_model_operation
+from msm.repositories.crud import (
+    build_get_model_by_uid_operation,
+    build_search_model_operation,
+    build_upsert_model_operation,
+)
 from msm.repositories.execution import build_create_order_operation
 
 
@@ -99,6 +103,21 @@ def test_generic_upsert_operation_uses_physical_name_for_aliased_columns() -> No
     assert "metadata =" in operation.statement.sql
     assert operation.statement.parameters["metadata"] is None
     assert operation.statement.parameters["raw_payload"] == {"figi": "BBG00FNFPQH4"}
+
+
+def test_generic_get_by_uid_uses_single_primary_key_when_uid_column_is_absent() -> None:
+    context = _repository_context()
+    asset_uid = uuid.uuid4()
+
+    operation = build_get_model_by_uid_operation(
+        context,
+        model=OpenFigiDetailsTable,
+        uid=asset_uid,
+    )
+
+    assert operation.operation == "select"
+    assert OpenFigiDetailsTable.__table__.name in operation.statement.sql
+    assert "asset_uid" in operation.statement.sql
 
 
 def test_asset_get_by_unique_identifier_operation_uses_read_scope() -> None:

@@ -8,12 +8,13 @@ from .accounts import (
     AccountTable,
     AccountTargetPositionAssignmentTable,
 )
-from .asset_categories import (
+from .assets import (
     AssetCategoryMembershipTable,
     AssetCategoryTable,
+    AssetTable,
+    AssetTypeTable,
+    OpenFigiDetailsTable,
 )
-from .asset_types import AssetTypeTable
-from .assets import AssetTable
 from .calendars import CalendarTable
 from .execution import (
     ExecutionErrorTable,
@@ -30,7 +31,6 @@ from .portfolios import (
     PortfolioMetadataTable,
     PortfolioTable,
 )
-from .provider_details import OpenFigiDetailsTable
 from .rebalancing import RebalanceStrategyMetadataTable
 from .signals import SignalMetadataTable
 

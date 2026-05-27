@@ -30,7 +30,9 @@ nav:
   - Knowledge:
       - Overview: knowledge/index.md
       - Accounts: knowledge/accounts/index.md
-      - Assets: knowledge/assets/index.md
+      - Assets:
+          - Overview: knowledge/assets/index.md
+          - Asset-Indexed DataNodes: knowledge/assets/asset_indexed_data_nodes.md
       - Client: knowledge/client/index.md
       - Execution: knowledge/execution/index.md
       - Models: knowledge/models/index.md

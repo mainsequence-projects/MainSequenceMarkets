@@ -14,9 +14,10 @@
 
 `ms-markets` is the financial markets extension layer for the Main Sequence
 platform. It provides reusable market-domain ORM models, market DataNodes,
-pricing engines, portfolio construction utilities, repository operations, and
-application-facing helpers for building financial systems on top of Main
-Sequence.
+portfolio construction utilities, repository operations, and application-facing
+helpers for building financial systems on top of Main Sequence. QuantLib-backed
+pricing is an optional package surface, not part of the core `msm` import
+package.
 
 The Python distribution is named `ms-markets`. The import package is
 intentionally short:
@@ -56,8 +57,8 @@ Main package areas:
   registration order
 - `msm.portfolios`: portfolio configuration, signal weights, rebalance
   strategies, and Virtual Fund Builder workflows
-- `msm.pricing`: QuantLib-backed instruments, curves, fixings, and pricing
-  helpers
+- `msm_pricing`: optional QuantLib-backed instruments, curves, fixings, and
+  pricing helpers installed with the `pricing` extra
 - `msm.repositories`: compiled persistence operations over market-domain models
 - `msm.services`: application-level orchestration over repositories, including
   asset lookup and OpenFIGI service helpers
@@ -105,10 +106,28 @@ Or with `uv`:
 uv sync --extra dev
 ```
 
-Verify the import:
+Install pricing support only when needed:
 
 ```bash
-python -c "import msm; import msm.pricing; print(msm.__version__)"
+uv sync --extra pricing
+```
+
+Install the project-level FastAPI surface only when needed:
+
+```bash
+uv sync --extra public_api
+```
+
+Verify the core import:
+
+```bash
+python -c "import msm; print(msm.__version__)"
+```
+
+After installing the pricing extra, verify the optional pricing import:
+
+```bash
+python -c "import msm_pricing; print(msm_pricing.FixedRateBond)"
 ```
 
 Copy the packaged ms-markets skills into a host Main Sequence project only when
@@ -130,10 +149,10 @@ Run tests:
 pytest
 ```
 
-Run focused linting for pricing:
+Run focused linting for optional pricing:
 
 ```bash
-ruff check src/msm/pricing
+ruff check src/msm_pricing
 ```
 
 Serve the docs locally:
@@ -174,12 +193,14 @@ The core stack starts with:
 
 - `mainsequence` for platform integration
 - `SQLAlchemy` for market-domain ORM models
-- `QuantLib` for instrument and pricing primitives
-- `pydantic` for typed configuration and serialized instrument terms
+- `pydantic` for typed configuration and serialized row contracts
 - `pandas` and `numpy` for tabular market data and portfolio workflows
 
-Optional extras provide documentation, development, portfolio, pricing, and
-Streamlit UI tooling.
+Optional extras provide documentation, development, portfolio, public API,
+pricing, and Streamlit UI tooling. The `public_api` extra installs FastAPI and
+Uvicorn for the project-level `apps/v1` surface. The `pricing` and
+`pricing-streamlit` extras install QuantLib and the optional pricing runtime
+exposed as `msm_pricing`.
 
 ## Package Metadata
 

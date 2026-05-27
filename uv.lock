@@ -1243,25 +1243,23 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.3"
+version = "0.0.4"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
-    { name = "fastapi" },
     { name = "mainsequence" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pip" },
     { name = "pydantic" },
     { name = "pytz" },
-    { name = "quantlib" },
     { name = "requests" },
     { name = "sqlalchemy" },
-    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
 dev = [
+    { name = "fastapi" },
     { name = "mkdocs" },
     { name = "mkdocs-autorefs" },
     { name = "mkdocs-material" },
@@ -1270,6 +1268,7 @@ dev = [
     { name = "pymdown-extensions" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "uvicorn" },
 ]
 docs = [
     { name = "mkdocs" },
@@ -1288,10 +1287,17 @@ portfolios = [
 ]
 pricing = [
     { name = "matplotlib" },
+    { name = "quantlib" },
 ]
 pricing-streamlit = [
+    { name = "matplotlib" },
+    { name = "quantlib" },
     { name = "streamlit" },
     { name = "streamlit-aggrid" },
+]
+public-api = [
+    { name = "fastapi" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -1303,10 +1309,12 @@ dev = [
 requires-dist = [
     { name = "cachetools" },
     { name = "docstring-parser", marker = "extra == 'portfolios'" },
-    { name = "fastapi", specifier = ">=0.136.3" },
+    { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.136.3" },
+    { name = "fastapi", marker = "extra == 'public-api'", specifier = ">=0.136.3" },
     { name = "joblib", marker = "extra == 'portfolios'" },
     { name = "mainsequence" },
     { name = "matplotlib", marker = "extra == 'pricing'" },
+    { name = "matplotlib", marker = "extra == 'pricing-streamlit'" },
     { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6" },
     { name = "mkdocs-autorefs", marker = "extra == 'dev'", specifier = ">=1.2" },
@@ -1326,7 +1334,8 @@ requires-dist = [
     { name = "pymdown-extensions", marker = "extra == 'docs'", specifier = ">=10.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytz" },
-    { name = "quantlib" },
+    { name = "quantlib", marker = "extra == 'pricing'" },
+    { name = "quantlib", marker = "extra == 'pricing-streamlit'" },
     { name = "requests" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "scikit-learn", marker = "extra == 'portfolios'" },
@@ -1334,9 +1343,10 @@ requires-dist = [
     { name = "streamlit", marker = "extra == 'pricing-streamlit'" },
     { name = "streamlit-aggrid", marker = "extra == 'pricing-streamlit'" },
     { name = "tqdm", marker = "extra == 'portfolios'" },
-    { name = "uvicorn", specifier = ">=0.48.0" },
+    { name = "uvicorn", marker = "extra == 'dev'", specifier = ">=0.48.0" },
+    { name = "uvicorn", marker = "extra == 'public-api'", specifier = ">=0.48.0" },
 ]
-provides-extras = ["dev", "docs", "portfolios", "pricing", "pricing-streamlit"]
+provides-extras = ["dev", "docs", "portfolios", "public-api", "pricing", "pricing-streamlit"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "httpx", specifier = ">=0.28.1" }]

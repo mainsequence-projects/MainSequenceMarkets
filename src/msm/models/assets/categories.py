@@ -15,7 +15,7 @@ from msm.base import (
     new_markets_uid,
 )
 
-from .assets import AssetTable
+from .core import AssetTable
 
 
 class AssetCategoryTable(MarketsMetaTableMixin, MarketsBase):

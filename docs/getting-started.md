@@ -12,6 +12,13 @@ Or with pip:
 python -m pip install -e ".[dev]"
 ```
 
+The project-level FastAPI surface is optional. Install it only for public API
+work:
+
+```bash
+uv sync --extra public_api
+```
+
 Verify that the import package is available:
 
 ```python

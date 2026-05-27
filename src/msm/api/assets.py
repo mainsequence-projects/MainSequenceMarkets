@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from msm.api.base import MarketsRow, operation_result_rows
 from msm.models import (
@@ -183,6 +183,7 @@ class OpenFigiDetails(MarketsRow):
     __required_tables__: ClassVar[list[type[Any]]] = [AssetTable, OpenFigiDetailsTable]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("asset_uid",)
 
+    uid: uuid.UUID = Field(validation_alias=AliasChoices("uid", "asset_uid"))
     asset_uid: uuid.UUID
     figi: str | None = None
     composite: str | None = None

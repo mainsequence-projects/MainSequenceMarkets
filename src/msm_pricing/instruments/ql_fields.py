@@ -1,4 +1,4 @@
-# msm/pricing/instruments/ql_fields.py
+# msm_pricing/instruments/ql_fields.py
 from __future__ import annotations
 
 import inspect
@@ -8,7 +8,7 @@ import QuantLib as ql
 from pydantic import BeforeValidator, Field, PlainSerializer, WithJsonSchema
 
 # Reuse your existing codec helpers
-from msm.pricing.instruments.json_codec import (
+from msm_pricing.instruments.json_codec import (
     bdc_from_json,
     # BDC
     bdc_to_json,

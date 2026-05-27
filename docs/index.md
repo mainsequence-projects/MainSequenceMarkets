@@ -19,7 +19,8 @@ import msm
 ## Initial Scope
 
 - Market-domain ORM and persistence abstractions.
-- Financial engines for pricing, analytics, and lifecycle workflows.
+- Optional financial engines for pricing and analytics through `msm_pricing`.
+- Core market lifecycle workflows through `msm`.
 - Application-management helpers for dashboards, APIs, scheduled jobs, and platform
   deployment surfaces.
 - Agent-ready project structure for future Main Sequence agent capabilities.

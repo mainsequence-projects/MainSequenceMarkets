@@ -165,7 +165,7 @@ def _available_calendar_names() -> list[str]:
     """
     try:
         # This is in your snippet. It's "private", but it’s the cleanest way to get names.
-        from msm.pricing.instruments.ql_fields import (
+        from msm_pricing.instruments.ql_fields import (
             _CAL_FACTORY,  # type: ignore
         )
 

@@ -2,13 +2,9 @@
 #    uv export --locked --no-dev --no-hashes --format requirements.txt --output-file requirements.txt
 -e .
 annotated-doc==0.0.4
-    # via
-    #   fastapi
-    #   typer
+    # via typer
 annotated-types==0.7.0
     # via pydantic
-anyio==4.13.0
-    # via starlette
 cachetools==7.1.4
     # via
     #   mainsequence
@@ -18,9 +14,7 @@ certifi==2026.5.20
 charset-normalizer==3.4.7
     # via requests
 click==8.4.1
-    # via
-    #   typer
-    #   uvicorn
+    # via typer
 cloudpickle==3.1.2
     # via mainsequence
 colorama==0.4.6 ; sys_platform == 'win32'
@@ -29,8 +23,6 @@ colorama==0.4.6 ; sys_platform == 'win32'
     #   tqdm
 concurrent-log-handler==0.9.29
     # via mainsequence
-fastapi==0.136.3
-    # via ms-markets
 googleapis-common-protos==1.75.0
     # via
     #   opentelemetry-exporter-otlp-proto-grpc
@@ -39,12 +31,8 @@ greenlet==3.5.1 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or 
     # via sqlalchemy
 grpcio==1.80.0
     # via opentelemetry-exporter-otlp-proto-grpc
-h11==0.16.0
-    # via uvicorn
 idna==3.16
-    # via
-    #   anyio
-    #   requests
+    # via requests
 mainsequence==4.0.6
     # via ms-markets
 markdown-it-py==4.2.0
@@ -101,7 +89,6 @@ psutil==7.2.2
     # via mainsequence
 pydantic==2.13.4
     # via
-    #   fastapi
     #   mainsequence
     #   ms-markets
 pydantic-core==2.46.4
@@ -118,8 +105,6 @@ pywin32==311 ; sys_platform == 'win32'
     # via portalocker
 pyyaml==6.0.3
     # via mainsequence
-quantlib==1.42.1
-    # via ms-markets
 requests==2.34.2
     # via
     #   mainsequence
@@ -133,8 +118,6 @@ six==1.17.0
     # via python-dateutil
 sqlalchemy==2.0.50
     # via ms-markets
-starlette==1.1.0
-    # via fastapi
 structlog==25.5.0
     # via mainsequence
 tqdm==4.67.3
@@ -143,8 +126,6 @@ typer==0.25.1
     # via mainsequence
 typing-extensions==4.15.0
     # via
-    #   anyio
-    #   fastapi
     #   grpcio
     #   opentelemetry-api
     #   opentelemetry-exporter-otlp-proto-grpc
@@ -154,17 +135,12 @@ typing-extensions==4.15.0
     #   pydantic
     #   pydantic-core
     #   sqlalchemy
-    #   starlette
     #   typing-inspection
 typing-inspection==0.4.2
-    # via
-    #   fastapi
-    #   pydantic
+    # via pydantic
 tzdata==2026.2 ; sys_platform == 'emscripten' or sys_platform == 'win32'
     # via pandas
 urllib3==2.7.0
     # via
     #   mainsequence
     #   requests
-uvicorn==0.48.0
-    # via ms-markets

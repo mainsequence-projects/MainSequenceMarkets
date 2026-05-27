@@ -54,8 +54,7 @@ def build_upsert_model_operation(
     payload = {key: value for key, value in dict(values).items() if key != "uid"}
     statement = postgresql_insert(model).values(_model_value_mapping(model, payload))
     conflict_property_keys = {
-        _model_column_property(model, conflict_column).key
-        for conflict_column in conflict_columns
+        _model_column_property(model, conflict_column).key for conflict_column in conflict_columns
     }
     update_values = {
         _model_attribute(model, key): value
@@ -71,16 +70,12 @@ def build_upsert_model_operation(
                 first_conflict_physical_name
             ]
         }
-    statement = (
-        statement.on_conflict_do_update(
-            index_elements=[
-                _model_attribute(model, conflict_column)
-                for conflict_column in conflict_columns
-            ],
-            set_=update_values,
-        )
-        .returning(model)
-    )
+    statement = statement.on_conflict_do_update(
+        index_elements=[
+            _model_attribute(model, conflict_column) for conflict_column in conflict_columns
+        ],
+        set_=update_values,
+    ).returning(model)
     return compile_markets_statement(
         statement,
         context=context,
@@ -132,7 +127,7 @@ def build_get_model_by_uid_operation(
     model: type[MarketsBase],
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    statement = select(model).where(_model_attribute(model, "uid") == uid).limit(1)
+    statement = select(model).where(_model_identity_attribute(model) == uid).limit(1)
     return compile_markets_statement(
         statement,
         context=context,
@@ -255,7 +250,7 @@ def build_update_model_operation(
 ) -> MetaTableCompiledSQLOperation:
     statement = (
         update(model)
-        .where(_model_attribute(model, "uid") == uid)
+        .where(_model_identity_attribute(model) == uid)
         .values(
             _model_value_mapping(
                 model,
@@ -301,7 +296,7 @@ def build_delete_model_operation(
     model: type[MarketsBase],
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    statement = delete(model).where(_model_attribute(model, "uid") == uid)
+    statement = delete(model).where(_model_identity_attribute(model) == uid)
     return compile_markets_statement(
         statement,
         context=context,
@@ -336,6 +331,19 @@ def _model_value_mapping(
     }
 
 
+def _model_identity_attribute(model: type[MarketsBase]) -> Any:
+    if "uid" in model.__table__.c:
+        return _model_attribute(model, "uid")
+
+    primary_key_columns = list(model.__table__.primary_key.columns)
+    if len(primary_key_columns) != 1:
+        raise ValueError(
+            f"{model.__name__} must define a `uid` column or exactly one primary key column."
+        )
+    primary_key_property = inspect(model).get_property_by_column(primary_key_columns[0])
+    return _model_attribute(model, primary_key_property.key)
+
+
 def _model_column_property(model: type[MarketsBase], field_name: str) -> Any:
     matches = []
     for column_property in inspect(model).column_attrs:
@@ -349,9 +357,7 @@ def _model_column_property(model: type[MarketsBase], field_name: str) -> Any:
     if not matches:
         raise ValueError(f"{model.__name__} has no SQLAlchemy column {field_name!r}.")
     if len(matches) > 1:
-        raise ValueError(
-            f"{model.__name__} column reference {field_name!r} is ambiguous."
-        )
+        raise ValueError(f"{model.__name__} column reference {field_name!r} is ambiguous.")
     return matches[0]
 
 

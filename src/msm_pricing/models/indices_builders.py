@@ -1,4 +1,4 @@
-"""msm.pricing.models.indices_builders
+"""msm_pricing.models.indices_builders
 
 Dependency-light builders for :class:`~IndexSpec`.
 

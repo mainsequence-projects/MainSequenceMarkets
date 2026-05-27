@@ -1,6 +1,6 @@
 """Pricing model helpers and index registration APIs."""
 
-from msm.pricing.models.indices import (
+from msm_pricing.models.indices import (
     IndexSpec,
     add_historical_fixings,
     build_zero_curve,
