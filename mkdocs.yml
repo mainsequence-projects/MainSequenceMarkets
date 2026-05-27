@@ -62,8 +62,11 @@ nav:
       - Lazy MetaTable Runtime Resolution: ADR/0009-lazy-metatable-runtime-resolution.md
       - Currency Asset Extension: ADR/0010-currency-asset-extension.md
       - Future Contracts And Index Underlyings: ADR/0011-future-contracts-and-index-underlyings.md
+      - Current Asset Pricing Details: ADR/0013-current-asset-pricing-details.md
+      - Bond Asset And Issuer Extension: ADR/0014-bond-asset-extension.md
       - API v1:
           - Asset Category Route Plan: ADR/api/v1/0012-asset-category-route-plan.md
+          - Index Route Plan: ADR/api/v1/0013-index-route-plan.md
       - VAM Markets Ownership Transfer: ADR/0004-vam-markets-ownership-transfer.md
   - Changelog: changelog.md
   - Reference:

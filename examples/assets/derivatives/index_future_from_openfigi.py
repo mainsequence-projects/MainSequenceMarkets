@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 if __package__ in {None, ""}:
-    _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    _PROJECT_ROOT = Path(__file__).resolve().parents[3]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from examples.platform.bootstrap import (

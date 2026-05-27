@@ -29,3 +29,6 @@ Current decisions:
 - [0010. Currency Asset Extension](0010-currency-asset-extension.md)
 - [0011. Future Contracts And Index Underlyings](0011-future-contracts-and-index-underlyings.md)
 - [0012. API v1 Asset Category Route Plan](api/v1/0012-asset-category-route-plan.md)
+- [0013. API v1 Index Route Plan](api/v1/0013-index-route-plan.md)
+- [0013. Current Asset Pricing Details](0013-current-asset-pricing-details.md)
+- [0014. Bond Asset And Issuer Extension](0014-bond-asset-extension.md)

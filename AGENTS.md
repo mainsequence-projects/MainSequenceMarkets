@@ -51,6 +51,8 @@ Core responsibilities:
 - translate user business logic into reusable code under `src/` so it can be reused by APIs,
   dashboards, jobs, and other project components instead of duplicating logic in integration
   layers
+- maintain the repository through the maintenance skills, including project-state reconciliation,
+  journaling, blocker tracking, and bug auditing
 
 Typical outcomes include:
 
@@ -62,6 +64,7 @@ Typical outcomes include:
   surface before building it
 - build reusable business logic in `src/` and keep thin integration layers in APIs, jobs, and
   dashboards
+- keep the repository auditable through maintenance, journaling, and bug reporting
 
 Working rules for this role:
 
@@ -89,7 +92,9 @@ User-resolution rule for agents:
 
 Delegation rules:
 
-- when work is delegated or queued for later, state:
+- when work is delegated or queued for later, write the task in `.agents/tasks.md` according to
+  the skill that should execute it
+- each delegated or queued task in `.agents/tasks.md` must state:
   - the exact task scope
   - the owning skill
   - the expected output, decision, or artifact
@@ -190,19 +195,22 @@ For any non-trivial Main Sequence task:
 
 1. Read the latest relevant Main Sequence documentation.
 2. Compare the implementation against the latest documented behavior.
-3. Confirm you are in the correct project checkout, or use `--path` explicitly.
-4. Confirm platform context with:
+
+4. Check `.agents/tasks.md` for current priorities.
+
+7. Confirm you are in the correct project checkout, or use `--path` explicitly.
+8. Confirm platform context with:
    `mainsequence project current --debug`
-5. Before validations or live checks, run:
+9. Before validations or live checks, run:
    `mainsequence project refresh_token --path .`
-6. If git push or pull is required, use:
+10. If git push or pull is required, use:
     `mainsequence project open-signed-terminal <PROJECT_ID>`
-7. Before proceeding with non-trivial Main Sequence work, update the project SDK:
+11. Before proceeding with non-trivial Main Sequence work, update the project SDK:
     `mainsequence project update-sdk --path .`
-8. After updating the SDK, refresh the installed Main Sequence scaffold files:
+12. After updating the SDK, refresh the installed Main Sequence scaffold files:
     `mainsequence project update AGENTS.md --path .`
     `mainsequence project update_agent_skills --path .`
-9. Verify platform state with the CLI or platform tooling instead of guessing.
+13. Verify platform state with the CLI or platform tooling instead of guessing.
 
 ## Orchestrator Rule
 
@@ -212,6 +220,11 @@ Default pattern:
 
 1. `.agents/skills/mainsequence/project_builder/SKILL.md`
 2. the relevant domain skill
+
+Before the final response:
+
+- consult the maintenance skill whenever project understanding, verified state, or historical
+  record changed during the turn
 
 Always use `.agents/skills/mainsequence/project_builder/SKILL.md` as the source of truth for project
 scaffolding, folder structure, and standard repository layout.
@@ -292,7 +305,7 @@ If something may be a Main Sequence SDK, documentation, or platform issue:
 - record what failed
 - explain why it may be a Main Sequence issue
 - suggest a concrete improvement
-- report any still-open follow-up or blocker clearly to the user
+
 
 ## Output Style
 
@@ -300,4 +313,10 @@ If something may be a Main Sequence SDK, documentation, or platform issue:
 - prefer explicit facts over vague statements
 - surface failures early
 - distinguish verified facts from assumptions
+
+## Project-State Files Under `.agents/`
+
+
+Do not improvise their meaning in domain skills. Use the maintenance skill to reconcile them after
+material work.
 <!-- mainsequence-agent-scaffold:end -->

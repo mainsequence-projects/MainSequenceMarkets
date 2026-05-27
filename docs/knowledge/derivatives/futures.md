@@ -112,6 +112,14 @@ contract size, or expiry from OpenFIGI.
 See `examples/assets/derivatives/index_future_from_openfigi.py` for the concrete
 workflow using index FIGI `BBG000KKFC45` and future FIGI `BBG01SWCTHK4`.
 
+Crypto or venue-native workflows do not need FIGIs. Create the local crypto and
+margin assets, create a local `Index` row for the underlying reference, and then
+upsert the `Future` against that index. Do not write `OpenFigiDetails` rows when
+the venue does not provide FIGIs.
+
+See `examples/assets/derivatives/crypto_future_without_figi.py` for a BTC/USDT
+perpetual future that uses only local identifiers.
+
 ## Contract Fields
 
 | Field | Meaning |

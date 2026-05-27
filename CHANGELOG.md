@@ -29,6 +29,8 @@ and this project follows versioned releases.
 - Added the migrated `apps/v1` asset-category API surface, including list,
   detail, create, patch, delete, and bulk-delete routes plus
   `categories__uid` filtering on `GET /api/v1/asset/`.
+- Added an ADR for a simple `GET /api/v1/index/` route that mirrors the asset
+  list boundary while returning index registry rows from `IndexTable`.
 - Added shared typed row helpers for explicit schema bootstrap, create/upsert,
   lookup, filter, update, and delete operations over the active markets runtime.
 - Added `examples/api/typed_metatable_rows.py` to demonstrate the class-owned
@@ -83,11 +85,18 @@ and this project follows versioned releases.
   normalized asset types and relational base/quote asset references.
 - Added an ADR for `future` assets, `IndexTable`, and index-underlying future
   contract details.
+- Added an ADR for pricing-owned current asset pricing details, moving
+  pricing-detail DataNodes into `msm_pricing`, and the `msm_pricing` runtime
+  package boundary cleanup.
+- Added an ADR for `bond` assets, issuer reference data, and the planned
+  one-to-one bond detail table.
 - Added OpenFIGI helpers to register index rows from FIGI and create
   index-underlying futures from index/future FIGIs while keeping contract terms
   explicit.
 - Added `examples/assets/derivatives/index_future_from_openfigi.py` for creating an
   index-underlying future from OpenFIGI FIGIs.
+- Added `examples/assets/derivatives/crypto_future_without_figi.py` for creating
+  a crypto perpetual future from local asset and index identifiers only.
 - Documented the library-wide API style: users work with typed `msm.api` row
   objects, while schema code works with `msm.models.*Table` declarations.
 - Added AssetSnapshot DataNode methods for validated frame construction and

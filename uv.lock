@@ -902,10 +902,11 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "4.0.6"
+version = "4.0.12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cachetools" },
+    { name = "click" },
     { name = "cloudpickle" },
     { name = "concurrent-log-handler" },
     { name = "numpy" },
@@ -923,9 +924,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ae/1c/893dd4b19618c71ca16de4fc6d8ad988a5f0135d44f1b07cbaf89a739dfb/mainsequence-4.0.6.tar.gz", hash = "sha256:1e845423047d9102653b5e139863d74d98d86676c74c1e64caad645055faec31", size = 426598, upload-time = "2026-05-26T14:27:51.648Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0e/f3/1fdedfce7ed417f165504e850183e718789b56092fc0b5ebf000e50f1652/mainsequence-4.0.12.tar.gz", hash = "sha256:9edb82c8af0c79d573e773982bf1ff27722a5a2b8130fd3ef2fab702d37bd12e", size = 438985, upload-time = "2026-05-27T15:00:07.996Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/18/6d/f17ffb585303273fc2d58a2c46e0e2e0ef6126c79e688054c9aaae98ac05/mainsequence-4.0.6-py3-none-any.whl", hash = "sha256:577260a73a4616b78f980e8bef9ed3ab00a57d806025c9b783a8859ada0d3b68", size = 386318, upload-time = "2026-05-26T14:27:49.74Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/7b/8fcb3299e625456eaf91258f43b7495a90994c314269026b057889e4056d/mainsequence-4.0.12-py3-none-any.whl", hash = "sha256:1c8a6aa0117061fd7842c0a0ab10c6a5e53402a13db57a967af1b1da288cc910", size = 390732, upload-time = "2026-05-27T15:00:05.735Z" },
 ]
 
 [[package]]
