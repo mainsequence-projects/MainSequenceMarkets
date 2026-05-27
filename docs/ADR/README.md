@@ -27,3 +27,5 @@ Current decisions:
 - [0008. MetaTable Table And API Model Split](0008-metatable-table-and-api-model-split.md)
 - [0009. Lazy MetaTable Runtime Resolution](0009-lazy-metatable-runtime-resolution.md)
 - [0010. Currency Asset Extension](0010-currency-asset-extension.md)
+- [0011. Future Contracts And Index Underlyings](0011-future-contracts-and-index-underlyings.md)
+- [0012. API v1 Asset Category Route Plan](api/v1/0012-asset-category-route-plan.md)

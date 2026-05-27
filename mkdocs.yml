@@ -35,7 +35,11 @@ nav:
           - Currency And Spot Assets: knowledge/assets/currency.md
           - Asset-Indexed DataNodes: knowledge/assets/asset_indexed_data_nodes.md
       - Client: knowledge/client/index.md
+      - Derivatives:
+          - Overview: knowledge/derivatives/index.md
+          - Futures: knowledge/derivatives/futures.md
       - Execution: knowledge/execution/index.md
+      - Indexes: knowledge/indices/index.md
       - Models: knowledge/models/index.md
       - Platform: knowledge/platform/index.md
       - MetaTable Registration: knowledge/platform/meta_table_registration.md
@@ -55,6 +59,9 @@ nav:
       - MetaTable Table And API Model Split: ADR/0008-metatable-table-and-api-model-split.md
       - Lazy MetaTable Runtime Resolution: ADR/0009-lazy-metatable-runtime-resolution.md
       - Currency Asset Extension: ADR/0010-currency-asset-extension.md
+      - Future Contracts And Index Underlyings: ADR/0011-future-contracts-and-index-underlyings.md
+      - API v1:
+          - Asset Category Route Plan: ADR/api/v1/0012-asset-category-route-plan.md
       - VAM Markets Ownership Transfer: ADR/0004-vam-markets-ownership-transfer.md
   - Changelog: changelog.md
   - Reference:

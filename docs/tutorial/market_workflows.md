@@ -190,6 +190,10 @@ memberships = AssetCategory.replace_memberships(
 )
 ```
 
+For a step-by-step membership lifecycle, run
+`examples/assets/asset_category_workflow.py`. It creates a category, adds
+assets, removes assets, and prints the category contents after each change.
+
 ## Accounts, Funds, And Portfolios
 
 ```python

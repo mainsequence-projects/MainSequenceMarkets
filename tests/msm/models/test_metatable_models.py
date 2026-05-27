@@ -18,6 +18,8 @@ from msm.models import (
     AssetTypeTable,
     AssetTable,
     CurrencySpotTable,
+    FutureDetailsTable,
+    IndexTable,
     OpenFigiDetailsTable,
     markets_sqlalchemy_models,
 )
@@ -65,6 +67,23 @@ def test_asset_type_model_is_registry_table() -> None:
     assert any(
         index.unique and [column.name for column in index.columns] == ["asset_type"]
         for index in AssetTypeTable.__table__.indexes
+    )
+
+
+def test_index_model_is_reference_table() -> None:
+    table = IndexTable.__table__
+
+    assert IndexTable.__markets_base_identifier__ == "Index"
+    assert IndexTable.__metatable_identifier__ == "Index"
+    assert "uid" in table.c
+    assert "unique_identifier" in table.c
+    assert "display_name" in table.c
+    assert "description" in table.c
+    assert "provider" in table.c
+    assert "metadata_json" in table.c
+    assert any(
+        index.unique and [column.name for column in index.columns] == ["unique_identifier"]
+        for index in table.indexes
     )
 
 
@@ -127,6 +146,14 @@ def test_currency_spot_resolves_after_asset_dependencies_when_selected() -> None
     assert models == [AssetTypeTable, AssetTable, CurrencySpotTable]
 
 
+def test_future_details_resolves_after_asset_and_index_dependencies_when_selected() -> None:
+    models = meta_tables.resolve_markets_meta_table_models(
+        ["FutureDetails", "Index", "Asset", "AssetType"]
+    )
+
+    assert models == [AssetTypeTable, AssetTable, IndexTable, FutureDetailsTable]
+
+
 def test_openfigi_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
     table = OpenFigiDetailsTable.__table__
 
@@ -161,6 +188,59 @@ def test_currency_spot_uses_asset_uid_as_one_to_one_primary_key() -> None:
     assert base_currency_uid_fk.ondelete == "RESTRICT"
     assert quote_currency_uid_fk.column is AssetTable.__table__.c.uid
     assert quote_currency_uid_fk.ondelete == "RESTRICT"
+
+
+def test_future_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
+    table = FutureDetailsTable.__table__
+
+    assert "uid" not in table.c
+    assert [column.name for column in table.primary_key.columns] == ["asset_uid"]
+    assert set(table.c.keys()) == {
+        "asset_uid",
+        "kind",
+        "underlying_index_uid",
+        "quote_unit",
+        "settlement_asset",
+        "margin_asset",
+        "settlement_model",
+        "settlement_method",
+        "contract_size",
+        "contract_unit",
+        "expires_at",
+        "settles_at",
+        "metadata",
+    }
+
+    asset_uid_fk = next(iter(table.c.asset_uid.foreign_keys))
+    underlying_index_uid_fk = next(iter(table.c.underlying_index_uid.foreign_keys))
+    settlement_asset_fk = next(iter(table.c.settlement_asset.foreign_keys))
+    margin_asset_fk = next(iter(table.c.margin_asset.foreign_keys))
+
+    assert asset_uid_fk.column is AssetTable.__table__.c.uid
+    assert asset_uid_fk.ondelete == "CASCADE"
+    assert underlying_index_uid_fk.column is IndexTable.__table__.c.uid
+    assert underlying_index_uid_fk.ondelete == "RESTRICT"
+    assert settlement_asset_fk.column is AssetTable.__table__.c.uid
+    assert settlement_asset_fk.ondelete == "RESTRICT"
+    assert margin_asset_fk.column is AssetTable.__table__.c.uid
+    assert margin_asset_fk.ondelete == "RESTRICT"
+    assert "metadata_payload" not in table.c
+    assert any(
+        [column.name for column in index.columns] == ["underlying_index_uid"]
+        for index in table.indexes
+    )
+    assert any(
+        [column.name for column in index.columns] == ["settlement_asset"]
+        for index in table.indexes
+    )
+    assert any(
+        [column.name for column in index.columns] == ["margin_asset"]
+        for index in table.indexes
+    )
+    assert any(
+        [column.name for column in index.columns] == ["expires_at"]
+        for index in table.indexes
+    )
 
 
 def test_markets_models_build_platform_registration_requests_in_dependency_order() -> None:

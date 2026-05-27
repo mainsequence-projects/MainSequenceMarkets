@@ -37,6 +37,9 @@ and this project follows versioned releases.
 - Added an asset CRUD example covering asset creation, lookup by identifier and
   UID, OpenFIGI detail registration, AssetSnapshot frame updates, created asset
   listing, and optional cleanup of temporary custom assets.
+- Added `examples/assets/asset_category_workflow.py` to demonstrate creating an
+  asset category, adding assets, removing assets, and printing membership after
+  each change.
 - Added an offline platform example for inspecting SDK-derived markets
   MetaTable model names.
 - Added `msm.create_schemas(...)` to bootstrap markets MetaTables and return a
@@ -72,6 +75,13 @@ and this project follows versioned releases.
   `AssetTable` from user-facing Pydantic API row models such as `Asset`.
 - Added an ADR for the first asset extension: currency spot pair assets with
   normalized asset types and relational base/quote asset references.
+- Added an ADR for `future` assets, `IndexTable`, and index-underlying future
+  contract details.
+- Added OpenFIGI helpers to register index rows from FIGI and create
+  index-underlying futures from index/future FIGIs while keeping contract terms
+  explicit.
+- Added `examples/derivatives/index_future_from_openfigi.py` for creating an
+  index-underlying future from OpenFIGI FIGIs.
 - Documented the library-wide API style: users work with typed `msm.api` row
   objects, while schema code works with `msm.models.*Table` declarations.
 - Added AssetSnapshot DataNode methods for validated frame construction and

@@ -310,6 +310,10 @@ memberships = AssetCategory.replace_memberships(
 )
 ```
 
+See `examples/assets/asset_category_workflow.py` for a lifecycle example that
+creates a category, adds assets, removes assets, and prints category membership
+after each change.
+
 Use `OpenFigiDetails.upsert(...)` for typed provider metadata rows when the
 asset row already exists. The OpenFIGI section above shows the provider-detail
 extension pattern. Provider services may still build `AssetTable` or

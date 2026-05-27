@@ -4,7 +4,9 @@ import datetime as dt
 import json
 import os
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal
 from importlib import resources
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -22,6 +24,8 @@ OPENFIGI_SECRET_SETUP_URL = (
     "https://www.main-sequence.app/app/main_sequence_workbench/secrets"
 )
 OPENFIGI_API_URL_ENV = "FIGI_API_URL"
+OPENFIGI_INDEX_MARKET_SECTOR = "Index"
+OPENFIGI_PROVIDER_NAME = "OpenFIGI"
 
 
 class OpenFigiConfigurationError(RuntimeError):
@@ -221,6 +225,112 @@ def query_by_figi(
     return rows[0]
 
 
+def register_index_from_figi(
+    figi_code: str,
+    *,
+    api_key: str | None = None,
+    api_url: str | None = None,
+):
+    """Resolve an index FIGI and upsert it as `msm.api.indices.Index`."""
+
+    normalized = query_by_figi(
+        figi_code,
+        api_key=api_key,
+        api_url=api_url,
+    )
+    return upsert_index_from_openfigi_result(normalized)
+
+
+def upsert_index_from_openfigi_result(item: Mapping[str, Any]):
+    """Upsert an index row from a normalized or raw OpenFIGI result."""
+
+    from msm.api.indices import Index
+
+    normalized = _ensure_normalized_openfigi_result(item)
+    _require_openfigi_market_sector(
+        normalized,
+        expected_market_sector=OPENFIGI_INDEX_MARKET_SECTOR,
+    )
+    unique_identifier = normalized.get("unique_identifier")
+    if not unique_identifier:
+        raise ValueError("OpenFIGI index result does not include `figi`.")
+
+    return Index.upsert(
+        unique_identifier=str(unique_identifier),
+        display_name=(
+            normalized.get("name")
+            or normalized.get("security_description")
+            or str(unique_identifier)
+        ),
+        description=normalized.get("security_description"),
+        provider=OPENFIGI_PROVIDER_NAME,
+        metadata_json=_openfigi_reference_metadata(normalized),
+    )
+
+
+def register_index_future_from_figis(
+    future_figi: str,
+    *,
+    underlying_index_figi: str,
+    settlement_asset_uid: UUID | str,
+    margin_asset_uid: UUID | str,
+    kind: str,
+    quote_unit: str,
+    settlement_model: str,
+    settlement_method: str,
+    contract_size: Decimal | str | int | float,
+    contract_unit: str,
+    expires_at: dt.datetime | pd.Timestamp | str | None = None,
+    settles_at: dt.datetime | pd.Timestamp | str | None = None,
+    metadata: Mapping[str, Any] | None = None,
+    api_key: str | None = None,
+    api_url: str | None = None,
+):
+    """Resolve an index FIGI and a future FIGI, then upsert the Future row.
+
+    FIGI supplies canonical identifiers and provider metadata. Contract terms
+    remain explicit inputs because OpenFIGI does not provide a stable enough
+    contract schema for this library to infer settlement, margin, size, or
+    expiration rules.
+    """
+
+    from msm.api.derivatives import Future
+
+    underlying_index = register_index_from_figi(
+        underlying_index_figi,
+        api_key=api_key,
+        api_url=api_url,
+    )
+    normalized_future = query_by_figi(
+        future_figi,
+        api_key=api_key,
+        api_url=api_url,
+    )
+    unique_identifier = normalized_future.get("unique_identifier")
+    if not unique_identifier:
+        raise ValueError("OpenFIGI future result does not include `figi`.")
+
+    return Future.upsert(
+        unique_identifier=str(unique_identifier),
+        kind=kind,
+        underlying_index_uid=underlying_index.uid,
+        quote_unit=quote_unit,
+        settlement_asset=settlement_asset_uid,
+        margin_asset=margin_asset_uid,
+        settlement_model=settlement_model,
+        settlement_method=settlement_method,
+        contract_size=contract_size,
+        contract_unit=contract_unit,
+        expires_at=expires_at,
+        settles_at=settles_at,
+        metadata=_future_openfigi_metadata(
+            normalized_future=normalized_future,
+            underlying_index_figi=underlying_index_figi,
+            metadata=metadata,
+        ),
+    )
+
+
 def query_by_isin(
     isin_code: str,
     exchange_code: str,
@@ -305,6 +415,59 @@ def _missing_openfigi_secret_message(secret_name: str) -> str:
         f"{secret_name} needs to be set in {OPENFIGI_SECRET_SETUP_URL} "
         "before using OpenFIGI."
     )
+
+
+def _ensure_normalized_openfigi_result(item: Mapping[str, Any]) -> dict[str, Any]:
+    if "security_market_sector" in item or "unique_identifier" in item:
+        return dict(item)
+    return normalize_openfigi_result(dict(item))
+
+
+def _require_openfigi_market_sector(
+    item: Mapping[str, Any],
+    *,
+    expected_market_sector: str,
+) -> None:
+    market_sector = item.get("security_market_sector")
+    if str(market_sector).strip().casefold() != expected_market_sector.casefold():
+        figi = item.get("figi") or item.get("unique_identifier")
+        raise ValueError(
+            f"OpenFIGI row {figi!r} must have marketSector "
+            f"{expected_market_sector!r}, got {market_sector!r}."
+        )
+
+
+def _openfigi_reference_metadata(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "openfigi": {
+            "figi": item.get("figi"),
+            "composite": item.get("composite"),
+            "share_class": item.get("share_class"),
+            "ticker": item.get("ticker"),
+            "name": item.get("name"),
+            "exchange_code": item.get("exchange_code"),
+            "security_type": item.get("security_type"),
+            "security_type_2": item.get("security_type_2"),
+            "security_market_sector": item.get("security_market_sector"),
+            "security_description": item.get("security_description"),
+            "unique_id": item.get("unique_id"),
+            "unique_id_fut_opt": item.get("unique_id_fut_opt"),
+            "metadata": item.get("metadata"),
+            "raw_payload": item.get("raw_payload"),
+        }
+    }
+
+
+def _future_openfigi_metadata(
+    *,
+    normalized_future: Mapping[str, Any],
+    underlying_index_figi: str,
+    metadata: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    payload = dict(metadata or {})
+    payload.setdefault("underlying_index_figi", underlying_index_figi)
+    payload.setdefault("openfigi", _openfigi_reference_metadata(normalized_future)["openfigi"])
+    return payload
 
 
 def _openfigi_mapping_batches(
@@ -396,7 +559,9 @@ def _rate_limit_wait(response: requests.Response, *, default: float) -> float:
 __all__ = [
     "OPENFIGI_API_KEY_SECRET_NAME",
     "OPENFIGI_API_URL_ENV",
+    "OPENFIGI_INDEX_MARKET_SECTOR",
     "OPENFIGI_MAPPING_URL",
+    "OPENFIGI_PROVIDER_NAME",
     "OPENFIGI_SEARCH_URL",
     "OPENFIGI_SECRET_SETUP_URL",
     "OpenFigiConfigurationError",
@@ -410,5 +575,8 @@ __all__ = [
     "query_by_figi",
     "query_by_isin",
     "query_figi",
+    "register_index_from_figi",
+    "register_index_future_from_figis",
     "search_figi",
+    "upsert_index_from_openfigi_result",
 ]

@@ -43,6 +43,14 @@ from .assets import (
     OpenFigiDetailsUpsert,
 )
 from .calendars import Calendar, CalendarCreate, CalendarUpdate, CalendarUpsert
+from .derivatives import (
+    Future,
+    FutureCreate,
+    FutureKind,
+    FutureSettlementMethod,
+    FutureSettlementModel,
+    FutureUpsert,
+)
 from .execution import (
     ExecutionError,
     ExecutionErrorCreate,
@@ -65,6 +73,7 @@ from .execution import (
     TradeUpdate,
     TradeUpsert,
 )
+from .indices import Index, IndexCreate, IndexUpdate, IndexUpsert
 from .market_metadata import (
     InstrumentsConfiguration,
     InstrumentsConfigurationCreate,
@@ -143,6 +152,16 @@ __all__ = [
     "FundCreate",
     "FundUpdate",
     "FundUpsert",
+    "Future",
+    "FutureCreate",
+    "FutureKind",
+    "FutureSettlementMethod",
+    "FutureSettlementModel",
+    "FutureUpsert",
+    "Index",
+    "IndexCreate",
+    "IndexUpdate",
+    "IndexUpsert",
     "InstrumentsConfiguration",
     "InstrumentsConfigurationCreate",
     "InstrumentsConfigurationUpdate",

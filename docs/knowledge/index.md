@@ -45,8 +45,12 @@ new MetaTable-facing APIs unless a more specific ADR overrides it.
   DataNode tables keyed by `Asset.unique_identifier`, including `AssetSnapshot`.
 - [Client](client/index.md): client-facing models and HTTP/platform object
   wrappers.
+- [Derivatives](derivatives/index.md): futures and derivative contract detail
+  tables that extend canonical assets and may reference non-asset underlyings.
 - [Execution](execution/index.md): order managers, target quantities, orders,
   order events, trades, and execution errors.
+- [Indexes](indices/index.md): non-tradable index reference data used by
+  derivative underlyings.
 - [Models](models/index.md): SQLAlchemy market-domain models and MetaTable
   registration order.
 - [Platform](platform/index.md): shared Main Sequence integration primitives,

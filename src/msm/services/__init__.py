@@ -57,6 +57,8 @@ _EXPORTS = {
     "holdings_source_table_kwargs": ".holdings",
     "initialize_data_node_source_table": ".holdings",
     "list_asset_category_memberships": ".asset_categories",
+    "register_index_from_figi": ".assets.openfigi",
+    "register_index_future_from_figis": ".assets.openfigi",
     "remove_asset_category_membership": ".asset_categories",
     "remove_asset_category_membership_by_pair": ".asset_categories",
     "replace_asset_category_memberships": ".asset_categories",
