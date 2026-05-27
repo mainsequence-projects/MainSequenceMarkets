@@ -12,6 +12,8 @@ and this project follows versioned releases.
 - Added user-facing Pydantic row APIs under `msm.api.*` for every markets
   MetaTable, including asset reference data, accounts, portfolios, funds,
   metadata/configuration, and execution records.
+- Added explicit `/openapi.json` metadata and documentation coverage for the
+  local `apps/v1` FastAPI surface.
 - Added shared typed row helpers for explicit schema bootstrap, create/upsert,
   lookup, filter, update, and delete operations over the active markets runtime.
 - Added `examples/api/typed_metatable_rows.py` to demonstrate the class-owned
