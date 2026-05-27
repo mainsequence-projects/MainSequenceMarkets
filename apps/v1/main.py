@@ -5,6 +5,7 @@ from importlib.metadata import version
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
+from apps.v1.routers.asset_categories import router as asset_categories_router
 from apps.v1.routers.assets import router as assets_router
 
 API_TITLE = "MainSequence Markets Public API"
@@ -18,7 +19,11 @@ API_TAGS = [
     {
         "name": "asset",
         "description": "Asset catalog endpoints exposed through the `apps/v1` FastAPI surface.",
-    }
+    },
+    {
+        "name": "asset-category",
+        "description": "Asset category endpoints exposed through the `apps/v1` FastAPI surface.",
+    },
 ]
 
 
@@ -40,6 +45,7 @@ def create_app() -> FastAPI:
         },
     )
     app.include_router(assets_router, prefix="/api/v1")
+    app.include_router(asset_categories_router, prefix="/api/v1")
 
     def custom_openapi():
         if app.openapi_schema is not None:

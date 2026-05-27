@@ -94,6 +94,15 @@ Main Sequence secret `OPEN_FIGI_API_KEY` in
 `www.main-sequence.app/app/main_sequence_workbench/secrets` before running the
 workflow. Cleanup is disabled by default.
 
+The local FastAPI surface under `apps/v1` now exposes the migrated asset and
+asset-category registry routes. Keep the route layer thin and put reusable
+catalog/category logic under `src/msm/services`. The implemented category detail
+flow uses `GET /api/v1/asset-category/{uid}/` plus the nested asset list route
+`GET /api/v1/asset/?categories__uid=<uid>`.
+
+See [FastAPI v1](../fast_api/v1/index.md) for the current route inventory and
+contract notes.
+
 ## Currency Assets
 
 Single currencies and currency spot pairs are separate assets. Create or resolve
@@ -193,6 +202,8 @@ memberships = AssetCategory.replace_memberships(
 For a step-by-step membership lifecycle, run
 `examples/assets/asset_category_workflow.py`. It creates a category, adds
 assets, removes assets, and prints the category contents after each change.
+Asset examples reuse shared identifiers and FIGI constants from
+`examples/assets/utils/reference_data.py`.
 
 ## Accounts, Funds, And Portfolios
 

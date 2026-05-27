@@ -27,6 +27,8 @@ nav:
   - Tutorial:
       - Overview: tutorial/index.md
       - Market Workflows: tutorial/market_workflows.md
+  - FastAPI:
+      - v1: fast_api/v1/index.md
   - Knowledge:
       - Overview: knowledge/index.md
       - Accounts: knowledge/accounts/index.md

@@ -15,21 +15,17 @@ from examples.platform.bootstrap import (
     EXAMPLE_AUTO_REGISTER_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
+from examples.assets.utils import (
+    EXAMPLE_CURRENCY_ASSET_TYPE,
+    EXAMPLE_EURUSD_OPENFIGI_FIGI,
+    EXAMPLE_EUR_CURRENCY,
+    EXAMPLE_USD_CURRENCY,
+)
 
 os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
 if TYPE_CHECKING:
     from msm.api.assets import Asset, OpenFigiDetails
-
-EXAMPLE_EURUSD_OPENFIGI_FIGI = "BBG0013HGRV5"
-EXAMPLE_EUR_CURRENCY = {
-    "code": "EUR",
-    "currency_name": "Euro",
-}
-EXAMPLE_USD_CURRENCY = {
-    "code": "USD",
-    "currency_name": "US Dollar",
-}
 
 
 def create_eurusd_currency_spot() -> dict[str, Any]:
@@ -39,11 +35,7 @@ def create_eurusd_currency_spot() -> dict[str, Any]:
     from msm.data_nodes.assets import AssetSnapshot
     from msm.services.assets.openfigi import query_by_figi
 
-    currency_asset_type = AssetType.upsert(
-        asset_type="currency",
-        display_name="Currency",
-        description="Single currency assets used as base or quote legs.",
-    )
+    currency_asset_type = AssetType.upsert(**EXAMPLE_CURRENCY_ASSET_TYPE)
     base_currency = _upsert_currency_asset(EXAMPLE_EUR_CURRENCY)
     quote_currency = _upsert_currency_asset(EXAMPLE_USD_CURRENCY)
 
@@ -145,8 +137,7 @@ def _asset_snapshot_payloads(
             "time_index": snapshot_time,
             "unique_identifier": eurusd_asset.unique_identifier,
             "name": (
-                f"{EXAMPLE_EUR_CURRENCY['currency_name']} / "
-                f"{EXAMPLE_USD_CURRENCY['currency_name']}"
+                f"{EXAMPLE_EUR_CURRENCY['currency_name']} / {EXAMPLE_USD_CURRENCY['currency_name']}"
             ),
             "ticker": f"{EXAMPLE_EUR_CURRENCY['code']}/{EXAMPLE_USD_CURRENCY['code']}",
             "exchange_code": normalized_openfigi["exchange_code"] or "CURRENCY",

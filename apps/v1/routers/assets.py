@@ -55,10 +55,21 @@ def get_assets(
             description="Zero-based starting offset into the filtered asset list.",
         ),
     ] = 0,
+    categories__uid: Annotated[
+        str | None,
+        Query(
+            description="Optional asset category uid filter used by nested category asset tables.",
+        ),
+    ] = None,
 ) -> list[AssetListRow]:
     if response_format != "frontend_list":
         raise HTTPException(
             status_code=400,
             detail="Only response_format=frontend_list is implemented for GET /api/v1/asset/.",
         )
-    return list_assets(search=search, limit=limit, offset=offset)
+    return list_assets(
+        search=search,
+        limit=limit,
+        offset=offset,
+        category_uid=categories__uid,
+    )

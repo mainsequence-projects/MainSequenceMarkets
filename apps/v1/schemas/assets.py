@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict
 class AssetListRow(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    id: str
     uid: UUID
     unique_identifier: str
     figi: str | None = None

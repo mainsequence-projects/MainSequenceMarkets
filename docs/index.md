@@ -54,6 +54,7 @@ access to registered table handles or raw platform operation payloads.
 
 - [Getting Started](getting-started.md)
 - [Tutorial](tutorial/index.md)
+- [FastAPI v1](fast_api/v1/index.md)
 - [Knowledge Base](knowledge/index.md)
 - [Architecture Decision Records](ADR/README.md)
 - [Changelog](changelog.md)

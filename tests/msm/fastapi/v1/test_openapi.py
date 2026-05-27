@@ -39,3 +39,33 @@ def test_openapi_json_documents_asset_list_endpoint() -> None:
     assert asset_list_operation["responses"]["400"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/ErrorResponse"
     }
+
+
+def test_openapi_json_documents_asset_category_routes() -> None:
+    client = TestClient(app)
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    asset_category_list_operation = payload["paths"]["/api/v1/asset-category/"]["get"]
+    assert asset_category_list_operation["summary"] == "List asset categories"
+    assert asset_category_list_operation["operationId"] == "listAssetCategories"
+    assert asset_category_list_operation["tags"] == ["asset-category"]
+    assert asset_category_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AssetCategoryListResponse"
+    }
+
+    asset_category_detail_operation = payload["paths"]["/api/v1/asset-category/{uid}/"]["get"]
+    assert asset_category_detail_operation["summary"] == "Get asset category detail"
+    assert asset_category_detail_operation["operationId"] == "getAssetCategoryDetail"
+    assert asset_category_detail_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AssetCategoryDetailResponse"
+    }
+
+    asset_category_bulk_delete_operation = payload["paths"]["/api/v1/asset-category/bulk-delete/"]["post"]
+    assert asset_category_bulk_delete_operation["summary"] == "Bulk delete asset categories"
+    assert asset_category_bulk_delete_operation["operationId"] == "bulkDeleteAssetCategories"
+    assert asset_category_bulk_delete_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/BulkDeleteAssetCategoriesResponse"
+    }

@@ -15,40 +15,25 @@ from examples.platform.bootstrap import (
     EXAMPLE_AUTO_REGISTER_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
+from examples.assets.utils import (
+    EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX,
+    EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
+    EXAMPLE_CRYPTO_ASSETS,
+    EXAMPLE_CRYPTO_ASSET_TYPE,
+    EXAMPLE_EQUITY_ASSET_TYPE,
+    EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
+    EXAMPLE_OPENFIGI_EQUITY_FIGI,
+)
 
 os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
 if TYPE_CHECKING:
     from msm.api.assets import OpenFigiDetails
 
-EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX = "example-asset-"
-EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER = f"{EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX}btc"
-EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER = f"{EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX}eth"
 EXAMPLE_ASSET_TYPES = [
-    {
-        "asset_type": "crypto",
-        "display_name": "Crypto",
-        "description": "Crypto spot and token assets used by the example workflow.",
-        "metadata_json": {"source": "examples/assets/asset_crud_workflow.py"},
-    },
-    {
-        "asset_type": "equity",
-        "display_name": "Equity",
-        "description": "Listed equity assets resolved through OpenFIGI.",
-        "metadata_json": {"source": "examples/assets/asset_crud_workflow.py"},
-    },
+    EXAMPLE_CRYPTO_ASSET_TYPE,
+    EXAMPLE_EQUITY_ASSET_TYPE,
 ]
-EXAMPLE_ASSETS = [
-    {
-        "unique_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
-        "asset_type": "crypto",
-    },
-    {
-        "unique_identifier": EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
-        "asset_type": "crypto",
-    },
-]
-EXAMPLE_OPENFIGI_FIGI = "BBG00FNFPQH4"
 
 
 def create_query_assets(
@@ -61,9 +46,9 @@ def create_query_assets(
     from msm.data_nodes.assets import AssetSnapshot
     from msm.services.assets.openfigi import query_by_figi
 
-    normalized_openfigi = query_by_figi(EXAMPLE_OPENFIGI_FIGI)
+    normalized_openfigi = query_by_figi(EXAMPLE_OPENFIGI_EQUITY_FIGI)
     registered_asset_types = [AssetType.upsert(**payload) for payload in EXAMPLE_ASSET_TYPES]
-    created_assets = [Asset.upsert(**payload) for payload in EXAMPLE_ASSETS]
+    created_assets = [Asset.upsert(**payload) for payload in EXAMPLE_CRYPTO_ASSETS]
     openfigi_asset = Asset.upsert(
         unique_identifier=normalized_openfigi["unique_identifier"],
         asset_type="equity",
@@ -97,7 +82,7 @@ def create_query_assets(
     created_asset_listing = [
         Asset.get_by_unique_identifier(unique_identifier=payload["unique_identifier"])
         for payload in [
-            *EXAMPLE_ASSETS,
+            *EXAMPLE_CRYPTO_ASSETS,
             {"unique_identifier": normalized_openfigi["unique_identifier"]},
         ]
     ]

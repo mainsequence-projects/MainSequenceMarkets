@@ -26,6 +26,9 @@ and this project follows versioned releases.
   metadata/configuration, and execution records.
 - Added explicit `/openapi.json` metadata and documentation coverage for the
   local `apps/v1` FastAPI surface.
+- Added the migrated `apps/v1` asset-category API surface, including list,
+  detail, create, patch, delete, and bulk-delete routes plus
+  `categories__uid` filtering on `GET /api/v1/asset/`.
 - Added shared typed row helpers for explicit schema bootstrap, create/upsert,
   lookup, filter, update, and delete operations over the active markets runtime.
 - Added `examples/api/typed_metatable_rows.py` to demonstrate the class-owned
@@ -40,6 +43,9 @@ and this project follows versioned releases.
 - Added `examples/assets/asset_category_workflow.py` to demonstrate creating an
   asset category, adding assets, removing assets, and printing membership after
   each change.
+- Added `examples/assets/utils/reference_data.py` so asset examples reuse the
+  same asset type payloads, asset identifiers, currency definitions, and FIGI
+  constants.
 - Added an offline platform example for inspecting SDK-derived markets
   MetaTable model names.
 - Added `msm.create_schemas(...)` to bootstrap markets MetaTables and return a
@@ -80,7 +86,7 @@ and this project follows versioned releases.
 - Added OpenFIGI helpers to register index rows from FIGI and create
   index-underlying futures from index/future FIGIs while keeping contract terms
   explicit.
-- Added `examples/derivatives/index_future_from_openfigi.py` for creating an
+- Added `examples/assets/derivatives/index_future_from_openfigi.py` for creating an
   index-underlying future from OpenFIGI FIGIs.
 - Documented the library-wide API style: users work with typed `msm.api` row
   objects, while schema code works with `msm.models.*Table` declarations.
@@ -101,6 +107,9 @@ and this project follows versioned releases.
 - Grouped asset-related SQLAlchemy model declarations under the
   `msm.models.assets` package while keeping aggregate `msm.models` table exports
   stable.
+- Moved the `apps/v1` asset and asset-category catalog composition into
+  `src/msm/services/asset_master_lists.py` so the FastAPI layer stays a thin
+  resolver over reusable `src/` workflows.
 - Moved detailed `AssetSnapshot` documentation from the asset identity overview
   into a dedicated Asset-Indexed DataNodes knowledge page covering
   `AssetIndexedDataNode`, canonical asset source-table foreign keys, namespace
