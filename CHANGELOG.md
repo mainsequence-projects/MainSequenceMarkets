@@ -42,7 +42,7 @@ and this project follows versioned releases.
   listing, and optional cleanup of temporary custom assets.
 - Added `examples/assets/asset_category_workflow.py` to demonstrate creating an
   asset category, adding assets, removing assets, and printing membership after
-  each change.
+  each change without leaving the category empty during the normal run.
 - Added `examples/assets/utils/reference_data.py` so asset examples reuse the
   same asset type payloads, asset identifiers, currency definitions, and FIGI
   constants.

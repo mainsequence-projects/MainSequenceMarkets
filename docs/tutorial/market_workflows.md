@@ -201,8 +201,9 @@ memberships = AssetCategory.replace_memberships(
 
 For a step-by-step membership lifecycle, run
 `examples/assets/asset_category_workflow.py`. It creates a category, adds
-assets, removes assets, and prints the category contents after each change.
-Asset examples reuse shared identifiers and FIGI constants from
+assets, removes assets, and prints the category contents after each change. The
+normal run leaves assets in the category unless the cleanup flag is used. Asset
+examples reuse shared identifiers and FIGI constants from
 `examples/assets/utils/reference_data.py`.
 
 ## Accounts, Funds, And Portfolios
