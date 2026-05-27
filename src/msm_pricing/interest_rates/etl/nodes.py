@@ -8,11 +8,11 @@ from pydantic import BaseModel, Field
 
 from mainsequence.client.models_tdag import ColumnMetaData, TableMetaData
 from mainsequence.client.utils import DataFrequency
-from msm.asset_scope import asset_field
-from msm.markets_data_node import (
-    MarketDataNode,
-    MarketDataNodeConfiguration,
+from msm.asset_indexed_data_node import (
+    AssetIndexedDataNode,
+    AssetIndexedDataNodeConfiguration,
 )
+from msm.asset_scope import asset_field
 from mainsequence.tdag import APIDataNode, DataNode
 
 from .curve_codec import compress_curve_to_string
@@ -24,7 +24,7 @@ from .registry import (
 UTC = pytz.UTC
 
 
-class CurveConfig(MarketDataNodeConfiguration):
+class CurveConfig(AssetIndexedDataNodeConfiguration):
     curve_const: str = Field(
         ...,
         description="Constant name, e.g. ZERO_CURVE__VALMER_TIIE_28",
@@ -57,7 +57,7 @@ class RateConfig(BaseModel):
     )
 
 
-class FixingRateConfig(MarketDataNodeConfiguration):
+class FixingRateConfig(AssetIndexedDataNodeConfiguration):
     rates: list[RateConfig] = Field(
         ...,
         title="Interest rates build",
@@ -66,7 +66,7 @@ class FixingRateConfig(MarketDataNodeConfiguration):
     )
 
 
-class DiscountCurvesNode(MarketDataNode):
+class DiscountCurvesNode(AssetIndexedDataNode):
     OFFSET_START = datetime.datetime(1990, 1, 1, tzinfo=UTC)
 
     def __init__(self, curve_config: CurveConfig, *args, **kwargs):
@@ -131,7 +131,7 @@ class DiscountCurvesNode(MarketDataNode):
         ]
 
 
-class FixingRatesNode(MarketDataNode):
+class FixingRatesNode(AssetIndexedDataNode):
     OFFSET_START = datetime.datetime(1990, 1, 1, tzinfo=UTC)
 
     def __init__(self, rates_config: FixingRateConfig, *args, **kwargs):

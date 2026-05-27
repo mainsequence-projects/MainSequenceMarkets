@@ -15,8 +15,8 @@ _EXPORTS = {
     "AssetSnapshotInput": ".assets",
     "AssetTimestampedDataNode": ".assets",
     "AssetTimestampedFrameMixin": ".assets",
+    "DataNodeTableContract": ".contracts",
     "FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT": ".contracts",
-    "MarketDataNodeTableContract": ".contracts",
     "POSITION_EXPOSURE_TABLE_CONTRACT": ".contracts",
     "source_table_initialization_kwargs": ".contracts",
 }

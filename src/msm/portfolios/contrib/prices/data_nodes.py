@@ -11,14 +11,14 @@ from pydantic import ConfigDict, Field
 from tqdm import tqdm
 
 from mainsequence.client.models_tdag import UpdateStatistics
+from msm.asset_indexed_data_node import (
+    AssetIndexedDataNode,
+    AssetIndexedDataNodeConfiguration,
+)
 from msm.asset_scope import (
     asset_calendar,
     asset_field,
     require_asset_category_scope,
-)
-from msm.markets_data_node import (
-    MarketDataNode,
-    MarketDataNodeConfiguration,
 )
 from msm.portfolios.models import AssetsConfiguration
 from msm.portfolios.utils import TIMEDELTA
@@ -32,7 +32,7 @@ from mainsequence.tdag.data_nodes.utils import (
 FULL_CALENDAR = "24/7"
 
 
-class InterpolatedPricesConfig(MarketDataNodeConfiguration):
+class InterpolatedPricesConfig(AssetIndexedDataNodeConfiguration):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     bar_frequency_id: str
@@ -48,7 +48,7 @@ class InterpolatedPricesConfig(MarketDataNodeConfiguration):
     )
 
 
-class ExternalPricesConfig(MarketDataNodeConfiguration):
+class ExternalPricesConfig(AssetIndexedDataNodeConfiguration):
     artifact_name: str
     bucket_name: str
     asset_category_unique_id: str
@@ -133,7 +133,6 @@ def get_interpolated_prices_timeseries(
                 )
             )
         else:
-
             return InterpolatedPrices(
                 interpolation_config=InterpolatedPricesConfig(
                     asset_list=resolved_asset_list,
@@ -278,7 +277,6 @@ class UpsampleAndInterpolation:
             pd.DataFrame: Interpolated and upsampled bars dataframe.
         """
         for col in self.TIMESTAMP_COLS:
-
             try:
                 if col in tmp_df.columns:
                     s = pd.to_numeric(tmp_df[col], errors="coerce")
@@ -430,7 +428,6 @@ def interpolate_daily_bars(
 
     null_index = bars_df[bars_df["open_time"].isnull()].index
     if len(null_index) > 0:
-
         # Use the market_open that corresponds to each market_close index
         bars_df.loc[null_index, "open_time"] = restricted_schedule.loc[null_index, "market_open"]
 
@@ -590,7 +587,7 @@ def interpolate_intraday_bars(
     return interpolated_data
 
 
-class InterpolatedPrices(MarketDataNode):
+class InterpolatedPrices(AssetIndexedDataNode):
     """
     Handles interpolated prices for assets.
     """
@@ -614,9 +611,9 @@ class InterpolatedPrices(MarketDataNode):
         asset_list = interpolation_config.asset_list
         source_bars_data_node = interpolation_config.source_bars_data_node
 
-        assert (
-            "d" in bar_frequency_id or "m" in bar_frequency_id
-        ), f"bar_frequency_id={bar_frequency_id} should be 'd for days' or 'm for min'"
+        assert "d" in bar_frequency_id or "m" in bar_frequency_id, (
+            f"bar_frequency_id={bar_frequency_id} should be 'd for days' or 'm for min'"
+        )
         if source_bars_data_node is None:
             raise ValueError(
                 "InterpolatedPrices requires an explicit source_bars_data_node. "
@@ -624,9 +621,9 @@ class InterpolatedPrices(MarketDataNode):
                 "MarketsTimeSeries identifier, or inject a normalized source bars DataNode."
             )
         if asset_category_unique_id is None:
-            assert (
-                asset_list is not None
-            ), f"asset_category_unique_id={asset_category_unique_id} should not be None or asset_list should be defined"
+            assert asset_list is not None, (
+                f"asset_category_unique_id={asset_category_unique_id} should not be None or asset_list should be defined"
+            )
 
         self.asset_category_unique_id = asset_category_unique_id
         self.interpolator = UpsampleAndInterpolation(
@@ -856,8 +853,7 @@ class InterpolatedPrices(MarketDataNode):
         return prices
 
 
-class ExternalPrices(MarketDataNode):
-
+class ExternalPrices(AssetIndexedDataNode):
     def __init__(self, external_prices_config: ExternalPricesConfig, *args, **kwargs):
         self.external_prices_config = external_prices_config
         self.artifact_name = external_prices_config.artifact_name

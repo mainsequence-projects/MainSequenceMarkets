@@ -22,8 +22,6 @@ Platform utilities answer these questions:
   dimension.
 - `msm.asset_indexed_data_node`: shared DataNode and configuration behavior for
   publishers whose persisted identity includes an asset `unique_identifier`.
-- `msm.markets_data_node`: temporary compatibility shim for the old
-  `MarketDataNode` and `MarketDataNodeConfiguration` imports.
 - `msm.cli`: explicit command-line helpers, including
   `msm copy-msm-skills` for installing packaged ms-markets agent skills into a
   host project.
@@ -36,9 +34,9 @@ translation.
 
 Asset-indexed DataNode subclasses should use `AssetIndexedDataNode` and
 `AssetIndexedDataNodeConfiguration` for consistent asset scope, record
-definitions, and storage metadata. New code should not import the old
-`MarketDataNode` names unless it is intentionally preserving compatibility with
-existing callers.
+definitions, and storage metadata. The broad legacy compatibility names were
+removed; asset-indexed DataNode code should use the explicit asset-indexed base
+classes directly.
 
 See [MetaTable Registration](meta_table_registration.md) for the registration
 workflow and the two supported management modes.

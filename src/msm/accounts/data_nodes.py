@@ -8,11 +8,11 @@ from uuid import UUID
 import pandas as pd
 
 from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
-from msm.data_nodes._time import normalize_datetime64_ns_utc
-from msm.markets_data_node import (
-    MarketDataNode,
-    MarketDataNodeConfiguration,
+from msm.asset_indexed_data_node import (
+    AssetIndexedDataNode,
+    AssetIndexedDataNodeConfiguration,
 )
+from msm.data_nodes._time import normalize_datetime64_ns_utc
 from mainsequence.tdag.data_nodes import (
     DataNode,
     DataNodeMetaData,
@@ -33,9 +33,7 @@ from msm.settings import markets_data_node_identifier
 
 ACCOUNT_HOLDINGS_TIME_INDEX_NAME = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.time_index_name
 ACCOUNT_HOLDINGS_INDEX_NAMES = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.dynamic_table_index_names
-ACCOUNT_HOLDINGS_COLUMN_DTYPES_MAP = (
-    ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_dtypes_map
-)
+ACCOUNT_HOLDINGS_COLUMN_DTYPES_MAP = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_dtypes_map
 ACCOUNT_HOLDINGS_COLUMN_LABELS = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_labels
 ACCOUNT_HOLDINGS_COLUMN_DESCRIPTIONS = (
     ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_descriptions
@@ -45,9 +43,7 @@ VIRTUAL_FUND_HOLDINGS_TIME_INDEX_NAME = FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.
 VIRTUAL_FUND_HOLDINGS_INDEX_NAMES = (
     FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.dynamic_table_index_names
 )
-VIRTUAL_FUND_HOLDINGS_COLUMN_DTYPES_MAP = (
-    FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_dtypes_map
-)
+VIRTUAL_FUND_HOLDINGS_COLUMN_DTYPES_MAP = FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_dtypes_map
 VIRTUAL_FUND_HOLDINGS_COLUMN_LABELS = FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_labels
 VIRTUAL_FUND_HOLDINGS_COLUMN_DESCRIPTIONS = (
     FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_descriptions
@@ -62,7 +58,7 @@ SCHEMA_BOOTSTRAP_ROW_IDENTIFIER = "__schema_bootstrap__"
 SCHEMA_BOOTSTRAP_TIME_INDEX = dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
 
 
-class HoldingsDataNodeConfiguration(MarketDataNodeConfiguration):
+class HoldingsDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
     """Configuration base for SDK-created holdings data nodes."""
 
     time_index_name: str
@@ -82,7 +78,7 @@ class HoldingsDataNodeConfiguration(MarketDataNodeConfiguration):
         return {record.column_name: record.dtype for record in self.records}
 
 
-class HoldingsDataNode(MarketDataNode):
+class HoldingsDataNode(AssetIndexedDataNode):
     """Base class for holdings tables created through the standard DataNode path."""
 
     def __init__(
@@ -144,11 +140,11 @@ class HoldingsDataNode(MarketDataNode):
             raise TypeError(f"{cls.__name__} requires a HoldingsDataNodeConfiguration.")
         if config.time_index_name != cls._required_time_index_name():
             raise ValueError(
-                f"{cls.__name__} requires time_index_name " f"{cls._required_time_index_name()!r}."
+                f"{cls.__name__} requires time_index_name {cls._required_time_index_name()!r}."
             )
         if config.index_names != cls._required_index_names():
             raise ValueError(
-                f"{cls.__name__} requires index_names " f"{cls._required_index_names()!r}."
+                f"{cls.__name__} requires index_names {cls._required_index_names()!r}."
             )
         _validate_required_records(
             records=list(config.records),
@@ -357,7 +353,7 @@ class HoldingsDataNode(MarketDataNode):
         time_index_name = _get_mapping_or_attr(source_config, "time_index_name")
         if time_index_name != config.time_index_name:
             errors.append(
-                "time_index_name " f"{time_index_name!r} does not match {config.time_index_name!r}"
+                f"time_index_name {time_index_name!r} does not match {config.time_index_name!r}"
             )
 
         index_names = list(_get_mapping_or_attr(source_config, "index_names") or [])
@@ -369,7 +365,7 @@ class HoldingsDataNode(MarketDataNode):
             actual_dtype = column_dtypes_map.get(column_name)
             if actual_dtype != expected_dtype:
                 errors.append(
-                    f"{column_name!r} dtype {actual_dtype!r} does not match " f"{expected_dtype!r}"
+                    f"{column_name!r} dtype {actual_dtype!r} does not match {expected_dtype!r}"
                 )
 
         if errors:
@@ -698,14 +694,14 @@ def _validate_holdings_frame(
     ]
     if missing_columns:
         raise ValueError(
-            "Holdings frame is missing required columns: " f"{', '.join(missing_columns)}."
+            f"Holdings frame is missing required columns: {', '.join(missing_columns)}."
         )
 
     flat = _normalize_config_values(flat, config=config)
     frame = flat.set_index(config.index_names).sort_index()
     if frame.index.has_duplicates:
         raise ValueError(
-            "Holdings frame contains duplicate rows for index contract " f"{config.index_names}."
+            f"Holdings frame contains duplicate rows for index contract {config.index_names}."
         )
     return _attach_logical_dtype_contract(frame, config=config)
 

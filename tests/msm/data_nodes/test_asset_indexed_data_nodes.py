@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import os
 
 import pytest
@@ -14,7 +15,6 @@ from mainsequence.tdag.data_nodes import RecordDefinition, SourceTableForeignKey
 
 from msm.asset_indexed_data_node import (
     ASSET_UNIQUE_IDENTIFIER_DIMENSION,
-    AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
     asset_unique_identifier_foreign_key,
 )
@@ -26,10 +26,6 @@ from msm.data_nodes.assets import (
     AssetSnapshot,
 )
 from msm.execution.data_nodes import ExecutionErrors, OrderEvents, Orders, Trades
-from msm.markets_data_node import (
-    MarketDataNode,
-    MarketDataNodeConfiguration,
-)
 from msm.models import AssetTable
 from msm.portfolios.data_nodes.portfolio_weights import PortfolioWeights
 from msm.portfolios.data_nodes.portfolios import PortfoliosDataNode
@@ -66,11 +62,22 @@ def _asset_config(
     )
 
 
-def test_asset_identity_dimension_is_shared_with_compatibility_module() -> None:
+def test_asset_identity_dimension_is_shared_with_settings() -> None:
     assert ASSET_UNIQUE_IDENTIFIER_DIMENSION == SETTINGS_ASSET_DIMENSION
     assert ASSET_UNIQUE_IDENTIFIER == SETTINGS_ASSET_DIMENSION
-    assert MarketDataNodeConfiguration is AssetIndexedDataNodeConfiguration
-    assert MarketDataNode is AssetIndexedDataNode
+
+
+def test_market_data_node_compatibility_names_are_removed() -> None:
+    asset_indexed_module = importlib.import_module("msm.asset_indexed_data_node")
+
+    legacy_node_name = "Market" + "DataNode"
+    legacy_config_name = legacy_node_name + "Configuration"
+    legacy_module_name = "msm." + "markets_" + "data_node"
+
+    assert not hasattr(asset_indexed_module, legacy_node_name)
+    assert not hasattr(asset_indexed_module, legacy_config_name)
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module(legacy_module_name)
 
 
 @pytest.mark.parametrize(
@@ -94,9 +101,8 @@ def test_market_data_node_identifiers_use_default_namespace(
     logical_identifier: str,
 ) -> None:
     assert node_cls.__data_node_identifier__ == logical_identifier
-    assert (
-        node_cls.default_config().node_metadata.identifier
-        == markets_data_node_identifier(logical_identifier)
+    assert node_cls.default_config().node_metadata.identifier == markets_data_node_identifier(
+        logical_identifier
     )
 
 
@@ -170,5 +176,5 @@ def test_asset_data_node_config_rejects_missing_asset_identity_record() -> None:
         _asset_config(records=_asset_records(include_unique_identifier=False))
 
 
-def test_compatibility_market_config_does_not_add_hidden_asset_foreign_key() -> None:
-    assert MarketDataNodeConfiguration().foreign_keys is None
+def test_asset_indexed_config_does_not_add_hidden_asset_foreign_key() -> None:
+    assert AssetIndexedDataNodeConfiguration().foreign_keys is None

@@ -16,8 +16,8 @@ Current market runtime boundaries are:
 - `msm.repositories`: compiled SQL operation builders for MetaTable execution.
 - `msm.services`: workflow helpers built on repository operations and DataNode
   contracts.
-- `msm.markets_data_node` and domain DataNodes: historical and timestamped
-  table behavior.
+- `msm.asset_indexed_data_node` and domain DataNodes: historical and
+  timestamped table behavior.
 
 ## Removed Runtime Surface
 

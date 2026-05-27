@@ -11,8 +11,8 @@ import pandas as pd
 from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
 from msm.data_nodes import (
     ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT,
+    DataNodeTableContract,
     FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT,
-    MarketDataNodeTableContract,
     source_table_initialization_kwargs,
 )
 
@@ -55,7 +55,7 @@ def initialize_data_node_source_table(
 
 
 def holdings_source_table_kwargs(
-    contract: MarketDataNodeTableContract,
+    contract: DataNodeTableContract,
 ) -> dict[str, object]:
     return source_table_initialization_kwargs(contract)
 
@@ -102,7 +102,7 @@ def build_fund_holdings_frame(
 
 def build_holdings_frame(
     *,
-    contract: MarketDataNodeTableContract,
+    contract: DataNodeTableContract,
     holdings_date: dt.datetime | str,
     owner_uid: UUID | str,
     positions: Sequence[Mapping[str, Any] | Any],
@@ -152,7 +152,7 @@ def build_holdings_frame(
 def validate_holdings_frame(
     data_frame: pd.DataFrame,
     *,
-    contract: MarketDataNodeTableContract,
+    contract: DataNodeTableContract,
 ) -> pd.DataFrame:
     frame = data_frame.copy()
     index_names = contract.dynamic_table_index_names
@@ -167,14 +167,11 @@ def validate_holdings_frame(
 
     flat = frame.reset_index()
     missing_columns = [
-        column_name
-        for column_name in contract.column_dtypes_map
-        if column_name not in flat.columns
+        column_name for column_name in contract.column_dtypes_map if column_name not in flat.columns
     ]
     if missing_columns:
         raise ValueError(
-            "Holdings frame is missing required columns: "
-            f"{', '.join(missing_columns)}."
+            f"Holdings frame is missing required columns: {', '.join(missing_columns)}."
         )
 
     for column_name, dtype in contract.column_dtypes_map.items():
@@ -208,14 +205,13 @@ def validate_holdings_frame(
     frame = flat.set_index(index_names).sort_index()
     if frame.index.has_duplicates:
         raise ValueError(
-            "Holdings frame contains duplicate rows for index contract "
-            f"{index_names}."
+            f"Holdings frame contains duplicate rows for index contract {index_names}."
         )
     frame.attrs[LOGICAL_COLUMN_DTYPES_ATTR] = dict(contract.column_dtypes_map)
     return frame
 
 
-def _owner_index_name(contract: MarketDataNodeTableContract) -> str:
+def _owner_index_name(contract: DataNodeTableContract) -> str:
     try:
         return contract.dynamic_table_index_names[1]
     except IndexError as exc:

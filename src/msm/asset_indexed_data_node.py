@@ -535,16 +535,11 @@ class AssetIndexedDataNode(DataNode):
         )
 
 
-MarketDataNodeConfiguration = AssetIndexedDataNodeConfiguration
-MarketDataNode = AssetIndexedDataNode
-
 __all__ = [
     "ASSET_UNIQUE_IDENTIFIER_DIMENSION",
     "AssetIndexedDataNode",
     "AssetIndexedDataNodeConfiguration",
     "MarketAssetScopeItem",
-    "MarketDataNode",
-    "MarketDataNodeConfiguration",
     "asset_indexed_foreign_keys",
     "asset_unique_identifier_foreign_key",
 ]

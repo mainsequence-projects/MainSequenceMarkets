@@ -7,9 +7,11 @@ import pandas as pd
 from pydantic import Field
 
 from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
-from msm.asset_indexed_data_node import _wrap_default_markets_hash_namespace
+from msm.asset_indexed_data_node import (
+    AssetIndexedDataNode,
+    _wrap_default_markets_hash_namespace,
+)
 from msm.data_nodes._time import normalize_datetime64_ns_utc
-from msm.markets_data_node import MarketDataNode
 from mainsequence.tdag.data_nodes import (
     DataNode,
     DataNodeConfiguration,
@@ -129,7 +131,7 @@ class PortfolioCanonicalDataNode(DataNode):
             raise TypeError(f"{cls.__name__} requires a PortfolioCanonicalDataNodeConfiguration.")
         if config.index_names != cls._required_index_names():
             raise ValueError(
-                f"{cls.__name__} requires index_names " f"{cls._required_index_names()!r}."
+                f"{cls.__name__} requires index_names {cls._required_index_names()!r}."
             )
         _validate_records(
             records=list(config.records),
@@ -273,7 +275,7 @@ class PortfolioCanonicalDataNode(DataNode):
         time_index_name = _get_mapping_or_attr(source_config, "time_index_name")
         if time_index_name != config.time_index_name:
             errors.append(
-                "time_index_name " f"{time_index_name!r} does not match {config.time_index_name!r}"
+                f"time_index_name {time_index_name!r} does not match {config.time_index_name!r}"
             )
 
         index_names = list(_get_mapping_or_attr(source_config, "index_names") or [])
@@ -285,7 +287,7 @@ class PortfolioCanonicalDataNode(DataNode):
             actual_dtype = column_dtypes_map.get(column_name)
             if actual_dtype != expected_dtype:
                 errors.append(
-                    f"{column_name!r} dtype {actual_dtype!r} does not match " f"{expected_dtype!r}"
+                    f"{column_name!r} dtype {actual_dtype!r} does not match {expected_dtype!r}"
                 )
 
         if errors:
@@ -295,7 +297,7 @@ class PortfolioCanonicalDataNode(DataNode):
             )
 
 
-class AssetScopedPortfolioCanonicalDataNode(PortfolioCanonicalDataNode, MarketDataNode):
+class AssetScopedPortfolioCanonicalDataNode(PortfolioCanonicalDataNode, AssetIndexedDataNode):
     """Canonical Portfolios DataNode whose identity includes asset unique_identifier."""
 
     def _initialize_configuration(self, init_kwargs: dict) -> None:
@@ -397,7 +399,9 @@ def _normalize_pivoted_signal_weights(frame: pd.DataFrame) -> pd.DataFrame:
         )
 
     value_columns = [
-        column_name for column_name in frame.columns if column_name != PORTFOLIO_CANONICAL_TIME_INDEX_NAME
+        column_name
+        for column_name in frame.columns
+        if column_name != PORTFOLIO_CANONICAL_TIME_INDEX_NAME
     ]
     if not value_columns:
         raise ValueError("Pivoted SignalWeights frame must contain asset columns to unpivot.")
@@ -491,7 +495,7 @@ def _validate_canonical_frame(
     ]
     if missing_columns:
         raise ValueError(
-            f"{frame_name} frame is missing required columns: " f"{', '.join(missing_columns)}."
+            f"{frame_name} frame is missing required columns: {', '.join(missing_columns)}."
         )
 
     flat = _normalize_config_values(flat, config=config, frame_name=frame_name)
@@ -499,8 +503,7 @@ def _validate_canonical_frame(
     frame = flat.set_index(config.index_names).sort_index()
     if frame.index.has_duplicates:
         raise ValueError(
-            f"{frame_name} frame contains duplicate rows for index contract "
-            f"{config.index_names}."
+            f"{frame_name} frame contains duplicate rows for index contract {config.index_names}."
         )
     return _attach_logical_dtype_contract(frame, config=config)
 
@@ -542,7 +545,8 @@ def _normalize_config_values(
             normalized[column_name] = _normalize_string(values)
         else:
             raise ValueError(
-                f"Unsupported canonical Portfolios dtype {dtype!r} for " f"{frame_name}.{column_name!r}."
+                f"Unsupported canonical Portfolios dtype {dtype!r} for "
+                f"{frame_name}.{column_name!r}."
             )
     return normalized
 
@@ -557,9 +561,7 @@ def _validate_identity_values(
         values = frame[index_name]
         invalid_values = values.isna() | (values.astype(str).str.len() == 0)
         if invalid_values.any():
-            raise ValueError(
-                f"{frame_name} frame has empty identity values for " f"{index_name!r}."
-            )
+            raise ValueError(f"{frame_name} frame has empty identity values for {index_name!r}.")
 
 
 def _normalize_time_index(values: Any) -> pd.Series:
@@ -574,7 +576,9 @@ def _normalize_float64(values: Any, *, column_name: str) -> pd.Series:
     try:
         return pd.to_numeric(values, errors="raise").astype("float64")
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"Invalid float64 canonical Portfolios value for {column_name!r}.") from exc
+        raise ValueError(
+            f"Invalid float64 canonical Portfolios value for {column_name!r}."
+        ) from exc
 
 
 def _normalize_string(values: Any) -> pd.Series:

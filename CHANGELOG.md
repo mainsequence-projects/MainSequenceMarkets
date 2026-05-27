@@ -132,8 +132,10 @@ and this project follows versioned releases.
 - Implemented the first ADR 0007 slice: `AssetSnapshot` and
   `AssetPricingDetail` now use `AssetIndexedDataNode` configuration and declare
   a canonical source-table FK from `unique_identifier` to
-  `AssetTable.unique_identifier`, with `msm.markets_data_node` kept as a
-  compatibility shim.
+  `AssetTable.unique_identifier`.
+- Removed the legacy asset-indexed DataNode compatibility aliases, shim module,
+  and old table-contract class name; use `AssetIndexedDataNode`,
+  `AssetIndexedDataNodeConfiguration`, and `DataNodeTableContract` directly.
 - Updated OpenFIGI helpers to read `OPEN_FIGI_API_KEY` from Main Sequence
   Secrets by default and updated FIGI examples to call OpenFIGI instead of
   relying on hardcoded provider response payloads.

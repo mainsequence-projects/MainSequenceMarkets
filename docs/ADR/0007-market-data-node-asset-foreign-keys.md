@@ -6,7 +6,8 @@ Accepted
 
 ## Context
 
-`MarketDataNode` currently declares the asset identity dimension locally:
+The previous broad market DataNode base declared the asset identity dimension
+locally:
 
 ```python
 ASSET_UNIQUE_IDENTIFIER_DIMENSION = "unique_identifier"
@@ -14,14 +15,14 @@ ASSET_UNIQUE_IDENTIFIER_DIMENSION = "unique_identifier"
 
 That string is not only a DataNode dimension. It is also the canonical business
 key on the markets `Asset` MetaTable. Keeping it local to
-`markets_data_node.py` makes it too easy for DataNodes, service helpers, and
-MetaTable code to drift.
+the asset-scoped DataNode module made it too easy for DataNodes, service
+helpers, and MetaTable code to drift.
 
 The class name is also too broad. The current base does not define all market
 DataNode semantics; it defines DataNode behavior indexed or scoped by asset
-identity. A name such as `MarketDataNode` makes non-asset-indexed market
-datasets look like they should inherit asset-specific range-map and
-`asset_list` behavior.
+identity. A broad market DataNode name makes non-asset-indexed market datasets
+look like they should inherit asset-specific range-map and `asset_list`
+behavior.
 
 The Main Sequence SDK now supports source-table foreign keys for DataNodes
 through `SourceTableForeignKey` declarations on `DataNodeConfiguration`.
@@ -38,8 +39,9 @@ Important SDK behavior:
 - Foreign keys participate in the DataNode storage hash.
 
 That means foreign keys should be visible in configuration before a DataNode is
-registered or initialized. Adding them late inside `MarketDataNode` would hide a
-storage-hash input and make failures appear only at source-table initialization.
+registered or initialized. Adding them late inside a base DataNode would hide a
+storage-hash input and make failures appear only at source-table
+initialization.
 
 ## Decision
 
@@ -53,15 +55,15 @@ ASSET_UNIQUE_IDENTIFIER_DIMENSION = "unique_identifier"
 Use that constant everywhere a markets DataNode, asset-scope helper, or Asset
 MetaTable-facing service needs the canonical asset identity field.
 
-Rename the asset-scoped base concepts to describe what they actually do:
+Use asset-scoped base concepts that describe what they actually do:
 
 ```text
-MarketDataNodeConfiguration -> AssetIndexedDataNodeConfiguration
-MarketDataNode              -> AssetIndexedDataNode
+AssetIndexedDataNodeConfiguration
+AssetIndexedDataNode
 ```
 
-Keep `MarketDataNodeConfiguration` and `MarketDataNode` as compatibility aliases
-for one release cycle if needed, but new code should use the asset-indexed names.
+Do not keep broad compatibility aliases. New and existing library code should
+use the asset-indexed names directly.
 
 Do not inject DataNode foreign keys by catching arbitrary configurations at
 runtime. Instead, make the foreign-key declaration part of the explicit DataNode
@@ -102,8 +104,7 @@ canonical `unique_identifier` column. `AssetIndexedDataNodeConfiguration` owns
 asset-indexed runtime scope such as `asset_list`, while concrete configurations
 that persist canonical asset rows add the Asset FK during configuration
 validation. This avoids silently adding an Asset FK through the temporary
-`MarketDataNodeConfiguration` compatibility alias to holdings, execution, or
-other schemas that need separate review.
+shared base to holdings, execution, or other schemas that need separate review.
 
 ## Implementation Tasks
 
@@ -111,8 +112,7 @@ other schemas that need separate review.
    `ASSET_UNIQUE_IDENTIFIER_DIMENSION`.
 2. [x] Introduce `src/msm/asset_indexed_data_node.py` with
    `AssetIndexedDataNodeConfiguration` and `AssetIndexedDataNode`.
-3. [x] Keep `src/msm/markets_data_node.py` as a compatibility shim that imports
-   and re-exports the new names under the old names.
+3. [x] Remove the old compatibility shim and broad aliases.
 4. [x] Replace local hard-coded asset identity constants in
    `msm.data_nodes.assets` and `msm.asset_scope` with the settings constant.
 5. [x] Add `asset_unique_identifier_foreign_key()` returning the canonical
@@ -127,14 +127,13 @@ other schemas that need separate review.
 9. [ ] Evaluate holdings and execution DataNodes separately before adding Asset
    FKs. Holdings use additional owner dimensions such as `account_uid` or
    `fund_uid`; execution uses fields such as `asset_unique_identifier`.
-10. [x] Update new asset DataNode code to import `AssetIndexedDataNode` and
-   `AssetIndexedDataNodeConfiguration`; keep existing imports from
-   `msm.markets_data_node` temporarily valid through the compatibility shim.
+10. [x] Update asset-indexed DataNode code to import `AssetIndexedDataNode` and
+   `AssetIndexedDataNodeConfiguration` directly.
 11. [ ] Update examples so `msm.create_schemas(models=["Asset", ...])` runs
    before any DataNode source-table initialization that resolves the Asset FK.
 12. [x] Add tests proving the shared settings constant, canonical FK shape,
-   record validation, frame validation, explicit-FK preservation, and no hidden
-   FK on the compatibility base.
+   record validation, frame validation, explicit-FK preservation, no hidden FK
+   on the asset-indexed base, and removal of legacy compatibility imports.
 13. [ ] Perform live platform source-table initialization verification after the
    project is authenticated.
 

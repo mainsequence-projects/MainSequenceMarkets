@@ -11,7 +11,7 @@ MS_MARKETS_TARGET_POSITIONS_TABLE_NAME = "ms_markets__target_positions"
 
 
 @dataclass(frozen=True)
-class MarketDataNodeTableContract:
+class DataNodeTableContract:
     """Backend-independent source-table contract for a markets DataNode table."""
 
     table_name: str
@@ -41,7 +41,7 @@ class MarketDataNodeTableContract:
 
 
 def source_table_initialization_kwargs(
-    contract: MarketDataNodeTableContract,
+    contract: DataNodeTableContract,
 ) -> dict[str, object]:
     """Return generic DynamicTableMetaData/DataNode source-table init kwargs."""
 
@@ -52,7 +52,7 @@ def source_table_initialization_kwargs(
     }
 
 
-ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT = MarketDataNodeTableContract(
+ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT = DataNodeTableContract(
     table_name=MS_MARKETS_ACCOUNT_HOLDINGS_TABLE_NAME,
     role="account_historical_holdings",
     schema_version=4,
@@ -99,7 +99,7 @@ ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT = MarketDataNodeTableContract(
     },
 )
 
-FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT = MarketDataNodeTableContract(
+FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT = DataNodeTableContract(
     table_name=MS_MARKETS_FUND_HOLDINGS_TABLE_NAME,
     role="fund_historical_holdings",
     schema_version=3,
@@ -149,7 +149,7 @@ FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT = MarketDataNodeTableContract(
     },
 )
 
-POSITION_EXPOSURE_TABLE_CONTRACT = MarketDataNodeTableContract(
+POSITION_EXPOSURE_TABLE_CONTRACT = DataNodeTableContract(
     table_name=MS_MARKETS_TARGET_POSITIONS_TABLE_NAME,
     role="position_exposure",
     schema_version=1,
@@ -185,11 +185,11 @@ POSITION_EXPOSURE_TABLE_CONTRACT = MarketDataNodeTableContract(
 
 __all__ = [
     "ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT",
+    "DataNodeTableContract",
     "FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT",
     "MS_MARKETS_ACCOUNT_HOLDINGS_TABLE_NAME",
     "MS_MARKETS_FUND_HOLDINGS_TABLE_NAME",
     "MS_MARKETS_TARGET_POSITIONS_TABLE_NAME",
     "POSITION_EXPOSURE_TABLE_CONTRACT",
-    "MarketDataNodeTableContract",
     "source_table_initialization_kwargs",
 ]

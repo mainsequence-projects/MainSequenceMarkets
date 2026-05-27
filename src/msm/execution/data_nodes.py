@@ -6,11 +6,11 @@ from typing import Any
 import pandas as pd
 
 from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
-from msm.data_nodes._time import normalize_datetime64_ns_utc
-from msm.markets_data_node import (
-    MarketDataNode,
-    MarketDataNodeConfiguration,
+from msm.asset_indexed_data_node import (
+    AssetIndexedDataNode,
+    AssetIndexedDataNodeConfiguration,
 )
+from msm.data_nodes._time import normalize_datetime64_ns_utc
 from mainsequence.tdag.data_nodes import (
     DataNode,
     DataNodeMetaData,
@@ -107,7 +107,7 @@ EXECUTION_ERRORS_COLUMN_DTYPES_MAP = {
 }
 
 
-class ExecutionDataNodeConfiguration(MarketDataNodeConfiguration):
+class ExecutionDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
     """Configuration base for SDK-owned execution DataNodes."""
 
     time_index_name: str
@@ -119,7 +119,7 @@ class ExecutionDataNodeConfiguration(MarketDataNodeConfiguration):
         return {record.column_name: record.dtype for record in self.records}
 
 
-class ExecutionDataNode(MarketDataNode):
+class ExecutionDataNode(AssetIndexedDataNode):
     """Base DataNode for timestamped execution facts."""
 
     def __init__(
@@ -164,10 +164,7 @@ class ExecutionDataNode(MarketDataNode):
         if not extra_records:
             return list(required_records)
         merged_records = list(required_records)
-        existing_dtypes = {
-            record.column_name: record.dtype
-            for record in required_records
-        }
+        existing_dtypes = {record.column_name: record.dtype for record in required_records}
         for record in extra_records:
             existing_dtype = existing_dtypes.get(record.column_name)
             if existing_dtype is not None:
@@ -187,18 +184,14 @@ class ExecutionDataNode(MarketDataNode):
         config: ExecutionDataNodeConfiguration,
     ) -> ExecutionDataNodeConfiguration:
         if not isinstance(config, ExecutionDataNodeConfiguration):
-            raise TypeError(
-                f"{cls.__name__} requires an ExecutionDataNodeConfiguration."
-            )
+            raise TypeError(f"{cls.__name__} requires an ExecutionDataNodeConfiguration.")
         if config.time_index_name != cls._required_time_index_name():
             raise ValueError(
-                f"{cls.__name__} requires time_index_name "
-                f"{cls._required_time_index_name()!r}."
+                f"{cls.__name__} requires time_index_name {cls._required_time_index_name()!r}."
             )
         if config.index_names != cls._required_index_names():
             raise ValueError(
-                f"{cls.__name__} requires index_names "
-                f"{cls._required_index_names()!r}."
+                f"{cls.__name__} requires index_names {cls._required_index_names()!r}."
             )
         _validate_required_records(
             records=list(config.records),
@@ -461,8 +454,7 @@ def _validate_required_records(
             )
     if errors:
         raise ValueError(
-            "Execution records must include the required columns: "
-            + "; ".join(errors)
+            "Execution records must include the required columns: " + "; ".join(errors)
         )
 
 
@@ -483,22 +475,18 @@ def _validate_execution_frame(
         )
 
     missing_columns = [
-        column_name
-        for column_name in config.column_dtypes_map
-        if column_name not in flat.columns
+        column_name for column_name in config.column_dtypes_map if column_name not in flat.columns
     ]
     if missing_columns:
         raise ValueError(
-            "Execution frame is missing required columns: "
-            f"{', '.join(missing_columns)}."
+            f"Execution frame is missing required columns: {', '.join(missing_columns)}."
         )
 
     flat = _normalize_execution_values(flat, config=config)
     frame = flat[list(config.column_dtypes_map)].set_index(config.index_names)
     if frame.index.has_duplicates:
         raise ValueError(
-            "Execution frame contains duplicate rows for index contract "
-            f"{config.index_names}."
+            f"Execution frame contains duplicate rows for index contract {config.index_names}."
         )
     frame.attrs[LOGICAL_COLUMN_DTYPES_ATTR] = dict(config.column_dtypes_map)
     return frame.sort_index()
@@ -519,7 +507,9 @@ def _normalize_execution_values(
         elif dtype == "float64":
             normalized[column_name] = pd.to_numeric(values, errors="coerce").fillna(0.0)
         elif dtype == "int64":
-            normalized[column_name] = pd.to_numeric(values, errors="coerce").fillna(0).astype("int64")
+            normalized[column_name] = (
+                pd.to_numeric(values, errors="coerce").fillna(0).astype("int64")
+            )
         elif dtype == "bool":
             normalized[column_name] = values.map(bool)
         elif dtype == "jsonb":
