@@ -88,6 +88,9 @@ Homepage = "https://github.com/mainsequence-projects/MainSequenceMarkets"
 Documentation = "https://mainsequence-projects.github.io/MainSequenceMarkets/"
 Issues = "https://github.com/mainsequence-projects/MainSequenceMarkets/issues"
 
+[project.scripts]
+msm = "msm.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/msm"]
 

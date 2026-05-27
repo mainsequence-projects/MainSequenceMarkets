@@ -18,6 +18,16 @@ Verify that the import package is available:
 import msm
 ```
 
+Install ms-markets agent skills into a host project only through the explicit
+CLI command:
+
+```bash
+msm copy-msm-skills --path .
+```
+
+This copies the packaged skill bundle into `.agents/ms_markets/`. Importing
+`msm` does not write files, create `.agents/`, or auto-install skills.
+
 ## Documentation
 
 Serve the documentation locally:
@@ -41,7 +51,9 @@ Implementation decisions should be recorded under `docs/ADR`.
 Start with the typed row API for simple workflows:
 
 ```python
-from msm.api.assets import Asset, AssetCategory
+from msm.api.assets import Asset, AssetCategory, AssetType
+
+AssetType.upsert(asset_type="crypto", display_name="Crypto")
 
 asset = Asset.upsert(unique_identifier="example-asset-btc", asset_type="crypto")
 assets = Asset.filter(asset_type="crypto")

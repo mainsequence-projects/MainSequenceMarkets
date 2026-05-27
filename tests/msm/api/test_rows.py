@@ -10,7 +10,7 @@ from msm.api.accounts import Account, AccountGroup, AccountTargetPositionAssignm
 from msm.api.assets import (
     AssetCategory,
     AssetCategoryMembership,
-    AssetMasterList,
+    AssetType,
     OpenFigiDetails,
 )
 from msm.api.calendars import Calendar
@@ -28,7 +28,7 @@ from msm.models import (
     AccountTargetPositionAssignmentTable,
     AssetCategoryMembershipTable,
     AssetCategoryTable,
-    AssetMasterListTable,
+    AssetTypeTable,
     AssetTable,
     CalendarTable,
     FundTable,
@@ -47,7 +47,7 @@ from msm.models import (
 @pytest.mark.parametrize(
     ("row_model", "table_model", "upsert_keys"),
     [
-        (AssetMasterList, AssetMasterListTable, ("unique_identifier",)),
+        (AssetType, AssetTypeTable, ("asset_type",)),
         (AssetCategory, AssetCategoryTable, ("unique_identifier",)),
         (AssetCategoryMembership, AssetCategoryMembershipTable, ("category_uid", "asset_uid")),
         (OpenFigiDetails, OpenFigiDetailsTable, ("asset_uid",)),

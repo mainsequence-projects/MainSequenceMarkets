@@ -1,13 +1,13 @@
 ---
-name: apps-v1-api-guidelines
-description: Use when building or changing the FastAPI surface under apps/v1 in this repository. This guidance is scoped only to apps/v1 and should not be applied to other APIs, services, or platform surfaces.
+name: apps-v1-public-api
+description: Use when building or changing the FastAPI surface under apps/v1 in this repository. This skill is scoped only to apps/v1 and should not be applied to other APIs, services, or platform surfaces.
 ---
 
-# apps/v1 API Guidelines
+# apps/v1 Public API
 
 ## Scope
 
-Use this guidance only for the local FastAPI app under `apps/v1`.
+Use this skill only for the local FastAPI app under `apps/v1`.
 
 Do not apply these rules to:
 
@@ -18,7 +18,7 @@ Do not apply these rules to:
 
 ## Core Rule
 
-The API layer in `apps/v1` is a resolver layer only.
+`apps/v1` is a resolver layer only.
 
 That means:
 
@@ -27,39 +27,35 @@ That means:
 - response serialization happens in `apps/v1`
 - core business logic must live under `src/`
 
-Do not place domain logic, query composition, transformation pipelines, or reusable market behavior directly inside route handlers.
-
-If the behavior is not purely HTTP-boundary logic, extract it into `src/` first.
+If behavior is not purely HTTP-boundary logic, extract it into `src/`.
 
 ## Runtime Initialization Standard
 
-For local `apps/v1` development, follow the project auto-registration standard:
+For local `apps/v1` development:
 
 - use `MSM_AUTO_REGISTER_NAMESPACE`
 - set it before importing MetaTable-backed `msm.api` or `msm.models` modules
 - do not hardcode namespace bootstrap inside `apps/v1` route code
 
-This keeps `apps/v1` aligned with the repository-wide development/example pattern.
-
-For `apps/v1` local launchers, prefer:
+For local launchers, prefer:
 
 - `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`
 
-Do not silently set this environment variable inside application code. The launcher or shell should own that choice.
+The launcher or shell owns this environment choice, not application code.
 
-## Required Architecture
+## Required Structure
 
 When working on `apps/v1`, keep this separation:
 
 - `apps/v1/main.py`: app bootstrap and router registration
 - `apps/v1/routers/`: route declarations only
 - `apps/v1/schemas/`: FastAPI request and response Pydantic models
-- `apps/v1/services/`: thin HTTP-facing resolution helpers only when needed
+- `apps/v1/services/`: thin HTTP-facing adapters only when needed
 - `src/`: reusable domain logic, data access helpers, transformations, and business rules
 
-## Route Handler Standards
+## Route Standards
 
-Each route handler should do only these things:
+Each route handler should only:
 
 1. accept validated parameters
 2. call a helper from `src/` or a thin adapter that delegates into `src/`
@@ -69,13 +65,13 @@ Each route handler should do only these things:
 Avoid:
 
 - inline business logic
-- inline SQL or MetaTable construction when it belongs in `src/`
+- inline SQL or MetaTable construction that belongs in `src/`
 - long transformation blocks in routers
-- ad hoc dictionary responses when a Pydantic model should exist
+- ad hoc success payloads when a Pydantic model should exist
 
 ## Contract Standards
 
-Every endpoint must have a proper Pydantic response object.
+Every endpoint must have a proper Pydantic contract.
 
 Rules:
 
@@ -84,7 +80,7 @@ Rules:
 - every list row shape must have its own explicit model
 - every detail payload must have its own explicit model
 - compatibility fields should be typed explicitly, even when nullable
-- do not return raw untyped `dict[str, Any]` payloads for normal success responses
+- do not return raw untyped `dict[str, Any]` success payloads
 
 If an endpoint is intentionally unstructured, document why.
 
@@ -109,20 +105,6 @@ If additional written documentation is produced for this API surface, place it u
 
 Do not place `apps/v1` API documentation in unrelated docs sections when it is specific to this surface.
 
-## Resolver-Only Rule For src
-
-If a route needs any of the following, the implementation belongs in `src/`:
-
-- reusable filtering logic
-- row merging logic
-- domain normalization
-- compatibility mapping
-- provider-specific shaping
-- asset/business rules
-- reusable MetaTable or DataNode access patterns
-
-`apps/v1` may contain small HTTP adapters, but not the core implementation.
-
 ## Compatibility Work
 
 When reproducing legacy endpoints inside `apps/v1`:
@@ -131,7 +113,6 @@ When reproducing legacy endpoints inside `apps/v1`:
 - keep compatibility mapping explicit
 - do not hide missing source data by inventing values
 - use nullable fields when the backing data is not yet available
-- document partial compatibility in code comments only when necessary
 
 ## Validation Standards
 
@@ -149,11 +130,9 @@ Do not place `apps/v1` tests as random top-level test files.
 
 ## Non-Goals
 
-This guidance does not define:
+This skill does not define:
 
 - deployment or release rules
 - platform resource creation
 - Command Center workspace design
 - broad repository API conventions outside `apps/v1`
-
-It is only the working standard for the `apps/v1` FastAPI surface in this repository.

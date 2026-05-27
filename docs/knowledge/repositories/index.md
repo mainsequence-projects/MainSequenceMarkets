@@ -19,7 +19,6 @@ Repositories answer these questions:
   operation execution helpers.
 - `msm.repositories.crud`: generic CRUD builders and execution helpers.
 - `msm.repositories.accounts`: account-specific repository operations.
-- `msm.repositories.asset_master_lists`: asset master list operations.
 - `msm.repositories.funds`: fund operations and fund lookup by account or
   portfolio.
 - `msm.repositories.portfolios`: portfolio operations.

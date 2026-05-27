@@ -69,8 +69,8 @@ models or MetaTables.
 The boundary is:
 
 - SQLAlchemy/MetaTables are for relational and control-plane market state:
-  accounts, funds, portfolios, assets, categories, `AssetMasterList`, execution
-  rows, metadata rows, and similar table-shaped domain records.
+  accounts, funds, portfolios, assets, categories, execution rows, metadata
+  rows, and similar table-shaped domain records.
 - DataNodes/DynamicTableMetaData are for time-indexed market state: account
   holdings, fund holdings, target positions, portfolio weights, signal weights,
   portfolio canonical data, prices, and other historical/timestamped frames.
@@ -103,47 +103,6 @@ Relational repository and service execution remains platform-managed:
 `Engine`, or `Connection` execution arguments. If an application wants direct
 database access, that is application code outside `msm` services.
 
-## AssetMasterList
-
-`AssetMasterList` must be a SQLAlchemy model in `msm`, not a Django model in the
-backend.
-
-The model belongs in the `src/msm/models` layer and must be registered as a
-MetaTable like the rest of the markets relational model set.
-
-Required semantics:
-
-- `AssetMasterList` is a control-plane market table that names the selected
-  canonical asset reference table.
-- The selected asset table is identified by `reference_meta_table_uid`.
-- `AssetMasterList` does not use a database-level foreign key to the backend
-  `MetaTable` table. It stores the public platform UID and validates it through
-  `msm` service calls and platform SDK MetaTable reads.
-- Only one default master list should be allowed per access boundary represented
-  by the platform table scope. If this cannot be represented portably in the
-  physical table contract, `msm` services must enforce it.
-
-Initial fields:
-
-```text
-uid
-unique_identifier
-name
-description
-reference_meta_table_uid
-is_default
-validation_version
-metadata_json
-```
-
-The existing backend validation logic should move into `msm` services:
-
-- resolve a requested master list or the default master list;
-- validate that `reference_meta_table_uid` points to a registered MetaTable;
-- validate that the referenced table exposes `unique_identifier`;
-- validate that `unique_identifier` is unique or primary-key-like according to
-  the MetaTable contract/introspection metadata.
-
 ## Transfer Scope
 
 Move the backend `vam.assets` responsibilities into `msm` as library-owned
@@ -151,7 +110,6 @@ code, not as copied DRF code.
 
 Backend responsibilities to transfer:
 
-- `AssetMasterList` model and service logic;
 - asset category and category membership logic;
 - account creation/update/delete and storage binding logic;
 - fund creation/update/delete and lookup logic;
@@ -191,7 +149,6 @@ The package should converge on this structure:
 ```text
 src/msm/
   models/
-    asset_master_lists.py
     assets.py
     asset_categories.py
     accounts.py
@@ -203,7 +160,6 @@ src/msm/
     signals.py
     instruments.py
   repositories/
-    asset_master_lists.py
     assets.py
     asset_categories.py
     accounts.py
@@ -215,7 +171,6 @@ src/msm/
     signals.py
     instruments.py
   services/
-    asset_master_lists.py
     assets.py
     asset_categories.py
     accounts.py
@@ -278,14 +233,6 @@ Applications should import market functionality from `msm`, not from
 
 ### Phase 1: Complete The `msm` SQLAlchemy Model Set
 
-- [x] Add `AssetMasterList` under `src/msm/models/asset_master_lists.py`.
-- [x] Add `AssetMasterList` to `src/msm/models/__init__.py`.
-- [x] Include `AssetMasterList` in `markets_sqlalchemy_models()` dependency
-  order before models/services that need asset-master-list resolution.
-- [x] Add indexes and uniqueness constraints for `AssetMasterList`, including
-  `unique_identifier`, `reference_meta_table_uid`, and default-list lookup.
-- [x] Confirm `AssetMasterList` uses `reference_meta_table_uid` as a platform
-  UID value and does not declare a SQL foreign key to backend MetaTable storage.
 - [x] Add any missing SQLAlchemy models still represented only in backend
   `vam.assets`, including calendars, account groups, account model portfolios,
   instruments configuration, orders, order events, trades, and execution errors
@@ -300,7 +247,7 @@ Applications should import market functionality from `msm`, not from
 ### Phase 2: Complete MetaTable Registration
 
 - [x] Update `register_markets_meta_tables(...)` to register the complete model
-  set, including `AssetMasterList`.
+  set.
 - [x] Verify registration order satisfies all SQLAlchemy foreign-key target
   dependencies.
 - [x] Add contract tests proving every `msm.models` SQLAlchemy model produces a
@@ -312,9 +259,6 @@ Applications should import market functionality from `msm`, not from
 
 ### Phase 3: Add Repositories For Every Market Table
 
-- [x] Add `src/msm/repositories/asset_master_lists.py`.
-- [x] Add create, get-by-uid, get-by-unique-identifier, get-default, search,
-  update, and delete operation builders for `AssetMasterList`.
 - [x] Add generic CRUD operation builders for any markets SQLAlchemy model that
   does not yet have a domain-specific repository module.
 - [x] Add repositories for assets, asset categories, category memberships,
@@ -330,10 +274,6 @@ Applications should import market functionality from `msm`, not from
 
 ### Phase 4: Add Market Services
 
-- [x] Add `src/msm/services/asset_master_lists.py`.
-- [x] Move default master-list resolution into `msm`.
-- [x] Move reference MetaTable validation into `msm`, including required
-  `unique_identifier` column validation and uniqueness/primary-key validation.
 - [x] Add asset catalog services for create/get/search/upsert assets.
 - [x] Add asset category services for create/update/delete/search categories.
 - [x] Add category membership services for append, remove, replace, and list
@@ -428,7 +368,6 @@ Applications should import market functionality from `msm`, not from
 
 - [x] Add documentation for registering all `msm` SQLAlchemy models as
   MetaTables.
-- [x] Add documentation for `AssetMasterList` and reference MetaTable validation.
 - [x] Add examples for platform-managed market registration.
 - [x] Add examples for external-registered market registration where users own
   DDL but `msm` still executes through MetaTable operations.

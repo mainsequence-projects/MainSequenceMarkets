@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-__version__ = "0.0.1"
-
 from mainsequence.logconf import logger as _logger
 
 from msm.portfolios.data_nodes import (

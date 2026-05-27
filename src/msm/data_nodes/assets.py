@@ -38,7 +38,7 @@ def asset_unique_identifier_record() -> RecordDefinition:
         column_name=ASSET_UNIQUE_IDENTIFIER_DIMENSION,
         dtype="string",
         label="Unique Identifier",
-        description="Asset unique identifier from the selected master-list table.",
+        description="Asset unique identifier from the Asset MetaTable.",
     )
 
 

@@ -9,6 +9,12 @@ and this project follows versioned releases.
 
 ### Added
 
+- Added `AssetTypeTable` plus the `msm.api.assets.AssetType` row API as a
+  minimal asset type registry with unique `asset_type`, optional
+  `display_name`, optional `description`, and optional `metadata_json`.
+- Added the `msm` console command with `copy-msm-skills` to explicitly copy the
+  packaged ms-markets agent skills into a host project's `.agents/ms_markets/`
+  directory without import-time filesystem mutation.
 - Added user-facing Pydantic row APIs under `msm.api.*` for every markets
   MetaTable, including asset reference data, accounts, portfolios, funds,
   metadata/configuration, and execution records.
@@ -75,6 +81,10 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Removed the obsolete asset reference-list MetaTable, row API, repository,
+  service helpers, tests, and documentation page from the markets library.
+- Removed duplicate runtime version constants; `msm.__version__` now reads the
+  installed `ms-markets` package metadata generated from `pyproject.toml`.
 - Removed `venue_specific_properties` from the `AssetSnapshot` DataNode schema;
   provider-specific payloads belong in provider detail tables such as
   `OpenFigiDetails`.

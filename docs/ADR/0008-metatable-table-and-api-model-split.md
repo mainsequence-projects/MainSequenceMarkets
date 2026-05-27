@@ -63,7 +63,6 @@ AccountGroup                  -> AccountGroupTable
 Account                       -> AccountTable
 AccountTargetPositionAssignment -> AccountTargetPositionAssignmentTable
 Asset                         -> AssetTable
-AssetMasterList               -> AssetMasterListTable
 AssetCategory                 -> AssetCategoryTable
 AssetCategoryMembership       -> AssetCategoryMembershipTable
 Calendar                      -> CalendarTable
@@ -318,8 +317,7 @@ This stage should complete the asset catalog surface after the core `Asset`
 row is stable.
 
 - [x] Add Pydantic row and mutation contracts for:
-  `AssetMasterList`, `AssetCategory`, `AssetCategoryMembership`, and
-  `OpenFigiDetails`.
+  `AssetCategory`, `AssetCategoryMembership`, and `OpenFigiDetails`.
 - [x] Add class-level `create_schemas(...)` for each row model with explicit
   `__required_tables__`.
 - [x] Add `AssetCategory.upsert(...)` and category lookup/filter helpers.

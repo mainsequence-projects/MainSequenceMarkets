@@ -5,14 +5,20 @@ from types import SimpleNamespace
 
 import pytest
 
-from msm.api.assets import Asset, AssetUpsert, _operation_result_rows
-from msm.models import AssetTable
+from msm.api.assets import Asset, AssetType, AssetTypeUpsert, AssetUpsert, _operation_result_rows
+from msm.models import AssetTable, AssetTypeTable
 from msm.meta_tables import markets_meta_table_fullname
 
 
 def test_asset_api_declares_table_contract() -> None:
     assert Asset.__table__ is AssetTable
     assert Asset.__required_tables__ == [AssetTable]
+
+
+def test_asset_type_api_declares_table_contract() -> None:
+    assert AssetType.__table__ is AssetTypeTable
+    assert AssetType.__required_tables__ == [AssetTypeTable]
+    assert AssetType.__upsert_keys__ == ("asset_type",)
 
 
 def test_asset_create_schemas_delegates_to_required_table(monkeypatch) -> None:
@@ -31,6 +37,55 @@ def test_asset_create_schemas_delegates_to_required_table(monkeypatch) -> None:
             "models": [AssetTable],
             "namespace": "mainsequence.examples",
         }
+    ]
+
+
+def test_asset_type_upsert_uses_active_runtime(monkeypatch) -> None:
+    asset_type_uid = uuid.uuid4()
+    context = object()
+    runtime = SimpleNamespace(
+        context=context,
+        target_meta_table_uid_by_fullname={
+            markets_meta_table_fullname(AssetTypeTable): str(uuid.uuid4()),
+        },
+    )
+    calls = []
+
+    def fake_resolve_runtime(**kwargs):
+        assert kwargs["models"] == AssetType.__required_tables__
+        assert kwargs["row_model_name"] == "AssetType"
+        return runtime
+
+    def fake_upsert_model(active_context, *, model, values, conflict_columns):
+        calls.append((active_context, model, values, conflict_columns))
+        return {
+            "row": {
+                "uid": str(asset_type_uid),
+                "asset_type": "crypto",
+                "display_name": "Crypto",
+            }
+        }
+
+    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    monkeypatch.setattr("msm.api.base.upsert_model", fake_upsert_model)
+
+    asset_type = AssetType.upsert(AssetTypeUpsert(asset_type="crypto", display_name="Crypto"))
+
+    assert asset_type == AssetType(
+        uid=asset_type_uid,
+        asset_type="crypto",
+        display_name="Crypto",
+    )
+    assert calls == [
+        (
+            context,
+            AssetTypeTable,
+            {
+                "asset_type": "crypto",
+                "display_name": "Crypto",
+            },
+            ("asset_type",),
+        )
     ]
 
 

@@ -12,7 +12,7 @@ from .asset_categories import (
     AssetCategoryMembershipTable,
     AssetCategoryTable,
 )
-from .asset_master_lists import AssetMasterListTable
+from .asset_types import AssetTypeTable
 from .assets import AssetTable
 from .calendars import CalendarTable
 from .execution import (
@@ -39,8 +39,8 @@ def markets_sqlalchemy_models() -> list[type]:
     """Return markets SQLAlchemy models in MetaTable dependency order."""
 
     return [
+        AssetTypeTable,
         AssetTable,
-        AssetMasterListTable,
         CalendarTable,
         AccountModelPortfolioTable,
         AccountGroupTable,
@@ -72,8 +72,8 @@ __all__ = [
     "AccountTargetPositionAssignmentTable",
     "AssetCategoryMembershipTable",
     "AssetCategoryTable",
-    "AssetMasterListTable",
     "AssetTable",
+    "AssetTypeTable",
     "CalendarTable",
     "ExecutionErrorTable",
     "FundTable",

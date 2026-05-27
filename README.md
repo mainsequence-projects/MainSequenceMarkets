@@ -28,7 +28,7 @@ import msm
 ## Project Status
 
 - Status: initial scaffold and SDK extraction
-- Current package version: `0.0.1`
+- Current package version: `0.0.3`
 - Documentation: [Documentation Site](https://mainsequence-projects.github.io/MainSequenceMarkets/)
 - Open issues: [GitHub Issues](https://github.com/mainsequence-projects/MainSequenceMarkets/issues)
 - Release history: [CHANGELOG.md](https://github.com/mainsequence-projects/MainSequenceMarkets/blob/main/CHANGELOG.md)
@@ -61,15 +61,17 @@ Main package areas:
 - `msm.repositories`: compiled persistence operations over market-domain models
 - `msm.services`: application-level orchestration over repositories, including
   asset lookup and OpenFIGI service helpers
+- `msm` CLI: package maintenance helpers such as explicit agent-skill copying
 
 Repository areas:
 
 - `docs/`: MkDocs documentation, tutorials, knowledge guides, ADRs, and API
   reference scaffold
 - `examples/`: migrated market examples from the SDK
-- `.agents/skills/`: local agent skills for market-domain workflows
+- `.agents/skills/ms_markets/`: source agent skills for market-domain workflows
 - `tests/`: automated tests
-- `src/cli/`: placeholder for a future command-line interface
+- `src/msm/.agents/ms_markets/`: packaged agent-skill bundle installed with
+  the wheel
 
 ## Documentation Map
 
@@ -108,6 +110,17 @@ Verify the import:
 ```bash
 python -c "import msm; import msm.pricing; print(msm.__version__)"
 ```
+
+Copy the packaged ms-markets skills into a host Main Sequence project only when
+you explicitly want them available to agents in that project:
+
+```bash
+msm copy-msm-skills --path /path/to/project
+```
+
+Importing `msm` never mutates the current directory or auto-copies skills. The
+command writes only to `<project>/.agents/ms_markets/` and leaves unrelated
+`.agents` content alone. Use `--dry-run` or `--json` to inspect the copy plan.
 
 ## Common Development Commands
 

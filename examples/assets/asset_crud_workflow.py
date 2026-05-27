@@ -24,6 +24,20 @@ if TYPE_CHECKING:
 EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX = "example-asset-"
 EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER = f"{EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX}btc"
 EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER = f"{EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX}eth"
+EXAMPLE_ASSET_TYPES = [
+    {
+        "asset_type": "crypto",
+        "display_name": "Crypto",
+        "description": "Crypto spot and token assets used by the example workflow.",
+        "metadata_json": {"source": "examples/assets/asset_crud_workflow.py"},
+    },
+    {
+        "asset_type": "equity",
+        "display_name": "Equity",
+        "description": "Listed equity assets resolved through OpenFIGI.",
+        "metadata_json": {"source": "examples/assets/asset_crud_workflow.py"},
+    },
+]
 EXAMPLE_ASSETS = [
     {
         "unique_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
@@ -41,13 +55,14 @@ def create_query_assets(
     *,
     delete_temporary_assets: bool = False,
 ) -> dict[str, Any]:
-    """Create example assets, register FIGI details, write snapshots, and list them."""
+    """Resolve FIGI data, register asset types, create assets, and list them."""
 
-    from msm.api.assets import Asset
+    from msm.api.assets import Asset, AssetType
     from msm.data_nodes.assets import AssetSnapshot
     from msm.services.assets.openfigi import query_by_figi
 
     normalized_openfigi = query_by_figi(EXAMPLE_OPENFIGI_FIGI)
+    registered_asset_types = [AssetType.upsert(**payload) for payload in EXAMPLE_ASSET_TYPES]
     created_assets = [Asset.upsert(**payload) for payload in EXAMPLE_ASSETS]
     openfigi_asset = Asset.upsert(
         unique_identifier=normalized_openfigi["unique_identifier"],
@@ -59,9 +74,7 @@ def create_query_assets(
         unique_identifier=EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
     )
     if btc_by_identifier is None:
-        raise RuntimeError(
-            f"Expected {EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER} to exist after upsert."
-        )
+        raise RuntimeError(f"Expected {EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER} to exist after upsert.")
 
     btc_by_uid = Asset.get_by_uid(btc_by_identifier.uid)
     crypto_examples = Asset.filter(
@@ -97,6 +110,7 @@ def create_query_assets(
         ]
 
     return {
+        "registered_asset_types": registered_asset_types,
         "created_assets": created_assets,
         "btc_by_identifier": btc_by_identifier,
         "btc_by_uid": btc_by_uid,

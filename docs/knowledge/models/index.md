@@ -25,8 +25,8 @@ Models answer these questions:
 - `msm.models.__init__`: aggregate model exports and `markets_sqlalchemy_models`.
 - `msm.models.accounts`: accounts and account target position assignments.
 - `msm.models.assets`: assets.
+- `msm.models.asset_types`: registered asset type definitions.
 - `msm.models.asset_categories`: categories and memberships.
-- `msm.models.asset_master_lists`: asset master lists.
 - `msm.models.calendars`: calendars.
 - `msm.models.execution`: execution tables.
 - `msm.models.funds`: funds.

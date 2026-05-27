@@ -141,7 +141,9 @@ When the universe itself should be a reusable platform object, create an asset
 category and manage memberships separately:
 
 ```python
-from msm.api.assets import Asset, AssetCategory
+from msm.api.assets import Asset, AssetCategory, AssetType
+
+AssetType.upsert(asset_type="crypto", display_name="Crypto")
 
 btc = Asset.upsert(unique_identifier="BTC", asset_type="crypto")
 eth = Asset.upsert(unique_identifier="ETH", asset_type="crypto")

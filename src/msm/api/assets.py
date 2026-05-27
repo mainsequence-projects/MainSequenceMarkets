@@ -9,7 +9,7 @@ from msm.api.base import MarketsRow, operation_result_rows
 from msm.models import (
     AssetCategoryMembershipTable,
     AssetCategoryTable,
-    AssetMasterListTable,
+    AssetTypeTable,
     AssetTable,
     OpenFigiDetailsTable,
 )
@@ -49,48 +49,41 @@ class AssetUpdate(BaseModel):
     asset_type: str | None = Field(default=None, max_length=64)
 
 
-class AssetMasterList(MarketsRow):
-    """Typed row selecting a canonical asset reference MetaTable."""
+class AssetType(MarketsRow):
+    """Typed row for the asset type registry."""
 
-    __table__: ClassVar[type[AssetMasterListTable]] = AssetMasterListTable
-    __required_tables__: ClassVar[list[type[AssetMasterListTable]]] = [
-        AssetMasterListTable
-    ]
-    __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
+    __table__: ClassVar[type[AssetTypeTable]] = AssetTypeTable
+    __required_tables__: ClassVar[list[type[AssetTypeTable]]] = [AssetTypeTable]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("asset_type",)
 
-    unique_identifier: str
-    name: str
-    description: str = ""
-    reference_meta_table_uid: uuid.UUID
-    is_default: bool = False
-    validation_version: str = "v1"
-    metadata_json: dict[str, Any] | None = None
-
-
-class AssetMasterListCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    unique_identifier: str = Field(min_length=1, max_length=255)
-    name: str = Field(min_length=1, max_length=255)
-    description: str = ""
-    reference_meta_table_uid: uuid.UUID | str
-    is_default: bool = False
-    validation_version: str = "v1"
-    metadata_json: dict[str, Any] | None = None
-
-
-class AssetMasterListUpsert(AssetMasterListCreate):
-    """Payload for inserting or updating an asset master-list row."""
-
-
-class AssetMasterListUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str | None = Field(default=None, max_length=255)
+    asset_type: str
+    display_name: str | None = None
     description: str | None = None
-    reference_meta_table_uid: uuid.UUID | str | None = None
-    is_default: bool | None = None
-    validation_version: str | None = None
+    metadata_json: dict[str, Any] | None = None
+
+
+class AssetTypeCreate(BaseModel):
+    """Payload for creating an asset type registry row."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    asset_type: str = Field(min_length=1, max_length=64)
+    display_name: str | None = Field(default=None, max_length=255)
+    description: str | None = None
+    metadata_json: dict[str, Any] | None = None
+
+
+class AssetTypeUpsert(AssetTypeCreate):
+    """Payload for inserting or updating an asset type by registry key."""
+
+
+class AssetTypeUpdate(BaseModel):
+    """Payload for updating mutable asset type fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, max_length=255)
+    description: str | None = None
     metadata_json: dict[str, Any] | None = None
 
 
@@ -98,9 +91,7 @@ class AssetCategory(MarketsRow):
     """Typed asset universe row."""
 
     __table__: ClassVar[type[AssetCategoryTable]] = AssetCategoryTable
-    __required_tables__: ClassVar[list[type[AssetCategoryTable]]] = [
-        AssetCategoryTable
-    ]
+    __required_tables__: ClassVar[list[type[AssetCategoryTable]]] = [AssetCategoryTable]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
 
     unique_identifier: str
@@ -162,9 +153,7 @@ class AssetCategoryUpdate(BaseModel):
 class AssetCategoryMembership(MarketsRow):
     """Typed membership row between an asset category and an asset."""
 
-    __table__: ClassVar[type[AssetCategoryMembershipTable]] = (
-        AssetCategoryMembershipTable
-    )
+    __table__: ClassVar[type[AssetCategoryMembershipTable]] = AssetCategoryMembershipTable
     __required_tables__: ClassVar[list[type[Any]]] = [
         AssetTable,
         AssetCategoryTable,
@@ -267,10 +256,10 @@ __all__ = [
     "AssetCategoryUpdate",
     "AssetCategoryUpsert",
     "AssetCreate",
-    "AssetMasterList",
-    "AssetMasterListCreate",
-    "AssetMasterListUpdate",
-    "AssetMasterListUpsert",
+    "AssetType",
+    "AssetTypeCreate",
+    "AssetTypeUpdate",
+    "AssetTypeUpsert",
     "AssetUpdate",
     "AssetUpsert",
     "OpenFigiDetails",

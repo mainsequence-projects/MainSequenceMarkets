@@ -15,7 +15,7 @@ import msm.models as models
 from msm.base import MarketsMetaTableMixin
 from msm.meta_tables import build_markets_registration_requests, markets_meta_table_fullname
 from msm.models import (
-    AssetMasterListTable,
+    AssetTypeTable,
     AssetTable,
     markets_sqlalchemy_models,
 )
@@ -53,9 +53,21 @@ def test_asset_model_does_not_store_arbitrary_metadata_json() -> None:
     assert "metadata_json" not in AssetTable.__table__.c
 
 
+def test_asset_type_model_is_registry_table() -> None:
+    assert AssetTypeTable.__markets_base_identifier__ == "AssetType"
+    assert AssetTypeTable.__metatable_identifier__ == "AssetType"
+    assert "asset_type" in AssetTypeTable.__table__.c
+    assert "display_name" in AssetTypeTable.__table__.c
+    assert "description" in AssetTypeTable.__table__.c
+    assert "metadata_json" in AssetTypeTable.__table__.c
+    assert any(
+        index.unique and [column.name for column in index.columns] == ["asset_type"]
+        for index in AssetTypeTable.__table__.indexes
+    )
+
+
 def test_legacy_model_aliases_are_removed() -> None:
     assert not hasattr(models, "Asset")
-    assert not hasattr(models, "AssetMasterList")
 
 
 def test_selected_metatable_models_resolve_in_dependency_order() -> None:
@@ -67,6 +79,12 @@ def test_selected_metatable_models_resolve_in_dependency_order() -> None:
         AssetTable,
         meta_tables.resolve_markets_meta_table_model("AssetCategoryMembership"),
     ]
+
+
+def test_asset_type_resolves_before_asset_when_selected() -> None:
+    models = meta_tables.resolve_markets_meta_table_models(["Asset", "AssetType"])
+
+    assert models == [AssetTypeTable, AssetTable]
 
 
 def test_markets_models_build_platform_registration_requests_in_dependency_order() -> None:
@@ -82,7 +100,7 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
         requests.append(request)
         target_meta_table_uid_by_fullname[markets_meta_table_fullname(model)] = str(uuid.uuid4())
 
-    assert AssetMasterListTable in markets_sqlalchemy_models()
+    assert AssetTypeTable in markets_sqlalchemy_models()
     assert requests
     assert all(request.management_mode == "platform_managed" for request in requests)
     assert all(
@@ -106,11 +124,6 @@ def test_markets_models_build_external_registration_requests_in_dependency_order
 
     assert requests
     assert all(request.management_mode == "external_registered" for request in requests)
-
-
-def test_asset_master_list_is_control_plane_reference_without_database_fk() -> None:
-    assert "reference_meta_table_uid" in AssetMasterListTable.__table__.c
-    assert not AssetMasterListTable.__table__.foreign_keys
 
 
 def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
@@ -230,12 +243,12 @@ def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monk
     assert result.target_meta_table_uid_by_fullname == {"public.fake_asset": "fake-meta-table-uid"}
     assert result.meta_table_by_fullname["public.fake_asset"] is meta_table
     assert calls == [
-            {
-                "timeout": None,
-                "physical_table_name": "fake_storage_hash",
-                "identifier": "FakeModel",
-                "namespace": "mainsequence.markets",
-                "management_mode": "platform_managed",
+        {
+            "timeout": None,
+            "physical_table_name": "fake_storage_hash",
+            "identifier": "FakeModel",
+            "namespace": "mainsequence.markets",
+            "management_mode": "platform_managed",
             "data_source__uid": "data-source-uid",
         }
     ]

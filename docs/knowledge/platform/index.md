@@ -24,6 +24,9 @@ Platform utilities answer these questions:
   publishers whose persisted identity includes an asset `unique_identifier`.
 - `msm.markets_data_node`: temporary compatibility shim for the old
   `MarketDataNode` and `MarketDataNodeConfiguration` imports.
+- `msm.cli`: explicit command-line helpers, including
+  `msm copy-msm-skills` for installing packaged ms-markets agent skills into a
+  host project.
 
 ## Key Contracts
 
@@ -39,6 +42,12 @@ existing callers.
 
 See [MetaTable Registration](meta_table_registration.md) for the registration
 workflow and the two supported management modes.
+
+The `msm` import path is side-effect free. Installing the package makes the
+ms-markets skill bundle available as package data, but skills are copied into a
+host project only when a user runs `msm copy-msm-skills --path <project>`.
+That command writes to `.agents/ms_markets/` and leaves Main Sequence scaffold
+skills and project-state files untouched.
 
 ## Extension Notes
 

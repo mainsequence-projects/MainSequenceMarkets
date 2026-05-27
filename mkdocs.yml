@@ -31,7 +31,6 @@ nav:
       - Overview: knowledge/index.md
       - Accounts: knowledge/accounts/index.md
       - Assets: knowledge/assets/index.md
-      - AssetMasterList: knowledge/assets/asset_master_lists.md
       - Client: knowledge/client/index.md
       - Execution: knowledge/execution/index.md
       - Models: knowledge/models/index.md

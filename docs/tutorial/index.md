@@ -28,15 +28,33 @@ The maintenance loop for any meaningful implementation change is:
 This tutorial requirement is intentional: examples show isolated usage, while
 tutorials show the order a user should follow.
 
+## Installing MS Markets Agent Skills
+
+Use the `msm` CLI when a host Main Sequence project should receive the
+ms-markets agent skills:
+
+```bash
+msm copy-msm-skills --path .
+```
+
+The command copies the packaged bundle into `.agents/ms_markets/` and overwrites
+only matching skill folders under that namespace. It does not touch
+`.agents/skills/mainsequence`, project-state files, or `AGENTS.md`.
+
+Do not rely on `import msm` for this setup. Imports are side-effect free and do
+not copy skills into the current working tree.
+
 ## Asset Identity And Provider Rows
 
 Use this workflow when ingesting external asset metadata:
 
 1. Resolve or normalize provider data through a service module, for example
    `msm.services.assets.openfigi`.
-2. Persist canonical identity through the user-facing `msm.api.assets.Asset`
+2. Register the asset type through `msm.api.assets.AssetType` when the type is
+   new to the project or namespace.
+3. Persist canonical identity through the user-facing `msm.api.assets.Asset`
    row API. Row operations attach to registered MetaTables lazily.
-3. Store timestamped asset facts through DataNode schemas in
+4. Store timestamped asset facts through DataNode schemas in
    `msm.data_nodes.assets`.
 
 The package boundary is deliberate: `msm.api` owns user row operations,

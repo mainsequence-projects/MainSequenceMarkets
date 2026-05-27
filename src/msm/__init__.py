@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from msm.__about__ import __version__
+from importlib.metadata import version as _package_version
+
 from msm.bootstrap import create_schemas, get_runtime
+
+__version__ = _package_version("ms-markets")
 
 
 __all__ = [
