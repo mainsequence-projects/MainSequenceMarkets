@@ -41,12 +41,13 @@ from msm.models import AssetTable
 ```
 
 Row objects expose class methods such as `upsert(...)`, `filter(...)`, and
-lifecycle helpers where the domain needs them. Mutation and lookup methods
-lazily attach to already-registered MetaTables; they only create schemas when a
-development or example process opts in through `MSM_AUTO_REGISTER_NAMESPACE`.
-That same environment namespace is also used for default markets DataNode
-identifiers and `hash_namespace` values in the process.
-`create_schemas()` remains available for explicit startup preflight.
+lifecycle helpers where the domain needs them. Mutation and lookup methods use
+the active runtime created during process initialization; they do not attach to
+MetaTables or register schemas on first row use. `start_engine()` is the
+explicit startup preflight entrypoint and uses the internal maintenance catalog
+to attach existing tables, import pre-catalog tables, and register only missing
+tables. `MSM_AUTO_REGISTER_NAMESPACE` is only a namespace default for examples
+or local development; it does not make row operations register schemas.
 Lower-level repository helpers remain available when a workflow needs direct
 access to registered table handles or raw platform operation payloads.
 

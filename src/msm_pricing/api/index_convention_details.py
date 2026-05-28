@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from msm.api.base import operation_result_rows
-from msm.models import IndexTable
+from msm.models import IndexTable, IndexTypeTable
 from msm.repositories.crud import (
     create_model,
     get_model_by_uid,
@@ -46,6 +46,7 @@ class IndexConventionDetails(BaseModel):
 
     __table__: ClassVar[type[IndexConventionDetailsTable]] = IndexConventionDetailsTable
     __required_tables__: ClassVar[list[type[Any]]] = [
+        IndexTypeTable,
         IndexTable,
         IndexConventionDetailsTable,
     ]

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from msm.models import IndexTable
+from msm.models import IndexTable, IndexTypeTable
 from msm_pricing.api.curves import Curve, CurveUpsert
 from msm_pricing.models import CurveTable, IndexConventionDetailsTable
 
@@ -14,6 +14,7 @@ from msm_pricing.models import CurveTable, IndexConventionDetailsTable
 def test_curve_api_declares_table_contract() -> None:
     assert Curve.__table__ is CurveTable
     assert Curve.__required_tables__ == [
+        IndexTypeTable,
         IndexTable,
         IndexConventionDetailsTable,
         CurveTable,
@@ -37,7 +38,7 @@ def test_curve_create_schemas_uses_pricing_dependencies(monkeypatch) -> None:
     assert Curve.create_schemas(namespace="pricing-test") is runtime
     assert calls == [
         {
-            "models": [IndexTable, IndexConventionDetailsTable, CurveTable],
+            "models": [IndexTypeTable, IndexTable, IndexConventionDetailsTable, CurveTable],
             "namespace": "pricing-test",
         }
     ]
@@ -118,7 +119,7 @@ def test_curve_upsert_uses_pricing_runtime_and_unique_identifier_key(
         (
             "runtime",
             {
-                "models": [IndexTable, IndexConventionDetailsTable, CurveTable],
+                "models": [IndexTypeTable, IndexTable, IndexConventionDetailsTable, CurveTable],
                 "row_model_name": "Curve",
             },
         ),

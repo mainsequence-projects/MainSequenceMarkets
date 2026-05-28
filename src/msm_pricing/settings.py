@@ -1,14 +1,53 @@
-# settings.py
 from __future__ import annotations
 
-import os
-from types import SimpleNamespace
+from msm.settings import markets_data_node_identifier
 
-ENV_PREFIX = "MSI"
+PRICING_CONTEXT_DEFAULT = "default"
+PRICING_CONTEXT_EOD = "eod"
+PRICING_CONTEXT_LIVE = "live"
+PRICING_CONTEXT_RISK_MANAGER = "risk_manager"
+
+PRICING_CONCEPT_DISCOUNT_CURVES = "discount_curves"
+PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS = "interest_rate_index_fixings"
+PRICING_CONCEPT_EQUITY_VOL_CURVES = "equity_vol_curves"
 
 
-DATA_BACKEND = os.getenv(f"{ENV_PREFIX}_DATA_BACKEND", "mainsequence")
-data = SimpleNamespace(backend=DATA_BACKEND)
+def default_pricing_market_data_bindings(
+    *,
+    namespace: str | None = None,
+) -> dict[str, str]:
+    """Return built-in pricing concept to DataNode identifier bindings."""
+
+    return {
+        PRICING_CONCEPT_DISCOUNT_CURVES: markets_data_node_identifier(
+            PRICING_CONCEPT_DISCOUNT_CURVES,
+            namespace=namespace,
+        ),
+        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: markets_data_node_identifier(
+            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+            namespace=namespace,
+        ),
+    }
 
 
+def default_pricing_market_data_identifier(
+    concept_key: str,
+    *,
+    namespace: str | None = None,
+) -> str | None:
+    """Return the built-in DataNode identifier for a pricing concept."""
 
+    return default_pricing_market_data_bindings(namespace=namespace).get(concept_key)
+
+
+__all__ = [
+    "PRICING_CONCEPT_DISCOUNT_CURVES",
+    "PRICING_CONCEPT_EQUITY_VOL_CURVES",
+    "PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS",
+    "PRICING_CONTEXT_DEFAULT",
+    "PRICING_CONTEXT_EOD",
+    "PRICING_CONTEXT_LIVE",
+    "PRICING_CONTEXT_RISK_MANAGER",
+    "default_pricing_market_data_bindings",
+    "default_pricing_market_data_identifier",
+]

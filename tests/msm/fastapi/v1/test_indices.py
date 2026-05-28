@@ -15,6 +15,7 @@ def test_get_indexes_returns_frontend_list_rows(monkeypatch) -> None:
             {
                 "uid": str(index_uid),
                 "unique_identifier": "SPX",
+                "index_type": "equity",
                 "display_name": "S&P 500 Index",
                 "description": "Large-cap US equity index",
                 "provider": "example",
@@ -38,6 +39,7 @@ def test_get_indexes_returns_frontend_list_rows(monkeypatch) -> None:
         {
             "uid": str(index_uid),
             "unique_identifier": "SPX",
+            "index_type": "equity",
             "display_name": "S&P 500 Index",
             "description": "Large-cap US equity index",
             "provider": "example",
@@ -63,6 +65,7 @@ def test_get_index_returns_record(monkeypatch) -> None:
         lambda uid: {
             "uid": str(index_uid),
             "unique_identifier": "SPX",
+            "index_type": "equity",
             "display_name": "S&P 500 Index",
             "description": "Large-cap US equity index",
             "provider": "example",
@@ -77,6 +80,7 @@ def test_get_index_returns_record(monkeypatch) -> None:
     assert response.json() == {
         "uid": str(index_uid),
         "unique_identifier": "SPX",
+        "index_type": "equity",
         "display_name": "S&P 500 Index",
         "description": "Large-cap US equity index",
         "provider": "example",

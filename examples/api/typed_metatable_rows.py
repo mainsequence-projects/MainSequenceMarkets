@@ -10,21 +10,41 @@ if __package__ in {None, ""}:
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from examples.platform.bootstrap import (
-    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_NAMESPACE_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
 
-os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+
+import msm
 
 
 def main() -> None:
     """Demonstrate class-owned typed row APIs across markets MetaTables."""
 
+    msm.start_engine(
+        models=[
+            "Asset",
+            "AssetCategory",
+            "AssetCategoryMembership",
+            "Calendar",
+            "Account",
+            "Portfolio",
+            "PortfolioAssetDetail",
+            "Fund",
+            "OrderManager",
+            "OrderTargetQuantity",
+            "Order",
+            "OrderStatusEvent",
+            "Trade",
+            "ExecutionError",
+        ],
+    )
+
     from msm.api.accounts import Account
     from msm.api.assets import Asset, AssetCategory
     from msm.api.calendars import Calendar
     from msm.api.execution import OrderManager
-    from msm.api.market_metadata import InstrumentsConfiguration
     from msm.api.portfolios import Fund, Portfolio
 
     btc = Asset.upsert(unique_identifier="example-api-btc", asset_type="crypto")
@@ -53,7 +73,6 @@ def main() -> None:
         target_account_uid=account.uid,
         target_portfolio_uid=portfolio.uid,
     )
-    configuration = InstrumentsConfiguration.upsert(configuration_key="example-api")
     order_manager = OrderManager.create_batch(
         unique_identifier="example-api-order-manager",
         target_account_uid=account.uid,
@@ -70,7 +89,6 @@ def main() -> None:
             "account": account,
             "portfolio": portfolio,
             "fund": fund,
-            "configuration": configuration,
             "order_manager": order_manager,
         }
     )

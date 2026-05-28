@@ -11,10 +11,17 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from msm.api.assets import Asset
 from msm.api.base import _dedupe_models, operation_result_rows
-from msm.models import AssetTable, AssetTypeTable, FutureDetailsTable, IndexTable
+from msm.constants import ASSET_TYPE_FUTURE, ASSET_TYPE_FUTURE_DEFINITION
+from msm.models import (
+    AssetTable,
+    AssetTypeTable,
+    FutureAssetDetailsTable,
+    IndexTable,
+    IndexTypeTable,
+)
 from msm.repositories.crud import upsert_model
 
-FUTURE_ASSET_TYPE = "future"
+FUTURE_ASSET_TYPE = ASSET_TYPE_FUTURE
 
 
 class FutureKind(str, Enum):
@@ -87,8 +94,9 @@ class Future(BaseModel):
     __required_tables__: ClassVar[list[type[Any]]] = [
         AssetTypeTable,
         AssetTable,
+        IndexTypeTable,
         IndexTable,
-        FutureDetailsTable,
+        FutureAssetDetailsTable,
     ]
 
     uid: uuid.UUID = Field(validation_alias=AliasChoices("uid", "asset_uid"))
@@ -115,11 +123,11 @@ class Future(BaseModel):
     def create_schemas(cls, **kwargs: Any):
         """Create the MetaTable schemas required by the future API."""
 
-        from msm.bootstrap import create_schemas
+        from msm.bootstrap import start_engine
 
         requested_models = kwargs.pop("models", None)
         models = _dedupe_models([*cls.__required_tables__, *(requested_models or [])])
-        return create_schemas(models=models, **kwargs)
+        return start_engine(models=models, **kwargs)
 
     @classmethod
     def upsert(
@@ -135,11 +143,7 @@ class Future(BaseModel):
         upsert_model(
             context,
             model=AssetTypeTable,
-            values={
-                "asset_type": FUTURE_ASSET_TYPE,
-                "display_name": "Future",
-                "description": "Futures contracts represented as tradable assets.",
-            },
+            values=ASSET_TYPE_FUTURE_DEFINITION.as_payload(),
             conflict_columns=("asset_type",),
         )
         future_asset = Asset._from_operation_result(
@@ -156,7 +160,7 @@ class Future(BaseModel):
         detail_rows = operation_result_rows(
             upsert_model(
                 context,
-                model=FutureDetailsTable,
+                model=FutureAssetDetailsTable,
                 values={
                     "asset_uid": future_asset.uid,
                     "kind": values["kind"],

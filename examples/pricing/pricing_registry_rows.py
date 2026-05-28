@@ -9,21 +9,43 @@ if __package__ in {None, ""}:
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from examples.platform.bootstrap import (
-    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_NAMESPACE_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
 
-os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+
+import msm
 
 
 def main() -> None:
     """Register an index convention row and a curve identity row for pricing."""
 
-    from msm.api.indices import Index
-    from msm_pricing.api import Curve, IndexConventionDetails
+    msm.start_engine(
+        models=["IndexType", "Index"],
+    )
 
+    from msm.api.indices import Index, IndexType
+    from msm.constants import (
+        INDEX_TYPE_INTEREST_RATE,
+        INDEX_TYPE_INTEREST_RATE_DEFINITION,
+    )
+    from msm_pricing.api import Curve, IndexConventionDetails
+    from msm_pricing.bootstrap import create_pricing_schemas
+
+    create_pricing_schemas(
+        models=[
+            "IndexType",
+            "Index",
+            "IndexConventionDetails",
+            "Curve",
+        ],
+    )
+
+    IndexType.upsert(**INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload())
     index = Index.upsert(
         unique_identifier="USD-SOFR",
+        index_type=INDEX_TYPE_INTEREST_RATE,
         display_name="USD SOFR",
         provider="example",
     )

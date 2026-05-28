@@ -15,7 +15,7 @@ import pandas as pd
 import requests
 
 if TYPE_CHECKING:
-    from msm.models import AssetTable, OpenFigiDetailsTable
+    from msm.models import AssetTable, OpenFigiAssetDetailsTable
 
 OPENFIGI_MAPPING_URL = "https://api.openfigi.com/v3/mapping"
 OPENFIGI_SEARCH_URL = "https://api.openfigi.com/v3/search"
@@ -37,7 +37,7 @@ class OpenFigiAssetRows:
     """Client-owned rows derived from one OpenFIGI result."""
 
     asset: AssetTable
-    open_figi_details: OpenFigiDetailsTable
+    open_figi_details: OpenFigiAssetDetailsTable
     snapshot_frame: pd.DataFrame
 
 
@@ -72,7 +72,7 @@ def build_asset_rows_from_openfigi_result(
 ) -> OpenFigiAssetRows:
     """Build SQLAlchemy/MetaTable asset rows from one OpenFIGI result."""
 
-    from msm.models import AssetTable, OpenFigiDetailsTable
+    from msm.models import AssetTable, OpenFigiAssetDetailsTable
 
     normalized = normalize_openfigi_result(item)
     unique_identifier = normalized.get("unique_identifier")
@@ -80,7 +80,7 @@ def build_asset_rows_from_openfigi_result(
         raise ValueError("OpenFIGI result does not include `figi`.")
     resolved_asset_uid = UUID(str(asset_uid))
     asset = AssetTable(uid=resolved_asset_uid, unique_identifier=unique_identifier)
-    open_figi_details = OpenFigiDetailsTable(
+    open_figi_details = OpenFigiAssetDetailsTable(
         asset_uid=resolved_asset_uid,
         figi=normalized.get("figi"),
         composite=normalized.get("composite"),
@@ -228,6 +228,7 @@ def query_by_figi(
 def register_index_from_figi(
     figi_code: str,
     *,
+    index_type: str,
     api_key: str | None = None,
     api_url: str | None = None,
 ):
@@ -238,10 +239,10 @@ def register_index_from_figi(
         api_key=api_key,
         api_url=api_url,
     )
-    return upsert_index_from_openfigi_result(normalized)
+    return upsert_index_from_openfigi_result(normalized, index_type=index_type)
 
 
-def upsert_index_from_openfigi_result(item: Mapping[str, Any]):
+def upsert_index_from_openfigi_result(item: Mapping[str, Any], *, index_type: str):
     """Upsert an index row from a normalized or raw OpenFIGI result."""
 
     from msm.api.indices import Index
@@ -257,6 +258,7 @@ def upsert_index_from_openfigi_result(item: Mapping[str, Any]):
 
     return Index.upsert(
         unique_identifier=str(unique_identifier),
+        index_type=index_type,
         display_name=(
             normalized.get("name")
             or normalized.get("security_description")
@@ -272,6 +274,7 @@ def register_index_future_from_figis(
     future_figi: str,
     *,
     underlying_index_figi: str,
+    underlying_index_type: str,
     settlement_asset_uid: UUID | str,
     margin_asset_uid: UUID | str,
     kind: str,
@@ -288,16 +291,17 @@ def register_index_future_from_figis(
 ):
     """Resolve an index FIGI and a future FIGI, then upsert the Future row.
 
-    FIGI supplies canonical identifiers and provider metadata. Contract terms
-    remain explicit inputs because OpenFIGI does not provide a stable enough
-    contract schema for this library to infer settlement, margin, size, or
-    expiration rules.
+    FIGI supplies canonical identifiers and provider metadata. Index
+    classification and contract terms remain explicit inputs because OpenFIGI
+    does not provide a stable enough schema for this library to infer index
+    type, settlement, margin, size, or expiration rules.
     """
 
     from msm.api.derivatives import Future
 
     underlying_index = register_index_from_figi(
         underlying_index_figi,
+        index_type=underlying_index_type,
         api_key=api_key,
         api_url=api_url,
     )

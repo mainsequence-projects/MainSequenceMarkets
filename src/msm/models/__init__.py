@@ -13,12 +13,12 @@ from .assets import (
     AssetCategoryTable,
     AssetTable,
     AssetTypeTable,
-    BondDetailsTable,
-    CurrencySpotTable,
-    OpenFigiDetailsTable,
+    BondAssetDetailsTable,
+    CurrencySpotAssetDetailsTable,
+    OpenFigiAssetDetailsTable,
 )
 from .calendars import CalendarTable
-from .derivatives import FutureDetailsTable
+from .derivatives import FutureAssetDetailsTable
 from .execution import (
     ExecutionErrorTable,
     OrderManagerTable,
@@ -29,8 +29,7 @@ from .execution import (
 )
 from .funds import FundTable
 from .issuers import IssuerTable
-from .indices import IndexTable
-from .instruments import InstrumentsConfigurationTable
+from .indices import IndexTable, IndexTypeTable
 from .portfolios import (
     PortfolioAssetDetailTable,
     PortfolioMetadataTable,
@@ -46,11 +45,12 @@ def markets_sqlalchemy_models() -> list[type]:
     return [
         AssetTypeTable,
         AssetTable,
+        IndexTypeTable,
         IndexTable,
         IssuerTable,
-        CurrencySpotTable,
-        BondDetailsTable,
-        FutureDetailsTable,
+        CurrencySpotAssetDetailsTable,
+        BondAssetDetailsTable,
+        FutureAssetDetailsTable,
         CalendarTable,
         AccountModelPortfolioTable,
         AccountGroupTable,
@@ -60,9 +60,8 @@ def markets_sqlalchemy_models() -> list[type]:
         SignalMetadataTable,
         RebalanceStrategyMetadataTable,
         PortfolioMetadataTable,
-        InstrumentsConfigurationTable,
         AssetCategoryMembershipTable,
-        OpenFigiDetailsTable,
+        OpenFigiAssetDetailsTable,
         PortfolioAssetDetailTable,
         AccountTargetPositionAssignmentTable,
         FundTable,
@@ -84,16 +83,16 @@ __all__ = [
     "AssetCategoryTable",
     "AssetTable",
     "AssetTypeTable",
-    "BondDetailsTable",
+    "BondAssetDetailsTable",
     "CalendarTable",
-    "CurrencySpotTable",
+    "CurrencySpotAssetDetailsTable",
     "ExecutionErrorTable",
     "FundTable",
-    "FutureDetailsTable",
+    "FutureAssetDetailsTable",
     "IndexTable",
+    "IndexTypeTable",
     "IssuerTable",
-    "InstrumentsConfigurationTable",
-    "OpenFigiDetailsTable",
+    "OpenFigiAssetDetailsTable",
     "OrderManagerTable",
     "OrderStatusEventTable",
     "OrderTable",

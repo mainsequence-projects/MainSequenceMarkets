@@ -27,8 +27,8 @@ Portfolios answer these questions:
   metadata.
 - `msm.api.portfolios`: typed row APIs for `Portfolio`,
   `PortfolioAssetDetail`, `PortfolioMetadata`, and `Fund`.
-- `msm.api.market_metadata`: typed row APIs for `SignalMetadata`,
-  `RebalanceStrategyMetadata`, and `InstrumentsConfiguration`.
+- `msm.api.market_metadata`: typed row APIs for `SignalMetadata` and
+  `RebalanceStrategyMetadata`.
 - `msm.services.portfolios`: service helpers for portfolio rows and portfolio
   asset details.
 - `msm.portfolios.contrib`: contributed price and signal DataNodes.

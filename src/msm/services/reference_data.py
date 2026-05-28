@@ -18,12 +18,6 @@ from msm.repositories.calendars import (
     search_calendars as repository_search_calendars,
     update_calendar as repository_update_calendar,
 )
-from msm.repositories.instruments import (
-    create_instruments_configuration as repository_create_instruments_configuration,
-    delete_instruments_configuration as repository_delete_instruments_configuration,
-    search_instruments_configurations as repository_search_instruments_configurations,
-    update_instruments_configuration as repository_update_instruments_configuration,
-)
 
 
 def create_calendar(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
@@ -76,48 +70,16 @@ def delete_account_group(context: MarketsRepositoryContext, **kwargs: Any) -> di
     return repository_delete_account_group(context, **kwargs)
 
 
-def create_instruments_configuration(
-    context: MarketsRepositoryContext,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    return repository_create_instruments_configuration(context, **kwargs)
-
-
-def search_instruments_configurations(
-    context: MarketsRepositoryContext,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    return repository_search_instruments_configurations(context, **kwargs)
-
-
-def update_instruments_configuration(
-    context: MarketsRepositoryContext,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    return repository_update_instruments_configuration(context, **kwargs)
-
-
-def delete_instruments_configuration(
-    context: MarketsRepositoryContext,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    return repository_delete_instruments_configuration(context, **kwargs)
-
-
 __all__ = [
     "create_account_group",
     "create_account_model_portfolio",
     "create_calendar",
-    "create_instruments_configuration",
     "delete_account_group",
     "delete_calendar",
-    "delete_instruments_configuration",
     "get_calendar_by_uid",
     "search_account_groups",
     "search_account_model_portfolios",
     "search_calendars",
-    "search_instruments_configurations",
     "update_account_group",
     "update_calendar",
-    "update_instruments_configuration",
 ]

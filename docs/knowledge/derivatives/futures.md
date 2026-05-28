@@ -6,11 +6,12 @@ detail table.
 In the current implementation, a future is a canonical `Asset` row with
 `asset_type="future"`. The underlying is an `IndexTable` row, not another
 `Asset`. This avoids creating fake assets for indexes just to satisfy a foreign
-key.
+key. Use `msm.constants.ASSET_TYPE_FUTURE` when project code needs the stable
+asset type key.
 
 ```text
 +-----------------------------+        one-to-one extension     +-----------------------------+
-| AssetTable                  |-------------------------------->| FutureDetailsTable          |
+| AssetTable                  |-------------------------------->| FutureAssetDetailsTable          |
 |-----------------------------|        asset_uid PK/FK          |-----------------------------|
 | uid                  PK     |                                 | asset_uid            PK/FK  |
 | unique_identifier    unique |                                 | kind                        |
@@ -46,14 +47,21 @@ from decimal import Decimal
 
 from msm.api.assets import Asset
 from msm.api.derivatives import Future
-from msm.api.indices import Index
+from msm.api.indices import Index, IndexType
+from msm.constants import (
+    ASSET_TYPE_CURRENCY,
+    INDEX_TYPE_EQUITY,
+    INDEX_TYPE_EQUITY_DEFINITION,
+)
 
+IndexType.upsert(**INDEX_TYPE_EQUITY_DEFINITION.as_payload())
 spx = Index.upsert(
     unique_identifier="SPX",
+    index_type=INDEX_TYPE_EQUITY,
     display_name="S&P 500 Index",
     provider="example",
 )
-usd = Asset.upsert(unique_identifier="USD", asset_type="currency")
+usd = Asset.upsert(unique_identifier="USD", asset_type=ASSET_TYPE_CURRENCY)
 
 future = Future.upsert(
     unique_identifier="CME:ESZ6",
@@ -76,7 +84,7 @@ future = Future.upsert(
 
 1. upsert `AssetType(asset_type="future")`;
 2. upsert `Asset(unique_identifier=<future>, asset_type="future")`;
-3. upsert `FutureDetailsTable(asset_uid=<future uid>, ...)`;
+3. upsert `FutureAssetDetailsTable(asset_uid=<future uid>, ...)`;
 4. return a typed `Future` object with the asset identity and contract terms.
 
 OpenFIGI-backed workflows can resolve both the underlying index FIGI and the
@@ -86,12 +94,16 @@ future FIGI while keeping contract economics explicit:
 from decimal import Decimal
 
 from msm.api.assets import Asset
+from msm.api.indices import IndexType
+from msm.constants import INDEX_TYPE_EQUITY, INDEX_TYPE_EQUITY_DEFINITION
 from msm.services import register_index_future_from_figis
 
+IndexType.upsert(**INDEX_TYPE_EQUITY_DEFINITION.as_payload())
 usd = Asset.upsert(unique_identifier="USD", asset_type="currency")
 future = register_index_future_from_figis(
     "BBG01SWCTHK4",
     underlying_index_figi="BBG000KKFC45",
+    underlying_index_type=INDEX_TYPE_EQUITY,
     settlement_asset_uid=usd.uid,
     margin_asset_uid=usd.uid,
     kind="EXPIRING",
@@ -158,8 +170,9 @@ rows exist are still tracked as an open ADR task.
 ```text
 AssetTypeTable
 AssetTable
+IndexTypeTable
 IndexTable
-FutureDetailsTable
+FutureAssetDetailsTable
 ```
 
 Production code normally assumes these MetaTables already exist. Application
@@ -171,14 +184,16 @@ from msm.api.derivatives import Future
 Future.create_schemas()
 ```
 
-Examples and development scripts can instead set `MSM_AUTO_REGISTER_NAMESPACE`
-before importing the API classes.
+Examples and development scripts can set `MSM_AUTO_REGISTER_NAMESPACE` before
+importing the API classes when they need an example namespace, but they still
+must call `Future.create_schemas()` or `msm.start_engine(...)` during startup
+before row operations.
 
 ## Boundaries
 
 The current `Future` workflow is for index-underlying futures. Do not add
 nullable polymorphic columns for asset, rate, or other underlyings into
-`FutureDetailsTable`. Add a later ADR when another underlying reference model
+`FutureAssetDetailsTable`. Add a later ADR when another underlying reference model
 exists.
 
 ## Related Concepts

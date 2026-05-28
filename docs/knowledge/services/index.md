@@ -37,7 +37,7 @@ pricing runtime logic.
 
 Provider services may compose table declarations and DataNodes when the provider response
 needs to produce multiple library-owned objects. For example, the OpenFIGI
-service builds `msm.models.AssetTable`, `msm.models.OpenFigiDetailsTable`, and an
+service builds `msm.models.AssetTable`, `msm.models.OpenFigiAssetDetailsTable`, and an
 `msm.data_nodes.assets.AssetSnapshot` frame from the same provider row.
 OpenFIGI requests read credentials from the Main Sequence secret
 `OPEN_FIGI_API_KEY`; set it in

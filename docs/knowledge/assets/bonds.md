@@ -1,14 +1,14 @@
 # Bond Assets
 
 Bonds are canonical `Asset` rows with `asset_type="bond"` plus a one-to-one
-`BondDetailsTable` row for issuer, currency, lifecycle dates, and status.
+`BondAssetDetailsTable` row for issuer, currency, lifecycle dates, and status.
 
 Issuers are reference data, not assets. Use `Issuer` for the issuer row and
 link the bond detail row to `IssuerTable.uid`.
 
 ```text
 +-----------------------------+        one-to-one extension     +-----------------------------+
-| AssetTable                  |-------------------------------->| BondDetailsTable            |
+| AssetTable                  |-------------------------------->| BondAssetDetailsTable            |
 |-----------------------------|        asset_uid PK/FK          |-----------------------------|
 | uid                  PK     |                                 | asset_uid            PK/FK  |
 | unique_identifier    unique |                                 | issuer_uid           FK     |
@@ -78,7 +78,7 @@ bond = Bond.upsert(
 2. verify `currency_asset_uid` resolves to an `AssetTable` row;
 3. upsert `AssetType(asset_type="bond")`;
 4. upsert `Asset(unique_identifier=<bond>, asset_type="bond")`;
-5. upsert `BondDetailsTable(asset_uid=<bond uid>, ...)`;
+5. upsert `BondAssetDetailsTable(asset_uid=<bond uid>, ...)`;
 6. return a typed `Bond` object with the asset identity and detail fields.
 
 ## Schema
@@ -92,7 +92,7 @@ bond = Bond.upsert(
 | `display_name` | Human-readable issuer name. |
 | `metadata_json` | Optional provider-specific issuer attributes. |
 
-`BondDetailsTable` is declared under `msm.models.assets.bonds`.
+`BondAssetDetailsTable` is declared under `msm.models.assets.bonds`.
 
 | Field | Meaning |
 | --- | --- |
@@ -115,7 +115,7 @@ bonds reference those rows.
 AssetTypeTable
 AssetTable
 IssuerTable
-BondDetailsTable
+BondAssetDetailsTable
 ```
 
 Production code normally assumes these MetaTables already exist. Application
@@ -127,8 +127,10 @@ from msm.api.assets import Bond
 Bond.create_schemas()
 ```
 
-Examples and development scripts can instead set `MSM_AUTO_REGISTER_NAMESPACE`
-before importing the API classes.
+Examples and development scripts can set `MSM_AUTO_REGISTER_NAMESPACE` before
+importing the API classes when they need an example namespace, but they still
+must call `Bond.create_schemas()` or `msm.start_engine(...)` during startup
+before row operations.
 
 ## Example
 
@@ -143,10 +145,10 @@ example using:
 - FIGI `BBG0221YLR31` in `OpenFigiDetails`;
 - inferred `issue_date=2026-05-15` because the source provides `10Y` tenor and
   `maturity_date=2036-05-15`;
-- `maturity_date=2036-05-15` in `BondDetailsTable`.
+- `maturity_date=2036-05-15` in `BondAssetDetailsTable`.
 
 The Treasury example deliberately does not add `coupon_rate` or
-`maturity_tenor_at_issue` to `BondDetailsTable`. `coupon_rate` is a
+`maturity_tenor_at_issue` to `BondAssetDetailsTable`. `coupon_rate` is a
 pricing/instrument term, and tenor is a source/reference term. The example
 preserves both in provider/raw metadata while keeping the canonical bond detail
 schema minimal.

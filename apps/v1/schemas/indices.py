@@ -11,6 +11,7 @@ class IndexListRow(BaseModel):
 
     uid: UUID
     unique_identifier: str
+    index_type: str
     display_name: str
     description: str | None = None
     provider: str | None = None
@@ -21,6 +22,7 @@ class IndexRecord(BaseModel):
 
     uid: UUID
     unique_identifier: str
+    index_type: str
     display_name: str
     description: str | None = None
     provider: str | None = None

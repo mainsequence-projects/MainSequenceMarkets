@@ -20,12 +20,44 @@ store every instrument-specific field. The stable identity fields are:
 - `uid`: internal row identity used by relational detail tables.
 - `unique_identifier`: the canonical public handle for the asset.
 - `asset_type`: a short classification string, such as `crypto`, `equity`, or
-  `asset_future`.
+  `future`.
 
 `AssetType` is the type registry. Register an `asset_type` before using it in
 new asset workflows so the meaning of the string is discoverable. In the current
 schema, `Asset.asset_type` is a string classification field whose values should
 match rows in `AssetType`; it is not a database foreign key in this release.
+
+Use `msm.constants` for built-in asset type keys instead of repeating literals
+across projects:
+
+```python
+from msm.constants import (
+    ASSET_TYPE_BOND,
+    ASSET_TYPE_CRYPTO,
+    ASSET_TYPE_CURRENCY,
+    ASSET_TYPE_CURRENCY_SPOT,
+    ASSET_TYPE_EQUITY,
+    ASSET_TYPE_FUTURE,
+)
+
+assert ASSET_TYPE_BOND == "bond"
+assert ASSET_TYPE_CRYPTO == "crypto"
+assert ASSET_TYPE_CURRENCY == "currency"
+assert ASSET_TYPE_CURRENCY_SPOT == "currency_spot"
+assert ASSET_TYPE_EQUITY == "equity"
+assert ASSET_TYPE_FUTURE == "future"
+```
+
+The constants module also exposes `BUILT_IN_ASSET_TYPE_DEFINITIONS`, whose
+entries can produce payloads for `AssetType.upsert(...)`:
+
+```python
+from msm.api.assets import AssetType
+from msm.constants import BUILT_IN_ASSET_TYPE_DEFINITIONS
+
+for definition in BUILT_IN_ASSET_TYPE_DEFINITIONS:
+    AssetType.upsert(**definition.as_payload())
+```
 
 ```text
 +-----------------------------+        logical value        +-----------------------------+
@@ -40,32 +72,33 @@ match rows in `AssetType`; it is not a database foreign key in this release.
 ```
 
 The intended extension model is relational composition. Do not extend
-`AssetTable` by adding columns such as maturity, strike, expiry, issuer, or
-venue-specific payloads. Instead, add a detail table keyed by the asset row and
-keep the core `AssetTable` stable.
+`AssetTable` by adding columns such as maturity, strike, expiry, issuer,
+venue-specific payloads, or serialized pricing instruments. Instead, add a
+detail table keyed by the asset row and keep the core `AssetTable` stable.
 
-Example extension shape for futures:
+Futures use the same extension pattern:
 
 ```text
 +-----------------------------+        one-to-one detail        +-----------------------------+
-| AssetTable                  |-------------------------------->| AssetFutureDetailsTable     |
+| AssetTable                  |-------------------------------->| FutureAssetDetailsTable          |
 |-----------------------------|        asset_uid PK/FK          |-----------------------------|
 | uid                  PK     |                                 | asset_uid            PK/FK  |
-| unique_identifier    unique |                                 | exchange_code               |
-| asset_type                 |                                 | contract_code               |
-+-----------------------------+                                 | maturity_date               |
-                                                                | last_trade_date             |
+| unique_identifier    unique |                                 | kind                        |
+| asset_type                 |                                 | underlying_index_uid FK     |
++-----------------------------+                                 | settlement_asset FK         |
+                                                                | margin_asset FK             |
+                                                                | expires_at                  |
                                                                 | contract_size               |
                                                                 | metadata_json               |
                                                                 +-----------------------------+
 ```
 
-An `AssetFuture` detail table like that would belong in an extension package or
-a future `msm.models` module. Its public API should mirror the current pattern:
-a SQLAlchemy `AssetFutureDetailsTable` for schema work and a Pydantic
-`AssetFutureDetails` row model for application code. For one-to-one instrument
-details, the detail table's `asset_uid` should be both the primary key and the
-foreign key to `AssetTable.uid`; a separate detail-row `uid` is unnecessary.
+`FutureAssetDetailsTable` is the built-in futures detail table. Its public API
+mirrors the current pattern: a SQLAlchemy `FutureAssetDetailsTable` for schema
+work and a Pydantic `Future` row model for application code. For one-to-one
+instrument details, the detail table's `asset_uid` should be both the primary
+key and the foreign key to `AssetTable.uid`; a separate detail-row `uid` is
+unnecessary.
 
 ## Currency Assets
 
@@ -75,17 +108,18 @@ with `asset_type="currency"`.
 
 `CurrencySpot` is the built-in extension for tradable spot pairs such as
 `EUR/USD`. The pair is stored as a normal `Asset` with
-`asset_type="currency_spot"`, while `CurrencySpotTable` stores the base and
-quote currency references:
+`asset_type="currency_spot"`, while `CurrencySpotAssetDetailsTable` stores the
+base and quote currency references:
 
 ```python
 from msm.api.assets import Asset, CurrencySpot
+from msm.constants import ASSET_TYPE_CURRENCY
 
 USD = {"code": "USD", "currency_name": "US Dollar"}
 EUR = {"code": "EUR", "currency_name": "Euro"}
 
-usd = Asset.upsert(unique_identifier=USD["code"], asset_type="currency")
-eur = Asset.upsert(unique_identifier=EUR["code"], asset_type="currency")
+usd = Asset.upsert(unique_identifier=USD["code"], asset_type=ASSET_TYPE_CURRENCY)
+eur = Asset.upsert(unique_identifier=EUR["code"], asset_type=ASSET_TYPE_CURRENCY)
 
 eur_usd = CurrencySpot.upsert(
     unique_identifier="BBG0013HGRV5",
@@ -96,7 +130,7 @@ eur_usd = CurrencySpot.upsert(
 
 The typed asset API normalizes asset type strings before writing them:
 `"Currency"` becomes `currency`, `"Currency Spot"` becomes `currency_spot`, and
-`"Asset Future"` becomes `asset_future`. Friendly display names belong in
+`"Future"` becomes `future`. Friendly display names belong in
 `AssetType.display_name`.
 
 See [Currency Assets](currency.md) for the schema, registration dependency
@@ -105,7 +139,7 @@ order, and the exact `CurrencySpot.upsert(...)` workflow.
 ## Bond Assets
 
 Bonds are normal `Asset` rows with `asset_type="bond"` plus a one-to-one
-`BondDetailsTable` row. Issuers are separate reference rows in `IssuerTable`,
+`BondAssetDetailsTable` row. Issuers are separate reference rows in `IssuerTable`,
 not assets and not loose strings.
 
 ```python
@@ -113,12 +147,13 @@ import datetime as dt
 
 from msm.api.assets import Asset, Bond
 from msm.api.issuers import Issuer
+from msm.constants import ASSET_TYPE_CURRENCY
 
 issuer = Issuer.upsert(
     unique_identifier="example-issuer",
     display_name="Example Issuer",
 )
-usd = Asset.upsert(unique_identifier="USD", asset_type="currency")
+usd = Asset.upsert(unique_identifier="USD", asset_type=ASSET_TYPE_CURRENCY)
 
 bond = Bond.upsert(
     unique_identifier="example-usd-bond-2031",
@@ -148,7 +183,7 @@ security type, exchange, and raw provider payload to be stored relationally.
 
 ```text
 +-----------------------------+        one-to-one provider      +-----------------------------+
-| AssetTable                  |-------------------------------->| OpenFigiDetailsTable        |
+| AssetTable                  |-------------------------------->| OpenFigiAssetDetailsTable        |
 |-----------------------------|        asset_uid PK/FK          |-----------------------------|
 | uid                  PK     |                                 | asset_uid            PK/FK  |
 | unique_identifier    unique |                                 | figi                        |
@@ -168,14 +203,15 @@ upsert the canonical asset, then upsert its OpenFIGI detail row using
 
 ```python
 from msm.api.assets import Asset, AssetType, OpenFigiDetails
+from msm.constants import ASSET_TYPE_EQUITY
 from msm.services.assets.openfigi import query_by_figi
 
-AssetType.upsert(asset_type="equity", display_name="Equity")
+AssetType.upsert(asset_type=ASSET_TYPE_EQUITY, display_name="Equity")
 
 normalized = query_by_figi("BBG00FNFPQH4")
 asset = Asset.upsert(
     unique_identifier=normalized["unique_identifier"],
-    asset_type="equity",
+    asset_type=ASSET_TYPE_EQUITY,
 )
 details = OpenFigiDetails.upsert(
     asset_uid=asset.uid,
@@ -197,7 +233,7 @@ details = OpenFigiDetails.upsert(
 )
 ```
 
-`OpenFigiDetailsTable.asset_uid` is both the primary key and the foreign key to
+`OpenFigiAssetDetailsTable.asset_uid` is both the primary key and the foreign key to
 `AssetTable.uid`. There is no separate `uid` column on the detail table.
 `OpenFigiDetails.uid` in the Pydantic row API resolves to the same value as
 `asset_uid` so generic row identity helpers still have a stable row identifier.
@@ -226,6 +262,8 @@ Assets answer these questions:
   `Bond`, `CurrencySpot`, and `OpenFigiDetails`.
 - `msm.api.issuers`: user-facing Pydantic rows and typed class operations for
   issuer reference data.
+- `msm.constants`: static built-in asset type keys and built-in `AssetType`
+  definitions for application and project code.
 - `msm.data_nodes.assets`: asset-indexed DataNodes such as `AssetSnapshot`.
 - `msm.services.assets`: application-facing asset service helpers over
   repositories.
@@ -248,9 +286,14 @@ classification without changing identity.
 `description`, and optional `metadata_json`. Use it as a lightweight registry of
 what each type string means in a namespace.
 
-Pricing details are not the same thing as market prices. Pricing details store
-terms needed to rebuild priceable instruments, while price histories live in
-market-data workflows.
+Pricing details are not the same thing as core asset details or market prices.
+Serialized priceable instrument terms belong to `msm_pricing`, not
+`msm.models.assets`: current terms are stored in
+`msm_pricing.models.AssetCurrentPricingDetailsTable`, historical pricing-detail
+observations live in `msm_pricing.data_nodes.pricing_details`, and users attach
+or load them through `Instrument.attach_to_asset(asset)` and
+`Instrument.load_from_asset(asset)`. Price histories and display snapshots
+remain market-data workflows.
 
 ## Creating, Querying, And Deleting Assets
 
@@ -260,16 +303,13 @@ objects.
 
 ```python
 from msm.api.assets import Asset, AssetType
+from msm.constants import ASSET_TYPE_CRYPTO, ASSET_TYPE_CRYPTO_DEFINITION
 
-AssetType.upsert(
-    asset_type="crypto",
-    display_name="Crypto",
-    description="Crypto spot and token assets.",
-)
+AssetType.upsert(**ASSET_TYPE_CRYPTO_DEFINITION.as_payload())
 
 asset = Asset.upsert(
     unique_identifier="example-asset-btc",
-    asset_type="crypto",
+    asset_type=ASSET_TYPE_CRYPTO,
 )
 asset_by_identifier = Asset.get_by_unique_identifier(
     unique_identifier="example-asset-btc",
@@ -277,7 +317,7 @@ asset_by_identifier = Asset.get_by_unique_identifier(
 asset_by_uid = Asset.get_by_uid(asset.uid)
 crypto_assets = Asset.filter(
     unique_identifier_contains="example-asset-",
-    asset_type="crypto",
+    asset_type=ASSET_TYPE_CRYPTO,
 )
 # Optional cleanup for temporary custom assets only:
 # Asset.delete(asset.uid)
@@ -289,41 +329,44 @@ row operations run:
 ```python
 import msm
 
-runtime = msm.create_schemas(models=["AssetType", "Asset"])
+runtime = msm.start_engine(models=["AssetType", "Asset"])
 asset_table_handle = runtime.table("Asset")
 ```
 
 Production code normally assumes the `Asset` MetaTable is already registered.
-The first row operation attaches to the existing table and caches that runtime
-for the process. If the table is missing, the row API raises with instructions
-to run explicit startup preflight or to enable development auto-registration.
+The process must initialize or attach the runtime during startup. If no runtime
+exists, or if the active runtime does not include the required asset tables,
+the row API raises with instructions to run explicit startup preflight.
 
 Example and test workflows that need isolated MetaTables can opt into
-self-registration by setting `MSM_AUTO_REGISTER_NAMESPACE` before importing
-`msm.api` row classes:
+the example namespace by setting `MSM_AUTO_REGISTER_NAMESPACE` before importing
+`msm.api` row classes, then running explicit bootstrap:
 
 ```python
 import os
 
 from examples.platform.bootstrap import (
-    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_NAMESPACE_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
 
-os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
 from msm.api.assets import Asset
+from msm.constants import ASSET_TYPE_CRYPTO
+
+Asset.create_schemas()
 
 asset = Asset.upsert(
     unique_identifier="example-asset-btc",
-    asset_type="crypto",
+    asset_type=ASSET_TYPE_CRYPTO,
 )
 ```
 
 The namespace is part of runtime/table registration, not an asset payload field.
 Explicit bootstrap remains available for controlled startup preflight:
 `Asset.create_schemas(...)` registers only the `Asset` dependency set, while
-`msm.create_schemas(models=[...])` can register a selected multi-table set.
+`msm.start_engine(models=[...])` can register a selected multi-table set.
 
 Use `runtime.context` or `runtime.table(...)` for lower-level multi-table
 repository operations that need to compile statements across registered models.
@@ -337,9 +380,10 @@ named reusable object:
 
 ```python
 from msm.api.assets import Asset, AssetCategory
+from msm.constants import ASSET_TYPE_CRYPTO
 
-btc = Asset.upsert(unique_identifier="BTC", asset_type="crypto")
-eth = Asset.upsert(unique_identifier="ETH", asset_type="crypto")
+btc = Asset.upsert(unique_identifier="BTC", asset_type=ASSET_TYPE_CRYPTO)
+eth = Asset.upsert(unique_identifier="ETH", asset_type=ASSET_TYPE_CRYPTO)
 category = AssetCategory.upsert(
     unique_identifier="crypto-majors",
     display_name="Crypto Majors",
@@ -361,7 +405,7 @@ constants through
 Use `OpenFigiDetails.upsert(...)` for typed provider metadata rows when the
 asset row already exists. The OpenFIGI section above shows the provider-detail
 extension pattern. Provider services may still build `AssetTable` or
-`OpenFigiDetailsTable` instances internally when authoring SQLAlchemy schema
+`OpenFigiAssetDetailsTable` instances internally when authoring SQLAlchemy schema
 rows.
 
 Do not delete assets as part of the normal setup path. Only use cleanup for

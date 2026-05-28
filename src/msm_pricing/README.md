@@ -59,10 +59,11 @@ Instrument payloads contain pricing terms only. Asset identity must live on the
 pricing-details relationship, not inside `InstrumentModel`; legacy
 `main_sequence_asset_id` payloads are rejected.
 
-Use `msm_pricing.meta_tables.register_pricing_meta_tables(...)` to register the
+Use `msm_pricing.bootstrap.create_pricing_schemas(...)` to initialize the
 pricing MetaTable graph. The graph includes core dependencies such as
-`AssetTable` and `IndexTable` before pricing extension tables so foreign-key
-mappings are resolved in order.
+`AssetTable`, `IndexTypeTable`, and `IndexTable` before pricing extension
+tables, and startup uses the same maintenance catalog as `msm.start_engine(...)`
+so already-cataloged core tables are attached rather than registered again.
 
 Curves are pricing-owned reference data, not assets. `CurveTable` owns curve
 identity, and `DiscountCurvesNode` lives under `msm_pricing.data_nodes` as a
@@ -81,6 +82,36 @@ and do not resolve Main Sequence Constants into index identity.
 Runtime builder callables are attached after DataNode construction with
 `set_curve_builder(...)` / `set_fixing_builders(...)` or by subclassing the hook
 methods, so builder wiring is not part of the hashed DataNode configuration.
+
+Pricing market-data source selection is concept based. Bootstrap seeds default
+bindings for:
+
+```text
+(default, discount_curves)
+(default, interest_rate_index_fixings)
+```
+
+Applications can add named contexts such as `eod`, `live`, or `risk_manager`
+through `msm_pricing.api.PricingMarketDataBinding`. Each binding stores a
+DataNode identifier, not a platform table UID:
+
+```python
+from msm_pricing.api import PricingMarketDataBinding
+from msm_pricing.settings import (
+    PRICING_CONCEPT_DISCOUNT_CURVES,
+    PRICING_CONTEXT_EOD,
+)
+
+PricingMarketDataBinding.upsert(
+    context_key=PRICING_CONTEXT_EOD,
+    concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
+    data_node_identifier="vendor.eod.discount_curves",
+)
+```
+
+The data interface resolves direct in-memory overrides first, persisted
+bindings second, and built-in static defaults last. The final lookup uses
+`APIDataNode.build_from_identifier(...)`.
 
 User-facing persistence starts from instruments:
 
@@ -112,6 +143,10 @@ such as `floating_rate_index_name` and `float_leg_index_name` are rejected.
 The resolver loads the pricing convention row, selects the curve row, loads
 curve/index-fixing data, materializes QuantLib objects, and values the
 instrument or position for an explicit valuation date.
+
+See `examples/pricing/bond_pricing_example/` for a complete floating-rate bond
+workflow using the public asset, pricing registry, DataNode, attach/load, and
+pricing APIs.
 
 ## Extending
 

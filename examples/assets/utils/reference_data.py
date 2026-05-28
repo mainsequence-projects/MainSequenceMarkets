@@ -1,35 +1,37 @@
 from __future__ import annotations
 
+from msm.constants import (
+    ASSET_TYPE_CRYPTO,
+    ASSET_TYPE_CRYPTO_DEFINITION,
+    ASSET_TYPE_CURRENCY,
+    ASSET_TYPE_CURRENCY_DEFINITION,
+    ASSET_TYPE_EQUITY_DEFINITION,
+)
+
 EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX = "example-asset-"
 EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER = f"{EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX}btc"
 EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER = f"{EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX}eth"
 
 EXAMPLE_CRYPTO_ASSET_TYPE = {
-    "asset_type": "crypto",
-    "display_name": "Crypto",
-    "description": "Crypto spot and token assets used by the asset examples.",
+    **ASSET_TYPE_CRYPTO_DEFINITION.as_payload(),
     "metadata_json": {"source": "examples/assets/utils/reference_data.py"},
 }
 EXAMPLE_EQUITY_ASSET_TYPE = {
-    "asset_type": "equity",
-    "display_name": "Equity",
-    "description": "Listed equity assets resolved through OpenFIGI.",
+    **ASSET_TYPE_EQUITY_DEFINITION.as_payload(),
     "metadata_json": {"source": "examples/assets/utils/reference_data.py"},
 }
 EXAMPLE_CURRENCY_ASSET_TYPE = {
-    "asset_type": "currency",
-    "display_name": "Currency",
-    "description": "Single currency assets used as base or quote legs.",
+    **ASSET_TYPE_CURRENCY_DEFINITION.as_payload(),
     "metadata_json": {"source": "examples/assets/utils/reference_data.py"},
 }
 
 EXAMPLE_BTC_ASSET = {
     "unique_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
-    "asset_type": "crypto",
+    "asset_type": ASSET_TYPE_CRYPTO,
 }
 EXAMPLE_ETH_ASSET = {
     "unique_identifier": EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
-    "asset_type": "crypto",
+    "asset_type": ASSET_TYPE_CRYPTO,
 }
 EXAMPLE_CRYPTO_ASSETS = [
     EXAMPLE_BTC_ASSET,
@@ -51,11 +53,11 @@ EXAMPLE_CURRENCIES = [
 EXAMPLE_CURRENCY_ASSETS = [
     {
         "unique_identifier": EXAMPLE_EUR_CURRENCY["code"],
-        "asset_type": "currency",
+        "asset_type": ASSET_TYPE_CURRENCY,
     },
     {
         "unique_identifier": EXAMPLE_USD_CURRENCY["code"],
-        "asset_type": "currency",
+        "asset_type": ASSET_TYPE_CURRENCY,
     },
 ]
 

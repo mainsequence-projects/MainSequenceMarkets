@@ -35,7 +35,7 @@ grpcio==1.80.0
     # via opentelemetry-exporter-otlp-proto-grpc
 idna==3.16
     # via requests
-mainsequence==4.0.12
+mainsequence==4.0.14
     # via ms-markets
 markdown-it-py==4.2.0
     # via rich
@@ -107,6 +107,8 @@ pywin32==311 ; sys_platform == 'win32'
     # via portalocker
 pyyaml==6.0.3
     # via mainsequence
+quantlib==1.42.1
+    # via ms-markets
 requests==2.34.2
     # via
     #   mainsequence

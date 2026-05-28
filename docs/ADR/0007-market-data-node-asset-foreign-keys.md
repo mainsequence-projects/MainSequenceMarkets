@@ -129,7 +129,7 @@ shared base to holdings, execution, or other schemas that need separate review.
    `fund_uid`; execution uses fields such as `asset_unique_identifier`.
 10. [x] Update asset-indexed DataNode code to import `AssetIndexedDataNode` and
    `AssetIndexedDataNodeConfiguration` directly.
-11. [ ] Update examples so `msm.create_schemas(models=["Asset", ...])` runs
+11. [ ] Update examples so `msm.start_engine(models=["Asset", ...])` runs
    before any DataNode source-table initialization that resolves the Asset FK.
 12. [x] Add tests proving the shared settings constant, canonical FK shape,
    record validation, frame validation, explicit-FK preservation, no hidden FK
@@ -148,7 +148,7 @@ runtime patch.
 The Asset MetaTable must be registered before asset-indexed DataNode source
 tables are initialized. Example workflows that use `mainsequence.examples` must
 configure that namespace before importing `msm.models`, then register the
-`Asset` MetaTable through `msm.create_schemas(...)`.
+`Asset` MetaTable through `msm.start_engine(...)`.
 
 Using `on_delete="restrict"` prevents deleting canonical assets while historical
 DataNode rows still reference them. Cleanup workflows should remove dependent

@@ -15,8 +15,8 @@ from msm.api.assets import (
 )
 from msm.api.calendars import Calendar
 from msm.api.execution import Order, OrderManager, OrderStatusEvent
+from msm.api.indices import Index, IndexType
 from msm.api.market_metadata import (
-    InstrumentsConfiguration,
     RebalanceStrategyMetadata,
     SignalMetadata,
 )
@@ -32,8 +32,9 @@ from msm.models import (
     AssetTable,
     CalendarTable,
     FundTable,
-    InstrumentsConfigurationTable,
-    OpenFigiDetailsTable,
+    IndexTable,
+    IndexTypeTable,
+    OpenFigiAssetDetailsTable,
     OrderManagerTable,
     OrderTable,
     PortfolioAssetDetailTable,
@@ -50,7 +51,7 @@ from msm.models import (
         (AssetType, AssetTypeTable, ("asset_type",)),
         (AssetCategory, AssetCategoryTable, ("unique_identifier",)),
         (AssetCategoryMembership, AssetCategoryMembershipTable, ("category_uid", "asset_uid")),
-        (OpenFigiDetails, OpenFigiDetailsTable, ("asset_uid",)),
+        (OpenFigiDetails, OpenFigiAssetDetailsTable, ("asset_uid",)),
         (Calendar, CalendarTable, ("name",)),
         (Account, AccountTable, ("unique_identifier",)),
         (
@@ -62,13 +63,14 @@ from msm.models import (
         (PortfolioAssetDetail, PortfolioAssetDetailTable, ("portfolio_uid",)),
         (PortfolioMetadata, PortfolioMetadataTable, ("unique_identifier",)),
         (Fund, FundTable, ("unique_identifier",)),
+        (IndexType, IndexTypeTable, ("index_type",)),
+        (Index, IndexTable, ("unique_identifier",)),
         (SignalMetadata, SignalMetadataTable, ("signal_uid",)),
         (
             RebalanceStrategyMetadata,
             RebalanceStrategyMetadataTable,
             ("rebalance_strategy_uid",),
         ),
-        (InstrumentsConfiguration, InstrumentsConfigurationTable, ("configuration_key",)),
         (OrderManager, OrderManagerTable, ("unique_identifier",)),
         (Order, OrderTable, ("order_time", "order_remote_id", "asset_unique_identifier")),
     ],
@@ -87,11 +89,11 @@ def test_portfolio_create_schemas_includes_domain_required_tables(monkeypatch) -
     calls = []
     runtime = SimpleNamespace()
 
-    def fake_create_schemas(**kwargs):
+    def fake_start_engine(**kwargs):
         calls.append(kwargs)
         return runtime
 
-    monkeypatch.setattr("msm.bootstrap.create_schemas", fake_create_schemas)
+    monkeypatch.setattr("msm.bootstrap.start_engine", fake_start_engine)
 
     assert Portfolio.create_schemas(namespace="mainsequence.examples") is runtime
     assert calls == [
@@ -105,6 +107,7 @@ def test_portfolio_create_schemas_includes_domain_required_tables(monkeypatch) -
 def test_missing_required_table_fails_before_operation(monkeypatch) -> None:
     runtime = SimpleNamespace(
         context=object(),
+        meta_table_models=[PortfolioTable],
         target_meta_table_uid_by_fullname={
             markets_meta_table_fullname(PortfolioTable): str(uuid.uuid4()),
         },

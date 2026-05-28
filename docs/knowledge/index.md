@@ -18,9 +18,10 @@ collection of SQLAlchemy internals. For row-oriented MetaTable data:
   schema set through `__required_tables__`;
 - row class methods such as `create_schemas(...)`, `upsert(...)`, `filter(...)`,
   and lookups are the preferred ergonomic surface;
-- row operations attach to already-registered MetaTables by default, with
-  `MSM_AUTO_REGISTER_NAMESPACE` reserved for opt-in example/development
-  auto-registration and default markets DataNode namespacing;
+- row operations use the active process runtime created by explicit startup
+  bootstrap and never register or attach MetaTables on first row use;
+- `MSM_AUTO_REGISTER_NAMESPACE` is a namespace default for examples and local
+  development, and it also drives default markets DataNode namespacing;
 - repository helpers remain lower-level building blocks for compiled MetaTable
   operations and can return raw platform payloads;
 - services own broader workflows that compose providers, repositories,
@@ -58,7 +59,8 @@ new MetaTable-facing APIs unless a more specific ADR overrides it.
 - [Portfolios](portfolios/index.md): portfolio configuration, signal weights,
   rebalance strategies, canonical portfolio data, and VFB workflows.
 - [Pricing](pricing/index.md): optional `msm_pricing` priceable instruments,
-  QuantLib helpers, curves, fixings, and pricing data interfaces.
+  QuantLib helpers, curves, fixings, market-data context bindings, and pricing
+  data interfaces.
 - [Repositories](repositories/index.md): compiled database operations and CRUD
   boundaries over market-domain models.
 - [Services](services/index.md): application-level orchestration over repository

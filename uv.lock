@@ -902,7 +902,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "4.0.12"
+version = "4.0.14"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cachetools" },
@@ -924,9 +924,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0e/f3/1fdedfce7ed417f165504e850183e718789b56092fc0b5ebf000e50f1652/mainsequence-4.0.12.tar.gz", hash = "sha256:9edb82c8af0c79d573e773982bf1ff27722a5a2b8130fd3ef2fab702d37bd12e", size = 438985, upload-time = "2026-05-27T15:00:07.996Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/48/30/0da3551aa5efa6da47afdc03daa7c141e2303c1915c085474f3d131ee1cc/mainsequence-4.0.14.tar.gz", hash = "sha256:a654729eafdbee7ef62caa740ac4611df531d05cc74d212e6a03d2ed027c7ecc", size = 439649, upload-time = "2026-05-28T10:32:14.597Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7d/7b/8fcb3299e625456eaf91258f43b7495a90994c314269026b057889e4056d/mainsequence-4.0.12-py3-none-any.whl", hash = "sha256:1c8a6aa0117061fd7842c0a0ab10c6a5e53402a13db57a967af1b1da288cc910", size = 390732, upload-time = "2026-05-27T15:00:05.735Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/93/53062bd200b31393986e8c67126958da5df2c6ea61b5be6547053f6a4c15/mainsequence-4.0.14-py3-none-any.whl", hash = "sha256:820763baa511fb52181dc76f9598e4b90f50c10d303a2b8d26990a54ee0ee751", size = 390963, upload-time = "2026-05-28T10:32:13.138Z" },
 ]
 
 [[package]]
@@ -1244,7 +1244,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.9"
+version = "0.0.11"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -1254,6 +1254,7 @@ dependencies = [
     { name = "pip" },
     { name = "pydantic" },
     { name = "pytz" },
+    { name = "quantlib" },
     { name = "requests" },
     { name = "sqlalchemy" },
 ]
@@ -1335,6 +1336,7 @@ requires-dist = [
     { name = "pymdown-extensions", marker = "extra == 'docs'", specifier = ">=10.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytz" },
+    { name = "quantlib", specifier = ">=1.42.1" },
     { name = "quantlib", marker = "extra == 'pricing'" },
     { name = "quantlib", marker = "extra == 'pricing-streamlit'" },
     { name = "requests" },

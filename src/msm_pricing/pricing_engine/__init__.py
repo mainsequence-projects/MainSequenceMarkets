@@ -6,18 +6,10 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS = {
-    "IndexSpec": ".indices",
-    "add_historical_fixings": ".indices",
-    "build_zero_curve": ".indices",
-    "build_zero_curve_with_effective_date": ".indices",
-    "clear_index_cache": ".indices",
-    "clear_index_spec_cache": ".indices",
     "compare_bond_to_market_quote": ".bond_analytics",
     "compute_coupon_schedule_force_match": ".coupon_schedules",
-    "get_index": ".indices",
-    "get_index_spec": ".indices",
-    "index_by_name": ".indices",
-    "register_index_spec": ".indices",
+    "add_historical_fixings": ".resolvers",
+    "build_curve_from_curve_row": ".resolvers",
     "resolve_index_convention": ".resolvers",
     "resolve_pricing_curve": ".resolvers",
     "resolve_quantlib_index": ".resolvers",
@@ -39,18 +31,10 @@ def __dir__() -> list[str]:
 
 
 __all__ = [
-    "IndexSpec",
     "add_historical_fixings",
-    "build_zero_curve",
-    "build_zero_curve_with_effective_date",
-    "clear_index_cache",
-    "clear_index_spec_cache",
+    "build_curve_from_curve_row",
     "compare_bond_to_market_quote",
     "compute_coupon_schedule_force_match",
-    "get_index",
-    "get_index_spec",
-    "index_by_name",
-    "register_index_spec",
     "resolve_index_convention",
     "resolve_pricing_curve",
     "resolve_quantlib_index",

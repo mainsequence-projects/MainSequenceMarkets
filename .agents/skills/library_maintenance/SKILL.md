@@ -55,6 +55,34 @@ Before editing, identify the affected concept area:
 Use the matching page under `docs/knowledge/<concept>/index.md` as the primary
 documentation anchor.
 
+### Asset Extension Naming Standard
+
+When a change extends `AssetTable` through a one-to-one asset detail table, use
+the same naming split everywhere:
+
+- Public Pydantic API rows use the domain name users think in:
+  `Bond`, `Future`, `CurrencySpot`, `OpenFigiDetails`.
+- SQLAlchemy/MetaTable declarations use
+  `<Domain>AssetDetailsTable`: `BondAssetDetailsTable`,
+  `FutureAssetDetailsTable`, `CurrencySpotAssetDetailsTable`,
+  `OpenFigiAssetDetailsTable`.
+- MetaTable logical identifiers use the same name without the `Table` suffix:
+  `BondAssetDetails`, `FutureAssetDetails`, `CurrencySpotAssetDetails`,
+  `OpenFigiAssetDetails`.
+- One-to-one asset detail tables use `asset_uid` as the only primary key and as
+  the foreign key to `AssetTable.uid`. Do not add a separate detail `uid`.
+- Built-in asset type constants use `ASSET_TYPE_<DOMAIN>` in `msm.constants`,
+  for example `ASSET_TYPE_BOND` and `ASSET_TYPE_FUTURE`.
+- Tests, docs, ADRs, examples, and skills must use the same split: user
+  workflows talk about `Bond.upsert(...)` or `Future.upsert(...)`; schema and
+  registration text talks about `BondAssetDetailsTable` or
+  `FutureAssetDetailsTable`.
+- Do not keep legacy aliases or compatibility shims for renamed asset detail
+  table classes unless the user explicitly asks for backward compatibility.
+
+If an asset extension does not fit this naming shape, stop and write or update
+an ADR before implementation.
+
 ### 2. Update Documentation Continuously
 
 For every relevant implementation change, update the closest documentation:

@@ -9,6 +9,7 @@ _EXPORTS = {
     "AssetCurrentPricingDetailsTable": ".pricing_details",
     "CurveTable": ".curves",
     "IndexConventionDetailsTable": ".index_convention_details",
+    "PricingMarketDataBindingTable": ".market_data_bindings",
 }
 
 
@@ -24,8 +25,10 @@ def __getattr__(name: str) -> Any:
 def __dir__() -> list[str]:
     return sorted(set(globals()) | set(__all__))
 
+
 __all__ = [
     "AssetCurrentPricingDetailsTable",
     "CurveTable",
     "IndexConventionDetailsTable",
+    "PricingMarketDataBindingTable",
 ]

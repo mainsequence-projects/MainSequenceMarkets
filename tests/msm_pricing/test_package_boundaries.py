@@ -8,6 +8,7 @@ def test_models_package_is_metatable_only() -> None:
         "AssetCurrentPricingDetailsTable",
         "CurveTable",
         "IndexConventionDetailsTable",
+        "PricingMarketDataBindingTable",
     ]
     assert not hasattr(models, "get_index")
     assert not hasattr(models, "register_index_spec")
@@ -19,8 +20,12 @@ def test_models_package_is_metatable_only() -> None:
 def test_pricing_engine_owns_runtime_helpers() -> None:
     import msm_pricing.pricing_engine as pricing_engine
 
-    assert "get_index" in pricing_engine.__all__
-    assert "register_index_spec" in pricing_engine.__all__
+    assert "resolve_quantlib_index" in pricing_engine.__all__
+    assert "resolve_pricing_curve" in pricing_engine.__all__
+    assert "build_curve_from_curve_row" in pricing_engine.__all__
+    assert "get_index" not in pricing_engine.__all__
+    assert "register_index_spec" not in pricing_engine.__all__
+    assert "IndexSpec" not in pricing_engine.__all__
     assert find_spec("msm_pricing.pricing_engine.indices") is not None
     assert find_spec("msm_pricing.pricing_engine.bond_pricer") is not None
     assert find_spec("msm_pricing.pricing_engine.swap_pricer") is not None
@@ -28,3 +33,11 @@ def test_pricing_engine_owns_runtime_helpers() -> None:
 
 def test_obsolete_interest_rates_package_is_removed() -> None:
     assert find_spec("msm_pricing.interest_rates") is None
+
+
+def test_pricing_settings_module_contains_public_constants() -> None:
+    import msm_pricing.settings as settings
+
+    assert settings.PRICING_CONCEPT_DISCOUNT_CURVES == "discount_curves"
+    assert settings.PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS == "interest_rate_index_fixings"
+    assert settings.PRICING_CONTEXT_DEFAULT == "default"

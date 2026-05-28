@@ -48,6 +48,8 @@ Main package areas:
   assignments
 - `msm.api`: user-facing Pydantic row objects and typed class methods for
   markets MetaTable records
+- `msm.constants`: static built-in keys such as asset type constants used across
+  applications and examples
 - `msm.client`: client-facing Main Sequence market models and API wrappers
 - `msm.data_nodes`: market DataNode contracts, including asset snapshots and
   asset pricing details

@@ -17,10 +17,10 @@ from msm.base import (
 from .core import AssetTable
 
 
-class CurrencySpotTable(MarketsMetaTableMixin, MarketsBase):
+class CurrencySpotAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     """Currency spot pair detail row linked to a markets asset."""
 
-    __metatable_identifier__ = "CurrencySpot"
+    __metatable_identifier__ = "CurrencySpotAssetDetails"
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -74,4 +74,4 @@ class CurrencySpotTable(MarketsMetaTableMixin, MarketsBase):
     )
 
 
-__all__ = ["CurrencySpotTable"]
+__all__ = ["CurrencySpotAssetDetailsTable"]

@@ -5,9 +5,9 @@ from .categories import (
     AssetCategoryTable,
 )
 from .core import AssetTable
-from .bonds import BondDetailsTable
-from .currency_spot import CurrencySpotTable
-from .provider_details import OpenFigiDetailsTable
+from .bonds import BondAssetDetailsTable
+from .currency_spot import CurrencySpotAssetDetailsTable
+from .provider_details import OpenFigiAssetDetailsTable
 from .types import AssetTypeTable
 
 __all__ = [
@@ -15,7 +15,7 @@ __all__ = [
     "AssetCategoryTable",
     "AssetTable",
     "AssetTypeTable",
-    "BondDetailsTable",
-    "CurrencySpotTable",
-    "OpenFigiDetailsTable",
+    "BondAssetDetailsTable",
+    "CurrencySpotAssetDetailsTable",
+    "OpenFigiAssetDetailsTable",
 ]

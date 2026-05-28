@@ -59,7 +59,11 @@ Implementation decisions should be recorded under `docs/ADR`.
 Start with the typed row API for simple workflows:
 
 ```python
+import msm
+
 from msm.api.assets import Asset, AssetCategory, AssetType
+
+msm.start_engine(models=["AssetType", "Asset", "AssetCategory"])
 
 AssetType.upsert(asset_type="crypto", display_name="Crypto")
 
@@ -74,8 +78,8 @@ category = AssetCategory.upsert(
 
 This follows the library-wide convention: user code works with Pydantic row
 objects, while schema code works with SQLAlchemy `*Table` declarations.
-`Asset.upsert(...)` and `Asset.filter(...)` lazily attach to already-registered
-MetaTables. They do not create schemas by default.
+`Asset.upsert(...)` and `Asset.filter(...)` use the active markets runtime.
+They do not attach to MetaTables or create schemas on first use.
 
 For application startup that wants a controlled schema preflight, bootstrap
 directly:
@@ -83,15 +87,20 @@ directly:
 ```python
 import msm
 
-runtime = msm.create_schemas()
+runtime = msm.start_engine()
 context = runtime.context
 asset_table = runtime.table("Asset")
 ```
 
-For development examples that should self-register missing tables, set
-`MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`. That namespace also
-becomes the default namespace for markets DataNode identifiers and
-`hash_namespace` values created in the same process.
+That startup preflight uses the internal maintenance catalog. Existing cataloged
+tables are attached, pre-catalog platform tables are imported into the catalog,
+and only missing requested tables are registered.
+
+For development examples that should use an example namespace, set
+`MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`, then call
+`msm.start_engine(...)` or the row model's `create_schemas(...)` during
+startup. That namespace also becomes the default namespace for markets DataNode
+identifiers and `hash_namespace` values created in the same process.
 
 Every markets MetaTable now has a user-facing row model under `msm.api.*`.
 Legacy imports such as `from msm.models import Asset` have been removed; use

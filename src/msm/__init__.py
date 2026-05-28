@@ -2,18 +2,64 @@ from __future__ import annotations
 
 from importlib.metadata import version as _package_version
 
-from msm.bootstrap import create_schemas, get_runtime
+from msm.bootstrap import get_runtime, start_engine
+from msm.constants import (
+    ASSET_TYPE_BOND,
+    ASSET_TYPE_CRYPTO,
+    ASSET_TYPE_CURRENCY,
+    ASSET_TYPE_CURRENCY_SPOT,
+    ASSET_TYPE_EQUITY,
+    ASSET_TYPE_FUTURE,
+    BOND_ASSET_TYPE,
+    BUILT_IN_ASSET_TYPE_DEFINITIONS,
+    BUILT_IN_ASSET_TYPES,
+    BUILT_IN_INDEX_TYPE_DEFINITIONS,
+    BUILT_IN_INDEX_TYPES,
+    CRYPTO_ASSET_TYPE,
+    CURRENCY_ASSET_TYPE,
+    CURRENCY_SPOT_ASSET_TYPE,
+    EQUITY_ASSET_TYPE,
+    FUTURE_ASSET_TYPE,
+    INDEX_TYPE_CRYPTO,
+    INDEX_TYPE_CRYPTO_DEFINITION,
+    INDEX_TYPE_EQUITY,
+    INDEX_TYPE_EQUITY_DEFINITION,
+    INDEX_TYPE_INTEREST_RATE,
+    INDEX_TYPE_INTEREST_RATE_DEFINITION,
+)
 
 __version__ = _package_version("ms-markets")
 
 
 __all__ = [
     "__version__",
+    "ASSET_TYPE_BOND",
+    "ASSET_TYPE_CRYPTO",
+    "ASSET_TYPE_CURRENCY",
+    "ASSET_TYPE_CURRENCY_SPOT",
+    "ASSET_TYPE_EQUITY",
+    "ASSET_TYPE_FUTURE",
+    "BOND_ASSET_TYPE",
+    "BUILT_IN_ASSET_TYPE_DEFINITIONS",
+    "BUILT_IN_ASSET_TYPES",
+    "BUILT_IN_INDEX_TYPE_DEFINITIONS",
+    "BUILT_IN_INDEX_TYPES",
+    "CRYPTO_ASSET_TYPE",
+    "CURRENCY_ASSET_TYPE",
+    "CURRENCY_SPOT_ASSET_TYPE",
+    "EQUITY_ASSET_TYPE",
+    "FUTURE_ASSET_TYPE",
+    "INDEX_TYPE_CRYPTO",
+    "INDEX_TYPE_CRYPTO_DEFINITION",
+    "INDEX_TYPE_EQUITY",
+    "INDEX_TYPE_EQUITY_DEFINITION",
+    "INDEX_TYPE_INTEREST_RATE",
+    "INDEX_TYPE_INTEREST_RATE_DEFINITION",
     "api",
     "data_nodes",
     "models",
     "portfolios",
     "services",
-    "create_schemas",
     "get_runtime",
+    "start_engine",
 ]

@@ -61,6 +61,7 @@ def list_index_catalog_rows(
                 values=(
                     row["uid"],
                     row["unique_identifier"],
+                    row.get("index_type"),
                     row["display_name"],
                     row.get("description"),
                     row.get("provider"),
@@ -488,6 +489,7 @@ def _build_index_list_row(index_row: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "uid": str(index_row["uid"]),
         "unique_identifier": _string_or_empty(index_row.get("unique_identifier")),
+        "index_type": _string_or_empty(index_row.get("index_type")),
         "display_name": _string_or_empty(index_row.get("display_name")),
         "description": _string_or_none(index_row.get("description")),
         "provider": _string_or_none(index_row.get("provider")),

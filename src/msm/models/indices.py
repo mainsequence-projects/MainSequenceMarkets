@@ -16,6 +16,34 @@ from msm.base import (
 )
 
 
+class IndexTypeTable(MarketsMetaTableMixin, MarketsBase):
+    """Registered index type used to classify canonical market indexes."""
+
+    __metatable_identifier__ = "IndexType"
+    __table_args__ = markets_table_args(
+        __metatable_identifier__,
+        SqlIndex(
+            markets_index_name(__metatable_identifier__, "index_type", unique=True),
+            "index_type",
+            unique=True,
+        ),
+        SqlIndex(
+            markets_index_name(__metatable_identifier__, "display_name"),
+            "display_name",
+        ),
+    )
+
+    uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=new_markets_uid,
+    )
+    index_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
 class IndexTable(MarketsMetaTableMixin, MarketsBase):
     """Reference row for market indexes used by derivative contracts."""
 
@@ -35,6 +63,10 @@ class IndexTable(MarketsMetaTableMixin, MarketsBase):
             markets_index_name(__metatable_identifier__, "provider"),
             "provider",
         ),
+        SqlIndex(
+            markets_index_name(__metatable_identifier__, "index_type"),
+            "index_type",
+        ),
     )
 
     uid: Mapped[uuid.UUID] = mapped_column(
@@ -43,10 +75,11 @@ class IndexTable(MarketsMetaTableMixin, MarketsBase):
         default=new_markets_uid,
     )
     unique_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
+    index_type: Mapped[str] = mapped_column(String(64), nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider: Mapped[str | None] = mapped_column(String(255), nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-__all__ = ["IndexTable"]
+__all__ = ["IndexTable", "IndexTypeTable"]

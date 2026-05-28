@@ -52,7 +52,10 @@ Use this workflow when ingesting external asset metadata:
 1. Resolve or normalize provider data through a service module, for example
    `msm.services.assets.openfigi`.
 2. Register the asset type through `msm.api.assets.AssetType` when the type is
-   new to the project or namespace.
+   new to the project or namespace. Use `msm.constants` for built-in type keys
+   such as `ASSET_TYPE_BOND`, `ASSET_TYPE_CRYPTO`, `ASSET_TYPE_CURRENCY`,
+   `ASSET_TYPE_CURRENCY_SPOT`, `ASSET_TYPE_EQUITY`, and
+   `ASSET_TYPE_FUTURE`.
 3. Persist canonical identity through the user-facing `msm.api.assets.Asset`
    row API. Row operations attach to registered MetaTables lazily.
 4. Store timestamped asset facts through DataNode schemas in
@@ -67,6 +70,7 @@ from msm.data_nodes.assets import AssetSnapshot
 from msm.services.assets.openfigi import (
     query_by_figi,
 )
+from msm.constants import ASSET_TYPE_BOND
 ```
 
 See `examples/assets/asset_crud_workflow.py` for the asset workflow covering
@@ -74,11 +78,16 @@ OpenFIGI resolution, `Asset` registration, `OpenFigiDetails`, and
 `AssetSnapshot` writes. The OpenFIGI helpers read the API key from the Main
 Sequence secret `OPEN_FIGI_API_KEY`.
 
+See `examples/assets/asset_type_constants.py` for a small import-only example
+that prints the built-in constants and `AssetType.upsert(...)` payloads.
+
 For timestamped facts keyed to index reference rows, use the same stamped
 DataNode workflow with `msm.data_nodes.indices.IndexTimestampedDataNode` and an
 `IndexDataNodeConfiguration` subclass. The frame contract is still
 `["time_index", "unique_identifier"]`, but the canonical source-table foreign
-key points to `IndexTable.unique_identifier` instead of `AssetTable`.
+key points to `IndexTable.unique_identifier` instead of `AssetTable`. Keep
+index identity on `uid` and `unique_identifier`; do not add legacy platform
+Constant-name fields.
 
 ## Pricing Instrument Identity
 
@@ -97,10 +106,42 @@ serialized instrument definition. See
 `examples/pricing/instrument_identity_boundary.py` for a minimal payload
 boundary example.
 
-When the pricing persistence tables are needed, register them through
-`msm_pricing.meta_tables.register_pricing_meta_tables(...)`. That registration
-flow includes the core asset table first, then pricing extension tables, so the
-foreign-key dependency from pricing details to assets is resolved before writes.
+When the pricing persistence tables are needed, initialize them through
+`msm_pricing.bootstrap.create_pricing_schemas(...)`. That startup flow includes
+the core asset and index tables first, then pricing extension tables, and uses
+the same maintenance catalog as `msm.start_engine(...)` so already-cataloged
+core tables are attached rather than registered again.
+
+Pricing bootstrap also seeds default market-data bindings for the built-in
+pricing context:
+
+```text
+(default, discount_curves)
+(default, interest_rate_index_fixings)
+```
+
+The binding row maps `(context_key, concept_key)` to a DataNode identifier. Use
+`msm_pricing.api.PricingMarketDataBinding` when an application needs an `eod`,
+`live`, or `risk_manager` context:
+
+```python
+from msm_pricing.api import PricingMarketDataBinding
+from msm_pricing.settings import (
+    PRICING_CONCEPT_DISCOUNT_CURVES,
+    PRICING_CONTEXT_EOD,
+)
+
+PricingMarketDataBinding.upsert(
+    context_key=PRICING_CONTEXT_EOD,
+    concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
+    data_node_identifier="vendor.eod.discount_curves",
+)
+```
+
+Pricing resolution looks up the active context and concept, then reads the
+resulting DataNode with `APIDataNode.build_from_identifier(...)`. Static
+defaults remain available for built-in concepts, but public workflows should use
+identifiers and bindings, not platform table UIDs.
 
 The user-facing write and read path belongs to instrument classes:
 
@@ -121,12 +162,14 @@ instrument family and wants a type check.
 When an instrument references a market index, register the pricing registry rows
 before publishing curve observations:
 
-1. Persist the canonical index through `msm.api.indices.Index`.
-2. Upsert `msm_pricing.api.IndexConventionDetails` with the index UID and the
+1. Register the canonical index type through `msm.api.indices.IndexType`.
+   Fixed-income examples use the built-in `interest_rate` type.
+2. Persist the canonical index through `msm.api.indices.Index`.
+3. Upsert `msm_pricing.api.IndexConventionDetails` with the index UID and the
    serializable convention payload needed to rebuild the pricing index.
-3. Upsert `msm_pricing.api.Curve` with a stable curve `unique_identifier`, the
+4. Upsert `msm_pricing.api.Curve` with a stable curve `unique_identifier`, the
    index UID, and curve construction metadata.
-4. Publish curve observations through `DiscountCurvesNode` keyed by the same
+5. Publish curve observations through `DiscountCurvesNode` keyed by the same
    curve `unique_identifier`.
 
 See `examples/pricing/pricing_registry_rows.py` for the row API workflow.
@@ -135,6 +178,28 @@ Serialized pricing instruments should reference these rows by UUID, not by
 mutable names. Use `floating_rate_index_uid` on floating-rate bonds and
 `float_leg_index_uid` on swaps. The runtime resolver turns those UUIDs into the
 correct convention row, curve row, QuantLib index, curve, and fixing series.
+
+For a full floating-rate bond workflow, use
+`examples/pricing/bond_pricing_example/`. It follows this order:
+
+1. Register or resolve the bond asset type, issuer, currency asset, and bond
+   asset through `msm.api.assets` and `msm.api.issuers`.
+2. Register the `interest_rate` index type through `msm.api.indices.IndexType`,
+   then register the canonical index through `msm.api.indices.Index`.
+3. Upsert `IndexConventionDetails` and `Curve` rows under `msm_pricing.api`.
+4. Publish mock fixings through a `FixingRatesNode` subclass and a sampled
+   flat-forward curve through a `DiscountCurvesNode` subclass.
+5. Use the seeded `default` market-data context, or upsert a named context such
+   as `eod` with `PricingMarketDataBinding`.
+6. Create a `FloatingRateBond` with `floating_rate_index_uid=index.uid`.
+7. Attach the instrument with `instrument.attach_to_asset(asset, ...)`.
+8. Reload it generically with `Instrument.load_from_asset(asset)`, set the
+   valuation date, then call `price()`, `analytics()`, `get_cashflows()`, and
+   `carry_roll_down(...)`.
+
+The reusable mock market-data components live in `examples/pricing/utils/` so
+the same curve and fixing DataNode extension pattern can be reused by swap
+pricing examples.
 
 ## Markets MetaTable Models
 
@@ -150,18 +215,23 @@ Use this workflow when adding or reviewing a market-domain relational table:
    the platform-managed physical table name from the resolved table contract.
 5. Add the model to `markets_sqlalchemy_models()` in foreign-key dependency
    order.
-6. Use `msm.create_schemas(...)` or `register_markets_meta_tables(...)` only
-   when the workflow explicitly owns schema preflight.
+6. Use `msm.start_engine(...)` when the workflow explicitly owns schema
+   preflight. Treat `register_markets_meta_tables(...)` as lower-level
+   maintenance/migration plumbing, not the normal application workflow.
 
-Examples that should self-register platform-managed MetaTables must set
+`msm.start_engine(...)` uses the internal maintenance catalog during startup.
+It attaches cataloged tables, imports platform tables that predate the catalog,
+and registers only the requested tables that are missing from both places.
+
+Examples that use example-scoped platform-managed MetaTables must set
 `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` before importing
-MetaTable-backed `msm.api` or `msm.models` modules. The first row operation then
-registers the row class's required tables and caches the runtime for the
-process. A different namespace or registration configuration is rejected for
-the already-initialized process.
+MetaTable-backed `msm.api`, `msm.models`, or `msm.maintenance.models` modules,
+then run explicit startup bootstrap. Row operations never register or attach
+MetaTables on first use. A different namespace or registration configuration is
+rejected for the already-initialized process.
 
 Pass `models=[...]` to explicit preflight when a workflow only needs a subset of
-tables, for example `msm.create_schemas(models=["Asset"])`. Normal examples and
+tables, for example `msm.start_engine(models=["Asset"])`. Normal examples and
 application code should use typed row classes such as
 `msm.api.assets.Asset.upsert(...)`. Use `runtime.table(...)` and
 `runtime.context` only for lower-level repository or service internals.

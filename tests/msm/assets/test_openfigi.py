@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import SecretStr
 
+from msm.constants import INDEX_TYPE_EQUITY
 from msm.services.assets import openfigi
 
 
@@ -81,13 +82,15 @@ def test_upsert_index_from_openfigi_result_requires_index_market_sector(
             "security_description": "Example Index Description",
             "security_market_sector": "Index",
             "raw_payload": {"figi": "BBG000KKFC45"},
-        }
+        },
+        index_type=INDEX_TYPE_EQUITY,
     )
 
     assert index.uid == index_uid
     assert calls == [
         {
             "unique_identifier": "BBG000KKFC45",
+            "index_type": INDEX_TYPE_EQUITY,
             "display_name": "Example Index",
             "description": "Example Index Description",
             "provider": "OpenFIGI",
@@ -119,7 +122,8 @@ def test_upsert_index_from_openfigi_result_requires_index_market_sector(
                 "figi": "BBG000BAD",
                 "name": "Not An Index",
                 "security_market_sector": "Equity",
-            }
+            },
+            index_type=INDEX_TYPE_EQUITY,
         )
 
 
@@ -136,8 +140,8 @@ def test_register_index_from_figi_queries_and_upserts_index(monkeypatch) -> None
             "security_market_sector": "Index",
         }
 
-    def fake_upsert_index_from_openfigi_result(item):
-        calls.append(("upsert", item))
+    def fake_upsert_index_from_openfigi_result(item, **kwargs):
+        calls.append(("upsert", item, kwargs))
         return expected_index
 
     monkeypatch.setattr(openfigi, "query_by_figi", fake_query_by_figi)
@@ -150,6 +154,7 @@ def test_register_index_from_figi_queries_and_upserts_index(monkeypatch) -> None
     assert (
         openfigi.register_index_from_figi(
             "BBG000KKFC45",
+            index_type=INDEX_TYPE_EQUITY,
             api_key="test-key",
             api_url="https://example.test/openfigi",
         )
@@ -172,6 +177,7 @@ def test_register_index_from_figi_queries_and_upserts_index(monkeypatch) -> None
                 "name": "Example Index",
                 "security_market_sector": "Index",
             },
+            {"index_type": INDEX_TYPE_EQUITY},
         ),
     ]
 
@@ -211,6 +217,7 @@ def test_register_index_future_from_figis_uses_index_and_future_figis(
     future = openfigi.register_index_future_from_figis(
         "BBG01SWCTHK4",
         underlying_index_figi="BBG000KKFC45",
+        underlying_index_type=INDEX_TYPE_EQUITY,
         settlement_asset_uid=settlement_asset_uid,
         margin_asset_uid=margin_asset_uid,
         kind="EXPIRING",
@@ -234,6 +241,7 @@ def test_register_index_future_from_figis_uses_index_and_future_figis(
             {
                 "api_key": "test-key",
                 "api_url": "https://example.test/openfigi",
+                "index_type": INDEX_TYPE_EQUITY,
             },
         ),
         (

@@ -73,14 +73,14 @@ as `USD` and `EUR`.
 Create a new platform-managed MetaTable declaration:
 
 ```text
-CurrencySpotTable
+CurrencySpotAssetDetailsTable
 ```
 
 The table is a one-to-one extension of the pair asset row:
 
 ```text
 +-----------------------------+        one-to-one extension     +-----------------------------+
-| AssetTable                  |-------------------------------->| CurrencySpotTable           |
+| AssetTable                  |-------------------------------->| CurrencySpotAssetDetailsTable           |
 |-----------------------------|        asset_uid PK/FK          |-----------------------------|
 | uid                  PK     |                                 | asset_uid            PK/FK  |
 | unique_identifier    unique |                                 | base_currency_uid    FK     |
@@ -113,7 +113,7 @@ Indexes and constraints:
 - reject rows where `base_currency_uid == quote_currency_uid` when the backend
   constraint surface supports it, otherwise enforce this in the typed API.
 
-Do not add a separate `uid` column to `CurrencySpotTable`. If the generic row
+Do not add a separate `uid` column to `CurrencySpotAssetDetailsTable`. If the generic row
 helpers need a `uid` attribute, expose `uid` as an API-model alias of
 `asset_uid`, following the existing one-to-one detail-table pattern.
 
@@ -150,7 +150,7 @@ eur_usd = CurrencySpot.upsert(
 
 1. ensure or upsert `AssetType(asset_type="currency_spot")`;
 2. upsert the pair asset with `asset_type="currency_spot"`;
-3. upsert the `CurrencySpotTable` row keyed by the pair asset UID;
+3. upsert the `CurrencySpotAssetDetailsTable` row keyed by the pair asset UID;
 4. return a typed `CurrencySpot` object that includes the pair asset identity
    and base/quote currency references.
 
@@ -166,12 +166,12 @@ The required table order is:
 ```text
 AssetTypeTable
 AssetTable
-CurrencySpotTable
+CurrencySpotAssetDetailsTable
 ```
 
 `CurrencySpot.__required_tables__` should include all required tables in
-dependency order so lazy runtime resolution and optional development
-auto-registration can register the minimum correct schema set.
+dependency order so explicit startup bootstrap can initialize the minimum
+correct schema set.
 
 ## Consequences
 
@@ -198,8 +198,8 @@ extension rather than by overloading the core currency spot relationship.
   `AssetCreate`, `AssetUpsert`, and `AssetUpdate`.
 - [x] Add tests proving asset type values are lowercased and spaces become
   underscores before repository operations.
-- [x] Add `CurrencySpotTable` under `src/msm/models/assets/`.
-- [x] Add `CurrencySpotTable` to model exports and MetaTable registration
+- [x] Add `CurrencySpotAssetDetailsTable` under `src/msm/models/assets/`.
+- [x] Add `CurrencySpotAssetDetailsTable` to model exports and MetaTable registration
   order after `AssetTable`.
 - [x] Add indexes and foreign keys for `asset_uid`, `base_currency_uid`, and
   `quote_currency_uid`.

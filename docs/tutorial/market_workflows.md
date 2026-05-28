@@ -3,19 +3,19 @@
 These examples show the intended runtime boundary.
 
 1. Use typed `msm.api` row APIs for market records.
-2. Let row operations attach to already-registered MetaTables lazily.
-3. Use explicit schema preflight only at application startup or when an example
-   is demonstrating registration.
+2. Initialize the required MetaTable runtime explicitly during process startup.
+3. Treat row operations as business operations only; they do not register or
+   attach MetaTables on first use.
 4. Use DataNode helpers for historical tables such as holdings and target
    positions.
 
 ## Runtime Setup
 
-Production code normally assumes market MetaTables already exist. A row call
-such as `Asset.upsert(...)` resolves the required registered table, caches the
-runtime for the process, and then runs the operation. If the table is missing,
-the error tells the caller to run explicit preflight or opt into development
-auto-registration.
+Production code normally initializes the required market MetaTables during
+application startup. A row call such as `Asset.upsert(...)` uses the active
+runtime and then runs the operation. If the runtime is missing, or if the
+runtime was initialized without the required table set, the error tells the
+caller to run explicit preflight.
 
 Explicit preflight remains available for applications that want startup-time
 registration or verification:
@@ -23,7 +23,7 @@ registration or verification:
 ```python
 import msm
 
-runtime = msm.create_schemas(models=["Asset"])
+runtime = msm.start_engine(models=["Asset"])
 ```
 
 Schema creation does not take labels. Use `runtime.meta_tables`,
@@ -33,21 +33,27 @@ uses the Main Sequence logger at `info` level to report each MetaTable model
 being registered, what context was created, and when a cached runtime is reused.
 
 For externally managed tables, create/migrate the tables in application code and
-call `register_markets_meta_tables(..., management_mode="external_registered")`.
+use the explicit startup/bootstrap path with `management_mode="external_registered"`.
+Direct `register_markets_meta_tables(...)` calls are lower-level maintenance or
+migration plumbing, not the normal application workflow.
 
-Examples that should self-register use the platform namespace
-`mainsequence.examples` through `MSM_AUTO_REGISTER_NAMESPACE` before importing
-`msm.api`:
+Examples that use the platform namespace `mainsequence.examples` set
+`MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`, then call
+`msm.start_engine(...)` before row operations:
 
 ```python
 import os
 
 from examples.platform.bootstrap import (
-    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_NAMESPACE_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
 
-os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+
+import msm
+
+msm.start_engine(models=["Asset"])
 ```
 
 The returned runtime from explicit preflight still exposes table handles and
@@ -62,10 +68,11 @@ portfolio workflows.
 
 ```python
 from msm.api.assets import Asset
+from msm.constants import ASSET_TYPE_CRYPTO
 
 btc = Asset.upsert(
     unique_identifier="example-asset-btc",
-    asset_type="crypto",
+    asset_type=ASSET_TYPE_CRYPTO,
 )
 
 btc_by_identifier = Asset.get_by_unique_identifier(
@@ -74,7 +81,7 @@ btc_by_identifier = Asset.get_by_unique_identifier(
 btc_by_uid = Asset.get_by_uid(btc.uid)
 crypto_assets = Asset.filter(
     unique_identifier_contains="example-asset-",
-    asset_type="crypto",
+    asset_type=ASSET_TYPE_CRYPTO,
     limit=20,
 )
 # Optional cleanup for temporary custom assets only:
@@ -86,10 +93,10 @@ organization-owned custom assets. Shared public/mastered assets should remain
 stable so downstream workflows do not lose their canonical identity.
 
 See `examples/assets/asset_crud_workflow.py` for the focused workflow. It uses
-example auto-registration for only the required `Asset` and `OpenFigiDetails`
-MetaTables, creates temporary custom assets, resolves `BBG00FNFPQH4` through
-OpenFIGI, writes an AssetSnapshot frame from the returned provider details, and
-lists the created assets. Set the
+explicit example-namespace bootstrap for the required `AssetType`, `Asset`, and
+`OpenFigiDetails` MetaTables, creates temporary custom assets, resolves
+`BBG00FNFPQH4` through OpenFIGI, writes an AssetSnapshot frame from the returned
+provider details, and lists the created assets. Set the
 Main Sequence secret `OPEN_FIGI_API_KEY` in
 `www.main-sequence.app/app/main_sequence_workbench/secrets` before running the
 workflow. Cleanup is disabled by default.
@@ -118,16 +125,17 @@ contract notes.
 
 Single currencies and currency spot pairs are separate assets. Create or resolve
 the component currency assets first, then let `CurrencySpot.upsert(...)` own the
-spot-pair asset and `CurrencySpotTable` write:
+spot-pair asset and `CurrencySpotAssetDetailsTable` write:
 
 ```python
 from msm.api.assets import Asset, CurrencySpot
+from msm.constants import ASSET_TYPE_CURRENCY
 
 USD = {"code": "USD", "currency_name": "US Dollar"}
 EUR = {"code": "EUR", "currency_name": "Euro"}
 
-usd = Asset.upsert(unique_identifier=USD["code"], asset_type="currency")
-eur = Asset.upsert(unique_identifier=EUR["code"], asset_type="currency")
+usd = Asset.upsert(unique_identifier=USD["code"], asset_type=ASSET_TYPE_CURRENCY)
+eur = Asset.upsert(unique_identifier=EUR["code"], asset_type=ASSET_TYPE_CURRENCY)
 
 eur_usd = CurrencySpot.upsert(
     unique_identifier="BBG0013HGRV5",
@@ -138,7 +146,7 @@ eur_usd = CurrencySpot.upsert(
 
 Typed asset APIs normalize asset type keys before writing them, so `"Currency"`
 is stored as `currency`, `"Currency Spot"` is stored as `currency_spot`, and
-`"Asset Future"` is stored as `asset_future`.
+`"Future"` is stored as `future`.
 
 See `examples/assets/currency_spot_workflow.py` and
 [Currency Assets](../knowledge/assets/currency.md) for the detailed schema and
@@ -148,22 +156,27 @@ workflow.
 
 Bond setup uses reference issuers plus canonical asset rows. Create the issuer
 and denomination currency first, then let `Bond.upsert(...)` own the bond asset
-and `BondDetailsTable` write:
+and `BondAssetDetailsTable` write:
 
 ```python
 import datetime as dt
 
 from msm.api.assets import Asset, AssetType, Bond
 from msm.api.issuers import Issuer
+from msm.constants import (
+    ASSET_TYPE_BOND_DEFINITION,
+    ASSET_TYPE_CURRENCY,
+    ASSET_TYPE_CURRENCY_DEFINITION,
+)
 
-AssetType.upsert(asset_type="currency", display_name="Currency")
-AssetType.upsert(asset_type="bond", display_name="Bond")
+AssetType.upsert(**ASSET_TYPE_CURRENCY_DEFINITION.as_payload())
+AssetType.upsert(**ASSET_TYPE_BOND_DEFINITION.as_payload())
 
 issuer = Issuer.upsert(
     unique_identifier="example-issuer",
     display_name="Example Issuer",
 )
-usd = Asset.upsert(unique_identifier="USD", asset_type="currency")
+usd = Asset.upsert(unique_identifier="USD", asset_type=ASSET_TYPE_CURRENCY)
 
 bond = Bond.upsert(
     unique_identifier="example-usd-bond-2031",
@@ -214,8 +227,8 @@ only when a test or experiment needs isolation.
 Asset snapshot source tables have a canonical foreign key from
 `unique_identifier` to `AssetTable.unique_identifier`, so the `Asset` MetaTable
 must exist before a snapshot DataNode initializes its source table. In examples
-that perform source-table initialization, run `msm.create_schemas(models=["Asset"])`
-or use the example auto-registration namespace first.
+that perform source-table initialization, run `msm.start_engine(models=["Asset"])`
+with the intended namespace before creating the DataNode.
 
 Before the write path persists rows, `AssetSnapshot` checks the backend for the
 incoming `(time_index, unique_identifier)` tuples and fails if any tuple already
@@ -233,11 +246,12 @@ category and manage memberships separately:
 
 ```python
 from msm.api.assets import Asset, AssetCategory, AssetType
+from msm.constants import ASSET_TYPE_CRYPTO, ASSET_TYPE_CRYPTO_DEFINITION
 
-AssetType.upsert(asset_type="crypto", display_name="Crypto")
+AssetType.upsert(**ASSET_TYPE_CRYPTO_DEFINITION.as_payload())
 
-btc = Asset.upsert(unique_identifier="BTC", asset_type="crypto")
-eth = Asset.upsert(unique_identifier="ETH", asset_type="crypto")
+btc = Asset.upsert(unique_identifier="BTC", asset_type=ASSET_TYPE_CRYPTO)
+eth = Asset.upsert(unique_identifier="ETH", asset_type=ASSET_TYPE_CRYPTO)
 category = AssetCategory.upsert(
     unique_identifier="crypto-majors",
     display_name="Crypto Majors",

@@ -36,7 +36,7 @@ def _get_runtime():
     from apps.v1.runtime_bootstrap import resolve_apps_v1_runtime
 
     return resolve_apps_v1_runtime(
-        models=["Index"],
+        models=["IndexType", "Index"],
         row_model_name="Index apps/v1",
     )
 

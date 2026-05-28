@@ -8,10 +8,19 @@ import pandas as pd
 from cachetools import LRUCache, cachedmethod
 
 from msm.settings import INDEX_UNIQUE_IDENTIFIER_DIMENSION
+from msm_pricing.config import (
+    PricingMarketDataConfiguration,
+    get_pricing_market_data_configuration,
+)
 from msm_pricing.data_nodes.curve_codec import (
     decompress_string_to_curve as _decompress_string_to_curve,
 )
 from msm_pricing.data_nodes.curves import CURVE_UNIQUE_IDENTIFIER_DIMENSION
+from msm_pricing.settings import (
+    PRICING_CONCEPT_DISCOUNT_CURVES,
+    PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+    default_pricing_market_data_identifier,
+)
 
 
 class DateInfo(TypedDict, total=False):
@@ -40,8 +49,7 @@ def dimension_range_for_identity(
     ]
 
 
-class MSInterface:
-
+class MSDataInterface:
     # ---- bounded, shared caches (class-level) ----
     _curve_cache = LRUCache(maxsize=1024)
     _curve_cache_lock = RLock()
@@ -51,39 +59,88 @@ class MSInterface:
 
     def __init__(
         self,
-        instruments_configuration: Any | None = None,
+        market_data_configuration: Any | None = None,
         *,
-        instruments_configuration_resolver: Callable[[], Any] | None = None,
+        market_data_configuration_resolver: Callable[[], Any] | None = None,
     ) -> None:
-        self.instruments_configuration = instruments_configuration
-        self.instruments_configuration_resolver = instruments_configuration_resolver
+        self.market_data_configuration = self._coerce_market_data_configuration(
+            market_data_configuration
+        )
+        self.market_data_configuration_resolver = market_data_configuration_resolver
 
-    def set_instruments_configuration(self, instruments_configuration: Any) -> None:
-        self.instruments_configuration = instruments_configuration
+    def set_market_data_configuration(self, market_data_configuration: Any) -> None:
+        self.market_data_configuration = self._coerce_market_data_configuration(
+            market_data_configuration
+        )
         self.clear_caches()
 
-    def _get_instruments_configuration(self) -> Any:
-        if self.instruments_configuration is not None:
-            return self.instruments_configuration
-        if self.instruments_configuration_resolver is not None:
-            configuration = self.instruments_configuration_resolver()
+    def _get_market_data_configuration(self) -> PricingMarketDataConfiguration:
+        if self.market_data_configuration is not None:
+            return self.market_data_configuration
+        if self.market_data_configuration_resolver is not None:
+            configuration = self.market_data_configuration_resolver()
             if configuration is not None:
-                return configuration
-        raise ValueError(
-            "MSInterface requires an explicit instruments_configuration or "
-            "instruments_configuration_resolver. Resolve InstrumentsConfiguration "
-            "through MetaTable services before pricing requests."
+                return self._coerce_market_data_configuration(configuration)
+        return get_pricing_market_data_configuration()
+
+    @staticmethod
+    def _coerce_market_data_configuration(
+        configuration: Any | None,
+    ) -> PricingMarketDataConfiguration | None:
+        if configuration is None:
+            return None
+        if isinstance(configuration, PricingMarketDataConfiguration):
+            return configuration
+        if isinstance(configuration, dict):
+            return PricingMarketDataConfiguration.model_validate(configuration)
+        return PricingMarketDataConfiguration.model_validate(
+            {
+                "context_key": getattr(configuration, "context_key"),
+                "data_node_identifiers": getattr(
+                    configuration,
+                    "data_node_identifiers",
+                    {},
+                ),
+            }
+        )
+
+    def _data_node_identifier_for_concept(self, concept_key: str) -> str:
+        configuration = self._get_market_data_configuration()
+        direct_identifier = configuration.direct_identifier_for(concept_key)
+        if direct_identifier is not None:
+            return direct_identifier
+
+        persisted_identifier = self._persisted_data_node_identifier_for_concept(
+            context_key=configuration.context_key,
+            concept_key=concept_key,
+        )
+        if persisted_identifier is not None:
+            return persisted_identifier
+
+        static_identifier = default_pricing_market_data_identifier(concept_key)
+        if static_identifier is not None:
+            return static_identifier
+
+        raise LookupError(
+            "No pricing market-data binding found for "
+            f"context_key={configuration.context_key!r}, concept_key={concept_key!r}."
         )
 
     @staticmethod
-    def _configuration_data_node_uid(configuration: Any, *field_names: str) -> Any:
-        for field_name in field_names:
-            value = getattr(configuration, field_name, None)
-            if value is None and isinstance(configuration, dict):
-                value = configuration.get(field_name)
-            if value is not None:
-                return value
-        return None
+    def _persisted_data_node_identifier_for_concept(
+        *,
+        context_key: str,
+        concept_key: str,
+    ) -> str | None:
+        try:
+            from msm_pricing.api.market_data_bindings import PricingMarketDataBinding
+
+            return PricingMarketDataBinding.resolve_data_node_identifier(
+                context_key=context_key,
+                concept_key=concept_key,
+            )
+        except RuntimeError:
+            return None
 
     # NOTE: caching is applied at the method boundary; body is unchanged.
     @cachedmethod(cache=attrgetter("_curve_cache"), lock=attrgetter("_curve_cache_lock"))
@@ -91,19 +148,9 @@ class MSInterface:
         from mainsequence.logconf import logger
         from mainsequence.tdag import APIDataNode
 
-        instrument_configuration = self._get_instruments_configuration()
-        discount_curves_data_node_uid = self._configuration_data_node_uid(
-            instrument_configuration,
-            "discount_curves_data_node_uid",
-            "discount_curves_storage_node",
+        data_node = APIDataNode.build_from_identifier(
+            identifier=self._data_node_identifier_for_concept(PRICING_CONCEPT_DISCOUNT_CURVES)
         )
-
-        if discount_curves_data_node_uid is None:
-            raise Exception(
-                "discount_curves_storage_node needs to be set in https://main-sequence.app Instruments Section"
-            )
-
-        data_node = APIDataNode.build_from_table_id(table_id=discount_curves_data_node_uid)
 
         # for test purposes only get lats observations
         use_last_observation = (
@@ -162,19 +209,10 @@ class MSInterface:
         from mainsequence.logconf import logger
         from mainsequence.tdag import APIDataNode
 
-        instrument_configuration = self._get_instruments_configuration()
-        reference_rates_fixings_data_node_uid = self._configuration_data_node_uid(
-            instrument_configuration,
-            "reference_rates_fixings_data_node_uid",
-            "reference_rates_fixings_storage_node",
-        )
-        if reference_rates_fixings_data_node_uid is None:
-            raise Exception(
-                "reference_rates_fixings_storage_node needs to be set in https://main-sequence.app  Instruments Section"
+        data_node = APIDataNode.build_from_identifier(
+            identifier=self._data_node_identifier_for_concept(
+                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
             )
-
-        data_node = APIDataNode.build_from_table_id(
-            table_id=reference_rates_fixings_data_node_uid
         )
 
         fixings_df = data_node.get_df_between_dates(
@@ -190,7 +228,6 @@ class MSInterface:
             )
         )
         if fixings_df.empty:
-
             use_last_observation = (
                 os.environ.get("USE_LAST_OBSERVATION_MS_INSTRUMENT", "false").lower() == "true"
             )

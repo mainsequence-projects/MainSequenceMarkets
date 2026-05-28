@@ -16,7 +16,6 @@ from msm_pricing.instruments.json_codec import (
     daycount_from_json,
     period_from_json,
 )
-from msm_pricing.pricing_engine.indices import add_historical_fixings
 from msm_pricing.utils import to_py_date, to_ql_date
 
 
@@ -210,6 +209,37 @@ def resolve_quantlib_index(
     return ql_index
 
 
+def add_historical_fixings(
+    target_date: ql.Date | datetime.date | datetime.datetime,
+    ibor_index: ql.IborIndex,
+    reference_rate_uid: str,
+) -> None:
+    """Hydrate a QuantLib index from the configured pricing fixings DataNode."""
+
+    end_date = _ensure_datetime(target_date)
+    start_date = end_date - datetime.timedelta(days=365)
+    historical_fixings = data_interface.get_historical_fixings(
+        reference_rate_uid,
+        start_date,
+        end_date,
+    )
+
+    ql_dates = ql.DateVector()
+    values = ql.DoubleVector()
+    seen_serials: set[int] = set()
+    for fixing_date, fixing_value in historical_fixings.items():
+        ql_date = to_ql_date(fixing_date)
+        serial = ql_date.serialNumber()
+        if serial in seen_serials:
+            continue
+        seen_serials.add(serial)
+        ql_dates.push_back(ql_date)
+        values.push_back(float(fixing_value))
+
+    if len(ql_dates) > 0:
+        ibor_index.addFixings(ql_dates, values, True)
+
+
 def _coerce_uuid(value: uuid.UUID | str, *, field_name: str) -> uuid.UUID:
     try:
         return uuid.UUID(str(value))
@@ -332,6 +362,7 @@ def _end_of_month(convention_dump: dict[str, Any]) -> bool:
 
 
 __all__ = [
+    "add_historical_fixings",
     "build_curve_from_curve_row",
     "resolve_index_convention",
     "resolve_pricing_curve",

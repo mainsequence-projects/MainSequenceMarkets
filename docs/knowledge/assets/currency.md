@@ -5,12 +5,12 @@ Single currencies and currency spot pairs are separate asset concepts.
 - Single currencies such as `USD` and `EUR` are canonical `Asset` rows with
   `asset_type="currency"`.
 - Currency spot pairs such as `EUR/USD` are canonical `Asset` rows with
-  `asset_type="currency_spot"` plus a `CurrencySpotTable` detail row that links
+  `asset_type="currency_spot"` plus a `CurrencySpotAssetDetailsTable` detail row that links
   the pair to its base and quote currency assets.
 
 ```text
 +-----------------------------+        one-to-one extension     +-----------------------------+
-| AssetTable                  |-------------------------------->| CurrencySpotTable           |
+| AssetTable                  |-------------------------------->| CurrencySpotAssetDetailsTable           |
 |-----------------------------|        asset_uid PK/FK          |-----------------------------|
 | uid                  PK     |                                 | asset_uid            PK/FK  |
 | unique_identifier    unique |                                 | base_currency_uid    FK     |
@@ -34,7 +34,7 @@ workflow.
 
 Do not add currency-specific columns to `AssetTable`. The core asset table owns
 only stable identity fields. The relational base/quote relationship belongs to
-`CurrencySpotTable`.
+`CurrencySpotAssetDetailsTable`.
 
 ## API
 
@@ -44,12 +44,13 @@ repository contexts.
 
 ```python
 from msm.api.assets import Asset, CurrencySpot
+from msm.constants import ASSET_TYPE_CURRENCY
 
 USD = {"code": "USD", "currency_name": "US Dollar"}
 EUR = {"code": "EUR", "currency_name": "Euro"}
 
-usd = Asset.upsert(unique_identifier=USD["code"], asset_type="currency")
-eur = Asset.upsert(unique_identifier=EUR["code"], asset_type="currency")
+usd = Asset.upsert(unique_identifier=USD["code"], asset_type=ASSET_TYPE_CURRENCY)
+eur = Asset.upsert(unique_identifier=EUR["code"], asset_type=ASSET_TYPE_CURRENCY)
 
 eur_usd = CurrencySpot.upsert(
     unique_identifier="BBG0013HGRV5",
@@ -62,7 +63,7 @@ eur_usd = CurrencySpot.upsert(
 
 1. upsert `AssetType(asset_type="currency_spot")`;
 2. upsert `Asset(unique_identifier=<pair>, asset_type="currency_spot")`;
-3. upsert `CurrencySpotTable(asset_uid=<pair uid>, base_currency_uid=..., quote_currency_uid=...)`;
+3. upsert `CurrencySpotAssetDetailsTable(asset_uid=<pair uid>, base_currency_uid=..., quote_currency_uid=...)`;
 4. return a typed `CurrencySpot` object with the pair asset identity and
    base/quote currency references.
 
@@ -76,7 +77,7 @@ Typed asset APIs normalize asset type keys before writing them:
 ```text
 "Currency"      -> "currency"
 "Currency Spot" -> "currency_spot"
-"Asset Future"  -> "asset_future"
+"Future"        -> "future"
 ```
 
 Friendly text belongs in `AssetType.display_name` and `description`, not in the
@@ -84,7 +85,7 @@ stored `asset_type` key.
 
 ## Schema
 
-`CurrencySpotTable` is declared under `msm.models.assets.currency_spot` and is
+`CurrencySpotAssetDetailsTable` is declared under `msm.models.assets.currency_spot` and is
 exported through `msm.models`.
 
 Key constraints:
@@ -105,7 +106,7 @@ Key constraints:
 ```text
 AssetTypeTable
 AssetTable
-CurrencySpotTable
+CurrencySpotAssetDetailsTable
 ```
 
 Production code normally assumes these MetaTables already exist. Application
@@ -117,9 +118,10 @@ from msm.api.assets import CurrencySpot
 CurrencySpot.create_schemas()
 ```
 
-Examples and development scripts can instead set `MSM_AUTO_REGISTER_NAMESPACE`
-before importing the API classes. This uses the same lazy runtime rule as the
-rest of `msm.api`.
+Examples and development scripts can set `MSM_AUTO_REGISTER_NAMESPACE` before
+importing the API classes when they need an example namespace, but they still
+must call `CurrencySpot.create_schemas()` or `msm.start_engine(...)` during
+startup before row operations.
 
 ## Example
 

@@ -74,7 +74,7 @@ documented reason not to:
 The `unique_identifier` column should not be an arbitrary provider ticker. It
 should be the same canonical identifier registered through `msm.api.assets.Asset`.
 Provider-specific tickers, FIGIs, ISINs, symbols, and raw payloads belong either
-in provider detail tables, such as `OpenFigiDetailsTable`, or in DataNode value
+in provider detail tables, such as `OpenFigiAssetDetailsTable`, or in DataNode value
 columns when the table is explicitly a timestamped provider fact.
 
 The `AssetIndexedDataNodeConfiguration.asset_list` field is marked
@@ -189,7 +189,11 @@ Application code normally registers the asset type and asset through the typed
 row API before running an asset-indexed DataNode.
 
 ```python
+import msm
+
 from msm.api.assets import Asset, AssetType
+
+msm.start_engine(models=["AssetType", "Asset"])
 
 AssetType.upsert(asset_type="crypto", display_name="Crypto")
 Asset.upsert(unique_identifier="example-asset-btc", asset_type="crypto")
@@ -201,7 +205,7 @@ table initialization:
 ```python
 import msm
 
-runtime = msm.create_schemas(models=["Asset"])
+runtime = msm.start_engine(models=["Asset"])
 ```
 
 Examples that use `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` inherit

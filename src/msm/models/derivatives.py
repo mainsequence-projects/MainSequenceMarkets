@@ -20,10 +20,10 @@ from .assets import AssetTable
 from .indices import IndexTable
 
 
-class FutureDetailsTable(MarketsMetaTableMixin, MarketsBase):
+class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     """Future contract detail row linked to a canonical markets asset."""
 
-    __metatable_identifier__ = "FutureDetails"
+    __metatable_identifier__ = "FutureAssetDetails"
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -102,4 +102,4 @@ class FutureDetailsTable(MarketsMetaTableMixin, MarketsBase):
     )
 
 
-__all__ = ["FutureDetailsTable"]
+__all__ = ["FutureAssetDetailsTable"]

@@ -20,6 +20,7 @@ from msm.settings import (
     INDEX_UNIQUE_IDENTIFIER_DIMENSION,
     markets_data_node_identifier,
 )
+from msm_pricing.settings import PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
 
 INDEX_FIXINGS_NODE_DESCRIPTION = (
     "Timestamped index fixings used by msm_pricing to hydrate QuantLib indexes. "
@@ -69,7 +70,7 @@ class IndexFixingConfiguration(IndexDataNodeConfiguration):
 
     node_metadata: DataNodeMetaData = Field(
         default_factory=lambda: DataNodeMetaData(
-            identifier=markets_data_node_identifier("index_fixings"),
+            identifier=markets_data_node_identifier(PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS),
             description=INDEX_FIXINGS_NODE_DESCRIPTION,
         ),
         description="Discovery metadata for the IndexFixings DataNode.",
@@ -99,7 +100,9 @@ class IndexFixingConfiguration(IndexDataNodeConfiguration):
     def _validate_frequency(cls, value: str) -> str:
         if value not in _supported_frequency_ids():
             supported = ", ".join(sorted(_supported_frequency_ids()))
-            raise ValueError(f"Unsupported index fixing frequency {value!r}. Use one of: {supported}.")
+            raise ValueError(
+                f"Unsupported index fixing frequency {value!r}. Use one of: {supported}."
+            )
         return value
 
     @field_validator("index_unique_identifiers")
@@ -122,7 +125,7 @@ class IndexFixingConfiguration(IndexDataNodeConfiguration):
 class FixingRatesNode(IndexTimestampedDataNode):
     """Pricing helper that publishes index fixings from registered builders."""
 
-    __data_node_identifier__ = "index_fixings"
+    __data_node_identifier__ = PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
     configuration_class: ClassVar[type[IndexFixingConfiguration]] = IndexFixingConfiguration
     OFFSET_START = dt.datetime(1990, 1, 1, tzinfo=dt.UTC)
 
@@ -208,9 +211,7 @@ class FixingRatesNode(IndexTimestampedDataNode):
             "index_uid" in normalized.columns
             and INDEX_UNIQUE_IDENTIFIER_DIMENSION not in normalized.columns
         ):
-            normalized = normalized.rename(
-                columns={"index_uid": INDEX_UNIQUE_IDENTIFIER_DIMENSION}
-            )
+            normalized = normalized.rename(columns={"index_uid": INDEX_UNIQUE_IDENTIFIER_DIMENSION})
         return normalized
 
     def get_table_metadata(self) -> TableMetaData:

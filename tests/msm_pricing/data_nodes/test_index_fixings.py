@@ -22,6 +22,7 @@ from msm_pricing.data_nodes.index_fixings import (
     FixingRatesNode,
     IndexFixingConfiguration,
 )
+from msm_pricing.settings import PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
 
 
 def test_index_fixing_configuration_is_index_stamped_with_hashable_frequency() -> None:
@@ -29,6 +30,7 @@ def test_index_fixing_configuration_is_index_stamped_with_hashable_frequency() -
 
     assert isinstance(config, IndexDataNodeConfiguration)
     assert config.frequency == "1d"
+    assert config.node_metadata.identifier == PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
     assert IndexFixingConfiguration.model_fields["frequency"].json_schema_extra is None
     assert config.index_names == ["time_index", INDEX_UNIQUE_IDENTIFIER_DIMENSION]
     assert config.foreign_keys is not None

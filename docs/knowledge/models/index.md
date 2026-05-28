@@ -11,6 +11,15 @@ for example, `AssetTable` is the SQLAlchemy MetaTable declaration while
 AssetTable` for schema work or `from msm.api.assets import Asset` for row
 operations.
 
+Pricing-specific MetaTables are not core markets models. Tables such as
+`IndexConventionDetailsTable`, `CurveTable`, and
+`AssetCurrentPricingDetailsTable` live under `msm_pricing.models` and are
+selected through `msm_pricing.meta_tables.pricing_sqlalchemy_models()`.
+Runtime initialization should use
+`msm_pricing.bootstrap.create_pricing_schemas(...)`, which includes core
+dependencies such as `AssetTable`, `IndexTypeTable`, and `IndexTable` before
+pricing extension tables and resolves them through the maintenance catalog.
+
 ## Scope
 
 Models answer these questions:
@@ -35,8 +44,8 @@ Models answer these questions:
 - `msm.models.calendars`: calendars.
 - `msm.models.execution`: execution tables.
 - `msm.models.funds`: funds.
+- `msm.models.indices`: index type registry and canonical index reference rows.
 - `msm.models.issuers`: issuer reference data used by bond assets.
-- `msm.models.instruments`: pricing and instruments configuration.
 - `msm.models.portfolios`: portfolios and portfolio metadata.
 - `msm.models.assets.provider_details`: provider-specific asset metadata.
 - `msm.models.rebalancing`: rebalance strategy metadata.
@@ -53,6 +62,11 @@ deterministic.
 Models should represent durable schema. Runtime-only behavior belongs in
 DataNodes, services, pricing classes, or `msm.api` row helpers depending on the
 use case.
+
+The core `markets_sqlalchemy_models()` list intentionally does not include
+optional pricing-package tables. Use the pricing helper when a workflow needs
+pricing-owned current instrument payloads, index conventions, or curve
+identity rows.
 
 Every model returned by `markets_sqlalchemy_models()` must be registerable as a
 MetaTable in both platform-managed and external-registered modes.

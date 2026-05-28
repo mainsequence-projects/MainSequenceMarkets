@@ -4,16 +4,17 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from msm.base import MarketsBase
+from msm.maintenance.catalog import bootstrap_markets_meta_tables_from_catalog
 from msm.models.registration import (
     MarketsManagementMode,
     MarketsMetaTableRegistrationResult,
-    register_markets_meta_tables,
 )
 from msm.models.assets import AssetTable
-from msm.models.indices import IndexTable
+from msm.models.indices import IndexTable, IndexTypeTable
 
 from .models.curves import CurveTable
 from .models.index_convention_details import IndexConventionDetailsTable
+from .models.market_data_bindings import PricingMarketDataBindingTable
 from .models.pricing_details import AssetCurrentPricingDetailsTable
 
 PricingManagementMode = MarketsManagementMode
@@ -26,10 +27,12 @@ def pricing_sqlalchemy_models() -> list[type[MarketsBase]]:
 
     return [
         AssetTable,
+        IndexTypeTable,
         IndexTable,
         IndexConventionDetailsTable,
         CurveTable,
         AssetCurrentPricingDetailsTable,
+        PricingMarketDataBindingTable,
     ]
 
 
@@ -79,7 +82,6 @@ def register_pricing_meta_tables(
     data_source_uid: str | None = None,
     management_mode: PricingManagementMode = "platform_managed",
     target_meta_table_uid_by_fullname: Mapping[str, Any] | None = None,
-    labels: Sequence[str] | None = None,
     open_for_everyone: bool = False,
     protect_from_deletion: bool = False,
     introspect: bool | None = None,
@@ -87,26 +89,25 @@ def register_pricing_meta_tables(
     timeout: int | float | tuple[float, float] | None = None,
     models: Sequence[PricingModelSelector] | None = None,
 ) -> PricingMetaTableRegistrationResult:
-    """Register pricing MetaTables while resolving core asset dependencies.
+    """Bootstrap pricing MetaTables through the markets maintenance catalog.
 
-    The default pricing graph includes the core ``AssetTable`` before
-    ``AssetCurrentPricingDetailsTable`` so FK target mappings are populated
-    before pricing extension tables are registered.
+    The default pricing graph includes core ``AssetTable``, ``IndexTypeTable``,
+    and ``IndexTable`` before pricing extension tables so FK target mappings are
+    populated before pricing extension tables are registered.
     """
 
     resolved_models = resolve_pricing_meta_table_models(models)
-    return register_markets_meta_tables(
+    return bootstrap_markets_meta_tables_from_catalog(
         data_source_uid=data_source_uid,
         management_mode=management_mode,
         target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
-        labels=labels,
         open_for_everyone=open_for_everyone,
         protect_from_deletion=protect_from_deletion,
         introspect=introspect,
         storage_hash_by_fullname=storage_hash_by_fullname,
         timeout=timeout,
         models=resolved_models,
-    )
+    ).registration
 
 
 __all__ = [

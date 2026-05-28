@@ -45,7 +45,7 @@ Rename every SQLAlchemy MetaTable declaration in `src/msm/models` to use the
 Asset                      -> AssetTable
 AssetCategory              -> AssetCategoryTable
 AssetCategoryMembership    -> AssetCategoryMembershipTable
-OpenFigiDetails            -> OpenFigiDetailsTable
+OpenFigiDetails            -> OpenFigiAssetDetailsTable
 Portfolio                  -> PortfolioTable
 Order                      -> OrderTable
 ```
@@ -68,8 +68,7 @@ AssetCategoryMembership       -> AssetCategoryMembershipTable
 Calendar                      -> CalendarTable
 ExecutionError                -> ExecutionErrorTable
 Fund                          -> FundTable
-InstrumentsConfiguration      -> InstrumentsConfigurationTable
-OpenFigiDetails               -> OpenFigiDetailsTable
+OpenFigiDetails               -> OpenFigiAssetDetailsTable
 OrderManager                  -> OrderManagerTable
 OrderTargetQuantity           -> OrderTargetQuantityTable
 Order                         -> OrderTable
@@ -160,7 +159,7 @@ Asset.filter(...)
 ```
 
 The method split matters. `Asset.create_schemas(...)` is allowed as a thin
-convenience over `msm.create_schemas(models=[AssetTable], ...)`. It performs the
+convenience over `msm.start_engine(models=[AssetTable], ...)`. It performs the
 explicit schema/bootstrap lifecycle. `Asset.upsert(...)` and `Asset.filter(...)`
 must use the already initialized runtime and must not create schemas silently.
 
@@ -205,10 +204,10 @@ This ADR does not move deployable FastAPI route modules into `src/msm/api`.
 `src/msm/api` is the packaged library API contract layer. Repository-level
 FastAPI apps still belong under the project-level `api/` directory when needed.
 
-This ADR originally did not make row mutation methods bootstrap schemas.
-ADR 0009 supersedes that part of the decision: row operations should lazily
-attach to already-registered schemas by default, and may auto-register only
-when the opt-in auto-registration environment variable is set.
+This ADR originally did not make row mutation methods bootstrap schemas. ADR
+0015 restores that boundary after ADR 0009's lazy/on-demand experiment: row
+operations require an active runtime created by explicit startup bootstrap and
+do not attach or register schemas on first use.
 
 This ADR does not remove lower-level repository helpers. Repositories remain
 useful for compiled operation construction, multi-table internals, and workflows
@@ -267,7 +266,7 @@ until the corresponding code, docs, examples, and tests exist.
 - [x] Add `src/msm/api/__init__.py` and domain modules such as
   `src/msm/api/assets.py`.
 - [x] Add a runtime accessor that row APIs can use after explicit bootstrap.
-- [x] Make `msm.create_schemas(...)` accept selected table models.
+- [x] Make `msm.start_engine(...)` accept selected table models.
 - [x] Add `MarketsRuntime.table(...)` so lower-level repository/service code can
   still obtain a registered table handle when needed.
 - [x] Add `msm.get_runtime()` so row APIs can use the active runtime after
@@ -305,7 +304,7 @@ market workflows.
 - [x] Update the asset CRUD workflow example to initialize only the required
   asset schema and list typed `Asset` rows.
 - [x] Update the existing OpenFIGI asset row-building code to use the renamed
-  SQLAlchemy schema classes `AssetTable` and `OpenFigiDetailsTable`; this is
+  SQLAlchemy schema classes `AssetTable` and `OpenFigiAssetDetailsTable`; this is
   only a table-name cleanup and does not implement the Stage 3 OpenFIGI API row.
 - [x] Document the library-wide API style in the ADR, docs home page, knowledge
   base, getting started guide, asset docs, model docs, service docs, tutorial,
@@ -325,7 +324,7 @@ row is stable.
   multi-table operation requiring `[AssetCategoryTable,
   AssetCategoryMembershipTable, AssetTable]`.
 - [x] Add `OpenFigiDetails.upsert(...)` or provider-specific registration helper
-  requiring `[OpenFigiDetailsTable, AssetTable]`.
+  requiring `[OpenFigiAssetDetailsTable, AssetTable]`.
 - [x] Update OpenFIGI examples so provider row-building uses API rows when the
   result is intended for user-facing code and `*Table` declarations only when
   authoring MetaTable contracts.
@@ -368,14 +367,13 @@ class-owned operations scale beyond single-table assets.
 - [x] Add `Fund.upsert(...)` and lookup helpers after account and portfolio APIs
   are stable.
 
-### Stage 6: Signals, Rebalance, And Instrument Configuration API
+### Stage 6: Signals And Rebalance Metadata API
 
 These are metadata/configuration surfaces. They should remain thin unless a
 larger service workflow exists.
 
 - [x] Add Pydantic row and mutation contracts for:
-  `SignalMetadata`, `RebalanceStrategyMetadata`, and
-  `InstrumentsConfiguration`.
+  `SignalMetadata` and `RebalanceStrategyMetadata`.
 - [x] Add class-level `create_schemas(...)`, upsert, lookup, and filter helpers
   for each table.
 - [x] Keep pricing-runtime and strategy construction outside these row models;

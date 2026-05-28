@@ -11,11 +11,21 @@ if __package__ in {None, ""}:
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from examples.platform.bootstrap import (
-    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_NAMESPACE_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
+from msm.constants import (
+    ASSET_TYPE_CRYPTO,
+    ASSET_TYPE_CRYPTO_DEFINITION,
+    ASSET_TYPE_CURRENCY,
+    ASSET_TYPE_CURRENCY_DEFINITION,
+    INDEX_TYPE_CRYPTO,
+    INDEX_TYPE_CRYPTO_DEFINITION,
+)
 
-os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+
+import msm
 
 EXAMPLE_VENUE = "example_crypto_venue"
 EXAMPLE_BASE_CRYPTO = {
@@ -33,30 +43,28 @@ EXAMPLE_FUTURE_IDENTIFIER = "example-crypto-btcusdt-perpetual"
 def create_crypto_future_without_figi() -> dict[str, Any]:
     """Create a crypto perpetual future using local identifiers only."""
 
+    msm.start_engine(
+        models=["AssetType", "Asset", "IndexType", "Index", "FutureAssetDetails"],
+    )
+
     from msm.api.assets import Asset, AssetType
     from msm.api.derivatives import Future
-    from msm.api.indices import Index
+    from msm.api.indices import Index, IndexType
 
-    crypto_asset_type = AssetType.upsert(
-        asset_type="crypto",
-        display_name="Crypto",
-        description="Crypto assets registered from local or venue identifiers.",
-    )
-    currency_asset_type = AssetType.upsert(
-        asset_type="currency",
-        display_name="Currency",
-        description="Single currency assets used as settlement or margin units.",
-    )
+    crypto_asset_type = AssetType.upsert(**ASSET_TYPE_CRYPTO_DEFINITION.as_payload())
+    currency_asset_type = AssetType.upsert(**ASSET_TYPE_CURRENCY_DEFINITION.as_payload())
+    crypto_index_type = IndexType.upsert(**INDEX_TYPE_CRYPTO_DEFINITION.as_payload())
     btc = Asset.upsert(
         unique_identifier=EXAMPLE_BASE_CRYPTO["code"],
-        asset_type="crypto",
+        asset_type=ASSET_TYPE_CRYPTO,
     )
     usdt = Asset.upsert(
         unique_identifier=EXAMPLE_MARGIN_CURRENCY["code"],
-        asset_type="currency",
+        asset_type=ASSET_TYPE_CURRENCY,
     )
     underlying_index = Index.upsert(
         unique_identifier=EXAMPLE_UNDERLYING_INDEX_IDENTIFIER,
+        index_type=INDEX_TYPE_CRYPTO,
         display_name="BTC/USDT Perpetual Reference Index",
         description=(
             "Local crypto venue reference index used as the underlying for a "
@@ -95,6 +103,7 @@ def create_crypto_future_without_figi() -> dict[str, Any]:
     return {
         "crypto_asset_type": crypto_asset_type,
         "currency_asset_type": currency_asset_type,
+        "crypto_index_type": crypto_index_type,
         "base_asset": btc,
         "margin_asset": usdt,
         "underlying_index": underlying_index,

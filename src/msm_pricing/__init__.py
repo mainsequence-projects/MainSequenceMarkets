@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from importlib import import_module
 
-__all__ = [
+_INSTRUMENT_EXPORTS = [
     "AmortizingFixedRateBond",
     "AmortizingFloatingRateBond",
     "CallableFixedRateBond",
@@ -15,10 +15,30 @@ __all__ = [
     "ZeroCouponBond",
 ]
 
-_ATTR_TO_MODULE = {
-    name: ".instruments"
-    for name in __all__
-}
+__all__ = [
+    *_INSTRUMENT_EXPORTS,
+    "PRICING_CONCEPT_DISCOUNT_CURVES",
+    "PRICING_CONCEPT_EQUITY_VOL_CURVES",
+    "PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS",
+    "PRICING_CONTEXT_DEFAULT",
+    "PRICING_CONTEXT_EOD",
+    "PRICING_CONTEXT_LIVE",
+    "PRICING_CONTEXT_RISK_MANAGER",
+    "PricingMarketDataConfiguration",
+]
+
+_ATTR_TO_MODULE = {name: ".instruments" for name in _INSTRUMENT_EXPORTS}
+_ATTR_TO_MODULE["PricingMarketDataConfiguration"] = ".config"
+for _name in (
+    "PRICING_CONCEPT_DISCOUNT_CURVES",
+    "PRICING_CONCEPT_EQUITY_VOL_CURVES",
+    "PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS",
+    "PRICING_CONTEXT_DEFAULT",
+    "PRICING_CONTEXT_EOD",
+    "PRICING_CONTEXT_LIVE",
+    "PRICING_CONTEXT_RISK_MANAGER",
+):
+    _ATTR_TO_MODULE[_name] = ".settings"
 
 
 def __getattr__(name: str):

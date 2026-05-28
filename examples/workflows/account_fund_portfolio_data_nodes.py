@@ -10,15 +10,21 @@ if __package__ in {None, ""}:
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from examples.platform.bootstrap import (
-    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_NAMESPACE_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
 
-os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+
+import msm
 
 
 def create_account_fund_portfolio_workflow() -> dict:
     """Create typed MetaTable records and build DataNode-ready frames."""
+
+    msm.start_engine(
+        models=["Asset", "Account", "Portfolio", "PortfolioAssetDetail", "Fund"],
+    )
 
     from msm.api.accounts import Account
     from msm.api.portfolios import Fund, Portfolio

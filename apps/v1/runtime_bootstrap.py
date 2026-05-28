@@ -6,9 +6,10 @@ from typing import Any
 
 V1_RUNTIME_MODELS = [
     "Asset",
-    "OpenFigiDetails",
+    "OpenFigiAssetDetails",
     "AssetCategory",
     "AssetCategoryMembership",
+    "IndexType",
     "Index",
 ]
 _BOOTSTRAP_COMPLETE = False
@@ -26,7 +27,7 @@ def ensure_apps_v1_runtime() -> Any | None:
 
     import msm
 
-    runtime = msm.create_schemas(
+    runtime = msm.start_engine(
         namespace=namespace,
         models=V1_RUNTIME_MODELS,
     )

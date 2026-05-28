@@ -72,8 +72,8 @@ Do not add a separate `uid` column to one-to-one detail tables.
 Recommended SQLAlchemy shape:
 
 ```python
-class AssetFutureDetailsTable(MarketsMetaTableMixin, MarketsBase):
-    __metatable_identifier__ = "AssetFutureDetails"
+class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
+    __metatable_identifier__ = "FutureAssetDetails"
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -109,8 +109,8 @@ change the SQL table shape just to satisfy generic helpers.
 
 ## Currency Spot Reference Pattern
 
-`CurrencySpotTable` is the built-in currency spot extension pattern. Single
-currencies such as `USD` and `EUR` are normal `Asset` rows with
+`CurrencySpotAssetDetailsTable` is the built-in currency spot extension
+pattern. Single currencies such as `USD` and `EUR` are normal `Asset` rows with
 `asset_type="currency"`. The spot pair is a normal `Asset` with
 `asset_type="currency_spot"`; the detail table stores `asset_uid`,
 `base_currency_uid`, and `quote_currency_uid` as references to `AssetTable.uid`.
@@ -139,8 +139,8 @@ those are extension detail fields.
 
 ## Bond Reference Pattern
 
-`BondDetailsTable` is the built-in bond extension pattern. A bond is a normal
-`Asset` row with `asset_type="bond"`. The detail table stores `asset_uid`,
+`BondAssetDetailsTable` is the built-in bond extension pattern. A bond is a
+normal `Asset` row with `asset_type="bond"`. The detail table stores `asset_uid`,
 `issuer_uid`, `currency_asset_uid`, `issue_date`, `maturity_date`, and
 `status`.
 
@@ -172,19 +172,19 @@ bond = Bond.upsert(
 ```
 
 Do not widen `AssetTable` with issuer, currency, issue date, maturity date, or
-status fields. Those belong to `BondDetailsTable`. Pricing terms, coupons,
+status fields. Those belong to `BondAssetDetailsTable`. Pricing terms, coupons,
 schedules, and instrument dumps belong to pricing/instrument contracts, not the
 minimal bond asset extension.
 
 ## OpenFIGI Reference Pattern
 
-`OpenFigiDetailsTable` is the built-in example of this extension pattern.
+`OpenFigiAssetDetailsTable` is the built-in example of this extension pattern.
 
 Required architecture:
 
 ```text
 +-----------------------------+        one-to-one provider      +-----------------------------+
-| AssetTable                  |-------------------------------->| OpenFigiDetailsTable        |
+| AssetTable                  |-------------------------------->| OpenFigiAssetDetailsTable   |
 | uid                  PK     |        asset_uid PK/FK          | asset_uid            PK/FK  |
 | unique_identifier    unique |                                 | figi                        |
 | asset_type                 |                                 | isin / ticker / metadata    |

@@ -9,16 +9,70 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Locked the `IndexTable`/`Index` row contract so legacy Constant-name fields
+  stay out of canonical index identity.
+- Made `IndexTable.index_type` required and updated Index create/upsert,
+  OpenFIGI registration helpers, examples, and API response schemas to carry an
+  explicit index type.
+- Reworked the pricing knowledge documentation around ADR 0013's explicit
+  asset, index convention, curve, fixing, and runtime resolver diagrams.
+- Added ADR 0016 to replace legacy instrument configuration wiring with
+  pricing-owned market-data binding rows keyed by `(context_key, concept_key)`.
+- Renamed `MSInterface` to `MSDataInterface` and renamed runtime configuration
+  methods and constructor arguments from instrument configuration to pricing
+  market-data configuration.
+- Updated pricing market-data reads to resolve DataNodes through concept keys
+  such as `discount_curves` and `interest_rate_index_fixings`, then call
+  `APIDataNode.build_from_identifier(...)`.
+- Removed the legacy core `InstrumentsConfiguration` table/API/repository
+  surface in favor of `msm_pricing.api.PricingMarketDataBinding`.
 - Reorganized `msm.data_nodes` so account, asset, execution, and index
   DataNodes live under model-shaped modules, while non-model shared DataNode
   helpers live under `msm.data_nodes.utils`.
+- Renamed the top-level markets bootstrap entrypoint to `msm.start_engine(...)`
+  to reflect that it initializes the full runtime, not only schemas.
+- Changed `msm.start_engine(...)` to use the internal maintenance catalog
+  before registering application MetaTables.
+- Added the platform `MetaTable.description` to the internal maintenance
+  catalog as descriptive metadata.
+- Removed redundant persisted physical schema and physical table name fields
+  from the internal maintenance catalog; `storage_hash` remains the physical
+  identity.
+- Replaced lazy MetaTable row-operation registration with catalog-based process
+  bootstrap. Row operations now require an active initialized runtime and do not
+  attach or register schemas on first use.
+- Updated examples and tutorials so MetaTable-backed row workflows call
+  explicit bootstrap during startup.
+
+### Fixed
+
+- Fixed catalog-based MetaTable bootstrap so already-cataloged tables are read
+  in one storage-hash query and no longer perform a platform `MetaTable` fetch
+  for every existing table during startup.
+- Fixed compiled MetaTable insert/upsert operations so Python-side SQLAlchemy
+  defaults such as UUID primary keys and catalog timestamps are materialized
+  before the SQL is sent to the backend.
+- Fixed pricing schema startup so `msm_pricing.create_pricing_schemas(...)`
+  uses the maintenance catalog bootstrap instead of re-running direct
+  MetaTable registration for core asset/index tables.
 
 ### Added
 
+- Added `IndexTypeTable`, the `msm.api.indices.IndexType` row API, and the
+  built-in `INDEX_TYPE_INTEREST_RATE` definition so indexes can be classified
+  through the same registry pattern used by asset types.
+- Added the internal `msm.maintenance.models.MarketsMetaTableCatalogTable`
+  declaration plus typed catalog row helpers and contract hashing for
+  catalog-based MetaTable bootstrap groundwork.
+- Added `msm.constants` as the static import surface for built-in asset type
+  keys such as `ASSET_TYPE_BOND`, `ASSET_TYPE_CRYPTO`,
+  `ASSET_TYPE_CURRENCY`, `ASSET_TYPE_CURRENCY_SPOT`, `ASSET_TYPE_EQUITY`, and
+  `ASSET_TYPE_FUTURE`, plus typed built-in `AssetType` definitions for
+  registration payloads.
 - Added `AssetTypeTable` plus the `msm.api.assets.AssetType` row API as a
   minimal asset type registry with unique `asset_type`, optional
   `display_name`, optional `description`, and optional `metadata_json`.
-- Added `CurrencySpotTable` plus the `msm.api.assets.CurrencySpot` workflow for
+- Added `CurrencySpotAssetDetailsTable` plus the `msm.api.assets.CurrencySpot` workflow for
   currency spot pair assets keyed by canonical base and quote currency `Asset`
   rows.
 - Added typed asset-type normalization so API payloads store lowercase
@@ -59,18 +113,16 @@ and this project follows versioned releases.
   constants.
 - Added an offline platform example for inspecting SDK-derived markets
   MetaTable model names.
-- Added `msm.create_schemas(...)` to bootstrap markets MetaTables and return a
+- Added `msm.start_engine(...)` to bootstrap markets MetaTables and return a
   repository runtime context for examples and applications.
-- Added process-idempotent `msm.create_schemas(...)` behavior: repeated calls with the
+- Added process-idempotent `msm.start_engine(...)` behavior: repeated calls with the
   same startup configuration reuse the runtime, while different second calls
   fail before changing table namespace or execution context.
-- Added structured Main Sequence `info` logs to `msm.create_schemas(...)` so
+- Added structured Main Sequence `info` logs to `msm.start_engine(...)` so
   initialization reports namespace configuration, one line per MetaTable
   registration, context creation, runtime creation, and cached-runtime reuse.
-- Added lazy row-operation runtime resolution: `msm.api.*` row methods now
-  attach to already-registered MetaTables by default, and
-  `MSM_AUTO_REGISTER_NAMESPACE` enables opt-in example/development
-  auto-registration.
+- Added active-runtime row-operation resolution: `msm.api.*` row methods now
+  require the process runtime created by explicit startup bootstrap.
 - Updated `MSM_AUTO_REGISTER_NAMESPACE` so it also drives default markets
   DataNode identifiers and `hash_namespace` values, not only MetaTable runtime
   registration.
@@ -81,8 +133,8 @@ and this project follows versioned releases.
   identifiers such as `Asset`, while non-default namespaces prefix identifiers
   as `<namespace>.<identifier>`.
 - Exposed registered MetaTable handles and DataNode class handles on the
-  `msm.create_schemas(...)` runtime instead of accepting broad labels on startup.
-- Added `models=[...]` support to `msm.create_schemas(...)` so narrow workflows
+  `msm.start_engine(...)` runtime instead of accepting broad labels on startup.
+- Added `models=[...]` support to `msm.start_engine(...)` so narrow workflows
   can register only the required markets MetaTables.
 - Added `runtime.table("Asset")` / `MarketsMetaTableHandle` for single-table
   service calls without passing the full repository context.
@@ -118,6 +170,13 @@ and this project follows versioned releases.
 - Added UID-based pricing resolvers so bonds and swaps materialize QuantLib
   indices and curves from `IndexTable.uid`, `IndexConventionDetails`, and
   `CurveTable` instead of raw index-name strings.
+- Added `examples/pricing/bond_pricing_example/`, a full floating-rate bond
+  workflow that registers asset and pricing rows, publishes mock fixings and a
+  flat-forward discount curve, attaches a `FloatingRateBond`, reloads it through
+  `Instrument.load_from_asset(...)`, and prints pricing analytics.
+- Added reusable mock pricing market-data components under
+  `examples/pricing/utils/` for subclassing `DiscountCurvesNode` and
+  `FixingRatesNode` in examples.
 - Added rich configuration-owned discovery metadata for `DiscountCurvesNode`
   describing its row grain, Curve MetaTable identity link, compressed curve
   payload, and pricing use.
@@ -141,9 +200,12 @@ and this project follows versioned releases.
 - Removed stale serialized `*_index_name` pricing relationships from bond and
   swap payloads; persisted instruments now require backend index UUID fields
   such as `floating_rate_index_uid` and `float_leg_index_uid`.
+- Removed the legacy `IndexSpec` registry from the public
+  `msm_pricing.pricing_engine` aggregate API; new pricing code resolves
+  QuantLib indices from backend index UIDs and pricing MetaTables.
 - Added an ADR for `bond` assets, issuer reference data, and the planned
   one-to-one bond detail table.
-- Implemented `IssuerTable`, `BondDetailsTable`, `msm.api.issuers.Issuer`, and
+- Implemented `IssuerTable`, `BondAssetDetailsTable`, `msm.api.issuers.Issuer`, and
   `msm.api.assets.Bond` for registering bonds through the user-facing API.
 - Added `examples/assets/us_treasury_bond_workflow.py` showing how CUSIP, FIGI,
   issuer, maturity, coupon, and tenor fields map to the current bond API.
@@ -162,9 +224,9 @@ and this project follows versioned releases.
   `IndexTimestampedDataNode` and `IndexDataNodeConfiguration` for timestamped
   facts keyed to `IndexTable.unique_identifier`.
 - Added `examples/platform/bootstrap.py` as the home for the example MetaTable
-  namespace and auto-registration environment constants.
-- Documented the attach-first row API pattern, explicit schema preflight option,
-  and example-scoped auto-registration flow.
+  namespace environment constants.
+- Documented the active-runtime row API pattern and explicit schema preflight
+  option.
 - Documented the asset CRUD workflow in the asset knowledge docs and market
   workflow tutorial.
 - Corrected the examples directory name to `examples/`.
@@ -187,7 +249,7 @@ and this project follows versioned releases.
   into a dedicated Asset-Indexed DataNodes knowledge page covering
   `AssetIndexedDataNode`, canonical asset source-table foreign keys, namespace
   behavior, and `AssetSnapshot`.
-- Updated `OpenFigiDetailsTable` to use `asset_uid` as the one-to-one
+- Updated `OpenFigiAssetDetailsTable` to use `asset_uid` as the one-to-one
   primary-key/foreign-key asset detail identity instead of a separate detail
   `uid`.
 - Moved the QuantLib-backed pricing runtime out of core `msm` into the
@@ -223,8 +285,7 @@ and this project follows versioned releases.
 - Updated asset service helpers to accept the registered asset table handle
   while keeping the full repository context available for multi-table workflows.
 - Updated examples and asset notebooks so MetaTable row CRUD goes through
-  `msm.api.*` with example-scoped auto-registration instead of explicit
-  bootstrap in normal workflows.
+  `msm.api.*` after explicit example-scoped startup bootstrap.
 - Removed redundant standalone `asset_snapshot_workflow.py` and
   `openfigi_asset_rows.py` examples now covered by `asset_crud_workflow.py`.
 - Updated markets DataNodes to derive default published identifiers and

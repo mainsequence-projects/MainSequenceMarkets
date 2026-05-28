@@ -11,11 +11,13 @@ if __package__ in {None, ""}:
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from examples.platform.bootstrap import (
-    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_NAMESPACE_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
 
-os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+
+import msm
 
 EXAMPLE_BOND_ISSUER = {
     "unique_identifier": "example-issuer",
@@ -31,23 +33,24 @@ EXAMPLE_BOND_UNIQUE_IDENTIFIER = "example-usd-bond-2031"
 def create_example_bond() -> dict[str, Any]:
     """Create an issuer, denomination currency, and bond asset."""
 
+    msm.start_engine(
+        models=["AssetType", "Asset", "Issuer", "BondAssetDetails"],
+    )
+
     from msm.api.assets import Asset, AssetType, Bond
     from msm.api.issuers import Issuer
+    from msm.constants import (
+        ASSET_TYPE_BOND_DEFINITION,
+        ASSET_TYPE_CURRENCY,
+        ASSET_TYPE_CURRENCY_DEFINITION,
+    )
 
-    currency_asset_type = AssetType.upsert(
-        asset_type="currency",
-        display_name="Currency",
-        description="Single currency assets used as denomination units.",
-    )
-    bond_asset_type = AssetType.upsert(
-        asset_type="bond",
-        display_name="Bond",
-        description="Debt instruments represented as tradable assets.",
-    )
+    currency_asset_type = AssetType.upsert(**ASSET_TYPE_CURRENCY_DEFINITION.as_payload())
+    bond_asset_type = AssetType.upsert(**ASSET_TYPE_BOND_DEFINITION.as_payload())
     issuer = Issuer.upsert(**EXAMPLE_BOND_ISSUER)
     currency_asset = Asset.upsert(
         unique_identifier=EXAMPLE_BOND_CURRENCY["code"],
-        asset_type="currency",
+        asset_type=ASSET_TYPE_CURRENCY,
     )
     bond = Bond.upsert(
         unique_identifier=EXAMPLE_BOND_UNIQUE_IDENTIFIER,

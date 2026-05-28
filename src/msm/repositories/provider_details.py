@@ -5,7 +5,7 @@ from typing import Any
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
 
-from msm.models import OpenFigiDetailsTable
+from msm.models import OpenFigiAssetDetailsTable
 
 from .base import MarketsRepositoryContext, execute_markets_operation
 from .crud import (
@@ -27,7 +27,7 @@ def build_create_openfigi_details_operation(
     payload["asset_uid"] = asset_uid
     return build_create_model_operation(
         context,
-        model=OpenFigiDetailsTable,
+        model=OpenFigiAssetDetailsTable,
         values=payload,
     )
 
@@ -47,7 +47,7 @@ def build_get_openfigi_details_by_uid_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_get_model_by_uid_operation(context, model=OpenFigiDetailsTable, uid=uid)
+    return build_get_model_by_uid_operation(context, model=OpenFigiAssetDetailsTable, uid=uid)
 
 
 def get_openfigi_details_by_uid(
@@ -81,7 +81,7 @@ def build_search_openfigi_details_operation(
         filters["isin"] = isin
     return build_search_model_operation(
         context,
-        model=OpenFigiDetailsTable,
+        model=OpenFigiAssetDetailsTable,
         filters=filters,
         limit=limit,
     )
@@ -105,7 +105,7 @@ def build_update_openfigi_details_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_update_model_operation(
         context,
-        model=OpenFigiDetailsTable,
+        model=OpenFigiAssetDetailsTable,
         uid=uid,
         values=values,
     )
@@ -126,7 +126,7 @@ def build_delete_openfigi_details_operation(
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(context, model=OpenFigiDetailsTable, uid=uid)
+    return build_delete_model_operation(context, model=OpenFigiAssetDetailsTable, uid=uid)
 
 
 def delete_openfigi_details(

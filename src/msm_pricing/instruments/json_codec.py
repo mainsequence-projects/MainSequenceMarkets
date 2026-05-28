@@ -8,8 +8,6 @@ from typing import Any
 
 import QuantLib as ql
 
-from msm_pricing.pricing_engine.indices import get_index as _index_by_name
-
 # ----------------------------- ql.Period -------------------------------------
 
 _UNITS_TO_SHORT = {
@@ -493,24 +491,18 @@ def _construct_ibor(family: str, tenor: str) -> ql.IborIndex:
 
 def ibor_from_json(v: None | str | dict[str, Any] | ql.IborIndex) -> ql.IborIndex | None:
     """
-    Decode from JSON into a ql.IborIndex, delegating to the central factory when possible.
+    Decode from JSON into a ql.IborIndex.
+
     Falls back to legacy parsing for 'USDLibor3M' / 'Euribor6M' styles.
-    NOTE: TIIE for swaps remains handled in TIIESwap; this function does not change that flow.
+    Pricing relationships must be stored as backend IndexTable.uid fields on
+    instrument models, not as index-name strings inside this codec.
     """
     if v is None or isinstance(v, ql.IborIndex):
         return v
 
-    # 1) String form: try the factory first (supports: 'EURIBOR_6M', 'USD_LIBOR_3M', 'SOFOR'→'SOFR', etc.)
+    # 1) String form: legacy fallback, e.g. 'USDLibor3M' / 'Euribor6M' /
+    # 'USDLibor' (defaults 3M).
     if isinstance(v, str):
-        if _index_by_name is not None:
-            try:
-                idx = _index_by_name(v)
-                # For instruments here we expect an IborIndex; ignore overnight-only results.
-                if isinstance(idx, ql.IborIndex):
-                    return idx
-            except Exception:
-                pass  # fall back to legacy parser
-        # Legacy fallback: 'USDLibor3M' / 'Euribor6M' / 'USDLibor' (defaults 3M)
         name = v
         tenor = "3M"
         for t in ("1M", "3M", "6M", "12M", "1Y", "28D"):
@@ -528,15 +520,6 @@ def ibor_from_json(v: None | str | dict[str, Any] | ql.IborIndex) -> ql.IborInde
         tenor = v.get("tenor", "3M")
         if not family:
             return None
-        if _index_by_name is not None:
-            try:
-                # Accept either {'family':'Euribor','tenor':'6M'} or {'name':'USD_LIBOR','tenor':'3M'}
-                candidate = f"{family}_{tenor}" if tenor else family
-                idx = _index_by_name(candidate)
-                if isinstance(idx, ql.IborIndex):
-                    return idx
-            except Exception as e:
-                raise e
         return _construct_ibor(family, tenor)
 
     raise TypeError(f"Cannot decode IborIndex from {type(v).__name__}")

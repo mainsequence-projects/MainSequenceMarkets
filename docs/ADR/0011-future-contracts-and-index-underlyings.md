@@ -18,8 +18,10 @@ index.
 
 This ADR introduces two related concepts:
 
+- `IndexTypeTable`: a first-class registry for index type keys such as
+  `interest_rate`.
 - `IndexTable`: a first-class row-oriented reference table for market indexes.
-- `FutureDetailsTable`: a one-to-one extension of a canonical future `Asset`
+- `FutureAssetDetailsTable`: a one-to-one extension of a canonical future `Asset`
   row whose underlying is an `IndexTable` row in the first implementation.
 
 This avoids pretending that index underlyings are assets while preserving the
@@ -36,11 +38,14 @@ canonical future asset.
 Create a platform-managed MetaTable declaration:
 
 ```text
+IndexTypeTable
 IndexTable
 ```
 
 `IndexTable` is not an asset extension. It is a reference entity for indexes
 that may be used as underlyings by derivatives.
+`IndexTypeTable` mirrors `AssetTypeTable`: it registers what an
+`Index.index_type` classification string means.
 
 Initial columns:
 
@@ -48,6 +53,7 @@ Initial columns:
 | --- | --- | --- |
 | `uid` | UUID PK | Internal row identity. |
 | `unique_identifier` | string unique | Stable index identity, for example `SPX`, `NDX`, or provider-specific IDs. |
+| `index_type` | string | Required classification key, for example `interest_rate`. |
 | `display_name` | string | Human-readable name. |
 | `description` | text nullable | Optional explanation of the index. |
 | `provider` | string nullable | Optional provider/source namespace. |
@@ -56,12 +62,11 @@ Initial columns:
 Expose a public API model:
 
 ```python
-from msm.api.indices import Index
+from msm.api.indices import Index, IndexType
 ```
 
-`Index` should support the normal row API methods, including
-`Index.create_schemas(...)`, `Index.upsert(...)`, `Index.get_by_uid(...)`, and
-`Index.filter(...)`.
+`IndexType` and `Index` should support the normal row API methods, including
+`create_schemas(...)`, `upsert(...)`, `get_by_uid(...)`, and `filter(...)`.
 
 ### Future Asset Type
 
@@ -87,7 +92,7 @@ The contract-specific terms belong in a detail table.
 Create a platform-managed MetaTable declaration:
 
 ```text
-FutureDetailsTable
+FutureAssetDetailsTable
 ```
 
 The table is a one-to-one extension of the future asset row and references an
@@ -95,7 +100,7 @@ index underlying:
 
 ```text
 +-----------------------------+        one-to-one extension     +-----------------------------+
-| AssetTable                  |-------------------------------->| FutureDetailsTable          |
+| AssetTable                  |-------------------------------->| FutureAssetDetailsTable          |
 |-----------------------------|        asset_uid PK/FK          |-----------------------------|
 | uid                  PK     |                                 | asset_uid            PK/FK  |
 | unique_identifier    unique |                                 | kind                 enum   |
@@ -194,10 +199,13 @@ from decimal import Decimal
 
 from msm.api.assets import Asset
 from msm.api.derivatives import Future
-from msm.api.indices import Index
+from msm.api.indices import Index, IndexType
+from msm.constants import INDEX_TYPE_EQUITY, INDEX_TYPE_EQUITY_DEFINITION
 
+IndexType.upsert(**INDEX_TYPE_EQUITY_DEFINITION.as_payload())
 spx = Index.upsert(
     unique_identifier="SPX",
+    index_type=INDEX_TYPE_EQUITY,
     display_name="S&P 500 Index",
     provider="example",
 )
@@ -224,7 +232,7 @@ future = Future.upsert(
 
 1. ensure or upsert `AssetType(asset_type="future")`;
 2. upsert the canonical future `Asset`;
-3. upsert `FutureDetailsTable` keyed by the future asset UID;
+3. upsert `FutureAssetDetailsTable` keyed by the future asset UID;
 4. return a typed `Future` object with asset identity and contract detail
    fields.
 
@@ -237,14 +245,16 @@ The required table order is:
 ```text
 AssetTypeTable
 AssetTable
+IndexTypeTable
 IndexTable
-FutureDetailsTable
+FutureAssetDetailsTable
 ```
 
-`Index.__required_tables__` should include `IndexTable`.
+`Index.__required_tables__` should include `IndexTypeTable` before
+`IndexTable`.
 `Future.__required_tables__` should include all required tables in dependency
-order so lazy runtime resolution and optional development auto-registration can
-register the minimum correct schema set.
+order so explicit startup bootstrap can initialize the minimum correct schema
+set.
 
 ## Consequences
 
@@ -271,8 +281,8 @@ ADRs when they become part of the library contract.
 - [x] Export `Index` from `msm.api` without placing it under `msm.api.assets`.
 - [x] Add enum definitions for future kind, settlement model, and settlement
   method in the derivatives typed API.
-- [x] Add `FutureDetailsTable` under a derivatives-oriented model module.
-- [x] Add `FutureDetailsTable` to model exports and MetaTable registration
+- [x] Add `FutureAssetDetailsTable` under a derivatives-oriented model module.
+- [x] Add `FutureAssetDetailsTable` to model exports and MetaTable registration
   order after `AssetTable` and `IndexTable`.
 - [x] Add foreign keys for `asset_uid`, `underlying_index_uid`,
   `settlement_asset`, and `margin_asset`.

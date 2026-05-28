@@ -9,8 +9,10 @@ This API is intentionally thin:
 
 - route declarations, validation, and OpenAPI metadata live under `apps/v1`
 - reusable catalog and category workflows live under `src/msm/services`
-- the current route composition is backed by
+- asset, category, and index frontend route composition is backed by
   `src/msm/services/asset_master_lists.py`
+- MetaTable catalogue discovery and row management is backed by
+  `src/msm/services/catalog.py`
 
 ## Runtime Bootstrap
 
@@ -20,7 +22,7 @@ request to hit a row operation.
 
 Current local-dev behavior:
 
-- the app calls `msm.create_schemas(...)` during startup for the `apps/v1`
+- the app calls `msm.start_engine(...)` during startup for the `apps/v1`
   table set
 - the app uses the real project/session data source already configured for the
   Main Sequence client session
@@ -64,13 +66,30 @@ Current local-dev behavior:
 - `GET /api/v1/index/`
   - supports `response_format=frontend_list`
   - supports `search`, `limit`, and `offset`
-  - returns the simple index registry list contract
+  - returns the simple index registry list contract, including `index_type`
 - `GET /api/v1/index/{uid}/`
   - returns one index registry record by `uid`
-  - includes `metadata_json` when present on the underlying row
+  - always includes `index_type` and includes `metadata_json` when present on
+    the underlying row
 - `DELETE /api/v1/index/{uid}/`
   - deletes one index registry record
   - returns `null` on success
+
+### Catalogues
+
+- `GET /api/v1/catalog/`
+  - lists catalogue entries from the markets MetaTable catalogue
+  - supports `search`, `limit`, and `offset`
+  - returns catalogue identity fields, backend `meta_table_uid`, support flags,
+    and row-management endpoint templates
+  - does not expose physical schema or physical table name fields
+- `GET /api/v1/catalog/{catalog_uid}/rows/`
+  - lists rows for one catalogue entry selected by catalogue row `uid`
+  - returns a generic row contract with `columns` and row `values`
+- `DELETE /api/v1/catalog/{catalog_uid}/rows/{uid}/`
+  - deletes one row from the selected catalogue-backed MetaTable
+  - resolves the backend table through the catalogue entry
+  - relies on backend foreign-key cascade behavior for related rows
 
 ## Compatibility Notes
 

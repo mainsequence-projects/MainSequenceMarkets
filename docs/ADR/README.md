@@ -32,3 +32,5 @@ Current decisions:
 - [0013. API v1 Index Route Plan](api/v1/0013-index-route-plan.md)
 - [0013. Current Asset Pricing Details](0013-current-asset-pricing-details.md)
 - [0014. Bond Asset And Issuer Extension](0014-bond-asset-extension.md)
+- [0015. Catalog-Based MetaTable Bootstrap](0015-catalog-based-metatable-bootstrap.md)
+- [0016. Pricing Market Data Configuration](0016-pricing-market-data-configuration.md)

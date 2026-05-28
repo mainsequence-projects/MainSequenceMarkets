@@ -17,6 +17,8 @@ from .base import (
     execute_markets_operation,
 )
 
+_MISSING = object()
+
 
 def build_create_model_operation(
     context: MarketsOperationContext,
@@ -27,7 +29,9 @@ def build_create_model_operation(
 ) -> MetaTableCompiledSQLOperation:
     """Build an insert operation for a markets MetaTable SQLAlchemy model."""
 
-    statement = insert(model).values(_model_value_mapping(model, values))
+    statement = insert(model).values(
+        _model_value_mapping(model, _model_insert_payload(model, values))
+    )
     if returning:
         statement = statement.returning(model)
     return compile_markets_statement(
@@ -51,15 +55,19 @@ def build_upsert_model_operation(
     if not conflict_columns:
         raise ValueError("Upsert operations require at least one conflict column.")
 
-    payload = {key: value for key, value in dict(values).items() if key != "uid"}
-    statement = postgresql_insert(model).values(_model_value_mapping(model, payload))
+    payload = dict(values)
+    insert_payload = _model_insert_payload(model, payload)
+    update_payload = _model_update_payload(model, payload)
+    statement = postgresql_insert(model).values(_model_value_mapping(model, insert_payload))
     conflict_property_keys = {
         _model_column_property(model, conflict_column).key for conflict_column in conflict_columns
     }
+    primary_key_property_keys = _model_primary_key_property_keys(model)
     update_values = {
         _model_attribute(model, key): value
-        for key, value in payload.items()
-        if _model_column_property(model, key).key not in conflict_property_keys
+        for key, value in update_payload.items()
+        if _model_column_property(model, key).key
+        not in {*conflict_property_keys, *primary_key_property_keys}
     }
     if not update_values:
         first_conflict_column = conflict_columns[0]
@@ -328,6 +336,58 @@ def _model_value_mapping(
         _model_attribute(model, key): value
         for key, value in values.items()
         if include_none or value is not None
+    }
+
+
+def _model_insert_payload(
+    model: type[MarketsBase],
+    values: Mapping[str, Any],
+) -> dict[str, Any]:
+    payload = dict(values)
+    for column_property in inspect(model).column_attrs:
+        column = column_property.columns[0]
+        if column_property.key in payload and payload[column_property.key] is not None:
+            continue
+        default_value = _column_default_value(column.default)
+        if default_value is not _MISSING:
+            payload[column_property.key] = default_value
+    return payload
+
+
+def _model_update_payload(
+    model: type[MarketsBase],
+    values: Mapping[str, Any],
+) -> dict[str, Any]:
+    payload = dict(values)
+    for column_property in inspect(model).column_attrs:
+        column = column_property.columns[0]
+        if column_property.key in payload and payload[column_property.key] is not None:
+            continue
+        default_value = _column_default_value(column.onupdate)
+        if default_value is not _MISSING:
+            payload[column_property.key] = default_value
+    return payload
+
+
+def _column_default_value(default: Any) -> Any:
+    if default is None or getattr(default, "is_clause_element", False):
+        return _MISSING
+
+    value = getattr(default, "arg", default)
+    if callable(value):
+        try:
+            return value(None)
+        except TypeError:
+            return value()
+    return value
+
+
+def _model_primary_key_property_keys(model: type[MarketsBase]) -> set[str]:
+    primary_key_columns = set(model.__table__.primary_key.columns)
+    return {
+        column_property.key
+        for column_property in inspect(model).column_attrs
+        if column_property.columns[0] in primary_key_columns
     }
 
 

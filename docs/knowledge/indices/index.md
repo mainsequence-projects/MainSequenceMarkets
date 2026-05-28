@@ -11,24 +11,38 @@ make a foreign key work.
 Indexes answer these questions:
 
 - What is the stable `unique_identifier` for this index?
+- What type of index is it, such as `interest_rate`?
 - What human-readable name should users see?
 - Which optional provider namespace owns or supplied the reference row?
 - Which derivative contracts reference this index as an underlying?
 
 Indexes do not represent tradable instruments. A tradable future on an index is
-an `Asset(asset_type="future")` plus a `FutureDetailsTable` row that references
+an `Asset(asset_type="future")` plus a `FutureAssetDetailsTable` row that references
 `IndexTable.uid`.
+
+Do not store platform Constant names on `IndexTable`. Constant aliases are not
+part of the schema or the typed `Index` payloads; project-specific aliases
+belong in `metadata_json` only when they are reference metadata rather than
+canonical identity.
 
 ## API
 
-Application code should use `msm.api.indices.Index`.
+Application code should use `msm.api.indices.IndexType` to register index type
+keys and `msm.api.indices.Index` to register canonical index rows.
 
 ```python
-from msm.api.indices import Index
+from msm.api.indices import Index, IndexType
+from msm.constants import (
+    INDEX_TYPE_INTEREST_RATE,
+    INDEX_TYPE_INTEREST_RATE_DEFINITION,
+)
 
-spx = Index.upsert(
-    unique_identifier="SPX",
-    display_name="S&P 500 Index",
+IndexType.upsert(**INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload())
+
+sofr = Index.upsert(
+    unique_identifier="USD-SOFR-3M",
+    index_type=INDEX_TYPE_INTEREST_RATE,
+    display_name="USD SOFR 3M",
     provider="example",
 )
 ```
@@ -37,13 +51,17 @@ OpenFIGI-backed workflows can register index reference rows with the provider
 helper. The helper rejects rows whose OpenFIGI `marketSector` is not `Index`.
 
 ```python
+from msm.api.indices import IndexType
 from msm.services import register_index_from_figi
+from msm.constants import INDEX_TYPE_EQUITY, INDEX_TYPE_EQUITY_DEFINITION
 
-spx = register_index_from_figi("BBG000KKFC45")
+IndexType.upsert(**INDEX_TYPE_EQUITY_DEFINITION.as_payload())
+spx = register_index_from_figi("BBG000KKFC45", index_type=INDEX_TYPE_EQUITY)
 ```
 
 `Index` exposes the same typed row API style as the rest of `msm.api`:
 
+- `IndexType.upsert(...)`
 - `Index.create_schemas(...)`
 - `Index.upsert(...)`
 - `Index.get_by_uid(...)`
@@ -54,26 +72,44 @@ spx = register_index_from_figi("BBG000KKFC45")
 
 ## Schema
 
-`IndexTable` is declared under `msm.models.indices` and exported through
-`msm.models`.
+`IndexTypeTable` and `IndexTable` are declared under `msm.models.indices` and
+exported through `msm.models`. `IndexTypeTable` mirrors the `AssetTypeTable`
+pattern: it registers what an `Index.index_type` string means. In the current
+schema, `Index.index_type` is a required string classification field whose values should
+match rows in `IndexType`; it is not a database foreign key in this release.
+
+`IndexTypeTable` fields:
+
+| Field | Meaning |
+| --- | --- |
+| `uid` | Internal row identity. |
+| `index_type` | Stable type key, unique within the registered table. |
+| `display_name` | Human-readable type name. |
+| `description` | Optional explanation of the type. |
+| `metadata_json` | Optional type metadata. |
+
+`IndexTable` fields:
 
 | Field | Meaning |
 | --- | --- |
 | `uid` | Internal row identity. |
 | `unique_identifier` | Stable index key, unique within the registered table. |
+| `index_type` | Required classification key, such as `interest_rate`. |
 | `display_name` | Human-readable name. |
 | `description` | Optional explanation of the index. |
 | `provider` | Optional provider or source namespace. |
 | `metadata_json` | Provider-specific reference fields that are not yet part of the canonical schema. |
 
-`unique_identifier` is indexed uniquely. `display_name` and `provider` are
-indexed for lookup workflows.
+`IndexType.index_type` and `Index.unique_identifier` are indexed uniquely.
+`Index.index_type`, `display_name`, and `provider` are indexed for lookup workflows.
+There is no Constant-name column.
 
 ## Registration
 
 `Index.__required_tables__` declares the minimum schema set:
 
 ```text
+IndexTypeTable
 IndexTable
 ```
 
@@ -86,8 +122,10 @@ from msm.api.indices import Index
 Index.create_schemas()
 ```
 
-Examples and development scripts can instead set `MSM_AUTO_REGISTER_NAMESPACE`
-before importing the API classes.
+Examples and development scripts can set `MSM_AUTO_REGISTER_NAMESPACE` before
+importing the API classes when they need an example namespace, but they still
+must call `Index.create_schemas()` or `msm.start_engine(...)` during startup
+before row operations.
 
 ## Timestamped Index DataNodes
 

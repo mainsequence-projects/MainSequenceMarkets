@@ -5,7 +5,7 @@ Derivatives are tradable contracts whose contract terms live outside the core
 
 The current implemented derivative workflow is futures on indexes. The future
 contract itself is a canonical `Asset` with `asset_type="future"`, while
-`FutureDetailsTable` stores contract terms and references an `IndexTable`
+`FutureAssetDetailsTable` stores contract terms and references an `IndexTable`
 underlying.
 
 ## Scope

@@ -60,12 +60,14 @@ The route will add an explicit list-row schema under `apps/v1/schemas/`:
 - `IndexListRow`
   - `uid`
   - `unique_identifier`
+  - `index_type`
   - `display_name`
   - `description`
   - `provider`
 - `IndexRecord`
   - `uid`
   - `unique_identifier`
+  - `index_type`
   - `display_name`
   - `description`
   - `provider`

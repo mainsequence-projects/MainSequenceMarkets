@@ -36,11 +36,11 @@ class MarketsRow(BaseModel):
     def create_schemas(cls, **kwargs: Any):
         """Create the MetaTable schemas required by this row API."""
 
-        from msm.bootstrap import create_schemas
+        from msm.bootstrap import start_engine
 
         requested_models = kwargs.pop("models", None)
         models = _dedupe_models([*cls.__required_tables__, *(requested_models or [])])
-        return create_schemas(models=models, **kwargs)
+        return start_engine(models=models, **kwargs)
 
     @classmethod
     def create(cls: type[RowT], payload: Payload = None, **kwargs: Any) -> RowT:

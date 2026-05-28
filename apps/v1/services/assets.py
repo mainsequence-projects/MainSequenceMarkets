@@ -27,7 +27,7 @@ def _get_runtime():
     return resolve_apps_v1_runtime(
         models=[
             "Asset",
-            "OpenFigiDetails",
+            "OpenFigiAssetDetails",
             "AssetCategory",
             "AssetCategoryMembership",
         ],

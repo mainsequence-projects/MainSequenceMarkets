@@ -17,22 +17,33 @@ from pydantic import (
 )
 
 from msm.api.base import MarketsRow, _dedupe_models, operation_result_rows
+from msm.constants import (
+    ASSET_TYPE_BOND,
+    ASSET_TYPE_BOND_DEFINITION,
+    ASSET_TYPE_CRYPTO,
+    ASSET_TYPE_CURRENCY,
+    ASSET_TYPE_CURRENCY_SPOT,
+    ASSET_TYPE_CURRENCY_SPOT_DEFINITION,
+    ASSET_TYPE_EQUITY,
+)
 from msm.models import (
     AssetCategoryMembershipTable,
     AssetCategoryTable,
     AssetTypeTable,
     AssetTable,
-    BondDetailsTable,
-    CurrencySpotTable,
+    BondAssetDetailsTable,
+    CurrencySpotAssetDetailsTable,
     IssuerTable,
-    OpenFigiDetailsTable,
+    OpenFigiAssetDetailsTable,
 )
 from msm.repositories.crud import get_model_by_uid, upsert_model
 
 _operation_result_rows = operation_result_rows
-CURRENCY_ASSET_TYPE = "currency"
-CURRENCY_SPOT_ASSET_TYPE = "currency_spot"
-BOND_ASSET_TYPE = "bond"
+CURRENCY_ASSET_TYPE = ASSET_TYPE_CURRENCY
+CURRENCY_SPOT_ASSET_TYPE = ASSET_TYPE_CURRENCY_SPOT
+BOND_ASSET_TYPE = ASSET_TYPE_BOND
+CRYPTO_ASSET_TYPE = ASSET_TYPE_CRYPTO
+EQUITY_ASSET_TYPE = ASSET_TYPE_EQUITY
 
 
 def normalize_asset_type(asset_type: str | None) -> str | None:
@@ -220,7 +231,7 @@ class CurrencySpot(BaseModel):
     __required_tables__: ClassVar[list[type[Any]]] = [
         AssetTypeTable,
         AssetTable,
-        CurrencySpotTable,
+        CurrencySpotAssetDetailsTable,
     ]
 
     uid: uuid.UUID = Field(validation_alias=AliasChoices("uid", "asset_uid"))
@@ -234,11 +245,11 @@ class CurrencySpot(BaseModel):
     def create_schemas(cls, **kwargs: Any):
         """Create the MetaTable schemas required by the currency spot API."""
 
-        from msm.bootstrap import create_schemas
+        from msm.bootstrap import start_engine
 
         requested_models = kwargs.pop("models", None)
         models = _dedupe_models([*cls.__required_tables__, *(requested_models or [])])
-        return create_schemas(models=models, **kwargs)
+        return start_engine(models=models, **kwargs)
 
     @classmethod
     def upsert(
@@ -254,11 +265,7 @@ class CurrencySpot(BaseModel):
         upsert_model(
             context,
             model=AssetTypeTable,
-            values={
-                "asset_type": CURRENCY_SPOT_ASSET_TYPE,
-                "display_name": "Currency Spot",
-                "description": "Tradable currency spot pair asset.",
-            },
+            values=ASSET_TYPE_CURRENCY_SPOT_DEFINITION.as_payload(),
             conflict_columns=("asset_type",),
         )
         pair_asset = Asset._from_operation_result(
@@ -275,7 +282,7 @@ class CurrencySpot(BaseModel):
         detail_rows = operation_result_rows(
             upsert_model(
                 context,
-                model=CurrencySpotTable,
+                model=CurrencySpotAssetDetailsTable,
                 values={
                     "asset_uid": pair_asset.uid,
                     "base_currency_uid": values["base_currency_uid"],
@@ -362,7 +369,7 @@ class Bond(BaseModel):
         AssetTypeTable,
         AssetTable,
         IssuerTable,
-        BondDetailsTable,
+        BondAssetDetailsTable,
     ]
 
     uid: uuid.UUID = Field(validation_alias=AliasChoices("uid", "asset_uid"))
@@ -379,11 +386,11 @@ class Bond(BaseModel):
     def create_schemas(cls, **kwargs: Any):
         """Create the MetaTable schemas required by the bond API."""
 
-        from msm.bootstrap import create_schemas
+        from msm.bootstrap import start_engine
 
         requested_models = kwargs.pop("models", None)
         models = _dedupe_models([*cls.__required_tables__, *(requested_models or [])])
-        return create_schemas(models=models, **kwargs)
+        return start_engine(models=models, **kwargs)
 
     @classmethod
     def upsert(
@@ -411,11 +418,7 @@ class Bond(BaseModel):
         upsert_model(
             context,
             model=AssetTypeTable,
-            values={
-                "asset_type": BOND_ASSET_TYPE,
-                "display_name": "Bond",
-                "description": "Debt instruments represented as tradable assets.",
-            },
+            values=ASSET_TYPE_BOND_DEFINITION.as_payload(),
             conflict_columns=("asset_type",),
         )
         bond_asset = Asset._from_operation_result(
@@ -432,7 +435,7 @@ class Bond(BaseModel):
         detail_rows = operation_result_rows(
             upsert_model(
                 context,
-                model=BondDetailsTable,
+                model=BondAssetDetailsTable,
                 values={
                     "asset_uid": bond_asset.uid,
                     "issuer_uid": values["issuer_uid"],
@@ -599,8 +602,8 @@ class AssetCategoryMembershipUpsert(AssetCategoryMembershipCreate):
 class OpenFigiDetails(MarketsRow):
     """Typed OpenFIGI/provider detail row linked to an asset."""
 
-    __table__: ClassVar[type[OpenFigiDetailsTable]] = OpenFigiDetailsTable
-    __required_tables__: ClassVar[list[type[Any]]] = [AssetTable, OpenFigiDetailsTable]
+    __table__: ClassVar[type[OpenFigiAssetDetailsTable]] = OpenFigiAssetDetailsTable
+    __required_tables__: ClassVar[list[type[Any]]] = [AssetTable, OpenFigiAssetDetailsTable]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("asset_uid",)
 
     uid: uuid.UUID = Field(validation_alias=AliasChoices("uid", "asset_uid"))
@@ -688,11 +691,13 @@ __all__ = [
     "BondCreate",
     "BondStatus",
     "BondUpsert",
+    "CRYPTO_ASSET_TYPE",
     "CURRENCY_ASSET_TYPE",
     "CurrencySpot",
     "CurrencySpotCreate",
     "CurrencySpotUpsert",
     "CURRENCY_SPOT_ASSET_TYPE",
+    "EQUITY_ASSET_TYPE",
     "OpenFigiDetails",
     "OpenFigiDetailsCreate",
     "OpenFigiDetailsUpdate",

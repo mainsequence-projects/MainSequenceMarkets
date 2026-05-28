@@ -12,14 +12,17 @@ if __package__ in {None, ""}:
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from examples.platform.bootstrap import (
-    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_NAMESPACE_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
+from msm.constants import ASSET_TYPE_BOND
 
-os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+
+import msm
 
 US_TREASURY_BOND_INPUT = {
-    "asset_type": "BOND",
+    "asset_type": ASSET_TYPE_BOND,
     "issuer": "US_TREASURY",
     "instrument_name": "US Treasury Note 4.375% 2036",
     "maturity_tenor_at_issue": "10Y",
@@ -42,10 +45,10 @@ INFERRED_ISSUE_DATE = dt.date(2026, 5, 15)
 NON_BOND_DETAIL_FIELDS = {
     "coupon_rate": (
         "Coupon is an instrument/pricing term, not part of the minimal "
-        "BondDetailsTable identity contract."
+        "BondAssetDetailsTable identity contract."
     ),
     "maturity_tenor_at_issue": (
-        "Tenor is a source/reference term; BondDetailsTable stores explicit "
+        "Tenor is a source/reference term; BondAssetDetailsTable stores explicit "
         "issue_date and maturity_date."
     ),
 }
@@ -54,23 +57,30 @@ NON_BOND_DETAIL_FIELDS = {
 def register_us_treasury_bond() -> dict[str, Any]:
     """Register a US Treasury bond while preserving provider identifiers."""
 
+    msm.start_engine(
+        models=[
+            "AssetType",
+            "Asset",
+            "Issuer",
+            "BondAssetDetails",
+            "OpenFigiAssetDetails",
+        ],
+    )
+
     from msm.api.assets import Asset, AssetType, Bond, OpenFigiDetails
     from msm.api.issuers import Issuer
+    from msm.constants import (
+        ASSET_TYPE_BOND_DEFINITION,
+        ASSET_TYPE_CURRENCY,
+        ASSET_TYPE_CURRENCY_DEFINITION,
+    )
 
-    currency_asset_type = AssetType.upsert(
-        asset_type="currency",
-        display_name="Currency",
-        description="Single currency assets used as denomination units.",
-    )
-    bond_asset_type = AssetType.upsert(
-        asset_type=US_TREASURY_BOND_INPUT["asset_type"],
-        display_name="Bond",
-        description="Debt instruments represented as tradable assets.",
-    )
+    currency_asset_type = AssetType.upsert(**ASSET_TYPE_CURRENCY_DEFINITION.as_payload())
+    bond_asset_type = AssetType.upsert(**ASSET_TYPE_BOND_DEFINITION.as_payload())
     issuer = Issuer.upsert(**US_TREASURY_ISSUER)
     currency_asset = Asset.upsert(
         unique_identifier=USD_CURRENCY["code"],
-        asset_type="currency",
+        asset_type=ASSET_TYPE_CURRENCY,
     )
 
     identifiers = US_TREASURY_BOND_INPUT["identifiers"]

@@ -75,14 +75,14 @@ from msm.api.issuers import Issuer
 Create a platform-managed MetaTable declaration:
 
 ```text
-BondDetailsTable
+BondAssetDetailsTable
 ```
 
 The table is a one-to-one extension of the canonical bond asset row:
 
 ```text
 +-----------------------------+        one-to-one extension     +-----------------------------+
-| AssetTable                  |-------------------------------->| BondDetailsTable            |
+| AssetTable                  |-------------------------------->| BondAssetDetailsTable            |
 |-----------------------------|        asset_uid PK/FK          |-----------------------------|
 | uid                  PK     |                                 | asset_uid            PK/FK  |
 | unique_identifier    unique |                                 | issuer_uid           FK     |
@@ -117,7 +117,7 @@ Initial columns:
 Use `issuer_uid` and `currency_asset_uid` in the table and API, not generic
 `issuer` or `currency` attributes, because both fields store foreign keys.
 
-Do not add a separate `uid` column to `BondDetailsTable`. If a Pydantic row
+Do not add a separate `uid` column to `BondAssetDetailsTable`. If a Pydantic row
 helper needs a `uid` field, expose `uid` as an alias of `asset_uid`.
 
 ### Foreign Keys And Deletion
@@ -184,7 +184,7 @@ bond = Bond.upsert(
 2. verify `currency_asset_uid` resolves to an `AssetTable` row;
 3. ensure or upsert `AssetType(asset_type="bond")`;
 4. upsert the canonical `Asset` with `asset_type="bond"`;
-5. upsert `BondDetailsTable` keyed by `asset_uid`;
+5. upsert `BondAssetDetailsTable` keyed by `asset_uid`;
 6. return a typed `Bond` object with the asset identity and bond detail fields.
 
 Users should not pass MetaTable handles or repository contexts.
@@ -214,13 +214,13 @@ The required table order is:
 AssetTypeTable
 AssetTable
 IssuerTable
-BondDetailsTable
+BondAssetDetailsTable
 ```
 
 `Issuer.__required_tables__` should include `IssuerTable`.
 `Bond.__required_tables__` should include all required tables in dependency
-order so lazy runtime resolution and optional development auto-registration can
-register the minimum correct schema set.
+order so explicit startup bootstrap can initialize the minimum correct schema
+set.
 
 ## Consequences
 
@@ -244,7 +244,7 @@ bond asset identity extension.
   `IssuerTable.display_name`.
 - [x] Add the user-facing `msm.api.issuers.Issuer` row model and payload
   models.
-- [x] Add `BondDetailsTable` under `src/msm/models/assets/` or a dedicated
+- [x] Add `BondAssetDetailsTable` under `src/msm/models/assets/` or a dedicated
   assets submodule.
 - [x] Use `asset_uid` as the only primary key and as a foreign key to
   `AssetTable.uid` with `ondelete="CASCADE"`.

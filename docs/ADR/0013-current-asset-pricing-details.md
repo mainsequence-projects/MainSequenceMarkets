@@ -294,6 +294,7 @@ index identity:
 |-----------------------------|
 | uid                  PK     |
 | unique_identifier    unique |
+| index_type                 |
 | display_name                |
 | provider                    |
 | metadata                    |
@@ -569,8 +570,89 @@ This replaces the old runtime shortcut where an in-memory `IndexSpec` bundled
 index conventions together with a `curve_uid`. `IndexSpec` is not a table and
 should not become the persisted contract by that name. The persistent contract
 is `IndexConventionDetailsTable` plus `CurveTable`; the runtime builders under
-`msm_pricing.pricing_engine` can transform the convention payload and selected
-curve row into QuantLib objects.
+`msm_pricing.pricing_engine` transform the convention payload and selected
+curve row into QuantLib objects. The package-level `pricing_engine` aggregate
+does not export the legacy `IndexSpec` registry; new user code resolves
+indices through backend index UIDs.
+
+### Full Bond Pricing Example
+
+Add a complete floating-rate bond pricing example under:
+
+```text
+examples/pricing/bond_pricing_example/
+```
+
+This example should be more than a payload serialization demo. It should show
+the complete user workflow across core assets, pricing MetaTables, pricing
+DataNodes, instrument persistence, and pricing output:
+
+```text
+Issuer/Currency/AssetType
+  -> Bond asset row
+  -> Index row
+  -> IndexConventionDetails row
+  -> Curve row
+  -> DiscountCurvesNode observations
+  -> FixingRatesNode observations
+  -> FloatingRateBond(floating_rate_index_uid=<IndexTable.uid>)
+  -> bond.attach_to_asset(asset)
+  -> Instrument.load_from_asset(asset)
+  -> set_valuation_date(...)
+  -> price / analytics / cashflows / carry-roll-down output
+```
+
+The example should use a floating-rate bond, not a fixed-rate shortcut, because
+floating-rate pricing exercises the index UID, convention, curve, and fixing
+graph.
+
+The example should register or resolve:
+
+- a `bond` asset type;
+- an issuer row;
+- a denomination currency asset;
+- a canonical bond asset and bond details row through `msm.api.assets.Bond`;
+- a canonical index row through `msm.api.indices.Index`;
+- one `IndexConventionDetails` row keyed by `IndexTable.uid`;
+- one `Curve` row keyed by `CurveTable.unique_identifier`;
+- current pricing details by calling `FloatingRateBond.attach_to_asset(...)`.
+
+The market data portion should include mock but realistic publisher nodes:
+
+- a mock discount-curve node that extends `DiscountCurvesNode`;
+- a mock index-fixing node that extends `FixingRatesNode`;
+- a deterministic curve builder using QuantLib, for example a flat-forward
+  curve sampled into zero points before publishing the compressed curve payload;
+- deterministic daily index fixings around the valuation date.
+
+Reusable example code should not be trapped inside
+`bond_pricing_example`. Shared mock market-data builders, convention payload
+helpers, or DataNode subclasses should live under a reusable pricing examples
+module such as:
+
+```text
+examples/pricing/utils/mock_market_data.py
+```
+
+That shared module should be usable later by a swap pricing example. The bond
+example package should own only the bond-specific orchestration, reporting, and
+output formatting.
+
+The final printed result should help users understand what happened. It should
+include at least:
+
+- registered asset, index, curve, and pricing-detail identities;
+- the stored `floating_rate_index_uid`;
+- the valuation date;
+- bond NPV / price;
+- clean and dirty analytics when available;
+- expected future coupon or net cashflow rows;
+- carry/roll-down output after the bond has been priced.
+
+The example should use only the new UID contract. It must not accept or emit
+`benchmark_rate_index_name`, `floating_rate_index_name`, or
+`float_leg_index_name`. Existing data is assumed clean, so no backward
+compatibility shim or automatic migration path should be added.
 
 ### Runtime Package Structure
 
@@ -582,7 +664,7 @@ msm_pricing/
   data_nodes/      # pricing DataNodes, including pricing_details.py
   instruments/     # serializable priceable instrument contracts
   pricing_engine/  # QuantLib pricing and construction functions
-  persistence/     # bridge helpers between InstrumentModel and pricing rows
+  api/             # row APIs and bridge helpers between InstrumentModel and pricing rows
   data_interface/  # platform reads for curves and index fixings
   streamlit/       # form helpers for pricing UIs
 ```
@@ -676,7 +758,7 @@ table prematurely.
 - [x] Add tests proving the table uses `asset_uid` as the one-to-one primary
   key, has no separate `uid`, and points at `AssetTable.uid` with cascade
   delete.
-- [ ] Add registration-request tests proving pricing models build in dependency
+- [x] Add registration-request tests proving pricing models build in dependency
   order for platform-managed and external-registered modes.
 - [x] Add `msm_pricing.api.pricing_details.AssetCurrentPricingDetails` plus
   create, upsert, and update payload models.
@@ -731,7 +813,7 @@ table prematurely.
   `CurveTable.index_uid`, `CurveTable.curve_type`, and `CurveTable.source`.
 - [x] Add `IndexConventionDetailsTable` and `CurveTable` to
   `msm_pricing.meta_tables.pricing_sqlalchemy_models()` in dependency order
-  after `IndexTable` and before curve-dependent consumers.
+  after `IndexTypeTable` and `IndexTable` and before curve-dependent consumers.
 - [x] Add pricing row APIs for index convention details and curves under
   `msm_pricing.api`.
 - [x] Add a pricing index resolver that accepts an `IndexTable.uid`, loads the
@@ -745,7 +827,7 @@ table prematurely.
   `(index_uid, curve_type)` row when the match is unique, require an explicit
   source, curve UID, or future valuation-context selector when multiple rows
   match, and raise a clear missing-curve error when no rows match.
-- [ ] Refactor the legacy runtime `IndexSpec.curve_uid` coupling so index
+- [x] Refactor the legacy runtime `IndexSpec.curve_uid` coupling so index
   conventions no longer select curves directly.
 - [x] Migrate the discount-curves DataNode contract so curve observations are
   keyed to `CurveTable.unique_identifier` rather than to `AssetTable` identity.
@@ -766,25 +848,41 @@ table prematurely.
 - [x] Add API and instrument tests proving serialized bond and swap payloads
   store index UIDs, resolver calls receive the expected backend index UID, and
   attach/load round trips preserve the UID reference.
-- [ ] Add migration notes for existing payloads that contain
-  `benchmark_rate_index_name`, `floating_rate_index_name`, or
-  `float_leg_index_name`, including how each old string should be matched to an
-  `IndexTable.uid`.
-- [ ] Validate at least one fixed-rate bond round trip:
+- [x] Record the clean-data assumption for legacy index-name payloads: old
+  `benchmark_rate_index_name`, `floating_rate_index_name`, and
+  `float_leg_index_name` fields are invalid, and no backward-compatible alias
+  or automatic migration code should be added.
+- [x] Validate at least one floating-rate bond round trip:
   `instrument.attach_to_asset(asset) -> AssetCurrentPricingDetails ->
   Instrument.load_from_asset(asset) -> price()`.
-- [ ] Add a bond asset example under `examples/pricing/` that creates or
-  resolves a bond asset and writes current pricing details.
-- [ ] Update `docs/knowledge/assets/index.md` so it points pricing-detail
+- [x] Add the full floating-rate bond pricing example under
+  `examples/pricing/bond_pricing_example/`.
+- [x] Add reusable mock pricing market-data components under
+  `examples/pricing/utils/` so the same curve and fixing builders can be reused
+  by a future swap pricing example.
+- [x] In the bond pricing example, register or resolve the bond asset type,
+  issuer, currency asset, canonical bond asset, index row, index convention
+  row, curve row, current pricing details row, discount-curve DataNode, and
+  index-fixing DataNode.
+- [x] In the bond pricing example, extend `DiscountCurvesNode` with a
+  deterministic QuantLib flat-forward curve publisher that samples zero points
+  and publishes the compressed curve payload keyed by
+  `CurveTable.unique_identifier`.
+- [x] In the bond pricing example, extend `FixingRatesNode` with deterministic
+  mock index fixings keyed by `IndexTable.unique_identifier`.
+- [x] In the bond pricing example, print registered identities, the stored
+  `floating_rate_index_uid`, valuation date, price/NPV, clean/dirty analytics,
+  expected coupons or cashflows, and carry/roll-down output.
+- [x] Update `docs/knowledge/assets/index.md` so it points pricing-detail
   readers to `msm_pricing` instead of presenting pricing details as core asset
   DataNodes.
-- [ ] Update `docs/knowledge/pricing/index.md` to describe the pricing-owned
-  table, pricing-owned DataNode, and `msm_pricing.persistence` helpers.
-- [ ] Update `docs/knowledge/models/index.md` to clarify that core `msm.models`
+- [x] Update `docs/knowledge/pricing/index.md` to describe the pricing-owned
+  table, pricing-owned DataNode, and `msm_pricing.api` helpers.
+- [x] Update `docs/knowledge/models/index.md` to clarify that core `msm.models`
   does not own pricing-specific table declarations.
-- [ ] Update `docs/tutorial/index.md` or `docs/tutorial/market_workflows.md`
+- [x] Update `docs/tutorial/index.md` or `docs/tutorial/market_workflows.md`
   with the bond-pricing-details workflow.
-- [ ] Update `CHANGELOG.md`.
+- [x] Update `CHANGELOG.md`.
 - [x] Add the `msm_pricing.pricing_engine` package for QuantLib-backed runtime
   helpers.
 - [x] Move internal imports from runtime-oriented `msm_pricing.models.*`
@@ -794,8 +892,8 @@ table prematurely.
 - [x] Update `src/msm_pricing/README.md`, `docs/knowledge/pricing/index.md`,
   and ADR 0005 references to prefer `pricing_engine` over runtime helpers under
   `models`.
-- [ ] Run `git diff --check`.
-- [ ] Run focused tests for pricing DataNodes, pricing MetaTables, pricing API,
+- [x] Run `git diff --check`.
+- [x] Run focused tests for pricing DataNodes, pricing MetaTables, pricing API,
   and pricing import compatibility.
-- [ ] Run `mkdocs build --strict --site-dir /private/tmp/msmarkets-docs-site`
+- [x] Run `mkdocs build --strict --site-dir /private/tmp/msmarkets-docs-site`
   after docs navigation updates.

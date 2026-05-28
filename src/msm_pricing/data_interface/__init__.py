@@ -1,6 +1,6 @@
-from .data_interface import DateInfo, MSInterface
+from .data_interface import DateInfo, MSDataInterface
 
 # export a single, uniform instance
-data_interface = MSInterface()
+data_interface = MSDataInterface()
 
-__all__ = ["DateInfo", "MSInterface", "data_interface"]
+__all__ = ["DateInfo", "MSDataInterface", "data_interface"]

@@ -19,10 +19,10 @@ from ..issuers import IssuerTable
 from .core import AssetTable
 
 
-class BondDetailsTable(MarketsMetaTableMixin, MarketsBase):
+class BondAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     """Bond detail row linked to a canonical markets asset."""
 
-    __metatable_identifier__ = "BondDetails"
+    __metatable_identifier__ = "BondAssetDetails"
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -76,4 +76,4 @@ class BondDetailsTable(MarketsMetaTableMixin, MarketsBase):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
-__all__ = ["BondDetailsTable"]
+__all__ = ["BondAssetDetailsTable"]

@@ -12,7 +12,7 @@ if __package__ in {None, ""}:
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from examples.platform.bootstrap import (
-    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_NAMESPACE_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
 from examples.assets.utils import (
@@ -24,8 +24,11 @@ from examples.assets.utils import (
     EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
     EXAMPLE_OPENFIGI_EQUITY_FIGI,
 )
+from msm.constants import ASSET_TYPE_CRYPTO, ASSET_TYPE_EQUITY
 
-os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+
+import msm
 
 if TYPE_CHECKING:
     from msm.api.assets import OpenFigiDetails
@@ -42,6 +45,10 @@ def create_query_assets(
 ) -> dict[str, Any]:
     """Resolve FIGI data, register asset types, create assets, and list them."""
 
+    msm.start_engine(
+        models=["AssetType", "Asset", "OpenFigiAssetDetails"],
+    )
+
     from msm.api.assets import Asset, AssetType
     from msm.data_nodes.assets import AssetSnapshot
     from msm.services.assets.openfigi import query_by_figi
@@ -51,7 +58,7 @@ def create_query_assets(
     created_assets = [Asset.upsert(**payload) for payload in EXAMPLE_CRYPTO_ASSETS]
     openfigi_asset = Asset.upsert(
         unique_identifier=normalized_openfigi["unique_identifier"],
-        asset_type="equity",
+        asset_type=ASSET_TYPE_EQUITY,
     )
     created_assets.append(openfigi_asset)
 
@@ -64,7 +71,7 @@ def create_query_assets(
     btc_by_uid = Asset.get_by_uid(btc_by_identifier.uid)
     crypto_examples = Asset.filter(
         unique_identifier_contains=EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX,
-        asset_type="crypto",
+        asset_type=ASSET_TYPE_CRYPTO,
         limit=20,
     )
     figi_details = _ensure_openfigi_details(

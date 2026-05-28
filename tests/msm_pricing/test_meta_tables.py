@@ -2,23 +2,26 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from msm.models import AssetTable, IndexTable, markets_sqlalchemy_models
+from msm.models import AssetTable, IndexTable, IndexTypeTable, markets_sqlalchemy_models
 import msm_pricing.meta_tables as pricing_meta_tables
 from msm_pricing.meta_tables import pricing_sqlalchemy_models, register_pricing_meta_tables
 from msm_pricing.models import (
     AssetCurrentPricingDetailsTable,
     CurveTable,
     IndexConventionDetailsTable,
+    PricingMarketDataBindingTable,
 )
 
 
 def test_pricing_sqlalchemy_models_returns_pricing_dependency_order() -> None:
     assert pricing_sqlalchemy_models() == [
         AssetTable,
+        IndexTypeTable,
         IndexTable,
         IndexConventionDetailsTable,
         CurveTable,
         AssetCurrentPricingDetailsTable,
+        PricingMarketDataBindingTable,
     ]
 
 
@@ -29,39 +32,42 @@ def test_pricing_sqlalchemy_models_returns_a_fresh_model_list() -> None:
 
     assert pricing_sqlalchemy_models() == [
         AssetTable,
+        IndexTypeTable,
         IndexTable,
         IndexConventionDetailsTable,
         CurveTable,
         AssetCurrentPricingDetailsTable,
+        PricingMarketDataBindingTable,
     ]
 
 
 def test_core_markets_models_do_not_include_pricing_extension_table() -> None:
     assert AssetTable in markets_sqlalchemy_models()
+    assert IndexTypeTable in markets_sqlalchemy_models()
     assert IndexTable in markets_sqlalchemy_models()
     assert IndexConventionDetailsTable not in markets_sqlalchemy_models()
     assert CurveTable not in markets_sqlalchemy_models()
     assert AssetCurrentPricingDetailsTable not in markets_sqlalchemy_models()
+    assert PricingMarketDataBindingTable not in markets_sqlalchemy_models()
 
 
 def test_register_pricing_meta_tables_delegates_with_pricing_models(monkeypatch) -> None:
     calls = []
 
-    def fake_register_markets_meta_tables(**kwargs):
+    def fake_catalog_bootstrap(**kwargs):
         calls.append(kwargs)
-        return SimpleNamespace(models=kwargs["models"])
+        return SimpleNamespace(registration=SimpleNamespace(models=kwargs["models"]))
 
     monkeypatch.setattr(
         pricing_meta_tables,
-        "register_markets_meta_tables",
-        fake_register_markets_meta_tables,
+        "bootstrap_markets_meta_tables_from_catalog",
+        fake_catalog_bootstrap,
     )
 
     result = register_pricing_meta_tables(
         data_source_uid="data-source-uid",
         management_mode="external_registered",
         target_meta_table_uid_by_fullname={"public.asset": "asset-meta-table-uid"},
-        labels=["pricing"],
         open_for_everyone=True,
         protect_from_deletion=True,
         introspect=True,
@@ -71,19 +77,18 @@ def test_register_pricing_meta_tables_delegates_with_pricing_models(monkeypatch)
 
     assert result.models == [
         AssetTable,
+        IndexTypeTable,
         IndexTable,
         IndexConventionDetailsTable,
         CurveTable,
         AssetCurrentPricingDetailsTable,
+        PricingMarketDataBindingTable,
     ]
     assert calls == [
         {
             "data_source_uid": "data-source-uid",
             "management_mode": "external_registered",
-            "target_meta_table_uid_by_fullname": {
-                "public.asset": "asset-meta-table-uid"
-            },
-            "labels": ["pricing"],
+            "target_meta_table_uid_by_fullname": {"public.asset": "asset-meta-table-uid"},
             "open_for_everyone": True,
             "protect_from_deletion": True,
             "introspect": True,
@@ -91,76 +96,136 @@ def test_register_pricing_meta_tables_delegates_with_pricing_models(monkeypatch)
             "timeout": 5,
             "models": [
                 AssetTable,
+                IndexTypeTable,
                 IndexTable,
                 IndexConventionDetailsTable,
                 CurveTable,
                 AssetCurrentPricingDetailsTable,
+                PricingMarketDataBindingTable,
             ],
         }
     ]
 
 
-def test_register_pricing_meta_tables_populates_asset_target_before_pricing_child(
+def test_register_pricing_meta_tables_registration_request_modes_use_dependency_order(
     monkeypatch,
 ) -> None:
     calls = []
 
-    def fake_register(cls, **kwargs):
-        snapshot = dict(kwargs)
-        snapshot["target_meta_table_uid_by_fullname"] = dict(
-            snapshot["target_meta_table_uid_by_fullname"]
+    def fake_catalog_bootstrap(**kwargs):
+        calls.append((kwargs["management_mode"], kwargs["models"]))
+        return SimpleNamespace(
+            registration=SimpleNamespace(
+                management_mode=kwargs["management_mode"],
+                models=kwargs["models"],
+            ),
         )
-        calls.append((cls, snapshot))
-        return SimpleNamespace(uid=f"{cls.__name__}-meta-table-uid")
 
-    monkeypatch.setattr(AssetTable, "register", classmethod(fake_register))
     monkeypatch.setattr(
-        AssetCurrentPricingDetailsTable,
-        "register",
-        classmethod(fake_register),
+        pricing_meta_tables,
+        "bootstrap_markets_meta_tables_from_catalog",
+        fake_catalog_bootstrap,
     )
-    monkeypatch.setattr(IndexTable, "register", classmethod(fake_register))
-    monkeypatch.setattr(
-        IndexConventionDetailsTable,
-        "register",
-        classmethod(fake_register),
-    )
-    monkeypatch.setattr(CurveTable, "register", classmethod(fake_register))
 
-    result = register_pricing_meta_tables(data_source_uid="data-source-uid")
+    for management_mode in ("platform_managed", "external_registered"):
+        result = register_pricing_meta_tables(
+            data_source_uid="data-source-uid",
+            management_mode=management_mode,
+            target_meta_table_uid_by_fullname={
+                str(AssetTable.__table__.fullname): "asset-meta-table-uid",
+                str(IndexTable.__table__.fullname): "index-meta-table-uid",
+            },
+        )
+        assert result.models == [
+            AssetTable,
+            IndexTypeTable,
+            IndexTable,
+            IndexConventionDetailsTable,
+            CurveTable,
+            AssetCurrentPricingDetailsTable,
+            PricingMarketDataBindingTable,
+        ]
 
-    assert [model for model, _kwargs in calls] == [
+    assert calls == [
+        (
+            "platform_managed",
+            [
+                AssetTable,
+                IndexTypeTable,
+                IndexTable,
+                IndexConventionDetailsTable,
+                CurveTable,
+                AssetCurrentPricingDetailsTable,
+                PricingMarketDataBindingTable,
+            ],
+        ),
+        (
+            "external_registered",
+            [
+                AssetTable,
+                IndexTypeTable,
+                IndexTable,
+                IndexConventionDetailsTable,
+                CurveTable,
+                AssetCurrentPricingDetailsTable,
+                PricingMarketDataBindingTable,
+            ],
+        ),
+    ]
+
+
+def test_register_pricing_meta_tables_uses_catalog_bootstrap_in_dependency_order(
+    monkeypatch,
+) -> None:
+    calls = []
+
+    def fail_direct_register(cls, **_kwargs):
+        raise AssertionError(f"{cls.__name__}.register should not run directly")
+
+    def fake_catalog_bootstrap(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            registration=SimpleNamespace(
+                models=kwargs["models"],
+                target_meta_table_uid_by_fullname={
+                    str(model.__table__.fullname): f"{model.__name__}-meta-table-uid"
+                    for model in kwargs["models"]
+                },
+            ),
+        )
+
+    for model in (
         AssetTable,
+        IndexTypeTable,
         IndexTable,
         IndexConventionDetailsTable,
         CurveTable,
         AssetCurrentPricingDetailsTable,
+        PricingMarketDataBindingTable,
+    ):
+        monkeypatch.setattr(model, "register", classmethod(fail_direct_register))
+    monkeypatch.setattr(
+        pricing_meta_tables,
+        "bootstrap_markets_meta_tables_from_catalog",
+        fake_catalog_bootstrap,
+    )
+
+    result = register_pricing_meta_tables(data_source_uid="data-source-uid")
+
+    assert len(calls) == 1
+    assert calls[0]["data_source_uid"] == "data-source-uid"
+    assert calls[0]["models"] == [
+        AssetTable,
+        IndexTypeTable,
+        IndexTable,
+        IndexConventionDetailsTable,
+        CurveTable,
+        AssetCurrentPricingDetailsTable,
+        PricingMarketDataBindingTable,
     ]
-    assert calls[0][1]["target_meta_table_uid_by_fullname"] == {}
-    assert calls[1][1]["target_meta_table_uid_by_fullname"] == {
-        str(AssetTable.__table__.fullname): "AssetTable-meta-table-uid"
-    }
-    assert calls[2][1]["target_meta_table_uid_by_fullname"] == {
-        str(AssetTable.__table__.fullname): "AssetTable-meta-table-uid",
-        str(IndexTable.__table__.fullname): "IndexTable-meta-table-uid",
-    }
-    assert calls[3][1]["target_meta_table_uid_by_fullname"] == {
-        str(AssetTable.__table__.fullname): "AssetTable-meta-table-uid",
-        str(IndexTable.__table__.fullname): "IndexTable-meta-table-uid",
-        str(IndexConventionDetailsTable.__table__.fullname): (
-            "IndexConventionDetailsTable-meta-table-uid"
-        ),
-    }
-    assert calls[4][1]["target_meta_table_uid_by_fullname"] == {
-        str(AssetTable.__table__.fullname): "AssetTable-meta-table-uid",
-        str(IndexTable.__table__.fullname): "IndexTable-meta-table-uid",
-        str(IndexConventionDetailsTable.__table__.fullname): (
-            "IndexConventionDetailsTable-meta-table-uid"
-        ),
-        str(CurveTable.__table__.fullname): "CurveTable-meta-table-uid",
-    }
     assert result.target_meta_table_uid_by_fullname == {
         str(AssetTable.__table__.fullname): "AssetTable-meta-table-uid",
+        str(IndexTypeTable.__table__.fullname): "IndexTypeTable-meta-table-uid",
         str(IndexTable.__table__.fullname): "IndexTable-meta-table-uid",
         str(IndexConventionDetailsTable.__table__.fullname): (
             "IndexConventionDetailsTable-meta-table-uid"
@@ -168,5 +233,8 @@ def test_register_pricing_meta_tables_populates_asset_target_before_pricing_chil
         str(CurveTable.__table__.fullname): "CurveTable-meta-table-uid",
         str(AssetCurrentPricingDetailsTable.__table__.fullname): (
             "AssetCurrentPricingDetailsTable-meta-table-uid"
+        ),
+        str(PricingMarketDataBindingTable.__table__.fullname): (
+            "PricingMarketDataBindingTable-meta-table-uid"
         ),
     }

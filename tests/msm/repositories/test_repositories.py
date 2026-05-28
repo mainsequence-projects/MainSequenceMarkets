@@ -3,8 +3,9 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
+from msm.maintenance.models import MarketsMetaTableCatalogRow, MarketsMetaTableCatalogTable
 from msm.models.registration import markets_meta_table_fullname
-from msm.models import AssetTable, OpenFigiDetailsTable, OrderTable, markets_sqlalchemy_models
+from msm.models import AssetTable, OpenFigiAssetDetailsTable, OrderTable, markets_sqlalchemy_models
 from msm.repositories import MarketsMetaTableHandle, MarketsRepositoryContext
 from msm.repositories.assets import (
     build_create_asset_operation,
@@ -63,6 +64,7 @@ def test_asset_create_operation_uses_write_scope() -> None:
     assert operation.scope.tables[0].access == "write"
     assert operation.scope.tables[0].meta_table_uid == asset.meta_table_uid
     assert AssetTable.__table__.name in operation.statement.sql
+    assert isinstance(operation.statement.parameters["uid"], uuid.UUID)
     assert operation.statement.parameters["unique_identifier"] == "BTC"
     assert "metadata_json" not in operation.statement.parameters
 
@@ -79,8 +81,39 @@ def test_asset_upsert_operation_uses_compiled_upsert_protocol() -> None:
     assert operation.operation == "upsert"
     assert operation.scope.tables[0].access == "write"
     assert "ON CONFLICT" in operation.statement.sql
+    assert isinstance(operation.statement.parameters["uid"], uuid.UUID)
     assert "metadata_json" not in operation.statement.sql
     assert "metadata_json" not in operation.statement.parameters
+
+
+def test_generic_upsert_operation_populates_python_defaults_for_backend_sql() -> None:
+    context = MarketsRepositoryContext(
+        target_meta_table_uid_by_fullname={
+            markets_meta_table_fullname(MarketsMetaTableCatalogTable): str(uuid.uuid4()),
+        },
+    )
+    row = MarketsMetaTableCatalogRow(
+        namespace="ms-markets",
+        identifier="Asset",
+        description=None,
+        model_name="AssetTable",
+        meta_table_uid=str(uuid.uuid4()),
+        storage_hash="asset-storage-hash",
+        contract_hash="contract-hash",
+        sdk_version="0.0.test",
+    )
+
+    operation = build_upsert_model_operation(
+        context,
+        model=MarketsMetaTableCatalogTable,
+        values=row.to_payload(),
+        conflict_columns=["storage_hash"],
+    )
+
+    assert isinstance(operation.statement.parameters["uid"], uuid.UUID)
+    assert operation.statement.parameters["created_at"].tzinfo is not None
+    assert operation.statement.parameters["updated_at"].tzinfo is not None
+    assert "updated_at =" in operation.statement.sql
 
 
 def test_generic_upsert_operation_uses_physical_name_for_aliased_columns() -> None:
@@ -88,7 +121,7 @@ def test_generic_upsert_operation_uses_physical_name_for_aliased_columns() -> No
 
     operation = build_upsert_model_operation(
         context,
-        model=OpenFigiDetailsTable,
+        model=OpenFigiAssetDetailsTable,
         values={
             "asset_uid": uuid.uuid4(),
             "metadata_text": None,
@@ -111,12 +144,12 @@ def test_generic_get_by_uid_uses_single_primary_key_when_uid_column_is_absent() 
 
     operation = build_get_model_by_uid_operation(
         context,
-        model=OpenFigiDetailsTable,
+        model=OpenFigiAssetDetailsTable,
         uid=asset_uid,
     )
 
     assert operation.operation == "select"
-    assert OpenFigiDetailsTable.__table__.name in operation.statement.sql
+    assert OpenFigiAssetDetailsTable.__table__.name in operation.statement.sql
     assert "asset_uid" in operation.statement.sql
 
 

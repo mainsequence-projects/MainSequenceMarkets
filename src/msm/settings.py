@@ -17,7 +17,7 @@ def markets_namespace(namespace: str | None = None) -> str:
 
 
 def markets_auto_register_namespace() -> str | None:
-    """Return the opt-in auto-register namespace when the env var is set."""
+    """Return the environment-provided startup namespace when configured."""
 
     if os.getenv(MSM_AUTO_REGISTER_NAMESPACE_ENV):
         return markets_namespace()

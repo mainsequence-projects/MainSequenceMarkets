@@ -11,7 +11,7 @@ if __package__ in {None, ""}:
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from examples.platform.bootstrap import (
-    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_NAMESPACE_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
 from examples.assets.utils import (
@@ -27,11 +27,17 @@ from examples.assets.utils import (
     EXAMPLE_USD_CURRENCY,
 )
 
-os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+
+import msm
 
 
 def run_asset_category_workflow(*, delete_temporary_assets: bool = False) -> dict[str, Any]:
     """Create a category, add and remove assets, and print membership changes."""
+
+    msm.start_engine(
+        models=["AssetType", "Asset", "AssetCategory", "AssetCategoryMembership"],
+    )
 
     from msm.api.assets import Asset, AssetCategory, AssetCategoryMembership, AssetType
 

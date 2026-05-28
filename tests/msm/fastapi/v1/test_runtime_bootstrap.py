@@ -11,23 +11,23 @@ def test_ensure_apps_v1_runtime_is_noop_without_namespace(monkeypatch) -> None:
     assert runtime_bootstrap._BOOTSTRAP_COMPLETE is False
 
 
-def test_ensure_apps_v1_runtime_calls_create_schemas_for_v1_model_set(monkeypatch) -> None:
+def test_ensure_apps_v1_runtime_calls_start_engine_for_v1_model_set(monkeypatch) -> None:
     monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
     monkeypatch.setattr(runtime_bootstrap, "_BOOTSTRAP_COMPLETE", False)
 
-    create_schemas_calls: list[dict[str, object]] = []
+    start_engine_calls: list[dict[str, object]] = []
     runtime = object()
 
     import msm
 
     monkeypatch.setattr(
         msm,
-        "create_schemas",
-        lambda **kwargs: create_schemas_calls.append(kwargs) or runtime,
+        "start_engine",
+        lambda **kwargs: start_engine_calls.append(kwargs) or runtime,
     )
 
     assert runtime_bootstrap.ensure_apps_v1_runtime() is runtime
-    assert create_schemas_calls == [
+    assert start_engine_calls == [
         {
             "namespace": "mainsequence.examples",
             "models": runtime_bootstrap.V1_RUNTIME_MODELS,
@@ -36,7 +36,7 @@ def test_ensure_apps_v1_runtime_calls_create_schemas_for_v1_model_set(monkeypatc
     assert runtime_bootstrap._BOOTSTRAP_COMPLETE is True
 
 
-def test_ensure_apps_v1_runtime_propagates_create_schemas_failures(monkeypatch) -> None:
+def test_ensure_apps_v1_runtime_propagates_start_engine_failures(monkeypatch) -> None:
     monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
     monkeypatch.setattr(runtime_bootstrap, "_BOOTSTRAP_COMPLETE", False)
 
@@ -44,7 +44,7 @@ def test_ensure_apps_v1_runtime_propagates_create_schemas_failures(monkeypatch) 
 
     monkeypatch.setattr(
         msm,
-        "create_schemas",
+        "start_engine",
         lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 
@@ -53,4 +53,4 @@ def test_ensure_apps_v1_runtime_propagates_create_schemas_failures(monkeypatch) 
     except RuntimeError as exc:
         assert str(exc) == "boom"
     else:
-        raise AssertionError("ensure_apps_v1_runtime should propagate create_schemas errors")
+        raise AssertionError("ensure_apps_v1_runtime should propagate start_engine errors")

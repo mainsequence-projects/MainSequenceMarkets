@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from msm.models import IndexTable
+from msm.models import IndexTable, IndexTypeTable
 from msm_pricing.api.index_convention_details import (
     DEFAULT_INDEX_CONVENTION_SERIALIZATION_FORMAT,
     IndexConventionDetails,
@@ -18,6 +18,7 @@ from msm_pricing.models import IndexConventionDetailsTable
 def test_index_convention_details_api_declares_table_contract() -> None:
     assert IndexConventionDetails.__table__ is IndexConventionDetailsTable
     assert IndexConventionDetails.__required_tables__ == [
+        IndexTypeTable,
         IndexTable,
         IndexConventionDetailsTable,
     ]
@@ -42,7 +43,7 @@ def test_index_convention_details_create_schemas_uses_pricing_dependencies(
     assert IndexConventionDetails.create_schemas(namespace="pricing-test") is runtime
     assert calls == [
         {
-            "models": [IndexTable, IndexConventionDetailsTable],
+            "models": [IndexTypeTable, IndexTable, IndexConventionDetailsTable],
             "namespace": "pricing-test",
         }
     ]
@@ -117,7 +118,7 @@ def test_index_convention_details_upsert_uses_pricing_runtime_and_index_uid_key(
         (
             "runtime",
             {
-                "models": [IndexTable, IndexConventionDetailsTable],
+                "models": [IndexTypeTable, IndexTable, IndexConventionDetailsTable],
                 "row_model_name": "IndexConventionDetails",
             },
         ),

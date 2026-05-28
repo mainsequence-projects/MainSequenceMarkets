@@ -17,10 +17,10 @@ from msm.base import (
 from .core import AssetTable
 
 
-class OpenFigiDetailsTable(MarketsMetaTableMixin, MarketsBase):
+class OpenFigiAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     """OpenFIGI/provider detail row linked to a markets asset."""
 
-    __metatable_identifier__ = "OpenFigiDetails"
+    __metatable_identifier__ = "OpenFigiAssetDetails"
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(markets_index_name(__metatable_identifier__, "figi"), "figi"),
@@ -55,4 +55,4 @@ class OpenFigiDetailsTable(MarketsMetaTableMixin, MarketsBase):
     raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-__all__ = ["OpenFigiDetailsTable"]
+__all__ = ["OpenFigiAssetDetailsTable"]

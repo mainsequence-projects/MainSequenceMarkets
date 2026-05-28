@@ -8,6 +8,7 @@ from fastapi.openapi.utils import get_openapi
 
 from apps.v1.routers.asset_categories import router as asset_categories_router
 from apps.v1.routers.assets import router as assets_router
+from apps.v1.routers.catalog import router as catalog_router
 from apps.v1.routers.indices import router as indices_router
 from apps.v1.runtime_bootstrap import ensure_apps_v1_runtime
 
@@ -30,6 +31,10 @@ API_TAGS = [
     {
         "name": "index",
         "description": "Index registry endpoints exposed through the `apps/v1` FastAPI surface.",
+    },
+    {
+        "name": "catalog",
+        "description": "MetaTable catalogue discovery and row-management endpoints.",
     },
 ]
 
@@ -61,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(assets_router, prefix="/api/v1")
     app.include_router(asset_categories_router, prefix="/api/v1")
     app.include_router(indices_router, prefix="/api/v1")
+    app.include_router(catalog_router, prefix="/api/v1")
 
     def custom_openapi():
         if app.openapi_schema is not None:

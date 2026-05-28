@@ -12,7 +12,7 @@ from msm.api.assets import (
     BondStatus,
     BondUpsert,
 )
-from msm.models import AssetTable, AssetTypeTable, BondDetailsTable, IssuerTable
+from msm.models import AssetTable, AssetTypeTable, BondAssetDetailsTable, IssuerTable
 
 
 def test_bond_api_declares_required_table_contract() -> None:
@@ -20,7 +20,7 @@ def test_bond_api_declares_required_table_contract() -> None:
         AssetTypeTable,
         AssetTable,
         IssuerTable,
-        BondDetailsTable,
+        BondAssetDetailsTable,
     ]
 
 
@@ -80,7 +80,7 @@ def test_bond_upsert_owns_multitable_workflow(monkeypatch) -> None:
             return {"row": {"uid": str(uuid.uuid4()), **values}}
         if model is AssetTable:
             return {"row": {"uid": str(bond_uid), **values}}
-        if model is BondDetailsTable:
+        if model is BondAssetDetailsTable:
             return {"row": {**values}}
         raise AssertionError(model)
 
@@ -136,7 +136,7 @@ def test_bond_upsert_owns_multitable_workflow(monkeypatch) -> None:
         ),
         (
             context,
-            BondDetailsTable,
+            BondAssetDetailsTable,
             {
                 "asset_uid": bond_uid,
                 "issuer_uid": issuer_uid,

@@ -15,15 +15,22 @@ from msm.api.derivatives import (
     FutureSettlementModel,
     FutureUpsert,
 )
-from msm.models import AssetTable, AssetTypeTable, FutureDetailsTable, IndexTable
+from msm.models import (
+    AssetTable,
+    AssetTypeTable,
+    FutureAssetDetailsTable,
+    IndexTable,
+    IndexTypeTable,
+)
 
 
 def test_future_api_declares_required_table_contract() -> None:
     assert Future.__required_tables__ == [
         AssetTypeTable,
         AssetTable,
+        IndexTypeTable,
         IndexTable,
-        FutureDetailsTable,
+        FutureAssetDetailsTable,
     ]
 
 
@@ -102,7 +109,7 @@ def test_future_upsert_owns_multitable_workflow(monkeypatch) -> None:
             return {"row": {"uid": str(uuid.uuid4()), **values}}
         if model is AssetTable:
             return {"row": {"uid": str(future_uid), **values}}
-        if model is FutureDetailsTable:
+        if model is FutureAssetDetailsTable:
             return {"row": {**values}}
         raise AssertionError(model)
 
@@ -167,7 +174,7 @@ def test_future_upsert_owns_multitable_workflow(monkeypatch) -> None:
         ),
         (
             context,
-            FutureDetailsTable,
+            FutureAssetDetailsTable,
             {
                 "asset_uid": future_uid,
                 "kind": "EXPIRING",

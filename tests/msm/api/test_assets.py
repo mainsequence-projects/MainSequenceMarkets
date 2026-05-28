@@ -16,7 +16,7 @@ from msm.api.assets import (
     _operation_result_rows,
     normalize_asset_type,
 )
-from msm.models import AssetTable, AssetTypeTable, CurrencySpotTable, OpenFigiDetailsTable
+from msm.models import AssetTable, AssetTypeTable, CurrencySpotAssetDetailsTable, OpenFigiAssetDetailsTable
 from msm.models.registration import markets_meta_table_fullname
 
 
@@ -35,7 +35,7 @@ def test_currency_spot_api_declares_required_table_contract() -> None:
     assert CurrencySpot.__required_tables__ == [
         AssetTypeTable,
         AssetTable,
-        CurrencySpotTable,
+        CurrencySpotAssetDetailsTable,
     ]
 
 
@@ -63,7 +63,7 @@ def test_openfigi_details_api_uses_asset_uid_as_row_identity() -> None:
         }
     )
 
-    assert OpenFigiDetails.__table__ is OpenFigiDetailsTable
+    assert OpenFigiDetails.__table__ is OpenFigiAssetDetailsTable
     assert details.uid == asset_uid
     assert details.asset_uid == asset_uid
 
@@ -72,11 +72,11 @@ def test_asset_create_schemas_delegates_to_required_table(monkeypatch) -> None:
     calls = []
     runtime = SimpleNamespace()
 
-    def fake_create_schemas(**kwargs):
+    def fake_start_engine(**kwargs):
         calls.append(kwargs)
         return runtime
 
-    monkeypatch.setattr("msm.bootstrap.create_schemas", fake_create_schemas)
+    monkeypatch.setattr("msm.bootstrap.start_engine", fake_start_engine)
 
     assert Asset.create_schemas(namespace="mainsequence.examples") is runtime
     assert calls == [
@@ -169,15 +169,15 @@ def test_asset_type_upsert_normalizes_keyword_payload(monkeypatch) -> None:
 def test_asset_create_schemas_merges_additional_models(monkeypatch) -> None:
     calls = []
 
-    def fake_create_schemas(**kwargs):
+    def fake_start_engine(**kwargs):
         calls.append(kwargs)
         return SimpleNamespace()
 
-    monkeypatch.setattr("msm.bootstrap.create_schemas", fake_create_schemas)
+    monkeypatch.setattr("msm.bootstrap.start_engine", fake_start_engine)
 
-    Asset.create_schemas(models=["OpenFigiDetails"])
+    Asset.create_schemas(models=["OpenFigiAssetDetails"])
 
-    assert calls == [{"models": [AssetTable, "OpenFigiDetails"]}]
+    assert calls == [{"models": [AssetTable, "OpenFigiAssetDetails"]}]
 
 
 def test_asset_upsert_uses_active_runtime(monkeypatch) -> None:
@@ -244,7 +244,7 @@ def test_currency_spot_upsert_owns_multitable_workflow(monkeypatch) -> None:
             return {"row": {"uid": str(uuid.uuid4()), **values}}
         if model is AssetTable:
             return {"row": {"uid": str(pair_uid), **values}}
-        if model is CurrencySpotTable:
+        if model is CurrencySpotAssetDetailsTable:
             return {"row": {**values}}
         raise AssertionError(model)
 
@@ -289,7 +289,7 @@ def test_currency_spot_upsert_owns_multitable_workflow(monkeypatch) -> None:
         ),
         (
             context,
-            CurrencySpotTable,
+            CurrencySpotAssetDetailsTable,
             {
                 "asset_uid": pair_uid,
                 "base_currency_uid": base_uid,
@@ -314,13 +314,13 @@ def test_currency_spot_payload_rejects_same_base_and_quote_asset() -> None:
 def test_asset_operation_requires_initialized_runtime(monkeypatch) -> None:
     def fake_resolve_runtime(**kwargs):
         raise RuntimeError(
-            "Asset requires registered markets MetaTables for AssetTable. "
-            "Set MSM_AUTO_REGISTER_NAMESPACE."
+            "Asset requires an initialized markets runtime for AssetTable. "
+            "Run Asset.create_schemas(...) during application initialization."
         )
 
     monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
 
-    with pytest.raises(RuntimeError, match="MSM_AUTO_REGISTER_NAMESPACE"):
+    with pytest.raises(RuntimeError, match="initialized markets runtime"):
         Asset.filter(asset_type="crypto")
 
 

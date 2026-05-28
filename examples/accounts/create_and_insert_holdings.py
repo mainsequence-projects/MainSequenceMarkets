@@ -11,11 +11,13 @@ if __package__ in {None, ""}:
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from examples.platform.bootstrap import (
-    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_NAMESPACE_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
 
-os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+
+import msm
 
 ACCOUNT_UNIQUE_IDENTIFIER = os.getenv(
     "MAINSEQUENCE_EXAMPLE_ACCOUNT_UNIQUE_IDENTIFIER",
@@ -33,6 +35,10 @@ DATA_NODE_IDENTIFIER = os.getenv(
 
 
 def main() -> None:
+    msm.start_engine(
+        models=["Asset", "Account"],
+    )
+
     from msm.api.accounts import Account
     from msm.api.assets import Asset
     from msm.accounts import AccountHoldings

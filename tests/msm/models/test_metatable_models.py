@@ -17,12 +17,13 @@ from msm.models.registration import build_markets_registration_requests, markets
 from msm.models import (
     AssetTypeTable,
     AssetTable,
-    BondDetailsTable,
-    CurrencySpotTable,
-    FutureDetailsTable,
+    BondAssetDetailsTable,
+    CurrencySpotAssetDetailsTable,
+    FutureAssetDetailsTable,
     IndexTable,
+    IndexTypeTable,
     IssuerTable,
-    OpenFigiDetailsTable,
+    OpenFigiAssetDetailsTable,
     markets_sqlalchemy_models,
 )
 
@@ -74,17 +75,42 @@ def test_asset_type_model_is_registry_table() -> None:
 
 def test_index_model_is_reference_table() -> None:
     table = IndexTable.__table__
+    removed_constant_name_field = "legacy_" + "constant_name"
 
     assert IndexTable.__markets_base_identifier__ == "Index"
     assert IndexTable.__metatable_identifier__ == "Index"
     assert "uid" in table.c
     assert "unique_identifier" in table.c
+    assert "index_type" in table.c
+    assert table.c.index_type.nullable is False
     assert "display_name" in table.c
     assert "description" in table.c
     assert "provider" in table.c
     assert "metadata_json" in table.c
+    assert removed_constant_name_field not in table.c
+    assert not hasattr(IndexTable, removed_constant_name_field)
     assert any(
         index.unique and [column.name for column in index.columns] == ["unique_identifier"]
+        for index in table.indexes
+    )
+    assert any(
+        [column.name for column in index.columns] == ["index_type"]
+        for index in table.indexes
+    )
+
+
+def test_index_type_model_is_registry_table() -> None:
+    table = IndexTypeTable.__table__
+
+    assert IndexTypeTable.__markets_base_identifier__ == "IndexType"
+    assert IndexTypeTable.__metatable_identifier__ == "IndexType"
+    assert "uid" in table.c
+    assert "index_type" in table.c
+    assert "display_name" in table.c
+    assert "description" in table.c
+    assert "metadata_json" in table.c
+    assert any(
+        index.unique and [column.name for column in index.columns] == ["index_type"]
         for index in table.indexes
     )
 
@@ -114,19 +140,19 @@ def test_asset_related_models_are_grouped_under_assets_package() -> None:
         AssetCategoryTable as PackageAssetCategoryTable,
         AssetTable as PackageAssetTable,
         AssetTypeTable as PackageAssetTypeTable,
-        BondDetailsTable as PackageBondDetailsTable,
-        CurrencySpotTable as PackageCurrencySpotTable,
-        OpenFigiDetailsTable as PackageOpenFigiDetailsTable,
+        BondAssetDetailsTable as PackageBondAssetDetailsTable,
+        CurrencySpotAssetDetailsTable as PackageCurrencySpotAssetDetailsTable,
+        OpenFigiAssetDetailsTable as PackageOpenFigiAssetDetailsTable,
     )
-    from msm.models.assets.bonds import BondDetailsTable as BondsBondDetailsTable
+    from msm.models.assets.bonds import BondAssetDetailsTable as BondsBondAssetDetailsTable
     from msm.models.assets.categories import (
         AssetCategoryMembershipTable as CategoriesAssetCategoryMembershipTable,
         AssetCategoryTable as CategoriesAssetCategoryTable,
     )
     from msm.models.assets.core import AssetTable as CoreAssetTable
-    from msm.models.assets.currency_spot import CurrencySpotTable as CurrencyAssetSpotTable
+    from msm.models.assets.currency_spot import CurrencySpotAssetDetailsTable as CurrencyAssetSpotTable
     from msm.models.assets.provider_details import (
-        OpenFigiDetailsTable as ProviderOpenFigiDetailsTable,
+        OpenFigiAssetDetailsTable as ProviderOpenFigiAssetDetailsTable,
     )
     from msm.models.assets.types import AssetTypeTable as TypesAssetTypeTable
 
@@ -134,14 +160,14 @@ def test_asset_related_models_are_grouped_under_assets_package() -> None:
     assert CoreAssetTable is AssetTable
     assert PackageAssetTypeTable is AssetTypeTable
     assert TypesAssetTypeTable is AssetTypeTable
-    assert PackageCurrencySpotTable is CurrencySpotTable
-    assert CurrencyAssetSpotTable is CurrencySpotTable
-    assert PackageBondDetailsTable is BondDetailsTable
-    assert BondsBondDetailsTable is BondDetailsTable
+    assert PackageCurrencySpotAssetDetailsTable is CurrencySpotAssetDetailsTable
+    assert CurrencyAssetSpotTable is CurrencySpotAssetDetailsTable
+    assert PackageBondAssetDetailsTable is BondAssetDetailsTable
+    assert BondsBondAssetDetailsTable is BondAssetDetailsTable
     assert PackageAssetCategoryTable is CategoriesAssetCategoryTable
     assert PackageAssetCategoryMembershipTable is CategoriesAssetCategoryMembershipTable
-    assert PackageOpenFigiDetailsTable is OpenFigiDetailsTable
-    assert ProviderOpenFigiDetailsTable is OpenFigiDetailsTable
+    assert PackageOpenFigiAssetDetailsTable is OpenFigiAssetDetailsTable
+    assert ProviderOpenFigiAssetDetailsTable is OpenFigiAssetDetailsTable
 
 
 def test_legacy_model_aliases_are_removed() -> None:
@@ -170,30 +196,44 @@ def test_asset_type_resolves_before_asset_when_selected() -> None:
     assert models == [AssetTypeTable, AssetTable]
 
 
+def test_index_type_resolves_before_index_when_selected() -> None:
+    models = meta_tables.resolve_markets_meta_table_models(["Index", "IndexType"])
+
+    assert models == [IndexTypeTable, IndexTable]
+
+
 def test_currency_spot_resolves_after_asset_dependencies_when_selected() -> None:
-    models = meta_tables.resolve_markets_meta_table_models(["CurrencySpot", "Asset", "AssetType"])
-
-    assert models == [AssetTypeTable, AssetTable, CurrencySpotTable]
-
-
-def test_future_details_resolves_after_asset_and_index_dependencies_when_selected() -> None:
     models = meta_tables.resolve_markets_meta_table_models(
-        ["FutureDetails", "Index", "Asset", "AssetType"]
+        ["CurrencySpotAssetDetails", "Asset", "AssetType"]
     )
 
-    assert models == [AssetTypeTable, AssetTable, IndexTable, FutureDetailsTable]
+    assert models == [AssetTypeTable, AssetTable, CurrencySpotAssetDetailsTable]
 
 
-def test_bond_details_resolves_after_asset_and_issuer_dependencies_when_selected() -> None:
+def test_future_asset_details_resolves_after_asset_and_index_dependencies_when_selected() -> None:
     models = meta_tables.resolve_markets_meta_table_models(
-        ["BondDetails", "Issuer", "Asset", "AssetType"]
+        ["FutureAssetDetails", "Index", "IndexType", "Asset", "AssetType"]
     )
 
-    assert models == [AssetTypeTable, AssetTable, IssuerTable, BondDetailsTable]
+    assert models == [
+        AssetTypeTable,
+        AssetTable,
+        IndexTypeTable,
+        IndexTable,
+        FutureAssetDetailsTable,
+    ]
 
 
-def test_openfigi_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
-    table = OpenFigiDetailsTable.__table__
+def test_bond_asset_details_resolves_after_asset_and_issuer_dependencies_when_selected() -> None:
+    models = meta_tables.resolve_markets_meta_table_models(
+        ["BondAssetDetails", "Issuer", "Asset", "AssetType"]
+    )
+
+    assert models == [AssetTypeTable, AssetTable, IssuerTable, BondAssetDetailsTable]
+
+
+def test_openfigi_asset_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
+    table = OpenFigiAssetDetailsTable.__table__
 
     assert "uid" not in table.c
     assert [column.name for column in table.primary_key.columns] == ["asset_uid"]
@@ -202,8 +242,8 @@ def test_openfigi_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
     assert foreign_key.column is AssetTable.__table__.c.uid
 
 
-def test_currency_spot_uses_asset_uid_as_one_to_one_primary_key() -> None:
-    table = CurrencySpotTable.__table__
+def test_currency_spot_asset_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
+    table = CurrencySpotAssetDetailsTable.__table__
 
     assert "uid" not in table.c
     assert [column.name for column in table.primary_key.columns] == ["asset_uid"]
@@ -228,8 +268,8 @@ def test_currency_spot_uses_asset_uid_as_one_to_one_primary_key() -> None:
     assert quote_currency_uid_fk.ondelete == "RESTRICT"
 
 
-def test_future_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
-    table = FutureDetailsTable.__table__
+def test_future_asset_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
+    table = FutureAssetDetailsTable.__table__
 
     assert "uid" not in table.c
     assert [column.name for column in table.primary_key.columns] == ["asset_uid"]
@@ -281,8 +321,8 @@ def test_future_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
     )
 
 
-def test_bond_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
-    table = BondDetailsTable.__table__
+def test_bond_asset_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
+    table = BondAssetDetailsTable.__table__
 
     assert "uid" not in table.c
     assert [column.name for column in table.primary_key.columns] == ["asset_uid"]

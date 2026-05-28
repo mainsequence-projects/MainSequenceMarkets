@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Literal
 from mainsequence.logconf import logger as _mainsequence_logger
 
 from msm.settings import (
-    MSM_AUTO_REGISTER_NAMESPACE_ENV,
     markets_auto_register_namespace,
     markets_namespace,
 )
@@ -29,16 +28,16 @@ DATA_NODE_HANDLE_NAMES = (
     "VirtualFundHoldings",
 )
 
-_CREATE_SCHEMAS_LOCK = Lock()
+_START_ENGINE_LOCK = Lock()
 _RUNTIME: MarketsRuntime | None = None
-_CREATE_SCHEMAS_CONFIG: tuple[tuple[str, Any], ...] | None = None
+_START_ENGINE_CONFIG: tuple[tuple[str, Any], ...] | None = None
 _RUNTIME_BY_CONFIG: dict[tuple[tuple[str, Any], ...], MarketsRuntime] = {}
 logger = _mainsequence_logger.bind(sub_application="markets", component="bootstrap")
 
 
 @dataclass(frozen=True)
 class MarketsRuntime:
-    """Runtime handles created by `msm.create_schemas()`."""
+    """Runtime handles created by `msm.start_engine()`."""
 
     registration: "MarketsMetaTableRegistrationResult"
     context: "MarketsRepositoryContext"
@@ -90,16 +89,16 @@ class MarketsRuntime:
 def configure_metatable_namespace(namespace: str) -> None:
     """Set the MetaTable namespace before markets SQLAlchemy models are mapped."""
 
-    loaded_model_modules = sorted(
-        module_name
-        for module_name in sys.modules
-        if module_name == "msm.models"
-        or module_name.startswith("msm.models.")
-    )
+    loaded_model_modules = _loaded_metatable_modules()
     if loaded_model_modules:
+        loaded_namespace = _loaded_metatable_namespace()
+        if loaded_namespace == namespace:
+            return
         raise RuntimeError(
             "Configure the MetaTable namespace before importing msm.models or "
-            f"msm.models.registration. Already loaded: {loaded_model_modules!r}."
+            f"msm.models.registration. Requested namespace {namespace!r}, but "
+            f"MetaTable models are already loaded with namespace "
+            f"{loaded_namespace!r}. Already loaded: {loaded_model_modules!r}."
         )
 
     from msm.base import MarketsMetaTableMixin
@@ -107,7 +106,26 @@ def configure_metatable_namespace(namespace: str) -> None:
     MarketsMetaTableMixin.__metatable_namespace__ = namespace
 
 
-def create_schemas(
+def _loaded_metatable_modules() -> list[str]:
+    return sorted(
+        module_name
+        for module_name in sys.modules
+        if module_name == "msm.models"
+        or module_name.startswith("msm.models.")
+        or module_name == "msm.maintenance"
+        or module_name.startswith("msm.maintenance.")
+    )
+
+
+def _loaded_metatable_namespace() -> str | None:
+    base_module = sys.modules.get("msm.base")
+    mixin = getattr(base_module, "MarketsMetaTableMixin", None)
+    if mixin is None:
+        return None
+    return getattr(mixin, "__metatable_namespace__", None)
+
+
+def start_engine(
     *,
     data_source_uid: str | None = None,
     management_mode: MarketsManagementMode = "platform_managed",
@@ -120,7 +138,7 @@ def create_schemas(
     storage_hash_by_fullname: Mapping[str, str] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRuntime:
-    """Create markets schemas once and return a repository runtime context."""
+    """Bootstrap the markets runtime once and return a repository context."""
 
     requested_namespace = namespace
     namespace = markets_namespace(namespace)
@@ -137,8 +155,8 @@ def create_schemas(
         timeout=timeout,
     )
 
-    global _RUNTIME, _CREATE_SCHEMAS_CONFIG
-    with _CREATE_SCHEMAS_LOCK:
+    global _RUNTIME, _START_ENGINE_CONFIG
+    with _START_ENGINE_LOCK:
         cached_runtime = _RUNTIME_BY_CONFIG.get(schema_config)
         if cached_runtime is not None:
             logger.info(
@@ -149,13 +167,13 @@ def create_schemas(
             )
             return cached_runtime
 
-        if _CREATE_SCHEMAS_CONFIG is not None:
-            if _CREATE_SCHEMAS_CONFIG == schema_config:
+        if _START_ENGINE_CONFIG is not None:
+            if _START_ENGINE_CONFIG == schema_config:
                 if _RUNTIME is None:
                     raise RuntimeError("Markets runtime cache is inconsistent.")
                 return _RUNTIME
             raise RuntimeError(
-                "msm.create_schemas() has already initialized this process with "
+                "msm.start_engine() has already initialized this process with "
                 "different schema arguments. Run it once at process startup before "
                 "importing MetaTable-backed models, repositories, or services."
             )
@@ -177,10 +195,8 @@ def create_schemas(
             logger.info("Configuring markets MetaTable namespace", namespace=namespace)
             configure_metatable_namespace(namespace)
 
-        from msm.models.registration import (
-            register_markets_meta_tables,
-            resolve_markets_meta_table_models,
-        )
+        from msm.maintenance.catalog import bootstrap_markets_meta_tables_from_catalog
+        from msm.models.registration import resolve_markets_meta_table_models
         from msm.repositories.base import MarketsRepositoryContext
 
         meta_table_models = resolve_markets_meta_table_models(models)
@@ -190,7 +206,7 @@ def create_schemas(
             model_count=len(meta_table_models),
             models=[_model_name(model) for model in meta_table_models],
         )
-        registration = register_markets_meta_tables(
+        catalog_bootstrap = bootstrap_markets_meta_tables_from_catalog(
             data_source_uid=data_source_uid,
             management_mode=management_mode,
             target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
@@ -201,12 +217,17 @@ def create_schemas(
             timeout=timeout,
             models=meta_table_models,
         )
+        registration = catalog_bootstrap.registration
         logger.info(
-            "Registered markets MetaTables",
+            "Catalog bootstrapped markets MetaTables",
             management_mode=management_mode,
             namespace=namespace,
             meta_table_count=len(registration.meta_tables),
             target_meta_table_count=len(registration.target_meta_table_uid_by_fullname),
+            attached_count=catalog_bootstrap.attached_count,
+            imported_count=catalog_bootstrap.imported_count,
+            registered_count=catalog_bootstrap.registered_count,
+            catalog_meta_table_uid=getattr(catalog_bootstrap.catalog_meta_table, "uid", None),
         )
         context = MarketsRepositoryContext(
             target_meta_table_uid_by_fullname=registration.target_meta_table_uid_by_fullname,
@@ -224,7 +245,7 @@ def create_schemas(
             context=context,
             namespace=namespace,
         )
-        _CREATE_SCHEMAS_CONFIG = schema_config
+        _START_ENGINE_CONFIG = schema_config
         _RUNTIME_BY_CONFIG[schema_config] = _RUNTIME
         logger.info(
             "Created markets runtime",
@@ -256,7 +277,7 @@ def attach_schemas(
     )
 
     global _RUNTIME
-    with _CREATE_SCHEMAS_LOCK:
+    with _START_ENGINE_LOCK:
         cached_runtime = _RUNTIME_BY_CONFIG.get(schema_config)
         if cached_runtime is not None:
             logger.info(
@@ -309,7 +330,9 @@ def resolve_runtime(
     row_model_name: str | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRuntime:
-    """Resolve runtime for row operations with attach-first semantics."""
+    """Resolve the active runtime for row operations."""
+
+    _ = timeout
 
     from msm.models.registration import resolve_markets_meta_table_models
 
@@ -318,104 +341,20 @@ def resolve_runtime(
     if _RUNTIME is not None and not missing_from_active:
         return _RUNTIME
 
-    auto_namespace = markets_auto_register_namespace()
-    namespace = auto_namespace or _common_model_namespace(resolved_models)
-    try:
-        return attach_schemas(
-            models=resolved_models,
-            namespace=namespace,
-            timeout=timeout,
-        )
-    except Exception as attach_error:
-        if auto_namespace:
-            try:
-                return auto_register_schemas(
-                    namespace=auto_namespace,
-                    models=resolved_models,
-                    timeout=timeout,
-                )
-            except Exception as register_error:
-                raise RuntimeError(
-                    _schema_resolution_error_message(
-                        row_model_name=row_model_name,
-                        models=resolved_models,
-                        cause=register_error,
-                    )
-                ) from register_error
+    if _RUNTIME is None:
         raise RuntimeError(
-            _schema_resolution_error_message(
+            _runtime_not_initialized_error_message(
                 row_model_name=row_model_name,
                 models=resolved_models,
-                cause=attach_error,
             )
-        ) from attach_error
-
-
-def auto_register_schemas(
-    *,
-    namespace: str,
-    models: Sequence["MarketsModelSelector"],
-    data_source_uid: str | None = None,
-    management_mode: MarketsManagementMode = "platform_managed",
-    timeout: int | float | tuple[float, float] | None = None,
-) -> MarketsRuntime:
-    """Register one required model set for opt-in row API auto-registration."""
-
-    schema_config = _schema_config(
-        action="auto_register",
-        data_source_uid=data_source_uid,
-        management_mode=management_mode,
-        namespace=namespace,
-        models=models,
-        timeout=timeout,
+        )
+    raise RuntimeError(
+        _runtime_missing_models_error_message(
+            row_model_name=row_model_name,
+            missing_models=missing_from_active,
+            runtime=_RUNTIME,
+        )
     )
-
-    global _RUNTIME
-    with _CREATE_SCHEMAS_LOCK:
-        cached_runtime = _RUNTIME_BY_CONFIG.get(schema_config)
-        if cached_runtime is not None:
-            logger.info(
-                "Reusing cached auto-registered markets runtime",
-                management_mode=management_mode,
-                namespace=namespace,
-                meta_table_count=len(cached_runtime.meta_tables),
-            )
-            return cached_runtime
-
-        from msm.models.registration import (
-            register_markets_meta_tables,
-            resolve_markets_meta_table_models,
-        )
-        from msm.repositories.base import MarketsRepositoryContext
-
-        meta_table_models = resolve_markets_meta_table_models(models)
-        _ensure_models_match_namespace(meta_table_models, namespace=namespace)
-        registration = register_markets_meta_tables(
-            data_source_uid=data_source_uid,
-            management_mode=management_mode,
-            timeout=timeout,
-            models=meta_table_models,
-        )
-        context = MarketsRepositoryContext(
-            target_meta_table_uid_by_fullname=registration.target_meta_table_uid_by_fullname,
-            timeout=timeout,
-            namespace=namespace,
-        )
-        runtime = MarketsRuntime(
-            registration=registration,
-            context=context,
-            namespace=namespace,
-        )
-        _RUNTIME_BY_CONFIG[schema_config] = runtime
-        if _RUNTIME is None:
-            _RUNTIME = runtime
-        logger.info(
-            "Auto-registered markets runtime",
-            management_mode=management_mode,
-            namespace=namespace,
-            meta_table_count=len(runtime.meta_tables),
-        )
-        return runtime
 
 
 def get_runtime() -> MarketsRuntime:
@@ -423,7 +362,7 @@ def get_runtime() -> MarketsRuntime:
 
     if _RUNTIME is None:
         raise RuntimeError(
-            "Markets schemas are not initialized. Call msm.create_schemas(...) "
+            "Markets engine is not initialized. Call msm.start_engine(...) "
             "or the row model's create_schemas(...) classmethod before calling "
             "row operations."
         )
@@ -446,52 +385,41 @@ def _missing_models_from_runtime(
     ]
 
 
-def _common_model_namespace(models: Sequence[Any]) -> str | None:
-    namespaces = {
-        str(namespace)
-        for model in models
-        if (namespace := getattr(model, "__metatable_namespace__", None))
-    }
-    if len(namespaces) == 1:
-        return next(iter(namespaces))
-    if not namespaces:
-        return None
-    return None
-
-
 def _should_configure_metatable_namespace(requested_namespace: str | None) -> bool:
     return requested_namespace is not None or markets_auto_register_namespace() is not None
 
 
-def _schema_resolution_error_message(
+def _runtime_not_initialized_error_message(
     *,
     row_model_name: str | None,
     models: Sequence[Any],
-    cause: BaseException,
 ) -> str:
     row_name = row_model_name or "Markets row operation"
     missing_models = ", ".join(_model_name(model) for model in models)
     return (
-        f"{row_name} requires registered markets MetaTables for {missing_models}. "
-        f"Run {row_name}.create_schemas(...) during application initialization, "
-        f"or set {MSM_AUTO_REGISTER_NAMESPACE_ENV} for development/example "
-        f"auto-registration. Original error: {cause}"
+        f"{row_name} requires an initialized markets runtime for {missing_models}. "
+        f"Run {row_name}.create_schemas(...) or msm.start_engine(models=[...]) "
+        "during application initialization before row operations."
     )
 
 
-def _ensure_models_match_namespace(models: Sequence[Any], *, namespace: str) -> None:
-    mismatched = [
-        f"{_model_name(model)}={getattr(model, '__metatable_namespace__', None)!r}"
-        for model in models
-        if hasattr(model, "__metatable_namespace__")
-        and getattr(model, "__metatable_namespace__", None) != namespace
-    ]
-    if mismatched:
-        raise RuntimeError(
-            f"{MSM_AUTO_REGISTER_NAMESPACE_ENV}={namespace!r} was set after markets "
-            "MetaTable models were imported. Set the environment variable before "
-            f"importing msm.api/msm.models. Mismatched models: {', '.join(mismatched)}."
-        )
+def _runtime_missing_models_error_message(
+    *,
+    row_model_name: str | None,
+    missing_models: Sequence[Any],
+    runtime: MarketsRuntime,
+) -> str:
+    row_name = row_model_name or "Markets row operation"
+    missing_model_names = ", ".join(_model_name(model) for model in missing_models)
+    initialized_model_names = ", ".join(
+        _model_name(model) for model in runtime.meta_table_models
+    )
+    return (
+        f"{row_name} requires {missing_model_names}, but the active markets runtime "
+        f"was initialized without those tables. Initialized tables: "
+        f"{initialized_model_names or 'none'}. Include {missing_model_names} in the "
+        "process bootstrap before row operations."
+    )
 
 
 def _schema_config(**kwargs: Any) -> tuple[tuple[str, Any], ...]:
@@ -516,9 +444,8 @@ __all__ = [
     "DATA_NODE_HANDLE_NAMES",
     "MarketsRuntime",
     "attach_schemas",
-    "auto_register_schemas",
     "configure_metatable_namespace",
-    "create_schemas",
     "get_runtime",
     "resolve_runtime",
+    "start_engine",
 ]

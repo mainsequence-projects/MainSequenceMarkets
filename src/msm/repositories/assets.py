@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
 
+from msm.base import new_markets_uid
 from msm.models import AssetTable
 
 from .base import MarketsOperationContext, compile_markets_statement, execute_markets_operation
@@ -52,6 +53,7 @@ def build_upsert_asset_operation(
     statement = (
         postgresql_insert(AssetTable)
         .values(
+            uid=new_markets_uid(),
             unique_identifier=unique_identifier,
             asset_type=asset_type,
         )

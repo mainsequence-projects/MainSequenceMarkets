@@ -12,7 +12,7 @@ if __package__ in {None, ""}:
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from examples.platform.bootstrap import (
-    EXAMPLE_AUTO_REGISTER_ENV,
+    EXAMPLE_NAMESPACE_ENV,
     EXAMPLE_METATABLE_NAMESPACE,
 )
 from examples.assets.utils import (
@@ -21,8 +21,11 @@ from examples.assets.utils import (
     EXAMPLE_EUR_CURRENCY,
     EXAMPLE_USD_CURRENCY,
 )
+from msm.constants import ASSET_TYPE_CURRENCY
 
-os.environ.setdefault(EXAMPLE_AUTO_REGISTER_ENV, EXAMPLE_METATABLE_NAMESPACE)
+os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+
+import msm
 
 if TYPE_CHECKING:
     from msm.api.assets import Asset, OpenFigiDetails
@@ -30,6 +33,15 @@ if TYPE_CHECKING:
 
 def create_eurusd_currency_spot() -> dict[str, Any]:
     """Create EUR/USD from OpenFIGI and publish current display snapshots."""
+
+    msm.start_engine(
+        models=[
+            "AssetType",
+            "Asset",
+            "CurrencySpotAssetDetails",
+            "OpenFigiAssetDetails",
+        ],
+    )
 
     from msm.api.assets import Asset, AssetType, CurrencySpot
     from msm.data_nodes.assets import AssetSnapshot
@@ -83,7 +95,7 @@ def _upsert_currency_asset(currency: dict[str, str]) -> "Asset":
 
     return Asset.upsert(
         unique_identifier=currency["code"],
-        asset_type="currency",
+        asset_type=ASSET_TYPE_CURRENCY,
     )
 
 

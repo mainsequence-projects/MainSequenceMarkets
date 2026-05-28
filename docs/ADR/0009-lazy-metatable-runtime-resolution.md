@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR 0015](0015-catalog-based-metatable-bootstrap.md).
+
+ADR 0009 records the earlier lazy/on-demand registration decision. That
+behavior is deprecated. Row operations now require an active runtime initialized
+by explicit startup bootstrap and do not attach or register MetaTables on first
+use.
 
 This ADR supersedes the explicit-bootstrap requirement in ADR 0008 for normal
 user-facing row operations. ADR 0008 still owns the `*Table` schema declaration
@@ -148,7 +153,7 @@ startup preflight:
 ```python
 import msm
 
-msm.create_schemas(models=["Asset", "OpenFigiDetails"])
+msm.start_engine(models=["Asset", "OpenFigiAssetDetails"])
 ```
 
 or:
@@ -172,7 +177,7 @@ API calls when the platform tables are already registered.
 - [x] Update row-operation bootstrap errors to name missing required tables and
   show the explicit initialization and auto-registration options.
 - [x] Update examples so normal row operations do not call
-  `msm.create_schemas(...)` unless the example is specifically demonstrating
+  `msm.start_engine(...)` unless the example is specifically demonstrating
   explicit bootstrap.
 - [x] Update docs and tutorials to explain the default attach-first behavior,
   the explicit startup preflight option, and the auto-registration environment
@@ -200,7 +205,7 @@ MetaTable handles are already resolved in the process.
 
 ## Non-Goals
 
-This ADR does not remove `msm.create_schemas(...)` or row-level
+This ADR does not remove `msm.start_engine(...)` or row-level
 `create_schemas(...)`. Those remain the explicit schema preflight APIs.
 
 This ADR does not make schema creation the default. Auto-registration only
