@@ -136,7 +136,7 @@ def build_holdings_frame(
             "target_trade_time": position.get("target_trade_time", target_trade_time),
             "extra_details": position.get("extra_details") or {},
         }
-        if "target_weight" in contract.column_dtypes_map:
+        if any(record.column_name == "target_weight" for record in contract.records):
             row["target_weight"] = position.get("target_weight")
         rows.append(row)
 
@@ -166,32 +166,30 @@ def validate_holdings_frame(
             )
 
     flat = frame.reset_index()
+    column_dtypes_map = {record.column_name: record.dtype for record in contract.records}
     missing_columns = [
-        column_name for column_name in contract.column_dtypes_map if column_name not in flat.columns
+        column_name for column_name in column_dtypes_map if column_name not in flat.columns
     ]
     if missing_columns:
         raise ValueError(
             f"Holdings frame is missing required columns: {', '.join(missing_columns)}."
         )
 
-    for column_name, dtype in contract.column_dtypes_map.items():
+    for column_name, dtype in column_dtypes_map.items():
         values = flat[column_name]
         if column_name == contract.time_index_name or dtype == "datetime64[ns, UTC]":
             flat[column_name] = values.map(_normalize_optional_datetime)
-            if column_name == contract.time_index_name:
-                if flat[column_name].isna().any():
-                    raise ValueError("Holdings time_index cannot contain null values.")
-                flat[column_name] = pd.to_datetime(flat[column_name], utc=True).astype(
-                    "datetime64[ns, UTC]"
-                )
+            if column_name == contract.time_index_name and flat[column_name].isna().any():
+                raise ValueError("Holdings time_index cannot contain null values.")
+            flat[column_name] = pd.to_datetime(flat[column_name], utc=True).astype(
+                "datetime64[ns, UTC]"
+            )
         elif dtype == "uuid":
             flat[column_name] = values.map(lambda value: str(UUID(str(value))))
-        elif dtype == "decimal":
-            flat[column_name] = values.map(
-                lambda value: _normalize_optional_decimal(
-                    value,
-                    nullable=column_name in NULLABLE_HOLDINGS_COLUMNS,
-                )
+        elif dtype in {"decimal", "float64"}:
+            flat[column_name] = _normalize_float64_column(
+                values,
+                nullable=column_name in NULLABLE_HOLDINGS_COLUMNS,
             )
         elif dtype == "bool":
             flat[column_name] = values.map(_normalize_bool)
@@ -207,7 +205,7 @@ def validate_holdings_frame(
         raise ValueError(
             f"Holdings frame contains duplicate rows for index contract {index_names}."
         )
-    frame.attrs[LOGICAL_COLUMN_DTYPES_ATTR] = dict(contract.column_dtypes_map)
+    frame.attrs[LOGICAL_COLUMN_DTYPES_ATTR] = column_dtypes_map
     return frame
 
 
@@ -251,13 +249,18 @@ def _normalize_optional_datetime(value: Any) -> pd.Timestamp | None:
     return pd.to_datetime(value, utc=True)
 
 
-def _normalize_optional_decimal(value: Any, *, nullable: bool) -> str | None:
+def _normalize_float64_column(values: pd.Series, *, nullable: bool) -> pd.Series:
+    normalized = values.map(lambda value: _normalize_optional_float64(value, nullable=nullable))
+    return pd.to_numeric(normalized, errors="raise").astype("float64")
+
+
+def _normalize_optional_float64(value: Any, *, nullable: bool) -> float | None:
     if value is None or pd.isna(value):
-        return None if nullable else "0"
+        return None if nullable else 0.0
     try:
-        return str(Decimal(str(value)))
+        return float(Decimal(str(value)))
     except (InvalidOperation, ValueError) as exc:
-        raise ValueError(f"Invalid decimal holdings value {value!r}.") from exc
+        raise ValueError(f"Invalid numeric holdings value {value!r}.") from exc
 
 
 def _normalize_bool(value: Any) -> bool:

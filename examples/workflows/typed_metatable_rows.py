@@ -20,7 +20,7 @@ import msm
 
 
 def main() -> None:
-    """Demonstrate class-owned typed row APIs across markets MetaTables."""
+    """Demonstrate class-owned typed row APIs across a markets workflow."""
 
     msm.start_engine(
         models=[

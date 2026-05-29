@@ -33,6 +33,9 @@ and this project follows versioned releases.
   to reflect that it initializes the full runtime, not only schemas.
 - Changed `msm.start_engine(...)` to use the internal maintenance catalog
   before registering application MetaTables.
+- Removed the `resource_type` discriminator from the internal maintenance
+  catalog; the catalog is MetaTable-specific and no longer carries a
+  DataNode-versus-MetaTable column.
 - Added the platform `MetaTable.description` to the internal maintenance
   catalog as descriptive metadata.
 - Removed redundant persisted physical schema and physical table name fields
@@ -46,9 +49,19 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- Fixed holdings and target-position DataNode numeric fields so `quantity`,
+  `target_weight`, and exposure measures are declared and emitted as
+  `float64`, matching the SDK DataFrame dtype validator.
+- Fixed holdings and target-position DataNode contracts to use canonical
+  `RecordDefinition` declarations directly, including `string`
+  `unique_identifier` records instead of stale `object` dtype maps.
 - Fixed catalog-based MetaTable bootstrap so already-cataloged tables are read
   in one storage-hash query and no longer perform a platform `MetaTable` fetch
   for every existing table during startup.
+- Fixed catalog-based MetaTable bootstrap so imported or attached
+  platform-managed tables reject stale physical indexes, including same-named
+  indexes with missing uniqueness that would later break compiled upserts such
+  as `AssetType.upsert(...) ON CONFLICT (asset_type)`.
 - Fixed compiled MetaTable insert/upsert operations so Python-side SQLAlchemy
   defaults such as UUID primary keys and catalog timestamps are materialized
   before the SQL is sent to the backend.
@@ -96,8 +109,22 @@ and this project follows versioned releases.
   list boundary while returning index registry rows from `IndexTable`.
 - Added shared typed row helpers for explicit schema bootstrap, create/upsert,
   lookup, filter, update, and delete operations over the active markets runtime.
-- Added `examples/api/typed_metatable_rows.py` to demonstrate the class-owned
+- Added `examples/workflows/typed_metatable_rows.py` to demonstrate the class-owned
   row API across multi-table markets workflows.
+- Removed obsolete top-level `msm.accounts` and `msm.execution` compatibility
+  shims. Use `msm.api.accounts`, `msm.api.execution`,
+  `msm.data_nodes.accounts`, and `msm.data_nodes.execution` directly.
+- Changed `AccountTargetPositionAssignment.target_positions_time` from a string
+  label to a timezone-aware UTC timestamp in the API and MetaTable contract.
+- Refactored `examples/accounts/create_and_insert_holdings.py` to use reusable
+  account example payloads and the shared asset example utility payloads without
+  namespace bootstrapping or user-provided holdings DataNode identifiers.
+- Added `Account.pretty_print_positions(...)` to format account holdings as
+  `asset_uid`, `ticker`, `position_type`, and `position_value`, and wired the
+  account holdings example to use it.
+- Updated holdings `target_trade_time` to use the canonical
+  `datetime64[ns, UTC]` record dtype and emit a timezone-aware UTC datetime
+  column.
 - Added the initial local FastAPI asset list endpoint at `GET /api/v1/asset/`
   under `apps/v1/`.
 - Added a GitHub Actions workflow to build and publish `ms-markets` to PyPI

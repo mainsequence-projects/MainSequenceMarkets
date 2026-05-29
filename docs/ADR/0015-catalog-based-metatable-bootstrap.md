@@ -87,7 +87,8 @@ storage_hash
 must not use `(namespace, identifier, management_mode, data_source_uid)` as the
 catalog identity. The catalog must store the real platform response values. It
 must not reconstruct or guess physical names from local SQLAlchemy state after
-registration.
+registration. The catalog is MetaTable-specific and does not store a
+DataNode-versus-MetaTable discriminator.
 
 ### Catalog Bootstrap
 
@@ -195,6 +196,8 @@ This ADR is implemented only when:
 - [x] Add a unique `storage_hash` index for catalog row identity.
 - [x] Store the platform `MetaTable.uid`, namespace, identifier, description,
   and real storage hash returned by the backend.
+- [x] Keep the catalog MetaTable-specific and omit any DataNode-versus-MetaTable
+  discriminator column.
 - [x] Store a local table-contract hash so bootstrap can detect schema drift.
 
 ### Stage 2: Catalog Bootstrap Flow
@@ -211,6 +214,9 @@ This ADR is implemented only when:
   yet have catalog rows.
 - [x] Convert duplicate-registration conflicts into catalog drift or repair
   errors with a clear remediation message.
+- [x] Validate imported or attached platform-managed physical tables for
+  missing columns, extra columns, expected index names, index columns, and
+  index uniqueness before exposing them to row APIs.
 
 ### Stage 3: Runtime Semantics
 
@@ -250,8 +256,8 @@ Stage 5 evidence:
 
 - `tests/msm/maintenance/test_catalog_bootstrap.py` covers catalog attach,
   missing-row registration plus catalog write, pre-catalog platform table import,
-  catalog contract drift, duplicate-registration drift errors, and catalog table
-  attach.
+  catalog contract drift, duplicate-registration drift errors, catalog table
+  attach, and stale physical index signatures.
 - `tests/msm/maintenance/test_metatable_catalog.py` covers the catalog table
   identity contract, uniqueness constraints, platform physical identity indexes,
   platform-returned MetaTable values, and deterministic contract hashing.

@@ -1,66 +1,334 @@
 # Accounts
 
-The accounts concept owns account identity, account-level holdings, virtual fund
-holdings, and assignments between accounts and target portfolios.
+Accounts are the owner identity layer for positions, target assignments,
+execution routing, and fund tracking. The account registry itself is stored in
+markets MetaTables. Account and fund holdings history is stored in DataNode
+source tables backed by `DynamicTableMetaData`, because holdings are timestamped
+observations rather than static reference rows.
 
-## Scope
+## What Is Stored Where
 
-Accounts answer these questions:
+```text
+MetaTable
+  Row-oriented reference or configuration table registered from SQLAlchemy.
+  AccountTable, AccountTargetPositionAssignmentTable, AccountGroupTable,
+  AccountModelPortfolioTable, and FundTable are MetaTables.
 
-- Which account or virtual fund owns a position?
-- Which assets are held at a point in time?
-- Which portfolio target should an account follow?
-- Which storage contracts represent account and virtual fund holdings?
+DynamicTableMetaData
+  Platform metadata for a DataNode source table. It describes the published
+  table shape: time index, dimension indexes, column dtypes, and storage.
+  AccountHoldings and VirtualFundHoldings create DynamicTableMetaData-backed
+  source tables.
+```
 
-## Primary Modules
+Do not confuse these layers. `Account.upsert(...)` writes one account registry
+row. `AccountHoldings.run(...)` publishes timestamped holdings rows into a
+DataNode table.
 
-- `msm.data_nodes.accounts`: canonical holdings DataNodes for account and
-  virtual fund holdings.
-- `msm.models.accounts`: SQLAlchemy account and account assignment models.
-- `msm.models.funds`: SQLAlchemy fund model.
-- `msm.api.accounts`: Pydantic row APIs for `Account`,
-  `AccountModelPortfolio`, `AccountGroup`, and
-  `AccountTargetPositionAssignment`.
-- `msm.repositories.accounts` and `msm.services.accounts`: MetaTable operation
-  builders and service helpers for account records.
+## API Surfaces
 
-## Key Contracts
-
-Account holdings are time-indexed by `time_index` and scoped by account, asset,
-and holdings set identifiers. Virtual fund holdings follow the same pattern but
-are scoped by fund identifiers.
-
-DataNode inputs should normalize identifiers to stable string values before
-publishing. Amount-like values should be normalized before storage so downstream
-portfolio and reporting code does not need to guess representation.
-
-Use typed row APIs for account registry records:
+Use the typed row APIs for account MetaTable records:
 
 ```python
-from msm.api.accounts import Account
+import datetime as dt
+
+from msm.api.accounts import Account, AccountTargetPositionAssignment
 
 account = Account.upsert(
     unique_identifier="acct-main",
     account_name="Main Account",
     is_paper=True,
+    account_is_active=True,
 )
-active_accounts = Account.filter(account_is_active=True)
+
+assignment = AccountTargetPositionAssignment.upsert(
+    account_uid=account.uid,
+    target_positions_time=dt.datetime(2026, 5, 25, tzinfo=dt.UTC),
+    position_set_uid="00000000-0000-0000-0000-000000000001",
+)
 ```
 
-Relationship tables stay explicit. For example,
-`AccountTargetPositionAssignment.upsert(...)` owns the binding from an account to
-a target-position set; `Account.upsert(...)` does not hide that mutation.
+Use the DataNode package for holdings:
 
-## Extension Notes
+```python
+from msm.data_nodes.accounts import AccountHoldings
 
-Add account registry behavior in `msm.models`, `msm.repositories`, and
-`msm.services`. Add time-series holdings behavior in `msm.data_nodes.accounts`. Add
-persistence schema changes in `msm.models`, then surface repository or service
-operations only when application code needs a stable operation boundary.
+holdings_node = AccountHoldings(
+    config=AccountHoldings.default_config(
+        identifier="my_project.account_holdings",
+    ),
+)
+holdings_node.set_account_holdings_frame(
+    holdings_date="2026-05-28T00:00:00Z",
+    account_uid=account.uid,
+    positions=[
+        {
+            "unique_identifier": "BTC-USD",
+            "quantity": 10.0,
+            "extra_details": {"source": "example"},
+        }
+    ],
+)
+holdings_node.run(debug_mode=True, force_update=True)
+```
+
+`Account.pretty_print_positions(...)` formats an account holdings frame into the
+columns operators usually need for a position check:
+
+```python
+positions = account.pretty_print_positions(updated_frame)
+```
+
+The printed table has `asset_uid`, `ticker`, `position_type`, and
+`position_value`. The method resolves `asset_uid` from the canonical `Asset`
+row, reads `ticker` from row `extra_details` when present, and keeps holdings
+reads explicit by requiring the caller to pass the holdings frame.
+
+The full workflow example is
+`examples/accounts/create_and_insert_holdings.py`. It reuses the shared asset
+example payloads from `examples/assets/utils` and account-specific payloads from
+`examples/accounts/utils`.
+
+There is no top-level `msm.accounts` shim. Import account rows from
+`msm.api.accounts` and account holdings DataNodes from
+`msm.data_nodes.accounts`.
+
+## Account MetaTables
+
+```text
+                                      MetaTables
+                                      ----------
+
++-------------------------------+
+| AccountModelPortfolioTable    |  MetaTable: AccountModelPortfolio
+|-------------------------------|
+| uid PK                        |
+| model_portfolio_name unique   |
+| model_portfolio_description   |
+| metadata_json                 |
++---------------+---------------+
+                |
+                | nullable FK from AccountGroupTable.account_model_portfolio_uid
+                v
++-------------------------------+
+| AccountGroupTable             |  MetaTable: AccountGroup
+|-------------------------------|
+| uid PK                        |
+| group_name unique             |
+| group_description             |
+| account_model_portfolio_uid FK|
+| metadata_json                 |
++-------------------------------+
+
++-------------------------------+
+| AccountTable                  |  MetaTable: Account
+|-------------------------------|
+| uid PK                        |
+| unique_identifier unique      |
+| account_name                  |
+| is_paper                      |
+| account_is_active             |
+| holdings_data_node_uid        |
+| metadata_json                 |
++---------------+---------------+
+                |
+                | account_uid FK, on delete cascade
+                v
++-------------------------------+
+| AccountTargetPositionAssign.  |  MetaTable: AccountTargetPositionAssignment
+|-------------------------------|
+| uid PK                        |
+| account_uid FK -> Account.uid |
+| target_positions_time UTC     |
+| position_set_uid              |
+| unique(account_uid,           |
+|        target_positions_time) |
++-------------------------------+
+```
+
+`AccountTable.uid` is the canonical account identity used by other MetaTables and
+DataNode rows. `unique_identifier` is the stable external business key used for
+lookup and idempotent upserts. `holdings_data_node_uid` is optional metadata for
+an account's associated holdings storage; it is not the account identity.
+
+`AccountTargetPositionAssignmentTable` intentionally stays separate from
+`AccountTable`. An account can be registered without a target-position binding,
+and the binding can be replaced for a UTC `target_positions_time` without
+rewriting the account row.
+
+## Fund And Portfolio Relationship
+
+Funds bind an account to a target portfolio. The account owns the execution or
+custody side; the portfolio owns the target composition.
+
+```text
+                      MetaTables
+                      ----------
+
++------------------+      target_account_uid FK       +----------------+
+| AccountTable     |<-------------------------------+ | FundTable      |
+| MetaTable        |                                  | MetaTable      |
+| uid PK           |                                  | uid PK         |
++------------------+                                  | unique_id uniq |
+                                                      | target_account |
++------------------+      target_portfolio_uid FK     | target_portf. |
+| PortfolioTable   |<-------------------------------+ | metadata_json |
+| MetaTable        |                                  +----------------+
+| uid PK           |
++------------------+
+```
+
+The account API lives in `msm.api.accounts`. Fund row APIs live in
+`msm.api.portfolios` because funds are part of the portfolio workflow.
+
+## Holdings DataNodes
+
+Holdings are time-series-like observations. They are not MetaTables. A holdings
+DataNode creates or validates a `DynamicTableMetaData` source table with a fixed
+index and record contract.
+
+```text
+                                    DataNode / DynamicTableMetaData
+                                    -------------------------------
+
++-------------------------------+     creates/validates     +-----------------------------+
+| AccountHoldings               |-------------------------->| DynamicTableMetaData        |
+| DataNode class                |                           | account_historical_holdings |
+|-------------------------------|                           |-----------------------------|
+| default identifier:           |                           | time_index_name=time_index  |
+| markets_data_node_identifier( |                           | index_names:                |
+|   "account_historical_holdings"|                          |  - time_index               |
+| )                             |                           |  - account_uid              |
+| update() returns DataFrame    |                           |  - unique_identifier        |
++---------------+---------------+                           | records:                   |
+                |                                           |  - holdings_set_uid uuid    |
+                | publishes rows                            |  - is_trade_snapshot bool   |
+                |                                           |  - unique_identifier string |
+                v                                           |  - quantity float64         |
++-------------------------------+                           |  - target_trade_time        |
+| Source table rows             |                           |    datetime64[ns, UTC]      |
+|-------------------------------|                           |  - extra_details jsonb      |
+| time_index                    |                           +-----------------------------+
+| account_uid                   |
+| unique_identifier             |
+| holdings_set_uid              |
+| quantity                      |
+| target_trade_time             |
+| extra_details                 |
++-------------------------------+
+```
+
+The row grain is one asset position for one account at one timestamp:
+
+```text
+unique row = (time_index, account_uid, unique_identifier)
+```
+
+`unique_identifier` is the held asset's `Asset.unique_identifier`. The holdings
+table uses account ownership and asset identity as dimensions so callers can
+query history by account, date range, and asset.
+
+`VirtualFundHoldings` follows the same pattern for fund-level observations:
+
+```text
++-------------------------------+     creates/validates     +-----------------------------+
+| VirtualFundHoldings           |-------------------------->| DynamicTableMetaData        |
+| DataNode class                |                           | virtual_fund_historical...  |
+|-------------------------------|                           |-----------------------------|
+| default identifier:           |                           | time_index_name=time_index  |
+| markets_data_node_identifier( |                           | index_names:                |
+|   "virtual_fund_historical_   |                           |  - time_index               |
+|    holdings"                  |                           |  - fund_uid                 |
+| )                             |                           |  - unique_identifier        |
++-------------------------------+                           | extra measure: target_weight|
+                                                            +-----------------------------+
+```
+
+## End-To-End Flow
+
+```text
+1. Register account reference data
+
+   Account.upsert(...)
+     -> Account API row
+     -> AccountTable MetaTable
+
+2. Register assets held by the account
+
+   Asset.upsert(...)
+     -> AssetTable MetaTable
+
+3. Build account holdings frame
+
+   AccountHoldings.set_account_holdings_frame(...)
+     -> build_account_holdings_frame(...)
+     -> validates required columns and dtypes
+
+4. Publish holdings
+
+   AccountHoldings.run(...)
+     -> initializes DynamicTableMetaData when needed
+     -> writes rows to the DataNode source table
+
+5. Read holdings
+
+   AccountHoldings.get_holdings_history(...)
+     -> queries by account_uid plus date filters
+```
+
+The registry and the historical observations stay separate:
+
+```text
+AccountTable MetaTable
+  one row per account identity
+
+AccountHoldings DynamicTableMetaData source table
+  many rows per account over time
+```
+
+## Registration Order
+
+Register parent MetaTables before child MetaTables. A minimal account workflow
+uses:
+
+```python
+import msm
+
+msm.start_engine(models=["Asset", "Account"])
+```
+
+For target assignments, include the child table:
+
+```python
+msm.start_engine(models=["Account", "AccountTargetPositionAssignment"])
+```
+
+For funds, register account and portfolio dependencies first:
+
+```python
+msm.start_engine(models=["Account", "Portfolio", "Fund"])
+```
+
+The DataNode itself does not need to be in the MetaTable model list. It creates
+or attaches to its `DynamicTableMetaData` source table when the node runs.
+
+## Extension Rules
+
+Add static account reference data as MetaTables under `msm.models` and expose it
+through typed rows under `msm.api`.
+
+Add timestamped account or fund observations as DataNodes under
+`msm.data_nodes.accounts`. Define the table contract with `RecordDefinition`
+metadata and keep the published row grain explicit.
+
+Do not put holdings rows into `AccountTable`. Do not add static account fields to
+`AccountHoldings`. The split is what keeps account identity stable while
+holdings history grows over time.
 
 ## Related Concepts
 
 - [Assets](../assets/index.md)
+- [DataNodes](../assets/asset_indexed_data_nodes.md)
 - [Portfolios](../portfolios/index.md)
 - [Repositories](../repositories/index.md)
 - [Services](../services/index.md)

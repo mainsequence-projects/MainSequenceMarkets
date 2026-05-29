@@ -81,32 +81,27 @@ def validate_target_positions_frame(data_frame: pd.DataFrame) -> pd.DataFrame:
             )
 
     flat = frame.reset_index()
+    column_dtypes_map = {record.column_name: record.dtype for record in contract.records}
     missing_columns = [
-        column_name
-        for column_name in contract.column_dtypes_map
-        if column_name not in flat.columns
+        column_name for column_name in column_dtypes_map if column_name not in flat.columns
     ]
     if missing_columns:
         raise ValueError(
-            "Target positions frame is missing required columns: "
-            f"{', '.join(missing_columns)}."
+            f"Target positions frame is missing required columns: {', '.join(missing_columns)}."
         )
 
-    flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True).astype(
-        "datetime64[ns, UTC]"
-    )
+    flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True).astype("datetime64[ns, UTC]")
     flat["position_set_uid"] = flat["position_set_uid"].map(lambda value: str(UUID(str(value))))
     flat["unique_identifier"] = flat["unique_identifier"].map(str)
     for field_name in TARGET_POSITION_EXPOSURE_FIELDS:
-        flat[field_name] = flat[field_name].map(_normalize_optional_decimal)
+        flat[field_name] = _normalize_optional_float64_column(flat[field_name])
 
     frame = flat.set_index(index_names).sort_index()
     if frame.index.has_duplicates:
         raise ValueError(
-            "Target positions frame contains duplicate rows for index contract "
-            f"{index_names}."
+            f"Target positions frame contains duplicate rows for index contract {index_names}."
         )
-    frame.attrs[LOGICAL_COLUMN_DTYPES_ATTR] = dict(contract.column_dtypes_map)
+    frame.attrs[LOGICAL_COLUMN_DTYPES_ATTR] = column_dtypes_map
     return frame
 
 
@@ -114,13 +109,18 @@ def target_positions_source_table_kwargs() -> dict[str, object]:
     return source_table_initialization_kwargs(POSITION_EXPOSURE_TABLE_CONTRACT)
 
 
-def _normalize_optional_decimal(value: Any) -> str | None:
+def _normalize_optional_float64_column(values: pd.Series) -> pd.Series:
+    normalized = values.map(_normalize_optional_float64)
+    return pd.to_numeric(normalized, errors="raise").astype("float64")
+
+
+def _normalize_optional_float64(value: Any) -> float | None:
     if value is None or pd.isna(value):
         return None
     try:
-        return str(Decimal(str(value)))
+        return float(Decimal(str(value)))
     except (InvalidOperation, ValueError) as exc:
-        raise ValueError(f"Invalid decimal target-position value {value!r}.") from exc
+        raise ValueError(f"Invalid numeric target-position value {value!r}.") from exc
 
 
 __all__ = [

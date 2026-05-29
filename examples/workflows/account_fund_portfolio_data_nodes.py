@@ -53,16 +53,16 @@ def create_account_fund_portfolio_workflow() -> dict:
         holdings_date="2026-05-25T00:00:00Z",
         account_uid=account.uid,
         positions=[
-            {"unique_identifier": "BTC", "quantity": "1.0"},
-            {"unique_identifier": "ETH", "quantity": "10.0"},
+            {"unique_identifier": "BTC", "quantity": 1.0},
+            {"unique_identifier": "ETH", "quantity": 10.0},
         ],
     )
     target_positions = build_target_positions_frame(
         target_positions_date="2026-05-25T00:00:00Z",
         position_set_uid=uuid4(),
         positions=[
-            {"unique_identifier": "BTC", "weight_notional_exposure": "0.60"},
-            {"unique_identifier": "ETH", "weight_notional_exposure": "0.40"},
+            {"unique_identifier": "BTC", "weight_notional_exposure": 0.60},
+            {"unique_identifier": "ETH", "weight_notional_exposure": 0.40},
         ],
     )
     return {

@@ -4,6 +4,7 @@ import datetime as dt
 import uuid
 from types import SimpleNamespace
 
+import pandas as pd
 import pytest
 
 from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
@@ -35,6 +36,9 @@ def test_holdings_contracts_are_not_registered_as_metatables() -> None:
 
 
 def test_account_and_fund_holdings_data_nodes_use_backend_independent_contracts() -> None:
+    assert not hasattr(ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT, "column_dtypes_map")
+    assert not hasattr(FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT, "column_dtypes_map")
+    assert not hasattr(POSITION_EXPOSURE_TABLE_CONTRACT, "column_dtypes_map")
     assert AccountHoldings._required_index_names() == (
         ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.dynamic_table_index_names
     )
@@ -42,11 +46,25 @@ def test_account_and_fund_holdings_data_nodes_use_backend_independent_contracts(
         FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.dynamic_table_index_names
     )
     assert AccountHoldings.default_config().column_dtypes_map == (
-        ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_dtypes_map
+        _record_dtypes(ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT)
     )
     assert VirtualFundHoldings.default_config().column_dtypes_map == (
-        FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_dtypes_map
+        _record_dtypes(FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT)
     )
+    assert _record_dtypes(ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT)["quantity"] == "float64"
+    assert (
+        _record_dtypes(ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT)["target_trade_time"]
+        == "datetime64[ns, UTC]"
+    )
+    assert _record_dtypes(ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT)["unique_identifier"] == (
+        "string"
+    )
+    assert _record_dtypes(FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT)["target_weight"] == "float64"
+    assert (
+        _record_dtypes(FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT)["target_trade_time"]
+        == "datetime64[ns, UTC]"
+    )
+    assert _record_dtypes(FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT)["unique_identifier"] == "string"
 
 
 def test_holdings_source_initialization_uses_generic_platform_api() -> None:
@@ -87,7 +105,7 @@ def test_source_table_initialization_kwargs_are_generic_dynamic_table_payload() 
     assert payload == {
         "time_index_name": "time_index",
         "index_names": ["time_index", "position_set_uid", "unique_identifier"],
-        "column_dtypes_map": POSITION_EXPOSURE_TABLE_CONTRACT.column_dtypes_map,
+        "column_dtypes_map": _record_dtypes(POSITION_EXPOSURE_TABLE_CONTRACT),
     }
 
 
@@ -111,12 +129,15 @@ def test_account_holdings_frame_builder_uses_datanode_contract() -> None:
 
     assert list(frame.index.names) == ["time_index", "account_uid", "unique_identifier"]
     assert frame.attrs[LOGICAL_COLUMN_DTYPES_ATTR] == (
-        ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_dtypes_map
+        _record_dtypes(ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT)
     )
     row = frame.reset_index().iloc[0]
     assert row["account_uid"] == str(account_uid)
     assert row["holdings_set_uid"] == str(holdings_set_uid)
-    assert row["quantity"] == "1.25"
+    assert row["quantity"] == 1.25
+    assert str(frame.reset_index()["quantity"].dtype) == "float64"
+    assert str(frame.reset_index()["target_trade_time"].dtype) == "datetime64[ns, UTC]"
+    assert row["target_trade_time"] == pd.Timestamp("2026-05-25T11:00:00Z")
 
 
 def test_account_holdings_datanode_exposes_frame_helpers_only() -> None:
@@ -151,11 +172,14 @@ def test_fund_holdings_frame_builder_keeps_target_weight_contract() -> None:
 
     assert list(frame.index.names) == ["time_index", "fund_uid", "unique_identifier"]
     assert frame.attrs[LOGICAL_COLUMN_DTYPES_ATTR] == (
-        FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_dtypes_map
+        _record_dtypes(FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT)
     )
     row = frame.reset_index().iloc[0]
     assert row["fund_uid"] == str(fund_uid)
-    assert row["target_weight"] == "0.15"
+    assert row["quantity"] == 3.0
+    assert row["target_weight"] == 0.15
+    assert str(frame.reset_index()["quantity"].dtype) == "float64"
+    assert str(frame.reset_index()["target_weight"].dtype) == "float64"
 
 
 def test_virtual_fund_holdings_datanode_exposes_frame_helpers() -> None:
@@ -197,9 +221,11 @@ def test_target_positions_frame_validation_keeps_datanode_dtype_contract() -> No
 
     assert list(frame.index.names) == ["time_index", "position_set_uid", "unique_identifier"]
     assert frame.attrs[LOGICAL_COLUMN_DTYPES_ATTR] == (
-        POSITION_EXPOSURE_TABLE_CONTRACT.column_dtypes_map
+        _record_dtypes(POSITION_EXPOSURE_TABLE_CONTRACT)
     )
     assert frame.reset_index()["position_set_uid"].iloc[0] == str(position_set_uid)
+    assert str(frame.reset_index()["weight_notional_exposure"].dtype) == "float64"
+    assert frame.reset_index()["weight_notional_exposure"].iloc[0] == 0.25
 
 
 def test_target_positions_require_exactly_one_exposure_shape() -> None:
@@ -211,3 +237,7 @@ def test_target_positions_require_exactly_one_exposure_shape() -> None:
                 "single_asset_quantity": "1",
             }
         )
+
+
+def _record_dtypes(contract) -> dict[str, str]:
+    return {record.column_name: record.dtype for record in contract.records}

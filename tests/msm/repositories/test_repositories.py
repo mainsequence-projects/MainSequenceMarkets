@@ -3,9 +3,17 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
+import pytest
+
 from msm.maintenance.models import MarketsMetaTableCatalogRow, MarketsMetaTableCatalogTable
 from msm.models.registration import markets_meta_table_fullname
-from msm.models import AssetTable, OpenFigiAssetDetailsTable, OrderTable, markets_sqlalchemy_models
+from msm.models import (
+    AccountTargetPositionAssignmentTable,
+    AssetTable,
+    OpenFigiAssetDetailsTable,
+    OrderTable,
+    markets_sqlalchemy_models,
+)
 from msm.repositories import MarketsMetaTableHandle, MarketsRepositoryContext
 from msm.repositories.assets import (
     build_create_asset_operation,
@@ -21,6 +29,7 @@ from msm.repositories.crud import (
     build_upsert_model_operation,
 )
 from msm.repositories.execution import build_create_order_operation
+from msm.repositories.accounts import build_create_account_target_position_assignment_operation
 
 
 def _repository_context() -> MarketsRepositoryContext:
@@ -136,6 +145,35 @@ def test_generic_upsert_operation_uses_physical_name_for_aliased_columns() -> No
     assert "metadata =" in operation.statement.sql
     assert operation.statement.parameters["metadata"] is None
     assert operation.statement.parameters["raw_payload"] == {"figi": "BBG00FNFPQH4"}
+
+
+def test_account_target_position_assignment_operation_requires_utc_timestamp() -> None:
+    context = _repository_context()
+
+    with pytest.raises(ValueError):
+        build_create_account_target_position_assignment_operation(
+            context,
+            account_uid=uuid.uuid4(),
+            target_positions_time="eod",
+            position_set_uid=uuid.uuid4(),
+        )
+
+    operation = build_create_account_target_position_assignment_operation(
+        context,
+        account_uid=uuid.uuid4(),
+        target_positions_time="2026-05-25T00:00:00Z",
+        position_set_uid=uuid.uuid4(),
+    )
+
+    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
+        AccountTargetPositionAssignmentTable,
+    )
+    assert operation.statement.parameters["target_positions_time"] == dt.datetime(
+        2026,
+        5,
+        25,
+        tzinfo=dt.UTC,
+    )
 
 
 def test_generic_get_by_uid_uses_single_primary_key_when_uid_column_is_absent() -> None:

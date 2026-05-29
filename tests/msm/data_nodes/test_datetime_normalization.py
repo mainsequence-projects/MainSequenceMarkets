@@ -47,6 +47,9 @@ def test_holdings_time_columns_are_datetime64_ns_utc() -> None:
 
     assert _dtype(frame, "time_index") == EXPECTED_DTYPE
     assert _dtype(frame, "target_trade_time") == EXPECTED_DTYPE
+    target_trade_time = frame.reset_index()["target_trade_time"].iloc[0]
+    assert target_trade_time.tzinfo is not None
+    assert target_trade_time.utcoffset() == dt.timedelta(0)
 
 
 def test_portfolio_time_columns_are_datetime64_ns_utc() -> None:

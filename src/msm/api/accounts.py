@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
+from collections.abc import Callable, Mapping
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from msm.api.base import MarketsRow
 from msm.models import (
@@ -94,6 +96,49 @@ class Account(MarketsRow):
     holdings_data_node_uid: uuid.UUID | None = None
     metadata_json: dict[str, Any] | None = None
 
+    def pretty_print_positions(
+        self,
+        holdings_frame: Any,
+        *,
+        asset_resolver: Callable[[str], Any] | None = None,
+        output: Callable[[str], None] = print,
+    ) -> Any:
+        """Print and return account positions with resolved asset display fields."""
+
+        import pandas as pd
+
+        from msm.api.assets import Asset
+
+        flat = _flat_holdings_frame(holdings_frame)
+        if "account_uid" in flat.columns:
+            flat = flat[flat["account_uid"].map(str) == str(self.uid)]
+
+        resolve_asset = asset_resolver or Asset.get_by_unique_identifier
+        rows = []
+        for _, position in flat.iterrows():
+            unique_identifier = position.get("unique_identifier")
+            if _is_missing(unique_identifier):
+                raise ValueError("Holdings positions require a unique_identifier column.")
+
+            asset = resolve_asset(str(unique_identifier))
+            extra_details = _position_extra_details(position)
+            position_type, position_value = _position_type_and_value(position)
+            rows.append(
+                {
+                    "asset_uid": getattr(asset, "uid", None),
+                    "ticker": extra_details.get("ticker") or str(unique_identifier),
+                    "position_type": position_type,
+                    "position_value": position_value,
+                }
+            )
+
+        positions = pd.DataFrame(
+            rows,
+            columns=["asset_uid", "ticker", "position_type", "position_value"],
+        )
+        output(positions.to_string(index=False))
+        return positions
+
 
 class AccountCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -136,16 +181,49 @@ class AccountTargetPositionAssignment(MarketsRow):
     )
 
     account_uid: uuid.UUID
-    target_positions_time: str
+    target_positions_time: dt.datetime
     position_set_uid: uuid.UUID
+
+    @classmethod
+    def create(
+        cls,
+        payload: AccountTargetPositionAssignmentCreate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AccountTargetPositionAssignment:
+        values = _validated_payload_values(AccountTargetPositionAssignmentCreate, payload, kwargs)
+        return super().create(values)
+
+    @classmethod
+    def upsert(
+        cls,
+        payload: AccountTargetPositionAssignmentUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AccountTargetPositionAssignment:
+        values = _validated_payload_values(AccountTargetPositionAssignmentUpsert, payload, kwargs)
+        return super().upsert(values)
+
+    @classmethod
+    def update(
+        cls,
+        uid: uuid.UUID | str,
+        payload: AccountTargetPositionAssignmentUpdate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AccountTargetPositionAssignment:
+        values = _validated_payload_values(AccountTargetPositionAssignmentUpdate, payload, kwargs)
+        return super().update(uid, values)
 
 
 class AccountTargetPositionAssignmentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     account_uid: uuid.UUID | str
-    target_positions_time: str = Field(min_length=1, max_length=64)
+    target_positions_time: dt.datetime
     position_set_uid: uuid.UUID | str
+
+    @field_validator("target_positions_time")
+    @classmethod
+    def _validate_target_positions_time(cls, value: dt.datetime) -> dt.datetime:
+        return _utc_timestamp(value, field_name="target_positions_time")
 
 
 class AccountTargetPositionAssignmentUpsert(AccountTargetPositionAssignmentCreate):
@@ -156,6 +234,70 @@ class AccountTargetPositionAssignmentUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     position_set_uid: uuid.UUID | str | None = None
+
+
+def _validated_payload_values(
+    payload_model: type[BaseModel],
+    payload: BaseModel | Mapping[str, Any] | None,
+    kwargs: Mapping[str, Any],
+) -> dict[str, Any]:
+    if payload is None:
+        return payload_model(**dict(kwargs)).model_dump(exclude_unset=True)
+    if kwargs:
+        raise TypeError("Pass either a payload object or keyword fields, not both.")
+    if isinstance(payload, payload_model):
+        return payload.model_dump(exclude_unset=True)
+    if isinstance(payload, BaseModel):
+        return payload_model.model_validate(payload.model_dump(exclude_unset=True)).model_dump(
+            exclude_unset=True,
+        )
+    if isinstance(payload, Mapping):
+        return payload_model.model_validate(dict(payload)).model_dump(exclude_unset=True)
+    raise TypeError("Payload must be a Pydantic model, mapping, or None.")
+
+
+def _utc_timestamp(value: dt.datetime, *, field_name: str) -> dt.datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field_name} must be a timezone-aware UTC timestamp.")
+    return value.astimezone(dt.UTC)
+
+
+def _flat_holdings_frame(holdings_frame: Any) -> Any:
+    import pandas as pd
+
+    if isinstance(holdings_frame, pd.DataFrame):
+        return holdings_frame.reset_index()
+    return pd.DataFrame(holdings_frame)
+
+
+def _position_extra_details(position: Any) -> dict[str, Any]:
+    value = position.get("extra_details")
+    if isinstance(value, Mapping):
+        return dict(value)
+    return {}
+
+
+def _position_type_and_value(position: Any) -> tuple[str, Any]:
+    for column_name, position_type in (
+        ("quantity", "quantity"),
+        ("target_weight", "target_weight"),
+        ("weight_notional_exposure", "weight_notional_exposure"),
+    ):
+        if column_name in position and not _is_missing(position.get(column_name)):
+            return position_type, position.get(column_name)
+    raise ValueError(
+        "Holdings positions require one of quantity, target_weight, or weight_notional_exposure."
+    )
+
+
+def _is_missing(value: Any) -> bool:
+    import pandas as pd
+
+    if value is None:
+        return True
+    if isinstance(value, (dict, list, tuple, set)):
+        return False
+    return bool(pd.isna(value))
 
 
 __all__ = [

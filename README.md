@@ -44,17 +44,16 @@ Architecture and implementation decisions are tracked in
 
 Main package areas:
 
-- `msm.accounts`: account identity, holdings, virtual funds, and account target
-  assignments
+- `msm.api.accounts`: account identity and account target assignment row APIs
 - `msm.api`: user-facing Pydantic row objects and typed class methods for
   markets MetaTable records
 - `msm.constants`: static built-in keys such as asset type constants used across
   applications and examples
 - `msm.client`: client-facing Main Sequence market models and API wrappers
-- `msm.data_nodes`: market DataNode contracts, including asset snapshots and
-  asset pricing details
-- `msm.execution`: order managers, target quantities, orders, events, trades,
-  and execution errors
+- `msm.data_nodes`: market DataNode contracts, including account holdings,
+  execution events, asset snapshots, and asset pricing details
+- `msm.api.execution`: order managers, target quantities, orders, events,
+  trades, and execution error row APIs
 - `msm.models`: SQLAlchemy market-domain `*Table` declarations and MetaTable
   registration order
 - `msm.portfolios`: portfolio configuration, signal weights, rebalance

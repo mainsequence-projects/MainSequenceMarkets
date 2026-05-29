@@ -4,9 +4,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from apps.v1.schemas.common import ErrorResponse
-from apps.v1.schemas.assets import AssetListRow
-from apps.v1.services.assets import list_assets
+from apps.v1.schemas.assets import AssetCurrentPricingDetailsResponse, AssetListRow
+from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
+from apps.v1.services.assets import get_asset_pricing_details, get_asset_summary, list_assets
 
 router = APIRouter(prefix="/asset", tags=["asset"])
 
@@ -73,3 +73,52 @@ def get_assets(
         offset=offset,
         category_uid=categories__uid,
     )
+
+
+@router.get(
+    "/{uid}/summary/",
+    response_model=FrontEndDetailSummary,
+    summary="Get asset summary",
+    description=(
+        "Return a reusable frontend detail summary payload for one asset. "
+        "This contract is intended for detail-page summary cards."
+    ),
+    operation_id="getAssetSummary",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested asset uid was not found.",
+        }
+    },
+)
+def get_asset_summary_by_uid(uid: str) -> FrontEndDetailSummary:
+    summary = get_asset_summary(uid=uid)
+    if summary is None:
+        raise HTTPException(status_code=404, detail=f"Asset {uid!r} was not found.")
+    return summary
+
+
+@router.get(
+    "/{uid}/get_pricing_details/",
+    response_model=AssetCurrentPricingDetailsResponse,
+    summary="Get asset pricing details",
+    description=(
+        "Return the current pricing details row for one asset. "
+        "The response mirrors `msm_pricing.api.AssetCurrentPricingDetails`."
+    ),
+    operation_id="getAssetPricingDetails",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "No current pricing details row exists for the requested asset uid.",
+        }
+    },
+)
+def get_asset_pricing_details_by_uid(uid: str) -> AssetCurrentPricingDetailsResponse:
+    details = get_asset_pricing_details(uid=uid)
+    if details is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Pricing details for asset {uid!r} were not found.",
+        )
+    return details

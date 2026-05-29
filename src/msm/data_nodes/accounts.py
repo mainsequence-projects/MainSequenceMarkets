@@ -33,21 +33,13 @@ from msm.settings import markets_data_node_identifier
 
 ACCOUNT_HOLDINGS_TIME_INDEX_NAME = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.time_index_name
 ACCOUNT_HOLDINGS_INDEX_NAMES = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.dynamic_table_index_names
-ACCOUNT_HOLDINGS_COLUMN_DTYPES_MAP = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_dtypes_map
-ACCOUNT_HOLDINGS_COLUMN_LABELS = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_labels
-ACCOUNT_HOLDINGS_COLUMN_DESCRIPTIONS = (
-    ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_descriptions
-)
+ACCOUNT_HOLDINGS_RECORDS = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.records
 
 VIRTUAL_FUND_HOLDINGS_TIME_INDEX_NAME = FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.time_index_name
 VIRTUAL_FUND_HOLDINGS_INDEX_NAMES = (
     FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.dynamic_table_index_names
 )
-VIRTUAL_FUND_HOLDINGS_COLUMN_DTYPES_MAP = FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_dtypes_map
-VIRTUAL_FUND_HOLDINGS_COLUMN_LABELS = FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_labels
-VIRTUAL_FUND_HOLDINGS_COLUMN_DESCRIPTIONS = (
-    FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.column_descriptions
-)
+VIRTUAL_FUND_HOLDINGS_RECORDS = FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.records
 
 SCHEMA_BOOTSTRAP_ACCOUNT_UID = UUID("00000000-0000-0000-0000-000000000101")
 SCHEMA_BOOTSTRAP_FUND_UID = UUID("00000000-0000-0000-0000-000000000102")
@@ -56,6 +48,10 @@ SCHEMA_BOOTSTRAP_FUND_UNIQUE_IDENTIFIER = str(SCHEMA_BOOTSTRAP_FUND_UID)
 SCHEMA_BOOTSTRAP_HOLDINGS_SET_UID = UUID("00000000-0000-0000-0000-000000000100")
 SCHEMA_BOOTSTRAP_ROW_IDENTIFIER = "__schema_bootstrap__"
 SCHEMA_BOOTSTRAP_TIME_INDEX = dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
+NULLABLE_HOLDINGS_COLUMNS = {
+    "target_trade_time",
+    "target_weight",
+}
 
 
 class HoldingsDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
@@ -259,7 +255,7 @@ class HoldingsDataNode(AssetIndexedDataNode):
             config.row_identifier_index_name: row_identifier,
             "holdings_set_uid": holdings_set_uid,
             "is_trade_snapshot": False,
-            "quantity": "0",
+            "quantity": 0.0,
             "target_trade_time": pd.Timestamp(time_index).isoformat(),
             "extra_details": {
                 "_mainsequence_reserved": "schema_bootstrap",
@@ -403,11 +399,7 @@ class AccountHoldings(HoldingsDataNode):
 
     @classmethod
     def _required_records(cls) -> list[RecordDefinition]:
-        return _record_definitions_from_dtype_map(
-            ACCOUNT_HOLDINGS_COLUMN_DTYPES_MAP,
-            labels=ACCOUNT_HOLDINGS_COLUMN_LABELS,
-            descriptions=ACCOUNT_HOLDINGS_COLUMN_DESCRIPTIONS,
-        )
+        return list(ACCOUNT_HOLDINGS_RECORDS)
 
     @classmethod
     def _schema_bootstrap_owner_identifier(cls) -> str:
@@ -510,11 +502,7 @@ class VirtualFundHoldings(HoldingsDataNode):
 
     @classmethod
     def _required_records(cls) -> list[RecordDefinition]:
-        return _record_definitions_from_dtype_map(
-            VIRTUAL_FUND_HOLDINGS_COLUMN_DTYPES_MAP,
-            labels=VIRTUAL_FUND_HOLDINGS_COLUMN_LABELS,
-            descriptions=VIRTUAL_FUND_HOLDINGS_COLUMN_DESCRIPTIONS,
-        )
+        return list(VIRTUAL_FUND_HOLDINGS_RECORDS)
 
     @classmethod
     def _schema_bootstrap_owner_identifier(cls) -> str:
@@ -589,23 +577,6 @@ class VirtualFundHoldings(HoldingsDataNode):
         )
 
 
-def _record_definitions_from_dtype_map(
-    column_dtypes_map: dict[str, str],
-    *,
-    labels: dict[str, str],
-    descriptions: dict[str, str],
-) -> list[RecordDefinition]:
-    return [
-        RecordDefinition(
-            column_name=column_name,
-            dtype=dtype,
-            label=labels.get(column_name, column_name),
-            description=descriptions.get(column_name),
-        )
-        for column_name, dtype in column_dtypes_map.items()
-    ]
-
-
 def _merge_records(
     required_records: list[RecordDefinition],
     extra_records: list[RecordDefinition],
@@ -652,14 +623,14 @@ def _schema_bootstrap_value(
 ) -> Any:
     if dtype == "uuid":
         return SCHEMA_BOOTSTRAP_HOLDINGS_SET_UID
-    if dtype == "decimal":
-        return "0"
+    if dtype in {"decimal", "float64"}:
+        return 0.0
     if dtype == "bool":
         return False
     if dtype == "jsonb":
         return {}
-    if dtype == "datetime64[ns, UTC]":
-        return pd.Timestamp(time_index).isoformat()
+    if dtype in {"datetime64[ns, UTC]", "timestamp with time zone"}:
+        return pd.Timestamp(time_index).tz_convert(dt.UTC).to_pydatetime()
     return ""
 
 
@@ -735,14 +706,17 @@ def _normalize_config_values(
             normalized[column_name] = _normalize_time_index(values)
         elif dtype == "uuid":
             normalized[column_name] = values.map(_normalize_uuid)
-        elif dtype == "decimal":
-            normalized[column_name] = values.map(_normalize_decimal)
+        elif dtype in {"decimal", "float64"}:
+            normalized[column_name] = _normalize_float64_column(
+                values,
+                nullable=column_name in NULLABLE_HOLDINGS_COLUMNS,
+            )
         elif dtype == "bool":
             normalized[column_name] = values.map(_normalize_bool)
         elif dtype == "jsonb":
             normalized[column_name] = values.map(_normalize_jsonb)
         elif dtype == "datetime64[ns, UTC]":
-            normalized[column_name] = _normalize_datetime_payload_column(values)
+            normalized[column_name] = _normalize_time_index(values)
         elif dtype == "string":
             normalized[column_name] = values.fillna("").map(str)
         elif dtype == "object":
@@ -758,13 +732,18 @@ def _normalize_uuid(value: Any) -> str:
     return str(UUID(str(value)))
 
 
-def _normalize_decimal(value: Any) -> str:
+def _normalize_float64_column(values: pd.Series, *, nullable: bool) -> pd.Series:
+    normalized = values.map(lambda value: _normalize_optional_float64(value, nullable=nullable))
+    return pd.to_numeric(normalized, errors="raise").astype("float64")
+
+
+def _normalize_optional_float64(value: Any, *, nullable: bool) -> float | None:
     if pd.isna(value):
-        return "0"
+        return None if nullable else 0.0
     try:
-        return str(Decimal(str(value)))
+        return float(Decimal(str(value)))
     except (InvalidOperation, ValueError) as exc:
-        raise ValueError(f"Invalid decimal holdings value {value!r}.") from exc
+        raise ValueError(f"Invalid numeric holdings value {value!r}.") from exc
 
 
 def _normalize_bool(value: Any) -> bool:
@@ -781,10 +760,6 @@ def _normalize_jsonb(value: Any) -> dict[str, Any] | list[Any]:
     if isinstance(value, (dict, list)):
         return value
     raise ValueError(f"Invalid jsonb holdings value {value!r}.")
-
-
-def _normalize_datetime_payload_column(values: pd.Series) -> pd.Series:
-    return normalize_datetime64_ns_utc(values.fillna(SCHEMA_BOOTSTRAP_TIME_INDEX))
 
 
 def _normalize_time_index(values: Any) -> pd.Series:
@@ -835,8 +810,8 @@ def _coerce_optional_uid(value: Any, *, field_name: str) -> str | None:
 
 
 __all__ = [
-    "ACCOUNT_HOLDINGS_COLUMN_DTYPES_MAP",
     "ACCOUNT_HOLDINGS_INDEX_NAMES",
+    "ACCOUNT_HOLDINGS_RECORDS",
     "ACCOUNT_HOLDINGS_TIME_INDEX_NAME",
     "AccountHoldings",
     "HoldingsDataNode",
@@ -848,8 +823,8 @@ __all__ = [
     "SCHEMA_BOOTSTRAP_HOLDINGS_SET_UID",
     "SCHEMA_BOOTSTRAP_ROW_IDENTIFIER",
     "SCHEMA_BOOTSTRAP_TIME_INDEX",
-    "VIRTUAL_FUND_HOLDINGS_COLUMN_DTYPES_MAP",
     "VIRTUAL_FUND_HOLDINGS_INDEX_NAMES",
+    "VIRTUAL_FUND_HOLDINGS_RECORDS",
     "VIRTUAL_FUND_HOLDINGS_TIME_INDEX_NAME",
     "VirtualFundHoldings",
 ]

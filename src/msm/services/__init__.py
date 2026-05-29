@@ -48,6 +48,7 @@ _EXPORTS = {
     "delete_rebalance_strategy_metadata": ".market_metadata",
     "delete_signal_metadata": ".market_metadata",
     "get_account_by_unique_identifier": ".accounts",
+    "get_asset_frontend_detail_summary": ".asset_master_lists",
     "get_asset_by_uid": ".assets",
     "get_asset_by_unique_identifier": ".assets",
     "get_asset_category_by_uid": ".asset_categories",

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 
-from sqlalchemy import ForeignKey, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
@@ -94,7 +95,10 @@ class AccountTargetPositionAssignmentTable(MarketsMetaTableMixin, MarketsBase):
         ),
         nullable=False,
     )
-    target_positions_time: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_positions_time: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
     position_set_uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
 
 

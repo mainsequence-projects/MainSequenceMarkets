@@ -292,9 +292,9 @@ fund = Fund.upsert(
 
 ## Holdings And Target Positions
 
-See `examples/api/typed_metatable_rows.py` for a compact example that uses the
-typed row API across assets, categories, accounts, portfolios, funds,
-instrument configuration, and an execution order manager.
+See `examples/workflows/typed_metatable_rows.py` for a compact workflow that
+uses the typed row API across assets, categories, accounts, portfolios, funds,
+and an execution order manager.
 
 ```python
 from uuid import uuid4
@@ -305,8 +305,8 @@ holdings = build_account_holdings_frame(
     holdings_date="2026-05-25T00:00:00Z",
     account_uid=account.uid,
     positions=[
-        {"unique_identifier": "BTC", "quantity": "1.0"},
-        {"unique_identifier": "ETH", "quantity": "10.0"},
+        {"unique_identifier": "BTC", "quantity": 1.0},
+        {"unique_identifier": "ETH", "quantity": 10.0},
     ],
 )
 
@@ -314,8 +314,8 @@ targets = build_target_positions_frame(
     target_positions_date="2026-05-25T00:00:00Z",
     position_set_uid=uuid4(),
     positions=[
-        {"unique_identifier": "BTC", "weight_notional_exposure": "0.6"},
-        {"unique_identifier": "ETH", "weight_notional_exposure": "0.4"},
+        {"unique_identifier": "BTC", "weight_notional_exposure": 0.6},
+        {"unique_identifier": "ETH", "weight_notional_exposure": 0.4},
     ],
 )
 ```

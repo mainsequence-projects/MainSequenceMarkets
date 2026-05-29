@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from typing import Any
 
@@ -201,7 +202,7 @@ def build_create_account_target_position_assignment_operation(
     context: MarketsRepositoryContext,
     *,
     account_uid: uuid.UUID | str,
-    target_positions_time: str,
+    target_positions_time: dt.datetime | str,
     position_set_uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
@@ -209,7 +210,10 @@ def build_create_account_target_position_assignment_operation(
         model=AccountTargetPositionAssignmentTable,
         values={
             "account_uid": account_uid,
-            "target_positions_time": target_positions_time,
+            "target_positions_time": _utc_timestamp(
+                target_positions_time,
+                field_name="target_positions_time",
+            ),
             "position_set_uid": position_set_uid,
         },
     )
@@ -229,14 +233,18 @@ def build_search_account_target_position_assignments_operation(
     context: MarketsRepositoryContext,
     *,
     account_uid: uuid.UUID | str | None = None,
-    target_positions_time: str | None = None,
+    target_positions_time: dt.datetime | str | None = None,
     position_set_uid: uuid.UUID | str | None = None,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
     filters: dict[str, Any] = {}
     for key, value in {
         "account_uid": account_uid,
-        "target_positions_time": target_positions_time,
+        "target_positions_time": (
+            _utc_timestamp(target_positions_time, field_name="target_positions_time")
+            if target_positions_time is not None
+            else None
+        ),
         "position_set_uid": position_set_uid,
     }.items():
         if value not in (None, ""):
@@ -283,6 +291,17 @@ def delete_account_target_position_assignment(
 
 
 MappingOrDict = dict[str, Any]
+
+
+def _utc_timestamp(value: dt.datetime | str, *, field_name: str) -> dt.datetime:
+    if isinstance(value, str):
+        try:
+            value = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(f"{field_name} must be an ISO-8601 UTC timestamp.") from exc
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field_name} must be a timezone-aware UTC timestamp.")
+    return value.astimezone(dt.UTC)
 
 
 __all__ = [

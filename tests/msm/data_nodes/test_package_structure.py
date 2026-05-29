@@ -19,7 +19,9 @@ os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
         "msm.data_nodes.contracts",
         "msm.data_nodes.namespaces",
         "msm.data_nodes.stamped",
+        "msm.accounts",
         "msm.accounts.data_nodes",
+        "msm.execution",
         "msm.execution.data_nodes",
     ],
 )

@@ -40,6 +40,22 @@ def test_openapi_json_documents_asset_list_endpoint() -> None:
         "$ref": "#/components/schemas/ErrorResponse"
     }
 
+    asset_summary_operation = payload["paths"]["/api/v1/asset/{uid}/summary/"]["get"]
+    assert asset_summary_operation["summary"] == "Get asset summary"
+    assert asset_summary_operation["operationId"] == "getAssetSummary"
+    assert asset_summary_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/FrontEndDetailSummary"
+    }
+
+    asset_pricing_details_operation = payload["paths"]["/api/v1/asset/{uid}/get_pricing_details/"][
+        "get"
+    ]
+    assert asset_pricing_details_operation["summary"] == "Get asset pricing details"
+    assert asset_pricing_details_operation["operationId"] == "getAssetPricingDetails"
+    assert asset_pricing_details_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/AssetCurrentPricingDetailsResponse"}
+
 
 def test_openapi_json_documents_asset_category_routes() -> None:
     client = TestClient(app)

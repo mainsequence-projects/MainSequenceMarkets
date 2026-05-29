@@ -38,6 +38,16 @@ Current local-dev behavior:
   - supports `search`, `limit`, `offset`
   - supports `categories__uid` for nested category asset tables
   - returns paginated asset rows in the migrated list contract
+- `GET /api/v1/asset/{uid}/summary/`
+  - returns a reusable `FrontEndDetailSummary` response for detail-page
+    summary cards
+  - resolves the asset by `uid`
+  - includes asset identity, badges, inline fields, highlight fields, label
+    management placeholders, and page-specific extensions
+- `GET /api/v1/asset/{uid}/get_pricing_details/`
+  - returns the current pricing details row for one asset
+  - response mirrors `msm_pricing.api.AssetCurrentPricingDetails`
+  - returns 404 when no current pricing details row exists for the asset
 
 ### Asset Categories
 

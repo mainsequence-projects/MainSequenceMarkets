@@ -113,6 +113,11 @@ def bootstrap_markets_meta_tables_from_catalog(
                 model=model,
                 management_mode=management_mode,
             )
+            validate_platform_meta_table_physical_contract(
+                meta_table,
+                model=model,
+                timeout=timeout,
+            )
             attached_count += 1
             logger.debug(
                 "Attached markets MetaTable from catalog",
@@ -131,6 +136,11 @@ def bootstrap_markets_meta_tables_from_catalog(
                 timeout=timeout,
             )
             if meta_table is not None:
+                validate_platform_meta_table_physical_contract(
+                    meta_table,
+                    model=model,
+                    timeout=timeout,
+                )
                 imported_count += 1
                 logger.info(
                     "Importing existing markets MetaTable into catalog",
@@ -202,6 +212,11 @@ def bootstrap_catalog_table(
         timeout=timeout,
     )
     if existing is not None:
+        validate_platform_meta_table_physical_contract(
+            existing,
+            model=MarketsMetaTableCatalogTable,
+            timeout=timeout,
+        )
         logger.info(
             "Attached markets MetaTable catalog",
             namespace=getattr(existing, "namespace", None),
@@ -308,9 +323,7 @@ def find_catalog_rows_by_storage_hash(
             )
         rows_by_storage_hash[row_storage_hash] = row
 
-    unknown_storage_hashes = sorted(
-        set(rows_by_storage_hash).difference(requested_storage_hashes)
-    )
+    unknown_storage_hashes = sorted(set(rows_by_storage_hash).difference(requested_storage_hashes))
     if unknown_storage_hashes:
         raise CatalogBootstrapError(
             "Markets MetaTable catalog returned rows outside the requested storage hashes: "
@@ -373,6 +386,136 @@ def validate_catalog_contract(
             f"local hash {expected_contract_hash!r}. Add an explicit migration or repair "
             "the catalog before startup."
         )
+
+
+def validate_platform_meta_table_physical_contract(
+    meta_table: MetaTable,
+    *,
+    model: type[MarketsBase],
+    timeout: int | float | tuple[float, float] | None,
+) -> None:
+    if getattr(meta_table, "management_mode", None) != "platform_managed":
+        return
+
+    try:
+        response = meta_table.introspect(timeout=timeout)
+    except Exception as exc:
+        raise CatalogBootstrapError(
+            "Could not introspect platform-managed MetaTable physical table for "
+            f"{model.__name__}. Repair or recreate the MetaTable before startup."
+        ) from exc
+
+    snapshot = response.get("introspection_snapshot") if isinstance(response, Mapping) else None
+    if not isinstance(snapshot, Mapping):
+        snapshot = getattr(meta_table, "introspection_snapshot", None)
+    if not isinstance(snapshot, Mapping):
+        raise CatalogBootstrapError(
+            "MetaTable introspection returned no physical snapshot for "
+            f"{model.__name__}. Repair or recreate the MetaTable before startup."
+        )
+
+    expected_columns = {str(column.name) for column in model.__table__.columns}
+    actual_columns = {
+        str(_physical_item_field(column, "name"))
+        for column in _physical_collection(response, snapshot, meta_table, "columns")
+        if _physical_item_field(column, "name")
+    }
+    expected_indexes = {
+        str(index.name): _expected_index_signature(index)
+        for index in getattr(model.__table__, "indexes", set()) or []
+        if getattr(index, "name", None)
+    }
+    actual_indexes = {
+        str(_physical_item_field(index, "name")): _physical_index_signature(index)
+        for index in _physical_collection(
+            response,
+            snapshot,
+            meta_table,
+            "indexes",
+            "indexes_meta",
+        )
+        if _physical_item_field(index, "name")
+    }
+
+    missing_columns = sorted(expected_columns - actual_columns)
+    extra_columns = sorted(actual_columns - expected_columns)
+    missing_indexes = sorted(set(expected_indexes) - set(actual_indexes))
+    mismatched_indexes = {
+        name: {
+            "expected": expected_indexes[name],
+            "actual": actual_indexes[name],
+        }
+        for name in sorted(set(expected_indexes).intersection(actual_indexes))
+        if expected_indexes[name] != actual_indexes[name]
+    }
+    if missing_columns or extra_columns or missing_indexes or mismatched_indexes:
+        raise CatalogBootstrapError(
+            "Registered platform-managed MetaTable has stale physical storage for "
+            f"{model.__name__}. Missing columns={missing_columns!r}, "
+            f"extra columns={extra_columns!r}, "
+            f"missing indexes={missing_indexes!r}, "
+            f"mismatched indexes={mismatched_indexes!r}. Repair or recreate the "
+            "MetaTable before normal schema bootstrap."
+        )
+
+
+def _expected_index_signature(index: Any) -> dict[str, Any]:
+    return {
+        "columns": [str(column.name) for column in index.columns],
+        "unique": bool(index.unique),
+    }
+
+
+def _physical_collection(
+    response: Any,
+    snapshot: Mapping[str, Any],
+    meta_table: MetaTable,
+    *field_names: str,
+) -> list[Any]:
+    for field_name in field_names:
+        snapshot_items = snapshot.get(field_name)
+        if isinstance(snapshot_items, list):
+            return snapshot_items
+
+    if isinstance(response, Mapping):
+        for field_name in field_names:
+            response_items = response.get(field_name)
+            if isinstance(response_items, list):
+                return response_items
+
+    for field_name in field_names:
+        meta_table_items = getattr(meta_table, field_name, None)
+        if isinstance(meta_table_items, list):
+            return meta_table_items
+
+    return []
+
+
+def _physical_item_field(item: Any, field_name: str) -> Any:
+    if isinstance(item, Mapping):
+        return item.get(field_name)
+    return getattr(item, field_name, None)
+
+
+def _physical_index_signature(index: Any) -> dict[str, Any]:
+    contract_fragment = _physical_item_field(index, "contract_fragment")
+    if not isinstance(contract_fragment, Mapping):
+        contract_fragment = {}
+
+    columns = (
+        _physical_item_field(index, "columns")
+        or _physical_item_field(index, "column_names")
+        or contract_fragment.get("columns")
+        or []
+    )
+    unique = _physical_item_field(index, "unique")
+    if unique is None:
+        unique = contract_fragment.get("unique")
+
+    return {
+        "columns": [str(column) for column in columns],
+        "unique": bool(unique),
+    }
 
 
 def register_catalog_missing_meta_table(
@@ -604,4 +747,5 @@ __all__ = [
     "resolve_catalog_meta_table",
     "upsert_catalog_row",
     "validate_catalog_contract",
+    "validate_platform_meta_table_physical_contract",
 ]

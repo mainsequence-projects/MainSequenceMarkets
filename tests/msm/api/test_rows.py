@@ -4,9 +4,16 @@ import datetime as dt
 import uuid
 from types import SimpleNamespace
 
+import pandas as pd
 import pytest
+from pydantic import ValidationError
 
-from msm.api.accounts import Account, AccountGroup, AccountTargetPositionAssignment
+from msm.api.accounts import (
+    Account,
+    AccountGroup,
+    AccountTargetPositionAssignment,
+    AccountTargetPositionAssignmentUpsert,
+)
 from msm.api.assets import (
     AssetCategory,
     AssetCategoryMembership,
@@ -83,6 +90,76 @@ def test_api_rows_declare_table_and_upsert_contracts(
     assert row_model.__table__ is table_model
     assert table_model in row_model.__required_tables__
     assert row_model.__upsert_keys__ == upsert_keys
+
+
+def test_account_target_position_assignment_requires_utc_timestamp() -> None:
+    account_uid = uuid.uuid4()
+    position_set_uid = uuid.uuid4()
+
+    with pytest.raises(ValidationError):
+        AccountTargetPositionAssignmentUpsert(
+            account_uid=account_uid,
+            target_positions_time="eod",
+            position_set_uid=position_set_uid,
+        )
+
+    with pytest.raises(ValidationError):
+        AccountTargetPositionAssignmentUpsert(
+            account_uid=account_uid,
+            target_positions_time=dt.datetime(2026, 5, 25),
+            position_set_uid=position_set_uid,
+        )
+
+    payload = AccountTargetPositionAssignmentUpsert(
+        account_uid=account_uid,
+        target_positions_time="2026-05-25T00:00:00Z",
+        position_set_uid=position_set_uid,
+    )
+
+    assert payload.target_positions_time == dt.datetime(2026, 5, 25, tzinfo=dt.UTC)
+
+
+def test_account_pretty_print_positions_formats_holdings(capsys) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    account = Account.model_validate(
+        {
+            "uid": account_uid,
+            "unique_identifier": "account-main",
+            "account_name": "Main Account",
+            "is_paper": True,
+            "account_is_active": True,
+        }
+    )
+    holdings = pd.DataFrame(
+        [
+            {
+                "time_index": dt.datetime(2026, 5, 25, tzinfo=dt.UTC),
+                "account_uid": account_uid,
+                "unique_identifier": "example-asset-btc",
+                "quantity": 10.0,
+                "extra_details": {"ticker": "BTC"},
+            }
+        ]
+    ).set_index(["time_index", "account_uid", "unique_identifier"])
+
+    positions = account.pretty_print_positions(
+        holdings,
+        asset_resolver=lambda unique_identifier: SimpleNamespace(
+            uid=asset_uid,
+            unique_identifier=unique_identifier,
+        ),
+    )
+
+    assert positions.to_dict("records") == [
+        {
+            "asset_uid": asset_uid,
+            "ticker": "BTC",
+            "position_type": "quantity",
+            "position_value": 10.0,
+        }
+    ]
+    assert "asset_uid" in capsys.readouterr().out
 
 
 def test_portfolio_create_schemas_includes_domain_required_tables(monkeypatch) -> None:

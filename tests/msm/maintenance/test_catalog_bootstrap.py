@@ -6,7 +6,10 @@ import pytest
 from mainsequence.client.exceptions import ConflictError
 
 import msm.maintenance.catalog as catalog
-from msm.maintenance.models import markets_meta_table_contract_hash
+from msm.maintenance.models import (
+    MarketsMetaTableCatalogTable,
+    markets_meta_table_contract_hash,
+)
 from msm.models import AssetTable, AssetTypeTable
 from msm.models.registration import markets_meta_table_fullname
 
@@ -26,6 +29,14 @@ def _meta_table(
         description=description,
         data_source_uid=None,
         storage_hash=storage_hash,
+    )
+
+
+def _disable_physical_contract_validation(monkeypatch) -> None:
+    monkeypatch.setattr(
+        catalog,
+        "validate_platform_meta_table_physical_contract",
+        lambda *_args, **_kwargs: None,
     )
 
 
@@ -49,6 +60,7 @@ def test_catalog_bootstrap_registers_missing_application_table(monkeypatch) -> N
             storage_hash="catalog-storage-hash",
         ),
     )
+
     def fake_search_model(_context, **kwargs):
         search_in_filters.append(dict(kwargs["in_filters"]))
         return {"rows": []}
@@ -90,6 +102,7 @@ def test_catalog_bootstrap_registers_missing_application_table(monkeypatch) -> N
 
 
 def test_catalog_bootstrap_attaches_cataloged_application_table(monkeypatch) -> None:
+    _disable_physical_contract_validation(monkeypatch)
     asset_storage_hash = AssetTable.__table__.name
     search_in_filters: list[dict] = []
     catalog_row = {
@@ -110,6 +123,7 @@ def test_catalog_bootstrap_attaches_cataloged_application_table(monkeypatch) -> 
             storage_hash="catalog-storage-hash",
         ),
     )
+
     def fake_search_model(_context, **kwargs):
         search_in_filters.append(dict(kwargs["in_filters"]))
         return {"rows": [catalog_row]}
@@ -137,9 +151,7 @@ def test_catalog_bootstrap_attaches_cataloged_application_table(monkeypatch) -> 
     assert result.registered_count == 0
     assert result.imported_count == 0
     assert search_in_filters == [{"storage_hash": [asset_storage_hash]}]
-    resolved = result.registration.meta_table_by_fullname[
-        markets_meta_table_fullname(AssetTable)
-    ]
+    resolved = result.registration.meta_table_by_fullname[markets_meta_table_fullname(AssetTable)]
     assert resolved.uid == "asset-meta-table-uid"
     assert resolved.storage_hash == asset_storage_hash
     assert resolved.physical_table_name == asset_storage_hash
@@ -147,6 +159,7 @@ def test_catalog_bootstrap_attaches_cataloged_application_table(monkeypatch) -> 
 
 
 def test_catalog_bootstrap_bulk_attaches_cataloged_tables(monkeypatch) -> None:
+    _disable_physical_contract_validation(monkeypatch)
     asset_type_storage_hash = AssetTypeTable.__table__.name
     asset_storage_hash = AssetTable.__table__.name
     search_in_filters: list[dict] = []
@@ -198,16 +211,12 @@ def test_catalog_bootstrap_bulk_attaches_cataloged_tables(monkeypatch) -> None:
         lambda **_kwargs: pytest.fail("catalog row should not be rewritten"),
     )
 
-    result = catalog.bootstrap_markets_meta_tables_from_catalog(
-        models=[AssetTypeTable, AssetTable]
-    )
+    result = catalog.bootstrap_markets_meta_tables_from_catalog(models=[AssetTypeTable, AssetTable])
 
     assert result.attached_count == 2
     assert result.registered_count == 0
     assert result.imported_count == 0
-    assert search_in_filters == [
-        {"storage_hash": [asset_type_storage_hash, asset_storage_hash]}
-    ]
+    assert search_in_filters == [{"storage_hash": [asset_type_storage_hash, asset_storage_hash]}]
     assert result.registration.target_meta_table_uid_by_fullname == {
         markets_meta_table_fullname(AssetTypeTable): "asset-type-meta-table-uid",
         markets_meta_table_fullname(AssetTable): "asset-meta-table-uid",
@@ -243,6 +252,7 @@ def test_catalog_bootstrap_rejects_catalog_contract_drift(monkeypatch) -> None:
 
 
 def test_catalog_bootstrap_imports_pre_catalog_platform_table(monkeypatch) -> None:
+    _disable_physical_contract_validation(monkeypatch)
     existing_meta_table = _meta_table(
         "asset-meta-table-uid",
         description="Imported asset catalog rows.",
@@ -317,6 +327,7 @@ def test_catalog_bootstrap_converts_duplicate_registration_to_drift_error(
 
 
 def test_bootstrap_catalog_table_attaches_existing_catalog(monkeypatch) -> None:
+    _disable_physical_contract_validation(monkeypatch)
     existing_catalog = _meta_table(
         "catalog-meta-table-uid",
         identifier="MarketsMetaTableCatalog",
@@ -335,3 +346,141 @@ def test_bootstrap_catalog_table_attaches_existing_catalog(monkeypatch) -> None:
     )
 
     assert catalog.bootstrap_catalog_table() is existing_catalog
+
+
+class _IntrospectableMetaTable:
+    management_mode = "platform_managed"
+
+    def __init__(self, snapshot: dict) -> None:
+        self._snapshot = snapshot
+
+    def introspect(self, *, timeout=None):
+        return {"introspection_snapshot": self._snapshot}
+
+
+class _TopLevelIntrospectableMetaTable:
+    management_mode = "platform_managed"
+
+    def __init__(self, snapshot: dict) -> None:
+        self._snapshot = snapshot
+
+    def introspect(self, *, timeout=None):
+        return {
+            "introspection_snapshot": {},
+            "columns": self._snapshot["columns"],
+            "indexes_meta": self._snapshot["indexes"],
+        }
+
+
+def _physical_snapshot_for_model(model, *, include_indexes: bool = True) -> dict:
+    return {
+        "columns": [{"name": str(column.name)} for column in model.__table__.columns],
+        "indexes": [
+            {
+                "name": str(index.name),
+                "columns": [str(column.name) for column in index.columns],
+                "unique": bool(index.unique),
+            }
+            for index in getattr(model.__table__, "indexes", set())
+        ]
+        if include_indexes
+        else [],
+    }
+
+
+def test_platform_meta_table_physical_validation_accepts_expected_columns_and_indexes() -> None:
+    meta_table = _IntrospectableMetaTable(
+        _physical_snapshot_for_model(MarketsMetaTableCatalogTable)
+    )
+
+    catalog.validate_platform_meta_table_physical_contract(
+        meta_table,
+        model=MarketsMetaTableCatalogTable,
+        timeout=7,
+    )
+
+
+def test_platform_meta_table_physical_validation_accepts_top_level_indexes_meta() -> None:
+    meta_table = _TopLevelIntrospectableMetaTable(_physical_snapshot_for_model(AssetTypeTable))
+
+    catalog.validate_platform_meta_table_physical_contract(
+        meta_table,
+        model=AssetTypeTable,
+        timeout=7,
+    )
+
+
+def test_platform_meta_table_physical_validation_rejects_stale_missing_indexes() -> None:
+    meta_table = _IntrospectableMetaTable(
+        _physical_snapshot_for_model(
+            MarketsMetaTableCatalogTable,
+            include_indexes=False,
+        )
+    )
+
+    with pytest.raises(catalog.CatalogBootstrapError, match="stale physical storage"):
+        catalog.validate_platform_meta_table_physical_contract(
+            meta_table,
+            model=MarketsMetaTableCatalogTable,
+            timeout=7,
+        )
+
+
+def test_platform_meta_table_physical_validation_rejects_stale_extra_columns() -> None:
+    snapshot = _physical_snapshot_for_model(MarketsMetaTableCatalogTable)
+    snapshot["columns"].append({"name": "resource_type"})
+    meta_table = _IntrospectableMetaTable(snapshot)
+
+    with pytest.raises(catalog.CatalogBootstrapError, match="extra columns"):
+        catalog.validate_platform_meta_table_physical_contract(
+            meta_table,
+            model=MarketsMetaTableCatalogTable,
+            timeout=7,
+        )
+
+
+def test_platform_meta_table_physical_validation_rejects_stale_index_uniqueness() -> None:
+    snapshot = _physical_snapshot_for_model(AssetTypeTable)
+    asset_type_index = next(
+        index for index in snapshot["indexes"] if index["columns"] == ["asset_type"]
+    )
+    asset_type_index["unique"] = False
+    meta_table = _IntrospectableMetaTable(snapshot)
+
+    with pytest.raises(catalog.CatalogBootstrapError, match="mismatched indexes"):
+        catalog.validate_platform_meta_table_physical_contract(
+            meta_table,
+            model=AssetTypeTable,
+            timeout=7,
+        )
+
+
+def test_platform_meta_table_physical_validation_rejects_stale_index_columns() -> None:
+    snapshot = _physical_snapshot_for_model(AssetTypeTable)
+    asset_type_index = next(
+        index for index in snapshot["indexes"] if index["columns"] == ["asset_type"]
+    )
+    asset_type_index["columns"] = ["display_name"]
+    meta_table = _IntrospectableMetaTable(snapshot)
+
+    with pytest.raises(catalog.CatalogBootstrapError, match="mismatched indexes"):
+        catalog.validate_platform_meta_table_physical_contract(
+            meta_table,
+            model=AssetTypeTable,
+            timeout=7,
+        )
+
+
+def test_platform_meta_table_physical_validation_rejects_missing_snapshot() -> None:
+    class EmptyResponseMetaTable:
+        management_mode = "platform_managed"
+
+        def introspect(self, *, timeout=None):
+            return {}
+
+    with pytest.raises(catalog.CatalogBootstrapError, match="no physical snapshot"):
+        catalog.validate_platform_meta_table_physical_contract(
+            EmptyResponseMetaTable(),
+            model=MarketsMetaTableCatalogTable,
+            timeout=7,
+        )

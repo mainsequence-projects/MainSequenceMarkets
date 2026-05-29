@@ -73,7 +73,18 @@ from the catalog are looked up once on the platform so pre-catalog installations
 can be imported. Only tables missing from both the catalog and the platform are
 registered, and each successful registration is written back to the catalog
 with the platform `MetaTable.uid`, namespace, identifier, description, storage
-hash, and local contract hash.
+hash, and local contract hash. The catalog is intentionally MetaTable-specific;
+DataNode registration state belongs in a separate catalog if it is needed later.
+
+When startup attaches an already-cataloged or pre-catalog platform-managed
+MetaTable, it introspects the physical table before exposing it to row APIs.
+The preflight checks required columns, extra columns, expected index names,
+index columns, and index uniqueness. A stale table can therefore fail during
+bootstrap instead of later during a compiled upsert. For example,
+`AssetType.upsert(...)` uses `ON CONFLICT (asset_type)`, so the physical
+`AssetType` table must have the unique `asset_type` index declared by
+`AssetTypeTable`; a same-named non-unique index is treated as catalog drift and
+must be repaired or recreated before normal startup.
 
 For narrow explicit preflight, pass `models=[...]` to register only the tables
 the process needs:

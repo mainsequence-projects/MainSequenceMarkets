@@ -19,7 +19,10 @@ from msm.services.asset_categories import (
     search_asset_categories as service_search_asset_categories,
     update_asset_category as service_update_asset_category,
 )
-from msm.services.assets import search_assets as service_search_assets
+from msm.services.assets import (
+    get_asset_by_uid as service_get_asset_by_uid,
+    search_assets as service_search_assets,
+)
 from msm.services.provider_details import search_openfigi_details as service_search_openfigi_details
 
 DEFAULT_SCAN_FLOOR = 100
@@ -36,9 +39,7 @@ def list_index_catalog_rows(
     offset: int = 0,
 ) -> list[dict[str, Any]]:
     scan_limit = _scan_limit(offset=offset, limit=limit)
-    index_rows = _operation_result_rows(
-        search_model(context, model=IndexTable, limit=scan_limit)
-    )
+    index_rows = _operation_result_rows(search_model(context, model=IndexTable, limit=scan_limit))
     normalized_rows = [
         _build_index_list_row(index_row)
         for index_row in index_rows
@@ -98,7 +99,9 @@ def list_asset_catalog_rows(
             if isinstance(row, Mapping) and row.get("asset_uid") not in (None, "")
         }
         asset_rows = [
-            row for row in asset_rows if isinstance(row, Mapping) and str(row.get("uid")) in allowed_asset_uids
+            row
+            for row in asset_rows
+            if isinstance(row, Mapping) and str(row.get("uid")) in allowed_asset_uids
         ]
 
     detail_rows = _operation_result_rows(
@@ -143,6 +146,125 @@ def list_asset_catalog_rows(
     return merged_rows[offset : offset + limit]
 
 
+def get_asset_frontend_detail_summary(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+) -> dict[str, Any] | None:
+    asset_row = _first_operation_row(service_get_asset_by_uid(context, uid=uid))
+    if asset_row is None:
+        return None
+
+    detail_row = _first_operation_row(
+        service_search_openfigi_details(context, asset_uid=uid, limit=1)
+    )
+    asset_list_row = _build_asset_list_row(
+        asset_row=asset_row,
+        detail_row=detail_row,
+    )
+    asset_uid = str(asset_list_row["uid"])
+    unique_identifier = _string_or_empty(asset_list_row.get("unique_identifier"))
+    name = _string_or_none(asset_list_row.get("name"))
+    ticker = _string_or_none(asset_list_row.get("ticker"))
+    exchange_code = _string_or_none(asset_list_row.get("exchange_code"))
+    security_market_sector = _string_or_none(asset_list_row.get("security_market_sector"))
+    security_type = _string_or_none(asset_list_row.get("security_type"))
+    figi = _string_or_none(asset_list_row.get("figi"))
+    title = name or ticker or unique_identifier or asset_uid
+
+    badges: list[dict[str, Any]] = []
+    if security_type:
+        badges.append(
+            {
+                "key": "security_type",
+                "label": security_type,
+                "tone": "neutral",
+            }
+        )
+    if security_market_sector:
+        badges.append(
+            {
+                "key": "security_market_sector",
+                "label": security_market_sector,
+                "tone": "info",
+            }
+        )
+
+    highlight_fields = [
+        {
+            "key": "unique_identifier",
+            "label": "Identifier",
+            "value": unique_identifier,
+            "kind": "code",
+            "icon": "database",
+        }
+    ]
+    if name:
+        highlight_fields.insert(
+            0,
+            {
+                "key": "name",
+                "label": "Name",
+                "value": name,
+                "kind": "text",
+                "icon": "database",
+            },
+        )
+    if ticker:
+        highlight_fields.append(
+            {
+                "key": "ticker",
+                "label": "Ticker",
+                "value": ticker,
+                "kind": "code",
+                "icon": "tag",
+            }
+        )
+
+    return {
+        "entity": {
+            "id": asset_uid,
+            "type": "asset",
+            "title": title,
+        },
+        "badges": badges,
+        "inline_fields": [
+            {
+                "key": "uid",
+                "label": "UID",
+                "value": asset_uid,
+                "kind": "code",
+            },
+            {
+                "key": "figi",
+                "label": "FIGI",
+                "value": figi,
+                "kind": "code",
+            },
+            {
+                "key": "exchange_code",
+                "label": "Exchange",
+                "value": exchange_code,
+                "kind": "text",
+            },
+        ],
+        "highlight_fields": highlight_fields,
+        "stats": [],
+        "label_management": {
+            "labels": [],
+            "add_label_url": None,
+            "remove_label_url": None,
+        },
+        "summary_warning": None,
+        "extensions": {
+            "asset_type": _string_or_none(asset_row.get("asset_type")),
+            "is_custom_by_organization": bool(
+                asset_list_row.get("is_custom_by_organization", True)
+            ),
+        },
+    }
+
+
 def list_asset_category_rows_response(
     context: MarketsRepositoryContext,
     *,
@@ -151,7 +273,9 @@ def list_asset_category_rows_response(
     offset: int = 0,
 ) -> dict[str, Any]:
     scan_limit = _scan_limit(offset=offset, limit=limit)
-    category_rows = _operation_result_rows(service_search_asset_categories(context, limit=scan_limit))
+    category_rows = _operation_result_rows(
+        service_search_asset_categories(context, limit=scan_limit)
+    )
     membership_rows = _operation_result_rows(
         service_list_asset_category_memberships(context, limit=MAX_SCAN_LIMIT)
     )
@@ -591,11 +715,20 @@ def _filter_asset_category_rows_for_bulk_delete(
             normalized_search=normalized_search,
         ):
             return False
-        if normalized_display_name and row["display_name"].strip().lower() != normalized_display_name:
+        if (
+            normalized_display_name
+            and row["display_name"].strip().lower() != normalized_display_name
+        ):
             return False
-        if normalized_display_name_contains and normalized_display_name_contains not in row["display_name"].lower():
+        if (
+            normalized_display_name_contains
+            and normalized_display_name_contains not in row["display_name"].lower()
+        ):
             return False
-        if normalized_unique_identifier and row["unique_identifier"].strip().lower() != normalized_unique_identifier:
+        if (
+            normalized_unique_identifier
+            and row["unique_identifier"].strip().lower() != normalized_unique_identifier
+        ):
             return False
         if (
             normalized_unique_identifier_contains
@@ -604,7 +737,10 @@ def _filter_asset_category_rows_for_bulk_delete(
             return False
         if normalized_description and row["description"].strip().lower() != normalized_description:
             return False
-        if normalized_description_contains and normalized_description_contains not in row["description"].lower():
+        if (
+            normalized_description_contains
+            and normalized_description_contains not in row["description"].lower()
+        ):
             return False
         return True
 
@@ -624,12 +760,15 @@ def _resolve_asset_category_unique_identifier(
     base_identifier = slugify_identifier(display_name.strip()) or "asset_category"
     candidate = base_identifier[:255]
     suffix = 2
-    while _first_operation_row(
-        service_get_asset_category_by_unique_identifier(
-            context,
-            unique_identifier=candidate,
+    while (
+        _first_operation_row(
+            service_get_asset_category_by_unique_identifier(
+                context,
+                unique_identifier=candidate,
+            )
         )
-    ) is not None:
+        is not None
+    ):
         suffix_text = f"_{suffix}"
         candidate = f"{base_identifier[: max(1, 255 - len(suffix_text))]}{suffix_text}"
         suffix += 1
@@ -652,7 +791,9 @@ def _merge_bulk_delete_filters(
     return {
         "search": search if search not in (None, "") else current_url_filters.get("search"),
         "display_name": (
-            display_name if display_name not in (None, "") else current_url_filters.get("display_name")
+            display_name
+            if display_name not in (None, "")
+            else current_url_filters.get("display_name")
         ),
         "display_name_contains": (
             display_name_contains
@@ -690,11 +831,7 @@ def _filters_from_current_url(current_url: str | None) -> dict[str, str]:
         return {}
     parsed = urlparse(current_url)
     query = parse_qs(parsed.query, keep_blank_values=False)
-    return {
-        key: values[-1]
-        for key, values in query.items()
-        if values and values[-1].strip()
-    }
+    return {key: values[-1] for key, values in query.items() if values and values[-1].strip()}
 
 
 def _build_frontend_list_pagination(
@@ -756,9 +893,7 @@ def _first_operation_row(result: Mapping[str, Any] | list[Any] | None) -> dict[s
 
 def _matches_search(*, values: Sequence[Any], normalized_search: str) -> bool:
     return any(
-        normalized_search in str(value).lower()
-        for value in values
-        if value not in (None, "")
+        normalized_search in str(value).lower() for value in values if value not in (None, "")
     )
 
 
@@ -818,6 +953,7 @@ __all__ = [
     "bulk_delete_asset_category_records",
     "create_asset_category_record",
     "delete_asset_category_record",
+    "get_asset_frontend_detail_summary",
     "delete_index_record",
     "get_asset_category_frontend_detail",
     "get_asset_category_record",
