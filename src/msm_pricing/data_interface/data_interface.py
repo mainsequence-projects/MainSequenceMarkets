@@ -146,7 +146,7 @@ class MSDataInterface:
     @cachedmethod(cache=attrgetter("_curve_cache"), lock=attrgetter("_curve_cache_lock"))
     def get_historical_discount_curve(self, curve_name, target_date):
         from mainsequence.logconf import logger
-        from mainsequence.tdag import APIDataNode
+        from mainsequence.meta_tables import APIDataNode
 
         data_node = APIDataNode.build_from_identifier(
             identifier=self._data_node_identifier_for_concept(PRICING_CONCEPT_DISCOUNT_CURVES)
@@ -207,7 +207,7 @@ class MSDataInterface:
         import pytz  # patch
 
         from mainsequence.logconf import logger
-        from mainsequence.tdag import APIDataNode
+        from mainsequence.meta_tables import APIDataNode
 
         data_node = APIDataNode.build_from_identifier(
             identifier=self._data_node_identifier_for_concept(

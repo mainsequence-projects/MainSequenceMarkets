@@ -7,21 +7,19 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 
-import mainsequence.tdag.data_nodes.build_operations as build_operations
-from mainsequence.tdag.data_nodes import DataNodeMetaData, RecordDefinition
-from msm.settings import markets_data_node_identifier
+import mainsequence.meta_tables.data_nodes.build_operations as build_operations
 
 from .base import (
     AssetScopedPortfolioCanonicalDataNode,
     PortfolioCanonicalDataNodeConfiguration,
     SignalWeightsConfiguration,
+    StorageTable,
     _class_import_path,
     _drop_empty_framework_init_kwargs,
     _drop_excluded_keys,
     _empty_flat_frame,
     _is_canonical_frame,
     _normalize_pivoted_signal_weights,
-    _record_definitions_from_dtype_map,
     _require_columns,
     _reset_frame_index,
 )
@@ -31,18 +29,14 @@ from .constants import (
     SCHEMA_BOOTSTRAP_SIGNAL_UID,
     SIGNAL_UID,
     SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS,
-    SIGNAL_WEIGHTS_COLUMN_DESCRIPTIONS,
-    SIGNAL_WEIGHTS_COLUMN_DTYPES_MAP,
-    SIGNAL_WEIGHTS_COLUMN_LABELS,
     SIGNAL_WEIGHTS_INDEX_NAMES,
 )
 from .metadata import emit_signal_metadata, extract_signal_description
+from .storage import SignalWeightsStorage
 
 
 class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
     """Canonical DataNode for Portfolios signal weights."""
-
-    __data_node_identifier__ = "signal_weights"
 
     def __init__(
         self,
@@ -95,15 +89,17 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
         config = self._canonical_config()
         raw_frame = self._calculate_signal_weights()
         frame = (
-            self.validate_frame(raw_frame, config=config)
+            self.validate_frame(raw_frame, config=config, storage_table=self.storage_table)
             if _is_canonical_frame(raw_frame, config=config)
             else self.validate_frame(
                 normalize_signal_weights_frame(
                     raw_frame,
                     signal_uid=self.signal_uid,
                     config=config,
+                    storage_table=self.storage_table,
                 ),
                 config=config,
+                storage_table=self.storage_table,
             )
         )
         self._upsert_signal_metadata_if_available()
@@ -145,8 +141,7 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
         emit_signal_metadata(
             signal_uid=self.signal_uid,
             signal_description=(
-                getattr(self, "_signal_description", None)
-                or extract_signal_description(self)
+                getattr(self, "_signal_description", None) or extract_signal_description(self)
             ),
             updater=getattr(self, "_signal_metadata_updater", None),
         )
@@ -341,20 +336,12 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
     def default_config(
         cls,
         *,
-        identifier: str | None = None,
-        description: str | None = None,
-        extra_records: list[RecordDefinition] | None = None,
         signal_configuration: Any | None = None,
     ) -> SignalWeightsConfiguration:
         return cls._validate_config(
             SignalWeightsConfiguration(
                 index_names=cls._required_index_names(),
-                records=cls._records_with_extra(extra_records=extra_records),
                 signal_configuration=signal_configuration,
-                node_metadata=DataNodeMetaData(
-                    identifier=identifier or cls._default_identifier(),
-                    description=description or cls._default_description(),
-                ),
             )
         )
 
@@ -381,35 +368,18 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
             if isinstance(config, PortfolioCanonicalDataNodeConfiguration):
                 config = SignalWeightsConfiguration(
                     index_names=config.index_names,
-                    records=config.records,
-                    node_metadata=config.node_metadata,
                 )
             else:
                 raise TypeError(f"{cls.__name__} requires a SignalWeightsConfiguration.")
         return super()._validate_config(config)
 
     @classmethod
-    def _default_identifier(cls) -> str:
-        return markets_data_node_identifier(cls.__data_node_identifier__)
-
-    @classmethod
-    def _default_description(cls) -> str:
-        return (
-            "Canonical Portfolios signal weights indexed by time_index, signal_uid, "
-            "and asset unique_identifier."
-        )
-
-    @classmethod
     def _required_index_names(cls) -> list[str]:
         return list(SIGNAL_WEIGHTS_INDEX_NAMES)
 
     @classmethod
-    def _required_records(cls) -> list[RecordDefinition]:
-        return _record_definitions_from_dtype_map(
-            SIGNAL_WEIGHTS_COLUMN_DTYPES_MAP,
-            labels=SIGNAL_WEIGHTS_COLUMN_LABELS,
-            descriptions=SIGNAL_WEIGHTS_COLUMN_DESCRIPTIONS,
-        )
+    def _required_storage_table(cls) -> type[SignalWeightsStorage]:
+        return SignalWeightsStorage
 
     @classmethod
     def _schema_bootstrap_index_values(cls) -> dict[str, Any]:
@@ -454,12 +424,14 @@ def normalize_signal_weights_frame(
     *,
     signal_uid: str,
     config: PortfolioCanonicalDataNodeConfiguration | None = None,
+    storage_table: StorageTable | None = None,
 ) -> pd.DataFrame:
     """Normalize signal output into canonical SignalWeights rows."""
     config = SignalWeights._validate_config(config or SignalWeights.default_config())
+    required_columns = list(SignalWeights._column_dtypes_map_for_storage(storage_table))
     flat = _reset_frame_index(signal_weights_frame)
     if flat.empty:
-        flat = _empty_flat_frame(config=config)
+        flat = _empty_flat_frame(column_names=required_columns)
 
     if "signal_weight" not in flat.columns:
         flat = _normalize_pivoted_signal_weights(flat)
@@ -467,12 +439,13 @@ def normalize_signal_weights_frame(
 
     _require_columns(
         flat,
-        required_columns=list(config.column_dtypes_map),
+        required_columns=required_columns,
         frame_name="SignalWeights",
     )
     return SignalWeights.validate_frame(
-        flat[list(config.column_dtypes_map)],
+        flat[required_columns],
         config=config,
+        storage_table=storage_table,
     )
 
 

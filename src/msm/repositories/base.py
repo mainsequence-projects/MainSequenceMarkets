@@ -11,7 +11,7 @@ from mainsequence.client.models_metatables import (
     MetaTableOperationLimits,
     MetaTableOperationScopeTable,
 )
-from mainsequence.tdag.meta_tables import compile_sqlalchemy_statement
+from mainsequence.meta_tables.compiled_sql.v1 import compile_sqlalchemy_statement
 
 from msm.base import MarketsBase
 

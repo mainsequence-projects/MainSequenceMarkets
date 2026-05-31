@@ -23,6 +23,9 @@ os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
         "msm.accounts.data_nodes",
         "msm.execution",
         "msm.execution.data_nodes",
+        # ADR 0017 removed the DataNodeTableContract module entirely; its
+        # holdings/position schemas now live on the storage classes.
+        "msm.data_nodes.utils.contracts",
     ],
 )
 def test_legacy_data_node_module_paths_are_removed(module_name: str) -> None:
@@ -34,9 +37,10 @@ def test_legacy_data_node_module_paths_are_removed(module_name: str) -> None:
     "module_name",
     [
         "msm.data_nodes.utils.time",
-        "msm.data_nodes.utils.contracts",
         "msm.data_nodes.utils.namespaces",
         "msm.data_nodes.utils.stamped",
+        "msm.data_nodes.utils.storage_schema",
+        "msm.data_nodes.storage",
         "msm.data_nodes.accounts",
         "msm.data_nodes.execution",
     ],

@@ -27,8 +27,14 @@ class MarketsMetaTableCatalogTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "storage_hash", unique=True),
-            "storage_hash",
+            markets_index_name(
+                __metatable_identifier__,
+                "namespace",
+                "identifier",
+                unique=True,
+            ),
+            "namespace",
+            "identifier",
             unique=True,
         ),
         Index(
@@ -48,7 +54,6 @@ class MarketsMetaTableCatalogTable(MarketsMetaTableMixin, MarketsBase):
     description: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     model_name: Mapped[str] = mapped_column(String(255), nullable=False)
     meta_table_uid: Mapped[str] = mapped_column(String(64), nullable=False)
-    storage_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     contract_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     sdk_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
@@ -73,7 +78,6 @@ class MarketsMetaTableCatalogRow:
     description: str | None
     model_name: str
     meta_table_uid: str
-    storage_hash: str
     contract_hash: str
     sdk_version: str | None = None
 
@@ -100,14 +104,13 @@ class MarketsMetaTableCatalogRow:
             description=_optional_text(getattr(meta_table, "description", None)),
             model_name=model.__name__,
             meta_table_uid=_required_text(getattr(meta_table, "uid", None), "meta_table_uid"),
-            storage_hash=_required_text(getattr(meta_table, "storage_hash", None), "storage_hash"),
             contract_hash=contract_hash or markets_meta_table_contract_hash(model),
             sdk_version=sdk_version,
         )
 
     @property
-    def identity_key(self) -> tuple[str]:
-        return (self.storage_hash,)
+    def identity_key(self) -> tuple[str, str]:
+        return (self.namespace, self.identifier)
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -116,7 +119,6 @@ class MarketsMetaTableCatalogRow:
             "description": self.description,
             "model_name": self.model_name,
             "meta_table_uid": self.meta_table_uid,
-            "storage_hash": self.storage_hash,
             "contract_hash": self.contract_hash,
             "sdk_version": self.sdk_version,
         }

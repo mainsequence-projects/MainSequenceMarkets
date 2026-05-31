@@ -20,7 +20,6 @@ def test_get_catalogues_returns_catalogue_list(monkeypatch) -> None:
                     "description": None,
                     "model_name": "AssetTable",
                     "meta_table_uid": "asset-meta-table-uid",
-                    "storage_hash": "asset",
                     "contract_hash": "contract-hash",
                     "sdk_version": "4.0.12",
                     "created_at": "2026-05-28T00:00:00+00:00",
@@ -52,7 +51,6 @@ def test_get_catalogues_returns_catalogue_list(monkeypatch) -> None:
                 "description": None,
                 "model_name": "AssetTable",
                 "meta_table_uid": "asset-meta-table-uid",
-                "storage_hash": "asset",
                 "contract_hash": "contract-hash",
                 "sdk_version": "4.0.12",
                 "created_at": "2026-05-28T00:00:00+00:00",
@@ -81,7 +79,6 @@ def test_get_catalogue_rows_returns_generic_rows(monkeypatch) -> None:
                 "identifier": "Asset",
                 "model_name": "AssetTable",
                 "meta_table_uid": "asset-meta-table-uid",
-                "storage_hash": "asset",
             },
             "columns": [
                 {
@@ -118,7 +115,6 @@ def test_get_catalogue_rows_returns_generic_rows(monkeypatch) -> None:
             "identifier": "Asset",
             "model_name": "AssetTable",
             "meta_table_uid": "asset-meta-table-uid",
-            "storage_hash": "asset",
         },
         "columns": [
             {

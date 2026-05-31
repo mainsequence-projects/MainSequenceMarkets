@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from mainsequence.client.exceptions import ConflictError
-from mainsequence.tdag.meta_tables import (
+from mainsequence.meta_tables import (
     PlatformManagedMetaTable,
     metatable_configured_tablename,
 )
@@ -13,7 +13,12 @@ from mainsequence.tdag.meta_tables import (
 import msm.models.registration as meta_tables
 import msm.models as models
 from msm.base import MarketsMetaTableMixin
-from msm.models.registration import build_markets_registration_requests, markets_meta_table_fullname
+from msm.data_nodes.storage import AccountHoldingsStorage
+from msm.models.registration import (
+    build_markets_registration_requests,
+    is_time_index_meta_table_model,
+    markets_meta_table_fullname,
+)
 from msm.models import (
     AssetTypeTable,
     AssetTable,
@@ -365,7 +370,7 @@ def test_bond_asset_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
 
 def test_markets_models_build_platform_registration_requests_in_dependency_order() -> None:
     target_meta_table_uid_by_fullname: dict[str, str] = {}
-    requests = []
+    pairs = []
 
     for model in markets_sqlalchemy_models():
         request = build_markets_registration_requests(
@@ -373,20 +378,29 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
             models=[model],
             target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
         )[0]
-        requests.append(request)
+        pairs.append((model, request))
         target_meta_table_uid_by_fullname[markets_meta_table_fullname(model)] = str(uuid.uuid4())
 
     assert AssetTypeTable in markets_sqlalchemy_models()
-    assert requests
-    assert all(request.management_mode == "platform_managed" for request in requests)
+    assert pairs
+
+    # ADR 0017: domain MetaTables and DataNode storage (PlatformTimeIndexMetaData)
+    # build different registration-request types.
+    domain_requests = [req for model, req in pairs if not is_time_index_meta_table_model(model)]
+    storage_requests = [req for model, req in pairs if is_time_index_meta_table_model(model)]
+    assert domain_requests
+    assert storage_requests
+    assert all(request.management_mode == "platform_managed" for request in domain_requests)
     assert all(
-        request.storage_hash == request.table_contract.physical.table_name for request in requests
+        request.storage_hash == request.table_contract.physical.table_name
+        for request in domain_requests
     )
+    assert all(request.storage_hash for request in storage_requests)
 
 
 def test_markets_models_build_external_registration_requests_in_dependency_order() -> None:
     target_meta_table_uid_by_fullname: dict[str, str] = {}
-    requests = []
+    pairs = []
 
     for model in markets_sqlalchemy_models():
         request = build_markets_registration_requests(
@@ -395,11 +409,51 @@ def test_markets_models_build_external_registration_requests_in_dependency_order
             models=[model],
             target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
         )[0]
-        requests.append(request)
+        pairs.append((model, request))
         target_meta_table_uid_by_fullname[markets_meta_table_fullname(model)] = str(uuid.uuid4())
 
-    assert requests
-    assert all(request.management_mode == "external_registered" for request in requests)
+    assert pairs
+    domain_requests = [req for model, req in pairs if not is_time_index_meta_table_model(model)]
+    storage_requests = [req for model, req in pairs if is_time_index_meta_table_model(model)]
+    assert domain_requests
+    assert storage_requests
+    assert all(request.management_mode == "external_registered" for request in domain_requests)
+    assert all(
+        getattr(request, "management_mode", "platform_managed") != "external_registered"
+        for request in storage_requests
+    )
+
+
+def test_external_registration_mode_routes_storage_classes_through_sdk_register(
+    monkeypatch,
+) -> None:
+    register_calls: list[dict] = []
+
+    def fail_external_register(*_args, **_kwargs):
+        raise AssertionError("storage classes must not use generic external registration")
+
+    def fake_register(cls, **kwargs):
+        register_calls.append(kwargs)
+        return SimpleNamespace(uid="account-holdings-storage-uid")
+
+    monkeypatch.setattr(
+        meta_tables,
+        "register_external_sqlalchemy_model",
+        fail_external_register,
+    )
+    monkeypatch.setattr(AccountHoldingsStorage, "register", classmethod(fake_register))
+
+    result = meta_tables.register_markets_meta_tables(
+        data_source_uid="data-source-uid",
+        management_mode="external_registered",
+        models=[AccountHoldingsStorage],
+    )
+
+    assert register_calls
+    assert register_calls[0]["data_source_uid"] == "data-source-uid"
+    assert result.target_meta_table_uid_by_fullname == {
+        markets_meta_table_fullname(AccountHoldingsStorage): "account-holdings-storage-uid"
+    }
 
 
 def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:

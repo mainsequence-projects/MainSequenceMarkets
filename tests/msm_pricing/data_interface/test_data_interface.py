@@ -74,9 +74,9 @@ def test_get_historical_fixings_reads_index_stamped_data(monkeypatch) -> None:
                 ]
             ).set_index(["time_index", "unique_identifier"])
 
-    import mainsequence.tdag as tdag
+    import mainsequence.meta_tables as meta_tables
 
-    monkeypatch.setattr(tdag, "APIDataNode", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
 
     interface = MSDataInterface(
         market_data_configuration={
@@ -130,9 +130,9 @@ def test_get_historical_fixings_defaults_to_pricing_market_data_configuration(
                 ]
             ).set_index(["time_index", "unique_identifier"])
 
-    import mainsequence.tdag as tdag
+    import mainsequence.meta_tables as meta_tables
 
-    monkeypatch.setattr(tdag, "APIDataNode", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
 
     interface = MSDataInterface()
 
@@ -170,9 +170,9 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
                 ]
             ).set_index(["time_index", "curve_unique_identifier"])
 
-    import mainsequence.tdag as tdag
+    import mainsequence.meta_tables as meta_tables
 
-    monkeypatch.setattr(tdag, "APIDataNode", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
 
     interface = MSDataInterface(
         market_data_configuration={
@@ -231,9 +231,9 @@ def test_get_historical_discount_curve_defaults_to_pricing_market_data_configura
                 ]
             ).set_index(["time_index", "curve_unique_identifier"])
 
-    import mainsequence.tdag as tdag
+    import mainsequence.meta_tables as meta_tables
 
-    monkeypatch.setattr(tdag, "APIDataNode", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
 
     interface = MSDataInterface()
 
@@ -291,9 +291,9 @@ def test_get_historical_fixings_uses_persisted_binding_before_static_default(
                 ]
             ).set_index(["time_index", "unique_identifier"])
 
-    import mainsequence.tdag as tdag
+    import mainsequence.meta_tables as meta_tables
 
-    monkeypatch.setattr(tdag, "APIDataNode", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
     monkeypatch.setattr(
         "msm_pricing.api.market_data_bindings.PricingMarketDataBinding.resolve_data_node_identifier",
         lambda *, context_key, concept_key: (

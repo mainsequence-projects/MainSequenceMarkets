@@ -9,20 +9,19 @@ import numpy as np
 import pandas as pd
 import pytz
 
-import mainsequence.tdag.data_nodes.build_operations as build_operations
-from mainsequence.client.models_tdag import UpdateStatistics
-from mainsequence.tdag.data_nodes import APIDataNode, DataNode, RecordDefinition
+import mainsequence.meta_tables.data_nodes.build_operations as build_operations
+from mainsequence.client.models_metatables import UpdateStatistics
+from mainsequence.meta_tables import APIDataNode, DataNode
 from msm.portfolios.asset_scope import dedupe_asset_scope
-from msm.settings import markets_data_node_identifier
 
 from .base import (
     AssetScopedPortfolioCanonicalDataNode,
     PortfolioCanonicalDataNodeConfiguration,
+    StorageTable,
     _class_import_path,
     _drop_empty_framework_init_kwargs,
     _empty_flat_frame,
     _is_canonical_frame,
-    _record_definitions_from_dtype_map,
     _require_columns,
     _reset_frame_index,
 )
@@ -30,15 +29,13 @@ from .constants import (
     ASSET_UNIQUE_IDENTIFIER,
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
     PORTFOLIO_INDEX_ASSET_UNIQUE_IDENTIFIER,
-    PORTFOLIOS_COLUMN_DESCRIPTIONS,
-    PORTFOLIOS_COLUMN_DTYPES_MAP,
-    PORTFOLIOS_COLUMN_LABELS,
     PORTFOLIOS_INDEX_NAMES,
     SCHEMA_BOOTSTRAP_PORTFOLIO_IDENTIFIER,
 )
 from .metadata import emit_portfolio_metadata, extract_portfolio_description
 from .portfolio_identity import get_or_create_portfolio_index_asset
 from .portfolio_weights import PortfolioWeights
+from .storage import PortfoliosStorage
 
 
 def translate_to_pandas_freq(custom_freq: str) -> str:
@@ -64,7 +61,6 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
     """Canonical portfolio values DataNode and portfolio workflow orchestrator."""
 
     OFFSET_START = datetime(2018, 1, 1, tzinfo=pytz.utc)
-    __data_node_identifier__ = "portfolios"
 
     def __init__(
         self,
@@ -137,8 +133,7 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
         self.signal_weights = self.backtesting_weights_config.signal_weights_instance
         if not isinstance(self.signal_weights, SignalWeights):
             raise TypeError(
-                "PortfoliosDataNode requires signal_weights_instance to inherit "
-                "from SignalWeights."
+                "PortfoliosDataNode requires signal_weights_instance to inherit from SignalWeights."
             )
 
         self.rebalancer = self.backtesting_weights_config.rebalance_strategy_instance
@@ -245,15 +240,17 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
         raw_frame = self._calculate_portfolio_values()
         config = self._canonical_config()
         frame = (
-            self.validate_frame(raw_frame, config=config)
+            self.validate_frame(raw_frame, config=config, storage_table=self.storage_table)
             if _is_canonical_frame(raw_frame, config=config)
             else self.validate_frame(
                 normalize_portfolio_values_frame(
                     raw_frame,
                     unique_identifier=self._resolve_unique_identifier(),
                     config=config,
+                    storage_table=self.storage_table,
                 ),
                 config=config,
+                storage_table=self.storage_table,
             )
         )
         self._upsert_portfolio_metadata_if_available(frame)
@@ -298,9 +295,9 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
         ]
 
         expected_columns = ["unique_identifier"]
-        assert (
-            signal_weights.columns.names == expected_columns
-        ), f"signal_weights must have columns named {expected_columns}"
+        assert signal_weights.columns.names == expected_columns, (
+            f"signal_weights must have columns named {expected_columns}"
+        )
 
         raw_prices, interpolated_prices = self._interpolate_bars_index(
             new_index=new_index,
@@ -751,27 +748,12 @@ rebalance details:"""
         )
 
     @classmethod
-    def _default_identifier(cls) -> str:
-        return markets_data_node_identifier(cls.__data_node_identifier__)
-
-    @classmethod
-    def _default_description(cls) -> str:
-        return (
-            "Canonical Portfolios portfolio value series indexed by time_index and "
-            "unique_identifier."
-        )
-
-    @classmethod
     def _required_index_names(cls) -> list[str]:
         return list(PORTFOLIOS_INDEX_NAMES)
 
     @classmethod
-    def _required_records(cls) -> list[RecordDefinition]:
-        return _record_definitions_from_dtype_map(
-            PORTFOLIOS_COLUMN_DTYPES_MAP,
-            labels=PORTFOLIOS_COLUMN_LABELS,
-            descriptions=PORTFOLIOS_COLUMN_DESCRIPTIONS,
-        )
+    def _required_storage_table(cls) -> type[PortfoliosStorage]:
+        return PortfoliosStorage
 
     @classmethod
     def _schema_bootstrap_index_values(cls) -> dict[str, Any]:
@@ -785,12 +767,14 @@ def normalize_portfolio_values_frame(
     *,
     unique_identifier: str,
     config: PortfolioCanonicalDataNodeConfiguration | None = None,
+    storage_table: StorageTable | None = None,
 ) -> pd.DataFrame:
     """Normalize Portfolios portfolio values into canonical PortfoliosDataNode rows."""
     config = PortfoliosDataNode._validate_config(config or PortfoliosDataNode.default_config())
+    required_columns = list(PortfoliosDataNode._column_dtypes_map_for_storage(storage_table))
     flat = _reset_frame_index(portfolio_values_frame)
     if flat.empty:
-        flat = _empty_flat_frame(config=config)
+        flat = _empty_flat_frame(column_names=required_columns)
 
     if PORTFOLIO_CANONICAL_TIME_INDEX_NAME not in flat.columns and "index" in flat.columns:
         flat = flat.rename(columns={"index": PORTFOLIO_CANONICAL_TIME_INDEX_NAME})
@@ -802,10 +786,11 @@ def normalize_portfolio_values_frame(
 
     _require_columns(
         flat,
-        required_columns=list(config.column_dtypes_map),
+        required_columns=required_columns,
         frame_name="PortfoliosDataNode",
     )
     return PortfoliosDataNode.validate_frame(
-        flat[list(config.column_dtypes_map)],
+        flat[required_columns],
         config=config,
+        storage_table=storage_table,
     )

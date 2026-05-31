@@ -7,47 +7,27 @@ from uuid import UUID
 
 import pandas as pd
 
-from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
+from mainsequence.client import dtype_codec as dc
+from mainsequence.meta_tables import DataNode
 from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
 )
+from msm.data_nodes.storage import AccountHoldingsStorage, FundHoldingsStorage
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
-from mainsequence.tdag.data_nodes import (
-    DataNode,
-    DataNodeMetaData,
-    RecordDefinition,
-)
-from msm.data_nodes.utils import (
-    ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT,
-    FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT,
-)
 from msm.services.holdings import (
     build_account_holdings_frame as build_account_holdings_service_frame,
 )
 from msm.services.holdings import (
     build_fund_holdings_frame as build_fund_holdings_service_frame,
 )
-from msm.services.holdings import initialize_data_node_source_table
-from msm.settings import markets_data_node_identifier
 
-ACCOUNT_HOLDINGS_TIME_INDEX_NAME = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.time_index_name
-ACCOUNT_HOLDINGS_INDEX_NAMES = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.dynamic_table_index_names
-ACCOUNT_HOLDINGS_RECORDS = ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT.records
+ACCOUNT_HOLDINGS_TIME_INDEX_NAME = AccountHoldingsStorage.__time_index_name__
+ACCOUNT_HOLDINGS_INDEX_NAMES = list(AccountHoldingsStorage.__index_names__)
 
-VIRTUAL_FUND_HOLDINGS_TIME_INDEX_NAME = FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.time_index_name
-VIRTUAL_FUND_HOLDINGS_INDEX_NAMES = (
-    FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.dynamic_table_index_names
-)
-VIRTUAL_FUND_HOLDINGS_RECORDS = FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT.records
+VIRTUAL_FUND_HOLDINGS_TIME_INDEX_NAME = FundHoldingsStorage.__time_index_name__
+VIRTUAL_FUND_HOLDINGS_INDEX_NAMES = list(FundHoldingsStorage.__index_names__)
 
-SCHEMA_BOOTSTRAP_ACCOUNT_UID = UUID("00000000-0000-0000-0000-000000000101")
-SCHEMA_BOOTSTRAP_FUND_UID = UUID("00000000-0000-0000-0000-000000000102")
-SCHEMA_BOOTSTRAP_ACCOUNT_UNIQUE_IDENTIFIER = str(SCHEMA_BOOTSTRAP_ACCOUNT_UID)
-SCHEMA_BOOTSTRAP_FUND_UNIQUE_IDENTIFIER = str(SCHEMA_BOOTSTRAP_FUND_UID)
-SCHEMA_BOOTSTRAP_HOLDINGS_SET_UID = UUID("00000000-0000-0000-0000-000000000100")
-SCHEMA_BOOTSTRAP_ROW_IDENTIFIER = "__schema_bootstrap__"
-SCHEMA_BOOTSTRAP_TIME_INDEX = dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
 NULLABLE_HOLDINGS_COLUMNS = {
     "target_trade_time",
     "target_weight",
@@ -59,7 +39,6 @@ class HoldingsDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
 
     time_index_name: str
     index_names: list[str]
-    records: list[RecordDefinition]
 
     @property
     def owner_index_name(self) -> str:
@@ -68,10 +47,6 @@ class HoldingsDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
     @property
     def row_identifier_index_name(self) -> str:
         return self.index_names[-1]
-
-    @property
-    def column_dtypes_map(self) -> dict[str, str]:
-        return {record.column_name: record.dtype for record in self.records}
 
 
 class HoldingsDataNode(AssetIndexedDataNode):
@@ -90,42 +65,13 @@ class HoldingsDataNode(AssetIndexedDataNode):
         return {}
 
     @classmethod
-    def default_config(
-        cls,
-        *,
-        identifier: str | None = None,
-        description: str | None = None,
-        extra_records: list[RecordDefinition] | None = None,
-    ) -> HoldingsDataNodeConfiguration:
+    def default_config(cls) -> HoldingsDataNodeConfiguration:
         return cls._validate_config(
             HoldingsDataNodeConfiguration(
                 time_index_name=cls._required_time_index_name(),
                 index_names=cls._required_index_names(),
-                records=cls._records_with_extra(extra_records=extra_records),
-                node_metadata=DataNodeMetaData(
-                    identifier=identifier or cls._default_identifier(),
-                    description=description or cls._default_description(),
-                ),
             )
         )
-
-    @classmethod
-    def _records_with_extra(
-        cls,
-        *,
-        extra_records: list[RecordDefinition] | None = None,
-    ) -> list[RecordDefinition]:
-        required_records = cls._required_records()
-        resolved_records = (
-            _merge_records(required_records, extra_records)
-            if extra_records
-            else list(required_records)
-        )
-        _validate_required_records(
-            records=resolved_records,
-            required_records=required_records,
-        )
-        return resolved_records
 
     @classmethod
     def _validate_config(
@@ -142,19 +88,7 @@ class HoldingsDataNode(AssetIndexedDataNode):
             raise ValueError(
                 f"{cls.__name__} requires index_names {cls._required_index_names()!r}."
             )
-        _validate_required_records(
-            records=list(config.records),
-            required_records=cls._required_records(),
-        )
         return config
-
-    @classmethod
-    def _default_identifier(cls) -> str:
-        raise NotImplementedError
-
-    @classmethod
-    def _default_description(cls) -> str:
-        raise NotImplementedError
 
     @classmethod
     def _required_time_index_name(cls) -> str:
@@ -162,14 +96,6 @@ class HoldingsDataNode(AssetIndexedDataNode):
 
     @classmethod
     def _required_index_names(cls) -> list[str]:
-        raise NotImplementedError
-
-    @classmethod
-    def _required_records(cls) -> list[RecordDefinition]:
-        raise NotImplementedError
-
-    @classmethod
-    def _schema_bootstrap_owner_identifier(cls) -> str:
         raise NotImplementedError
 
     def _holdings_config(self) -> HoldingsDataNodeConfiguration:
@@ -181,6 +107,7 @@ class HoldingsDataNode(AssetIndexedDataNode):
         return _validate_holdings_frame(
             self.get_holdings_frame(),
             config=self._holdings_config(),
+            column_dtypes_map=self._bound_column_dtypes_map(),
         )
 
     def set_frame(self, frame: pd.DataFrame) -> HoldingsDataNode:
@@ -190,7 +117,11 @@ class HoldingsDataNode(AssetIndexedDataNode):
     def get_holdings_frame(self) -> pd.DataFrame:
         frame = getattr(self, "_holdings_data_frame", None)
         if frame is None:
-            return self.build_schema_bootstrap_frame(config=self._holdings_config())
+            raise ValueError(
+                f"{self.__class__.__name__} requires a real holdings frame. "
+                "Call set_frame(), set_account_holdings_frame(), or "
+                "set_fund_holdings_frame() before update()."
+            )
         return frame
 
     def get_holdings_history(
@@ -232,55 +163,16 @@ class HoldingsDataNode(AssetIndexedDataNode):
         return self.get_last_observation(dimension_filters=filters)
 
     @classmethod
-    def build_initialization_frame(cls, **kwargs) -> pd.DataFrame:
-        return cls.build_schema_bootstrap_frame(**kwargs)
-
-    @classmethod
-    def build_schema_bootstrap_frame(
+    def validate_holdings_frame(
         cls,
+        data_frame: pd.DataFrame,
         *,
-        config: HoldingsDataNodeConfiguration | None = None,
-        owner_unique_identifier: str | None = None,
-        row_identifier: str = SCHEMA_BOOTSTRAP_ROW_IDENTIFIER,
-        holdings_set_uid: UUID | str = SCHEMA_BOOTSTRAP_HOLDINGS_SET_UID,
-        time_index: dt.datetime | pd.Timestamp = SCHEMA_BOOTSTRAP_TIME_INDEX,
+        storage_table: type[AccountHoldingsStorage | FundHoldingsStorage] | None = None,
     ) -> pd.DataFrame:
-        owner_unique_identifier = (
-            owner_unique_identifier or cls._schema_bootstrap_owner_identifier()
-        )
-        config = config or cls.default_config()
-        row: dict[str, Any] = {
-            config.time_index_name: time_index,
-            config.owner_index_name: owner_unique_identifier,
-            config.row_identifier_index_name: row_identifier,
-            "holdings_set_uid": holdings_set_uid,
-            "is_trade_snapshot": False,
-            "quantity": 0.0,
-            "target_trade_time": pd.Timestamp(time_index).isoformat(),
-            "extra_details": {
-                "_mainsequence_reserved": "schema_bootstrap",
-                "semantic": False,
-            },
-        }
-        for record in config.records or []:
-            if record.column_name not in row:
-                row[record.column_name] = _schema_bootstrap_value(
-                    dtype=record.dtype,
-                    time_index=time_index,
-                )
-        frame = pd.DataFrame([row])
-        frame = frame.set_index(config.index_names)
-        return _validate_holdings_frame(frame, config=config)
-
-    @classmethod
-    def build_mock_frame(cls, **kwargs) -> pd.DataFrame:
-        return cls.build_schema_bootstrap_frame(**kwargs)
-
-    @classmethod
-    def validate_holdings_frame(cls, data_frame: pd.DataFrame) -> pd.DataFrame:
         return _validate_holdings_frame(
             data_frame,
             config=cls.default_config(),
+            column_dtypes_map=cls._column_dtypes_map_for_storage(storage_table),
         )
 
     def holdings_data_source_uid(self) -> str:
@@ -288,47 +180,15 @@ class HoldingsDataNode(AssetIndexedDataNode):
 
     def ensure_storage_ready(self, *, force_update: bool = False) -> str:
         storage = None if force_update else self._ready_storage_or_none()
-        if storage is None and not force_update:
-            storage = self._initialize_source_table_storage_or_none()
         if storage is None:
             self.run(debug_mode=True, update_tree=False, force_update=True)
             storage = self._ready_storage_or_none()
 
         if storage is None:
             raise RuntimeError(
-                f"{self.__class__.__name__} did not create a ready holdings "
-                "data node. Run the DataNode bootstrap path before writing "
-                "holdings."
+                f"{self.__class__.__name__} did not create a ready holdings data node."
             )
         return _coerce_required_uid(storage, field_name="data_node_storage")
-
-    def _initialize_source_table_storage_or_none(self):
-        storage = self.data_node_storage
-        if _coerce_optional_uid(storage, field_name="data_node_storage") is None:
-            return None
-
-        config = self._holdings_config()
-        try:
-            self._initialize_source_table(storage=storage, config=config)
-        except Exception as exc:
-            status_code = getattr(exc, "status_code", None)
-            if status_code in {404, 405}:
-                return None
-            raise
-
-        source_config = _storage_source_config(storage)
-        if source_config is None:
-            return None
-        self._validate_storage_contract(source_config)
-        return storage
-
-    def _initialize_source_table(
-        self,
-        *,
-        storage: Any,
-        config: HoldingsDataNodeConfiguration,
-    ) -> None:
-        raise NotImplementedError
 
     def _ready_storage_or_none(self):
         storage = self.data_node_storage
@@ -357,7 +217,7 @@ class HoldingsDataNode(AssetIndexedDataNode):
             errors.append(f"index_names {index_names!r} do not match {config.index_names!r}")
 
         column_dtypes_map = dict(_get_mapping_or_attr(source_config, "column_dtypes_map") or {})
-        for column_name, expected_dtype in config.column_dtypes_map.items():
+        for column_name, expected_dtype in self._bound_column_dtypes_map().items():
             actual_dtype = column_dtypes_map.get(column_name)
             if actual_dtype != expected_dtype:
                 errors.append(
@@ -374,21 +234,6 @@ class HoldingsDataNode(AssetIndexedDataNode):
 class AccountHoldings(HoldingsDataNode):
     """DataNode users can subclass to import account holdings."""
 
-    __data_node_identifier__ = "account_historical_holdings"
-
-    @classmethod
-    def _default_identifier(cls) -> str:
-        return markets_data_node_identifier(cls.__data_node_identifier__)
-
-    @classmethod
-    def _default_description(cls) -> str:
-        return (
-            "Timestamped account holdings DataNode. The table is indexed by "
-            "time_index, account_unique_identifier, and the asset unique_identifier "
-            "so account position history can be queried over time and enriched "
-            "through joined asset metadata queries."
-        )
-
     @classmethod
     def _required_time_index_name(cls) -> str:
         return ACCOUNT_HOLDINGS_TIME_INDEX_NAME
@@ -398,40 +243,8 @@ class AccountHoldings(HoldingsDataNode):
         return list(ACCOUNT_HOLDINGS_INDEX_NAMES)
 
     @classmethod
-    def _required_records(cls) -> list[RecordDefinition]:
-        return list(ACCOUNT_HOLDINGS_RECORDS)
-
-    @classmethod
-    def _schema_bootstrap_owner_identifier(cls) -> str:
-        return SCHEMA_BOOTSTRAP_ACCOUNT_UNIQUE_IDENTIFIER
-
-    @classmethod
-    def build_schema_bootstrap_account_frame(
-        cls,
-        *,
-        account_uid: str | UUID | None = None,
-        account_unique_identifier: str | None = None,
-        **kwargs,
-    ) -> pd.DataFrame:
-        owner_identifier = account_unique_identifier
-        if owner_identifier is None and account_uid is not None:
-            owner_identifier = str(account_uid)
-        return cls.build_schema_bootstrap_frame(
-            owner_unique_identifier=owner_identifier,
-            **kwargs,
-        )
-
-    @classmethod
-    def build_mock_account_frame(cls, **kwargs) -> pd.DataFrame:
-        return cls.build_schema_bootstrap_account_frame(**kwargs)
-
-    def _initialize_source_table(
-        self,
-        *,
-        storage: Any,
-        config: HoldingsDataNodeConfiguration,
-    ) -> None:
-        initialize_data_node_source_table(storage=storage, config=config)
+    def _required_storage_table(cls) -> type[AccountHoldingsStorage]:
+        return AccountHoldingsStorage
 
     def build_account_holdings_frame(
         self,
@@ -477,21 +290,6 @@ class AccountHoldings(HoldingsDataNode):
 class VirtualFundHoldings(HoldingsDataNode):
     """DataNode users can subclass to import virtual-fund holdings."""
 
-    __data_node_identifier__ = "virtual_fund_historical_holdings"
-
-    @classmethod
-    def _default_identifier(cls) -> str:
-        return markets_data_node_identifier(cls.__data_node_identifier__)
-
-    @classmethod
-    def _default_description(cls) -> str:
-        return (
-            "Timestamped virtual-fund holdings DataNode. The table is indexed by "
-            "time_index, fund_unique_identifier, and the asset unique_identifier "
-            "so fund position history can be queried over time and enriched "
-            "through joined asset metadata queries."
-        )
-
     @classmethod
     def _required_time_index_name(cls) -> str:
         return VIRTUAL_FUND_HOLDINGS_TIME_INDEX_NAME
@@ -501,40 +299,8 @@ class VirtualFundHoldings(HoldingsDataNode):
         return list(VIRTUAL_FUND_HOLDINGS_INDEX_NAMES)
 
     @classmethod
-    def _required_records(cls) -> list[RecordDefinition]:
-        return list(VIRTUAL_FUND_HOLDINGS_RECORDS)
-
-    @classmethod
-    def _schema_bootstrap_owner_identifier(cls) -> str:
-        return SCHEMA_BOOTSTRAP_FUND_UNIQUE_IDENTIFIER
-
-    @classmethod
-    def build_schema_bootstrap_fund_frame(
-        cls,
-        *,
-        fund_uid: str | UUID | None = None,
-        fund_unique_identifier: str | None = None,
-        **kwargs,
-    ) -> pd.DataFrame:
-        owner_identifier = fund_unique_identifier
-        if owner_identifier is None and fund_uid is not None:
-            owner_identifier = str(fund_uid)
-        return cls.build_schema_bootstrap_frame(
-            owner_unique_identifier=owner_identifier,
-            **kwargs,
-        )
-
-    @classmethod
-    def build_mock_fund_frame(cls, **kwargs) -> pd.DataFrame:
-        return cls.build_schema_bootstrap_fund_frame(**kwargs)
-
-    def _initialize_source_table(
-        self,
-        *,
-        storage: Any,
-        config: HoldingsDataNodeConfiguration,
-    ) -> None:
-        initialize_data_node_source_table(storage=storage, config=config)
+    def _required_storage_table(cls) -> type[FundHoldingsStorage]:
+        return FundHoldingsStorage
 
     def build_fund_holdings_frame(
         self,
@@ -576,64 +342,6 @@ class VirtualFundHoldings(HoldingsDataNode):
             )
         )
 
-
-def _merge_records(
-    required_records: list[RecordDefinition],
-    extra_records: list[RecordDefinition],
-) -> list[RecordDefinition]:
-    merged_records = list(required_records)
-    existing_dtypes = {record.column_name: record.dtype for record in required_records}
-    for record in extra_records:
-        existing_dtype = existing_dtypes.get(record.column_name)
-        if existing_dtype is not None:
-            if existing_dtype != record.dtype:
-                raise ValueError(
-                    f"Extra record {record.column_name!r} has dtype "
-                    f"{record.dtype!r}, but the required dtype is "
-                    f"{existing_dtype!r}."
-                )
-            continue
-        merged_records.append(record)
-        existing_dtypes[record.column_name] = record.dtype
-    return merged_records
-
-
-def _validate_required_records(
-    *,
-    records: list[RecordDefinition],
-    required_records: list[RecordDefinition],
-) -> None:
-    dtype_by_column = {record.column_name: record.dtype for record in records}
-    errors = []
-    for required_record in required_records:
-        actual_dtype = dtype_by_column.get(required_record.column_name)
-        if actual_dtype != required_record.dtype:
-            errors.append(
-                f"{required_record.column_name!r} dtype {actual_dtype!r} "
-                f"does not match required dtype {required_record.dtype!r}"
-            )
-    if errors:
-        raise ValueError("Holdings records must include the required columns: " + "; ".join(errors))
-
-
-def _schema_bootstrap_value(
-    *,
-    dtype: str,
-    time_index: dt.datetime | pd.Timestamp,
-) -> Any:
-    if dtype == "uuid":
-        return SCHEMA_BOOTSTRAP_HOLDINGS_SET_UID
-    if dtype in {"decimal", "float64"}:
-        return 0.0
-    if dtype == "bool":
-        return False
-    if dtype == "jsonb":
-        return {}
-    if dtype in {"datetime64[ns, UTC]", "timestamp with time zone"}:
-        return pd.Timestamp(time_index).tz_convert(dt.UTC).to_pydatetime()
-    return ""
-
-
 def _dimension_filters_with_identifier(
     dimension_filters: dict[str, list[Any]] | None,
     key: str,
@@ -657,24 +365,25 @@ def _validate_holdings_frame(
     data_frame: pd.DataFrame,
     *,
     config: HoldingsDataNodeConfiguration,
+    column_dtypes_map: dict[str, str],
 ) -> pd.DataFrame:
     frame = _ensure_config_index(data_frame, config=config)
     flat = frame.reset_index()
     missing_columns = [
-        column_name for column_name in config.column_dtypes_map if column_name not in flat.columns
+        column_name for column_name in column_dtypes_map if column_name not in flat.columns
     ]
     if missing_columns:
         raise ValueError(
             f"Holdings frame is missing required columns: {', '.join(missing_columns)}."
         )
 
-    flat = _normalize_config_values(flat, config=config)
+    flat = _normalize_config_values(flat, config=config, column_dtypes_map=column_dtypes_map)
     frame = flat.set_index(config.index_names).sort_index()
     if frame.index.has_duplicates:
         raise ValueError(
             f"Holdings frame contains duplicate rows for index contract {config.index_names}."
         )
-    return _attach_logical_dtype_contract(frame, config=config)
+    return frame
 
 
 def _ensure_config_index(
@@ -698,29 +407,28 @@ def _normalize_config_values(
     frame: pd.DataFrame,
     *,
     config: HoldingsDataNodeConfiguration,
+    column_dtypes_map: dict[str, str],
 ) -> pd.DataFrame:
     normalized = frame.copy()
-    for column_name, dtype in config.column_dtypes_map.items():
+    for column_name, dtype in column_dtypes_map.items():
         values = normalized[column_name]
         if column_name == config.time_index_name:
             normalized[column_name] = _normalize_time_index(values)
-        elif dtype == "uuid":
+        elif dtype == dc.UUID_TOKEN:
             normalized[column_name] = values.map(_normalize_uuid)
-        elif dtype in {"decimal", "float64"}:
+        elif dtype == dc.FLOAT64:
             normalized[column_name] = _normalize_float64_column(
                 values,
                 nullable=column_name in NULLABLE_HOLDINGS_COLUMNS,
             )
-        elif dtype == "bool":
+        elif dtype == dc.BOOL:
             normalized[column_name] = values.map(_normalize_bool)
-        elif dtype == "jsonb":
+        elif dtype == dc.JSONB:
             normalized[column_name] = values.map(_normalize_jsonb)
-        elif dtype == "datetime64[ns, UTC]":
+        elif dtype == dc.TIMESTAMP_TZ:
             normalized[column_name] = _normalize_time_index(values)
-        elif dtype == "string":
+        elif dtype == dc.STRING:
             normalized[column_name] = values.fillna("").map(str)
-        elif dtype == "object":
-            normalized[column_name] = values.map(str)
         else:
             raise ValueError(f"Unsupported holdings dtype {dtype!r} for {column_name!r}.")
     return normalized
@@ -766,15 +474,6 @@ def _normalize_time_index(values: Any) -> pd.Series:
     return normalize_datetime64_ns_utc(values)
 
 
-def _attach_logical_dtype_contract(
-    frame: pd.DataFrame,
-    *,
-    config: HoldingsDataNodeConfiguration,
-) -> pd.DataFrame:
-    frame.attrs[LOGICAL_COLUMN_DTYPES_ATTR] = dict(config.column_dtypes_map)
-    return frame
-
-
 def _storage_source_config(storage: Any) -> Any | None:
     return (
         _get_mapping_or_attr(storage, "sourcetableconfiguration")
@@ -811,20 +510,11 @@ def _coerce_optional_uid(value: Any, *, field_name: str) -> str | None:
 
 __all__ = [
     "ACCOUNT_HOLDINGS_INDEX_NAMES",
-    "ACCOUNT_HOLDINGS_RECORDS",
     "ACCOUNT_HOLDINGS_TIME_INDEX_NAME",
     "AccountHoldings",
     "HoldingsDataNode",
     "HoldingsDataNodeConfiguration",
-    "SCHEMA_BOOTSTRAP_ACCOUNT_UID",
-    "SCHEMA_BOOTSTRAP_ACCOUNT_UNIQUE_IDENTIFIER",
-    "SCHEMA_BOOTSTRAP_FUND_UID",
-    "SCHEMA_BOOTSTRAP_FUND_UNIQUE_IDENTIFIER",
-    "SCHEMA_BOOTSTRAP_HOLDINGS_SET_UID",
-    "SCHEMA_BOOTSTRAP_ROW_IDENTIFIER",
-    "SCHEMA_BOOTSTRAP_TIME_INDEX",
     "VIRTUAL_FUND_HOLDINGS_INDEX_NAMES",
-    "VIRTUAL_FUND_HOLDINGS_RECORDS",
     "VIRTUAL_FUND_HOLDINGS_TIME_INDEX_NAME",
     "VirtualFundHoldings",
 ]

@@ -4,52 +4,42 @@ import datetime as dt
 from typing import Any, ClassVar
 
 import pandas as pd
-from pydantic import Field
 
-from mainsequence.tdag.data_nodes import (
+from mainsequence.meta_tables import (
     DataNode,
     DataNodeConfiguration,
-    DataNodeMetaData,
-    RecordDefinition,
+    PlatformTimeIndexMetaData,
 )
 from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
+from msm.data_nodes.utils.storage_metadata import (
+    storage_data_node_description,
+    storage_data_node_identifier,
+)
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
-from msm.settings import markets_data_node_identifier
+
+StorageTable = type[PlatformTimeIndexMetaData]
 
 STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX = dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
 STAMPED_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER = "__schema_bootstrap__"
 
 
 class StampedDataNodeConfiguration(DataNodeConfiguration):
-    """Configuration for timestamped reference-keyed markets DataNodes."""
+    """Configuration for timestamped reference-keyed markets DataNodes.
+
+    Storage-first: the column schema, index names, and time index live on the
+    ``storage_table`` (a ``PlatformTimeIndexMetaData`` class), not on the
+    configuration. This configuration only carries update-scoped build fields;
+    the identifier and descriptive metadata live on the ``storage_table``.
+    """
 
     reference_dimension: ClassVar[str] = "unique_identifier"
     frame_label: ClassVar[str] = "Stamped DataNode"
-
-    time_index_name: str = Field(
-        default="time_index",
-        description="Timestamp column used as the DataNode time index.",
-    )
-    index_names: list[str] = Field(
-        default_factory=lambda: ["time_index", "unique_identifier"],
-        description="Canonical DataFrame index columns for the stamped DataNode.",
-    )
-    records: list[RecordDefinition] = Field(
-        ...,
-        description="Output schema for the stamped DataNode.",
-    )
-
-    @property
-    def column_dtypes_map(self) -> dict[str, str]:
-        return {record.column_name: record.dtype for record in self.records}
 
 
 class StampedFrameMixin:
     """Shared frame/config behavior for timestamped markets DataNodes."""
 
-    configuration_class: ClassVar[type[StampedDataNodeConfiguration]] = (
-        StampedDataNodeConfiguration
-    )
+    configuration_class: ClassVar[type[StampedDataNodeConfiguration]] = StampedDataNodeConfiguration
     frame_label: ClassVar[str] = "Stamped DataNode"
     bootstrap_unique_identifier: ClassVar[str] = STAMPED_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER
     bootstrap_time_index: ClassVar[dt.datetime] = STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX
@@ -57,57 +47,33 @@ class StampedFrameMixin:
     def __init__(
         self,
         config: StampedDataNodeConfiguration | None = None,
-        *args: Any,
-        **kwargs: Any,
+        storage_table: StorageTable | None = None,
+        *,
+        hash_namespace: str | None = None,
     ):
-        super().__init__(config=config or self.default_config(), *args, **kwargs)
+        super().__init__(
+            config=config or self.default_config(),
+            storage_table=storage_table or self._required_storage_table(),
+            hash_namespace=hash_namespace,
+        )
 
     @classmethod
-    def default_config(
-        cls,
-        *,
-        identifier: str | None = None,
-        description: str | None = None,
-        extra_records: list[RecordDefinition] | None = None,
-    ) -> StampedDataNodeConfiguration:
-        config_kwargs: dict[str, Any] = {
-            "node_metadata": DataNodeMetaData(
-                identifier=identifier or cls._default_identifier(),
-                description=description or cls._default_description(),
-            ),
-        }
-        if extra_records:
-            config_kwargs["records"] = cls._records_with_extra(extra_records=extra_records)
-        return cls.configuration_class(**config_kwargs)
+    def default_config(cls) -> StampedDataNodeConfiguration:
+        return cls.configuration_class()
 
     @classmethod
-    def _records_with_extra(
-        cls,
-        *,
-        extra_records: list[RecordDefinition] | None = None,
-    ) -> list[RecordDefinition]:
-        required_records = cls.configuration_class().records
-        if not extra_records:
-            return list(required_records)
+    def _required_storage_table(cls) -> StorageTable:
+        """Return the storage class that owns this node's schema contract."""
 
-        by_name = {record.column_name: record for record in required_records}
-        for record in extra_records:
-            by_name.setdefault(record.column_name, record)
-        return list(by_name.values())
+        raise NotImplementedError(f"{cls.__name__} must define _required_storage_table().")
 
     @classmethod
     def _default_identifier(cls) -> str:
-        identifier = getattr(cls, "__data_node_identifier__", None)
-        if not identifier:
-            raise NotImplementedError(
-                f"{cls.__name__} must define __data_node_identifier__ or "
-                "override _default_identifier()."
-            )
-        return markets_data_node_identifier(identifier)
+        return storage_data_node_identifier(cls._required_storage_table())
 
     @classmethod
     def _default_description(cls) -> str:
-        raise NotImplementedError
+        return storage_data_node_description(cls._required_storage_table())
 
     def set_frame(self, frame: pd.DataFrame):
         self._stamped_data_frame = frame
@@ -116,64 +82,58 @@ class StampedFrameMixin:
     def get_frame(self) -> pd.DataFrame:
         frame = getattr(self, "_stamped_data_frame", None)
         if frame is None:
-            return self.build_schema_bootstrap_frame(config=self.config)
+            return self.build_schema_bootstrap_frame(storage_table=self.storage_table)
         return frame
 
     def update(self) -> pd.DataFrame:
-        return validate_stamped_data_frame(
+        return normalize_stamped_frame(
             self.get_frame(),
-            config=self.config,
+            storage_table=self.storage_table,
             frame_label=self.frame_label,
         )
+
+    @classmethod
+    def build_schema_bootstrap_frame(
+        cls,
+        *,
+        storage_table: StorageTable | None = None,
+        unique_identifier: str | None = None,
+        time_index: dt.datetime | pd.Timestamp | None = None,
+    ) -> pd.DataFrame:
+        storage_table = storage_table or cls._required_storage_table()
+        time_index_name = storage_table.__time_index_name__
+        index_names = list(storage_table.__index_names__)
+        row: dict[str, Any] = {}
+        for column in storage_table.__table__.columns:
+            if column.name == time_index_name:
+                row[column.name] = time_index or cls.bootstrap_time_index
+            elif column.name in index_names:
+                row[column.name] = unique_identifier or cls.bootstrap_unique_identifier
+            else:
+                row[column.name] = schema_bootstrap_value_for_column(column)
+        return normalize_stamped_frame(
+            pd.DataFrame([row]),
+            storage_table=storage_table,
+            frame_label=cls.frame_label,
+        )
+
+    @classmethod
+    def build_initialization_frame(cls, **kwargs: Any) -> pd.DataFrame:
+        return cls.build_schema_bootstrap_frame(**kwargs)
 
     @classmethod
     def validate_frame(
         cls,
         frame: pd.DataFrame,
         *,
-        config: StampedDataNodeConfiguration | None = None,
+        storage_table: StorageTable | None = None,
     ) -> pd.DataFrame:
-        return validate_stamped_data_frame(
+        storage_table = storage_table or cls._required_storage_table()
+        return normalize_stamped_frame(
             frame,
-            config=config or cls.default_config(),
+            storage_table=storage_table,
             frame_label=cls.frame_label,
         )
-
-    @classmethod
-    def build_initialization_frame(
-        cls,
-        **kwargs: Any,
-    ) -> pd.DataFrame:
-        return cls.build_schema_bootstrap_frame(**kwargs)
-
-    @classmethod
-    def build_schema_bootstrap_frame(
-        cls,
-        *,
-        config: StampedDataNodeConfiguration | None = None,
-        unique_identifier: str | None = None,
-        time_index: dt.datetime | pd.Timestamp | None = None,
-    ) -> pd.DataFrame:
-        resolved_config = config or cls.default_config()
-        row = {
-            resolved_config.time_index_name: time_index or cls.bootstrap_time_index,
-            resolved_config.reference_dimension: (
-                unique_identifier or cls.bootstrap_unique_identifier
-            ),
-        }
-        for record in resolved_config.records:
-            if record.column_name not in row:
-                row[record.column_name] = schema_bootstrap_value(record.dtype)
-        frame = pd.DataFrame([row])
-        return validate_stamped_data_frame(
-            frame,
-            config=resolved_config,
-            frame_label=cls.frame_label,
-        )
-
-    @classmethod
-    def build_mock_frame(cls, **kwargs: Any) -> pd.DataFrame:
-        return cls.build_schema_bootstrap_frame(**kwargs)
 
 
 class StampedDataNode(StampedFrameMixin, DataNode):
@@ -187,33 +147,39 @@ class StampedDataNode(StampedFrameMixin, DataNode):
         return {}
 
 
-def validate_stamped_data_frame(
+def normalize_stamped_frame(
     frame: pd.DataFrame,
     *,
-    config: StampedDataNodeConfiguration,
+    storage_table: StorageTable,
     frame_label: str | None = None,
 ) -> pd.DataFrame:
-    if not isinstance(config, StampedDataNodeConfiguration):
-        raise TypeError("Stamped DataNodes require StampedDataNodeConfiguration.")
+    """Normalize a frame to the storage_table contract (columns, index, dtypes).
 
-    label = frame_label or config.frame_label
-    normalized = reset_frame_index(frame.copy(), index_names=config.index_names)
-    required_columns = {record.column_name for record in config.records}
-    missing = sorted(required_columns.difference(normalized.columns))
+    Schema is sourced from the ``storage_table`` class — its ``__table__``
+    columns, ``__index_names__``, and ``__time_index_name__`` — rather than from
+    a configuration ``records`` list. Returns a frame indexed by the storage
+    index with the time index as ``datetime64[ns, UTC]`` and identity dimensions
+    cast to ``string``.
+    """
+
+    index_names = list(storage_table.__index_names__)
+    time_index_name = storage_table.__time_index_name__
+    column_names = [column.name for column in storage_table.__table__.columns]
+    label = frame_label or storage_table.__name__
+
+    normalized = reset_frame_index(frame.copy(), index_names=index_names, frame_label=label)
+    missing = sorted(set(column_names).difference(normalized.columns))
     if missing:
         raise ValueError(f"{label} frame is missing columns: {missing!r}.")
 
-    normalized[config.time_index_name] = normalize_datetime64_ns_utc(
-        normalized[config.time_index_name]
-    )
-    normalized[config.reference_dimension] = normalized[config.reference_dimension].astype(
-        "string"
-    )
-    normalized = normalized[[record.column_name for record in config.records]]
-    normalized = normalized.set_index(config.index_names)
+    normalized[time_index_name] = normalize_datetime64_ns_utc(normalized[time_index_name])
+    for dimension in index_names[1:]:
+        normalized[dimension] = normalized[dimension].astype("string")
+    normalized = normalized[column_names]
+    normalized = normalized.set_index(index_names)
 
     if normalized.index.has_duplicates:
-        raise ValueError(f"{label} frame contains duplicate rows for {config.index_names!r}.")
+        raise ValueError(f"{label} frame contains duplicate rows for {index_names!r}.")
     return normalized.sort_index()
 
 
@@ -234,17 +200,24 @@ def reset_frame_index(
     return frame.reset_index() if has_required_index else frame
 
 
-def schema_bootstrap_value(dtype: str) -> Any:
-    if dtype == "datetime64[ns, UTC]":
+def schema_bootstrap_value_for_column(column: Any) -> Any:
+    """Return a bootstrap placeholder value for a SQLAlchemy storage column."""
+
+    try:
+        python_type = column.type.python_type
+    except (NotImplementedError, AttributeError):
+        python_type = None
+
+    if python_type is dt.datetime:
         return STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX
-    if dtype in {"jsonb", "json"}:
-        return {"_mainsequence_reserved": "schema_bootstrap", "semantic": False}
-    if dtype in {"float64", "decimal"}:
-        return "0"
-    if dtype in {"int64", "Int64"}:
-        return 0
-    if dtype == "bool":
+    if python_type is bool:
         return False
+    if python_type is int:
+        return 0
+    if python_type is float:
+        return "0"
+    if python_type in (dict, list):
+        return {"_mainsequence_reserved": "schema_bootstrap", "semantic": False}
     return ""
 
 
@@ -254,7 +227,7 @@ __all__ = [
     "StampedDataNode",
     "StampedDataNodeConfiguration",
     "StampedFrameMixin",
+    "normalize_stamped_frame",
     "reset_frame_index",
-    "schema_bootstrap_value",
-    "validate_stamped_data_frame",
+    "schema_bootstrap_value_for_column",
 ]

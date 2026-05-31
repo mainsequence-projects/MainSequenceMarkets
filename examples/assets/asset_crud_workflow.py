@@ -109,7 +109,7 @@ def create_query_assets(
         "crypto_examples": crypto_examples,
         "openfigi_details": figi_details,
         "asset_snapshot_time": asset_snapshot_time,
-        "asset_snapshot_node_identifier": asset_snapshot_node.config.node_metadata.identifier,
+        "asset_snapshot_node_identifier": asset_snapshot_node._default_identifier(),
         "asset_snapshot_frame": snapshot_frame,
         "created_asset_listing": created_asset_listing,
         "deleted_assets": deleted_assets,

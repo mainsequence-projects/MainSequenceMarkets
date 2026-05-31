@@ -2,92 +2,31 @@ from __future__ import annotations
 
 import copy
 import datetime
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import pandas as pd
 from pydantic import Field
 
-from mainsequence.client.models_tdag import UniqueIdentifierRangeMap, UpdateStatistics
-from mainsequence.tdag.data_nodes import (
+from mainsequence.client.models_metatables import UpdateStatistics
+from mainsequence.meta_tables import (
     DataNode,
     DataNodeConfiguration,
-    RecordDefinition,
-    SourceTableForeignKey,
+    PlatformTimeIndexMetaData,
 )
 from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
-from msm.models import AssetTable
+from msm.data_nodes.utils.storage_metadata import (
+    storage_data_node_description,
+    storage_data_node_identifier,
+)
+from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.settings import (
     ASSET_UNIQUE_IDENTIFIER_DIMENSION,
 )
 
 MarketAssetScopeItem = str | Mapping[str, Any] | Any
-
-
-def asset_unique_identifier_foreign_key(
-    source_column: RecordDefinition | str = ASSET_UNIQUE_IDENTIFIER_DIMENSION,
-) -> SourceTableForeignKey:
-    """Return the canonical DataNode source-table FK to ``Asset.unique_identifier``."""
-    return SourceTableForeignKey(
-        target=AssetTable,
-        source_columns=[source_column],
-        target_columns=[AssetTable.unique_identifier],
-        on_delete="restrict",
-    )
-
-
-def asset_indexed_foreign_keys(
-    *,
-    records: Sequence[RecordDefinition] | None,
-    foreign_keys: Sequence[SourceTableForeignKey] | None = None,
-    source_column: RecordDefinition | str = ASSET_UNIQUE_IDENTIFIER_DIMENSION,
-) -> list[SourceTableForeignKey]:
-    """Return explicit foreign keys plus the canonical Asset FK when missing."""
-    source_column_name = (
-        source_column.column_name if isinstance(source_column, RecordDefinition) else source_column
-    )
-    record_names = _record_column_names(records)
-    if source_column_name not in record_names:
-        raise ValueError(
-            "Asset-indexed DataNodes require a records entry for "
-            f"{source_column_name!r} before adding the canonical Asset foreign key."
-        )
-
-    resolved_foreign_keys = list(foreign_keys or [])
-    if not any(
-        _is_canonical_asset_foreign_key(foreign_key) for foreign_key in resolved_foreign_keys
-    ):
-        resolved_foreign_keys.insert(
-            0,
-            asset_unique_identifier_foreign_key(source_column=source_column),
-        )
-    return resolved_foreign_keys
-
-
-def _record_column_names(records: Sequence[RecordDefinition] | None) -> list[str]:
-    if not records:
-        raise ValueError(
-            "Asset-indexed DataNode foreign keys require DataNodeConfiguration.records."
-        )
-
-    names = [record.column_name for record in records]
-    duplicate_names = sorted({name for name in names if names.count(name) > 1})
-    if duplicate_names:
-        raise ValueError(f"Duplicate DataNode record column names: {duplicate_names!r}.")
-    return names
-
-
-def _is_canonical_asset_foreign_key(foreign_key: SourceTableForeignKey) -> bool:
-    if foreign_key.source_column_names() != [ASSET_UNIQUE_IDENTIFIER_DIMENSION]:
-        return False
-    if foreign_key.target_column_names() != [ASSET_UNIQUE_IDENTIFIER_DIMENSION]:
-        return False
-    if foreign_key.on_delete.lower() != "restrict":
-        return False
-
-    target = foreign_key.target
-    target_table = getattr(getattr(target, "__table__", target), "name", None)
-    return target is AssetTable or target_table == AssetTable.__table__.name
+StorageTable = type[PlatformTimeIndexMetaData]
+UniqueIdentifierRangeMap = dict[str, dict[str, Any]]
 
 
 class AssetIndexedDataNodeConfiguration(DataNodeConfiguration):
@@ -99,7 +38,6 @@ class AssetIndexedDataNodeConfiguration(DataNodeConfiguration):
             "Optional platform asset scope for updater partitioning. Asset "
             "semantics are owned by the markets layer, not core TDAG."
         ),
-        json_schema_extra={"update_only": True},
     )
 
 
@@ -117,8 +55,42 @@ class AssetIndexedDataNode(DataNode):
         super().__init_subclass__(**kwargs)
         cls.__init__ = wrap_default_markets_hash_namespace(cls, cls.__init__)
 
-    def __init__(self, *args: Any, **kwargs: Any):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        config: AssetIndexedDataNodeConfiguration,
+        storage_table: StorageTable | None = None,
+        *,
+        hash_namespace: str | None = None,
+    ):
+        super().__init__(
+            config=config,
+            storage_table=storage_table or self._required_storage_table(),
+            hash_namespace=hash_namespace,
+        )
+
+    @classmethod
+    def _required_storage_table(cls) -> StorageTable:
+        """Return the storage class that owns this node's schema contract."""
+
+        raise NotImplementedError(f"{cls.__name__} must define _required_storage_table().")
+
+    @classmethod
+    def _default_identifier(cls) -> str:
+        return storage_data_node_identifier(cls._required_storage_table())
+
+    @classmethod
+    def _default_description(cls) -> str:
+        return storage_data_node_description(cls._required_storage_table())
+
+    @classmethod
+    def _column_dtypes_map_for_storage(
+        cls,
+        storage_table: StorageTable | None = None,
+    ) -> dict[str, str]:
+        return storage_column_dtypes_map(storage_table or cls._required_storage_table())
+
+    def _bound_column_dtypes_map(self) -> dict[str, str]:
+        return storage_column_dtypes_map(self.storage_table)
 
     @classmethod
     def _asset_unique_identifier(cls, asset: MarketAssetScopeItem) -> str:
@@ -366,9 +338,13 @@ class AssetIndexedDataNode(DataNode):
         """Return this node's validated asset scope as dimension filters."""
         return self.asset_dimension_filters(self.get_asset_list())
 
+    def _storage_index_names(self) -> list[str] | None:
+        storage_table = getattr(self, "_storage_table", None)
+        index_names = getattr(storage_table, "__index_names__", None)
+        return list(index_names) if index_names else None
+
     def _asset_identity_dimensions(self) -> list[str]:
-        config = self._get_data_node_configuration()
-        index_names = getattr(config, "index_names", None) if config is not None else None
+        index_names = self._storage_index_names()
         if index_names is None:
             return [self.asset_identity_dimension]
 
@@ -385,16 +361,15 @@ class AssetIndexedDataNode(DataNode):
         return identity_dimensions.index(self.asset_identity_dimension)
 
     def assert_asset_index_contract(self) -> None:
-        """Validate that configured asset tables include the asset dimension."""
-        config = self._get_data_node_configuration()
-        index_names = getattr(config, "index_names", None) if config is not None else None
+        """Validate that the storage table includes the asset dimension."""
+        index_names = self._storage_index_names()
         if index_names is None:
             return
 
         if self.asset_identity_dimension not in index_names:
             raise ValueError(
-                f"{self.__class__.__name__} is asset-scoped but index_names does not "
-                f"include {self.asset_identity_dimension!r}: {index_names!r}."
+                f"{self.__class__.__name__} is asset-scoped but storage_table index "
+                f"names do not include {self.asset_identity_dimension!r}: {index_names!r}."
             )
 
     def scope_update_statistics_to_assets(
@@ -510,6 +485,4 @@ __all__ = [
     "AssetIndexedDataNode",
     "AssetIndexedDataNodeConfiguration",
     "MarketAssetScopeItem",
-    "asset_indexed_foreign_keys",
-    "asset_unique_identifier_foreign_key",
 ]

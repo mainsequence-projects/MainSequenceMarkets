@@ -5,8 +5,9 @@ import uuid
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
-from mainsequence.tdag.meta_tables import (
+from mainsequence.meta_tables import (
     PlatformManagedMetaTable,
+    PlatformTimeIndexMetaData,
     POSTGRES_IDENTIFIER_MAX_LENGTH,
     metatable_tablename,
     slugify_identifier,
@@ -105,6 +106,26 @@ class MarketsBase(DeclarativeBase):
     metadata = MetaData()
 
 
+def _assign_markets_metatable_identifiers(cls: type) -> None:
+    """Resolve and assign `__markets_base_identifier__`/`__metatable_identifier__`.
+
+    Shared by the plain and time-indexed markets mixins so both derive the
+    namespaced identifier the same way.
+    """
+
+    base_identifier = (
+        cls.__dict__.get("__markets_base_identifier__")
+        or cls.__dict__.get("__metatable_identifier__")
+        or getattr(cls, "__markets_base_identifier__", None)
+        or getattr(cls, "__metatable_identifier__", cls.__name__)
+    )
+    cls.__markets_base_identifier__ = str(base_identifier).strip(".")
+    cls.__metatable_identifier__ = markets_identifier(
+        cls.__markets_base_identifier__,
+        namespace=getattr(cls, "__metatable_namespace__", None),
+    )
+
+
 class MarketsMetaTableMixin(PlatformManagedMetaTable):
     """Shared metadata contract for markets SQLAlchemy MetaTable models."""
 
@@ -116,17 +137,32 @@ class MarketsMetaTableMixin(PlatformManagedMetaTable):
 
     def __init_subclass__(cls, **kwargs: Any):
         super().__init_subclass__(**kwargs)
-        base_identifier = (
-            cls.__dict__.get("__markets_base_identifier__")
-            or cls.__dict__.get("__metatable_identifier__")
-            or getattr(cls, "__markets_base_identifier__", None)
-            or getattr(cls, "__metatable_identifier__", cls.__name__)
-        )
-        cls.__markets_base_identifier__ = str(base_identifier).strip(".")
-        cls.__metatable_identifier__ = markets_identifier(
-            cls.__markets_base_identifier__,
-            namespace=getattr(cls, "__metatable_namespace__", None),
-        )
+        _assign_markets_metatable_identifiers(cls)
+
+    @classmethod
+    def metatable_identifier(cls) -> str:
+        return getattr(cls, "__metatable_identifier__", cls.__name__)
+
+
+class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaData):
+    """Shared contract for markets storage-first time-indexed MetaTable models.
+
+    Sibling of `MarketsMetaTableMixin` for `PlatformTimeIndexMetaData` storage
+    classes. Concrete subclasses set `__markets_base_identifier__`,
+    `__time_index_name__`, `__index_names__`, and a unique
+    `__metatable_extra_hash_components__` (the physical table name derives from
+    the storage shape, so identical shapes collide without it).
+    """
+
+    __abstract__ = True
+    __metatable_namespace__: ClassVar[str] = markets_namespace()
+    __metatable_schema__: ClassVar[str] = MARKETS_SCHEMA
+    __metatable_identifier__: ClassVar[str]
+    __markets_base_identifier__: ClassVar[str]
+
+    def __init_subclass__(cls, **kwargs: Any):
+        super().__init_subclass__(**kwargs)
+        _assign_markets_metatable_identifiers(cls)
 
     @classmethod
     def metatable_identifier(cls) -> str:
@@ -143,6 +179,7 @@ __all__ = [
     "MSM_AUTO_REGISTER_NAMESPACE_ENV",
     "MarketsBase",
     "MarketsMetaTableMixin",
+    "MarketsTimeIndexMetaTableMixin",
     "markets_fk_name",
     "markets_index_name",
     "markets_identifier",

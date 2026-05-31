@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-import mainsequence.tdag.data_nodes.build_operations as build_operations
+import mainsequence.meta_tables.data_nodes.build_operations as build_operations
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -158,7 +158,7 @@ class PricesConfiguration(PortfolioConfigBaseModel):
             "Optional direct source bars DataNode/APIDataNode. Use this for programmatic portfolio "
             "builds that inject an already-normalized price source."
         ),
-        json_schema_extra={"runtime_only": True},
+        json_schema_extra={"hash_excluded": True},
     )
 
     forward_fill_to_now: bool = Field(
@@ -203,7 +203,7 @@ class AssetsConfiguration(PortfolioConfigBaseModel):
             "Resolved asset scope for portfolio DataNodes. Items may be strings, mappings, "
             "or objects with a unique_identifier field."
         ),
-        json_schema_extra={"runtime_only": True},
+        json_schema_extra={"hash_excluded": True},
     )
 
     price_type: PriceTypeNames = Field(

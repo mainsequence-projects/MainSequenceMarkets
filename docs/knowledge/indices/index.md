@@ -148,10 +148,11 @@ An index-stamped table should use this shape:
 +-----------------------------+                            +-----------------------------+
 ```
 
-Configuration classes should inherit `IndexDataNodeConfiguration`, declare
-their output schema with `RecordDefinition`, and let
-`index_indexed_foreign_keys(...)` add the canonical source-table foreign key.
-The shared stamped base validates required columns, normalizes timestamps to
+DataNode classes should inherit `IndexTimestampedDataNode` and use a registered
+`PlatformTimeIndexMetaData` storage class through `_required_storage_table()`.
+That storage class declares the output schema and the canonical
+`IndexTable.unique_identifier` foreign key. The shared stamped base validates
+required columns against the storage contract, normalizes timestamps to
 `datetime64[ns, UTC]`, sets the
 `["time_index", "unique_identifier"]` MultiIndex, rejects duplicate keys, and
 uses the active markets namespace for default DataNode identifiers and

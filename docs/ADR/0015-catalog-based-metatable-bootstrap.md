@@ -46,7 +46,7 @@ The registration lifecycle becomes:
 4. tables already present in the catalog are attached, not registered again;
 5. missing tables are registered in dependency order;
 6. each successful registration is written back to the catalog with the real
-   platform MetaTable identity, namespace, and physical storage hash;
+   platform MetaTable identity, namespace, and logical identifier;
 7. bootstrap returns one immutable `MarketsRuntime` for the process;
 8. row operations use that runtime and never register or attach lazily.
 
@@ -60,7 +60,7 @@ Add an internal catalog table owned by `ms-markets` under
 `msm.maintenance.models`. This is maintenance infrastructure, not a normal
 domain model under `msm.models`.
 
-The catalog stores one row per registered markets MetaTable physical identity.
+The catalog stores one row per registered markets MetaTable logical identity.
 The minimum row contract is:
 
 | Field | Meaning |
@@ -71,24 +71,20 @@ The minimum row contract is:
 | `description` | Platform MetaTable description returned by registration or discovery. |
 | `model_name` | SQLAlchemy table declaration class name, for example `AssetTable`. |
 | `meta_table_uid` | Platform `MetaTable.uid` returned by registration or discovery. |
-| `storage_hash` | Real platform-managed physical storage hash or table name. |
 | `contract_hash` | Local hash of the table contract used to detect drift. |
 | `sdk_version` | `ms-markets` version that wrote the catalog row. |
 | `created_at` | First catalog insertion timestamp. |
 | `updated_at` | Last catalog update timestamp. |
 
-The uniqueness rule is the physical MetaTable storage identity:
+The uniqueness rule is the logical MetaTable identity:
 
 ```text
-storage_hash
+namespace, identifier
 ```
 
-`namespace` and `identifier` are retained as descriptive metadata, but bootstrap
-must not use `(namespace, identifier, management_mode, data_source_uid)` as the
-catalog identity. The catalog must store the real platform response values. It
-must not reconstruct or guess physical names from local SQLAlchemy state after
-registration. The catalog is MetaTable-specific and does not store a
-DataNode-versus-MetaTable discriminator.
+The catalog stores the platform response identity fields needed by row
+operations, but it does not persist physical storage names. The catalog is
+MetaTable-specific and does not store a DataNode-versus-MetaTable discriminator.
 
 ### Catalog Bootstrap
 
@@ -109,7 +105,7 @@ The catalog bootstrap must be deterministic:
 
 For each requested table, bootstrap uses this order:
 
-1. read the catalog row for the requested `storage_hash`;
+1. read the catalog row for the requested `(namespace, identifier)`;
 2. if a catalog row exists, resolve the referenced platform `MetaTable` and
    attach it to the runtime;
 3. if no catalog row exists, try one explicit platform lookup using the expected
@@ -193,7 +189,7 @@ This ADR is implemented only when:
   MetaTable identities.
 - [x] Add a typed API/internal helper for catalog rows without exposing catalog
   mutation as a normal user workflow.
-- [x] Add a unique `storage_hash` index for catalog row identity.
+- [x] Add a unique `(namespace, identifier)` index for catalog row identity.
 - [x] Store the platform `MetaTable.uid`, namespace, identifier, description,
   and real storage hash returned by the backend.
 - [x] Keep the catalog MetaTable-specific and omit any DataNode-versus-MetaTable

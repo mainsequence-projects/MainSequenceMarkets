@@ -3,8 +3,8 @@
 Accounts are the owner identity layer for positions, target assignments,
 execution routing, and fund tracking. The account registry itself is stored in
 markets MetaTables. Account and fund holdings history is stored in DataNode
-source tables backed by `DynamicTableMetaData`, because holdings are timestamped
-observations rather than static reference rows.
+tables backed by registered `PlatformTimeIndexMetaData` storage classes, because
+holdings are timestamped observations rather than static reference rows.
 
 ## What Is Stored Where
 
@@ -14,11 +14,12 @@ MetaTable
   AccountTable, AccountTargetPositionAssignmentTable, AccountGroupTable,
   AccountModelPortfolioTable, and FundTable are MetaTables.
 
-DynamicTableMetaData
-  Platform metadata for a DataNode source table. It describes the published
-  table shape: time index, dimension indexes, column dtypes, and storage.
-  AccountHoldings and VirtualFundHoldings create DynamicTableMetaData-backed
-  source tables.
+PlatformTimeIndexMetaData
+  SQLAlchemy storage class registered through the SDK/catalog bootstrap. It
+  describes the published table shape: time index, dimension indexes, column
+  dtypes, foreign keys, and storage identity. AccountHoldings and
+  VirtualFundHoldings use registered storage classes; they do not create storage
+  through `initialize_source_table`.
 ```
 
 Do not confuse these layers. `Account.upsert(...)` writes one account registry
@@ -184,21 +185,21 @@ The account API lives in `msm.api.accounts`. Fund row APIs live in
 ## Holdings DataNodes
 
 Holdings are time-series-like observations. They are not MetaTables. A holdings
-DataNode creates or validates a `DynamicTableMetaData` source table with a fixed
-index and record contract.
+DataNode writes to a table described by a registered `PlatformTimeIndexMetaData`
+storage class with a fixed index and column contract.
 
 ```text
-                                    DataNode / DynamicTableMetaData
-                                    -------------------------------
+                                    DataNode / PlatformTimeIndexMetaData
+                                    ------------------------------------
 
-+-------------------------------+     creates/validates     +-----------------------------+
-| AccountHoldings               |-------------------------->| DynamicTableMetaData        |
++-------------------------------+       uses registered     +-----------------------------+
+| AccountHoldings               |-------------------------->| AccountHoldingsStorage      |
 | DataNode class                |                           | account_historical_holdings |
 |-------------------------------|                           |-----------------------------|
-| default identifier:           |                           | time_index_name=time_index  |
-| markets_data_node_identifier( |                           | index_names:                |
-|   "account_historical_holdings"|                          |  - time_index               |
-| )                             |                           |  - account_uid              |
+| default identifier derives    |                           | time_index_name=time_index  |
+| from AccountHoldingsStorage.  |                           | index_names:                |
+| metatable_identifier()        |                           |  - time_index               |
+|                               |                           |  - account_uid              |
 | update() returns DataFrame    |                           |  - unique_identifier        |
 +---------------+---------------+                           | records:                   |
                 |                                           |  - holdings_set_uid uuid    |
@@ -231,15 +232,15 @@ query history by account, date range, and asset.
 `VirtualFundHoldings` follows the same pattern for fund-level observations:
 
 ```text
-+-------------------------------+     creates/validates     +-----------------------------+
-| VirtualFundHoldings           |-------------------------->| DynamicTableMetaData        |
++-------------------------------+       uses registered     +-----------------------------+
+| VirtualFundHoldings           |-------------------------->| FundHoldingsStorage        |
 | DataNode class                |                           | virtual_fund_historical...  |
 |-------------------------------|                           |-----------------------------|
-| default identifier:           |                           | time_index_name=time_index  |
-| markets_data_node_identifier( |                           | index_names:                |
-|   "virtual_fund_historical_   |                           |  - time_index               |
-|    holdings"                  |                           |  - fund_uid                 |
-| )                             |                           |  - unique_identifier        |
+| default identifier derives    |                           | time_index_name=time_index  |
+| from FundHoldingsStorage.     |                           | index_names:                |
+| metatable_identifier()        |                           |  - time_index               |
+|                               |                           |  - fund_uid                 |
+|                               |                           |  - unique_identifier        |
 +-------------------------------+                           | extra measure: target_weight|
                                                             +-----------------------------+
 ```
@@ -267,7 +268,7 @@ query history by account, date range, and asset.
 4. Publish holdings
 
    AccountHoldings.run(...)
-     -> initializes DynamicTableMetaData when needed
+     -> uses registered PlatformTimeIndexMetaData storage
      -> writes rows to the DataNode source table
 
 5. Read holdings
@@ -282,7 +283,7 @@ The registry and the historical observations stay separate:
 AccountTable MetaTable
   one row per account identity
 
-AccountHoldings DynamicTableMetaData source table
+AccountHoldings PlatformTimeIndexMetaData-backed source table
   many rows per account over time
 ```
 
@@ -309,8 +310,11 @@ For funds, register account and portfolio dependencies first:
 msm.start_engine(models=["Account", "Portfolio", "Fund"])
 ```
 
-The DataNode itself does not need to be in the MetaTable model list. It creates
-or attaches to its `DynamicTableMetaData` source table when the node runs.
+The DataNode class itself does not need to be in the MetaTable model list. Its
+storage class does. Register holdings storage through catalog/bootstrap before
+constructing or running the DataNode. The registration path is
+`PlatformTimeIndexMetaData.register(...)`; do not manually bind by UID or call
+`initialize_source_table`.
 
 ## Extension Rules
 
@@ -318,8 +322,9 @@ Add static account reference data as MetaTables under `msm.models` and expose it
 through typed rows under `msm.api`.
 
 Add timestamped account or fund observations as DataNodes under
-`msm.data_nodes.accounts`. Define the table contract with `RecordDefinition`
-metadata and keep the published row grain explicit.
+`msm.data_nodes.accounts`. Define the table contract with a
+`PlatformTimeIndexMetaData` storage class in `msm.data_nodes.storage` and keep
+the published row grain explicit.
 
 Do not put holdings rows into `AccountTable`. Do not add static account fields to
 `AccountHoldings`. The split is what keeps account identity stable while

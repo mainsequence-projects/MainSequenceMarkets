@@ -25,7 +25,6 @@ def test_catalog_table_stores_registered_metatable_identity() -> None:
         "description",
         "model_name",
         "meta_table_uid",
-        "storage_hash",
         "contract_hash",
         "sdk_version",
         "created_at",
@@ -38,21 +37,22 @@ def test_catalog_table_is_not_part_of_application_model_registration_order() -> 
     assert not hasattr(domain_models, "MarketsMetaTableCatalogTable")
 
 
-def test_catalog_table_enforces_storage_hash_uniqueness_as_an_index() -> None:
+def test_catalog_table_enforces_logical_identity_uniqueness_as_an_index() -> None:
     table = MarketsMetaTableCatalogTable.__table__
     indexes_by_columns = {
         tuple(column.name for column in index.columns): index for index in table.indexes
     }
 
-    assert indexes_by_columns[("storage_hash",)].unique is True
+    assert indexes_by_columns[("namespace", "identifier")].unique is True
     assert indexes_by_columns[("meta_table_uid",)].unique is True
 
 
-def test_catalog_table_indexes_storage_identity_only() -> None:
+def test_catalog_table_indexes_logical_identity_only() -> None:
     table = MarketsMetaTableCatalogTable.__table__
     index_column_sets = {tuple(column.name for column in index.columns) for index in table.indexes}
 
-    assert ("storage_hash",) in index_column_sets
+    assert ("namespace", "identifier") in index_column_sets
+    assert ("storage_hash",) not in index_column_sets
     assert ("physical_table_name",) not in index_column_sets
 
 
@@ -76,13 +76,12 @@ def test_catalog_row_uses_platform_metatable_values() -> None:
     assert row.description == "Asset catalog rows for examples."
     assert row.model_name == "AssetTable"
     assert row.meta_table_uid == "meta-table-uid"
-    assert row.storage_hash == "mt_mainsequence_examples_asset_hash"
     assert row.contract_hash == markets_meta_table_contract_hash(AssetTable)
     assert row.sdk_version == "0.0.test"
-    assert row.identity_key == ("mt_mainsequence_examples_asset_hash",)
+    assert row.identity_key == ("mainsequence.examples", "mainsequence.examples.Asset")
 
 
-def test_catalog_row_payload_is_keyed_by_storage_hash() -> None:
+def test_catalog_row_payload_is_keyed_by_logical_identity() -> None:
     meta_table = SimpleNamespace(
         uid="meta-table-uid",
         namespace="ms-markets",
@@ -96,9 +95,9 @@ def test_catalog_row_payload_is_keyed_by_storage_hash() -> None:
     )
 
     payload = row.to_payload()
-    assert row.identity_key == ("asset-storage-hash",)
+    assert row.identity_key == ("ms-markets", "Asset")
     assert payload["description"] is None
-    assert payload["storage_hash"] == "asset-storage-hash"
+    assert "storage_hash" not in payload
     assert "management_mode" not in payload
     assert "data_source_uid" not in payload
 

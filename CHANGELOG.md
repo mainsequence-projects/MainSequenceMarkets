@@ -9,6 +9,17 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Migrated the DataNode layer to the storage-first architecture (ADR 0017):
+  every DataNode output now has a `PlatformTimeIndexMetaData` storage class as its
+  single source of schema, dtypes, and identity foreign keys; DataNodes bind their
+  storage through `storage_table` / `_required_storage_table()`; column dtypes are
+  derived from the MetaTable via the SDK `dtype_codec`; and DataNode storage
+  classes register through the catalog bootstrap in FK dependency order. Removed
+  `RecordDefinition`, `DataNodeTableContract`, `node_metadata`, the
+  `*_COLUMN_DTYPES_MAP` constants, the `column_dtypes_map` configuration field,
+  `SourceTableForeignKey`, and `test_node` (use `hash_namespace`). Re-pointed all
+  imports off the removed `mainsequence.tdag*` / `mainsequence.client.models_tdag`
+  modules onto `mainsequence.meta_tables*` / `mainsequence.client`.
 - Locked the `IndexTable`/`Index` row contract so legacy Constant-name fields
   stay out of canonical index identity.
 - Made `IndexTable.index_type` required and updated Index create/upsert,
@@ -39,8 +50,9 @@ and this project follows versioned releases.
 - Added the platform `MetaTable.description` to the internal maintenance
   catalog as descriptive metadata.
 - Removed redundant persisted physical schema and physical table name fields
-  from the internal maintenance catalog; `storage_hash` remains the physical
-  identity.
+  from the internal maintenance catalog.
+- Removed `storage_hash` from the internal maintenance catalog; catalog rows are
+  now keyed by logical `(namespace, identifier)` identity.
 - Replaced lazy MetaTable row-operation registration with catalog-based process
   bootstrap. Row operations now require an active initialized runtime and do not
   attach or register schemas on first use.
@@ -56,8 +68,8 @@ and this project follows versioned releases.
   `RecordDefinition` declarations directly, including `string`
   `unique_identifier` records instead of stale `object` dtype maps.
 - Fixed catalog-based MetaTable bootstrap so already-cataloged tables are read
-  in one storage-hash query and no longer perform a platform `MetaTable` fetch
-  for every existing table during startup.
+  in one logical-identity query and no longer perform a platform `MetaTable`
+  fetch for every existing table during startup.
 - Fixed catalog-based MetaTable bootstrap so imported or attached
   platform-managed tables reject stale physical indexes, including same-named
   indexes with missing uniqueness that would later break compiled upserts such
@@ -316,8 +328,15 @@ and this project follows versioned releases.
 - Removed redundant standalone `asset_snapshot_workflow.py` and
   `openfigi_asset_rows.py` examples now covered by `asset_crud_workflow.py`.
 - Updated markets DataNodes to derive default published identifiers and
-  `hash_namespace` values from the active markets namespace plus class-owned
-  `__data_node_identifier__` values unless callers explicitly override them.
+  descriptions from their registered storage classes instead of class-owned
+  `__data_node_identifier__` values, while keeping `hash_namespace` defaults
+  tied to the active markets namespace.
+- Removed concrete DataNode `_required_column_dtypes_map()` overrides; runtime
+  validation now derives column dtype tokens from the instance's bound
+  `storage_table`.
+- Removed production DataNode `build_mock_frame` and holdings-specific
+  `build_mock_*_frame` aliases; tests and examples should call explicit
+  bootstrap/build helpers instead.
 - Split AssetSnapshot node construction from snapshot row binding, made
   `time_index` a required per-row snapshot field, and added a backend duplicate
   check before persisting `(time_index, unique_identifier)` rows.

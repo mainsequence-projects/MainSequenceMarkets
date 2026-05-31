@@ -6,6 +6,7 @@ import pytest
 from mainsequence.client.exceptions import ConflictError
 
 import msm.maintenance.catalog as catalog
+from msm.data_nodes.storage import AccountHoldingsStorage
 from msm.maintenance.models import (
     MarketsMetaTableCatalogTable,
     markets_meta_table_contract_hash,
@@ -32,6 +33,20 @@ def _meta_table(
     )
 
 
+def _catalog_row_identity(model) -> dict[str, str]:
+    return {
+        "namespace": model.__metatable_namespace__,
+        "identifier": model.__metatable_identifier__,
+    }
+
+
+def _catalog_search_filter(*models) -> dict[str, list[str]]:
+    return {
+        "namespace": sorted({model.__metatable_namespace__ for model in models}),
+        "identifier": sorted({model.__metatable_identifier__ for model in models}),
+    }
+
+
 def _disable_physical_contract_validation(monkeypatch) -> None:
     monkeypatch.setattr(
         catalog,
@@ -44,6 +59,7 @@ def test_catalog_bootstrap_registers_missing_application_table(monkeypatch) -> N
     asset_storage_hash = AssetTable.__table__.name
     registered_meta_table = _meta_table(
         "asset-meta-table-uid",
+        **_catalog_row_identity(AssetTable),
         description="Asset catalog rows.",
         storage_hash=asset_storage_hash,
     )
@@ -73,7 +89,7 @@ def test_catalog_bootstrap_registers_missing_application_table(monkeypatch) -> N
         return registered_meta_table
 
     def fake_upsert_model(_context, **kwargs):
-        assert kwargs["conflict_columns"] == ["storage_hash"]
+        assert kwargs["conflict_columns"] == ["namespace", "identifier"]
         upserted_rows.append(dict(kwargs["values"]))
         return {"rows": [kwargs["values"]]}
 
@@ -91,11 +107,11 @@ def test_catalog_bootstrap_registers_missing_application_table(monkeypatch) -> N
     assert result.registration.target_meta_table_uid_by_fullname == {
         markets_meta_table_fullname(AssetTable): "asset-meta-table-uid"
     }
-    assert search_in_filters == [{"storage_hash": [asset_storage_hash]}]
+    assert search_in_filters == [_catalog_search_filter(AssetTable)]
     assert register_calls[0]["data_source_uid"] == "data-source-uid"
     assert upserted_rows[0]["meta_table_uid"] == "asset-meta-table-uid"
     assert upserted_rows[0]["description"] == "Asset catalog rows."
-    assert upserted_rows[0]["storage_hash"] == asset_storage_hash
+    assert "storage_hash" not in upserted_rows[0]
     assert "management_mode" not in upserted_rows[0]
     assert "data_source_uid" not in upserted_rows[0]
     assert upserted_rows[0]["contract_hash"]
@@ -106,11 +122,9 @@ def test_catalog_bootstrap_attaches_cataloged_application_table(monkeypatch) -> 
     asset_storage_hash = AssetTable.__table__.name
     search_in_filters: list[dict] = []
     catalog_row = {
-        "namespace": "ms-markets",
-        "identifier": "Asset",
+        **_catalog_row_identity(AssetTable),
         "description": "Asset catalog rows.",
         "meta_table_uid": "asset-meta-table-uid",
-        "storage_hash": asset_storage_hash,
         "contract_hash": markets_meta_table_contract_hash(AssetTable),
     }
 
@@ -150,7 +164,7 @@ def test_catalog_bootstrap_attaches_cataloged_application_table(monkeypatch) -> 
     assert result.attached_count == 1
     assert result.registered_count == 0
     assert result.imported_count == 0
-    assert search_in_filters == [{"storage_hash": [asset_storage_hash]}]
+    assert search_in_filters == [_catalog_search_filter(AssetTable)]
     resolved = result.registration.meta_table_by_fullname[markets_meta_table_fullname(AssetTable)]
     assert resolved.uid == "asset-meta-table-uid"
     assert resolved.storage_hash == asset_storage_hash
@@ -158,24 +172,82 @@ def test_catalog_bootstrap_attaches_cataloged_application_table(monkeypatch) -> 
     assert resolved.description == "Asset catalog rows."
 
 
+def test_catalog_bootstrap_routes_cataloged_storage_table_through_register(
+    monkeypatch,
+) -> None:
+    storage_hash = AccountHoldingsStorage.__table__.name
+    catalog_row = {
+        **_catalog_row_identity(AccountHoldingsStorage),
+        "description": "Account holdings storage.",
+        "meta_table_uid": "account-holdings-storage-uid",
+        "contract_hash": markets_meta_table_contract_hash(AccountHoldingsStorage),
+    }
+    register_calls: list[dict] = []
+
+    monkeypatch.setattr(
+        catalog,
+        "bootstrap_catalog_table",
+        lambda **_kwargs: _meta_table(
+            "catalog-meta-table-uid",
+            identifier="MarketsMetaTableCatalog",
+            storage_hash="catalog-storage-hash",
+        ),
+    )
+    monkeypatch.setattr(catalog, "search_model", lambda *_args, **_kwargs: {"rows": [catalog_row]})
+    monkeypatch.setattr(
+        catalog,
+        "_resolve_platform_meta_table",
+        lambda *_args, **_kwargs: pytest.fail("storage attach should not use MetaTable lookup"),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "upsert_model",
+        lambda *_args, **_kwargs: pytest.fail("catalog row should not be rewritten"),
+    )
+
+    def fake_register(cls, **kwargs):
+        register_calls.append(
+            {
+                **kwargs,
+                "target_meta_table_uid_by_fullname": dict(
+                    kwargs["target_meta_table_uid_by_fullname"]
+                ),
+            }
+        )
+        return _meta_table(
+            "account-holdings-storage-uid",
+            **_catalog_row_identity(AccountHoldingsStorage),
+            storage_hash=storage_hash,
+        )
+
+    monkeypatch.setattr(AccountHoldingsStorage, "register", classmethod(fake_register))
+
+    result = catalog.bootstrap_markets_meta_tables_from_catalog(
+        models=[AccountHoldingsStorage],
+        data_source_uid="data-source-uid",
+    )
+
+    assert result.attached_count == 1
+    assert result.registered_count == 0
+    assert register_calls[0]["data_source_uid"] == "data-source-uid"
+    assert register_calls[0]["target_meta_table_uid_by_fullname"] == {}
+    assert result.registration.target_meta_table_uid_by_fullname == {
+        markets_meta_table_fullname(AccountHoldingsStorage): "account-holdings-storage-uid"
+    }
+
+
 def test_catalog_bootstrap_bulk_attaches_cataloged_tables(monkeypatch) -> None:
     _disable_physical_contract_validation(monkeypatch)
-    asset_type_storage_hash = AssetTypeTable.__table__.name
-    asset_storage_hash = AssetTable.__table__.name
     search_in_filters: list[dict] = []
     catalog_rows = [
         {
-            "namespace": "ms-markets",
-            "identifier": "AssetType",
+            **_catalog_row_identity(AssetTypeTable),
             "meta_table_uid": "asset-type-meta-table-uid",
-            "storage_hash": asset_type_storage_hash,
             "contract_hash": markets_meta_table_contract_hash(AssetTypeTable),
         },
         {
-            "namespace": "ms-markets",
-            "identifier": "Asset",
+            **_catalog_row_identity(AssetTable),
             "meta_table_uid": "asset-meta-table-uid",
-            "storage_hash": asset_storage_hash,
             "contract_hash": markets_meta_table_contract_hash(AssetTable),
         },
     ]
@@ -216,7 +288,7 @@ def test_catalog_bootstrap_bulk_attaches_cataloged_tables(monkeypatch) -> None:
     assert result.attached_count == 2
     assert result.registered_count == 0
     assert result.imported_count == 0
-    assert search_in_filters == [{"storage_hash": [asset_type_storage_hash, asset_storage_hash]}]
+    assert search_in_filters == [_catalog_search_filter(AssetTypeTable, AssetTable)]
     assert result.registration.target_meta_table_uid_by_fullname == {
         markets_meta_table_fullname(AssetTypeTable): "asset-type-meta-table-uid",
         markets_meta_table_fullname(AssetTable): "asset-meta-table-uid",
@@ -225,10 +297,8 @@ def test_catalog_bootstrap_bulk_attaches_cataloged_tables(monkeypatch) -> None:
 
 def test_catalog_bootstrap_rejects_catalog_contract_drift(monkeypatch) -> None:
     catalog_row = {
-        "namespace": "ms-markets",
-        "identifier": "Asset",
+        **_catalog_row_identity(AssetTable),
         "meta_table_uid": "asset-meta-table-uid",
-        "storage_hash": AssetTable.__table__.name,
         "contract_hash": "stale-contract-hash",
     }
 
@@ -255,6 +325,7 @@ def test_catalog_bootstrap_imports_pre_catalog_platform_table(monkeypatch) -> No
     _disable_physical_contract_validation(monkeypatch)
     existing_meta_table = _meta_table(
         "asset-meta-table-uid",
+        **_catalog_row_identity(AssetTable),
         description="Imported asset catalog rows.",
     )
     upserted_rows: list[dict] = []
@@ -281,7 +352,7 @@ def test_catalog_bootstrap_imports_pre_catalog_platform_table(monkeypatch) -> No
     )
 
     def fake_upsert_model(_context, **kwargs):
-        assert kwargs["conflict_columns"] == ["storage_hash"]
+        assert kwargs["conflict_columns"] == ["namespace", "identifier"]
         upserted_rows.append(dict(kwargs["values"]))
         return {"rows": [kwargs["values"]]}
 
@@ -294,6 +365,63 @@ def test_catalog_bootstrap_imports_pre_catalog_platform_table(monkeypatch) -> No
     assert result.attached_count == 0
     assert upserted_rows[0]["meta_table_uid"] == "asset-meta-table-uid"
     assert upserted_rows[0]["description"] == "Imported asset catalog rows."
+
+
+def test_catalog_bootstrap_registers_uncataloged_storage_table_without_platform_lookup(
+    monkeypatch,
+) -> None:
+    storage_hash = AccountHoldingsStorage.__table__.name
+    register_calls: list[dict] = []
+    upserted_rows: list[dict] = []
+
+    monkeypatch.setattr(
+        catalog,
+        "bootstrap_catalog_table",
+        lambda **_kwargs: _meta_table(
+            "catalog-meta-table-uid",
+            identifier="MarketsMetaTableCatalog",
+            storage_hash="catalog-storage-hash",
+        ),
+    )
+    monkeypatch.setattr(catalog, "search_model", lambda *_args, **_kwargs: {"rows": []})
+    monkeypatch.setattr(
+        catalog,
+        "_resolve_platform_meta_table",
+        lambda *_args, **_kwargs: pytest.fail("storage bootstrap should go through register"),
+    )
+
+    def fake_register(cls, **kwargs):
+        register_calls.append(
+            {
+                **kwargs,
+                "target_meta_table_uid_by_fullname": dict(
+                    kwargs["target_meta_table_uid_by_fullname"]
+                ),
+            }
+        )
+        return _meta_table(
+            "account-holdings-storage-uid",
+            **_catalog_row_identity(AccountHoldingsStorage),
+            storage_hash=storage_hash,
+        )
+
+    def fake_upsert_model(_context, **kwargs):
+        upserted_rows.append(dict(kwargs["values"]))
+        return {"rows": [kwargs["values"]]}
+
+    monkeypatch.setattr(AccountHoldingsStorage, "register", classmethod(fake_register))
+    monkeypatch.setattr(catalog, "upsert_model", fake_upsert_model)
+
+    result = catalog.bootstrap_markets_meta_tables_from_catalog(
+        models=[AccountHoldingsStorage],
+        data_source_uid="data-source-uid",
+    )
+
+    assert result.registered_count == 1
+    assert result.attached_count == 0
+    assert register_calls[0]["data_source_uid"] == "data-source-uid"
+    assert upserted_rows[0]["meta_table_uid"] == "account-holdings-storage-uid"
+    assert "storage_hash" not in upserted_rows[0]
 
 
 def test_catalog_bootstrap_converts_duplicate_registration_to_drift_error(

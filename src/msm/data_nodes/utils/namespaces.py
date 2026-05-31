@@ -9,9 +9,6 @@ from msm.settings import markets_namespace
 def default_markets_hash_namespace_kwargs(cls: type, kwargs: dict[str, Any]) -> None:
     """Apply the markets hash namespace before the SDK DataNode wrapper runs."""
 
-    if kwargs.get("test_node"):
-        return
-
     namespace_aliases = tuple(getattr(cls, "_HASH_NAMESPACE_ALIASES", ()) or ())
     for namespace_alias in namespace_aliases:
         if namespace_alias not in kwargs:

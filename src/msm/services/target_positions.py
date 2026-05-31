@@ -8,12 +8,8 @@ from uuid import UUID
 
 import pandas as pd
 
-from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
-
-from msm.data_nodes.utils import (
-    POSITION_EXPOSURE_TABLE_CONTRACT,
-    source_table_initialization_kwargs,
-)
+from msm.data_nodes.storage import TargetPositionsStorage
+from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 
 
 TARGET_POSITION_EXPOSURE_FIELDS = (
@@ -68,9 +64,8 @@ def build_target_positions_frame(
 
 
 def validate_target_positions_frame(data_frame: pd.DataFrame) -> pd.DataFrame:
-    contract = POSITION_EXPOSURE_TABLE_CONTRACT
     frame = data_frame.copy()
-    index_names = contract.dynamic_table_index_names
+    index_names = list(TargetPositionsStorage.__index_names__)
     if list(frame.index.names) != index_names:
         if all(index_name in frame.columns for index_name in index_names):
             frame = frame.set_index(index_names)
@@ -81,7 +76,7 @@ def validate_target_positions_frame(data_frame: pd.DataFrame) -> pd.DataFrame:
             )
 
     flat = frame.reset_index()
-    column_dtypes_map = {record.column_name: record.dtype for record in contract.records}
+    column_dtypes_map = storage_column_dtypes_map(TargetPositionsStorage)
     missing_columns = [
         column_name for column_name in column_dtypes_map if column_name not in flat.columns
     ]
@@ -99,14 +94,9 @@ def validate_target_positions_frame(data_frame: pd.DataFrame) -> pd.DataFrame:
     frame = flat.set_index(index_names).sort_index()
     if frame.index.has_duplicates:
         raise ValueError(
-            f"Target positions frame contains duplicate rows for index contract {index_names}."
+            f"Target positions frame contains duplicate rows for index names {index_names}."
         )
-    frame.attrs[LOGICAL_COLUMN_DTYPES_ATTR] = column_dtypes_map
     return frame
-
-
-def target_positions_source_table_kwargs() -> dict[str, object]:
-    return source_table_initialization_kwargs(POSITION_EXPOSURE_TABLE_CONTRACT)
 
 
 def _normalize_optional_float64_column(values: pd.Series) -> pd.Series:
@@ -124,10 +114,8 @@ def _normalize_optional_float64(value: Any) -> float | None:
 
 
 __all__ = [
-    "POSITION_EXPOSURE_TABLE_CONTRACT",
     "TARGET_POSITION_EXPOSURE_FIELDS",
     "build_target_positions_frame",
-    "target_positions_source_table_kwargs",
     "validate_target_position_payload",
     "validate_target_positions_frame",
 ]

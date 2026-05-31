@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any
 
-from mainsequence.client.models_tdag import DataNodeStorage
+from mainsequence.client.models_metatables import TimeIndexMetaData as DataNodeStorage
 
 from .base import PortfolioCanonicalDataNode, _storage_source_config
 
@@ -16,7 +15,7 @@ def initialize_portfolio_storage_source_tables(
     anchor_node: PortfolioCanonicalDataNode | None = None,
     timeout: int | None = None,
 ) -> dict[str, Any]:
-    """Initialize canonical Portfolios source tables through generic DataNode APIs."""
+    """Validate canonical Portfolios storage metadata for the storage family."""
     family = _resolve_storage_family(
         portfolio_weights=portfolio_weights,
         signal_weights=signal_weights,
@@ -27,29 +26,10 @@ def initialize_portfolio_storage_source_tables(
         payload_key: _ensure_storage_metadata(node, timeout=timeout)
         for payload_key, node in family.items()
     }
-    payload = {
-        payload_key: _source_table_payload(
-            storage=storages[payload_key],
-            node=family[payload_key],
-        )
-        for payload_key in family
-    }
-
-    result = {
-        payload_key: _initialize_single_source_table(
-            storage=storages[payload_key],
-            payload=payload[payload_key],
-            timeout=timeout,
-        )
-        for payload_key in family
-    }
+    result: dict[str, Any] = {}
 
     for payload_key, node in family.items():
         storage = storages[payload_key]
-        source_config = _source_config_from_response(result, payload_key)
-        if source_config is not None:
-            storage.sourcetableconfiguration = source_config
-
         source_config = _storage_source_config(storage)
         if source_config is None:
             refreshed_storage = _refresh_storage(storage, timeout=timeout)
@@ -60,32 +40,13 @@ def initialize_portfolio_storage_source_tables(
 
         if source_config is None:
             raise RuntimeError(
-                f"Portfolio storage initializer did not return or expose a "
-                f"source-table configuration for {payload_key}."
+                f"Portfolio storage {payload_key} does not expose a source-table "
+                "configuration. Run the DataNode bootstrap path before writing."
             )
         node._validate_storage_contract(source_config)
+        result[payload_key] = source_config
 
     return result
-
-
-def _initialize_single_source_table(
-    *,
-    storage: Any,
-    payload: dict[str, Any],
-    timeout: int | None,
-) -> dict[str, Any] | None:
-    initializer = getattr(storage, "initialize_source_table", None)
-    if not callable(initializer):
-        raise AttributeError(
-            "DataNode storage object must expose initialize_source_table(...). "
-            "Legacy domain-specific portfolio storage initializers are not used."
-        )
-    return initializer(
-        time_index_name=payload["time_index_name"],
-        index_names=payload["index_names"],
-        column_dtypes_map=payload["column_dtypes_map"],
-        timeout=timeout,
-    )
 
 
 def _resolve_storage_family(
@@ -144,58 +105,6 @@ def _ensure_storage_metadata(
             "the portfolio storage source tables can be initialized."
         )
     return storage
-
-
-def _source_table_payload(
-    *,
-    storage: Any,
-    node: PortfolioCanonicalDataNode,
-) -> dict[str, Any]:
-    config = node._canonical_config()
-    return {
-        "dynamic_table_metadata_uid": _coerce_required_uid(storage),
-        "time_index_name": config.time_index_name,
-        "index_names": config.index_names,
-        "column_dtypes_map": config.column_dtypes_map,
-    }
-
-
-def _source_config_from_response(
-    response: dict[str, Any] | None,
-    payload_key: str,
-) -> Any | None:
-    if not isinstance(response, dict):
-        return None
-
-    candidates = []
-    payload_response = response.get(payload_key)
-    if isinstance(payload_response, dict):
-        candidates.extend(
-            [
-                payload_response.get("source_table_configuration"),
-                payload_response.get("sourcetableconfiguration"),
-                payload_response.get("source_table_config"),
-            ]
-        )
-    for container_key in (
-        "source_table_configurations",
-        "sourcetableconfigurations",
-        "source_table_configs",
-    ):
-        container = response.get(container_key)
-        if isinstance(container, dict):
-            candidates.append(container.get(payload_key))
-
-    for candidate in candidates:
-        if candidate is not None:
-            return _as_source_config(candidate)
-    return None
-
-
-def _as_source_config(value: Any) -> Any:
-    if isinstance(value, dict):
-        return SimpleNamespace(**value)
-    return value
 
 
 def _refresh_storage(storage: Any, *, timeout: int | None) -> Any | None:

@@ -210,7 +210,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     _print_step(
         "Published mock discount curve rows",
         rows=len(curve_frame),
-        node_identifier=curve_node.config.node_metadata.identifier,
+        node_identifier=curve_node._default_identifier(),
     )
 
     fixing_node = MockIndexFixingsNode(
@@ -223,19 +223,19 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     _print_step(
         "Published mock index fixing rows",
         rows=len(fixing_frame),
-        node_identifier=fixing_node.config.node_metadata.identifier,
+        node_identifier=fixing_node._default_identifier(),
     )
 
     eod_curve_binding = PricingMarketDataBinding.upsert(
         context_key=PRICING_CONTEXT_EOD,
         concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-        data_node_identifier=curve_node.config.node_metadata.identifier,
+        data_node_identifier=curve_node._default_identifier(),
         source="example",
     )
     eod_fixing_binding = PricingMarketDataBinding.upsert(
         context_key=PRICING_CONTEXT_EOD,
         concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-        data_node_identifier=fixing_node.config.node_metadata.identifier,
+        data_node_identifier=fixing_node._default_identifier(),
         source="example",
     )
     _print_step(
@@ -256,8 +256,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     _print_step(
         "Using default pricing market-data context",
         context_key=PRICING_CONTEXT_DEFAULT,
-        curve_data_node_identifier=curve_node.config.node_metadata.identifier,
-        fixing_data_node_identifier=fixing_node.config.node_metadata.identifier,
+        curve_data_node_identifier=curve_node._default_identifier(),
+        fixing_data_node_identifier=fixing_node._default_identifier(),
     )
 
     instrument = FloatingRateBond(
@@ -333,8 +333,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         "index": index,
         "index_convention_details": convention_details,
         "curve": curve,
-        "curve_node_identifier": curve_node.config.node_metadata.identifier,
-        "fixing_node_identifier": fixing_node.config.node_metadata.identifier,
+        "curve_node_identifier": curve_node._default_identifier(),
+        "fixing_node_identifier": fixing_node._default_identifier(),
         "curve_rows": len(curve_frame),
         "fixing_rows": len(fixing_frame),
         "stored_pricing_details": stored_pricing_details,

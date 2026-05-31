@@ -67,6 +67,7 @@ nav:
       - Bond Asset And Issuer Extension: ADR/0014-bond-asset-extension.md
       - Catalog-Based MetaTable Bootstrap: ADR/0015-catalog-based-metatable-bootstrap.md
       - Pricing Market Data Configuration: ADR/0016-pricing-market-data-configuration.md
+      - Storage-First DataNode Architecture Migration: ADR/0017-storage-first-data-node-architecture.md
       - API v1:
           - Asset Category Route Plan: ADR/api/v1/0012-asset-category-route-plan.md
           - Index Route Plan: ADR/api/v1/0013-index-route-plan.md

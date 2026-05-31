@@ -15,12 +15,10 @@ from msm.portfolios.models import (
     PortfolioConfigBaseModel,
 )
 from msm.portfolios.utils import TIMEDELTA
-from mainsequence.tdag.data_nodes import (
-    APIDataNode,
-)
+from mainsequence.meta_tables import APIDataNode
 
 if TYPE_CHECKING:
-    from mainsequence.tdag.data_nodes import DataNode
+    from mainsequence.meta_tables import DataNode
 
 
 class AssetMistMatch(Exception): ...

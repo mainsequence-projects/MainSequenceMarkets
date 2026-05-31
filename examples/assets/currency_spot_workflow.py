@@ -85,7 +85,7 @@ def create_eurusd_currency_spot() -> dict[str, Any]:
         "eurusd": eurusd,
         "openfigi_details": openfigi_details,
         "asset_snapshot_time": snapshot_time,
-        "asset_snapshot_node_identifier": asset_snapshot_node.config.node_metadata.identifier,
+        "asset_snapshot_node_identifier": asset_snapshot_node._default_identifier(),
         "asset_snapshot_frame": snapshot_frame,
     }
 

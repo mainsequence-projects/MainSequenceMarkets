@@ -10,7 +10,12 @@ from joblib import Parallel, delayed
 from pydantic import ConfigDict, Field
 from tqdm import tqdm
 
-from mainsequence.client.models_tdag import UpdateStatistics
+from mainsequence.client.models_metatables import UpdateStatistics
+from mainsequence.meta_tables import APIDataNode, DataNode
+from mainsequence.meta_tables.data_nodes.utils import (
+    string_freq_to_time_delta,
+    string_frequency_to_minutes,
+)
 from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
@@ -20,14 +25,12 @@ from msm.portfolios.asset_scope import (
     asset_field,
     require_asset_category_scope,
 )
+from msm.portfolios.data_nodes.storage import (
+    ExternalPricesStorage,
+    InterpolatedPricesStorage,
+)
 from msm.portfolios.models import AssetsConfiguration
 from msm.portfolios.utils import TIMEDELTA
-from mainsequence.tdag import APIDataNode
-from mainsequence.tdag.data_nodes import DataNode
-from mainsequence.tdag.data_nodes.utils import (
-    string_freq_to_time_delta,
-    string_frequency_to_minutes,
-)
 
 FULL_CALENDAR = "24/7"
 
@@ -39,12 +42,11 @@ class InterpolatedPricesConfig(AssetIndexedDataNodeConfiguration):
     intraday_bar_interpolation_rule: str
     asset_category_unique_id: str | None = Field(
         default=None,
-        json_schema_extra={"update_only": True},
     )
     upsample_frequency_id: str | None = None
     source_bars_data_node: DataNode | APIDataNode | None = Field(
         default=None,
-        json_schema_extra={"runtime_only": True},
+        json_schema_extra={"hash_excluded": True},
     )
 
 
@@ -646,6 +648,10 @@ class InterpolatedPrices(AssetIndexedDataNode):
     def dependencies(self):
         return {"bars_ts": self.bars_ts}
 
+    @classmethod
+    def _required_storage_table(cls) -> type[InterpolatedPricesStorage]:
+        return InterpolatedPricesStorage
+
     def get_string_frequency_to_minutes(self):
         return string_frequency_to_minutes(self.bar_frequency_id)
 
@@ -861,6 +867,10 @@ class ExternalPrices(AssetIndexedDataNode):
         self.asset_category_unique_id = external_prices_config.asset_category_unique_id
         super().__init__(config=external_prices_config, *args, **kwargs)
 
+    @classmethod
+    def _required_storage_table(cls) -> type[ExternalPricesStorage]:
+        return ExternalPricesStorage
+
     def get_asset_list(self):
         """
         Creates mappings from symbols to IDs
@@ -872,7 +882,7 @@ class ExternalPrices(AssetIndexedDataNode):
         )
 
     def update(self) -> pd.DataFrame:
-        from mainsequence.client.models_tdag import Artifact
+        from mainsequence.client import Artifact
 
         source_artifact = Artifact.get(bucket__name=self.bucket_name, name=self.artifact_name)
         prices_source = pd.read_csv(source_artifact.content)

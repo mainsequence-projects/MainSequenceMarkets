@@ -5,8 +5,6 @@ from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
     MarketAssetScopeItem,
-    asset_indexed_foreign_keys,
-    asset_unique_identifier_foreign_key,
 )
 from msm.data_nodes.assets.snapshots import (
     ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX,
@@ -17,9 +15,6 @@ from msm.data_nodes.assets.snapshots import (
     AssetSnapshotInput,
     AssetTimestampedDataNode,
     AssetTimestampedFrameMixin,
-    asset_snapshot_records,
-    asset_time_index_record,
-    asset_unique_identifier_record,
 )
 
 __all__ = [
@@ -35,9 +30,4 @@ __all__ = [
     "AssetTimestampedDataNode",
     "AssetTimestampedFrameMixin",
     "MarketAssetScopeItem",
-    "asset_indexed_foreign_keys",
-    "asset_snapshot_records",
-    "asset_time_index_record",
-    "asset_unique_identifier_foreign_key",
-    "asset_unique_identifier_record",
 ]

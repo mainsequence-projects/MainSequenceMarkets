@@ -7,7 +7,8 @@ from typing import Any, Literal
 from mainsequence.client.exceptions import ConflictError
 from mainsequence.client.models_metatables import MetaTable, MetaTableRegistrationRequest
 from mainsequence.logconf import logger as _mainsequence_logger
-from mainsequence.tdag.meta_tables import (
+from mainsequence.meta_tables import (
+    PlatformTimeIndexMetaData,
     external_registered_registration_request_from_sqlalchemy_model,
     register_external_sqlalchemy_model,
 )
@@ -82,6 +83,34 @@ def markets_foreign_key_target_fullnames(model: type[MarketsBase]) -> list[str]:
     return sorted(targets)
 
 
+def is_time_index_meta_table_model(model: type[MarketsBase]) -> bool:
+    """True for ADR 0017 DataNode output storage classes.
+
+    `PlatformTimeIndexMetaData` subclasses derive their own time-index/storage
+    layout and register without the ``introspect`` / ``open_for_everyone``
+    arguments accepted by domain `PlatformManagedMetaTable` models.
+    """
+
+    return isinstance(model, type) and issubclass(model, PlatformTimeIndexMetaData)
+
+
+def _platform_registration_kwargs(
+    model: type[MarketsBase],
+    *,
+    base_kwargs: Mapping[str, Any],
+    introspect: bool | None,
+) -> dict[str, Any]:
+    """Shape platform-managed register/build kwargs for one model.
+
+    DataNode storage classes (`PlatformTimeIndexMetaData`) reject ``introspect``
+    and ``open_for_everyone``; domain MetaTables require ``introspect``.
+    """
+
+    if is_time_index_meta_table_model(model):
+        return {key: value for key, value in base_kwargs.items() if key != "open_for_everyone"}
+    return {**base_kwargs, "introspect": False if introspect is None else introspect}
+
+
 def build_markets_registration_requests(
     *,
     data_source_uid: str | None = None,
@@ -121,12 +150,22 @@ def build_markets_registration_requests(
         if management_mode == "platform_managed":
             requests.append(
                 model.build_registration_request(
-                    introspect=False if introspect is None else introspect,
-                    **platform_kwargs,
+                    **_platform_registration_kwargs(
+                        model, base_kwargs=platform_kwargs, introspect=introspect
+                    )
                 )
             )
             continue
         if management_mode == "external_registered":
+            if is_time_index_meta_table_model(model):
+                requests.append(
+                    model.build_registration_request(
+                        **_platform_registration_kwargs(
+                            model, base_kwargs=platform_kwargs, introspect=introspect
+                        )
+                    )
+                )
+                continue
             requests.append(
                 external_registered_registration_request_from_sqlalchemy_model(
                     model,
@@ -193,10 +232,17 @@ def register_markets_meta_tables(
             target_meta_table_count=len(target_mapping),
         )
         try:
-            if management_mode == "platform_managed":
+            if is_time_index_meta_table_model(model):
                 meta_table = model.register(
-                    introspect=False if introspect is None else introspect,
-                    **platform_kwargs,
+                    **_platform_registration_kwargs(
+                        model, base_kwargs=platform_kwargs, introspect=introspect
+                    )
+                )
+            elif management_mode == "platform_managed":
+                meta_table = model.register(
+                    **_platform_registration_kwargs(
+                        model, base_kwargs=platform_kwargs, introspect=introspect
+                    )
                 )
             elif management_mode == "external_registered":
                 meta_table = register_external_sqlalchemy_model(
@@ -210,6 +256,8 @@ def register_markets_meta_tables(
                     "management_mode must be 'platform_managed' or 'external_registered'."
                 )
         except ConflictError as exc:
+            if is_time_index_meta_table_model(model):
+                raise
             meta_table = _duplicate_meta_table_from_conflict(
                 exc,
                 model=model,

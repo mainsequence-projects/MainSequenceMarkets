@@ -8,56 +8,15 @@ from uuid import UUID, uuid4
 
 import pandas as pd
 
-from mainsequence.client.models_tdag import LOGICAL_COLUMN_DTYPES_ATTR
-from msm.data_nodes.utils import (
-    ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT,
-    DataNodeTableContract,
-    FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT,
-    source_table_initialization_kwargs,
-)
+from mainsequence.client import dtype_codec as dc
+from msm.data_nodes.storage import AccountHoldingsStorage, FundHoldingsStorage
+from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 
 
 NULLABLE_HOLDINGS_COLUMNS = {
     "target_trade_time",
     "target_weight",
 }
-
-
-def initialize_data_node_source_table(
-    *,
-    storage: Any,
-    config: Any,
-    storage_layout: dict[str, Any] | None = None,
-    open_for_everyone: bool | None = None,
-    timeout: int | None = None,
-) -> dict[str, Any] | None:
-    """Initialize a holdings DataNode through the generic platform source-table API."""
-
-    initializer = getattr(storage, "initialize_source_table", None)
-    if not callable(initializer):
-        raise AttributeError(
-            "DataNode storage object must expose initialize_source_table(...). "
-            "Legacy domain-specific initialize_*_holdings_source_table helpers "
-            "are not used."
-        )
-    payload = {
-        "time_index_name": config.time_index_name,
-        "index_names": config.index_names,
-        "column_dtypes_map": config.column_dtypes_map,
-    }
-    if storage_layout is not None:
-        payload["storage_layout"] = storage_layout
-    if open_for_everyone is not None:
-        payload["open_for_everyone"] = open_for_everyone
-    if timeout is not None:
-        payload["timeout"] = timeout
-    return initializer(**payload)
-
-
-def holdings_source_table_kwargs(
-    contract: DataNodeTableContract,
-) -> dict[str, object]:
-    return source_table_initialization_kwargs(contract)
 
 
 def build_account_holdings_frame(
@@ -70,7 +29,7 @@ def build_account_holdings_frame(
     target_trade_time: dt.datetime | str | None = None,
 ) -> pd.DataFrame:
     return build_holdings_frame(
-        contract=ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT,
+        storage_table=AccountHoldingsStorage,
         holdings_date=holdings_date,
         owner_uid=account_uid,
         positions=positions,
@@ -90,7 +49,7 @@ def build_fund_holdings_frame(
     target_trade_time: dt.datetime | str | None = None,
 ) -> pd.DataFrame:
     return build_holdings_frame(
-        contract=FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT,
+        storage_table=FundHoldingsStorage,
         holdings_date=holdings_date,
         owner_uid=fund_uid,
         positions=positions,
@@ -102,7 +61,7 @@ def build_fund_holdings_frame(
 
 def build_holdings_frame(
     *,
-    contract: DataNodeTableContract,
+    storage_table: Any,
     holdings_date: dt.datetime | str,
     owner_uid: UUID | str,
     positions: Sequence[Mapping[str, Any] | Any],
@@ -114,7 +73,7 @@ def build_holdings_frame(
         raise ValueError("At least one holdings position is required.")
 
     resolved_holdings_set_uid = holdings_set_uid or uuid4()
-    owner_index_name = _owner_index_name(contract)
+    owner_index_name = list(storage_table.__index_names__)[1]
     rows: list[dict[str, Any]] = []
     seen_identifiers: set[str] = set()
     duplicate_identifiers: set[str] = set()
@@ -127,7 +86,7 @@ def build_holdings_frame(
         seen_identifiers.add(unique_identifier)
 
         row: dict[str, Any] = {
-            contract.time_index_name: holdings_date,
+            storage_table.__time_index_name__: holdings_date,
             owner_index_name: owner_uid,
             "unique_identifier": unique_identifier,
             "holdings_set_uid": resolved_holdings_set_uid,
@@ -136,7 +95,7 @@ def build_holdings_frame(
             "target_trade_time": position.get("target_trade_time", target_trade_time),
             "extra_details": position.get("extra_details") or {},
         }
-        if any(record.column_name == "target_weight" for record in contract.records):
+        if "target_weight" in storage_table.__table__.columns:
             row["target_weight"] = position.get("target_weight")
         rows.append(row)
 
@@ -146,16 +105,16 @@ def build_holdings_frame(
             "Duplicate values: " + ", ".join(sorted(duplicate_identifiers)) + "."
         )
 
-    return validate_holdings_frame(pd.DataFrame(rows), contract=contract)
+    return validate_holdings_frame(pd.DataFrame(rows), storage_table=storage_table)
 
 
 def validate_holdings_frame(
     data_frame: pd.DataFrame,
     *,
-    contract: DataNodeTableContract,
+    storage_table: Any,
 ) -> pd.DataFrame:
     frame = data_frame.copy()
-    index_names = contract.dynamic_table_index_names
+    index_names = list(storage_table.__index_names__)
     if list(frame.index.names) != index_names:
         if all(index_name in frame.columns for index_name in index_names):
             frame = frame.set_index(index_names)
@@ -166,7 +125,7 @@ def validate_holdings_frame(
             )
 
     flat = frame.reset_index()
-    column_dtypes_map = {record.column_name: record.dtype for record in contract.records}
+    column_dtypes_map = storage_column_dtypes_map(storage_table)
     missing_columns = [
         column_name for column_name in column_dtypes_map if column_name not in flat.columns
     ]
@@ -177,25 +136,25 @@ def validate_holdings_frame(
 
     for column_name, dtype in column_dtypes_map.items():
         values = flat[column_name]
-        if column_name == contract.time_index_name or dtype == "datetime64[ns, UTC]":
+        if column_name == storage_table.__time_index_name__ or dtype == dc.TIMESTAMP_TZ:
             flat[column_name] = values.map(_normalize_optional_datetime)
-            if column_name == contract.time_index_name and flat[column_name].isna().any():
+            if column_name == storage_table.__time_index_name__ and flat[column_name].isna().any():
                 raise ValueError("Holdings time_index cannot contain null values.")
             flat[column_name] = pd.to_datetime(flat[column_name], utc=True).astype(
                 "datetime64[ns, UTC]"
             )
-        elif dtype == "uuid":
+        elif dtype == dc.UUID_TOKEN:
             flat[column_name] = values.map(lambda value: str(UUID(str(value))))
-        elif dtype in {"decimal", "float64"}:
+        elif dtype == dc.FLOAT64:
             flat[column_name] = _normalize_float64_column(
                 values,
                 nullable=column_name in NULLABLE_HOLDINGS_COLUMNS,
             )
-        elif dtype == "bool":
+        elif dtype == dc.BOOL:
             flat[column_name] = values.map(_normalize_bool)
-        elif dtype == "jsonb":
+        elif dtype == dc.JSONB:
             flat[column_name] = values.map(_normalize_jsonb)
-        elif dtype in {"string", "object"}:
+        elif dtype == dc.STRING:
             flat[column_name] = values.map(_normalize_required_string)
         else:
             raise ValueError(f"Unsupported holdings dtype {dtype!r} for {column_name!r}.")
@@ -203,17 +162,9 @@ def validate_holdings_frame(
     frame = flat.set_index(index_names).sort_index()
     if frame.index.has_duplicates:
         raise ValueError(
-            f"Holdings frame contains duplicate rows for index contract {index_names}."
+            f"Holdings frame contains duplicate rows for index names {index_names}."
         )
-    frame.attrs[LOGICAL_COLUMN_DTYPES_ATTR] = column_dtypes_map
     return frame
-
-
-def _owner_index_name(contract: DataNodeTableContract) -> str:
-    try:
-        return contract.dynamic_table_index_names[1]
-    except IndexError as exc:
-        raise ValueError("Holdings contracts require an owner index.") from exc
 
 
 def _position_payload(position: Mapping[str, Any] | Any) -> dict[str, Any]:
@@ -288,12 +239,8 @@ def _normalize_required_string(value: Any) -> str:
 
 
 __all__ = [
-    "ACCOUNT_HISTORICAL_HOLDINGS_TABLE_CONTRACT",
-    "FUND_HISTORICAL_HOLDINGS_TABLE_CONTRACT",
     "build_account_holdings_frame",
     "build_fund_holdings_frame",
     "build_holdings_frame",
-    "holdings_source_table_kwargs",
-    "initialize_data_node_source_table",
     "validate_holdings_frame",
 ]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import os
 
 import pytest
@@ -11,60 +12,36 @@ os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
-from mainsequence.tdag.data_nodes import RecordDefinition, SourceTableForeignKey
-
-from msm.data_nodes.assets.asset_indexed import (
-    ASSET_UNIQUE_IDENTIFIER_DIMENSION,
-    AssetIndexedDataNodeConfiguration,
-    asset_unique_identifier_foreign_key,
-)
-from msm.portfolios.asset_scope import ASSET_UNIQUE_IDENTIFIER
 from msm.data_nodes.accounts import AccountHoldings, VirtualFundHoldings
 from msm.data_nodes.assets import (
-    AssetDataNodeConfiguration,
     AssetSnapshot,
 )
+from msm.data_nodes.assets.asset_indexed import (
+    ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+    AssetIndexedDataNode,
+    AssetIndexedDataNodeConfiguration,
+)
 from msm.data_nodes.execution import ExecutionErrors, OrderEvents, Orders, Trades
-from msm.models import AssetTable
+from msm.data_nodes.storage import AssetSnapshotsStorage
+from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
+from msm.models import AssetTable, markets_sqlalchemy_models
+from msm.models.registration import markets_foreign_key_target_fullnames
+from msm.portfolios.asset_scope import ASSET_UNIQUE_IDENTIFIER
 from msm.portfolios.data_nodes.portfolio_weights import PortfolioWeights
 from msm.portfolios.data_nodes.portfolios import PortfoliosDataNode
 from msm.portfolios.data_nodes.signal_weights import SignalWeights
 from msm.settings import (
     ASSET_UNIQUE_IDENTIFIER_DIMENSION as SETTINGS_ASSET_DIMENSION,
-    DEFAULT_MARKETS_NAMESPACE,
-    markets_data_node_identifier,
 )
 from msm_pricing.data_nodes import AssetPricingDetail
-
-
-def _record(column_name: str, dtype: str = "string") -> RecordDefinition:
-    return RecordDefinition(column_name=column_name, dtype=dtype)
-
-
-def _asset_records(*, include_unique_identifier: bool = True) -> list[RecordDefinition]:
-    records = [_record("time_index", "datetime64[ns, UTC]")]
-    if include_unique_identifier:
-        records.append(_record(ASSET_UNIQUE_IDENTIFIER_DIMENSION))
-    records.append(_record("ticker"))
-    return records
-
-
-def _asset_config(
-    *,
-    records: list[RecordDefinition] | None = None,
-    foreign_keys: list[SourceTableForeignKey] | None = None,
-) -> AssetDataNodeConfiguration:
-    return AssetDataNodeConfiguration(
-        time_index_name="time_index",
-        index_names=["time_index", ASSET_UNIQUE_IDENTIFIER_DIMENSION],
-        records=records or _asset_records(),
-        foreign_keys=foreign_keys,
-    )
+from msm_pricing.data_nodes.storage import AssetPricingDetailsStorage
+from msm_pricing.meta_tables import pricing_sqlalchemy_models
 
 
 def test_asset_identity_dimension_is_shared_with_settings() -> None:
     assert ASSET_UNIQUE_IDENTIFIER_DIMENSION == SETTINGS_ASSET_DIMENSION
     assert ASSET_UNIQUE_IDENTIFIER == SETTINGS_ASSET_DIMENSION
+    assert AssetIndexedDataNode.asset_identity_dimension == SETTINGS_ASSET_DIMENSION
 
 
 def test_market_data_node_compatibility_names_are_removed() -> None:
@@ -87,107 +64,137 @@ def test_market_data_node_compatibility_names_are_removed() -> None:
         importlib.import_module(legacy_module_name)
 
 
+def test_removed_foreign_key_helpers_are_gone() -> None:
+    """ADR 0017 superseded the SourceTableForeignKey helpers (Decision §4)."""
+
+    asset_indexed_module = importlib.import_module("msm.data_nodes.assets.asset_indexed")
+
+    assert not hasattr(asset_indexed_module, "asset_unique_identifier_foreign_key")
+    assert not hasattr(asset_indexed_module, "asset_indexed_foreign_keys")
+
+
 def test_root_asset_scope_module_is_removed() -> None:
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("msm.asset_scope")
 
 
 @pytest.mark.parametrize(
-    ("node_cls", "logical_identifier"),
+    "node_cls",
     [
-        (AssetSnapshot, "asset_snapshots"),
-        (AssetPricingDetail, "asset_pricing_details"),
-        (AccountHoldings, "account_historical_holdings"),
-        (VirtualFundHoldings, "virtual_fund_historical_holdings"),
-        (Orders, "execution.orders"),
-        (OrderEvents, "execution.order_events"),
-        (Trades, "execution.trades"),
-        (ExecutionErrors, "execution.errors"),
-        (PortfolioWeights, "portfolio_weights"),
-        (PortfoliosDataNode, "portfolios"),
-        (SignalWeights, "signal_weights"),
+        AssetSnapshot,
+        AssetPricingDetail,
+        AccountHoldings,
+        VirtualFundHoldings,
+        Orders,
+        OrderEvents,
+        Trades,
+        ExecutionErrors,
+        PortfolioWeights,
+        PortfoliosDataNode,
+        SignalWeights,
     ],
 )
-def test_market_data_node_identifiers_use_default_namespace(
+def test_asset_indexed_nodes_expose_storage_first_surface(
     node_cls,
-    logical_identifier: str,
 ) -> None:
-    assert node_cls.__data_node_identifier__ == logical_identifier
-    assert node_cls.default_config().node_metadata.identifier == markets_data_node_identifier(
-        logical_identifier
+    assert "__data_node_identifier__" not in node_cls.__dict__
+    assert "_default_identifier" not in node_cls.__dict__
+    assert "_default_description" not in node_cls.__dict__
+    storage_table = node_cls._required_storage_table()
+    assert node_cls._default_identifier() == storage_table.metatable_identifier()
+    assert node_cls._default_description() == inspect.getdoc(storage_table)
+
+    # msm storage registers through markets; pricing storage through pricing.
+    registered = set(markets_sqlalchemy_models()) | set(pricing_sqlalchemy_models())
+    assert storage_table in registered
+
+    assert not hasattr(node_cls, "_required_column_dtypes_map")
+    assert node_cls._column_dtypes_map_for_storage(storage_table) == storage_column_dtypes_map(
+        storage_table
+    )
+    assert not hasattr(node_cls, "build_mock_frame")
+
+
+def test_holdings_mock_frame_aliases_are_not_public_api() -> None:
+    assert not hasattr(AccountHoldings, "build_mock_account_frame")
+    assert not hasattr(VirtualFundHoldings, "build_mock_fund_frame")
+
+
+@pytest.mark.parametrize(
+    ("node_cls", "storage_cls"),
+    [
+        (AssetSnapshot, AssetSnapshotsStorage),
+        (AssetPricingDetail, AssetPricingDetailsStorage),
+    ],
+)
+def test_timestamped_asset_nodes_bind_their_storage_class(node_cls, storage_cls) -> None:
+    assert node_cls._required_storage_table() is storage_cls
+    assert storage_cls.__index_names__ == ["time_index", ASSET_UNIQUE_IDENTIFIER_DIMENSION]
+    assert ASSET_UNIQUE_IDENTIFIER_DIMENSION in {
+        column.name for column in storage_cls.__table__.columns
+    }
+
+
+@pytest.mark.parametrize(
+    ("node_cls", "storage_cls"),
+    [
+        (AssetSnapshot, AssetSnapshotsStorage),
+        (AssetPricingDetail, AssetPricingDetailsStorage),
+    ],
+)
+def test_timestamped_asset_nodes_build_datetime64_ns_utc_bootstrap_frame(
+    node_cls,
+    storage_cls,
+) -> None:
+    frame = node_cls.build_schema_bootstrap_frame()
+
+    assert list(frame.index.names) == list(storage_cls.__index_names__)
+    assert str(frame.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
+
+
+@pytest.mark.parametrize("storage_cls", [AssetSnapshotsStorage, AssetPricingDetailsStorage])
+def test_timestamped_asset_storage_has_asset_foreign_key(storage_cls) -> None:
+    asset_fullname = str(AssetTable.__table__.fullname)
+    fk_column = storage_cls.__table__.columns[ASSET_UNIQUE_IDENTIFIER_DIMENSION]
+
+    assert markets_foreign_key_target_fullnames(storage_cls) == [asset_fullname]
+    assert any(
+        foreign_key.column.table.fullname == asset_fullname
+        for foreign_key in fk_column.foreign_keys
     )
 
 
-def test_asset_indexed_nodes_default_to_markets_hash_namespace(monkeypatch) -> None:
-    monkeypatch.setattr(AssetSnapshot, "set_data_source", lambda self, data_source=None: None)
-    monkeypatch.setattr(
-        SourceTableForeignKey,
-        "target_meta_table_uid",
-        lambda self, **kwargs: "asset-metatable-uid",
-    )
-
-    node = AssetSnapshot()
-
-    assert node.hash_namespace == DEFAULT_MARKETS_NAMESPACE
+def test_asset_indexed_node_normalizes_asset_scope_helpers() -> None:
+    assert AssetSnapshot.validate_asset_list(["BTC", "ETH"]) == ["BTC", "ETH"]
+    assert AssetSnapshot.asset_dimension_filters(["BTC", "ETH"]) == {
+        ASSET_UNIQUE_IDENTIFIER_DIMENSION: ["BTC", "ETH"]
+    }
+    assert AssetSnapshot.asset_dimension_filters(None) is None
 
 
-def test_auto_register_namespace_drives_data_node_defaults(monkeypatch) -> None:
-    monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
-    monkeypatch.setattr(AssetSnapshot, "set_data_source", lambda self, data_source=None: None)
-    monkeypatch.setattr(
-        SourceTableForeignKey,
-        "target_meta_table_uid",
-        lambda self, **kwargs: "asset-metatable-uid",
-    )
-
-    node = AssetSnapshot()
-
-    assert node.hash_namespace == "mainsequence.examples"
-    assert node.config.node_metadata.identifier == "mainsequence.examples.asset_snapshots"
+def test_asset_indexed_node_rejects_duplicate_or_empty_asset_scope() -> None:
+    with pytest.raises(ValueError):
+        AssetSnapshot.validate_asset_list(["BTC", "BTC"])
+    with pytest.raises(ValueError):
+        AssetSnapshot.validate_asset_list([])
 
 
-def test_asset_unique_identifier_foreign_key_targets_asset_table() -> None:
-    foreign_key = asset_unique_identifier_foreign_key()
+def test_asset_indexed_configuration_only_carries_update_scope() -> None:
+    config = AssetIndexedDataNodeConfiguration()
 
-    assert foreign_key.target is AssetTable
-    assert foreign_key.source_column_names() == [ASSET_UNIQUE_IDENTIFIER_DIMENSION]
-    assert foreign_key.target_column_names() == [ASSET_UNIQUE_IDENTIFIER_DIMENSION]
-    assert foreign_key.on_delete == "restrict"
-
-
-@pytest.mark.parametrize("node_cls", [AssetSnapshot, AssetPricingDetail])
-def test_timestamped_asset_nodes_include_canonical_asset_foreign_key(node_cls) -> None:
-    config = node_cls.default_config()
-
-    assert isinstance(config, AssetIndexedDataNodeConfiguration)
-    assert config.foreign_keys is not None
-    assert len(config.foreign_keys) == 1
-    [foreign_key] = config.foreign_keys
-    assert foreign_key.target is AssetTable
-    assert foreign_key.source_column_names() == [ASSET_UNIQUE_IDENTIFIER_DIMENSION]
-    assert foreign_key.target_column_names() == [ASSET_UNIQUE_IDENTIFIER_DIMENSION]
-    assert ASSET_UNIQUE_IDENTIFIER_DIMENSION in {record.column_name for record in config.records}
+    assert config.asset_list is None
+    assert "asset_list" in AssetIndexedDataNodeConfiguration.model_fields
+    # Storage-first: schema/FK fields no longer live on the configuration.
+    assert "records" not in AssetIndexedDataNodeConfiguration.model_fields
+    assert "node_metadata" not in AssetIndexedDataNodeConfiguration.model_fields
+    assert "foreign_keys" not in AssetIndexedDataNodeConfiguration.model_fields
 
 
-def test_asset_data_node_config_preserves_explicit_foreign_keys() -> None:
-    extra_foreign_key = SourceTableForeignKey(
-        target="00000000-0000-0000-0000-000000000001",
-        source_columns=["ticker"],
-        target_columns=["ticker"],
-        on_delete="cascade",
-    )
+def test_constructing_asset_node_requires_registered_storage_table() -> None:
+    """Construction is backend-gated: storage_table must be registered/bound."""
 
-    config = _asset_config(foreign_keys=[extra_foreign_key])
-
-    assert config.foreign_keys is not None
-    assert config.foreign_keys[0].target is AssetTable
-    assert config.foreign_keys[1] is extra_foreign_key
-
-
-def test_asset_data_node_config_rejects_missing_asset_identity_record() -> None:
-    with pytest.raises(ValueError, match="records entry"):
-        _asset_config(records=_asset_records(include_unique_identifier=False))
-
-
-def test_asset_indexed_config_does_not_add_hidden_asset_foreign_key() -> None:
-    assert AssetIndexedDataNodeConfiguration().foreign_keys is None
+    with pytest.raises(
+        ValueError,
+        match="storage_table must be registered or bound before construction",
+    ):
+        AssetSnapshot()

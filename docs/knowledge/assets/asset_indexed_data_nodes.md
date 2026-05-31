@@ -26,12 +26,13 @@ market asset.
 - per-asset update ranges are exposed through helpers such as
   `get_asset_dimension_range_map_great_or_equal(...)`;
 - the default `hash_namespace` follows the active markets namespace;
-- configurations can declare a source-table foreign key from
-  `unique_identifier` to `AssetTable.unique_identifier`.
+- the registered storage class declares a foreign key from `unique_identifier` to
+  `AssetTable.unique_identifier`.
 
 ```text
-+-----------------------------+           generic DAtaNode        +-----------------------------+
-| mainsequence.tdag.DataNode  |---------------------------------->| DataNodeStorage             |
++-----------------------------+           generic DataNode        +-----------------------------+
+| mainsequence.meta_tables.   |---------------------------------->| TimeIndexMetaData storage   |
+| DataNode                    |                                   | registered from storage cls |
 |-----------------------------|                                   |-----------------------------|
 | storage_hash                |                                   | published table             |
 | update_hash                 |                                   | schema / records            |
@@ -77,82 +78,72 @@ Provider-specific tickers, FIGIs, ISINs, symbols, and raw payloads belong either
 in provider detail tables, such as `OpenFigiAssetDetailsTable`, or in DataNode value
 columns when the table is explicitly a timestamped provider fact.
 
-The `AssetIndexedDataNodeConfiguration.asset_list` field is marked
-`update_only`. That means asset universe selection affects updater scope, not
-the storage identity of the published dataset. Two updater jobs can write
-different asset subsets into the same dataset when the schema and dataset
-meaning are otherwise the same.
+The `AssetIndexedDataNodeConfiguration.asset_list` field is updater scope. Asset
+universe selection affects update identity, not the storage identity of the
+published dataset. Two updater jobs can write different asset subsets into the
+same dataset when the schema and dataset meaning are otherwise the same.
 
 ## Canonical Foreign Key
 
-Asset-indexed DataNode configurations should declare a source-table foreign key
-from their `unique_identifier` record to `AssetTable.unique_identifier`. The
-helper `asset_indexed_foreign_keys(...)` adds that relationship when it is not
-already present.
+Under ADR 0017 the schema contract lives on a storage class
+(`PlatformTimeIndexMetaData` / `MarketsTimeIndexMetaTableMixin`), not on the
+DataNode configuration. The canonical asset foreign key is a SQLAlchemy
+`ForeignKey` column from `unique_identifier` to `AssetTable.unique_identifier` on
+that storage class. The DataNode uses its storage class through
+`_required_storage_table()`.
 
 ```python
-from pydantic import Field, model_validator
+import datetime
 
-from mainsequence.tdag.data_nodes import DataNodeMetaData, RecordDefinition
-from msm.data_nodes.assets.asset_indexed import (
-    AssetIndexedDataNode,
-    AssetIndexedDataNodeConfiguration,
-    asset_indexed_foreign_keys,
-)
+from sqlalchemy import DateTime, Float, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.data_nodes.assets.asset_indexed import AssetIndexedDataNode
+from msm.models.assets.core import AssetTable
 
 
-class ExampleAssetMetricConfiguration(AssetIndexedDataNodeConfiguration):
-    node_metadata: DataNodeMetaData = Field(
-        default_factory=lambda: DataNodeMetaData(
-            identifier="example_asset_metrics",
-            description="Example metric keyed by time and asset.",
-        )
+class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+    __markets_base_identifier__ = "example_asset_metrics"
+    __time_index_name__ = "time_index"
+    __index_names__ = ["time_index", "unique_identifier"]
+
+    time_index: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        info={"label": "Time", "description": "UTC observation timestamp."},
     )
-    index_names: list[str] = Field(
-        default_factory=lambda: ["time_index", "unique_identifier"]
+    unique_identifier: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        info={"label": "Asset", "description": "Asset unique identifier from AssetTable."},
     )
-    records: list[RecordDefinition] = Field(
-        default_factory=lambda: [
-            RecordDefinition(
-                column_name="time_index",
-                dtype="datetime64[ns, UTC]",
-                label="Time",
-                description="UTC observation timestamp.",
-            ),
-            RecordDefinition(
-                column_name="unique_identifier",
-                dtype="string",
-                label="Asset",
-                description="Asset unique identifier from AssetTable.",
-            ),
-            RecordDefinition(
-                column_name="metric_value",
-                dtype="float64",
-                label="Metric Value",
-                description="Example asset metric.",
-            ),
-        ]
+    metric_value: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={"label": "Metric Value", "description": "Example asset metric."},
     )
-
-    @model_validator(mode="after")
-    def _ensure_asset_foreign_key(self):
-        self.foreign_keys = asset_indexed_foreign_keys(
-            records=self.records,
-            foreign_keys=self.foreign_keys,
-        )
-        return self
 
 
 class ExampleAssetMetric(AssetIndexedDataNode):
-    def __init__(self, config: ExampleAssetMetricConfiguration | None = None):
-        super().__init__(config=config or ExampleAssetMetricConfiguration())
+    @classmethod
+    def _required_storage_table(cls) -> type[ExampleAssetMetricStorage]:
+        return ExampleAssetMetricStorage
 
     def dependencies(self) -> dict:
         return {}
 ```
 
-The `Asset` MetaTable must be registered before source-table initialization can
-resolve this relationship.
+Register the storage class through the catalog bootstrap (add it to the markets
+model registry returned by `markets_sqlalchemy_models()`, or pass it to
+`msm.start_engine(models=[...])`) so the `Asset` MetaTable is registered before
+this table's foreign key resolves. Construction requires a storage class that
+has been registered through `PlatformTimeIndexMetaData.register(...)`; do not
+manually bind storage by UID or reconstruct a generic `MetaTable`.
 
 ## AssetSnapshot
 
@@ -177,10 +168,10 @@ provider or observation date.
 +-----------------------------+
 ```
 
-`AssetSnapshotConfiguration` declares its persisted schema as
-`RecordDefinition` rows. It also inherits the asset-indexed foreign-key behavior
-through `AssetDataNodeConfiguration`, which adds the canonical
-`unique_identifier -> AssetTable.unique_identifier` relationship.
+`AssetSnapshotsStorage` (in `msm.data_nodes.storage`) declares the persisted
+schema as SQLAlchemy mapped columns and owns the canonical
+`unique_identifier -> AssetTable.unique_identifier` foreign key. `AssetSnapshot`
+uses it through `_required_storage_table()`.
 
 ## Register Assets Before Publishing Snapshots
 
@@ -215,7 +206,7 @@ hash namespaces.
 ## Building And Running AssetSnapshot
 
 Use `AssetSnapshot.build_frame(...)` when you want local frame validation, and
-`AssetSnapshot().set_snapshots(...)` when you want to bind rows to a node before
+`AssetSnapshot().set_snapshots(...)` when you want to attach rows to a node before
 running it.
 
 ```python
@@ -256,29 +247,32 @@ reference row is an asset or an index. Non-model-specific DataNode helpers live
 under `msm.data_nodes.utils`; the generic stamped base lives in
 `msm.data_nodes.utils.stamped`:
 
-- `StampedDataNodeConfiguration` owns the common `time_index`,
-  `index_names`, `records`, metadata, and dtype map behavior.
 - `StampedFrameMixin` owns frame binding, schema bootstrap frames,
-  mock frames, validation, and `datetime64[ns, UTC]` normalization.
+  mock frames, validation, and `datetime64[ns, UTC]` normalization — all sourced
+  from the registered `storage_table` (`__table__.columns`, `__index_names__`,
+  `__time_index_name__`).
 - `StampedDataNode` owns the empty dependency default and the markets
-  `hash_namespace` defaulting rule.
+  `hash_namespace` defaulting rule, and resolves its storage class through
+  `_required_storage_table()`.
 
-Asset-specific classes live under `msm.data_nodes.assets` and add the
-`AssetTable.unique_identifier` foreign key. Index-specific classes live under
-`msm.data_nodes.indices` and reuse the same stamped base while adding the
-`IndexTable.unique_identifier` foreign key. Shared utility modules such as
-`msm.data_nodes.utils.stamped`, `msm.data_nodes.utils.contracts`, and
+Asset-specific classes live under `msm.data_nodes.assets` and use storage
+classes that add the `AssetTable.unique_identifier` foreign key. Index-specific
+classes live under `msm.data_nodes.indices` and reuse the same stamped base with
+storage classes carrying the `IndexTable.unique_identifier` foreign key. Shared
+utility modules such as `msm.data_nodes.utils.stamped` and
 `msm.data_nodes.utils.namespaces` stay concept-neutral and do not sit beside
 model-specific packages at the `msm.data_nodes` root.
 
 ## Namespaces And Identifiers
 
-Markets DataNodes use the same namespace rule as markets MetaTables. With the
-default markets namespace, logical identifiers stay bare, such as `Asset` and
+Markets DataNodes use the same namespace rule as markets MetaTables because
+their default identifiers derive from their storage classes. With the default
+markets namespace, logical identifiers stay bare, such as `Asset` and
 `asset_snapshots`. With
 `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`, `Asset` resolves to
 `mainsequence.examples.Asset`, while
-`AssetSnapshot.__data_node_identifier__ = "asset_snapshots"` resolves to
+`AssetSnapshot._default_identifier()` derives from
+`AssetSnapshotsStorage.metatable_identifier()` and resolves to
 `mainsequence.examples.asset_snapshots`.
 
 The default DataNode `hash_namespace` also follows the active markets namespace.
@@ -288,22 +282,23 @@ parallel runs that must not collide on a shared backend.
 ## Related Code
 
 - `src/msm/data_nodes/assets/asset_indexed.py`: base class, asset scope validation,
-  namespace behavior, asset dimension filters, per-asset update range helpers,
-  and canonical foreign-key helpers.
-- `src/msm/data_nodes/utils/stamped.py`: shared timestamped frame/config
-  behavior for reference-keyed markets DataNodes.
-- `src/msm/data_nodes/utils/contracts.py`: backend-independent source-table
-  contracts used by holdings and target-position DataNodes.
+  namespace behavior, asset dimension filters, and per-asset update range helpers.
+- `src/msm/data_nodes/storage.py`: storage classes (including
+  `AssetSnapshotsStorage`) that own the schema, dtypes, and canonical `AssetTable`
+  foreign keys.
+- `src/msm/data_nodes/utils/stamped.py`: shared timestamped frame behavior
+  validated against the registered `storage_table`.
+- `src/msm/data_nodes/utils/storage_schema.py`: derives column dtype maps from a
+  storage class via the SDK `dtype_codec`.
 - `src/msm/data_nodes/utils/namespaces.py`: shared markets hash-namespace
   defaulting for DataNodes.
 - `src/msm/data_nodes/assets/snapshots.py`: `AssetSnapshot`,
   `AssetDataNodeConfiguration`, and timestamped asset frame validation.
-- `src/msm/data_nodes/indices/timestamped.py`: `IndexTimestampedDataNode`,
-  `IndexDataNodeConfiguration`, and canonical `IndexTable` source-table
-  foreign-key helpers for timestamped facts keyed to `IndexTable`.
+- `src/msm/data_nodes/indices/timestamped.py`: `IndexTimestampedDataNode` and
+  `IndexDataNodeConfiguration` for timestamped facts keyed to `IndexTable`.
 - `src/msm_pricing/data_nodes/pricing_details.py`: `AssetPricingDetail` and
   its pricing-specific configuration.
 - `examples/assets/asset_crud_workflow.py`: asset workflow that includes
   `AssetSnapshot` frame construction and DataNode execution.
-- `docs/ADR/0007-market-data-node-asset-foreign-keys.md`: ADR for canonical
-  asset foreign keys on asset-indexed DataNodes.
+- `docs/ADR/0017-storage-first-data-node-architecture.md`: storage-first DataNode
+  architecture (supersedes ADR 0007's DataNode-side asset foreign keys).

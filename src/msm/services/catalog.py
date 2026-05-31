@@ -55,7 +55,7 @@ def list_catalog_tables(
         key=lambda row: (
             str(row["namespace"]).lower(),
             str(row["identifier"]).lower(),
-            str(row["storage_hash"]).lower(),
+            str(row["model_name"]).lower(),
             str(row["uid"]),
         )
     )
@@ -73,7 +73,6 @@ def list_catalog_tables(
                     row.get("description"),
                     row.get("model_name"),
                     row.get("meta_table_uid"),
-                    row.get("storage_hash"),
                 ),
                 normalized_search=normalized_search,
             )
@@ -195,7 +194,6 @@ def _build_catalog_list_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "description": _optional_string(row.get("description")),
         "model_name": _string_value(row.get("model_name")),
         "meta_table_uid": _string_value(row.get("meta_table_uid")),
-        "storage_hash": _string_value(row.get("storage_hash")),
         "contract_hash": _string_value(row.get("contract_hash")),
         "sdk_version": _optional_string(row.get("sdk_version")),
         "created_at": _datetime_string(row.get("created_at")),
@@ -215,7 +213,6 @@ def _build_catalog_reference(row: Mapping[str, Any]) -> dict[str, Any]:
         "identifier": _string_value(row.get("identifier")),
         "model_name": _string_value(row.get("model_name")),
         "meta_table_uid": _string_value(row.get("meta_table_uid")),
-        "storage_hash": _string_value(row.get("storage_hash")),
     }
 
 

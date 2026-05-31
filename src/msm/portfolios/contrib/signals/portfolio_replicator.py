@@ -18,7 +18,7 @@ from msm.portfolios.data_nodes import SignalWeights
 from msm.portfolios.models import AssetsConfiguration, PortfolioConfigBaseModel
 
 if TYPE_CHECKING:
-    from mainsequence.tdag.data_nodes.data_nodes import APIDataNode, DataNode
+    from mainsequence.meta_tables import APIDataNode, DataNode
 
 
 class TrackingStrategy(Enum):

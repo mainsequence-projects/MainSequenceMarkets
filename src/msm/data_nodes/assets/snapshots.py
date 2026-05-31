@@ -4,107 +4,42 @@ from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar
 
 import pandas as pd
-from pydantic import Field, model_validator
 
-from mainsequence.tdag.data_nodes import RecordDefinition
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc, normalize_timestamp_ns_utc
 from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
-    asset_indexed_foreign_keys,
 )
+from msm.data_nodes.storage import AssetSnapshotsStorage
 from msm.data_nodes.utils.stamped import (
     STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX,
     STAMPED_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER,
     StampedDataNodeConfiguration,
     StampedFrameMixin,
     reset_frame_index,
-    schema_bootstrap_value,
-    validate_stamped_data_frame,
 )
-from msm.settings import ASSET_UNIQUE_IDENTIFIER_DIMENSION, markets_data_node_identifier
+from msm.settings import ASSET_UNIQUE_IDENTIFIER_DIMENSION
 
 ASSET_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER = STAMPED_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER
 ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX = STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX
 AssetSnapshotInput = Mapping[str, Any] | Any
 
 
-def asset_time_index_record() -> RecordDefinition:
-    return RecordDefinition(
-        column_name="time_index",
-        dtype="datetime64[ns, UTC]",
-        label="Time Index",
-        description="UTC timestamp for the asset fact row.",
-    )
-
-
-def asset_unique_identifier_record() -> RecordDefinition:
-    return RecordDefinition(
-        column_name=ASSET_UNIQUE_IDENTIFIER_DIMENSION,
-        dtype="string",
-        label="Unique Identifier",
-        description="Asset unique identifier from the Asset MetaTable.",
-    )
-
-
-def asset_snapshot_records() -> list[RecordDefinition]:
-    return [
-        asset_time_index_record(),
-        asset_unique_identifier_record(),
-        RecordDefinition(
-            column_name="name",
-            dtype="string",
-            label="Name",
-            description="Security name as recorded by the asset data provider.",
-        ),
-        RecordDefinition(
-            column_name="ticker",
-            dtype="string",
-            label="Ticker",
-            description="Ticker or display symbol.",
-        ),
-        RecordDefinition(
-            column_name="exchange_code",
-            dtype="string",
-            label="Exchange Code",
-            description="Exchange or market code.",
-        ),
-        RecordDefinition(
-            column_name="asset_ticker_group_id",
-            dtype="string",
-            label="Asset Ticker Group ID",
-            description="Highest aggregation level for share-class grouping.",
-        ),
-    ]
-
-
 class AssetDataNodeConfiguration(StampedDataNodeConfiguration, AssetIndexedDataNodeConfiguration):
-    """Configuration for timestamped asset DataNodes."""
+    """Configuration for timestamped asset DataNodes.
+
+    Storage-first: the column schema, index names, and the canonical
+    ``Asset.unique_identifier`` foreign key live on the ``storage_table``
+    (an ``AssetSnapshotsStorage``-style ``PlatformTimeIndexMetaData`` class),
+    not on this configuration.
+    """
 
     reference_dimension: ClassVar[str] = ASSET_UNIQUE_IDENTIFIER_DIMENSION
     frame_label: ClassVar[str] = "Asset DataNode"
 
-    index_names: list[str] = Field(
-        default_factory=lambda: ["time_index", ASSET_UNIQUE_IDENTIFIER_DIMENSION],
-        description="Canonical DataFrame index columns for the asset DataNode.",
-    )
-
-    @model_validator(mode="after")
-    def _ensure_asset_foreign_key(self) -> AssetDataNodeConfiguration:
-        self.foreign_keys = asset_indexed_foreign_keys(
-            records=self.records,
-            foreign_keys=self.foreign_keys,
-        )
-        return self
-
 
 class AssetSnapshotConfiguration(AssetDataNodeConfiguration):
     """Configuration for the canonical AssetSnapshot DataNode."""
-
-    records: list[RecordDefinition] = Field(
-        default_factory=asset_snapshot_records,
-        description="Output schema for the AssetSnapshot DataNode.",
-    )
 
 
 class AssetTimestampedFrameMixin(StampedFrameMixin):
@@ -124,15 +59,12 @@ class AssetTimestampedDataNode(AssetTimestampedFrameMixin, AssetIndexedDataNode)
 class AssetSnapshot(AssetTimestampedDataNode):
     """Timestamped asset display snapshots keyed by asset unique_identifier."""
 
-    __data_node_identifier__ = "asset_snapshots"
     configuration_class = AssetSnapshotConfiguration
 
     @classmethod
     def build_frame(
         cls,
         snapshots: AssetSnapshotInput | Sequence[AssetSnapshotInput],
-        *,
-        config: AssetDataNodeConfiguration | None = None,
     ) -> pd.DataFrame:
         """Build a validated frame from row payloads with per-row `time_index`."""
 
@@ -156,7 +88,7 @@ class AssetSnapshot(AssetTimestampedDataNode):
 
         if not rows:
             raise ValueError("At least one asset snapshot is required.")
-        return cls.validate_frame(pd.DataFrame(rows), config=config)
+        return cls.validate_frame(pd.DataFrame(rows))
 
     def set_snapshots(
         self,
@@ -164,7 +96,7 @@ class AssetSnapshot(AssetTimestampedDataNode):
     ) -> AssetSnapshot:
         """Validate snapshot row payloads and attach them to this DataNode."""
 
-        return self.set_frame(self.build_frame(snapshots, config=self.config))
+        return self.set_frame(self.build_frame(snapshots))
 
     def _execute_local_update(self, historical_update: Any):
         self._verify_backend_snapshot_index = True
@@ -197,7 +129,7 @@ class AssetSnapshot(AssetTimestampedDataNode):
         """Return existing backend keys that would collide with `frame`."""
 
         candidate_keys = _asset_snapshot_index_keys(
-            self.validate_frame(frame, config=self.config)
+            self.validate_frame(frame, storage_table=self.storage_table)
         )
         existing_keys: list[tuple[str, str]] = []
         for time_index, unique_identifier in candidate_keys:
@@ -239,28 +171,8 @@ class AssetSnapshot(AssetTimestampedDataNode):
         )
 
     @classmethod
-    def _default_identifier(cls) -> str:
-        return markets_data_node_identifier(cls.__data_node_identifier__)
-
-    @classmethod
-    def _default_description(cls) -> str:
-        return (
-            "Historical asset representation snapshots keyed by time_index and "
-            "unique_identifier. Use this DataNode to preserve how an asset's "
-            "display attributes change over time, such as ticker, exchange code, "
-            "name, or share-class grouping."
-        )
-
-
-def _validate_asset_data_frame(
-    frame: pd.DataFrame,
-    *,
-    config: AssetDataNodeConfiguration,
-) -> pd.DataFrame:
-    if not isinstance(config, AssetDataNodeConfiguration):
-        raise TypeError("Asset DataNodes require AssetDataNodeConfiguration.")
-
-    return validate_stamped_data_frame(frame, config=config, frame_label="Asset DataNode")
+    def _required_storage_table(cls) -> type[AssetSnapshotsStorage]:
+        return AssetSnapshotsStorage
 
 
 def _asset_snapshot_index_keys(frame: pd.DataFrame) -> list[tuple[pd.Timestamp, str]]:
@@ -367,10 +279,6 @@ def _optional_snapshot_string(payload: Mapping[str, Any], field_name: str) -> st
     return str(value)
 
 
-_reset_frame_index = reset_frame_index
-_schema_bootstrap_value = schema_bootstrap_value
-
-
 __all__ = [
     "ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX",
     "ASSET_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER",
@@ -380,7 +288,4 @@ __all__ = [
     "AssetSnapshotInput",
     "AssetTimestampedDataNode",
     "AssetTimestampedFrameMixin",
-    "asset_snapshot_records",
-    "asset_time_index_record",
-    "asset_unique_identifier_record",
 ]

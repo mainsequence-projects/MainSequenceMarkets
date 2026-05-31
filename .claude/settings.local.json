@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/python -c \"import mainsequence.meta_tables as m; print\\(m.__file__\\)\")",
+      "Bash(.venv/bin/python -c \"from mainsequence.meta_tables import PlatformTimeIndexMetaData as P; import inspect; print\\(inspect.getsourcefile\\(P\\)\\)\")",
+      "Read(//Users/jose/code/MainSequenceClientSide/mainsequence-sdk/mainsequence/meta_tables/**)",
+      "Bash(.venv/bin/python -c \"import mainsequence.meta_tables as m, inspect; print\\(inspect.getfile\\(m\\)\\)\")",
+      "Bash(python3 -c \"import mainsequence.meta_tables as m, inspect; print\\(inspect.getfile\\(m\\)\\)\")",
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(grep -rn 'jsonb\\\\|JSONB\\\\|def .*dtype\\\\|_dtype\\\\|sqlalchemy_dtype\\\\|column.type\\\\|str\\(.*type\\)' __TRACKED_VAR__/src/mainsequence/meta_tables/sqlalchemy_contracts.py)",
+      "Bash(cd /Users/jose/code/MainSequenceClientSide/mainsequence-sdk && grep -rn \"class DataNode\\\\b\\\\|class DataNodeConfiguration\\\\|class APIDataNode\\\\|storage_table\\\\|class DataNodeMetaData\" mainsequence/meta_tables/data_nodes/data_nodes.py | head -60)",
+      "Bash(echo \"---exit: $?---\")",
+      "Bash(.venv/bin/python -c \"import msm.data_nodes.accounts as a; print\\('accounts ok'\\); print\\('TIME_INDEX:', a.ACCOUNT_HOLDINGS_TIME_INDEX_NAME\\); print\\('ACC IDX:', a.ACCOUNT_HOLDINGS_INDEX_NAMES\\); print\\('FUND IDX:', a.VIRTUAL_FUND_HOLDINGS_INDEX_NAMES\\)\")",
+      "Bash(.venv/bin/python -c \"import pandas_market_calendars; print\\('INSTALLED', pandas_market_calendars.__version__\\)\")",
+      "Bash(.venv/bin/python -c \"import mainsequence; print\\('sdk file:', mainsequence.__file__\\)\")",
+      "Bash(.venv/bin/python -c \"from mainsequence.meta_tables import DataNodeMetaData\")",
+      "Bash(.venv/bin/python -c \"from mainsequence.meta_tables import RecordDefinition\")",
+      "Bash(.venv/bin/ruff --version)",
+      "Bash(.venv/bin/ruff check *)",
+      "Bash(.venv/bin/python -c \"import mainsequence.meta_tables as m; print\\(m.PlatformTimeIndexMetaData.__module__\\); import inspect; print\\(inspect.getfile\\(m.PlatformTimeIndexMetaData\\)\\)\")",
+      "Bash(.venv/bin/python -c \"import mainsequence.client.dtype_codec as d, inspect; print\\(inspect.getfile\\(d\\)\\); print\\('--- public ---'\\); print\\([n for n in dir\\(d\\) if not n.startswith\\('_'\\)]\\)\")",
+      "Bash(.venv/bin/python -m ruff check src/msm/portfolios src/msm/data_nodes/__init__.py src/msm/data_nodes/assets/snapshots.py src/msm/data_nodes/utils/stamped.py src/msm/data_nodes/utils/__init__.py)"
+    ]
+  }
+}

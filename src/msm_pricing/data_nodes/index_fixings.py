@@ -7,30 +7,14 @@ from typing import ClassVar, Protocol
 import pandas as pd
 from pydantic import Field, field_validator
 
-from mainsequence.client.models_tdag import ColumnMetaData, TableMetaData
 from mainsequence.client.utils import DataFrequency
-from mainsequence.tdag.data_nodes import DataNodeMetaData, RecordDefinition
 from msm.data_nodes.indices import (
     IndexDataNodeConfiguration,
     IndexTimestampedDataNode,
-    index_time_index_record,
-    index_unique_identifier_record,
 )
-from msm.settings import (
-    INDEX_UNIQUE_IDENTIFIER_DIMENSION,
-    markets_data_node_identifier,
-)
-from msm_pricing.settings import PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
+from msm.settings import INDEX_UNIQUE_IDENTIFIER_DIMENSION
 
-INDEX_FIXINGS_NODE_DESCRIPTION = (
-    "Timestamped index fixings used by msm_pricing to hydrate QuantLib indexes. "
-    "Each row represents one observation timestamp and one Index unique_identifier, "
-    "with the rate column storing the observed fixing as a decimal value. The "
-    "dataset is an index-stamped fact table, not an asset-indexed table, and each "
-    "identity links to the canonical Index MetaTable. Pricing uses this data to "
-    "load historical SOFR, TIIE, IBOR, overnight, and other reference-rate fixings "
-    "when valuing floating-rate bonds, swaps, and related instruments."
-)
+from .storage import IndexFixingsStorage
 
 
 class IndexFixingBuilder(Protocol):
@@ -44,23 +28,6 @@ class IndexFixingBuilder(Protocol):
     ) -> pd.DataFrame: ...
 
 
-def index_fixing_rate_record() -> RecordDefinition:
-    return RecordDefinition(
-        column_name="rate",
-        dtype="float64",
-        label="Fixing Rate",
-        description="Observed index fixing rate normalized to decimal form.",
-    )
-
-
-def index_fixing_records() -> list[RecordDefinition]:
-    return [
-        index_time_index_record(),
-        index_unique_identifier_record(),
-        index_fixing_rate_record(),
-    ]
-
-
 def _supported_frequency_ids() -> set[str]:
     return {frequency.value for frequency in DataFrequency}
 
@@ -68,17 +35,6 @@ def _supported_frequency_ids() -> set[str]:
 class IndexFixingConfiguration(IndexDataNodeConfiguration):
     """Configuration for index fixing observations consumed by pricing."""
 
-    node_metadata: DataNodeMetaData = Field(
-        default_factory=lambda: DataNodeMetaData(
-            identifier=markets_data_node_identifier(PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS),
-            description=INDEX_FIXINGS_NODE_DESCRIPTION,
-        ),
-        description="Discovery metadata for the IndexFixings DataNode.",
-    )
-    records: list[RecordDefinition] = Field(
-        default_factory=index_fixing_records,
-        description="Output schema for index fixing observations.",
-    )
     frequency: str = Field(
         default=DataFrequency.one_d.value,
         description=(
@@ -92,7 +48,6 @@ class IndexFixingConfiguration(IndexDataNodeConfiguration):
             "Optional updater scope of Index unique identifiers. When omitted, "
             "the node publishes every supplied fixing builder."
         ),
-        json_schema_extra={"update_only": True},
     )
 
     @field_validator("frequency")
@@ -125,7 +80,6 @@ class IndexFixingConfiguration(IndexDataNodeConfiguration):
 class FixingRatesNode(IndexTimestampedDataNode):
     """Pricing helper that publishes index fixings from registered builders."""
 
-    __data_node_identifier__ = PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
     configuration_class: ClassVar[type[IndexFixingConfiguration]] = IndexFixingConfiguration
     OFFSET_START = dt.datetime(1990, 1, 1, tzinfo=dt.UTC)
 
@@ -139,8 +93,8 @@ class FixingRatesNode(IndexTimestampedDataNode):
         super().__init__(config=self.fixing_config, **kwargs)
 
     @classmethod
-    def _default_description(cls) -> str:
-        return INDEX_FIXINGS_NODE_DESCRIPTION
+    def _required_storage_table(cls) -> type[IndexFixingsStorage]:
+        return IndexFixingsStorage
 
     def set_fixing_builders(
         self,
@@ -173,7 +127,7 @@ class FixingRatesNode(IndexTimestampedDataNode):
         normalized = normalized.dropna(subset=["rate"])
         if normalized.empty:
             return pd.DataFrame()
-        return self.validate_frame(normalized, config=self.config)
+        return self.validate_frame(normalized, storage_table=self.storage_table)
 
     def build_fixing_frame(
         self,
@@ -214,29 +168,9 @@ class FixingRatesNode(IndexTimestampedDataNode):
             normalized = normalized.rename(columns={"index_uid": INDEX_UNIQUE_IDENTIFIER_DIMENSION})
         return normalized
 
-    def get_table_metadata(self) -> TableMetaData:
-        return TableMetaData(
-            identifier=self.config.node_metadata.identifier,
-            data_frequency_id=DataFrequency(self.config.frequency),
-            description=self.config.node_metadata.description,
-        )
-
-    def get_column_metadata(self) -> list[ColumnMetaData]:
-        return [
-            ColumnMetaData(
-                column_name="rate",
-                dtype="float64",
-                label="Fixing Rate",
-                description="Observed index fixing rate normalized to decimal form.",
-            )
-        ]
-
 
 __all__ = [
     "FixingRatesNode",
-    "INDEX_FIXINGS_NODE_DESCRIPTION",
     "IndexFixingConfiguration",
     "IndexFixingBuilder",
-    "index_fixing_rate_record",
-    "index_fixing_records",
 ]

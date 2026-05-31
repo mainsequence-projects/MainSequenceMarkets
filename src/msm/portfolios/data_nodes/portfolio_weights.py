@@ -4,14 +4,11 @@ from typing import Any
 
 import pandas as pd
 
-from mainsequence.tdag.data_nodes import RecordDefinition
-from msm.settings import markets_data_node_identifier
-
 from .base import (
     AssetScopedPortfolioCanonicalDataNode,
     PortfolioCanonicalDataNodeConfiguration,
+    StorageTable,
     _empty_flat_frame,
-    _record_definitions_from_dtype_map,
     _require_columns,
     _reset_frame_index,
 )
@@ -19,9 +16,6 @@ from .constants import (
     ASSET_UNIQUE_IDENTIFIER,
     PORTFOLIO_INDEX_ASSET_UNIQUE_IDENTIFIER,
     PORTFOLIO_WEIGHT_SOURCE_COLUMN_ALIASES,
-    PORTFOLIO_WEIGHTS_COLUMN_DESCRIPTIONS,
-    PORTFOLIO_WEIGHTS_COLUMN_DTYPES_MAP,
-    PORTFOLIO_WEIGHTS_COLUMN_LABELS,
     PORTFOLIO_WEIGHTS_INDEX_NAMES,
     SCHEMA_BOOTSTRAP_ASSET_IDENTIFIER,
     SCHEMA_BOOTSTRAP_PORTFOLIO_IDENTIFIER,
@@ -32,12 +26,11 @@ from .portfolio_identity import (
     compute_portfolio_configuration_hash,
     get_or_create_portfolio_index_asset,
 )
+from .storage import PortfolioWeightsStorage
 
 
 class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
     """Canonical DataNode for executed Portfolios portfolio weights."""
-
-    __data_node_identifier__ = "portfolio_weights"
 
     def set_weights_frame(
         self,
@@ -64,6 +57,7 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
         frame = self.validate_frame(
             self._calculate_weights(),
             config=self._canonical_config(),
+            storage_table=self.storage_table,
         )
         self._upsert_portfolio_metadata_if_available(frame)
         return frame
@@ -79,6 +73,7 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
                 self._resolve_portfolio_index_asset_unique_identifier()
             ),
             config=self._canonical_config(),
+            storage_table=self.storage_table,
         )
 
     def _resolve_portfolio_index_asset_unique_identifier(self) -> str:
@@ -165,27 +160,12 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
         )
 
     @classmethod
-    def _default_identifier(cls) -> str:
-        return markets_data_node_identifier(cls.__data_node_identifier__)
-
-    @classmethod
-    def _default_description(cls) -> str:
-        return (
-            "Canonical executed Portfolios portfolio weights indexed by time_index, "
-            "portfolio_index_asset_unique_identifier, and asset unique_identifier."
-        )
-
-    @classmethod
     def _required_index_names(cls) -> list[str]:
         return list(PORTFOLIO_WEIGHTS_INDEX_NAMES)
 
     @classmethod
-    def _required_records(cls) -> list[RecordDefinition]:
-        return _record_definitions_from_dtype_map(
-            PORTFOLIO_WEIGHTS_COLUMN_DTYPES_MAP,
-            labels=PORTFOLIO_WEIGHTS_COLUMN_LABELS,
-            descriptions=PORTFOLIO_WEIGHTS_COLUMN_DESCRIPTIONS,
-        )
+    def _required_storage_table(cls) -> type[PortfolioWeightsStorage]:
+        return PortfolioWeightsStorage
 
     @classmethod
     def _schema_bootstrap_index_values(cls) -> dict[str, Any]:
@@ -200,22 +180,25 @@ def normalize_portfolio_weights_frame(
     *,
     portfolio_index_asset_unique_identifier: str,
     config: PortfolioCanonicalDataNodeConfiguration | None = None,
+    storage_table: StorageTable | None = None,
 ) -> pd.DataFrame:
     """Normalize postprocessed Portfolios weights into canonical PortfolioWeights rows."""
     config = PortfolioWeights._validate_config(config or PortfolioWeights.default_config())
+    required_columns = list(PortfolioWeights._column_dtypes_map_for_storage(storage_table))
     flat = _reset_frame_index(weights_frame)
     if flat.empty:
-        flat = _empty_flat_frame(config=config)
+        flat = _empty_flat_frame(column_names=required_columns)
 
     flat = flat.rename(columns=PORTFOLIO_WEIGHT_SOURCE_COLUMN_ALIASES)
     flat[PORTFOLIO_INDEX_ASSET_UNIQUE_IDENTIFIER] = str(portfolio_index_asset_unique_identifier)
 
     _require_columns(
         flat,
-        required_columns=list(config.column_dtypes_map),
+        required_columns=required_columns,
         frame_name="PortfolioWeights",
     )
     return PortfolioWeights.validate_frame(
-        flat[list(config.column_dtypes_map)],
+        flat[required_columns],
         config=config,
+        storage_table=storage_table,
     )

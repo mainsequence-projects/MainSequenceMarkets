@@ -48,7 +48,7 @@ def create_and_insert_account_holdings() -> dict[str, Any]:
         "asset_type": asset_type,
         "asset": asset,
         "account": account,
-        "holdings_data_node_identifier": holdings_node.config.node_metadata.identifier,
+        "holdings_data_node_identifier": holdings_node._default_identifier(),
         "holdings_date": holdings_date,
         "pretty_positions": pretty_positions,
         "updated_frame": updated_frame,

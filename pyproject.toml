@@ -34,7 +34,7 @@ classifiers = [
 ]
 dependencies = [
   "cachetools",
-  "mainsequence",
+  "mainsequence>=4.1.5",
   "numpy",
   "pandas",
   "pip>=26.1.1",

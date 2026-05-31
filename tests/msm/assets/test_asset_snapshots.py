@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import inspect
 import os
 
 import pandas as pd
@@ -12,28 +13,17 @@ os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
-from mainsequence.tdag.data_nodes import SourceTableForeignKey
-
 from msm.data_nodes.assets import (
     AssetSnapshot,
     AssetSnapshotConfiguration,
 )
+from msm.data_nodes.storage import AssetSnapshotsStorage
 from msm.services.assets.openfigi import build_asset_snapshot_frame_from_openfigi_result
-from msm.settings import DEFAULT_MARKETS_NAMESPACE, markets_data_node_identifier
 from msm_pricing.data_nodes import AssetPricingDetail, AssetPricingDetailConfiguration
+from msm_pricing.data_nodes.storage import AssetPricingDetailsStorage
 
 
-@pytest.fixture
-def offline_asset_snapshot_node(monkeypatch):
-    monkeypatch.setattr(AssetSnapshot, "set_data_source", lambda self, data_source=None: None)
-    monkeypatch.setattr(
-        SourceTableForeignKey,
-        "target_meta_table_uid",
-        lambda self, **kwargs: "asset-metatable-uid",
-    )
-
-
-def test_asset_snapshot_build_frame_validates_datanode_index() -> None:
+def test_asset_snapshot_build_frame_validates_storage_index() -> None:
     frame = AssetSnapshot.build_frame(
         [
             {
@@ -47,41 +37,22 @@ def test_asset_snapshot_build_frame_validates_datanode_index() -> None:
         ],
     )
 
-    assert list(frame.index.names) == AssetSnapshot.default_config().index_names
+    assert list(frame.index.names) == list(AssetSnapshotsStorage.__index_names__)
     row = frame.reset_index().iloc[0]
     assert row["unique_identifier"] == "BBG000B9XRY4"
+    assert row["ticker"] == "AAPL"
     assert "venue_specific_properties" not in frame.reset_index().columns
+    assert str(frame.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
 
 
-def test_asset_snapshot_uses_custom_identifier(offline_asset_snapshot_node) -> None:
-    node = AssetSnapshot(
-        config=AssetSnapshot.default_config(identifier="examples.asset_snapshots"),
-        hash_namespace="examples",
-    )
-    node.set_snapshots(
-        {
-            "time_index": dt.datetime(2026, 5, 25, tzinfo=dt.UTC),
-            "unique_identifier": "example-asset-btc",
-            "ticker": "BTC",
-        },
-    )
-
-    assert node.config.node_metadata.identifier == "examples.asset_snapshots"
-    assert node.hash_namespace == "examples"
-    assert list(node.update().index.names) == ["time_index", "unique_identifier"]
-
-
-def test_asset_snapshot_uses_default_markets_namespace(
-    offline_asset_snapshot_node,
-) -> None:
-    node = AssetSnapshot()
-
-    assert node.config.node_metadata.identifier == markets_data_node_identifier(
-        AssetSnapshot.__data_node_identifier__
-    )
-    assert node.hash_namespace == DEFAULT_MARKETS_NAMESPACE
-    assert isinstance(node.config, AssetSnapshotConfiguration)
-    assert [record.column_name for record in node.config.records] == [
+def test_asset_snapshot_resolves_storage_first_surface() -> None:
+    assert AssetSnapshot._required_storage_table() is AssetSnapshotsStorage
+    assert "__data_node_identifier__" not in AssetSnapshot.__dict__
+    assert AssetSnapshot._default_identifier() == AssetSnapshotsStorage.metatable_identifier()
+    assert AssetSnapshot._default_description() == inspect.getdoc(AssetSnapshotsStorage)
+    assert issubclass(AssetSnapshot.configuration_class, AssetSnapshotConfiguration)
+    # Storage class is the single source of the snapshot column contract.
+    assert [column.name for column in AssetSnapshotsStorage.__table__.columns] == [
         "time_index",
         "unique_identifier",
         "name",
@@ -91,18 +62,20 @@ def test_asset_snapshot_uses_default_markets_namespace(
     ]
 
 
-def test_asset_pricing_detail_uses_record_definition_configuration() -> None:
-    config = AssetPricingDetail.default_config()
-
-    assert isinstance(config, AssetPricingDetailConfiguration)
-    assert [record.column_name for record in config.records] == [
+def test_asset_pricing_detail_resolves_storage_first_surface() -> None:
+    assert AssetPricingDetail._required_storage_table() is AssetPricingDetailsStorage
+    assert issubclass(
+        AssetPricingDetail.configuration_class,
+        AssetPricingDetailConfiguration,
+    )
+    assert [column.name for column in AssetPricingDetailsStorage.__table__.columns] == [
         "time_index",
         "unique_identifier",
         "instrument_dump",
     ]
 
 
-def test_asset_snapshot_build_frame_is_easy_entrypoint(offline_asset_snapshot_node) -> None:
+def test_asset_snapshot_build_frame_is_easy_entrypoint() -> None:
     frame = AssetSnapshot.build_frame(
         {
             "time_index": "2026-05-25T00:00:00Z",
@@ -111,9 +84,7 @@ def test_asset_snapshot_build_frame_is_easy_entrypoint(offline_asset_snapshot_no
         },
     )
 
-    assert frame.index.get_level_values("unique_identifier").tolist() == [
-        "example-asset-eth"
-    ]
+    assert frame.index.get_level_values("unique_identifier").tolist() == ["example-asset-eth"]
 
 
 def test_asset_snapshot_frame_rejects_blank_identifier() -> None:
@@ -161,60 +132,26 @@ def test_openfigi_snapshot_builder_uses_generic_entrypoint() -> None:
     assert "venue_specific_properties" not in frame.reset_index().columns
 
 
-def test_asset_snapshot_rejects_backend_duplicate_index(
-    offline_asset_snapshot_node,
-    monkeypatch,
-) -> None:
+def test_constructing_asset_snapshot_requires_registered_storage_table() -> None:
+    """set_snapshots/update need a constructed node, which is backend-gated."""
+
+    with pytest.raises(
+        ValueError,
+        match="storage_table must be registered or bound before construction",
+    ):
+        AssetSnapshot()
+
+
+@pytest.mark.skip(reason="requires platform backend (Stage 5 registration)")
+def test_asset_snapshot_set_snapshots_and_update() -> None:
+    """set_snapshots + update + backend duplicate checks need a registered node."""
+
     node = AssetSnapshot()
-    frame = AssetSnapshot.build_frame(
+    node.set_snapshots(
         {
-            "time_index": "2026-05-25T00:00:00Z",
+            "time_index": dt.datetime(2026, 5, 25, tzinfo=dt.UTC),
             "unique_identifier": "example-asset-btc",
             "ticker": "BTC",
         },
-        config=node.config,
     )
-    monkeypatch.setattr(node, "get_df_between_dates", lambda **kwargs: frame)
-
-    with pytest.raises(ValueError, match="already exist"):
-        node.verify_backend_index_available(frame)
-
-
-def test_asset_snapshot_logs_backend_duplicate_index(
-    offline_asset_snapshot_node,
-    monkeypatch,
-) -> None:
-    class StubLogger:
-        def __init__(self) -> None:
-            self.messages = []
-
-        def info(self, message, **kwargs) -> None:
-            self.messages.append((message, kwargs))
-
-    node = AssetSnapshot()
-    frame = AssetSnapshot.build_frame(
-        {
-            "time_index": "2026-05-25T00:00:00Z",
-            "unique_identifier": "example-asset-btc",
-            "ticker": "BTC",
-        },
-        config=node.config,
-    )
-    logger = StubLogger()
-    node._logger = logger
-    monkeypatch.setattr(node, "get_df_between_dates", lambda **kwargs: frame)
-
-    existing_keys = node.existing_backend_index_keys(frame)
-
-    assert existing_keys == [
-        ("2026-05-25T00:00:00+00:00", "example-asset-btc"),
-    ]
-    assert logger.messages == [
-        (
-            "AssetSnapshot row already exists",
-            {
-                "time_index": "2026-05-25T00:00:00+00:00",
-                "unique_identifier": "example-asset-btc",
-            },
-        )
-    ]
+    assert list(node.update().index.names) == ["time_index", "unique_identifier"]

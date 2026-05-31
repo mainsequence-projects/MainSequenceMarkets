@@ -4,6 +4,11 @@ from types import SimpleNamespace
 
 from msm.models import AssetTable, IndexTable, IndexTypeTable, markets_sqlalchemy_models
 import msm_pricing.meta_tables as pricing_meta_tables
+from msm_pricing.data_nodes.storage import (
+    AssetPricingDetailsStorage,
+    DiscountCurvesStorage,
+    IndexFixingsStorage,
+)
 from msm_pricing.meta_tables import pricing_sqlalchemy_models, register_pricing_meta_tables
 from msm_pricing.models import (
     AssetCurrentPricingDetailsTable,
@@ -12,17 +17,24 @@ from msm_pricing.models import (
     PricingMarketDataBindingTable,
 )
 
+# ADR 0017: pricing_sqlalchemy_models() appends the pricing DataNode storage
+# MetaTables after their FK target MetaTables (Asset/Index/Curve).
+EXPECTED_PRICING_MODELS = [
+    AssetTable,
+    IndexTypeTable,
+    IndexTable,
+    IndexConventionDetailsTable,
+    CurveTable,
+    AssetCurrentPricingDetailsTable,
+    PricingMarketDataBindingTable,
+    DiscountCurvesStorage,
+    IndexFixingsStorage,
+    AssetPricingDetailsStorage,
+]
+
 
 def test_pricing_sqlalchemy_models_returns_pricing_dependency_order() -> None:
-    assert pricing_sqlalchemy_models() == [
-        AssetTable,
-        IndexTypeTable,
-        IndexTable,
-        IndexConventionDetailsTable,
-        CurveTable,
-        AssetCurrentPricingDetailsTable,
-        PricingMarketDataBindingTable,
-    ]
+    assert pricing_sqlalchemy_models() == EXPECTED_PRICING_MODELS
 
 
 def test_pricing_sqlalchemy_models_returns_a_fresh_model_list() -> None:
@@ -30,15 +42,7 @@ def test_pricing_sqlalchemy_models_returns_a_fresh_model_list() -> None:
 
     models.clear()
 
-    assert pricing_sqlalchemy_models() == [
-        AssetTable,
-        IndexTypeTable,
-        IndexTable,
-        IndexConventionDetailsTable,
-        CurveTable,
-        AssetCurrentPricingDetailsTable,
-        PricingMarketDataBindingTable,
-    ]
+    assert pricing_sqlalchemy_models() == EXPECTED_PRICING_MODELS
 
 
 def test_core_markets_models_do_not_include_pricing_extension_table() -> None:
@@ -49,6 +53,10 @@ def test_core_markets_models_do_not_include_pricing_extension_table() -> None:
     assert CurveTable not in markets_sqlalchemy_models()
     assert AssetCurrentPricingDetailsTable not in markets_sqlalchemy_models()
     assert PricingMarketDataBindingTable not in markets_sqlalchemy_models()
+    # ADR 0017: pricing DataNode storage registers through the pricing registry only.
+    assert DiscountCurvesStorage not in markets_sqlalchemy_models()
+    assert IndexFixingsStorage not in markets_sqlalchemy_models()
+    assert AssetPricingDetailsStorage not in markets_sqlalchemy_models()
 
 
 def test_register_pricing_meta_tables_delegates_with_pricing_models(monkeypatch) -> None:
@@ -75,15 +83,7 @@ def test_register_pricing_meta_tables_delegates_with_pricing_models(monkeypatch)
         timeout=5,
     )
 
-    assert result.models == [
-        AssetTable,
-        IndexTypeTable,
-        IndexTable,
-        IndexConventionDetailsTable,
-        CurveTable,
-        AssetCurrentPricingDetailsTable,
-        PricingMarketDataBindingTable,
-    ]
+    assert result.models == EXPECTED_PRICING_MODELS
     assert calls == [
         {
             "data_source_uid": "data-source-uid",
@@ -94,15 +94,7 @@ def test_register_pricing_meta_tables_delegates_with_pricing_models(monkeypatch)
             "introspect": True,
             "storage_hash_by_fullname": {"public.asset": "asset-storage-hash"},
             "timeout": 5,
-            "models": [
-                AssetTable,
-                IndexTypeTable,
-                IndexTable,
-                IndexConventionDetailsTable,
-                CurveTable,
-                AssetCurrentPricingDetailsTable,
-                PricingMarketDataBindingTable,
-            ],
+            "models": EXPECTED_PRICING_MODELS,
         }
     ]
 
@@ -136,41 +128,11 @@ def test_register_pricing_meta_tables_registration_request_modes_use_dependency_
                 str(IndexTable.__table__.fullname): "index-meta-table-uid",
             },
         )
-        assert result.models == [
-            AssetTable,
-            IndexTypeTable,
-            IndexTable,
-            IndexConventionDetailsTable,
-            CurveTable,
-            AssetCurrentPricingDetailsTable,
-            PricingMarketDataBindingTable,
-        ]
+        assert result.models == EXPECTED_PRICING_MODELS
 
     assert calls == [
-        (
-            "platform_managed",
-            [
-                AssetTable,
-                IndexTypeTable,
-                IndexTable,
-                IndexConventionDetailsTable,
-                CurveTable,
-                AssetCurrentPricingDetailsTable,
-                PricingMarketDataBindingTable,
-            ],
-        ),
-        (
-            "external_registered",
-            [
-                AssetTable,
-                IndexTypeTable,
-                IndexTable,
-                IndexConventionDetailsTable,
-                CurveTable,
-                AssetCurrentPricingDetailsTable,
-                PricingMarketDataBindingTable,
-            ],
-        ),
+        ("platform_managed", EXPECTED_PRICING_MODELS),
+        ("external_registered", EXPECTED_PRICING_MODELS),
     ]
 
 
@@ -194,15 +156,7 @@ def test_register_pricing_meta_tables_uses_catalog_bootstrap_in_dependency_order
             ),
         )
 
-    for model in (
-        AssetTable,
-        IndexTypeTable,
-        IndexTable,
-        IndexConventionDetailsTable,
-        CurveTable,
-        AssetCurrentPricingDetailsTable,
-        PricingMarketDataBindingTable,
-    ):
+    for model in EXPECTED_PRICING_MODELS:
         monkeypatch.setattr(model, "register", classmethod(fail_direct_register))
     monkeypatch.setattr(
         pricing_meta_tables,
@@ -214,27 +168,8 @@ def test_register_pricing_meta_tables_uses_catalog_bootstrap_in_dependency_order
 
     assert len(calls) == 1
     assert calls[0]["data_source_uid"] == "data-source-uid"
-    assert calls[0]["models"] == [
-        AssetTable,
-        IndexTypeTable,
-        IndexTable,
-        IndexConventionDetailsTable,
-        CurveTable,
-        AssetCurrentPricingDetailsTable,
-        PricingMarketDataBindingTable,
-    ]
+    assert calls[0]["models"] == EXPECTED_PRICING_MODELS
     assert result.target_meta_table_uid_by_fullname == {
-        str(AssetTable.__table__.fullname): "AssetTable-meta-table-uid",
-        str(IndexTypeTable.__table__.fullname): "IndexTypeTable-meta-table-uid",
-        str(IndexTable.__table__.fullname): "IndexTable-meta-table-uid",
-        str(IndexConventionDetailsTable.__table__.fullname): (
-            "IndexConventionDetailsTable-meta-table-uid"
-        ),
-        str(CurveTable.__table__.fullname): "CurveTable-meta-table-uid",
-        str(AssetCurrentPricingDetailsTable.__table__.fullname): (
-            "AssetCurrentPricingDetailsTable-meta-table-uid"
-        ),
-        str(PricingMarketDataBindingTable.__table__.fullname): (
-            "PricingMarketDataBindingTable-meta-table-uid"
-        ),
+        str(model.__table__.fullname): f"{model.__name__}-meta-table-uid"
+        for model in EXPECTED_PRICING_MODELS
     }

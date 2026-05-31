@@ -15,7 +15,6 @@ class CatalogListRow(BaseModel):
     description: str | None = None
     model_name: str
     meta_table_uid: str
-    storage_hash: str
     contract_hash: str
     sdk_version: str | None = None
     created_at: str
@@ -41,7 +40,6 @@ class CatalogReference(BaseModel):
     identifier: str
     model_name: str
     meta_table_uid: str
-    storage_hash: str
 
 
 class CatalogColumn(BaseModel):

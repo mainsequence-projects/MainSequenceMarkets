@@ -107,7 +107,6 @@ def test_generic_upsert_operation_populates_python_defaults_for_backend_sql() ->
         description=None,
         model_name="AssetTable",
         meta_table_uid=str(uuid.uuid4()),
-        storage_hash="asset-storage-hash",
         contract_hash="contract-hash",
         sdk_version="0.0.test",
     )
@@ -116,12 +115,14 @@ def test_generic_upsert_operation_populates_python_defaults_for_backend_sql() ->
         context,
         model=MarketsMetaTableCatalogTable,
         values=row.to_payload(),
-        conflict_columns=["storage_hash"],
+        conflict_columns=["namespace", "identifier"],
     )
 
     assert isinstance(operation.statement.parameters["uid"], uuid.UUID)
-    assert operation.statement.parameters["created_at"].tzinfo is not None
-    assert operation.statement.parameters["updated_at"].tzinfo is not None
+    assert operation.statement.parameter_types["created_at"] == "timestamp with time zone"
+    assert operation.statement.parameter_types["updated_at"] == "timestamp with time zone"
+    assert operation.statement.parameters["created_at"].endswith("Z")
+    assert operation.statement.parameters["updated_at"].endswith("Z")
     assert "updated_at =" in operation.statement.sql
 
 
@@ -168,12 +169,10 @@ def test_account_target_position_assignment_operation_requires_utc_timestamp() -
     assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
         AccountTargetPositionAssignmentTable,
     )
-    assert operation.statement.parameters["target_positions_time"] == dt.datetime(
-        2026,
-        5,
-        25,
-        tzinfo=dt.UTC,
+    assert (
+        operation.statement.parameter_types["target_positions_time"] == "timestamp with time zone"
     )
+    assert operation.statement.parameters["target_positions_time"] == "2026-05-25T00:00:00Z"
 
 
 def test_generic_get_by_uid_uses_single_primary_key_when_uid_column_is_absent() -> None:

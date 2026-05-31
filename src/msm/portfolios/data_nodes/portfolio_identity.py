@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-import mainsequence.tdag.data_nodes.build_operations as build_operations
+import mainsequence.meta_tables.data_nodes.build_operations as build_operations
 
 from .base import _drop_excluded_keys
 from .constants import PORTFOLIO_CONFIGURATION_HASH_EXCLUDED_KEYS

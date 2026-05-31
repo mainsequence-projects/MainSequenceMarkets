@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mainsequence.tdag.meta_tables import PlatformManagedMetaTable
+from mainsequence.meta_tables import PlatformManagedMetaTable
 
 from msm.models import AssetTable, IndexTable
 from msm_pricing.models import (

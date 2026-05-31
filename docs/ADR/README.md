@@ -34,3 +34,4 @@ Current decisions:
 - [0014. Bond Asset And Issuer Extension](0014-bond-asset-extension.md)
 - [0015. Catalog-Based MetaTable Bootstrap](0015-catalog-based-metatable-bootstrap.md)
 - [0016. Pricing Market Data Configuration](0016-pricing-market-data-configuration.md)
+- [0017. Storage-First DataNode Architecture Migration](0017-storage-first-data-node-architecture.md)
