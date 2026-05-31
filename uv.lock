@@ -900,7 +900,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "4.1.6"
+version = "4.1.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cachetools" },
@@ -921,9 +921,8 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/54/77/5dee9974962b4e775f641185d358aafa65c4c93326c7b9a51fffed4b8b3f/mainsequence-4.1.6.tar.gz", hash = "sha256:d2b7217733519d157026efccafa4a3789c73fb6c3451791e8572d71cba4b4a65", size = 435765, upload-time = "2026-05-31T14:38:40.64Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/31/3a/ae7d1b59ec731e5fe32197460ee5222248d5700a67dd0b11c5d4b504bdd2/mainsequence-4.1.6-py3-none-any.whl", hash = "sha256:da002c8664e903de72bc8efb28e5f8a6b594b2a2fc5278e7b6043a9dc6584ecb", size = 382009, upload-time = "2026-05-31T14:38:38.283Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/f2/aee1642f7fa762d3f8b4fc3f286d9f19e133c0946069623c372b4e11045f/mainsequence-4.1.7-py3-none-any.whl", hash = "sha256:af4d5a5f4e58312a73a8c0a26f934a4fea3601c310561f80385c3cd0c2fed029", size = 384075, upload-time = "2026-05-31T16:18:28.647Z" },
 ]
 
 [[package]]
@@ -1241,7 +1240,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.12"
+version = "0.0.13"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
