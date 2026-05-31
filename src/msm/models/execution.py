@@ -12,7 +12,6 @@ from sqlalchemy.types import JSON, Uuid
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_fk_name,
     markets_index_name,
     markets_table_args,
     new_markets_uid,
@@ -60,7 +59,6 @@ class OrderManagerTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AccountTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Account", "target_account_uid"),
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -113,11 +111,6 @@ class OrderTargetQuantityTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             OrderManagerTable,
             column="uid",
-            name=markets_fk_name(
-                __metatable_identifier__,
-                "OrderManager",
-                "order_manager_uid",
-            ),
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -127,7 +120,6 @@ class OrderTargetQuantityTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -197,7 +189,6 @@ class OrderTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             OrderManagerTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "OrderManager", "order_manager_uid"),
             ondelete="CASCADE",
         ),
         nullable=True,
@@ -207,7 +198,6 @@ class OrderTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="SET NULL",
         ),
         nullable=True,
@@ -218,7 +208,6 @@ class OrderTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             FundTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Fund", "related_fund_uid"),
             ondelete="CASCADE",
         ),
         nullable=True,
@@ -228,7 +217,6 @@ class OrderTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AccountTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Account", "related_account_uid"),
             ondelete="CASCADE",
         ),
         nullable=True,
@@ -268,7 +256,6 @@ class OrderStatusEventTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             OrderTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Order", "order_uid"),
             ondelete="CASCADE",
         ),
         nullable=True,
@@ -327,7 +314,6 @@ class TradeTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="SET NULL",
         ),
         nullable=True,
@@ -340,7 +326,6 @@ class TradeTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             FundTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Fund", "related_fund_uid"),
             ondelete="CASCADE",
         ),
         nullable=True,
@@ -350,7 +335,6 @@ class TradeTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AccountTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Account", "related_account_uid"),
             ondelete="CASCADE",
         ),
         nullable=True,
@@ -360,7 +344,6 @@ class TradeTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             OrderTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Order", "related_order_uid"),
             ondelete="CASCADE",
         ),
         nullable=True,
@@ -412,7 +395,6 @@ class ExecutionErrorTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AccountTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Account", "related_account_uid"),
             ondelete="CASCADE",
         ),
         nullable=True,
@@ -422,7 +404,6 @@ class ExecutionErrorTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             FundTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Fund", "related_fund_uid"),
             ondelete="CASCADE",
         ),
         nullable=True,

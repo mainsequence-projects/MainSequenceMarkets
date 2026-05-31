@@ -10,7 +10,6 @@ from sqlalchemy.types import JSON, Uuid
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_fk_name,
     markets_index_name,
     markets_table_args,
     new_markets_uid,
@@ -57,7 +56,6 @@ class FundTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AccountTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Account", "target_account_uid"),
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -67,7 +65,6 @@ class FundTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             PortfolioTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Portfolio", "target_portfolio_uid"),
             ondelete="CASCADE",
         ),
         nullable=False,

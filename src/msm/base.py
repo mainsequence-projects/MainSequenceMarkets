@@ -128,16 +128,6 @@ def markets_index_name(model_identifier: str, *columns: str, unique: bool = Fals
     )
 
 
-def markets_fk_name(source_identifier: str, target_identifier: str, *columns: str) -> str:
-    return markets_postgres_identifier(
-        "mainsequence_markets",
-        source_identifier,
-        target_identifier,
-        *columns,
-        suffix="fkey",
-    )
-
-
 def markets_table_args(
     identifier: str,
     *constraints: Any,
@@ -233,7 +223,6 @@ __all__ = [
     "MarketsBase",
     "MarketsMetaTableMixin",
     "MarketsTimeIndexMetaTableMixin",
-    "markets_fk_name",
     "markets_index_name",
     "markets_identifier",
     "markets_meta_table_identifier",

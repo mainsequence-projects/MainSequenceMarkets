@@ -456,7 +456,7 @@ def validate_platform_meta_table_physical_contract(
             "actual": actual_indexes[name],
         }
         for name in sorted(set(expected_indexes).intersection(actual_indexes))
-        if expected_indexes[name] != actual_indexes[name]
+        if _physical_index_signature_mismatch(expected_indexes[name], actual_indexes[name])
     }
     if missing_columns or extra_columns or missing_indexes or mismatched_indexes:
         raise CatalogBootstrapError(
@@ -507,25 +507,71 @@ def _physical_item_field(item: Any, field_name: str) -> Any:
     return getattr(item, field_name, None)
 
 
+def _physical_item_has_field(item: Any, field_name: str) -> bool:
+    if isinstance(item, Mapping):
+        return field_name in item
+    model_fields_set = getattr(item, "model_fields_set", None)
+    if isinstance(model_fields_set, set):
+        return field_name in model_fields_set
+    fields_set = getattr(item, "__fields_set__", None)
+    if isinstance(fields_set, set):
+        return field_name in fields_set
+    return getattr(item, field_name, None) is not None
+
+
+def _physical_index_signature_mismatch(
+    expected: Mapping[str, Any],
+    actual: Mapping[str, Any],
+) -> bool:
+    actual_columns = actual.get("columns")
+    actual_unique = actual.get("unique")
+    if actual_columns is None:
+        return False
+    if list(expected.get("columns", [])) != list(actual_columns):
+        return True
+    return actual_unique is not None and bool(expected.get("unique")) != bool(actual_unique)
+
+
 def _physical_index_signature(index: Any) -> dict[str, Any]:
     contract_fragment = _physical_item_field(index, "contract_fragment")
     if not isinstance(contract_fragment, Mapping):
         contract_fragment = {}
 
-    columns = (
+    raw_columns = (
         _physical_item_field(index, "columns")
         or _physical_item_field(index, "column_names")
         or contract_fragment.get("columns")
-        or []
+        or contract_fragment.get("column_names")
     )
-    unique = _physical_item_field(index, "unique")
-    if unique is None:
-        unique = contract_fragment.get("unique")
+    columns = _physical_index_columns(raw_columns)
+    raw_unique = None
+    for field_name in ("unique", "is_unique"):
+        if _physical_item_has_field(index, field_name):
+            raw_unique = _physical_item_field(index, field_name)
+            break
+    if raw_unique is None:
+        raw_unique = contract_fragment.get("unique")
+    if raw_unique is None:
+        raw_unique = contract_fragment.get("is_unique")
 
     return {
-        "columns": [str(column) for column in columns],
-        "unique": bool(unique),
+        "columns": columns,
+        "unique": bool(raw_unique) if raw_unique is not None and columns is not None else None,
     }
+
+
+def _physical_index_columns(value: Any) -> list[str] | None:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        return None
+
+    columns: list[str] = []
+    for column in value:
+        column_name = _physical_item_field(column, "name")
+        if column_name in (None, ""):
+            column_name = column
+        if column_name not in (None, ""):
+            columns.append(str(column_name))
+    return columns or None
 
 
 def register_catalog_missing_meta_table(

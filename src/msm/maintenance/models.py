@@ -157,7 +157,6 @@ def markets_meta_table_contract_payload(model: type[MarketsBase]) -> dict[str, A
         ],
         "foreign_keys": _sort_contract_items(
             {
-                "name": constraint.name,
                 "columns": [element.parent.name for element in constraint.elements],
                 "target_columns": [
                     f"{_foreign_key_target_identifier(element)}."

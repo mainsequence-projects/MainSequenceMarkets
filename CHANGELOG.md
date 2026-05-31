@@ -84,6 +84,9 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- Fixed markets catalog bootstrap validation so platform-managed MetaTables with
+  matching columns and index names are not falsely rejected when backend
+  introspection omits index column or uniqueness details.
 - Fixed holdings and target-position DataNode numeric fields so `quantity`,
   `target_weight`, and exposure measures are declared and emitted as
   `float64`, matching the SDK DataFrame dtype validator.

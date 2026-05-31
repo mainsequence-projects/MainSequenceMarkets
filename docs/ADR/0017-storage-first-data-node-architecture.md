@@ -639,8 +639,8 @@ register/build helpers (`models/registration.py`) and the catalog
 (`maintenance/catalog.py`) are now kind-aware — they omit `introspect` /
 `open_for_everyone` for `PlatformTimeIndexMetaData` storage classes (which the
 SDK rejects for that base) via `_platform_registration_kwargs(...)`; and all six
-FK-bearing storage classes now declare explicit `name=markets_fk_name(...)` FK
-names (the SDK requires named MetaTable foreign keys).
+FK-bearing storage classes now use class-keyed `MetaTableForeignKey(...)`
+declarations instead of raw table-name foreign keys.
 
 ### Stage 7: Cleanup and verification — DONE
 

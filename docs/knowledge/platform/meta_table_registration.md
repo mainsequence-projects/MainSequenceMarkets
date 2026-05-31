@@ -56,7 +56,6 @@ from mainsequence.meta_tables import MetaTableForeignKey
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.types import Uuid
 
-from msm.base import markets_fk_name
 from msm.models.assets import AssetTable
 
 
@@ -65,7 +64,6 @@ asset_uid = mapped_column(
     MetaTableForeignKey(
         AssetTable,
         column="uid",
-        name=markets_fk_name("ExampleDetails", "Asset", "asset_uid"),
         ondelete="RESTRICT",
     ),
     nullable=False,

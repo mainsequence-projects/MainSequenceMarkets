@@ -18,7 +18,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
-from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin, markets_fk_name
+from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.accounts import AccountTable
 from msm.models.assets.core import AssetTable
 from msm.models.funds import FundTable
@@ -59,7 +59,6 @@ class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="unique_identifier",
-            name=markets_fk_name(__markets_base_identifier__, "Asset", "unique_identifier"),
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -127,7 +126,6 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AccountTable,
             column="uid",
-            name=markets_fk_name(__markets_base_identifier__, "Account", "account_uid"),
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -144,7 +142,6 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="unique_identifier",
-            name=markets_fk_name(__markets_base_identifier__, "Asset", "unique_identifier"),
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -229,7 +226,6 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             FundTable,
             column="uid",
-            name=markets_fk_name(__markets_base_identifier__, "Fund", "fund_uid"),
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -246,7 +242,6 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="unique_identifier",
-            name=markets_fk_name(__markets_base_identifier__, "Asset", "unique_identifier"),
             ondelete="RESTRICT",
         ),
         nullable=False,

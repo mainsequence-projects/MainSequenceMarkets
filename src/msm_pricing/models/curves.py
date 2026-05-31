@@ -10,7 +10,6 @@ from sqlalchemy.types import JSON, Uuid
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_fk_name,
     markets_index_name,
     markets_table_args,
     new_markets_uid,
@@ -62,11 +61,6 @@ class CurveTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             IndexConventionDetailsTable,
             column="index_uid",
-            name=markets_fk_name(
-                __metatable_identifier__,
-                "IndexConventionDetails",
-                "index_uid",
-            ),
             ondelete="RESTRICT",
         ),
         nullable=False,

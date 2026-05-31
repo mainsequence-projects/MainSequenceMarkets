@@ -10,7 +10,6 @@ from sqlalchemy.types import JSON, Uuid
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_fk_name,
     markets_index_name,
     markets_table_args,
     new_markets_uid,
@@ -79,11 +78,6 @@ class AccountGroupTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AccountModelPortfolioTable,
             column="uid",
-            name=markets_fk_name(
-                __metatable_identifier__,
-                "AccountModelPortfolio",
-                "account_model_portfolio_uid",
-            ),
             ondelete="SET NULL",
         ),
         nullable=True,

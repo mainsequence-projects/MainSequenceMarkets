@@ -16,7 +16,7 @@ from sqlalchemy import DateTime, Float, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin, markets_fk_name
+from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.assets.core import AssetTable
 from msm.models.indices import IndexTable
 from msm_pricing.models.curves import CurveTable
@@ -56,7 +56,6 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             CurveTable,
             column="unique_identifier",
-            name=markets_fk_name(__markets_base_identifier__, "Curve", "curve_unique_identifier"),
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -106,7 +105,6 @@ class IndexFixingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             IndexTable,
             column="unique_identifier",
-            name=markets_fk_name(__markets_base_identifier__, "Index", "unique_identifier"),
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -150,7 +148,6 @@ class AssetPricingDetailsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="unique_identifier",
-            name=markets_fk_name(__markets_base_identifier__, "Asset", "unique_identifier"),
             ondelete="RESTRICT",
         ),
         nullable=False,

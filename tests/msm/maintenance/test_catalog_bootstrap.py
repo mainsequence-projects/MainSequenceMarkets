@@ -553,6 +553,25 @@ def test_platform_meta_table_physical_validation_accepts_top_level_indexes_meta(
     )
 
 
+def test_platform_meta_table_physical_validation_accepts_name_only_index_introspection() -> None:
+    snapshot = _physical_snapshot_for_model(MarketsMetaTableCatalogTable)
+    snapshot["indexes"] = [
+        {
+            "name": index["name"],
+            "columns": [],
+            "unique": False,
+        }
+        for index in snapshot["indexes"]
+    ]
+    meta_table = _IntrospectableMetaTable(snapshot)
+
+    catalog.validate_platform_meta_table_physical_contract(
+        meta_table,
+        model=MarketsMetaTableCatalogTable,
+        timeout=7,
+    )
+
+
 def test_platform_meta_table_physical_validation_rejects_stale_missing_indexes() -> None:
     meta_table = _IntrospectableMetaTable(
         _physical_snapshot_for_model(

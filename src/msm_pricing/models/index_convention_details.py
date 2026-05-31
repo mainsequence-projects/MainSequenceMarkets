@@ -10,7 +10,6 @@ from sqlalchemy.types import JSON, Uuid
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_fk_name,
     markets_index_name,
     markets_table_args,
 )
@@ -43,7 +42,6 @@ class IndexConventionDetailsTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             IndexTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Index", "index_uid"),
             ondelete="CASCADE",
         ),
         primary_key=True,

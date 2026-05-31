@@ -148,7 +148,7 @@ from mainsequence.meta_tables import MetaTableForeignKey
 from sqlalchemy import DateTime, Float, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin, markets_fk_name
+from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.data_nodes.assets import AssetDataNodeConfiguration, AssetTimestampedDataNode
 from msm.models.assets.core import AssetTable
 
@@ -172,11 +172,6 @@ class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="unique_identifier",
-            name=markets_fk_name(
-                __markets_base_identifier__,
-                AssetTable.__markets_base_identifier__,
-                "unique_identifier",
-            ),
             ondelete="RESTRICT",
         ),
         nullable=False,

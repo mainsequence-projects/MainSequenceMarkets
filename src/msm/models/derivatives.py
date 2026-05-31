@@ -12,7 +12,6 @@ from sqlalchemy.types import JSON, Uuid
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_fk_name,
     markets_index_name,
     markets_table_args,
 )
@@ -55,7 +54,6 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="CASCADE",
         ),
         primary_key=True,
@@ -67,7 +65,6 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             IndexTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Index", "underlying_index_uid"),
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -78,7 +75,6 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Asset", "settlement_asset"),
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -88,7 +84,6 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Asset", "margin_asset"),
             ondelete="RESTRICT",
         ),
         nullable=False,

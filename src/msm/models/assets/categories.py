@@ -10,7 +10,6 @@ from sqlalchemy.types import JSON, Uuid
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_fk_name,
     markets_index_name,
     markets_table_args,
     new_markets_uid,
@@ -89,11 +88,6 @@ class AssetCategoryMembershipTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetCategoryTable,
             column="uid",
-            name=markets_fk_name(
-                __metatable_identifier__,
-                "AssetCategory",
-                "category_uid",
-            ),
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -103,7 +97,6 @@ class AssetCategoryMembershipTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="CASCADE",
         ),
         nullable=False,

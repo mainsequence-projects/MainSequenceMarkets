@@ -10,7 +10,6 @@ from sqlalchemy.types import Uuid
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_fk_name,
     markets_index_name,
     markets_table_args,
 )
@@ -54,7 +53,6 @@ class CurrencySpotAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="CASCADE",
         ),
         primary_key=True,
@@ -65,7 +63,6 @@ class CurrencySpotAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Asset", "base_currency_uid"),
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -75,7 +72,6 @@ class CurrencySpotAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
         MetaTableForeignKey(
             AssetTable,
             column="uid",
-            name=markets_fk_name(__metatable_identifier__, "Asset", "quote_currency_uid"),
             ondelete="RESTRICT",
         ),
         nullable=False,
