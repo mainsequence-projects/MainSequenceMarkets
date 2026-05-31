@@ -35,7 +35,7 @@ market asset.
 | DataNode                    |                                   | registered from storage cls |
 |-----------------------------|                                   |-----------------------------|
 | storage_hash                |                                   | published table             |
-| update_hash                 |                                   | schema / records            |
+| update_hash                 |                                   | schema / columns            |
 | dependencies()              |                                   | update history              |
 | update()                    |                                   +-----------------------------+
 +-----------------------------+
@@ -95,11 +95,12 @@ that storage class. The DataNode uses its storage class through
 ```python
 import datetime
 
+import pandas as pd
 from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
-from msm.data_nodes.assets.asset_indexed import AssetIndexedDataNode
+from msm.data_nodes.assets import AssetDataNodeConfiguration, AssetTimestampedDataNode
 from msm.models.assets.core import AssetTable
 
 
@@ -133,21 +134,32 @@ class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
-class ExampleAssetMetric(AssetIndexedDataNode):
+class ExampleAssetMetricConfiguration(AssetDataNodeConfiguration):
+    pass
+
+
+class ExampleAssetMetric(AssetTimestampedDataNode):
+    configuration_class = ExampleAssetMetricConfiguration
+
     @classmethod
     def _required_storage_table(cls) -> type[ExampleAssetMetricStorage]:
         return ExampleAssetMetricStorage
 
-    def dependencies(self) -> dict:
-        return {}
+    @classmethod
+    def build_frame(cls, rows: list[dict]) -> pd.DataFrame:
+        return cls.validate_frame(pd.DataFrame(rows))
+
+    def set_metrics(self, rows: list[dict]):
+        return self.set_frame(self.build_frame(rows))
 ```
 
-Register the storage class through the catalog bootstrap (add it to the markets
-model registry returned by `markets_sqlalchemy_models()`, or pass it to
-`msm.start_engine(models=[...])`) so the `Asset` MetaTable is registered before
-this table's foreign key resolves. Construction requires a storage class that
-has been registered through `PlatformTimeIndexMetaData.register(...)`; do not
-manually bind storage by UID or reconstruct a generic `MetaTable`.
+Register the storage class through the markets runtime/catalog registration
+flow (add it to the markets model registry returned by
+`markets_sqlalchemy_models()`, or pass it to `msm.start_engine(models=[...])`)
+so the `Asset` MetaTable is registered before this table's foreign key resolves.
+Writes require a storage class that has been registered through
+`PlatformTimeIndexMetaData.register(...)`; do not manually bind storage by UID or
+reconstruct a generic `MetaTable`.
 
 Use `__metatable_description__` for durable table discovery text. The description
 should explain the market intention, row grain, and downstream use of the

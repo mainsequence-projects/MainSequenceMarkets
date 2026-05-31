@@ -41,11 +41,13 @@ Platform primitives should stay low-level. They should not know about business
 logic for a specific concept such as pricing, portfolio construction, or asset
 translation.
 
-Asset-indexed DataNode subclasses should use `AssetIndexedDataNode` and
-`AssetIndexedDataNodeConfiguration` for consistent asset scope, record
-definitions, and storage metadata. The broad legacy compatibility names were
-removed; asset-indexed DataNode code should use the explicit asset-indexed base
-classes directly.
+Asset-indexed DataNode subclasses should use `AssetIndexedDataNode` for asset
+scope and namespace behavior. Timestamped asset facts should use
+`AssetTimestampedDataNode` plus `AssetDataNodeConfiguration`, with schema,
+indexes, dtypes, nullability, and source-table foreign keys declared only on the
+storage MetaTable. The broad legacy compatibility names were removed;
+asset-indexed DataNode code should use the explicit asset-indexed base classes
+directly.
 
 See [MetaTable Registration](meta_table_registration.md) for the registration
 workflow and the two supported management modes.

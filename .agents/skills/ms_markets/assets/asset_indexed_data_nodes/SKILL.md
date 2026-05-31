@@ -43,8 +43,13 @@ Use the asset model extension skill instead when the task is about `AssetTable`,
   schema.
 - Declaring a SQLAlchemy `ForeignKey` from the storage table
   `unique_identifier` column to `AssetTable.unique_identifier`.
+- Keeping schema details on storage classes: `__time_index_name__`,
+  `__index_names__`, mapped columns, dtypes, nullability, and source-table
+  foreign keys.
 - Deriving published identifiers from the registered storage table and active
   markets namespace.
+- Deriving validation from `_required_storage_table()` and the instance's bound
+  `storage_table`.
 - Returning validated `datetime64[ns, UTC]` frames with a
   `["time_index", "unique_identifier"]` index for timestamped asset facts.
 - Designing insertion methods that belong on the DataNode class, such as
@@ -109,33 +114,37 @@ Rules:
 ## Storage And Configuration Pattern
 
 Use a storage-first pattern. The SQLAlchemy storage class owns table identity,
-columns, dtypes, indexes, labels, descriptions, and the asset foreign key.
-`AssetIndexedDataNodeConfiguration` and `AssetDataNodeConfiguration` carry
-update-scoped fields such as `asset_list`; they do not declare records or table
-metadata.
+columns, dtypes, indexes, labels, descriptions, nullability, and the asset
+foreign key. `AssetIndexedDataNodeConfiguration` and
+`AssetDataNodeConfiguration` carry update-scoped fields such as `asset_list`;
+they do not declare records, table metadata, time-index names, index names,
+dtype maps, nullability maps, or foreign keys.
 
 Every storage class must include `__metatable_description__`. The description
 should explain the table's market intention, row grain, and downstream use, not
 only the schema. For asset-indexed tables, say what the asset row represents and
 why it is published over time.
 
-Storage must be registered before the DataNode is constructed. The path is
-`PlatformTimeIndexMetaData.register(...)`, normally reached through the markets
-catalog bootstrap or `msm.start_engine(models=[...])`. Do not manually bind a UID,
-reconstruct a generic `MetaTable`, or use manual bind helpers as an authoring step.
+Storage must be registered before a process writes through the DataNode. The
+normal path is the markets runtime/catalog registration flow, usually
+`msm.start_engine(models=[...])`, which reaches
+`PlatformTimeIndexMetaData.register(...)` in dependency order. Do not manually
+bind a UID, reconstruct a generic `MetaTable`, or use manual bind helpers as an
+authoring step.
 
 Minimal storage-first pattern:
 
 ```python
 import datetime
 
+import pandas as pd
 from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
-from msm.data_nodes.assets.asset_indexed import (
-    AssetIndexedDataNode,
-    AssetIndexedDataNodeConfiguration,
+from msm.data_nodes.assets import (
+    AssetDataNodeConfiguration,
+    AssetTimestampedDataNode,
 )
 from msm.models.assets.core import AssetTable
 
@@ -170,8 +179,23 @@ class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
-class ExampleAssetMetricConfiguration(AssetIndexedDataNodeConfiguration):
+class ExampleAssetMetricConfiguration(AssetDataNodeConfiguration):
     pass
+
+
+class ExampleAssetMetric(AssetTimestampedDataNode):
+    configuration_class = ExampleAssetMetricConfiguration
+
+    @classmethod
+    def _required_storage_table(cls) -> type[ExampleAssetMetricStorage]:
+        return ExampleAssetMetricStorage
+
+    @classmethod
+    def build_frame(cls, rows: list[dict]) -> pd.DataFrame:
+        return cls.validate_frame(pd.DataFrame(rows))
+
+    def set_metrics(self, rows: list[dict]):
+        return self.set_frame(self.build_frame(rows))
 ```
 
 The `unique_identifier` foreign key belongs on the storage class. Do not recreate
@@ -179,40 +203,34 @@ the old DataNode-side foreign-key or records pattern.
 
 ## DataNode Class Pattern
 
-The node class should be thin and explicit:
+For timestamped asset fact nodes, use the local timestamped base from
+`src/msm/data_nodes/assets/snapshots.py`. The node class should be thin and
+storage-bound:
 
 ```python
-class ExampleAssetMetric(AssetIndexedDataNode):
+class ExampleAssetMetric(AssetTimestampedDataNode):
     configuration_class = ExampleAssetMetricConfiguration
-
-    def __init__(
-        self,
-        config: ExampleAssetMetricConfiguration | None = None,
-        *,
-        hash_namespace: str | None = None,
-    ):
-        super().__init__(
-            config=config or ExampleAssetMetricConfiguration(),
-            storage_table=self._required_storage_table(),
-            hash_namespace=hash_namespace,
-        )
 
     @classmethod
     def _required_storage_table(cls) -> type[ExampleAssetMetricStorage]:
         return ExampleAssetMetricStorage
 
-    def dependencies(self) -> dict:
-        return {}
+    @classmethod
+    def build_frame(cls, rows: list[dict]) -> pd.DataFrame:
+        return cls.validate_frame(pd.DataFrame(rows))
+
+    def set_metrics(self, rows: list[dict]):
+        return self.set_frame(self.build_frame(rows))
 ```
 
-For timestamped asset fact nodes, prefer the local timestamped base pattern from
-`src/msm/data_nodes/assets/snapshots.py`:
+Rules:
 
-- config subclass carries update-scoped fields only
+- config subclasses carry update-scoped fields only
+- do not write an explicit constructor unless the node has real runtime fields
+  beyond config and `hash_namespace`
 - class owns `_required_storage_table()`
-- `_default_identifier()` returns
-  the identifier derived from `_required_storage_table()`
-- `_default_description()` returns the description derived from the storage table
+- `_default_identifier()` and `_default_description()` derive from the storage
+  table
 - class methods build validated frames
 - instance methods attach validated frames before `run(...)`
 
@@ -221,7 +239,7 @@ belongs to the DataNode class.
 
 The timestamped frame/config mechanics are shared in
 `src/msm/data_nodes/utils/stamped.py`. Keep new asset and index timestamped nodes
-on that base instead of copying validation, schema bootstrap, namespace, or
+on that base instead of copying validation, storage-schema lookup, namespace, or
 `datetime64[ns, UTC]` normalization logic. Asset-specific DataNodes belong under
 `src/msm/data_nodes/assets/`, and index-specific DataNodes belong under
 `src/msm/data_nodes/indices/`. Non-model-specific helpers belong under
@@ -245,6 +263,9 @@ Use one rule for markets MetaTables and markets DataNodes:
 
 Do not hardcode `mainsequence.markets.*` or `mainsequence.examples.*` in a new
 DataNode class.
+
+Do not add a class-owned `__data_node_identifier__`; default identifiers derive
+from the storage MetaTable identifier through `_required_storage_table()`.
 
 ## Asset Scope
 
@@ -292,12 +313,28 @@ Rules:
 Use `AssetSnapshot` as the canonical example for append-only historical
 representations of an asset.
 
+## Do Not Reintroduce
+
+- Do not put `time_index_name`, `index_names`, `records`, `node_metadata`,
+  `column_dtypes_map`, nullable-column maps, or foreign keys on a
+  `DataNodeConfiguration`.
+- Do not add DataNode-side constants for index names, time-index names, dtype
+  maps, nullable columns, or source-table foreign keys.
+- Do not add fake or placeholder rows for schema setup.
+- Do not add `build_schema_bootstrap_frame(...)`,
+  `build_initialization_frame(...)`, or `build_mock_*_frame(...)`.
+- Do not add `_required_column_dtypes_map()`, `_required_index_names()`, or
+  `_required_time_index_name()` overrides to mirror storage state.
+- Do not add `__data_node_identifier__`; use the storage table's
+  `__markets_base_identifier__`.
+
 ## Validation Checklist
 
 Before marking work complete:
 
-- The class subclasses `AssetIndexedDataNode` or a markets timestamped
-  asset-indexed base.
+- Timestamped asset fact nodes subclass `AssetTimestampedDataNode`; lower-level
+  custom nodes subclass `AssetIndexedDataNode` only when they genuinely need a
+  non-stamped update path.
 - The storage table subclasses `PlatformTimeIndexMetaData` through
   `MarketsTimeIndexMetaTableMixin`.
 - The storage table has an intention-rich `__metatable_description__`.
@@ -311,8 +348,8 @@ Before marking work complete:
   `ASSET_UNIQUE_IDENTIFIER_DIMENSION`.
 - The storage table declares the canonical `unique_identifier ->
   AssetTable.unique_identifier` SQLAlchemy `ForeignKey`.
-- The storage table is registered through `PlatformTimeIndexMetaData.register(...)`
-  before DataNode construction.
+- The storage table is registered through the markets runtime/catalog
+  registration flow before writes.
 - `asset_list` is updater scope, not part of table meaning.
 - Identifier generation derives from the registered storage table.
 - The implementation does not hardcode example or production namespaces.

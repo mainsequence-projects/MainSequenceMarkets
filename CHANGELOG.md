@@ -30,6 +30,10 @@ and this project follows versioned releases.
   MetaTable declarations.
 - Removed residual `time_index_name` and `index_names` fields from holdings,
   execution, and canonical portfolio DataNode configurations.
+- Updated the packaged `AssetIndexedDataNode` agent skill and asset-indexed
+  knowledge docs so agents use the storage-first `AssetTimestampedDataNode`
+  pattern and do not reintroduce DataNode-side schema mirrors or placeholder
+  schema rows.
 - Locked the `IndexTable`/`Index` row contract so legacy Constant-name fields
   stay out of canonical index identity.
 - Made `IndexTable.index_type` required and updated Index create/upsert,
