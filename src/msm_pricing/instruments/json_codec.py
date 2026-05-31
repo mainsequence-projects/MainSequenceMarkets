@@ -42,7 +42,7 @@ def period_from_json(v: str | ql.Period | None) -> ql.Period | None:
 # Prefer explicit enumerations you actually use in this codebase.
 _DAYCOUNT_FACTORIES = {
     "Actual360": lambda: ql.Actual360(),
-    "Actual/360":lambda: ql.Actual360(),
+    "Actual/360": lambda: ql.Actual360(),
     "Actual365Fixed": lambda: ql.Actual365Fixed(),
     # Default to USA when we can't introspect Thirty360 convention via SWIG.
     "Thirty360": lambda: ql.Thirty360(ql.Thirty360.USA),
@@ -75,7 +75,9 @@ def daycount_from_json(v: str | ql.DayCounter) -> ql.DayCounter:
     factory = _DAYCOUNT_FACTORIES.get(key)
 
     if not factory:
-        raise ValueError(f"Unsupported day_count '{key}' only {_DAYCOUNT_FACTORIES.keys()} supported.")
+        raise ValueError(
+            f"Unsupported day_count '{key}' only {_DAYCOUNT_FACTORIES.keys()} supported."
+        )
     return factory()
 
 
@@ -370,7 +372,7 @@ def schedule_to_json(s: ql.Schedule | None) -> dict[str, Any] | None:
 
 
 def schedule_from_json(
-    v: None | ql.Schedule | dict[str, Any] | list[str] | list[ql.Date]
+    v: None | ql.Schedule | dict[str, Any] | list[str] | list[ql.Date],
 ) -> ql.Schedule | None:
     """
     Decode a schedule. Supported forms:

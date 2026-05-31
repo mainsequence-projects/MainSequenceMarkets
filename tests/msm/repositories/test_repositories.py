@@ -6,9 +6,10 @@ import uuid
 import pytest
 
 from msm.maintenance.models import MarketsMetaTableCatalogRow, MarketsMetaTableCatalogTable
-from msm.models.registration import markets_meta_table_fullname
+from msm.models.registration import markets_meta_table_identifier
 from msm.models import (
     AccountTargetPositionAssignmentTable,
+    AssetTypeTable,
     AssetTable,
     OpenFigiAssetDetailsTable,
     OrderTable,
@@ -34,8 +35,8 @@ from msm.repositories.accounts import build_create_account_target_position_assig
 
 def _repository_context() -> MarketsRepositoryContext:
     return MarketsRepositoryContext(
-        target_meta_table_uid_by_fullname={
-            markets_meta_table_fullname(model): str(uuid.uuid4())
+        target_meta_table_uid_by_identifier={
+            markets_meta_table_identifier(model): str(uuid.uuid4())
             for model in markets_sqlalchemy_models()
         },
         limits={"max_rows": 100, "statement_timeout_ms": 5000},
@@ -44,6 +45,28 @@ def _repository_context() -> MarketsRepositoryContext:
 
 def _asset_table() -> MarketsMetaTableHandle:
     return _repository_context().table(AssetTable)
+
+
+def test_repository_context_resolves_identifier_after_physical_binding(monkeypatch) -> None:
+    identifier = markets_meta_table_identifier(AssetTypeTable)
+    storage_name = str(AssetTypeTable.__table__.name)
+    meta_table_uid = str(uuid.uuid4())
+    context = MarketsRepositoryContext(
+        target_meta_table_uid_by_identifier={identifier: meta_table_uid},
+    )
+
+    monkeypatch.setitem(AssetTypeTable.__table__.info, "identifier", identifier)
+    monkeypatch.setattr(AssetTypeTable, "__metatable_storage_hash__", storage_name)
+    monkeypatch.setattr(AssetTypeTable.__table__, "name", "backend_physical_asset_type")
+    monkeypatch.setattr(
+        AssetTypeTable.__table__,
+        "fullname",
+        "public.backend_physical_asset_type",
+        raising=False,
+    )
+
+    assert context.meta_table_uid_for_model(AssetTypeTable) == meta_table_uid
+    assert context.table(AssetTypeTable).meta_table_uid == meta_table_uid
 
 
 def test_generic_search_operation_compiles_for_every_market_model() -> None:
@@ -97,8 +120,8 @@ def test_asset_upsert_operation_uses_compiled_upsert_protocol() -> None:
 
 def test_generic_upsert_operation_populates_python_defaults_for_backend_sql() -> None:
     context = MarketsRepositoryContext(
-        target_meta_table_uid_by_fullname={
-            markets_meta_table_fullname(MarketsMetaTableCatalogTable): str(uuid.uuid4()),
+        target_meta_table_uid_by_identifier={
+            markets_meta_table_identifier(MarketsMetaTableCatalogTable): str(uuid.uuid4()),
         },
     )
     row = MarketsMetaTableCatalogRow(
@@ -115,7 +138,7 @@ def test_generic_upsert_operation_populates_python_defaults_for_backend_sql() ->
         context,
         model=MarketsMetaTableCatalogTable,
         values=row.to_payload(),
-        conflict_columns=["namespace", "identifier"],
+        conflict_columns=["identifier"],
     )
 
     assert isinstance(operation.statement.parameters["uid"], uuid.UUID)

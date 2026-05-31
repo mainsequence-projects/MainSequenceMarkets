@@ -19,6 +19,11 @@ class RebalanceStrategyMetadataTable(MarketsMetaTableMixin, MarketsBase):
     """Metadata row for a canonical portfolios rebalance strategy."""
 
     __metatable_identifier__ = "RebalanceStrategyMetadata"
+    __metatable_description__ = (
+        "Rebalance strategy metadata table keyed by rebalance_strategy_uid. Stores "
+        "descriptions and configuration payloads for canonical portfolio rebalance "
+        "strategies."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

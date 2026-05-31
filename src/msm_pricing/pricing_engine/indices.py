@@ -191,6 +191,7 @@ def clear_index_cache() -> None:
 
 # ----------------------------- Zero-curve builder ----------------------------------------- #
 
+
 def build_zero_curve_with_effective_date(
     target_date: datetime.date | datetime.datetime,
     index_identifier: str,
@@ -206,7 +207,9 @@ def build_zero_curve_with_effective_date(
     calendar: ql.Calendar = spec.calendar
     curve_uid: str = spec.curve_uid
 
-    nodes, effective_curve_date = data_interface.get_historical_discount_curve(curve_uid, target_date)
+    nodes, effective_curve_date = data_interface.get_historical_discount_curve(
+        curve_uid, target_date
+    )
 
     # Anchor at the effective curve date (not necessarily the requested date)
     base_dt = (
@@ -259,12 +262,16 @@ def build_zero_curve(
 
 
 @lru_cache(maxsize=256)
-def _default_curve_cached(index_identifier: str, date_key: datetime.date) -> ql.YieldTermStructureHandle:
+def _default_curve_cached(
+    index_identifier: str, date_key: datetime.date
+) -> ql.YieldTermStructureHandle:
     target_dt = datetime.datetime.combine(date_key, datetime.time())
     return build_zero_curve(target_dt, index_identifier)
 
 
-def _default_curve(index_identifier: str, target_date: datetime.date | datetime.datetime | ql.Date) -> ql.YieldTermStructureHandle:
+def _default_curve(
+    index_identifier: str, target_date: datetime.date | datetime.datetime | ql.Date
+) -> ql.YieldTermStructureHandle:
     dk = _ensure_py_date(target_date)
     uid = _normalize_index_identifier(index_identifier)
     return _default_curve_cached(uid, dk)
@@ -337,7 +344,9 @@ def _ensure_fixings_hydrated(
         _FIXINGS_HYDRATED_UNTIL[fixings_uid] = target_date_py
 
     try:
-        add_historical_fixings(to_ql_date(target_date_py), ibor_index, reference_rate_uid=fixings_uid)
+        add_historical_fixings(
+            to_ql_date(target_date_py), ibor_index, reference_rate_uid=fixings_uid
+        )
     except Exception:
         with _FIXINGS_LOCK:
             cur = _FIXINGS_HYDRATED_UNTIL.get(fixings_uid)
@@ -347,6 +356,7 @@ def _ensure_fixings_hydrated(
 
 
 # ----------------------------- Index construction ------------------------------------------ #
+
 
 def _make_index_from_spec(
     index_identifier: str,
@@ -377,6 +387,7 @@ def _make_index_from_spec(
 
 
 # ----------------------------- Public API -------------------------------------------------- #
+
 
 def get_index(
     index_identifier: str,

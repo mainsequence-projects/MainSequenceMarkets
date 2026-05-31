@@ -15,6 +15,7 @@ from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
     markets_index_name,
+    markets_meta_table_identifier,
     markets_table_args,
     new_markets_uid,
 )
@@ -24,16 +25,19 @@ class MarketsMetaTableCatalogTable(MarketsMetaTableMixin, MarketsBase):
     """Internal catalog of markets MetaTable registrations."""
 
     __metatable_identifier__ = "MarketsMetaTableCatalog"
+    __metatable_description__ = (
+        "Internal maintenance catalog keyed by logical markets MetaTable identifier. "
+        "Tracks registered platform MetaTable UIDs, descriptions, model names, "
+        "contract hashes, SDK version, and catalog timestamps for runtime bootstrap."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
             markets_index_name(
                 __metatable_identifier__,
-                "namespace",
                 "identifier",
                 unique=True,
             ),
-            "namespace",
             "identifier",
             unique=True,
         ),
@@ -109,8 +113,8 @@ class MarketsMetaTableCatalogRow:
         )
 
     @property
-    def identity_key(self) -> tuple[str, str]:
-        return (self.namespace, self.identifier)
+    def identity_key(self) -> str:
+        return self.identifier
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -137,7 +141,6 @@ def markets_meta_table_contract_payload(model: type[MarketsBase]) -> dict[str, A
         "namespace": getattr(model, "__metatable_namespace__", None),
         "identifier": getattr(model, "__metatable_identifier__", None),
         "schema": table.schema,
-        "table_name": table.name,
         "columns": [
             {
                 "name": column.name,
@@ -157,7 +160,7 @@ def markets_meta_table_contract_payload(model: type[MarketsBase]) -> dict[str, A
                 "name": constraint.name,
                 "columns": [element.parent.name for element in constraint.elements],
                 "target_columns": [
-                    f"{element.column.table.fullname}.{element.column.name}"
+                    f"{markets_meta_table_identifier(element.column.table)}.{element.column.name}"
                     for element in constraint.elements
                 ],
                 "ondelete": [element.ondelete for element in constraint.elements],

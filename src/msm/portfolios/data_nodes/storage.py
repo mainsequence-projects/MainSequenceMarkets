@@ -26,6 +26,11 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Executed portfolio weights keyed by portfolio index asset and held asset."""
 
     __markets_base_identifier__: ClassVar[str] = "portfolio_weights"
+    __metatable_description__ = (
+        "Timestamped portfolio weight storage keyed by time_index, "
+        "portfolio_index_asset_unique_identifier, and unique_identifier. Stores "
+        "executed asset allocation weights and supporting price/volume facts."
+    )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "portfolio_weights",
     }
@@ -39,7 +44,10 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        info={"label": "Time Index", "description": "UTC timestamp for the executed portfolio weight row."},
+        info={
+            "label": "Time Index",
+            "description": "UTC timestamp for the executed portfolio weight row.",
+        },
     )
     portfolio_index_asset_unique_identifier: Mapped[str] = mapped_column(
         String,
@@ -63,32 +71,50 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     weight: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Weight", "description": "Executed/current allocation weight for this asset."},
+        info={
+            "label": "Weight",
+            "description": "Executed/current allocation weight for this asset.",
+        },
     )
     weight_before: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Weight Before", "description": "Allocation weight before the rebalance execution."},
+        info={
+            "label": "Weight Before",
+            "description": "Allocation weight before the rebalance execution.",
+        },
     )
     price_current: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Price Current", "description": "Asset price used for the current rebalance calculation."},
+        info={
+            "label": "Price Current",
+            "description": "Asset price used for the current rebalance calculation.",
+        },
     )
     price_before: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Price Before", "description": "Asset price from the previous rebalance reference."},
+        info={
+            "label": "Price Before",
+            "description": "Asset price from the previous rebalance reference.",
+        },
     )
     volume_current: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Volume Current", "description": "Asset volume used for the current rebalance calculation."},
+        info={
+            "label": "Volume Current",
+            "description": "Asset volume used for the current rebalance calculation.",
+        },
     )
     volume_before: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Volume Before", "description": "Asset volume from the previous rebalance reference."},
+        info={
+            "label": "Volume Before",
+            "description": "Asset volume from the previous rebalance reference.",
+        },
     )
 
 
@@ -96,6 +122,11 @@ class SignalWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Raw signal weights keyed by signal UID and signaled asset."""
 
     __markets_base_identifier__: ClassVar[str] = "signal_weights"
+    __metatable_description__ = (
+        "Timestamped signal weight storage keyed by (time_index, signal_uid, "
+        "unique_identifier). Stores raw signal allocation weights for signaled "
+        "assets before portfolio execution."
+    )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "signal_weights",
     }
@@ -140,6 +171,11 @@ class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Canonical portfolio value series keyed by portfolio asset unique identifier."""
 
     __markets_base_identifier__: ClassVar[str] = "portfolios"
+    __metatable_description__ = (
+        "Timestamped portfolio value storage keyed by (time_index, "
+        "unique_identifier). Stores close, return, calculated close, and close "
+        "timestamp for canonical portfolio value series."
+    )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "portfolios",
     }
@@ -192,6 +228,11 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Interpolated/upsampled OHLCV price bars keyed by asset unique identifier."""
 
     __markets_base_identifier__: ClassVar[str] = "interpolated_prices"
+    __metatable_description__ = (
+        "Timestamped interpolated-price storage keyed by (time_index, "
+        "unique_identifier). Stores OHLCV bars, VWAP, trade count, and interpolation "
+        "flags for asset price feeds used by portfolio workflows."
+    )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "interpolated_prices",
     }
@@ -201,7 +242,10 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        info={"label": "Time Index", "description": "UTC timestamp for the interpolated price bar."},
+        info={
+            "label": "Time Index",
+            "description": "UTC timestamp for the interpolated price bar.",
+        },
     )
     unique_identifier: Mapped[str] = mapped_column(
         String,
@@ -214,7 +258,10 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     open_time: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
-        info={"label": "Open Time", "description": "UTC timestamp marking the start of the price bar."},
+        info={
+            "label": "Open Time",
+            "description": "UTC timestamp marking the start of the price bar.",
+        },
     )
     open: Mapped[float | None] = mapped_column(
         Float,
@@ -254,7 +301,10 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     interpolated: Mapped[bool | None] = mapped_column(
         Boolean,
         nullable=True,
-        info={"label": "Interpolated", "description": "Whether the bar was synthetically interpolated."},
+        info={
+            "label": "Interpolated",
+            "description": "Whether the bar was synthetically interpolated.",
+        },
     )
 
 
@@ -262,6 +312,11 @@ class ExternalPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """External provider price observations keyed by asset unique identifier."""
 
     __markets_base_identifier__: ClassVar[str] = "external_prices"
+    __metatable_description__ = (
+        "Timestamped external-price storage keyed by (time_index, "
+        "unique_identifier). Stores provider-supplied price observations for assets "
+        "when external pricing data is injected into portfolio workflows."
+    )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "external_prices",
     }
@@ -271,7 +326,10 @@ class ExternalPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        info={"label": "Time Index", "description": "UTC timestamp for the external price observation."},
+        info={
+            "label": "Time Index",
+            "description": "UTC timestamp for the external price observation.",
+        },
     )
     unique_identifier: Mapped[str] = mapped_column(
         String,
@@ -284,7 +342,10 @@ class ExternalPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     open: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Open", "description": "External price observation mapped to the open field."},
+        info={
+            "label": "Open",
+            "description": "External price observation mapped to the open field.",
+        },
     )
 
 

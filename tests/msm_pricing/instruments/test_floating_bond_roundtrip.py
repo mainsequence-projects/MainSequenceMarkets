@@ -45,9 +45,7 @@ def test_floating_bond_attach_load_round_trip_prices(monkeypatch) -> None:
         ql_date = to_ql_date(valuation_date)
         curve = forwarding_curve
         if curve is None:
-            curve = ql.YieldTermStructureHandle(
-                ql.FlatForward(ql_date, 0.05, ql.Actual360())
-            )
+            curve = ql.YieldTermStructureHandle(ql.FlatForward(ql_date, 0.05, ql.Actual360()))
         return ql.IborIndex(
             "USD-SOFR-TEST",
             ql.Period("3M"),

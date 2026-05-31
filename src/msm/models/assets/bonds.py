@@ -23,6 +23,11 @@ class BondAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     """Bond detail row linked to a canonical markets asset."""
 
     __metatable_identifier__ = "BondAssetDetails"
+    __metatable_description__ = (
+        "One-to-one bond detail table keyed by AssetTable.uid. Stores issuer, "
+        "currency, coupon, maturity, status, and bond identifiers for assets whose "
+        "AssetType is bond."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

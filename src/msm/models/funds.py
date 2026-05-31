@@ -23,6 +23,11 @@ class FundTable(MarketsMetaTableMixin, MarketsBase):
     """Fund runtime model for account-bound portfolio tracking."""
 
     __metatable_identifier__ = "Fund"
+    __metatable_description__ = (
+        "Virtual fund registry keyed by uid and fund_name. Stores account linkage, "
+        "portfolio construction mode, portfolio/execution DataNode pointers, and "
+        "fund metadata for tracking workflows."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

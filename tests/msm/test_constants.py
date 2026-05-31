@@ -88,8 +88,7 @@ def test_index_type_definitions_build_upsert_payloads() -> None:
         "index_type": "interest_rate",
         "display_name": "Interest Rate",
         "description": (
-            "Interest-rate indexes used for fixings, curves, swaps, and "
-            "floating-rate bonds."
+            "Interest-rate indexes used for fixings, curves, swaps, and floating-rate bonds."
         ),
     }
     assert INDEX_TYPE_EQUITY_DEFINITION.as_payload() == {

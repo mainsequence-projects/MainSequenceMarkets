@@ -20,9 +20,7 @@ if TYPE_CHECKING:
 OPENFIGI_MAPPING_URL = "https://api.openfigi.com/v3/mapping"
 OPENFIGI_SEARCH_URL = "https://api.openfigi.com/v3/search"
 OPENFIGI_API_KEY_SECRET_NAME = "OPEN_FIGI_API_KEY"
-OPENFIGI_SECRET_SETUP_URL = (
-    "https://www.main-sequence.app/app/main_sequence_workbench/secrets"
-)
+OPENFIGI_SECRET_SETUP_URL = "https://www.main-sequence.app/app/main_sequence_workbench/secrets"
 OPENFIGI_API_URL_ENV = "FIGI_API_URL"
 OPENFIGI_INDEX_MARKET_SECTOR = "Index"
 OPENFIGI_PROVIDER_NAME = "OpenFIGI"
@@ -415,10 +413,7 @@ def _get_mainsequence_secret(secret_name: str) -> Any:
 
 
 def _missing_openfigi_secret_message(secret_name: str) -> str:
-    return (
-        f"{secret_name} needs to be set in {OPENFIGI_SECRET_SETUP_URL} "
-        "before using OpenFIGI."
-    )
+    return f"{secret_name} needs to be set in {OPENFIGI_SECRET_SETUP_URL} before using OpenFIGI."
 
 
 def _ensure_normalized_openfigi_result(item: Mapping[str, Any]) -> dict[str, Any]:

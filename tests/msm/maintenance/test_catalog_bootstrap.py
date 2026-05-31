@@ -12,7 +12,7 @@ from msm.maintenance.models import (
     markets_meta_table_contract_hash,
 )
 from msm.models import AssetTable, AssetTypeTable
-from msm.models.registration import markets_meta_table_fullname
+from msm.models.registration import markets_meta_table_identifier
 
 
 def _meta_table(
@@ -42,7 +42,6 @@ def _catalog_row_identity(model) -> dict[str, str]:
 
 def _catalog_search_filter(*models) -> dict[str, list[str]]:
     return {
-        "namespace": sorted({model.__metatable_namespace__ for model in models}),
         "identifier": sorted({model.__metatable_identifier__ for model in models}),
     }
 
@@ -89,7 +88,7 @@ def test_catalog_bootstrap_registers_missing_application_table(monkeypatch) -> N
         return registered_meta_table
 
     def fake_upsert_model(_context, **kwargs):
-        assert kwargs["conflict_columns"] == ["namespace", "identifier"]
+        assert kwargs["conflict_columns"] == ["identifier"]
         upserted_rows.append(dict(kwargs["values"]))
         return {"rows": [kwargs["values"]]}
 
@@ -104,8 +103,8 @@ def test_catalog_bootstrap_registers_missing_application_table(monkeypatch) -> N
     assert result.registered_count == 1
     assert result.imported_count == 0
     assert result.attached_count == 0
-    assert result.registration.target_meta_table_uid_by_fullname == {
-        markets_meta_table_fullname(AssetTable): "asset-meta-table-uid"
+    assert result.registration.target_meta_table_uid_by_identifier == {
+        markets_meta_table_identifier(AssetTable): "asset-meta-table-uid"
     }
     assert search_in_filters == [_catalog_search_filter(AssetTable)]
     assert register_calls[0]["data_source_uid"] == "data-source-uid"
@@ -165,7 +164,9 @@ def test_catalog_bootstrap_attaches_cataloged_application_table(monkeypatch) -> 
     assert result.registered_count == 0
     assert result.imported_count == 0
     assert search_in_filters == [_catalog_search_filter(AssetTable)]
-    resolved = result.registration.meta_table_by_fullname[markets_meta_table_fullname(AssetTable)]
+    resolved = result.registration.meta_table_by_identifier[
+        markets_meta_table_identifier(AssetTable)
+    ]
     assert resolved.uid == "asset-meta-table-uid"
     assert resolved.storage_hash == asset_storage_hash
     assert resolved.physical_table_name == asset_storage_hash
@@ -231,8 +232,8 @@ def test_catalog_bootstrap_routes_cataloged_storage_table_through_register(
     assert result.registered_count == 0
     assert register_calls[0]["data_source_uid"] == "data-source-uid"
     assert register_calls[0]["target_meta_table_uid_by_fullname"] == {}
-    assert result.registration.target_meta_table_uid_by_fullname == {
-        markets_meta_table_fullname(AccountHoldingsStorage): "account-holdings-storage-uid"
+    assert result.registration.target_meta_table_uid_by_identifier == {
+        markets_meta_table_identifier(AccountHoldingsStorage): "account-holdings-storage-uid"
     }
 
 
@@ -289,9 +290,9 @@ def test_catalog_bootstrap_bulk_attaches_cataloged_tables(monkeypatch) -> None:
     assert result.registered_count == 0
     assert result.imported_count == 0
     assert search_in_filters == [_catalog_search_filter(AssetTypeTable, AssetTable)]
-    assert result.registration.target_meta_table_uid_by_fullname == {
-        markets_meta_table_fullname(AssetTypeTable): "asset-type-meta-table-uid",
-        markets_meta_table_fullname(AssetTable): "asset-meta-table-uid",
+    assert result.registration.target_meta_table_uid_by_identifier == {
+        markets_meta_table_identifier(AssetTypeTable): "asset-type-meta-table-uid",
+        markets_meta_table_identifier(AssetTable): "asset-meta-table-uid",
     }
 
 
@@ -352,7 +353,7 @@ def test_catalog_bootstrap_imports_pre_catalog_platform_table(monkeypatch) -> No
     )
 
     def fake_upsert_model(_context, **kwargs):
-        assert kwargs["conflict_columns"] == ["namespace", "identifier"]
+        assert kwargs["conflict_columns"] == ["identifier"]
         upserted_rows.append(dict(kwargs["values"]))
         return {"rows": [kwargs["values"]]}
 

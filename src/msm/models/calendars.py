@@ -19,6 +19,10 @@ class CalendarTable(MarketsMetaTableMixin, MarketsBase):
     """Named market calendar used by portfolio and execution workflows."""
 
     __metatable_identifier__ = "Calendar"
+    __metatable_description__ = (
+        "Market calendar registry keyed by name. Stores named calendar date payloads "
+        "and metadata used by portfolio, execution, and valuation workflows."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

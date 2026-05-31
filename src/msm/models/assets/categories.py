@@ -22,6 +22,10 @@ class AssetCategoryTable(MarketsMetaTableMixin, MarketsBase):
     """Client-owned category used to group assets in the markets catalog."""
 
     __metatable_identifier__ = "AssetCategory"
+    __metatable_description__ = (
+        "Asset category registry keyed by unique_identifier. Stores client-owned "
+        "category names, descriptions, and metadata used to group canonical assets."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -50,6 +54,11 @@ class AssetCategoryMembershipTable(MarketsMetaTableMixin, MarketsBase):
     """Many-to-many membership row between assets and asset categories."""
 
     __metatable_identifier__ = "AssetCategoryMembership"
+    __metatable_description__ = (
+        "Asset category membership table keyed by category_uid and asset_uid. Stores "
+        "the many-to-many relationship between AssetCategory rows and canonical "
+        "Asset rows."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

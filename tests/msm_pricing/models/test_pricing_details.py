@@ -14,13 +14,9 @@ def test_asset_current_pricing_details_is_platform_managed_table() -> None:
     assert issubclass(AssetCurrentPricingDetailsTable, PlatformManagedMetaTable)
     assert "__tablename__" not in AssetCurrentPricingDetailsTable.__dict__
     assert (
-        AssetCurrentPricingDetailsTable.__markets_base_identifier__
-        == "AssetCurrentPricingDetails"
+        AssetCurrentPricingDetailsTable.__markets_base_identifier__ == "AssetCurrentPricingDetails"
     )
-    assert (
-        AssetCurrentPricingDetailsTable.__metatable_identifier__
-        == "AssetCurrentPricingDetails"
-    )
+    assert AssetCurrentPricingDetailsTable.__metatable_identifier__ == "AssetCurrentPricingDetails"
 
 
 def test_asset_current_pricing_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
@@ -57,8 +53,7 @@ def test_asset_current_pricing_details_columns_and_indexes() -> None:
     assert table.c.metadata.nullable is True
 
     assert any(
-        [column.name for column in index.columns] == ["instrument_type"]
-        for index in table.indexes
+        [column.name for column in index.columns] == ["instrument_type"] for index in table.indexes
     )
     assert any(
         [column.name for column in index.columns] == ["pricing_details_date"]
@@ -118,8 +113,5 @@ def test_curve_table_references_index_convention_details() -> None:
         ("curve_type",),
         ("source",),
     }
-    actual_indexes = {
-        tuple(column.name for column in index.columns)
-        for index in table.indexes
-    }
+    actual_indexes = {tuple(column.name for column in index.columns) for index in table.indexes}
     assert expected_indexes.issubset(actual_indexes)

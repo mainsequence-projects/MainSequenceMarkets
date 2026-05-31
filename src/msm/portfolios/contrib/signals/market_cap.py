@@ -5,7 +5,10 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from msm.portfolios.asset_scope import asset_spot_reference_unique_identifier, asset_unique_identifier
+from msm.portfolios.asset_scope import (
+    asset_spot_reference_unique_identifier,
+    asset_unique_identifier,
+)
 from msm.portfolios.data_nodes import (
     SignalWeights,
 )

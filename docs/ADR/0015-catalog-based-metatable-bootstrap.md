@@ -76,10 +76,12 @@ The minimum row contract is:
 | `created_at` | First catalog insertion timestamp. |
 | `updated_at` | Last catalog update timestamp. |
 
-The uniqueness rule is the logical MetaTable identity:
+The uniqueness rule is the logical MetaTable identifier. Identifiers are
+globally unique in `ms-markets`; namespace-specific identifiers carry their
+namespace prefix, for example `mainsequence.examples.Asset`.
 
 ```text
-namespace, identifier
+identifier
 ```
 
 The catalog stores the platform response identity fields needed by row
@@ -105,12 +107,12 @@ The catalog bootstrap must be deterministic:
 
 For each requested table, bootstrap uses this order:
 
-1. read the catalog row for the requested `(namespace, identifier)`;
+1. read the catalog row for the requested identifier;
 2. if a catalog row exists, resolve the referenced platform `MetaTable` and
    attach it to the runtime;
 3. if no catalog row exists, try one explicit platform lookup using the expected
-   namespace, identifier, and storage hash so pre-catalog installations can be
-   imported without duplicate registration;
+   identifier so pre-catalog installations can be imported without duplicate
+   registration;
 4. if platform lookup finds an existing table, write a catalog row and attach it;
 5. if neither catalog nor platform lookup finds a table, register the table;
 6. after successful registration, write the catalog row using the platform
@@ -189,7 +191,7 @@ This ADR is implemented only when:
   MetaTable identities.
 - [x] Add a typed API/internal helper for catalog rows without exposing catalog
   mutation as a normal user workflow.
-- [x] Add a unique `(namespace, identifier)` index for catalog row identity.
+- [x] Add a unique `identifier` index for catalog row identity.
 - [x] Store the platform `MetaTable.uid`, namespace, identifier, description,
   and real storage hash returned by the backend.
 - [x] Keep the catalog MetaTable-specific and omit any DataNode-versus-MetaTable

@@ -21,6 +21,10 @@ class CurrencySpotAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     """Currency spot pair detail row linked to a markets asset."""
 
     __metatable_identifier__ = "CurrencySpotAssetDetails"
+    __metatable_description__ = (
+        "One-to-one currency spot detail table keyed by AssetTable.uid. Links a "
+        "spot-pair asset to its canonical base and quote currency assets."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

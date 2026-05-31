@@ -23,6 +23,7 @@ try:
         GridOptionsBuilder,
         GridUpdateMode,
     )
+
     _HAS_AGGRID = True
 except Exception:  # pragma: no cover
     _HAS_AGGRID = False
@@ -91,19 +92,11 @@ def _field_examples(finfo: _t.Any, prop_schema: dict) -> list[_t.Any]:
 
 
 def _field_title(fname: str, finfo: _t.Any, prop_schema: dict) -> str:
-    return (
-        prop_schema.get("title")
-        or getattr(finfo, "title", None)
-        or _safe_title(fname)
-    )
+    return prop_schema.get("title") or getattr(finfo, "title", None) or _safe_title(fname)
 
 
 def _field_desc(finfo: _t.Any, prop_schema: dict) -> str:
-    return (
-        prop_schema.get("description")
-        or getattr(finfo, "description", None)
-        or ""
-    )
+    return prop_schema.get("description") or getattr(finfo, "description", None) or ""
 
 
 def _field_json_extra(finfo: _t.Any) -> dict:
@@ -211,7 +204,9 @@ def _grid_edit_dates(
     if state_key not in st.session_state:
         st.session_state[state_key] = pd.DataFrame({"date": value})
 
-    st.caption(help_text or "Add/remove rows. Dates are used as-is to build the QuantLib Schedule JSON.")
+    st.caption(
+        help_text or "Add/remove rows. Dates are used as-is to build the QuantLib Schedule JSON."
+    )
 
     df = st.session_state[state_key]
 
@@ -258,7 +253,11 @@ def _grid_edit_dates(
                         except Exception:
                             pass
                 if "date" in new_df.columns:
-                    new_df = new_df[~new_df["date"].apply(lambda x: (x in sel_dates) if isinstance(x, _dt.date) else False)]
+                    new_df = new_df[
+                        ~new_df["date"].apply(
+                            lambda x: (x in sel_dates) if isinstance(x, _dt.date) else False
+                        )
+                    ]
                 st.session_state[state_key] = new_df.reset_index(drop=True)
                 st.rerun()
 
@@ -308,6 +307,7 @@ def _grid_edit_model_list(
     if pd is None:
         # fallback: JSON editor
         import json
+
         default_json = "[]"
         if value:
             rows = []
@@ -426,7 +426,9 @@ def _grid_edit_model_list(
         return out_rows
 
     # Streamlit editor fallback
-    edited = st.data_editor(df, num_rows="dynamic", key=f"{key}.data_editor", use_container_width=True)
+    edited = st.data_editor(
+        df, num_rows="dynamic", key=f"{key}.data_editor", use_container_width=True
+    )
     out_rows = []
     for _, row in edited.iterrows():
         d = row.to_dict()
@@ -462,7 +464,11 @@ def schedule_editor(
 
     Pydantic will turn this into ql.Schedule via your BeforeValidator.
     """
-    enabled = st.toggle(f"Provide explicit schedule for **{label}**", value=(value is not None), key=f"{key}.enabled")
+    enabled = st.toggle(
+        f"Provide explicit schedule for **{label}**",
+        value=(value is not None),
+        key=f"{key}.enabled",
+    )
     if not enabled:
         return None
 
@@ -479,7 +485,9 @@ def schedule_editor(
 
     if isinstance(value, dict):
         try:
-            dates_in = [_dt.date.fromisoformat(x) for x in (value.get("dates") or []) if isinstance(x, str)]
+            dates_in = [
+                _dt.date.fromisoformat(x) for x in (value.get("dates") or []) if isinstance(x, str)
+            ]
         except Exception:
             dates_in = []
         cal_spec = value.get("calendar") or {}
@@ -500,12 +508,27 @@ def schedule_editor(
                 index=calendar_names.index(cal_name) if cal_name in calendar_names else 0,
                 key=f"{key}.calendar",
             )
-            bdc = st.selectbox("Business day convention", options=_DEFAULT_BDC, index=_DEFAULT_BDC.index(bdc) if bdc in _DEFAULT_BDC else 0, key=f"{key}.bdc")
-            tbdc = st.selectbox("Termination business day convention", options=_DEFAULT_BDC, index=_DEFAULT_BDC.index(tbdc) if tbdc in _DEFAULT_BDC else 0, key=f"{key}.tbdc")
+            bdc = st.selectbox(
+                "Business day convention",
+                options=_DEFAULT_BDC,
+                index=_DEFAULT_BDC.index(bdc) if bdc in _DEFAULT_BDC else 0,
+                key=f"{key}.bdc",
+            )
+            tbdc = st.selectbox(
+                "Termination business day convention",
+                options=_DEFAULT_BDC,
+                index=_DEFAULT_BDC.index(tbdc) if tbdc in _DEFAULT_BDC else 0,
+                key=f"{key}.tbdc",
+            )
         with cols[1]:
             eom = st.checkbox("End of month", value=eom, key=f"{key}.eom")
             tenor = st.text_input("Tenor (optional, e.g. 6M)", value=tenor, key=f"{key}.tenor")
-            rule = st.selectbox("Rule (optional)", options=_DEFAULT_SCHED_RULES, index=_DEFAULT_SCHED_RULES.index(rule) if rule in _DEFAULT_SCHED_RULES else 0, key=f"{key}.rule")
+            rule = st.selectbox(
+                "Rule (optional)",
+                options=_DEFAULT_SCHED_RULES,
+                index=_DEFAULT_SCHED_RULES.index(rule) if rule in _DEFAULT_SCHED_RULES else 0,
+                key=f"{key}.rule",
+            )
 
         dates = _grid_edit_dates(
             key=f"{key}.dates",
@@ -682,15 +705,27 @@ class StreamlitModelFormFactory:
             chosen = st.selectbox(
                 label,
                 options=self.calendar_names,
-                index=self.calendar_names.index(cal_default) if cal_default in self.calendar_names else 0,
+                index=self.calendar_names.index(cal_default)
+                if cal_default in self.calendar_names
+                else 0,
                 help=desc,
                 key=key,
             )
             return {"name": chosen}
 
         if quantlib_class == "DayCounter":
-            dflt = default if isinstance(default, str) else (examples[0] if examples else self.day_count_names[0])
-            chosen = st.selectbox(label, options=self.day_count_names, index=self.day_count_names.index(dflt) if dflt in self.day_count_names else 0, help=desc, key=key)
+            dflt = (
+                default
+                if isinstance(default, str)
+                else (examples[0] if examples else self.day_count_names[0])
+            )
+            chosen = st.selectbox(
+                label,
+                options=self.day_count_names,
+                index=self.day_count_names.index(dflt) if dflt in self.day_count_names else 0,
+                help=desc,
+                key=key,
+            )
             return chosen
 
         if quantlib_class == "Period":
@@ -698,7 +733,9 @@ class StreamlitModelFormFactory:
             return st.text_input(label, value=dflt, help=desc, key=key)
 
         if quantlib_class == "BusinessDayConvention":
-            dflt = default if isinstance(default, str) else (examples[0] if examples else "Following")
+            dflt = (
+                default if isinstance(default, str) else (examples[0] if examples else "Following")
+            )
             idx = _DEFAULT_BDC.index(dflt) if dflt in _DEFAULT_BDC else 0
             return st.selectbox(label, options=_DEFAULT_BDC, index=idx, help=desc, key=key)
 
@@ -765,11 +802,23 @@ class StreamlitModelFormFactory:
         if "enum" in prop_schema and isinstance(prop_schema["enum"], list):
             enum_vals = prop_schema["enum"]
             dflt = default if default in enum_vals else (enum_vals[0] if enum_vals else None)
-            return st.selectbox(label, options=enum_vals, index=enum_vals.index(dflt) if dflt in enum_vals else 0, help=desc, key=key)
+            return st.selectbox(
+                label,
+                options=enum_vals,
+                index=enum_vals.index(dflt) if dflt in enum_vals else 0,
+                help=desc,
+                key=key,
+            )
         if isinstance(ann, type) and issubclass(ann, Enum):
             enum_vals = [x.value for x in ann]  # type: ignore[arg-type]
             dflt = default if default in enum_vals else (enum_vals[0] if enum_vals else None)
-            return st.selectbox(label, options=enum_vals, index=enum_vals.index(dflt) if dflt in enum_vals else 0, help=desc, key=key)
+            return st.selectbox(
+                label,
+                options=enum_vals,
+                index=enum_vals.index(dflt) if dflt in enum_vals else 0,
+                help=desc,
+                key=key,
+            )
 
         # Numbers (with percent UI hint)
         if ann in (int, float) or prop_schema.get("type") in ("integer", "number"):

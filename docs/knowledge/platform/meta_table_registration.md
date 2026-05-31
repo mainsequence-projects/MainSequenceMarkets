@@ -15,6 +15,13 @@ MetaTable models. The SDK derives the physical table name from storage-relevant
 SQLAlchemy metadata, including columns, indexes, foreign keys, schema, and the
 markets namespace.
 
+Every concrete markets MetaTable model must declare `__metatable_description__`.
+That description is the durable platform-level discovery text copied into the
+registered MetaTable and the internal markets catalog. It should state the row
+grain and business use of the table; it should not be a generic column list.
+DataNode output storage classes follow the same rule, and their default DataNode
+descriptions are sourced from the storage table's `__metatable_description__`.
+
 ```python
 import msm
 
@@ -29,10 +36,19 @@ runtime = msm.start_engine(
 `msm.start_engine(...)` is the supported startup entrypoint for
 platform-managed markets tables. It resolves requested models in foreign-key
 dependency order, uses the maintenance catalog before registering, and returns
-the `target_meta_table_uid_by_fullname` mapping needed by repository contexts.
+the `target_meta_table_uid_by_identifier` mapping needed by repository contexts.
 The lower-level `register_markets_meta_tables(...)` helper remains an internal
 building block and migration escape hatch; normal applications and examples
 should not use it as their registration workflow.
+
+Runtime bookkeeping is keyed by the globally unique MetaTable identifier from
+`__metatable_identifier__`, for example `AssetType` in the default namespace or
+`mainsequence.examples.AssetType` when a namespace override is configured before
+model import. The registered platform `MetaTable.uid` is only known after
+catalog attach, platform attach, or registration, so row operations resolve
+`ModelClass -> identifier -> MetaTable.uid`. SQLAlchemy table names and table
+fullnames are not runtime identity keys; they are table-contract metadata and,
+where still required, SDK registration adapter inputs.
 
 User-facing row operations use the active markets runtime. They do not attach
 to MetaTables, register tables, or run platform discovery on first use. In
@@ -191,7 +207,7 @@ import msm
 runtime = msm.start_engine(
     data_source_uid=data_source_uid,
     management_mode="external_registered",
-    storage_hash_by_fullname=storage_hash_by_fullname,
+    storage_hash_by_identifier=storage_hash_by_identifier,
     introspect=True,
 )
 ```
@@ -210,7 +226,7 @@ receive the full `MarketsRepositoryContext`.
 from msm.repositories.base import MarketsRepositoryContext
 
 context = MarketsRepositoryContext(
-    target_meta_table_uid_by_fullname=result.target_meta_table_uid_by_fullname,
+    target_meta_table_uid_by_identifier=result.target_meta_table_uid_by_identifier,
     limits={"max_rows": 1000, "statement_timeout_ms": 15000},
 )
 asset_table = context.table("Asset")

@@ -136,8 +136,7 @@ class IndexConventionDetails(BaseModel):
             return cls.model_validate(rows[0])
         if required:
             raise LookupError(
-                "MetaTable operation result did not include an "
-                "IndexConventionDetails row."
+                "MetaTable operation result did not include an IndexConventionDetails row."
             )
         return None
 

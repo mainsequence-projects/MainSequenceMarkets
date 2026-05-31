@@ -160,17 +160,13 @@ class MarketsRow(BaseModel):
         if rows:
             return cls.model_validate(rows[0])
         if required:
-            raise LookupError(
-                f"MetaTable operation result did not include a {cls.__name__} row."
-            )
+            raise LookupError(f"MetaTable operation result did not include a {cls.__name__} row.")
         return None
 
     @classmethod
     def _require_column(cls, field_name: str) -> None:
         if field_name not in cls.__table__.__table__.c:
-            raise ValueError(
-                f"{cls.__name__} cannot filter on unknown column {field_name!r}."
-            )
+            raise ValueError(f"{cls.__name__} cannot filter on unknown column {field_name!r}.")
 
 
 def operation_result_rows(result: Mapping[str, Any] | list[Any] | None) -> list[dict[str, Any]]:

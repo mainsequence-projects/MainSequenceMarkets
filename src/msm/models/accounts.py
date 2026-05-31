@@ -21,6 +21,11 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
     """Client account or execution account registered as a markets MetaTable."""
 
     __metatable_identifier__ = "Account"
+    __metatable_description__ = (
+        "Canonical account registry keyed by uid and unique_identifier. Stores "
+        "client or execution-account identity, status flags, holdings DataNode "
+        "linkage, and account metadata used by holdings and execution workflows."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -58,6 +63,11 @@ class AccountTargetPositionAssignmentTable(MarketsMetaTableMixin, MarketsBase):
     """Binding from an account to a reusable target-position set."""
 
     __metatable_identifier__ = "AccountTargetPositionAssignment"
+    __metatable_description__ = (
+        "Account target-position binding keyed by account_uid and "
+        "target_positions_time. Connects an account to a reusable target-position "
+        "set for a specific UTC assignment timestamp."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

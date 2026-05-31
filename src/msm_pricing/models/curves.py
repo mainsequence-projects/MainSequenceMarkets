@@ -22,6 +22,11 @@ class CurveTable(MarketsMetaTableMixin, MarketsBase):
     """Pricing-owned curve identity linked to index convention details."""
 
     __metatable_identifier__ = "Curve"
+    __metatable_description__ = (
+        "Pricing curve registry keyed by unique_identifier. Links each curve to "
+        "index convention details and stores curve type, interpolation, compounding, "
+        "source, and metadata used by pricing resolvers."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

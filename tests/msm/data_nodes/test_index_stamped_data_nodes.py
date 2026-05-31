@@ -19,7 +19,7 @@ from msm.data_nodes.indices import (
 )
 from msm.data_nodes.utils.stamped import StampedDataNodeConfiguration
 from msm.models import IndexTable
-from msm.models.registration import markets_foreign_key_target_fullnames
+from msm.models.registration import markets_foreign_key_target_identifiers
 from msm.settings import INDEX_UNIQUE_IDENTIFIER_DIMENSION
 from msm_pricing.data_nodes.index_fixings import FixingRatesNode
 from msm_pricing.data_nodes.storage import IndexFixingsStorage
@@ -57,10 +57,11 @@ def test_index_node_resolves_storage_table_and_index_contract() -> None:
 
 
 def test_index_node_storage_has_index_foreign_key() -> None:
+    index_identifier = IndexTable.__metatable_identifier__
     index_fullname = str(IndexTable.__table__.fullname)
     fk_column = IndexFixingsStorage.__table__.columns[INDEX_UNIQUE_IDENTIFIER_DIMENSION]
 
-    assert markets_foreign_key_target_fullnames(IndexFixingsStorage) == [index_fullname]
+    assert markets_foreign_key_target_identifiers(IndexFixingsStorage) == [index_identifier]
     assert any(
         foreign_key.column.table.fullname == index_fullname
         for foreign_key in fk_column.foreign_keys

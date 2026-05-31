@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from mainsequence.logconf import logger as _mainsequence_logger
 
+from msm.base import markets_meta_table_identifier
 from msm.settings import (
     markets_auto_register_namespace,
     markets_namespace,
@@ -48,8 +49,12 @@ class MarketsRuntime:
         return self.registration.meta_tables
 
     @property
+    def target_meta_table_uid_by_identifier(self) -> dict[str, str]:
+        return self.registration.target_meta_table_uid_by_identifier
+
+    @property
     def target_meta_table_uid_by_fullname(self) -> dict[str, str]:
-        return self.registration.target_meta_table_uid_by_fullname
+        return self.target_meta_table_uid_by_identifier
 
     @property
     def meta_table_models(self) -> list[type[Any]]:
@@ -57,8 +62,8 @@ class MarketsRuntime:
 
     def table(self, model: "MarketsModelSelector") -> "MarketsMetaTableHandle":
         handle = self.context.table(model)
-        meta_table = self.registration.meta_table_by_fullname.get(
-            str(handle.model.__table__.fullname)
+        meta_table = self.registration.meta_table_by_identifier.get(
+            markets_meta_table_identifier(handle.model)
         )
         if meta_table is None:
             return handle
@@ -131,10 +136,12 @@ def start_engine(
     management_mode: MarketsManagementMode = "platform_managed",
     namespace: str | None = None,
     models: Sequence["MarketsModelSelector"] | None = None,
+    target_meta_table_uid_by_identifier: Mapping[str, Any] | None = None,
     target_meta_table_uid_by_fullname: Mapping[str, Any] | None = None,
     open_for_everyone: bool = False,
     protect_from_deletion: bool = False,
     introspect: bool | None = None,
+    storage_hash_by_identifier: Mapping[str, str] | None = None,
     storage_hash_by_fullname: Mapping[str, str] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRuntime:
@@ -147,10 +154,12 @@ def start_engine(
         management_mode=management_mode,
         namespace=namespace,
         models=models,
+        target_meta_table_uid_by_identifier=target_meta_table_uid_by_identifier,
         target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
         open_for_everyone=open_for_everyone,
         protect_from_deletion=protect_from_deletion,
         introspect=introspect,
+        storage_hash_by_identifier=storage_hash_by_identifier,
         storage_hash_by_fullname=storage_hash_by_fullname,
         timeout=timeout,
     )
@@ -183,8 +192,10 @@ def start_engine(
             management_mode=management_mode,
             namespace=namespace,
             data_source_uid=data_source_uid,
-            target_meta_table_count=len(target_meta_table_uid_by_fullname or {}),
-            storage_hash_count=len(storage_hash_by_fullname or {}),
+            target_meta_table_count=len(
+                target_meta_table_uid_by_identifier or target_meta_table_uid_by_fullname or {}
+            ),
+            storage_hash_count=len(storage_hash_by_identifier or storage_hash_by_fullname or {}),
             requested_model_count=None if models is None else len(models),
             open_for_everyone=open_for_everyone,
             protect_from_deletion=protect_from_deletion,
@@ -209,10 +220,12 @@ def start_engine(
         catalog_bootstrap = bootstrap_markets_meta_tables_from_catalog(
             data_source_uid=data_source_uid,
             management_mode=management_mode,
+            target_meta_table_uid_by_identifier=target_meta_table_uid_by_identifier,
             target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
             open_for_everyone=open_for_everyone,
             protect_from_deletion=protect_from_deletion,
             introspect=introspect,
+            storage_hash_by_identifier=storage_hash_by_identifier,
             storage_hash_by_fullname=storage_hash_by_fullname,
             timeout=timeout,
             models=meta_table_models,
@@ -223,21 +236,21 @@ def start_engine(
             management_mode=management_mode,
             namespace=namespace,
             meta_table_count=len(registration.meta_tables),
-            target_meta_table_count=len(registration.target_meta_table_uid_by_fullname),
+            target_meta_table_count=len(registration.target_meta_table_uid_by_identifier),
             attached_count=catalog_bootstrap.attached_count,
             imported_count=catalog_bootstrap.imported_count,
             registered_count=catalog_bootstrap.registered_count,
             catalog_meta_table_uid=getattr(catalog_bootstrap.catalog_meta_table, "uid", None),
         )
         context = MarketsRepositoryContext(
-            target_meta_table_uid_by_fullname=registration.target_meta_table_uid_by_fullname,
+            target_meta_table_uid_by_identifier=registration.target_meta_table_uid_by_identifier,
             timeout=timeout,
             namespace=namespace,
         )
         logger.info(
             "Created markets repository context",
             namespace=namespace,
-            target_meta_table_count=len(context.target_meta_table_uid_by_fullname),
+            target_meta_table_count=len(context.target_meta_table_uid_by_identifier),
             timeout=timeout,
         )
         _RUNTIME = MarketsRuntime(
@@ -303,7 +316,7 @@ def attach_schemas(
             models=meta_table_models,
         )
         context = MarketsRepositoryContext(
-            target_meta_table_uid_by_fullname=registration.target_meta_table_uid_by_fullname,
+            target_meta_table_uid_by_identifier=registration.target_meta_table_uid_by_identifier,
             timeout=timeout,
             namespace=namespace,
         )
@@ -376,12 +389,12 @@ def _missing_models_from_runtime(
     if runtime is None:
         return list(models)
 
-    from msm.models.registration import markets_meta_table_fullname
+    from msm.models.registration import markets_meta_table_identifier
 
     return [
         model
         for model in models
-        if markets_meta_table_fullname(model) not in runtime.target_meta_table_uid_by_fullname
+        if markets_meta_table_identifier(model) not in runtime.target_meta_table_uid_by_identifier
     ]
 
 
@@ -409,15 +422,19 @@ def _runtime_missing_models_error_message(
     missing_models: Sequence[Any],
     runtime: MarketsRuntime,
 ) -> str:
+    from msm.models.registration import markets_meta_table_identifier
+
     row_name = row_model_name or "Markets row operation"
-    missing_model_names = ", ".join(_model_name(model) for model in missing_models)
-    initialized_model_names = ", ".join(
-        _model_name(model) for model in runtime.meta_table_models
+    missing_model_names = ", ".join(
+        f"{_model_name(model)} ({markets_meta_table_identifier(model)})" for model in missing_models
     )
+    initialized_model_names = ", ".join(_model_name(model) for model in runtime.meta_table_models)
+    initialized_identifiers = ", ".join(sorted(runtime.target_meta_table_uid_by_identifier))
     return (
         f"{row_name} requires {missing_model_names}, but the active markets runtime "
-        f"was initialized without those tables. Initialized tables: "
-        f"{initialized_model_names or 'none'}. Include {missing_model_names} in the "
+        "was initialized without those MetaTable identifiers. Initialized tables: "
+        f"{initialized_model_names or 'none'}. Initialized identifiers: "
+        f"{initialized_identifiers or 'none'}. Include the required tables in the "
         "process bootstrap before row operations."
     )
 

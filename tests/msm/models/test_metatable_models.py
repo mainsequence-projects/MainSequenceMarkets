@@ -12,12 +12,13 @@ from mainsequence.meta_tables import (
 
 import msm.models.registration as meta_tables
 import msm.models as models
-from msm.base import MarketsMetaTableMixin
+from msm.base import MarketsMetaTableMixin, markets_table_storage_name
 from msm.data_nodes.storage import AccountHoldingsStorage
+from msm.maintenance.models import MarketsMetaTableCatalogTable
 from msm.models.registration import (
     build_markets_registration_requests,
     is_time_index_meta_table_model,
-    markets_meta_table_fullname,
+    markets_meta_table_identifier,
 )
 from msm.models import (
     AssetTypeTable,
@@ -44,6 +45,17 @@ def test_markets_models_use_platform_managed_table_mixin() -> None:
         table_names[model.__table__.name] = model
 
 
+def test_markets_models_declare_metatable_descriptions() -> None:
+    for model in [MarketsMetaTableCatalogTable, *markets_sqlalchemy_models()]:
+        description = getattr(model, "__metatable_description__", None)
+
+        assert isinstance(description, str), model.__name__
+        assert description.strip() == description
+        assert len(description.split()) >= 8, model.__name__
+        if is_time_index_meta_table_model(model):
+            assert "keyed by" in description.lower(), model.__name__
+
+
 def test_default_namespace_keeps_bare_metatable_identifier() -> None:
     assert AssetTable.__markets_base_identifier__ == "Asset"
     assert AssetTable.__metatable_identifier__ == "Asset"
@@ -59,6 +71,23 @@ def test_non_default_namespace_prefixes_metatable_identifier() -> None:
     assert ExampleNamespacedTable.__markets_base_identifier__ == "Asset"
     assert ExampleNamespacedTable.__metatable_identifier__ == "mainsequence.examples.Asset"
     assert ExampleNamespacedTable.metatable_identifier() == "mainsequence.examples.Asset"
+
+
+def test_markets_metatable_identifier_survives_sdk_physical_binding(monkeypatch) -> None:
+    table = AssetTypeTable.__table__
+    identifier = markets_meta_table_identifier(AssetTypeTable)
+    storage_name = str(table.name)
+
+    monkeypatch.setitem(table.info, "identifier", identifier)
+    monkeypatch.setattr(AssetTypeTable, "__metatable_storage_hash__", storage_name)
+    monkeypatch.setattr(table, "_mainsequence_storage_hash", storage_name, raising=False)
+    monkeypatch.setitem(table.info, "mainsequence_storage_hash", storage_name)
+    monkeypatch.setattr(table, "name", "backend_physical_asset_type")
+    monkeypatch.setattr(table, "fullname", "public.backend_physical_asset_type", raising=False)
+
+    assert str(table.fullname) != identifier
+    assert markets_meta_table_identifier(AssetTypeTable) == identifier
+    assert markets_table_storage_name(AssetTypeTable) == storage_name
 
 
 def test_asset_model_does_not_store_arbitrary_metadata_json() -> None:
@@ -99,8 +128,7 @@ def test_index_model_is_reference_table() -> None:
         for index in table.indexes
     )
     assert any(
-        [column.name for column in index.columns] == ["index_type"]
-        for index in table.indexes
+        [column.name for column in index.columns] == ["index_type"] for index in table.indexes
     )
 
 
@@ -134,8 +162,7 @@ def test_issuer_model_is_reference_table() -> None:
         for index in table.indexes
     )
     assert any(
-        [column.name for column in index.columns] == ["display_name"]
-        for index in table.indexes
+        [column.name for column in index.columns] == ["display_name"] for index in table.indexes
     )
 
 
@@ -155,7 +182,9 @@ def test_asset_related_models_are_grouped_under_assets_package() -> None:
         AssetCategoryTable as CategoriesAssetCategoryTable,
     )
     from msm.models.assets.core import AssetTable as CoreAssetTable
-    from msm.models.assets.currency_spot import CurrencySpotAssetDetailsTable as CurrencyAssetSpotTable
+    from msm.models.assets.currency_spot import (
+        CurrencySpotAssetDetailsTable as CurrencyAssetSpotTable,
+    )
     from msm.models.assets.provider_details import (
         OpenFigiAssetDetailsTable as ProviderOpenFigiAssetDetailsTable,
     )
@@ -254,7 +283,8 @@ def test_currency_spot_asset_details_uses_asset_uid_as_one_to_one_primary_key() 
     assert [column.name for column in table.primary_key.columns] == ["asset_uid"]
     assert any(
         index.unique
-        and [column.name for column in index.columns] == [
+        and [column.name for column in index.columns]
+        == [
             "base_currency_uid",
             "quote_currency_uid",
         ]
@@ -313,16 +343,13 @@ def test_future_asset_details_uses_asset_uid_as_one_to_one_primary_key() -> None
         for index in table.indexes
     )
     assert any(
-        [column.name for column in index.columns] == ["settlement_asset"]
-        for index in table.indexes
+        [column.name for column in index.columns] == ["settlement_asset"] for index in table.indexes
     )
     assert any(
-        [column.name for column in index.columns] == ["margin_asset"]
-        for index in table.indexes
+        [column.name for column in index.columns] == ["margin_asset"] for index in table.indexes
     )
     assert any(
-        [column.name for column in index.columns] == ["expires_at"]
-        for index in table.indexes
+        [column.name for column in index.columns] == ["expires_at"] for index in table.indexes
     )
 
 
@@ -351,35 +378,33 @@ def test_bond_asset_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
     assert currency_asset_uid_fk.column is AssetTable.__table__.c.uid
     assert currency_asset_uid_fk.ondelete == "RESTRICT"
     assert any(
-        [column.name for column in index.columns] == ["issuer_uid"]
-        for index in table.indexes
+        [column.name for column in index.columns] == ["issuer_uid"] for index in table.indexes
     )
     assert any(
         [column.name for column in index.columns] == ["currency_asset_uid"]
         for index in table.indexes
     )
+    assert any([column.name for column in index.columns] == ["status"] for index in table.indexes)
     assert any(
-        [column.name for column in index.columns] == ["status"]
-        for index in table.indexes
-    )
-    assert any(
-        [column.name for column in index.columns] == ["maturity_date"]
-        for index in table.indexes
+        [column.name for column in index.columns] == ["maturity_date"] for index in table.indexes
     )
 
 
 def test_markets_models_build_platform_registration_requests_in_dependency_order() -> None:
-    target_meta_table_uid_by_fullname: dict[str, str] = {}
+    target_meta_table_uid_by_identifier: dict[str, str] = {}
     pairs = []
 
     for model in markets_sqlalchemy_models():
         request = build_markets_registration_requests(
             data_source_uid=str(uuid.uuid4()),
             models=[model],
-            target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
+            target_meta_table_uid_by_identifier=target_meta_table_uid_by_identifier,
         )[0]
+        assert request.description == model.__metatable_description__
         pairs.append((model, request))
-        target_meta_table_uid_by_fullname[markets_meta_table_fullname(model)] = str(uuid.uuid4())
+        target_meta_table_uid_by_identifier[markets_meta_table_identifier(model)] = str(
+            uuid.uuid4()
+        )
 
     assert AssetTypeTable in markets_sqlalchemy_models()
     assert pairs
@@ -392,14 +417,18 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
     assert storage_requests
     assert all(request.management_mode == "platform_managed" for request in domain_requests)
     assert all(
-        request.storage_hash == request.table_contract.physical.table_name
+        request.storage_hash
+        and (
+            request.table_contract.physical.table_name in (None, "")
+            or request.storage_hash == request.table_contract.physical.table_name
+        )
         for request in domain_requests
     )
     assert all(request.storage_hash for request in storage_requests)
 
 
 def test_markets_models_build_external_registration_requests_in_dependency_order() -> None:
-    target_meta_table_uid_by_fullname: dict[str, str] = {}
+    target_meta_table_uid_by_identifier: dict[str, str] = {}
     pairs = []
 
     for model in markets_sqlalchemy_models():
@@ -407,10 +436,13 @@ def test_markets_models_build_external_registration_requests_in_dependency_order
             data_source_uid=str(uuid.uuid4()),
             management_mode="external_registered",
             models=[model],
-            target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
+            target_meta_table_uid_by_identifier=target_meta_table_uid_by_identifier,
         )[0]
+        assert request.description == model.__metatable_description__
         pairs.append((model, request))
-        target_meta_table_uid_by_fullname[markets_meta_table_fullname(model)] = str(uuid.uuid4())
+        target_meta_table_uid_by_identifier[markets_meta_table_identifier(model)] = str(
+            uuid.uuid4()
+        )
 
     assert pairs
     domain_requests = [req for model, req in pairs if not is_time_index_meta_table_model(model)]
@@ -451,8 +483,8 @@ def test_external_registration_mode_routes_storage_classes_through_sdk_register(
 
     assert register_calls
     assert register_calls[0]["data_source_uid"] == "data-source-uid"
-    assert result.target_meta_table_uid_by_fullname == {
-        markets_meta_table_fullname(AccountHoldingsStorage): "account-holdings-storage-uid"
+    assert result.target_meta_table_uid_by_identifier == {
+        markets_meta_table_identifier(AccountHoldingsStorage): "account-holdings-storage-uid"
     }
 
 
@@ -481,9 +513,9 @@ def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
         models=[FakeModel],
     )
 
-    assert result.target_meta_table_uid_by_fullname == {"public.fake_asset": "fake-meta-table-uid"}
+    assert result.target_meta_table_uid_by_identifier == {"FakeModel": "fake-meta-table-uid"}
     assert result.models == [FakeModel]
-    assert result.meta_table_by_fullname["public.fake_asset"].uid == "fake-meta-table-uid"
+    assert result.meta_table_by_identifier["FakeModel"].uid == "fake-meta-table-uid"
     assert [event for event, _kwargs in spy_logger.events] == [
         "Registering markets MetaTable schema",
         "Registered markets MetaTable schema",
@@ -494,7 +526,7 @@ def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
     assert registering_event["identifier"] == "FakeModel"
     assert registering_event["model_index"] == 1
     assert registering_event["model_count"] == 1
-    assert registering_event["table_fullname"] == "public.fake_asset"
+    assert "table_fullname" not in registering_event
     registered_event = spy_logger.events[1][1]
     assert registered_event["meta_table_uid"] == "fake-meta-table-uid"
 
@@ -534,10 +566,8 @@ def test_register_markets_meta_tables_reuses_duplicate_physical_table_conflict(
         models=[FakeModel],
     )
 
-    meta_table = result.meta_table_by_fullname["public.fake_asset"]
-    assert result.target_meta_table_uid_by_fullname == {
-        "public.fake_asset": "existing-meta-table-uid"
-    }
+    meta_table = result.meta_table_by_identifier["FakeModel"]
+    assert result.target_meta_table_uid_by_identifier == {"FakeModel": "existing-meta-table-uid"}
     assert meta_table.uid == "existing-meta-table-uid"
     assert meta_table.physical_table_name == "fake_asset"
     assert meta_table.storage_hash == "fake_asset"
@@ -570,14 +600,12 @@ def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monk
         models=[FakeModel],
     )
 
-    assert result.target_meta_table_uid_by_fullname == {"public.fake_asset": "fake-meta-table-uid"}
-    assert result.meta_table_by_fullname["public.fake_asset"] is meta_table
+    assert result.target_meta_table_uid_by_identifier == {"FakeModel": "fake-meta-table-uid"}
+    assert result.meta_table_by_identifier["FakeModel"] is meta_table
     assert calls == [
         {
             "timeout": None,
-            "physical_table_name": "fake_storage_hash",
             "identifier": "FakeModel",
-            "namespace": "mainsequence.markets",
             "management_mode": "platform_managed",
             "data_source__uid": "data-source-uid",
         }

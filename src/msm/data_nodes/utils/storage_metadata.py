@@ -27,6 +27,10 @@ def storage_data_node_identifier(storage_table: Any) -> str:
 def storage_data_node_description(storage_table: Any) -> str:
     """Return the DataNode description owned by a storage MetaTable class."""
 
+    metatable_description = getattr(storage_table, "__metatable_description__", None)
+    if isinstance(metatable_description, str) and metatable_description.strip():
+        return metatable_description.strip()
+
     description = inspect.getdoc(storage_table)
     if description:
         return description

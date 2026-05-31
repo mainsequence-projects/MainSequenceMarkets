@@ -56,9 +56,7 @@ def test_copy_msm_skills_dry_run_writes_nothing(tmp_path, capsys) -> None:
     assert not (tmp_path / ".agents").exists()
     payload = json.loads(capsys.readouterr().out)
     assert payload["dry_run"] is True
-    assert payload["destination_root"] == str(
-        tmp_path / ".agents" / "skills" / "ms_markets"
-    )
+    assert payload["destination_root"] == str(tmp_path / ".agents" / "skills" / "ms_markets")
     assert sorted(item["name"] for item in payload["updated"]) == _bundled_bundle_names()
 
 

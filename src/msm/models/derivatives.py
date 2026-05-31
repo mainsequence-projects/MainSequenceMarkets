@@ -24,6 +24,11 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     """Future contract detail row linked to a canonical markets asset."""
 
     __metatable_identifier__ = "FutureAssetDetails"
+    __metatable_description__ = (
+        "One-to-one future contract detail table keyed by AssetTable.uid. Links a "
+        "future asset to its underlying Index, settlement and margin assets, "
+        "contract terms, expiry, and metadata."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

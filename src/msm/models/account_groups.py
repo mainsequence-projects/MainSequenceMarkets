@@ -20,6 +20,11 @@ class AccountModelPortfolioTable(MarketsMetaTableMixin, MarketsBase):
     """Named model portfolio grouping account groups."""
 
     __metatable_identifier__ = "AccountModelPortfolio"
+    __metatable_description__ = (
+        "Account model-portfolio registry keyed by model_portfolio_name. Groups "
+        "account groups under a named portfolio policy and stores descriptive "
+        "metadata for account-model workflows."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -43,6 +48,11 @@ class AccountGroupTable(MarketsMetaTableMixin, MarketsBase):
     """Account grouping metadata used by market workflows."""
 
     __metatable_identifier__ = "AccountGroup"
+    __metatable_description__ = (
+        "Account group registry keyed by group_name. Links optional account model "
+        "portfolios to reusable account-group metadata used by account and portfolio "
+        "workflows."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

@@ -73,9 +73,15 @@ MetaTable in both platform-managed and external-registered modes.
 
 Platform-managed models inherit `MarketsMetaTableMixin`, which delegates table
 name derivation to the SDK `PlatformManagedMetaTable` mixin. Model classes should
-declare `__metatable_identifier__` and SQLAlchemy `__table_args__`, but should
-not hand-write `__tablename__`; the physical name is the SDK configured storage
-hash for the resolved table contract.
+declare `__metatable_identifier__`, `__metatable_description__`, and SQLAlchemy
+`__table_args__`, but should not hand-write `__tablename__`; the physical name
+is the SDK configured storage hash for the resolved table contract.
+
+`__metatable_description__` is required on every concrete markets MetaTable,
+including `PlatformTimeIndexMetaData` storage classes used by DataNodes. The
+description is table-level discovery text: it should identify the row grain,
+business intention, and expected use of the table. Column labels and column
+descriptions stay on `mapped_column(info={...})`.
 
 `__metatable_identifier__` is authored as the bare logical name, such as
 `Asset`. At runtime the shared markets identifier rule keeps the bare name for

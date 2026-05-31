@@ -19,6 +19,11 @@ class IssuerTable(MarketsMetaTableMixin, MarketsBase):
     """Reference row for organizations or entities that issue securities."""
 
     __metatable_identifier__ = "Issuer"
+    __metatable_description__ = (
+        "Issuer registry keyed by unique_identifier. Stores organizations or "
+        "entities that issue securities and links them to asset detail tables such "
+        "as BondAssetDetails."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

@@ -87,7 +87,6 @@ def create_floating_rate_bond_with_curve(
     seed_past_fixings_from_curve: bool = True,
     discount_curve: ql.YieldTermStructureHandle | None = None,
     schedule: ql.Schedule | None = None,
-
     fixing_days: int | None = None,
     gearings: list[float] | None = None,
     spreads: list[float] | None = None,
@@ -100,7 +99,6 @@ def create_floating_rate_bond_with_curve(
     ex_coupon_calendar: ql.Calendar | None = None,
     ex_coupon_convention: int | None = None,
     ex_coupon_end_of_month: bool | None = None,
-
 ) -> ql.FloatingRateBond:
     """
     Build/prices a floating-rate bond like your swap-with-curve:

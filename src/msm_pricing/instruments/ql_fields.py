@@ -188,7 +188,7 @@ QuantLibPeriod = Annotated[
     ql.Period,
     BeforeValidator(period_from_json),
     PlainSerializer(period_to_json, return_type=str),
-Field(
+    Field(
         description="QuantLib Period (tenor). Common formats: '1D', '1W', '3M', '6M', '1Y'.",
         examples=["3M", "6M", "1Y"],
         json_schema_extra={
@@ -204,7 +204,7 @@ QuantLibDayCounter = Annotated[
     ql.DayCounter,
     BeforeValidator(daycount_from_json),
     PlainSerializer(daycount_to_json, return_type=str),
-Field(
+    Field(
         description=(
             "QuantLib DayCounter (day count convention) used for year fractions/accrual. "
             "Provide a canonical name supported by your daycount_from_json parser."
@@ -225,7 +225,6 @@ QuantLibCalendar = Annotated[
     PlainSerializer(
         _calendar_to_json_actual, return_type=dict[str, Any]
     ),  # <— always emit true name
-
     Field(
         description=(
             "QuantLib Calendar used to adjust dates (holidays/weekends). "
@@ -257,7 +256,7 @@ QuantLibBDC = Annotated[
     int,
     BeforeValidator(_bdc_from_any),
     PlainSerializer(_bdc_to_str, return_type=str),
-Field(
+    Field(
         description=(
             "QuantLib BusinessDayConvention. Accepts either a convention name "
             "(e.g. 'Following') or the QuantLib enum integer."
@@ -268,7 +267,6 @@ Field(
             "accepted_json": ["string", "integer"],
         },
     ),
-
     WithJsonSchema(
         {
             "type": ["string", "integer"],
@@ -332,9 +330,9 @@ QuantLibSchedule = Annotated[
             "notes": "calendar is expected as {'name': '<Calendar.name() display name>'} in the preferred form.",
         },
     ),
-        # Make it appear in config_schema (validation mode)
+    # Make it appear in config_schema (validation mode)
     WithJsonSchema(_SCHEDULE_SCHEMA, mode="validation"),
-        #  Keep serialization shape documented too (your serializer returns dict|null)
+    #  Keep serialization shape documented too (your serializer returns dict|null)
     WithJsonSchema(_SCHEDULE_SCHEMA, mode="serialization"),
 ]
 

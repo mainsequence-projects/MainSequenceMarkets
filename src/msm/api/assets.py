@@ -326,9 +326,7 @@ class CurrencySpotCreate(BaseModel):
     @model_validator(mode="after")
     def _base_and_quote_must_differ(self) -> CurrencySpotCreate:
         if self.base_currency_uid == self.quote_currency_uid:
-            raise ValueError(
-                "CurrencySpot base_currency_uid and quote_currency_uid must differ."
-            )
+            raise ValueError("CurrencySpot base_currency_uid and quote_currency_uid must differ.")
         return self
 
 

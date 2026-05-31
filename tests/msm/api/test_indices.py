@@ -15,7 +15,7 @@ from msm.api.indices import (
     normalize_index_type,
 )
 from msm.constants import INDEX_TYPE_EQUITY, INDEX_TYPE_INTEREST_RATE
-from msm.models.registration import markets_meta_table_fullname
+from msm.models.registration import markets_meta_table_identifier
 from msm.models import IndexTable, IndexTypeTable
 
 
@@ -34,11 +34,14 @@ def test_index_type_api_declares_table_contract() -> None:
 def test_index_type_normalization_for_typed_payloads() -> None:
     assert normalize_index_type(" Interest Rate ") == INDEX_TYPE_INTEREST_RATE
     assert IndexTypeUpsert(index_type="Interest Rate").index_type == INDEX_TYPE_INTEREST_RATE
-    assert IndexUpsert(
-        unique_identifier="USD-SOFR-3M",
-        index_type="Interest Rate",
-        display_name="USD SOFR 3M",
-    ).index_type == INDEX_TYPE_INTEREST_RATE
+    assert (
+        IndexUpsert(
+            unique_identifier="USD-SOFR-3M",
+            index_type="Interest Rate",
+            display_name="USD SOFR 3M",
+        ).index_type
+        == INDEX_TYPE_INTEREST_RATE
+    )
 
 
 def test_index_type_normalization_rejects_empty_values() -> None:
@@ -70,8 +73,8 @@ def test_index_upsert_uses_active_runtime(monkeypatch) -> None:
     context = object()
     runtime = SimpleNamespace(
         context=context,
-        target_meta_table_uid_by_fullname={
-            markets_meta_table_fullname(IndexTable): str(uuid.uuid4()),
+        target_meta_table_uid_by_identifier={
+            markets_meta_table_identifier(IndexTable): str(uuid.uuid4()),
         },
     )
     calls = []

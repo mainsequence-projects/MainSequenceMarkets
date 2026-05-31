@@ -19,6 +19,11 @@ class PricingMarketDataBindingTable(MarketsMetaTableMixin, MarketsBase):
     """Pricing-owned binding from a context/concept pair to a DataNode identifier."""
 
     __metatable_identifier__ = "PricingMarketDataBinding"
+    __metatable_description__ = (
+        "Pricing market-data binding table keyed by context_key and concept_key. "
+        "Resolves pricing concepts such as discount curves or interest-rate index "
+        "fixings to DataNode identifiers for a named pricing context."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

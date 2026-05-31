@@ -20,7 +20,7 @@ from .meta_tables import (
     PricingManagementMode,
     PricingMetaTableRegistrationResult,
     PricingModelSelector,
-    pricing_meta_table_fullname,
+    pricing_meta_table_identifier,
     register_pricing_meta_tables,
     resolve_pricing_meta_table_models,
 )
@@ -49,8 +49,12 @@ class PricingRuntime:
         return self.registration.meta_tables
 
     @property
+    def target_meta_table_uid_by_identifier(self) -> dict[str, str]:
+        return self.registration.target_meta_table_uid_by_identifier
+
+    @property
     def target_meta_table_uid_by_fullname(self) -> dict[str, str]:
-        return self.registration.target_meta_table_uid_by_fullname
+        return self.target_meta_table_uid_by_identifier
 
     @property
     def meta_table_models(self) -> list[type[Any]]:
@@ -66,10 +70,12 @@ def create_pricing_schemas(
     seed_default_market_data_bindings: bool = True,
     replace_default_market_data_bindings: bool = False,
     models: Sequence[PricingModelSelector] | None = None,
+    target_meta_table_uid_by_identifier: Mapping[str, Any] | None = None,
     target_meta_table_uid_by_fullname: Mapping[str, Any] | None = None,
     open_for_everyone: bool = False,
     protect_from_deletion: bool = False,
     introspect: bool | None = None,
+    storage_hash_by_identifier: Mapping[str, str] | None = None,
     storage_hash_by_fullname: Mapping[str, str] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> PricingRuntime:
@@ -82,10 +88,12 @@ def create_pricing_schemas(
         management_mode=management_mode,
         namespace=namespace,
         models=resolved_models,
+        target_meta_table_uid_by_identifier=target_meta_table_uid_by_identifier,
         target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
         open_for_everyone=open_for_everyone,
         protect_from_deletion=protect_from_deletion,
         introspect=introspect,
+        storage_hash_by_identifier=storage_hash_by_identifier,
         storage_hash_by_fullname=storage_hash_by_fullname,
         timeout=timeout,
     )
@@ -121,10 +129,12 @@ def create_pricing_schemas(
         registration = register_pricing_meta_tables(
             data_source_uid=data_source_uid,
             management_mode=management_mode,
+            target_meta_table_uid_by_identifier=target_meta_table_uid_by_identifier,
             target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
             open_for_everyone=open_for_everyone,
             protect_from_deletion=protect_from_deletion,
             introspect=introspect,
+            storage_hash_by_identifier=storage_hash_by_identifier,
             storage_hash_by_fullname=storage_hash_by_fullname,
             timeout=timeout,
             models=resolved_models,
@@ -132,7 +142,7 @@ def create_pricing_schemas(
         runtime = PricingRuntime(
             registration=registration,
             context=MarketsRepositoryContext(
-                target_meta_table_uid_by_fullname=registration.target_meta_table_uid_by_fullname,
+                target_meta_table_uid_by_identifier=registration.target_meta_table_uid_by_identifier,
                 timeout=timeout,
                 namespace=namespace,
             ),
@@ -198,7 +208,7 @@ def attach_pricing_schemas(
         runtime = PricingRuntime(
             registration=registration,
             context=MarketsRepositoryContext(
-                target_meta_table_uid_by_fullname=registration.target_meta_table_uid_by_fullname,
+                target_meta_table_uid_by_identifier=registration.target_meta_table_uid_by_identifier,
                 timeout=timeout,
                 namespace=namespace,
             ),
@@ -345,7 +355,7 @@ def _missing_models_from_runtime(
     return [
         model
         for model in models
-        if pricing_meta_table_fullname(model) not in runtime.target_meta_table_uid_by_fullname
+        if pricing_meta_table_identifier(model) not in runtime.target_meta_table_uid_by_identifier
     ]
 
 
@@ -370,13 +380,18 @@ def _pricing_missing_models_error_message(
     runtime: PricingRuntime,
 ) -> str:
     missing_model_names = ", ".join(_model_name(model) for model in missing_models)
+    missing_model_details = ", ".join(
+        f"{_model_name(model)} ({pricing_meta_table_identifier(model)})" for model in missing_models
+    )
     initialized_model_names = ", ".join(_model_name(model) for model in runtime.meta_table_models)
+    initialized_identifiers = ", ".join(sorted(runtime.target_meta_table_uid_by_identifier))
     prefix = f"{row_model_name} " if row_model_name else ""
     return (
-        f"{prefix}requires {missing_model_names}, but the active pricing runtime "
-        f"was initialized without those tables. Initialized tables: "
-        f"{initialized_model_names or 'none'}. Include {missing_model_names} in "
-        "the pricing bootstrap before row operations."
+        f"{prefix}requires {missing_model_details or missing_model_names}, but the active "
+        "pricing runtime was initialized without those MetaTable identifiers. "
+        f"Initialized tables: {initialized_model_names or 'none'}. "
+        f"Initialized identifiers: {initialized_identifiers or 'none'}. "
+        "Include the required tables in the pricing bootstrap before row operations."
     )
 
 

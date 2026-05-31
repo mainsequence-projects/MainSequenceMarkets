@@ -83,6 +83,54 @@ universe selection affects update identity, not the storage identity of the
 published dataset. Two updater jobs can write different asset subsets into the
 same dataset when the schema and dataset meaning are otherwise the same.
 
+Asset-scoped configuration has two categories:
+
+- normal `DataNodeConfiguration` fields, which enter `update_hash`
+- `ClassVar[...]` invariants, which are not Pydantic fields and do not enter
+  `update_hash`
+
+Use `Field(...)` for every config field, with a useful `description` and
+`examples=[...]` when possible:
+
+```python
+from typing import ClassVar
+
+from pydantic import Field
+
+from mainsequence.meta_tables import DataNodeConfiguration
+
+
+class AssetIndexedDataNodeConfiguration(DataNodeConfiguration):
+    asset_list: list | None = Field(
+        default=None,
+        description=(
+            "Optional asset unique identifier scope for this updater run. "
+            "Changing it changes update identity, not table identity."
+        ),
+        examples=[["asset_us_equity_aapl", "asset_us_equity_msft"]],
+    )
+    asset_category_unique_identifier: str | None = Field(
+        default=None,
+        description=(
+            "Optional asset category unique identifier used to resolve the "
+            "updater asset universe."
+        ),
+        examples=["us_equities"],
+    )
+    reference_dimension: ClassVar[str] = "unique_identifier"
+```
+
+`asset_list` and `asset_category_unique_identifier` are fields because they
+select the updater scope and must affect `update_hash`. `reference_dimension` is
+a `ClassVar` because it is a fixed implementation invariant, not run
+configuration.
+
+Do not use legacy platform metadata markers such as `update_only`,
+`runtime_only`, `ignore_from_storage_hash`, or `_ARGS_IGNORE_IN_STORAGE_HASH` to
+remove DataNode config fields from hashing. There is no third asset-scope case:
+if it is a config field, it is hashed; if it is not hashed, it must not be a
+config field.
+
 ## Canonical Foreign Key
 
 Under ADR 0017 the schema contract lives on a storage class

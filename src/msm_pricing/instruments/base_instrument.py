@@ -57,6 +57,7 @@ class InstrumentModel(BaseModel):
             return
         name = cls.__name__
         InstrumentModel._DEFAULT_REGISTRY[name] = cls
+
     # public read access (still not serialized)
     @property
     def valuation_date(self) -> datetime.datetime | None:

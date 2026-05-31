@@ -51,7 +51,7 @@ def get_or_create_portfolio_index_asset(
     get_or_create = getattr(resolver, "get_or_create_from_configuration_hash", None)
     if not callable(get_or_create):
         raise AttributeError(
-            "Portfolio resolver must expose " "get_or_create_from_configuration_hash(...)."
+            "Portfolio resolver must expose get_or_create_from_configuration_hash(...)."
         )
 
     return _coerce_portfolio_resolution_result(

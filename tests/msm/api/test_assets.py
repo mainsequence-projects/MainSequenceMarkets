@@ -16,8 +16,13 @@ from msm.api.assets import (
     _operation_result_rows,
     normalize_asset_type,
 )
-from msm.models import AssetTable, AssetTypeTable, CurrencySpotAssetDetailsTable, OpenFigiAssetDetailsTable
-from msm.models.registration import markets_meta_table_fullname
+from msm.models import (
+    AssetTable,
+    AssetTypeTable,
+    CurrencySpotAssetDetailsTable,
+    OpenFigiAssetDetailsTable,
+)
+from msm.models.registration import markets_meta_table_identifier
 
 
 def test_asset_api_declares_table_contract() -> None:
@@ -92,8 +97,8 @@ def test_asset_type_upsert_uses_active_runtime(monkeypatch) -> None:
     context = object()
     runtime = SimpleNamespace(
         context=context,
-        target_meta_table_uid_by_fullname={
-            markets_meta_table_fullname(AssetTypeTable): str(uuid.uuid4()),
+        target_meta_table_uid_by_identifier={
+            markets_meta_table_identifier(AssetTypeTable): str(uuid.uuid4()),
         },
     )
     calls = []
@@ -185,8 +190,8 @@ def test_asset_upsert_uses_active_runtime(monkeypatch) -> None:
     context = object()
     runtime = SimpleNamespace(
         context=context,
-        target_meta_table_uid_by_fullname={
-            markets_meta_table_fullname(AssetTable): str(uuid.uuid4()),
+        target_meta_table_uid_by_identifier={
+            markets_meta_table_identifier(AssetTable): str(uuid.uuid4()),
         },
     )
     calls = []

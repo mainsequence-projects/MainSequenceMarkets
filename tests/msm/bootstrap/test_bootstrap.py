@@ -28,22 +28,26 @@ def install_fake_bootstrap_modules(monkeypatch):
     calls = []
     attach_calls = []
     registration = SimpleNamespace(
-        target_meta_table_uid_by_fullname={"public.asset": "asset-meta-table-uid"},
+        target_meta_table_uid_by_identifier={"Asset": "asset-meta-table-uid"},
         meta_tables=["asset-meta-table"],
         models=["Asset"],
-        meta_table_by_fullname={"public.asset": "asset-meta-table"},
+        meta_table_by_identifier={"Asset": "asset-meta-table"},
     )
 
     class FakeMarketsRepositoryContext:
         def __init__(
             self,
-            target_meta_table_uid_by_fullname,
+            target_meta_table_uid_by_identifier,
             timeout=None,
             namespace=None,
         ) -> None:
-            self.target_meta_table_uid_by_fullname = target_meta_table_uid_by_fullname
+            self.target_meta_table_uid_by_identifier = target_meta_table_uid_by_identifier
             self.timeout = timeout
             self.namespace = namespace
+
+        @property
+        def target_meta_table_uid_by_fullname(self):
+            return self.target_meta_table_uid_by_identifier
 
     def fake_register_markets_meta_tables(**kwargs):
         calls.append(kwargs)
@@ -63,20 +67,20 @@ def install_fake_bootstrap_modules(monkeypatch):
         attach_calls.append(kwargs)
         return registration
 
-    def fake_markets_meta_table_fullname(model):
+    def fake_markets_meta_table_identifier(model):
         model_name = str(getattr(model, "__name__", model))
         return {
-            "Asset": "public.asset",
-            "AssetTable": "public.asset",
-            "Portfolio": "public.portfolio",
-            "PortfolioTable": "public.portfolio",
-        }.get(model_name, f"public.{model_name.lower()}")
+            "Asset": "Asset",
+            "AssetTable": "Asset",
+            "Portfolio": "Portfolio",
+            "PortfolioTable": "Portfolio",
+        }.get(model_name, model_name)
 
     monkeypatch.setitem(
         sys.modules,
         "msm.models.registration",
         SimpleNamespace(
-            markets_meta_table_fullname=fake_markets_meta_table_fullname,
+            markets_meta_table_identifier=fake_markets_meta_table_identifier,
             markets_meta_table_models=lambda: ["Asset"],
             resolve_markets_meta_table_models=lambda models=None: list(models or ["Asset"]),
             register_markets_meta_tables=fake_register_markets_meta_tables,
@@ -120,9 +124,7 @@ def test_start_engine_registers_metatables_and_returns_repository_context(
     assert runtime.registration is registration
     assert runtime.meta_tables == ["asset-meta-table"]
     assert runtime.meta_table_models == ["Asset"]
-    assert runtime.context.target_meta_table_uid_by_fullname == {
-        "public.asset": "asset-meta-table-uid"
-    }
+    assert runtime.context.target_meta_table_uid_by_identifier == {"Asset": "asset-meta-table-uid"}
     assert runtime.namespace == DEFAULT_MARKETS_NAMESPACE
     assert runtime.context.namespace == DEFAULT_MARKETS_NAMESPACE
     assert calls[0]["data_source_uid"] == "data-source-uid"
@@ -285,9 +287,7 @@ def test_attach_schemas_resolves_registered_metatables_without_registering(monke
 
     runtime = bootstrap.attach_schemas(namespace="mainsequence.markets", models=["Asset"])
 
-    assert runtime.context.target_meta_table_uid_by_fullname == {
-        "public.asset": "asset-meta-table-uid"
-    }
+    assert runtime.context.target_meta_table_uid_by_identifier == {"Asset": "asset-meta-table-uid"}
     assert register_calls == []
     assert attach_calls == [
         {
@@ -344,6 +344,40 @@ def test_resolve_runtime_returns_active_runtime_for_required_tables(monkeypatch)
     assert attach_calls == []
 
 
+def test_resolve_runtime_uses_identifier_after_physical_binding(monkeypatch) -> None:
+    from msm.models import AssetTypeTable
+    from msm.models.registration import markets_meta_table_identifier
+    from msm.repositories.base import MarketsRepositoryContext
+
+    identifier = markets_meta_table_identifier(AssetTypeTable)
+    storage_name = str(AssetTypeTable.__table__.name)
+    registration = SimpleNamespace(
+        target_meta_table_uid_by_identifier={identifier: "asset-type-meta-table-uid"},
+        meta_tables=["asset-type-meta-table"],
+        models=[AssetTypeTable],
+        meta_table_by_identifier={identifier: "asset-type-meta-table"},
+    )
+    runtime = bootstrap.MarketsRuntime(
+        registration=registration,
+        context=MarketsRepositoryContext(
+            target_meta_table_uid_by_identifier=registration.target_meta_table_uid_by_identifier,
+        ),
+    )
+    monkeypatch.setattr(bootstrap, "_RUNTIME", runtime)
+    monkeypatch.setitem(AssetTypeTable.__table__.info, "identifier", identifier)
+    monkeypatch.setattr(AssetTypeTable, "__metatable_storage_hash__", storage_name)
+    monkeypatch.setattr(AssetTypeTable.__table__, "name", "backend_physical_asset_type")
+    monkeypatch.setattr(
+        AssetTypeTable.__table__,
+        "fullname",
+        "public.backend_physical_asset_type",
+        raising=False,
+    )
+
+    assert bootstrap.resolve_runtime(models=[AssetTypeTable], row_model_name="AssetType") is runtime
+    assert runtime.table(AssetTypeTable).meta_table == "asset-type-meta-table"
+
+
 def test_resolve_runtime_missing_tables_error_names_table_declarations(
     monkeypatch,
 ) -> None:
@@ -352,5 +386,9 @@ def test_resolve_runtime_missing_tables_error_names_table_declarations(
 
     bootstrap.start_engine(namespace="mainsequence.examples", models=["Asset"])
 
-    with pytest.raises(RuntimeError, match="PortfolioTable"):
+    with pytest.raises(RuntimeError, match="PortfolioTable") as exc_info:
         bootstrap.resolve_runtime(models=["PortfolioTable"], row_model_name="Portfolio")
+
+    message = str(exc_info.value)
+    assert "Portfolio" in message
+    assert "Initialized identifiers: Asset" in message

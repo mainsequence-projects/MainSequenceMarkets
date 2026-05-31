@@ -9,7 +9,11 @@ from msm_pricing.data_nodes.storage import (
     DiscountCurvesStorage,
     IndexFixingsStorage,
 )
-from msm_pricing.meta_tables import pricing_sqlalchemy_models, register_pricing_meta_tables
+from msm_pricing.meta_tables import (
+    pricing_meta_table_identifier,
+    pricing_sqlalchemy_models,
+    register_pricing_meta_tables,
+)
 from msm_pricing.models import (
     AssetCurrentPricingDetailsTable,
     CurveTable,
@@ -37,6 +41,15 @@ def test_pricing_sqlalchemy_models_returns_pricing_dependency_order() -> None:
     assert pricing_sqlalchemy_models() == EXPECTED_PRICING_MODELS
 
 
+def test_pricing_models_declare_metatable_descriptions() -> None:
+    for model in pricing_sqlalchemy_models():
+        description = getattr(model, "__metatable_description__", None)
+
+        assert isinstance(description, str), model.__name__
+        assert description.strip() == description
+        assert len(description.split()) >= 8, model.__name__
+
+
 def test_pricing_sqlalchemy_models_returns_a_fresh_model_list() -> None:
     models = pricing_sqlalchemy_models()
 
@@ -59,6 +72,23 @@ def test_core_markets_models_do_not_include_pricing_extension_table() -> None:
     assert AssetPricingDetailsStorage not in markets_sqlalchemy_models()
 
 
+def test_pricing_meta_table_identifier_survives_sdk_physical_binding(monkeypatch) -> None:
+    identifier = pricing_meta_table_identifier(CurveTable)
+    storage_name = str(CurveTable.__table__.name)
+
+    monkeypatch.setitem(CurveTable.__table__.info, "identifier", identifier)
+    monkeypatch.setattr(CurveTable, "__metatable_storage_hash__", storage_name)
+    monkeypatch.setattr(CurveTable.__table__, "name", "backend_physical_curve")
+    monkeypatch.setattr(
+        CurveTable.__table__,
+        "fullname",
+        "public.backend_physical_curve",
+        raising=False,
+    )
+
+    assert pricing_meta_table_identifier(CurveTable) == identifier
+
+
 def test_register_pricing_meta_tables_delegates_with_pricing_models(monkeypatch) -> None:
     calls = []
 
@@ -75,11 +105,11 @@ def test_register_pricing_meta_tables_delegates_with_pricing_models(monkeypatch)
     result = register_pricing_meta_tables(
         data_source_uid="data-source-uid",
         management_mode="external_registered",
-        target_meta_table_uid_by_fullname={"public.asset": "asset-meta-table-uid"},
+        target_meta_table_uid_by_identifier={"Asset": "asset-meta-table-uid"},
         open_for_everyone=True,
         protect_from_deletion=True,
         introspect=True,
-        storage_hash_by_fullname={"public.asset": "asset-storage-hash"},
+        storage_hash_by_identifier={"Asset": "asset-storage-hash"},
         timeout=5,
     )
 
@@ -88,11 +118,13 @@ def test_register_pricing_meta_tables_delegates_with_pricing_models(monkeypatch)
         {
             "data_source_uid": "data-source-uid",
             "management_mode": "external_registered",
-            "target_meta_table_uid_by_fullname": {"public.asset": "asset-meta-table-uid"},
+            "target_meta_table_uid_by_identifier": {"Asset": "asset-meta-table-uid"},
+            "target_meta_table_uid_by_fullname": None,
             "open_for_everyone": True,
             "protect_from_deletion": True,
             "introspect": True,
-            "storage_hash_by_fullname": {"public.asset": "asset-storage-hash"},
+            "storage_hash_by_identifier": {"Asset": "asset-storage-hash"},
+            "storage_hash_by_fullname": None,
             "timeout": 5,
             "models": EXPECTED_PRICING_MODELS,
         }
@@ -123,9 +155,9 @@ def test_register_pricing_meta_tables_registration_request_modes_use_dependency_
         result = register_pricing_meta_tables(
             data_source_uid="data-source-uid",
             management_mode=management_mode,
-            target_meta_table_uid_by_fullname={
-                str(AssetTable.__table__.fullname): "asset-meta-table-uid",
-                str(IndexTable.__table__.fullname): "index-meta-table-uid",
+            target_meta_table_uid_by_identifier={
+                AssetTable.__metatable_identifier__: "asset-meta-table-uid",
+                IndexTable.__metatable_identifier__: "index-meta-table-uid",
             },
         )
         assert result.models == EXPECTED_PRICING_MODELS
@@ -149,8 +181,8 @@ def test_register_pricing_meta_tables_uses_catalog_bootstrap_in_dependency_order
         return SimpleNamespace(
             registration=SimpleNamespace(
                 models=kwargs["models"],
-                target_meta_table_uid_by_fullname={
-                    str(model.__table__.fullname): f"{model.__name__}-meta-table-uid"
+                target_meta_table_uid_by_identifier={
+                    model.__metatable_identifier__: f"{model.__name__}-meta-table-uid"
                     for model in kwargs["models"]
                 },
             ),
@@ -169,7 +201,7 @@ def test_register_pricing_meta_tables_uses_catalog_bootstrap_in_dependency_order
     assert len(calls) == 1
     assert calls[0]["data_source_uid"] == "data-source-uid"
     assert calls[0]["models"] == EXPECTED_PRICING_MODELS
-    assert result.target_meta_table_uid_by_fullname == {
-        str(model.__table__.fullname): f"{model.__name__}-meta-table-uid"
+    assert result.target_meta_table_uid_by_identifier == {
+        model.__metatable_identifier__: f"{model.__name__}-meta-table-uid"
         for model in EXPECTED_PRICING_MODELS
     }

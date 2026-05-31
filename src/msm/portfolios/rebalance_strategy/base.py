@@ -10,7 +10,6 @@ logger = logging.getLogger("portfolios")
 
 
 class RebalanceStrategyBase(BaseModel):
-
     calendar_key: str = Field(
         "24/7", description="Trading calendar should match pandas market calendar string"
     )
@@ -71,10 +70,3 @@ class RebalanceStrategyBase(BaseModel):
             raise NotImplementedError(f"Strategy {rebalance_frequency_strategy} not implemented")
 
         return pd.DatetimeIndex(rebalance_dates)
-
-
-
-
-
-
-

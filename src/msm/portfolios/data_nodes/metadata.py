@@ -46,8 +46,7 @@ def extract_portfolio_description(value: Any | None) -> str | None:
         if front_end_details is not None:
             return extract_portfolio_description(front_end_details)
         return extract_portfolio_description(
-            value.get("portfolio_markets_configuration")
-            or value.get("portfolio_markets_config")
+            value.get("portfolio_markets_configuration") or value.get("portfolio_markets_config")
         )
 
     for attr_name in (PORTFOLIO_DESCRIPTION, "portfolio_description"):

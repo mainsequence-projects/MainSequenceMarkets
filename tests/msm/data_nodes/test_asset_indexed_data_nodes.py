@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import inspect
 import os
 
 import pandas as pd
@@ -33,7 +32,7 @@ from msm.data_nodes.execution import (
 from msm.data_nodes.storage import AssetSnapshotsStorage
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.models import AssetTable, markets_sqlalchemy_models
-from msm.models.registration import markets_foreign_key_target_fullnames
+from msm.models.registration import markets_foreign_key_target_identifiers
 from msm.portfolios.asset_scope import ASSET_UNIQUE_IDENTIFIER
 from msm.portfolios.data_nodes.portfolio_weights import PortfolioWeights
 from msm.portfolios.data_nodes.portfolios import PortfoliosDataNode
@@ -110,7 +109,7 @@ def test_asset_indexed_nodes_expose_storage_first_surface(
     assert "_default_description" not in node_cls.__dict__
     storage_table = node_cls._required_storage_table()
     assert node_cls._default_identifier() == storage_table.metatable_identifier()
-    assert node_cls._default_description() == inspect.getdoc(storage_table)
+    assert node_cls._default_description() == storage_table.__metatable_description__
 
     # msm storage registers through markets; pricing storage through pricing.
     registered = set(markets_sqlalchemy_models()) | set(pricing_sqlalchemy_models())
@@ -208,10 +207,11 @@ def test_timestamped_asset_nodes_validate_real_frames_as_datetime64_ns_utc(
 
 @pytest.mark.parametrize("storage_cls", [AssetSnapshotsStorage, AssetPricingDetailsStorage])
 def test_timestamped_asset_storage_has_asset_foreign_key(storage_cls) -> None:
+    asset_identifier = AssetTable.__metatable_identifier__
     asset_fullname = str(AssetTable.__table__.fullname)
     fk_column = storage_cls.__table__.columns[ASSET_UNIQUE_IDENTIFIER_DIMENSION]
 
-    assert markets_foreign_key_target_fullnames(storage_cls) == [asset_fullname]
+    assert markets_foreign_key_target_identifiers(storage_cls) == [asset_identifier]
     assert any(
         foreign_key.column.table.fullname == asset_fullname
         for foreign_key in fk_column.foreign_keys

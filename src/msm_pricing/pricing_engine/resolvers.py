@@ -57,8 +57,7 @@ def select_curve(
             )
         if source and curve.source != source:
             raise ValueError(
-                f"Curve {curve.unique_identifier!r} has source={curve.source!r}, "
-                f"not {source!r}."
+                f"Curve {curve.unique_identifier!r} has source={curve.source!r}, not {source!r}."
             )
         return curve
 
@@ -331,9 +330,7 @@ def _period_from_convention(
 
 
 def _currency_from_convention(convention_dump: dict[str, Any]) -> ql.Currency:
-    code = str(
-        _convention_value(convention_dump, "currency_code", "currency") or ""
-    ).upper()
+    code = str(_convention_value(convention_dump, "currency_code", "currency") or "").upper()
     factories = {
         "USD": ql.USDCurrency,
         "EUR": ql.EURCurrency,

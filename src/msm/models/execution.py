@@ -26,6 +26,11 @@ class OrderManagerTable(MarketsMetaTableMixin, MarketsBase):
     """Order-manager or rebalance execution batch row."""
 
     __metatable_identifier__ = "OrderManager"
+    __metatable_description__ = (
+        "Execution batch registry keyed by unique_identifier. Stores target account, "
+        "target time, received/end times, status, and metadata for rebalance or "
+        "order-manager workflows."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -75,6 +80,11 @@ class OrderTargetQuantityTable(MarketsMetaTableMixin, MarketsBase):
     """Target quantity for one asset inside an order-manager batch."""
 
     __metatable_identifier__ = "OrderTargetQuantity"
+    __metatable_description__ = (
+        "Order-manager target quantity table keyed by order_manager_uid and "
+        "asset_uid. Stores the desired quantity for one asset inside an execution "
+        "batch."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -125,6 +135,11 @@ class OrderTable(MarketsMetaTableMixin, MarketsBase):
     """Broker or venue order emitted by a markets execution workflow."""
 
     __metatable_identifier__ = "Order"
+    __metatable_description__ = (
+        "Broker or venue order table keyed by order_time, order_remote_id, and "
+        "asset_unique_identifier. Stores order intent, status, fills, related "
+        "account/fund/order-manager links, and venue metadata."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -220,6 +235,11 @@ class OrderStatusEventTable(MarketsMetaTableMixin, MarketsBase):
     """Status transition event observed for an order."""
 
     __metatable_identifier__ = "OrderStatusEvent"
+    __metatable_description__ = (
+        "Order status event table keyed by event_time and "
+        "order_uid/order_unique_identifier. Stores the observed status transition "
+        "stream for broker or venue orders."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(markets_index_name(__metatable_identifier__, "event_time"), "event_time"),
@@ -251,6 +271,11 @@ class TradeTable(MarketsMetaTableMixin, MarketsBase):
     """Executed trade produced by a broker or venue."""
 
     __metatable_identifier__ = "Trade"
+    __metatable_description__ = (
+        "Executed trade table keyed by trade_time, asset_unique_identifier, and "
+        "related account or fund. Stores fills, prices, commissions, settlement "
+        "fields, and links back to order/account/fund records."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -345,6 +370,11 @@ class ExecutionErrorTable(MarketsMetaTableMixin, MarketsBase):
     """Execution error captured by an order or broker integration."""
 
     __metatable_identifier__ = "ExecutionError"
+    __metatable_description__ = (
+        "Execution error table keyed by error_code and time_recorded. Stores broker "
+        "or execution workflow failures with related account, fund, and diagnostic "
+        "metadata."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(markets_index_name(__metatable_identifier__, "error_code"), "error_code"),

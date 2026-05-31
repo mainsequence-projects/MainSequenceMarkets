@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import inspect
 import os
 
 import pandas as pd
@@ -49,7 +48,7 @@ def test_asset_snapshot_resolves_storage_first_surface() -> None:
     assert AssetSnapshot._required_storage_table() is AssetSnapshotsStorage
     assert "__data_node_identifier__" not in AssetSnapshot.__dict__
     assert AssetSnapshot._default_identifier() == AssetSnapshotsStorage.metatable_identifier()
-    assert AssetSnapshot._default_description() == inspect.getdoc(AssetSnapshotsStorage)
+    assert AssetSnapshot._default_description() == AssetSnapshotsStorage.__metatable_description__
     assert issubclass(AssetSnapshot.configuration_class, AssetSnapshotConfiguration)
     # Storage class is the single source of the snapshot column contract.
     assert [column.name for column in AssetSnapshotsStorage.__table__.columns] == [
@@ -137,7 +136,7 @@ def test_constructing_asset_snapshot_requires_registered_storage_table() -> None
 
     with pytest.raises(
         ValueError,
-        match="storage_table must be registered or bound before construction",
+        match="storage_table must be registered before construction",
     ):
         AssetSnapshot()
 

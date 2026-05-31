@@ -47,9 +47,7 @@ def _rebalance_strategy_payload(rebalance_strategy: Any) -> dict[str, Any]:
     model_dump = getattr(rebalance_strategy, "model_dump", None)
     config = model_dump() if callable(model_dump) else rebalance_strategy
     return {
-        "rebalance_strategy_class_import_path": _class_import_path(
-            rebalance_strategy.__class__
-        ),
+        "rebalance_strategy_class_import_path": _class_import_path(rebalance_strategy.__class__),
         "config": config,
     }
 

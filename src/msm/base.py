@@ -55,6 +55,83 @@ def markets_table_name(
     )
 
 
+def markets_meta_table_identifier(model_or_table: Any) -> str:
+    """Return the stable globally unique MetaTable identifier.
+
+    Runtime bookkeeping uses this authored identifier instead of SQLAlchemy
+    table names because SDK registration may rebind tables to backend physical
+    names after the model is registered.
+    """
+
+    identifier = getattr(model_or_table, "__metatable_identifier__", None)
+    if identifier not in (None, ""):
+        return str(identifier)
+
+    table = _markets_table(model_or_table)
+    info = getattr(table, "info", None)
+    if isinstance(info, Mapping):
+        identifier = info.get("identifier")
+        if identifier not in (None, ""):
+            return str(identifier)
+
+    raise ValueError("Markets MetaTable models must expose a non-empty identifier.")
+
+
+def markets_table_logical_fullname(model_or_table: Any) -> str:
+    """Return the stable logical SQLAlchemy fullname for a markets table.
+
+    SDK registration can rebind SQLAlchemy tables to backend physical names.
+    Runtime bookkeeping still needs the original logical/storage fullname.
+    """
+
+    table = _markets_table(model_or_table)
+    logical_fullname = getattr(table, "_mainsequence_logical_fullname", None)
+    if logical_fullname not in (None, ""):
+        return str(logical_fullname)
+
+    info = getattr(table, "info", None)
+    if isinstance(info, Mapping):
+        logical_fullname = info.get("mainsequence_logical_fullname")
+        if logical_fullname not in (None, ""):
+            return str(logical_fullname)
+
+    fullname = getattr(table, "fullname", None)
+    if fullname in (None, ""):
+        raise ValueError("Markets SQLAlchemy table metadata must expose a non-empty fullname.")
+    return str(fullname)
+
+
+def markets_table_storage_name(model_or_table: Any) -> str:
+    """Return the stable storage/table identity for a markets table."""
+
+    storage_hash = getattr(model_or_table, "__metatable_storage_hash__", None)
+    if storage_hash not in (None, ""):
+        return str(storage_hash)
+
+    table = _markets_table(model_or_table)
+    storage_hash = getattr(table, "_mainsequence_storage_hash", None)
+    if storage_hash not in (None, ""):
+        return str(storage_hash)
+
+    info = getattr(table, "info", None)
+    if isinstance(info, Mapping):
+        storage_hash = info.get("mainsequence_storage_hash")
+        if storage_hash not in (None, ""):
+            return str(storage_hash)
+
+    table_name = getattr(table, "name", None)
+    if table_name in (None, ""):
+        raise ValueError("Markets SQLAlchemy table metadata must expose a non-empty table name.")
+    return str(table_name)
+
+
+def _markets_table(model_or_table: Any) -> Any:
+    table = getattr(model_or_table, "__table__", model_or_table)
+    if table is None:
+        raise ValueError("Markets table identity helpers require SQLAlchemy table metadata.")
+    return table
+
+
 def markets_postgres_identifier(*parts: str, suffix: str) -> str:
     """Build a stable PostgreSQL-safe name for indexes and foreign keys."""
 
@@ -183,9 +260,12 @@ __all__ = [
     "markets_fk_name",
     "markets_index_name",
     "markets_identifier",
+    "markets_meta_table_identifier",
     "markets_postgres_identifier",
     "markets_table_args",
+    "markets_table_logical_fullname",
     "markets_table_name",
+    "markets_table_storage_name",
     "markets_namespace",
     "new_markets_uid",
 ]

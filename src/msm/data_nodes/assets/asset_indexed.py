@@ -38,6 +38,7 @@ class AssetIndexedDataNodeConfiguration(DataNodeConfiguration):
             "Optional platform asset scope for updater partitioning. Asset "
             "semantics are owned by the markets layer, not core TDAG."
         ),
+        examples=[["asset_us_equity_aapl", {"unique_identifier": "asset_us_equity_msft"}]],
     )
 
 

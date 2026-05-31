@@ -21,6 +21,11 @@ class OpenFigiAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     """OpenFIGI/provider detail row linked to a markets asset."""
 
     __metatable_identifier__ = "OpenFigiAssetDetails"
+    __metatable_description__ = (
+        "One-to-one OpenFIGI/provider detail table keyed by AssetTable.uid. Stores "
+        "FIGI, ticker, ISIN, exchange, security classification, metadata text, and "
+        "raw provider payload for a canonical asset."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(markets_index_name(__metatable_identifier__, "figi"), "figi"),

@@ -20,6 +20,11 @@ class IndexConventionDetailsTable(MarketsMetaTableMixin, MarketsBase):
     """Pricing convention details linked to a canonical market index."""
 
     __metatable_identifier__ = "IndexConventionDetails"
+    __metatable_description__ = (
+        "Pricing index convention detail table keyed by IndexTable.uid. Stores "
+        "serialized convention payloads, index family, format, source, and metadata "
+        "used to reconstruct QuantLib index definitions."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

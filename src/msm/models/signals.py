@@ -19,6 +19,10 @@ class SignalMetadataTable(MarketsMetaTableMixin, MarketsBase):
     """Metadata row for a canonical portfolios signal."""
 
     __metatable_identifier__ = "SignalMetadata"
+    __metatable_description__ = (
+        "Signal metadata table keyed by signal_uid. Stores descriptive text for "
+        "canonical portfolio signals used by signal-weight DataNode outputs."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

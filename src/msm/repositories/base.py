@@ -13,7 +13,7 @@ from mainsequence.client.models_metatables import (
 )
 from mainsequence.meta_tables.compiled_sql.v1 import compile_sqlalchemy_statement
 
-from msm.base import MarketsBase
+from msm.base import MarketsBase, markets_meta_table_identifier
 
 
 @dataclass(frozen=True)
@@ -48,7 +48,7 @@ class MarketsMetaTableHandle:
         )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class MarketsRepositoryContext:
     """MetaTable execution context for markets repositories.
 
@@ -56,17 +56,44 @@ class MarketsRepositoryContext:
     bootstrap. `None` means the library's normal MetaTable namespace was used.
     """
 
-    target_meta_table_uid_by_fullname: Mapping[str, str]
+    target_meta_table_uid_by_identifier: Mapping[str, str]
     limits: MetaTableOperationLimits | Mapping[str, Any] | None = None
     timeout: int | float | tuple[float, float] | None = None
     namespace: str | None = None
 
+    def __init__(
+        self,
+        target_meta_table_uid_by_identifier: Mapping[str, str] | None = None,
+        *,
+        target_meta_table_uid_by_fullname: Mapping[str, str] | None = None,
+        limits: MetaTableOperationLimits | Mapping[str, Any] | None = None,
+        timeout: int | float | tuple[float, float] | None = None,
+        namespace: str | None = None,
+    ) -> None:
+        mapping = target_meta_table_uid_by_identifier
+        if mapping is None:
+            mapping = target_meta_table_uid_by_fullname
+        if mapping is None:
+            mapping = {}
+        object.__setattr__(self, "target_meta_table_uid_by_identifier", mapping)
+        object.__setattr__(self, "limits", limits)
+        object.__setattr__(self, "timeout", timeout)
+        object.__setattr__(self, "namespace", namespace)
+
+    @property
+    def target_meta_table_uid_by_fullname(self) -> Mapping[str, str]:
+        """Backward-compatible alias for identifier-keyed runtime mappings."""
+
+        return self.target_meta_table_uid_by_identifier
+
     def meta_table_uid_for_model(self, model: type[MarketsBase]) -> str:
-        fullname = str(model.__table__.fullname)
-        meta_table_uid = self.target_meta_table_uid_by_fullname.get(fullname)
+        identifier = markets_meta_table_identifier(model)
+        meta_table_uid = self.target_meta_table_uid_by_identifier.get(identifier)
         if meta_table_uid in (None, ""):
             raise ValueError(
-                f"Missing registered markets MetaTable UID for SQLAlchemy table {fullname!r}."
+                "Missing registered markets MetaTable UID for identifier "
+                f"{identifier!r}. Registered identifiers: "
+                f"{sorted(self.target_meta_table_uid_by_identifier)!r}."
             )
         return str(meta_table_uid)
 

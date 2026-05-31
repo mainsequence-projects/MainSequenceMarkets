@@ -19,6 +19,11 @@ class AssetTypeTable(MarketsMetaTableMixin, MarketsBase):
     """Registered asset type used to classify assets without widening AssetTable."""
 
     __metatable_identifier__ = "AssetType"
+    __metatable_description__ = (
+        "Asset type registry keyed by asset_type. Documents and validates allowed "
+        "Asset.asset_type values without widening AssetTable with type-specific "
+        "columns."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

@@ -17,4 +17,3 @@ class RunStrategy(Enum):
     BACKTEST = "backtest"
     LIVE = "live"
     ALL = "all"
-

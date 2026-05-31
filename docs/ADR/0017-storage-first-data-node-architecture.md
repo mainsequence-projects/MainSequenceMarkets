@@ -563,8 +563,9 @@ domain MetaTables: the 13 msm storage classes are appended to
 `markets_sqlalchemy_models()` and the 3 pricing storage classes to
 `pricing_sqlalchemy_models()`, each after their FK target MetaTables, so
 `start_engine()` / `create_pricing_schemas()` register them in dependency order
-with `target_meta_table_uid_by_fullname` FK wiring already threaded by the
-existing bootstrap loop.
+with identifier-keyed `target_meta_table_uid_by_identifier` wiring already
+threaded by the existing bootstrap loop. Any SQLAlchemy fullname mapping is
+confined to the SDK registration adapter boundary.
 
 - [x] Registered DataNode storage through the catalog: extended both model
   registries in FK order. Storage classes are imported **lazily inside** the

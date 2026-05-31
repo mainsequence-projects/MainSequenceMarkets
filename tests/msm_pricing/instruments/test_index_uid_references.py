@@ -207,12 +207,14 @@ def test_attach_load_round_trip_preserves_bond_index_uid(monkeypatch) -> None:
     monkeypatch.setattr(
         AssetCurrentPricingDetails,
         "get_by_asset_uid",
-        staticmethod(lambda asset_uid: AssetCurrentPricingDetails(
-            asset_uid=asset_uid,
-            instrument_type=stored["instrument_type"],
-            instrument_dump=stored["instrument_dump"],
-            pricing_details_date=pricing_details_date,
-        )),
+        staticmethod(
+            lambda asset_uid: AssetCurrentPricingDetails(
+                asset_uid=asset_uid,
+                instrument_type=stored["instrument_type"],
+                instrument_dump=stored["instrument_dump"],
+                pricing_details_date=pricing_details_date,
+            )
+        ),
     )
 
     loaded = FloatingRateBond.load_from_asset(asset)

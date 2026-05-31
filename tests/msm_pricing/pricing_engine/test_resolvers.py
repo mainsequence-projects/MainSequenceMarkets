@@ -70,12 +70,17 @@ def test_resolve_quantlib_index_uses_backend_index_uid_and_curve_identity(monkey
     monkeypatch.setattr(
         Index,
         "get_by_uid",
-        staticmethod(lambda uid: calls.append(("index", uid)) or Index(
-            uid=uid,
-            unique_identifier="USD-SOFR",
-            index_type="interest_rate",
-            display_name="USD SOFR",
-        )),
+        staticmethod(
+            lambda uid: (
+                calls.append(("index", uid))
+                or Index(
+                    uid=uid,
+                    unique_identifier="USD-SOFR",
+                    index_type="interest_rate",
+                    display_name="USD SOFR",
+                )
+            )
+        ),
     )
     monkeypatch.setattr(
         IndexConventionDetails,

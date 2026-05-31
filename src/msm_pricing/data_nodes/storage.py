@@ -33,6 +33,12 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """
 
     __markets_base_identifier__: ClassVar[str] = "discount_curves"
+    __metatable_description__ = (
+        "Timestamped discount-curve storage keyed by (time_index, "
+        "curve_unique_identifier). Stores compressed curve payloads that reconstruct "
+        "discount term structures for pricing workflows and link each curve identity "
+        "back to the Curve MetaTable."
+    )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "discount_curves",
     }
@@ -77,6 +83,11 @@ class IndexFixingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """
 
     __markets_base_identifier__: ClassVar[str] = PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
+    __metatable_description__ = (
+        "Timestamped interest-rate index fixing storage keyed by (time_index, "
+        "unique_identifier). Stores observed index fixing rates used by pricing "
+        "workflows for floating-rate bonds, swaps, and curve-linked analytics."
+    )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
     }
@@ -115,6 +126,11 @@ class AssetPricingDetailsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Timestamped provider pricing metadata keyed by asset unique identifier."""
 
     __markets_base_identifier__: ClassVar[str] = "asset_pricing_details"
+    __metatable_description__ = (
+        "Timestamped asset pricing-detail storage keyed by (time_index, "
+        "unique_identifier). Stores serialized pricing instrument payloads for "
+        "canonical assets before current-pricing rows are promoted."
+    )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "asset_pricing_details",
     }

@@ -45,9 +45,7 @@ class AssetCurrentPricingDetails(BaseModel):
 
     model_config = ConfigDict(extra="ignore", frozen=True)
 
-    __table__: ClassVar[type[AssetCurrentPricingDetailsTable]] = (
-        AssetCurrentPricingDetailsTable
-    )
+    __table__: ClassVar[type[AssetCurrentPricingDetailsTable]] = AssetCurrentPricingDetailsTable
     __required_tables__: ClassVar[list[type[Any]]] = [
         AssetTable,
         AssetCurrentPricingDetailsTable,
@@ -150,8 +148,7 @@ class AssetCurrentPricingDetails(BaseModel):
             return cls.model_validate(rows[0])
         if required:
             raise LookupError(
-                "MetaTable operation result did not include an "
-                "AssetCurrentPricingDetails row."
+                "MetaTable operation result did not include an AssetCurrentPricingDetails row."
             )
         return None
 

@@ -38,6 +38,7 @@ class IndexSpec:
     - fixings_uid: UID that exists in the fixings storage. If None, caller should default it
       to the index UID used in get_index(...).
     """
+
     curve_uid: str
     calendar: ql.Calendar
     day_counter: ql.DayCounter

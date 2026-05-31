@@ -338,6 +338,7 @@ def price_ftiie_ois_with_curve(
     ois.setPricingEngine(ql.DiscountingSwapEngine(curve))
     return ois
 
+
 def debug_swap_coupons(
     swap: ql.VanillaSwap,
     curve: ql.YieldTermStructureHandle,

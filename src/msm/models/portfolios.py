@@ -22,6 +22,11 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
     """Portfolio identity and relational configuration metadata."""
 
     __metatable_identifier__ = "Portfolio"
+    __metatable_description__ = (
+        "Portfolio identity and configuration table keyed by unique_identifier. "
+        "Stores portfolio index asset linkage, DataNode pointers, construction "
+        "flags, stats, and metadata."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -91,6 +96,10 @@ class PortfolioAssetDetailTable(MarketsMetaTableMixin, MarketsBase):
     """Explicit portfolio-to-asset relation for portfolio index asset details."""
 
     __metatable_identifier__ = "PortfolioAssetDetail"
+    __metatable_description__ = (
+        "Portfolio asset-detail relation keyed by portfolio_uid. Links a portfolio "
+        "to its optional canonical asset row and asset unique_identifier metadata."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -135,6 +144,11 @@ class PortfolioMetadataTable(MarketsMetaTableMixin, MarketsBase):
     """Human-facing portfolio metadata keyed by stable portfolio identifier."""
 
     __metatable_identifier__ = "PortfolioMetadata"
+    __metatable_description__ = (
+        "Portfolio metadata table keyed by unique_identifier. Stores human-facing "
+        "descriptive metadata for portfolios without changing PortfolioTable "
+        "identity fields."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

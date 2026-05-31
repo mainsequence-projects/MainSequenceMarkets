@@ -34,6 +34,9 @@ and this project follows versioned releases.
   knowledge docs so agents use the storage-first `AssetTimestampedDataNode`
   pattern and do not reintroduce DataNode-side schema mirrors or placeholder
   schema rows.
+- Added explicit `__metatable_description__` declarations to every concrete
+  markets and pricing MetaTable/storage class, and made storage-backed DataNode
+  default descriptions use that table-level discovery text.
 - Locked the `IndexTable`/`Index` row contract so legacy Constant-name fields
   stay out of canonical index identity.
 - Made `IndexTable.index_type` required and updated Index create/upsert,
@@ -66,7 +69,10 @@ and this project follows versioned releases.
 - Removed redundant persisted physical schema and physical table name fields
   from the internal maintenance catalog.
 - Removed `storage_hash` from the internal maintenance catalog; catalog rows are
-  now keyed by logical `(namespace, identifier)` identity.
+  now keyed by the globally unique logical MetaTable identifier.
+- Made markets and pricing runtime bookkeeping use stable MetaTable identifiers
+  instead of SQLAlchemy table fullnames after SDK registration rebinds tables to
+  backend physical names.
 - Replaced lazy MetaTable row-operation registration with catalog-based process
   bootstrap. Row operations now require an active initialized runtime and do not
   attach or register schemas on first use.

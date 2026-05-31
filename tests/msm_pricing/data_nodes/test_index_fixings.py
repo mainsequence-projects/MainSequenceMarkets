@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import inspect
 import os
 
 import pandas as pd
@@ -17,7 +16,7 @@ from mainsequence.client.utils import DataFrequency
 
 from msm.data_nodes.indices import IndexDataNodeConfiguration, IndexTimestampedDataNode
 from msm.models import IndexTable
-from msm.models.registration import markets_foreign_key_target_fullnames
+from msm.models.registration import markets_foreign_key_target_identifiers
 from msm.settings import INDEX_UNIQUE_IDENTIFIER_DIMENSION
 from msm_pricing.data_nodes.index_fixings import (
     FixingRatesNode,
@@ -52,7 +51,7 @@ def test_fixing_rates_node_resolves_index_storage_first_surface() -> None:
     assert storage_table.__index_names__ == ["time_index", INDEX_UNIQUE_IDENTIFIER_DIMENSION]
     assert "__data_node_identifier__" not in FixingRatesNode.__dict__
     assert FixingRatesNode._default_identifier() == storage_table.metatable_identifier()
-    assert FixingRatesNode._default_description() == inspect.getdoc(storage_table)
+    assert FixingRatesNode._default_description() == storage_table.__metatable_description__
     assert {column.name for column in storage_table.__table__.columns} == {
         "time_index",
         INDEX_UNIQUE_IDENTIFIER_DIMENSION,
@@ -61,10 +60,11 @@ def test_fixing_rates_node_resolves_index_storage_first_surface() -> None:
 
 
 def test_index_fixings_storage_has_index_foreign_key() -> None:
+    index_identifier = IndexTable.__metatable_identifier__
     index_fullname = str(IndexTable.__table__.fullname)
     fk_column = IndexFixingsStorage.__table__.columns[INDEX_UNIQUE_IDENTIFIER_DIMENSION]
 
-    assert markets_foreign_key_target_fullnames(IndexFixingsStorage) == [index_fullname]
+    assert markets_foreign_key_target_identifiers(IndexFixingsStorage) == [index_identifier]
     assert any(
         foreign_key.column.table.fullname == index_fullname
         for foreign_key in fk_column.foreign_keys

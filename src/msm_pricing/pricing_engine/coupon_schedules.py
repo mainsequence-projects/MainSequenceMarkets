@@ -89,9 +89,7 @@ def compute_coupon_schedule_force_match(
             prev_unadj = future_dates[0] - frequency_delta
             prev_pay = adjust(prev_unadj)
             if prev_pay >= future_dates[0]:
-                prev_pay = _pyd(
-                    calendar.advance(_qld(future_dates[0]), -1, ql.Days, ql.Preceding)
-                )
+                prev_pay = _pyd(calendar.advance(_qld(future_dates[0]), -1, ql.Days, ql.Preceding))
         else:
             prev_pay = valuation_date - dt.timedelta(days=int(elapsed_coupon_days))
             if prev_pay >= future_dates[0]:

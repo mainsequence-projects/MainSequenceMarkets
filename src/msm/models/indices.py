@@ -20,6 +20,11 @@ class IndexTypeTable(MarketsMetaTableMixin, MarketsBase):
     """Registered index type used to classify canonical market indexes."""
 
     __metatable_identifier__ = "IndexType"
+    __metatable_description__ = (
+        "Index type registry keyed by index_type. Documents and validates allowed "
+        "Index.index_type values such as interest-rate indexes without embedding "
+        "pricing conventions."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         SqlIndex(
@@ -48,6 +53,11 @@ class IndexTable(MarketsMetaTableMixin, MarketsBase):
     """Reference row for market indexes used by derivative contracts."""
 
     __metatable_identifier__ = "Index"
+    __metatable_description__ = (
+        "Canonical market index identity table keyed by uid and unique_identifier. "
+        "Stores index type, display metadata, provider, and metadata used by "
+        "derivative contracts, fixings, conventions, and curves."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         SqlIndex(

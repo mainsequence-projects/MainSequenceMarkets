@@ -144,9 +144,7 @@ class PortfolioMetadata(MarketsRow):
     """Typed human-facing portfolio metadata row."""
 
     __table__: ClassVar[type[PortfolioMetadataTable]] = PortfolioMetadataTable
-    __required_tables__: ClassVar[list[type[PortfolioMetadataTable]]] = [
-        PortfolioMetadataTable
-    ]
+    __required_tables__: ClassVar[list[type[PortfolioMetadataTable]]] = [PortfolioMetadataTable]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
 
     unique_identifier: str

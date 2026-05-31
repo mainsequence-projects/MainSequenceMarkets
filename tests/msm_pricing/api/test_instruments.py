@@ -123,12 +123,14 @@ def test_load_instrument_from_asset_rebuilds_concrete_instrument(monkeypatch) ->
     monkeypatch.setattr(
         AssetCurrentPricingDetails,
         "get_by_asset_uid",
-        staticmethod(lambda asset_uid: AssetCurrentPricingDetails(
-            asset_uid=asset_uid,
+        staticmethod(
+            lambda asset_uid: AssetCurrentPricingDetails(
+                asset_uid=asset_uid,
                 instrument_type="ApiExampleInstrument",
-            instrument_dump={"notional": 100},
-            pricing_details_date=pricing_details_date,
-        )),
+                instrument_dump={"notional": 100},
+                pricing_details_date=pricing_details_date,
+            )
+        ),
     )
 
     instrument = load_instrument_from_asset(asset)

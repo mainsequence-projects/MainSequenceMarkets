@@ -25,7 +25,7 @@ Canonical workflow:
 - modify an existing `DataNode` update process
 - review whether a DataNode change affects update identity or table contract
 - define or refactor `DataNodeConfiguration`
-- classify config fields into update identity and hash-excluded descriptive metadata
+- classify values as hashed config fields or non-config class/runtime values
 - implement or review:
   - `dependencies()`
   - `update()`
@@ -183,12 +183,21 @@ Do not accept `test_node`. It has been removed. Use explicit
 Pattern:
 
 ```python
+from typing import ClassVar
+
+from pydantic import Field
+
 from mainsequence.meta_tables import DataNode, DataNodeConfiguration
 from mainsequence.meta_tables import PlatformTimeIndexMetaData
 
 
 class PricesConfig(DataNodeConfiguration):
-    shard_id: str
+    shard_id: str = Field(
+        ...,
+        description="Stable updater partition for this price job.",
+        examples=["us_equities_daily"],
+    )
+    reference_dimension: ClassVar[str] = "unique_identifier"
 
 
 class PricesUpdate(DataNode):
@@ -216,23 +225,29 @@ class PricesUpdate(DataNode):
 ### 3. Configuration Is Update-Scoped By Default
 
 Every `DataNodeConfiguration` field participates in `update_hash` by default.
+Declare values that change output values, dependencies, source choice, or
+updater scope as normal config fields.
 
-Do not use:
+Every config field should use `Field(...)` with a clear `description` and
+`examples=[...]` when useful. The description must explain what the value means
+for the update process, not repeat the Python type.
+
+Values that must not affect `update_hash` should not be Pydantic config fields.
+Use `ClassVar[...]` for class-level invariants and implementation constants, or
+keep runtime controls in environment/runtime configuration outside the
+DataNode config.
+
+The following are legacy platform metadata formats. They are invalid for
+DataNode configuration authoring and must not be preserved or reintroduced:
 
 - `json_schema_extra={"update_only": True}`
 - `json_schema_extra={"runtime_only": True}`
 - `json_schema_extra={"ignore_from_storage_hash": True}`
 - `_ARGS_IGNORE_IN_STORAGE_HASH`
 
-Those are removed. The only supported opt-out is:
-
-```python
-Field(..., json_schema_extra={"hash_excluded": True})
-```
-
-Use `hash_excluded` only for descriptive metadata that must not affect update
-identity. If a field changes output values, dependencies, source choice, or
-updater scope, it must remain a normal config field.
+Do not add metadata-marker exceptions to make a field escape hashing. If it is a
+field, it is update identity. If it is not update identity, make it a `ClassVar`
+or move it out of `DataNodeConfiguration`.
 
 ### 4. `hash_namespace` Is Isolation Only
 

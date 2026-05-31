@@ -21,6 +21,12 @@ class AssetCurrentPricingDetailsTable(MarketsMetaTableMixin, MarketsBase):
     """Current priceable instrument details linked to a canonical markets asset."""
 
     __metatable_identifier__ = "AssetCurrentPricingDetails"
+    __metatable_description__ = (
+        "Current asset pricing-detail table keyed by AssetTable.uid. Stores the "
+        "active serialized priceable instrument payload, instrument type, pricing "
+        "date, format, package version, source, and metadata for one canonical "
+        "asset."
+    )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(

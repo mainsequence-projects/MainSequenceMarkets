@@ -46,6 +46,7 @@ class HullWhiteParams(BaseModel):
         examples=[0.01, 0.005],
     )
 
+
 class TreeCallableEngineParams(BaseModel):
     engine: Literal["TreeCallableFixedRateBondEngine"] = Field(
         "TreeCallableFixedRateBondEngine",
@@ -73,6 +74,7 @@ class TreeCallableEngineParams(BaseModel):
         examples=[False, True],
     )
 
+
 class BlackCallableEngineParams(BaseModel):
     engine: Literal["BlackCallableFixedRateBondEngine"] = Field(
         "BlackCallableFixedRateBondEngine",
@@ -87,20 +89,28 @@ class BlackCallableEngineParams(BaseModel):
         json_schema_extra={"unit": "vol_decimal"},
     )
 
+
 CallableEngineParams = Annotated[
     TreeCallableEngineParams | BlackCallableEngineParams,
     Field(discriminator="engine"),
 ]
 
+
 class DiscountParameters(BaseModel):
     """
     Engine choice + engine params for callable bond pricing.
     """
+
     engine: CallableEngineParams = Field(
         default_factory=TreeCallableEngineParams,
         description="Callable bond pricing engine configuration.",
         examples=[
-            {"engine": "TreeCallableFixedRateBondEngine", "time_steps": 40, "model": "HullWhite", "hull_white": {"a": 0.03, "sigma": 0.01}},
+            {
+                "engine": "TreeCallableFixedRateBondEngine",
+                "time_steps": 40,
+                "model": "HullWhite",
+                "hull_white": {"a": 0.03, "sigma": 0.01},
+            },
             {"engine": "BlackCallableFixedRateBondEngine", "fwd_yield_vol": 0.20},
         ],
     )

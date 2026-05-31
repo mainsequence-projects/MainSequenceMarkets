@@ -11,13 +11,14 @@ from mainsequence.client.models_metatables import MetaTable
 from mainsequence.logconf import logger as _mainsequence_logger
 from mainsequence.meta_tables import register_external_sqlalchemy_model
 
-from msm.base import MARKETS_SCHEMA, MarketsBase
+from msm.base import MARKETS_SCHEMA, MarketsBase, markets_table_storage_name
 from msm.models.registration import (
     MarketsManagementMode,
     MarketsMetaTableRegistrationResult,
     _platform_registration_kwargs,
+    _sdk_target_meta_table_uid_by_fullname,
     is_time_index_meta_table_model,
-    markets_meta_table_fullname,
+    markets_meta_table_identifier,
 )
 from msm.repositories.base import MarketsRepositoryContext
 from msm.repositories.crud import search_model, upsert_model
@@ -50,7 +51,6 @@ class CatalogBootstrapResult:
 @dataclass(frozen=True)
 class _CatalogBootstrapModelPlan:
     model: type[MarketsBase]
-    table_fullname: str
     storage_hash: str
     namespace: str
     identifier: str
@@ -60,10 +60,12 @@ def bootstrap_markets_meta_tables_from_catalog(
     *,
     data_source_uid: str | None = None,
     management_mode: MarketsManagementMode = "platform_managed",
+    target_meta_table_uid_by_identifier: Mapping[str, Any] | None = None,
     target_meta_table_uid_by_fullname: Mapping[str, Any] | None = None,
     open_for_everyone: bool = False,
     protect_from_deletion: bool = False,
     introspect: bool | None = None,
+    storage_hash_by_identifier: Mapping[str, str] | None = None,
     storage_hash_by_fullname: Mapping[str, str] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
     models: Sequence[type[MarketsBase]] | None = None,
@@ -81,40 +83,44 @@ def bootstrap_markets_meta_tables_from_catalog(
     )
     target_mapping = {
         str(key): _meta_table_uid(value)
-        for key, value in (target_meta_table_uid_by_fullname or {}).items()
+        for key, value in (
+            target_meta_table_uid_by_identifier or target_meta_table_uid_by_fullname or {}
+        ).items()
     }
-    storage_hash_mapping = dict(storage_hash_by_fullname or {})
+    storage_hash_mapping = dict(storage_hash_by_identifier or storage_hash_by_fullname or {})
     model_plans: list[_CatalogBootstrapModelPlan] = []
     for model in resolved_models:
-        table_fullname = markets_meta_table_fullname(model)
-        namespace, identifier = _catalog_model_identity(model)
+        identifier = markets_meta_table_identifier(model)
+        namespace = _catalog_model_namespace(model)
         model_plans.append(
             _CatalogBootstrapModelPlan(
                 model=model,
-                table_fullname=table_fullname,
                 storage_hash=_catalog_model_storage_hash(
                     model,
-                    storage_hash=storage_hash_mapping.get(table_fullname),
+                    storage_hash=storage_hash_mapping.get(identifier),
                 ),
                 namespace=namespace,
                 identifier=identifier,
             )
         )
-    catalog_rows_by_identity = find_catalog_rows_by_identity(
+    catalog_rows_by_identifier = find_catalog_rows_by_identifier(
         catalog_context,
-        identities=[(plan.namespace, plan.identifier) for plan in model_plans],
+        identifiers=[plan.identifier for plan in model_plans],
     )
 
     meta_tables: list[MetaTable] = []
-    meta_table_by_fullname: dict[str, MetaTable] = {}
+    meta_table_by_identifier: dict[str, MetaTable] = {}
     attached_count = 0
     imported_count = 0
     registered_count = 0
 
     for position, plan in enumerate(model_plans, start=1):
         model = plan.model
-        table_fullname = plan.table_fullname
-        catalog_row = catalog_rows_by_identity.get((plan.namespace, plan.identifier))
+        catalog_row = catalog_rows_by_identifier.get(plan.identifier)
+        sdk_target_mapping = _sdk_target_meta_table_uid_by_fullname(
+            target_mapping,
+            models=resolved_models,
+        )
         if catalog_row is not None:
             validate_catalog_contract(catalog_row, model=model)
             if is_time_index_meta_table_model(model):
@@ -122,7 +128,7 @@ def bootstrap_markets_meta_tables_from_catalog(
                     model,
                     data_source_uid=data_source_uid,
                     management_mode=management_mode,
-                    target_meta_table_uid_by_fullname=target_mapping,
+                    target_meta_table_uid_by_fullname=sdk_target_mapping,
                     open_for_everyone=open_for_everyone,
                     protect_from_deletion=protect_from_deletion,
                     introspect=introspect,
@@ -187,7 +193,7 @@ def bootstrap_markets_meta_tables_from_catalog(
                     model,
                     data_source_uid=data_source_uid,
                     management_mode=management_mode,
-                    target_meta_table_uid_by_fullname=target_mapping,
+                    target_meta_table_uid_by_fullname=sdk_target_mapping,
                     open_for_everyone=open_for_everyone,
                     protect_from_deletion=protect_from_deletion,
                     introspect=introspect,
@@ -212,15 +218,15 @@ def bootstrap_markets_meta_tables_from_catalog(
             )
 
         meta_tables.append(meta_table)
-        meta_table_by_fullname[table_fullname] = meta_table
-        target_mapping[table_fullname] = _meta_table_uid(meta_table)
+        meta_table_by_identifier[plan.identifier] = meta_table
+        target_mapping[plan.identifier] = _meta_table_uid(meta_table)
 
     return CatalogBootstrapResult(
         registration=MarketsMetaTableRegistrationResult(
             meta_tables=meta_tables,
-            target_meta_table_uid_by_fullname=target_mapping,
+            target_meta_table_uid_by_identifier=target_mapping,
             models=resolved_models,
-            meta_table_by_fullname=meta_table_by_fullname,
+            meta_table_by_identifier=meta_table_by_identifier,
         ),
         catalog_meta_table=catalog_meta_table,
         attached_count=attached_count,
@@ -292,8 +298,8 @@ def catalog_repository_context(
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRepositoryContext:
     return MarketsRepositoryContext(
-        target_meta_table_uid_by_fullname={
-            markets_meta_table_fullname(MarketsMetaTableCatalogTable): _meta_table_uid(
+        target_meta_table_uid_by_identifier={
+            markets_meta_table_identifier(MarketsMetaTableCatalogTable): _meta_table_uid(
                 catalog_meta_table
             )
         },
@@ -307,57 +313,50 @@ def find_catalog_row(
     *,
     model: type[MarketsBase],
 ) -> dict[str, Any] | None:
-    identity = _catalog_model_identity(model)
-    rows_by_identity = find_catalog_rows_by_identity(
+    identifier = markets_meta_table_identifier(model)
+    rows_by_identifier = find_catalog_rows_by_identifier(
         context,
-        identities=[identity],
+        identifiers=[identifier],
     )
-    return rows_by_identity.get(identity)
+    return rows_by_identifier.get(identifier)
 
 
-def find_catalog_rows_by_identity(
+def find_catalog_rows_by_identifier(
     context: MarketsRepositoryContext,
     *,
-    identities: Sequence[tuple[str, str]],
-) -> dict[tuple[str, str], dict[str, Any]]:
-    requested_identities = list(
-        dict.fromkeys(
-            (str(namespace), str(identifier))
-            for namespace, identifier in identities
-            if namespace and identifier
-        )
+    identifiers: Sequence[str],
+) -> dict[str, dict[str, Any]]:
+    requested_identifiers = list(
+        dict.fromkeys(str(identifier) for identifier in identifiers if identifier)
     )
-    if not requested_identities:
+    if not requested_identifiers:
         return {}
 
-    namespaces = sorted({namespace for namespace, _identifier in requested_identities})
-    identifiers = sorted({identifier for _namespace, identifier in requested_identities})
     result = search_model(
         context,
         model=MarketsMetaTableCatalogTable,
         in_filters={
-            "namespace": namespaces,
-            "identifier": identifiers,
+            "identifier": sorted(requested_identifiers),
         },
-        limit=max(len(requested_identities), len(namespaces) * len(identifiers)) * 2,
+        limit=len(requested_identifiers) * 2,
     )
-    requested_identity_set = set(requested_identities)
-    rows_by_identity: dict[tuple[str, str], dict[str, Any]] = {}
+    requested_identifier_set = set(requested_identifiers)
+    rows_by_identifier: dict[str, dict[str, Any]] = {}
     for row in _operation_result_rows(result):
-        row_identity = (str(row.get("namespace") or ""), str(row.get("identifier") or ""))
-        if not all(row_identity):
+        row_identifier = str(row.get("identifier") or "")
+        if not row_identifier:
             raise CatalogBootstrapError(
-                "Markets MetaTable catalog returned a row without namespace or identifier."
+                "Markets MetaTable catalog returned a row without identifier."
             )
-        if row_identity not in requested_identity_set:
+        if row_identifier not in requested_identifier_set:
             continue
-        if row_identity in rows_by_identity:
+        if row_identifier in rows_by_identifier:
             raise CatalogBootstrapError(
                 "Markets MetaTable catalog returned multiple rows for "
-                f"logical identity {row_identity!r}. The catalog uniqueness invariant is broken."
+                f"identifier {row_identifier!r}. The catalog uniqueness invariant is broken."
             )
-        rows_by_identity[row_identity] = row
-    return rows_by_identity
+        rows_by_identifier[row_identifier] = row
+    return rows_by_identifier
 
 
 def meta_table_from_catalog_row(
@@ -366,7 +365,7 @@ def meta_table_from_catalog_row(
     model: type[MarketsBase],
     management_mode: MarketsManagementMode,
 ) -> MetaTable:
-    storage_hash = str(getattr(model.__table__, "name"))
+    storage_hash = markets_table_storage_name(model)
     return MetaTable(
         uid=str(catalog_row["meta_table_uid"]),
         namespace=str(catalog_row.get("namespace") or ""),
@@ -612,7 +611,6 @@ def upsert_catalog_row(
         model=MarketsMetaTableCatalogTable,
         values=row.to_payload(),
         conflict_columns=[
-            "namespace",
             "identifier",
         ],
     )
@@ -655,17 +653,12 @@ def _registered_meta_table_filter_candidates(
 ) -> list[dict[str, Any]]:
     base_filters: dict[str, Any] = {
         "identifier": getattr(model, "__metatable_identifier__", model.__name__),
-        "namespace": getattr(model, "__metatable_namespace__", None),
         "management_mode": management_mode,
     }
     if data_source_uid:
         base_filters["data_source__uid"] = data_source_uid
 
-    table_name = model.__table__.name
-    return [
-        _clean_filters({**base_filters, "physical_table_name": table_name}),
-        _clean_filters({**base_filters, "storage_hash": table_name}),
-    ]
+    return [_clean_filters(base_filters)]
 
 
 def _clean_filters(filters: Mapping[str, Any]) -> dict[str, Any]:
@@ -679,17 +672,16 @@ def _catalog_model_storage_hash(
 ) -> str:
     if storage_hash not in (None, ""):
         return str(storage_hash)
-    return str(model.__table__.name)
+    return markets_table_storage_name(model)
 
 
-def _catalog_model_identity(model: type[MarketsBase]) -> tuple[str, str]:
+def _catalog_model_namespace(model: type[MarketsBase]) -> str:
     namespace = str(getattr(model, "__metatable_namespace__", "") or "")
-    identifier = str(getattr(model, "__metatable_identifier__", model.__name__) or "")
-    if not namespace or not identifier:
+    if not namespace:
         raise CatalogBootstrapError(
-            f"Markets MetaTable model {model.__name__} does not expose catalog identity."
+            f"Markets MetaTable model {model.__name__} does not expose catalog namespace."
         )
-    return namespace, identifier
+    return namespace
 
 
 def _meta_table_from_conflict(
@@ -787,7 +779,7 @@ __all__ = [
     "bootstrap_markets_meta_tables_from_catalog",
     "catalog_repository_context",
     "find_catalog_row",
-    "find_catalog_rows_by_identity",
+    "find_catalog_rows_by_identifier",
     "meta_table_from_catalog_row",
     "register_catalog_missing_meta_table",
     "resolve_catalog_meta_table",

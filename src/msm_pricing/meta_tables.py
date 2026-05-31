@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from msm.base import MarketsBase
+from msm.base import MarketsBase, markets_meta_table_identifier
 from msm.maintenance.catalog import bootstrap_markets_meta_tables_from_catalog
 from msm.models.registration import (
     MarketsManagementMode,
@@ -61,8 +61,14 @@ def _pricing_data_node_storage_models() -> list[type[MarketsBase]]:
     ]
 
 
+def pricing_meta_table_identifier(model: type[MarketsBase]) -> str:
+    return markets_meta_table_identifier(model)
+
+
 def pricing_meta_table_fullname(model: type[MarketsBase]) -> str:
-    return str(model.__table__.fullname)
+    """Compatibility alias for the stable MetaTable identifier."""
+
+    return pricing_meta_table_identifier(model)
 
 
 def resolve_pricing_meta_table_model(model: PricingModelSelector) -> type[MarketsBase]:
@@ -77,7 +83,7 @@ def resolve_pricing_meta_table_model(model: PricingModelSelector) -> type[Market
             candidate.__name__,
             str(getattr(candidate, "__markets_base_identifier__", "")),
             str(getattr(candidate, "__metatable_identifier__", "")),
-            pricing_meta_table_fullname(candidate),
+            pricing_meta_table_identifier(candidate),
         }
         if model_key in keys:
             return candidate
@@ -106,10 +112,12 @@ def register_pricing_meta_tables(
     *,
     data_source_uid: str | None = None,
     management_mode: PricingManagementMode = "platform_managed",
+    target_meta_table_uid_by_identifier: Mapping[str, Any] | None = None,
     target_meta_table_uid_by_fullname: Mapping[str, Any] | None = None,
     open_for_everyone: bool = False,
     protect_from_deletion: bool = False,
     introspect: bool | None = None,
+    storage_hash_by_identifier: Mapping[str, str] | None = None,
     storage_hash_by_fullname: Mapping[str, str] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
     models: Sequence[PricingModelSelector] | None = None,
@@ -125,10 +133,12 @@ def register_pricing_meta_tables(
     return bootstrap_markets_meta_tables_from_catalog(
         data_source_uid=data_source_uid,
         management_mode=management_mode,
+        target_meta_table_uid_by_identifier=target_meta_table_uid_by_identifier,
         target_meta_table_uid_by_fullname=target_meta_table_uid_by_fullname,
         open_for_everyone=open_for_everyone,
         protect_from_deletion=protect_from_deletion,
         introspect=introspect,
+        storage_hash_by_identifier=storage_hash_by_identifier,
         storage_hash_by_fullname=storage_hash_by_fullname,
         timeout=timeout,
         models=resolved_models,
@@ -140,6 +150,7 @@ __all__ = [
     "PricingMetaTableRegistrationResult",
     "PricingModelSelector",
     "pricing_meta_table_fullname",
+    "pricing_meta_table_identifier",
     "pricing_sqlalchemy_models",
     "register_pricing_meta_tables",
     "resolve_pricing_meta_table_model",
