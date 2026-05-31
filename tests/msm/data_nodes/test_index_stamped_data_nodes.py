@@ -68,11 +68,9 @@ def test_index_node_storage_has_index_foreign_key() -> None:
     assert IndexFixingsStorage in set(pricing_sqlalchemy_models())
 
 
-def test_index_node_build_schema_bootstrap_frame_is_datetime64_ns_utc() -> None:
-    frame = ExampleIndexFact.build_schema_bootstrap_frame()
-
-    assert list(frame.index.names) == ["time_index", INDEX_UNIQUE_IDENTIFIER_DIMENSION]
-    assert str(frame.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
+def test_index_node_does_not_expose_bootstrap_frame_api() -> None:
+    assert not hasattr(ExampleIndexFact, "build_schema_bootstrap_frame")
+    assert not hasattr(ExampleIndexFact, "build_initialization_frame")
 
 
 def test_index_node_validate_frame_normalizes_datetime64_ns_utc() -> None:

@@ -105,6 +105,10 @@ from msm.models.assets.core import AssetTable
 
 class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__ = "example_asset_metrics"
+    __metatable_description__ = (
+        "Timestamped asset metric observations keyed by asset unique identifier "
+        "for market analytics and portfolio workflows."
+    )
     __time_index_name__ = "time_index"
     __index_names__ = ["time_index", "unique_identifier"]
 
@@ -144,6 +148,10 @@ model registry returned by `markets_sqlalchemy_models()`, or pass it to
 this table's foreign key resolves. Construction requires a storage class that
 has been registered through `PlatformTimeIndexMetaData.register(...)`; do not
 manually bind storage by UID or reconstruct a generic `MetaTable`.
+
+Use `__metatable_description__` for durable table discovery text. The description
+should explain the market intention, row grain, and downstream use of the
+asset-indexed dataset, not only list its columns.
 
 ## AssetSnapshot
 
@@ -247,10 +255,11 @@ reference row is an asset or an index. Non-model-specific DataNode helpers live
 under `msm.data_nodes.utils`; the generic stamped base lives in
 `msm.data_nodes.utils.stamped`:
 
-- `StampedFrameMixin` owns frame binding, schema bootstrap frames,
-  mock frames, validation, and `datetime64[ns, UTC]` normalization — all sourced
-  from the registered `storage_table` (`__table__.columns`, `__index_names__`,
-  `__time_index_name__`).
+- `StampedFrameMixin` owns real frame binding, validation, and
+  `datetime64[ns, UTC]` normalization — all sourced from the registered
+  `storage_table` (`__table__.columns`, `__index_names__`,
+  `__time_index_name__`). It does not create placeholder rows for schema
+  registration.
 - `StampedDataNode` owns the empty dependency default and the markets
   `hash_namespace` defaulting rule, and resolves its storage class through
   `_required_storage_table()`.

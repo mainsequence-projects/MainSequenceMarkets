@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import datetime as dt
 from typing import Any
 
 import pandas as pd
@@ -17,42 +15,12 @@ from msm.data_nodes.storage import (
     OrdersStorage,
     TradesStorage,
 )
+from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map, storage_index_names
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
-
-ORDERS_TIME_INDEX_NAME = "order_time"
-ORDERS_INDEX_NAMES = [
-    "order_time",
-    "order_unique_identifier",
-    "account_unique_identifier",
-    "asset_unique_identifier",
-]
-
-ORDER_EVENTS_TIME_INDEX_NAME = "event_time"
-ORDER_EVENTS_INDEX_NAMES = [
-    "event_time",
-    "order_unique_identifier",
-]
-
-TRADES_TIME_INDEX_NAME = "trade_time"
-TRADES_INDEX_NAMES = [
-    "trade_time",
-    "trade_unique_identifier",
-    "account_unique_identifier",
-    "asset_unique_identifier",
-]
-
-EXECUTION_ERRORS_TIME_INDEX_NAME = "time_recorded"
-EXECUTION_ERRORS_INDEX_NAMES = [
-    "time_recorded",
-    "error_unique_identifier",
-]
 
 
 class ExecutionDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
-    """Configuration base for SDK-owned execution DataNodes."""
-
-    time_index_name: str
-    index_names: list[str]
+    """Update-scoped configuration base for SDK-owned execution DataNodes."""
 
 
 class ExecutionDataNode(AssetIndexedDataNode):
@@ -72,12 +40,7 @@ class ExecutionDataNode(AssetIndexedDataNode):
 
     @classmethod
     def default_config(cls) -> ExecutionDataNodeConfiguration:
-        return cls._validate_config(
-            ExecutionDataNodeConfiguration(
-                time_index_name=cls._required_time_index_name(),
-                index_names=cls._required_index_names(),
-            )
-        )
+        return cls._validate_config(ExecutionDataNodeConfiguration())
 
     @classmethod
     def _validate_config(
@@ -86,23 +49,7 @@ class ExecutionDataNode(AssetIndexedDataNode):
     ) -> ExecutionDataNodeConfiguration:
         if not isinstance(config, ExecutionDataNodeConfiguration):
             raise TypeError(f"{cls.__name__} requires an ExecutionDataNodeConfiguration.")
-        if config.time_index_name != cls._required_time_index_name():
-            raise ValueError(
-                f"{cls.__name__} requires time_index_name {cls._required_time_index_name()!r}."
-            )
-        if config.index_names != cls._required_index_names():
-            raise ValueError(
-                f"{cls.__name__} requires index_names {cls._required_index_names()!r}."
-            )
         return config
-
-    @classmethod
-    def _required_time_index_name(cls) -> str:
-        raise NotImplementedError
-
-    @classmethod
-    def _required_index_names(cls) -> list[str]:
-        raise NotImplementedError
 
     def _execution_config(self) -> ExecutionDataNodeConfiguration:
         return self.__class__._validate_config(
@@ -112,8 +59,7 @@ class ExecutionDataNode(AssetIndexedDataNode):
     def update(self) -> pd.DataFrame:
         return _validate_execution_frame(
             self.get_execution_frame(),
-            config=self._execution_config(),
-            column_dtypes_map=self._bound_column_dtypes_map(),
+            storage_table=self.storage_table,
         )
 
     def set_frame(self, frame: pd.DataFrame) -> ExecutionDataNode:
@@ -134,16 +80,14 @@ class ExecutionDataNode(AssetIndexedDataNode):
         cls,
         data_frame: pd.DataFrame,
         *,
-        config: ExecutionDataNodeConfiguration | None = None,
         storage_table: (
             type[OrdersStorage | OrderEventsStorage | TradesStorage | ExecutionErrorsStorage] | None
         ) = None,
     ) -> pd.DataFrame:
-        config = cls._validate_config(config or cls.default_config())
+        resolved_storage_table = storage_table or cls._required_storage_table()
         return _validate_execution_frame(
             data_frame,
-            config=config,
-            column_dtypes_map=cls._column_dtypes_map_for_storage(storage_table),
+            storage_table=resolved_storage_table,
         )
 
     @classmethod
@@ -151,28 +95,18 @@ class ExecutionDataNode(AssetIndexedDataNode):
         cls,
         data_frame: pd.DataFrame,
         *,
-        config: ExecutionDataNodeConfiguration | None = None,
         storage_table: (
             type[OrdersStorage | OrderEventsStorage | TradesStorage | ExecutionErrorsStorage] | None
         ) = None,
     ) -> pd.DataFrame:
         return cls.validate_execution_frame(
             data_frame,
-            config=config,
             storage_table=storage_table,
         )
 
 
 class Orders(ExecutionDataNode):
     """Timestamped order records replacing Django Order, MarketOrder, and LimitOrder."""
-
-    @classmethod
-    def _required_time_index_name(cls) -> str:
-        return ORDERS_TIME_INDEX_NAME
-
-    @classmethod
-    def _required_index_names(cls) -> list[str]:
-        return list(ORDERS_INDEX_NAMES)
 
     @classmethod
     def _required_storage_table(cls) -> type[OrdersStorage]:
@@ -183,28 +117,12 @@ class OrderEvents(ExecutionDataNode):
     """Timestamped order status events."""
 
     @classmethod
-    def _required_time_index_name(cls) -> str:
-        return ORDER_EVENTS_TIME_INDEX_NAME
-
-    @classmethod
-    def _required_index_names(cls) -> list[str]:
-        return list(ORDER_EVENTS_INDEX_NAMES)
-
-    @classmethod
     def _required_storage_table(cls) -> type[OrderEventsStorage]:
         return OrderEventsStorage
 
 
 class Trades(ExecutionDataNode):
     """Timestamped trade execution records."""
-
-    @classmethod
-    def _required_time_index_name(cls) -> str:
-        return TRADES_TIME_INDEX_NAME
-
-    @classmethod
-    def _required_index_names(cls) -> list[str]:
-        return list(TRADES_INDEX_NAMES)
 
     @classmethod
     def _required_storage_table(cls) -> type[TradesStorage]:
@@ -215,14 +133,6 @@ class ExecutionErrors(ExecutionDataNode):
     """Timestamped execution error records."""
 
     @classmethod
-    def _required_time_index_name(cls) -> str:
-        return EXECUTION_ERRORS_TIME_INDEX_NAME
-
-    @classmethod
-    def _required_index_names(cls) -> list[str]:
-        return list(EXECUTION_ERRORS_INDEX_NAMES)
-
-    @classmethod
     def _required_storage_table(cls) -> type[ExecutionErrorsStorage]:
         return ExecutionErrorsStorage
 
@@ -230,18 +140,21 @@ class ExecutionErrors(ExecutionDataNode):
 def _validate_execution_frame(
     data_frame: pd.DataFrame,
     *,
-    config: ExecutionDataNodeConfiguration,
-    column_dtypes_map: dict[str, str],
+    storage_table: type[
+        OrdersStorage | OrderEventsStorage | TradesStorage | ExecutionErrorsStorage
+    ],
 ) -> pd.DataFrame:
+    index_names = storage_index_names(storage_table)
+    column_dtypes_map = storage_column_dtypes_map(storage_table)
     frame = data_frame.copy()
-    if list(frame.index.names) == config.index_names:
+    if list(frame.index.names) == index_names:
         flat = frame.reset_index()
-    elif all(index_name in frame.columns for index_name in config.index_names):
+    elif all(index_name in frame.columns for index_name in index_names):
         flat = frame
     else:
         raise ValueError(
             "Execution frame must use index_names "
-            f"{config.index_names} or include those columns before validation."
+            f"{index_names} or include those columns before validation."
         )
 
     missing_columns = [
@@ -253,10 +166,10 @@ def _validate_execution_frame(
         )
 
     flat = _normalize_execution_values(flat, column_dtypes_map=column_dtypes_map)
-    frame = flat[list(column_dtypes_map)].set_index(config.index_names)
+    frame = flat[list(column_dtypes_map)].set_index(index_names)
     if frame.index.has_duplicates:
         raise ValueError(
-            f"Execution frame contains duplicate rows for index contract {config.index_names}."
+            f"Execution frame contains duplicate rows for index contract {index_names}."
         )
     return frame.sort_index()
 
@@ -297,14 +210,6 @@ def _normalize_jsonb(value: Any) -> dict[str, Any] | list[Any]:
 
 
 __all__ = [
-    "EXECUTION_ERRORS_INDEX_NAMES",
-    "EXECUTION_ERRORS_TIME_INDEX_NAME",
-    "ORDER_EVENTS_INDEX_NAMES",
-    "ORDER_EVENTS_TIME_INDEX_NAME",
-    "ORDERS_INDEX_NAMES",
-    "ORDERS_TIME_INDEX_NAME",
-    "TRADES_INDEX_NAMES",
-    "TRADES_TIME_INDEX_NAME",
     "ExecutionDataNode",
     "ExecutionDataNodeConfiguration",
     "ExecutionErrors",

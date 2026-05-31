@@ -432,10 +432,8 @@ storage class, without starting the concrete-node `storage_table` wiring.
   `get_table_metadata` / `get_column_metadata` / `.records` /
   `LOGICAL_COLUMN_DTYPES_ATTR` outside historical ADR prose.
 - Still deferred to Stage 4 (co-located with concrete-node migration): align the
-  Layer-A leaf-node `validate_frame(*, storage_table)` / `build_schema_bootstrap_frame`
-  call sites with the foundation signature; finish trimming the residual
-  `time_index_name` / `index_names` config fields and convert descriptive fields to
-  `hash_excluded`.
+  Layer-A leaf-node `validate_frame(*, storage_table)` call sites with the
+  foundation signature and convert descriptive fields to `hash_excluded`.
 
 ### Stage 3.6: Single-source column dtypes through the MetaTable — DONE
 
@@ -450,6 +448,16 @@ than any local token list.
   `{column.name: sqlalchemy_type_to_token(column.type, remote=True) ...}` over
   `storage_table.__table__.columns`. Deleted the invented `_PYTHON_TYPE_TO_DTYPE`
   map and the `_column_dtype_token` shim.
+- [x] Rewrote holdings nullability handling to read
+  `column.nullable` from the storage MetaTable via `storage_column_nullable_map()`;
+  deleted the local `NULLABLE_HOLDINGS_COLUMNS` schema mirror.
+- [x] Removed holdings time-index and index-name constants such as
+  `ACCOUNT_HOLDINGS_INDEX_NAMES`; holdings nodes now read
+  `__time_index_name__` and `__index_names__` directly from their storage
+  MetaTable classes.
+- [x] Removed residual `time_index_name` / `index_names` fields from holdings,
+  execution, and canonical portfolio DataNode configurations. Validators and
+  storage-contract checks now read those values from the bound `storage_table`.
 - [x] Deleted all 7 `*_COLUMN_DTYPES_MAP` module constants — execution
   (`EXECUTION_ERRORS`, `ORDER_EVENTS`, `ORDERS`, `TRADES`) and portfolios
   (`PORTFOLIO_WEIGHTS`, `SIGNAL_WEIGHTS`, `PORTFOLIOS`) — and removed their
@@ -459,10 +467,10 @@ than any local token list.
   `HoldingsDataNodeConfiguration`, `ExecutionDataNodeConfiguration`,
   `PortfolioCanonicalDataNodeConfiguration`, and `SignalWeightsConfiguration` (the
   true second source). Stage 3.7 removes the temporary concrete
-  `_required_column_dtypes_map()` methods; classmethod/bootstrap paths use
+  `_required_column_dtypes_map()` methods; classmethod validation paths use
   `_column_dtypes_map_for_storage(...)`, and runtime validation uses the DataNode
   instance's bound `storage_table`.
-- [x] Repointed every coercion/bootstrap branch onto `dtype_codec` constants
+- [x] Repointed every coercion branch onto `dtype_codec` constants
   (`dc.TIMESTAMP_TZ` / `dc.FLOAT64` / `dc.STRING` / `dc.BOOL` / `dc.INT64` /
   `dc.JSONB` / `dc.UUID_TOKEN`) instead of invented string literals. Only the
   datetime token changes value under the SDK projection
@@ -470,12 +478,9 @@ than any local token list.
   already matched. Pandas runtime casts (`.astype("datetime64[ns, UTC]")`,
   `.astype("string")`) and the `DATETIME64_NS_UTC` constant in `utils/time.py`
   are legitimate pandas API and are kept.
-- [x] Deleted the invented-token bootstrap helper
-  `schema_bootstrap_value(dtype: str)` (branched on non-SDK tokens `"decimal"` /
-  `"json"` / `"Int64"`) from `utils/stamped.py`, its `__all__` entry, and its dead
-  consumer aliases in `assets/snapshots.py`. The live path is
-  `schema_bootstrap_value_for_column(column)`, which branches on
-  `column.type.python_type`.
+- [x] Deleted placeholder-row helpers from `utils/stamped.py` and the dead
+  consumer aliases in `assets/snapshots.py`. DataNodes do not fabricate rows to
+  shape storage; storage registration is a MetaTable/catalog responsibility.
 - [x] `_validate_storage_contract` keeps the *remote* read of the platform
   source-config `column_dtypes_map` (platform metadata, not a local declaration);
   only the local side switches to the instance-bound storage map.
@@ -483,7 +488,7 @@ than any local token list.
   constant, no `column_dtypes_map` configuration field, and no hand-rolled token
   vocabulary in `src` (remaining `column_dtypes_map` occurrences are the derived
   method, threaded params, and the remote-read contract); `ruff check` is clean
-  (no F401 regressions); and bootstrap/coercion round-trips pass for the holdings,
+  (no F401 regressions); and coercion round-trips pass for the holdings,
   execution, and portfolio node families.
 
 ### Stage 3.7: Runtime dtype validation uses bound storage — DONE
@@ -496,14 +501,14 @@ bound to a constructed DataNode instance.
 - [x] Removed concrete `_required_column_dtypes_map()` overrides from holdings,
   execution, and portfolio DataNodes.
 - [x] Added shared `_column_dtypes_map_for_storage(...)` helpers for
-  classmethod/bootstrap paths where no DataNode instance exists.
+  classmethod validation paths where no DataNode instance exists.
 - [x] Added `_bound_column_dtypes_map()` and rewired `update()` plus storage
   contract validation to use `self.storage_table`.
-- [x] Rewired instance bootstrap fallback frames to pass `self.storage_table`
-  into the classmethod bootstrap builders.
+- [x] Removed instance fallback frames; frame-inserting DataNodes now require
+  real rows before `update()` and fail instead of manufacturing placeholders.
 - [x] Removed production `build_mock_frame` and holdings-specific
   `build_mock_*_frame` aliases; callers should use explicit
-  `build_schema_bootstrap_frame(...)` or domain build helpers.
+  domain build helpers or `validate_frame(...)` with real rows.
 - [x] Updated tests so they assert the removed concrete method is absent and
   dtype maps derive from storage classes explicitly.
 
@@ -516,9 +521,8 @@ Every concrete node uses its registered storage class through a
 `DataNode.__init__`, so every leaf chain (stamped, asset-indexed, holdings,
 execution, portfolio-canonical, and the custom inits in
 `DiscountCurvesNode` / `FixingRatesNode` / `SignalWeights`) reaches the SDK with
-the correct storage class. The stamped-family foundation builders
-(`validate_frame`, `build_schema_bootstrap_frame`) likewise default
-`storage_table` to `cls._required_storage_table()`.
+the correct storage class. The stamped-family validator (`validate_frame`) also
+defaults `storage_table` to `cls._required_storage_table()`.
 
 - [x] Pricing: `DiscountCurvesNode` → `DiscountCurvesStorage`, `FixingRatesNode`
   → `IndexFixingsStorage`, `AssetPricingDetail` → `AssetPricingDetailsStorage`.
@@ -539,13 +543,12 @@ the correct storage class. The stamped-family foundation builders
   `portfolios/data_nodes/base.py` (the SDK marker is gone; `hash_namespace(...)`
   is the only path). Remaining `test_node=` call sites live in tests/examples
   (Stage 6).
-- [x] Confirmed time-index dtype: every node's `build_schema_bootstrap_frame()`
-  (which shares the `update()` normalizers) yields a frame whose first index
+- [x] Confirmed time-index dtype using real validated frames: the first index
   level is `datetime64[ns, UTC]`.
 
 Verified against SDK `4.1.5`: all 13 backend-registrable nodes resolve their
-storage class and build bootstrap frames; `ruff check` is clean; the three node
-packages import. Full construction is gated by the SDK `storage_table` setter
+storage class; `ruff check` is clean; the three node packages import. Full
+construction is gated by the SDK `storage_table` setter
 (`get_time_index_metadata()` must be non-`None`) — every node reaches exactly
 that registration gate, which proves `storage_table` is forwarded correctly
 through all MRO chains; satisfying it is Stage 5 (catalog registration).

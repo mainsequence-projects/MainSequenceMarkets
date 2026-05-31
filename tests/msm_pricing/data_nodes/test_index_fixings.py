@@ -72,11 +72,9 @@ def test_index_fixings_storage_has_index_foreign_key() -> None:
     assert IndexFixingsStorage in set(pricing_sqlalchemy_models())
 
 
-def test_fixing_rates_node_build_schema_bootstrap_frame_is_datetime64_ns_utc() -> None:
-    frame = FixingRatesNode.build_schema_bootstrap_frame()
-
-    assert list(frame.index.names) == ["time_index", INDEX_UNIQUE_IDENTIFIER_DIMENSION]
-    assert str(frame.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
+def test_fixing_rates_node_does_not_expose_bootstrap_frame_api() -> None:
+    assert not hasattr(FixingRatesNode, "build_schema_bootstrap_frame")
+    assert not hasattr(FixingRatesNode, "build_initialization_frame")
 
 
 def test_fixing_rates_node_validate_frame_uses_index_unique_identifier() -> None:
@@ -119,7 +117,7 @@ def test_constructing_fixing_rates_node_requires_registered_storage_table() -> N
 
     with pytest.raises(
         ValueError,
-        match="storage_table must be registered or bound before construction",
+        match="storage_table must be registered before construction",
     ):
         FixingRatesNode(IndexFixingConfiguration(index_unique_identifiers=["SOFR"]))
 

@@ -4,6 +4,7 @@ import importlib
 import inspect
 import os
 
+import pandas as pd
 import pytest
 
 # Prevent SDK import-time project resolution from reading the local .env.
@@ -13,6 +14,7 @@ os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
 from msm.data_nodes.accounts import AccountHoldings, VirtualFundHoldings
+import msm.data_nodes.execution as execution_module
 from msm.data_nodes.assets import (
     AssetSnapshot,
 )
@@ -21,7 +23,13 @@ from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
 )
-from msm.data_nodes.execution import ExecutionErrors, OrderEvents, Orders, Trades
+from msm.data_nodes.execution import (
+    ExecutionDataNodeConfiguration,
+    ExecutionErrors,
+    OrderEvents,
+    Orders,
+    Trades,
+)
 from msm.data_nodes.storage import AssetSnapshotsStorage
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.models import AssetTable, markets_sqlalchemy_models
@@ -109,15 +117,36 @@ def test_asset_indexed_nodes_expose_storage_first_surface(
     assert storage_table in registered
 
     assert not hasattr(node_cls, "_required_column_dtypes_map")
+    assert not hasattr(node_cls, "_required_index_names")
+    assert not hasattr(node_cls, "_required_time_index_name")
     assert node_cls._column_dtypes_map_for_storage(storage_table) == storage_column_dtypes_map(
         storage_table
     )
     assert not hasattr(node_cls, "build_mock_frame")
+    assert not hasattr(node_cls, "build_schema_bootstrap_frame")
+    assert not hasattr(node_cls, "build_initialization_frame")
 
 
 def test_holdings_mock_frame_aliases_are_not_public_api() -> None:
     assert not hasattr(AccountHoldings, "build_mock_account_frame")
     assert not hasattr(VirtualFundHoldings, "build_mock_fund_frame")
+
+
+def test_execution_schema_constants_and_config_fields_are_removed() -> None:
+    for name in (
+        "ORDERS_INDEX_NAMES",
+        "ORDERS_TIME_INDEX_NAME",
+        "ORDER_EVENTS_INDEX_NAMES",
+        "ORDER_EVENTS_TIME_INDEX_NAME",
+        "TRADES_INDEX_NAMES",
+        "TRADES_TIME_INDEX_NAME",
+        "EXECUTION_ERRORS_INDEX_NAMES",
+        "EXECUTION_ERRORS_TIME_INDEX_NAME",
+    ):
+        assert not hasattr(execution_module, name)
+
+    assert "index_names" not in ExecutionDataNodeConfiguration.model_fields
+    assert "time_index_name" not in ExecutionDataNodeConfiguration.model_fields
 
 
 @pytest.mark.parametrize(
@@ -142,11 +171,36 @@ def test_timestamped_asset_nodes_bind_their_storage_class(node_cls, storage_cls)
         (AssetPricingDetail, AssetPricingDetailsStorage),
     ],
 )
-def test_timestamped_asset_nodes_build_datetime64_ns_utc_bootstrap_frame(
+def test_timestamped_asset_nodes_validate_real_frames_as_datetime64_ns_utc(
     node_cls,
     storage_cls,
 ) -> None:
-    frame = node_cls.build_schema_bootstrap_frame()
+    frame = node_cls.validate_frame(
+        pd.DataFrame(
+            [
+                {
+                    "time_index": "2026-05-26T00:00:00Z",
+                    ASSET_UNIQUE_IDENTIFIER_DIMENSION: "asset-1",
+                    **{
+                        column.name: ""
+                        for column in storage_cls.__table__.columns
+                        if column.name
+                        not in {
+                            "time_index",
+                            ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+                            "instrument_dump",
+                            "metadata",
+                        }
+                    },
+                    **{
+                        column.name: {}
+                        for column in storage_cls.__table__.columns
+                        if column.name in {"instrument_dump", "metadata"}
+                    },
+                }
+            ]
+        )
+    )
 
     assert list(frame.index.names) == list(storage_cls.__index_names__)
     assert str(frame.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
@@ -195,6 +249,6 @@ def test_constructing_asset_node_requires_registered_storage_table() -> None:
 
     with pytest.raises(
         ValueError,
-        match="storage_table must be registered or bound before construction",
+        match="storage_table must be registered before construction",
     ):
         AssetSnapshot()

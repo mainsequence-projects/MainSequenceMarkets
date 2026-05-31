@@ -29,8 +29,6 @@ from .constants import (
     ASSET_UNIQUE_IDENTIFIER,
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
     PORTFOLIO_INDEX_ASSET_UNIQUE_IDENTIFIER,
-    PORTFOLIOS_INDEX_NAMES,
-    SCHEMA_BOOTSTRAP_PORTFOLIO_IDENTIFIER,
 )
 from .metadata import emit_portfolio_metadata, extract_portfolio_description
 from .portfolio_identity import get_or_create_portfolio_index_asset
@@ -238,18 +236,15 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
 
     def update(self) -> pd.DataFrame:
         raw_frame = self._calculate_portfolio_values()
-        config = self._canonical_config()
         frame = (
-            self.validate_frame(raw_frame, config=config, storage_table=self.storage_table)
-            if _is_canonical_frame(raw_frame, config=config)
+            self.validate_frame(raw_frame, storage_table=self.storage_table)
+            if _is_canonical_frame(raw_frame, storage_table=self.storage_table)
             else self.validate_frame(
                 normalize_portfolio_values_frame(
                     raw_frame,
                     unique_identifier=self._resolve_unique_identifier(),
-                    config=config,
                     storage_table=self.storage_table,
                 ),
-                config=config,
                 storage_table=self.storage_table,
             )
         )
@@ -720,7 +715,7 @@ rebalance details:"""
         if flat.empty or ASSET_UNIQUE_IDENTIFIER not in flat.columns:
             return
         unique_identifier = flat[ASSET_UNIQUE_IDENTIFIER].iloc[0]
-        if unique_identifier in (None, "", SCHEMA_BOOTSTRAP_PORTFOLIO_IDENTIFIER):
+        if unique_identifier in (None, ""):
             return
 
         if (
@@ -748,29 +743,17 @@ rebalance details:"""
         )
 
     @classmethod
-    def _required_index_names(cls) -> list[str]:
-        return list(PORTFOLIOS_INDEX_NAMES)
-
-    @classmethod
     def _required_storage_table(cls) -> type[PortfoliosStorage]:
         return PortfoliosStorage
-
-    @classmethod
-    def _schema_bootstrap_index_values(cls) -> dict[str, Any]:
-        return {
-            ASSET_UNIQUE_IDENTIFIER: (SCHEMA_BOOTSTRAP_PORTFOLIO_IDENTIFIER),
-        }
 
 
 def normalize_portfolio_values_frame(
     portfolio_values_frame: pd.DataFrame,
     *,
     unique_identifier: str,
-    config: PortfolioCanonicalDataNodeConfiguration | None = None,
     storage_table: StorageTable | None = None,
 ) -> pd.DataFrame:
     """Normalize Portfolios portfolio values into canonical PortfoliosDataNode rows."""
-    config = PortfoliosDataNode._validate_config(config or PortfoliosDataNode.default_config())
     required_columns = list(PortfoliosDataNode._column_dtypes_map_for_storage(storage_table))
     flat = _reset_frame_index(portfolio_values_frame)
     if flat.empty:
@@ -791,6 +774,5 @@ def normalize_portfolio_values_frame(
     )
     return PortfoliosDataNode.validate_frame(
         flat[required_columns],
-        config=config,
         storage_table=storage_table,
     )

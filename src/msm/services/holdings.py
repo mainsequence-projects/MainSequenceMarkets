@@ -10,13 +10,10 @@ import pandas as pd
 
 from mainsequence.client import dtype_codec as dc
 from msm.data_nodes.storage import AccountHoldingsStorage, FundHoldingsStorage
-from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
-
-
-NULLABLE_HOLDINGS_COLUMNS = {
-    "target_trade_time",
-    "target_weight",
-}
+from msm.data_nodes.utils.storage_schema import (
+    storage_column_dtypes_map,
+    storage_column_nullable_map,
+)
 
 
 def build_account_holdings_frame(
@@ -126,6 +123,7 @@ def validate_holdings_frame(
 
     flat = frame.reset_index()
     column_dtypes_map = storage_column_dtypes_map(storage_table)
+    column_nullable_map = storage_column_nullable_map(storage_table)
     missing_columns = [
         column_name for column_name in column_dtypes_map if column_name not in flat.columns
     ]
@@ -148,7 +146,7 @@ def validate_holdings_frame(
         elif dtype == dc.FLOAT64:
             flat[column_name] = _normalize_float64_column(
                 values,
-                nullable=column_name in NULLABLE_HOLDINGS_COLUMNS,
+                nullable=column_nullable_map[column_name],
             )
         elif dtype == dc.BOOL:
             flat[column_name] = values.map(_normalize_bool)
@@ -161,9 +159,7 @@ def validate_holdings_frame(
 
     frame = flat.set_index(index_names).sort_index()
     if frame.index.has_duplicates:
-        raise ValueError(
-            f"Holdings frame contains duplicate rows for index names {index_names}."
-        )
+        raise ValueError(f"Holdings frame contains duplicate rows for index names {index_names}.")
     return frame
 
 

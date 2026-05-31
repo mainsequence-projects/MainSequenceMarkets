@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime as dt
 from typing import Any
 
 import pandas as pd
@@ -19,30 +18,20 @@ from msm.data_nodes.utils.storage_metadata import (
 )
 from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
+from msm.data_nodes.utils.storage_schema import storage_index_names, storage_time_index_name
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
 from msm.settings import markets_namespace
 
 from .constants import (
     ASSET_UNIQUE_IDENTIFIER,
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
-    SCHEMA_BOOTSTRAP_TIME_INDEX,
 )
 
 StorageTable = type[PlatformTimeIndexMetaData]
 
 
 class PortfolioCanonicalDataNodeConfiguration(DataNodeConfiguration):
-    """Configuration base for SDK-created canonical Portfolios data nodes."""
-
-    index_names: list[str]
-
-    @property
-    def time_index_name(self) -> str:
-        return PORTFOLIO_CANONICAL_TIME_INDEX_NAME
-
-    @property
-    def identity_index_names(self) -> list[str]:
-        return self.index_names[1:]
+    """Update-scoped configuration base for canonical Portfolios DataNodes."""
 
 
 class SignalWeightsConfiguration(PortfolioCanonicalDataNodeConfiguration):
@@ -86,11 +75,7 @@ class PortfolioCanonicalDataNode(DataNode):
 
     @classmethod
     def default_config(cls) -> PortfolioCanonicalDataNodeConfiguration:
-        return cls._validate_config(
-            PortfolioCanonicalDataNodeConfiguration(
-                index_names=cls._required_index_names(),
-            )
-        )
+        return cls._validate_config(PortfolioCanonicalDataNodeConfiguration())
 
     @classmethod
     def _validate_config(
@@ -99,10 +84,6 @@ class PortfolioCanonicalDataNode(DataNode):
     ) -> PortfolioCanonicalDataNodeConfiguration:
         if not isinstance(config, PortfolioCanonicalDataNodeConfiguration):
             raise TypeError(f"{cls.__name__} requires a PortfolioCanonicalDataNodeConfiguration.")
-        if config.index_names != cls._required_index_names():
-            raise ValueError(
-                f"{cls.__name__} requires index_names {cls._required_index_names()!r}."
-            )
         return config
 
     @classmethod
@@ -118,10 +99,6 @@ class PortfolioCanonicalDataNode(DataNode):
         raise NotImplementedError(f"{cls.__name__} must define _required_storage_table().")
 
     @classmethod
-    def _required_index_names(cls) -> list[str]:
-        raise NotImplementedError
-
-    @classmethod
     def _column_dtypes_map_for_storage(
         cls,
         storage_table: StorageTable | None = None,
@@ -131,10 +108,6 @@ class PortfolioCanonicalDataNode(DataNode):
     def _bound_column_dtypes_map(self) -> dict[str, str]:
         return storage_column_dtypes_map(self.storage_table)
 
-    @classmethod
-    def _schema_bootstrap_index_values(cls) -> dict[str, Any]:
-        raise NotImplementedError
-
     def _canonical_config(self) -> PortfolioCanonicalDataNodeConfiguration:
         return self.__class__._validate_config(
             getattr(self, "config", None) or self.default_config()
@@ -143,53 +116,14 @@ class PortfolioCanonicalDataNode(DataNode):
     def update(self) -> pd.DataFrame:
         return _validate_canonical_frame(
             self.get_canonical_frame(),
-            config=self._canonical_config(),
-            column_dtypes_map=self._bound_column_dtypes_map(),
+            storage_table=self.storage_table,
             frame_name=self.__class__.__name__,
         )
 
     def get_canonical_frame(self) -> pd.DataFrame:
-        return self.build_schema_bootstrap_frame(
-            config=self._canonical_config(),
-            storage_table=self.storage_table,
-        )
-
-    @classmethod
-    def build_initialization_frame(cls, **kwargs) -> pd.DataFrame:
-        return cls.build_schema_bootstrap_frame(**kwargs)
-
-    @classmethod
-    def build_schema_bootstrap_frame(
-        cls,
-        *,
-        config: PortfolioCanonicalDataNodeConfiguration | None = None,
-        index_values: dict[str, Any] | None = None,
-        time_index: dt.datetime | pd.Timestamp = SCHEMA_BOOTSTRAP_TIME_INDEX,
-        storage_table: StorageTable | None = None,
-    ) -> pd.DataFrame:
-        config = cls._validate_config(config or cls.default_config())
-        column_dtypes_map = cls._column_dtypes_map_for_storage(storage_table)
-        resolved_index_values = {
-            **cls._schema_bootstrap_index_values(),
-            **(index_values or {}),
-        }
-        row: dict[str, Any] = {
-            config.time_index_name: time_index,
-        }
-        for index_name in config.identity_index_names:
-            row[index_name] = resolved_index_values[index_name]
-        for column_name, dtype in column_dtypes_map.items():
-            if column_name not in row:
-                row[column_name] = _schema_bootstrap_value(
-                    dtype=dtype,
-                    time_index=time_index,
-                )
-        frame = pd.DataFrame([row])
-        frame = frame.set_index(config.index_names)
-        return cls.validate_frame(
-            frame,
-            config=config,
-            storage_table=storage_table,
+        raise ValueError(
+            f"{self.__class__.__name__} requires real canonical portfolio rows. "
+            "Attach a frame or override get_canonical_frame() before update()."
         )
 
     @classmethod
@@ -197,13 +131,11 @@ class PortfolioCanonicalDataNode(DataNode):
         cls,
         data_frame: pd.DataFrame,
         *,
-        config: PortfolioCanonicalDataNodeConfiguration | None = None,
         storage_table: StorageTable | None = None,
     ) -> pd.DataFrame:
         return _validate_canonical_frame(
             data_frame,
-            config=cls._validate_config(config or cls.default_config()),
-            column_dtypes_map=cls._column_dtypes_map_for_storage(storage_table),
+            storage_table=storage_table or cls._required_storage_table(),
             frame_name=cls.__name__,
         )
 
@@ -212,12 +144,10 @@ class PortfolioCanonicalDataNode(DataNode):
         cls,
         data_frame: pd.DataFrame,
         *,
-        config: PortfolioCanonicalDataNodeConfiguration | None = None,
         storage_table: StorageTable | None = None,
     ) -> pd.DataFrame:
         return cls.validate_frame(
             data_frame,
-            config=config,
             storage_table=storage_table,
         )
 
@@ -235,8 +165,7 @@ class PortfolioCanonicalDataNode(DataNode):
 
         if storage is None:
             raise RuntimeError(
-                f"{self.__class__.__name__} did not create a ready canonical "
-                "Portfolios data node. Run the DataNode bootstrap path before writing."
+                f"{self.__class__.__name__} did not create a ready canonical Portfolios data node."
             )
         return _coerce_required_uid(storage, field_name="data_node_storage")
 
@@ -253,18 +182,19 @@ class PortfolioCanonicalDataNode(DataNode):
         return storage
 
     def _validate_storage_contract(self, source_config: Any) -> None:
-        config = self._canonical_config()
         errors: list[str] = []
 
         time_index_name = _get_mapping_or_attr(source_config, "time_index_name")
-        if time_index_name != config.time_index_name:
+        expected_time_index_name = storage_time_index_name(self.storage_table)
+        if time_index_name != expected_time_index_name:
             errors.append(
-                f"time_index_name {time_index_name!r} does not match {config.time_index_name!r}"
+                f"time_index_name {time_index_name!r} does not match {expected_time_index_name!r}"
             )
 
         index_names = list(_get_mapping_or_attr(source_config, "index_names") or [])
-        if index_names != config.index_names:
-            errors.append(f"index_names {index_names!r} do not match {config.index_names!r}")
+        expected_index_names = storage_index_names(self.storage_table)
+        if index_names != expected_index_names:
+            errors.append(f"index_names {index_names!r} do not match {expected_index_names!r}")
 
         column_dtypes_map = dict(_get_mapping_or_attr(source_config, "column_dtypes_map") or {})
         for column_name, expected_dtype in self._bound_column_dtypes_map().items():
@@ -292,12 +222,12 @@ class AssetScopedPortfolioCanonicalDataNode(PortfolioCanonicalDataNode, AssetInd
 def _is_canonical_frame(
     frame: pd.DataFrame,
     *,
-    config: PortfolioCanonicalDataNodeConfiguration,
+    storage_table: StorageTable,
 ) -> bool:
     return (
         isinstance(frame, pd.DataFrame)
         and isinstance(frame.index, pd.MultiIndex)
-        and list(frame.index.names) == config.index_names
+        and list(frame.index.names) == storage_index_names(storage_table)
     )
 
 
@@ -379,28 +309,16 @@ def _normalize_pivoted_signal_weights(frame: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def _schema_bootstrap_value(
-    *,
-    dtype: str,
-    time_index: dt.datetime | pd.Timestamp,
-) -> Any:
-    if dtype == dc.TIMESTAMP_TZ:
-        return pd.Timestamp(time_index)
-    if dtype == dc.FLOAT64:
-        return 0.0
-    if dtype == dc.STRING:
-        return ""
-    raise ValueError(f"Unsupported canonical Portfolios dtype {dtype!r}.")
-
-
 def _validate_canonical_frame(
     data_frame: pd.DataFrame,
     *,
-    config: PortfolioCanonicalDataNodeConfiguration,
-    column_dtypes_map: dict[str, str],
+    storage_table: StorageTable,
     frame_name: str,
 ) -> pd.DataFrame:
-    frame = _ensure_config_index(data_frame, config=config, frame_name=frame_name)
+    index_names = storage_index_names(storage_table)
+    time_index_name = storage_time_index_name(storage_table)
+    column_dtypes_map = storage_column_dtypes_map(storage_table)
+    frame = _ensure_storage_index(data_frame, index_names=index_names, frame_name=frame_name)
     flat = frame.reset_index()
     missing_columns = [
         column_name for column_name in column_dtypes_map if column_name not in flat.columns
@@ -412,48 +330,47 @@ def _validate_canonical_frame(
 
     flat = _normalize_config_values(
         flat,
-        config=config,
+        time_index_name=time_index_name,
         column_dtypes_map=column_dtypes_map,
         frame_name=frame_name,
     )
-    _validate_identity_values(flat, config=config, frame_name=frame_name)
-    frame = flat.set_index(config.index_names).sort_index()
+    _validate_identity_values(flat, index_names=index_names, frame_name=frame_name)
+    frame = flat.set_index(index_names).sort_index()
     if frame.index.has_duplicates:
         raise ValueError(
-            f"{frame_name} frame contains duplicate rows for index contract {config.index_names}."
+            f"{frame_name} frame contains duplicate rows for index contract {index_names}."
         )
     return frame
 
 
-def _ensure_config_index(
+def _ensure_storage_index(
     data_frame: pd.DataFrame,
     *,
-    config: PortfolioCanonicalDataNodeConfiguration,
+    index_names: list[str],
     frame_name: str,
 ) -> pd.DataFrame:
-    expected_index_names = list(config.index_names)
     frame = data_frame.copy()
-    if list(frame.index.names) == expected_index_names:
+    if list(frame.index.names) == index_names:
         return frame
-    if all(index_name in frame.columns for index_name in expected_index_names):
-        return frame.set_index(expected_index_names)
+    if all(index_name in frame.columns for index_name in index_names):
+        return frame.set_index(index_names)
     raise ValueError(
         f"{frame_name} frame must use index_names "
-        f"{expected_index_names} or include those columns before validation."
+        f"{index_names} or include those columns before validation."
     )
 
 
 def _normalize_config_values(
     frame: pd.DataFrame,
     *,
-    config: PortfolioCanonicalDataNodeConfiguration,
+    time_index_name: str,
     column_dtypes_map: dict[str, str],
     frame_name: str,
 ) -> pd.DataFrame:
     normalized = frame.copy()
     for column_name, dtype in column_dtypes_map.items():
         values = normalized[column_name]
-        if column_name == config.time_index_name:
+        if column_name == time_index_name:
             normalized[column_name] = _normalize_time_index(values)
         elif dtype == dc.TIMESTAMP_TZ:
             normalized[column_name] = _normalize_datetime_column(values)
@@ -472,10 +389,10 @@ def _normalize_config_values(
 def _validate_identity_values(
     frame: pd.DataFrame,
     *,
-    config: PortfolioCanonicalDataNodeConfiguration,
+    index_names: list[str],
     frame_name: str,
 ) -> None:
-    for index_name in config.identity_index_names:
+    for index_name in index_names[1:]:
         values = frame[index_name]
         invalid_values = values.isna() | (values.astype(str).str.len() == 0)
         if invalid_values.any():

@@ -41,7 +41,7 @@ def initialize_portfolio_storage_source_tables(
         if source_config is None:
             raise RuntimeError(
                 f"Portfolio storage {payload_key} does not expose a source-table "
-                "configuration. Run the DataNode bootstrap path before writing."
+                "configuration. Register the storage MetaTable before writing."
             )
         node._validate_storage_contract(source_config)
         result[payload_key] = source_config
@@ -72,8 +72,7 @@ def _resolve_storage_family(
             portfolio_data = portfolio_data or anchor_node
         else:
             raise TypeError(
-                "anchor_node must be PortfolioWeights, SignalWeights, or "
-                "PortfoliosDataNode."
+                "anchor_node must be PortfolioWeights, SignalWeights, or PortfoliosDataNode."
             )
 
     return {

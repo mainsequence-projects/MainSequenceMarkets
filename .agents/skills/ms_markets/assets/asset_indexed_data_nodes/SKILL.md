@@ -114,6 +114,11 @@ columns, dtypes, indexes, labels, descriptions, and the asset foreign key.
 update-scoped fields such as `asset_list`; they do not declare records or table
 metadata.
 
+Every storage class must include `__metatable_description__`. The description
+should explain the table's market intention, row grain, and downstream use, not
+only the schema. For asset-indexed tables, say what the asset row represents and
+why it is published over time.
+
 Storage must be registered before the DataNode is constructed. The path is
 `PlatformTimeIndexMetaData.register(...)`, normally reached through the markets
 catalog bootstrap or `msm.start_engine(models=[...])`. Do not manually bind a UID,
@@ -137,6 +142,10 @@ from msm.models.assets.core import AssetTable
 
 class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__ = "example_asset_metrics"
+    __metatable_description__ = (
+        "Timestamped asset metric observations keyed by asset unique identifier "
+        "for market analytics and portfolio workflows."
+    )
     __time_index_name__ = "time_index"
     __index_names__ = ["time_index", "unique_identifier"]
 
@@ -291,6 +300,7 @@ Before marking work complete:
   asset-indexed base.
 - The storage table subclasses `PlatformTimeIndexMetaData` through
   `MarketsTimeIndexMetaTableMixin`.
+- The storage table has an intention-rich `__metatable_description__`.
 - The config subclasses `AssetIndexedDataNodeConfiguration` or
   `AssetDataNodeConfiguration`.
 - The storage table declares `time_index`, `unique_identifier`, and all value

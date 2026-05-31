@@ -3,16 +3,11 @@ from __future__ import annotations
 from typing import ClassVar
 
 from msm.data_nodes.utils.stamped import (
-    STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX,
-    STAMPED_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER,
     StampedDataNode,
     StampedDataNodeConfiguration,
     StampedFrameMixin,
 )
 from msm.settings import INDEX_UNIQUE_IDENTIFIER_DIMENSION
-
-INDEX_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER = STAMPED_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER
-INDEX_DATA_NODE_BOOTSTRAP_TIME_INDEX = STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX
 
 
 class IndexDataNodeConfiguration(StampedDataNodeConfiguration):
@@ -40,8 +35,6 @@ class IndexTimestampedDataNode(IndexTimestampedFrameMixin, StampedDataNode):
 
 
 __all__ = [
-    "INDEX_DATA_NODE_BOOTSTRAP_TIME_INDEX",
-    "INDEX_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER",
     "IndexDataNodeConfiguration",
     "IndexTimestampedDataNode",
     "IndexTimestampedFrameMixin",

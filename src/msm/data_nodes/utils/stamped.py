@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import datetime as dt
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import pandas as pd
 
@@ -18,9 +17,6 @@ from msm.data_nodes.utils.storage_metadata import (
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
 
 StorageTable = type[PlatformTimeIndexMetaData]
-
-STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX = dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
-STAMPED_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER = "__schema_bootstrap__"
 
 
 class StampedDataNodeConfiguration(DataNodeConfiguration):
@@ -41,8 +37,6 @@ class StampedFrameMixin:
 
     configuration_class: ClassVar[type[StampedDataNodeConfiguration]] = StampedDataNodeConfiguration
     frame_label: ClassVar[str] = "Stamped DataNode"
-    bootstrap_unique_identifier: ClassVar[str] = STAMPED_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER
-    bootstrap_time_index: ClassVar[dt.datetime] = STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX
 
     def __init__(
         self,
@@ -82,7 +76,10 @@ class StampedFrameMixin:
     def get_frame(self) -> pd.DataFrame:
         frame = getattr(self, "_stamped_data_frame", None)
         if frame is None:
-            return self.build_schema_bootstrap_frame(storage_table=self.storage_table)
+            raise ValueError(
+                f"{self.__class__.__name__} requires a real stamped frame. "
+                "Call set_frame() before update()."
+            )
         return frame
 
     def update(self) -> pd.DataFrame:
@@ -91,35 +88,6 @@ class StampedFrameMixin:
             storage_table=self.storage_table,
             frame_label=self.frame_label,
         )
-
-    @classmethod
-    def build_schema_bootstrap_frame(
-        cls,
-        *,
-        storage_table: StorageTable | None = None,
-        unique_identifier: str | None = None,
-        time_index: dt.datetime | pd.Timestamp | None = None,
-    ) -> pd.DataFrame:
-        storage_table = storage_table or cls._required_storage_table()
-        time_index_name = storage_table.__time_index_name__
-        index_names = list(storage_table.__index_names__)
-        row: dict[str, Any] = {}
-        for column in storage_table.__table__.columns:
-            if column.name == time_index_name:
-                row[column.name] = time_index or cls.bootstrap_time_index
-            elif column.name in index_names:
-                row[column.name] = unique_identifier or cls.bootstrap_unique_identifier
-            else:
-                row[column.name] = schema_bootstrap_value_for_column(column)
-        return normalize_stamped_frame(
-            pd.DataFrame([row]),
-            storage_table=storage_table,
-            frame_label=cls.frame_label,
-        )
-
-    @classmethod
-    def build_initialization_frame(cls, **kwargs: Any) -> pd.DataFrame:
-        return cls.build_schema_bootstrap_frame(**kwargs)
 
     @classmethod
     def validate_frame(
@@ -200,34 +168,10 @@ def reset_frame_index(
     return frame.reset_index() if has_required_index else frame
 
 
-def schema_bootstrap_value_for_column(column: Any) -> Any:
-    """Return a bootstrap placeholder value for a SQLAlchemy storage column."""
-
-    try:
-        python_type = column.type.python_type
-    except (NotImplementedError, AttributeError):
-        python_type = None
-
-    if python_type is dt.datetime:
-        return STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX
-    if python_type is bool:
-        return False
-    if python_type is int:
-        return 0
-    if python_type is float:
-        return "0"
-    if python_type in (dict, list):
-        return {"_mainsequence_reserved": "schema_bootstrap", "semantic": False}
-    return ""
-
-
 __all__ = [
-    "STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX",
-    "STAMPED_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER",
     "StampedDataNode",
     "StampedDataNodeConfiguration",
     "StampedFrameMixin",
     "normalize_stamped_frame",
     "reset_frame_index",
-    "schema_bootstrap_value_for_column",
 ]

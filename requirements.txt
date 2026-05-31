@@ -14,15 +14,12 @@ certifi==2026.5.20
 charset-normalizer==3.4.7
     # via requests
 click==8.4.1
-    # via
-    #   mainsequence
-    #   typer
-cloudpickle==3.1.2
     # via mainsequence
 colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   click
     #   tqdm
+    #   typer
 concurrent-log-handler==0.9.29
     # via mainsequence
 googleapis-common-protos==1.75.0
@@ -33,9 +30,9 @@ greenlet==3.5.1 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or 
     # via sqlalchemy
 grpcio==1.80.0
     # via opentelemetry-exporter-otlp-proto-grpc
-idna==3.16
+idna==3.17
     # via requests
-mainsequence>=4.1.5
+mainsequence==4.1.6
     # via ms-markets
 markdown-it-py==4.2.0
     # via rich
@@ -126,7 +123,7 @@ structlog==25.5.0
     # via mainsequence
 tqdm==4.67.3
     # via mainsequence
-typer==0.25.1
+typer==0.26.3
     # via mainsequence
 typing-extensions==4.15.0
     # via

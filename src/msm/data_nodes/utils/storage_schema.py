@@ -25,6 +25,12 @@ def storage_column_dtypes_map(storage_table: Any) -> dict[str, str]:
     }
 
 
+def storage_column_nullable_map(storage_table: Any) -> dict[str, bool]:
+    """Map each storage column name to its SQLAlchemy nullable flag."""
+
+    return {column.name: bool(column.nullable) for column in storage_table.__table__.columns}
+
+
 def storage_index_names(storage_table: Any) -> list[str]:
     """Return the storage class' declared index names."""
 
@@ -39,6 +45,7 @@ def storage_time_index_name(storage_table: Any) -> str:
 
 __all__ = [
     "storage_column_dtypes_map",
+    "storage_column_nullable_map",
     "storage_index_names",
     "storage_time_index_name",
 ]

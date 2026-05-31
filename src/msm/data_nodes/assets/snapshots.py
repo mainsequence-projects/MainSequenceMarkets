@@ -12,16 +12,12 @@ from msm.data_nodes.assets.asset_indexed import (
 )
 from msm.data_nodes.storage import AssetSnapshotsStorage
 from msm.data_nodes.utils.stamped import (
-    STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX,
-    STAMPED_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER,
     StampedDataNodeConfiguration,
     StampedFrameMixin,
     reset_frame_index,
 )
 from msm.settings import ASSET_UNIQUE_IDENTIFIER_DIMENSION
 
-ASSET_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER = STAMPED_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER
-ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX = STAMPED_DATA_NODE_BOOTSTRAP_TIME_INDEX
 AssetSnapshotInput = Mapping[str, Any] | Any
 
 
@@ -280,8 +276,6 @@ def _optional_snapshot_string(payload: Mapping[str, Any], field_name: str) -> st
 
 
 __all__ = [
-    "ASSET_DATA_NODE_BOOTSTRAP_TIME_INDEX",
-    "ASSET_DATA_NODE_BOOTSTRAP_UNIQUE_IDENTIFIER",
     "AssetDataNodeConfiguration",
     "AssetSnapshot",
     "AssetSnapshotConfiguration",

@@ -9,13 +9,22 @@ import pytest
 
 from mainsequence.client import dtype_codec as dc
 
-from msm.data_nodes.accounts import AccountHoldings, VirtualFundHoldings
+import msm.data_nodes.accounts as accounts_module
+import msm.services.holdings as holdings_service_module
+from msm.data_nodes.accounts import (
+    AccountHoldings,
+    HoldingsDataNodeConfiguration,
+    VirtualFundHoldings,
+)
 from msm.data_nodes.storage import (
     AccountHoldingsStorage,
     FundHoldingsStorage,
     TargetPositionsStorage,
 )
-from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
+from msm.data_nodes.utils.storage_schema import (
+    storage_column_dtypes_map,
+    storage_column_nullable_map,
+)
 from msm.models import markets_sqlalchemy_models
 from msm.services.holdings import (
     build_account_holdings_frame,
@@ -36,8 +45,18 @@ def test_holdings_storage_classes_are_registered_metatables() -> None:
 
 
 def test_holdings_nodes_source_column_dtypes_from_storage_classes() -> None:
+    assert not hasattr(accounts_module, "ACCOUNT_HOLDINGS_INDEX_NAMES")
+    assert not hasattr(accounts_module, "ACCOUNT_HOLDINGS_TIME_INDEX_NAME")
+    assert not hasattr(accounts_module, "VIRTUAL_FUND_HOLDINGS_INDEX_NAMES")
+    assert not hasattr(accounts_module, "VIRTUAL_FUND_HOLDINGS_TIME_INDEX_NAME")
     assert not hasattr(AccountHoldings, "_required_column_dtypes_map")
+    assert not hasattr(AccountHoldings, "_required_index_names")
+    assert not hasattr(AccountHoldings, "_required_time_index_name")
     assert not hasattr(VirtualFundHoldings, "_required_column_dtypes_map")
+    assert not hasattr(VirtualFundHoldings, "_required_index_names")
+    assert not hasattr(VirtualFundHoldings, "_required_time_index_name")
+    assert "index_names" not in HoldingsDataNodeConfiguration.model_fields
+    assert "time_index_name" not in HoldingsDataNodeConfiguration.model_fields
     assert AccountHoldings._column_dtypes_map_for_storage(
         AccountHoldingsStorage
     ) == storage_column_dtypes_map(AccountHoldingsStorage)
@@ -46,6 +65,19 @@ def test_holdings_nodes_source_column_dtypes_from_storage_classes() -> None:
     ) == storage_column_dtypes_map(FundHoldingsStorage)
     assert AccountHoldings._required_storage_table() is AccountHoldingsStorage
     assert VirtualFundHoldings._required_storage_table() is FundHoldingsStorage
+
+
+def test_holdings_nullability_is_sourced_from_storage_classes() -> None:
+    assert not hasattr(accounts_module, "NULLABLE_HOLDINGS_COLUMNS")
+    assert not hasattr(holdings_service_module, "NULLABLE_HOLDINGS_COLUMNS")
+
+    account_nullable = storage_column_nullable_map(AccountHoldingsStorage)
+    fund_nullable = storage_column_nullable_map(FundHoldingsStorage)
+
+    assert account_nullable["quantity"] is True
+    assert account_nullable["target_trade_time"] is True
+    assert fund_nullable["target_weight"] is True
+    assert fund_nullable["fund_uid"] is False
 
 
 def test_account_holdings_dtype_tokens_match_storage_columns() -> None:
@@ -78,17 +110,13 @@ def test_fund_holdings_dtype_tokens_match_storage_columns() -> None:
     assert dtype_map["fund_uid"] == dc.UUID_TOKEN
 
 
-def test_holdings_bootstrap_frames_match_storage_index_and_columns() -> None:
-    account_frame = AccountHoldings.build_schema_bootstrap_frame()
-    fund_frame = VirtualFundHoldings.build_schema_bootstrap_frame()
-
-    assert list(account_frame.index.names) == list(AccountHoldingsStorage.__index_names__)
-    assert list(fund_frame.index.names) == list(FundHoldingsStorage.__index_names__)
-    assert str(account_frame.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
-    assert str(fund_frame.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
-
-    account_columns = set(account_frame.reset_index().columns)
-    assert set(storage_column_dtypes_map(AccountHoldingsStorage)).issubset(account_columns)
+def test_holdings_nodes_do_not_expose_bootstrap_frame_api() -> None:
+    assert not hasattr(AccountHoldings, "build_schema_bootstrap_frame")
+    assert not hasattr(AccountHoldings, "build_schema_bootstrap_account_frame")
+    assert not hasattr(AccountHoldings, "build_initialization_frame")
+    assert not hasattr(VirtualFundHoldings, "build_schema_bootstrap_frame")
+    assert not hasattr(VirtualFundHoldings, "build_schema_bootstrap_fund_frame")
+    assert not hasattr(VirtualFundHoldings, "build_initialization_frame")
 
 
 def test_account_holdings_frame_builder_uses_storage_contract() -> None:

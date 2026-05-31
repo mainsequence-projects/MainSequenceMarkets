@@ -14,6 +14,12 @@ from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNodeConfiguration,
 )
 from msm.data_nodes.storage import AccountHoldingsStorage, FundHoldingsStorage
+from msm.data_nodes.utils.storage_schema import (
+    storage_column_dtypes_map,
+    storage_column_nullable_map,
+    storage_index_names,
+    storage_time_index_name,
+)
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
 from msm.services.holdings import (
     build_account_holdings_frame as build_account_holdings_service_frame,
@@ -22,31 +28,9 @@ from msm.services.holdings import (
     build_fund_holdings_frame as build_fund_holdings_service_frame,
 )
 
-ACCOUNT_HOLDINGS_TIME_INDEX_NAME = AccountHoldingsStorage.__time_index_name__
-ACCOUNT_HOLDINGS_INDEX_NAMES = list(AccountHoldingsStorage.__index_names__)
-
-VIRTUAL_FUND_HOLDINGS_TIME_INDEX_NAME = FundHoldingsStorage.__time_index_name__
-VIRTUAL_FUND_HOLDINGS_INDEX_NAMES = list(FundHoldingsStorage.__index_names__)
-
-NULLABLE_HOLDINGS_COLUMNS = {
-    "target_trade_time",
-    "target_weight",
-}
-
 
 class HoldingsDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
-    """Configuration base for SDK-created holdings data nodes."""
-
-    time_index_name: str
-    index_names: list[str]
-
-    @property
-    def owner_index_name(self) -> str:
-        return self.index_names[1]
-
-    @property
-    def row_identifier_index_name(self) -> str:
-        return self.index_names[-1]
+    """Update-scoped configuration base for SDK-created holdings DataNodes."""
 
 
 class HoldingsDataNode(AssetIndexedDataNode):
@@ -66,12 +50,7 @@ class HoldingsDataNode(AssetIndexedDataNode):
 
     @classmethod
     def default_config(cls) -> HoldingsDataNodeConfiguration:
-        return cls._validate_config(
-            HoldingsDataNodeConfiguration(
-                time_index_name=cls._required_time_index_name(),
-                index_names=cls._required_index_names(),
-            )
-        )
+        return cls._validate_config(HoldingsDataNodeConfiguration())
 
     @classmethod
     def _validate_config(
@@ -80,34 +59,20 @@ class HoldingsDataNode(AssetIndexedDataNode):
     ) -> HoldingsDataNodeConfiguration:
         if not isinstance(config, HoldingsDataNodeConfiguration):
             raise TypeError(f"{cls.__name__} requires a HoldingsDataNodeConfiguration.")
-        if config.time_index_name != cls._required_time_index_name():
-            raise ValueError(
-                f"{cls.__name__} requires time_index_name {cls._required_time_index_name()!r}."
-            )
-        if config.index_names != cls._required_index_names():
-            raise ValueError(
-                f"{cls.__name__} requires index_names {cls._required_index_names()!r}."
-            )
         return config
-
-    @classmethod
-    def _required_time_index_name(cls) -> str:
-        raise NotImplementedError
-
-    @classmethod
-    def _required_index_names(cls) -> list[str]:
-        raise NotImplementedError
 
     def _holdings_config(self) -> HoldingsDataNodeConfiguration:
         return self.__class__._validate_config(
             getattr(self, "config", None) or self.default_config()
         )
 
+    def _owner_index_name(self) -> str:
+        return storage_index_names(self.storage_table)[1]
+
     def update(self) -> pd.DataFrame:
         return _validate_holdings_frame(
             self.get_holdings_frame(),
-            config=self._holdings_config(),
-            column_dtypes_map=self._bound_column_dtypes_map(),
+            storage_table=self.storage_table,
         )
 
     def set_frame(self, frame: pd.DataFrame) -> HoldingsDataNode:
@@ -137,7 +102,7 @@ class HoldingsDataNode(AssetIndexedDataNode):
     ) -> pd.DataFrame:
         filters = _dimension_filters_with_identifier(
             dimension_filters,
-            self._holdings_config().owner_index_name,
+            self._owner_index_name(),
             owner_unique_identifier,
         )
         return self.get_df_between_dates(
@@ -157,7 +122,7 @@ class HoldingsDataNode(AssetIndexedDataNode):
     ) -> Any:
         filters = _dimension_filters_with_identifier(
             dimension_filters,
-            self._holdings_config().owner_index_name,
+            self._owner_index_name(),
             owner_unique_identifier,
         )
         return self.get_last_observation(dimension_filters=filters)
@@ -169,10 +134,10 @@ class HoldingsDataNode(AssetIndexedDataNode):
         *,
         storage_table: type[AccountHoldingsStorage | FundHoldingsStorage] | None = None,
     ) -> pd.DataFrame:
+        resolved_storage_table = storage_table or cls._required_storage_table()
         return _validate_holdings_frame(
             data_frame,
-            config=cls.default_config(),
-            column_dtypes_map=cls._column_dtypes_map_for_storage(storage_table),
+            storage_table=resolved_storage_table,
         )
 
     def holdings_data_source_uid(self) -> str:
@@ -203,18 +168,19 @@ class HoldingsDataNode(AssetIndexedDataNode):
         return storage
 
     def _validate_storage_contract(self, source_config: Any) -> None:
-        config = self._holdings_config()
         errors: list[str] = []
 
         time_index_name = _get_mapping_or_attr(source_config, "time_index_name")
-        if time_index_name != config.time_index_name:
+        expected_time_index_name = storage_time_index_name(self.storage_table)
+        if time_index_name != expected_time_index_name:
             errors.append(
-                f"time_index_name {time_index_name!r} does not match {config.time_index_name!r}"
+                f"time_index_name {time_index_name!r} does not match {expected_time_index_name!r}"
             )
 
         index_names = list(_get_mapping_or_attr(source_config, "index_names") or [])
-        if index_names != config.index_names:
-            errors.append(f"index_names {index_names!r} do not match {config.index_names!r}")
+        expected_index_names = storage_index_names(self.storage_table)
+        if index_names != expected_index_names:
+            errors.append(f"index_names {index_names!r} do not match {expected_index_names!r}")
 
         column_dtypes_map = dict(_get_mapping_or_attr(source_config, "column_dtypes_map") or {})
         for column_name, expected_dtype in self._bound_column_dtypes_map().items():
@@ -233,14 +199,6 @@ class HoldingsDataNode(AssetIndexedDataNode):
 
 class AccountHoldings(HoldingsDataNode):
     """DataNode users can subclass to import account holdings."""
-
-    @classmethod
-    def _required_time_index_name(cls) -> str:
-        return ACCOUNT_HOLDINGS_TIME_INDEX_NAME
-
-    @classmethod
-    def _required_index_names(cls) -> list[str]:
-        return list(ACCOUNT_HOLDINGS_INDEX_NAMES)
 
     @classmethod
     def _required_storage_table(cls) -> type[AccountHoldingsStorage]:
@@ -291,14 +249,6 @@ class VirtualFundHoldings(HoldingsDataNode):
     """DataNode users can subclass to import virtual-fund holdings."""
 
     @classmethod
-    def _required_time_index_name(cls) -> str:
-        return VIRTUAL_FUND_HOLDINGS_TIME_INDEX_NAME
-
-    @classmethod
-    def _required_index_names(cls) -> list[str]:
-        return list(VIRTUAL_FUND_HOLDINGS_INDEX_NAMES)
-
-    @classmethod
     def _required_storage_table(cls) -> type[FundHoldingsStorage]:
         return FundHoldingsStorage
 
@@ -342,6 +292,7 @@ class VirtualFundHoldings(HoldingsDataNode):
             )
         )
 
+
 def _dimension_filters_with_identifier(
     dimension_filters: dict[str, list[Any]] | None,
     key: str,
@@ -364,10 +315,13 @@ def _dimension_filters_with_identifier(
 def _validate_holdings_frame(
     data_frame: pd.DataFrame,
     *,
-    config: HoldingsDataNodeConfiguration,
-    column_dtypes_map: dict[str, str],
+    storage_table: type[AccountHoldingsStorage | FundHoldingsStorage],
 ) -> pd.DataFrame:
-    frame = _ensure_config_index(data_frame, config=config)
+    index_names = storage_index_names(storage_table)
+    time_index_name = storage_time_index_name(storage_table)
+    column_dtypes_map = storage_column_dtypes_map(storage_table)
+    column_nullable_map = storage_column_nullable_map(storage_table)
+    frame = _ensure_storage_index(data_frame, index_names=index_names)
     flat = frame.reset_index()
     missing_columns = [
         column_name for column_name in column_dtypes_map if column_name not in flat.columns
@@ -377,49 +331,54 @@ def _validate_holdings_frame(
             f"Holdings frame is missing required columns: {', '.join(missing_columns)}."
         )
 
-    flat = _normalize_config_values(flat, config=config, column_dtypes_map=column_dtypes_map)
-    frame = flat.set_index(config.index_names).sort_index()
+    flat = _normalize_config_values(
+        flat,
+        time_index_name=time_index_name,
+        column_dtypes_map=column_dtypes_map,
+        column_nullable_map=column_nullable_map,
+    )
+    frame = flat.set_index(index_names).sort_index()
     if frame.index.has_duplicates:
         raise ValueError(
-            f"Holdings frame contains duplicate rows for index contract {config.index_names}."
+            f"Holdings frame contains duplicate rows for index contract {index_names}."
         )
     return frame
 
 
-def _ensure_config_index(
+def _ensure_storage_index(
     data_frame: pd.DataFrame,
     *,
-    config: HoldingsDataNodeConfiguration,
+    index_names: list[str],
 ) -> pd.DataFrame:
-    expected_index_names = list(config.index_names)
     frame = data_frame.copy()
-    if list(frame.index.names) == expected_index_names:
+    if list(frame.index.names) == index_names:
         return frame
-    if all(index_name in frame.columns for index_name in expected_index_names):
-        return frame.set_index(expected_index_names)
+    if all(index_name in frame.columns for index_name in index_names):
+        return frame.set_index(index_names)
     raise ValueError(
         "Holdings frame must use index_names "
-        f"{expected_index_names} or include those columns before validation."
+        f"{index_names} or include those columns before validation."
     )
 
 
 def _normalize_config_values(
     frame: pd.DataFrame,
     *,
-    config: HoldingsDataNodeConfiguration,
+    time_index_name: str,
     column_dtypes_map: dict[str, str],
+    column_nullable_map: dict[str, bool],
 ) -> pd.DataFrame:
     normalized = frame.copy()
     for column_name, dtype in column_dtypes_map.items():
         values = normalized[column_name]
-        if column_name == config.time_index_name:
+        if column_name == time_index_name:
             normalized[column_name] = _normalize_time_index(values)
         elif dtype == dc.UUID_TOKEN:
             normalized[column_name] = values.map(_normalize_uuid)
         elif dtype == dc.FLOAT64:
             normalized[column_name] = _normalize_float64_column(
                 values,
-                nullable=column_name in NULLABLE_HOLDINGS_COLUMNS,
+                nullable=column_nullable_map[column_name],
             )
         elif dtype == dc.BOOL:
             normalized[column_name] = values.map(_normalize_bool)
@@ -509,12 +468,8 @@ def _coerce_optional_uid(value: Any, *, field_name: str) -> str | None:
 
 
 __all__ = [
-    "ACCOUNT_HOLDINGS_INDEX_NAMES",
-    "ACCOUNT_HOLDINGS_TIME_INDEX_NAME",
     "AccountHoldings",
     "HoldingsDataNode",
     "HoldingsDataNodeConfiguration",
-    "VIRTUAL_FUND_HOLDINGS_INDEX_NAMES",
-    "VIRTUAL_FUND_HOLDINGS_TIME_INDEX_NAME",
     "VirtualFundHoldings",
 ]

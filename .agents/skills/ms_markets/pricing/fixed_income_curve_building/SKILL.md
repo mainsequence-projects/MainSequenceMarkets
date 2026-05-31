@@ -105,16 +105,20 @@ identity override.
 rows describe which convention/index the curve belongs to and how to interpret
 published curve observations.
 
-Registration order matters:
+Pricing startup order matters:
 
 ```python
-from msm_pricing.meta_tables import register_pricing_meta_tables
+from msm_pricing.bootstrap import create_pricing_schemas
 
-register_pricing_meta_tables()
+create_pricing_schemas()
 ```
 
-The dependency order includes `AssetTable`, `IndexTypeTable`, `IndexTable`,
-`IndexConventionDetailsTable`, `CurveTable`, then pricing details tables.
+`create_pricing_schemas(...)` uses the same maintenance catalog bootstrap as
+`msm.start_engine(...)`: already-cataloged tables are attached, missing tables
+are registered, and dependencies are processed in FK order. The dependency order
+includes `AssetTable`, `IndexTypeTable`, `IndexTable`,
+`IndexConventionDetailsTable`, `CurveTable`, then pricing details and pricing
+DataNode storage tables.
 
 ## Creation Workflow
 

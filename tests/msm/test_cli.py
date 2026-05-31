@@ -2,18 +2,38 @@ from __future__ import annotations
 
 import importlib
 import json
+import pathlib
 
 import pytest
 
 from cli.main import bundled_msm_skills_root, main
 
 
-def _bundled_skill_names() -> list[str]:
+def _bundled_bundle_names() -> list[str]:
     return sorted(
         item.name
         for item in bundled_msm_skills_root().iterdir()
         if item.is_dir() and not item.name.startswith(".") and not item.name.startswith("__")
     )
+
+
+def _bundled_skill_paths() -> list[str]:
+    paths: list[str] = []
+
+    def walk(prefix: tuple[str, ...], root) -> None:
+        for item in root.iterdir():
+            if item.name.startswith(".") or item.name.startswith("__"):
+                continue
+            if not item.is_dir():
+                continue
+
+            path = (*prefix, item.name)
+            if item.joinpath("SKILL.md").is_file():
+                paths.append("/".join(path))
+            walk(path, item)
+
+    walk((), bundled_msm_skills_root())
+    return sorted(paths)
 
 
 def test_import_msm_does_not_copy_skills(tmp_path, monkeypatch) -> None:
@@ -39,7 +59,7 @@ def test_copy_msm_skills_dry_run_writes_nothing(tmp_path, capsys) -> None:
     assert payload["destination_root"] == str(
         tmp_path / ".agents" / "skills" / "ms_markets"
     )
-    assert sorted(item["name"] for item in payload["updated"]) == _bundled_skill_names()
+    assert sorted(item["name"] for item in payload["updated"]) == _bundled_bundle_names()
 
 
 def test_copy_msm_skills_copies_only_ms_markets_namespace(tmp_path) -> None:
@@ -48,7 +68,7 @@ def test_copy_msm_skills_copies_only_ms_markets_namespace(tmp_path) -> None:
     sentinel = mainsequence_skill / "SKILL.md"
     sentinel.write_text("keep me", encoding="utf-8")
 
-    stale_skill = tmp_path / ".agents" / "skills" / "ms_markets" / _bundled_skill_names()[0]
+    stale_skill = tmp_path / ".agents" / "skills" / "ms_markets" / _bundled_bundle_names()[0]
     stale_skill.mkdir(parents=True)
     stale_file = stale_skill / "stale.txt"
     stale_file.write_text("remove me", encoding="utf-8")
@@ -59,8 +79,13 @@ def test_copy_msm_skills_copies_only_ms_markets_namespace(tmp_path) -> None:
     assert sentinel.read_text(encoding="utf-8") == "keep me"
     assert not stale_file.exists()
     assert not (tmp_path / ".agents" / "ms_markets").exists()
-    for skill_name in _bundled_skill_names():
+    for skill_path in _bundled_skill_paths():
         skill_file = (
-            tmp_path / ".agents" / "skills" / "ms_markets" / skill_name / "SKILL.md"
+            tmp_path
+            / ".agents"
+            / "skills"
+            / "ms_markets"
+            / pathlib.Path(*skill_path.split("/"))
+            / "SKILL.md"
         )
         assert skill_file.exists()

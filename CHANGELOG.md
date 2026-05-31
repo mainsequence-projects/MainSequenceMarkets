@@ -20,6 +20,16 @@ and this project follows versioned releases.
   `SourceTableForeignKey`, and `test_node` (use `hash_namespace`). Re-pointed all
   imports off the removed `mainsequence.tdag*` / `mainsequence.client.models_tdag`
   modules onto `mainsequence.meta_tables*` / `mainsequence.client`.
+- Removed DataNode schema-bootstrap/fake-row APIs from holdings, execution,
+  stamped asset/index/pricing nodes, and canonical portfolio nodes. DataNodes now
+  require real frames or subclass update logic; MetaTable/storage registration
+  owns schema lifecycle.
+- Removed the local holdings nullability mirror; holdings builders and
+  validators now derive nullable columns from the storage MetaTable.
+- Removed holdings time-index and index-name constants that duplicated storage
+  MetaTable declarations.
+- Removed residual `time_index_name` and `index_names` fields from holdings,
+  execution, and canonical portfolio DataNode configurations.
 - Locked the `IndexTable`/`Index` row contract so legacy Constant-name fields
   stay out of canonical index identity.
 - Made `IndexTable.index_type` required and updated Index create/upsert,

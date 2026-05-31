@@ -196,9 +196,9 @@ storage class with a fixed index and column contract.
 | AccountHoldings               |-------------------------->| AccountHoldingsStorage      |
 | DataNode class                |                           | account_historical_holdings |
 |-------------------------------|                           |-----------------------------|
-| default identifier derives    |                           | time_index_name=time_index  |
-| from AccountHoldingsStorage.  |                           | index_names:                |
-| metatable_identifier()        |                           |  - time_index               |
+| identifier, index contract,   |                           | time_index_name=time_index  |
+| and dtype contract derive     |                           | index_names:                |
+| from AccountHoldingsStorage.  |                           |  - time_index               |
 |                               |                           |  - account_uid              |
 | update() returns DataFrame    |                           |  - unique_identifier        |
 +---------------+---------------+                           | records:                   |
@@ -229,6 +229,10 @@ unique row = (time_index, account_uid, unique_identifier)
 table uses account ownership and asset identity as dimensions so callers can
 query history by account, date range, and asset.
 
+The holdings DataNode configuration does not carry `time_index_name`,
+`index_names`, nullable columns, or dtype declarations. Those are storage
+MetaTable fields on `AccountHoldingsStorage` / `FundHoldingsStorage`.
+
 `VirtualFundHoldings` follows the same pattern for fund-level observations:
 
 ```text
@@ -236,9 +240,9 @@ query history by account, date range, and asset.
 | VirtualFundHoldings           |-------------------------->| FundHoldingsStorage        |
 | DataNode class                |                           | virtual_fund_historical...  |
 |-------------------------------|                           |-----------------------------|
-| default identifier derives    |                           | time_index_name=time_index  |
-| from FundHoldingsStorage.     |                           | index_names:                |
-| metatable_identifier()        |                           |  - time_index               |
+| identifier, index contract,   |                           | time_index_name=time_index  |
+| and dtype contract derive     |                           | index_names:                |
+| from FundHoldingsStorage.     |                           |  - time_index               |
 |                               |                           |  - fund_uid                 |
 |                               |                           |  - unique_identifier        |
 +-------------------------------+                           | extra measure: target_weight|

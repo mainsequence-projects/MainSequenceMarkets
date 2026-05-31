@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import datetime as dt
-
 PORTFOLIO_CANONICAL_TIME_INDEX_NAME = "time_index"
 PORTFOLIO_INDEX_ASSET_UNIQUE_IDENTIFIER = "portfolio_index_asset_unique_identifier"
 ASSET_UNIQUE_IDENTIFIER = "unique_identifier"
@@ -29,10 +27,6 @@ PORTFOLIOS_INDEX_NAMES = [
     ASSET_UNIQUE_IDENTIFIER,
 ]
 
-SCHEMA_BOOTSTRAP_TIME_INDEX = dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
-SCHEMA_BOOTSTRAP_PORTFOLIO_IDENTIFIER = "__schema_bootstrap_portfolio__"
-SCHEMA_BOOTSTRAP_ASSET_IDENTIFIER = "__schema_bootstrap_asset__"
-SCHEMA_BOOTSTRAP_SIGNAL_UID = "__schema_bootstrap_signal__"
 SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS = frozenset(
     {
         "hash_namespace",

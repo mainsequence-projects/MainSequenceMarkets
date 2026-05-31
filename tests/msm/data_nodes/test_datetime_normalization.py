@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import uuid
 
 import pandas as pd
 
@@ -10,9 +11,9 @@ os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
-from msm.data_nodes.accounts import AccountHoldings
 from msm.data_nodes.assets import AssetSnapshot
 from msm.data_nodes.execution import Orders
+from msm.services.holdings import build_account_holdings_frame
 from msm.portfolios.data_nodes.portfolio_weights import PortfolioWeights
 
 MICROSECOND_TIME = dt.datetime(2026, 5, 26, 18, 50, 19, 240235, tzinfo=dt.UTC)
@@ -36,14 +37,50 @@ def test_asset_snapshot_time_index_is_datetime64_ns_utc() -> None:
 
 
 def test_execution_time_columns_are_datetime64_ns_utc() -> None:
-    frame = Orders.build_schema_bootstrap_frame(time_index=MICROSECOND_TIME)
+    frame = Orders.validate_frame(
+        pd.DataFrame(
+            [
+                {
+                    "order_time": MICROSECOND_TIME,
+                    "order_unique_identifier": "order-1",
+                    "account_unique_identifier": "account-1",
+                    "fund_unique_identifier": "",
+                    "order_manager_unique_identifier": "",
+                    "asset_unique_identifier": "asset-1",
+                    "order_remote_id": "",
+                    "client_order_id": "",
+                    "order_type": "market",
+                    "order_side": 1,
+                    "quantity": 1.0,
+                    "status": "open",
+                    "filled_quantity": 0.0,
+                    "filled_price": 0.0,
+                    "expires_time": MICROSECOND_TIME,
+                    "limit_price": 0.0,
+                    "time_in_force": "",
+                    "comments": "",
+                    "venue_metadata": {},
+                }
+            ]
+        )
+    )
 
     assert _dtype(frame, "order_time") == EXPECTED_DTYPE
     assert _dtype(frame, "expires_time") == EXPECTED_DTYPE
 
 
 def test_holdings_time_columns_are_datetime64_ns_utc() -> None:
-    frame = AccountHoldings.build_schema_bootstrap_frame(time_index=MICROSECOND_TIME)
+    frame = build_account_holdings_frame(
+        holdings_date=MICROSECOND_TIME,
+        account_uid=uuid.uuid4(),
+        positions=[
+            {
+                "unique_identifier": "asset-1",
+                "quantity": 1,
+                "target_trade_time": MICROSECOND_TIME,
+            }
+        ],
+    )
 
     assert _dtype(frame, "time_index") == EXPECTED_DTYPE
     assert _dtype(frame, "target_trade_time") == EXPECTED_DTYPE
@@ -53,6 +90,22 @@ def test_holdings_time_columns_are_datetime64_ns_utc() -> None:
 
 
 def test_portfolio_time_columns_are_datetime64_ns_utc() -> None:
-    frame = PortfolioWeights.build_schema_bootstrap_frame(time_index=MICROSECOND_TIME)
+    frame = PortfolioWeights.validate_frame(
+        pd.DataFrame(
+            [
+                {
+                    "time_index": MICROSECOND_TIME,
+                    "portfolio_index_asset_unique_identifier": "portfolio-1",
+                    "unique_identifier": "asset-1",
+                    "weight": 1.0,
+                    "weight_before": 0.0,
+                    "price_current": 100.0,
+                    "price_before": 99.0,
+                    "volume_current": 1000.0,
+                    "volume_before": 900.0,
+                }
+            ]
+        )
+    )
 
     assert _dtype(frame, "time_index") == EXPECTED_DTYPE

@@ -6,19 +6,14 @@ import pandas as pd
 
 from .base import (
     AssetScopedPortfolioCanonicalDataNode,
-    PortfolioCanonicalDataNodeConfiguration,
     StorageTable,
     _empty_flat_frame,
     _require_columns,
     _reset_frame_index,
 )
 from .constants import (
-    ASSET_UNIQUE_IDENTIFIER,
     PORTFOLIO_INDEX_ASSET_UNIQUE_IDENTIFIER,
     PORTFOLIO_WEIGHT_SOURCE_COLUMN_ALIASES,
-    PORTFOLIO_WEIGHTS_INDEX_NAMES,
-    SCHEMA_BOOTSTRAP_ASSET_IDENTIFIER,
-    SCHEMA_BOOTSTRAP_PORTFOLIO_IDENTIFIER,
 )
 from .metadata import emit_portfolio_metadata, extract_portfolio_description
 from .portfolio_identity import (
@@ -120,7 +115,7 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
         if flat.empty or PORTFOLIO_INDEX_ASSET_UNIQUE_IDENTIFIER not in flat.columns:
             return
         unique_identifier = flat[PORTFOLIO_INDEX_ASSET_UNIQUE_IDENTIFIER].iloc[0]
-        if unique_identifier in (None, "", SCHEMA_BOOTSTRAP_PORTFOLIO_IDENTIFIER):
+        if unique_identifier in (None, ""):
             return
 
         if (
@@ -160,30 +155,17 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
         )
 
     @classmethod
-    def _required_index_names(cls) -> list[str]:
-        return list(PORTFOLIO_WEIGHTS_INDEX_NAMES)
-
-    @classmethod
     def _required_storage_table(cls) -> type[PortfolioWeightsStorage]:
         return PortfolioWeightsStorage
-
-    @classmethod
-    def _schema_bootstrap_index_values(cls) -> dict[str, Any]:
-        return {
-            PORTFOLIO_INDEX_ASSET_UNIQUE_IDENTIFIER: (SCHEMA_BOOTSTRAP_PORTFOLIO_IDENTIFIER),
-            ASSET_UNIQUE_IDENTIFIER: SCHEMA_BOOTSTRAP_ASSET_IDENTIFIER,
-        }
 
 
 def normalize_portfolio_weights_frame(
     weights_frame: pd.DataFrame,
     *,
     portfolio_index_asset_unique_identifier: str,
-    config: PortfolioCanonicalDataNodeConfiguration | None = None,
     storage_table: StorageTable | None = None,
 ) -> pd.DataFrame:
     """Normalize postprocessed Portfolios weights into canonical PortfolioWeights rows."""
-    config = PortfolioWeights._validate_config(config or PortfolioWeights.default_config())
     required_columns = list(PortfolioWeights._column_dtypes_map_for_storage(storage_table))
     flat = _reset_frame_index(weights_frame)
     if flat.empty:
@@ -199,6 +181,5 @@ def normalize_portfolio_weights_frame(
     )
     return PortfolioWeights.validate_frame(
         flat[required_columns],
-        config=config,
         storage_table=storage_table,
     )

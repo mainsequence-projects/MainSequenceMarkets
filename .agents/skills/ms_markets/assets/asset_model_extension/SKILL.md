@@ -42,21 +42,21 @@ Agent workflow:
 
 1. Register or upsert the needed `AssetType` before creating assets of that
    type.
-2. Use short, stable type keys such as `equity`, `crypto`, or `asset_future`.
+2. Use short, stable type keys such as `equity`, `crypto`, or `future`.
 3. Put explanatory text in `display_name` and `description`, not in the key.
 
 ```python
 from msm.api.assets import Asset, AssetType
 
 AssetType.upsert(
-    asset_type="asset_future",
-    display_name="Asset Future",
+    asset_type="future",
+    display_name="Future",
     description="Futures contracts represented as market assets.",
 )
 
 asset = Asset.upsert(
-    unique_identifier="asset-future-example",
-    asset_type="asset_future",
+    unique_identifier="future-example",
+    asset_type="future",
 )
 ```
 

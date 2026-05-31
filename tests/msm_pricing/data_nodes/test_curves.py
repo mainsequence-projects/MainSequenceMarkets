@@ -71,11 +71,9 @@ def test_discount_curves_storage_has_curve_foreign_key() -> None:
     assert DiscountCurvesStorage in set(pricing_sqlalchemy_models())
 
 
-def test_discount_curves_node_build_schema_bootstrap_frame_is_datetime64_ns_utc() -> None:
-    frame = DiscountCurvesNode.build_schema_bootstrap_frame()
-
-    assert list(frame.index.names) == ["time_index", CURVE_UNIQUE_IDENTIFIER_DIMENSION]
-    assert str(frame.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
+def test_discount_curves_node_does_not_expose_bootstrap_frame_api() -> None:
+    assert not hasattr(DiscountCurvesNode, "build_schema_bootstrap_frame")
+    assert not hasattr(DiscountCurvesNode, "build_initialization_frame")
 
 
 def test_discount_curves_node_validate_frame_normalizes_curve_frame() -> None:
@@ -122,7 +120,7 @@ def test_constructing_discount_curves_node_requires_registered_storage_table() -
 
     with pytest.raises(
         ValueError,
-        match="storage_table must be registered or bound before construction",
+        match="storage_table must be registered before construction",
     ):
         DiscountCurvesNode(CurveConfig(curve_unique_identifier="mxn_tiie_discount"))
 

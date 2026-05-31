@@ -24,12 +24,8 @@ from .base import (
     _reset_frame_index,
 )
 from .constants import (
-    ASSET_UNIQUE_IDENTIFIER,
-    SCHEMA_BOOTSTRAP_ASSET_IDENTIFIER,
-    SCHEMA_BOOTSTRAP_SIGNAL_UID,
     SIGNAL_UID,
     SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS,
-    SIGNAL_WEIGHTS_INDEX_NAMES,
 )
 from .metadata import emit_signal_metadata, extract_signal_description
 from .storage import SignalWeightsStorage
@@ -86,19 +82,16 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
         return self
 
     def update(self) -> pd.DataFrame:
-        config = self._canonical_config()
         raw_frame = self._calculate_signal_weights()
         frame = (
-            self.validate_frame(raw_frame, config=config, storage_table=self.storage_table)
-            if _is_canonical_frame(raw_frame, config=config)
+            self.validate_frame(raw_frame, storage_table=self.storage_table)
+            if _is_canonical_frame(raw_frame, storage_table=self.storage_table)
             else self.validate_frame(
                 normalize_signal_weights_frame(
                     raw_frame,
                     signal_uid=self.signal_uid,
-                    config=config,
                     storage_table=self.storage_table,
                 ),
-                config=config,
                 storage_table=self.storage_table,
             )
         )
@@ -340,7 +333,6 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
     ) -> SignalWeightsConfiguration:
         return cls._validate_config(
             SignalWeightsConfiguration(
-                index_names=cls._required_index_names(),
                 signal_configuration=signal_configuration,
             )
         )
@@ -366,27 +358,14 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
     ) -> SignalWeightsConfiguration:
         if not isinstance(config, SignalWeightsConfiguration):
             if isinstance(config, PortfolioCanonicalDataNodeConfiguration):
-                config = SignalWeightsConfiguration(
-                    index_names=config.index_names,
-                )
+                config = SignalWeightsConfiguration()
             else:
                 raise TypeError(f"{cls.__name__} requires a SignalWeightsConfiguration.")
         return super()._validate_config(config)
 
     @classmethod
-    def _required_index_names(cls) -> list[str]:
-        return list(SIGNAL_WEIGHTS_INDEX_NAMES)
-
-    @classmethod
     def _required_storage_table(cls) -> type[SignalWeightsStorage]:
         return SignalWeightsStorage
-
-    @classmethod
-    def _schema_bootstrap_index_values(cls) -> dict[str, Any]:
-        return {
-            SIGNAL_UID: SCHEMA_BOOTSTRAP_SIGNAL_UID,
-            ASSET_UNIQUE_IDENTIFIER: SCHEMA_BOOTSTRAP_ASSET_IDENTIFIER,
-        }
 
     @staticmethod
     def canonical_signal_configuration(signal: Any) -> dict[str, Any]:
@@ -423,11 +402,9 @@ def normalize_signal_weights_frame(
     signal_weights_frame: pd.DataFrame,
     *,
     signal_uid: str,
-    config: PortfolioCanonicalDataNodeConfiguration | None = None,
     storage_table: StorageTable | None = None,
 ) -> pd.DataFrame:
     """Normalize signal output into canonical SignalWeights rows."""
-    config = SignalWeights._validate_config(config or SignalWeights.default_config())
     required_columns = list(SignalWeights._column_dtypes_map_for_storage(storage_table))
     flat = _reset_frame_index(signal_weights_frame)
     if flat.empty:
@@ -444,7 +421,6 @@ def normalize_signal_weights_frame(
     )
     return SignalWeights.validate_frame(
         flat[required_columns],
-        config=config,
         storage_table=storage_table,
     )
 
