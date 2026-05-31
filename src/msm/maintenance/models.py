@@ -160,7 +160,8 @@ def markets_meta_table_contract_payload(model: type[MarketsBase]) -> dict[str, A
                 "name": constraint.name,
                 "columns": [element.parent.name for element in constraint.elements],
                 "target_columns": [
-                    f"{markets_meta_table_identifier(element.column.table)}.{element.column.name}"
+                    f"{_foreign_key_target_identifier(element)}."
+                    f"{_foreign_key_target_column_name(element)}"
                     for element in constraint.elements
                 ],
                 "ondelete": [element.ondelete for element in constraint.elements],
@@ -188,6 +189,42 @@ def markets_meta_table_contract_payload(model: type[MarketsBase]) -> dict[str, A
 
 def _sort_contract_items(items: Any) -> list[dict[str, Any]]:
     return sorted(items, key=lambda item: json.dumps(item, sort_keys=True))
+
+
+def _foreign_key_target_identifier(element: Any) -> str:
+    target_model = _metatable_foreign_key_target_model(element)
+    if target_model is not None:
+        return markets_meta_table_identifier(target_model)
+    return markets_meta_table_identifier(element.column.table)
+
+
+def _foreign_key_target_column_name(element: Any) -> str:
+    metadata = _metatable_foreign_key_metadata(element)
+    if metadata is not None:
+        target_column = metadata.get("target_column")
+        if target_column not in (None, ""):
+            return str(target_column)
+    return str(element.column.name)
+
+
+def _metatable_foreign_key_target_model(element: Any) -> type[MarketsBase] | None:
+    metadata = _metatable_foreign_key_metadata(element)
+    if metadata is None:
+        return None
+    target_model = metadata.get("target_model")
+    if isinstance(target_model, type):
+        return target_model
+    return None
+
+
+def _metatable_foreign_key_metadata(element: Any) -> dict[str, Any] | None:
+    info = getattr(element, "info", None)
+    if not isinstance(info, dict):
+        return None
+    metadata = info.get("mainsequence_metatable_foreign_key")
+    if isinstance(metadata, dict):
+        return metadata
+    return None
 
 
 def _required_text(value: Any, field_name: str) -> str:

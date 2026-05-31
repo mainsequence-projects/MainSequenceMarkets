@@ -3,7 +3,8 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
-from sqlalchemy import Date, ForeignKey, Index, String
+from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import Date, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -50,8 +51,9 @@ class BondAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.uid",
+        MetaTableForeignKey(
+            AssetTable,
+            column="uid",
             name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="CASCADE",
         ),
@@ -60,8 +62,9 @@ class BondAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     )
     issuer_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{IssuerTable.__table__.fullname}.uid",
+        MetaTableForeignKey(
+            IssuerTable,
+            column="uid",
             name=markets_fk_name(__metatable_identifier__, "Issuer", "issuer_uid"),
             ondelete="RESTRICT",
         ),
@@ -69,8 +72,9 @@ class BondAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     )
     currency_asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.uid",
+        MetaTableForeignKey(
+            AssetTable,
+            column="uid",
             name=markets_fk_name(__metatable_identifier__, "Asset", "currency_asset_uid"),
             ondelete="RESTRICT",
         ),

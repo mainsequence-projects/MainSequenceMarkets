@@ -12,7 +12,8 @@ import datetime
 import uuid
 from typing import Any, ClassVar
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, String
+from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
@@ -55,8 +56,9 @@ class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     unique_identifier: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.unique_identifier",
+        MetaTableForeignKey(
+            AssetTable,
+            column="unique_identifier",
             name=markets_fk_name(__markets_base_identifier__, "Asset", "unique_identifier"),
             ondelete="RESTRICT",
         ),
@@ -122,8 +124,9 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     account_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{AccountTable.__table__.fullname}.uid",
+        MetaTableForeignKey(
+            AccountTable,
+            column="uid",
             name=markets_fk_name(__markets_base_identifier__, "Account", "account_uid"),
             ondelete="RESTRICT",
         ),
@@ -137,7 +140,13 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         },
     )
     unique_identifier: Mapped[str] = mapped_column(
-        String,
+        String(255),
+        MetaTableForeignKey(
+            AssetTable,
+            column="unique_identifier",
+            name=markets_fk_name(__markets_base_identifier__, "Asset", "unique_identifier"),
+            ondelete="RESTRICT",
+        ),
         nullable=False,
         info={
             "label": "Unique Identifier",
@@ -217,8 +226,9 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     fund_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{FundTable.__table__.fullname}.uid",
+        MetaTableForeignKey(
+            FundTable,
+            column="uid",
             name=markets_fk_name(__markets_base_identifier__, "Fund", "fund_uid"),
             ondelete="RESTRICT",
         ),
@@ -232,7 +242,13 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         },
     )
     unique_identifier: Mapped[str] = mapped_column(
-        String,
+        String(255),
+        MetaTableForeignKey(
+            AssetTable,
+            column="unique_identifier",
+            name=markets_fk_name(__markets_base_identifier__, "Asset", "unique_identifier"),
+            ondelete="RESTRICT",
+        ),
         nullable=False,
         info={
             "label": "Unique Identifier",

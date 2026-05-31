@@ -28,7 +28,6 @@ from msm.api.market_metadata import (
     SignalMetadata,
 )
 from msm.api.portfolios import Fund, Portfolio, PortfolioAssetDetail, PortfolioMetadata
-from msm.models.registration import markets_meta_table_identifier
 from msm.models import (
     AccountGroupTable,
     AccountTable,
@@ -185,9 +184,6 @@ def test_missing_required_table_fails_before_operation(monkeypatch) -> None:
     runtime = SimpleNamespace(
         context=object(),
         meta_table_models=[PortfolioTable],
-        target_meta_table_uid_by_identifier={
-            markets_meta_table_identifier(PortfolioTable): str(uuid.uuid4()),
-        },
     )
 
     def fake_attach_schemas(**kwargs):

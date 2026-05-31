@@ -390,20 +390,23 @@ def test_bond_asset_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
     )
 
 
-def test_markets_models_build_platform_registration_requests_in_dependency_order() -> None:
-    target_meta_table_uid_by_identifier: dict[str, str] = {}
+def test_markets_models_build_platform_registration_requests_in_dependency_order(
+    monkeypatch,
+) -> None:
     pairs = []
 
     for model in markets_sqlalchemy_models():
         request = build_markets_registration_requests(
             data_source_uid=str(uuid.uuid4()),
             models=[model],
-            target_meta_table_uid_by_identifier=target_meta_table_uid_by_identifier,
         )[0]
         assert request.description == model.__metatable_description__
         pairs.append((model, request))
-        target_meta_table_uid_by_identifier[markets_meta_table_identifier(model)] = str(
-            uuid.uuid4()
+        monkeypatch.setattr(
+            model,
+            "__metatable_uid__",
+            str(uuid.uuid4()),
+            raising=False,
         )
 
     assert AssetTypeTable in markets_sqlalchemy_models()
@@ -427,8 +430,9 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
     assert all(request.storage_hash for request in storage_requests)
 
 
-def test_markets_models_build_external_registration_requests_in_dependency_order() -> None:
-    target_meta_table_uid_by_identifier: dict[str, str] = {}
+def test_markets_models_build_external_registration_requests_in_dependency_order(
+    monkeypatch,
+) -> None:
     pairs = []
 
     for model in markets_sqlalchemy_models():
@@ -436,12 +440,14 @@ def test_markets_models_build_external_registration_requests_in_dependency_order
             data_source_uid=str(uuid.uuid4()),
             management_mode="external_registered",
             models=[model],
-            target_meta_table_uid_by_identifier=target_meta_table_uid_by_identifier,
         )[0]
         assert request.description == model.__metatable_description__
         pairs.append((model, request))
-        target_meta_table_uid_by_identifier[markets_meta_table_identifier(model)] = str(
-            uuid.uuid4()
+        monkeypatch.setattr(
+            model,
+            "__metatable_uid__",
+            str(uuid.uuid4()),
+            raising=False,
         )
 
     assert pairs
@@ -483,9 +489,10 @@ def test_external_registration_mode_routes_storage_classes_through_sdk_register(
 
     assert register_calls
     assert register_calls[0]["data_source_uid"] == "data-source-uid"
-    assert result.target_meta_table_uid_by_identifier == {
-        markets_meta_table_identifier(AccountHoldingsStorage): "account-holdings-storage-uid"
-    }
+    assert (
+        result.meta_table_by_identifier[markets_meta_table_identifier(AccountHoldingsStorage)].uid
+        == "account-holdings-storage-uid"
+    )
 
 
 def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
@@ -513,7 +520,6 @@ def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
         models=[FakeModel],
     )
 
-    assert result.target_meta_table_uid_by_identifier == {"FakeModel": "fake-meta-table-uid"}
     assert result.models == [FakeModel]
     assert result.meta_table_by_identifier["FakeModel"].uid == "fake-meta-table-uid"
     assert [event for event, _kwargs in spy_logger.events] == [
@@ -567,7 +573,6 @@ def test_register_markets_meta_tables_reuses_duplicate_physical_table_conflict(
     )
 
     meta_table = result.meta_table_by_identifier["FakeModel"]
-    assert result.target_meta_table_uid_by_identifier == {"FakeModel": "existing-meta-table-uid"}
     assert meta_table.uid == "existing-meta-table-uid"
     assert meta_table.physical_table_name == "fake_asset"
     assert meta_table.storage_hash == "fake_asset"
@@ -600,7 +605,6 @@ def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monk
         models=[FakeModel],
     )
 
-    assert result.target_meta_table_uid_by_identifier == {"FakeModel": "fake-meta-table-uid"}
     assert result.meta_table_by_identifier["FakeModel"] is meta_table
     assert calls == [
         {

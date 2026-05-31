@@ -241,12 +241,16 @@ def _row_context_for_catalog_row(
     catalog_row: Mapping[str, Any],
     model: type[Any],
 ) -> MarketsRepositoryContext:
-    from msm.models.registration import markets_meta_table_identifier
+    from mainsequence.client.models_metatables import MetaTable
 
+    meta_table = MetaTable.get_by_uid(
+        uid=_string_value(catalog_row.get("meta_table_uid")),
+        timeout=catalog_context.timeout,
+    )
+    bind = getattr(model, "_bind_meta_table", None)
+    if callable(bind):
+        bind(meta_table)
     return MarketsRepositoryContext(
-        target_meta_table_uid_by_identifier={
-            markets_meta_table_identifier(model): _string_value(catalog_row.get("meta_table_uid"))
-        },
         limits=catalog_context.limits,
         timeout=catalog_context.timeout,
         namespace=catalog_context.namespace,

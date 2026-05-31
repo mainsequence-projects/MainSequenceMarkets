@@ -105,7 +105,6 @@ def test_register_pricing_meta_tables_delegates_with_pricing_models(monkeypatch)
     result = register_pricing_meta_tables(
         data_source_uid="data-source-uid",
         management_mode="external_registered",
-        target_meta_table_uid_by_identifier={"Asset": "asset-meta-table-uid"},
         open_for_everyone=True,
         protect_from_deletion=True,
         introspect=True,
@@ -118,13 +117,10 @@ def test_register_pricing_meta_tables_delegates_with_pricing_models(monkeypatch)
         {
             "data_source_uid": "data-source-uid",
             "management_mode": "external_registered",
-            "target_meta_table_uid_by_identifier": {"Asset": "asset-meta-table-uid"},
-            "target_meta_table_uid_by_fullname": None,
             "open_for_everyone": True,
             "protect_from_deletion": True,
             "introspect": True,
             "storage_hash_by_identifier": {"Asset": "asset-storage-hash"},
-            "storage_hash_by_fullname": None,
             "timeout": 5,
             "models": EXPECTED_PRICING_MODELS,
         }
@@ -155,10 +151,6 @@ def test_register_pricing_meta_tables_registration_request_modes_use_dependency_
         result = register_pricing_meta_tables(
             data_source_uid="data-source-uid",
             management_mode=management_mode,
-            target_meta_table_uid_by_identifier={
-                AssetTable.__metatable_identifier__: "asset-meta-table-uid",
-                IndexTable.__metatable_identifier__: "index-meta-table-uid",
-            },
         )
         assert result.models == EXPECTED_PRICING_MODELS
 
@@ -181,10 +173,6 @@ def test_register_pricing_meta_tables_uses_catalog_bootstrap_in_dependency_order
         return SimpleNamespace(
             registration=SimpleNamespace(
                 models=kwargs["models"],
-                target_meta_table_uid_by_identifier={
-                    model.__metatable_identifier__: f"{model.__name__}-meta-table-uid"
-                    for model in kwargs["models"]
-                },
             ),
         )
 
@@ -201,7 +189,4 @@ def test_register_pricing_meta_tables_uses_catalog_bootstrap_in_dependency_order
     assert len(calls) == 1
     assert calls[0]["data_source_uid"] == "data-source-uid"
     assert calls[0]["models"] == EXPECTED_PRICING_MODELS
-    assert result.target_meta_table_uid_by_identifier == {
-        model.__metatable_identifier__: f"{model.__name__}-meta-table-uid"
-        for model in EXPECTED_PRICING_MODELS
-    }
+    assert result.models == EXPECTED_PRICING_MODELS

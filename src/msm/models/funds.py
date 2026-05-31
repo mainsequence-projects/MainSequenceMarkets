@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, Index, String
+from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
@@ -53,8 +54,9 @@ class FundTable(MarketsMetaTableMixin, MarketsBase):
     unique_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
     target_account_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{AccountTable.__table__.fullname}.uid",
+        MetaTableForeignKey(
+            AccountTable,
+            column="uid",
             name=markets_fk_name(__metatable_identifier__, "Account", "target_account_uid"),
             ondelete="CASCADE",
         ),
@@ -62,8 +64,9 @@ class FundTable(MarketsMetaTableMixin, MarketsBase):
     )
     target_portfolio_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{PortfolioTable.__table__.fullname}.uid",
+        MetaTableForeignKey(
+            PortfolioTable,
+            column="uid",
             name=markets_fk_name(__metatable_identifier__, "Portfolio", "target_portfolio_uid"),
             ondelete="CASCADE",
         ),

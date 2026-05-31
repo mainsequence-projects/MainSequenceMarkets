@@ -112,6 +112,16 @@ Every storage class must include `__metatable_description__`. The description
 should explain the table's intention, row grain, and downstream use, not only
 list columns or schema mechanics.
 
+Use `__metatable_extra_hash_components__` on storage classes when distinct
+DataNode storage tables could otherwise have the same storage-relevant shape.
+For example, two one-index daily tables with one float column need a stable
+component such as `{"storage_name": "daily_random_number"}` versus
+`{"storage_name": "daily_random_addition"}`.
+
+This is storage identity. Changing it creates a different storage table. Do not
+use it for labels, descriptions, runtime options, test isolation, backend UIDs,
+data-source UIDs, or updater scope.
+
 Do not put those concerns in `DataNodeConfiguration`.
 
 Minimal pattern:
@@ -132,6 +142,7 @@ class Base(DeclarativeBase):
 class PricesTable(PlatformTimeIndexMetaData, Base):
     __metatable_namespace__ = "<domain_namespace>"
     __metatable_identifier__ = "<table_identifier>"
+    __metatable_extra_hash_components__ = {"storage_name": "<stable_storage_name>"}
     __metatable_description__ = (
         "Daily close prices keyed by asset unique identifier for portfolio and "
         "risk analytics."
@@ -228,26 +239,42 @@ Every `DataNodeConfiguration` field participates in `update_hash` by default.
 Declare values that change output values, dependencies, source choice, or
 updater scope as normal config fields.
 
-Every config field should use `Field(...)` with a clear `description` and
-`examples=[...]` when useful. The description must explain what the value means
-for the update process, not repeat the Python type.
+Every config field must be declared with `Field(...)`. Include a clear
+`description` and add `examples=[...]` whenever a realistic example helps. The
+description must explain what the value means for the update process, not repeat
+the Python type.
 
 Values that must not affect `update_hash` should not be Pydantic config fields.
 Use `ClassVar[...]` for class-level invariants and implementation constants, or
 keep runtime controls in environment/runtime configuration outside the
 DataNode config.
 
-The following are legacy platform metadata formats. They are invalid for
-DataNode configuration authoring and must not be preserved or reintroduced:
+If a value genuinely must remain a Pydantic field while not affecting
+`update_hash`, the only supported field-level opt-out is
+`json_schema_extra={"hash_excluded": True}`:
 
-- `json_schema_extra={"update_only": True}`
-- `json_schema_extra={"runtime_only": True}`
-- `json_schema_extra={"ignore_from_storage_hash": True}`
-- `_ARGS_IGNORE_IN_STORAGE_HASH`
+```python
+from pydantic import Field
 
-Do not add metadata-marker exceptions to make a field escape hashing. If it is a
-field, it is update identity. If it is not update identity, make it a `ClassVar`
-or move it out of `DataNodeConfiguration`.
+from mainsequence.meta_tables import DataNodeConfiguration
+
+
+class PricesConfig(DataNodeConfiguration):
+    shard_id: str = Field(
+        ...,
+        description="Stable updater partition for this price job.",
+        examples=["us_equities_daily"],
+    )
+    display_label: str | None = Field(
+        default=None,
+        description="Optional human-facing label for UI display only.",
+        examples=["US equities daily prices"],
+        json_schema_extra={"hash_excluded": True},
+    )
+```
+
+Do not invent other metadata-marker exceptions. Scope, dependency, source, and
+output-affecting fields must remain hashed config fields.
 
 ### 4. `hash_namespace` Is Isolation Only
 
@@ -326,7 +353,16 @@ Do not construct dependency graphs dynamically inside `update()`.
 ### 8. Foreign Keys Belong To The Storage Contract
 
 For new code, model foreign keys on the `PlatformTimeIndexMetaData` storage
-class or route the storage-contract work to the MetaTable skill.
+class or route the storage-contract work to the MetaTable skill. When a
+DataNode storage table needs a platform-managed FK, use
+`MetaTableForeignKey(TargetModel, column=...)` on the storage class. Do not use
+`ForeignKey(Target.__table__.c.uid)`, table fullnames, or explicit target UID
+maps in DataNode examples.
+
+Registration of the storage class follows the MetaTable lifecycle:
+`register()` recursively registers unresolved FK target model classes, uses the
+local process registry keyed by `storage_hash`, and writes the target
+`MetaTable.uid` into the FK contract.
 
 Do not add DataNode configuration fields just to mutate storage metadata.
 
@@ -345,11 +381,10 @@ When reviewing an existing DataNode, look for:
 - missing `__metatable_description__` on the storage table
 - dependency storage table passed as an ad hoc constructor argument
 - schema or published table metadata hidden in DataNode configuration
-- `update_only`, `runtime_only`, or `ignore_from_storage_hash`
 - `test_node=True`
 - missing explicit `storage_table`
 - accidental storage registration inside the DataNode
-- wrong meaning/scope/hash-excluded split
+- wrong split between hashed config fields and non-config class/runtime values
 - misuse of `hash_namespace`
 - non-incremental `update()` behavior
 - hidden dependency creation inside `update()`

@@ -3,7 +3,8 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
@@ -98,8 +99,9 @@ class AccountTargetPositionAssignmentTable(MarketsMetaTableMixin, MarketsBase):
     )
     account_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{AccountTable.__table__.fullname}.uid",
+        MetaTableForeignKey(
+            AccountTable,
+            column="uid",
             name=markets_fk_name(__metatable_identifier__, "Account", "account_uid"),
             ondelete="CASCADE",
         ),

@@ -17,7 +17,6 @@ from msm.base import (
     MARKETS_SCHEMA,
     MarketsBase,
     markets_meta_table_identifier as _markets_meta_table_identifier,
-    markets_table_logical_fullname,
 )
 from msm.models import markets_sqlalchemy_models
 
@@ -30,21 +29,8 @@ logger = _mainsequence_logger.bind(sub_application="markets", component="meta_ta
 @dataclass(frozen=True)
 class MarketsMetaTableRegistrationResult:
     meta_tables: list[MetaTable]
-    target_meta_table_uid_by_identifier: dict[str, str]
     models: list[type[MarketsBase]]
     meta_table_by_identifier: dict[str, MetaTable]
-
-    @property
-    def target_meta_table_uid_by_fullname(self) -> dict[str, str]:
-        """Backward-compatible alias for identifier-keyed runtime mappings."""
-
-        return self.target_meta_table_uid_by_identifier
-
-    @property
-    def meta_table_by_fullname(self) -> dict[str, MetaTable]:
-        """Backward-compatible alias for identifier-keyed runtime mappings."""
-
-        return self.meta_table_by_identifier
 
 
 def markets_meta_table_models() -> list[type[MarketsBase]]:
@@ -53,12 +39,6 @@ def markets_meta_table_models() -> list[type[MarketsBase]]:
 
 def markets_meta_table_identifier(model: type[MarketsBase]) -> str:
     return _markets_meta_table_identifier(model)
-
-
-def markets_meta_table_fullname(model: type[MarketsBase]) -> str:
-    """Compatibility alias for the stable MetaTable identifier."""
-
-    return markets_meta_table_identifier(model)
 
 
 def resolve_markets_meta_table_model(model: MarketsModelSelector) -> type[MarketsBase]:
@@ -102,14 +82,12 @@ def markets_foreign_key_target_identifiers(model: type[MarketsBase]) -> list[str
     targets: set[str] = set()
     for foreign_key_constraint in model.__table__.foreign_key_constraints:
         for element in foreign_key_constraint.elements:
+            target_model = _metatable_foreign_key_target_model(element)
+            if target_model is not None:
+                targets.add(markets_meta_table_identifier(target_model))
+                continue
             targets.add(markets_meta_table_identifier(element.column.table))
     return sorted(targets)
-
-
-def markets_foreign_key_target_fullnames(model: type[MarketsBase]) -> list[str]:
-    """Compatibility alias for identifier-based FK target discovery."""
-
-    return markets_foreign_key_target_identifiers(model)
 
 
 def is_time_index_meta_table_model(model: type[MarketsBase]) -> bool:
@@ -144,50 +122,39 @@ def build_markets_registration_requests(
     *,
     data_source_uid: str | None = None,
     management_mode: MarketsManagementMode = "platform_managed",
-    target_meta_table_uid_by_identifier: Mapping[str, Any] | None = None,
-    target_meta_table_uid_by_fullname: Mapping[str, Any] | None = None,
     labels: Sequence[str] | None = None,
     open_for_everyone: bool = False,
     protect_from_deletion: bool = False,
     introspect: bool | None = None,
     storage_hash_by_identifier: Mapping[str, str] | None = None,
-    storage_hash_by_fullname: Mapping[str, str] | None = None,
     models: Sequence[type[MarketsBase]] | None = None,
 ) -> list[MetaTableRegistrationRequest]:
     """Build MetaTable registration requests for all markets SQLAlchemy models.
 
-    FK-bearing model contracts require registered target MetaTable UIDs. Callers
-    that only want request construction should pass those UIDs by stable
-    MetaTable identifier. `register_markets_meta_tables(...)` handles that mapping while it
-    registers models in dependency order.
+    Platform-managed foreign keys are declared with SDK `MetaTableForeignKey`
+    targets. Explicit target UIDs are needed only when constructing external
+    registered contracts outside the SDK-managed lifecycle.
     """
 
     resolved_models = list(models or markets_meta_table_models())
     if management_mode == "external_registered" and not data_source_uid:
         raise ValueError("external_registered MetaTables require data_source_uid.")
-    target_mapping = _identifier_mapping(
-        target_meta_table_uid_by_identifier,
-        legacy_mapping=target_meta_table_uid_by_fullname,
-    )
-    storage_hash_mapping = _identifier_mapping(
-        storage_hash_by_identifier,
-        legacy_mapping=storage_hash_by_fullname,
-    )
+    storage_hash_mapping = _identifier_mapping(storage_hash_by_identifier)
     requests: list[MetaTableRegistrationRequest] = []
 
     for model in resolved_models:
-        sdk_target_mapping = _sdk_target_meta_table_uid_by_fullname(
-            target_mapping,
-            models=resolved_models,
-        )
+        target_meta_tables = _target_meta_tables_from_bound_models()
         platform_kwargs = {
             "data_source_uid": data_source_uid,
             "labels": labels,
             "open_for_everyone": open_for_everyone,
             "protect_from_deletion": protect_from_deletion,
-            "target_meta_table_uid_by_fullname": sdk_target_mapping,
         }
-        external_kwargs = {**platform_kwargs, "schema": MARKETS_SCHEMA}
+        external_kwargs = {
+            **platform_kwargs,
+            "schema": MARKETS_SCHEMA,
+            "target_meta_tables": target_meta_tables,
+        }
         if management_mode == "platform_managed":
             requests.append(
                 model.build_registration_request(
@@ -202,7 +169,12 @@ def build_markets_registration_requests(
                 requests.append(
                     model.build_registration_request(
                         **_platform_registration_kwargs(
-                            model, base_kwargs=platform_kwargs, introspect=introspect
+                            model,
+                            base_kwargs={
+                                **platform_kwargs,
+                                "_target_meta_tables": target_meta_tables,
+                            },
+                            introspect=introspect,
                         )
                     )
                 )
@@ -225,14 +197,11 @@ def register_markets_meta_tables(
     *,
     data_source_uid: str | None = None,
     management_mode: MarketsManagementMode = "platform_managed",
-    target_meta_table_uid_by_identifier: Mapping[str, Any] | None = None,
-    target_meta_table_uid_by_fullname: Mapping[str, Any] | None = None,
     labels: Sequence[str] | None = None,
     open_for_everyone: bool = False,
     protect_from_deletion: bool = False,
     introspect: bool | None = None,
     storage_hash_by_identifier: Mapping[str, str] | None = None,
-    storage_hash_by_fullname: Mapping[str, str] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
     models: Sequence[type[MarketsBase]] | None = None,
 ) -> MarketsMetaTableRegistrationResult:
@@ -241,33 +210,25 @@ def register_markets_meta_tables(
     if management_mode == "external_registered" and not data_source_uid:
         raise ValueError("external_registered MetaTables require data_source_uid.")
 
-    target_mapping = _identifier_mapping(
-        target_meta_table_uid_by_identifier,
-        legacy_mapping=target_meta_table_uid_by_fullname,
-        value_transform=_meta_table_uid,
-    )
     registered_meta_tables: list[MetaTable] = []
     meta_table_by_identifier: dict[str, MetaTable] = {}
-    storage_hash_mapping = _identifier_mapping(
-        storage_hash_by_identifier,
-        legacy_mapping=storage_hash_by_fullname,
-    )
+    storage_hash_mapping = _identifier_mapping(storage_hash_by_identifier)
 
     resolved_models = list(models or markets_meta_table_models())
     for position, model in enumerate(resolved_models, start=1):
-        sdk_target_mapping = _sdk_target_meta_table_uid_by_fullname(
-            target_mapping,
-            models=resolved_models,
-        )
+        target_meta_tables = _target_meta_tables_from_bound_models()
         platform_kwargs = {
             "data_source_uid": data_source_uid,
             "labels": labels,
             "open_for_everyone": open_for_everyone,
             "protect_from_deletion": protect_from_deletion,
-            "target_meta_table_uid_by_fullname": sdk_target_mapping,
             "timeout": timeout,
         }
-        external_kwargs = {**platform_kwargs, "schema": MARKETS_SCHEMA}
+        external_kwargs = {
+            **platform_kwargs,
+            "schema": MARKETS_SCHEMA,
+            "target_meta_tables": target_meta_tables,
+        }
         identifier = markets_meta_table_identifier(model)
         storage_hash = storage_hash_mapping.get(identifier)
         logger.info(
@@ -279,13 +240,20 @@ def register_markets_meta_tables(
             model_index=position,
             model_count=len(resolved_models),
             storage_hash=storage_hash,
-            target_meta_table_count=len(target_mapping),
+            target_meta_table_count=len(target_meta_tables),
         )
         try:
             if is_time_index_meta_table_model(model):
                 meta_table = model.register(
                     **_platform_registration_kwargs(
-                        model, base_kwargs=platform_kwargs, introspect=introspect
+                        model,
+                        base_kwargs={
+                            **platform_kwargs,
+                            "_target_meta_tables": target_meta_tables,
+                        }
+                        if management_mode == "external_registered"
+                        else platform_kwargs,
+                        introspect=introspect,
                     )
                 )
             elif management_mode == "platform_managed":
@@ -327,9 +295,9 @@ def register_markets_meta_tables(
                 meta_table_uid=_meta_table_uid(meta_table),
             )
 
+        _bind_model_meta_table(model, meta_table)
         registered_meta_tables.append(meta_table)
         meta_table_uid = _meta_table_uid(meta_table)
-        target_mapping[identifier] = meta_table_uid
         meta_table_by_identifier[identifier] = meta_table
         logger.info(
             "Registered markets MetaTable schema",
@@ -344,7 +312,6 @@ def register_markets_meta_tables(
 
     return MarketsMetaTableRegistrationResult(
         meta_tables=registered_meta_tables,
-        target_meta_table_uid_by_identifier=target_mapping,
         models=resolved_models,
         meta_table_by_identifier=meta_table_by_identifier,
     )
@@ -361,7 +328,6 @@ def resolve_registered_markets_meta_tables(
     """Resolve already-registered markets MetaTables without creating schemas."""
 
     resolved_models = list(models or markets_meta_table_models())
-    target_mapping: dict[str, str] = {}
     meta_tables: list[MetaTable] = []
     meta_table_by_identifier: dict[str, MetaTable] = {}
 
@@ -401,21 +367,20 @@ def resolve_registered_markets_meta_tables(
             )
 
         meta_table = matches[0]
+        _bind_model_meta_table(model, meta_table)
         meta_tables.append(meta_table)
         meta_table_by_identifier[identifier] = meta_table
-        target_mapping[identifier] = _meta_table_uid(meta_table)
         logger.info(
             "Resolved registered markets MetaTable schema",
             management_mode=management_mode,
             model=model.__name__,
             namespace=getattr(meta_table, "namespace", None),
             identifier=identifier,
-            meta_table_uid=target_mapping[identifier],
+            meta_table_uid=_meta_table_uid(meta_table),
         )
 
     return MarketsMetaTableRegistrationResult(
         meta_tables=meta_tables,
-        target_meta_table_uid_by_identifier=target_mapping,
         models=resolved_models,
         meta_table_by_identifier=meta_table_by_identifier,
     )
@@ -447,34 +412,37 @@ def _clean_filters(filters: Mapping[str, Any]) -> dict[str, Any]:
 def _identifier_mapping(
     mapping: Mapping[str, Any] | None,
     *,
-    legacy_mapping: Mapping[str, Any] | None = None,
     value_transform: Any = str,
 ) -> dict[str, Any]:
-    source = mapping if mapping is not None else legacy_mapping
-    if source is None:
+    if mapping is None:
         return {}
-    return {str(key): value_transform(value) for key, value in source.items()}
+    return {str(key): value_transform(value) for key, value in mapping.items()}
 
 
-def _sdk_target_meta_table_uid_by_fullname(
-    target_meta_table_uid_by_identifier: Mapping[str, Any],
-    *,
-    models: Sequence[type[MarketsBase]],
-) -> dict[str, str]:
-    """Translate internal identifier keys to the SDK's SQLAlchemy fullname keys."""
-
-    known_models = {
-        markets_meta_table_identifier(model): model for model in markets_meta_table_models()
-    }
-    known_models.update({markets_meta_table_identifier(model): model for model in models})
-    sdk_mapping: dict[str, str] = {}
-    for identifier, meta_table_uid in target_meta_table_uid_by_identifier.items():
+def _target_meta_tables_from_bound_models() -> dict[type[MarketsBase], str]:
+    target_meta_tables: dict[type[MarketsBase], str] = {}
+    for model in markets_meta_table_models():
+        get_meta_table_uid = getattr(model, "get_meta_table_uid", None)
+        if not callable(get_meta_table_uid):
+            continue
+        meta_table_uid = get_meta_table_uid()
         if meta_table_uid in (None, ""):
             continue
-        model = known_models.get(str(identifier))
-        sdk_key = markets_table_logical_fullname(model) if model is not None else str(identifier)
-        sdk_mapping[sdk_key] = str(meta_table_uid)
-    return sdk_mapping
+        target_meta_tables[model] = str(meta_table_uid)
+    return target_meta_tables
+
+
+def _metatable_foreign_key_target_model(element: Any) -> type[MarketsBase] | None:
+    info = getattr(element, "info", None)
+    if not isinstance(info, Mapping):
+        return None
+    metadata = info.get("mainsequence_metatable_foreign_key")
+    if not isinstance(metadata, Mapping):
+        return None
+    target_model = metadata.get("target_model")
+    if isinstance(target_model, type):
+        return target_model
+    return None
 
 
 def _duplicate_meta_table_from_conflict(
@@ -532,14 +500,20 @@ def _meta_table_uid(value: Any) -> str:
     return str(uid)
 
 
+def _bind_model_meta_table(model: type[MarketsBase], meta_table: MetaTable) -> None:
+    if not isinstance(meta_table, MetaTable):
+        return
+    bind = getattr(model, "_bind_meta_table", None)
+    if callable(bind):
+        bind(meta_table)
+
+
 __all__ = [
     "MarketsManagementMode",
     "MarketsModelSelector",
     "MarketsMetaTableRegistrationResult",
     "build_markets_registration_requests",
     "markets_foreign_key_target_identifiers",
-    "markets_foreign_key_target_fullnames",
-    "markets_meta_table_fullname",
     "markets_meta_table_identifier",
     "markets_meta_table_models",
     "register_markets_meta_tables",

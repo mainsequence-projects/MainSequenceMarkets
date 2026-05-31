@@ -11,7 +11,8 @@ from __future__ import annotations
 import datetime
 from typing import Any, ClassVar
 
-from sqlalchemy import DateTime, Float, ForeignKey, String
+from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import DateTime, Float, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -52,8 +53,9 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     curve_unique_identifier: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey(
-            f"{CurveTable.__table__.fullname}.unique_identifier",
+        MetaTableForeignKey(
+            CurveTable,
+            column="unique_identifier",
             name=markets_fk_name(__markets_base_identifier__, "Curve", "curve_unique_identifier"),
             ondelete="RESTRICT",
         ),
@@ -101,8 +103,9 @@ class IndexFixingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     unique_identifier: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey(
-            f"{IndexTable.__table__.fullname}.unique_identifier",
+        MetaTableForeignKey(
+            IndexTable,
+            column="unique_identifier",
             name=markets_fk_name(__markets_base_identifier__, "Index", "unique_identifier"),
             ondelete="RESTRICT",
         ),
@@ -144,8 +147,9 @@ class AssetPricingDetailsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     unique_identifier: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.unique_identifier",
+        MetaTableForeignKey(
+            AssetTable,
+            column="unique_identifier",
             name=markets_fk_name(__markets_base_identifier__, "Asset", "unique_identifier"),
             ondelete="RESTRICT",
         ),

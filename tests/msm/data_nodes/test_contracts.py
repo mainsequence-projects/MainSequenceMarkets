@@ -25,7 +25,8 @@ from msm.data_nodes.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,
 )
-from msm.models import markets_sqlalchemy_models
+from msm.models import AccountTable, AssetTable, FundTable, markets_sqlalchemy_models
+from msm.models.registration import markets_foreign_key_target_identifiers
 from msm.services.holdings import (
     build_account_holdings_frame,
     build_fund_holdings_frame,
@@ -42,6 +43,33 @@ def test_holdings_storage_classes_are_registered_metatables() -> None:
     assert AccountHoldingsStorage in model_classes
     assert FundHoldingsStorage in model_classes
     assert TargetPositionsStorage in model_classes
+
+
+def test_holdings_storage_declares_owner_and_asset_foreign_keys() -> None:
+    assert markets_foreign_key_target_identifiers(AccountHoldingsStorage) == [
+        AccountTable.__metatable_identifier__,
+        AssetTable.__metatable_identifier__,
+    ]
+    assert markets_foreign_key_target_identifiers(FundHoldingsStorage) == [
+        AssetTable.__metatable_identifier__,
+        FundTable.__metatable_identifier__,
+    ]
+
+    account_asset_column = AccountHoldingsStorage.__table__.columns["unique_identifier"]
+    fund_asset_column = FundHoldingsStorage.__table__.columns["unique_identifier"]
+
+    assert any(
+        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AssetTable
+        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
+        == "unique_identifier"
+        for foreign_key in account_asset_column.foreign_keys
+    )
+    assert any(
+        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AssetTable
+        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
+        == "unique_identifier"
+        for foreign_key in fund_asset_column.foreign_keys
+    )
 
 
 def test_holdings_nodes_source_column_dtypes_from_storage_classes() -> None:

@@ -209,11 +209,11 @@ storage class with a fixed index and column contract.
 +-------------------------------+                           |  - target_trade_time        |
 | Source table rows             |                           |    datetime64[ns, UTC]      |
 |-------------------------------|                           |  - extra_details jsonb      |
-| time_index                    |                           +-----------------------------+
-| account_uid                   |
-| unique_identifier             |
-| holdings_set_uid              |
-| quantity                      |
+| time_index                    |                           |-----------------------------|
+| account_uid ------------------+-------------------------->| FK -> AccountTable.uid      |
+| unique_identifier ------------+-------------------------->| FK -> AssetTable            |
+| holdings_set_uid              |                           |       .unique_identifier    |
+| quantity                      |                           +-----------------------------+
 | target_trade_time             |
 | extra_details                 |
 +-------------------------------+
@@ -226,8 +226,10 @@ unique row = (time_index, account_uid, unique_identifier)
 ```
 
 `unique_identifier` is the held asset's `Asset.unique_identifier`. The holdings
-table uses account ownership and asset identity as dimensions so callers can
-query history by account, date range, and asset.
+storage MetaTable declares `account_uid -> AccountTable.uid` and
+`unique_identifier -> AssetTable.unique_identifier` as storage-level foreign
+keys so callers can query history by account, date range, and asset without
+duplicating relationship metadata on the DataNode configuration.
 
 The holdings DataNode configuration does not carry `time_index_name`,
 `index_names`, nullable columns, or dtype declarations. Those are storage
@@ -237,7 +239,7 @@ MetaTable fields on `AccountHoldingsStorage` / `FundHoldingsStorage`.
 
 ```text
 +-------------------------------+       uses registered     +-----------------------------+
-| VirtualFundHoldings           |-------------------------->| FundHoldingsStorage        |
+| VirtualFundHoldings           |-------------------------->| FundHoldingsStorage         |
 | DataNode class                |                           | virtual_fund_historical...  |
 |-------------------------------|                           |-----------------------------|
 | identifier, index contract,   |                           | time_index_name=time_index  |
@@ -245,7 +247,12 @@ MetaTable fields on `AccountHoldingsStorage` / `FundHoldingsStorage`.
 | from FundHoldingsStorage.     |                           |  - time_index               |
 |                               |                           |  - fund_uid                 |
 |                               |                           |  - unique_identifier        |
-+-------------------------------+                           | extra measure: target_weight|
++-------------------------------+                           |-----------------------------|
+                                                            | FK: fund_uid -> Fund.uid    |
+                                                            | FK: unique_identifier       |
+                                                            |     -> AssetTable           |
+                                                            |        .unique_identifier   |
+                                                            | extra: target_weight        |
                                                             +-----------------------------+
 ```
 

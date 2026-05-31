@@ -4,7 +4,8 @@ import datetime as dt
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String
+from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import DateTime, Index, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
@@ -51,8 +52,9 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.uid",
+        MetaTableForeignKey(
+            AssetTable,
+            column="uid",
             name=markets_fk_name(__metatable_identifier__, "Asset", "asset_uid"),
             ondelete="CASCADE",
         ),
@@ -62,8 +64,9 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     underlying_index_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{IndexTable.__table__.fullname}.uid",
+        MetaTableForeignKey(
+            IndexTable,
+            column="uid",
             name=markets_fk_name(__metatable_identifier__, "Index", "underlying_index_uid"),
             ondelete="RESTRICT",
         ),
@@ -72,8 +75,9 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     quote_unit: Mapped[str] = mapped_column(String(64), nullable=False)
     settlement_asset: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.uid",
+        MetaTableForeignKey(
+            AssetTable,
+            column="uid",
             name=markets_fk_name(__metatable_identifier__, "Asset", "settlement_asset"),
             ondelete="RESTRICT",
         ),
@@ -81,8 +85,9 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     )
     margin_asset: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.uid",
+        MetaTableForeignKey(
+            AssetTable,
+            column="uid",
             name=markets_fk_name(__metatable_identifier__, "Asset", "margin_asset"),
             ondelete="RESTRICT",
         ),

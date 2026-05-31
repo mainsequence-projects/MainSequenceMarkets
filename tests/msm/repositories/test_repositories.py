@@ -33,12 +33,14 @@ from msm.repositories.execution import build_create_order_operation
 from msm.repositories.accounts import build_create_account_target_position_assignment_operation
 
 
+@pytest.fixture(autouse=True)
+def bind_test_meta_table_uids(monkeypatch) -> None:
+    for model in [MarketsMetaTableCatalogTable, *markets_sqlalchemy_models()]:
+        monkeypatch.setattr(model, "__metatable_uid__", str(uuid.uuid4()), raising=False)
+
+
 def _repository_context() -> MarketsRepositoryContext:
     return MarketsRepositoryContext(
-        target_meta_table_uid_by_identifier={
-            markets_meta_table_identifier(model): str(uuid.uuid4())
-            for model in markets_sqlalchemy_models()
-        },
         limits={"max_rows": 100, "statement_timeout_ms": 5000},
     )
 
@@ -51,11 +53,10 @@ def test_repository_context_resolves_identifier_after_physical_binding(monkeypat
     identifier = markets_meta_table_identifier(AssetTypeTable)
     storage_name = str(AssetTypeTable.__table__.name)
     meta_table_uid = str(uuid.uuid4())
-    context = MarketsRepositoryContext(
-        target_meta_table_uid_by_identifier={identifier: meta_table_uid},
-    )
+    context = MarketsRepositoryContext()
 
     monkeypatch.setitem(AssetTypeTable.__table__.info, "identifier", identifier)
+    monkeypatch.setattr(AssetTypeTable, "__metatable_uid__", meta_table_uid, raising=False)
     monkeypatch.setattr(AssetTypeTable, "__metatable_storage_hash__", storage_name)
     monkeypatch.setattr(AssetTypeTable.__table__, "name", "backend_physical_asset_type")
     monkeypatch.setattr(
@@ -119,11 +120,7 @@ def test_asset_upsert_operation_uses_compiled_upsert_protocol() -> None:
 
 
 def test_generic_upsert_operation_populates_python_defaults_for_backend_sql() -> None:
-    context = MarketsRepositoryContext(
-        target_meta_table_uid_by_identifier={
-            markets_meta_table_identifier(MarketsMetaTableCatalogTable): str(uuid.uuid4()),
-        },
-    )
+    context = MarketsRepositoryContext()
     row = MarketsMetaTableCatalogRow(
         namespace="ms-markets",
         identifier="Asset",

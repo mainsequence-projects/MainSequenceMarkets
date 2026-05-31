@@ -208,12 +208,13 @@ def test_timestamped_asset_nodes_validate_real_frames_as_datetime64_ns_utc(
 @pytest.mark.parametrize("storage_cls", [AssetSnapshotsStorage, AssetPricingDetailsStorage])
 def test_timestamped_asset_storage_has_asset_foreign_key(storage_cls) -> None:
     asset_identifier = AssetTable.__metatable_identifier__
-    asset_fullname = str(AssetTable.__table__.fullname)
     fk_column = storage_cls.__table__.columns[ASSET_UNIQUE_IDENTIFIER_DIMENSION]
 
     assert markets_foreign_key_target_identifiers(storage_cls) == [asset_identifier]
     assert any(
-        foreign_key.column.table.fullname == asset_fullname
+        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AssetTable
+        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
+        == "unique_identifier"
         for foreign_key in fk_column.foreign_keys
     )
 

@@ -135,8 +135,8 @@ config field.
 
 Under ADR 0017 the schema contract lives on a storage class
 (`PlatformTimeIndexMetaData` / `MarketsTimeIndexMetaTableMixin`), not on the
-DataNode configuration. The canonical asset foreign key is a SQLAlchemy
-`ForeignKey` column from `unique_identifier` to `AssetTable.unique_identifier` on
+DataNode configuration. The canonical asset foreign key is an SDK
+`MetaTableForeignKey(AssetTable, column="unique_identifier")` declaration on
 that storage class. The DataNode uses its storage class through
 `_required_storage_table()`.
 
@@ -144,10 +144,11 @@ that storage class. The DataNode uses its storage class through
 import datetime
 
 import pandas as pd
-from sqlalchemy import DateTime, Float, ForeignKey, String
+from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import DateTime, Float, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin, markets_fk_name
 from msm.data_nodes.assets import AssetDataNodeConfiguration, AssetTimestampedDataNode
 from msm.models.assets.core import AssetTable
 
@@ -168,8 +169,14 @@ class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     unique_identifier: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.unique_identifier",
+        MetaTableForeignKey(
+            AssetTable,
+            column="unique_identifier",
+            name=markets_fk_name(
+                __markets_base_identifier__,
+                AssetTable.__markets_base_identifier__,
+                "unique_identifier",
+            ),
             ondelete="RESTRICT",
         ),
         nullable=False,

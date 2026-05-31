@@ -77,30 +77,6 @@ def markets_meta_table_identifier(model_or_table: Any) -> str:
     raise ValueError("Markets MetaTable models must expose a non-empty identifier.")
 
 
-def markets_table_logical_fullname(model_or_table: Any) -> str:
-    """Return the stable logical SQLAlchemy fullname for a markets table.
-
-    SDK registration can rebind SQLAlchemy tables to backend physical names.
-    Runtime bookkeeping still needs the original logical/storage fullname.
-    """
-
-    table = _markets_table(model_or_table)
-    logical_fullname = getattr(table, "_mainsequence_logical_fullname", None)
-    if logical_fullname not in (None, ""):
-        return str(logical_fullname)
-
-    info = getattr(table, "info", None)
-    if isinstance(info, Mapping):
-        logical_fullname = info.get("mainsequence_logical_fullname")
-        if logical_fullname not in (None, ""):
-            return str(logical_fullname)
-
-    fullname = getattr(table, "fullname", None)
-    if fullname in (None, ""):
-        raise ValueError("Markets SQLAlchemy table metadata must expose a non-empty fullname.")
-    return str(fullname)
-
-
 def markets_table_storage_name(model_or_table: Any) -> str:
     """Return the stable storage/table identity for a markets table."""
 
@@ -263,7 +239,6 @@ __all__ = [
     "markets_meta_table_identifier",
     "markets_postgres_identifier",
     "markets_table_args",
-    "markets_table_logical_fullname",
     "markets_table_name",
     "markets_table_storage_name",
     "markets_namespace",

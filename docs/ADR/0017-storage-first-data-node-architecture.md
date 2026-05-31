@@ -137,9 +137,9 @@ architecture moves that surface onto storage classes. Concrete gaps:
 5. **Foreign keys use the removed `SourceTableForeignKey`.** Helpers
    `asset_unique_identifier_foreign_key` / `asset_indexed_foreign_keys`
    (`assets/asset_indexed.py`) and `curve_unique_identifier_foreign_key` /
-   `curve_indexed_foreign_keys` (`data_nodes/curves.py`) must become SQLAlchemy
-   `ForeignKey` columns on the storage class, registered with
-   `target_meta_tables={AssetTable: <registered>, ...}` (ADR 0007 superseded).
+   `curve_indexed_foreign_keys` (`data_nodes/curves.py`) must become SDK
+   `MetaTableForeignKey(TargetModel, column=...)` columns on the storage class
+   (ADR 0007 superseded; ADR 0019 defines the canonical FK helper).
 
 6. **Removed hash markers.** `test_node` (2 files), `update_only` (5 files), and
    `runtime_only` / `ignore_from_storage_hash` (3 files) are no longer supported.
@@ -211,10 +211,10 @@ by the registered `TimeIndexMetaData.uid`). Descriptive-only fields use
 
 ### 4. Foreign keys move to the storage class
 
-Asset/curve/account identity foreign keys become SQLAlchemy `ForeignKey` columns
-on the storage class, pointed at the registered MetaTable physical table, and
-registered with `target_meta_tables={...}`. The `SourceTableForeignKey` helper
-functions are removed.
+Asset/curve/account identity foreign keys become SDK `MetaTableForeignKey`
+columns on the storage class, pointed at the target MetaTable authoring model
+class. The SDK resolves registered target `MetaTable.uid` values during
+registration. The `SourceTableForeignKey` helper functions are removed.
 
 ### 5. `hash_namespace` replaces `test_node`
 
@@ -273,8 +273,8 @@ backend use an explicit `hash_namespace(...)`.
 - [x] `PlatformTimeIndexMetaData` exposes `register`,
   `build_registration_request`, `get_meta_table`, `get_meta_table_uid`,
   `get_time_index_metadata`, `get_storage_hash`, `resolve_foreign_key_targets`;
-  `register(..., target_meta_tables={...})` is the FK-wiring and storage
-  lifecycle entrypoint.
+  `MetaTableForeignKey(TargetModel, column=...)` is the FK authoring API and
+  `register(...)` is the storage lifecycle entrypoint.
 - [x] ~~Pin/record the target SDK version in `pyproject.toml` / `uv.lock`~~ —
   skipped by maintainer decision.
 - [x] ~~Throwaway smoke script mirroring `simple_data_nodes.py`~~ — skipped by
@@ -291,7 +291,7 @@ Verified against the project `.venv` (SDK `4.1.5`):
 | `PlatformManagedMetaTable`, `POSTGRES_IDENTIFIER_MAX_LENGTH`, `metatable_tablename`, `metatable_configured_tablename`, `slugify_identifier`, `compile_sqlalchemy_statement`, `register_external_sqlalchemy_model`, `external_registered_registration_request_from_sqlalchemy_model` | `mainsequence.tdag.meta_tables` | `mainsequence.meta_tables` |
 | `UniqueIdentifierRangeMap`, `UpdateStatistics`, `ColumnMetaData`, `TableMetaData`, `LOGICAL_COLUMN_DTYPES_ATTR` | `mainsequence.client.models_tdag` | `mainsequence.client.models_metatables` |
 | `Artifact` | `mainsequence.client.models_tdag` | `mainsequence.client` |
-| `SourceTableForeignKey` | `mainsequence.tdag.data_nodes` | **removed** — model FKs as SQLAlchemy `ForeignKey` on the storage class + `target_meta_tables` (Decision §4) |
+| `SourceTableForeignKey` | `mainsequence.tdag.data_nodes` | **removed** — model FKs as SDK `MetaTableForeignKey(TargetModel, column=...)` on the storage class (Decision §4, ADR 0019) |
 | `DataNodeStorage` | `mainsequence.client.models_tdag` | **no exported drop-in** — runtime source-table provisioning is superseded by storage-class registration |
 
 ### Stage 1: Re-point already-correct models layer — DONE
@@ -340,7 +340,10 @@ Verified against the project `.venv` (SDK `4.1.5`):
   `IndexFixingsStorage.unique_identifier` → `Index`,
   `AssetPricingDetailsStorage.unique_identifier` / `AssetSnapshotsStorage.unique_identifier`
   → `Asset`, `AccountHoldingsStorage.account_uid` → `Account.uid`,
-  `FundHoldingsStorage.fund_uid` → `Fund.uid` (all `ondelete="RESTRICT"`). The
+  `AccountHoldingsStorage.unique_identifier` → `Asset.unique_identifier`,
+  `FundHoldingsStorage.fund_uid` → `Fund.uid`,
+  `FundHoldingsStorage.unique_identifier` → `Asset.unique_identifier`
+  (all `ondelete="RESTRICT"`). The
   other 10 outputs carry no FK. Convention: `String(255)` only on FK string
   columns (to match the target `unique_identifier`); plain `String` otherwise.
 - [x] Set `__index_names__`/`__time_index_name__` per class from the legacy
@@ -562,10 +565,11 @@ DataNode storage now registers through the same ADR 0015 catalog bootstrap as
 domain MetaTables: the 13 msm storage classes are appended to
 `markets_sqlalchemy_models()` and the 3 pricing storage classes to
 `pricing_sqlalchemy_models()`, each after their FK target MetaTables, so
-`start_engine()` / `create_pricing_schemas()` register them in dependency order
-with identifier-keyed `target_meta_table_uid_by_identifier` wiring already
-threaded by the existing bootstrap loop. Any SQLAlchemy fullname mapping is
-confined to the SDK registration adapter boundary.
+`start_engine()` / `create_pricing_schemas()` register them in dependency order.
+Catalog rows keep identifier-keyed backend references. Runtime row operations
+read operation-scope UIDs from the bound model classes. FK declarations are
+model-keyed `MetaTableForeignKey(...)` columns, so the markets runtime no longer
+carries SQLAlchemy table-name target maps.
 
 - [x] Registered DataNode storage through the catalog: extended both model
   registries in FK order. Storage classes are imported **lazily inside** the
@@ -689,9 +693,10 @@ working import surface before the bulk node migration.
 - **Hidden behavior in the base layer.** Asset-scope narrowing and
   update-statistics scoping in `AssetIndexedDataNode` are subtle; preserve them
   under test rather than rewriting from scratch.
-- **FK target resolution.** SQLAlchemy `ForeignKey` to MetaTable physical tables
-  depends on registration order and `target_meta_tables`; parent tables must be
-  registered first.
+- **FK target resolution.** `MetaTableForeignKey` target models must be
+  available in the registration graph. Parent tables are still listed before
+  dependants so recursive SDK registration and catalog binding resolve stable
+  target `MetaTable.uid` values.
 
 ## Non-Goals
 

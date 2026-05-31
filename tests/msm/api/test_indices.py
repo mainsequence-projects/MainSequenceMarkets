@@ -15,7 +15,6 @@ from msm.api.indices import (
     normalize_index_type,
 )
 from msm.constants import INDEX_TYPE_EQUITY, INDEX_TYPE_INTEREST_RATE
-from msm.models.registration import markets_meta_table_identifier
 from msm.models import IndexTable, IndexTypeTable
 
 
@@ -73,9 +72,6 @@ def test_index_upsert_uses_active_runtime(monkeypatch) -> None:
     context = object()
     runtime = SimpleNamespace(
         context=context,
-        target_meta_table_uid_by_identifier={
-            markets_meta_table_identifier(IndexTable): str(uuid.uuid4()),
-        },
     )
     calls = []
 

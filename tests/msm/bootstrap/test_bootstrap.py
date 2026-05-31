@@ -28,7 +28,6 @@ def install_fake_bootstrap_modules(monkeypatch):
     calls = []
     attach_calls = []
     registration = SimpleNamespace(
-        target_meta_table_uid_by_identifier={"Asset": "asset-meta-table-uid"},
         meta_tables=["asset-meta-table"],
         models=["Asset"],
         meta_table_by_identifier={"Asset": "asset-meta-table"},
@@ -37,17 +36,11 @@ def install_fake_bootstrap_modules(monkeypatch):
     class FakeMarketsRepositoryContext:
         def __init__(
             self,
-            target_meta_table_uid_by_identifier,
             timeout=None,
             namespace=None,
         ) -> None:
-            self.target_meta_table_uid_by_identifier = target_meta_table_uid_by_identifier
             self.timeout = timeout
             self.namespace = namespace
-
-        @property
-        def target_meta_table_uid_by_fullname(self):
-            return self.target_meta_table_uid_by_identifier
 
     def fake_register_markets_meta_tables(**kwargs):
         calls.append(kwargs)
@@ -124,7 +117,6 @@ def test_start_engine_registers_metatables_and_returns_repository_context(
     assert runtime.registration is registration
     assert runtime.meta_tables == ["asset-meta-table"]
     assert runtime.meta_table_models == ["Asset"]
-    assert runtime.context.target_meta_table_uid_by_identifier == {"Asset": "asset-meta-table-uid"}
     assert runtime.namespace == DEFAULT_MARKETS_NAMESPACE
     assert runtime.context.namespace == DEFAULT_MARKETS_NAMESPACE
     assert calls[0]["data_source_uid"] == "data-source-uid"
@@ -187,7 +179,6 @@ def test_start_engine_logs_bootstrap_resources(monkeypatch) -> None:
     assert resolved_event["models"] == ["Asset"]
     registered_event = spy_logger.events[3][1]
     assert registered_event["meta_table_count"] == 1
-    assert registered_event["target_meta_table_count"] == 1
     assert registered_event["registered_count"] == 1
     assert registered_event["catalog_meta_table_uid"] == "catalog-meta-table-uid"
     runtime_event = spy_logger.events[5][1]
@@ -285,9 +276,8 @@ def test_configure_metatable_namespace_allows_loaded_models_with_same_namespace(
 def test_attach_schemas_resolves_registered_metatables_without_registering(monkeypatch) -> None:
     register_calls, attach_calls, _registration = install_fake_bootstrap_modules(monkeypatch)
 
-    runtime = bootstrap.attach_schemas(namespace="mainsequence.markets", models=["Asset"])
+    bootstrap.attach_schemas(namespace="mainsequence.markets", models=["Asset"])
 
-    assert runtime.context.target_meta_table_uid_by_identifier == {"Asset": "asset-meta-table-uid"}
     assert register_calls == []
     assert attach_calls == [
         {
@@ -352,19 +342,22 @@ def test_resolve_runtime_uses_identifier_after_physical_binding(monkeypatch) -> 
     identifier = markets_meta_table_identifier(AssetTypeTable)
     storage_name = str(AssetTypeTable.__table__.name)
     registration = SimpleNamespace(
-        target_meta_table_uid_by_identifier={identifier: "asset-type-meta-table-uid"},
         meta_tables=["asset-type-meta-table"],
         models=[AssetTypeTable],
         meta_table_by_identifier={identifier: "asset-type-meta-table"},
     )
     runtime = bootstrap.MarketsRuntime(
         registration=registration,
-        context=MarketsRepositoryContext(
-            target_meta_table_uid_by_identifier=registration.target_meta_table_uid_by_identifier,
-        ),
+        context=MarketsRepositoryContext(),
     )
     monkeypatch.setattr(bootstrap, "_RUNTIME", runtime)
     monkeypatch.setitem(AssetTypeTable.__table__.info, "identifier", identifier)
+    monkeypatch.setattr(
+        AssetTypeTable,
+        "__metatable_uid__",
+        "asset-type-meta-table-uid",
+        raising=False,
+    )
     monkeypatch.setattr(AssetTypeTable, "__metatable_storage_hash__", storage_name)
     monkeypatch.setattr(AssetTypeTable.__table__, "name", "backend_physical_asset_type")
     monkeypatch.setattr(
@@ -391,4 +384,4 @@ def test_resolve_runtime_missing_tables_error_names_table_declarations(
 
     message = str(exc_info.value)
     assert "Portfolio" in message
-    assert "Initialized identifiers: Asset" in message
+    assert "Initialized tables: Asset" in message

@@ -36,11 +36,9 @@ def install_fake_pricing_bootstrap(monkeypatch):
     class FakeMarketsRepositoryContext:
         def __init__(
             self,
-            target_meta_table_uid_by_identifier,
             timeout=None,
             namespace=None,
         ) -> None:
-            self.target_meta_table_uid_by_identifier = target_meta_table_uid_by_identifier
             self.timeout = timeout
             self.namespace = namespace
 
@@ -65,7 +63,6 @@ def install_fake_pricing_bootstrap(monkeypatch):
         register_calls.append(kwargs)
         return SimpleNamespace(
             meta_tables=["curve-meta-table"],
-            target_meta_table_uid_by_identifier={"Curve": "curve-meta-table-uid"},
             models=kwargs["models"],
         )
 
@@ -73,7 +70,6 @@ def install_fake_pricing_bootstrap(monkeypatch):
         attach_calls.append(kwargs)
         return SimpleNamespace(
             meta_tables=["curve-meta-table"],
-            target_meta_table_uid_by_identifier={"Curve": "curve-meta-table-uid"},
             models=kwargs["models"],
         )
 
@@ -351,17 +347,15 @@ def test_resolve_pricing_runtime_uses_identifier_after_physical_binding(
     storage_name = str(CurveTable.__table__.name)
     registration = SimpleNamespace(
         meta_tables=["curve-meta-table"],
-        target_meta_table_uid_by_identifier={identifier: "curve-meta-table-uid"},
         models=[CurveTable],
     )
     runtime = pricing_bootstrap.PricingRuntime(
         registration=registration,
-        context=MarketsRepositoryContext(
-            target_meta_table_uid_by_identifier=registration.target_meta_table_uid_by_identifier,
-        ),
+        context=MarketsRepositoryContext(),
     )
     monkeypatch.setattr(pricing_bootstrap, "_PRICING_RUNTIME", runtime)
     monkeypatch.setitem(CurveTable.__table__.info, "identifier", identifier)
+    monkeypatch.setattr(CurveTable, "__metatable_uid__", "curve-meta-table-uid", raising=False)
     monkeypatch.setattr(CurveTable, "__metatable_storage_hash__", storage_name)
     monkeypatch.setattr(CurveTable.__table__, "name", "backend_physical_curve")
     monkeypatch.setattr(
@@ -396,4 +390,4 @@ def test_resolve_pricing_runtime_missing_tables_error_names_declarations(
             row_model_name="IndexConventionDetails",
         )
 
-    assert "Initialized identifiers: Curve" in str(exc_info.value)
+    assert "Initialized tables: CurveTable" in str(exc_info.value)

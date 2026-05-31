@@ -13,7 +13,7 @@ from mainsequence.client.models_metatables import (
 )
 from mainsequence.meta_tables.compiled_sql.v1 import compile_sqlalchemy_statement
 
-from msm.base import MarketsBase, markets_meta_table_identifier
+from msm.base import MarketsBase
 
 
 @dataclass(frozen=True)
@@ -21,18 +21,21 @@ class MarketsMetaTableHandle:
     """Execution handle for one registered markets MetaTable model."""
 
     model: type[MarketsBase]
-    meta_table_uid: str
     meta_table: MetaTable | None = None
     limits: MetaTableOperationLimits | Mapping[str, Any] | None = None
     timeout: int | float | tuple[float, float] | None = None
     namespace: str | None = None
+
+    @property
+    def meta_table_uid(self) -> str:
+        return _bound_meta_table_uid(self.model, meta_table=self.meta_table)
 
     def meta_table_uid_for_model(self, model: type[MarketsBase]) -> str:
         if model is not self.model:
             raise ValueError(
                 f"{self.model.__name__} handle cannot compile operations for {model.__name__}."
             )
-        return self.meta_table_uid
+        return _bound_meta_table_uid(model, meta_table=self.meta_table)
 
     def scope_table(
         self,
@@ -56,46 +59,22 @@ class MarketsRepositoryContext:
     bootstrap. `None` means the library's normal MetaTable namespace was used.
     """
 
-    target_meta_table_uid_by_identifier: Mapping[str, str]
     limits: MetaTableOperationLimits | Mapping[str, Any] | None = None
     timeout: int | float | tuple[float, float] | None = None
     namespace: str | None = None
 
     def __init__(
         self,
-        target_meta_table_uid_by_identifier: Mapping[str, str] | None = None,
-        *,
-        target_meta_table_uid_by_fullname: Mapping[str, str] | None = None,
         limits: MetaTableOperationLimits | Mapping[str, Any] | None = None,
         timeout: int | float | tuple[float, float] | None = None,
         namespace: str | None = None,
     ) -> None:
-        mapping = target_meta_table_uid_by_identifier
-        if mapping is None:
-            mapping = target_meta_table_uid_by_fullname
-        if mapping is None:
-            mapping = {}
-        object.__setattr__(self, "target_meta_table_uid_by_identifier", mapping)
         object.__setattr__(self, "limits", limits)
         object.__setattr__(self, "timeout", timeout)
         object.__setattr__(self, "namespace", namespace)
 
-    @property
-    def target_meta_table_uid_by_fullname(self) -> Mapping[str, str]:
-        """Backward-compatible alias for identifier-keyed runtime mappings."""
-
-        return self.target_meta_table_uid_by_identifier
-
     def meta_table_uid_for_model(self, model: type[MarketsBase]) -> str:
-        identifier = markets_meta_table_identifier(model)
-        meta_table_uid = self.target_meta_table_uid_by_identifier.get(identifier)
-        if meta_table_uid in (None, ""):
-            raise ValueError(
-                "Missing registered markets MetaTable UID for identifier "
-                f"{identifier!r}. Registered identifiers: "
-                f"{sorted(self.target_meta_table_uid_by_identifier)!r}."
-            )
-        return str(meta_table_uid)
+        return _bound_meta_table_uid(model)
 
     def table(self, model: type[MarketsBase] | str) -> MarketsMetaTableHandle:
         from msm.models.registration import resolve_markets_meta_table_model
@@ -103,7 +82,7 @@ class MarketsRepositoryContext:
         resolved_model = resolve_markets_meta_table_model(model)
         return MarketsMetaTableHandle(
             model=resolved_model,
-            meta_table_uid=self.meta_table_uid_for_model(resolved_model),
+            meta_table=_bound_meta_table(resolved_model),
             limits=self.limits,
             timeout=self.timeout,
             namespace=self.namespace,
@@ -121,6 +100,37 @@ class MarketsRepositoryContext:
             alias=alias,
             access=access,
         )
+
+
+def _bound_meta_table(model: type[MarketsBase]) -> MetaTable | None:
+    get_meta_table = getattr(model, "get_meta_table", None)
+    if callable(get_meta_table):
+        meta_table = get_meta_table()
+        if isinstance(meta_table, MetaTable):
+            return meta_table
+    return None
+
+
+def _bound_meta_table_uid(
+    model: type[MarketsBase],
+    *,
+    meta_table: MetaTable | None = None,
+) -> str:
+    meta_table_uid = getattr(meta_table, "uid", None)
+    if meta_table_uid not in (None, ""):
+        return str(meta_table_uid)
+
+    get_meta_table_uid = getattr(model, "get_meta_table_uid", None)
+    if callable(get_meta_table_uid):
+        meta_table_uid = get_meta_table_uid()
+        if meta_table_uid not in (None, ""):
+            return str(meta_table_uid)
+
+    raise ValueError(
+        "Missing registered markets MetaTable UID for "
+        f"{getattr(model, '__name__', model)!r}. Bootstrap or attach the "
+        "platform-managed MetaTable before compiling row operations."
+    )
 
 
 MarketsOperationContext = MarketsRepositoryContext | MarketsMetaTableHandle

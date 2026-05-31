@@ -35,20 +35,47 @@ runtime = msm.start_engine(
 
 `msm.start_engine(...)` is the supported startup entrypoint for
 platform-managed markets tables. It resolves requested models in foreign-key
-dependency order, uses the maintenance catalog before registering, and returns
-the `target_meta_table_uid_by_identifier` mapping needed by repository contexts.
+dependency order, uses the maintenance catalog before registering, and binds the
+registered platform `MetaTable` objects back onto their SQLAlchemy model classes.
 The lower-level `register_markets_meta_tables(...)` helper remains an internal
 building block and migration escape hatch; normal applications and examples
 should not use it as their registration workflow.
 
-Runtime bookkeeping is keyed by the globally unique MetaTable identifier from
+Catalog bookkeeping is keyed by the globally unique MetaTable identifier from
 `__metatable_identifier__`, for example `AssetType` in the default namespace or
 `mainsequence.examples.AssetType` when a namespace override is configured before
 model import. The registered platform `MetaTable.uid` is only known after
-catalog attach, platform attach, or registration, so row operations resolve
-`ModelClass -> identifier -> MetaTable.uid`. SQLAlchemy table names and table
-fullnames are not runtime identity keys; they are table-contract metadata and,
-where still required, SDK registration adapter inputs.
+catalog attach, platform attach, or registration. Row operations read that UID
+from the bound model when compiling operation scope. SQLAlchemy table names are
+storage contract details, not runtime identity keys.
+
+Foreign keys between platform-managed MetaTables use the SDK class-based helper:
+
+```python
+from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy.orm import mapped_column
+from sqlalchemy.types import Uuid
+
+from msm.base import markets_fk_name
+from msm.models.assets import AssetTable
+
+
+asset_uid = mapped_column(
+    Uuid(as_uuid=True),
+    MetaTableForeignKey(
+        AssetTable,
+        column="uid",
+        name=markets_fk_name("ExampleDetails", "Asset", "asset_uid"),
+        ondelete="RESTRICT",
+    ),
+    nullable=False,
+)
+```
+
+The authored target is the `AssetTable` model class. `register()` resolves or
+recursively registers that target and writes the target `MetaTable.uid` into the
+backend foreign-key contract. Do not build platform-managed foreign keys from
+`Target.__table__` strings or caller-maintained table-name maps.
 
 User-facing row operations use the active markets runtime. They do not attach
 to MetaTables, register tables, or run platform discovery on first use. In
@@ -214,11 +241,15 @@ runtime = msm.start_engine(
 
 External mode does not import application ORM code into the backend. The
 application registers a neutral table contract derived from the `msm` SQLAlchemy
-model metadata.
+model metadata. If an external registration flow has to provide already
+registered FK targets explicitly, pass them through the SDK's
+model-keyed `target_meta_tables={TargetModel: meta_table_uid}` input; do not key
+runtime state by SQLAlchemy table names.
 
 ## Table Handles And Repository Context
 
-Repository and service functions need registered MetaTable UIDs. Single-table
+Repository and service functions assume the relevant model classes have already
+been bound by `msm.start_engine(...)` or `msm.attach_schemas(...)`. Single-table
 helpers should receive a `MarketsMetaTableHandle`; multi-table helpers should
 receive the full `MarketsRepositoryContext`.
 
@@ -226,7 +257,6 @@ receive the full `MarketsRepositoryContext`.
 from msm.repositories.base import MarketsRepositoryContext
 
 context = MarketsRepositoryContext(
-    target_meta_table_uid_by_identifier=result.target_meta_table_uid_by_identifier,
     limits={"max_rows": 1000, "statement_timeout_ms": 15000},
 )
 asset_table = context.table("Asset")

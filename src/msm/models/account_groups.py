@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, Index, String, Text
+from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
@@ -75,8 +76,9 @@ class AccountGroupTable(MarketsMetaTableMixin, MarketsBase):
     group_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     account_model_portfolio_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{AccountModelPortfolioTable.__table__.fullname}.uid",
+        MetaTableForeignKey(
+            AccountModelPortfolioTable,
+            column="uid",
             name=markets_fk_name(
                 __metatable_identifier__,
                 "AccountModelPortfolio",

@@ -16,7 +16,7 @@ from msm.models.registration import (
     MarketsManagementMode,
     MarketsMetaTableRegistrationResult,
     _platform_registration_kwargs,
-    _sdk_target_meta_table_uid_by_fullname,
+    _target_meta_tables_from_bound_models,
     is_time_index_meta_table_model,
     markets_meta_table_identifier,
 )
@@ -60,13 +60,10 @@ def bootstrap_markets_meta_tables_from_catalog(
     *,
     data_source_uid: str | None = None,
     management_mode: MarketsManagementMode = "platform_managed",
-    target_meta_table_uid_by_identifier: Mapping[str, Any] | None = None,
-    target_meta_table_uid_by_fullname: Mapping[str, Any] | None = None,
     open_for_everyone: bool = False,
     protect_from_deletion: bool = False,
     introspect: bool | None = None,
     storage_hash_by_identifier: Mapping[str, str] | None = None,
-    storage_hash_by_fullname: Mapping[str, str] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
     models: Sequence[type[MarketsBase]] | None = None,
 ) -> CatalogBootstrapResult:
@@ -81,13 +78,7 @@ def bootstrap_markets_meta_tables_from_catalog(
         catalog_meta_table=catalog_meta_table,
         timeout=timeout,
     )
-    target_mapping = {
-        str(key): _meta_table_uid(value)
-        for key, value in (
-            target_meta_table_uid_by_identifier or target_meta_table_uid_by_fullname or {}
-        ).items()
-    }
-    storage_hash_mapping = dict(storage_hash_by_identifier or storage_hash_by_fullname or {})
+    storage_hash_mapping = dict(storage_hash_by_identifier or {})
     model_plans: list[_CatalogBootstrapModelPlan] = []
     for model in resolved_models:
         identifier = markets_meta_table_identifier(model)
@@ -117,10 +108,7 @@ def bootstrap_markets_meta_tables_from_catalog(
     for position, plan in enumerate(model_plans, start=1):
         model = plan.model
         catalog_row = catalog_rows_by_identifier.get(plan.identifier)
-        sdk_target_mapping = _sdk_target_meta_table_uid_by_fullname(
-            target_mapping,
-            models=resolved_models,
-        )
+        target_meta_tables = _target_meta_tables_from_bound_models()
         if catalog_row is not None:
             validate_catalog_contract(catalog_row, model=model)
             if is_time_index_meta_table_model(model):
@@ -128,7 +116,7 @@ def bootstrap_markets_meta_tables_from_catalog(
                     model,
                     data_source_uid=data_source_uid,
                     management_mode=management_mode,
-                    target_meta_table_uid_by_fullname=sdk_target_mapping,
+                    target_meta_tables=target_meta_tables,
                     open_for_everyone=open_for_everyone,
                     protect_from_deletion=protect_from_deletion,
                     introspect=introspect,
@@ -143,10 +131,10 @@ def bootstrap_markets_meta_tables_from_catalog(
                         f"the registered storage UID {_meta_table_uid(meta_table)!r}."
                     )
             else:
-                meta_table = meta_table_from_catalog_row(
+                meta_table = resolve_catalog_meta_table(
                     catalog_row,
                     model=model,
-                    management_mode=management_mode,
+                    timeout=timeout,
                 )
                 validate_platform_meta_table_physical_contract(
                     meta_table,
@@ -193,7 +181,7 @@ def bootstrap_markets_meta_tables_from_catalog(
                     model,
                     data_source_uid=data_source_uid,
                     management_mode=management_mode,
-                    target_meta_table_uid_by_fullname=sdk_target_mapping,
+                    target_meta_tables=target_meta_tables,
                     open_for_everyone=open_for_everyone,
                     protect_from_deletion=protect_from_deletion,
                     introspect=introspect,
@@ -217,14 +205,13 @@ def bootstrap_markets_meta_tables_from_catalog(
                 meta_table=meta_table,
             )
 
+        _bind_model_meta_table(model, meta_table)
         meta_tables.append(meta_table)
         meta_table_by_identifier[plan.identifier] = meta_table
-        target_mapping[plan.identifier] = _meta_table_uid(meta_table)
 
     return CatalogBootstrapResult(
         registration=MarketsMetaTableRegistrationResult(
             meta_tables=meta_tables,
-            target_meta_table_uid_by_identifier=target_mapping,
             models=resolved_models,
             meta_table_by_identifier=meta_table_by_identifier,
         ),
@@ -297,12 +284,8 @@ def catalog_repository_context(
     catalog_meta_table: MetaTable,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRepositoryContext:
+    _bind_model_meta_table(MarketsMetaTableCatalogTable, catalog_meta_table)
     return MarketsRepositoryContext(
-        target_meta_table_uid_by_identifier={
-            markets_meta_table_identifier(MarketsMetaTableCatalogTable): _meta_table_uid(
-                catalog_meta_table
-            )
-        },
         timeout=timeout,
         namespace=getattr(catalog_meta_table, "namespace", None),
     )
@@ -550,7 +533,7 @@ def register_catalog_missing_meta_table(
     *,
     data_source_uid: str | None,
     management_mode: MarketsManagementMode,
-    target_meta_table_uid_by_fullname: Mapping[str, Any],
+    target_meta_tables: Mapping[type[MarketsBase], Any],
     open_for_everyone: bool,
     protect_from_deletion: bool,
     introspect: bool | None,
@@ -561,14 +544,24 @@ def register_catalog_missing_meta_table(
         "data_source_uid": data_source_uid,
         "open_for_everyone": open_for_everyone,
         "protect_from_deletion": protect_from_deletion,
-        "target_meta_table_uid_by_fullname": target_meta_table_uid_by_fullname,
         "timeout": timeout,
+    }
+    external_kwargs = {
+        **platform_kwargs,
+        "target_meta_tables": target_meta_tables,
     }
     try:
         if is_time_index_meta_table_model(model):
             return model.register(
                 **_platform_registration_kwargs(
-                    model, base_kwargs=platform_kwargs, introspect=introspect
+                    model,
+                    base_kwargs={
+                        **platform_kwargs,
+                        "_target_meta_tables": target_meta_tables,
+                    }
+                    if management_mode == "external_registered"
+                    else platform_kwargs,
+                    introspect=introspect,
                 )
             )
         if management_mode == "platform_managed":
@@ -583,7 +576,7 @@ def register_catalog_missing_meta_table(
                 introspect=True if introspect is None else introspect,
                 storage_hash=storage_hash,
                 schema=MARKETS_SCHEMA,
-                **platform_kwargs,
+                **external_kwargs,
             )
     except ConflictError as exc:
         raise CatalogBootstrapError(
@@ -734,6 +727,14 @@ def _meta_table_uid(value: Any) -> str:
     if uid in (None, ""):
         raise ValueError("Registered MetaTable objects must expose a non-empty uid.")
     return str(uid)
+
+
+def _bind_model_meta_table(model: type[MarketsBase], meta_table: MetaTable) -> None:
+    if not isinstance(meta_table, MetaTable):
+        return
+    bind = getattr(model, "_bind_meta_table", None)
+    if callable(bind):
+        bind(meta_table)
 
 
 def _operation_result_rows(result: Mapping[str, Any] | list[Any] | None) -> list[dict[str, Any]]:

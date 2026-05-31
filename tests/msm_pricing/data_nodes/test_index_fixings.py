@@ -61,12 +61,13 @@ def test_fixing_rates_node_resolves_index_storage_first_surface() -> None:
 
 def test_index_fixings_storage_has_index_foreign_key() -> None:
     index_identifier = IndexTable.__metatable_identifier__
-    index_fullname = str(IndexTable.__table__.fullname)
     fk_column = IndexFixingsStorage.__table__.columns[INDEX_UNIQUE_IDENTIFIER_DIMENSION]
 
     assert markets_foreign_key_target_identifiers(IndexFixingsStorage) == [index_identifier]
     assert any(
-        foreign_key.column.table.fullname == index_fullname
+        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is IndexTable
+        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
+        == "unique_identifier"
         for foreign_key in fk_column.foreign_keys
     )
     assert IndexFixingsStorage in set(pricing_sqlalchemy_models())

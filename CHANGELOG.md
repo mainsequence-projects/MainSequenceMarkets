@@ -28,6 +28,8 @@ and this project follows versioned releases.
   validators now derive nullable columns from the storage MetaTable.
 - Removed holdings time-index and index-name constants that duplicated storage
   MetaTable declarations.
+- Added storage-level foreign keys from account and fund holdings
+  `unique_identifier` columns to `AssetTable.unique_identifier`.
 - Removed residual `time_index_name` and `index_names` fields from holdings,
   execution, and canonical portfolio DataNode configurations.
 - Updated the packaged `AssetIndexedDataNode` agent skill and asset-indexed
@@ -70,9 +72,10 @@ and this project follows versioned releases.
   from the internal maintenance catalog.
 - Removed `storage_hash` from the internal maintenance catalog; catalog rows are
   now keyed by the globally unique logical MetaTable identifier.
-- Made markets and pricing runtime bookkeeping use stable MetaTable identifiers
-  instead of SQLAlchemy table fullnames after SDK registration rebinds tables to
-  backend physical names.
+- Made markets and pricing runtime bookkeeping use stable MetaTable identifiers,
+  and moved platform-managed FK declarations to the SDK
+  `MetaTableForeignKey(TargetModel, column=...)` helper instead of
+  SQLAlchemy table-name target maps.
 - Replaced lazy MetaTable row-operation registration with catalog-based process
   bootstrap. Row operations now require an active initialized runtime and do not
   attach or register schemas on first use.

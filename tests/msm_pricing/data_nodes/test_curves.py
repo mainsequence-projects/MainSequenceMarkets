@@ -59,13 +59,13 @@ def test_discount_curves_node_resolves_storage_and_curve_identity() -> None:
 
 def test_discount_curves_storage_has_curve_foreign_key() -> None:
     curve_identifier = CurveTable.__metatable_identifier__
-    curve_fullname = str(CurveTable.__table__.fullname)
     fk_column = DiscountCurvesStorage.__table__.columns[CURVE_UNIQUE_IDENTIFIER_DIMENSION]
 
     assert markets_foreign_key_target_identifiers(DiscountCurvesStorage) == [curve_identifier]
     assert any(
-        foreign_key.column.table.fullname == curve_fullname
-        and foreign_key.column.name == "unique_identifier"
+        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is CurveTable
+        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
+        == "unique_identifier"
         for foreign_key in fk_column.foreign_keys
     )
     assert DiscountCurvesStorage in set(pricing_sqlalchemy_models())

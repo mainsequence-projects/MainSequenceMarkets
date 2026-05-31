@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ms-markets"
-version = "0.0.14"
+version = "0.0.15"
 description = "Financial markets ORM, engines, and application management extensions for Main Sequence."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,7 +34,7 @@ classifiers = [
 ]
 dependencies = [
   "cachetools",
-  "mainsequence>=4.1.5",
+  "mainsequence>=4.1.8",
   "numpy",
   "pandas",
   "pip>=26.1.1",

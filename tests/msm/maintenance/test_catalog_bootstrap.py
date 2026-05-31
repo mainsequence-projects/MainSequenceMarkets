@@ -30,6 +30,8 @@ def _meta_table(
         description=description,
         data_source_uid=None,
         storage_hash=storage_hash,
+        physical_table_name=storage_hash,
+        management_mode="platform_managed",
     )
 
 
@@ -103,9 +105,10 @@ def test_catalog_bootstrap_registers_missing_application_table(monkeypatch) -> N
     assert result.registered_count == 1
     assert result.imported_count == 0
     assert result.attached_count == 0
-    assert result.registration.target_meta_table_uid_by_identifier == {
-        markets_meta_table_identifier(AssetTable): "asset-meta-table-uid"
-    }
+    assert (
+        result.registration.meta_table_by_identifier[markets_meta_table_identifier(AssetTable)].uid
+        == "asset-meta-table-uid"
+    )
     assert search_in_filters == [_catalog_search_filter(AssetTable)]
     assert register_calls[0]["data_source_uid"] == "data-source-uid"
     assert upserted_rows[0]["meta_table_uid"] == "asset-meta-table-uid"
@@ -145,7 +148,14 @@ def test_catalog_bootstrap_attaches_cataloged_application_table(monkeypatch) -> 
     monkeypatch.setattr(
         catalog.MetaTable,
         "get_by_uid",
-        staticmethod(lambda **_kwargs: pytest.fail("catalog attach should not fetch MetaTable")),
+        staticmethod(
+            lambda **_kwargs: _meta_table(
+                "asset-meta-table-uid",
+                **_catalog_row_identity(AssetTable),
+                description="Asset catalog rows.",
+                storage_hash=asset_storage_hash,
+            )
+        ),
     )
     monkeypatch.setattr(
         AssetTable,
@@ -207,14 +217,7 @@ def test_catalog_bootstrap_routes_cataloged_storage_table_through_register(
     )
 
     def fake_register(cls, **kwargs):
-        register_calls.append(
-            {
-                **kwargs,
-                "target_meta_table_uid_by_fullname": dict(
-                    kwargs["target_meta_table_uid_by_fullname"]
-                ),
-            }
-        )
+        register_calls.append(kwargs)
         return _meta_table(
             "account-holdings-storage-uid",
             **_catalog_row_identity(AccountHoldingsStorage),
@@ -231,10 +234,12 @@ def test_catalog_bootstrap_routes_cataloged_storage_table_through_register(
     assert result.attached_count == 1
     assert result.registered_count == 0
     assert register_calls[0]["data_source_uid"] == "data-source-uid"
-    assert register_calls[0]["target_meta_table_uid_by_fullname"] == {}
-    assert result.registration.target_meta_table_uid_by_identifier == {
-        markets_meta_table_identifier(AccountHoldingsStorage): "account-holdings-storage-uid"
-    }
+    assert (
+        result.registration.meta_table_by_identifier[
+            markets_meta_table_identifier(AccountHoldingsStorage)
+        ].uid
+        == "account-holdings-storage-uid"
+    )
 
 
 def test_catalog_bootstrap_bulk_attaches_cataloged_tables(monkeypatch) -> None:
@@ -267,11 +272,24 @@ def test_catalog_bootstrap_bulk_attaches_cataloged_tables(monkeypatch) -> None:
         search_in_filters.append(dict(kwargs["in_filters"]))
         return {"rows": catalog_rows}
 
+    attached_meta_tables = {
+        "asset-type-meta-table-uid": _meta_table(
+            "asset-type-meta-table-uid",
+            **_catalog_row_identity(AssetTypeTable),
+            storage_hash=AssetTypeTable.__table__.name,
+        ),
+        "asset-meta-table-uid": _meta_table(
+            "asset-meta-table-uid",
+            **_catalog_row_identity(AssetTable),
+            storage_hash=AssetTable.__table__.name,
+        ),
+    }
+
     monkeypatch.setattr(catalog, "search_model", fake_search_model)
     monkeypatch.setattr(
         catalog.MetaTable,
         "get_by_uid",
-        staticmethod(lambda **_kwargs: pytest.fail("catalog attach should not fetch MetaTable")),
+        staticmethod(lambda uid, **_kwargs: attached_meta_tables[uid]),
     )
     monkeypatch.setattr(
         catalog,
@@ -290,7 +308,10 @@ def test_catalog_bootstrap_bulk_attaches_cataloged_tables(monkeypatch) -> None:
     assert result.registered_count == 0
     assert result.imported_count == 0
     assert search_in_filters == [_catalog_search_filter(AssetTypeTable, AssetTable)]
-    assert result.registration.target_meta_table_uid_by_identifier == {
+    assert {
+        identifier: meta_table.uid
+        for identifier, meta_table in result.registration.meta_table_by_identifier.items()
+    } == {
         markets_meta_table_identifier(AssetTypeTable): "asset-type-meta-table-uid",
         markets_meta_table_identifier(AssetTable): "asset-meta-table-uid",
     }
@@ -392,14 +413,7 @@ def test_catalog_bootstrap_registers_uncataloged_storage_table_without_platform_
     )
 
     def fake_register(cls, **kwargs):
-        register_calls.append(
-            {
-                **kwargs,
-                "target_meta_table_uid_by_fullname": dict(
-                    kwargs["target_meta_table_uid_by_fullname"]
-                ),
-            }
-        )
+        register_calls.append(kwargs)
         return _meta_table(
             "account-holdings-storage-uid",
             **_catalog_row_identity(AccountHoldingsStorage),

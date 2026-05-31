@@ -103,12 +103,23 @@ Always declare `__metatable_description__` on the model. The description must
 explain the table's business intention, row grain, and expected use, not only
 the schema. Column-level descriptions stay in `mapped_column(info={...})`.
 
+Use `__metatable_extra_hash_components__` when two backend-managed tables could
+otherwise produce the same storage hash because their storage-relevant shape is
+identical or intentionally generic. The value must be stable and deterministic,
+usually a small mapping such as `{"storage_name": "account_holdings"}`.
+
+This attribute is part of storage identity. Changing it defines a different
+table. Do not use it for labels, descriptions, runtime options, test isolation,
+backend UIDs, data-source UIDs, or updater scope. Use `hash_namespace` for test
+or experiment isolation.
+
 Register through the class API:
 
 ```python
 class Account(PlatformManagedMetaTable, Base):
     __metatable_namespace__ = "sdk-examples"
     __metatable_identifier__ = "Account"
+    __metatable_extra_hash_components__ = {"storage_name": "account"}
     __metatable_description__ = (
         "Customer account master records used to scope balances, holdings, and "
         "account-level limits."
@@ -141,29 +152,48 @@ Do not add a `MAINSEQUENCE_META_TABLE_REGISTER` toggle in registration examples.
 
 Foreign-key contracts reference the target `MetaTable` UID.
 
-For `PlatformManagedMetaTable`, register parent tables first and then register child tables normally. The SDK inspects SQLAlchemy foreign-key constraints and resolves each target `MetaTable` by looking up the already registered table in the same data source, schema, and physical table name.
+For `PlatformManagedMetaTable`, define foreign keys with
+`MetaTableForeignKey(TargetModel, column=...)`. Do not write raw SQLAlchemy
+table fullnames, `Parent.__table__.c.<column>` targets, or explicit target UID
+maps in the platform-managed path. Registration is the lifecycle path:
+`register()` recursively registers unresolved target model classes, stores each
+returned `MetaTable` in a local process registry keyed by `storage_hash`, and
+uses the target `MetaTable.uid` in the child FK contract.
+
+Use this pattern:
+
+```python
+account_uid: Mapped[uuid.UUID] = mapped_column(
+    Uuid,
+    MetaTableForeignKey(Account, column="uid", ondelete="RESTRICT"),
+    nullable=False,
+)
+```
+
+Every participating table must include `__metatable_description__` describing
+both the schema and the table's intention.
 
 Example registration order:
 
 ```python
-account_meta_table = Account.register(...)
 asset_meta_table = Asset.register(...)
 ```
 
-The child registration will fail if the parent table has not already been registered, because there is no target `MetaTable.uid` for the backend FK contract.
+The child registration registers `Account` first if it has not already been
+registered in the current process. The local registry prevents duplicate backend
+registration attempts for the same `storage_hash` and raises a clear error for
+recursive registration cycles.
 
-Do not pass `target_meta_tables` or `target_meta_table_uid_by_fullname` in the normal platform-managed path. Use explicit FK target mappings only for edge cases where automatic lookup is ambiguous or impossible.
-
-For `external_registered`, there is no platform-managed parent lookup through the model class. Register the parent first, then build the child registration request with the parent UID mapped by target table fullname:
+For `external_registered`, there is no platform-managed parent lookup. Register
+the parent first, then build the child registration request with
+`target_meta_tables={Account: account_meta_table}`:
 
 ```python
 account_meta_table = MetaTable.register(account_request)
 asset_request = external_registered_registration_request_from_sqlalchemy_model(
     Asset,
     data_source_uid=data_source_uid,
-    target_meta_table_uid_by_fullname={
-        Account.__table__.fullname: account_meta_table.uid,
-    },
+    target_meta_tables={Account: account_meta_table},
 )
 asset_meta_table = MetaTable.register(asset_request)
 ```
