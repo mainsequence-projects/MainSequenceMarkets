@@ -28,7 +28,7 @@ Platform utilities answer these questions:
   `AssetSnapshot` and shared asset-indexed behavior in
   `msm.data_nodes.assets.asset_indexed`.
 - `msm.data_nodes.execution`: execution DataNodes for orders, order events,
-  trades, and execution errors.
+  and trades.
 - `msm.data_nodes.indices`: index-specific DataNode package, including
   timestamped index facts and canonical `IndexTable` source-table foreign keys.
 - `msm.data_nodes.utils`: shared DataNode utilities that are not tied to one
@@ -56,9 +56,8 @@ asset-indexed DataNode code should use the explicit asset-indexed base classes
 directly.
 
 See [MetaTable Registration](meta_table_registration.md) for runtime attachment
-and model registration concepts. See
-[MetaTable Migrations](metatable_migrations.md) for the admin-owned schema
-creation and evolution workflow.
+and model registration concepts. See [Migrations](../migrations/index.md) for
+the admin-owned schema creation and evolution workflow.
 
 The `msm` import path is side-effect free. Installing the package makes the
 ms-markets skill bundle available as package data, but skills are copied into a

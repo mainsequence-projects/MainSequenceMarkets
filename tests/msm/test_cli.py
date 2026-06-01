@@ -163,8 +163,6 @@ def test_migrations_current_command_routes_to_migration_command(monkeypatch, cap
         [
             "migrations",
             "current",
-            "--data-source-uid",
-            "data-source-uid",
             "--namespace",
             "mainsequence.examples",
             "--json",
@@ -174,7 +172,7 @@ def test_migrations_current_command_routes_to_migration_command(monkeypatch, cap
     assert exit_code == 0
     assert calls == [
         {
-            "data_source_uid": "data-source-uid",
+            "data_source_uid": None,
             "namespace": "mainsequence.examples",
             "emit_json": True,
         }
@@ -182,10 +180,40 @@ def test_migrations_current_command_routes_to_migration_command(monkeypatch, cap
     assert capsys.readouterr().out == ""
 
 
-def test_migrations_upgrade_requires_data_source_uid(capsys) -> None:
-    with pytest.raises(SystemExit):
-        main(["migrations", "upgrade"])
-    assert "data-source-uid" in capsys.readouterr().err
+def test_migrations_upgrade_does_not_require_data_source_uid(monkeypatch, capsys) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_migrations_upgrade_command(
+        *,
+        data_source_uid: str | None = None,
+        namespace: str | None = None,
+        dry_run: bool = False,
+        emit_json: bool = False,
+    ) -> int:
+        calls.append(
+            {
+                "data_source_uid": data_source_uid,
+                "namespace": namespace,
+                "dry_run": dry_run,
+                "emit_json": emit_json,
+            }
+        )
+        return 0
+
+    monkeypatch.setattr(cli_main, "migrations_upgrade_command", fake_migrations_upgrade_command)
+
+    exit_code = main(["migrations", "upgrade"])
+
+    assert exit_code == 0
+    assert calls == [
+        {
+            "data_source_uid": None,
+            "namespace": None,
+            "dry_run": False,
+            "emit_json": False,
+        }
+    ]
+    assert capsys.readouterr().out == ""
 
 
 def test_migrations_current_command_emits_json(monkeypatch, capsys) -> None:
@@ -195,9 +223,9 @@ def test_migrations_current_command_emits_json(monkeypatch, capsys) -> None:
         to_payload=lambda: {
             "command": "current",
             "migration_namespace": "mainsequence.markets",
-            "expected_revisions": ["0001_baseline"],
+            "expected_revisions": ["0001_initial"],
             "migration_registry_uid": "migration-registry-uid",
-            "status": {"current_revision": "0001_baseline"},
+            "status": {"current_revision": "0001_initial"},
             "synced": [],
             "applied": [],
             "skipped": [],
@@ -219,7 +247,6 @@ def test_migrations_current_command_emits_json(monkeypatch, capsys) -> None:
     monkeypatch.setattr(migrations, "current_migrations", fake_current_migrations)
 
     exit_code = cli_main.migrations_current_command(
-        data_source_uid="data-source-uid",
         namespace="mainsequence.markets",
         emit_json=True,
     )
@@ -227,13 +254,51 @@ def test_migrations_current_command_emits_json(monkeypatch, capsys) -> None:
     assert exit_code == 0
     assert calls == [
         {
-            "data_source_uid": "data-source-uid",
+            "data_source_uid": None,
             "namespace": "mainsequence.markets",
         }
     ]
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
-    assert payload["expected_revisions"] == ["0001_baseline"]
+    assert payload["expected_revisions"] == ["0001_initial"]
+
+
+def test_migration_result_groups_catalog_status_by_model_kind(capsys) -> None:
+    payload = {
+        "command": "current",
+        "migration_namespace": "mainsequence.markets",
+        "expected_revisions": ["0001_initial"],
+        "migration_registry_uid": "migration-registry-uid",
+        "status": {"current_revision": "0001_initial"},
+        "synced": [],
+        "applied": [],
+        "skipped": [],
+        "catalog_rows": [],
+        "catalog_status": [
+            {
+                "identifier": "OrderManager",
+                "kind": "domain_table",
+                "model_name": "OrderManagerTable",
+                "status": "missing_catalog",
+            },
+            {
+                "identifier": "OrdersTS",
+                "kind": "time_index_storage",
+                "model_name": "OrdersStorage",
+                "status": "missing_catalog",
+            },
+        ],
+        "ok": False,
+    }
+
+    exit_code = cli_main._emit_migration_result("current", payload, emit_json=False)
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "Domain MetaTables" in output
+    assert "OrderManager" in output
+    assert "Time-index Storage MetaTables" in output
+    assert "OrdersTS" in output
 
 
 def test_migrations_current_command_reports_sdk_error(monkeypatch, capsys) -> None:

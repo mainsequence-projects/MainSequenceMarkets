@@ -113,10 +113,10 @@ Fresh pricing bootstrap seeds the default bindings:
 
 ```text
 (default, discount_curves)
-  -> markets_data_node_identifier("discount_curves")
+  -> markets_data_node_identifier("DiscountCurvesTS")
 
 (default, interest_rate_index_fixings)
-  -> markets_data_node_identifier("interest_rate_index_fixings")
+  -> markets_data_node_identifier("IndexFixingsTS")
 ```
 
 Deployments can add or replace bindings for `eod`, `live`, `risk_manager`, or

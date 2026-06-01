@@ -230,14 +230,14 @@ def test_create_pricing_schemas_seeds_default_market_data_bindings(
         {
             "context_key": PRICING_CONTEXT_DEFAULT,
             "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
-            "data_node_identifier": "mainsequence.examples.discount_curves",
+            "data_node_identifier": "mainsequence.examples.DiscountCurvesTS",
             "source": "msm_pricing.bootstrap",
             "metadata_json": {"seeded_default": True},
         },
         {
             "context_key": PRICING_CONTEXT_DEFAULT,
             "concept_key": PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-            "data_node_identifier": "mainsequence.examples.interest_rate_index_fixings",
+            "data_node_identifier": "mainsequence.examples.IndexFixingsTS",
             "source": "msm_pricing.bootstrap",
             "metadata_json": {"seeded_default": True},
         },

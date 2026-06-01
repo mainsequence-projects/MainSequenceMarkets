@@ -18,10 +18,12 @@ integration live in `msm_pricing`.
 - [Client](client/index.md): client-facing wrappers around platform objects.
 - [Derivatives](derivatives/index.md): futures and derivative details that
   extend canonical assets and may reference non-asset underlyings.
-- [Execution](execution/index.md): orders, order targets, order events, trades,
-  and execution errors.
+- [Execution](execution/index.md): order-manager intent rows and timestamped
+  order, event, and trade DataNodes.
 - [Indexes](indices/index.md): non-tradable index reference data used by
   derivative underlyings and pricing workflows.
+- [Migrations](migrations/index.md): admin-owned schema evolution, SDK migration
+  registry sync/apply, and catalog finalization.
 - [Models](models/index.md): SQLAlchemy MetaTable declarations and registration
   order for core market tables.
 - [Platform](platform/index.md): Main Sequence integration primitives,

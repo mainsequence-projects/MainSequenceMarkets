@@ -18,14 +18,7 @@ from .assets import (
 )
 from .calendars import CalendarTable
 from .derivatives import FutureAssetDetailsTable
-from .execution import (
-    ExecutionErrorTable,
-    OrderManagerTable,
-    OrderStatusEventTable,
-    OrderTable,
-    OrderTargetQuantityTable,
-    TradeTable,
-)
+from .execution import OrderManagerTable
 from .issuers import IssuerTable
 from .indices import IndexTable, IndexTypeTable
 
@@ -57,11 +50,6 @@ def markets_sqlalchemy_models() -> list[type]:
         AccountTargetPortfolioTable,
         PositionSetTable,
         OrderManagerTable,
-        OrderTargetQuantityTable,
-        OrderTable,
-        OrderStatusEventTable,
-        TradeTable,
-        ExecutionErrorTable,
         *_markets_data_node_storage_models(),
     ]
 
@@ -77,7 +65,6 @@ def _markets_data_node_storage_models() -> list[type]:
     from msm.data_nodes.storage import (
         AccountHoldingsStorage,
         AssetSnapshotsStorage,
-        ExecutionErrorsStorage,
         OrderEventsStorage,
         OrdersStorage,
         TargetPositionsStorage,
@@ -91,7 +78,6 @@ def _markets_data_node_storage_models() -> list[type]:
         OrdersStorage,
         OrderEventsStorage,
         TradesStorage,
-        ExecutionErrorsStorage,
     ]
 
 
@@ -107,17 +93,12 @@ __all__ = [
     "BondAssetDetailsTable",
     "CalendarTable",
     "CurrencySpotAssetDetailsTable",
-    "ExecutionErrorTable",
     "FutureAssetDetailsTable",
     "IndexTable",
     "IndexTypeTable",
     "IssuerTable",
     "OpenFigiAssetDetailsTable",
     "OrderManagerTable",
-    "OrderStatusEventTable",
-    "OrderTable",
-    "OrderTargetQuantityTable",
     "PositionSetTable",
-    "TradeTable",
     "markets_sqlalchemy_models",
 ]

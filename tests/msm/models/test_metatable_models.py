@@ -7,9 +7,10 @@ from typing import ClassVar
 import pytest
 from mainsequence.client.exceptions import ConflictError
 from mainsequence.meta_tables import (
+    MigrationManagedMetaTable,
+    MigrationManagedTimeIndexMetaData,
     MetaTableForeignKey,
     PlatformManagedMetaTable,
-    metatable_configured_tablename,
 )
 from pydantic import AliasChoices, Field
 from sqlalchemy import String
@@ -22,6 +23,7 @@ from msm.api.base import MarketsMetaTableRow, MarketsRow
 from msm.base import MarketsBase, MarketsMetaTableMixin, markets_table_storage_name
 from msm.data_nodes.storage import AccountHoldingsStorage
 from msm.maintenance.models import MarketsMetaTableCatalogTable
+from msm.migrations.registry import migration_model_registry
 from msm.models.registration import (
     build_markets_registration_requests,
     is_time_index_meta_table_model,
@@ -96,7 +98,7 @@ def test_markets_models_use_platform_managed_table_mixin() -> None:
     for model in markets_sqlalchemy_models():
         assert issubclass(model, PlatformManagedMetaTable)
         assert "__tablename__" not in model.__dict__
-        assert model.__table__.name == metatable_configured_tablename(model)
+        assert model.__table__.name == model.get_storage_hash()
         assert model.__table__.name not in table_names
         table_names[model.__table__.name] = model
 
@@ -132,6 +134,21 @@ def test_built_in_metatables_declare_column_descriptions() -> None:
             assert isinstance(description, str), f"{model.__name__}.{column.name}"
             assert description.strip() == description, f"{model.__name__}.{column.name}"
             assert len(description.split()) >= 5, f"{model.__name__}.{column.name}"
+
+
+def test_timestamped_execution_fact_tables_are_not_domain_metatables() -> None:
+    assert not hasattr(models, "ExecutionErrorTable")
+    assert not hasattr(models, "OrderTable")
+    assert not hasattr(models, "OrderStatusEventTable")
+    assert not hasattr(models, "TradeTable")
+    identifiers = {
+        getattr(model, "__metatable_identifier__", model.__name__)
+        for model in markets_sqlalchemy_models()
+    }
+    assert "ExecutionError" not in identifiers
+    assert "Order" not in identifiers
+    assert "OrderStatusEvent" not in identifiers
+    assert "Trade" not in identifiers
 
 
 def test_markets_metatable_row_keeps_legacy_alias() -> None:
@@ -652,6 +669,14 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
         for request in domain_requests
     )
     assert all(request.storage_hash for request in storage_requests)
+
+
+def test_migration_registry_models_use_sdk_migration_managed_bases() -> None:
+    registry = migration_model_registry()
+    assert registry
+    assert AccountHoldingsStorage in registry
+    assert all(issubclass(model, MigrationManagedMetaTable) for model in registry)
+    assert issubclass(AccountHoldingsStorage, MigrationManagedTimeIndexMetaData)
 
 
 def test_markets_models_build_external_registration_requests_in_dependency_order(

@@ -55,12 +55,12 @@ MetaTables for row APIs. It does not create or evolve schema.
 Run admin migrations before application startup:
 
 ```bash
-msm migrations current --data-source-uid <dynamic-table-data-source-uid> --json
-msm migrations upgrade --data-source-uid <dynamic-table-data-source-uid>
-msm migrations validate --data-source-uid <dynamic-table-data-source-uid>
+msm migrations current --json
+msm migrations upgrade
+msm migrations validate
 ```
 
-See [MetaTable Migrations](../knowledge/msm/platform/metatable_migrations.md)
+See [Migrations](../knowledge/msm/migrations/index.md)
 for the package registry, Python migration modules, SDK registry
 sync/apply, catalog finalization, and runtime attachment lifecycle.
 
@@ -113,8 +113,7 @@ Constant-name fields.
 Use this workflow when publishing and inspecting account positions:
 
 1. Before runtime, run the admin migration flow with
-   `msm migrations upgrade --data-source-uid <dynamic-table-data-source-uid>` so
-   the package schema and catalog are finalized.
+   `msm migrations upgrade` so the package schema and catalog are finalized.
 2. Attach `AssetType`, `Asset`, `AccountModelPortfolio`, `AccountGroup`,
    `Account`, `AccountTargetPortfolio`, `PositionSet`,
    `AccountHoldingsStorage`, and `TargetPositionsStorage` through
@@ -165,7 +164,9 @@ pricing context:
 
 ```text
 (default, discount_curves)
+  -> DiscountCurvesTS
 (default, interest_rate_index_fixings)
+  -> IndexFixingsTS
 ```
 
 The binding row maps `(context_key, concept_key)` to a DataNode identifier. Use

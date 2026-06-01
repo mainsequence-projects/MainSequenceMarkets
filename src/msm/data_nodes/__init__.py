@@ -15,7 +15,6 @@ _EXPORTS = {
     "AssetTimestampedFrameMixin": ".assets",
     "ExecutionDataNode": ".execution",
     "ExecutionDataNodeConfiguration": ".execution",
-    "ExecutionErrors": ".execution",
     "HoldingsDataNode": ".accounts",
     "HoldingsDataNodeConfiguration": ".accounts",
     "IndexDataNodeConfiguration": ".indices",

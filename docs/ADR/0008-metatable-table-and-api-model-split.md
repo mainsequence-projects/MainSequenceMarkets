@@ -10,8 +10,8 @@ state; unchecked tasks are the remaining rollout backlog.
 
 ## Context
 
-The markets package currently uses names such as `Asset`, `Portfolio`, and
-`Order` for SQLAlchemy classes that author Main Sequence MetaTable contracts.
+The markets package previously used names such as `Asset`, `Portfolio`, and
+`OrderManager` for SQLAlchemy classes that author Main Sequence MetaTable contracts.
 Those classes are correct as table declarations, but they are the wrong object
 for most library consumers and FastAPI surfaces.
 
@@ -47,7 +47,7 @@ AssetCategory              -> AssetCategoryTable
 AssetCategoryMembership    -> AssetCategoryMembershipTable
 OpenFigiDetails            -> OpenFigiAssetDetailsTable
 Portfolio                  -> PortfolioTable
-Order                      -> OrderTable
+OrderManager               -> OrderManagerTable
 ```
 
 The exact migration must cover all markets MetaTables, not only assets.
@@ -67,14 +67,9 @@ Asset                         -> AssetTable
 AssetCategory                 -> AssetCategoryTable
 AssetCategoryMembership       -> AssetCategoryMembershipTable
 Calendar                      -> CalendarTable
-ExecutionError                -> ExecutionErrorTable
 Fund                          -> FundTable
 OpenFigiDetails               -> OpenFigiAssetDetailsTable
 OrderManager                  -> OrderManagerTable
-OrderTargetQuantity           -> OrderTargetQuantityTable
-Order                         -> OrderTable
-OrderStatusEvent              -> OrderStatusEventTable
-Trade                         -> TradeTable
 Portfolio                     -> PortfolioTable
 PortfolioAssetDetail          -> PortfolioAssetDetailTable
 PortfolioMetadata             -> PortfolioMetadataTable
@@ -139,9 +134,9 @@ src/msm/services
 This is the general spirit of the library:
 
 - users work with typed domain row objects such as `Asset`, `Portfolio`, and
-  `Order`;
+  `OrderManager`;
 - schema/bootstrap code works with SQLAlchemy table declarations such as
-  `AssetTable`, `PortfolioTable`, and `OrderTable`;
+  `AssetTable`, `PortfolioTable`, and `OrderManagerTable`;
 - repository code remains the lower-level platform-operation layer and may keep
   raw operation payloads close to Main Sequence MetaTable execution;
 - services compose workflows across providers, repositories, DataNodes, and
@@ -385,13 +380,12 @@ larger service workflow exists.
 Execution tables have stronger workflow semantics and should not be treated as
 generic CRUD only.
 
-- [x] Add Pydantic row and mutation contracts for:
-  `OrderManager`, `OrderTargetQuantity`, `Order`, `OrderStatusEvent`, `Trade`,
-  and `ExecutionError`.
+- [x] Add Pydantic row and mutation contracts for order-manager intent:
+  `OrderManager`.
 - [x] Add `OrderManager.create_schemas(...)` with required tables for account,
   asset, fund, and order dependencies.
-- [x] Add workflow-specific class methods such as `OrderManager.create_batch(...)`
-  or `Order.record_status(...)` only where the lifecycle is clear.
+- [x] Add workflow-specific class methods such as
+  `OrderManager.create_batch(...)` only where the lifecycle is clear.
 - [x] Avoid hiding execution side effects behind generic `upsert(...)` when the
   domain operation is append-only or event-oriented.
 
@@ -433,9 +427,9 @@ The repository currently implements the full `Table`/API row split:
   MetaTable in the ADR inventory.
 - Row classes declare `__table__`, `__required_tables__`, and upsert keys where
   generic upsert is appropriate.
-- `AssetCategory.replace_memberships(...)`, `Portfolio.upsert(...)`,
-  `OrderManager.create_batch(...)`, and `Order.record_status(...)` cover the
-  first domain-specific class methods.
+- `AssetCategory.replace_memberships(...)`, `Portfolio.upsert(...)`, and
+  `OrderManager.create_batch(...)` cover the first domain-specific class
+  methods.
 - Focused examples and tutorial excerpts use typed row APIs for user-facing code
   and `*Table` declarations only for schema or provider row construction.
 

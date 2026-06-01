@@ -10,7 +10,6 @@ from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNodeConfiguration,
 )
 from msm.data_nodes.storage import (
-    ExecutionErrorsStorage,
     OrderEventsStorage,
     OrdersStorage,
     TradesStorage,
@@ -80,9 +79,7 @@ class ExecutionDataNode(AssetIndexedDataNode):
         cls,
         data_frame: pd.DataFrame,
         *,
-        storage_table: (
-            type[OrdersStorage | OrderEventsStorage | TradesStorage | ExecutionErrorsStorage] | None
-        ) = None,
+        storage_table: type[OrdersStorage | OrderEventsStorage | TradesStorage] | None = None,
     ) -> pd.DataFrame:
         resolved_storage_table = storage_table or cls._required_storage_table()
         return _validate_execution_frame(
@@ -95,9 +92,7 @@ class ExecutionDataNode(AssetIndexedDataNode):
         cls,
         data_frame: pd.DataFrame,
         *,
-        storage_table: (
-            type[OrdersStorage | OrderEventsStorage | TradesStorage | ExecutionErrorsStorage] | None
-        ) = None,
+        storage_table: type[OrdersStorage | OrderEventsStorage | TradesStorage] | None = None,
     ) -> pd.DataFrame:
         return cls.validate_execution_frame(
             data_frame,
@@ -129,20 +124,10 @@ class Trades(ExecutionDataNode):
         return TradesStorage
 
 
-class ExecutionErrors(ExecutionDataNode):
-    """Timestamped execution error records."""
-
-    @classmethod
-    def _required_storage_table(cls) -> type[ExecutionErrorsStorage]:
-        return ExecutionErrorsStorage
-
-
 def _validate_execution_frame(
     data_frame: pd.DataFrame,
     *,
-    storage_table: type[
-        OrdersStorage | OrderEventsStorage | TradesStorage | ExecutionErrorsStorage
-    ],
+    storage_table: type[OrdersStorage | OrderEventsStorage | TradesStorage],
 ) -> pd.DataFrame:
     index_names = storage_index_names(storage_table)
     column_dtypes_map = storage_column_dtypes_map(storage_table)
@@ -212,7 +197,6 @@ def _normalize_jsonb(value: Any) -> dict[str, Any] | list[Any]:
 __all__ = [
     "ExecutionDataNode",
     "ExecutionDataNodeConfiguration",
-    "ExecutionErrors",
     "OrderEvents",
     "Orders",
     "Trades",

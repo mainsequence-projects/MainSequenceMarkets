@@ -5,6 +5,12 @@ portfolio. They are not account identities. Accounts own custody or execution;
 portfolios own target composition; funds connect the two for fund-level
 holdings and workflow tracking.
 
+The next virtual-fund contract is specified in
+[ADR 0021](../../../ADR/0021-virtual-fund-allocation-holdings-contract.md). It
+tightens this model so virtual-fund holdings are allocations from account
+holdings sets, quantities are positive magnitudes, and `direction` carries long
+or short side.
+
 ## Scope
 
 Virtual funds own:

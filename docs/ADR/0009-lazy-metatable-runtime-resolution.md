@@ -188,7 +188,7 @@ API calls when the platform tables are already registered.
 ## Consequences
 
 User code becomes simpler and better aligned with the domain API. A normal
-consumer can work with `Asset`, `Portfolio`, `Order`, and other row classes
+consumer can work with `Asset`, `Portfolio`, `OrderManager`, and other row classes
 without thinking about MetaTable registration on every script or request.
 
 Production remains safe because the default behavior attaches to existing

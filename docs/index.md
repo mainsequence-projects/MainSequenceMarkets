@@ -32,8 +32,10 @@ into `src/msm`.
 
 The general style of `msm` is to keep user-facing code typed and domain-oriented.
 Application code should operate on Pydantic row objects such as `Asset`,
-`Portfolio`, and `Order`, while schema registration code works with SQLAlchemy
-MetaTable declarations such as `AssetTable`, `PortfolioTable`, and `OrderTable`.
+`Account`, and `OrderManager`, while schema registration code works with
+SQLAlchemy MetaTable declarations such as `AssetTable`, `AccountTable`, and
+`OrderManagerTable`. Timestamped execution facts such as orders, events, and
+trades are DataNode storage contracts, not duplicate row MetaTables.
 
 ```python
 from msm.api.assets import Asset
@@ -46,7 +48,7 @@ the active runtime created during process initialization; they do not attach to
 MetaTables or register schemas on first row use. `start_engine()` is the
 explicit runtime attachment entrypoint and uses the internal maintenance catalog
 after SDK-managed migrations are current. Schema and catalog mutation belongs to
-admin commands such as `msm migrations upgrade --data-source-uid ...`.
+admin commands such as `msm migrations upgrade`.
 `MSM_AUTO_REGISTER_NAMESPACE` is only a namespace default for examples or local
 development; it does not make row operations register schemas. Lower-level
 repository helpers remain available when a workflow needs direct access to

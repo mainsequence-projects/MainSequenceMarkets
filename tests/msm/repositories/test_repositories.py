@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime as dt
 import uuid
 
 import pytest
@@ -14,7 +13,6 @@ from msm.models import (
     AssetTypeTable,
     AssetTable,
     OpenFigiAssetDetailsTable,
-    OrderTable,
     PositionSetTable,
     markets_sqlalchemy_models,
 )
@@ -32,7 +30,6 @@ from msm.repositories.crud import (
     build_search_model_operation,
     build_upsert_model_operation,
 )
-from msm.repositories.execution import build_create_order_operation
 from msm.repositories.accounts import (
     build_create_account_operation,
     build_create_account_target_portfolio_operation,
@@ -314,25 +311,3 @@ def test_asset_delete_operation_uses_write_scope() -> None:
     assert operation.scope.tables[0].meta_table_uid == asset.meta_table_uid
     assert AssetTable.__table__.name in operation.statement.sql
     assert operation.statement.parameters["uid_1"] == asset_uid
-
-
-def test_order_create_operation_compiles_required_execution_fields() -> None:
-    context = _repository_context()
-    order_time = dt.datetime(2026, 5, 25, 10, 0, tzinfo=dt.UTC)
-
-    operation = build_create_order_operation(
-        context,
-        order_remote_id="remote-1",
-        client_order_id="client-1",
-        order_type="market",
-        order_time=order_time,
-        order_side=1,
-        quantity="1.5",
-        asset_unique_identifier="BTC",
-    )
-
-    assert operation.operation == "insert"
-    assert operation.scope.tables[0].access == "write"
-    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(OrderTable)
-    assert OrderTable.__table__.name in operation.statement.sql
-    assert operation.statement.parameters["client_order_id"] == "client-1"

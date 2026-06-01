@@ -13,7 +13,11 @@ from mainsequence.logconf import logger as _mainsequence_logger
 
 from msm.base import MarketsBase, markets_meta_table_identifier
 from msm.migrations.registry import migration_model_registry
-from msm.models.registration import MarketsModelSelector, resolve_markets_meta_table_model
+from msm.models.registration import (
+    MarketsModelSelector,
+    is_time_index_meta_table_model,
+    resolve_markets_meta_table_model,
+)
 from msm.settings import markets_namespace
 
 from .catalog import (
@@ -157,15 +161,12 @@ def materialize_migrations(
 
 def current_migrations(
     *,
-    data_source_uid: str,
+    data_source_uid: str | None = None,
     namespace: str | None = None,
     timeout: int | float | tuple[float, float] | None = None,
     models: Sequence[type[MarketsBase]] | None = None,
 ) -> MigrationCommandResult:
     """Read expected package migrations, SDK status, and catalog finalization state."""
-
-    if not data_source_uid:
-        raise MigrationSupportError("`data_source_uid` is required for `msm migrations current`.")
 
     _validate_migration_model_registry()
     migration_namespace = markets_namespace(namespace)
@@ -181,7 +182,7 @@ def current_migrations(
             migration_meta_table,
             package=MIGRATION_PACKAGE,
             migration_namespace=migration_namespace,
-            data_source_uid=data_source_uid,
+            data_source_uid=resolved_data_source_uid,
             timeout=timeout,
         )
     catalog_status = _catalog_status(timeout=timeout, models=scoped_models)
@@ -210,14 +211,11 @@ def current_migrations(
 
 def sync_migrations(
     *,
-    data_source_uid: str,
+    data_source_uid: str | None = None,
     namespace: str | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MigrationCommandResult:
     """Register/sync packaged migration rows into the SDK MigrationMetaTable."""
-
-    if not data_source_uid:
-        raise MigrationSupportError("`data_source_uid` is required for `msm migrations sync`.")
 
     sdk = _sdk_migrations()
     _validate_migration_model_registry(sdk=sdk)
@@ -230,7 +228,7 @@ def sync_migrations(
             sdk.sync_packaged_migration(
                 MarketsMigrationTable,
                 materialized.packaged,
-                data_source_uid=str(data_source_uid),
+                **_sync_data_source_kwargs(data_source_uid),
                 timeout=timeout,
             )
         )
@@ -266,15 +264,12 @@ def sync_migrations(
 
 def upgrade_migrations(
     *,
-    data_source_uid: str,
+    data_source_uid: str | None = None,
     namespace: str | None = None,
     dry_run: bool = False,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MigrationCommandResult:
     """Sync and apply packaged migrations, then finalize the markets catalog."""
-
-    if not data_source_uid:
-        raise MigrationSupportError("`data_source_uid` is required for `msm migrations upgrade`.")
 
     sdk = _sdk_migrations()
     _validate_migration_model_registry(sdk=sdk)
@@ -372,7 +367,7 @@ def upgrade_migrations(
 
 def validate_migrations(
     *,
-    data_source_uid: str,
+    data_source_uid: str | None = None,
     namespace: str | None = None,
     timeout: int | float | tuple[float, float] | None = None,
     models: Sequence[type[MarketsBase]] | None = None,
@@ -411,11 +406,6 @@ def verify_runtime_migrations_current(
 ) -> None:
     """Fail runtime startup unless admin migrations finalized the requested schema."""
 
-    if not data_source_uid:
-        raise MigrationStateError(
-            "`data_source_uid` is required for runtime migration verification. "
-            "Run `msm.start_engine(data_source_uid=...)` after `msm migrations upgrade`."
-        )
     result = current_migrations(
         data_source_uid=data_source_uid,
         namespace=namespace,
@@ -623,8 +613,7 @@ def _build_packaged_migration(
         target_meta_tables=target_meta_tables,
     )
     new_contract_hashes = {
-        identifier: sdk.contract_hash(contract)
-        for identifier, contract in new_contracts.items()
+        identifier: sdk.contract_hash(contract) for identifier, contract in new_contracts.items()
     }
     affected_tables = [
         sdk.MetaTableMigrationAffectedTable(
@@ -730,7 +719,15 @@ def _scope_identifiers(
     return {markets_meta_table_identifier(model) for model in _migration_scope(models)}
 
 
-def _contract_target_meta_tables(models: Sequence[type[MarketsBase]]) -> dict[type[MarketsBase], Any]:
+def _sync_data_source_kwargs(data_source_uid: str | None = None) -> dict[str, str]:
+    if data_source_uid in (None, ""):
+        return {}
+    return {"data_source_uid": str(data_source_uid)}
+
+
+def _contract_target_meta_tables(
+    models: Sequence[type[MarketsBase]],
+) -> dict[type[MarketsBase], Any]:
     return {
         model: SimpleNamespace(uid=f"migration-target:{markets_meta_table_identifier(model)}")
         for model in models
@@ -764,10 +761,30 @@ def _current_state_ok(
         return False
     return (
         migration_meta_table is not None
-        and _status_current_revision(status) == _last_or_none(expected_revisions)
+        and _status_reaches_expected_revision(status, expected_revisions)
         and len(catalog_status) == len(scoped_models)
         and all(item.get("status") == "current" for item in catalog_status)
     )
+
+
+def _status_reaches_expected_revision(
+    status: Any | None,
+    expected_revisions: Sequence[str],
+) -> bool:
+    expected_revision = _last_or_none(expected_revisions)
+    current_revision = _status_current_revision(status)
+    if expected_revision is None:
+        return current_revision is None
+    if current_revision == expected_revision:
+        return True
+    if current_revision is None:
+        return False
+
+    revision_order = [spec.revision for spec in load_migration_specs()]
+    try:
+        return revision_order.index(current_revision) >= revision_order.index(expected_revision)
+    except ValueError:
+        return False
 
 
 def _catalog_status(
@@ -783,6 +800,7 @@ def _catalog_status(
         return [
             {
                 "identifier": identifier,
+                "kind": _migration_model_kind(model),
                 "model_name": model.__name__,
                 "status": "missing_catalog",
                 "error": str(exc),
@@ -802,6 +820,7 @@ def _catalog_status(
             status.append(
                 {
                     "identifier": identifier,
+                    "kind": _migration_model_kind(model),
                     "model_name": model.__name__,
                     "status": "missing_row",
                 }
@@ -813,6 +832,7 @@ def _catalog_status(
             status.append(
                 {
                     "identifier": identifier,
+                    "kind": _migration_model_kind(model),
                     "model_name": model.__name__,
                     "status": "stale_contract",
                     "error": str(exc),
@@ -822,6 +842,7 @@ def _catalog_status(
         status.append(
             {
                 "identifier": identifier,
+                "kind": _migration_model_kind(model),
                 "model_name": model.__name__,
                 "status": "current",
                 "meta_table_uid": row.get("meta_table_uid"),
@@ -829,6 +850,12 @@ def _catalog_status(
             }
         )
     return status
+
+
+def _migration_model_kind(model: type[MarketsBase]) -> str:
+    if is_time_index_meta_table_model(model):
+        return "time_index_storage"
+    return "domain_table"
 
 
 def _validate_apply_response(
@@ -1026,6 +1053,7 @@ __all__ = [
     "MigrationSupportError",
     "current_migrations",
     "finalize_catalog_from_apply_response",
+    "finalize_catalog_from_materialized_migration",
     "load_migration_specs",
     "materialize_migrations",
     "resolve_migration_registry_meta_table",

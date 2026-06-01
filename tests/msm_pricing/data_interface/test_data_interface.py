@@ -143,7 +143,7 @@ def test_get_historical_fixings_defaults_to_pricing_market_data_configuration(
     )
 
     assert fixings == {dt.date(2026, 5, 26): 0.0525}
-    assert calls[0] == ("identifier", "interest_rate_index_fixings")
+    assert calls[0] == ("identifier", "IndexFixingsTS")
 
 
 def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> None:
@@ -243,7 +243,7 @@ def test_get_historical_discount_curve_defaults_to_pricing_market_data_configura
     )
 
     assert nodes == [{"days_to_maturity": 28, "zero": 0.11}]
-    assert calls[0] == ("identifier", "discount_curves")
+    assert calls[0] == ("identifier", "DiscountCurvesTS")
 
 
 def test_ms_data_interface_exposes_pricing_named_configuration_path() -> None:

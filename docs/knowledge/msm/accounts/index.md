@@ -270,7 +270,7 @@ storage class with a fixed index and column contract.
 
 +-------------------------------+       uses registered     +-----------------------------+
 | AccountHoldings               |-------------------------->| AccountHoldingsStorage      |
-| DataNode class                |                           | account_historical_holdings |
+| DataNode class                |                           | AccountHoldingsTS           |
 |-------------------------------|                           |-----------------------------|
 | identifier, index contract,   |                           | time_index_name=time_index  |
 | and dtype contract derive     |                           | index_names:                |

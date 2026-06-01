@@ -37,11 +37,9 @@ The local SDK checkout verified for this ADR exposes:
 - `get_migration_status(...)`;
 - `metatable-migration.v1` request and response models.
 
-The project dependency declaration is still pinned to `mainsequence==4.1.11`,
-and that wheel does not expose the migration symbols. Implementation of this
-ADR therefore requires updating the project to the SDK release or local SDK
+The project dependency declaration must target the SDK release or local SDK
 build that contains the migration API. The active implementation target verified
-for this ADR is SDK `4.1.14`.
+for this ADR is SDK `4.1.15`.
 
 ## Decision
 
@@ -82,7 +80,6 @@ status = get_migration_status(
     migration_meta_table,
     package="msm",
     migration_namespace=markets_namespace,
-    data_source_uid=data_source_uid,
 )
 ```
 
@@ -103,7 +100,7 @@ The SDK migration row is the source of migration execution data. The fields
 - new contract payloads;
 - idempotency and lock keys;
 - status, started/finished timestamps, execution counts, introspection
-  snapshots, and errors.
+  snapshots, and failure details.
 
 The apply request does not send raw executable SQL directly. It sends
 `migration_meta_table_uid` and `migration_row_uid`, and the backend reads the
@@ -331,7 +328,7 @@ or `apply_migration(...)`.
 The admin migration sequence is:
 
 1. resolve the target model graph for the selected package surface;
-2. resolve the target `data_source_uid`;
+2. delegate target data-source handling to the SDK migration API;
 3. register or attach `MarketsMigrationTable`;
 4. load packaged `msm` Python migration modules;
 5. sync packaged migration rows into `MarketsMigrationTable`;
@@ -353,15 +350,13 @@ runtime as current only after catalog reconciliation succeeds.
 The runtime sequence is:
 
 1. resolve requested models from the `models` selector;
-2. resolve or validate the target `data_source_uid`;
-3. read SDK migration status for `(data_source_uid, "msm",
-   migration_namespace)`;
-4. fail if any migration needed by the requested model graph is pending, failed,
+2. read SDK migration status for `("msm", migration_namespace)`;
+3. fail if any migration needed by the requested model graph is pending, failed,
    or not finalized in the catalog;
-5. read `MarketsMetaTableCatalogTable` rows for requested identifiers;
-6. attach platform MetaTables by cataloged UID;
-7. validate catalog contract hashes against local SQLAlchemy models;
-8. build and return the repository/runtime context.
+4. read `MarketsMetaTableCatalogTable` rows for requested identifiers;
+5. attach platform MetaTables by cataloged UID;
+6. validate catalog contract hashes against local SQLAlchemy models;
+7. build and return the repository/runtime context.
 
 `msm.start_engine(...)` should be renamed conceptually from "bootstrap" to
 "attach from catalog", even if the public function name remains
@@ -495,48 +490,51 @@ repair.
 
 ## Implementation Tasks
 
-### SDK `4.1.14` Alignment Tasks
+### SDK `4.1.15` Alignment Tasks
 
-- [ ] Bump `pyproject.toml` and `uv.lock` from `mainsequence==4.1.11` to the
+- [x] Bump `pyproject.toml` and `uv.lock` from the previous SDK release to the
       SDK release that exposes `MigrationManagedMetaTable`,
-      `MigrationMetaTable`, `PackagedMetaTableMigration.operations_sha256`, and
-      the `metatable-migration.v1` helpers. A clean `uv sync` must keep those
-      APIs available.
-- [ ] Change the shared `ms-markets` MetaTable base so managed models inherit
+      `MigrationManagedTimeIndexMetaData`, `MigrationMetaTable`,
+      `PackagedMetaTableMigration.operations_sha256`, and the
+      `metatable-migration.v1` helpers. A clean `uv sync` must keep those APIs
+      available.
+- [x] Change the shared `ms-markets` MetaTable base so managed models inherit
       the SDK `MigrationManagedMetaTable`, not only `PlatformManagedMetaTable`.
-- [ ] Add a startup/import validation that every model in
+- [x] Change the shared `ms-markets` time-index storage base so DataNode storage
+      models inherit the SDK `MigrationManagedTimeIndexMetaData`.
+- [x] Add a startup/import validation that every model in
       `MIGRATION_MODEL_REGISTRY` is accepted by
       `validate_migration_managed_models(...)` before any sync, upgrade, or
       runtime status check proceeds.
-- [ ] Stop bypassing SDK migration validation when packaging migrations. The
+- [x] Stop bypassing SDK migration validation when packaging migrations. The
       package runner must either use the SDK packaged-migration loader or call
       the same SDK validators before constructing/syncing registry rows.
-- [ ] Package real Python migration revisions under
+- [x] Package real Python migration revisions under
       `src/msm/migrations/versions/` with non-empty structured `OPERATIONS`.
       Do not add `.sql` files, `SQL_PATH`, `sql_path`, or a separate SQL
       migration directory.
-- [ ] Ensure packaged rows populate `operations_sha256` from the structured
+- [x] Ensure packaged rows populate `operations_sha256` from the structured
       operation payload and leave SQL-only fields unused for package-authored
       migrations.
-- [ ] Make `msm migrations upgrade` fail if the package model registry is
+- [x] Make `msm migrations upgrade` fail if the package model registry is
       non-empty but no migration revisions are materialized. It must not report
       a fresh database as current just because both current and expected
       revisions are `None`.
-- [ ] Make `msm migrations upgrade` re-run catalog finalization for already
+- [x] Make `msm migrations upgrade` re-run catalog finalization for already
       applied SDK revisions when catalog rows are missing, stale, or marked
       unfinalized.
-- [ ] Make runtime migration verification respect the requested model graph
+- [x] Make runtime migration verification respect the requested model graph
       instead of checking or blocking on unrelated package tables.
-- [ ] Require a resolved `data_source_uid` for admin migration commands and for
-      runtime verification so SDK status is checked against the intended dynamic
-      table data source.
-- [ ] Validate SDK apply/finalization responses before catalog writes:
+- [x] Stop resolving or validating the active DynamicTable data source UID in
+      `msm`; target data-source handling belongs to the SDK migration API and
+      users do not pass it through the CLI.
+- [x] Validate SDK apply/finalization responses before catalog writes:
       operation status, affected identifiers, refreshed platform MetaTable UID,
       and SDK `new_contract_hash` must match the local SQLAlchemy contract.
 
 ### SDK Dependency Tasks
 
-- [ ] Update the project SDK dependency to the release or local build that
+- [x] Update the project SDK dependency to the release or local build that
       exposes `mainsequence.meta_tables.migrations`.
 - [x] Add a compatibility check that fails clearly when
       `MetaTable.apply_migration(...)` or SDK migration helpers are missing.
@@ -547,20 +545,20 @@ repair.
 
 - [x] Add `MarketsMigrationTable` as a `MigrationMetaTable` subclass.
 - [x] Add the package migration model registry under `src/msm/migrations/`.
-- [ ] Add packaged Python migration modules under `src/msm/migrations/versions/`
+- [x] Add packaged Python migration modules under `src/msm/migrations/versions/`
       for the initial managed table set.
 - [x] Ensure migration Python modules are included in built wheels.
 - [x] Add `src/msm/maintenance/migrations.py`.
 - [x] Implement migration package discovery and ordering.
 - [x] Implement migration table-scope resolution from the package model registry,
       Python migration modules, SDK registry rows, and catalog verification.
-- [ ] Implement migration registry sync by materializing
+- [x] Implement migration registry sync by materializing
       `PackagedMetaTableMigration` rows from Python modules,
       validating them with SDK migration validators, then calling
       `sync_packaged_migration(...)`.
 - [x] Implement migration status reads using `get_migration_status(...)`.
 - [x] Implement migration apply using `apply_migration(...)`.
-- [ ] Implement migration finalization that reconciles catalog rows for affected
+- [x] Implement migration finalization that reconciles catalog rows for affected
       identifiers after SDK apply succeeds.
 - [ ] Split current catalog bootstrap code into mutating migration/admin helpers
       and a read-only runtime attachment path.
@@ -595,11 +593,12 @@ repair.
       finalized on the next `msm migrations upgrade`.
 - [ ] Test empty materialized migration revisions fail when the managed model
       registry is non-empty.
-- [ ] Test registered models must inherit `MigrationManagedMetaTable`.
-- [ ] Test packaged migrations use structured operations and
+- [x] Test registered models must inherit SDK migration-managed bases, including
+      `MigrationManagedTimeIndexMetaData` for time-indexed storage.
+- [x] Test packaged migrations use structured operations and
       `operations_sha256`, without `.sql` files or SQL path metadata.
 - [ ] Test runtime migration checks are scoped to the requested model graph and
-      target `data_source_uid`.
+      SDK migration status response.
 - [ ] Test `msm migrations upgrade` fails clearly when migration permission is
       missing.
 - [ ] Test migration failure leaves catalog rows unchanged.

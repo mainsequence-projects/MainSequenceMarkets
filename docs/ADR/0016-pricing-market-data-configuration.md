@@ -54,11 +54,11 @@ pricing, the built-in datasets are package-level concepts:
 
 ```text
 DiscountCurvesNode
-  identifier: markets_data_node_identifier("discount_curves")
+  identifier: markets_data_node_identifier("DiscountCurvesTS")
   rows:       (time_index, curve_unique_identifier)
 
 FixingRatesNode
-  identifier: markets_data_node_identifier("interest_rate_index_fixings")
+  identifier: markets_data_node_identifier("IndexFixingsTS")
   rows:       (time_index, unique_identifier)
 ```
 
@@ -145,10 +145,10 @@ The built-in default bindings are:
 
 ```text
 (default, discount_curves)
-  -> markets_data_node_identifier("discount_curves")
+  -> markets_data_node_identifier("DiscountCurvesTS")
 
 (default, interest_rate_index_fixings)
-  -> markets_data_node_identifier("interest_rate_index_fixings")
+  -> markets_data_node_identifier("IndexFixingsTS")
 ```
 
 These defaults exist in two places:
@@ -315,10 +315,10 @@ The seeded rows are pricing-owned MetaTable rows, not core `msm` rows.
 - [x] Add bootstrap seeding for default `PricingMarketDataBinding` rows after
   pricing MetaTables are registered.
 - [x] Seed `(PRICING_CONTEXT_DEFAULT, PRICING_CONCEPT_DISCOUNT_CURVES)` to
-  `markets_data_node_identifier("discount_curves")`.
+  `markets_data_node_identifier("DiscountCurvesTS")`.
 - [x] Seed
   `(PRICING_CONTEXT_DEFAULT, PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS)` to
-  `markets_data_node_identifier("interest_rate_index_fixings")`.
+  `markets_data_node_identifier("IndexFixingsTS")`.
 - [x] Make default binding seeding idempotent and avoid overwriting existing
   rows unless the bootstrap call explicitly requests replacement.
 - [x] Add bootstrap options equivalent to

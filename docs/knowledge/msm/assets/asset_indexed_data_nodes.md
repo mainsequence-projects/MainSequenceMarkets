@@ -339,12 +339,12 @@ model-specific packages at the `msm.data_nodes` root.
 Markets DataNodes use the same namespace rule as markets MetaTables because
 their default identifiers derive from their storage classes. With the default
 markets namespace, logical identifiers stay bare, such as `Asset` and
-`asset_snapshots`. With
+`AssetSnapshotsTS`. With
 `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`, `Asset` resolves to
 `mainsequence.examples.Asset`, while
 `AssetSnapshot._default_identifier()` derives from
 `AssetSnapshotsStorage.metatable_identifier()` and resolves to
-`mainsequence.examples.asset_snapshots`.
+`mainsequence.examples.AssetSnapshotsTS`.
 
 The default DataNode `hash_namespace` also follows the active markets namespace.
 Pass an explicit `hash_namespace` only for isolated experiments, tests, or

@@ -218,9 +218,9 @@ snapshot_frame = snapshot_node.run(debug_mode=True, force_update=True)
 
 Markets DataNodes use the same identifier rule as MetaTables. With the default
 markets namespace, logical identifiers stay bare, such as `Asset` and
-`asset_snapshots`. With `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`,
+`AssetSnapshotsTS`. With `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`,
 the published identifiers become `mainsequence.examples.Asset` and
-`mainsequence.examples.asset_snapshots`; the default DataNode `hash_namespace`
+`mainsequence.examples.AssetSnapshotsTS`; the default DataNode `hash_namespace`
 is also `mainsequence.examples`. Pass explicit `identifier` or `hash_namespace`
 only when a test or experiment needs isolation.
 

@@ -59,7 +59,7 @@ Implementation decisions should be recorded under `docs/ADR`.
 Start with the typed row API for simple workflows:
 
 ```bash
-msm migrations upgrade --data-source-uid <dynamic-table-data-source-uid>
+msm migrations upgrade
 ```
 
 ```python
@@ -117,5 +117,5 @@ application initialization after admin migrations are current. Repeated calls
 with the same arguments return the cached runtime; different arguments are
 rejected for that process. See
 [MetaTable Registration](knowledge/msm/platform/meta_table_registration.md),
-[MetaTable Migrations](knowledge/msm/platform/metatable_migrations.md), and
+[Migrations](knowledge/msm/migrations/index.md), and
 [Market Workflows](tutorial/market_workflows.md).

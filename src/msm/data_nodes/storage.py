@@ -37,7 +37,7 @@ def _execution_info(column_name: str) -> dict[str, str]:
 class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Timestamped asset display snapshots keyed by asset unique identifier."""
 
-    __markets_base_identifier__: ClassVar[str] = "asset_snapshots"
+    __markets_base_identifier__: ClassVar[str] = "AssetSnapshotsTS"
     __metatable_description__ = (
         "Timestamped asset display-fact storage keyed by (time_index, "
         "unique_identifier). Used by the AssetSnapshot DataNode to publish "
@@ -45,7 +45,7 @@ class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "without widening AssetTable."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "asset_snapshots",
+        "storage_name": "AssetSnapshotsTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", "unique_identifier"]
@@ -102,14 +102,14 @@ class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Account historical holdings keyed by account UID and held asset."""
 
-    __markets_base_identifier__: ClassVar[str] = "account_historical_holdings"
+    __markets_base_identifier__: ClassVar[str] = "AccountHoldingsTS"
     __metatable_description__ = (
         "Timestamped account holdings storage keyed by (time_index, account_uid, "
         "unique_identifier). Each row is one asset position in an account holdings "
         "observation, with optional trade-snapshot and provider metadata fields."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "account_historical_holdings",
+        "storage_name": "AccountHoldingsTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", "account_uid", "unique_identifier"]
@@ -201,14 +201,14 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Reusable target position exposure rows keyed by position set UID."""
 
-    __markets_base_identifier__: ClassVar[str] = "target_positions"
+    __markets_base_identifier__: ClassVar[str] = "TargetPositionsTS"
     __metatable_description__ = (
         "Reusable target-position storage keyed by (time_index, position_set_uid, "
         "unique_identifier). Each row stores one target exposure instruction that "
         "belongs to a PositionSetTable row for an account target portfolio."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "target_positions",
+        "storage_name": "TargetPositionsTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", "position_set_uid", "unique_identifier"]
@@ -278,7 +278,7 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class OrdersStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Timestamped execution order records keyed by order_time."""
 
-    __markets_base_identifier__: ClassVar[str] = "execution.orders"
+    __markets_base_identifier__: ClassVar[str] = "OrdersTS"
     __metatable_description__ = (
         "Timestamped execution-order storage keyed by order_time, "
         "order_unique_identifier, account_unique_identifier, and "
@@ -286,7 +286,7 @@ class OrdersStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "venue order state over time."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "execution.orders",
+        "storage_name": "OrdersTS",
     }
     __time_index_name__: ClassVar[str] = "order_time"
     __index_names__: ClassVar[list[str]] = [
@@ -358,14 +358,14 @@ class OrdersStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class OrderEventsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Timestamped order status events keyed by event_time."""
 
-    __markets_base_identifier__: ClassVar[str] = "execution.order_events"
+    __markets_base_identifier__: ClassVar[str] = "OrderEventsTS"
     __metatable_description__ = (
         "Timestamped order-event storage keyed by (event_time, "
         "order_unique_identifier). Used by execution DataNodes to persist status "
         "transitions and event metadata for previously published orders."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "execution.order_events",
+        "storage_name": "OrderEventsTS",
     }
     __time_index_name__: ClassVar[str] = "event_time"
     __index_names__: ClassVar[list[str]] = ["event_time", "order_unique_identifier"]
@@ -387,7 +387,7 @@ class OrderEventsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class TradesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Timestamped trade execution records keyed by trade_time."""
 
-    __markets_base_identifier__: ClassVar[str] = "execution.trades"
+    __markets_base_identifier__: ClassVar[str] = "TradesTS"
     __metatable_description__ = (
         "Timestamped trade-execution storage keyed by trade_time, "
         "trade_unique_identifier, account_unique_identifier, and "
@@ -395,7 +395,7 @@ class TradesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "prices, commissions, and settlement facts."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "execution.trades",
+        "storage_name": "TradesTS",
     }
     __time_index_name__: ClassVar[str] = "trade_time"
     __index_names__: ClassVar[list[str]] = [
@@ -450,57 +450,9 @@ class TradesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
-class ExecutionErrorsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
-    """Timestamped execution failure records keyed by time_recorded."""
-
-    __markets_base_identifier__: ClassVar[str] = "execution.errors"
-    __metatable_description__ = (
-        "Timestamped execution-error storage keyed by (time_recorded, "
-        "error_unique_identifier). Used by execution DataNodes to persist broker, "
-        "account, fund, order-manager, and order-related failure diagnostics."
-    )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "execution.errors",
-    }
-    __time_index_name__: ClassVar[str] = "time_recorded"
-    __index_names__: ClassVar[list[str]] = ["time_recorded", "error_unique_identifier"]
-
-    time_recorded: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, info=_execution_info("time_recorded")
-    )
-    error_unique_identifier: Mapped[str] = mapped_column(
-        String, nullable=False, info=_execution_info("error_unique_identifier")
-    )
-    account_unique_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("account_unique_identifier")
-    )
-    fund_unique_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("fund_unique_identifier")
-    )
-    order_unique_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("order_unique_identifier")
-    )
-    order_manager_unique_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("order_manager_unique_identifier")
-    )
-    error_code: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("error_code")
-    )
-    error_message: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("error_message")
-    )
-    error_traceback: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("error_traceback")
-    )
-    error_metadata: Mapped[dict | None] = mapped_column(
-        "metadata", JSONB, nullable=True, info=_execution_info("metadata")
-    )
-
-
 __all__ = [
     "AccountHoldingsStorage",
     "AssetSnapshotsStorage",
-    "ExecutionErrorsStorage",
     "OrderEventsStorage",
     "OrdersStorage",
     "TargetPositionsStorage",

@@ -192,9 +192,9 @@ class MarketsTimeIndexMetaTableMixin(MigrationManagedTimeIndexMetaData):
 
     Sibling of `MarketsMetaTableMixin` for migration-managed time-index storage
     classes. Concrete subclasses set `__markets_base_identifier__`,
-    `__time_index_name__`, `__index_names__`, and a unique
-    `__metatable_extra_hash_components__` (the physical table name derives from
-    the storage shape, so identical shapes collide without it).
+    `__time_index_name__`, and `__index_names__`. The SDK migration-managed
+    time-index base keeps the logical storage identity tied to the stable
+    package identifier.
     """
 
     __abstract__ = True

@@ -48,6 +48,7 @@ def test_fixing_rates_node_resolves_index_storage_first_surface() -> None:
 
     assert issubclass(FixingRatesNode, IndexTimestampedDataNode)
     assert storage_table is IndexFixingsStorage
+    assert storage_table.metatable_identifier() == "IndexFixingsTS"
     assert storage_table.__index_names__ == ["time_index", INDEX_UNIQUE_IDENTIFIER_DIMENSION]
     assert "__data_node_identifier__" not in FixingRatesNode.__dict__
     assert FixingRatesNode._default_identifier() == storage_table.metatable_identifier()

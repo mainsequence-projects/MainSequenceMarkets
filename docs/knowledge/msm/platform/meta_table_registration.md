@@ -11,10 +11,10 @@ configured DynamicTable data source. Creating or evolving those tables is now
 handled by `msm migrations ...` admin commands, not by runtime startup.
 
 Market models inherit `MarketsMetaTableMixin`, which itself inherits the SDK
-`PlatformManagedMetaTable` mixin. Do not set `__tablename__` on normal markets
-MetaTable models. The SDK derives the physical table name from storage-relevant
-SQLAlchemy metadata, including columns, indexes, foreign keys, schema, and the
-markets namespace.
+`MigrationManagedMetaTable` mixin. Time-indexed DataNode storage inherits
+`MigrationManagedTimeIndexMetaData` through `MarketsTimeIndexMetaTableMixin`.
+Do not set `__tablename__` on normal markets MetaTable models. The SDK derives
+the physical table name from the stable migration-managed storage identity.
 
 Every concrete markets MetaTable model must declare `__metatable_description__`.
 That description is the durable platform-level discovery text copied into the
@@ -47,7 +47,7 @@ apply migrations, or repair catalog drift.
 The schema mutation entrypoint is the admin CLI:
 
 ```bash
-msm migrations upgrade --data-source-uid <dynamic-table-data-source-uid>
+msm migrations upgrade
 ```
 
 The lower-level `register_markets_meta_tables(...)` helper remains an internal

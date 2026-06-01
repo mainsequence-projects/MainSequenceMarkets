@@ -10,6 +10,8 @@ PRICING_CONTEXT_RISK_MANAGER = "risk_manager"
 PRICING_CONCEPT_DISCOUNT_CURVES = "discount_curves"
 PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS = "interest_rate_index_fixings"
 PRICING_CONCEPT_EQUITY_VOL_CURVES = "equity_vol_curves"
+PRICING_DEFAULT_DISCOUNT_CURVES_DATA_NODE_IDENTIFIER = "DiscountCurvesTS"
+PRICING_DEFAULT_INDEX_FIXINGS_DATA_NODE_IDENTIFIER = "IndexFixingsTS"
 
 
 def default_pricing_market_data_bindings(
@@ -20,11 +22,11 @@ def default_pricing_market_data_bindings(
 
     return {
         PRICING_CONCEPT_DISCOUNT_CURVES: markets_data_node_identifier(
-            PRICING_CONCEPT_DISCOUNT_CURVES,
+            PRICING_DEFAULT_DISCOUNT_CURVES_DATA_NODE_IDENTIFIER,
             namespace=namespace,
         ),
         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: markets_data_node_identifier(
-            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+            PRICING_DEFAULT_INDEX_FIXINGS_DATA_NODE_IDENTIFIER,
             namespace=namespace,
         ),
     }
@@ -48,6 +50,8 @@ __all__ = [
     "PRICING_CONTEXT_EOD",
     "PRICING_CONTEXT_LIVE",
     "PRICING_CONTEXT_RISK_MANAGER",
+    "PRICING_DEFAULT_DISCOUNT_CURVES_DATA_NODE_IDENTIFIER",
+    "PRICING_DEFAULT_INDEX_FIXINGS_DATA_NODE_IDENTIFIER",
     "default_pricing_market_data_bindings",
     "default_pricing_market_data_identifier",
 ]

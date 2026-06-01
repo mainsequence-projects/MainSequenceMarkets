@@ -24,7 +24,7 @@ from msm.api.assets import (
     OpenFigiDetails,
 )
 from msm.api.calendars import Calendar
-from msm.api.execution import Order, OrderManager, OrderStatusEvent
+from msm.api.execution import OrderManager
 from msm.api.indices import Index, IndexType
 from msm.models import (
     AccountGroupTable,
@@ -39,7 +39,6 @@ from msm.models import (
     IndexTypeTable,
     OpenFigiAssetDetailsTable,
     OrderManagerTable,
-    OrderTable,
     PositionSetTable,
 )
 
@@ -64,7 +63,6 @@ from msm.models import (
         (IndexType, IndexTypeTable, ("index_type",)),
         (Index, IndexTable, ("unique_identifier",)),
         (OrderManager, OrderManagerTable, ("unique_identifier",)),
-        (Order, OrderTable, ("order_time", "order_remote_id", "asset_unique_identifier")),
     ],
 )
 def test_api_rows_declare_table_and_upsert_contracts(
@@ -169,16 +167,6 @@ def test_account_pretty_print_positions_rejects_datanode_run_tuple() -> None:
 
     with pytest.raises(TypeError, match="Unpack DataNode run results"):
         account.pretty_print_positions((False, holdings))
-
-
-def test_append_only_status_event_does_not_define_generic_upsert() -> None:
-    assert OrderStatusEvent.__upsert_keys__ == ()
-
-    with pytest.raises(NotImplementedError):
-        OrderStatusEvent.upsert(
-            event_time=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
-            order_status="filled",
-        )
 
 
 def test_account_owns_group_relationship_only() -> None:

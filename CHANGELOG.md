@@ -9,6 +9,10 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Removed the duplicated row-oriented execution fact MetaTables/APIs for
+  orders, order events, trades, and execution errors. Execution facts are now
+  storage-first through explicit time-index storage contracts, while
+  order-manager intent remains as domain MetaTables.
 - Split portfolio and virtual-fund functionality into the new `msm_portfolios`
   package boundary. Core `msm.start_engine(...)` no longer registers portfolio
   MetaTables, virtual-fund tables, portfolio DataNode storage, or portfolio
@@ -69,6 +73,10 @@ and this project follows versioned releases.
   that creates an optional `Index` reference, uses `SignalWeights`,
   `PortfolioWeights`, and `PortfoliosDataNode`, and writes their storage UIDs
   back to `Portfolio`.
+- Added ADR 0021 for the planned virtual-fund allocation contract: account and
+  virtual-fund holdings use positive quantities plus `direction`, virtual-fund
+  holdings allocate from account holdings sets, and virtual funds can expose a
+  one-to-one `VirtualFundAsset` proxy for account-facing systems.
 - Simplified `PortfolioTable`: removed portfolio construction booleans,
   `stats_json`, `metadata_json`, portfolio asset-detail rows, and synthetic
   asset linkage. Portfolios now optionally link to a core `IndexTable` row
@@ -95,7 +103,8 @@ and this project follows versioned releases.
   methods and constructor arguments from instrument configuration to pricing
   market-data configuration.
 - Updated pricing market-data reads to resolve DataNodes through concept keys
-  such as `discount_curves` and `interest_rate_index_fixings`, then call
+  such as `discount_curves` and `interest_rate_index_fixings`, mapping built-in
+  defaults to `DiscountCurvesTS` and `IndexFixingsTS`, then call
   `APIDataNode.build_from_identifier(...)`.
 - Removed the legacy core `InstrumentsConfiguration` table/API/repository
   surface in favor of `msm_pricing.api.PricingMarketDataBinding`.

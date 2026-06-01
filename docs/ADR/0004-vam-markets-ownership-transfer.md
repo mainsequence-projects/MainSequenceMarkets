@@ -235,8 +235,8 @@ Applications should import market functionality from `msm`, not from
 
 - [x] Add any missing SQLAlchemy models still represented only in backend
   `vam.assets`, including calendars, account groups, account model portfolios,
-  instruments configuration, orders, order events, trades, and execution errors
-  where those responsibilities remain part of markets.
+  instruments configuration, orders, order events, and trades where those
+  responsibilities remain part of markets.
 - [x] Ensure every relational model uses `MarketsMetaTableMixin`,
   `markets_table_name(...)`, UUID primary keys, SQLAlchemy `JSON` for JSON
   fields, and explicit SQLAlchemy indexes/foreign keys where portable.

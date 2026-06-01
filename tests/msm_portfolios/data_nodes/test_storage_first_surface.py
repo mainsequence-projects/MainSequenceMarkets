@@ -6,6 +6,14 @@ from msm_portfolios.asset_scope import ASSET_UNIQUE_IDENTIFIER
 from msm_portfolios.data_nodes.portfolio_weights import PortfolioWeights
 from msm_portfolios.data_nodes.portfolios import PortfoliosDataNode
 from msm_portfolios.data_nodes.signal_weights import SignalWeights
+from msm_portfolios.data_nodes.storage import (
+    ExternalPricesStorage,
+    FundHoldingsStorage,
+    InterpolatedPricesStorage,
+    PortfolioWeightsStorage,
+    PortfoliosStorage,
+    SignalWeightsStorage,
+)
 from msm_portfolios.models import portfolio_sqlalchemy_models
 
 
@@ -33,3 +41,12 @@ def test_portfolio_nodes_expose_storage_first_surface() -> None:
         assert not hasattr(node_cls, "build_mock_frame")
         assert not hasattr(node_cls, "build_schema_bootstrap_frame")
         assert not hasattr(node_cls, "build_initialization_frame")
+
+
+def test_portfolio_storage_identifiers_use_camel_case_ts_suffix() -> None:
+    assert PortfolioWeightsStorage.metatable_identifier() == "PortfolioWeightsTS"
+    assert SignalWeightsStorage.metatable_identifier() == "SignalWeightsTS"
+    assert PortfoliosStorage.metatable_identifier() == "PortfoliosTS"
+    assert InterpolatedPricesStorage.metatable_identifier() == "InterpolatedPricesTS"
+    assert ExternalPricesStorage.metatable_identifier() == "ExternalPricesTS"
+    assert FundHoldingsStorage.metatable_identifier() == "FundHoldingsTS"

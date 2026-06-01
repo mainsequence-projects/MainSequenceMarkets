@@ -24,12 +24,18 @@ from msm.data_nodes.assets.asset_indexed import (
 )
 from msm.data_nodes.execution import (
     ExecutionDataNodeConfiguration,
-    ExecutionErrors,
     OrderEvents,
     Orders,
     Trades,
 )
-from msm.data_nodes.storage import AssetSnapshotsStorage
+from msm.data_nodes.storage import (
+    AccountHoldingsStorage,
+    AssetSnapshotsStorage,
+    OrderEventsStorage,
+    OrdersStorage,
+    TargetPositionsStorage,
+    TradesStorage,
+)
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.models import AssetTable, markets_sqlalchemy_models
 from msm.models.registration import markets_foreign_key_target_identifiers
@@ -89,7 +95,6 @@ def test_root_asset_scope_module_is_removed() -> None:
         Orders,
         OrderEvents,
         Trades,
-        ExecutionErrors,
     ],
 )
 def test_asset_indexed_nodes_expose_storage_first_surface(
@@ -136,6 +141,21 @@ def test_execution_schema_constants_and_config_fields_are_removed() -> None:
 
     assert "index_names" not in ExecutionDataNodeConfiguration.model_fields
     assert "time_index_name" not in ExecutionDataNodeConfiguration.model_fields
+
+
+def test_execution_error_data_node_is_removed() -> None:
+    assert not hasattr(execution_module, "ExecutionErrors")
+    assert not hasattr(importlib.import_module("msm.data_nodes"), "ExecutionErrors")
+
+
+def test_timestamped_storage_identifiers_use_camel_case_ts_suffix() -> None:
+    assert AssetSnapshotsStorage.metatable_identifier() == "AssetSnapshotsTS"
+    assert AccountHoldingsStorage.metatable_identifier() == "AccountHoldingsTS"
+    assert TargetPositionsStorage.metatable_identifier() == "TargetPositionsTS"
+    assert OrdersStorage.metatable_identifier() == "OrdersTS"
+    assert OrderEventsStorage.metatable_identifier() == "OrderEventsTS"
+    assert TradesStorage.metatable_identifier() == "TradesTS"
+    assert AssetPricingDetailsStorage.metatable_identifier() == "AssetPricingDetailsTS"
 
 
 @pytest.mark.parametrize(

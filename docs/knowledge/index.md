@@ -32,9 +32,11 @@ collection of SQLAlchemy internals. For row-oriented MetaTable data:
   DataNodes, and row APIs.
 
 This split is enforced across the markets MetaTables. `msm.models` exports
-core `*Table` declarations only; row names such as `Asset`, `Order`, and
-`Trade` live in `msm.api.*`. Portfolio row names such as `Portfolio` and `Fund`
-live in `msm_portfolios.api.*`.
+core `*Table` declarations only; row names such as `Asset`, `Account`, and
+`OrderManager` live in `msm.api.*`. Timestamped execution facts such as orders,
+order events, and trades live in DataNode storage, not duplicate row tables.
+Portfolio row names such as `Portfolio` and `Fund` live in
+`msm_portfolios.api.*`.
 
 This pattern is recorded in
 [ADR 0008](../ADR/0008-metatable-table-and-api-model-split.md) and should guide

@@ -45,6 +45,7 @@ nav:
               - Futures: knowledge/msm/derivatives/futures.md
           - Execution: knowledge/msm/execution/index.md
           - Indexes: knowledge/msm/indices/index.md
+          - Migrations: knowledge/msm/migrations/index.md
           - Models: knowledge/msm/models/index.md
           - Platform:
               - Overview: knowledge/msm/platform/index.md
@@ -79,6 +80,7 @@ nav:
       - Extension Model Catalog Bootstrap: ADR/0018-extension-model-catalog-bootstrap.md
       - msm_portfolios Package Boundary: ADR/0019-msm-portfolios-package-boundary.md
       - SDK-Managed MetaTable Migrations: ADR/0020-sdk-managed-metatable-migrations.md
+      - Virtual Fund Allocation Holdings Contract: ADR/0021-virtual-fund-allocation-holdings-contract.md
       - API v1:
           - Asset Category Route Plan: ADR/fast_api/v1/0012-asset-category-route-plan.md
           - Index Route Plan: ADR/fast_api/v1/0013-index-route-plan.md

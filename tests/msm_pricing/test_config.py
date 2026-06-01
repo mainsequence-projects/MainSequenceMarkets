@@ -15,6 +15,8 @@ from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
     PRICING_CONTEXT_DEFAULT,
+    PRICING_DEFAULT_DISCOUNT_CURVES_DATA_NODE_IDENTIFIER,
+    PRICING_DEFAULT_INDEX_FIXINGS_DATA_NODE_IDENTIFIER,
     default_pricing_market_data_bindings,
 )
 
@@ -33,8 +35,10 @@ def test_pricing_market_data_configuration_defaults_to_canonical_identifiers() -
     assert configuration.context_key == PRICING_CONTEXT_DEFAULT
     assert configuration.data_node_identifiers == {}
     assert default_pricing_market_data_bindings() == {
-        PRICING_CONCEPT_DISCOUNT_CURVES: "discount_curves",
-        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: "interest_rate_index_fixings",
+        PRICING_CONCEPT_DISCOUNT_CURVES: PRICING_DEFAULT_DISCOUNT_CURVES_DATA_NODE_IDENTIFIER,
+        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: (
+            PRICING_DEFAULT_INDEX_FIXINGS_DATA_NODE_IDENTIFIER
+        ),
     }
 
 
@@ -47,9 +51,9 @@ def test_pricing_market_data_configuration_defaults_follow_active_markets_namesp
 
     assert configuration.context_key == PRICING_CONTEXT_DEFAULT
     assert default_pricing_market_data_bindings() == {
-        PRICING_CONCEPT_DISCOUNT_CURVES: "mainsequence.examples.discount_curves",
+        PRICING_CONCEPT_DISCOUNT_CURVES: "mainsequence.examples.DiscountCurvesTS",
         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: (
-            "mainsequence.examples.interest_rate_index_fixings"
+            "mainsequence.examples.IndexFixingsTS"
         ),
     }
 

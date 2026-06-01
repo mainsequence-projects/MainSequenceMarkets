@@ -48,6 +48,7 @@ def test_discount_curves_node_resolves_storage_and_curve_identity() -> None:
     storage_table = DiscountCurvesNode._required_storage_table()
 
     assert storage_table is DiscountCurvesStorage
+    assert storage_table.metatable_identifier() == "DiscountCurvesTS"
     assert storage_table.__index_names__ == ["time_index", CURVE_UNIQUE_IDENTIFIER_DIMENSION]
     assert storage_table.__time_index_name__ == "time_index"
     assert "__data_node_identifier__" not in DiscountCurvesNode.__dict__

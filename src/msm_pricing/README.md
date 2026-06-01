@@ -88,7 +88,9 @@ bindings for:
 
 ```text
 (default, discount_curves)
+  -> DiscountCurvesTS
 (default, interest_rate_index_fixings)
+  -> IndexFixingsTS
 ```
 
 Applications can add named contexts such as `eod`, `live`, or `risk_manager`

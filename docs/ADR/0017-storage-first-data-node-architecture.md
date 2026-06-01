@@ -116,7 +116,7 @@ architecture moves that surface onto storage classes. Concrete gaps:
 
 2. **No storage classes exist for DataNode outputs.** There is no
    `PlatformTimeIndexMetaData` class for discount curves, index fixings, pricing
-   details, account/fund holdings, orders/trades/events/errors, asset snapshots,
+   details, account/fund holdings, orders/trades/events, asset snapshots,
    portfolio/signal weights, or interpolated/external prices. Their schemas live
    today as `RecordDefinition` lists and as the dataclass
    `DataNodeTableContract` in `src/msm/data_nodes/utils/contracts.py`.
@@ -174,7 +174,7 @@ Concrete nodes to migrate:
 
 - Pricing: `DiscountCurvesNode`, `FixingRatesNode`, `AssetPricingDetail`
 - Core: `AccountHoldings`, `VirtualFundHoldings`, `Orders`, `OrderEvents`,
-  `Trades`, `ExecutionErrors`, `AssetSnapshot`
+  `Trades`, `AssetSnapshot`
 - Portfolios: `PortfolioWeights`, `SignalWeights`, `PortfoliosDataNode`,
   `InterpolatedPrices`, `ExternalPrices`, portfolio identity
 
@@ -322,8 +322,8 @@ Verified against the project `.venv` (SDK `4.1.5`):
   `IndexFixingsStorage`, `AssetPricingDetailsStorage`);
   `src/msm/data_nodes/storage.py` (`AssetSnapshotsStorage`,
   `AccountHoldingsStorage`, `FundHoldingsStorage`, `TargetPositionsStorage`,
-  `OrdersStorage`, `OrderEventsStorage`, `TradesStorage`,
-  `ExecutionErrorsStorage`); `src/msm/portfolios/data_nodes/storage.py`
+  `OrdersStorage`, `OrderEventsStorage`, `TradesStorage`);
+  `src/msm/portfolios/data_nodes/storage.py`
   (`PortfolioWeightsStorage`, `SignalWeightsStorage`, `PortfoliosStorage`,
   `InterpolatedPricesStorage`, `ExternalPricesStorage`).
 - [x] Ported column names/dtypes/descriptions from the legacy `RecordDefinition`
@@ -331,8 +331,7 @@ Verified against the project `.venv` (SDK `4.1.5`):
   prices node outputs onto SQLAlchemy `mapped_column(..., info={"label", "description"})`.
   Index columns are `nullable=False`; data columns `nullable=True`. The two
   reserved names map onto safe Python attributes via a positional column name —
-  `ExecutionErrorsStorage.error_metadata` → `"metadata"`, `PortfoliosStorage.return_`
-  → `"return"`. Interpolated/external price columns had no legacy `RecordDefinition`
+  `PortfoliosStorage.return_` → `"return"`. Interpolated/external price columns had no legacy `RecordDefinition`
   so their descriptions are net-new.
 - [x] FK columns (Decision §4; legacy only declared canonical FKs on
   curve/index/fixings/asset-snapshot nodes, plus holdings gain account/fund
@@ -532,8 +531,8 @@ defaults `storage_table` to `cls._required_storage_table()`.
   Repointed the stamped-family `validate_frame(..., config=...)` call sites in
   `curves.py` / `index_fixings.py` onto `validate_frame(..., storage_table=self.storage_table)`.
 - [x] Core: `AccountHoldings` → `AccountHoldingsStorage`, `VirtualFundHoldings`
-  → `FundHoldingsStorage`, `Orders` / `OrderEvents` / `Trades` /
-  `ExecutionErrors` → their `*Storage`, `AssetSnapshot` → `AssetSnapshotsStorage`.
+  → `FundHoldingsStorage`, `Orders` / `OrderEvents` / `Trades` → their
+  `*Storage`, `AssetSnapshot` → `AssetSnapshotsStorage`.
   `AssetSnapshot.build_frame` / `validate_frame` call sites moved off the dropped
   `config=` kwarg onto the foundation `storage_table` signature.
 - [x] Portfolios: `PortfolioWeights` / `SignalWeights` / `PortfoliosDataNode` →

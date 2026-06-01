@@ -32,14 +32,14 @@ from msm_portfolios.models.virtual_funds import FundTable
 class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Executed portfolio weights keyed by portfolio index and held asset."""
 
-    __markets_base_identifier__: ClassVar[str] = "portfolio_weights"
+    __markets_base_identifier__: ClassVar[str] = "PortfolioWeightsTS"
     __metatable_description__ = (
         "Timestamped portfolio weight storage keyed by time_index, "
         "portfolio_index_unique_identifier, and unique_identifier. Stores "
         "executed asset allocation weights and supporting price/volume facts."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "portfolio_weights",
+        "storage_name": "PortfolioWeightsTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
@@ -128,14 +128,14 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class SignalWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Raw signal weights keyed by signal UID and signaled asset."""
 
-    __markets_base_identifier__: ClassVar[str] = "signal_weights"
+    __markets_base_identifier__: ClassVar[str] = "SignalWeightsTS"
     __metatable_description__ = (
         "Timestamped signal weight storage keyed by (time_index, signal_uid, "
         "unique_identifier). Stores raw signal allocation weights for signaled "
         "assets before portfolio execution."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "signal_weights",
+        "storage_name": "SignalWeightsTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", "signal_uid", "unique_identifier"]
@@ -177,14 +177,14 @@ class SignalWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Canonical portfolio value series keyed by portfolio unique identifier."""
 
-    __markets_base_identifier__: ClassVar[str] = "portfolios"
+    __markets_base_identifier__: ClassVar[str] = "PortfoliosTS"
     __metatable_description__ = (
         "Timestamped portfolio value storage keyed by (time_index, "
         "unique_identifier). Stores close, return, calculated close, and close "
         "timestamp for canonical portfolio value series."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "portfolios",
+        "storage_name": "PortfoliosTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", "unique_identifier"]
@@ -237,14 +237,14 @@ class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Interpolated/upsampled OHLCV price bars keyed by asset unique identifier."""
 
-    __markets_base_identifier__: ClassVar[str] = "interpolated_prices"
+    __markets_base_identifier__: ClassVar[str] = "InterpolatedPricesTS"
     __metatable_description__ = (
         "Timestamped interpolated-price storage keyed by (time_index, "
         "unique_identifier). Stores OHLCV bars, VWAP, trade count, and interpolation "
         "flags for asset price feeds used by portfolio workflows."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "interpolated_prices",
+        "storage_name": "InterpolatedPricesTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", "unique_identifier"]
@@ -321,14 +321,14 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class ExternalPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """External provider price observations keyed by asset unique identifier."""
 
-    __markets_base_identifier__: ClassVar[str] = "external_prices"
+    __markets_base_identifier__: ClassVar[str] = "ExternalPricesTS"
     __metatable_description__ = (
         "Timestamped external-price storage keyed by (time_index, "
         "unique_identifier). Stores provider-supplied price observations for assets "
         "when external pricing data is injected into portfolio workflows."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "external_prices",
+        "storage_name": "ExternalPricesTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", "unique_identifier"]
@@ -362,7 +362,7 @@ class ExternalPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Fund historical holdings keyed by fund UID and held asset."""
 
-    __markets_base_identifier__: ClassVar[str] = "virtual_fund_historical_holdings"
+    __markets_base_identifier__: ClassVar[str] = "FundHoldingsTS"
     __metatable_description__ = (
         "Timestamped virtual-fund holdings storage keyed by (time_index, fund_uid, "
         "unique_identifier). Each row is one asset position in a fund holdings "
@@ -370,7 +370,7 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "when available."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "virtual_fund_historical_holdings",
+        "storage_name": "FundHoldingsTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", "fund_uid", "unique_identifier"]

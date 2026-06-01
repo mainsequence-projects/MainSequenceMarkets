@@ -32,17 +32,26 @@ The registry is not migration history. Individual Python migration modules
 define revision metadata and `affected_models()` or `AFFECTED_MODELS`; the
 runner materializes SDK manifest JSON at `sync` or `upgrade` time.
 
+Models in the registry must use SDK migration-managed bases. Plain MetaTables
+inherit `MigrationManagedMetaTable` through `MarketsMetaTableMixin`; time-indexed
+DataNode storage inherits `MigrationManagedTimeIndexMetaData` through
+`MarketsTimeIndexMetaTableMixin`.
+
 ## Commands
 
 ```bash
-msm migrations current --data-source-uid <dynamic-table-data-source-uid> --json
-msm migrations sync --data-source-uid <dynamic-table-data-source-uid>
-msm migrations upgrade --data-source-uid <dynamic-table-data-source-uid>
-msm migrations validate --data-source-uid <dynamic-table-data-source-uid>
+msm migrations current --json
+msm migrations sync
+msm migrations upgrade
+msm migrations validate
 ```
 
 `current` is read-only. It reports package revisions, SDK migration status, and
-catalog finalization state.
+catalog finalization state. Human-readable output groups catalog rows into
+Domain MetaTables and Time-index Storage MetaTables so row-oriented contracts
+and DataNode storage contracts are not shown as one flat list.
+Time-index storage identifiers use the same `CamelCase` style as domain
+MetaTables plus a `TS` suffix, for example `OrdersTS`.
 
 `sync` registers or attaches the package migration registry and upserts packaged
 migration rows. It does not apply migrations.
@@ -57,9 +66,10 @@ See `examples/msm/platform/metatable_migration_lifecycle.py` for a small
 inspection example that lists packaged revisions and prints the intended admin
 command sequence.
 
-The commands do not accept database URLs and do not connect directly to the
-database. SQL execution is owned by the SDK/TS Manager
-`metatable-migration.v1` endpoint.
+The commands do not resolve a data-source UID in `msm` and do not ask users for
+one. Target data-source handling belongs to the Main Sequence SDK migration API.
+They do not accept database URLs and do not connect directly to the database.
+SQL execution is owned by the SDK/TS Manager `metatable-migration.v1` endpoint.
 
 ## Runtime Contract
 
@@ -95,7 +105,7 @@ Example shape:
 
 ```python
 REVISION = "0002_add_asset_status"
-EXPECTED_CURRENT_REVISION = "0001_baseline"
+EXPECTED_CURRENT_REVISION = "0001_initial"
 MIGRATION_NAMESPACE = None
 AFFECTED_MODELS = [AssetTable]
 OPERATIONS = [
@@ -114,6 +124,8 @@ schema change needs correction, add another forward migration.
 ## SDK Requirement
 
 The implementation requires a Main Sequence SDK version that exposes
-`mainsequence.meta_tables.migrations`, `MetaTable.apply_migration(...)`, and
-`MetaTable.get_migration_status(...)`. Older SDK versions fail clearly before
-admin migration execution or runtime attachment.
+`mainsequence.meta_tables.migrations`, `MigrationManagedMetaTable`,
+`MigrationManagedTimeIndexMetaData`, `MetaTable.apply_migration(...)`, and
+`MetaTable.get_migration_status(...)`. `ms-markets` currently targets SDK
+`4.1.15` or newer. Older SDK versions fail clearly before admin migration
+execution or runtime attachment.

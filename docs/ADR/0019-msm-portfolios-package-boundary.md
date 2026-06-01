@@ -315,7 +315,7 @@ Core imports should remain focused:
 ```python
 from msm.api.assets import Asset
 from msm.api.accounts import Account
-from msm.api.execution import Order
+from msm.api.execution import OrderManager
 ```
 
 No new `msm.portfolios` compatibility module should be added unless a later
