@@ -132,7 +132,7 @@ def bootstrap_markets_meta_tables_from_catalog(
     for position, plan in enumerate(model_plans, start=1):
         model = plan.model
         catalog_row = catalog_rows_by_identifier.get(plan.identifier)
-        target_meta_tables = _target_meta_tables_from_bound_models()
+        target_meta_tables = _target_meta_tables_from_bound_models(resolved_models)
         if catalog_row is not None:
             validate_catalog_contract(catalog_row, model=model)
             if is_time_index_meta_table_model(model):

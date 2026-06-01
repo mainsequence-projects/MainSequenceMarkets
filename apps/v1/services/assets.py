@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from apps.v1.schemas.assets import AssetCurrentPricingDetailsResponse, AssetListRow
+from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse
 from apps.v1.schemas.common import FrontEndDetailSummary
 
 
@@ -13,16 +13,16 @@ def list_assets(
     limit: int = 50,
     offset: int = 0,
     category_uid: str | None = None,
-) -> list[AssetListRow]:
+) -> list[Asset]:
     runtime = _get_runtime()
-    rows = _list_asset_catalog_rows(
+    rows = _list_asset_rows(
         runtime.context,
         search=search,
         limit=limit,
         offset=offset,
         category_uid=category_uid,
     )
-    return [AssetListRow.model_validate(row) for row in rows]
+    return [Asset.model_validate(row) for row in rows]
 
 
 def get_asset_summary(*, uid: str) -> FrontEndDetailSummary | None:
@@ -55,10 +55,10 @@ def _get_runtime():
     )
 
 
-def _list_asset_catalog_rows(context, **kwargs):
-    from msm.services import list_asset_catalog_rows
+def _list_asset_rows(context, **kwargs):
+    from msm.services import list_asset_rows
 
-    return list_asset_catalog_rows(context, **kwargs)
+    return list_asset_rows(context, **kwargs)
 
 
 def _get_asset_frontend_detail_summary(context, **kwargs):

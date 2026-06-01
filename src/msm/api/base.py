@@ -17,11 +17,11 @@ from msm.repositories.crud import (
     upsert_model,
 )
 
-RowT = TypeVar("RowT", bound="MarketsRow")
+RowT = TypeVar("RowT", bound="MarketsMetaTableRow")
 Payload = BaseModel | Mapping[str, Any] | None
 
 
-class MarketsRow(BaseModel):
+class MarketsMetaTableRow(BaseModel):
     """Base class for user-facing Pydantic rows backed by markets MetaTables."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
@@ -226,7 +226,11 @@ def _dedupe_models(models: Sequence[Any]) -> list[Any]:
     return deduped
 
 
+MarketsRow = MarketsMetaTableRow
+
+
 __all__ = [
+    "MarketsMetaTableRow",
     "MarketsRow",
     "operation_result_rows",
 ]

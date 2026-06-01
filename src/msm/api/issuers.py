@@ -6,7 +6,7 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from msm.api.base import MarketsRow
+from msm.api.base import MarketsMetaTableRow
 from msm.models import IssuerTable
 
 
@@ -28,7 +28,7 @@ def _validate_payload(
     raise TypeError("Payload must be a Pydantic model, mapping, or None.")
 
 
-class Issuer(MarketsRow):
+class Issuer(MarketsMetaTableRow):
     """User-facing issuer reference row."""
 
     __table__: ClassVar[type[IssuerTable]] = IssuerTable

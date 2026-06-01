@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from apps.v1.main import app
 
 
-def test_get_indexes_returns_frontend_list_rows(monkeypatch) -> None:
+def test_get_indexes_returns_core_index_rows(monkeypatch) -> None:
     index_uid = uuid.uuid4()
     monkeypatch.setattr(
         "apps.v1.routers.indices.list_indices",
@@ -19,6 +19,7 @@ def test_get_indexes_returns_frontend_list_rows(monkeypatch) -> None:
                 "display_name": "S&P 500 Index",
                 "description": "Large-cap US equity index",
                 "provider": "example",
+                "metadata_json": {"currency": "USD"},
             }
         ],
     )
@@ -43,6 +44,7 @@ def test_get_indexes_returns_frontend_list_rows(monkeypatch) -> None:
             "display_name": "S&P 500 Index",
             "description": "Large-cap US equity index",
             "provider": "example",
+            "metadata_json": {"currency": "USD"},
         }
     ]
 

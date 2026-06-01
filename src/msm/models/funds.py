@@ -49,8 +49,19 @@ class FundTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         primary_key=True,
         default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Canonical UUID primary key for this MetaTable row.",
+        },
     )
-    unique_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
+    unique_identifier: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Unique Identifier",
+            "description": "Stable business identifier used for idempotent upserts, lookup, and joins.",
+        },
+    )
     target_account_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         MetaTableForeignKey(
@@ -59,6 +70,10 @@ class FundTable(MarketsMetaTableMixin, MarketsBase):
             ondelete="CASCADE",
         ),
         nullable=False,
+        info={
+            "label": "Target Account UID",
+            "description": "Foreign key to AccountTable.uid for the account targeted by the workflow.",
+        },
     )
     target_portfolio_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -68,9 +83,27 @@ class FundTable(MarketsMetaTableMixin, MarketsBase):
             ondelete="CASCADE",
         ),
         nullable=False,
+        info={
+            "label": "Target Portfolio UID",
+            "description": "Foreign key to PortfolioTable.uid for the target portfolio.",
+        },
     )
-    requires_nav_adjustment: Mapped[bool] = mapped_column(default=False, nullable=False)
-    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    requires_nav_adjustment: Mapped[bool] = mapped_column(
+        default=False,
+        nullable=False,
+        info={
+            "label": "Requires NAV Adjustment",
+            "description": "Whether the fund workflow requires NAV adjustment handling.",
+        },
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+        info={
+            "label": "Metadata JSON",
+            "description": "Structured metadata JSON for provider, application, or workflow-specific attributes.",
+        },
+    )
 
 
 __all__ = ["FundTable"]

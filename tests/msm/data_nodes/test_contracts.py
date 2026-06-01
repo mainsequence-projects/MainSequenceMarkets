@@ -25,7 +25,13 @@ from msm.data_nodes.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,
 )
-from msm.models import AccountTable, AssetTable, FundTable, markets_sqlalchemy_models
+from msm.models import (
+    AccountTable,
+    AssetTable,
+    FundTable,
+    PositionSetTable,
+    markets_sqlalchemy_models,
+)
 from msm.models.registration import markets_foreign_key_target_identifiers
 from msm.services.holdings import (
     build_account_holdings_frame,
@@ -69,6 +75,27 @@ def test_holdings_storage_declares_owner_and_asset_foreign_keys() -> None:
         and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
         == "unique_identifier"
         for foreign_key in fund_asset_column.foreign_keys
+    )
+
+
+def test_target_positions_storage_declares_position_set_foreign_key() -> None:
+    assert markets_foreign_key_target_identifiers(TargetPositionsStorage) == [
+        AssetTable.__metatable_identifier__,
+        PositionSetTable.__metatable_identifier__,
+    ]
+
+    position_set_column = TargetPositionsStorage.__table__.columns["position_set_uid"]
+    asset_column = TargetPositionsStorage.__table__.columns["unique_identifier"]
+    assert any(
+        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is PositionSetTable
+        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"] == "uid"
+        for foreign_key in position_set_column.foreign_keys
+    )
+    assert any(
+        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AssetTable
+        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
+        == "unique_identifier"
+        for foreign_key in asset_column.foreign_keys
     )
 
 

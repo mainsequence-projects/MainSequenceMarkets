@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .mock_market_data import (
     DEFAULT_CURVE_SAMPLING_DAYS,
+    DEFAULT_FIXING_LOOKBACK_DAYS,
     EXAMPLE_CURVE_UNIQUE_IDENTIFIER,
     EXAMPLE_INDEX_UNIQUE_IDENTIFIER,
     MockFlatForwardDiscountCurvesNode,
@@ -13,6 +14,7 @@ from .mock_market_data import (
 
 __all__ = [
     "DEFAULT_CURVE_SAMPLING_DAYS",
+    "DEFAULT_FIXING_LOOKBACK_DAYS",
     "EXAMPLE_CURVE_UNIQUE_IDENTIFIER",
     "EXAMPLE_INDEX_UNIQUE_IDENTIFIER",
     "MockFlatForwardDiscountCurvesNode",

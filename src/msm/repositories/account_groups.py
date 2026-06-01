@@ -76,7 +76,6 @@ def build_create_account_group_operation(
     *,
     group_name: str | None = None,
     group_description: str | None = None,
-    account_model_portfolio_uid: uuid.UUID | str | None = None,
     metadata_json: dict[str, Any] | None = None,
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
@@ -85,7 +84,6 @@ def build_create_account_group_operation(
         values={
             "group_name": group_name,
             "group_description": group_description,
-            "account_model_portfolio_uid": account_model_portfolio_uid,
             "metadata_json": metadata_json,
         },
     )
@@ -110,16 +108,11 @@ def build_search_account_groups_operation(
     context: MarketsRepositoryContext,
     *,
     group_name_contains: str | None = None,
-    account_model_portfolio_uid: uuid.UUID | str | None = None,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
-    filters: dict[str, Any] = {}
-    if account_model_portfolio_uid is not None:
-        filters["account_model_portfolio_uid"] = account_model_portfolio_uid
     return build_search_model_operation(
         context,
         model=AccountGroupTable,
-        filters=filters,
         contains_filters={"group_name": group_name_contains or ""},
         limit=limit,
     )
@@ -141,7 +134,6 @@ def build_update_account_group_operation(
     uid: uuid.UUID | str,
     group_name: str | None = None,
     group_description: str | None = None,
-    account_model_portfolio_uid: uuid.UUID | str | None = None,
     metadata_json: dict[str, Any] | None = None,
 ) -> MetaTableCompiledSQLOperation:
     return build_update_model_operation(
@@ -151,7 +143,6 @@ def build_update_account_group_operation(
         values={
             "group_name": group_name,
             "group_description": group_description,
-            "account_model_portfolio_uid": account_model_portfolio_uid,
             "metadata_json": metadata_json,
         },
     )

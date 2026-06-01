@@ -4,6 +4,11 @@
 
 Accepted
 
+Contract-shape details in this ADR are superseded by
+`0014-contract-boundary-and-account-position-routes.md`. Index list and detail
+responses now use the core `msm.api.indices.Index` contract rather than local
+`IndexListRow` or `IndexRecord` projections.
+
 ## Context
 
 `apps/v1` already exposes a simple asset list route at

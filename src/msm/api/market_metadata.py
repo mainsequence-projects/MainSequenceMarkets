@@ -4,14 +4,14 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from msm.api.base import MarketsRow
+from msm.api.base import MarketsMetaTableRow
 from msm.models import (
     RebalanceStrategyMetadataTable,
     SignalMetadataTable,
 )
 
 
-class SignalMetadata(MarketsRow):
+class SignalMetadata(MarketsMetaTableRow):
     """Typed metadata row for a canonical portfolio signal."""
 
     __table__: ClassVar[type[SignalMetadataTable]] = SignalMetadataTable
@@ -39,7 +39,7 @@ class SignalMetadataUpdate(BaseModel):
     signal_description: str | None = None
 
 
-class RebalanceStrategyMetadata(MarketsRow):
+class RebalanceStrategyMetadata(MarketsMetaTableRow):
     """Typed metadata row for a rebalance strategy."""
 
     __table__: ClassVar[type[RebalanceStrategyMetadataTable]] = RebalanceStrategyMetadataTable

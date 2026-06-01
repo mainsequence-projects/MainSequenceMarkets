@@ -42,22 +42,132 @@ class OpenFigiAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
         ),
         primary_key=True,
         nullable=False,
+        info={
+            "label": "Asset UID",
+            "description": "Foreign key to the canonical AssetTable.uid for the referenced asset.",
+        },
     )
-    figi: Mapped[str | None] = mapped_column(String(12), nullable=True)
-    composite: Mapped[str | None] = mapped_column(String(12), nullable=True)
-    share_class: Mapped[str | None] = mapped_column(String(12), nullable=True)
-    isin: Mapped[str | None] = mapped_column(String(12), nullable=True)
-    ticker: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    exchange_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    security_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    security_type_2: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    security_market_sector: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    security_description: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    unique_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    unique_id_fut_opt: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    metadata_text: Mapped[str | None] = mapped_column("metadata", Text, nullable=True)
-    raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    figi: Mapped[str | None] = mapped_column(
+        String(12),
+        nullable=True,
+        info={
+            "label": "FIGI",
+            "description": "Primary OpenFIGI identifier for the asset.",
+        },
+    )
+    composite: Mapped[str | None] = mapped_column(
+        String(12),
+        nullable=True,
+        info={
+            "label": "Composite",
+            "description": "OpenFIGI composite FIGI for the asset when supplied by the provider.",
+        },
+    )
+    share_class: Mapped[str | None] = mapped_column(
+        String(12),
+        nullable=True,
+        info={
+            "label": "Share Class",
+            "description": "OpenFIGI share-class FIGI for the asset when supplied by the provider.",
+        },
+    )
+    isin: Mapped[str | None] = mapped_column(
+        String(12),
+        nullable=True,
+        info={
+            "label": "ISIN",
+            "description": "International Securities Identification Number supplied by a provider.",
+        },
+    )
+    ticker: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        info={
+            "label": "Ticker",
+            "description": "Provider ticker or display symbol for the asset.",
+        },
+    )
+    name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info={
+            "label": "Name",
+            "description": "Canonical human-readable name for this registry row.",
+        },
+    )
+    exchange_code: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        info={
+            "label": "Exchange Code",
+            "description": "Exchange or market code reported by the external provider.",
+        },
+    )
+    security_type: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        info={
+            "label": "Security Type",
+            "description": "Provider security type classification for the asset.",
+        },
+    )
+    security_type_2: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        info={
+            "label": "Security Type 2",
+            "description": "Secondary provider security type classification.",
+        },
+    )
+    security_market_sector: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        info={
+            "label": "Security Market Sector",
+            "description": "Provider market sector classification for the security.",
+        },
+    )
+    security_description: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info={
+            "label": "Security Description",
+            "description": "Provider security description for the asset.",
+        },
+    )
+    unique_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info={
+            "label": "Unique ID",
+            "description": "Provider unique identifier for the security.",
+        },
+    )
+    unique_id_fut_opt: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info={
+            "label": "Unique Id Fut Opt",
+            "description": "Provider unique identifier for related futures or options metadata.",
+        },
+    )
+    metadata_text: Mapped[str | None] = mapped_column(
+        "metadata",
+        Text,
+        nullable=True,
+        info={
+            "label": "Metadata",
+            "description": "Structured metadata JSON for provider, pricing, or workflow-specific attributes.",
+        },
+    )
+    raw_payload: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+        info={
+            "label": "Raw Payload",
+            "description": "Raw provider payload retained for audit and troubleshooting.",
+        },
+    )
 
 
 __all__ = ["OpenFigiAssetDetailsTable"]

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ms-markets"
-version = "0.0.17"
+version = "0.0.18"
 description = "Financial markets ORM, engines, and application management extensions for Main Sequence."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -43,6 +43,7 @@ dependencies = [
   "quantlib>=1.42.1",
   "requests",
   "SQLAlchemy",
+  "uvicorn>=0.48.0",
 ]
 
 [project.optional-dependencies]

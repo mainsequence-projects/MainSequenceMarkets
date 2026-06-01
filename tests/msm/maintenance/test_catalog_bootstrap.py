@@ -1,19 +1,53 @@
 from __future__ import annotations
 
+import uuid
 from types import SimpleNamespace
+from typing import ClassVar
 
 import pytest
 from mainsequence.client.exceptions import ConflictError
+from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import Uuid
 
 import msm.maintenance.catalog as catalog
 from msm.api.accounts import Account
+from msm.api.base import MarketsMetaTableRow
+from msm.base import MarketsBase, MarketsMetaTableMixin
 from msm.data_nodes.storage import AccountHoldingsStorage
 from msm.maintenance.models import (
     MarketsMetaTableCatalogTable,
     markets_meta_table_contract_hash,
 )
 from msm.models import AccountTable, AssetTable, AssetTypeTable
-from msm.models.registration import markets_meta_table_identifier
+from msm.models.registration import markets_meta_table_identifier, resolve_markets_meta_table_models
+
+
+class CatalogExtensionAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
+    __metatable_identifier__ = "test.CatalogExtensionAssetDetails"
+    __metatable_extra_hash_components__ = {"storage_name": "catalog_extension_asset_details"}
+    __metatable_description__ = (
+        "Project-local asset details table used to verify catalog bootstrap for extension models."
+    )
+
+    asset_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        MetaTableForeignKey(AssetTable, column="uid", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    internal_asset_class: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class CatalogExtensionAssetDetails(MarketsMetaTableRow):
+    __table__: ClassVar[type[CatalogExtensionAssetDetailsTable]] = CatalogExtensionAssetDetailsTable
+    __required_tables__: ClassVar[list[type[CatalogExtensionAssetDetailsTable]]] = [
+        CatalogExtensionAssetDetailsTable,
+    ]
+
+    asset_uid: uuid.UUID
+    internal_asset_class: str
 
 
 def _meta_table(
@@ -177,6 +211,110 @@ def test_rotate_catalogue_replaces_catalog_row_from_registered_row_model(monkeyp
     assert upserted_rows[0]["identifier"] == AccountTable.__metatable_identifier__
     assert upserted_rows[0]["meta_table_uid"] == "account-meta-table-uid"
     assert upserted_rows[0]["contract_hash"] == markets_meta_table_contract_hash(AccountTable)
+
+
+def test_rotate_catalogue_replaces_catalog_row_from_project_local_row_model(monkeypatch) -> None:
+    _disable_physical_contract_validation(monkeypatch)
+    registered_meta_table = _meta_table(
+        "extension-meta-table-uid",
+        **_catalog_row_identity(CatalogExtensionAssetDetailsTable),
+        description="Extension details.",
+        storage_hash=CatalogExtensionAssetDetailsTable.__table__.name,
+    )
+    existing_row = {
+        **_catalog_row_identity(CatalogExtensionAssetDetailsTable),
+        "description": "Old extension description.",
+        "model_name": "CatalogExtensionAssetDetailsTable",
+        "meta_table_uid": "extension-meta-table-uid",
+        "contract_hash": "stale-contract-hash",
+        "sdk_version": "old",
+    }
+
+    monkeypatch.setattr(
+        catalog,
+        "bootstrap_catalog_table",
+        lambda **_kwargs: _meta_table(
+            "catalog-meta-table-uid",
+            identifier="MarketsMetaTableCatalog",
+            storage_hash="catalog-storage-hash",
+        ),
+    )
+    monkeypatch.setattr(catalog, "search_model", lambda *_args, **_kwargs: {"rows": [existing_row]})
+    monkeypatch.setattr(
+        CatalogExtensionAssetDetailsTable,
+        "register",
+        classmethod(lambda *_args, **_kwargs: registered_meta_table),
+    )
+    monkeypatch.setattr(
+        catalog, "upsert_model", lambda *_args, **kwargs: {"rows": [kwargs["values"]]}
+    )
+
+    result = catalog.rotate_catalogue(CatalogExtensionAssetDetails)
+
+    assert result.identifier == CatalogExtensionAssetDetailsTable.__metatable_identifier__
+    assert result.meta_table_uid == "extension-meta-table-uid"
+    assert result.old_contract_hash == "stale-contract-hash"
+    assert result.new_contract_hash == markets_meta_table_contract_hash(
+        CatalogExtensionAssetDetailsTable
+    )
+
+
+def test_catalog_bootstrap_registers_project_local_extension_model(monkeypatch) -> None:
+    _disable_physical_contract_validation(monkeypatch)
+    upserted_rows: list[dict] = []
+    register_calls: list[type] = []
+
+    monkeypatch.setattr(
+        catalog,
+        "bootstrap_catalog_table",
+        lambda **_kwargs: _meta_table(
+            "catalog-meta-table-uid",
+            identifier="MarketsMetaTableCatalog",
+            storage_hash="catalog-storage-hash",
+        ),
+    )
+    monkeypatch.setattr(catalog, "search_model", lambda *_args, **_kwargs: {"rows": []})
+    monkeypatch.setattr(catalog, "_resolve_platform_meta_table", lambda *_args, **_kwargs: None)
+
+    def fake_register(cls, **_kwargs):
+        register_calls.append(cls)
+        return _meta_table(
+            f"{cls.__name__}-uid",
+            **_catalog_row_identity(cls),
+            description=getattr(cls, "__metatable_description__", None),
+            storage_hash=cls.__table__.name,
+        )
+
+    def fake_upsert_model(_context, **kwargs):
+        upserted_rows.append(dict(kwargs["values"]))
+        return {"rows": [kwargs["values"]]}
+
+    monkeypatch.setattr(AssetTable, "register", classmethod(fake_register))
+    monkeypatch.setattr(
+        CatalogExtensionAssetDetailsTable,
+        "register",
+        classmethod(fake_register),
+    )
+    monkeypatch.setattr(catalog, "upsert_model", fake_upsert_model)
+
+    result = catalog.bootstrap_markets_meta_tables_from_catalog(
+        models=resolve_markets_meta_table_models([CatalogExtensionAssetDetailsTable])
+    )
+
+    assert register_calls == [AssetTable, CatalogExtensionAssetDetailsTable]
+    assert result.registered_count == 2
+    assert {row["identifier"]: row["meta_table_uid"] for row in upserted_rows} == {
+        AssetTable.__metatable_identifier__: "AssetTable-uid",
+        CatalogExtensionAssetDetailsTable.__metatable_identifier__: (
+            "CatalogExtensionAssetDetailsTable-uid"
+        ),
+    }
+    assert (
+        result.registration.meta_table_by_identifier[
+            CatalogExtensionAssetDetailsTable.__metatable_identifier__
+        ].uid
+        == "CatalogExtensionAssetDetailsTable-uid"
+    )
 
 
 def test_catalog_bootstrap_attaches_cataloged_application_table(monkeypatch) -> None:

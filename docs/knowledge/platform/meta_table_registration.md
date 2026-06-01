@@ -21,6 +21,9 @@ registered MetaTable and the internal markets catalog. It should state the row
 grain and business use of the table; it should not be a generic column list.
 DataNode output storage classes follow the same rule, and their default DataNode
 descriptions are sourced from the storage table's `__metatable_description__`.
+Every physical column must also carry non-empty SQLAlchemy `info["description"]`
+metadata so catalog consumers and generated UIs can explain fields without
+guessing from column names.
 
 ```python
 import msm
@@ -165,6 +168,81 @@ import msm
 msm.start_engine(models=["Asset"])
 ```
 
+Project-local extension models use the same startup boundary. The registered
+artifact is the SQLAlchemy MetaTable model class, not the Pydantic row wrapper:
+
+```python
+import uuid
+
+import msm
+from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import String, Uuid
+
+from msm.base import MarketsBase, MarketsMetaTableMixin
+from msm.models.assets import AssetTable
+
+
+class MyAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
+    __metatable_identifier__ = "com.my_company.markets.MyAssetDetails"
+    __metatable_extra_hash_components__ = {"storage_name": "my_asset_details"}
+    __metatable_description__ = (
+        "Project-local asset details keyed one-to-one by AssetTable.uid for "
+        "custom analytics and internal classification."
+    )
+
+    asset_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        MetaTableForeignKey(AssetTable, column="uid", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+        info={"description": "Canonical AssetTable uid for this custom detail row."},
+    )
+    internal_asset_class: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        info={"description": "Internal asset class assigned by the project."},
+    )
+
+
+msm.start_engine(models=[MyAssetDetailsTable])
+```
+
+Bootstrap expands class-based `MetaTableForeignKey(...)` dependencies, so
+`AssetTable` is registered or attached before `MyAssetDetailsTable`. The caller
+does not pass a target table name or MetaTable UID.
+
+If a project wants a typed row API for that table, subclass
+`MarketsMetaTableRow` and keep it as a Pydantic row-operation wrapper:
+
+```python
+import uuid
+from typing import ClassVar
+
+from pydantic import AliasChoices, Field
+
+from msm.api.base import MarketsMetaTableRow
+
+
+class MyAssetDetails(MarketsMetaTableRow):
+    __table__: ClassVar[type[MyAssetDetailsTable]] = MyAssetDetailsTable
+    __required_tables__: ClassVar[list[type[MyAssetDetailsTable]]] = [
+        MyAssetDetailsTable,
+    ]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("asset_uid",)
+
+    uid: uuid.UUID = Field(validation_alias=AliasChoices("uid", "asset_uid"))
+    asset_uid: uuid.UUID
+    internal_asset_class: str
+```
+
+The row wrapper is not registered as a MetaTable. It can be passed as a
+`models=[...]` selector, but bootstrap still normalizes it to the backing
+SQLAlchemy model before catalog registration.
+
+See `examples/platform/custom_asset_details_extension.py` for the same
+extension shape in executable example form.
+
 `runtime.table("Asset")` returns a single registered MetaTable handle with the
 SQLAlchemy model, MetaTable UID, optional registered `MetaTable` object, limits,
 timeout, and namespace. It remains available for lower-level repository or
@@ -213,14 +291,15 @@ from examples.platform.bootstrap import (
 
 os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
+import msm
 from msm.api.assets import Asset
 
-Asset.create_schemas()
+msm.start_engine(models=["AssetType", "Asset"])
 Asset.upsert(unique_identifier="example-asset-btc", asset_type="crypto")
 ```
 
-With the environment variable set, `Asset.create_schemas()` uses the example
-namespace and runs the catalog bootstrap for the row class's required tables.
+With the environment variable set, `msm.start_engine(...)` uses the example
+namespace and runs the catalog bootstrap for the selected tables.
 The namespace cannot be changed safely after `msm.models` or
 `msm.maintenance.models` is imported because `PlatformManagedMetaTable` derives
 the physical storage hash while SQLAlchemy maps each model class.

@@ -16,8 +16,9 @@ collection of SQLAlchemy internals. For row-oriented MetaTable data:
 - schema/bootstrap code imports SQLAlchemy declarations from `msm.models.*Table`;
 - row classes declare their backing table through `__table__` and required
   schema set through `__required_tables__`;
-- row class methods such as `create_schemas(...)`, `upsert(...)`, `filter(...)`,
-  and lookups are the preferred ergonomic surface;
+- `msm.start_engine(...)` is the preferred schema/bootstrap surface;
+- row class methods such as `upsert(...)`, `filter(...)`, and lookups are the
+  preferred ergonomic row-operation surface;
 - row operations use the active process runtime created by explicit startup
   bootstrap and never register or attach MetaTables on first row use;
 - `MSM_AUTO_REGISTER_NAMESPACE` is a namespace default for examples and local
@@ -37,8 +38,8 @@ new MetaTable-facing APIs unless a more specific ADR overrides it.
 
 ## Concept Map
 
-- [Accounts](accounts/index.md): account identity, holdings, virtual funds, and
-  account-to-target assignments.
+- [Accounts](accounts/index.md): account identity, account holdings, account
+  groups, and account target-position assignments.
 - [Assets](assets/index.md): asset identity, type registration, category
   membership, relational extensions such as bonds, currency pairs, and
   OpenFIGI, and links to asset-indexed DataNode workflows.
@@ -58,6 +59,8 @@ new MetaTable-facing APIs unless a more specific ADR overrides it.
   MetaTable helpers, and market DataNode base behavior.
 - [Portfolios](portfolios/index.md): portfolio configuration, signal weights,
   rebalance strategies, canonical portfolio data, and VFB workflows.
+- [Virtual Funds](virtualfunds/index.md): fund rows that bind accounts to
+  portfolios, plus `VirtualFundHoldings` / `FundHoldingsStorage`.
 - [Pricing](pricing/index.md): optional `msm_pricing` priceable instruments,
   QuantLib helpers, curves, fixings, market-data context bindings, and pricing
   data interfaces.

@@ -4,6 +4,11 @@
 
 Proposed
 
+Contract-shape details in this ADR are superseded by
+`0014-contract-boundary-and-account-position-routes.md`. Asset-category list,
+detail, create, and patch responses now prefer the core
+`msm.api.assets.AssetCategory` contract rather than local frontend projections.
+
 ## Context
 
 `apps/v1` currently exposes only `GET /api/v1/asset/`. The next API surface

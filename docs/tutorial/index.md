@@ -93,17 +93,27 @@ Constant-name fields.
 
 Use this workflow when publishing and inspecting account positions:
 
-1. Register `AssetType`, `Asset`, `Account`, and `AccountHoldingsStorage`
-   through `msm.start_engine(...)`.
-2. Create or upsert the account through `msm.api.accounts.Account`.
-3. Build an `AccountHoldings` DataNode and attach the real holdings frame with
-   `set_account_holdings_frame(...)`.
-4. Run the node and unpack the SDK result:
+1. Register `AssetType`, `Asset`, `AccountModelPortfolio`, `AccountGroup`,
+   `Account`, `AccountTargetPortfolio`, `PositionSet`,
+   `AccountHoldingsStorage`, and `TargetPositionsStorage` through
+   `msm.start_engine(...)`.
+2. Create or upsert the account model portfolio and account group, then create
+   the account with `account_group_uid`.
+3. Create the `AccountTargetPortfolio` relation for the account and model
+   portfolio, then create a UTC `PositionSet` snapshot under that relation.
+4. Build target-position rows with `build_target_positions_frame(...)` using
+   `position_set.uid` as `position_set_uid`.
+5. Build holdings rows with `build_account_holdings_frame(...)` and attach the
+   real combined frame to `AccountHoldings` with `set_frame(...)`. For a single
+   account, `set_account_holdings_frame(...)` is the convenience path.
+6. Run the node and unpack the SDK result:
    `error_on_last_update, holdings_frame = holdings_node.run(...)`.
-5. Pass only `holdings_frame` to `Account.pretty_print_positions(...)`.
+7. Pass only `holdings_frame` to `Account.pretty_print_positions(...)`.
 
-See `examples/accounts/create_and_insert_holdings.py` for the full account
-holdings path.
+See `examples/accounts/account_workflow.py` for the full account path: account
+group creation, two account registrations, one shared account model portfolio,
+account-owned target portfolio relationships, `PositionSet` target rows,
+holdings publication, and pretty-printed account positions.
 
 ## Pricing Instrument Identity
 
@@ -203,8 +213,8 @@ For a full floating-rate bond workflow, use
 2. Register the `interest_rate` index type through `msm.api.indices.IndexType`,
    then register the canonical index through `msm.api.indices.Index`.
 3. Upsert `IndexConventionDetails` and `Curve` rows under `msm_pricing.api`.
-4. Publish mock fixings through a `FixingRatesNode` subclass and a sampled
-   flat-forward curve through a `DiscountCurvesNode` subclass.
+4. Publish one month of mock fixings through a `FixingRatesNode` subclass and a
+   sampled flat-forward curve through a `DiscountCurvesNode` subclass.
 5. Use the seeded `default` market-data context, or upsert a named context such
    as `eod` with `PricingMarketDataBinding`.
 6. Create a `FloatingRateBond` with `floating_rate_index_uid=index.uid`.
@@ -254,3 +264,27 @@ application code should use typed row classes such as
 
 See `examples/platform/inspect_markets_metatable_models.py` for a small offline
 inspection example that prints the SDK-derived table names.
+
+## Project-Local MetaTable Extensions
+
+Use this workflow when an application owns a custom markets table that should be
+cataloged with the same bootstrap path as built-in tables:
+
+1. Define the SQLAlchemy model with `MarketsMetaTableMixin` and `MarketsBase`.
+2. Give it one stable `__metatable_identifier__`.
+3. Declare relationships with class-based `MetaTableForeignKey(TargetModel, ...)`.
+4. Bootstrap with `msm.start_engine(models=[MyModelTable])`.
+5. Put row operations in an optional `MarketsMetaTableRow` wrapper.
+
+The `models=[...]` selector is the public registration boundary. It expands
+foreign-key dependencies, registers or attaches the selected SQLAlchemy model
+through the maintenance catalog, and binds the resolved backend `MetaTable.uid`
+back to that model. Do not build a project-local UID map or call row
+`create_schemas()` helpers as the extension mechanism.
+
+For asset detail tables keyed by `AssetTable.uid`, expose `uid` as an alias of
+`asset_uid` in the row wrapper while keeping the SQLAlchemy primary key on
+`asset_uid`.
+
+See `examples/platform/custom_asset_details_extension.py` for a minimal
+project-local asset detail table, row wrapper, and startup function.

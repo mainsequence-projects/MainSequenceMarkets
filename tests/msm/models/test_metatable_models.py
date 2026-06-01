@@ -2,25 +2,38 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import ClassVar
 
 import pytest
 from mainsequence.client.exceptions import ConflictError
 from mainsequence.meta_tables import (
+    MetaTableForeignKey,
     PlatformManagedMetaTable,
     metatable_configured_tablename,
 )
+from pydantic import AliasChoices, Field
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import Uuid
 
 import msm.models.registration as meta_tables
 import msm.models as models
-from msm.base import MarketsMetaTableMixin, markets_table_storage_name
+from msm.api.base import MarketsMetaTableRow, MarketsRow
+from msm.base import MarketsBase, MarketsMetaTableMixin, markets_table_storage_name
 from msm.data_nodes.storage import AccountHoldingsStorage
 from msm.maintenance.models import MarketsMetaTableCatalogTable
 from msm.models.registration import (
     build_markets_registration_requests,
     is_time_index_meta_table_model,
     markets_meta_table_identifier,
+    resolve_markets_meta_table_model,
+    resolve_markets_meta_table_models,
 )
 from msm.models import (
+    AccountGroupTable,
+    AccountModelPortfolioTable,
+    AccountTable,
+    AccountTargetPortfolioTable,
     AssetTypeTable,
     AssetTable,
     BondAssetDetailsTable,
@@ -30,8 +43,38 @@ from msm.models import (
     IndexTypeTable,
     IssuerTable,
     OpenFigiAssetDetailsTable,
+    PositionSetTable,
     markets_sqlalchemy_models,
 )
+from msm_pricing.meta_tables import pricing_sqlalchemy_models
+
+
+class ExtensionAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
+    __metatable_identifier__ = "test.ExtensionAssetDetails"
+    __metatable_extra_hash_components__ = {"storage_name": "test_extension_asset_details"}
+    __metatable_description__ = (
+        "Project-local asset details keyed by AssetTable uid for extension "
+        "registration tests and custom asset classification."
+    )
+
+    asset_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        MetaTableForeignKey(AssetTable, column="uid", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    internal_asset_class: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class ExtensionAssetDetails(MarketsMetaTableRow):
+    __table__: ClassVar[type[ExtensionAssetDetailsTable]] = ExtensionAssetDetailsTable
+    __required_tables__: ClassVar[list[type[ExtensionAssetDetailsTable]]] = [
+        ExtensionAssetDetailsTable,
+    ]
+
+    uid: uuid.UUID = Field(validation_alias=AliasChoices("uid", "asset_uid"))
+    asset_uid: uuid.UUID
+    internal_asset_class: str
 
 
 def _install_fake_session_data_source(monkeypatch) -> None:
@@ -69,6 +112,32 @@ def test_markets_models_declare_metatable_descriptions() -> None:
             assert "keyed by" in description.lower(), model.__name__
 
 
+def test_built_in_metatables_declare_column_descriptions() -> None:
+    seen: set[type] = set()
+    models = []
+    for model in [
+        MarketsMetaTableCatalogTable,
+        *markets_sqlalchemy_models(),
+        *pricing_sqlalchemy_models(),
+    ]:
+        if model in seen:
+            continue
+        seen.add(model)
+        models.append(model)
+
+    for model in models:
+        for column in model.__table__.columns:
+            description = column.info.get("description")
+
+            assert isinstance(description, str), f"{model.__name__}.{column.name}"
+            assert description.strip() == description, f"{model.__name__}.{column.name}"
+            assert len(description.split()) >= 5, f"{model.__name__}.{column.name}"
+
+
+def test_markets_metatable_row_keeps_legacy_alias() -> None:
+    assert MarketsRow is MarketsMetaTableRow
+
+
 def test_default_namespace_keeps_bare_metatable_identifier() -> None:
     assert AssetTable.__markets_base_identifier__ == "Asset"
     assert AssetTable.__metatable_identifier__ == "Asset"
@@ -103,6 +172,88 @@ def test_markets_metatable_identifier_survives_sdk_physical_binding(monkeypatch)
     assert markets_table_storage_name(AssetTypeTable) == storage_name
 
 
+def test_resolve_models_accepts_project_local_model_with_fk_dependency() -> None:
+    assert resolve_markets_meta_table_model(ExtensionAssetDetailsTable) is (
+        ExtensionAssetDetailsTable
+    )
+    assert resolve_markets_meta_table_models([ExtensionAssetDetailsTable]) == [
+        AssetTable,
+        ExtensionAssetDetailsTable,
+    ]
+
+
+def test_resolve_models_accepts_project_local_row_wrapper() -> None:
+    assert resolve_markets_meta_table_model(ExtensionAssetDetails) is ExtensionAssetDetailsTable
+    assert resolve_markets_meta_table_models([ExtensionAssetDetails]) == [
+        AssetTable,
+        ExtensionAssetDetailsTable,
+    ]
+
+
+def test_project_local_asset_detail_row_aliases_uid_to_asset_uid() -> None:
+    asset_uid = uuid.uuid4()
+
+    row = ExtensionAssetDetails.model_validate(
+        {
+            "asset_uid": asset_uid,
+            "internal_asset_class": "equity",
+        }
+    )
+
+    assert row.uid == asset_uid
+    assert row.asset_uid == asset_uid
+
+
+def test_resolve_models_rejects_duplicate_project_local_identifiers() -> None:
+    class DuplicateIdentifierATable(MarketsMetaTableMixin, MarketsBase):
+        __metatable_identifier__ = "test.DuplicateIdentifier"
+        __metatable_extra_hash_components__ = {"storage_name": "duplicate_identifier_a"}
+        __metatable_description__ = (
+            "First duplicate identifier table used to verify bootstrap validation."
+        )
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+
+    class DuplicateIdentifierBTable(MarketsMetaTableMixin, MarketsBase):
+        __metatable_identifier__ = "test.DuplicateIdentifier"
+        __metatable_extra_hash_components__ = {"storage_name": "duplicate_identifier_b"}
+        __metatable_description__ = (
+            "Second duplicate identifier table used to verify bootstrap validation."
+        )
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+
+    with pytest.raises(ValueError, match="Duplicate markets MetaTable identifier"):
+        resolve_markets_meta_table_models([DuplicateIdentifierATable, DuplicateIdentifierBTable])
+
+
+def test_resolve_models_rejects_dependency_cycles(monkeypatch) -> None:
+    class CycleATable(MarketsMetaTableMixin, MarketsBase):
+        __metatable_identifier__ = "test.CycleA"
+        __metatable_extra_hash_components__ = {"storage_name": "cycle_a"}
+        __metatable_description__ = "Cycle A table used to test dependency graph errors."
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+
+    class CycleBTable(MarketsMetaTableMixin, MarketsBase):
+        __metatable_identifier__ = "test.CycleB"
+        __metatable_extra_hash_components__ = {"storage_name": "cycle_b"}
+        __metatable_description__ = "Cycle B table used to test dependency graph errors."
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+
+    def fake_target_models(model):
+        return {
+            CycleATable: [CycleBTable],
+            CycleBTable: [CycleATable],
+        }.get(model, [])
+
+    monkeypatch.setattr(meta_tables, "_metatable_foreign_key_target_models", fake_target_models)
+
+    with pytest.raises(ValueError, match="dependency cycle"):
+        resolve_markets_meta_table_models([CycleATable])
+
+
 def test_asset_model_does_not_store_arbitrary_metadata_json() -> None:
     assert "metadata_json" not in AssetTable.__table__.c
 
@@ -117,6 +268,62 @@ def test_asset_type_model_is_registry_table() -> None:
     assert any(
         index.unique and [column.name for column in index.columns] == ["asset_type"]
         for index in AssetTypeTable.__table__.indexes
+    )
+
+
+def test_account_relationships_live_on_account_table() -> None:
+    assert "account_group_uid" in AccountTable.__table__.c
+    assert "account_model_portfolio_uid" not in AccountTable.__table__.c
+    assert "account_model_portfolio_uid" not in AccountGroupTable.__table__.c
+
+    group_column = AccountTable.__table__.c["account_group_uid"]
+
+    assert any(
+        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AccountGroupTable
+        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"] == "uid"
+        for foreign_key in group_column.foreign_keys
+    )
+
+
+def test_account_metatable_columns_are_described() -> None:
+    for model in [
+        AccountModelPortfolioTable,
+        AccountGroupTable,
+        AccountTable,
+        AccountTargetPortfolioTable,
+        PositionSetTable,
+    ]:
+        for column in model.__table__.columns:
+            assert column.info.get("label"), f"{model.__name__}.{column.name}"
+            assert column.info.get("description"), f"{model.__name__}.{column.name}"
+
+
+def test_account_target_portfolio_owns_position_sets() -> None:
+    assert "account_uid" in AccountTargetPortfolioTable.__table__.c
+    assert "account_model_portfolio_uid" in AccountTargetPortfolioTable.__table__.c
+    assert "account_target_portfolio_uid" in PositionSetTable.__table__.c
+    assert "position_set_time" in PositionSetTable.__table__.c
+
+    target_account_column = AccountTargetPortfolioTable.__table__.c["account_uid"]
+    target_model_column = AccountTargetPortfolioTable.__table__.c["account_model_portfolio_uid"]
+    position_set_parent_column = PositionSetTable.__table__.c["account_target_portfolio_uid"]
+
+    assert any(
+        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AccountTable
+        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"] == "uid"
+        for foreign_key in target_account_column.foreign_keys
+    )
+    assert any(
+        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"]
+        is AccountModelPortfolioTable
+        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"] == "uid"
+        for foreign_key in target_model_column.foreign_keys
+    )
+    assert any(
+        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"]
+        is AccountTargetPortfolioTable
+        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"] == "uid"
+        for foreign_key in position_set_parent_column.foreign_keys
     )
 
 
@@ -233,6 +440,7 @@ def test_selected_metatable_models_resolve_in_dependency_order() -> None:
 
     assert models == [
         AssetTable,
+        meta_tables.resolve_markets_meta_table_model("AssetCategory"),
         meta_tables.resolve_markets_meta_table_model("AssetCategoryMembership"),
     ]
 
@@ -410,9 +618,12 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
     pairs = []
 
     for model in markets_sqlalchemy_models():
-        request = build_markets_registration_requests(
+        requests = build_markets_registration_requests(
             models=[model],
-        )[0]
+        )
+        request = next(
+            request for request in requests if request.identifier == model.__metatable_identifier__
+        )
         assert request.description == model.__metatable_description__
         pairs.append((model, request))
         monkeypatch.setattr(
@@ -450,11 +661,14 @@ def test_markets_models_build_external_registration_requests_in_dependency_order
     pairs = []
 
     for model in markets_sqlalchemy_models():
-        request = build_markets_registration_requests(
+        requests = build_markets_registration_requests(
             data_source_uid=str(uuid.uuid4()),
             management_mode="external_registered",
             models=[model],
-        )[0]
+        )
+        request = next(
+            request for request in requests if request.identifier == model.__metatable_identifier__
+        )
         assert request.description == model.__metatable_description__
         pairs.append((model, request))
         monkeypatch.setattr(
@@ -480,9 +694,11 @@ def test_external_registration_mode_routes_storage_classes_through_sdk_register(
     monkeypatch,
 ) -> None:
     register_calls: list[dict] = []
+    external_register_calls: list[type] = []
 
-    def fail_external_register(*_args, **_kwargs):
-        raise AssertionError("storage classes must not use generic external registration")
+    def fake_external_register(model, *_args, **_kwargs):
+        external_register_calls.append(model)
+        return SimpleNamespace(uid=f"{model.__name__}-uid")
 
     def fake_register(cls, **kwargs):
         register_calls.append(kwargs)
@@ -491,7 +707,7 @@ def test_external_registration_mode_routes_storage_classes_through_sdk_register(
     monkeypatch.setattr(
         meta_tables,
         "register_external_sqlalchemy_model",
-        fail_external_register,
+        fake_external_register,
     )
     monkeypatch.setattr(AccountHoldingsStorage, "register", classmethod(fake_register))
 
@@ -503,6 +719,7 @@ def test_external_registration_mode_routes_storage_classes_through_sdk_register(
 
     assert register_calls
     assert register_calls[0] == {"timeout": None}
+    assert AccountHoldingsStorage not in external_register_calls
     assert (
         result.meta_table_by_identifier[markets_meta_table_identifier(AccountHoldingsStorage)].uid
         == "account-holdings-storage-uid"
@@ -517,10 +734,12 @@ def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
         def info(self, event: str, **kwargs) -> None:
             self.events.append((event, kwargs))
 
-    class FakeModel:
+    class LogFakeModel(MarketsMetaTableMixin, MarketsBase):
         __metatable_namespace__ = "mainsequence.test"
         __metatable_identifier__ = "FakeModel"
-        __table__ = SimpleNamespace(fullname="public.fake_asset", name="fake_asset")
+        __metatable_extra_hash_components__ = {"storage_name": "fake_model_logs"}
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
 
         @classmethod
         def register(cls, **_kwargs):
@@ -531,19 +750,21 @@ def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
 
     result = meta_tables.register_markets_meta_tables(
         data_source_uid="data-source-uid",
-        models=[FakeModel],
+        models=[LogFakeModel],
     )
 
-    assert result.models == [FakeModel]
-    assert result.meta_table_by_identifier["FakeModel"].uid == "fake-meta-table-uid"
+    identifier = markets_meta_table_identifier(LogFakeModel)
+
+    assert result.models == [LogFakeModel]
+    assert result.meta_table_by_identifier[identifier].uid == "fake-meta-table-uid"
     assert [event for event, _kwargs in spy_logger.events] == [
         "Registering markets MetaTable schema",
         "Registered markets MetaTable schema",
     ]
     registering_event = spy_logger.events[0][1]
-    assert registering_event["model"] == "FakeModel"
+    assert registering_event["model"] == "LogFakeModel"
     assert registering_event["namespace"] == "mainsequence.test"
-    assert registering_event["identifier"] == "FakeModel"
+    assert registering_event["identifier"] == identifier
     assert registering_event["model_index"] == 1
     assert registering_event["model_count"] == 1
     assert "table_fullname" not in registering_event
@@ -554,13 +775,12 @@ def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
 def test_register_markets_meta_tables_reuses_duplicate_physical_table_conflict(
     monkeypatch,
 ) -> None:
-    class FakeModel:
+    class ConflictFakeModel(MarketsMetaTableMixin, MarketsBase):
         __metatable_namespace__ = "mainsequence.examples"
         __metatable_identifier__ = "FakeModel"
-        __table__ = SimpleNamespace(
-            fullname="public.fake_asset",
-            name="fake_asset",
-        )
+        __metatable_extra_hash_components__ = {"storage_name": "fake_model_conflict"}
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
 
         @classmethod
         def register(cls, **_kwargs):
@@ -583,10 +803,10 @@ def test_register_markets_meta_tables_reuses_duplicate_physical_table_conflict(
 
     result = meta_tables.register_markets_meta_tables(
         data_source_uid="data-source-uid",
-        models=[FakeModel],
+        models=[ConflictFakeModel],
     )
 
-    meta_table = result.meta_table_by_identifier["FakeModel"]
+    meta_table = result.meta_table_by_identifier[markets_meta_table_identifier(ConflictFakeModel)]
     assert meta_table.uid == "existing-meta-table-uid"
     assert meta_table.physical_table_name == "fake_asset"
     assert meta_table.storage_hash == "fake_asset"
@@ -600,13 +820,12 @@ def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monk
         identifier="FakeModel",
     )
 
-    class FakeModel:
+    class ResolveFakeModel(MarketsMetaTableMixin, MarketsBase):
         __metatable_namespace__ = "mainsequence.markets"
         __metatable_identifier__ = "FakeModel"
-        __table__ = SimpleNamespace(
-            fullname="public.fake_asset",
-            name="fake_storage_hash",
-        )
+        __metatable_extra_hash_components__ = {"storage_name": "fake_model_resolve"}
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
 
     def fake_filter(**kwargs):
         calls.append(kwargs)
@@ -616,10 +835,12 @@ def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monk
 
     result = meta_tables.resolve_registered_markets_meta_tables(
         data_source_uid="data-source-uid",
-        models=[FakeModel],
+        models=[ResolveFakeModel],
     )
 
-    assert result.meta_table_by_identifier["FakeModel"] is meta_table
+    assert result.meta_table_by_identifier[markets_meta_table_identifier(ResolveFakeModel)] is (
+        meta_table
+    )
     assert calls == [
         {
             "timeout": None,
@@ -630,15 +851,14 @@ def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monk
 
 
 def test_resolve_registered_markets_meta_tables_rejects_missing_table(monkeypatch) -> None:
-    class FakeModel:
+    class MissingFakeModel(MarketsMetaTableMixin, MarketsBase):
         __metatable_namespace__ = "mainsequence.markets"
         __metatable_identifier__ = "FakeModel"
-        __table__ = SimpleNamespace(
-            fullname="public.fake_asset",
-            name="fake_storage_hash",
-        )
+        __metatable_extra_hash_components__ = {"storage_name": "fake_model_missing"}
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
 
     monkeypatch.setattr(meta_tables.MetaTable, "filter", lambda **_kwargs: [])
 
     with pytest.raises(LookupError, match="Could not resolve registered"):
-        meta_tables.resolve_registered_markets_meta_tables(models=[FakeModel])
+        meta_tables.resolve_registered_markets_meta_tables(models=[MissingFakeModel])

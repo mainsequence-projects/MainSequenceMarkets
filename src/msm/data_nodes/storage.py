@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
-from msm.models.accounts import AccountTable
+from msm.models.accounts import AccountTable, PositionSetTable
 from msm.models.assets.core import AssetTable
 from msm.models.funds import FundTable
 
@@ -29,7 +29,9 @@ def _execution_info(column_name: str) -> dict[str, str]:
 
     return {
         "label": column_name.replace("_", " ").title(),
-        "description": f"Execution field {column_name}.",
+        "description": (
+            f"Execution storage field {column_name} published by the execution DataNode."
+        ),
     }
 
 
@@ -78,12 +80,15 @@ class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     ticker: Mapped[str | None] = mapped_column(
         String,
         nullable=True,
-        info={"label": "Ticker", "description": "Ticker or display symbol."},
+        info={"label": "Ticker", "description": "Ticker or display symbol for the asset row."},
     )
     exchange_code: Mapped[str | None] = mapped_column(
         String,
         nullable=True,
-        info={"label": "Exchange Code", "description": "Exchange or market code."},
+        info={
+            "label": "Exchange Code",
+            "description": "Exchange or market code for the asset row.",
+        },
     )
     asset_ticker_group_id: Mapped[str | None] = mapped_column(
         String,
@@ -309,7 +314,7 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __metatable_description__ = (
         "Reusable target-position storage keyed by (time_index, position_set_uid, "
         "unique_identifier). Each row stores one target exposure instruction that "
-        "can be linked from accounts or execution workflows."
+        "belongs to a PositionSetTable row for an account target portfolio."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "target_positions",
@@ -327,18 +332,30 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     position_set_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
+        MetaTableForeignKey(
+            PositionSetTable,
+            column="uid",
+            ondelete="CASCADE",
+        ),
         nullable=False,
         info={
             "label": "Position Set UID",
-            "description": "Stable UUID shared by rows in one reusable target position set.",
+            "description": (
+                "PositionSetTable.uid shared by rows in one concrete target-position set."
+            ),
         },
     )
     unique_identifier: Mapped[str] = mapped_column(
         String,
+        MetaTableForeignKey(
+            AssetTable,
+            column="unique_identifier",
+            ondelete="RESTRICT",
+        ),
         nullable=False,
         info={
             "label": "Unique Identifier",
-            "description": "Target asset or exposure unique identifier.",
+            "description": "AssetTable.unique_identifier for the target exposure row.",
         },
     )
     weight_notional_exposure: Mapped[float | None] = mapped_column(

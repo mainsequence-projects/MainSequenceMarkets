@@ -198,13 +198,16 @@ class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     close: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
-        info={"label": "Close", "description": "Published portfolio close value."},
+        info={
+            "label": "Close",
+            "description": "Published portfolio close value for the timestamp.",
+        },
     )
     return_: Mapped[float | None] = mapped_column(
         "return",
         Float,
         nullable=True,
-        info={"label": "Return", "description": "Portfolio period return."},
+        info={"label": "Return", "description": "Portfolio period return for the timestamp."},
     )
     calculated_close: Mapped[float | None] = mapped_column(
         Float,

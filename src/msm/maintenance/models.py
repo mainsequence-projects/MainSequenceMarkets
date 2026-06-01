@@ -52,24 +52,85 @@ class MarketsMetaTableCatalogTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         primary_key=True,
         default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Canonical UUID primary key for this MetaTable row.",
+        },
     )
-    namespace: Mapped[str] = mapped_column(String(255), nullable=False)
-    identifier: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    model_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    meta_table_uid: Mapped[str] = mapped_column(String(64), nullable=False)
-    contract_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    sdk_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    namespace: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Namespace",
+            "description": "Markets namespace used to scope logical MetaTable identifiers.",
+        },
+    )
+    identifier: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Identifier",
+            "description": "Globally unique markets MetaTable identifier stored in the maintenance catalog.",
+        },
+    )
+    description: Mapped[str | None] = mapped_column(
+        String(1024),
+        nullable=True,
+        info={
+            "label": "Description",
+            "description": "Human-readable description of the registry row and its intended use.",
+        },
+    )
+    model_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Model Name",
+            "description": "Python SQLAlchemy model class name that owns the MetaTable contract.",
+        },
+    )
+    meta_table_uid: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        info={
+            "label": "Meta Table UID",
+            "description": "Platform MetaTable UID bound to the logical markets table identifier.",
+        },
+    )
+    contract_hash: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        info={
+            "label": "Contract Hash",
+            "description": "Hash of the authored SQLAlchemy MetaTable contract stored in the catalog.",
+        },
+    )
+    sdk_version: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        info={
+            "label": "Sdk Version",
+            "description": "Main Sequence SDK version that wrote or last refreshed the catalog row.",
+        },
+    )
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=lambda: dt.datetime.now(dt.UTC),
+        info={
+            "label": "Created At",
+            "description": "UTC timestamp when the catalog row was first written.",
+        },
     )
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=lambda: dt.datetime.now(dt.UTC),
         onupdate=lambda: dt.datetime.now(dt.UTC),
+        info={
+            "label": "Updated At",
+            "description": "UTC timestamp when the catalog row was last updated.",
+        },
     )
 
 

@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from apps.v1.schemas.assets import AssetCurrentPricingDetailsResponse, AssetListRow
+from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse
 from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
 from apps.v1.services.assets import get_asset_pricing_details, get_asset_summary, list_assets
 
@@ -13,11 +13,11 @@ router = APIRouter(prefix="/asset", tags=["asset"])
 
 @router.get(
     "/",
-    response_model=list[AssetListRow],
+    response_model=list[Asset],
     summary="List assets",
     description=(
-        "Return asset catalog rows in the legacy-compatible `frontend_list` shape. "
-        "This endpoint currently supports only `response_format=frontend_list`."
+        "Return core library asset rows. The `response_format` query parameter is "
+        "accepted for compatibility, but rows use the `msm.api.assets.Asset` contract."
     ),
     operation_id="listAssets",
     responses={
@@ -61,7 +61,7 @@ def get_assets(
             description="Optional asset category uid filter used by nested category asset tables.",
         ),
     ] = None,
-) -> list[AssetListRow]:
+) -> list[Asset]:
     if response_format != "frontend_list":
         raise HTTPException(
             status_code=400,

@@ -8,11 +8,14 @@ import pandas as pd
 import pytest
 from pydantic import ValidationError
 
+from msm.api.base import MarketsMetaTableRow, MarketsRow
 from msm.api.accounts import (
     Account,
     AccountGroup,
-    AccountTargetPositionAssignment,
-    AccountTargetPositionAssignmentUpsert,
+    AccountModelPortfolio,
+    AccountTargetPortfolio,
+    PositionSet,
+    PositionSetUpsert,
 )
 from msm.api.assets import (
     AssetCategory,
@@ -30,8 +33,9 @@ from msm.api.market_metadata import (
 from msm.api.portfolios import Fund, Portfolio, PortfolioAssetDetail, PortfolioMetadata
 from msm.models import (
     AccountGroupTable,
+    AccountModelPortfolioTable,
     AccountTable,
-    AccountTargetPositionAssignmentTable,
+    AccountTargetPortfolioTable,
     AssetCategoryMembershipTable,
     AssetCategoryTable,
     AssetTypeTable,
@@ -46,6 +50,7 @@ from msm.models import (
     PortfolioAssetDetailTable,
     PortfolioMetadataTable,
     PortfolioTable,
+    PositionSetTable,
     RebalanceStrategyMetadataTable,
     SignalMetadataTable,
 )
@@ -59,11 +64,14 @@ from msm.models import (
         (AssetCategoryMembership, AssetCategoryMembershipTable, ("category_uid", "asset_uid")),
         (OpenFigiDetails, OpenFigiAssetDetailsTable, ("asset_uid",)),
         (Calendar, CalendarTable, ("name",)),
+        (AccountModelPortfolio, AccountModelPortfolioTable, ("model_portfolio_name",)),
+        (AccountGroup, AccountGroupTable, ("group_name",)),
         (Account, AccountTable, ("unique_identifier",)),
+        (AccountTargetPortfolio, AccountTargetPortfolioTable, ("unique_identifier",)),
         (
-            AccountTargetPositionAssignment,
-            AccountTargetPositionAssignmentTable,
-            ("account_uid", "target_positions_time"),
+            PositionSet,
+            PositionSetTable,
+            ("account_target_portfolio_uid", "position_set_time"),
         ),
         (Portfolio, PortfolioTable, ("unique_identifier",)),
         (PortfolioAssetDetail, PortfolioAssetDetailTable, ("portfolio_uid",)),
@@ -89,33 +97,34 @@ def test_api_rows_declare_table_and_upsert_contracts(
     assert row_model.__table__ is table_model
     assert table_model in row_model.__required_tables__
     assert row_model.__upsert_keys__ == upsert_keys
+    assert issubclass(row_model, MarketsMetaTableRow)
 
 
-def test_account_target_position_assignment_requires_utc_timestamp() -> None:
-    account_uid = uuid.uuid4()
-    position_set_uid = uuid.uuid4()
+def test_legacy_markets_row_name_is_compatibility_alias() -> None:
+    assert MarketsRow is MarketsMetaTableRow
+
+
+def test_position_set_requires_utc_timestamp() -> None:
+    account_target_portfolio_uid = uuid.uuid4()
 
     with pytest.raises(ValidationError):
-        AccountTargetPositionAssignmentUpsert(
-            account_uid=account_uid,
-            target_positions_time="eod",
-            position_set_uid=position_set_uid,
+        PositionSetUpsert(
+            account_target_portfolio_uid=account_target_portfolio_uid,
+            position_set_time="eod",
         )
 
     with pytest.raises(ValidationError):
-        AccountTargetPositionAssignmentUpsert(
-            account_uid=account_uid,
-            target_positions_time=dt.datetime(2026, 5, 25),
-            position_set_uid=position_set_uid,
+        PositionSetUpsert(
+            account_target_portfolio_uid=account_target_portfolio_uid,
+            position_set_time=dt.datetime(2026, 5, 25),
         )
 
-    payload = AccountTargetPositionAssignmentUpsert(
-        account_uid=account_uid,
-        target_positions_time="2026-05-25T00:00:00Z",
-        position_set_uid=position_set_uid,
+    payload = PositionSetUpsert(
+        account_target_portfolio_uid=account_target_portfolio_uid,
+        position_set_time="2026-05-25T00:00:00Z",
     )
 
-    assert payload.target_positions_time == dt.datetime(2026, 5, 25, tzinfo=dt.UTC)
+    assert payload.position_set_time == dt.datetime(2026, 5, 25, tzinfo=dt.UTC)
 
 
 def test_account_pretty_print_positions_formats_holdings(capsys) -> None:
@@ -229,5 +238,11 @@ def test_append_only_status_event_does_not_define_generic_upsert() -> None:
         )
 
 
-def test_account_group_requires_model_portfolio_dependency() -> None:
+def test_account_owns_group_relationship_only() -> None:
+    assert AccountGroup.__required_tables__ == [AccountGroupTable]
     assert AccountGroupTable in AccountGroup.__required_tables__
+    assert AccountModelPortfolioTable not in Account.__required_tables__
+    assert AccountGroupTable in Account.__required_tables__
+    assert "account_group_uid" in AccountTable.__table__.c
+    assert "account_model_portfolio_uid" not in AccountTable.__table__.c
+    assert "account_model_portfolio_uid" not in AccountGroupTable.__table__.c

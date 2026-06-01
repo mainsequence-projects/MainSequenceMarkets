@@ -62,7 +62,6 @@ spx = register_index_from_figi("BBG000KKFC45", index_type=INDEX_TYPE_EQUITY)
 `Index` exposes the same typed row API style as the rest of `msm.api`:
 
 - `IndexType.upsert(...)`
-- `Index.create_schemas(...)`
 - `Index.upsert(...)`
 - `Index.get_by_uid(...)`
 - `Index.get_by_unique_identifier(...)`
@@ -117,15 +116,14 @@ Production code normally assumes this MetaTable already exists. Application
 startup can register only this dependency set explicitly:
 
 ```python
-from msm.api.indices import Index
+import msm
 
-Index.create_schemas()
+msm.start_engine(models=["IndexType", "Index"])
 ```
 
 Examples and development scripts can set `MSM_AUTO_REGISTER_NAMESPACE` before
 importing the API classes when they need an example namespace, but they still
-must call `Index.create_schemas()` or `msm.start_engine(...)` during startup
-before row operations.
+must call `msm.start_engine(...)` during startup before row operations.
 
 ## Timestamped Index DataNodes
 

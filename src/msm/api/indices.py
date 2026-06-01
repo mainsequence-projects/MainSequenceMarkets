@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from msm.api.base import MarketsRow
+from msm.api.base import MarketsMetaTableRow
 from msm.models import IndexTable, IndexTypeTable
 
 
@@ -41,7 +41,7 @@ def normalize_index_type(index_type: str | None) -> str | None:
     return normalized
 
 
-class IndexType(MarketsRow):
+class IndexType(MarketsMetaTableRow):
     """Typed row for the index type registry."""
 
     __table__: ClassVar[type[IndexTypeTable]] = IndexTypeTable
@@ -120,7 +120,7 @@ class IndexTypeUpdate(BaseModel):
     metadata_json: dict[str, Any] | None = None
 
 
-class Index(MarketsRow):
+class Index(MarketsMetaTableRow):
     """User-facing market index reference row."""
 
     __table__: ClassVar[type[IndexTable]] = IndexTable

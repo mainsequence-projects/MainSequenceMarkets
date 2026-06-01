@@ -9,24 +9,18 @@ from apps.v1.main import app
 from apps.v1.services import assets as asset_service
 
 
-def test_get_assets_returns_frontend_list_rows(monkeypatch) -> None:
+def test_get_assets_returns_core_asset_rows(monkeypatch) -> None:
     asset_uid = uuid.uuid4()
     runtime = SimpleNamespace(context=object())
 
     monkeypatch.setattr("apps.v1.services.assets._get_runtime", lambda: runtime)
     monkeypatch.setattr(
-        "apps.v1.services.assets._list_asset_catalog_rows",
+        "apps.v1.services.assets._list_asset_rows",
         lambda context, **kwargs: [
             {
                 "uid": str(asset_uid),
                 "unique_identifier": "BTC",
-                "figi": "BBG000XYZ",
-                "name": "Bitcoin",
-                "ticker": "BTC",
-                "exchange_code": "BNCE",
-                "security_market_sector": "Crypto",
-                "security_type": "Spot",
-                "is_custom_by_organization": True,
+                "asset_type": "crypto",
             }
         ],
     )
@@ -47,13 +41,7 @@ def test_get_assets_returns_frontend_list_rows(monkeypatch) -> None:
         {
             "uid": str(asset_uid),
             "unique_identifier": "BTC",
-            "figi": "BBG000XYZ",
-            "name": "Bitcoin",
-            "ticker": "BTC",
-            "exchange_code": "BNCE",
-            "security_market_sector": "Crypto",
-            "security_type": "Spot",
-            "is_custom_by_organization": True,
+            "asset_type": "crypto",
         }
     ]
 

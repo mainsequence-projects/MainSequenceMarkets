@@ -179,15 +179,14 @@ Production code normally assumes these MetaTables already exist. Application
 startup can register only this dependency set explicitly:
 
 ```python
-from msm.api.derivatives import Future
+import msm
 
-Future.create_schemas()
+msm.start_engine(models=["AssetType", "Asset", "IndexType", "Index", "FutureAssetDetails"])
 ```
 
 Examples and development scripts can set `MSM_AUTO_REGISTER_NAMESPACE` before
 importing the API classes when they need an example namespace, but they still
-must call `Future.create_schemas()` or `msm.start_engine(...)` during startup
-before row operations.
+must call `msm.start_engine(...)` during startup before row operations.
 
 ## Boundaries
 

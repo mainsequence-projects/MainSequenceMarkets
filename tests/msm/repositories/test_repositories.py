@@ -8,11 +8,14 @@ import pytest
 from msm.maintenance.models import MarketsMetaTableCatalogRow, MarketsMetaTableCatalogTable
 from msm.models.registration import markets_meta_table_identifier
 from msm.models import (
-    AccountTargetPositionAssignmentTable,
+    AccountGroupTable,
+    AccountTargetPortfolioTable,
+    AccountTable,
     AssetTypeTable,
     AssetTable,
     OpenFigiAssetDetailsTable,
     OrderTable,
+    PositionSetTable,
     markets_sqlalchemy_models,
 )
 from msm.repositories import MarketsMetaTableHandle, MarketsRepositoryContext
@@ -30,7 +33,11 @@ from msm.repositories.crud import (
     build_upsert_model_operation,
 )
 from msm.repositories.execution import build_create_order_operation
-from msm.repositories.accounts import build_create_account_target_position_assignment_operation
+from msm.repositories.accounts import (
+    build_create_account_operation,
+    build_create_account_target_portfolio_operation,
+    build_create_position_set_operation,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -168,31 +175,70 @@ def test_generic_upsert_operation_uses_physical_name_for_aliased_columns() -> No
     assert operation.statement.parameters["raw_payload"] == {"figi": "BBG00FNFPQH4"}
 
 
-def test_account_target_position_assignment_operation_requires_utc_timestamp() -> None:
+def test_position_set_operation_requires_utc_timestamp() -> None:
     context = _repository_context()
+    account_target_portfolio_uid = uuid.uuid4()
 
     with pytest.raises(ValueError):
-        build_create_account_target_position_assignment_operation(
+        build_create_position_set_operation(
             context,
-            account_uid=uuid.uuid4(),
-            target_positions_time="eod",
-            position_set_uid=uuid.uuid4(),
+            account_target_portfolio_uid=account_target_portfolio_uid,
+            position_set_time="eod",
         )
 
-    operation = build_create_account_target_position_assignment_operation(
+    operation = build_create_position_set_operation(
         context,
-        account_uid=uuid.uuid4(),
-        target_positions_time="2026-05-25T00:00:00Z",
-        position_set_uid=uuid.uuid4(),
+        account_target_portfolio_uid=account_target_portfolio_uid,
+        position_set_time="2026-05-25T00:00:00Z",
     )
 
     assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
-        AccountTargetPositionAssignmentTable,
+        PositionSetTable,
     )
-    assert (
-        operation.statement.parameter_types["target_positions_time"] == "timestamp with time zone"
+    assert operation.statement.parameter_types["position_set_time"] == "timestamp with time zone"
+    assert operation.statement.parameters["position_set_time"] == "2026-05-25T00:00:00Z"
+
+
+def test_account_target_portfolio_operation_uses_account_and_model_portfolio_links() -> None:
+    context = _repository_context()
+    account_uid = uuid.uuid4()
+    model_portfolio_uid = uuid.uuid4()
+
+    operation = build_create_account_target_portfolio_operation(
+        context,
+        unique_identifier="acct-main-target",
+        account_uid=account_uid,
+        account_model_portfolio_uid=model_portfolio_uid,
+        display_name="Main Account Target",
     )
-    assert operation.statement.parameters["target_positions_time"] == "2026-05-25T00:00:00Z"
+
+    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
+        AccountTargetPortfolioTable,
+    )
+    assert operation.statement.parameters["unique_identifier"] == "acct-main-target"
+    assert operation.statement.parameters["account_uid"] == account_uid
+    assert operation.statement.parameters["account_model_portfolio_uid"] == model_portfolio_uid
+
+
+def test_account_create_operation_accepts_group_link_only() -> None:
+    context = _repository_context()
+    account_group_uid = uuid.uuid4()
+
+    operation = build_create_account_operation(
+        context,
+        unique_identifier="acct-main",
+        account_name="Main Account",
+        account_group_uid=account_group_uid,
+    )
+
+    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
+        AccountGroupTable,
+    )
+    assert operation.scope.tables[1].meta_table_uid == context.meta_table_uid_for_model(
+        AccountTable,
+    )
+    assert operation.statement.parameters["account_group_uid"] == account_group_uid
+    assert "account_model_portfolio_uid" not in operation.statement.parameters
 
 
 def test_generic_get_by_uid_uses_single_primary_key_when_uid_column_is_absent() -> None:

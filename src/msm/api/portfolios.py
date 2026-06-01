@@ -6,7 +6,7 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from msm.api.base import MarketsRow, Payload
+from msm.api.base import MarketsMetaTableRow, Payload
 from msm.models import (
     AccountTable,
     AssetTable,
@@ -17,7 +17,7 @@ from msm.models import (
 )
 
 
-class PortfolioAssetDetail(MarketsRow):
+class PortfolioAssetDetail(MarketsMetaTableRow):
     """Typed portfolio-to-asset detail row."""
 
     __table__: ClassVar[type[PortfolioAssetDetailTable]] = PortfolioAssetDetailTable
@@ -55,7 +55,7 @@ class PortfolioAssetDetailUpdate(BaseModel):
     metadata_json: dict[str, Any] | None = None
 
 
-class Portfolio(MarketsRow):
+class Portfolio(MarketsMetaTableRow):
     """Typed portfolio identity and runtime configuration row."""
 
     __table__: ClassVar[type[PortfolioTable]] = PortfolioTable
@@ -140,7 +140,7 @@ class PortfolioUpdate(BaseModel):
     metadata_json: dict[str, Any] | None = None
 
 
-class PortfolioMetadata(MarketsRow):
+class PortfolioMetadata(MarketsMetaTableRow):
     """Typed human-facing portfolio metadata row."""
 
     __table__: ClassVar[type[PortfolioMetadataTable]] = PortfolioMetadataTable
@@ -168,7 +168,7 @@ class PortfolioMetadataUpdate(BaseModel):
     description: str | None = None
 
 
-class Fund(MarketsRow):
+class Fund(MarketsMetaTableRow):
     """Typed fund row bound to an account and portfolio."""
 
     __table__: ClassVar[type[FundTable]] = FundTable

@@ -352,8 +352,7 @@ def get_runtime() -> MarketsRuntime:
     if _RUNTIME is None:
         raise RuntimeError(
             "Markets engine is not initialized. Call msm.start_engine(...) "
-            "or the row model's create_schemas(...) classmethod before calling "
-            "row operations."
+            "during application initialization before calling row operations."
         )
     return _RUNTIME
 
@@ -386,8 +385,8 @@ def _runtime_not_initialized_error_message(
     missing_models = ", ".join(_model_name(model) for model in models)
     return (
         f"{row_name} requires an initialized markets runtime for {missing_models}. "
-        f"Run {row_name}.create_schemas(...) or msm.start_engine(models=[...]) "
-        "during application initialization before row operations."
+        "Run msm.start_engine(models=[...]) during application initialization "
+        "before row operations."
     )
 
 

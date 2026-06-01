@@ -297,8 +297,7 @@ uses the typed row API across assets, categories, accounts, portfolios, funds,
 and an execution order manager.
 
 ```python
-from uuid import uuid4
-
+from msm.api.accounts import AccountTargetPortfolio, PositionSet
 from msm.services import build_account_holdings_frame, build_target_positions_frame
 
 holdings = build_account_holdings_frame(
@@ -310,9 +309,19 @@ holdings = build_account_holdings_frame(
     ],
 )
 
+account_target_portfolio = AccountTargetPortfolio.upsert(
+    unique_identifier="account-main-balanced-target",
+    account_uid=account.uid,
+    account_model_portfolio_uid=model_portfolio.uid,
+)
+position_set = PositionSet.upsert(
+    account_target_portfolio_uid=account_target_portfolio.uid,
+    position_set_time="2026-05-25T00:00:00Z",
+)
+
 targets = build_target_positions_frame(
     target_positions_date="2026-05-25T00:00:00Z",
-    position_set_uid=uuid4(),
+    position_set_uid=position_set.uid,
     positions=[
         {"unique_identifier": "BTC", "weight_notional_exposure": 0.6},
         {"unique_identifier": "ETH", "weight_notional_exposure": 0.4},

@@ -36,9 +36,27 @@ class SignalMetadataTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         primary_key=True,
         default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Canonical UUID primary key for this MetaTable row.",
+        },
     )
-    signal_uid: Mapped[str] = mapped_column(String(255), nullable=False)
-    signal_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signal_uid: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Signal UID",
+            "description": "Stable unique identifier for the signal definition.",
+        },
+    )
+    signal_description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        info={
+            "label": "Signal Description",
+            "description": "Human-readable description of the signal definition.",
+        },
+    )
 
 
 __all__ = ["SignalMetadataTable"]

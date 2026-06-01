@@ -16,6 +16,7 @@ from msm_pricing.utils import to_ql_date
 EXAMPLE_INDEX_UNIQUE_IDENTIFIER = "USD-SOFR-EXAMPLE"
 EXAMPLE_CURVE_UNIQUE_IDENTIFIER = "USD-SOFR-EXAMPLE-DISCOUNT"
 DEFAULT_CURVE_SAMPLING_DAYS = (1, 7, 30, 90, 180, 365, 730, 1095, 1460, 1825, 2555, 3650)
+DEFAULT_FIXING_LOOKBACK_DAYS = 31
 
 
 def build_flat_forward_zero_curve(
@@ -55,7 +56,7 @@ def build_mock_fixings_frame(
     unique_identifier: str,
     valuation_date: dt.date | dt.datetime,
     fixing_rate: float,
-    lookback_days: int = 370,
+    lookback_days: int = DEFAULT_FIXING_LOOKBACK_DAYS,
 ) -> pd.DataFrame:
     """Create deterministic business-day fixings for an Index unique identifier."""
 
@@ -140,7 +141,7 @@ class MockIndexFixingsNode(FixingRatesNode):
         *,
         valuation_date: dt.date | dt.datetime,
         fixing_rate: float = 0.0525,
-        lookback_days: int = 370,
+        lookback_days: int = DEFAULT_FIXING_LOOKBACK_DAYS,
         **kwargs: Any,
     ) -> None:
         self.valuation_date = _as_datetime(valuation_date)

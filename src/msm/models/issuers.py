@@ -41,10 +41,35 @@ class IssuerTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         primary_key=True,
         default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Canonical UUID primary key for this MetaTable row.",
+        },
     )
-    unique_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
-    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    unique_identifier: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Unique Identifier",
+            "description": "Stable business identifier used for idempotent upserts, lookup, and joins.",
+        },
+    )
+    display_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Display Name",
+            "description": "Human-readable display name for UI, logs, and operator workflows.",
+        },
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+        info={
+            "label": "Metadata JSON",
+            "description": "Structured metadata JSON for provider, application, or workflow-specific attributes.",
+        },
+    )
 
 
 __all__ = ["IssuerTable"]

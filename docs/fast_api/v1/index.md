@@ -36,12 +36,21 @@ Current local-dev behavior:
 - `GET /api/v1/account/`
   - supports `search`, `limit`, and `offset`
   - returns `{ count, results }`
-  - row fields are `uid`, `display_name`, `is_paper`, and
-    `account_is_active`
+  - `results` contains the library `msm.api.accounts.Account` contract:
+    `uid`, `unique_identifier`, `account_name`, `is_paper`,
+    `account_is_active`, `holdings_data_node_uid`, and `metadata_json`
 - `GET /api/v1/account/{uid}/summary/`
   - returns the reusable `FrontEndDetailSummary` response for account detail
     pages
   - resolves the account by `uid`
+- `GET /api/v1/account/{account_uid}/holdings/`
+  - supports `order`, `limit=1`, `include_asset_detail`, and exact
+    `holdings_date`
+  - returns one holdings snapshot backed by `AccountHoldingsStorage`
+  - returns 200 with an empty `holdings` list when the account exists but no
+    holdings snapshot matches
+  - nullable compatibility fields such as `id`, `snapshot_uid`, `nav`, and
+    `price` are not invented when the storage row does not provide them
 
 ### Assets
 
@@ -49,7 +58,8 @@ Current local-dev behavior:
   - supports `response_format=frontend_list`
   - supports `search`, `limit`, `offset`
   - supports `categories__uid` for nested category asset tables
-  - returns paginated asset rows in the migrated list contract
+  - returns the library `msm.api.assets.Asset` contract:
+    `uid`, `unique_identifier`, and `asset_type`
 - `GET /api/v1/asset/{uid}/summary/`
   - returns a reusable `FrontEndDetailSummary` response for detail-page
     summary cards
@@ -65,17 +75,19 @@ Current local-dev behavior:
 
 - `GET /api/v1/asset-category/`
   - supports `response_format=frontend_list`
-  - returns the frontend rows wrapper with `search`, `rows`, and `pagination`
+  - returns the library `msm.api.assets.AssetCategory` contract
 - `GET /api/v1/asset-category/{uid}/`
   - supports `response_format=frontend_detail`
-  - returns `selected_category`, `details`, `actions`, and `assets_list`
+  - returns one library `msm.api.assets.AssetCategory` row
 - `POST /api/v1/asset-category/`
   - creates a category
   - derives `unique_identifier` from `display_name` when omitted
   - replaces memberships when `assets` are supplied
+  - returns the created library `msm.api.assets.AssetCategory` row
 - `PATCH /api/v1/asset-category/{uid}/`
   - updates category metadata
   - replaces memberships when `assets` are supplied
+  - returns the updated library `msm.api.assets.AssetCategory` row
 - `DELETE /api/v1/asset-category/{uid}/`
   - deletes a single category
   - returns `null` on success
@@ -88,7 +100,7 @@ Current local-dev behavior:
 - `GET /api/v1/index/`
   - supports `response_format=frontend_list`
   - supports `search`, `limit`, and `offset`
-  - returns the simple index registry list contract, including `index_type`
+  - returns the library `msm.api.indices.Index` contract
 - `GET /api/v1/index/{uid}/`
   - returns one index registry record by `uid`
   - always includes `index_type` and includes `metadata_json` when present on
@@ -115,14 +127,13 @@ Current local-dev behavior:
 
 ## Compatibility Notes
 
-The category detail payload advertises:
+The `response_format=frontend_list` and `response_format=frontend_detail`
+query parameters are still accepted on migrated legacy routes, but list and
+direct detail rows now prefer core library API models over frontend projections.
 
-- `list_endpoint: /api/v1/asset/`
-- `query_endpoint: /api/v1/asset/query/`
-
-The nested category detail page in the current Command Center client uses the
-`GET /api/v1/asset/` path with `categories__uid`. The dedicated
-`POST /api/v1/asset/query/` route is still future work for this local API.
+The nested category asset table should use `GET /api/v1/asset/` with
+`categories__uid`. The dedicated `POST /api/v1/asset/query/` route is still
+future work for this local API.
 
 ## Validation
 

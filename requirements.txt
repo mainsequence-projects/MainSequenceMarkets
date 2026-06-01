@@ -14,7 +14,9 @@ certifi==2026.5.20
 charset-normalizer==3.4.7
     # via requests
 click==8.4.1
-    # via mainsequence
+    # via
+    #   mainsequence
+    #   uvicorn
 colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   click
@@ -30,9 +32,11 @@ greenlet==3.5.1 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or 
     # via sqlalchemy
 grpcio==1.80.0
     # via opentelemetry-exporter-otlp-proto-grpc
+h11==0.16.0
+    # via uvicorn
 idna==3.17
     # via requests
-mainsequence==4.1.10
+mainsequence==4.1.11
     # via ms-markets
 markdown-it-py==4.2.0
     # via rich
@@ -145,3 +149,5 @@ urllib3==2.7.0
     # via
     #   mainsequence
     #   requests
+uvicorn==0.48.0
+    # via ms-markets

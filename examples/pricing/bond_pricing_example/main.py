@@ -206,7 +206,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         valuation_date=valuation_date,
         zero_rate=0.05,
     )
-    curve_frame = curve_node.run(debug_mode=True, force_update=True)
+    curve_frame = _run_data_node_frame(curve_node, label="discount curve")
     _print_step(
         "Published mock discount curve rows",
         rows=len(curve_frame),
@@ -217,9 +217,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         IndexFixingConfiguration(index_unique_identifiers=[index.unique_identifier]),
         valuation_date=valuation_date,
         fixing_rate=0.0525,
-        lookback_days=370,
     )
-    fixing_frame = fixing_node.run(debug_mode=True, force_update=True)
+    fixing_frame = _run_data_node_frame(fixing_node, label="index fixings")
     _print_step(
         "Published mock index fixing rows",
         rows=len(fixing_frame),
@@ -353,6 +352,16 @@ def _preview_cashflows(
     limit: int = 6,
 ) -> dict[str, list[dict[str, Any]]]:
     return {bucket: rows[:limit] for bucket, rows in cashflows.items() if rows}
+
+
+def _run_data_node_frame(node: Any, *, label: str) -> Any:
+    result = node.run(debug_mode=True, force_update=True)
+    if isinstance(result, tuple):
+        error_on_last_update, frame = result
+        if error_on_last_update:
+            raise RuntimeError(f"{label} DataNode update failed; inspect the run logs.")
+        return frame
+    return result
 
 
 def _print_step(message: str, **fields: Any) -> None:

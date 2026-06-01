@@ -1,25 +1,27 @@
 # Accounts
 
-Accounts are the owner identity layer for positions, target assignments,
-execution routing, and fund tracking. The account registry itself is stored in
-markets MetaTables. Account and fund holdings history is stored in DataNode
-tables backed by registered `PlatformTimeIndexMetaData` storage classes, because
-holdings are timestamped observations rather than static reference rows.
+Accounts are the owner identity layer for holdings, account groups, model
+portfolio tracking, target position sets, and execution routing.
+The account registry and target-portfolio relationships are stored in markets
+MetaTables. Account holdings history and target position rows are stored in
+DataNode tables backed by registered `PlatformTimeIndexMetaData` storage
+classes, because those rows are timestamped observations rather than static
+reference records.
 
 ## What Is Stored Where
 
 ```text
 MetaTable
   Row-oriented reference or configuration table registered from SQLAlchemy.
-  AccountTable, AccountTargetPositionAssignmentTable, AccountGroupTable,
-  AccountModelPortfolioTable, and FundTable are MetaTables.
+  AccountTable, AccountGroupTable, AccountModelPortfolioTable,
+  AccountTargetPortfolioTable, and PositionSetTable are MetaTables.
 
 PlatformTimeIndexMetaData
   SQLAlchemy storage class registered through the SDK/catalog bootstrap. It
   describes the published table shape: time index, dimension indexes, column
   dtypes, foreign keys, and storage identity. AccountHoldings and
-  VirtualFundHoldings use registered storage classes; they do not create storage
-  through `initialize_source_table`.
+  TargetPositionsStorage use registered storage classes; they do not create
+  storage through `initialize_source_table`.
 ```
 
 Do not confuse these layers. `Account.upsert(...)` writes one account registry
@@ -33,19 +35,51 @@ Use the typed row APIs for account MetaTable records:
 ```python
 import datetime as dt
 
-from msm.api.accounts import Account, AccountTargetPositionAssignment
+from msm.api.accounts import (
+    Account,
+    AccountGroup,
+    AccountModelPortfolio,
+    AccountTargetPortfolio,
+    PositionSet,
+)
+from msm.services import build_target_positions_frame
+
+model_portfolio = AccountModelPortfolio.upsert(
+    model_portfolio_name="balanced-model",
+    model_portfolio_description="Balanced model tracked by several accounts.",
+)
+
+account_group = AccountGroup.upsert(
+    group_name="high-risk-accounts",
+    group_description="Accounts grouped by risk bucket.",
+)
 
 account = Account.upsert(
     unique_identifier="acct-main",
     account_name="Main Account",
     is_paper=True,
     account_is_active=True,
+    account_group_uid=account_group.uid,
 )
 
-assignment = AccountTargetPositionAssignment.upsert(
+target_portfolio = AccountTargetPortfolio.upsert(
+    unique_identifier="acct-main-balanced-target",
     account_uid=account.uid,
-    target_positions_time=dt.datetime(2026, 5, 25, tzinfo=dt.UTC),
-    position_set_uid="00000000-0000-0000-0000-000000000001",
+    account_model_portfolio_uid=model_portfolio.uid,
+    display_name="Main account balanced target",
+)
+
+position_set = PositionSet.upsert(
+    account_target_portfolio_uid=target_portfolio.uid,
+    position_set_time=dt.datetime(2026, 5, 25, tzinfo=dt.UTC),
+)
+
+target_positions = build_target_positions_frame(
+    target_positions_date=position_set.position_set_time,
+    position_set_uid=position_set.uid,
+    positions=[
+        {"unique_identifier": "BTC-USD", "weight_notional_exposure": 1.0},
+    ],
 )
 ```
 
@@ -91,9 +125,12 @@ row, reads `ticker` from row `extra_details` when present, and keeps holdings
 reads explicit by requiring the caller to pass the holdings frame. Do not pass
 the raw `AccountHoldings.run(...)` tuple; unpack it and pass the DataFrame.
 
-The full workflow example is
-`examples/accounts/create_and_insert_holdings.py`. It reuses the shared asset
-example payloads from `examples/assets/utils` and account-specific payloads from
+The full workflow example is `examples/accounts/account_workflow.py`. It creates
+two accounts, assigns both to one account group, points both account-specific
+target portfolio relationships at the same reusable `AccountModelPortfolio`,
+builds target position rows for each `PositionSet`, publishes account holdings,
+and pretty-prints positions for each account. It reuses the shared asset example
+payloads from `examples/assets/utils` and account-specific payloads from
 `examples/accounts/utils`.
 
 There is no top-level `msm.accounts` shim. Import account rows from
@@ -103,90 +140,123 @@ There is no top-level `msm.accounts` shim. Import account rows from
 ## Account MetaTables
 
 ```text
-                                      MetaTables
-                                      ----------
+                         Account Reference MetaTables
+                         ---------------------------
 
-+-------------------------------+
-| AccountModelPortfolioTable    |  MetaTable: AccountModelPortfolio
-|-------------------------------|
-| uid PK                        |
-| model_portfolio_name unique   |
-| model_portfolio_description   |
-| metadata_json                 |
-+---------------+---------------+
++-------------------------------+          +-------------------------------+
+| AccountGroupTable             |          | AccountModelPortfolioTable    |
+| MetaTable: AccountGroup       |          | MetaTable: AccountModelPortf. |
+|-------------------------------|          |-------------------------------|
+| uid PK                        |          | uid PK                        |
+| group_name unique             |          | model_portfolio_name unique   |
+| group_description             |          | model_portfolio_description   |
+| metadata_json                 |          | metadata_json                 |
++---------------+---------------+          +---------------+---------------+
+                ^
+                | nullable account_group_uid FK
                 |
-                | nullable FK from AccountGroupTable.account_model_portfolio_uid
-                v
-+-------------------------------+
-| AccountGroupTable             |  MetaTable: AccountGroup
-|-------------------------------|
-| uid PK                        |
-| group_name unique             |
-| group_description             |
-| account_model_portfolio_uid FK|
-| metadata_json                 |
-+-------------------------------+
-
-+-------------------------------+
-| AccountTable                  |  MetaTable: Account
++---------------+---------------+
+| AccountTable                  |
+| MetaTable: Account            |
 |-------------------------------|
 | uid PK                        |
 | unique_identifier unique      |
 | account_name                  |
 | is_paper                      |
 | account_is_active             |
+| account_group_uid FK          |
 | holdings_data_node_uid        |
 | metadata_json                 |
 +---------------+---------------+
-                |
-                | account_uid FK, on delete cascade
-                v
-+-------------------------------+
-| AccountTargetPositionAssign.  |  MetaTable: AccountTargetPositionAssignment
+                                |
+                                | account_uid FK, on delete cascade
+                                v
++-------------------------------+      account_model_portfolio_uid FK
+| AccountTargetPortfolioTable   |<----------------------------------+
+| MetaTable: AccountTargetPortf.|
 |-------------------------------|
 | uid PK                        |
+| unique_identifier unique      |
 | account_uid FK -> Account.uid |
-| target_positions_time UTC     |
+| account_model_portfolio_uid   |
+| display_name                  |
+| is_active                     |
+| source                        |
+| metadata_json                 |
++---------------+---------------+
+                |
+                | account_target_portfolio_uid FK, on delete cascade
+                v
++-------------------------------+
+| PositionSetTable              |
+| MetaTable: PositionSet        |
+|-------------------------------|
+| uid PK                        |
+| account_target_portfolio_uid  |
+| position_set_time UTC         |
+| names one target snapshot;    |
+| exposure rows are below       |
+| source                        |
+| metadata_json                 |
+| unique(account_target_portf., |
+|        position_set_time)     |
++---------------+---------------+
+                |
+                | position_set_uid FK
+                v
++-------------------------------+
+| TargetPositionsStorage        |
+| DynamicTableMetaData /        |
+| PlatformTimeIndexMetaData     |
+|-------------------------------|
+| time_index                    |
 | position_set_uid              |
-| unique(account_uid,           |
-|        target_positions_time) |
+| unique_identifier FK          |
+|  -> Asset.unique_identifier   |
+| weight_notional_exposure      |
+| constant_notional_exposure    |
+| single_asset_quantity         |
+| exactly one exposure required |
++-------------------------------+
+                |
+                | unique_identifier FK
+                v
++-------------------------------+
+| AssetTable                    |
+| MetaTable: Asset              |
+|-------------------------------|
+| uid PK                        |
+| unique_identifier unique      |
 +-------------------------------+
 ```
 
 `AccountTable.uid` is the canonical account identity used by other MetaTables and
 DataNode rows. `unique_identifier` is the stable external business key used for
-lookup and idempotent upserts. `holdings_data_node_uid` is optional metadata for
-an account's associated holdings storage; it is not the account identity.
+lookup and idempotent upserts. `account_group_uid` is optional membership in one
+account group. `holdings_data_node_uid` is optional metadata for an account's
+associated holdings storage; it is not the account identity. Account model
+portfolio tracking does not live on `AccountTable`; it lives on
+`AccountTargetPortfolioTable`.
 
-`AccountTargetPositionAssignmentTable` intentionally stays separate from
-`AccountTable`. An account can be registered without a target-position binding,
-and the binding can be replaced for a UTC `target_positions_time` without
-rewriting the account row.
+`AccountGroupTable` and `AccountModelPortfolioTable` are independent registries.
+An account group does not point to an account model portfolio. Group membership
+lives on `AccountTable`; model-portfolio tracking lives on
+`AccountTargetPortfolioTable`.
 
-## Fund And Portfolio Relationship
+`AccountModelPortfolioTable` is the reusable reference model an account can
+track. It does not itself store timestamped positions. Concrete target positions
+are versioned through `AccountTargetPortfolioTable` and `PositionSetTable`:
 
-Funds bind an account to a target portfolio. The account owns the execution or
-custody side; the portfolio owns the target composition.
+1. `AccountTargetPortfolioTable` says which account is tracking which account
+   model portfolio.
+2. `PositionSetTable` names one concrete target snapshot for that account target
+   portfolio at a UTC `position_set_time`.
+3. `TargetPositionsStorage` stores the actual asset exposure rows, points back
+   to `PositionSetTable.uid` with `position_set_uid`, and points to
+   `AssetTable.unique_identifier` with `unique_identifier`.
 
-```text
-                      MetaTables
-                      ----------
-
-+------------------+      target_account_uid FK       +----------------+
-| AccountTable     |<-------------------------------+ | FundTable      |
-| MetaTable        |                                  | MetaTable      |
-| uid PK           |                                  | uid PK         |
-+------------------+                                  | unique_id uniq |
-                                                      | target_account |
-+------------------+      target_portfolio_uid FK     | target_portf. |
-| PortfolioTable   |<-------------------------------+ | metadata_json |
-| MetaTable        |                                  +----------------+
-| uid PK           |
-+------------------+
-```
-
-The account API lives in `msm.api.accounts`. Fund row APIs live in
-`msm.api.portfolios` because funds are part of the portfolio workflow.
+This keeps account identity, account grouping, model-portfolio intent, and
+timestamped target rows in separate places.
 
 ## Holdings DataNodes
 
@@ -239,36 +309,27 @@ duplicating relationship metadata on the DataNode configuration.
 
 The holdings DataNode configuration does not carry `time_index_name`,
 `index_names`, nullable columns, or dtype declarations. Those are storage
-MetaTable fields on `AccountHoldingsStorage` / `FundHoldingsStorage`.
+MetaTable fields on `AccountHoldingsStorage`.
 
-`VirtualFundHoldings` follows the same pattern for fund-level observations:
-
-```text
-+-------------------------------+       uses registered     +-----------------------------+
-| VirtualFundHoldings           |-------------------------->| FundHoldingsStorage         |
-| DataNode class                |                           | virtual_fund_historical...  |
-|-------------------------------|                           |-----------------------------|
-| identifier, index contract,   |                           | time_index_name=time_index  |
-| and dtype contract derive     |                           | index_names:                |
-| from FundHoldingsStorage.     |                           |  - time_index               |
-|                               |                           |  - fund_uid                 |
-|                               |                           |  - unique_identifier        |
-+-------------------------------+                           |-----------------------------|
-                                                            | FK: fund_uid -> Fund.uid    |
-                                                            | FK: unique_identifier       |
-                                                            |     -> AssetTable           |
-                                                            |        .unique_identifier   |
-                                                            | extra: target_weight        |
-                                                            +-----------------------------+
-```
+Fund-level holdings belong to the [Virtual Funds](../virtualfunds/index.md)
+knowledge page.
 
 ## End-To-End Flow
 
 ```text
 1. Register account reference data
 
+   AccountModelPortfolio.upsert(...)
+     -> AccountModelPortfolio API row
+     -> AccountModelPortfolioTable MetaTable
+
+   AccountGroup.upsert(...)
+     -> AccountGroup API row
+     -> AccountGroupTable MetaTable
+
    Account.upsert(...)
      -> Account API row
+     -> links to group by UID when provided
      -> AccountTable MetaTable
 
 2. Register assets held by the account
@@ -312,19 +373,23 @@ uses:
 ```python
 import msm
 
-msm.start_engine(models=["Asset", "Account"])
+msm.start_engine(models=["Asset", "AccountModelPortfolio", "AccountGroup", "Account"])
 ```
 
-For target assignments, include the child table:
+For target portfolios and target position sets, include the child tables and
+the target-position storage contract:
 
 ```python
-msm.start_engine(models=["Account", "AccountTargetPositionAssignment"])
-```
-
-For funds, register account and portfolio dependencies first:
-
-```python
-msm.start_engine(models=["Account", "Portfolio", "Fund"])
+msm.start_engine(
+    models=[
+        "AccountModelPortfolio",
+        "AccountGroup",
+        "Account",
+        "AccountTargetPortfolio",
+        "PositionSet",
+        "TargetPositionsStorage",
+    ]
+)
 ```
 
 The DataNode class itself does not need to be in the MetaTable model list. Its

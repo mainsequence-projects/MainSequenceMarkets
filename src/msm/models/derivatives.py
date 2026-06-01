@@ -58,8 +58,19 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
         ),
         primary_key=True,
         nullable=False,
+        info={
+            "label": "Asset UID",
+            "description": "Foreign key to the canonical AssetTable.uid for the referenced asset.",
+        },
     )
-    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    kind: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        info={
+            "label": "Kind",
+            "description": "Derivative kind or product family for the future contract.",
+        },
+    )
     underlying_index_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         MetaTableForeignKey(
@@ -68,8 +79,19 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
             ondelete="RESTRICT",
         ),
         nullable=False,
+        info={
+            "label": "Underlying Index UID",
+            "description": "Foreign key to IndexTable.uid for the derivative underlying index.",
+        },
     )
-    quote_unit: Mapped[str] = mapped_column(String(64), nullable=False)
+    quote_unit: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        info={
+            "label": "Quote Unit",
+            "description": "Unit in which derivative prices are quoted.",
+        },
+    )
     settlement_asset: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         MetaTableForeignKey(
@@ -78,6 +100,10 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
             ondelete="RESTRICT",
         ),
         nullable=False,
+        info={
+            "label": "Settlement Asset",
+            "description": "Asset or currency delivered or paid at derivative settlement.",
+        },
     )
     margin_asset: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -87,23 +113,67 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
             ondelete="RESTRICT",
         ),
         nullable=False,
+        info={
+            "label": "Margin Asset",
+            "description": "Asset or currency used as margin for the derivative contract.",
+        },
     )
-    settlement_model: Mapped[str] = mapped_column(String(32), nullable=False)
-    settlement_method: Mapped[str] = mapped_column(String(32), nullable=False)
-    contract_size: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
-    contract_unit: Mapped[str] = mapped_column(String(64), nullable=False)
+    settlement_model: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        info={
+            "label": "Settlement Model",
+            "description": "Derivative settlement model used by the contract.",
+        },
+    )
+    settlement_method: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        info={
+            "label": "Settlement Method",
+            "description": "Derivative settlement method, such as cash or physical settlement.",
+        },
+    )
+    contract_size: Mapped[Decimal] = mapped_column(
+        Numeric(38, 18),
+        nullable=False,
+        info={
+            "label": "Contract Size",
+            "description": "Contract size multiplier for one derivative contract.",
+        },
+    )
+    contract_unit: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        info={
+            "label": "Contract Unit",
+            "description": "Unit in which the derivative contract size is expressed.",
+        },
+    )
     expires_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+        info={
+            "label": "Expires At",
+            "description": "UTC timestamp when the derivative contract expires.",
+        },
     )
     settles_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+        info={
+            "label": "Settles At",
+            "description": "UTC timestamp when the derivative contract settles.",
+        },
     )
     metadata_payload: Mapped[dict | None] = mapped_column(
         "metadata",
         JSON,
         nullable=True,
+        info={
+            "label": "Metadata",
+            "description": "Structured metadata JSON for provider, pricing, or workflow-specific attributes.",
+        },
     )
 
 

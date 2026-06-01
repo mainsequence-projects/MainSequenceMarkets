@@ -52,10 +52,35 @@ class CurveTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         primary_key=True,
         default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Canonical UUID primary key for this MetaTable row.",
+        },
     )
-    unique_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
-    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    curve_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    unique_identifier: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Unique Identifier",
+            "description": "Stable business identifier used for idempotent upserts, lookup, and joins.",
+        },
+    )
+    display_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Display Name",
+            "description": "Human-readable display name for UI, logs, and operator workflows.",
+        },
+    )
+    curve_type: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        info={
+            "label": "Curve Type",
+            "description": "Pricing curve type, such as discount, zero, forward, projection, or basis.",
+        },
+    )
     index_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         MetaTableForeignKey(
@@ -64,11 +89,44 @@ class CurveTable(MarketsMetaTableMixin, MarketsBase):
             ondelete="RESTRICT",
         ),
         nullable=False,
+        info={
+            "label": "Index UID",
+            "description": "Foreign key to the canonical index or index convention row used by pricing.",
+        },
     )
-    interpolation_method: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    compounding: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    source: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    interpolation_method: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        info={
+            "label": "Interpolation Method",
+            "description": "Interpolation method used when reconstructing the pricing curve.",
+        },
+    )
+    compounding: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        info={
+            "label": "Compounding",
+            "description": "Compounding convention used by a pricing curve resolver.",
+        },
+    )
+    source: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info={
+            "label": "Source",
+            "description": "Source system, workflow, or provider that produced the row.",
+        },
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        "metadata",
+        JSON,
+        nullable=True,
+        info={
+            "label": "Metadata",
+            "description": "Structured metadata JSON for provider, pricing, or workflow-specific attributes.",
+        },
+    )
 
 
 __all__ = ["CurveTable"]

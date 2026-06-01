@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Annotated
+import datetime as dt
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from apps.v1.schemas.accounts import AccountListResponse
+from apps.v1.schemas.accounts import AccountHoldingsSnapshotResponse, AccountListResponse
 from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
-from apps.v1.services.accounts import get_account_summary, list_accounts
+from apps.v1.services.accounts import get_account_holdings, get_account_summary, list_accounts
 
 router = APIRouter(prefix="/account", tags=["account"])
 
@@ -70,3 +71,63 @@ def get_account_summary_by_uid(uid: str) -> FrontEndDetailSummary:
     if summary is None:
         raise HTTPException(status_code=404, detail=f"Account {uid!r} was not found.")
     return summary
+
+
+@router.get(
+    "/{account_uid}/holdings/",
+    response_model=AccountHoldingsSnapshotResponse,
+    summary="Get account holdings snapshot",
+    description=(
+        "Return one account holdings snapshot. When the account exists but no holdings "
+        "snapshot matches the request, the response is 200 with an empty holdings list."
+    ),
+    operation_id="getAccountHoldings",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested account uid was not found.",
+        }
+    },
+)
+def get_account_holdings_by_uid(
+    account_uid: str,
+    order: Annotated[
+        Literal["asc", "desc"],
+        Query(
+            description="Snapshot ordering used when holdings_date is omitted.",
+        ),
+    ] = "desc",
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=1,
+            description="Number of snapshots to return. The current contract returns one snapshot.",
+        ),
+    ] = 1,
+    include_asset_detail: Annotated[
+        bool,
+        Query(
+            description=(
+                "When true, include asset.uid, asset.figi, and current_snapshot labels "
+                "when the asset registry rows are available."
+            ),
+        ),
+    ] = True,
+    holdings_date: Annotated[
+        dt.datetime | None,
+        Query(
+            description="Exact holdings snapshot timestamp to fetch. Use ISO 8601.",
+        ),
+    ] = None,
+) -> AccountHoldingsSnapshotResponse:
+    snapshot = get_account_holdings(
+        account_uid=account_uid,
+        order=order,
+        limit=limit,
+        include_asset_detail=include_asset_detail,
+        holdings_date=holdings_date,
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"Account {account_uid!r} was not found.")
+    return snapshot

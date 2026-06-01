@@ -98,9 +98,9 @@ and only missing requested tables are registered.
 
 For development examples that should use an example namespace, set
 `MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`, then call
-`msm.start_engine(...)` or the row model's `create_schemas(...)` during
-startup. That namespace also becomes the default namespace for markets DataNode
-identifiers and `hash_namespace` values created in the same process.
+`msm.start_engine(...)` during startup. That namespace also becomes the default
+namespace for markets DataNode identifiers and `hash_namespace` values created
+in the same process.
 
 Every markets MetaTable now has a user-facing row model under `msm.api.*`.
 Legacy imports such as `from msm.models import Asset` have been removed; use

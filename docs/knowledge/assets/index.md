@@ -352,10 +352,12 @@ from examples.platform.bootstrap import (
 
 os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
+import msm
+
 from msm.api.assets import Asset
 from msm.constants import ASSET_TYPE_CRYPTO
 
-Asset.create_schemas()
+msm.start_engine(models=["AssetType", "Asset"])
 
 asset = Asset.upsert(
     unique_identifier="example-asset-btc",
@@ -364,9 +366,8 @@ asset = Asset.upsert(
 ```
 
 The namespace is part of runtime/table registration, not an asset payload field.
-Explicit bootstrap remains available for controlled startup preflight:
-`Asset.create_schemas(...)` registers only the `Asset` dependency set, while
-`msm.start_engine(models=[...])` can register a selected multi-table set.
+Use `msm.start_engine(models=[...])` for controlled startup preflight with a
+selected table set.
 
 Use `runtime.context` or `runtime.table(...)` for lower-level multi-table
 repository operations that need to compile statements across registered models.

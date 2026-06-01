@@ -1,95 +1,20 @@
 from __future__ import annotations
 
-from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
-class FrontendListPagination(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    page: int
-    page_size: int
-    total_pages: int
-    total_items: int
-    has_next: bool
-    has_previous: bool
-    start_index: int
-    end_index: int
+from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
 
 
-class AssetCategoryListRow(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+def _asset_category_contract():
+    prepare_apps_v1_import_namespace()
+    from msm.api.assets import AssetCategory
 
-    uid: UUID
-    unique_identifier: str
-    display_name: str
-    description: str = ""
-    number_of_assets: int
+    return AssetCategory
 
 
-class AssetCategoryListResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    search: str = ""
-    rows: list[AssetCategoryListRow]
-    pagination: FrontendListPagination
-
-
-class AssetCategoryDetailSelectedCategory(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    text: str
-    sub_text: str
-
-
-class AssetCategoryDetailField(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    name: str
-    label: str
-    value_type: Literal["text", "number", "boolean"]
-    value: str | int | bool | None
-
-
-class AssetCategoryDetailActions(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    can_edit: bool
-    can_delete: bool
-    update_endpoint: str
-    delete_endpoint: str
-
-
-class AssetCategoryDetailAssetsListConfig(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    list_endpoint: str
-    query_endpoint: str
-    response_format: str
-    default_filters: dict[str, str | int | bool | None]
-
-
-class AssetCategoryDetailResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    uid: UUID
-    title: str
-    selected_category: AssetCategoryDetailSelectedCategory
-    details: list[AssetCategoryDetailField]
-    actions: AssetCategoryDetailActions
-    assets_list: AssetCategoryDetailAssetsListConfig
-
-
-class AssetCategoryRecord(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    uid: UUID
-    unique_identifier: str
-    display_name: str
-    description: str = ""
-    assets: list[str] = Field(default_factory=list)
+AssetCategory = _asset_category_contract()
 
 
 class CreateAssetCategoryRequest(BaseModel):

@@ -4,11 +4,11 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from msm.api.base import MarketsRow
+from msm.api.base import MarketsMetaTableRow
 from msm.models import CalendarTable
 
 
-class Calendar(MarketsRow):
+class Calendar(MarketsMetaTableRow):
     """Typed named market calendar row."""
 
     __table__: ClassVar[type[CalendarTable]] = CalendarTable

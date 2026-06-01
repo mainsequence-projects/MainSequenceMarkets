@@ -57,6 +57,10 @@ class CurrencySpotAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
         ),
         primary_key=True,
         nullable=False,
+        info={
+            "label": "Asset UID",
+            "description": "Foreign key to the canonical AssetTable.uid for the referenced asset.",
+        },
     )
     base_currency_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -66,6 +70,10 @@ class CurrencySpotAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
             ondelete="RESTRICT",
         ),
         nullable=False,
+        info={
+            "label": "Base Currency UID",
+            "description": "AssetTable.uid for the base currency in a currency pair.",
+        },
     )
     quote_currency_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -75,6 +83,10 @@ class CurrencySpotAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
             ondelete="RESTRICT",
         ),
         nullable=False,
+        info={
+            "label": "Quote Currency UID",
+            "description": "AssetTable.uid for the quote currency in a currency pair.",
+        },
     )
 
 

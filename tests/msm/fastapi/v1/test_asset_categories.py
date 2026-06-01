@@ -7,32 +7,19 @@ from fastapi.testclient import TestClient
 from apps.v1.main import app
 
 
-def test_get_asset_categories_returns_frontend_rows_payload(monkeypatch) -> None:
+def test_get_asset_categories_returns_core_rows(monkeypatch) -> None:
     category_uid = uuid.uuid4()
     monkeypatch.setattr(
         "apps.v1.routers.asset_categories.list_asset_categories",
-        lambda **kwargs: {
-            "search": kwargs["search"],
-            "rows": [
-                {
-                    "uid": str(category_uid),
-                    "unique_identifier": "crypto_core",
-                    "display_name": "Crypto Core",
-                    "description": "Core digital assets",
-                    "number_of_assets": 2,
-                }
-            ],
-            "pagination": {
-                "page": 1,
-                "page_size": 50,
-                "total_pages": 1,
-                "total_items": 1,
-                "has_next": False,
-                "has_previous": False,
-                "start_index": 1,
-                "end_index": 1,
-            },
-        },
+        lambda **kwargs: [
+            {
+                "uid": str(category_uid),
+                "unique_identifier": "crypto_core",
+                "display_name": "Crypto Core",
+                "description": "Core digital assets",
+                "metadata_json": {"source": "test"},
+            }
+        ],
     )
 
     client = TestClient(app)
@@ -47,28 +34,15 @@ def test_get_asset_categories_returns_frontend_rows_payload(monkeypatch) -> None
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "search": "crypto",
-        "rows": [
-            {
-                "uid": str(category_uid),
-                "unique_identifier": "crypto_core",
-                "display_name": "Crypto Core",
-                "description": "Core digital assets",
-                "number_of_assets": 2,
-            }
-        ],
-        "pagination": {
-            "page": 1,
-            "page_size": 50,
-            "total_pages": 1,
-            "total_items": 1,
-            "has_next": False,
-            "has_previous": False,
-            "start_index": 1,
-            "end_index": 1,
-        },
-    }
+    assert response.json() == [
+        {
+            "uid": str(category_uid),
+            "unique_identifier": "crypto_core",
+            "display_name": "Crypto Core",
+            "description": "Core digital assets",
+            "metadata_json": {"source": "test"},
+        }
+    ]
 
 
 def test_get_asset_categories_rejects_unknown_response_format() -> None:
@@ -82,37 +56,16 @@ def test_get_asset_categories_rejects_unknown_response_format() -> None:
     assert "frontend_list" in response.json()["detail"]
 
 
-def test_get_asset_category_detail_returns_frontend_detail_payload(monkeypatch) -> None:
+def test_get_asset_category_detail_returns_core_row(monkeypatch) -> None:
     category_uid = uuid.uuid4()
     monkeypatch.setattr(
         "apps.v1.routers.asset_categories.get_asset_category_detail",
         lambda uid: {
             "uid": str(category_uid),
-            "title": "Crypto Core",
-            "selected_category": {
-                "text": "Crypto Core",
-                "sub_text": "crypto_core",
-            },
-            "details": [
-                {
-                    "name": "description",
-                    "label": "Description",
-                    "value_type": "text",
-                    "value": "Core digital assets",
-                }
-            ],
-            "actions": {
-                "can_edit": True,
-                "can_delete": True,
-                "update_endpoint": f"/api/v1/asset-category/{category_uid}/",
-                "delete_endpoint": f"/api/v1/asset-category/{category_uid}/",
-            },
-            "assets_list": {
-                "list_endpoint": "/api/v1/asset/",
-                "query_endpoint": "/api/v1/asset/query/",
-                "response_format": "frontend_list",
-                "default_filters": {"categories__uid": str(category_uid)},
-            },
+            "unique_identifier": "crypto_core",
+            "display_name": "Crypto Core",
+            "description": "Core digital assets",
+            "metadata_json": None,
         },
     )
 
@@ -123,9 +76,12 @@ def test_get_asset_category_detail_returns_frontend_detail_payload(monkeypatch) 
     )
 
     assert response.status_code == 200
-    assert response.json()["selected_category"]["sub_text"] == "crypto_core"
-    assert response.json()["assets_list"]["default_filters"] == {
-        "categories__uid": str(category_uid)
+    assert response.json() == {
+        "uid": str(category_uid),
+        "unique_identifier": "crypto_core",
+        "display_name": "Crypto Core",
+        "description": "Core digital assets",
+        "metadata_json": None,
     }
 
 
@@ -154,7 +110,7 @@ def test_post_asset_category_returns_record(monkeypatch) -> None:
             "unique_identifier": "crypto_core",
             "display_name": "Crypto Core",
             "description": "Core digital assets",
-            "assets": ["asset-1", "asset-2"],
+            "metadata_json": None,
         },
     )
 
@@ -175,7 +131,7 @@ def test_post_asset_category_returns_record(monkeypatch) -> None:
         "unique_identifier": "crypto_core",
         "display_name": "Crypto Core",
         "description": "Core digital assets",
-        "assets": ["asset-1", "asset-2"],
+        "metadata_json": None,
     }
 
 
@@ -191,7 +147,7 @@ def test_patch_asset_category_returns_record(monkeypatch) -> None:
             "unique_identifier": "crypto_core",
             "display_name": "Crypto Core Updated",
             "description": "",
-            "assets": [],
+            "metadata_json": None,
         }
 
     monkeypatch.setattr(

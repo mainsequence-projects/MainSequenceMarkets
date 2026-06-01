@@ -43,11 +43,43 @@ class AssetCategoryTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         primary_key=True,
         default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Canonical UUID primary key for this MetaTable row.",
+        },
     )
-    unique_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
-    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    unique_identifier: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Unique Identifier",
+            "description": "Stable business identifier used for idempotent upserts, lookup, and joins.",
+        },
+    )
+    display_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Display Name",
+            "description": "Human-readable display name for UI, logs, and operator workflows.",
+        },
+    )
+    description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        info={
+            "label": "Description",
+            "description": "Human-readable description of the registry row and its intended use.",
+        },
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+        info={
+            "label": "Metadata JSON",
+            "description": "Structured metadata JSON for provider, application, or workflow-specific attributes.",
+        },
+    )
 
 
 class AssetCategoryMembershipTable(MarketsMetaTableMixin, MarketsBase):
@@ -82,6 +114,10 @@ class AssetCategoryMembershipTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         primary_key=True,
         default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Canonical UUID primary key for this MetaTable row.",
+        },
     )
     category_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -91,6 +127,10 @@ class AssetCategoryMembershipTable(MarketsMetaTableMixin, MarketsBase):
             ondelete="CASCADE",
         ),
         nullable=False,
+        info={
+            "label": "Category UID",
+            "description": "Foreign key to the AssetCategoryTable.uid for this membership row.",
+        },
     )
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -100,6 +140,10 @@ class AssetCategoryMembershipTable(MarketsMetaTableMixin, MarketsBase):
             ondelete="CASCADE",
         ),
         nullable=False,
+        info={
+            "label": "Asset UID",
+            "description": "Foreign key to the canonical AssetTable.uid for the referenced asset.",
+        },
     )
 
 

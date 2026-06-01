@@ -900,7 +900,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "4.1.10"
+version = "4.1.11"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cachetools" },
@@ -921,9 +921,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/d6/88c5dfc4b8d6f05884d6bea280804a32980859a4bf5a54eeaf1dd3500ef6/mainsequence-4.1.10.tar.gz", hash = "sha256:6401d4beb1cae76536e6c64c0ebb45effd7c12e6c30af16d1324c2360f1085d1", size = 443606, upload-time = "2026-05-31T21:18:01.538Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/c4/fa40f4f214045ad8d18488a12539aa38d2a971fec81268daf5d178f90e31/mainsequence-4.1.11.tar.gz", hash = "sha256:c204761d19f67b1692352ec0071c5b98f17de46c93f81e500bef1aeaf201d41b", size = 444036, upload-time = "2026-06-01T10:22:27.573Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/86/76/ff0147cfbc262da5bf4ae59420a036a906251e4e3ad98ef9fe31b9cb1503/mainsequence-4.1.10-py3-none-any.whl", hash = "sha256:b910b1a8259b0a7822f83692cbe049d0075cdd13435d005a850ac28c9c1c56e8", size = 387802, upload-time = "2026-05-31T21:17:59.737Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/57/ca420adfbe6b5d377858f09977a3f8ddd6596ce114ac6f7551f8a6fdadb6/mainsequence-4.1.11-py3-none-any.whl", hash = "sha256:26f29ab8446c5b1259a19089a6359505f98c7d0a800134425fcedc13b6a1a470", size = 388233, upload-time = "2026-06-01T10:22:25.814Z" },
 ]
 
 [[package]]
@@ -1241,7 +1241,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.17"
+version = "0.0.18"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -1254,6 +1254,7 @@ dependencies = [
     { name = "quantlib" },
     { name = "requests" },
     { name = "sqlalchemy" },
+    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
@@ -1343,6 +1344,7 @@ requires-dist = [
     { name = "streamlit", marker = "extra == 'pricing-streamlit'" },
     { name = "streamlit-aggrid", marker = "extra == 'pricing-streamlit'" },
     { name = "tqdm", marker = "extra == 'portfolios'" },
+    { name = "uvicorn", specifier = ">=0.48.0" },
     { name = "uvicorn", marker = "extra == 'dev'", specifier = ">=0.48.0" },
     { name = "uvicorn", marker = "extra == 'public-api'", specifier = ">=0.48.0" },
 ]

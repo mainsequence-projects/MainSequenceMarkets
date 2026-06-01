@@ -146,6 +146,61 @@ def list_asset_catalog_rows(
     return merged_rows[offset : offset + limit]
 
 
+def list_asset_rows(
+    context: MarketsRepositoryContext,
+    *,
+    search: str = "",
+    limit: int = DEFAULT_FRONTEND_PAGE_SIZE,
+    offset: int = 0,
+    category_uid: str | None = None,
+) -> list[dict[str, Any]]:
+    scan_limit = _scan_limit(offset=offset, limit=limit)
+    asset_rows = _operation_result_rows(service_search_assets(context, limit=scan_limit))
+
+    if category_uid not in (None, ""):
+        membership_rows = _operation_result_rows(
+            service_list_asset_category_memberships(
+                context,
+                category_uid=category_uid,
+                limit=MAX_SCAN_LIMIT,
+            )
+        )
+        allowed_asset_uids = {
+            str(row["asset_uid"])
+            for row in membership_rows
+            if isinstance(row, Mapping) and row.get("asset_uid") not in (None, "")
+        }
+        asset_rows = [
+            row
+            for row in asset_rows
+            if isinstance(row, Mapping) and str(row.get("uid")) in allowed_asset_uids
+        ]
+
+    normalized_rows = [
+        _build_asset_record(asset_row)
+        for asset_row in asset_rows
+        if isinstance(asset_row, Mapping) and asset_row.get("uid") not in (None, "")
+    ]
+    normalized_rows.sort(key=lambda row: (str(row["unique_identifier"]).lower(), str(row["uid"])))
+
+    normalized_search = search.strip().lower()
+    if normalized_search:
+        normalized_rows = [
+            row
+            for row in normalized_rows
+            if _matches_search(
+                values=(
+                    row["uid"],
+                    row["unique_identifier"],
+                    row.get("asset_type"),
+                ),
+                normalized_search=normalized_search,
+            )
+        ]
+
+    return normalized_rows[offset : offset + limit]
+
+
 def get_asset_frontend_detail_summary(
     context: MarketsRepositoryContext,
     *,
@@ -328,6 +383,60 @@ def list_asset_category_rows_response(
             offset=offset,
         ),
     }
+
+
+def list_asset_category_rows(
+    context: MarketsRepositoryContext,
+    *,
+    search: str = "",
+    limit: int = DEFAULT_FRONTEND_PAGE_SIZE,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    scan_limit = _scan_limit(offset=offset, limit=limit)
+    category_rows = _operation_result_rows(
+        service_search_asset_categories(context, limit=scan_limit)
+    )
+    normalized_rows = [
+        _build_asset_category_record(category_row)
+        for category_row in category_rows
+        if isinstance(category_row, Mapping) and category_row.get("uid") not in (None, "")
+    ]
+    normalized_rows.sort(
+        key=lambda row: (
+            str(row["display_name"]).lower(),
+            str(row["unique_identifier"]).lower(),
+            str(row["uid"]),
+        )
+    )
+
+    normalized_search = search.strip().lower()
+    if normalized_search:
+        normalized_rows = [
+            row
+            for row in normalized_rows
+            if _matches_search(
+                values=(
+                    row["uid"],
+                    row["unique_identifier"],
+                    row["display_name"],
+                    row["description"],
+                ),
+                normalized_search=normalized_search,
+            )
+        ]
+
+    return normalized_rows[offset : offset + limit]
+
+
+def get_asset_category_row(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+) -> dict[str, Any] | None:
+    category_row = _first_operation_row(service_get_asset_category_by_uid(context, uid=uid))
+    if category_row is None:
+        return None
+    return _build_asset_category_record(category_row)
 
 
 def get_asset_category_frontend_detail(
@@ -609,6 +718,14 @@ def _build_asset_list_row(
     }
 
 
+def _build_asset_record(asset_row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "uid": str(asset_row["uid"]),
+        "unique_identifier": _string_or_empty(asset_row.get("unique_identifier")),
+        "asset_type": _string_or_none(asset_row.get("asset_type")),
+    }
+
+
 def _build_index_list_row(index_row: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "uid": str(index_row["uid"]),
@@ -617,14 +734,12 @@ def _build_index_list_row(index_row: Mapping[str, Any]) -> dict[str, Any]:
         "display_name": _string_or_empty(index_row.get("display_name")),
         "description": _string_or_none(index_row.get("description")),
         "provider": _string_or_none(index_row.get("provider")),
+        "metadata_json": _mapping_or_none(index_row.get("metadata_json")),
     }
 
 
 def _build_index_record(index_row: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        **_build_index_list_row(index_row),
-        "metadata_json": _mapping_or_none(index_row.get("metadata_json")),
-    }
+    return _build_index_list_row(index_row)
 
 
 def _build_asset_category_list_row(
@@ -639,6 +754,16 @@ def _build_asset_category_list_row(
         "display_name": _string_or_empty(category_row.get("display_name")),
         "description": _string_or_empty(category_row.get("description")),
         "number_of_assets": number_of_assets,
+    }
+
+
+def _build_asset_category_record(category_row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "uid": str(category_row["uid"]),
+        "unique_identifier": _string_or_empty(category_row.get("unique_identifier")),
+        "display_name": _string_or_empty(category_row.get("display_name")),
+        "description": _string_or_none(category_row.get("description")),
+        "metadata_json": _mapping_or_none(category_row.get("metadata_json")),
     }
 
 
@@ -956,9 +1081,12 @@ __all__ = [
     "get_asset_frontend_detail_summary",
     "delete_index_record",
     "get_asset_category_frontend_detail",
+    "get_asset_category_row",
     "get_asset_category_record",
     "get_index_record",
     "list_asset_catalog_rows",
+    "list_asset_rows",
+    "list_asset_category_rows",
     "list_asset_category_rows_response",
     "list_index_catalog_rows",
     "update_asset_category_record",

@@ -30,6 +30,19 @@ and this project follows versioned releases.
   MetaTable declarations.
 - Added storage-level foreign keys from account and fund holdings
   `unique_identifier` columns to `AssetTable.unique_identifier`.
+- Replaced the old account target-position assignment table with
+  `AccountTargetPortfolioTable` and `PositionSetTable`; target-position storage
+  now references `PositionSetTable.uid`, so account target intent and concrete
+  position snapshots are modeled separately.
+- Added storage-level foreign keys from target-position `unique_identifier`
+  rows to `AssetTable.unique_identifier`, and added column-level descriptions
+  to account MetaTables.
+- Added inline SQLAlchemy `mapped_column(info={...})` labels and descriptions
+  across built-in markets, pricing, maintenance, and DataNode storage
+  MetaTables, with regression coverage to prevent undocumented columns.
+- Moved virtual-fund documentation out of the accounts knowledge page into
+  `docs/knowledge/virtualfunds/`, with its own FundTable and
+  `VirtualFundHoldings` diagrams.
 - Removed residual `time_index_name` and `index_names` fields from holdings,
   execution, and canonical portfolio DataNode configurations.
 - Updated the packaged `AssetIndexedDataNode` agent skill and asset-indexed
@@ -59,6 +72,9 @@ and this project follows versioned releases.
 - Reorganized `msm.data_nodes` so account, asset, execution, and index
   DataNodes live under model-shaped modules, while non-model shared DataNode
   helpers live under `msm.data_nodes.utils`.
+- Reorganized portfolio MetaTable declarations under `msm.models.portfolios`
+  submodules and documented the portfolio registry relationships with ASCII
+  table diagrams.
 - Renamed the top-level markets bootstrap entrypoint to `msm.start_engine(...)`
   to reflect that it initializes the full runtime, not only schemas.
 - Changed `msm.start_engine(...)` to use the internal maintenance catalog
@@ -84,6 +100,18 @@ and this project follows versioned releases.
   attach or register schemas on first use.
 - Updated examples and tutorials so MetaTable-backed row workflows call
   explicit bootstrap during startup.
+- Added a packaged ms-markets bootstrap/registration agent skill that documents
+  catalog startup, extension wiring, catalog rotation, and the rule that user
+  workflows initialize through `msm.start_engine(...)`.
+- Added ADR 0018 to define the target extension-model bootstrap flow:
+  project-local models should register through
+  `msm.start_engine(models=[MyAssetDetailsTable])` and the shared catalog path.
+- Implemented ADR 0018: `msm.start_engine(models=[...])` now accepts
+  project-local markets SQLAlchemy model classes and `MarketsMetaTableRow`
+  wrappers, expands class-based `MetaTableForeignKey(...)` dependencies, and
+  routes the ordered model set through the shared catalog bootstrap.
+- Added `MarketsMetaTableRow` as the explicit Pydantic base for MetaTable-backed
+  row APIs while keeping `MarketsRow` as a compatibility alias.
 
 ### Fixed
 
@@ -157,11 +185,14 @@ and this project follows versioned releases.
 - Removed obsolete top-level `msm.accounts` and `msm.execution` compatibility
   shims. Use `msm.api.accounts`, `msm.api.execution`,
   `msm.data_nodes.accounts`, and `msm.data_nodes.execution` directly.
-- Changed `AccountTargetPositionAssignment.target_positions_time` from a string
-  label to a timezone-aware UTC timestamp in the API and MetaTable contract.
-- Refactored `examples/accounts/create_and_insert_holdings.py` to use reusable
-  account example payloads and the shared asset example utility payloads without
-  namespace bootstrapping or user-provided holdings DataNode identifiers.
+- Replaced the legacy account target assignment timestamp with the
+  `PositionSet.position_set_time` UTC timestamp owned by the target-position
+  set snapshot.
+- Renamed the account example to `examples/accounts/account_workflow.py` and
+  expanded it into a full account workflow: two accounts in one group, one
+  shared account model portfolio, account-owned target portfolio links,
+  position sets, target position rows, holdings publication, and position
+  pretty-printing.
 - Added `Account.pretty_print_positions(...)` to format account holdings as
   `asset_uid`, `ticker`, `position_type`, and `position_value`, and wired the
   account holdings example to use it.
@@ -169,6 +200,16 @@ and this project follows versioned releases.
   result and pass only the DataFrame into `Account.pretty_print_positions(...)`.
 - Removed row-level `source` noise from the account holdings example
   `extra_details`; the example keeps only the `ticker` display value there.
+- Moved account-related SQLAlchemy MetaTable declarations into the
+  `msm.models.accounts` package, with account core tables in
+  `msm.models.accounts.core` and account group/model-portfolio tables in
+  `msm.models.accounts.groups`.
+- Corrected account relationship ownership so `AccountTable` holds optional
+  `account_group_uid`, while account model-portfolio tracking is represented
+  only through `AccountTargetPortfolioTable`.
+- Expanded the account holdings example to create an account model portfolio,
+  account group, account target portfolio, position set, and holdings publication
+  in one workflow.
 - Updated holdings `target_trade_time` to use the canonical
   `datetime64[ns, UTC]` record dtype and emit a timezone-aware UTC datetime
   column.
@@ -248,6 +289,8 @@ and this project follows versioned releases.
   workflow that registers asset and pricing rows, publishes mock fixings and a
   flat-forward discount curve, attaches a `FloatingRateBond`, reloads it through
   `Instrument.load_from_asset(...)`, and prints pricing analytics.
+- Reduced the floating-rate bond example's mock fixing lookback to one month so
+  it does not publish a full year of synthetic fixing rows.
 - Added reusable mock pricing market-data components under
   `examples/pricing/utils/` for subclassing `DiscountCurvesNode` and
   `FixingRatesNode` in examples.

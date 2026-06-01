@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from msm.api.base import MarketsRow, Payload
+from msm.api.base import MarketsMetaTableRow, Payload
 from msm.models import (
     AccountTable,
     AssetTable,
@@ -35,7 +35,7 @@ EXECUTION_REQUIRED_TABLES: list[type[Any]] = [
 ]
 
 
-class OrderManager(MarketsRow):
+class OrderManager(MarketsMetaTableRow):
     """Typed order-manager or rebalance execution batch row."""
 
     __table__: ClassVar[type[OrderManagerTable]] = OrderManagerTable
@@ -82,7 +82,7 @@ class OrderManagerUpdate(BaseModel):
     metadata_json: dict[str, Any] | None = None
 
 
-class OrderTargetQuantity(MarketsRow):
+class OrderTargetQuantity(MarketsMetaTableRow):
     """Typed target quantity row inside an order-manager batch."""
 
     __table__: ClassVar[type[OrderTargetQuantityTable]] = OrderTargetQuantityTable
@@ -112,7 +112,7 @@ class OrderTargetQuantityUpdate(BaseModel):
     quantity: Decimal | int | float | str | None = None
 
 
-class Order(MarketsRow):
+class Order(MarketsMetaTableRow):
     """Typed broker or venue order row."""
 
     __table__: ClassVar[type[OrderTable]] = OrderTable
@@ -209,7 +209,7 @@ class OrderUpdate(BaseModel):
     venue_specific_properties: dict[str, Any] | None = None
 
 
-class OrderStatusEvent(MarketsRow):
+class OrderStatusEvent(MarketsMetaTableRow):
     """Typed append-only order status event row."""
 
     __table__: ClassVar[type[OrderStatusEventTable]] = OrderStatusEventTable
@@ -238,7 +238,7 @@ class OrderStatusEventCreate(BaseModel):
     order_unique_identifier: str | None = Field(default=None, max_length=255)
 
 
-class Trade(MarketsRow):
+class Trade(MarketsMetaTableRow):
     """Typed executed trade row."""
 
     __table__: ClassVar[type[TradeTable]] = TradeTable
@@ -304,7 +304,7 @@ class TradeUpdate(BaseModel):
     settlement_asset_unique_identifier: str | None = Field(default=None, max_length=255)
 
 
-class ExecutionError(MarketsRow):
+class ExecutionError(MarketsMetaTableRow):
     """Typed execution error row."""
 
     __table__: ClassVar[type[ExecutionErrorTable]] = ExecutionErrorTable

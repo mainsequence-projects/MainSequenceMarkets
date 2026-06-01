@@ -4,14 +4,38 @@ import os
 import sys
 from types import ModuleType
 from types import SimpleNamespace
+import uuid
 
 import pytest
+from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import Uuid
 
 os.environ["MAIN_SEQUENCE_PROJECT_UID"] = " "
 os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 
 import msm.bootstrap as bootstrap
+from msm.base import MarketsBase, MarketsMetaTableMixin
+from msm.models import AssetTable
 from msm.settings import DEFAULT_MARKETS_NAMESPACE
+
+
+class BootstrapExtensionAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
+    __metatable_identifier__ = "test.BootstrapExtensionAssetDetails"
+    __metatable_extra_hash_components__ = {"storage_name": "bootstrap_extension_asset_details"}
+    __metatable_description__ = (
+        "Project-local asset details table used to verify bootstrap dependency "
+        "closure for extension models."
+    )
+
+    asset_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        MetaTableForeignKey(AssetTable, column="uid", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    internal_asset_class: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
 @pytest.fixture(autouse=True)
@@ -135,6 +159,37 @@ def test_start_engine_can_register_selected_models(monkeypatch) -> None:
 
     assert runtime.meta_table_models == ["Asset"]
     assert calls[0]["models"] == ["Asset"]
+
+
+def test_start_engine_expands_project_local_model_dependencies(monkeypatch) -> None:
+    import msm.maintenance.catalog as catalog
+
+    captured_models = []
+
+    def fake_bootstrap_markets_meta_tables_from_catalog(**kwargs):
+        captured_models.append(kwargs["models"])
+        return SimpleNamespace(
+            registration=SimpleNamespace(
+                meta_tables=[],
+                models=kwargs["models"],
+                meta_table_by_identifier={},
+            ),
+            catalog_meta_table=SimpleNamespace(uid="catalog-meta-table-uid"),
+            attached_count=0,
+            imported_count=0,
+            registered_count=len(kwargs["models"]),
+        )
+
+    monkeypatch.setattr(
+        catalog,
+        "bootstrap_markets_meta_tables_from_catalog",
+        fake_bootstrap_markets_meta_tables_from_catalog,
+    )
+
+    runtime = bootstrap.start_engine(models=[BootstrapExtensionAssetDetailsTable])
+
+    assert captured_models == [[AssetTable, BootstrapExtensionAssetDetailsTable]]
+    assert runtime.meta_table_models == [AssetTable, BootstrapExtensionAssetDetailsTable]
 
 
 def test_start_engine_uses_auto_register_namespace_when_omitted(monkeypatch) -> None:

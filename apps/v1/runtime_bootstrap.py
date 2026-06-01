@@ -12,8 +12,19 @@ V1_RUNTIME_MODELS = [
     "AssetCategoryMembership",
     "IndexType",
     "Index",
+    "AccountHoldingsStorage",
 ]
 _BOOTSTRAP_COMPLETE = False
+
+
+def prepare_apps_v1_import_namespace() -> None:
+    namespace = os.getenv("MSM_AUTO_REGISTER_NAMESPACE")
+    if not namespace:
+        return
+
+    from msm.bootstrap import configure_metatable_namespace
+
+    configure_metatable_namespace(namespace)
 
 
 def ensure_apps_v1_runtime() -> Any | None:
@@ -54,5 +65,6 @@ def resolve_apps_v1_runtime(
 __all__ = [
     "V1_RUNTIME_MODELS",
     "ensure_apps_v1_runtime",
+    "prepare_apps_v1_import_namespace",
     "resolve_apps_v1_runtime",
 ]

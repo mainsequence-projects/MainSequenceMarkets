@@ -32,7 +32,7 @@ def test_openapi_json_documents_asset_list_endpoint() -> None:
     assert asset_list_operation["tags"] == ["asset"]
     assert asset_list_operation["parameters"][0]["name"] == "response_format"
     assert asset_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "items": {"$ref": "#/components/schemas/AssetListRow"},
+        "items": {"$ref": "#/components/schemas/Asset"},
         "type": "array",
         "title": "Response Listassets",
     }
@@ -71,6 +71,10 @@ def test_openapi_json_documents_account_list_endpoint() -> None:
     assert account_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/AccountListResponse"
     }
+    account_list_schema = payload["components"]["schemas"]["AccountListResponse"]
+    assert account_list_schema["properties"]["results"]["items"] == {
+        "$ref": "#/components/schemas/Account"
+    }
 
     account_summary_operation = payload["paths"]["/api/v1/account/{uid}/summary/"]["get"]
     assert account_summary_operation["summary"] == "Get account summary"
@@ -93,14 +97,18 @@ def test_openapi_json_documents_asset_category_routes() -> None:
     assert asset_category_list_operation["tags"] == ["asset-category"]
     assert asset_category_list_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/AssetCategoryListResponse"}
+    ] == {
+        "items": {"$ref": "#/components/schemas/AssetCategory"},
+        "type": "array",
+        "title": "Response Listassetcategories",
+    }
 
     asset_category_detail_operation = payload["paths"]["/api/v1/asset-category/{uid}/"]["get"]
     assert asset_category_detail_operation["summary"] == "Get asset category detail"
     assert asset_category_detail_operation["operationId"] == "getAssetCategoryDetail"
     assert asset_category_detail_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/AssetCategoryDetailResponse"}
+    ] == {"$ref": "#/components/schemas/AssetCategory"}
 
     asset_category_bulk_delete_operation = payload["paths"]["/api/v1/asset-category/bulk-delete/"][
         "post"
@@ -124,7 +132,7 @@ def test_openapi_json_documents_index_routes() -> None:
     assert index_list_operation["operationId"] == "listIndexes"
     assert index_list_operation["tags"] == ["index"]
     assert index_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "items": {"$ref": "#/components/schemas/IndexListRow"},
+        "items": {"$ref": "#/components/schemas/Index"},
         "type": "array",
         "title": "Response Listindexes",
     }
@@ -133,7 +141,7 @@ def test_openapi_json_documents_index_routes() -> None:
     assert index_detail_operation["summary"] == "Get index"
     assert index_detail_operation["operationId"] == "getIndex"
     assert index_detail_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/IndexRecord"
+        "$ref": "#/components/schemas/Index"
     }
 
     index_delete_operation = payload["paths"]["/api/v1/index/{uid}/"]["delete"]

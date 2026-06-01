@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, status
 
 from apps.v1.schemas.common import ErrorResponse
-from apps.v1.schemas.indices import IndexListRow, IndexRecord
+from apps.v1.schemas.indices import Index
 from apps.v1.services.indices import delete_index, get_index, list_indices
 
 router = APIRouter(prefix="/index", tags=["index"])
@@ -13,11 +13,11 @@ router = APIRouter(prefix="/index", tags=["index"])
 
 @router.get(
     "/",
-    response_model=list[IndexListRow],
+    response_model=list[Index],
     summary="List indexes",
     description=(
-        "Return index registry rows in the same simple frontend list shape used "
-        "for the migrated asset catalog route."
+        "Return core library index rows. The `response_format` query parameter is "
+        "accepted for compatibility, but rows use the `msm.api.indices.Index` contract."
     ),
     operation_id="listIndexes",
     responses={
@@ -55,7 +55,7 @@ def get_indexes(
             description="Zero-based starting offset into the filtered index list.",
         ),
     ] = 0,
-) -> list[IndexListRow]:
+) -> list[Index]:
     if response_format != "frontend_list":
         raise HTTPException(
             status_code=400,
@@ -66,7 +66,7 @@ def get_indexes(
 
 @router.get(
     "/{uid}/",
-    response_model=IndexRecord,
+    response_model=Index,
     summary="Get index",
     description="Return one index registry record by uid.",
     operation_id="getIndex",
@@ -77,7 +77,7 @@ def get_indexes(
         }
     },
 )
-def get_index_by_uid(uid: str) -> IndexRecord:
+def get_index_by_uid(uid: str) -> Index:
     record = get_index(uid=uid)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")
@@ -86,7 +86,7 @@ def get_index_by_uid(uid: str) -> IndexRecord:
 
 @router.delete(
     "/{uid}/",
-    response_model=IndexRecord | None,
+    response_model=Index | None,
     summary="Delete index",
     description="Delete one index registry record. This route returns `null` on success.",
     operation_id="deleteIndex",
@@ -98,7 +98,7 @@ def get_index_by_uid(uid: str) -> IndexRecord:
         }
     },
 )
-def remove_index(uid: str) -> IndexRecord | None:
+def remove_index(uid: str) -> Index | None:
     deleted = delete_index(uid=uid)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")

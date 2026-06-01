@@ -61,7 +61,8 @@ Initial rename inventory:
 AccountModelPortfolio         -> AccountModelPortfolioTable
 AccountGroup                  -> AccountGroupTable
 Account                       -> AccountTable
-AccountTargetPositionAssignment -> AccountTargetPositionAssignmentTable
+AccountTargetPortfolio        -> AccountTargetPortfolioTable
+PositionSet                   -> PositionSetTable
 Asset                         -> AssetTable
 AssetCategory                 -> AssetCategoryTable
 AssetCategoryMembership       -> AssetCategoryMembershipTable
@@ -336,16 +337,16 @@ portfolios, and execution workflows can expose typed APIs.
 
 - [x] Add Pydantic row and mutation contracts for:
   `Calendar`, `AccountModelPortfolio`, `AccountGroup`, `Account`, and
-  `AccountTargetPositionAssignment`.
+  `AccountTargetPortfolio` / `PositionSet`.
 - [x] Add `Calendar.create_schemas(...)`, `Calendar.upsert(...)`, and
   lookup/filter helpers.
 - [x] Add `Account.create_schemas(...)`, `Account.upsert(...)`, and
   lookup/filter helpers.
 - [x] Add account-group helpers after account-model-portfolio contracts are in
   place.
-- [x] Keep account target-position assignment as an explicit relationship API;
-  do not hide it inside `Account.upsert(...)` unless a workflow clearly owns
-  that mutation.
+- [x] Keep account target portfolios and position sets as explicit relationship
+  APIs; do not hide them inside `Account.upsert(...)` unless a workflow clearly
+  owns that mutation.
 
 ### Stage 5: Portfolio And Fund API
 

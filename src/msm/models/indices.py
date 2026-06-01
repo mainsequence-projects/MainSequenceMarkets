@@ -42,11 +42,43 @@ class IndexTypeTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         primary_key=True,
         default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Canonical UUID primary key for this MetaTable row.",
+        },
     )
-    index_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    index_type: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        info={
+            "label": "Index Type",
+            "description": "Canonical index type code used to classify rows in IndexTable.",
+        },
+    )
+    display_name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info={
+            "label": "Display Name",
+            "description": "Human-readable display name for UI, logs, and operator workflows.",
+        },
+    )
+    description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        info={
+            "label": "Description",
+            "description": "Human-readable description of the registry row and its intended use.",
+        },
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+        info={
+            "label": "Metadata JSON",
+            "description": "Structured metadata JSON for provider, application, or workflow-specific attributes.",
+        },
+    )
 
 
 class IndexTable(MarketsMetaTableMixin, MarketsBase):
@@ -83,13 +115,59 @@ class IndexTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         primary_key=True,
         default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Canonical UUID primary key for this MetaTable row.",
+        },
     )
-    unique_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
-    index_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    provider: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    unique_identifier: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Unique Identifier",
+            "description": "Stable business identifier used for idempotent upserts, lookup, and joins.",
+        },
+    )
+    index_type: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        info={
+            "label": "Index Type",
+            "description": "Canonical index type code used to classify rows in IndexTable.",
+        },
+    )
+    display_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Display Name",
+            "description": "Human-readable display name for UI, logs, and operator workflows.",
+        },
+    )
+    description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        info={
+            "label": "Description",
+            "description": "Human-readable description of the registry row and its intended use.",
+        },
+    )
+    provider: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info={
+            "label": "Provider",
+            "description": "External provider or vendor that supplied the reference row.",
+        },
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+        info={
+            "label": "Metadata JSON",
+            "description": "Structured metadata JSON for provider, application, or workflow-specific attributes.",
+        },
+    )
 
 
 __all__ = ["IndexTable", "IndexTypeTable"]

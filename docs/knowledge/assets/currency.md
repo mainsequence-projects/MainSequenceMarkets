@@ -113,15 +113,14 @@ Production code normally assumes these MetaTables already exist. Application
 startup can register the dependency set explicitly:
 
 ```python
-from msm.api.assets import CurrencySpot
+import msm
 
-CurrencySpot.create_schemas()
+msm.start_engine(models=["AssetType", "Asset", "CurrencySpotAssetDetails"])
 ```
 
 Examples and development scripts can set `MSM_AUTO_REGISTER_NAMESPACE` before
 importing the API classes when they need an example namespace, but they still
-must call `CurrencySpot.create_schemas()` or `msm.start_engine(...)` during
-startup before row operations.
+must call `msm.start_engine(...)` during startup before row operations.
 
 ## Example
 

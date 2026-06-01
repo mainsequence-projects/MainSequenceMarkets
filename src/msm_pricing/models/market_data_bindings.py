@@ -51,12 +51,52 @@ class PricingMarketDataBindingTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         primary_key=True,
         default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Canonical UUID primary key for this MetaTable row.",
+        },
     )
-    context_key: Mapped[str] = mapped_column(String(64), nullable=False)
-    concept_key: Mapped[str] = mapped_column(String(128), nullable=False)
-    data_node_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
-    source: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    context_key: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        info={
+            "label": "Context Key",
+            "description": "Named pricing context key, such as default, eod, live, or risk_manager.",
+        },
+    )
+    concept_key: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+        info={
+            "label": "Concept Key",
+            "description": "Pricing market-data concept key, such as discount curves or index fixings.",
+        },
+    )
+    data_node_identifier: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Data Node Identifier",
+            "description": "Stable DataNode identifier used to resolve a configured market-data source.",
+        },
+    )
+    source: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info={
+            "label": "Source",
+            "description": "Source system, workflow, or provider that produced the row.",
+        },
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        "metadata",
+        JSON,
+        nullable=True,
+        info={
+            "label": "Metadata",
+            "description": "Structured metadata JSON for provider, pricing, or workflow-specific attributes.",
+        },
+    )
 
 
 __all__ = ["PricingMarketDataBindingTable"]

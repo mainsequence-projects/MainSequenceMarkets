@@ -69,7 +69,7 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Compressed Curve",
-            "description": "Compressed discount-curve points payload.",
+            "description": "Compressed discount-curve points payload for the curve observation.",
         },
     )
 
@@ -161,7 +161,7 @@ class AssetPricingDetailsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Instrument Dump",
-            "description": "Provider-specific pricing instrument payload.",
+            "description": "Provider-specific pricing instrument payload for the asset observation.",
         },
     )
 

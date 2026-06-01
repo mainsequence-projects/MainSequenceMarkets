@@ -34,7 +34,12 @@ Models answer these questions:
 - `msm.models.__init__`: aggregate model exports and `markets_sqlalchemy_models`.
 - `msm.models.registration`: registration and resolution helpers for turning
   SQLAlchemy table declarations into Main Sequence MetaTables.
-- `msm.models.accounts`: accounts and account target position assignments.
+- `msm.models.accounts`: account registry, account target portfolios, position
+  sets, account groups, and account model portfolios.
+- `msm.models.accounts.core`: core account registry, account target portfolio,
+  and position-set tables.
+- `msm.models.accounts.groups`: account group and account model-portfolio
+  tables.
 - `msm.models.assets`: asset-related models, including the core asset registry,
   registered asset types, categories, memberships, and provider details.
 - `msm.models.assets.core`: core asset registry.
@@ -81,7 +86,9 @@ is the SDK configured storage hash for the resolved table contract.
 including `PlatformTimeIndexMetaData` storage classes used by DataNodes. The
 description is table-level discovery text: it should identify the row grain,
 business intention, and expected use of the table. Column labels and column
-descriptions stay on `mapped_column(info={...})`.
+descriptions stay on SQLAlchemy column `info` metadata. Built-in markets and
+pricing tables are validated so every physical column has a non-empty
+description before registration-facing tests pass.
 
 `__metatable_identifier__` is authored as the bare logical name, such as
 `Asset`. At runtime the shared markets identifier rule keeps the bare name for
@@ -90,15 +97,21 @@ the default markets namespace and prefixes non-default namespaces, such as
 
 ## Extension Notes
 
-When adding a model:
+When adding a built-in library model:
 
 1. Define the SQLAlchemy class in the relevant module with a `Table` suffix.
 2. Add it to `markets_sqlalchemy_models()` in dependency order.
 3. Add repository operations if application code needs compiled database access.
-4. Add a Pydantic row model under `msm.api` when users should manipulate typed
-   row objects.
+4. Add a `MarketsMetaTableRow` Pydantic row model under `msm.api` when users
+   should manipulate typed row objects.
 5. Add service wrappers if the operation is part of a broader application
    workflow.
+
+Project-local extension models do not need to modify `markets_sqlalchemy_models()`.
+Pass the SQLAlchemy model class directly to
+`msm.start_engine(models=[MyExtensionTable])`; bootstrap expands
+`MetaTableForeignKey(...)` dependencies and registers the model through the
+shared catalog path.
 
 ## Related Concepts
 

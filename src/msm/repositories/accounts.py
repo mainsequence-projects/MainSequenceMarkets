@@ -7,7 +7,12 @@ from typing import Any
 from sqlalchemy import delete, insert, select, update
 
 from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
-from msm.models import AccountTable, AccountTargetPositionAssignmentTable
+from msm.models import (
+    AccountGroupTable,
+    AccountTable,
+    AccountTargetPortfolioTable,
+    PositionSetTable,
+)
 
 from .base import (
     MarketsRepositoryContext,
@@ -29,6 +34,7 @@ def build_create_account_operation(
     account_name: str,
     is_paper: bool = True,
     account_is_active: bool = False,
+    account_group_uid: uuid.UUID | str | None = None,
     holdings_data_node_uid: uuid.UUID | str | None = None,
     metadata_json: MappingOrDict | None = None,
 ) -> MetaTableCompiledSQLOperation:
@@ -39,6 +45,7 @@ def build_create_account_operation(
             account_name=account_name,
             is_paper=is_paper,
             account_is_active=account_is_active,
+            account_group_uid=account_group_uid,
             holdings_data_node_uid=holdings_data_node_uid,
             metadata_json=metadata_json,
         )
@@ -48,7 +55,7 @@ def build_create_account_operation(
         statement,
         context=context,
         operation="insert",
-        models=[AccountTable],
+        models=[AccountGroupTable, AccountTable],
         access="write",
     )
 
@@ -119,6 +126,7 @@ def build_search_accounts_operation(
     unique_identifier_contains: str | None = None,
     account_name_contains: str | None = None,
     account_is_active: bool | None = None,
+    account_group_uid: uuid.UUID | str | None = None,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
     statement = select(AccountTable).limit(limit)
@@ -130,6 +138,8 @@ def build_search_accounts_operation(
         statement = statement.where(AccountTable.account_name.contains(str(account_name_contains)))
     if account_is_active is not None:
         statement = statement.where(AccountTable.account_is_active.is_(bool(account_is_active)))
+    if account_group_uid is not None:
+        statement = statement.where(AccountTable.account_group_uid == account_group_uid)
     return compile_markets_statement(
         statement,
         context=context,
@@ -156,6 +166,7 @@ def build_update_account_operation(
     account_name: str | None = None,
     is_paper: bool | None = None,
     account_is_active: bool | None = None,
+    account_group_uid: uuid.UUID | str | None = None,
     holdings_data_node_uid: uuid.UUID | str | None = None,
     metadata_json: MappingOrDict | None = None,
 ) -> MetaTableCompiledSQLOperation:
@@ -165,6 +176,7 @@ def build_update_account_operation(
             "account_name": account_name,
             "is_paper": is_paper,
             "account_is_active": account_is_active,
+            "account_group_uid": account_group_uid,
             "holdings_data_node_uid": holdings_data_node_uid,
             "metadata_json": metadata_json,
         }.items()
@@ -177,7 +189,7 @@ def build_update_account_operation(
         statement,
         context=context,
         operation="update",
-        models=[AccountTable],
+        models=[AccountGroupTable, AccountTable],
         access="write",
     )
 
@@ -218,94 +230,189 @@ def delete_account(
     )
 
 
-def build_create_account_target_position_assignment_operation(
+def build_create_account_target_portfolio_operation(
     context: MarketsRepositoryContext,
     *,
+    unique_identifier: str,
     account_uid: uuid.UUID | str,
-    target_positions_time: dt.datetime | str,
-    position_set_uid: uuid.UUID | str,
+    account_model_portfolio_uid: uuid.UUID | str,
+    display_name: str | None = None,
+    is_active: bool = True,
+    source: str | None = None,
+    metadata_json: MappingOrDict | None = None,
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=AccountTargetPositionAssignmentTable,
+        model=AccountTargetPortfolioTable,
         values={
+            "unique_identifier": unique_identifier,
             "account_uid": account_uid,
-            "target_positions_time": _utc_timestamp(
-                target_positions_time,
-                field_name="target_positions_time",
-            ),
-            "position_set_uid": position_set_uid,
+            "account_model_portfolio_uid": account_model_portfolio_uid,
+            "display_name": display_name,
+            "is_active": is_active,
+            "source": source,
+            "metadata_json": metadata_json,
         },
     )
 
 
-def create_account_target_position_assignment(
+def create_account_target_portfolio(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
     return execute_markets_operation(
-        build_create_account_target_position_assignment_operation(context, **kwargs),
+        build_create_account_target_portfolio_operation(context, **kwargs),
         context=context,
     )
 
 
-def build_search_account_target_position_assignments_operation(
+def build_search_account_target_portfolios_operation(
     context: MarketsRepositoryContext,
     *,
+    unique_identifier: str | None = None,
     account_uid: uuid.UUID | str | None = None,
-    target_positions_time: dt.datetime | str | None = None,
-    position_set_uid: uuid.UUID | str | None = None,
+    account_model_portfolio_uid: uuid.UUID | str | None = None,
+    is_active: bool | None = None,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
     filters: dict[str, Any] = {}
     for key, value in {
+        "unique_identifier": unique_identifier,
         "account_uid": account_uid,
-        "target_positions_time": (
-            _utc_timestamp(target_positions_time, field_name="target_positions_time")
-            if target_positions_time is not None
-            else None
-        ),
-        "position_set_uid": position_set_uid,
+        "account_model_portfolio_uid": account_model_portfolio_uid,
+        "is_active": is_active,
     }.items():
-        if value not in (None, ""):
+        if value is not None and value != "":
             filters[key] = value
     return build_search_model_operation(
         context,
-        model=AccountTargetPositionAssignmentTable,
+        model=AccountTargetPortfolioTable,
         filters=filters,
         limit=limit,
     )
 
 
-def search_account_target_position_assignments(
+def search_account_target_portfolios(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
     return execute_markets_operation(
-        build_search_account_target_position_assignments_operation(context, **kwargs),
+        build_search_account_target_portfolios_operation(context, **kwargs),
         context=context,
     )
 
 
-def build_delete_account_target_position_assignment_operation(
+def build_delete_account_target_portfolio_operation(
     context: MarketsRepositoryContext,
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
     return build_delete_model_operation(
         context,
-        model=AccountTargetPositionAssignmentTable,
+        model=AccountTargetPortfolioTable,
         uid=uid,
     )
 
 
-def delete_account_target_position_assignment(
+def delete_account_target_portfolio(
     context: MarketsRepositoryContext,
     *,
     uid: uuid.UUID | str,
 ) -> dict[str, Any]:
     return execute_markets_operation(
-        build_delete_account_target_position_assignment_operation(context, uid=uid),
+        build_delete_account_target_portfolio_operation(context, uid=uid),
+        context=context,
+    )
+
+
+def build_create_position_set_operation(
+    context: MarketsRepositoryContext,
+    *,
+    account_target_portfolio_uid: uuid.UUID | str,
+    position_set_time: dt.datetime | str,
+    source: str | None = None,
+    metadata_json: MappingOrDict | None = None,
+) -> MetaTableCompiledSQLOperation:
+    return build_create_model_operation(
+        context,
+        model=PositionSetTable,
+        values={
+            "account_target_portfolio_uid": account_target_portfolio_uid,
+            "position_set_time": _utc_timestamp(
+                position_set_time,
+                field_name="position_set_time",
+            ),
+            "source": source,
+            "metadata_json": metadata_json,
+        },
+    )
+
+
+def create_position_set(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_create_position_set_operation(context, **kwargs),
+        context=context,
+    )
+
+
+def build_search_position_sets_operation(
+    context: MarketsRepositoryContext,
+    *,
+    account_target_portfolio_uid: uuid.UUID | str | None = None,
+    position_set_time: dt.datetime | str | None = None,
+    limit: int = 500,
+) -> MetaTableCompiledSQLOperation:
+    filters: dict[str, Any] = {}
+    for key, value in {
+        "account_target_portfolio_uid": account_target_portfolio_uid,
+        "position_set_time": (
+            _utc_timestamp(position_set_time, field_name="position_set_time")
+            if position_set_time is not None
+            else None
+        ),
+    }.items():
+        if value is not None and value != "":
+            filters[key] = value
+    return build_search_model_operation(
+        context,
+        model=PositionSetTable,
+        filters=filters,
+        limit=limit,
+    )
+
+
+def search_position_sets(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_search_position_sets_operation(context, **kwargs),
+        context=context,
+    )
+
+
+def build_delete_position_set_operation(
+    context: MarketsRepositoryContext,
+    *,
+    uid: uuid.UUID | str,
+) -> MetaTableCompiledSQLOperation:
+    return build_delete_model_operation(
+        context,
+        model=PositionSetTable,
+        uid=uid,
+    )
+
+
+def delete_position_set(
+    context: MarketsRepositoryContext,
+    *,
+    uid: uuid.UUID | str,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_delete_position_set_operation(context, uid=uid),
         context=context,
     )
 
@@ -325,22 +432,28 @@ def _utc_timestamp(value: dt.datetime | str, *, field_name: str) -> dt.datetime:
 
 
 __all__ = [
-    "build_create_account_target_position_assignment_operation",
+    "build_create_account_target_portfolio_operation",
     "build_create_account_operation",
-    "build_delete_account_target_position_assignment_operation",
+    "build_create_position_set_operation",
+    "build_delete_account_target_portfolio_operation",
     "build_delete_account_operation",
+    "build_delete_position_set_operation",
     "build_get_account_by_uid_operation",
     "build_get_account_by_unique_identifier_operation",
     "build_search_accounts_operation",
-    "build_search_account_target_position_assignments_operation",
+    "build_search_account_target_portfolios_operation",
+    "build_search_position_sets_operation",
     "build_update_account_operation",
-    "create_account_target_position_assignment",
+    "create_account_target_portfolio",
     "create_account",
-    "delete_account_target_position_assignment",
+    "create_position_set",
+    "delete_account_target_portfolio",
     "delete_account",
+    "delete_position_set",
     "get_account_by_uid",
     "get_account_by_unique_identifier",
-    "search_account_target_position_assignments",
+    "search_account_target_portfolios",
     "search_accounts",
+    "search_position_sets",
     "update_account",
 ]

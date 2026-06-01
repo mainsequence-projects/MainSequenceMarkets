@@ -527,7 +527,7 @@ Issuer/Currency/AssetType
 
 See `examples/pricing/bond_pricing_example/` for the full floating-rate bond
 example and `examples/pricing/utils/mock_market_data.py` for reusable mock
-curve and fixing publishers.
+curve and one-month fixing publishers.
 
 ## Rejected Patterns
 

@@ -7,16 +7,17 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from msm.api.base import MarketsRow
+from msm.api.base import MarketsMetaTableRow
 from msm.models import (
     AccountGroupTable,
     AccountModelPortfolioTable,
     AccountTable,
-    AccountTargetPositionAssignmentTable,
+    AccountTargetPortfolioTable,
+    PositionSetTable,
 )
 
 
-class AccountModelPortfolio(MarketsRow):
+class AccountModelPortfolio(MarketsMetaTableRow):
     """Typed account model-portfolio row."""
 
     __table__: ClassVar[type[AccountModelPortfolioTable]] = AccountModelPortfolioTable
@@ -28,6 +29,34 @@ class AccountModelPortfolio(MarketsRow):
     model_portfolio_name: str
     model_portfolio_description: str | None = None
     metadata_json: dict[str, Any] | None = None
+
+    @classmethod
+    def create(
+        cls,
+        payload: AccountModelPortfolioCreate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AccountModelPortfolio:
+        values = _validated_payload_values(AccountModelPortfolioCreate, payload, kwargs)
+        return super().create(values)
+
+    @classmethod
+    def upsert(
+        cls,
+        payload: AccountModelPortfolioUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AccountModelPortfolio:
+        values = _validated_payload_values(AccountModelPortfolioUpsert, payload, kwargs)
+        return super().upsert(values)
+
+    @classmethod
+    def update(
+        cls,
+        uid: uuid.UUID | str,
+        payload: AccountModelPortfolioUpdate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AccountModelPortfolio:
+        values = _validated_payload_values(AccountModelPortfolioUpdate, payload, kwargs)
+        return super().update(uid, values)
 
 
 class AccountModelPortfolioCreate(BaseModel):
@@ -49,20 +78,46 @@ class AccountModelPortfolioUpdate(BaseModel):
     metadata_json: dict[str, Any] | None = None
 
 
-class AccountGroup(MarketsRow):
+class AccountGroup(MarketsMetaTableRow):
     """Typed account group row."""
 
     __table__: ClassVar[type[AccountGroupTable]] = AccountGroupTable
     __required_tables__: ClassVar[list[type[Any]]] = [
-        AccountModelPortfolioTable,
         AccountGroupTable,
     ]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("group_name",)
 
     group_name: str | None = None
     group_description: str | None = None
-    account_model_portfolio_uid: uuid.UUID | None = None
     metadata_json: dict[str, Any] | None = None
+
+    @classmethod
+    def create(
+        cls,
+        payload: AccountGroupCreate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AccountGroup:
+        values = _validated_payload_values(AccountGroupCreate, payload, kwargs)
+        return super().create(values)
+
+    @classmethod
+    def upsert(
+        cls,
+        payload: AccountGroupUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AccountGroup:
+        values = _validated_payload_values(AccountGroupUpsert, payload, kwargs)
+        return super().upsert(values)
+
+    @classmethod
+    def update(
+        cls,
+        uid: uuid.UUID | str,
+        payload: AccountGroupUpdate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AccountGroup:
+        values = _validated_payload_values(AccountGroupUpdate, payload, kwargs)
+        return super().update(uid, values)
 
 
 class AccountGroupCreate(BaseModel):
@@ -70,7 +125,6 @@ class AccountGroupCreate(BaseModel):
 
     group_name: str | None = Field(default=None, max_length=100)
     group_description: str | None = None
-    account_model_portfolio_uid: uuid.UUID | str | None = None
     metadata_json: dict[str, Any] | None = None
 
 
@@ -82,19 +136,49 @@ class AccountGroupUpdate(AccountGroupCreate):
     """Payload for updating mutable account group fields."""
 
 
-class Account(MarketsRow):
+class Account(MarketsMetaTableRow):
     """Typed account row."""
 
     __table__: ClassVar[type[AccountTable]] = AccountTable
-    __required_tables__: ClassVar[list[type[AccountTable]]] = [AccountTable]
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        AccountGroupTable,
+        AccountTable,
+    ]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
 
     unique_identifier: str
     account_name: str
     is_paper: bool = True
     account_is_active: bool = False
+    account_group_uid: uuid.UUID | None = None
     holdings_data_node_uid: uuid.UUID | None = None
     metadata_json: dict[str, Any] | None = None
+
+    @classmethod
+    def create(
+        cls, payload: AccountCreate | Mapping[str, Any] | None = None, **kwargs: Any
+    ) -> Account:
+        values = _validated_payload_values(AccountCreate, payload, kwargs)
+        return super().create(values)
+
+    @classmethod
+    def upsert(
+        cls,
+        payload: AccountUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Account:
+        values = _validated_payload_values(AccountUpsert, payload, kwargs)
+        return super().upsert(values)
+
+    @classmethod
+    def update(
+        cls,
+        uid: uuid.UUID | str,
+        payload: AccountUpdate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Account:
+        values = _validated_payload_values(AccountUpdate, payload, kwargs)
+        return super().update(uid, values)
 
     def pretty_print_positions(
         self,
@@ -147,6 +231,7 @@ class AccountCreate(BaseModel):
     account_name: str = Field(min_length=1, max_length=255)
     is_paper: bool = True
     account_is_active: bool = False
+    account_group_uid: uuid.UUID | str | None = None
     holdings_data_node_uid: uuid.UUID | str | None = None
     metadata_json: dict[str, Any] | None = None
 
@@ -161,79 +246,159 @@ class AccountUpdate(BaseModel):
     account_name: str | None = Field(default=None, max_length=255)
     is_paper: bool | None = None
     account_is_active: bool | None = None
+    account_group_uid: uuid.UUID | str | None = None
     holdings_data_node_uid: uuid.UUID | str | None = None
     metadata_json: dict[str, Any] | None = None
 
 
-class AccountTargetPositionAssignment(MarketsRow):
-    """Typed binding from an account to a target-position set."""
+class AccountTargetPortfolio(MarketsMetaTableRow):
+    """Typed account target portfolio row."""
 
-    __table__: ClassVar[type[AccountTargetPositionAssignmentTable]] = (
-        AccountTargetPositionAssignmentTable
-    )
+    __table__: ClassVar[type[AccountTargetPortfolioTable]] = AccountTargetPortfolioTable
     __required_tables__: ClassVar[list[type[Any]]] = [
+        AccountModelPortfolioTable,
+        AccountGroupTable,
         AccountTable,
-        AccountTargetPositionAssignmentTable,
+        AccountTargetPortfolioTable,
     ]
-    __upsert_keys__: ClassVar[tuple[str, ...]] = (
-        "account_uid",
-        "target_positions_time",
-    )
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
 
+    unique_identifier: str
     account_uid: uuid.UUID
-    target_positions_time: dt.datetime
-    position_set_uid: uuid.UUID
+    account_model_portfolio_uid: uuid.UUID
+    display_name: str | None = None
+    is_active: bool = True
+    source: str | None = None
+    metadata_json: dict[str, Any] | None = None
 
     @classmethod
     def create(
         cls,
-        payload: AccountTargetPositionAssignmentCreate | Mapping[str, Any] | None = None,
+        payload: AccountTargetPortfolioCreate | Mapping[str, Any] | None = None,
         **kwargs: Any,
-    ) -> AccountTargetPositionAssignment:
-        values = _validated_payload_values(AccountTargetPositionAssignmentCreate, payload, kwargs)
+    ) -> AccountTargetPortfolio:
+        values = _validated_payload_values(AccountTargetPortfolioCreate, payload, kwargs)
         return super().create(values)
 
     @classmethod
     def upsert(
         cls,
-        payload: AccountTargetPositionAssignmentUpsert | Mapping[str, Any] | None = None,
+        payload: AccountTargetPortfolioUpsert | Mapping[str, Any] | None = None,
         **kwargs: Any,
-    ) -> AccountTargetPositionAssignment:
-        values = _validated_payload_values(AccountTargetPositionAssignmentUpsert, payload, kwargs)
+    ) -> AccountTargetPortfolio:
+        values = _validated_payload_values(AccountTargetPortfolioUpsert, payload, kwargs)
         return super().upsert(values)
 
     @classmethod
     def update(
         cls,
         uid: uuid.UUID | str,
-        payload: AccountTargetPositionAssignmentUpdate | Mapping[str, Any] | None = None,
+        payload: AccountTargetPortfolioUpdate | Mapping[str, Any] | None = None,
         **kwargs: Any,
-    ) -> AccountTargetPositionAssignment:
-        values = _validated_payload_values(AccountTargetPositionAssignmentUpdate, payload, kwargs)
+    ) -> AccountTargetPortfolio:
+        values = _validated_payload_values(AccountTargetPortfolioUpdate, payload, kwargs)
         return super().update(uid, values)
 
 
-class AccountTargetPositionAssignmentCreate(BaseModel):
+class AccountTargetPortfolioCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    unique_identifier: str = Field(min_length=1, max_length=255)
     account_uid: uuid.UUID | str
-    target_positions_time: dt.datetime
-    position_set_uid: uuid.UUID | str
-
-    @field_validator("target_positions_time")
-    @classmethod
-    def _validate_target_positions_time(cls, value: dt.datetime) -> dt.datetime:
-        return _utc_timestamp(value, field_name="target_positions_time")
+    account_model_portfolio_uid: uuid.UUID | str
+    display_name: str | None = Field(default=None, max_length=255)
+    is_active: bool = True
+    source: str | None = Field(default=None, max_length=255)
+    metadata_json: dict[str, Any] | None = None
 
 
-class AccountTargetPositionAssignmentUpsert(AccountTargetPositionAssignmentCreate):
-    """Payload for inserting or updating a target-position assignment."""
+class AccountTargetPortfolioUpsert(AccountTargetPortfolioCreate):
+    """Payload for inserting or updating an account target portfolio."""
 
 
-class AccountTargetPositionAssignmentUpdate(BaseModel):
+class AccountTargetPortfolioUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    position_set_uid: uuid.UUID | str | None = None
+    account_model_portfolio_uid: uuid.UUID | str | None = None
+    display_name: str | None = Field(default=None, max_length=255)
+    is_active: bool | None = None
+    source: str | None = Field(default=None, max_length=255)
+    metadata_json: dict[str, Any] | None = None
+
+
+class PositionSet(MarketsMetaTableRow):
+    """Typed target position-set row."""
+
+    __table__: ClassVar[type[PositionSetTable]] = PositionSetTable
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        AccountModelPortfolioTable,
+        AccountGroupTable,
+        AccountTable,
+        AccountTargetPortfolioTable,
+        PositionSetTable,
+    ]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = (
+        "account_target_portfolio_uid",
+        "position_set_time",
+    )
+
+    account_target_portfolio_uid: uuid.UUID
+    position_set_time: dt.datetime
+    source: str | None = None
+    metadata_json: dict[str, Any] | None = None
+
+    @classmethod
+    def create(
+        cls,
+        payload: PositionSetCreate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> PositionSet:
+        values = _validated_payload_values(PositionSetCreate, payload, kwargs)
+        return super().create(values)
+
+    @classmethod
+    def upsert(
+        cls,
+        payload: PositionSetUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> PositionSet:
+        values = _validated_payload_values(PositionSetUpsert, payload, kwargs)
+        return super().upsert(values)
+
+    @classmethod
+    def update(
+        cls,
+        uid: uuid.UUID | str,
+        payload: PositionSetUpdate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> PositionSet:
+        values = _validated_payload_values(PositionSetUpdate, payload, kwargs)
+        return super().update(uid, values)
+
+
+class PositionSetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_target_portfolio_uid: uuid.UUID | str
+    position_set_time: dt.datetime
+    source: str | None = Field(default=None, max_length=255)
+    metadata_json: dict[str, Any] | None = None
+
+    @field_validator("position_set_time")
+    @classmethod
+    def _validate_position_set_time(cls, value: dt.datetime) -> dt.datetime:
+        return _utc_timestamp(value, field_name="position_set_time")
+
+
+class PositionSetUpsert(PositionSetCreate):
+    """Payload for inserting or updating a target position set."""
+
+
+class PositionSetUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: str | None = Field(default=None, max_length=255)
+    metadata_json: dict[str, Any] | None = None
 
 
 def _validated_payload_values(
@@ -317,10 +482,14 @@ __all__ = [
     "AccountModelPortfolioCreate",
     "AccountModelPortfolioUpdate",
     "AccountModelPortfolioUpsert",
-    "AccountTargetPositionAssignment",
-    "AccountTargetPositionAssignmentCreate",
-    "AccountTargetPositionAssignmentUpdate",
-    "AccountTargetPositionAssignmentUpsert",
+    "AccountTargetPortfolio",
+    "AccountTargetPortfolioCreate",
+    "AccountTargetPortfolioUpdate",
+    "AccountTargetPortfolioUpsert",
     "AccountUpdate",
     "AccountUpsert",
+    "PositionSet",
+    "PositionSetCreate",
+    "PositionSetUpdate",
+    "PositionSetUpsert",
 ]

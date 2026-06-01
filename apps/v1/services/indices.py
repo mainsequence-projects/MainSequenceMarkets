@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from apps.v1.schemas.indices import IndexListRow, IndexRecord
+from apps.v1.schemas.indices import Index
 
 
 def list_indices(
@@ -8,7 +8,7 @@ def list_indices(
     search: str = "",
     limit: int = 50,
     offset: int = 0,
-) -> list[IndexListRow]:
+) -> list[Index]:
     runtime = _get_runtime()
     rows = _list_index_catalog_rows(
         runtime.context,
@@ -16,15 +16,15 @@ def list_indices(
         limit=limit,
         offset=offset,
     )
-    return [IndexListRow.model_validate(row) for row in rows]
+    return [Index.model_validate(row) for row in rows]
 
 
-def get_index(*, uid: str) -> IndexRecord | None:
+def get_index(*, uid: str) -> Index | None:
     runtime = _get_runtime()
     record = _get_index_record(runtime.context, uid=uid)
     if record is None:
         return None
-    return IndexRecord.model_validate(record)
+    return Index.model_validate(record)
 
 
 def delete_index(*, uid: str) -> bool:

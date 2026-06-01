@@ -57,6 +57,10 @@ class BondAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
         ),
         primary_key=True,
         nullable=False,
+        info={
+            "label": "Asset UID",
+            "description": "Foreign key to the canonical AssetTable.uid for the referenced asset.",
+        },
     )
     issuer_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -66,6 +70,10 @@ class BondAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
             ondelete="RESTRICT",
         ),
         nullable=False,
+        info={
+            "label": "Issuer UID",
+            "description": "Foreign key to IssuerTable.uid for the instrument issuer.",
+        },
     )
     currency_asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -75,10 +83,35 @@ class BondAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
             ondelete="RESTRICT",
         ),
         nullable=False,
+        info={
+            "label": "Currency Asset UID",
+            "description": "AssetTable.uid for the currency in which this instrument is denominated.",
+        },
     )
-    issue_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
-    maturity_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
-    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    issue_date: Mapped[dt.date] = mapped_column(
+        Date,
+        nullable=False,
+        info={
+            "label": "Issue Date",
+            "description": "Date on which the bond or debt instrument was issued.",
+        },
+    )
+    maturity_date: Mapped[dt.date | None] = mapped_column(
+        Date,
+        nullable=True,
+        info={
+            "label": "Maturity Date",
+            "description": "Date on which the bond or debt instrument matures.",
+        },
+    )
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        info={
+            "label": "Status",
+            "description": "Lifecycle or execution status value for the row.",
+        },
+    )
 
 
 __all__ = ["BondAssetDetailsTable"]

@@ -41,9 +41,27 @@ class AssetTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         primary_key=True,
         default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Canonical UUID primary key for this MetaTable row.",
+        },
     )
-    unique_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
-    asset_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    unique_identifier: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Unique Identifier",
+            "description": "Stable business identifier used for idempotent upserts, lookup, and joins.",
+        },
+    )
+    asset_type: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        info={
+            "label": "Asset Type",
+            "description": "Canonical asset type code used to classify rows in AssetTable.",
+        },
+    )
 
 
 __all__ = ["AssetTable"]

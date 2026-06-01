@@ -41,10 +41,35 @@ class RebalanceStrategyMetadataTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         primary_key=True,
         default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Canonical UUID primary key for this MetaTable row.",
+        },
     )
-    rebalance_strategy_uid: Mapped[str] = mapped_column(String(255), nullable=False)
-    rebalance_strategy_description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    configuration_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    rebalance_strategy_uid: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Rebalance Strategy UID",
+            "description": "Stable unique identifier for the rebalance strategy definition.",
+        },
+    )
+    rebalance_strategy_description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        info={
+            "label": "Rebalance Strategy Description",
+            "description": "Human-readable description of the rebalance strategy.",
+        },
+    )
+    configuration_json: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+        info={
+            "label": "Configuration JSON",
+            "description": "Structured rebalance strategy configuration payload.",
+        },
+    )
 
 
 __all__ = ["RebalanceStrategyMetadataTable"]

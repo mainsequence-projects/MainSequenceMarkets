@@ -138,7 +138,8 @@ Minimal storage-first pattern:
 import datetime
 
 import pandas as pd
-from sqlalchemy import DateTime, Float, ForeignKey, String
+from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import DateTime, Float, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
@@ -165,8 +166,9 @@ class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     unique_identifier: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.unique_identifier",
+        MetaTableForeignKey(
+            AssetTable,
+            column="unique_identifier",
             ondelete="RESTRICT",
         ),
         nullable=False,

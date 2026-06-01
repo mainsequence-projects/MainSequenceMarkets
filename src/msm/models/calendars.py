@@ -36,10 +36,35 @@ class CalendarTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         primary_key=True,
         default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Canonical UUID primary key for this MetaTable row.",
+        },
     )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    calendar_dates: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Name",
+            "description": "Canonical human-readable name for this registry row.",
+        },
+    )
+    calendar_dates: Mapped[dict | list | None] = mapped_column(
+        JSON,
+        nullable=True,
+        info={
+            "label": "Calendar Dates",
+            "description": "Structured calendar date payload for the named market calendar.",
+        },
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+        info={
+            "label": "Metadata JSON",
+            "description": "Structured metadata JSON for provider, application, or workflow-specific attributes.",
+        },
+    )
 
 
 __all__ = ["CalendarTable"]

@@ -313,7 +313,7 @@ def test_asset_operation_requires_initialized_runtime(monkeypatch) -> None:
     def fake_resolve_runtime(**kwargs):
         raise RuntimeError(
             "Asset requires an initialized markets runtime for AssetTable. "
-            "Run Asset.create_schemas(...) during application initialization."
+            "Run msm.start_engine(models=[...]) during application initialization."
         )
 
     monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)

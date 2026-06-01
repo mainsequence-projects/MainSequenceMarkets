@@ -74,20 +74,14 @@ Recommended SQLAlchemy shape:
 ```python
 class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "FutureAssetDetails"
+    __metatable_extra_hash_components__ = {"storage_name": "future_asset_details"}
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.uid",
-            name=markets_fk_name(
-                __metatable_identifier__,
-                "Asset",
-                "asset_uid",
-            ),
-            ondelete="CASCADE",
-        ),
+        MetaTableForeignKey(AssetTable, column="uid", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
+        info={"description": "Canonical AssetTable uid for this detail row."},
     )
 ```
 
@@ -97,15 +91,38 @@ part of the canonical asset identity.
 
 ## Public API Pattern
 
-Application code should work through the Pydantic row API:
+Application code should bootstrap the SQLAlchemy detail model through the shared
+catalog path, then work through the Pydantic row API:
 
 1. Upsert the `AssetType`.
 2. Upsert the canonical `Asset`.
 3. Upsert the detail row with `asset_uid=asset.uid`.
 
-If the detail model subclasses the common row base and generic row helpers expect
-`uid`, expose `uid` as an alias of `asset_uid` in the Pydantic row model. Do not
-change the SQL table shape just to satisfy generic helpers.
+```python
+import uuid
+
+import msm
+from pydantic import AliasChoices, Field
+
+from msm.api.base import MarketsMetaTableRow
+
+
+class FutureDetails(MarketsMetaTableRow):
+    __table__ = FutureAssetDetailsTable
+    __required_tables__ = [FutureAssetDetailsTable]
+    __upsert_keys__ = ("asset_uid",)
+
+    uid: uuid.UUID = Field(validation_alias=AliasChoices("uid", "asset_uid"))
+    asset_uid: uuid.UUID
+
+msm.start_engine(models=[FutureAssetDetailsTable])
+```
+
+`MarketsMetaTableRow` is the Pydantic row-operation wrapper. It is not
+registered as a backend MetaTable. The SQLAlchemy detail model class is the
+registered/cataloged artifact. If generic row helpers expect `uid`, expose `uid`
+as an alias of `asset_uid` in the Pydantic row model. Do not change the SQL table
+shape just to satisfy generic helpers.
 
 ## Currency Spot Reference Pattern
 
@@ -219,3 +236,5 @@ When changing asset extension code, verify:
   the detail row should not outlive the asset.
 - Pydantic row models, repository helpers, tests, docs, and examples match the
   table identity shape.
+- startup examples call `msm.start_engine(models=[DetailTable])`, not direct
+  registration or row-level schema helpers.

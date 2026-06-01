@@ -4,9 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from apps.v1.schemas.asset_categories import (
-    AssetCategoryDetailResponse,
-    AssetCategoryListResponse,
-    AssetCategoryRecord,
+    AssetCategory,
     BulkDeleteAssetCategoriesResponse,
 )
 
@@ -16,37 +14,37 @@ def list_asset_categories(
     search: str = "",
     limit: int = 50,
     offset: int = 0,
-) -> AssetCategoryListResponse:
+) -> list[AssetCategory]:
     runtime = _get_runtime()
-    payload = _list_asset_category_rows_response(
+    rows = _list_asset_category_rows(
         runtime.context,
         search=search,
         limit=limit,
         offset=offset,
     )
-    return AssetCategoryListResponse.model_validate(payload)
+    return [AssetCategory.model_validate(row) for row in rows]
 
 
-def get_asset_category_detail(*, uid: str) -> AssetCategoryDetailResponse | None:
+def get_asset_category_detail(*, uid: str) -> AssetCategory | None:
     runtime = _get_runtime()
-    payload = _get_asset_category_frontend_detail(runtime.context, uid=uid)
-    if payload is None:
+    row = _get_asset_category_row(runtime.context, uid=uid)
+    if row is None:
         return None
-    return AssetCategoryDetailResponse.model_validate(payload)
+    return AssetCategory.model_validate(row)
 
 
-def create_asset_category(*, payload: Mapping[str, Any]) -> AssetCategoryRecord:
+def create_asset_category(*, payload: Mapping[str, Any]) -> AssetCategory:
     runtime = _get_runtime()
     record = _create_asset_category_record(runtime.context, **dict(payload))
-    return AssetCategoryRecord.model_validate(record)
+    return AssetCategory.model_validate(record)
 
 
-def update_asset_category(*, uid: str, payload: Mapping[str, Any]) -> AssetCategoryRecord | None:
+def update_asset_category(*, uid: str, payload: Mapping[str, Any]) -> AssetCategory | None:
     runtime = _get_runtime()
     record = _update_asset_category_record(runtime.context, uid=uid, **dict(payload))
     if record is None:
         return None
-    return AssetCategoryRecord.model_validate(record)
+    return AssetCategory.model_validate(record)
 
 
 def delete_asset_category(*, uid: str) -> bool:
@@ -73,16 +71,16 @@ def _get_runtime():
     )
 
 
-def _list_asset_category_rows_response(context, **kwargs):
-    from msm.services import list_asset_category_rows_response
+def _list_asset_category_rows(context, **kwargs):
+    from msm.services import list_asset_category_rows
 
-    return list_asset_category_rows_response(context, **kwargs)
+    return list_asset_category_rows(context, **kwargs)
 
 
-def _get_asset_category_frontend_detail(context, **kwargs):
-    from msm.services import get_asset_category_frontend_detail
+def _get_asset_category_row(context, **kwargs):
+    from msm.services import get_asset_category_row
 
-    return get_asset_category_frontend_detail(context, **kwargs)
+    return get_asset_category_row(context, **kwargs)
 
 
 def _create_asset_category_record(context, **kwargs):

@@ -5,9 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, HTTPException, Query, status
 
 from apps.v1.schemas.asset_categories import (
-    AssetCategoryDetailResponse,
-    AssetCategoryListResponse,
-    AssetCategoryRecord,
+    AssetCategory,
     BulkDeleteAssetCategoriesRequest,
     BulkDeleteAssetCategoriesResponse,
     CreateAssetCategoryRequest,
@@ -28,11 +26,12 @@ router = APIRouter(prefix="/asset-category", tags=["asset-category"])
 
 @router.get(
     "/",
-    response_model=AssetCategoryListResponse,
+    response_model=list[AssetCategory],
     summary="List asset categories",
     description=(
-        "Return asset category rows in the frontend list shape used by the migrated "
-        "registry page."
+        "Return core library asset category rows. The `response_format` query "
+        "parameter is accepted for compatibility, but rows use the "
+        "`msm.api.assets.AssetCategory` contract."
     ),
     operation_id="listAssetCategories",
     responses={
@@ -70,7 +69,7 @@ def get_asset_categories(
             description="Zero-based starting offset into the filtered category list.",
         ),
     ] = 0,
-) -> AssetCategoryListResponse:
+) -> list[AssetCategory]:
     if response_format != "frontend_list":
         raise HTTPException(
             status_code=400,
@@ -81,7 +80,7 @@ def get_asset_categories(
 
 @router.post(
     "/",
-    response_model=AssetCategoryRecord,
+    response_model=AssetCategory,
     summary="Create asset category",
     description="Create an asset category and optionally replace its asset membership set.",
     operation_id="createAssetCategory",
@@ -91,7 +90,7 @@ def post_asset_category(
         CreateAssetCategoryRequest,
         Body(description="Create payload for a new asset category."),
     ],
-) -> AssetCategoryRecord:
+) -> AssetCategory:
     return create_asset_category(payload=request.model_dump(exclude_none=True))
 
 
@@ -118,9 +117,12 @@ def post_asset_category_bulk_delete(
 
 @router.get(
     "/{uid}/",
-    response_model=AssetCategoryDetailResponse,
+    response_model=AssetCategory,
     summary="Get asset category detail",
-    description="Return the frontend detail payload for one asset category record.",
+    description=(
+        "Return one core library asset category row. The `response_format` query "
+        "parameter is accepted for compatibility."
+    ),
     operation_id="getAssetCategoryDetail",
     responses={
         400: {
@@ -141,7 +143,7 @@ def get_asset_category(
             description="Supported value for this endpoint is `frontend_detail`.",
         ),
     ] = "frontend_detail",
-) -> AssetCategoryDetailResponse:
+) -> AssetCategory:
     if response_format != "frontend_detail":
         raise HTTPException(
             status_code=400,
@@ -155,7 +157,7 @@ def get_asset_category(
 
 @router.patch(
     "/{uid}/",
-    response_model=AssetCategoryRecord,
+    response_model=AssetCategory,
     summary="Update asset category",
     description="Update one asset category and optionally replace its membership set.",
     operation_id="updateAssetCategory",
@@ -172,7 +174,7 @@ def patch_asset_category(
         PatchAssetCategoryRequest,
         Body(description="Patch payload for an existing asset category."),
     ],
-) -> AssetCategoryRecord:
+) -> AssetCategory:
     payload = request.model_dump(exclude_unset=True, exclude_none=False)
     record = update_asset_category(uid=uid, payload=payload)
     if record is None:
@@ -182,7 +184,7 @@ def patch_asset_category(
 
 @router.delete(
     "/{uid}/",
-    response_model=AssetCategoryRecord | None,
+    response_model=AssetCategory | None,
     summary="Delete asset category",
     description="Delete one asset category. The migrated API returns `null` on success.",
     operation_id="deleteAssetCategory",
@@ -194,7 +196,7 @@ def patch_asset_category(
         }
     },
 )
-def remove_asset_category(uid: str) -> AssetCategoryRecord | None:
+def remove_asset_category(uid: str) -> AssetCategory | None:
     deleted = delete_asset_category(uid=uid)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Asset category {uid!r} was not found.")

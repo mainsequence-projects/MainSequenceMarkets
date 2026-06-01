@@ -46,12 +46,52 @@ class IndexConventionDetailsTable(MarketsMetaTableMixin, MarketsBase):
         ),
         primary_key=True,
         nullable=False,
+        info={
+            "label": "Index UID",
+            "description": "Foreign key to the canonical index or index convention row used by pricing.",
+        },
     )
-    index_family: Mapped[str] = mapped_column(String(64), nullable=False)
-    convention_dump: Mapped[dict] = mapped_column(JSON, nullable=False)
-    serialization_format: Mapped[str] = mapped_column(String(128), nullable=False)
-    source: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    index_family: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        info={
+            "label": "Index Family",
+            "description": "Pricing index family used to dispatch index convention reconstruction.",
+        },
+    )
+    convention_dump: Mapped[dict] = mapped_column(
+        JSON,
+        nullable=False,
+        info={
+            "label": "Convention Dump",
+            "description": "Serialized index convention payload used to rebuild pricing index objects.",
+        },
+    )
+    serialization_format: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+        info={
+            "label": "Serialization Format",
+            "description": "Serialization format used for the stored pricing payload.",
+        },
+    )
+    source: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info={
+            "label": "Source",
+            "description": "Source system, workflow, or provider that produced the row.",
+        },
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        "metadata",
+        JSON,
+        nullable=True,
+        info={
+            "label": "Metadata",
+            "description": "Structured metadata JSON for provider, pricing, or workflow-specific attributes.",
+        },
+    )
 
 
 __all__ = ["IndexConventionDetailsTable"]

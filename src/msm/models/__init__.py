@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from .account_groups import (
+from .accounts import (
     AccountGroupTable,
     AccountModelPortfolioTable,
-)
-from .accounts import (
     AccountTable,
-    AccountTargetPositionAssignmentTable,
+    AccountTargetPortfolioTable,
+    PositionSetTable,
 )
 from .assets import (
     AssetCategoryMembershipTable,
@@ -68,7 +67,8 @@ def markets_sqlalchemy_models() -> list[type]:
         AssetCategoryMembershipTable,
         OpenFigiAssetDetailsTable,
         PortfolioAssetDetailTable,
-        AccountTargetPositionAssignmentTable,
+        AccountTargetPortfolioTable,
+        PositionSetTable,
         FundTable,
         OrderManagerTable,
         OrderTargetQuantityTable,
@@ -127,7 +127,7 @@ __all__ = [
     "AccountGroupTable",
     "AccountModelPortfolioTable",
     "AccountTable",
-    "AccountTargetPositionAssignmentTable",
+    "AccountTargetPortfolioTable",
     "AssetCategoryMembershipTable",
     "AssetCategoryTable",
     "AssetTable",
@@ -149,6 +149,7 @@ __all__ = [
     "PortfolioAssetDetailTable",
     "PortfolioMetadataTable",
     "PortfolioTable",
+    "PositionSetTable",
     "RebalanceStrategyMetadataTable",
     "SignalMetadataTable",
     "TradeTable",

@@ -16,7 +16,7 @@ from pydantic import (
     model_validator,
 )
 
-from msm.api.base import MarketsRow, _dedupe_models, operation_result_rows
+from msm.api.base import MarketsMetaTableRow, _dedupe_models, operation_result_rows
 from msm.constants import (
     ASSET_TYPE_BOND,
     ASSET_TYPE_BOND_DEFINITION,
@@ -76,7 +76,7 @@ def _validate_payload(
     raise TypeError("Payload must be a Pydantic model, mapping, or None.")
 
 
-class Asset(MarketsRow):
+class Asset(MarketsMetaTableRow):
     """User-facing asset row returned by typed markets API helpers."""
 
     __table__: ClassVar[type[AssetTable]] = AssetTable
@@ -144,7 +144,7 @@ class AssetUpdate(BaseModel):
         return normalize_asset_type(value)
 
 
-class AssetType(MarketsRow):
+class AssetType(MarketsMetaTableRow):
     """Typed row for the asset type registry."""
 
     __table__: ClassVar[type[AssetTypeTable]] = AssetTypeTable
@@ -508,7 +508,7 @@ def _require_existing_reference(
     raise LookupError(f"Bond {field_name}={uid!s} does not reference an existing row.")
 
 
-class AssetCategory(MarketsRow):
+class AssetCategory(MarketsMetaTableRow):
     """Typed asset universe row."""
 
     __table__: ClassVar[type[AssetCategoryTable]] = AssetCategoryTable
@@ -571,7 +571,7 @@ class AssetCategoryUpdate(BaseModel):
     metadata_json: dict[str, Any] | None = None
 
 
-class AssetCategoryMembership(MarketsRow):
+class AssetCategoryMembership(MarketsMetaTableRow):
     """Typed membership row between an asset category and an asset."""
 
     __table__: ClassVar[type[AssetCategoryMembershipTable]] = AssetCategoryMembershipTable
@@ -597,7 +597,7 @@ class AssetCategoryMembershipUpsert(AssetCategoryMembershipCreate):
     """Payload for inserting or updating an asset category membership row."""
 
 
-class OpenFigiDetails(MarketsRow):
+class OpenFigiDetails(MarketsMetaTableRow):
     """Typed OpenFIGI/provider detail row linked to an asset."""
 
     __table__: ClassVar[type[OpenFigiAssetDetailsTable]] = OpenFigiAssetDetailsTable

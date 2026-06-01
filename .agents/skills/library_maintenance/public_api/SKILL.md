@@ -77,8 +77,15 @@ Rules:
 
 - always declare `response_model`
 - every structured request body must have a Pydantic request model
-- every list row shape must have its own explicit model
-- every detail payload must have its own explicit model
+- for list and detail endpoints over a single core library resource, prefer returning the existing
+  `src/msm/api` model even when that breaks an earlier frontend projection contract
+- do not create or preserve a local `apps/v1/schemas` projection only to rename fields, hide
+  fields, subset fields, or keep a legacy table shape
+- local `apps/v1/schemas` models are appropriate for HTTP wrappers, frontend-only UI contracts,
+  multi-resource composed views, action payloads, and compatibility envelopes that cannot be
+  represented by one core `src/msm/api` model
+- every remaining local list/detail payload must have an explicit model and must document or make
+  obvious which core row, storage declaration, or reusable service backs it
 - compatibility fields should be typed explicitly, even when nullable
 - do not return raw untyped `dict[str, Any]` success payloads
 
