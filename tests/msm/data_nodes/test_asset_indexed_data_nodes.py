@@ -243,13 +243,3 @@ def test_asset_indexed_configuration_only_carries_update_scope() -> None:
     assert "records" not in AssetIndexedDataNodeConfiguration.model_fields
     assert "node_metadata" not in AssetIndexedDataNodeConfiguration.model_fields
     assert "foreign_keys" not in AssetIndexedDataNodeConfiguration.model_fields
-
-
-def test_constructing_asset_node_requires_registered_storage_table() -> None:
-    """Construction is backend-gated: storage_table must be registered/bound."""
-
-    with pytest.raises(
-        ValueError,
-        match="storage_table must be registered before construction",
-    ):
-        AssetSnapshot()

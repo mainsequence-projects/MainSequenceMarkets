@@ -145,13 +145,13 @@ def build_markets_registration_requests(
     for model in resolved_models:
         target_meta_tables = _target_meta_tables_from_bound_models()
         platform_kwargs = {
-            "data_source_uid": data_source_uid,
             "labels": labels,
             "open_for_everyone": open_for_everyone,
             "protect_from_deletion": protect_from_deletion,
         }
         external_kwargs = {
             **platform_kwargs,
+            "data_source_uid": data_source_uid,
             "schema": MARKETS_SCHEMA,
             "target_meta_tables": target_meta_tables,
         }
@@ -218,7 +218,6 @@ def register_markets_meta_tables(
     for position, model in enumerate(resolved_models, start=1):
         target_meta_tables = _target_meta_tables_from_bound_models()
         platform_kwargs = {
-            "data_source_uid": data_source_uid,
             "labels": labels,
             "open_for_everyone": open_for_everyone,
             "protect_from_deletion": protect_from_deletion,
@@ -226,6 +225,7 @@ def register_markets_meta_tables(
         }
         external_kwargs = {
             **platform_kwargs,
+            "data_source_uid": data_source_uid,
             "schema": MARKETS_SCHEMA,
             "target_meta_tables": target_meta_tables,
         }
@@ -244,24 +244,9 @@ def register_markets_meta_tables(
         )
         try:
             if is_time_index_meta_table_model(model):
-                meta_table = model.register(
-                    **_platform_registration_kwargs(
-                        model,
-                        base_kwargs={
-                            **platform_kwargs,
-                            "_target_meta_tables": target_meta_tables,
-                        }
-                        if management_mode == "external_registered"
-                        else platform_kwargs,
-                        introspect=introspect,
-                    )
-                )
+                meta_table = model.register(timeout=timeout)
             elif management_mode == "platform_managed":
-                meta_table = model.register(
-                    **_platform_registration_kwargs(
-                        model, base_kwargs=platform_kwargs, introspect=introspect
-                    )
-                )
+                meta_table = model.register(timeout=timeout)
             elif management_mode == "external_registered":
                 meta_table = register_external_sqlalchemy_model(
                     model,
@@ -399,7 +384,7 @@ def _registered_meta_table_filter_candidates(
     }
     if namespace:
         base_filters["namespace"] = namespace
-    if data_source_uid:
+    if management_mode == "external_registered" and data_source_uid:
         base_filters["data_source__uid"] = data_source_uid
 
     return [_clean_filters(base_filters)]

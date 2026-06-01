@@ -17,6 +17,7 @@ from .base import (
 from .crud import (
     build_create_model_operation,
     build_delete_model_operation,
+    build_get_model_by_uid_operation,
     build_search_model_operation,
 )
 
@@ -89,6 +90,25 @@ def get_account_by_unique_identifier(
             context,
             unique_identifier=unique_identifier,
         ),
+        context=context,
+    )
+
+
+def build_get_account_by_uid_operation(
+    context: MarketsRepositoryContext,
+    *,
+    uid: uuid.UUID | str,
+) -> MetaTableCompiledSQLOperation:
+    return build_get_model_by_uid_operation(context, model=AccountTable, uid=uid)
+
+
+def get_account_by_uid(
+    context: MarketsRepositoryContext,
+    *,
+    uid: uuid.UUID | str,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_get_account_by_uid_operation(context, uid=uid),
         context=context,
     )
 
@@ -309,6 +329,7 @@ __all__ = [
     "build_create_account_operation",
     "build_delete_account_target_position_assignment_operation",
     "build_delete_account_operation",
+    "build_get_account_by_uid_operation",
     "build_get_account_by_unique_identifier_operation",
     "build_search_accounts_operation",
     "build_search_account_target_position_assignments_operation",
@@ -317,6 +338,7 @@ __all__ = [
     "create_account",
     "delete_account_target_position_assignment",
     "delete_account",
+    "get_account_by_uid",
     "get_account_by_unique_identifier",
     "search_account_target_position_assignments",
     "search_accounts",

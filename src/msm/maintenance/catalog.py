@@ -14,11 +14,12 @@ from mainsequence.meta_tables import register_external_sqlalchemy_model
 from msm.base import MARKETS_SCHEMA, MarketsBase, markets_table_storage_name
 from msm.models.registration import (
     MarketsManagementMode,
+    MarketsModelSelector,
     MarketsMetaTableRegistrationResult,
-    _platform_registration_kwargs,
     _target_meta_tables_from_bound_models,
     is_time_index_meta_table_model,
     markets_meta_table_identifier,
+    resolve_markets_meta_table_model,
 )
 from msm.repositories.base import MarketsRepositoryContext
 from msm.repositories.crud import search_model, upsert_model
@@ -49,6 +50,32 @@ class CatalogBootstrapResult:
 
 
 @dataclass(frozen=True)
+class CatalogRotationResult:
+    """Result from intentionally replacing one catalog row."""
+
+    namespace: str
+    identifier: str
+    model_name: str
+    meta_table_uid: str
+    old_contract_hash: str | None
+    new_contract_hash: str
+    changed: bool
+    row: dict[str, Any]
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "namespace": self.namespace,
+            "identifier": self.identifier,
+            "model_name": self.model_name,
+            "meta_table_uid": self.meta_table_uid,
+            "old_contract_hash": self.old_contract_hash,
+            "new_contract_hash": self.new_contract_hash,
+            "changed": self.changed,
+            "row": dict(self.row),
+        }
+
+
+@dataclass(frozen=True)
 class _CatalogBootstrapModelPlan:
     model: type[MarketsBase]
     storage_hash: str
@@ -70,10 +97,7 @@ def bootstrap_markets_meta_tables_from_catalog(
     """Attach/register markets MetaTables through the maintenance catalog."""
 
     resolved_models = list(models or [])
-    catalog_meta_table = bootstrap_catalog_table(
-        data_source_uid=data_source_uid,
-        timeout=timeout,
-    )
+    catalog_meta_table = bootstrap_catalog_table(timeout=timeout)
     catalog_context = catalog_repository_context(
         catalog_meta_table=catalog_meta_table,
         timeout=timeout,
@@ -114,7 +138,10 @@ def bootstrap_markets_meta_tables_from_catalog(
             if is_time_index_meta_table_model(model):
                 meta_table = register_catalog_missing_meta_table(
                     model,
-                    data_source_uid=data_source_uid,
+                    data_source_uid=_external_data_source_uid(
+                        management_mode=management_mode,
+                        data_source_uid=data_source_uid,
+                    ),
                     management_mode=management_mode,
                     target_meta_tables=target_meta_tables,
                     open_for_everyone=open_for_everyone,
@@ -156,7 +183,10 @@ def bootstrap_markets_meta_tables_from_catalog(
             if not is_time_index_meta_table_model(model):
                 meta_table = _resolve_platform_meta_table(
                     model,
-                    data_source_uid=data_source_uid,
+                    data_source_uid=_external_data_source_uid(
+                        management_mode=management_mode,
+                        data_source_uid=data_source_uid,
+                    ),
                     management_mode=management_mode,
                     timeout=timeout,
                 )
@@ -179,7 +209,10 @@ def bootstrap_markets_meta_tables_from_catalog(
             else:
                 meta_table = register_catalog_missing_meta_table(
                     model,
-                    data_source_uid=data_source_uid,
+                    data_source_uid=_external_data_source_uid(
+                        management_mode=management_mode,
+                        data_source_uid=data_source_uid,
+                    ),
                     management_mode=management_mode,
                     target_meta_tables=target_meta_tables,
                     open_for_everyone=open_for_everyone,
@@ -222,16 +255,79 @@ def bootstrap_markets_meta_tables_from_catalog(
     )
 
 
+def rotate_catalogue(model_or_row_type: MarketsModelSelector | type[Any]) -> CatalogRotationResult:
+    """Replace one catalog row from the model's current registered MetaTable.
+
+    This is the explicit override for metadata-only catalog drift. The caller
+    passes the authored model/API row type, for example ``rotate_catalogue(Account)``.
+    The registered backend ``MetaTable`` is resolved through ``model.register()``;
+    this function does not accept UID, identifier, or data-source lookup knobs.
+    """
+
+    model = resolve_catalogue_model(model_or_row_type)
+    catalog_meta_table = bootstrap_catalog_table()
+    catalog_context = catalog_repository_context(catalog_meta_table=catalog_meta_table)
+    existing_row = find_catalog_row(catalog_context, model=model)
+    meta_table = _register_catalogue_rotation_meta_table(model)
+    validate_platform_meta_table_physical_contract(
+        meta_table,
+        model=model,
+        timeout=None,
+    )
+
+    row = MarketsMetaTableCatalogRow.from_meta_table(
+        model=model,
+        meta_table=meta_table,
+        sdk_version=_sdk_version(),
+    )
+    payload = row.to_payload()
+    changed = _catalog_row_changed(existing_row, payload)
+    upserted = _upsert_catalog_payload(catalog_context, payload)
+    old_contract_hash = str(existing_row.get("contract_hash")) if existing_row else None
+    logger.info(
+        "Rotated markets MetaTable catalog row",
+        model=model.__name__,
+        namespace=payload["namespace"],
+        identifier=payload["identifier"],
+        meta_table_uid=payload["meta_table_uid"],
+        old_contract_hash=old_contract_hash,
+        new_contract_hash=payload["contract_hash"],
+        changed=changed,
+    )
+    return CatalogRotationResult(
+        namespace=payload["namespace"],
+        identifier=payload["identifier"],
+        model_name=model.__name__,
+        meta_table_uid=payload["meta_table_uid"],
+        old_contract_hash=old_contract_hash,
+        new_contract_hash=payload["contract_hash"],
+        changed=changed,
+        row=_first_operation_row(upserted) or payload,
+    )
+
+
+def resolve_catalogue_model(
+    model_or_row_type: MarketsModelSelector | type[Any],
+) -> type[MarketsBase]:
+    """Resolve a catalog rotation input to its SQLAlchemy MetaTable model."""
+
+    if isinstance(model_or_row_type, type):
+        if issubclass(model_or_row_type, MarketsBase):
+            return model_or_row_type
+        table_model = getattr(model_or_row_type, "__table__", None)
+        if isinstance(table_model, type) and issubclass(table_model, MarketsBase):
+            return table_model
+    return resolve_markets_meta_table_model(model_or_row_type)
+
+
 def bootstrap_catalog_table(
     *,
-    data_source_uid: str | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MetaTable:
     """Attach or create the maintenance catalog MetaTable."""
 
     existing = _resolve_platform_meta_table(
         MarketsMetaTableCatalogTable,
-        data_source_uid=data_source_uid,
         management_mode="platform_managed",
         timeout=timeout,
     )
@@ -255,11 +351,7 @@ def bootstrap_catalog_table(
         identifier=getattr(MarketsMetaTableCatalogTable, "__metatable_identifier__", None),
     )
     try:
-        return MarketsMetaTableCatalogTable.register(
-            data_source_uid=data_source_uid,
-            introspect=False,
-            timeout=timeout,
-        )
+        return MarketsMetaTableCatalogTable.register(timeout=timeout)
     except ConflictError as exc:
         recovered = _meta_table_from_conflict(
             exc,
@@ -598,24 +690,9 @@ def register_catalog_missing_meta_table(
     }
     try:
         if is_time_index_meta_table_model(model):
-            return model.register(
-                **_platform_registration_kwargs(
-                    model,
-                    base_kwargs={
-                        **platform_kwargs,
-                        "_target_meta_tables": target_meta_tables,
-                    }
-                    if management_mode == "external_registered"
-                    else platform_kwargs,
-                    introspect=introspect,
-                )
-            )
+            return model.register(timeout=timeout)
         if management_mode == "platform_managed":
-            return model.register(
-                **_platform_registration_kwargs(
-                    model, base_kwargs=platform_kwargs, introspect=introspect
-                )
-            )
+            return model.register(timeout=timeout)
         if management_mode == "external_registered":
             return register_external_sqlalchemy_model(
                 model,
@@ -645,22 +722,84 @@ def upsert_catalog_row(
         meta_table=meta_table,
         sdk_version=_sdk_version(),
     )
+    return _upsert_catalog_payload(context, row.to_payload())
+
+
+def _upsert_catalog_payload(
+    context: MarketsRepositoryContext,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
     return upsert_model(
         context,
         model=MarketsMetaTableCatalogTable,
-        values=row.to_payload(),
+        values=dict(payload),
         conflict_columns=[
             "identifier",
         ],
     )
 
 
+def _register_catalogue_rotation_meta_table(model: type[MarketsBase]) -> MetaTable:
+    try:
+        meta_table = model.register()
+    except ConflictError as exc:
+        recovered = _meta_table_from_conflict(
+            exc,
+            model=model,
+            management_mode="platform_managed",
+            timeout=None,
+        )
+        if recovered is None:
+            raise CatalogBootstrapError(
+                "Could not resolve registered markets MetaTable for catalog rotation "
+                f"through {model.__name__}.register()."
+            ) from exc
+        meta_table = recovered
+    _bind_model_meta_table(model, meta_table)
+    return meta_table
+
+
+def _catalog_row_changed(
+    existing_row: Mapping[str, Any] | None,
+    new_payload: Mapping[str, Any],
+) -> bool:
+    if existing_row is None:
+        return True
+    for key in (
+        "namespace",
+        "identifier",
+        "description",
+        "model_name",
+        "meta_table_uid",
+        "contract_hash",
+        "sdk_version",
+    ):
+        if _catalog_compare_value(existing_row.get(key)) != _catalog_compare_value(
+            new_payload.get(key)
+        ):
+            return True
+    return False
+
+
+def _catalog_compare_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _first_operation_row(result: Mapping[str, Any] | list[Any] | None) -> dict[str, Any] | None:
+    rows = _operation_result_rows(result)
+    if not rows:
+        return None
+    return rows[0]
+
+
 def _resolve_platform_meta_table(
     model: type[MarketsBase],
     *,
-    data_source_uid: str | None,
     management_mode: MarketsManagementMode,
     timeout: int | float | tuple[float, float] | None,
+    data_source_uid: str | None = None,
 ) -> MetaTable | None:
     matches: list[MetaTable] = []
     matched_filters: dict[str, Any] | None = None
@@ -678,10 +817,20 @@ def _resolve_platform_meta_table(
     if len(matches) > 1:
         raise CatalogBootstrapError(
             "Multiple registered markets MetaTables matched "
-            f"{model.__name__} with filters {matched_filters!r}. Pass data_source_uid "
-            "or repair duplicate platform registrations before startup."
+            f"{model.__name__} with filters {matched_filters!r}. Repair duplicate "
+            "platform registrations before startup."
         )
     return matches[0]
+
+
+def _external_data_source_uid(
+    *,
+    management_mode: MarketsManagementMode,
+    data_source_uid: str | None,
+) -> str | None:
+    if management_mode == "external_registered":
+        return data_source_uid
+    return None
 
 
 def _registered_meta_table_filter_candidates(
@@ -694,7 +843,7 @@ def _registered_meta_table_filter_candidates(
         "identifier": getattr(model, "__metatable_identifier__", model.__name__),
         "management_mode": management_mode,
     }
-    if data_source_uid:
+    if management_mode == "external_registered" and data_source_uid:
         base_filters["data_source__uid"] = data_source_uid
 
     return [_clean_filters(base_filters)]
@@ -822,6 +971,7 @@ def _sdk_version() -> str | None:
 __all__ = [
     "CatalogBootstrapError",
     "CatalogBootstrapResult",
+    "CatalogRotationResult",
     "bootstrap_catalog_table",
     "bootstrap_markets_meta_tables_from_catalog",
     "catalog_repository_context",
@@ -830,6 +980,8 @@ __all__ = [
     "meta_table_from_catalog_row",
     "register_catalog_missing_meta_table",
     "resolve_catalog_meta_table",
+    "resolve_catalogue_model",
+    "rotate_catalogue",
     "upsert_catalog_row",
     "validate_catalog_contract",
     "validate_platform_meta_table_physical_contract",

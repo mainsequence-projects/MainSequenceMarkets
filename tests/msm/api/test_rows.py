@@ -161,6 +161,29 @@ def test_account_pretty_print_positions_formats_holdings(capsys) -> None:
     assert "asset_uid" in capsys.readouterr().out
 
 
+def test_account_pretty_print_positions_rejects_datanode_run_tuple() -> None:
+    account = Account.model_validate(
+        {
+            "uid": uuid.uuid4(),
+            "unique_identifier": "account-main",
+            "account_name": "Main Account",
+        }
+    )
+    holdings = pd.DataFrame(
+        [
+            {
+                "time_index": dt.datetime(2026, 5, 25, tzinfo=dt.UTC),
+                "account_uid": account.uid,
+                "unique_identifier": "example-asset-btc",
+                "quantity": 10.0,
+            }
+        ]
+    ).set_index(["time_index", "account_uid", "unique_identifier"])
+
+    with pytest.raises(TypeError, match="Unpack DataNode run results"):
+        account.pretty_print_positions((False, holdings))
+
+
 def test_portfolio_create_schemas_includes_domain_required_tables(monkeypatch) -> None:
     calls = []
     runtime = SimpleNamespace()

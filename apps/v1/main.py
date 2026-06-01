@@ -6,6 +6,7 @@ from importlib.metadata import version
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
+from apps.v1.routers.accounts import router as accounts_router
 from apps.v1.routers.asset_categories import router as asset_categories_router
 from apps.v1.routers.assets import router as assets_router
 from apps.v1.routers.catalog import router as catalog_router
@@ -20,6 +21,10 @@ API_DESCRIPTION = (
     "returns documented Pydantic response contracts."
 )
 API_TAGS = [
+    {
+        "name": "account",
+        "description": "Account registry endpoints exposed through the `apps/v1` FastAPI surface.",
+    },
     {
         "name": "asset",
         "description": "Asset catalog endpoints exposed through the `apps/v1` FastAPI surface.",
@@ -63,6 +68,7 @@ def create_app() -> FastAPI:
             "name": "Apache-2.0",
         },
     )
+    app.include_router(accounts_router, prefix="/api/v1")
     app.include_router(assets_router, prefix="/api/v1")
     app.include_router(asset_categories_router, prefix="/api/v1")
     app.include_router(indices_router, prefix="/api/v1")

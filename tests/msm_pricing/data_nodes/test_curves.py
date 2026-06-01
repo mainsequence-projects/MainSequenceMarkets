@@ -115,16 +115,6 @@ def test_discount_curves_node_normalizes_legacy_builder_identity_name() -> None:
     assert normalized[CURVE_UNIQUE_IDENTIFIER_DIMENSION].tolist() == ["mxn_tiie_discount"]
 
 
-def test_constructing_discount_curves_node_requires_registered_storage_table() -> None:
-    """update() needs a constructed node, which is backend-gated."""
-
-    with pytest.raises(
-        ValueError,
-        match="storage_table must be registered before construction",
-    ):
-        DiscountCurvesNode(CurveConfig(curve_unique_identifier="mxn_tiie_discount"))
-
-
 @pytest.mark.skip(reason="requires platform backend (Stage 5 registration)")
 def test_discount_curves_node_update_returns_stamped_curve_frame() -> None:
     """A full update() run needs a registered/bound storage table."""

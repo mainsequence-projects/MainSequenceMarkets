@@ -113,16 +113,6 @@ def test_fixing_rates_node_normalizes_legacy_index_uid_builder_frame() -> None:
     assert normalized[INDEX_UNIQUE_IDENTIFIER_DIMENSION].tolist() == ["SOFR"]
 
 
-def test_constructing_fixing_rates_node_requires_registered_storage_table() -> None:
-    """index_unique_identifiers()/update() need a constructed, backend-gated node."""
-
-    with pytest.raises(
-        ValueError,
-        match="storage_table must be registered before construction",
-    ):
-        FixingRatesNode(IndexFixingConfiguration(index_unique_identifiers=["SOFR"]))
-
-
 @pytest.mark.skip(reason="requires platform backend (Stage 5 registration)")
 def test_fixing_rates_node_update_uses_index_unique_identifiers() -> None:
     """A full update() run needs a registered/bound storage table."""

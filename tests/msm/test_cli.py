@@ -3,10 +3,13 @@ from __future__ import annotations
 import importlib
 import json
 import pathlib
+from types import SimpleNamespace
 
 import pytest
 
 from cli.main import bundled_msm_skills_root, main
+
+cli_main = importlib.import_module("cli.main")
 
 
 def _bundled_bundle_names() -> list[str]:
@@ -87,3 +90,50 @@ def test_copy_msm_skills_copies_only_ms_markets_namespace(tmp_path) -> None:
             / "SKILL.md"
         )
         assert skill_file.exists()
+
+
+def test_catalog_rotate_command_routes_model_to_catalogue_rotation(monkeypatch, capsys) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_catalog_rotate_command(*, model: str, emit_json: bool = False) -> int:
+        calls.append({"model": model, "emit_json": emit_json})
+        return 0
+
+    monkeypatch.setattr(cli_main, "catalog_rotate_command", fake_catalog_rotate_command)
+
+    exit_code = main(["catalog", "rotate", "Account", "--json"])
+
+    assert exit_code == 0
+    assert calls == [{"model": "Account", "emit_json": True}]
+    assert capsys.readouterr().out == ""
+
+
+def test_catalog_rotate_command_emits_json(monkeypatch, capsys) -> None:
+    import msm.maintenance.catalog as catalog
+
+    result = SimpleNamespace(
+        to_payload=lambda: {
+            "identifier": "Account",
+            "model_name": "AccountTable",
+            "meta_table_uid": "account-meta-table-uid",
+            "old_contract_hash": "old",
+            "new_contract_hash": "new",
+            "changed": True,
+            "row": {"identifier": "Account"},
+        }
+    )
+    calls: list[str] = []
+
+    def fake_rotate_catalogue(model: str):
+        calls.append(model)
+        return result
+
+    monkeypatch.setattr(catalog, "rotate_catalogue", fake_rotate_catalogue)
+
+    exit_code = cli_main.catalog_rotate_command(model="Account", emit_json=True)
+
+    assert exit_code == 0
+    assert calls == ["Account"]
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["identifier"] == "Account"
+    assert payload["meta_table_uid"] == "account-meta-table-uid"

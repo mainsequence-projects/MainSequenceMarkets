@@ -72,6 +72,9 @@ and this project follows versioned releases.
   from the internal maintenance catalog.
 - Removed `storage_hash` from the internal maintenance catalog; catalog rows are
   now keyed by the globally unique logical MetaTable identifier.
+- Added `rotate_catalogue(model_or_row_type)` and `msm catalog rotate <model>`
+  to intentionally replace a stale catalog row from the model's registered
+  backend MetaTable.
 - Made markets and pricing runtime bookkeeping use stable MetaTable identifiers,
   and moved platform-managed FK declarations to the SDK
   `MetaTableForeignKey(TargetModel, column=...)` helper instead of
@@ -87,6 +90,8 @@ and this project follows versioned releases.
 - Fixed markets catalog bootstrap validation so platform-managed MetaTables with
   matching columns and index names are not falsely rejected when backend
   introspection omits index column or uniqueness details.
+- Fixed platform-managed markets catalog and schema bootstrap so deprecated
+  `data_source_uid` arguments are no longer passed to SDK `register()` calls.
 - Fixed holdings and target-position DataNode numeric fields so `quantity`,
   `target_weight`, and exposure measures are declared and emitted as
   `float64`, matching the SDK DataFrame dtype validator.
@@ -160,6 +165,10 @@ and this project follows versioned releases.
 - Added `Account.pretty_print_positions(...)` to format account holdings as
   `asset_uid`, `ticker`, `position_type`, and `position_value`, and wired the
   account holdings example to use it.
+- Fixed the account holdings example to unpack the `AccountHoldings.run(...)`
+  result and pass only the DataFrame into `Account.pretty_print_positions(...)`.
+- Removed row-level `source` noise from the account holdings example
+  `extra_details`; the example keeps only the `ticker` display value there.
 - Updated holdings `target_trade_time` to use the canonical
   `datetime64[ns, UTC]` record dtype and emit a timezone-aware UTC datetime
   column.

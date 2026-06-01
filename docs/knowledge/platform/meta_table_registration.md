@@ -132,6 +132,30 @@ with an older catalog physical table that still contains removed fields such as
 `storage_hash` must repair or recreate that catalog resource before normal
 startup.
 
+If the registered physical MetaTable is correct but the catalog row is stale
+because local metadata changed, rotate the catalog row explicitly. The public
+repair API is model-first and resolves the registered MetaTable through the
+model's `register()` lifecycle:
+
+```python
+from msm.api.accounts import Account
+from msm.maintenance import rotate_catalogue
+
+result = rotate_catalogue(Account)
+print(result.old_contract_hash, result.new_contract_hash)
+```
+
+The equivalent CLI command is:
+
+```bash
+msm catalog rotate Account --json
+```
+
+This command replaces the catalog row keyed by the model identifier. It does
+not accept a MetaTable UID, identifier, namespace, or data-source selector; the
+model declaration remains the source of truth and `register()` resolves the
+registered backend MetaTable.
+
 For narrow explicit preflight, pass `models=[...]` to register only the tables
 the process needs:
 

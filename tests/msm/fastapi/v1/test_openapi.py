@@ -57,6 +57,29 @@ def test_openapi_json_documents_asset_list_endpoint() -> None:
     ] == {"$ref": "#/components/schemas/AssetCurrentPricingDetailsResponse"}
 
 
+def test_openapi_json_documents_account_list_endpoint() -> None:
+    client = TestClient(app)
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    account_list_operation = payload["paths"]["/api/v1/account/"]["get"]
+    assert account_list_operation["summary"] == "List accounts"
+    assert account_list_operation["operationId"] == "listAccounts"
+    assert account_list_operation["tags"] == ["account"]
+    assert account_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AccountListResponse"
+    }
+
+    account_summary_operation = payload["paths"]["/api/v1/account/{uid}/summary/"]["get"]
+    assert account_summary_operation["summary"] == "Get account summary"
+    assert account_summary_operation["operationId"] == "getAccountSummary"
+    assert account_summary_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/FrontEndDetailSummary"}
+
+
 def test_openapi_json_documents_asset_category_routes() -> None:
     client = TestClient(app)
     response = client.get("/openapi.json")

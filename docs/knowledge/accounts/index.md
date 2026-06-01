@@ -66,11 +66,16 @@ holdings_node.set_account_holdings_frame(
         {
             "unique_identifier": "BTC-USD",
             "quantity": 10.0,
-            "extra_details": {"source": "example"},
+            "extra_details": {"ticker": "BTC"},
         }
     ],
 )
-holdings_node.run(debug_mode=True, force_update=True)
+error_on_last_update, updated_frame = holdings_node.run(
+    debug_mode=True,
+    force_update=True,
+)
+if error_on_last_update:
+    raise RuntimeError("Account holdings update failed.")
 ```
 
 `Account.pretty_print_positions(...)` formats an account holdings frame into the
@@ -83,7 +88,8 @@ positions = account.pretty_print_positions(updated_frame)
 The printed table has `asset_uid`, `ticker`, `position_type`, and
 `position_value`. The method resolves `asset_uid` from the canonical `Asset`
 row, reads `ticker` from row `extra_details` when present, and keeps holdings
-reads explicit by requiring the caller to pass the holdings frame.
+reads explicit by requiring the caller to pass the holdings frame. Do not pass
+the raw `AccountHoldings.run(...)` tuple; unpack it and pass the DataFrame.
 
 The full workflow example is
 `examples/accounts/create_and_insert_holdings.py`. It reuses the shared asset

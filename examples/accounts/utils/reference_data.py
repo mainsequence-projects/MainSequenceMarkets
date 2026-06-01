@@ -25,10 +25,7 @@ def example_account_holdings_positions(
             "unique_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
             "quantity": 10.0,
             "target_trade_time": target_trade_time,
-            "extra_details": {
-                "source": EXAMPLE_ACCOUNT_HOLDINGS_SOURCE,
-                "ticker": EXAMPLE_BTC_TICKER,
-            },
+            "extra_details": {"ticker": EXAMPLE_BTC_TICKER},
         }
     ]
 

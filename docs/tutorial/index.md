@@ -89,6 +89,22 @@ key points to `IndexTable.unique_identifier` instead of `AssetTable`. Keep
 index identity on `uid` and `unique_identifier`; do not add legacy platform
 Constant-name fields.
 
+## Account Holdings Workflow
+
+Use this workflow when publishing and inspecting account positions:
+
+1. Register `AssetType`, `Asset`, `Account`, and `AccountHoldingsStorage`
+   through `msm.start_engine(...)`.
+2. Create or upsert the account through `msm.api.accounts.Account`.
+3. Build an `AccountHoldings` DataNode and attach the real holdings frame with
+   `set_account_holdings_frame(...)`.
+4. Run the node and unpack the SDK result:
+   `error_on_last_update, holdings_frame = holdings_node.run(...)`.
+5. Pass only `holdings_frame` to `Account.pretty_print_positions(...)`.
+
+See `examples/accounts/create_and_insert_holdings.py` for the full account
+holdings path.
+
 ## Pricing Instrument Identity
 
 Use this workflow when connecting pricing terms to a canonical asset:

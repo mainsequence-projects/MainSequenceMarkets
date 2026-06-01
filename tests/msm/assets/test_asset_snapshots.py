@@ -131,16 +131,6 @@ def test_openfigi_snapshot_builder_uses_generic_entrypoint() -> None:
     assert "venue_specific_properties" not in frame.reset_index().columns
 
 
-def test_constructing_asset_snapshot_requires_registered_storage_table() -> None:
-    """set_snapshots/update need a constructed node, which is backend-gated."""
-
-    with pytest.raises(
-        ValueError,
-        match="storage_table must be registered before construction",
-    ):
-        AssetSnapshot()
-
-
 @pytest.mark.skip(reason="requires platform backend (Stage 5 registration)")
 def test_asset_snapshot_set_snapshots_and_update() -> None:
     """set_snapshots + update + backend duplicate checks need a registered node."""

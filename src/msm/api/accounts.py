@@ -265,9 +265,15 @@ def _utc_timestamp(value: dt.datetime, *, field_name: str) -> dt.datetime:
 def _flat_holdings_frame(holdings_frame: Any) -> Any:
     import pandas as pd
 
-    if isinstance(holdings_frame, pd.DataFrame):
+    if not isinstance(holdings_frame, pd.DataFrame):
+        raise TypeError(
+            "Holdings positions require a pandas DataFrame. Unpack DataNode run results "
+            "before calling Account.pretty_print_positions(...)."
+        )
+
+    if isinstance(holdings_frame.index, pd.MultiIndex) or holdings_frame.index.name is not None:
         return holdings_frame.reset_index()
-    return pd.DataFrame(holdings_frame)
+    return holdings_frame.copy()
 
 
 def _position_extra_details(position: Any) -> dict[str, Any]:

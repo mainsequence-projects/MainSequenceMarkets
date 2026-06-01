@@ -22,7 +22,7 @@ def create_and_insert_account_holdings() -> dict[str, Any]:
     """Create an account, reuse the shared BTC asset, and publish holdings."""
 
     msm.start_engine(
-        models=["AssetType", "Asset", "Account"],
+        models=["AssetType", "Asset", "Account", "AccountHoldingsStorage"],
     )
 
     from msm.api.accounts import Account
@@ -41,8 +41,11 @@ def create_and_insert_account_holdings() -> dict[str, Any]:
         account_uid=account.uid,
         positions=example_account_holdings_positions(target_trade_time=holdings_date),
     )
-    updated_frame = holdings_node.run(debug_mode=True, force_update=True)
-    pretty_positions = account.pretty_print_positions(updated_frame)
+    error_on_last_update, holdings_frame = holdings_node.run(debug_mode=True, force_update=True)
+    if error_on_last_update:
+        raise RuntimeError("Account holdings update failed; inspect the DataNode run logs.")
+
+    pretty_positions = account.pretty_print_positions(holdings_frame)
 
     return {
         "asset_type": asset_type,
@@ -51,7 +54,7 @@ def create_and_insert_account_holdings() -> dict[str, Any]:
         "holdings_data_node_identifier": holdings_node._default_identifier(),
         "holdings_date": holdings_date,
         "pretty_positions": pretty_positions,
-        "updated_frame": updated_frame,
+        "updated_frame": holdings_frame,
     }
 
 

@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from typing import Any
 
 V1_RUNTIME_MODELS = [
+    "Account",
     "Asset",
     "OpenFigiAssetDetails",
     "AssetCategory",

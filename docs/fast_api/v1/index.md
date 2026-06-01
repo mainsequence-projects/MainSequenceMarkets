@@ -31,6 +31,18 @@ Current local-dev behavior:
 
 ## Implemented Routes
 
+### Accounts
+
+- `GET /api/v1/account/`
+  - supports `search`, `limit`, and `offset`
+  - returns `{ count, results }`
+  - row fields are `uid`, `display_name`, `is_paper`, and
+    `account_is_active`
+- `GET /api/v1/account/{uid}/summary/`
+  - returns the reusable `FrontEndDetailSummary` response for account detail
+    pages
+  - resolves the account by `uid`
+
 ### Assets
 
 - `GET /api/v1/asset/`

@@ -6,12 +6,13 @@ import pytest
 from mainsequence.client.exceptions import ConflictError
 
 import msm.maintenance.catalog as catalog
+from msm.api.accounts import Account
 from msm.data_nodes.storage import AccountHoldingsStorage
 from msm.maintenance.models import (
     MarketsMetaTableCatalogTable,
     markets_meta_table_contract_hash,
 )
-from msm.models import AssetTable, AssetTypeTable
+from msm.models import AccountTable, AssetTable, AssetTypeTable
 from msm.models.registration import markets_meta_table_identifier
 
 
@@ -110,13 +111,72 @@ def test_catalog_bootstrap_registers_missing_application_table(monkeypatch) -> N
         == "asset-meta-table-uid"
     )
     assert search_in_filters == [_catalog_search_filter(AssetTable)]
-    assert register_calls[0]["data_source_uid"] == "data-source-uid"
+    assert register_calls[0] == {"timeout": None}
     assert upserted_rows[0]["meta_table_uid"] == "asset-meta-table-uid"
     assert upserted_rows[0]["description"] == "Asset catalog rows."
     assert "storage_hash" not in upserted_rows[0]
     assert "management_mode" not in upserted_rows[0]
     assert "data_source_uid" not in upserted_rows[0]
     assert upserted_rows[0]["contract_hash"]
+
+
+def test_rotate_catalogue_replaces_catalog_row_from_registered_row_model(monkeypatch) -> None:
+    _disable_physical_contract_validation(monkeypatch)
+    registered_meta_table = _meta_table(
+        "account-meta-table-uid",
+        **_catalog_row_identity(AccountTable),
+        description="Account rows.",
+        storage_hash=AccountTable.__table__.name,
+    )
+    existing_row = {
+        **_catalog_row_identity(AccountTable),
+        "description": "Old description.",
+        "model_name": "AccountTable",
+        "meta_table_uid": "account-meta-table-uid",
+        "contract_hash": "stale-contract-hash",
+        "sdk_version": "old",
+    }
+    register_calls: list[dict] = []
+    upserted_rows: list[dict] = []
+
+    monkeypatch.setattr(
+        catalog,
+        "bootstrap_catalog_table",
+        lambda **_kwargs: _meta_table(
+            "catalog-meta-table-uid",
+            identifier="MarketsMetaTableCatalog",
+            storage_hash="catalog-storage-hash",
+        ),
+    )
+
+    def fake_search_model(_context, **kwargs):
+        assert kwargs["in_filters"] == _catalog_search_filter(AccountTable)
+        return {"rows": [existing_row]}
+
+    def fake_register(cls, **kwargs):
+        register_calls.append(kwargs)
+        return registered_meta_table
+
+    def fake_upsert_model(_context, **kwargs):
+        assert kwargs["conflict_columns"] == ["identifier"]
+        upserted_rows.append(dict(kwargs["values"]))
+        return {"rows": [kwargs["values"]]}
+
+    monkeypatch.setattr(catalog, "search_model", fake_search_model)
+    monkeypatch.setattr(AccountTable, "register", classmethod(fake_register))
+    monkeypatch.setattr(catalog, "upsert_model", fake_upsert_model)
+
+    result = catalog.rotate_catalogue(Account)
+
+    assert register_calls == [{}]
+    assert result.identifier == AccountTable.__metatable_identifier__
+    assert result.meta_table_uid == "account-meta-table-uid"
+    assert result.old_contract_hash == "stale-contract-hash"
+    assert result.new_contract_hash == markets_meta_table_contract_hash(AccountTable)
+    assert result.changed is True
+    assert upserted_rows[0]["identifier"] == AccountTable.__metatable_identifier__
+    assert upserted_rows[0]["meta_table_uid"] == "account-meta-table-uid"
+    assert upserted_rows[0]["contract_hash"] == markets_meta_table_contract_hash(AccountTable)
 
 
 def test_catalog_bootstrap_attaches_cataloged_application_table(monkeypatch) -> None:
@@ -233,7 +293,7 @@ def test_catalog_bootstrap_routes_cataloged_storage_table_through_register(
 
     assert result.attached_count == 1
     assert result.registered_count == 0
-    assert register_calls[0]["data_source_uid"] == "data-source-uid"
+    assert register_calls[0] == {"timeout": None}
     assert (
         result.registration.meta_table_by_identifier[
             markets_meta_table_identifier(AccountHoldingsStorage)
@@ -434,7 +494,7 @@ def test_catalog_bootstrap_registers_uncataloged_storage_table_without_platform_
 
     assert result.registered_count == 1
     assert result.attached_count == 0
-    assert register_calls[0]["data_source_uid"] == "data-source-uid"
+    assert register_calls[0] == {"timeout": None}
     assert upserted_rows[0]["meta_table_uid"] == "account-holdings-storage-uid"
     assert "storage_hash" not in upserted_rows[0]
 

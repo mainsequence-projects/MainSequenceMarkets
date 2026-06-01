@@ -34,6 +34,19 @@ from msm.models import (
 )
 
 
+def _install_fake_session_data_source(monkeypatch) -> None:
+    from mainsequence.client import models_metatables
+
+    monkeypatch.setattr(
+        models_metatables,
+        "get_session_data_source",
+        lambda: SimpleNamespace(
+            uid=str(uuid.uuid4()),
+            related_resource=SimpleNamespace(status="AVAILABLE"),
+        ),
+    )
+
+
 def test_markets_models_use_platform_managed_table_mixin() -> None:
     table_names: dict[str, type] = {}
 
@@ -393,11 +406,11 @@ def test_bond_asset_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
 def test_markets_models_build_platform_registration_requests_in_dependency_order(
     monkeypatch,
 ) -> None:
+    _install_fake_session_data_source(monkeypatch)
     pairs = []
 
     for model in markets_sqlalchemy_models():
         request = build_markets_registration_requests(
-            data_source_uid=str(uuid.uuid4()),
             models=[model],
         )[0]
         assert request.description == model.__metatable_description__
@@ -433,6 +446,7 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
 def test_markets_models_build_external_registration_requests_in_dependency_order(
     monkeypatch,
 ) -> None:
+    _install_fake_session_data_source(monkeypatch)
     pairs = []
 
     for model in markets_sqlalchemy_models():
@@ -488,7 +502,7 @@ def test_external_registration_mode_routes_storage_classes_through_sdk_register(
     )
 
     assert register_calls
-    assert register_calls[0]["data_source_uid"] == "data-source-uid"
+    assert register_calls[0] == {"timeout": None}
     assert (
         result.meta_table_by_identifier[markets_meta_table_identifier(AccountHoldingsStorage)].uid
         == "account-holdings-storage-uid"
@@ -611,7 +625,6 @@ def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monk
             "timeout": None,
             "identifier": "FakeModel",
             "management_mode": "platform_managed",
-            "data_source__uid": "data-source-uid",
         }
     ]
 
