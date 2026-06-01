@@ -245,7 +245,7 @@ The row class must not register, attach, or discover MetaTables on first use.
 Implementation of this ADR is not complete until the extension process is
 documented in:
 
-- `docs/knowledge/platform/meta_table_registration.md`, with a project-local
+- `docs/knowledge/msm/platform/meta_table_registration.md`, with a project-local
   `MyAssetDetailsTable` example that calls
   `msm.start_engine(models=[MyAssetDetailsTable])`;
 - the ms-markets bootstrap/registration skill, so agents route extension work to
@@ -292,7 +292,7 @@ separate registry, UID map, catalog writer, or table-name resolution layer.
 - [x] 14. Add focused tests for extension model selection, dependency closure,
   catalog row creation/attachment, runtime UID binding, duplicate identifiers,
   dependency cycles, and catalog rotation.
-- [x] 15. Update `docs/knowledge/platform/meta_table_registration.md` with the
+- [x] 15. Update `docs/knowledge/msm/platform/meta_table_registration.md` with the
   project-local `MyAssetDetailsTable` flow.
 - [x] 16. Update the packaged and installed ms-markets bootstrap/registration
   skill so agents use `MarketsMetaTableRow` for row API wrappers and

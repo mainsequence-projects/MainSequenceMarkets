@@ -267,9 +267,9 @@ bond asset identity extension.
   FK enforcement.
 - [x] Add tests under `tests/msm/api/` and `tests/msm/models/` for table shape,
   dependency order, enum normalization, validation, and the upsert workflow.
-- [x] Add dedicated bond docs under `docs/knowledge/assets/bonds.md` and link
+- [x] Add dedicated bond docs under `docs/knowledge/msm/assets/bonds.md` and link
   them from the asset knowledge page.
-- [x] Add an example under `examples/assets/` using the user-facing API only.
+- [x] Add an example under `examples/msm/assets/` using the user-facing API only.
 - [x] Update tutorial material and changelog when implemented.
 - [x] Update ms-markets asset skills if the final implementation changes the
   asset-extension workflow described there.

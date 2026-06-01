@@ -211,7 +211,7 @@ extension rather than by overloading the core currency spot relationship.
   handles.
 - [x] Add tests under `tests/msm/assets/` or `tests/msm/api/` for table shape,
   type normalization, and the currency upsert workflow.
-- [x] Add dedicated currency docs at `docs/knowledge/assets/currency.md`.
+- [x] Add dedicated currency docs at `docs/knowledge/msm/assets/currency.md`.
 - [x] Update asset knowledge docs, tutorial material, examples, and changelog.
 - [x] Add a minimal ms-markets asset-skill note showing how to create a
   currency asset extension; do not turn the skill into full currency

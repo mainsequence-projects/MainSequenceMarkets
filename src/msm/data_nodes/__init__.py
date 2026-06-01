@@ -27,7 +27,6 @@ _EXPORTS = {
     "StampedDataNodeConfiguration": ".utils",
     "StampedFrameMixin": ".utils",
     "Trades": ".execution",
-    "VirtualFundHoldings": ".accounts",
 }
 
 

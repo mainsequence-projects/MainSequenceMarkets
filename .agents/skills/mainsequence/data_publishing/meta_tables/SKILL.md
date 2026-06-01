@@ -102,6 +102,9 @@ Schema must come from SQLAlchemy table metadata, usually `__table_args__ = {"sch
 Always declare `__metatable_description__` on the model. The description must
 explain the table's business intention, row grain, and expected use, not only
 the schema. Column-level descriptions stay in `mapped_column(info={...})`.
+Every mapped column must include `info={"label": ..., "description": ...}`.
+The column description must explain what the value means in this table and how
+it is used, not just restate the column name or dtype.
 
 Use `__metatable_extra_hash_components__` when two backend-managed tables could
 otherwise produce the same storage hash because their storage-relevant shape is
@@ -124,13 +127,32 @@ class Account(PlatformManagedMetaTable, Base):
         "Customer account master records used to scope balances, holdings, and "
         "account-level limits."
     )
+    __metatable_labels__ = ["sdk-example"]
+
+    uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        info={
+            "label": "Account UID",
+            "description": "Stable account identifier referenced by dependent tables.",
+        },
+    )
+    name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Name",
+            "description": "Display name used to identify the account in examples.",
+        },
+    )
 
 
-account_meta_table = Account.register(labels=["sdk-example"])
+account_meta_table = Account.register()
 ```
 
-Pass `description=...` only when the call intentionally overrides the class
-default.
+Registration metadata belongs on the class. Do not pass description, labels,
+provisioning, data-source UID, hash namespace, time-index fields, or storage
+layout into `register()`.
 
 For platform-managed registration, the data source is resolved from the active Main Sequence project/session, the same way DataNode does. Do not require or thread a `data_source_uid` through normal platform-managed example code.
 
@@ -160,6 +182,11 @@ maps in the platform-managed path. Registration is the lifecycle path:
 returned `MetaTable` in a local process registry keyed by `storage_hash`, and
 uses the target `MetaTable.uid` in the child FK contract.
 
+Do not require users to provide foreign-key names. `MetaTableForeignKey(...)`
+accepts `name=...` only as an override; when omitted, the SDK derives a stable
+PostgreSQL-safe contract name from the child table and source column after the
+column is attached to the SQLAlchemy table.
+
 Use this pattern:
 
 ```python
@@ -176,7 +203,7 @@ both the schema and the table's intention.
 Example registration order:
 
 ```python
-asset_meta_table = Asset.register(...)
+asset_meta_table = Asset.register()
 ```
 
 The child registration registers `Account` first if it has not already been
@@ -216,11 +243,13 @@ When reviewing an existing MetaTable workflow, look for:
 
 - missing namespace or identifier
 - missing `__metatable_description__`, or a description that only repeats column names instead of table intention
+- mapped columns without `info.label` and `info.description`
 - backend-managed models that do not inherit `PlatformManagedMetaTable`
 - backend-managed examples that use namespace environment variables instead of a plain `sdk-examples` namespace
 - duplicate schema sources outside SQLAlchemy table metadata
 - external tables registered with unstable physical names
-- platform-managed child tables that are registered before parent tables
+- platform-managed examples that manually sequence parent registration instead
+  of relying on `MetaTableForeignKey(...)` recursive registration
 - external child registrations that do not map foreign-key targets to registered parent `MetaTable.uid` values
 - compiled SQL operations without complete table scope
 - raw SQL that hardcodes stale physical names
@@ -232,6 +261,7 @@ Do not claim success until you have checked:
 
 - the table contract matches the intended row contract
 - the table has an intention-rich `__metatable_description__`
+- every mapped column has an intention-rich `info.description`
 - indexes are intentional
 - foreign keys resolve to the correct dependency targets
 - management mode is correct
@@ -242,7 +272,8 @@ Do not claim success until you have checked:
 For related tables, also check:
 
 - aliases are readable
-- platform-managed parent tables are registered before child tables
+- platform-managed child registration recursively resolves parent
+  `MetaTableForeignKey(...)` targets
 - external child registration requests map FK targets to the registered parent UIDs
 - query results still match the expected response contract
 

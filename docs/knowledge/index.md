@@ -12,11 +12,14 @@ what it should not own, and which package should be extended for common changes.
 The library should feel like a typed market-domain API to users, not like a
 collection of SQLAlchemy internals. For row-oriented MetaTable data:
 
-- user-facing code imports Pydantic row objects from `msm.api.*`;
+- user-facing code imports core Pydantic row objects from `msm.api.*` and
+  portfolio Pydantic row objects from `msm_portfolios.api.*`;
 - schema/bootstrap code imports SQLAlchemy declarations from `msm.models.*Table`;
 - row classes declare their backing table through `__table__` and required
   schema set through `__required_tables__`;
-- `msm.start_engine(...)` is the preferred schema/bootstrap surface;
+- `msm.start_engine(...)` is the preferred core schema/bootstrap surface, while
+  `msm_portfolios.start_engine(...)` is the portfolio and virtual-fund package
+  surface;
 - row class methods such as `upsert(...)`, `filter(...)`, and lookups are the
   preferred ergonomic row-operation surface;
 - row operations use the active process runtime created by explicit startup
@@ -29,45 +32,23 @@ collection of SQLAlchemy internals. For row-oriented MetaTable data:
   DataNodes, and row APIs.
 
 This split is enforced across the markets MetaTables. `msm.models` exports
-`*Table` declarations only; row names such as `Asset`, `Portfolio`, `Fund`,
-`Order`, and `Trade` live in `msm.api.*`.
+core `*Table` declarations only; row names such as `Asset`, `Order`, and
+`Trade` live in `msm.api.*`. Portfolio row names such as `Portfolio` and `Fund`
+live in `msm_portfolios.api.*`.
 
 This pattern is recorded in
 [ADR 0008](../ADR/0008-metatable-table-and-api-model-split.md) and should guide
 new MetaTable-facing APIs unless a more specific ADR overrides it.
 
-## Concept Map
+## Package Map
 
-- [Accounts](accounts/index.md): account identity, account holdings, account
-  groups, and account target-position assignments.
-- [Assets](assets/index.md): asset identity, type registration, category
-  membership, relational extensions such as bonds, currency pairs, and
-  OpenFIGI, and links to asset-indexed DataNode workflows.
-- [Asset-Indexed DataNodes](assets/asset_indexed_data_nodes.md): market
-  DataNode tables keyed by `Asset.unique_identifier`, including `AssetSnapshot`.
-- [Client](client/index.md): client-facing models and HTTP/platform object
-  wrappers.
-- [Derivatives](derivatives/index.md): futures and derivative contract detail
-  tables that extend canonical assets and may reference non-asset underlyings.
-- [Execution](execution/index.md): order managers, target quantities, orders,
-  order events, trades, and execution errors.
-- [Indexes](indices/index.md): non-tradable index reference data used by
-  derivative underlyings.
-- [Models](models/index.md): SQLAlchemy market-domain models and MetaTable
-  registration order.
-- [Platform](platform/index.md): shared Main Sequence integration primitives,
-  MetaTable helpers, and market DataNode base behavior.
-- [Portfolios](portfolios/index.md): portfolio configuration, signal weights,
-  rebalance strategies, canonical portfolio data, and VFB workflows.
-- [Virtual Funds](virtualfunds/index.md): fund rows that bind accounts to
-  portfolios, plus `VirtualFundHoldings` / `FundHoldingsStorage`.
-- [Pricing](pricing/index.md): optional `msm_pricing` priceable instruments,
-  QuantLib helpers, curves, fixings, market-data context bindings, and pricing
-  data interfaces.
-- [Repositories](repositories/index.md): compiled database operations and CRUD
-  boundaries over market-domain models.
-- [Services](services/index.md): application-level orchestration over repository
-  operations.
+- [msm](msm/index.md): core market reference data, assets, accounts,
+  execution, indexes, platform bootstrap, repositories, and services.
+- [msm_portfolios](msm_portfolios/index.md): portfolio construction,
+  portfolio DataNodes, virtual funds, and fund holdings.
+- [msm_pricing](msm_pricing/index.md): optional pricing package with priceable
+  instruments, QuantLib helpers, curves, fixings, market-data context bindings,
+  and pricing data interfaces.
 
 ## Documentation Pattern
 

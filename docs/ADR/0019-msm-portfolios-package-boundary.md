@@ -2,11 +2,11 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
-`msm.portfolios` has grown beyond a small core submodule. It is effectively a
+`msm_portfolios` has grown beyond a small core submodule. It is effectively a
 portfolio application layer inside `msm`: it owns portfolio registry rows,
 portfolio DataNode storage, virtual funds, portfolio construction logic,
 contributed price and signal nodes, rebalance strategies, and public row APIs.
@@ -96,8 +96,9 @@ The new package owns:
 
 - portfolio registry MetaTables:
   - `PortfolioTable`
-  - `PortfolioAssetDetailTable`
   - `PortfolioMetadataTable`
+  - optional portfolio-index linkage through core `IndexTable`, not
+    `AssetTable`;
 - virtual-fund registry MetaTables:
   - `FundTable` initially, with a future naming decision on whether the public
     row API should become `VirtualFund`;
@@ -106,8 +107,9 @@ The new package owns:
   - `RebalanceStrategyMetadataTable`
 - portfolio and virtual-fund public row APIs:
   - `Portfolio`
-  - `PortfolioAssetDetail`
   - `PortfolioMetadata`
+  - portfolio-index creation/linking helpers that produce `Index` rows when a
+    portfolio needs index-like publication;
   - `Fund` or `VirtualFund`
   - `SignalMetadata`
   - `RebalanceStrategyMetadata`
@@ -128,6 +130,68 @@ The new package owns:
 - portfolio configuration models, asset scope helpers, contributed price/signal
   nodes, utilities, and rebalance strategies;
 - portfolio/virtual-fund examples, docs, skills, and tests.
+
+### Portfolio Identity Model Correction
+
+The initial migration preserved `PortfolioAssetDetailTable`, but that model is
+wrong for the intended portfolio domain.
+
+`PortfolioTable` must be the source of truth for portfolio identity and the
+DataNode UIDs used to build or publish the portfolio. It must not store
+construction-mode booleans, portfolio statistics, or generic JSON metadata.
+Those are workflow/configuration or derived-output concerns, not portfolio
+identity.
+
+Target shape:
+
+```text
++-----------------------------+
+| PortfolioTable              |
+|-----------------------------|
+| uid PK                      |
+| unique_identifier unique    |
+| calendar_name               |
+| portfolio_weights_node_uid  |-----> PortfolioWeights DataNode / storage
+| signal_weights_node_uid     |-----> SignalWeights DataNode / storage
+| portfolio_values_node_uid   |-----> PortfoliosDataNode / storage
+| optional portfolio_index_uid|-----> IndexTable.uid
++-----------------------------+       optional PortfolioIndex, not an Asset
+```
+
+Portfolios are not assets. A portfolio may optionally create or link a
+portfolio index, but that index must be modeled through core `IndexTable`, not
+through `AssetTable`. The optional index is a representation of the portfolio as
+an index-like observable series; it is not required for the portfolio row to
+exist and it is not a portfolio constituent.
+
+The following relationship should be removed from the target model:
+
+```text
++-----------------------------+        optional canonical asset  +-----------------------------+
+| PortfolioAssetDetailTable   |--------------------------------->| AssetTable                  |
+|-----------------------------| asset_uid                       |-----------------------------|
+| uid PK                      |                                  | uid PK                      |
+| portfolio_uid unique FK     |                                  | unique_identifier unique    |
+| asset_uid nullable FK       |                                  +-----------------------------+
+| asset_unique_identifier     |
++-----------------------------+
+```
+
+This table duplicates portfolio-index identity and points it at the wrong core
+concept. If a workflow needs to describe holdings, constituents, or target
+weights, those belong in portfolio DataNode storage or a future explicit
+constituent model, not in a one-to-one "asset detail" row.
+
+Portfolio DataNode storage should also stop using asset-language identity such
+as `portfolio_index_asset_unique_identifier`. Storage keys should be expressed
+in portfolio/index terms:
+
+- portfolio weights: portfolio identity plus held asset identity;
+- portfolio values: portfolio identity;
+- optional portfolio index publication: linked `IndexTable` identity.
+
+The cleanup should avoid compatibility shims unless a later explicit
+compatibility decision requires them.
 
 ### Bootstrap Boundary
 
@@ -230,8 +294,8 @@ src/msm_portfolios/
     signals/
   rebalance_strategy/
   asset_scope.py
+  configuration.py
   enums.py
-  models.py
   utils.py
 ```
 
@@ -261,102 +325,134 @@ explicit compatibility decision requires it.
 
 ### Stage 0: ADR And Boundary Audit
 
-- [ ] Record this ADR.
-- [ ] Audit every import of `msm.portfolios`, `msm.api.portfolios`,
+- [x] Record this ADR.
+- [x] Audit imports of `msm.portfolios`, `msm.api.portfolios`,
   `msm.models.portfolios`, `msm.models.funds`, `SignalMetadataTable`,
   `RebalanceStrategyMetadataTable`, `FundHoldingsStorage`, and
   `VirtualFundHoldings`.
-- [ ] Confirm whether public row naming remains `Fund` or moves to
-  `VirtualFund`.
-- [ ] Confirm no compatibility shims are required.
+- [x] Confirm public row naming remains `Fund` for this migration.
+- [x] Confirm no compatibility shims are required.
 
 ### Stage 1: Package Skeleton And Bootstrap
 
-- [ ] Add `src/msm_portfolios`.
-- [ ] Add `msm_portfolios.start_engine(...)` and runtime objects.
-- [ ] Reuse `msm.maintenance.catalog` and core repository context machinery.
-- [ ] Add `msm_portfolios.models.portfolio_sqlalchemy_models()` or equivalent
-  model graph resolver in dependency order.
-- [ ] Add package-boundary tests proving `import msm` does not import
+- [x] Add `src/msm_portfolios`.
+- [x] Add `msm_portfolios.start_engine(...)` and runtime helpers.
+- [x] Reuse `msm.maintenance.catalog` and core repository context machinery.
+- [x] Add `msm_portfolios.models.portfolio_sqlalchemy_models()` model graph
+  resolver in dependency order.
+- [x] Add package-boundary tests proving core `msm` does not import
   `msm_portfolios`.
 
 ### Stage 2: Move Portfolio And Virtual-Fund MetaTables
 
-- [ ] Move `PortfolioTable`, `PortfolioAssetDetailTable`, and
+- [x] Move `PortfolioTable`, `PortfolioAssetDetailTable`, and
   `PortfolioMetadataTable`.
-- [ ] Move `FundTable`.
-- [ ] Move `SignalMetadataTable` and `RebalanceStrategyMetadataTable`.
-- [ ] Remove those models from core `msm.models.markets_sqlalchemy_models()`.
-- [ ] Remove those exports from core `msm.models`.
-- [ ] Update model tests under `tests/msm_portfolios/models`.
+- [x] Move `FundTable`.
+- [x] Move `SignalMetadataTable` and `RebalanceStrategyMetadataTable`.
+- [x] Remove those models from core `msm.models.markets_sqlalchemy_models()`.
+- [x] Remove those exports from core `msm.models`.
+- [x] Update model tests under `tests/msm_portfolios/models`.
 
 ### Stage 3: Resolve Execution/Fund Coupling
 
-- [ ] Remove hard `MetaTableForeignKey(FundTable, ...)` declarations from core
+- [x] Remove hard `MetaTableForeignKey(FundTable, ...)` declarations from core
   execution models.
-- [ ] Remove `related_fund_uid` from core execution models, APIs, DataNode
-  storage classes, services, tests, and docs.
-- [ ] Update execution API required table lists so execution does not require
+- [x] Remove `related_fund_uid` from core execution models, APIs, repository
+  filters, tests, and docs.
+- [x] Update execution API required table lists so execution does not require
   portfolio/virtual-fund tables.
-- [ ] Keep execution itself in core `msm`; only virtual-fund-specific extension
+- [x] Keep execution itself in core `msm`; only virtual-fund-specific extension
   behavior belongs in `msm_portfolios`.
-- [ ] Add tests proving core execution bootstrap does not require `FundTable`.
+- [x] Add tests proving core execution bootstrap does not require `FundTable`.
 
 ### Stage 4: Move Row APIs, Repositories, And Services
 
-- [ ] Move portfolio row APIs to `msm_portfolios.api.portfolios`.
-- [ ] Move virtual-fund row APIs to `msm_portfolios.api.virtual_funds`.
-- [ ] Move signal/rebalance metadata row APIs to
+- [x] Move portfolio row APIs to `msm_portfolios.api.portfolios`.
+- [x] Move virtual-fund row APIs to `msm_portfolios.api.virtual_funds`.
+- [x] Move signal/rebalance metadata row APIs to
   `msm_portfolios.api.market_metadata`.
-- [ ] Move portfolio and fund repositories/services into `msm_portfolios`.
-- [ ] Move fund holdings frame builders into `msm_portfolios.services.holdings`.
-- [ ] Update public API tests under `tests/msm_portfolios/api`.
+- [x] Move portfolio and fund repositories/services into `msm_portfolios`.
+- [x] Move fund holdings frame builders into `msm_portfolios.services.holdings`.
+- [x] Update public API tests under `tests/msm_portfolios/api`.
 
 ### Stage 5: Move DataNodes And Storage
 
-- [ ] Move portfolio DataNode storage classes into `msm_portfolios`.
-- [ ] Move portfolio DataNode logic into `msm_portfolios`.
-- [ ] Move `VirtualFundHoldings` and `FundHoldingsStorage` into
+- [x] Move portfolio DataNode storage classes into `msm_portfolios`.
+- [x] Move portfolio DataNode logic into `msm_portfolios`.
+- [x] Move `VirtualFundHoldings` and `FundHoldingsStorage` into
   `msm_portfolios`.
-- [ ] Remove portfolio and virtual-fund DataNode handles from core
+- [x] Remove portfolio and virtual-fund DataNode handles from core
   `msm.bootstrap.DATA_NODE_HANDLE_NAMES` and `MarketsRuntime.data_nodes`.
-- [ ] Remove portfolio storage classes from core model registration.
-- [ ] Update DataNode tests under `tests/msm_portfolios/data_nodes`.
+- [x] Remove portfolio storage classes from core model registration.
+- [x] Update DataNode tests under `tests/msm_portfolios/data_nodes`.
 
 ### Stage 6: Move Contrib And Strategy Code
 
-- [ ] Move contributed price nodes under `msm_portfolios.contrib.prices`.
-- [ ] Move contributed signal nodes under `msm_portfolios.contrib.signals`.
-- [ ] Move rebalance strategies under `msm_portfolios.rebalance_strategy`.
-- [ ] Update imports inside strategy/configuration modules.
-- [ ] Validate that portfolio contrib imports do not load from core
-  `msm.portfolios`.
+- [x] Move contributed price nodes under `msm_portfolios.contrib.prices`.
+- [x] Move contributed signal nodes under `msm_portfolios.contrib.signals`.
+- [x] Move rebalance strategies under `msm_portfolios.rebalance_strategy`.
+- [x] Move portfolio configuration models to `msm_portfolios.configuration`.
+- [x] Update imports inside strategy/configuration modules.
+- [x] Validate that portfolio contrib imports do not load from core `msm`.
 
 ### Stage 7: Documentation, Examples, And Skills
 
-- [ ] Update `docs/knowledge/portfolios/index.md` to describe
+- [x] Update `docs/knowledge/msm_portfolios/portfolios/index.md` to describe
   `msm_portfolios`.
-- [ ] Update `docs/knowledge/virtualfunds/index.md` to describe
+- [x] Update `docs/knowledge/msm_portfolios/virtualfunds/index.md` to describe
   `msm_portfolios`.
-- [ ] Update docs navigation and tutorial portfolio workflow imports.
-- [ ] Move or update portfolio examples to import from `msm_portfolios`.
-- [ ] Fix the typo in `examples/portfolios/portflio_equal_weights_example.py`
-  during the example migration.
-- [ ] Update packaged skills that reference portfolio or virtual-fund imports.
-- [ ] Add a changelog entry.
+- [x] Update docs navigation and tutorial portfolio workflow imports.
+- [x] Move or update portfolio examples to import from `msm_portfolios`.
+- [x] Collapse `examples/msm_portfolios/` to the single
+  `examples/msm_portfolios/portfolio_equal_weights_example.py` workflow.
+- [x] Verify packaged skills do not reference stale portfolio or virtual-fund
+  imports.
+- [x] Add a changelog entry.
 
 ### Stage 8: Validation
 
-- [ ] Run focused `py_compile` for moved modules.
-- [ ] Run focused `ruff` for `src/msm_portfolios`, touched `src/msm` modules,
-  and moved tests.
-- [ ] Run focused tests for core import boundaries, core bootstrap,
-  portfolio bootstrap, DataNode storage contracts, row APIs, repositories, and
-  examples.
-- [ ] Run `git diff --check`.
-- [ ] Run MkDocs strict build when docs are updated.
-- [ ] Build the wheel and verify `msm`, `msm_pricing`, and `msm_portfolios` are
+- [x] Run focused `py_compile` for moved modules and examples.
+- [x] Run focused `ruff` for `src/msm_portfolios`, touched `src/msm` modules,
+  moved tests, and touched examples.
+- [x] Run focused tests for core import boundaries, core bootstrap, portfolio
+  bootstrap, DataNode storage contracts, row APIs, repositories, and catalog
+  bootstrap fallout.
+- [x] Run `git diff --check`.
+- [x] Run MkDocs strict build.
+- [x] Build the wheel and verify `msm`, `msm_pricing`, and `msm_portfolios` are
   packaged.
+
+### Stage 9: Portfolio Identity Relationship Cleanup
+
+- [x] Remove `PortfolioAssetDetailTable` from `msm_portfolios.models`.
+- [x] Remove `PortfolioAssetDetail` row API, create/update/search/delete
+  repository helpers, service wrappers, exports, and tests.
+- [x] Remove `asset_detail` nested payload handling from `Portfolio.upsert`.
+- [x] Replace `PortfolioTable.portfolio_index_uid` with an optional
+  `portfolio_index_uid` foreign key to core `IndexTable.uid`.
+- [x] Remove `PortfolioTable.portfolio_index_unique_identifier`; the direct
+  `IndexTable` foreign key is enough for table identity.
+- [x] Remove unnecessary `PortfolioTable` fields:
+  `builds_from_target_weights`, `builds_from_predictions`,
+  `builds_from_target_positions`,
+  `tracking_funds_expected_exposure_from_latest_holdings`, `stats_json`, and
+  `metadata_json`.
+- [ ] Add or reuse a typed helper workflow that creates an `Index` row for
+  portfolios that need index-like publication; do not create portfolio assets.
+- [x] Rename portfolio DataNode storage columns and helpers from
+  `portfolio_index_asset_unique_identifier` to
+  `portfolio_index_unique_identifier`.
+- [x] Update `get_or_create_portfolio_index(...)` and related DataNode
+  code to use portfolio index terminology and `IndexTable`, not `AssetTable`.
+- [x] Update `examples/msm_portfolios/` so portfolio examples no longer pass
+  asset-detail payloads or create portfolio assets.
+- [x] Update `docs/knowledge/msm_portfolios/portfolios/index.md` with the
+  corrected ASCII diagrams showing `PortfolioTable` owning the portfolio details
+  and DataNode UID links, plus optional `PortfolioTable -> IndexTable`.
+- [x] Update tests under `tests/msm_portfolios/` for the new model graph,
+  bootstrap dependency order, row APIs, and DataNode storage identity columns.
+- [x] Run focused compile, ruff, tests, strict MkDocs build, and
+  `git diff --check`.
 
 ## Consequences
 

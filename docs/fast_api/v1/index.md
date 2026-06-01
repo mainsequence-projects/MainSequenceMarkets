@@ -17,13 +17,15 @@ This API is intentionally thin:
 ## Runtime Bootstrap
 
 When `MSM_AUTO_REGISTER_NAMESPACE` is set for local development, `apps/v1`
-now performs startup-time schema bootstrap instead of waiting for the first
+now performs startup-time runtime attachment instead of waiting for the first
 request to hit a row operation.
 
 Current local-dev behavior:
 
 - the app calls `msm.start_engine(...)` during startup for the `apps/v1`
   table set
+- schema and catalog mutation must already have been handled by
+  `msm migrations upgrade`
 - the app uses the real project/session data source already configured for the
   Main Sequence client session
 - if the session cannot resolve a valid DynamicTable data source, startup

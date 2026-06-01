@@ -69,8 +69,8 @@ Before changing code, inspect the local implementation relevant to the task:
 5. `src/msm_pricing/data_nodes/curves.py`
 6. `src/msm_pricing/pricing_engine/resolvers.py`
 7. `src/msm_pricing/meta_tables.py`
-8. `examples/pricing/bond_pricing_example/main.py`
-9. `examples/pricing/utils/mock_market_data.py`
+8. `examples/msm_pricing/bond_pricing_example/main.py`
+9. `examples/msm_pricing/utils/mock_market_data.py`
 10. `docs/ADR/0013-current-asset-pricing-details.md`
 
 For generic SDK semantics, verify against the latest Main Sequence docs instead
@@ -324,8 +324,8 @@ For instrument payloads:
 
 For a full workflow, prefer adapting:
 
-- `examples/pricing/bond_pricing_example/main.py`
-- `examples/pricing/utils/mock_market_data.py`
+- `examples/msm_pricing/bond_pricing_example/main.py`
+- `examples/msm_pricing/utils/mock_market_data.py`
 
 An example should print or otherwise expose each step:
 

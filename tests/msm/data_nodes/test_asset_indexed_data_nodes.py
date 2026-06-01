@@ -12,7 +12,7 @@ os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
-from msm.data_nodes.accounts import AccountHoldings, VirtualFundHoldings
+from msm.data_nodes.accounts import AccountHoldings
 import msm.data_nodes.execution as execution_module
 from msm.data_nodes.assets import (
     AssetSnapshot,
@@ -33,10 +33,6 @@ from msm.data_nodes.storage import AssetSnapshotsStorage
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.models import AssetTable, markets_sqlalchemy_models
 from msm.models.registration import markets_foreign_key_target_identifiers
-from msm.portfolios.asset_scope import ASSET_UNIQUE_IDENTIFIER
-from msm.portfolios.data_nodes.portfolio_weights import PortfolioWeights
-from msm.portfolios.data_nodes.portfolios import PortfoliosDataNode
-from msm.portfolios.data_nodes.signal_weights import SignalWeights
 from msm.settings import (
     ASSET_UNIQUE_IDENTIFIER_DIMENSION as SETTINGS_ASSET_DIMENSION,
 )
@@ -47,7 +43,6 @@ from msm_pricing.meta_tables import pricing_sqlalchemy_models
 
 def test_asset_identity_dimension_is_shared_with_settings() -> None:
     assert ASSET_UNIQUE_IDENTIFIER_DIMENSION == SETTINGS_ASSET_DIMENSION
-    assert ASSET_UNIQUE_IDENTIFIER == SETTINGS_ASSET_DIMENSION
     assert AssetIndexedDataNode.asset_identity_dimension == SETTINGS_ASSET_DIMENSION
 
 
@@ -91,14 +86,10 @@ def test_root_asset_scope_module_is_removed() -> None:
         AssetSnapshot,
         AssetPricingDetail,
         AccountHoldings,
-        VirtualFundHoldings,
         Orders,
         OrderEvents,
         Trades,
         ExecutionErrors,
-        PortfolioWeights,
-        PortfoliosDataNode,
-        SignalWeights,
     ],
 )
 def test_asset_indexed_nodes_expose_storage_first_surface(
@@ -128,7 +119,6 @@ def test_asset_indexed_nodes_expose_storage_first_surface(
 
 def test_holdings_mock_frame_aliases_are_not_public_api() -> None:
     assert not hasattr(AccountHoldings, "build_mock_account_frame")
-    assert not hasattr(VirtualFundHoldings, "build_mock_fund_frame")
 
 
 def test_execution_schema_constants_and_config_fields_are_removed() -> None:

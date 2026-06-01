@@ -12,20 +12,16 @@ from msm.models import (
     AccountTable,
     AssetTable,
     ExecutionErrorTable,
-    FundTable,
     OrderManagerTable,
     OrderStatusEventTable,
     OrderTable,
     OrderTargetQuantityTable,
-    PortfolioTable,
     TradeTable,
 )
 
 EXECUTION_REQUIRED_TABLES: list[type[Any]] = [
     AssetTable,
     AccountTable,
-    PortfolioTable,
-    FundTable,
     OrderManagerTable,
     OrderTargetQuantityTable,
     OrderTable,
@@ -136,7 +132,6 @@ class Order(MarketsMetaTableRow):
     order_manager_uid: uuid.UUID | None = None
     asset_uid: uuid.UUID | None = None
     asset_unique_identifier: str
-    related_fund_uid: uuid.UUID | None = None
     related_account_uid: uuid.UUID | None = None
     time_in_force: str = "gtc"
     limit_price: Decimal | None = None
@@ -180,7 +175,6 @@ class OrderCreate(BaseModel):
     order_manager_uid: uuid.UUID | str | None = None
     asset_uid: uuid.UUID | str | None = None
     asset_unique_identifier: str = Field(min_length=1, max_length=255)
-    related_fund_uid: uuid.UUID | str | None = None
     related_account_uid: uuid.UUID | str | None = None
     time_in_force: str = "gtc"
     limit_price: Decimal | int | float | str | None = None
@@ -201,7 +195,6 @@ class OrderUpdate(BaseModel):
     filled_price: Decimal | int | float | str | None = None
     order_manager_uid: uuid.UUID | str | None = None
     asset_uid: uuid.UUID | str | None = None
-    related_fund_uid: uuid.UUID | str | None = None
     related_account_uid: uuid.UUID | str | None = None
     time_in_force: str | None = Field(default=None, max_length=20)
     limit_price: Decimal | int | float | str | None = None
@@ -255,7 +248,6 @@ class Trade(MarketsMetaTableRow):
     asset_unique_identifier: str
     quantity: Decimal
     price: Decimal
-    related_fund_uid: uuid.UUID | None = None
     related_account_uid: uuid.UUID | None = None
     related_order_uid: uuid.UUID | None = None
     comments: str | None = None
@@ -275,7 +267,6 @@ class TradeCreate(BaseModel):
     asset_unique_identifier: str = Field(min_length=1, max_length=255)
     quantity: Decimal | int | float | str
     price: Decimal | int | float | str
-    related_fund_uid: uuid.UUID | str | None = None
     related_account_uid: uuid.UUID | str | None = None
     related_order_uid: uuid.UUID | str | None = None
     comments: str | None = None
@@ -293,7 +284,6 @@ class TradeUpsert(TradeCreate):
 class TradeUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    related_fund_uid: uuid.UUID | str | None = None
     related_account_uid: uuid.UUID | str | None = None
     related_order_uid: uuid.UUID | str | None = None
     comments: str | None = None
@@ -314,7 +304,6 @@ class ExecutionError(MarketsMetaTableRow):
     error_traceback: str
     error_message: str
     related_account_uid: uuid.UUID | None = None
-    related_fund_uid: uuid.UUID | None = None
     time_recorded: dt.datetime
     metadata_json: dict[str, Any] | None = None
 
@@ -326,7 +315,6 @@ class ExecutionErrorCreate(BaseModel):
     error_traceback: str
     error_message: str
     related_account_uid: uuid.UUID | str | None = None
-    related_fund_uid: uuid.UUID | str | None = None
     time_recorded: dt.datetime
     metadata_json: dict[str, Any] | None = None
 

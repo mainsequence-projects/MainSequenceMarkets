@@ -1,0 +1,1 @@
+"""Asset examples for msm."""

@@ -137,3 +137,120 @@ def test_catalog_rotate_command_emits_json(monkeypatch, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload["identifier"] == "Account"
     assert payload["meta_table_uid"] == "account-meta-table-uid"
+
+
+def test_migrations_current_command_routes_to_migration_command(monkeypatch, capsys) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_migrations_current_command(
+        *,
+        data_source_uid: str | None = None,
+        namespace: str | None = None,
+        emit_json: bool = False,
+    ) -> int:
+        calls.append(
+            {
+                "data_source_uid": data_source_uid,
+                "namespace": namespace,
+                "emit_json": emit_json,
+            }
+        )
+        return 0
+
+    monkeypatch.setattr(cli_main, "migrations_current_command", fake_migrations_current_command)
+
+    exit_code = main(
+        [
+            "migrations",
+            "current",
+            "--data-source-uid",
+            "data-source-uid",
+            "--namespace",
+            "mainsequence.examples",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls == [
+        {
+            "data_source_uid": "data-source-uid",
+            "namespace": "mainsequence.examples",
+            "emit_json": True,
+        }
+    ]
+    assert capsys.readouterr().out == ""
+
+
+def test_migrations_upgrade_requires_data_source_uid(capsys) -> None:
+    with pytest.raises(SystemExit):
+        main(["migrations", "upgrade"])
+    assert "data-source-uid" in capsys.readouterr().err
+
+
+def test_migrations_current_command_emits_json(monkeypatch, capsys) -> None:
+    import msm.maintenance.migrations as migrations
+
+    result = SimpleNamespace(
+        to_payload=lambda: {
+            "command": "current",
+            "migration_namespace": "mainsequence.markets",
+            "expected_revisions": ["0001_baseline"],
+            "migration_registry_uid": "migration-registry-uid",
+            "status": {"current_revision": "0001_baseline"},
+            "synced": [],
+            "applied": [],
+            "skipped": [],
+            "catalog_rows": [],
+            "catalog_status": [],
+            "ok": True,
+        }
+    )
+    calls: list[dict[str, object]] = []
+
+    def fake_current_migrations(
+        *,
+        data_source_uid: str | None = None,
+        namespace: str | None = None,
+    ):
+        calls.append({"data_source_uid": data_source_uid, "namespace": namespace})
+        return result
+
+    monkeypatch.setattr(migrations, "current_migrations", fake_current_migrations)
+
+    exit_code = cli_main.migrations_current_command(
+        data_source_uid="data-source-uid",
+        namespace="mainsequence.markets",
+        emit_json=True,
+    )
+
+    assert exit_code == 0
+    assert calls == [
+        {
+            "data_source_uid": "data-source-uid",
+            "namespace": "mainsequence.markets",
+        }
+    ]
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["expected_revisions"] == ["0001_baseline"]
+
+
+def test_migrations_current_command_reports_sdk_error(monkeypatch, capsys) -> None:
+    import msm.maintenance.migrations as migrations
+
+    def fake_current_migrations(
+        *,
+        data_source_uid: str | None = None,
+        namespace: str | None = None,
+    ):
+        raise migrations.MigrationSupportError("SDK migration API is missing")
+
+    monkeypatch.setattr(migrations, "current_migrations", fake_current_migrations)
+
+    exit_code = cli_main.migrations_current_command(emit_json=True)
+
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "SDK migration API is missing" in captured.err

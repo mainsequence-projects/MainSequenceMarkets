@@ -58,6 +58,10 @@ Implementation decisions should be recorded under `docs/ADR`.
 
 Start with the typed row API for simple workflows:
 
+```bash
+msm migrations upgrade --data-source-uid <dynamic-table-data-source-uid>
+```
+
 ```python
 import msm
 
@@ -81,7 +85,7 @@ objects, while schema code works with SQLAlchemy `*Table` declarations.
 `Asset.upsert(...)` and `Asset.filter(...)` use the active markets runtime.
 They do not attach to MetaTables or create schemas on first use.
 
-For application startup that wants a controlled schema preflight, bootstrap
+For application startup that wants a controlled runtime preflight, attach
 directly:
 
 ```python
@@ -92,9 +96,10 @@ context = runtime.context
 asset_table = runtime.table("Asset")
 ```
 
-That startup preflight uses the internal maintenance catalog. Existing cataloged
-tables are attached, pre-catalog platform tables are imported into the catalog,
-and only missing requested tables are registered.
+That startup preflight verifies SDK-managed migration status and uses the
+internal maintenance catalog. Cataloged tables are attached by platform
+`MetaTable.uid`; missing or stale catalog rows fail startup and should be fixed
+through `msm migrations upgrade`.
 
 For development examples that should use an example namespace, set
 `MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`, then call
@@ -107,9 +112,10 @@ Legacy imports such as `from msm.models import Asset` have been removed; use
 `from msm.api.assets import Asset` for row operations and
 `from msm.models import AssetTable` for SQLAlchemy schema declarations.
 
-Treat explicit schema creation as process startup work: run it once during
-application initialization when the process owns that preflight. Repeated calls
+Treat explicit runtime attachment as process startup work: run it once during
+application initialization after admin migrations are current. Repeated calls
 with the same arguments return the cached runtime; different arguments are
 rejected for that process. See
-[MetaTable Registration](knowledge/platform/meta_table_registration.md) and
+[MetaTable Registration](knowledge/msm/platform/meta_table_registration.md),
+[MetaTable Migrations](knowledge/msm/platform/metatable_migrations.md), and
 [Market Workflows](tutorial/market_workflows.md).

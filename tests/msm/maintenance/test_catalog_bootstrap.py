@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
-from mainsequence.client.exceptions import ConflictError
+from mainsequence.client.exceptions import ConflictError, NotFoundError
 from mainsequence.meta_tables import MetaTableForeignKey
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -381,6 +381,71 @@ def test_catalog_bootstrap_attaches_cataloged_application_table(monkeypatch) -> 
     assert resolved.description == "Asset catalog rows."
 
 
+def test_catalog_bootstrap_invalidates_dead_catalog_uid_and_registers(monkeypatch) -> None:
+    _disable_physical_contract_validation(monkeypatch)
+    registered_meta_table = _meta_table(
+        "new-asset-meta-table-uid",
+        **_catalog_row_identity(AssetTable),
+        description="New asset catalog rows.",
+        storage_hash=AssetTable.__table__.name,
+    )
+    catalog_row = {
+        "uid": "catalog-row-uid",
+        **_catalog_row_identity(AssetTable),
+        "description": "Dead asset catalog row.",
+        "meta_table_uid": "dead-asset-meta-table-uid",
+        "contract_hash": markets_meta_table_contract_hash(AssetTable),
+    }
+    deleted_rows: list[str] = []
+    upserted_rows: list[dict] = []
+
+    monkeypatch.setattr(
+        catalog,
+        "bootstrap_catalog_table",
+        lambda **_kwargs: _meta_table(
+            "catalog-meta-table-uid",
+            identifier="MarketsMetaTableCatalog",
+            storage_hash="catalog-storage-hash",
+        ),
+    )
+    monkeypatch.setattr(catalog, "search_model", lambda *_args, **_kwargs: {"rows": [catalog_row]})
+    monkeypatch.setattr(
+        catalog.MetaTable,
+        "get_by_uid",
+        staticmethod(lambda **_kwargs: (_ for _ in ()).throw(NotFoundError("missing"))),
+    )
+    monkeypatch.setattr(catalog, "_resolve_platform_meta_table", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        AssetTable,
+        "register",
+        classmethod(lambda *_args, **_kwargs: registered_meta_table),
+    )
+
+    def fake_delete_model(_context, **kwargs):
+        deleted_rows.append(str(kwargs["uid"]))
+        return {"rows": []}
+
+    def fake_upsert_model(_context, **kwargs):
+        upserted_rows.append(dict(kwargs["values"]))
+        return {"rows": [kwargs["values"]]}
+
+    monkeypatch.setattr(catalog, "delete_model", fake_delete_model)
+    monkeypatch.setattr(catalog, "upsert_model", fake_upsert_model)
+
+    result = catalog.bootstrap_markets_meta_tables_from_catalog(models=[AssetTable])
+
+    assert deleted_rows == ["catalog-row-uid"]
+    assert result.attached_count == 0
+    assert result.imported_count == 0
+    assert result.registered_count == 1
+    assert (
+        result.registration.meta_table_by_identifier[AssetTable.__metatable_identifier__].uid
+        == "new-asset-meta-table-uid"
+    )
+    assert upserted_rows[0]["meta_table_uid"] == "new-asset-meta-table-uid"
+    assert upserted_rows[0]["description"] == "New asset catalog rows."
+
+
 def test_catalog_bootstrap_routes_cataloged_storage_table_through_register(
     monkeypatch,
 ) -> None:
@@ -535,6 +600,17 @@ def test_catalog_bootstrap_rejects_catalog_contract_drift(monkeypatch) -> None:
         catalog,
         "search_model",
         lambda *_args, **_kwargs: {"rows": [catalog_row]},
+    )
+    monkeypatch.setattr(
+        catalog.MetaTable,
+        "get_by_uid",
+        staticmethod(
+            lambda **_kwargs: _meta_table(
+                "asset-meta-table-uid",
+                **_catalog_row_identity(AssetTable),
+                storage_hash=AssetTable.__table__.name,
+            )
+        ),
     )
 
     with pytest.raises(catalog.CatalogBootstrapError, match="contract drift"):

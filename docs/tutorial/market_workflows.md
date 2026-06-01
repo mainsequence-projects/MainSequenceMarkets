@@ -92,7 +92,7 @@ Do not delete assets during normal setup. Use cleanup only for temporary or
 organization-owned custom assets. Shared public/mastered assets should remain
 stable so downstream workflows do not lose their canonical identity.
 
-See `examples/assets/asset_crud_workflow.py` for the focused workflow. It uses
+See `examples/msm/assets/asset_crud_workflow.py` for the focused workflow. It uses
 explicit example-namespace bootstrap for the required `AssetType`, `Asset`, and
 `OpenFigiDetails` MetaTables, creates temporary custom assets, resolves
 `BBG00FNFPQH4` through OpenFIGI, writes an AssetSnapshot frame from the returned
@@ -148,8 +148,8 @@ Typed asset APIs normalize asset type keys before writing them, so `"Currency"`
 is stored as `currency`, `"Currency Spot"` is stored as `currency_spot`, and
 `"Future"` is stored as `future`.
 
-See `examples/assets/currency_spot_workflow.py` and
-[Currency Assets](../knowledge/assets/currency.md) for the detailed schema and
+See `examples/msm/assets/currency_spot_workflow.py` and
+[Currency Assets](../knowledge/msm/assets/currency.md) for the detailed schema and
 workflow.
 
 ## Bond Assets
@@ -188,9 +188,9 @@ bond = Bond.upsert(
 )
 ```
 
-See `examples/assets/bond_workflow.py` and
-[Bond Assets](../knowledge/assets/bonds.md) for the detailed schema and
-workflow. `examples/assets/us_treasury_bond_workflow.py` shows the same API on
+See `examples/msm/assets/bond_workflow.py` and
+[Bond Assets](../knowledge/msm/assets/bonds.md) for the detailed schema and
+workflow. `examples/msm/assets/us_treasury_bond_workflow.py` shows the same API on
 a US Treasury note where CUSIP maps to canonical asset identity, FIGI maps to
 provider details, and coupon/tenor fields stay outside the minimal bond detail
 table.
@@ -235,9 +235,9 @@ incoming `(time_index, unique_identifier)` tuples and fails if any tuple already
 exists. Publish corrections as a new timestamped snapshot instead of overwriting
 the existing row.
 
-See `examples/assets/asset_crud_workflow.py` for the workflow that also writes
+See `examples/msm/assets/asset_crud_workflow.py` for the workflow that also writes
 an `AssetSnapshot` frame. See
-[Asset-Indexed DataNodes](../knowledge/assets/asset_indexed_data_nodes.md) for
+[Asset-Indexed DataNodes](../knowledge/msm/assets/asset_indexed_data_nodes.md) for
 the detailed `AssetIndexedDataNode` contract and how `AssetSnapshot` implements
 it.
 
@@ -263,17 +263,22 @@ memberships = AssetCategory.replace_memberships(
 ```
 
 For a step-by-step membership lifecycle, run
-`examples/assets/asset_category_workflow.py`. It creates a category, adds
+`examples/msm/assets/asset_category_workflow.py`. It creates a category, adds
 assets, removes assets, and prints the category contents after each change. The
 normal run leaves assets in the category unless the cleanup flag is used. Asset
 examples reuse shared identifiers and FIGI constants from
-`examples/assets/utils/reference_data.py`.
+`examples/msm/assets/utils/reference_data.py`.
 
 ## Accounts, Funds, And Portfolios
 
 ```python
+import msm_portfolios
+
 from msm.api.accounts import Account
-from msm.api.portfolios import Fund, Portfolio
+from msm_portfolios.api.portfolios import Portfolio
+from msm_portfolios.api.virtual_funds import Fund
+
+msm_portfolios.start_engine(models=["Account", "Portfolio", "Fund"])
 
 account = Account.upsert(
     unique_identifier="acct-main",
@@ -292,9 +297,10 @@ fund = Fund.upsert(
 
 ## Holdings And Target Positions
 
-See `examples/workflows/typed_metatable_rows.py` for a compact workflow that
-uses the typed row API across assets, categories, accounts, portfolios, funds,
-and an execution order manager.
+See `examples/msm_portfolios/portfolio_equal_weights_example.py` for the portfolio
+workflow that creates the optional portfolio `Index`, prepares `SignalWeights`,
+`PortfolioWeights`, and `PortfoliosDataNode`, and stores their DataNode UIDs on
+the `Portfolio` row.
 
 ```python
 from msm.api.accounts import AccountTargetPortfolio, PositionSet

@@ -31,26 +31,33 @@ nav:
       - v1: fast_api/v1/index.md
   - Knowledge:
       - Overview: knowledge/index.md
-      - Accounts: knowledge/accounts/index.md
-      - Assets:
-          - Overview: knowledge/assets/index.md
-          - Bond Assets: knowledge/assets/bonds.md
-          - Currency And Spot Assets: knowledge/assets/currency.md
-          - Asset-Indexed DataNodes: knowledge/assets/asset_indexed_data_nodes.md
-      - Client: knowledge/client/index.md
-      - Derivatives:
-          - Overview: knowledge/derivatives/index.md
-          - Futures: knowledge/derivatives/futures.md
-      - Execution: knowledge/execution/index.md
-      - Indexes: knowledge/indices/index.md
-      - Models: knowledge/models/index.md
-      - Platform: knowledge/platform/index.md
-      - MetaTable Registration: knowledge/platform/meta_table_registration.md
-      - Portfolios: knowledge/portfolios/index.md
-      - Virtual Funds: knowledge/virtualfunds/index.md
-      - Pricing: knowledge/pricing/index.md
-      - Repositories: knowledge/repositories/index.md
-      - Services: knowledge/services/index.md
+      - msm:
+          - Overview: knowledge/msm/index.md
+          - Accounts: knowledge/msm/accounts/index.md
+          - Assets:
+              - Overview: knowledge/msm/assets/index.md
+              - Bond Assets: knowledge/msm/assets/bonds.md
+              - Currency And Spot Assets: knowledge/msm/assets/currency.md
+              - Asset-Indexed DataNodes: knowledge/msm/assets/asset_indexed_data_nodes.md
+          - Client: knowledge/msm/client/index.md
+          - Derivatives:
+              - Overview: knowledge/msm/derivatives/index.md
+              - Futures: knowledge/msm/derivatives/futures.md
+          - Execution: knowledge/msm/execution/index.md
+          - Indexes: knowledge/msm/indices/index.md
+          - Models: knowledge/msm/models/index.md
+          - Platform:
+              - Overview: knowledge/msm/platform/index.md
+              - MetaTable Registration: knowledge/msm/platform/meta_table_registration.md
+              - MetaTable Migrations: knowledge/msm/platform/metatable_migrations.md
+          - Repositories: knowledge/msm/repositories/index.md
+          - Services: knowledge/msm/services/index.md
+      - msm_portfolios:
+          - Overview: knowledge/msm_portfolios/index.md
+          - Portfolios: knowledge/msm_portfolios/portfolios/index.md
+          - Virtual Funds: knowledge/msm_portfolios/virtualfunds/index.md
+      - msm_pricing:
+          - Overview: knowledge/msm_pricing/index.md
   - Architecture:
       - ADR: ADR/README.md
       - ADR Template: ADR/0000-template.md
@@ -71,6 +78,7 @@ nav:
       - Storage-First DataNode Architecture Migration: ADR/0017-storage-first-data-node-architecture.md
       - Extension Model Catalog Bootstrap: ADR/0018-extension-model-catalog-bootstrap.md
       - msm_portfolios Package Boundary: ADR/0019-msm-portfolios-package-boundary.md
+      - SDK-Managed MetaTable Migrations: ADR/0020-sdk-managed-metatable-migrations.md
       - API v1:
           - Asset Category Route Plan: ADR/fast_api/v1/0012-asset-category-route-plan.md
           - Index Route Plan: ADR/fast_api/v1/0013-index-route-plan.md

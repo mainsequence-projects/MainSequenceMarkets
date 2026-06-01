@@ -335,7 +335,7 @@ The seeded rows are pricing-owned MetaTable rows, not core `msm` rows.
 ## Documentation Tasks
 
 - [x] Document pricing market-data contexts and concept bindings in
-  `docs/knowledge/pricing/index.md`.
+  `docs/knowledge/msm_pricing/index.md`.
 - [x] Explain why bindings are vertical rows instead of one column per market-data
   source.
 - [x] Document built-in context and concept constants:
@@ -344,7 +344,7 @@ The seeded rows are pricing-owned MetaTable rows, not core `msm` rows.
 - [x] Update the pricing tutorial to show how a user selects a context and how
   pricing resolves `(context_key, concept_key)` to a DataNode identifier.
 - [x] Update `src/msm_pricing/README.md`.
-- [x] Update `examples/pricing/bond_pricing_example` to show the default context
+- [x] Update `examples/msm_pricing/bond_pricing_example` to show the default context
   workflow and a second named context such as `eod` when practical.
 - [x] Update the fixed-income curve-building skill so coding agents use pricing
   concept constants and `PricingMarketDataBinding` rows instead of hard-coded

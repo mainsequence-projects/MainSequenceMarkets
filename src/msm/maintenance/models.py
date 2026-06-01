@@ -5,7 +5,7 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 from sqlalchemy import DateTime, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -19,6 +19,59 @@ from msm.base import (
     markets_table_args,
     new_markets_uid,
 )
+
+try:  # pragma: no cover - exercised when the project SDK is upgraded.
+    from mainsequence.meta_tables.migrations import MigrationMetaTable as _SDKMigrationMetaTable
+except ImportError:  # pragma: no cover - current pinned SDK lacks this module.
+    _SDKMigrationMetaTable = None
+
+
+if _SDKMigrationMetaTable is not None:
+
+    class MarketsMigrationTable(_SDKMigrationMetaTable, MarketsBase):
+        """Packaged ms-markets MetaTable migration registry."""
+
+        __abstract__ = False
+        __metatable_namespace__: ClassVar[str] = "msm"
+        __metatable_identifier__: ClassVar[str] = "markets_migrations"
+        __metatable_description__: ClassVar[str] = (
+            "Packaged ms-markets MetaTable schema migrations and run state."
+        )
+        __metatable_extra_hash_components__: ClassVar[dict[str, str]] = {
+            "storage_name": "markets_migrations",
+        }
+        __table_args__ = markets_table_args(
+            __metatable_identifier__,
+            Index(
+                markets_index_name(
+                    __metatable_identifier__,
+                    "target_data_source_uid",
+                    "package",
+                    "migration_namespace",
+                    "revision",
+                    "direction",
+                    unique=True,
+                ),
+                "target_data_source_uid",
+                "package",
+                "migration_namespace",
+                "revision",
+                "direction",
+                unique=True,
+            ),
+        )
+
+else:
+
+    class MarketsMigrationTable(MarketsBase):
+        """Placeholder until the installed Main Sequence SDK exposes migrations."""
+
+        __abstract__ = True
+        __metatable_namespace__: ClassVar[str] = "msm"
+        __metatable_identifier__: ClassVar[str] = "markets_migrations"
+        __metatable_description__: ClassVar[str] = (
+            "Packaged ms-markets MetaTable schema migrations and run state."
+        )
 
 
 class MarketsMetaTableCatalogTable(MarketsMetaTableMixin, MarketsBase):
@@ -301,6 +354,7 @@ def _optional_text(value: Any) -> str | None:
 
 
 __all__ = [
+    "MarketsMigrationTable",
     "MarketsMetaTableCatalogRow",
     "MarketsMetaTableCatalogTable",
     "markets_meta_table_contract_hash",

@@ -26,16 +26,8 @@ from .execution import (
     OrderTargetQuantityTable,
     TradeTable,
 )
-from .funds import FundTable
 from .issuers import IssuerTable
 from .indices import IndexTable, IndexTypeTable
-from .portfolios import (
-    PortfolioAssetDetailTable,
-    PortfolioMetadataTable,
-    PortfolioTable,
-)
-from .rebalancing import RebalanceStrategyMetadataTable
-from .signals import SignalMetadataTable
 
 
 def markets_sqlalchemy_models() -> list[type]:
@@ -59,17 +51,11 @@ def markets_sqlalchemy_models() -> list[type]:
         AccountModelPortfolioTable,
         AccountGroupTable,
         AccountTable,
-        PortfolioTable,
         AssetCategoryTable,
-        SignalMetadataTable,
-        RebalanceStrategyMetadataTable,
-        PortfolioMetadataTable,
         AssetCategoryMembershipTable,
         OpenFigiAssetDetailsTable,
-        PortfolioAssetDetailTable,
         AccountTargetPortfolioTable,
         PositionSetTable,
-        FundTable,
         OrderManagerTable,
         OrderTargetQuantityTable,
         OrderTable,
@@ -92,34 +78,20 @@ def _markets_data_node_storage_models() -> list[type]:
         AccountHoldingsStorage,
         AssetSnapshotsStorage,
         ExecutionErrorsStorage,
-        FundHoldingsStorage,
         OrderEventsStorage,
         OrdersStorage,
         TargetPositionsStorage,
         TradesStorage,
-    )
-    from msm.portfolios.data_nodes.storage import (
-        ExternalPricesStorage,
-        InterpolatedPricesStorage,
-        PortfoliosStorage,
-        PortfolioWeightsStorage,
-        SignalWeightsStorage,
     )
 
     return [
         AssetSnapshotsStorage,
         AccountHoldingsStorage,
-        FundHoldingsStorage,
         TargetPositionsStorage,
         OrdersStorage,
         OrderEventsStorage,
         TradesStorage,
         ExecutionErrorsStorage,
-        PortfolioWeightsStorage,
-        SignalWeightsStorage,
-        PortfoliosStorage,
-        InterpolatedPricesStorage,
-        ExternalPricesStorage,
     ]
 
 
@@ -136,7 +108,6 @@ __all__ = [
     "CalendarTable",
     "CurrencySpotAssetDetailsTable",
     "ExecutionErrorTable",
-    "FundTable",
     "FutureAssetDetailsTable",
     "IndexTable",
     "IndexTypeTable",
@@ -146,12 +117,7 @@ __all__ = [
     "OrderStatusEventTable",
     "OrderTable",
     "OrderTargetQuantityTable",
-    "PortfolioAssetDetailTable",
-    "PortfolioMetadataTable",
-    "PortfolioTable",
     "PositionSetTable",
-    "RebalanceStrategyMetadataTable",
-    "SignalMetadataTable",
     "TradeTable",
     "markets_sqlalchemy_models",
 ]

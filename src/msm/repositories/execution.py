@@ -161,7 +161,6 @@ def build_search_orders_operation(
     *,
     order_manager_uid: uuid.UUID | str | None = None,
     asset_uid: uuid.UUID | str | None = None,
-    related_fund_uid: uuid.UUID | str | None = None,
     related_account_uid: uuid.UUID | str | None = None,
     status: str | None = None,
     asset_unique_identifier: str | None = None,
@@ -171,7 +170,6 @@ def build_search_orders_operation(
     for key, value in {
         "order_manager_uid": order_manager_uid,
         "asset_uid": asset_uid,
-        "related_fund_uid": related_fund_uid,
         "related_account_uid": related_account_uid,
         "status": status,
         "asset_unique_identifier": asset_unique_identifier,
@@ -260,7 +258,6 @@ def build_search_trades_operation(
     *,
     asset_uid: uuid.UUID | str | None = None,
     asset_unique_identifier: str | None = None,
-    related_fund_uid: uuid.UUID | str | None = None,
     related_account_uid: uuid.UUID | str | None = None,
     related_order_uid: uuid.UUID | str | None = None,
     limit: int = 500,
@@ -269,7 +266,6 @@ def build_search_trades_operation(
     for key, value in {
         "asset_uid": asset_uid,
         "asset_unique_identifier": asset_unique_identifier,
-        "related_fund_uid": related_fund_uid,
         "related_account_uid": related_account_uid,
         "related_order_uid": related_order_uid,
     }.items():
@@ -286,7 +282,6 @@ def build_create_execution_error_operation(
     error_message: str,
     time_recorded: dt.datetime,
     related_account_uid: uuid.UUID | str | None = None,
-    related_fund_uid: uuid.UUID | str | None = None,
     metadata_json: dict[str, Any] | None = None,
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
@@ -298,7 +293,6 @@ def build_create_execution_error_operation(
             "error_message": error_message,
             "time_recorded": time_recorded,
             "related_account_uid": related_account_uid,
-            "related_fund_uid": related_fund_uid,
             "metadata_json": metadata_json,
         },
     )
@@ -309,14 +303,12 @@ def build_search_execution_errors_operation(
     *,
     error_code: str | None = None,
     related_account_uid: uuid.UUID | str | None = None,
-    related_fund_uid: uuid.UUID | str | None = None,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
     filters: dict[str, Any] = {}
     for key, value in {
         "error_code": error_code,
         "related_account_uid": related_account_uid,
-        "related_fund_uid": related_fund_uid,
     }.items():
         if value not in (None, ""):
             filters[key] = value

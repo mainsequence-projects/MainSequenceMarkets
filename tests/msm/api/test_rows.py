@@ -26,11 +26,6 @@ from msm.api.assets import (
 from msm.api.calendars import Calendar
 from msm.api.execution import Order, OrderManager, OrderStatusEvent
 from msm.api.indices import Index, IndexType
-from msm.api.market_metadata import (
-    RebalanceStrategyMetadata,
-    SignalMetadata,
-)
-from msm.api.portfolios import Fund, Portfolio, PortfolioAssetDetail, PortfolioMetadata
 from msm.models import (
     AccountGroupTable,
     AccountModelPortfolioTable,
@@ -39,20 +34,13 @@ from msm.models import (
     AssetCategoryMembershipTable,
     AssetCategoryTable,
     AssetTypeTable,
-    AssetTable,
     CalendarTable,
-    FundTable,
     IndexTable,
     IndexTypeTable,
     OpenFigiAssetDetailsTable,
     OrderManagerTable,
     OrderTable,
-    PortfolioAssetDetailTable,
-    PortfolioMetadataTable,
-    PortfolioTable,
     PositionSetTable,
-    RebalanceStrategyMetadataTable,
-    SignalMetadataTable,
 )
 
 
@@ -73,18 +61,8 @@ from msm.models import (
             PositionSetTable,
             ("account_target_portfolio_uid", "position_set_time"),
         ),
-        (Portfolio, PortfolioTable, ("unique_identifier",)),
-        (PortfolioAssetDetail, PortfolioAssetDetailTable, ("portfolio_uid",)),
-        (PortfolioMetadata, PortfolioMetadataTable, ("unique_identifier",)),
-        (Fund, FundTable, ("unique_identifier",)),
         (IndexType, IndexTypeTable, ("index_type",)),
         (Index, IndexTable, ("unique_identifier",)),
-        (SignalMetadata, SignalMetadataTable, ("signal_uid",)),
-        (
-            RebalanceStrategyMetadata,
-            RebalanceStrategyMetadataTable,
-            ("rebalance_strategy_uid",),
-        ),
         (OrderManager, OrderManagerTable, ("unique_identifier",)),
         (Order, OrderTable, ("order_time", "order_remote_id", "asset_unique_identifier")),
     ],
@@ -191,41 +169,6 @@ def test_account_pretty_print_positions_rejects_datanode_run_tuple() -> None:
 
     with pytest.raises(TypeError, match="Unpack DataNode run results"):
         account.pretty_print_positions((False, holdings))
-
-
-def test_portfolio_create_schemas_includes_domain_required_tables(monkeypatch) -> None:
-    calls = []
-    runtime = SimpleNamespace()
-
-    def fake_start_engine(**kwargs):
-        calls.append(kwargs)
-        return runtime
-
-    monkeypatch.setattr("msm.bootstrap.start_engine", fake_start_engine)
-
-    assert Portfolio.create_schemas(namespace="mainsequence.examples") is runtime
-    assert calls == [
-        {
-            "models": [AssetTable, PortfolioTable, PortfolioAssetDetailTable],
-            "namespace": "mainsequence.examples",
-        }
-    ]
-
-
-def test_missing_required_table_fails_before_operation(monkeypatch) -> None:
-    runtime = SimpleNamespace(
-        context=object(),
-        meta_table_models=[PortfolioTable],
-    )
-
-    def fake_attach_schemas(**kwargs):
-        raise RuntimeError("offline unit test")
-
-    monkeypatch.setattr("msm.bootstrap._RUNTIME", runtime)
-    monkeypatch.setattr("msm.bootstrap.attach_schemas", fake_attach_schemas)
-
-    with pytest.raises(RuntimeError, match="AssetTable"):
-        Portfolio.filter(unique_identifier_contains="demo")
 
 
 def test_append_only_status_event_does_not_define_generic_upsert() -> None:

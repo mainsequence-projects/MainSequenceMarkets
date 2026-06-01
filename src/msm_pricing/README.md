@@ -144,7 +144,7 @@ The resolver loads the pricing convention row, selects the curve row, loads
 curve/index-fixing data, materializes QuantLib objects, and values the
 instrument or position for an explicit valuation date.
 
-See `examples/pricing/bond_pricing_example/` for a complete floating-rate bond
+See `examples/msm_pricing/bond_pricing_example/` for a complete floating-rate bond
 workflow using the public asset, pricing registry, DataNode, attach/load, and
 pricing APIs.
 

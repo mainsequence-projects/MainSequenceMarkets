@@ -23,10 +23,6 @@ DATA_NODE_HANDLE_NAMES = (
     "AccountHoldings",
     "AssetPricingDetail",
     "AssetSnapshot",
-    "PortfolioWeights",
-    "PortfoliosDataNode",
-    "SignalWeights",
-    "VirtualFundHoldings",
 )
 
 _START_ENGINE_LOCK = Lock()
@@ -63,23 +59,14 @@ class MarketsRuntime:
 
     @property
     def data_nodes(self) -> dict[str, type[Any]]:
-        from msm.data_nodes.accounts import AccountHoldings, VirtualFundHoldings
+        from msm.data_nodes.accounts import AccountHoldings
         from msm.data_nodes.assets import AssetSnapshot
-        from msm.portfolios.data_nodes import (
-            PortfolioWeights,
-            PortfoliosDataNode,
-            SignalWeights,
-        )
         from msm_pricing.data_nodes import AssetPricingDetail
 
         return {
             "AccountHoldings": AccountHoldings,
             "AssetPricingDetail": AssetPricingDetail,
             "AssetSnapshot": AssetSnapshot,
-            "PortfolioWeights": PortfolioWeights,
-            "PortfoliosDataNode": PortfoliosDataNode,
-            "SignalWeights": SignalWeights,
-            "VirtualFundHoldings": VirtualFundHoldings,
         }
 
 
@@ -155,7 +142,7 @@ def start_engine(
         cached_runtime = _RUNTIME_BY_CONFIG.get(schema_config)
         if cached_runtime is not None:
             logger.info(
-                "Reusing cached markets runtime; no MetaTables registered",
+                "Reusing cached markets runtime; no schema mutation needed",
                 management_mode=management_mode,
                 namespace=namespace,
                 meta_table_count=len(cached_runtime.meta_tables),
@@ -174,7 +161,7 @@ def start_engine(
             )
 
         logger.info(
-            "Starting markets bootstrap",
+            "Starting markets runtime attachment",
             management_mode=management_mode,
             namespace=namespace,
             data_source_uid=data_source_uid,
@@ -189,7 +176,8 @@ def start_engine(
             logger.info("Configuring markets MetaTable namespace", namespace=namespace)
             configure_metatable_namespace(namespace)
 
-        from msm.maintenance.catalog import bootstrap_markets_meta_tables_from_catalog
+        from msm.maintenance.catalog import attach_markets_meta_tables_from_catalog
+        from msm.maintenance.migrations import verify_runtime_migrations_current
         from msm.models.registration import resolve_markets_meta_table_models
         from msm.repositories.base import MarketsRepositoryContext
 
@@ -200,25 +188,24 @@ def start_engine(
             model_count=len(meta_table_models),
             models=[_model_name(model) for model in meta_table_models],
         )
-        catalog_bootstrap = bootstrap_markets_meta_tables_from_catalog(
+        verify_runtime_migrations_current(
             data_source_uid=data_source_uid,
+            namespace=namespace,
+            timeout=timeout,
+            models=meta_table_models,
+        )
+        catalog_bootstrap = attach_markets_meta_tables_from_catalog(
             management_mode=management_mode,
-            open_for_everyone=open_for_everyone,
-            protect_from_deletion=protect_from_deletion,
-            introspect=introspect,
-            storage_hash_by_identifier=storage_hash_by_identifier,
             timeout=timeout,
             models=meta_table_models,
         )
         registration = catalog_bootstrap.registration
         logger.info(
-            "Catalog bootstrapped markets MetaTables",
+            "Attached finalized markets MetaTables from catalog",
             management_mode=management_mode,
             namespace=namespace,
             meta_table_count=len(registration.meta_tables),
             attached_count=catalog_bootstrap.attached_count,
-            imported_count=catalog_bootstrap.imported_count,
-            registered_count=catalog_bootstrap.registered_count,
             catalog_meta_table_uid=getattr(catalog_bootstrap.catalog_meta_table, "uid", None),
         )
         context = MarketsRepositoryContext(
@@ -278,20 +265,24 @@ def attach_schemas(
             )
             return cached_runtime
 
-        from msm.models.registration import (
-            resolve_markets_meta_table_models,
-            resolve_registered_markets_meta_tables,
-        )
+        from msm.maintenance.catalog import attach_markets_meta_tables_from_catalog
+        from msm.maintenance.migrations import verify_runtime_migrations_current
+        from msm.models.registration import resolve_markets_meta_table_models
         from msm.repositories.base import MarketsRepositoryContext
 
         meta_table_models = resolve_markets_meta_table_models(models)
-        registration = resolve_registered_markets_meta_tables(
+        verify_runtime_migrations_current(
             data_source_uid=data_source_uid,
-            management_mode=management_mode,
             namespace=namespace,
             timeout=timeout,
             models=meta_table_models,
         )
+        catalog_attach = attach_markets_meta_tables_from_catalog(
+            management_mode=management_mode,
+            timeout=timeout,
+            models=meta_table_models,
+        )
+        registration = catalog_attach.registration
         context = MarketsRepositoryContext(
             timeout=timeout,
             namespace=namespace,

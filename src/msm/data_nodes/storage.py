@@ -21,7 +21,6 @@ from sqlalchemy.types import Uuid
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.accounts import AccountTable, PositionSetTable
 from msm.models.assets.core import AssetTable
-from msm.models.funds import FundTable
 
 
 def _execution_info(column_name: str) -> dict[str, str]:
@@ -177,114 +176,6 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         info={
             "label": "Quantity",
             "description": "Position quantity held for this asset in the account snapshot.",
-        },
-    )
-    target_trade_time: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-        info={
-            "label": "Target Trade Time",
-            "description": (
-                "Requested or expected execution time as a timezone-aware UTC datetime when provided."
-            ),
-        },
-    )
-    extra_details: Mapped[dict | None] = mapped_column(
-        JSONB,
-        nullable=True,
-        info={
-            "label": "Extra Details",
-            "description": "JSONB payload for provider-specific holdings attributes.",
-        },
-    )
-
-
-class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
-    """Fund historical holdings keyed by fund UID and held asset."""
-
-    __markets_base_identifier__: ClassVar[str] = "virtual_fund_historical_holdings"
-    __metatable_description__ = (
-        "Timestamped virtual-fund holdings storage keyed by (time_index, fund_uid, "
-        "unique_identifier). Each row is one asset position in a fund holdings "
-        "observation, including target weights, trade timing, and provider metadata "
-        "when available."
-    )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "virtual_fund_historical_holdings",
-    }
-    __time_index_name__: ClassVar[str] = "time_index"
-    __index_names__: ClassVar[list[str]] = ["time_index", "fund_uid", "unique_identifier"]
-
-    time_index: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        info={
-            "label": "Time Index",
-            "description": (
-                "UTC timestamp for the fund holdings snapshot. Rows with the same "
-                "fund_uid and time_index belong to the same fund observation."
-            ),
-        },
-    )
-    fund_uid: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            FundTable,
-            column="uid",
-            ondelete="RESTRICT",
-        ),
-        nullable=False,
-        info={
-            "label": "Fund UID",
-            "description": (
-                "Stable Fund UID that owns the holdings row. This dimension scopes "
-                "holdings history to one fund."
-            ),
-        },
-    )
-    unique_identifier: Mapped[str] = mapped_column(
-        String(255),
-        MetaTableForeignKey(
-            AssetTable,
-            column="unique_identifier",
-            ondelete="RESTRICT",
-        ),
-        nullable=False,
-        info={
-            "label": "Unique Identifier",
-            "description": "Asset unique identifier for the held instrument at this fund timestamp.",
-        },
-    )
-    holdings_set_uid: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True),
-        nullable=True,
-        info={
-            "label": "Holdings Set UID",
-            "description": "Stable UUID shared by rows written together as one fund holdings set.",
-        },
-    )
-    is_trade_snapshot: Mapped[bool | None] = mapped_column(
-        Boolean,
-        nullable=True,
-        info={
-            "label": "Is Trade Snapshot",
-            "description": "Whether the holdings row belongs to an execution or trade snapshot.",
-        },
-    )
-    quantity: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "Quantity",
-            "description": "Position quantity held for this asset in the fund snapshot.",
-        },
-    )
-    target_weight: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "Target Weight",
-            "description": "Target portfolio weight for this asset when available.",
         },
     )
     target_trade_time: Mapped[datetime.datetime | None] = mapped_column(
@@ -610,7 +501,6 @@ __all__ = [
     "AccountHoldingsStorage",
     "AssetSnapshotsStorage",
     "ExecutionErrorsStorage",
-    "FundHoldingsStorage",
     "OrderEventsStorage",
     "OrdersStorage",
     "TargetPositionsStorage",

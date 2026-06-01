@@ -13,7 +13,7 @@ from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
 )
-from msm.data_nodes.storage import AccountHoldingsStorage, FundHoldingsStorage
+from msm.data_nodes.storage import AccountHoldingsStorage
 from msm.data_nodes.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,
@@ -23,9 +23,6 @@ from msm.data_nodes.utils.storage_schema import (
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
 from msm.services.holdings import (
     build_account_holdings_frame as build_account_holdings_service_frame,
-)
-from msm.services.holdings import (
-    build_fund_holdings_frame as build_fund_holdings_service_frame,
 )
 
 
@@ -132,7 +129,7 @@ class HoldingsDataNode(AssetIndexedDataNode):
         cls,
         data_frame: pd.DataFrame,
         *,
-        storage_table: type[AccountHoldingsStorage | FundHoldingsStorage] | None = None,
+        storage_table: Any | None = None,
     ) -> pd.DataFrame:
         resolved_storage_table = storage_table or cls._required_storage_table()
         return _validate_holdings_frame(
@@ -245,54 +242,6 @@ class AccountHoldings(HoldingsDataNode):
         )
 
 
-class VirtualFundHoldings(HoldingsDataNode):
-    """DataNode users can subclass to import virtual-fund holdings."""
-
-    @classmethod
-    def _required_storage_table(cls) -> type[FundHoldingsStorage]:
-        return FundHoldingsStorage
-
-    def build_fund_holdings_frame(
-        self,
-        *,
-        holdings_date: dt.datetime | str,
-        fund_uid: UUID | str,
-        positions: list[dict[str, Any] | Any],
-        holdings_set_uid: UUID | str | None = None,
-        is_trade_snapshot: bool = False,
-        target_trade_time: dt.datetime | str | None = None,
-    ) -> pd.DataFrame:
-        return build_fund_holdings_service_frame(
-            holdings_date=holdings_date,
-            fund_uid=fund_uid,
-            positions=positions,
-            holdings_set_uid=holdings_set_uid,
-            is_trade_snapshot=is_trade_snapshot,
-            target_trade_time=target_trade_time,
-        )
-
-    def set_fund_holdings_frame(
-        self,
-        *,
-        holdings_date: dt.datetime | str,
-        fund_uid: UUID | str,
-        positions: list[dict[str, Any] | Any],
-        holdings_set_uid: UUID | str | None = None,
-        is_trade_snapshot: bool = False,
-        target_trade_time: dt.datetime | str | None = None,
-    ) -> VirtualFundHoldings:
-        return self.set_frame(
-            self.build_fund_holdings_frame(
-                holdings_date=holdings_date,
-                fund_uid=fund_uid,
-                positions=positions,
-                holdings_set_uid=holdings_set_uid,
-                is_trade_snapshot=is_trade_snapshot,
-                target_trade_time=target_trade_time,
-            )
-        )
-
-
 def _dimension_filters_with_identifier(
     dimension_filters: dict[str, list[Any]] | None,
     key: str,
@@ -315,7 +264,7 @@ def _dimension_filters_with_identifier(
 def _validate_holdings_frame(
     data_frame: pd.DataFrame,
     *,
-    storage_table: type[AccountHoldingsStorage | FundHoldingsStorage],
+    storage_table: Any,
 ) -> pd.DataFrame:
     index_names = storage_index_names(storage_table)
     time_index_name = storage_time_index_name(storage_table)
@@ -471,5 +420,4 @@ __all__ = [
     "AccountHoldings",
     "HoldingsDataNode",
     "HoldingsDataNodeConfiguration",
-    "VirtualFundHoldings",
 ]

@@ -580,7 +580,7 @@ indices through backend index UIDs.
 Add a complete floating-rate bond pricing example under:
 
 ```text
-examples/pricing/bond_pricing_example/
+examples/msm_pricing/bond_pricing_example/
 ```
 
 This example should be more than a payload serialization demo. It should show
@@ -631,7 +631,7 @@ helpers, or DataNode subclasses should live under a reusable pricing examples
 module such as:
 
 ```text
-examples/pricing/utils/mock_market_data.py
+examples/msm_pricing/utils/mock_market_data.py
 ```
 
 That shared module should be usable later by a swap pricing example. The bond
@@ -856,9 +856,9 @@ table prematurely.
   `instrument.attach_to_asset(asset) -> AssetCurrentPricingDetails ->
   Instrument.load_from_asset(asset) -> price()`.
 - [x] Add the full floating-rate bond pricing example under
-  `examples/pricing/bond_pricing_example/`.
+  `examples/msm_pricing/bond_pricing_example/`.
 - [x] Add reusable mock pricing market-data components under
-  `examples/pricing/utils/` so the same curve and fixing builders can be reused
+  `examples/msm_pricing/utils/` so the same curve and fixing builders can be reused
   by a future swap pricing example.
 - [x] In the bond pricing example, register or resolve the bond asset type,
   issuer, currency asset, canonical bond asset, index row, index convention
@@ -873,12 +873,12 @@ table prematurely.
 - [x] In the bond pricing example, print registered identities, the stored
   `floating_rate_index_uid`, valuation date, price/NPV, clean/dirty analytics,
   expected coupons or cashflows, and carry/roll-down output.
-- [x] Update `docs/knowledge/assets/index.md` so it points pricing-detail
+- [x] Update `docs/knowledge/msm/assets/index.md` so it points pricing-detail
   readers to `msm_pricing` instead of presenting pricing details as core asset
   DataNodes.
-- [x] Update `docs/knowledge/pricing/index.md` to describe the pricing-owned
+- [x] Update `docs/knowledge/msm_pricing/index.md` to describe the pricing-owned
   table, pricing-owned DataNode, and `msm_pricing.api` helpers.
-- [x] Update `docs/knowledge/models/index.md` to clarify that core `msm.models`
+- [x] Update `docs/knowledge/msm/models/index.md` to clarify that core `msm.models`
   does not own pricing-specific table declarations.
 - [x] Update `docs/tutorial/index.md` or `docs/tutorial/market_workflows.md`
   with the bond-pricing-details workflow.
@@ -889,7 +889,7 @@ table prematurely.
   modules to `msm_pricing.pricing_engine.*`.
 - [x] Remove runtime exports from `msm_pricing.models` so the package only
   exposes pricing-owned MetaTable declarations.
-- [x] Update `src/msm_pricing/README.md`, `docs/knowledge/pricing/index.md`,
+- [x] Update `src/msm_pricing/README.md`, `docs/knowledge/msm_pricing/index.md`,
   and ADR 0005 references to prefer `pricing_engine` over runtime helpers under
   `models`.
 - [x] Run `git diff --check`.

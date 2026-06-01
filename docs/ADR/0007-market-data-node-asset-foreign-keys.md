@@ -114,7 +114,7 @@ shared base to holdings, execution, or other schemas that need separate review.
    `AssetIndexedDataNodeConfiguration` and `AssetIndexedDataNode`.
 3. [x] Remove the old compatibility shim and broad aliases.
 4. [x] Replace local hard-coded asset identity constants in
-   `msm.data_nodes.assets` and `msm.portfolios.asset_scope` with the settings constant.
+   `msm.data_nodes.assets` and `msm_portfolios.asset_scope` with the settings constant.
 5. [x] Add `asset_unique_identifier_foreign_key()` returning the canonical
    `SourceTableForeignKey` to `AssetTable.unique_identifier`.
 6. [x] Add configuration validation for concrete asset DataNodes that requires

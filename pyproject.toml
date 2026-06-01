@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ms-markets"
-version = "0.0.18"
+version = "0.0.19"
 description = "Financial markets ORM, engines, and application management extensions for Main Sequence."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,7 +34,8 @@ classifiers = [
 ]
 dependencies = [
   "cachetools",
-  "mainsequence>=4.1.8",
+  "fastapi>=0.136.3",
+  "mainsequence>=4.1.15",
   "numpy",
   "pandas",
   "pip>=26.1.1",
@@ -100,7 +101,7 @@ Issues = "https://github.com/mainsequence-projects/MainSequenceMarkets/issues"
 msm = "cli.main:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/cli", "src/msm", "src/msm_pricing"]
+packages = ["src/cli", "src/msm", "src/msm_portfolios", "src/msm_pricing"]
 
 [tool.hatch.build.targets.sdist]
 include = [

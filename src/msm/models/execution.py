@@ -19,7 +19,6 @@ from msm.base import (
 
 from .accounts import AccountTable
 from .assets import AssetTable
-from .funds import FundTable
 
 
 class OrderManagerTable(MarketsMetaTableMixin, MarketsBase):
@@ -197,7 +196,7 @@ class OrderTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_description__ = (
         "Broker or venue order table keyed by order_time, order_remote_id, and "
         "asset_unique_identifier. Stores order intent, status, fills, related "
-        "account/fund/order-manager links, and venue metadata."
+        "account/order-manager links, and venue metadata."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
@@ -221,7 +220,6 @@ class OrderTable(MarketsMetaTableMixin, MarketsBase):
             "order_manager_uid",
         ),
         Index(markets_index_name(__metatable_identifier__, "asset_uid"), "asset_uid"),
-        Index(markets_index_name(__metatable_identifier__, "related_fund_uid"), "related_fund_uid"),
         Index(
             markets_index_name(__metatable_identifier__, "related_account_uid"),
             "related_account_uid",
@@ -352,19 +350,6 @@ class OrderTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Stable AssetTable.unique_identifier value captured for provider payloads, joins, or denormalized display.",
         },
     )
-    related_fund_uid: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            FundTable,
-            column="uid",
-            ondelete="CASCADE",
-        ),
-        nullable=True,
-        info={
-            "label": "Related Fund UID",
-            "description": "Foreign key to FundTable.uid for the related fund when applicable.",
-        },
-    )
     related_account_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         MetaTableForeignKey(
@@ -491,8 +476,8 @@ class TradeTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "Trade"
     __metatable_description__ = (
         "Executed trade table keyed by trade_time, asset_unique_identifier, and "
-        "related account or fund. Stores fills, prices, commissions, settlement "
-        "fields, and links back to order/account/fund records."
+        "related account. Stores fills, prices, commissions, settlement fields, "
+        "and links back to order/account records."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
@@ -514,7 +499,6 @@ class TradeTable(MarketsMetaTableMixin, MarketsBase):
             markets_index_name(__metatable_identifier__, "asset_unique_identifier"),
             "asset_unique_identifier",
         ),
-        Index(markets_index_name(__metatable_identifier__, "related_fund_uid"), "related_fund_uid"),
         Index(
             markets_index_name(__metatable_identifier__, "related_account_uid"),
             "related_account_uid",
@@ -583,19 +567,6 @@ class TradeTable(MarketsMetaTableMixin, MarketsBase):
         info={
             "label": "Price",
             "description": "Execution price recorded for a trade.",
-        },
-    )
-    related_fund_uid: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            FundTable,
-            column="uid",
-            ondelete="CASCADE",
-        ),
-        nullable=True,
-        info={
-            "label": "Related Fund UID",
-            "description": "Foreign key to FundTable.uid for the related fund when applicable.",
         },
     )
     related_account_uid: Mapped[uuid.UUID | None] = mapped_column(
@@ -680,7 +651,7 @@ class ExecutionErrorTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "ExecutionError"
     __metatable_description__ = (
         "Execution error table keyed by error_code and time_recorded. Stores broker "
-        "or execution workflow failures with related account, fund, and diagnostic "
+        "or execution workflow failures with related account and diagnostic "
         "metadata."
     )
     __table_args__ = markets_table_args(
@@ -690,7 +661,6 @@ class ExecutionErrorTable(MarketsMetaTableMixin, MarketsBase):
             markets_index_name(__metatable_identifier__, "related_account_uid"),
             "related_account_uid",
         ),
-        Index(markets_index_name(__metatable_identifier__, "related_fund_uid"), "related_fund_uid"),
         Index(markets_index_name(__metatable_identifier__, "time_recorded"), "time_recorded"),
     )
 
@@ -738,19 +708,6 @@ class ExecutionErrorTable(MarketsMetaTableMixin, MarketsBase):
         info={
             "label": "Related Account UID",
             "description": "Foreign key to AccountTable.uid for the related account when applicable.",
-        },
-    )
-    related_fund_uid: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            FundTable,
-            column="uid",
-            ondelete="CASCADE",
-        ),
-        nullable=True,
-        info={
-            "label": "Related Fund UID",
-            "description": "Foreign key to FundTable.uid for the related fund when applicable.",
         },
     )
     time_recorded: Mapped[dt.datetime] = mapped_column(

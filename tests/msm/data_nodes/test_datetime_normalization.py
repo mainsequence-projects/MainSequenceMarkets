@@ -14,7 +14,6 @@ os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 from msm.data_nodes.assets import AssetSnapshot
 from msm.data_nodes.execution import Orders
 from msm.services.holdings import build_account_holdings_frame
-from msm.portfolios.data_nodes.portfolio_weights import PortfolioWeights
 
 MICROSECOND_TIME = dt.datetime(2026, 5, 26, 18, 50, 19, 240235, tzinfo=dt.UTC)
 EXPECTED_DTYPE = "datetime64[ns, UTC]"
@@ -87,25 +86,3 @@ def test_holdings_time_columns_are_datetime64_ns_utc() -> None:
     target_trade_time = frame.reset_index()["target_trade_time"].iloc[0]
     assert target_trade_time.tzinfo is not None
     assert target_trade_time.utcoffset() == dt.timedelta(0)
-
-
-def test_portfolio_time_columns_are_datetime64_ns_utc() -> None:
-    frame = PortfolioWeights.validate_frame(
-        pd.DataFrame(
-            [
-                {
-                    "time_index": MICROSECOND_TIME,
-                    "portfolio_index_asset_unique_identifier": "portfolio-1",
-                    "unique_identifier": "asset-1",
-                    "weight": 1.0,
-                    "weight_before": 0.0,
-                    "price_current": 100.0,
-                    "price_before": 99.0,
-                    "volume_current": 1000.0,
-                    "volume_before": 900.0,
-                }
-            ]
-        )
-    )
-
-    assert _dtype(frame, "time_index") == EXPECTED_DTYPE

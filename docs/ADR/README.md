@@ -37,3 +37,4 @@ Current decisions:
 - [0017. Storage-First DataNode Architecture Migration](0017-storage-first-data-node-architecture.md)
 - [0018. Extension Model Catalog Bootstrap](0018-extension-model-catalog-bootstrap.md)
 - [0019. msm_portfolios Package Boundary](0019-msm-portfolios-package-boundary.md)
+- [0020. SDK-Managed MetaTable Migrations](0020-sdk-managed-metatable-migrations.md)

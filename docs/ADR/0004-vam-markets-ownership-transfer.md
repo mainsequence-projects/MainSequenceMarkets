@@ -347,7 +347,7 @@ Applications should import market functionality from `msm`, not from
 
 ### Phase 7: Remove Old `msm` Runtime Surfaces
 
-- [x] Narrow the top-level `msm.portfolios` package import so it does not load
+- [x] Narrow the top-level `msm_portfolios` package import so it does not load
   legacy table modules or optional legacy utility dependencies.
 - [x] Remove legacy account DTO and `/orm/api/assets/...` account-route usage
   from `AccountHoldings`; keep only DataNode frame-building helpers there.

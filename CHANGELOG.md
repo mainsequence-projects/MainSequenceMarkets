@@ -9,6 +9,19 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Split portfolio and virtual-fund functionality into the new `msm_portfolios`
+  package boundary. Core `msm.start_engine(...)` no longer registers portfolio
+  MetaTables, virtual-fund tables, portfolio DataNode storage, or portfolio
+  DataNode handles by default; portfolio workflows use
+  `msm_portfolios.start_engine(...)`, `msm_portfolios.api.*`,
+  `msm_portfolios.models.*`, and `msm_portfolios.data_nodes.*`.
+- Removed `related_fund_uid` from core execution models, row APIs, repository
+  filters, and table contracts so core execution no longer imports or requires
+  virtual-fund tables. Fund-specific execution semantics should be added later
+  under `msm_portfolios`.
+- Moved portfolio configuration Pydantic models to
+  `msm_portfolios.configuration`, leaving `msm_portfolios.models` as the
+  SQLAlchemy MetaTable model package.
 - Migrated the DataNode layer to the storage-first architecture (ADR 0017):
   every DataNode output now has a `PlatformTimeIndexMetaData` storage class as its
   single source of schema, dtypes, and identity foreign keys; DataNodes bind their
@@ -40,9 +53,26 @@ and this project follows versioned releases.
 - Added inline SQLAlchemy `mapped_column(info={...})` labels and descriptions
   across built-in markets, pricing, maintenance, and DataNode storage
   MetaTables, with regression coverage to prevent undocumented columns.
+- Added a packaged ms-markets account workflow agent skill covering
+  `Account`, `AccountGroup`, `AccountModelPortfolio`, `AccountTargetPortfolio`,
+  `PositionSet`, holdings publication, target positions, and account
+  pretty-printing.
 - Moved virtual-fund documentation out of the accounts knowledge page into
-  `docs/knowledge/virtualfunds/`, with its own FundTable and
+  `docs/knowledge/msm_portfolios/virtualfunds/`, with its own FundTable and
   `VirtualFundHoldings` diagrams.
+- Reorganized the knowledge documentation by package boundary:
+  `docs/knowledge/msm/`, `docs/knowledge/msm_portfolios/`, and
+  `docs/knowledge/msm_pricing/`.
+- Reorganized examples by package boundary: `examples/msm/`,
+  `examples/msm_portfolios/`, and `examples/msm_pricing/`.
+- Collapsed `examples/msm_portfolios/` to one equal-weight portfolio example
+  that creates an optional `Index` reference, uses `SignalWeights`,
+  `PortfolioWeights`, and `PortfoliosDataNode`, and writes their storage UIDs
+  back to `Portfolio`.
+- Simplified `PortfolioTable`: removed portfolio construction booleans,
+  `stats_json`, `metadata_json`, portfolio asset-detail rows, and synthetic
+  asset linkage. Portfolios now optionally link to a core `IndexTable` row
+  through `portfolio_index_uid`.
 - Removed residual `time_index_name` and `index_names` fields from holdings,
   execution, and canonical portfolio DataNode configurations.
 - Updated the packaged `AssetIndexedDataNode` agent skill and asset-indexed
@@ -72,9 +102,9 @@ and this project follows versioned releases.
 - Reorganized `msm.data_nodes` so account, asset, execution, and index
   DataNodes live under model-shaped modules, while non-model shared DataNode
   helpers live under `msm.data_nodes.utils`.
-- Reorganized portfolio MetaTable declarations under `msm.models.portfolios`
-  submodules and documented the portfolio registry relationships with ASCII
-  table diagrams.
+- Reorganized portfolio MetaTable declarations under
+  `msm_portfolios.models.portfolios` submodules and documented the portfolio
+  registry relationships with ASCII table diagrams.
 - Renamed the top-level markets bootstrap entrypoint to `msm.start_engine(...)`
   to reflect that it initializes the full runtime, not only schemas.
 - Changed `msm.start_engine(...)` to use the internal maintenance catalog
@@ -115,6 +145,9 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- Made catalog bootstrap auto-heal rows whose stored `meta_table_uid` no longer
+  exists by invalidating the stale row and continuing through normal
+  import/register repair for that identifier.
 - Fixed markets catalog bootstrap validation so platform-managed MetaTables with
   matching columns and index names are not falsely rejected when backend
   introspection omits index column or uniqueness details.
@@ -142,6 +175,16 @@ and this project follows versioned releases.
 
 ### Added
 
+- Added ADR 0020 to define how `ms-markets` should consume the SDK
+  `metatable-migration.v1` registry/apply workflow, including the admin-owned
+  migration lifecycle, read-only `msm.start_engine(...)` attachment path,
+  catalog finalization, packaged migration resources, and implementation task
+  list.
+- Implemented the ADR 0020 package surface: `MarketsMigrationTable`,
+  `src/msm/migrations/` package registry and baseline revision resources,
+  `msm.maintenance.migrations`, `msm migrations current/sync/upgrade/validate`,
+  read-only catalog attachment for `msm.start_engine(...)`, migration lifecycle
+  docs, an example command sequence, and packaged migration skills.
 - Added `IndexTypeTable`, the `msm.api.indices.IndexType` row API, and the
   built-in `INDEX_TYPE_INTEREST_RATE` definition so indexes can be classified
   through the same registry pattern used by asset types.
@@ -180,15 +223,15 @@ and this project follows versioned releases.
   list boundary while returning index registry rows from `IndexTable`.
 - Added shared typed row helpers for explicit schema bootstrap, create/upsert,
   lookup, filter, update, and delete operations over the active markets runtime.
-- Added `examples/workflows/typed_metatable_rows.py` to demonstrate the class-owned
-  row API across multi-table markets workflows.
+- Added `examples/msm_portfolios/portfolio_equal_weights_example.py` to demonstrate
+  portfolio row APIs, optional index linkage, and portfolio DataNode storage.
 - Removed obsolete top-level `msm.accounts` and `msm.execution` compatibility
   shims. Use `msm.api.accounts`, `msm.api.execution`,
   `msm.data_nodes.accounts`, and `msm.data_nodes.execution` directly.
 - Replaced the legacy account target assignment timestamp with the
   `PositionSet.position_set_time` UTC timestamp owned by the target-position
   set snapshot.
-- Renamed the account example to `examples/accounts/account_workflow.py` and
+- Renamed the account example to `examples/msm/accounts/account_workflow.py` and
   expanded it into a full account workflow: two accounts in one group, one
   shared account model portfolio, account-owned target portfolio links,
   position sets, target position rows, holdings publication, and position
@@ -220,10 +263,10 @@ and this project follows versioned releases.
 - Added an asset CRUD example covering asset creation, lookup by identifier and
   UID, OpenFIGI detail registration, AssetSnapshot frame updates, created asset
   listing, and optional cleanup of temporary custom assets.
-- Added `examples/assets/asset_category_workflow.py` to demonstrate creating an
+- Added `examples/msm/assets/asset_category_workflow.py` to demonstrate creating an
   asset category, adding assets, removing assets, and printing membership after
   each change without leaving the category empty during the normal run.
-- Added `examples/assets/utils/reference_data.py` so asset examples reuse the
+- Added `examples/msm/assets/utils/reference_data.py` so asset examples reuse the
   same asset type payloads, asset identifiers, currency definitions, and FIGI
   constants.
 - Added an offline platform example for inspecting SDK-derived markets
@@ -285,14 +328,14 @@ and this project follows versioned releases.
 - Added UID-based pricing resolvers so bonds and swaps materialize QuantLib
   indices and curves from `IndexTable.uid`, `IndexConventionDetails`, and
   `CurveTable` instead of raw index-name strings.
-- Added `examples/pricing/bond_pricing_example/`, a full floating-rate bond
+- Added `examples/msm_pricing/bond_pricing_example/`, a full floating-rate bond
   workflow that registers asset and pricing rows, publishes mock fixings and a
   flat-forward discount curve, attaches a `FloatingRateBond`, reloads it through
   `Instrument.load_from_asset(...)`, and prints pricing analytics.
 - Reduced the floating-rate bond example's mock fixing lookback to one month so
   it does not publish a full year of synthetic fixing rows.
 - Added reusable mock pricing market-data components under
-  `examples/pricing/utils/` for subclassing `DiscountCurvesNode` and
+  `examples/msm_pricing/utils/` for subclassing `DiscountCurvesNode` and
   `FixingRatesNode` in examples.
 - Added rich configuration-owned discovery metadata for `DiscountCurvesNode`
   describing its row grain, Curve MetaTable identity link, compressed curve
@@ -324,14 +367,14 @@ and this project follows versioned releases.
   one-to-one bond detail table.
 - Implemented `IssuerTable`, `BondAssetDetailsTable`, `msm.api.issuers.Issuer`, and
   `msm.api.assets.Bond` for registering bonds through the user-facing API.
-- Added `examples/assets/us_treasury_bond_workflow.py` showing how CUSIP, FIGI,
+- Added `examples/msm/assets/us_treasury_bond_workflow.py` showing how CUSIP, FIGI,
   issuer, maturity, coupon, and tenor fields map to the current bond API.
 - Added OpenFIGI helpers to register index rows from FIGI and create
   index-underlying futures from index/future FIGIs while keeping contract terms
   explicit.
-- Added `examples/assets/derivatives/index_future_from_openfigi.py` for creating an
+- Added `examples/msm/assets/derivatives/index_future_from_openfigi.py` for creating an
   index-underlying future from OpenFIGI FIGIs.
-- Added `examples/assets/derivatives/crypto_future_without_figi.py` for creating
+- Added `examples/msm/assets/derivatives/crypto_future_without_figi.py` for creating
   a crypto perpetual future from local asset and index identifiers only.
 - Documented the library-wide API style: users work with typed `msm.api` row
   objects, while schema code works with `msm.models.*Table` declarations.
@@ -340,7 +383,7 @@ and this project follows versioned releases.
 - Added a shared `StampedDataNode` frame/config base plus
   `IndexTimestampedDataNode` and `IndexDataNodeConfiguration` for timestamped
   facts keyed to `IndexTable.unique_identifier`.
-- Added `examples/platform/bootstrap.py` as the home for the example MetaTable
+- Added `examples/msm/platform/bootstrap.py` as the home for the example MetaTable
   namespace environment constants.
 - Documented the active-runtime row API pattern and explicit schema preflight
   option.
@@ -428,7 +471,7 @@ and this project follows versioned releases.
   `msm.data_nodes.assets.asset_indexed` and kept index-stamped foreign-key
   helpers in `msm.data_nodes.indices`.
 - Moved asset-scope adapter helpers from the root `msm` package into
-  `msm.portfolios.asset_scope`.
+  `msm_portfolios.asset_scope`.
 - Moved the packaged console implementation from `msm.cli` into the top-level
   `cli` package while keeping the installed command name `msm`.
 - Moved markets MetaTable registration and resolution helpers from

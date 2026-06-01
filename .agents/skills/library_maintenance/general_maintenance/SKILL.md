@@ -52,8 +52,10 @@ Before editing, identify the affected concept area:
 - `services`
 - packaging, docs, examples, skills, or CI
 
-Use the matching page under `docs/knowledge/<concept>/index.md` as the primary
-documentation anchor.
+Use the matching package-owned page as the primary documentation anchor:
+`docs/knowledge/msm/<concept>/index.md`,
+`docs/knowledge/msm_portfolios/<concept>/index.md`, or
+`docs/knowledge/msm_pricing/index.md`.
 
 ### Asset Extension Naming Standard
 
@@ -87,7 +89,10 @@ an ADR before implementation.
 
 For every relevant implementation change, update the closest documentation:
 
-- Concept docs: `docs/knowledge/<concept>/index.md`
+- Concept docs under the owning package namespace, for example
+  `docs/knowledge/msm/assets/index.md`,
+  `docs/knowledge/msm_portfolios/portfolios/index.md`, or
+  `docs/knowledge/msm_pricing/index.md`
 - Tutorial docs: `docs/tutorial/index.md` or a new tutorial page wired into
   `mkdocs.yml`
 - Public overview: `README.md` when installation, usage, package surface,
@@ -100,11 +105,17 @@ Documentation should explain the new contract or workflow, not just list files.
 
 ### 3. Add Or Update An Example
 
-For implementation changes, add or update an example under `examples/`.
+For implementation changes, add or update an example under the owning package
+namespace:
+
+- `examples/msm/` for core markets workflows
+- `examples/msm_portfolios/` for portfolio and virtual-fund workflows
+- `examples/msm_pricing/` for pricing workflows
 
 Examples should:
 
-- import through public package paths such as `msm` or `msm.pricing`
+- import through public package paths such as `msm`, `msm_portfolios`, or
+  `msm_pricing`
 - demonstrate the intended workflow end to end where practical
 - avoid private internals unless the implementation itself is internal-only
 - be small enough to run or inspect quickly
@@ -135,7 +146,8 @@ or `README.md` if the page is a new user-facing entry point.
 When adding a new package concept, add or update:
 
 - `docs/knowledge/index.md`
-- `docs/knowledge/<concept>/index.md`
+- the package-owned concept page under `docs/knowledge/msm/`,
+  `docs/knowledge/msm_portfolios/`, or `docs/knowledge/msm_pricing/`
 - `mkdocs.yml`
 
 ### 6. Validate Before Finishing

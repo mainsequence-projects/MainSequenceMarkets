@@ -244,7 +244,7 @@ backend use an explicit `hash_namespace(...)`.
 ## Success Criteria
 
 - `import msm.data_nodes`, `import msm_pricing.data_nodes`, and
-  `import msm.portfolios.data_nodes` succeed under the installed SDK.
+  `import msm_portfolios.data_nodes` succeed under the installed SDK.
 - No repository module imports `mainsequence.tdag*` or
   `mainsequence.client.models_tdag`.
 - Every concrete DataNode has a registered `PlatformTimeIndexMetaData`

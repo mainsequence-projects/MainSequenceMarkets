@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 import pandas as pd
 
 from mainsequence.client import dtype_codec as dc
-from msm.data_nodes.storage import AccountHoldingsStorage, FundHoldingsStorage
+from msm.data_nodes.storage import AccountHoldingsStorage
 from msm.data_nodes.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,
@@ -29,26 +29,6 @@ def build_account_holdings_frame(
         storage_table=AccountHoldingsStorage,
         holdings_date=holdings_date,
         owner_uid=account_uid,
-        positions=positions,
-        holdings_set_uid=holdings_set_uid,
-        is_trade_snapshot=is_trade_snapshot,
-        target_trade_time=target_trade_time,
-    )
-
-
-def build_fund_holdings_frame(
-    *,
-    holdings_date: dt.datetime | str,
-    fund_uid: UUID | str,
-    positions: Sequence[Mapping[str, Any] | Any],
-    holdings_set_uid: UUID | str | None = None,
-    is_trade_snapshot: bool = False,
-    target_trade_time: dt.datetime | str | None = None,
-) -> pd.DataFrame:
-    return build_holdings_frame(
-        storage_table=FundHoldingsStorage,
-        holdings_date=holdings_date,
-        owner_uid=fund_uid,
         positions=positions,
         holdings_set_uid=holdings_set_uid,
         is_trade_snapshot=is_trade_snapshot,
@@ -236,7 +216,6 @@ def _normalize_required_string(value: Any) -> str:
 
 __all__ = [
     "build_account_holdings_frame",
-    "build_fund_holdings_frame",
     "build_holdings_frame",
     "validate_holdings_frame",
 ]

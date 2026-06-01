@@ -79,7 +79,7 @@ Before changing code, inspect the current local implementation:
 4. `src/msm/data_nodes/utils/stamped.py`
 5. `src/msm/data_nodes/indices/timestamped.py`
 6. `src/msm/settings.py`
-7. `docs/knowledge/assets/asset_indexed_data_nodes.md`
+7. `docs/knowledge/msm/assets/asset_indexed_data_nodes.md`
 8. `docs/ADR/0017-storage-first-data-node-architecture.md`
 
 For generic SDK behavior, verify against the latest Main Sequence DataNode docs

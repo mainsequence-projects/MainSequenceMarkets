@@ -15,21 +15,24 @@
 `ms-markets` is the financial markets extension layer for the Main Sequence
 platform. It provides reusable market-domain ORM models, market DataNodes,
 portfolio construction utilities, repository operations, and application-facing
-helpers for building financial systems on top of Main Sequence. QuantLib-backed
-pricing is an optional package surface, not part of the core `msm` import
-package.
+helpers for building financial systems on top of Main Sequence. Portfolio and
+QuantLib-backed pricing capabilities are packaged as separate import surfaces so
+core `msm` stays focused on shared markets primitives.
 
-The Python distribution is named `ms-markets`. The import package is
+The Python distribution is named `ms-markets`. The core import package is
 intentionally short:
 
 ```python
 import msm
 ```
 
+Portfolio workflows import from `msm_portfolios`. Optional QuantLib-backed
+pricing imports from `msm_pricing`.
+
 ## Project Status
 
 - Status: initial scaffold and SDK extraction
-- Current package version: `0.0.3`
+- Current package version: `0.0.18`
 - Documentation: [Documentation Site](https://mainsequence-projects.github.io/MainSequenceMarkets/)
 - Open issues: [GitHub Issues](https://github.com/mainsequence-projects/MainSequenceMarkets/issues)
 - Release history: [CHANGELOG.md](https://github.com/mainsequence-projects/MainSequenceMarkets/blob/main/CHANGELOG.md)
@@ -56,20 +59,24 @@ Main package areas:
   trades, and execution error row APIs
 - `msm.models`: SQLAlchemy market-domain `*Table` declarations and MetaTable
   registration order
-- `msm.portfolios`: portfolio configuration, signal weights, rebalance
-  strategies, and Virtual Fund Builder workflows
+- `msm_portfolios`: portfolio configuration, signal weights, rebalance
+  strategies, virtual funds, and Virtual Fund Builder workflows
 - `msm_pricing`: optional QuantLib-backed instruments, curves, fixings, and
   pricing helpers installed with the `pricing` extra
 - `msm.repositories`: compiled persistence operations over market-domain models
 - `msm.services`: application-level orchestration over repositories, including
   asset lookup and OpenFIGI service helpers
 - `msm` CLI: package maintenance helpers such as explicit agent-skill copying
+  and SDK-managed MetaTable migration commands
 
 Repository areas:
 
 - `docs/`: MkDocs documentation, tutorials, knowledge guides, ADRs, and API
   reference scaffold
-- `examples/`: migrated market examples from the SDK
+- `examples/msm/`: core assets, accounts, platform, and row-workflow examples
+- `examples/msm_portfolios/`: single portfolio construction example with
+  index linkage and canonical portfolio DataNodes
+- `examples/msm_pricing/`: optional pricing and QuantLib-backed examples
 - `.agents/skills/ms_markets/`: source agent skills for market-domain workflows
 - `tests/`: automated tests
 - `src/msm/.agents/ms_markets/`: packaged agent-skill bundle installed with
@@ -208,7 +215,7 @@ exposed as `msm_pricing`.
 ## Package Metadata
 
 - Distribution name: `ms-markets`
-- Import package: `msm`
+- Import packages: `msm`, `msm_portfolios`, and optional `msm_pricing`
 - Python: `>=3.11`
 - License: Apache-2.0
 - Repository: <https://github.com/mainsequence-projects/MainSequenceMarkets>

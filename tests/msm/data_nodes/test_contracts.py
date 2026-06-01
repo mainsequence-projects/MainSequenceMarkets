@@ -14,11 +14,9 @@ import msm.services.holdings as holdings_service_module
 from msm.data_nodes.accounts import (
     AccountHoldings,
     HoldingsDataNodeConfiguration,
-    VirtualFundHoldings,
 )
 from msm.data_nodes.storage import (
     AccountHoldingsStorage,
-    FundHoldingsStorage,
     TargetPositionsStorage,
 )
 from msm.data_nodes.utils.storage_schema import (
@@ -28,15 +26,11 @@ from msm.data_nodes.utils.storage_schema import (
 from msm.models import (
     AccountTable,
     AssetTable,
-    FundTable,
     PositionSetTable,
     markets_sqlalchemy_models,
 )
 from msm.models.registration import markets_foreign_key_target_identifiers
-from msm.services.holdings import (
-    build_account_holdings_frame,
-    build_fund_holdings_frame,
-)
+from msm.services.holdings import build_account_holdings_frame
 from msm.services.target_positions import (
     build_target_positions_frame,
     validate_target_position_payload,
@@ -47,7 +41,6 @@ def test_holdings_storage_classes_are_registered_metatables() -> None:
     model_classes = set(markets_sqlalchemy_models())
 
     assert AccountHoldingsStorage in model_classes
-    assert FundHoldingsStorage in model_classes
     assert TargetPositionsStorage in model_classes
 
 
@@ -56,25 +49,14 @@ def test_holdings_storage_declares_owner_and_asset_foreign_keys() -> None:
         AccountTable.__metatable_identifier__,
         AssetTable.__metatable_identifier__,
     ]
-    assert markets_foreign_key_target_identifiers(FundHoldingsStorage) == [
-        AssetTable.__metatable_identifier__,
-        FundTable.__metatable_identifier__,
-    ]
 
     account_asset_column = AccountHoldingsStorage.__table__.columns["unique_identifier"]
-    fund_asset_column = FundHoldingsStorage.__table__.columns["unique_identifier"]
 
     assert any(
         foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AssetTable
         and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
         == "unique_identifier"
         for foreign_key in account_asset_column.foreign_keys
-    )
-    assert any(
-        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AssetTable
-        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
-        == "unique_identifier"
-        for foreign_key in fund_asset_column.foreign_keys
     )
 
 
@@ -107,19 +89,12 @@ def test_holdings_nodes_source_column_dtypes_from_storage_classes() -> None:
     assert not hasattr(AccountHoldings, "_required_column_dtypes_map")
     assert not hasattr(AccountHoldings, "_required_index_names")
     assert not hasattr(AccountHoldings, "_required_time_index_name")
-    assert not hasattr(VirtualFundHoldings, "_required_column_dtypes_map")
-    assert not hasattr(VirtualFundHoldings, "_required_index_names")
-    assert not hasattr(VirtualFundHoldings, "_required_time_index_name")
     assert "index_names" not in HoldingsDataNodeConfiguration.model_fields
     assert "time_index_name" not in HoldingsDataNodeConfiguration.model_fields
     assert AccountHoldings._column_dtypes_map_for_storage(
         AccountHoldingsStorage
     ) == storage_column_dtypes_map(AccountHoldingsStorage)
-    assert VirtualFundHoldings._column_dtypes_map_for_storage(
-        FundHoldingsStorage
-    ) == storage_column_dtypes_map(FundHoldingsStorage)
     assert AccountHoldings._required_storage_table() is AccountHoldingsStorage
-    assert VirtualFundHoldings._required_storage_table() is FundHoldingsStorage
 
 
 def test_holdings_nullability_is_sourced_from_storage_classes() -> None:
@@ -127,12 +102,9 @@ def test_holdings_nullability_is_sourced_from_storage_classes() -> None:
     assert not hasattr(holdings_service_module, "NULLABLE_HOLDINGS_COLUMNS")
 
     account_nullable = storage_column_nullable_map(AccountHoldingsStorage)
-    fund_nullable = storage_column_nullable_map(FundHoldingsStorage)
 
     assert account_nullable["quantity"] is True
     assert account_nullable["target_trade_time"] is True
-    assert fund_nullable["target_weight"] is True
-    assert fund_nullable["fund_uid"] is False
 
 
 def test_account_holdings_dtype_tokens_match_storage_columns() -> None:
@@ -148,30 +120,17 @@ def test_account_holdings_dtype_tokens_match_storage_columns() -> None:
 
 
 def test_holdings_bound_dtype_map_uses_instance_storage_table() -> None:
-    node = SimpleNamespace(storage_table=FundHoldingsStorage)
+    node = SimpleNamespace(storage_table=AccountHoldingsStorage)
 
     assert AccountHoldings._bound_column_dtypes_map(node) == storage_column_dtypes_map(
-        FundHoldingsStorage
+        AccountHoldingsStorage
     )
-
-
-def test_fund_holdings_dtype_tokens_match_storage_columns() -> None:
-    dtype_map = VirtualFundHoldings._column_dtypes_map_for_storage(FundHoldingsStorage)
-
-    assert dtype_map["target_weight"] == dc.FLOAT64
-    assert dtype_map["quantity"] == dc.FLOAT64
-    assert dtype_map["target_trade_time"] == dc.TIMESTAMP_TZ
-    assert dtype_map["unique_identifier"] == dc.STRING
-    assert dtype_map["fund_uid"] == dc.UUID_TOKEN
 
 
 def test_holdings_nodes_do_not_expose_bootstrap_frame_api() -> None:
     assert not hasattr(AccountHoldings, "build_schema_bootstrap_frame")
     assert not hasattr(AccountHoldings, "build_schema_bootstrap_account_frame")
     assert not hasattr(AccountHoldings, "build_initialization_frame")
-    assert not hasattr(VirtualFundHoldings, "build_schema_bootstrap_frame")
-    assert not hasattr(VirtualFundHoldings, "build_schema_bootstrap_fund_frame")
-    assert not hasattr(VirtualFundHoldings, "build_initialization_frame")
 
 
 def test_account_holdings_frame_builder_uses_storage_contract() -> None:
@@ -213,30 +172,6 @@ def test_account_holdings_datanode_exposes_frame_helpers_only() -> None:
     assert not hasattr(AccountHoldings, "create_account")
     assert not hasattr(AccountHoldings, "add_account_holdings")
     assert not hasattr(AccountHoldings, "get_account_holdings")
-
-
-def test_fund_holdings_frame_builder_keeps_target_weight_contract() -> None:
-    fund_uid = uuid.uuid4()
-
-    frame = build_fund_holdings_frame(
-        holdings_date="2026-05-25T10:00:00+00:00",
-        fund_uid=fund_uid,
-        positions=[
-            {
-                "unique_identifier": "ETH",
-                "quantity": "3",
-                "target_weight": "0.15",
-            }
-        ],
-    )
-
-    assert list(frame.index.names) == list(FundHoldingsStorage.__index_names__)
-    row = frame.reset_index().iloc[0]
-    assert row["fund_uid"] == str(fund_uid)
-    assert row["quantity"] == 3.0
-    assert row["target_weight"] == 0.15
-    assert str(frame.reset_index()["quantity"].dtype) == "float64"
-    assert str(frame.reset_index()["target_weight"].dtype) == "float64"
 
 
 def test_holdings_frame_builder_rejects_duplicate_position_identifiers() -> None:
