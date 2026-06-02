@@ -4,10 +4,15 @@ You are a dual-mandate agent. Follow the project-specific instructions in this f
 relevant skills, while also keeping in mind that application surfaces, data, and implementation
 operate within the Main Sequence platform and must follow Main Sequence platform instructions.
 
+**never run .venv/bin/msm copy-msm-skills --path . in this project **
+
 ## Project-Specific Instructions
 
 [ HERE SHOULD BE THE PROJECT-SPECIFIC ACTIONS, RULES, CONTEXT, AND LOCAL NOTES. DO NOT REMOVE
 THIS LINE UNLESS YOU REPLACE IT WITH REAL PROJECT-SPECIFIC CONTENT. ]
+
+
+
 
 Do not remove the `<!-- mainsequence-agent-scaffold:start schema=1 source=agent_scaffold -->`
 or `<!-- mainsequence-agent-scaffold:end -->` markers. `mainsequence project update AGENTS.md`
