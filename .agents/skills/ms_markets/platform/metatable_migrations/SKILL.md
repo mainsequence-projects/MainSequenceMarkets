@@ -1,75 +1,77 @@
 ---
 name: mainsequence-markets-metatable-migrations
-description: Use this skill when adding, reviewing, documenting, or operating SDK-managed ms-markets MetaTable migrations. This skill owns the package migration registry, Python migration modules, SDK MigrationMetaTable sync/apply flow, catalog finalization, migration CLI commands, and the rule that runtime startup attaches only after migrations are current.
+description: Use this skill when an ms-markets project extension needs to participate in SDK-managed MetaTable migrations. MetaTable migrations are handled by mainsequence-sdk; this skill only covers ms-markets-specific project table/spec wiring after SDK registration.
 ---
 
-# Main Sequence Markets MetaTable Migrations
+# Main Sequence Markets MetaTable Migration Extensions
 
-Use this skill for the `msm migrations ...` lifecycle and for any change that
-creates or evolves library-owned MetaTables.
+MetaTable migrations are owned by `mainsequence-sdk`.
+
+Use the SDK migration provider lifecycle for schema changes:
+
+- `mainsequence.meta_tables.migrations.AlembicMetaTableMigration`
+- the SDK MetaTable migration CLI
+- the SDK migration tutorial and knowledge docs
+- the project-local migration provider, when the project defines one
+
+This skill does not own migration engines, migration commands, schema apply
+logic, registry row sync, or built-in ms-markets table migration behavior.
 
 ## Core Rule
 
-Schema and catalog mutation belongs to admin commands:
+For ms-markets project extensions, the only ms-markets-specific migration hook is
+`after_register_metatables`.
 
-```bash
-msm migrations sync --data-source-uid <dynamic-table-data-source-uid>
-msm migrations upgrade --data-source-uid <dynamic-table-data-source-uid>
-msm migrations validate --data-source-uid <dynamic-table-data-source-uid>
-```
+Use `after_register_metatables` only when the project defines project tables that
+need ms-markets catalog/spec refresh after the SDK has registered those project
+MetaTables.
 
-Runtime code calls `msm.start_engine(...)` only after migration status and
-catalog finalization are current. Runtime startup must not sync migration rows,
-apply migrations, register application tables, or reconcile catalog rows.
+Do not add built-in ms-markets tables to `after_register_metatables`.
+
+Do not add any table spec when the project has no project-specific tables.
 
 ## Read First
 
-Before changing migration behavior, inspect:
+Before changing project extension migration wiring, inspect:
 
-1. `docs/ADR/0020-sdk-managed-metatable-migrations.md`
-2. `docs/knowledge/msm/platform/metatable_migrations.md`
-3. `src/msm/maintenance/migrations.py`
-4. `src/msm/migrations/registry.py`
-5. `src/msm/migrations/versions/`
-6. `src/msm/maintenance/catalog.py`
-7. `src/msm/bootstrap.py`
+1. `mainsequence-sdk/docs/tutorial/metatable_migrations.md`
+2. `mainsequence-sdk/docs/knowledge/meta_tables/migrations.md`
+3. `mainsequence-sdk/mainsequence/meta_tables/migrations.py`
+4. the project-local `AlembicMetaTableMigration` provider, if present
+5. the project code that defines extension table specs, if present
 
-## Package Scope
+## Project Extension Pattern
 
-`MIGRATION_MODEL_REGISTRY` defines the universe of `msm`-owned MetaTables that
-migration commands consider. It is local source code, not migration history.
+The SDK provider owns the migrated table list:
 
-Python migration modules define revision metadata and affected models. The
-runner materializes SDK manifest JSON from Python metadata at
-`sync` or `upgrade` time; do not add hand-authored YAML/JSON manifest files as
-the source of truth.
+```python
+from mainsequence.meta_tables.migrations import AlembicMetaTableMigration
 
-## Adding A Migration
+migration = AlembicMetaTableMigration(
+    package="my_project",
+    migration_namespace="my-project",
+    script_location="my_project:migrations",
+    target_metadata=Base.metadata,
+    alembic_registry=ProjectAlembicVersion,
+    metatable_models=[
+        ProjectAssetDetailsTable,
+    ],
+    after_register_metatables=refresh_project_market_specs,
+)
+```
 
-When a library-owned model changes:
+The hook should refresh only project extension specs for the project tables
+registered by that provider.
 
-1. Update the SQLAlchemy model declaration.
-2. Keep the model in `MIGRATION_MODEL_REGISTRY`.
-3. Add a Python module under `src/msm/migrations/versions/`.
-4. Define structured SDK migration operations in the Python module.
-5. List affected models in the Python module.
-6. Pin `OLD_CONTRACT_HASHES` when the previous declaration no longer exists in
-   current code.
-7. Add or update tests for manifest materialization, sync/apply routing, and
-   catalog finalization.
-8. Update docs, tutorial, example, changelog, and packaged skills.
-
-Forward migrations are the only package workflow. Corrections are new forward
-migrations, not downgrades.
+It must not register built-in ms-markets tables, infer the built-in model graph,
+or mutate schema. Schema work is already handled by the SDK provider.
 
 ## Review Checklist
 
-- `msm migrations current` is read-only.
-- `msm migrations sync` writes SDK registry rows but does not apply DDL.
-- `msm migrations upgrade` applies through the SDK migration engine and then
-  finalizes `MarketsMetaTableCatalogTable`.
-- `msm migrations validate` fails unless SDK status and catalog rows match
-  package code.
-- `msm.start_engine(...)` verifies and attaches only.
-- Catalog rows are not manually rotated to accept schema drift.
-- Python migration modules are included in built wheels.
+- The migration provider is SDK-owned and uses `AlembicMetaTableMigration`.
+- Project extension tables are listed in the project provider.
+- `after_register_metatables` is present only when project table specs need
+  refresh.
+- The hook handles project tables/specs only.
+- Built-in ms-markets tables are not added to the hook.
+- No table spec is added when the project does not define project tables.

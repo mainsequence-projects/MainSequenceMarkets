@@ -1,24 +1,30 @@
 ---
 name: mainsequence-markets-bootstrap-registration
-description: Use this skill when changing, documenting, or reviewing ms-markets runtime attachment, SDK-managed MetaTable migrations, package migration registry, catalog finalization, registration order, or extension wiring. Use it whenever examples or user workflows need schema migration or runtime attachment before row APIs or DataNode writes. This skill owns the rule that schema/catalog mutation happens through `msm migrations ...`, while library users attach runtime through `msm.start_engine(...)`, not row-class create_schemas() shortcuts.
+description: Use this skill when changing, documenting, or reviewing ms-markets runtime attachment, project extension table wiring, or row API startup behavior. MetaTable migrations are handled by mainsequence-sdk; this skill keeps ms-markets runtime attachment separate from SDK migration ownership.
 ---
 
-# Main Sequence Markets Migrations And Runtime Attachment
+# Main Sequence Markets Runtime Attachment
 
-Use this skill for the ms-markets schema lifecycle: admin migrations,
-application runtime attachment, catalog finalization, extending the model graph,
-and documenting how users should prepare schemas before row operations or
-DataNode writes.
+Use this skill for ms-markets runtime attachment after MetaTable migrations have
+already been handled by `mainsequence-sdk`.
+
+Schema changes and MetaTable registration belong to the SDK migration provider:
+
+- `mainsequence.meta_tables.migrations.AlembicMetaTableMigration`
+- the SDK MetaTable migration CLI
+- the SDK migration tutorial and knowledge docs
+- the project-local migration provider, when the project defines one
+
+ms-markets runtime startup attaches to already-migrated tables. It does not own
+schema migration, schema apply logic, migration registry rows, or SDK migration
+status.
 
 ## Core Rule
 
-Schema and catalog mutation is admin-owned:
+Run the SDK MetaTable migration provider before runtime attachment.
 
-```bash
-msm migrations upgrade --data-source-uid <dynamic-table-data-source-uid>
-```
-
-Application code attaches to the finalized schema through the runtime boundary:
+Application code then attaches through `msm.start_engine(...)` before using row
+APIs or DataNode writes:
 
 ```python
 import msm
@@ -33,20 +39,17 @@ Asset.create_schemas()
 ```
 
 Typed row classes such as `Asset`, `Account`, and `Portfolio` are row-operation
-APIs. They may depend on an active runtime, but user-facing workflows should not
-ask those row classes to own schema bootstrap.
+APIs. They may depend on an active runtime, but they do not own schema
+bootstrap.
 
-`msm.start_engine(...)` must verify migration status and catalog finalization,
-then attach from `MarketsMetaTableCatalogTable`. It must not sync SDK migration
-rows, apply migrations, register application tables, or reconcile catalog rows.
+`msm.start_engine(...)` must attach runtime state only. It must not apply
+migrations, register application tables, reconcile table specs, or create
+schemas on first row use.
 
 ## This Skill Owns
 
 - `msm.start_engine(...)` usage in examples, tutorials, docs, and tests.
-- Admin migration behavior under `src/msm/maintenance/migrations.py`.
-- Package migration registry and revisions under `src/msm/migrations/`.
-- Runtime catalog attachment behavior under `src/msm/bootstrap.py` and
-  `src/msm/maintenance/catalog.py`.
+- Runtime attachment behavior under `src/msm/bootstrap.py`.
 - Model graph extension through `src/msm/models/__init__.py` and
   `markets_sqlalchemy_models()`.
 - Pricing extension bootstrap through `msm_pricing.bootstrap` and
@@ -54,8 +57,8 @@ rows, apply migrations, register application tables, or reconcile catalog rows.
 - Typed row API entry wiring for MetaTable-backed Pydantic rows that subclass
   `MarketsMetaTableRow` and point at a registered SQLAlchemy model through
   `__table__`.
-- The boundary between admin schema migration, catalog finalization, runtime
-  attachment, and typed row operations.
+- The runtime boundary between SDK-managed MetaTable migration and typed row
+  operations.
 
 ## This Skill Does Not Own
 
@@ -72,18 +75,15 @@ rows, apply migrations, register application tables, or reconcile catalog rows.
 
 ## Read First
 
-Before changing bootstrap or registration code, inspect:
+Before changing runtime attachment code, inspect:
 
 1. `src/msm/bootstrap.py`
-2. `src/msm/maintenance/catalog.py`
-3. `src/msm/maintenance/migrations.py`
-4. `src/msm/migrations/registry.py`
-5. `src/msm/migrations/versions/`
-6. `src/msm/models/__init__.py`
-7. `src/msm/models/registration.py`
-8. `src/msm/api/base.py`
-9. `docs/knowledge/msm/platform/meta_table_registration.md`
-10. `docs/knowledge/msm/platform/metatable_migrations.md`
+2. `src/msm/models/__init__.py`
+3. `src/msm/models/registration.py`
+4. `src/msm/api/base.py`
+5. `mainsequence-sdk/docs/tutorial/metatable_migrations.md`
+6. `mainsequence-sdk/docs/knowledge/meta_tables/migrations.md`
+7. `mainsequence-sdk/mainsequence/meta_tables/migrations.py`
 
 For pricing bootstrap changes, also inspect:
 
@@ -92,8 +92,9 @@ For pricing bootstrap changes, also inspect:
 
 ## User-Facing Startup Pattern
 
-Admin workflows should run migrations before application startup. Examples and
-application code should then attach once, then use row APIs:
+Admin workflows should run the SDK MetaTable migration provider before
+application startup. Examples and application code should then attach once and
+use row APIs:
 
 ```python
 import msm
@@ -112,11 +113,10 @@ resolver keeps library dependency order.
 Do not bootstrap or migrate implicitly from first row use. Row operations should
 fail when the runtime has not been initialized for their required tables.
 
-## Extending The Model Graph
+## Project Extension Tables
 
-For library-owned models, add the model to the built-in graph. For
-project-local extension models, target ADR 0018: callers should be able to pass
-the extension model class directly to startup:
+For project-local extension models, callers should be able to pass the extension
+model class directly to startup after SDK migrations have registered it:
 
 ```python
 import msm
@@ -126,9 +126,17 @@ from my_project.markets_models import MyAssetDetailsTable
 msm.start_engine(models=[MyAssetDetailsTable])
 ```
 
-That call must use the same finalized maintenance catalog path as built-ins. Do
-not create a project-local UID map, catalog writer, table-name resolver, or
-direct runtime registration flow.
+The project migration provider owns schema and MetaTable registration. The only
+ms-markets-specific migration hook is `after_register_metatables`, and it should
+be used only when project tables need project table specs refreshed after SDK
+registration.
+
+Do not add built-in ms-markets tables to `after_register_metatables`.
+
+Do not add project table specs when the project has no project-specific tables.
+
+Do not create a project-local UID map, table-name resolver, direct runtime
+registration flow, or row-class schema bootstrap.
 
 When adding a new built-in markets MetaTable model:
 
@@ -139,13 +147,13 @@ When adding a new built-in markets MetaTable model:
 4. Export the model from its package.
 5. Add it to `markets_sqlalchemy_models()` in dependency order.
 6. Add or update row APIs only after the storage model is in the graph.
-7. Add or update a packaged Python migration module and SQL resource.
-8. Update docs and tests so examples run admin migrations before
-   `msm.start_engine(...)`.
+7. Ensure SDK migration/provider work is handled outside this skill.
+8. Update docs and tests so examples attach through `msm.start_engine(...)`
+   after SDK migrations.
 
 When adding DataNode storage, add the `PlatformTimeIndexMetaData` storage class
-to the migration/model graph. Do not rely on constructing a DataNode to register
-its storage.
+to the SDK migration provider. Do not rely on constructing a DataNode to
+register its storage.
 
 ## Typed Row API Entries
 
@@ -153,8 +161,8 @@ Use `MarketsMetaTableRow` for simple typed row APIs backed by one primary
 SQLAlchemy MetaTable model. `MarketsMetaTableRow` is a Pydantic `BaseModel`
 subclass from `msm.api.base`; it is not registered as a backend MetaTable. It
 provides the row operation methods (`create`, `upsert`, `filter`, lookups,
-update, delete), while the SQLAlchemy model class is the registered/cataloged
-artifact. `MarketsRow` is only the legacy compatibility alias.
+update, delete), while the SQLAlchemy model class is the registered artifact.
+`MarketsRow` is only the legacy compatibility alias.
 
 ```python
 import uuid
@@ -183,9 +191,9 @@ Rules:
 - `__required_tables__` lists the models that must be present in the active
   runtime before row operations execute.
 - `__upsert_keys__` names the table columns used for upsert conflict handling.
-- Admin migrations register or refresh the SQLAlchemy model's platform
-  MetaTable. `msm.start_engine(...)` only attaches it; the row class does not
-  register, attach, or discover schemas.
+- SDK migrations register the SQLAlchemy model's platform MetaTable.
+- `msm.start_engine(...)` attaches it; the row class does not register, attach,
+  or discover schemas.
 
 ```python
 import msm
@@ -203,30 +211,17 @@ objects may inherit directly from Pydantic `BaseModel`, but their runtime
 attachment still belongs to `msm.start_engine(models=[...])` and their table
 dependencies must be explicit.
 
-When reviewing or implementing extension support, verify the ADR 0018 target:
-
-- `msm.start_engine(models=[CustomTable])` accepts project-local
-  `MarketsBase` subclasses that are not in `markets_sqlalchemy_models()`.
-- Class-based `MetaTableForeignKey(...)` targets are expanded transitively, so a
-  custom asset detail table pulls in `AssetTable` before runtime attachment and
-  migration planning.
-- Duplicate logical identifiers fail before migration planning or runtime
-  attachment.
-- Catalog rows are finalized by admin migrations and runtime binding uses the
-  same catalog path used by built-ins.
-- Custom row API classes remain row-operation wrappers; startup still goes
-  through `msm.start_engine(...)`.
-- Catalog rows whose `meta_table_uid` no longer resolves fail runtime startup;
-  repair belongs to `msm migrations upgrade` or explicit admin/platform repair.
-
 ## Review Checklist
 
 - User docs/examples call `msm.start_engine(...)`, not `*.create_schemas()`.
-- New models are present in the migration/model graph in dependency order.
-- New model changes include packaged Python migration modules.
+- New runtime models are present in the model graph in dependency order.
+- SDK migration/provider work is handled outside this skill.
+- Project table specs are refreshed through `after_register_metatables` only
+  when project tables exist.
+- Built-in ms-markets tables are not added to the project hook.
 - Runtime attachment remains explicit and startup-scoped.
 - Row APIs do not attach, register, or discover schemas on first use.
-- DataNode storage is migrated/finalized through the model/catalog graph before
+- DataNode storage is registered through the SDK migration provider before
   writes.
-- Runtime attachment does not sync migrations, apply migrations, register
-  application tables, or reconcile catalog rows.
+- Runtime attachment does not apply migrations, register application tables, or
+  reconcile table specs.
