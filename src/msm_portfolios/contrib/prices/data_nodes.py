@@ -26,7 +26,6 @@ from msm_portfolios.asset_scope import (
     require_asset_category_scope,
 )
 from msm_portfolios.data_nodes.storage import (
-    ExternalPricesStorage,
     InterpolatedPricesStorage,
 )
 from msm_portfolios.configuration import AssetsConfiguration
@@ -48,12 +47,6 @@ class InterpolatedPricesConfig(AssetIndexedDataNodeConfiguration):
         default=None,
         json_schema_extra={"hash_excluded": True},
     )
-
-
-class ExternalPricesConfig(AssetIndexedDataNodeConfiguration):
-    artifact_name: str
-    bucket_name: str
-    asset_category_unique_id: str
 
 
 @lru_cache(maxsize=256)
@@ -856,54 +849,4 @@ class InterpolatedPrices(AssetIndexedDataNode):
                 "interpolated",
             ]
         ]
-        return prices
-
-
-class ExternalPrices(AssetIndexedDataNode):
-    def __init__(self, external_prices_config: ExternalPricesConfig, *args, **kwargs):
-        self.external_prices_config = external_prices_config
-        self.artifact_name = external_prices_config.artifact_name
-        self.bucket_name = external_prices_config.bucket_name
-        self.asset_category_unique_id = external_prices_config.asset_category_unique_id
-        super().__init__(config=external_prices_config, *args, **kwargs)
-
-    @classmethod
-    def _required_storage_table(cls) -> type[ExternalPricesStorage]:
-        return ExternalPricesStorage
-
-    def get_asset_list(self):
-        """
-        Creates mappings from symbols to IDs
-        """
-        return require_asset_category_scope(
-            asset_list=self.external_prices_config.asset_list,
-            asset_category_unique_id=self.asset_category_unique_id,
-            context="ExternalPrices",
-        )
-
-    def update(self) -> pd.DataFrame:
-        from mainsequence.client import Artifact
-
-        source_artifact = Artifact.get(bucket__name=self.bucket_name, name=self.artifact_name)
-        prices_source = pd.read_csv(source_artifact.content)
-
-        expected_cols = [
-            "time_index",
-            "figi",
-            "price",
-        ]
-        prices_source = prices_source[expected_cols].copy()
-        prices_source["time_index"] = pd.to_datetime(prices_source["time_index"], utc=True)
-
-        # convert figis in source data
-        for asset in self.get_update_asset_list() or []:
-            prices_source.loc[
-                prices_source["figi"] == asset_field(asset, "figi"),
-                "unique_identifier",
-            ] = asset_field(asset, "unique_identifier")
-
-        prices_source.set_index(["time_index", "unique_identifier"], inplace=True)
-        prices = self.update_statistics.filter_df_by_latest_value(prices_source)
-
-        prices = prices.rename(columns={"price": "open"})[["open"]]
         return prices

@@ -203,13 +203,11 @@ class ExampleAssetMetric(AssetTimestampedDataNode):
         return self.set_frame(self.build_frame(rows))
 ```
 
-Register the storage class through the markets runtime/catalog registration
-flow (add it to the markets model registry returned by
-`markets_sqlalchemy_models()`, or pass it to `msm.start_engine(models=[...])`)
-so the `Asset` MetaTable is registered before this table's foreign key resolves.
-Writes require a storage class that has been registered through
-`PlatformTimeIndexMetaData.register(...)`; do not manually bind storage by UID or
-reconstruct a generic `MetaTable`.
+Add the storage class to the markets migration model registry so the SDK
+migration provider registers it after the `Asset` MetaTable dependency. Runtime
+startup can then attach it with `msm.start_engine(models=[...])`. Do not call
+`PlatformTimeIndexMetaData.register(...)`, manually bind storage by UID, or
+reconstruct a generic `MetaTable` in application code.
 
 Use `__metatable_description__` for durable table discovery text. The description
 should explain the market intention, row grain, and downstream use of the

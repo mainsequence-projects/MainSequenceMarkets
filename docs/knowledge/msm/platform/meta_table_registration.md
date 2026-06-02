@@ -51,9 +51,11 @@ The schema mutation entrypoint is the admin CLI:
 mainsequence migrations upgrade --provider msm.migrations:migration --to head
 ```
 
-The lower-level `register_markets_meta_tables(...)` helper remains an internal
-building block for migration/admin flows. Normal applications and examples
-should not use it as their registration workflow.
+MetaTable registration is migration-owned. Normal applications, examples, and
+runtime bootstrap code should not call model `.register()` methods or local
+registration helpers. The SDK migration provider resolves the package model
+registry, applies Alembic migrations, registers the MetaTables, and refreshes
+the markets catalog as part of the admin migration flow.
 
 Catalog bookkeeping is keyed by the globally unique MetaTable identifier from
 `__metatable_identifier__`, for example `AssetType` in the default namespace or
@@ -84,10 +86,11 @@ asset_uid = mapped_column(
 )
 ```
 
-The authored target is the `AssetTable` model class. `register()` resolves or
-recursively registers that target and writes the target `MetaTable.uid` into the
-backend foreign-key contract. Do not build platform-managed foreign keys from
-`Target.__table__` strings or caller-maintained table-name maps.
+The authored target is the `AssetTable` model class. The SDK migration provider
+resolves target MetaTables during migration-time registration and writes the
+target `MetaTable.uid` into the backend foreign-key contract. Do not build
+platform-managed foreign keys from `Target.__table__` strings or
+caller-maintained table-name maps.
 
 User-facing row operations use the active markets runtime. They do not attach
 to MetaTables, register tables, or run platform discovery on first use. In

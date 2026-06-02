@@ -7,7 +7,6 @@ from msm_portfolios.data_nodes.portfolio_weights import PortfolioWeights
 from msm_portfolios.data_nodes.portfolios import PortfoliosDataNode
 from msm_portfolios.data_nodes.signal_weights import SignalWeights
 from msm_portfolios.data_nodes.storage import (
-    ExternalPricesStorage,
     FundHoldingsStorage,
     InterpolatedPricesStorage,
     PortfolioWeightsStorage,
@@ -48,5 +47,4 @@ def test_portfolio_storage_identifiers_use_camel_case_ts_suffix() -> None:
     assert SignalWeightsStorage.metatable_identifier() == "SignalWeightsTS"
     assert PortfoliosStorage.metatable_identifier() == "PortfoliosTS"
     assert InterpolatedPricesStorage.metatable_identifier() == "InterpolatedPricesTS"
-    assert ExternalPricesStorage.metatable_identifier() == "ExternalPricesTS"
     assert FundHoldingsStorage.metatable_identifier() == "FundHoldingsTS"

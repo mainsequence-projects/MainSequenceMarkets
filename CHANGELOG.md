@@ -16,6 +16,9 @@ and this project follows versioned releases.
   orders, order events, trades, and execution errors. Execution facts are now
   storage-first through explicit time-index storage contracts, while
   order-manager intent remains as domain MetaTables.
+- Removed the unused `ExternalPrices` contrib DataNode and
+  `ExternalPricesStorage` / `ExternalPricesTS` storage table from
+  `msm_portfolios`; portfolio price workflows use `InterpolatedPrices`.
 - Split portfolio and virtual-fund functionality into the new `msm_portfolios`
   package boundary. Core `msm.start_engine(...)` no longer registers portfolio
   MetaTables, virtual-fund tables, portfolio DataNode storage, or portfolio
@@ -34,7 +37,7 @@ and this project follows versioned releases.
   single source of schema, dtypes, and identity foreign keys; DataNodes bind their
   storage through `storage_table` / `_required_storage_table()`; column dtypes are
   derived from the MetaTable via the SDK `dtype_codec`; and DataNode storage
-  classes register through the catalog bootstrap in FK dependency order. Removed
+  classes enter the SDK migration provider registry in FK dependency order. Removed
   `RecordDefinition`, `DataNodeTableContract`, `node_metadata`, the
   `*_COLUMN_DTYPES_MAP` constants, the `column_dtypes_map` configuration field,
   `SourceTableForeignKey`, and `test_node` (use `hash_namespace`). Re-pointed all
@@ -119,8 +122,9 @@ and this project follows versioned releases.
   registry relationships with ASCII table diagrams.
 - Renamed the top-level markets bootstrap entrypoint to `msm.start_engine(...)`
   to reflect that it initializes the full runtime, not only schemas.
-- Changed `msm.start_engine(...)` to use the internal maintenance catalog
-  before registering application MetaTables.
+- Changed `msm.start_engine(...)` to attach application MetaTables from the
+  finalized internal maintenance catalog; schema mutation and MetaTable
+  registration are migration-owned.
 - Removed the `resource_type` discriminator from the internal maintenance
   catalog; the catalog is MetaTable-specific and no longer carries a
   DataNode-versus-MetaTable column.
@@ -130,9 +134,8 @@ and this project follows versioned releases.
   from the internal maintenance catalog.
 - Removed `storage_hash` from the internal maintenance catalog; catalog rows are
   now keyed by the globally unique logical MetaTable identifier.
-- Added `rotate_catalogue(model_or_row_type)` and `msm catalog rotate <model>`
-  to intentionally replace a stale catalog row from the model's registered
-  backend MetaTable.
+- Removed local catalog rotation/repair entrypoints. The SDK migration provider
+  refreshes the markets catalog after migration-time MetaTable registration.
 - Made markets and pricing runtime bookkeeping use stable MetaTable identifiers,
   and moved platform-managed FK declarations to the SDK
   `MetaTableForeignKey(TargetModel, column=...)` helper instead of
@@ -142,12 +145,10 @@ and this project follows versioned releases.
   attach or register schemas on first use.
 - Updated examples and tutorials so MetaTable-backed row workflows call
   explicit bootstrap during startup.
-- Added a packaged ms-markets bootstrap/registration agent skill that documents
-  catalog startup, extension wiring, catalog rotation, and the rule that user
-  workflows initialize through `msm.start_engine(...)`.
-- Added ADR 0018 to define the target extension-model bootstrap flow:
-  project-local models should register through
-  `msm.start_engine(models=[MyAssetDetailsTable])` and the shared catalog path.
+- Updated the ms-markets bootstrap/registration guidance so user workflows run
+  SDK migrations first, then initialize runtime through `msm.start_engine(...)`.
+- Added migration-first ADR guidance for extension models: project-local models
+  enter the provider registry and runtime only attaches finalized catalog rows.
 - Implemented ADR 0018: `msm.start_engine(models=[...])` now accepts
   project-local markets SQLAlchemy model classes and `MarketsMetaTableRow`
   wrappers, expands class-based `MetaTableForeignKey(...)` dependencies, and
@@ -324,8 +325,8 @@ and this project follows versioned releases.
 - Added `msm_pricing.meta_tables.pricing_sqlalchemy_models()` so pricing
   MetaTable registration can discover `AssetTable` before pricing extension
   tables.
-- Added `msm_pricing.meta_tables.register_pricing_meta_tables()` to register the
-  pricing MetaTable graph while resolving the core asset-table dependency.
+- Added pricing MetaTable graph discovery while resolving the core asset-table
+  dependency.
 - Added `msm_pricing.api` current-pricing-detail row helpers plus
   `InstrumentModel.attach_to_asset(...)` and `Instrument.load_from_asset(...)`
   for asset-first pricing workflows.

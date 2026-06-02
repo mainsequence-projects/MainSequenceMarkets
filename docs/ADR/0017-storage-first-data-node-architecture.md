@@ -176,7 +176,7 @@ Concrete nodes to migrate:
 - Core: `AccountHoldings`, `VirtualFundHoldings`, `Orders`, `OrderEvents`,
   `Trades`, `AssetSnapshot`
 - Portfolios: `PortfolioWeights`, `SignalWeights`, `PortfoliosDataNode`,
-  `InterpolatedPrices`, `ExternalPrices`, portfolio identity
+  `InterpolatedPrices`, portfolio identity
 
 ## Decision
 
@@ -325,7 +325,7 @@ Verified against the project `.venv` (SDK `4.1.5`):
   `OrdersStorage`, `OrderEventsStorage`, `TradesStorage`);
   `src/msm/portfolios/data_nodes/storage.py`
   (`PortfolioWeightsStorage`, `SignalWeightsStorage`, `PortfoliosStorage`,
-  `InterpolatedPricesStorage`, `ExternalPricesStorage`).
+  `InterpolatedPricesStorage`).
 - [x] Ported column names/dtypes/descriptions from the legacy `RecordDefinition`
   lists, `DataNodeTableContract` entries, execution/portfolio dtype maps, and the
   prices node outputs onto SQLAlchemy `mapped_column(..., info={"label", "description"})`.
@@ -536,11 +536,11 @@ defaults `storage_table` to `cls._required_storage_table()`.
   `AssetSnapshot.build_frame` / `validate_frame` call sites moved off the dropped
   `config=` kwarg onto the foundation `storage_table` signature.
 - [x] Portfolios: `PortfolioWeights` / `SignalWeights` / `PortfoliosDataNode` →
-  their `*Storage`. `InterpolatedPrices` / `ExternalPrices` (`contrib/prices`)
+  their `*Storage`. `InterpolatedPrices` (`contrib/prices`)
   had their deferred `mainsequence.tdag*` / `models_tdag` imports migrated to
   `mainsequence.meta_tables*` / `mainsequence.client` and now use
-  `InterpolatedPricesStorage` / `ExternalPricesStorage`. `portfolio identity`
-  (`portfolio_identity.py`) is function-only — no DataNode to wire.
+  `InterpolatedPricesStorage`. `portfolio identity` (`portfolio_identity.py`) is
+  function-only — no DataNode to wire.
 - [x] Removed the dead `test_node` handling from `utils/namespaces.py` and
   `portfolios/data_nodes/base.py` (the SDK marker is gone; `hash_namespace(...)`
   is the only path). Remaining `test_node=` call sites live in tests/examples

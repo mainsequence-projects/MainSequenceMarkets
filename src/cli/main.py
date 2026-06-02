@@ -22,14 +22,6 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
             emit_json=args.emit_json,
         )
-    if args.command == "catalog":
-        if args.catalog_command == "rotate":
-            return catalog_rotate_command(
-                model=args.model,
-                emit_json=args.emit_json,
-            )
-        parser.print_help()
-        return 1
     parser.print_help()
     return 1
 
@@ -84,35 +76,6 @@ def copy_msm_skills_command(
     return 0
 
 
-def catalog_rotate_command(
-    *,
-    model: str,
-    emit_json: bool = False,
-) -> int:
-    from msm.maintenance.catalog import rotate_catalogue
-
-    result = rotate_catalogue(model)
-    payload = result.to_payload()
-    if emit_json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
-        return 0
-
-    print(f"Rotated markets MetaTable catalog row for {payload['identifier']}.")
-    _print_table(
-        "Catalog Rotation",
-        ["Field", "Value"],
-        [
-            ["Model", payload["model_name"]],
-            ["Identifier", payload["identifier"]],
-            ["MetaTable UID", payload["meta_table_uid"]],
-            ["Old Contract Hash", payload["old_contract_hash"]],
-            ["New Contract Hash", payload["new_contract_hash"]],
-            ["Changed", payload["changed"]],
-        ],
-    )
-    return 0
-
-
 def bundled_msm_skills_root() -> Traversable:
     root = resources.files("msm")
     for part in MSM_SKILLS_RESOURCE:
@@ -142,25 +105,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Show what would be copied without writing files.",
     )
     copy_parser.add_argument(
-        "--json",
-        dest="emit_json",
-        action="store_true",
-        help="Emit machine-readable JSON.",
-    )
-    catalog_parser = subparsers.add_parser(
-        "catalog",
-        help="Maintenance commands for the markets MetaTable catalog.",
-    )
-    catalog_subparsers = catalog_parser.add_subparsers(dest="catalog_command")
-    rotate_parser = catalog_subparsers.add_parser(
-        "rotate",
-        help="Replace one catalog row using the model's registered MetaTable.",
-    )
-    rotate_parser.add_argument(
-        "model",
-        help="Markets model key, for example Account, AccountTable, or a full identifier.",
-    )
-    rotate_parser.add_argument(
         "--json",
         dest="emit_json",
         action="store_true",

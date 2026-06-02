@@ -30,7 +30,6 @@ def reset_pricing_runtime(monkeypatch) -> None:
 
 
 def install_fake_pricing_bootstrap(monkeypatch):
-    register_calls = []
     attach_calls = []
 
     class FakeMarketsRepositoryContext:
@@ -59,13 +58,6 @@ def install_fake_pricing_bootstrap(monkeypatch):
             "PricingMarketDataBindingTable": "PricingMarketDataBinding",
         }.get(model_name, model_name)
 
-    def fake_register_pricing_meta_tables(**kwargs):
-        register_calls.append(kwargs)
-        return SimpleNamespace(
-            meta_tables=["curve-meta-table"],
-            models=kwargs["models"],
-        )
-
     def fake_resolve_registered_markets_meta_tables(**kwargs):
         attach_calls.append(kwargs)
         return SimpleNamespace(
@@ -89,19 +81,14 @@ def install_fake_pricing_bootstrap(monkeypatch):
         fake_pricing_meta_table_identifier,
     )
     monkeypatch.setattr(
-        pricing_bootstrap,
-        "register_pricing_meta_tables",
-        fake_register_pricing_meta_tables,
-    )
-    monkeypatch.setattr(
         "msm.models.registration.resolve_registered_markets_meta_tables",
         fake_resolve_registered_markets_meta_tables,
     )
-    return register_calls, attach_calls
+    return attach_calls
 
 
 def test_create_pricing_schemas_returns_cached_runtime_for_same_config(monkeypatch) -> None:
-    register_calls, _attach_calls = install_fake_pricing_bootstrap(monkeypatch)
+    attach_calls = install_fake_pricing_bootstrap(monkeypatch)
 
     first_runtime = pricing_bootstrap.create_pricing_schemas(
         namespace="mainsequence.examples",
@@ -115,7 +102,7 @@ def test_create_pricing_schemas_returns_cached_runtime_for_same_config(monkeypat
     assert second_runtime is first_runtime
     assert first_runtime.namespace == "mainsequence.examples"
     assert first_runtime.context.namespace == "mainsequence.examples"
-    assert len(register_calls) == 1
+    assert len(attach_calls) == 1
 
 
 def test_create_pricing_schemas_installs_market_data_configuration_override(
@@ -304,7 +291,7 @@ def test_default_market_data_binding_seeding_replaces_when_requested(
 
 
 def test_resolve_pricing_runtime_requires_initialized_runtime(monkeypatch) -> None:
-    register_calls, attach_calls = install_fake_pricing_bootstrap(monkeypatch)
+    attach_calls = install_fake_pricing_bootstrap(monkeypatch)
     monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
 
     with pytest.raises(RuntimeError, match="initialized pricing runtime"):
@@ -313,12 +300,11 @@ def test_resolve_pricing_runtime_requires_initialized_runtime(monkeypatch) -> No
             row_model_name="Curve",
         )
 
-    assert register_calls == []
     assert attach_calls == []
 
 
 def test_resolve_pricing_runtime_returns_active_runtime(monkeypatch) -> None:
-    register_calls, attach_calls = install_fake_pricing_bootstrap(monkeypatch)
+    attach_calls = install_fake_pricing_bootstrap(monkeypatch)
 
     runtime = pricing_bootstrap.create_pricing_schemas(
         namespace="mainsequence.examples",
@@ -332,8 +318,7 @@ def test_resolve_pricing_runtime_returns_active_runtime(monkeypatch) -> None:
         )
         is runtime
     )
-    assert len(register_calls) == 1
-    assert attach_calls == []
+    assert len(attach_calls) == 1
 
 
 def test_resolve_pricing_runtime_uses_identifier_after_physical_binding(

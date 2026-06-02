@@ -13,7 +13,6 @@ from .virtual_funds import FundTable
 
 def portfolio_sqlalchemy_models() -> list[type]:
     from msm_portfolios.data_nodes.storage import (
-        ExternalPricesStorage,
         FundHoldingsStorage,
         InterpolatedPricesStorage,
         PortfoliosStorage,
@@ -32,7 +31,6 @@ def portfolio_sqlalchemy_models() -> list[type]:
         SignalWeightsStorage,
         PortfoliosStorage,
         InterpolatedPricesStorage,
-        ExternalPricesStorage,
         FundHoldingsStorage,
     ]
 

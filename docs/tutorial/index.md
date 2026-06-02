@@ -266,9 +266,8 @@ Use this workflow when adding or reviewing a market-domain relational table:
    order.
 6. Generate or update a normal Alembic revision under `src/msm/migrations/`.
 7. Use the SDK migration upgrade flow for schema/catalog mutation, then
-   `msm.start_engine(...)` for runtime attachment. Treat
-   `register_markets_meta_tables(...)` as lower-level migration/admin plumbing,
-   not the normal application workflow.
+   `msm.start_engine(...)` for runtime attachment. Do not call model
+   `.register()` methods or local registration helpers from application code.
 
 `msm.start_engine(...)` uses the internal maintenance catalog during startup. It
 attaches cataloged tables by platform

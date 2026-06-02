@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 
 from msm.base import MarketsBase, markets_meta_table_identifier
-from msm.maintenance.catalog import bootstrap_markets_meta_tables_from_catalog
 from msm.models.registration import (
     MarketsManagementMode,
     MarketsMetaTableRegistrationResult,
@@ -101,44 +100,12 @@ def resolve_pricing_meta_table_models(
     return resolved
 
 
-def register_pricing_meta_tables(
-    *,
-    data_source_uid: str | None = None,
-    management_mode: PricingManagementMode = "platform_managed",
-    open_for_everyone: bool = False,
-    protect_from_deletion: bool = False,
-    introspect: bool | None = None,
-    storage_hash_by_identifier: Mapping[str, str] | None = None,
-    timeout: int | float | tuple[float, float] | None = None,
-    models: Sequence[PricingModelSelector] | None = None,
-) -> PricingMetaTableRegistrationResult:
-    """Bootstrap pricing MetaTables through the markets maintenance catalog.
-
-    The default pricing graph includes core ``AssetTable``, ``IndexTypeTable``,
-    and ``IndexTable`` before pricing extension tables so FK target mappings are
-    populated before pricing extension tables are registered.
-    """
-
-    resolved_models = resolve_pricing_meta_table_models(models)
-    return bootstrap_markets_meta_tables_from_catalog(
-        data_source_uid=data_source_uid,
-        management_mode=management_mode,
-        open_for_everyone=open_for_everyone,
-        protect_from_deletion=protect_from_deletion,
-        introspect=introspect,
-        storage_hash_by_identifier=storage_hash_by_identifier,
-        timeout=timeout,
-        models=resolved_models,
-    ).registration
-
-
 __all__ = [
     "PricingManagementMode",
     "PricingMetaTableRegistrationResult",
     "PricingModelSelector",
     "pricing_meta_table_identifier",
     "pricing_sqlalchemy_models",
-    "register_pricing_meta_tables",
     "resolve_pricing_meta_table_model",
     "resolve_pricing_meta_table_models",
 ]

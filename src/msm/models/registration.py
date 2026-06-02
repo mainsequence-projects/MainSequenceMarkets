@@ -4,13 +4,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from mainsequence.client.exceptions import ConflictError
 from mainsequence.client.metatables import MetaTable, MetaTableRegistrationRequest
 from mainsequence.logconf import logger as _mainsequence_logger
 from mainsequence.meta_tables import (
     PlatformTimeIndexMetaData,
     external_registered_registration_request_from_sqlalchemy_model,
-    register_external_sqlalchemy_model,
 )
 
 from msm.base import (
@@ -314,115 +312,6 @@ def build_markets_registration_requests(
     return requests
 
 
-def register_markets_meta_tables(
-    *,
-    data_source_uid: str | None = None,
-    management_mode: MarketsManagementMode = "platform_managed",
-    labels: Sequence[str] | None = None,
-    open_for_everyone: bool = False,
-    protect_from_deletion: bool = False,
-    introspect: bool | None = None,
-    storage_hash_by_identifier: Mapping[str, str] | None = None,
-    timeout: int | float | tuple[float, float] | None = None,
-    models: Sequence[MarketsModelSelector] | None = None,
-) -> MarketsMetaTableRegistrationResult:
-    """Register markets SQLAlchemy models as MetaTables in FK dependency order."""
-
-    if management_mode == "external_registered" and not data_source_uid:
-        raise ValueError("external_registered MetaTables require data_source_uid.")
-
-    registered_meta_tables: list[MetaTable] = []
-    meta_table_by_identifier: dict[str, MetaTable] = {}
-    storage_hash_mapping = _identifier_mapping(storage_hash_by_identifier)
-
-    resolved_models = resolve_markets_meta_table_models(models)
-    for position, model in enumerate(resolved_models, start=1):
-        target_meta_tables = _target_meta_tables_from_bound_models(resolved_models)
-        platform_kwargs = {
-            "labels": labels,
-            "open_for_everyone": open_for_everyone,
-            "protect_from_deletion": protect_from_deletion,
-            "timeout": timeout,
-        }
-        external_kwargs = {
-            **platform_kwargs,
-            "data_source_uid": data_source_uid,
-            "schema": MARKETS_SCHEMA,
-            "target_meta_tables": target_meta_tables,
-        }
-        identifier = markets_meta_table_identifier(model)
-        storage_hash = storage_hash_mapping.get(identifier)
-        logger.info(
-            "Registering markets MetaTable schema",
-            management_mode=management_mode,
-            model=model.__name__,
-            namespace=getattr(model, "__metatable_namespace__", None),
-            identifier=identifier,
-            model_index=position,
-            model_count=len(resolved_models),
-            storage_hash=storage_hash,
-            target_meta_table_count=len(target_meta_tables),
-        )
-        try:
-            if is_time_index_meta_table_model(model):
-                meta_table = model.register(timeout=timeout)
-            elif management_mode == "platform_managed":
-                meta_table = model.register(timeout=timeout)
-            elif management_mode == "external_registered":
-                meta_table = register_external_sqlalchemy_model(
-                    model,
-                    introspect=True if introspect is None else introspect,
-                    storage_hash=storage_hash,
-                    **external_kwargs,
-                )
-            else:
-                raise ValueError(
-                    "management_mode must be 'platform_managed' or 'external_registered'."
-                )
-        except ConflictError as exc:
-            if is_time_index_meta_table_model(model):
-                raise
-            meta_table = _duplicate_meta_table_from_conflict(
-                exc,
-                model=model,
-                management_mode=management_mode,
-                timeout=timeout,
-            )
-            if meta_table is None:
-                raise
-            logger.info(
-                "Reusing existing markets MetaTable schema after duplicate registration",
-                management_mode=management_mode,
-                model=model.__name__,
-                namespace=getattr(model, "__metatable_namespace__", None),
-                identifier=identifier,
-                model_index=position,
-                model_count=len(resolved_models),
-                meta_table_uid=_meta_table_uid(meta_table),
-            )
-
-        _bind_model_meta_table(model, meta_table)
-        registered_meta_tables.append(meta_table)
-        meta_table_uid = _meta_table_uid(meta_table)
-        meta_table_by_identifier[identifier] = meta_table
-        logger.info(
-            "Registered markets MetaTable schema",
-            management_mode=management_mode,
-            model=model.__name__,
-            namespace=getattr(model, "__metatable_namespace__", None),
-            identifier=identifier,
-            model_index=position,
-            model_count=len(resolved_models),
-            meta_table_uid=meta_table_uid,
-        )
-
-    return MarketsMetaTableRegistrationResult(
-        meta_tables=registered_meta_tables,
-        models=resolved_models,
-        meta_table_by_identifier=meta_table_by_identifier,
-    )
-
-
 def resolve_registered_markets_meta_tables(
     *,
     data_source_uid: str | None = None,
@@ -577,54 +466,6 @@ def _metatable_foreign_key_target_models(model: type[MarketsBase]) -> list[type[
     return targets
 
 
-def _duplicate_meta_table_from_conflict(
-    exc: ConflictError,
-    *,
-    model: type[MarketsBase],
-    management_mode: MarketsManagementMode,
-    timeout: int | float | tuple[float, float] | None,
-) -> MetaTable | None:
-    payload = _conflict_payload(exc)
-    if payload.get("code") != "duplicate_meta_table":
-        return None
-
-    existing_uid = payload.get("existing_meta_table_uid")
-    if not existing_uid:
-        return None
-
-    try:
-        return MetaTable.get_by_uid(uid=str(existing_uid), timeout=timeout)
-    except Exception:
-        table_name = str(payload.get("physical_table_name") or model.__table__.name)
-        storage_hash = str(payload.get("storage_hash") or table_name)
-        return MetaTable(
-            uid=str(existing_uid),
-            data_source_uid=payload.get("data_source_uid"),
-            storage_hash=storage_hash,
-            identifier=getattr(model, "__metatable_identifier__", model.__name__),
-            namespace=getattr(model, "__metatable_namespace__", None),
-            management_mode=management_mode,
-            physical_table_name=table_name,
-        )
-
-
-def _conflict_payload(exc: ConflictError) -> dict[str, Any]:
-    payload = getattr(exc, "payload", None)
-    if isinstance(payload, Mapping):
-        return dict(payload)
-
-    response = getattr(exc, "response", None)
-    if response is None:
-        return {}
-    try:
-        response_payload = response.json()
-    except Exception:
-        return {}
-    if isinstance(response_payload, Mapping):
-        return dict(response_payload)
-    return {}
-
-
 def _meta_table_uid(value: Any) -> str:
     uid = getattr(value, "uid", value)
     if uid in (None, ""):
@@ -648,7 +489,6 @@ __all__ = [
     "markets_foreign_key_target_identifiers",
     "markets_meta_table_identifier",
     "markets_meta_table_models",
-    "register_markets_meta_tables",
     "resolve_registered_markets_meta_tables",
     "resolve_markets_meta_table_model",
     "resolve_markets_meta_table_models",

@@ -21,7 +21,6 @@ from .meta_tables import (
     PricingMetaTableRegistrationResult,
     PricingModelSelector,
     pricing_meta_table_identifier,
-    register_pricing_meta_tables,
     resolve_pricing_meta_table_models,
 )
 from .models.market_data_bindings import PricingMarketDataBindingTable
@@ -68,7 +67,13 @@ def create_pricing_schemas(
     storage_hash_by_identifier: Mapping[str, str] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> PricingRuntime:
-    """Register pricing schemas and return a pricing repository runtime."""
+    """Attach pricing schemas and return a pricing repository runtime.
+
+    MetaTable registration is migration-owned. This legacy entrypoint remains
+    for callers that also want pricing market-data configuration during startup.
+    """
+
+    from msm.models.registration import resolve_registered_markets_meta_tables
 
     resolved_models = resolve_pricing_meta_table_models(models)
     namespace = markets_namespace(namespace)
@@ -112,13 +117,10 @@ def create_pricing_schemas(
                 "process startup before pricing row operations."
             )
 
-        registration = register_pricing_meta_tables(
+        registration = resolve_registered_markets_meta_tables(
             data_source_uid=data_source_uid,
             management_mode=management_mode,
-            open_for_everyone=open_for_everyone,
-            protect_from_deletion=protect_from_deletion,
-            introspect=introspect,
-            storage_hash_by_identifier=storage_hash_by_identifier,
+            namespace=namespace,
             timeout=timeout,
             models=resolved_models,
         )

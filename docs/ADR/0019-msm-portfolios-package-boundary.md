@@ -122,9 +122,7 @@ The new package owns:
   - `SignalWeightsStorage`
   - `PortfoliosStorage`
   - `InterpolatedPrices`
-  - `ExternalPrices`
   - `InterpolatedPricesStorage`
-  - `ExternalPricesStorage`
   - `VirtualFundHoldings`
   - `FundHoldingsStorage`
 - portfolio configuration models, asset scope helpers, contributed price/signal

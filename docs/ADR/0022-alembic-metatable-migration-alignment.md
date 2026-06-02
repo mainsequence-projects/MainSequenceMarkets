@@ -385,13 +385,15 @@ Runtime startup must not:
 ### Phase 3. Add Standard Alembic Files
 
 - [x] Add `src/msm/migrations/env.py`.
+- [x] Add `src/msm/migrations/script.py.mako` so Alembic can write generated
+  revision modules.
 - [x] Delete the legacy custom `src/msm/migrations/versions/v0001_initial.py`.
 - [x] Keep `src/msm/migrations/versions/` as the generated Alembic revision output
   directory.
 - [x] Do not hand-author an initial revision as an implementation task.
 - [x] Document that the SDK revision command creates revision files.
 - [x] Ensure Alembic version-table settings come from `MarketsAlembicVersion`.
-- [x] Ensure Alembic revision files are included in wheels and source
+- [x] Ensure Alembic environment and revision files are included in wheels and source
   distributions.
 
 ### Phase 4. Replace CLI Behavior

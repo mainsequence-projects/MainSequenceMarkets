@@ -18,7 +18,7 @@ runtime was initialized without the required table set, the error tells the
 caller to run explicit preflight.
 
 Explicit preflight remains available for applications that want startup-time
-registration or verification:
+attachment or verification:
 
 ```python
 import msm
@@ -26,16 +26,16 @@ import msm
 runtime = msm.start_engine(models=["Asset"])
 ```
 
-Schema creation does not take labels. Use `runtime.meta_tables`,
+Runtime attachment does not take labels. Use `runtime.meta_tables`,
 `runtime.meta_table_models`, and `runtime.data_nodes` after bootstrap when a
 specific returned resource needs follow-up labeling or handling. The preflight
 uses the Main Sequence logger at `info` level to report each MetaTable model
-being registered, what context was created, and when a cached runtime is reused.
+being attached, what context was created, and when a cached runtime is reused.
 
-For externally managed tables, create/migrate the tables in application code and
-use the explicit startup/bootstrap path with `management_mode="external_registered"`.
-Direct `register_markets_meta_tables(...)` calls are lower-level maintenance or
-migration plumbing, not the normal application workflow.
+For externally managed tables, create/migrate the tables through the admin
+migration flow and use the explicit startup/bootstrap path with
+`management_mode="external_registered"`. Do not call model `.register()`
+methods or local registration helpers from application code.
 
 Examples that use the platform namespace `mainsequence.examples` set
 `MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`, then call

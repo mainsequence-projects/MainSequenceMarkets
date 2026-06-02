@@ -135,7 +135,6 @@ MetaTables:
 | SignalWeights               |------------------------------->| SignalWeightsStorage        |
 | PortfoliosDataNode          |------------------------------->| PortfoliosStorage           |
 | InterpolatedPrices          |------------------------------->| InterpolatedPricesStorage   |
-| ExternalPrices              |------------------------------->| ExternalPricesStorage       |
 +-----------------------------+                                +-----------------------------+
           DataNode update logic                                  PlatformTimeIndexMetaData
 ```

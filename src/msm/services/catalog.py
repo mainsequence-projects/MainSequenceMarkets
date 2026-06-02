@@ -24,9 +24,9 @@ def catalog_repository_context(
     *,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRepositoryContext:
-    from msm.maintenance.catalog import bootstrap_catalog_table, catalog_repository_context
+    from msm.maintenance.catalog import catalog_repository_context, resolve_catalog_table
 
-    catalog_meta_table = bootstrap_catalog_table(timeout=timeout)
+    catalog_meta_table = resolve_catalog_table(timeout=timeout)
     return catalog_repository_context(
         catalog_meta_table=catalog_meta_table,
         timeout=timeout,

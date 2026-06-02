@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib import resources
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -45,6 +46,16 @@ def test_sdk_loader_resolves_msm_migration_provider() -> None:
     loaded = load_alembic_metatable_migration_provider("msm.migrations:migration")
 
     assert loaded is migration
+
+
+def test_migration_script_template_is_packaged() -> None:
+    template = resources.files("msm.migrations").joinpath("script.py.mako")
+
+    assert template.is_file()
+    template_text = template.read_text(encoding="utf-8")
+    assert "revision: str = ${repr(up_revision)}" in template_text
+    assert "def upgrade() -> None:" in template_text
+    assert "def downgrade() -> None:" in template_text
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:

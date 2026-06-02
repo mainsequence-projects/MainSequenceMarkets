@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from msm.models import AssetTable, IndexTable, IndexTypeTable, markets_sqlalchemy_models
 import msm_pricing.meta_tables as pricing_meta_tables
 from msm_pricing.data_nodes.storage import (
@@ -12,7 +10,6 @@ from msm_pricing.data_nodes.storage import (
 from msm_pricing.meta_tables import (
     pricing_meta_table_identifier,
     pricing_sqlalchemy_models,
-    register_pricing_meta_tables,
 )
 from msm_pricing.models import (
     AssetCurrentPricingDetailsTable,
@@ -89,104 +86,5 @@ def test_pricing_meta_table_identifier_survives_sdk_physical_binding(monkeypatch
     assert pricing_meta_table_identifier(CurveTable) == identifier
 
 
-def test_register_pricing_meta_tables_delegates_with_pricing_models(monkeypatch) -> None:
-    calls = []
-
-    def fake_catalog_bootstrap(**kwargs):
-        calls.append(kwargs)
-        return SimpleNamespace(registration=SimpleNamespace(models=kwargs["models"]))
-
-    monkeypatch.setattr(
-        pricing_meta_tables,
-        "bootstrap_markets_meta_tables_from_catalog",
-        fake_catalog_bootstrap,
-    )
-
-    result = register_pricing_meta_tables(
-        data_source_uid="data-source-uid",
-        management_mode="external_registered",
-        open_for_everyone=True,
-        protect_from_deletion=True,
-        introspect=True,
-        storage_hash_by_identifier={"Asset": "asset-storage-hash"},
-        timeout=5,
-    )
-
-    assert result.models == EXPECTED_PRICING_MODELS
-    assert calls == [
-        {
-            "data_source_uid": "data-source-uid",
-            "management_mode": "external_registered",
-            "open_for_everyone": True,
-            "protect_from_deletion": True,
-            "introspect": True,
-            "storage_hash_by_identifier": {"Asset": "asset-storage-hash"},
-            "timeout": 5,
-            "models": EXPECTED_PRICING_MODELS,
-        }
-    ]
-
-
-def test_register_pricing_meta_tables_registration_request_modes_use_dependency_order(
-    monkeypatch,
-) -> None:
-    calls = []
-
-    def fake_catalog_bootstrap(**kwargs):
-        calls.append((kwargs["management_mode"], kwargs["models"]))
-        return SimpleNamespace(
-            registration=SimpleNamespace(
-                management_mode=kwargs["management_mode"],
-                models=kwargs["models"],
-            ),
-        )
-
-    monkeypatch.setattr(
-        pricing_meta_tables,
-        "bootstrap_markets_meta_tables_from_catalog",
-        fake_catalog_bootstrap,
-    )
-
-    for management_mode in ("platform_managed", "external_registered"):
-        result = register_pricing_meta_tables(
-            data_source_uid="data-source-uid",
-            management_mode=management_mode,
-        )
-        assert result.models == EXPECTED_PRICING_MODELS
-
-    assert calls == [
-        ("platform_managed", EXPECTED_PRICING_MODELS),
-        ("external_registered", EXPECTED_PRICING_MODELS),
-    ]
-
-
-def test_register_pricing_meta_tables_uses_catalog_bootstrap_in_dependency_order(
-    monkeypatch,
-) -> None:
-    calls = []
-
-    def fail_direct_register(cls, **_kwargs):
-        raise AssertionError(f"{cls.__name__}.register should not run directly")
-
-    def fake_catalog_bootstrap(**kwargs):
-        calls.append(kwargs)
-        return SimpleNamespace(
-            registration=SimpleNamespace(
-                models=kwargs["models"],
-            ),
-        )
-
-    for model in EXPECTED_PRICING_MODELS:
-        monkeypatch.setattr(model, "register", classmethod(fail_direct_register))
-    monkeypatch.setattr(
-        pricing_meta_tables,
-        "bootstrap_markets_meta_tables_from_catalog",
-        fake_catalog_bootstrap,
-    )
-
-    result = register_pricing_meta_tables(data_source_uid="data-source-uid")
-
-    assert len(calls) == 1
-    assert calls[0]["data_source_uid"] == "data-source-uid"
-    assert calls[0]["models"] == EXPECTED_PRICING_MODELS
-    assert result.models == EXPECTED_PRICING_MODELS
+def test_pricing_meta_tables_do_not_expose_direct_registration_helper() -> None:
+    assert not hasattr(pricing_meta_tables, "register_pricing_meta_tables")

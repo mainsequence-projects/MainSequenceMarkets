@@ -6,23 +6,18 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from typing import Any
 
-from mainsequence.client.exceptions import ConflictError, NotFoundError
+from mainsequence.client.exceptions import NotFoundError
 from mainsequence.client.metatables import MetaTable
 from mainsequence.logconf import logger as _mainsequence_logger
-from mainsequence.meta_tables import register_external_sqlalchemy_model
 
-from msm.base import MARKETS_SCHEMA, MarketsBase, markets_table_storage_name
+from msm.base import MarketsBase, markets_table_storage_name
 from msm.models.registration import (
     MarketsManagementMode,
-    MarketsModelSelector,
     MarketsMetaTableRegistrationResult,
-    _target_meta_tables_from_bound_models,
-    is_time_index_meta_table_model,
     markets_meta_table_identifier,
-    resolve_markets_meta_table_model,
 )
 from msm.repositories.base import MarketsRepositoryContext
-from msm.repositories.crud import delete_model, search_model, upsert_model
+from msm.repositories.crud import search_model, upsert_model
 
 from .models import (
     MarketsMetaTableCatalogRow,
@@ -54,32 +49,6 @@ class CatalogBootstrapResult:
     attached_count: int = 0
     imported_count: int = 0
     registered_count: int = 0
-
-
-@dataclass(frozen=True)
-class CatalogRotationResult:
-    """Result from intentionally replacing one catalog row."""
-
-    namespace: str
-    identifier: str
-    model_name: str
-    meta_table_uid: str
-    old_contract_hash: str | None
-    new_contract_hash: str
-    changed: bool
-    row: dict[str, Any]
-
-    def to_payload(self) -> dict[str, Any]:
-        return {
-            "namespace": self.namespace,
-            "identifier": self.identifier,
-            "model_name": self.model_name,
-            "meta_table_uid": self.meta_table_uid,
-            "old_contract_hash": self.old_contract_hash,
-            "new_contract_hash": self.new_contract_hash,
-            "changed": self.changed,
-            "row": dict(self.row),
-        }
 
 
 @dataclass(frozen=True)
@@ -163,313 +132,6 @@ def attach_markets_meta_tables_from_catalog(
         catalog_meta_table=catalog_meta_table,
         attached_count=len(meta_tables),
     )
-
-
-def bootstrap_markets_meta_tables_from_catalog(
-    *,
-    data_source_uid: str | None = None,
-    management_mode: MarketsManagementMode = "platform_managed",
-    open_for_everyone: bool = False,
-    protect_from_deletion: bool = False,
-    introspect: bool | None = None,
-    storage_hash_by_identifier: Mapping[str, str] | None = None,
-    timeout: int | float | tuple[float, float] | None = None,
-    models: Sequence[type[MarketsBase]] | None = None,
-) -> CatalogBootstrapResult:
-    """Attach/register markets MetaTables through the maintenance catalog."""
-
-    resolved_models = list(models or [])
-    catalog_meta_table = bootstrap_catalog_table(timeout=timeout)
-    catalog_context = catalog_repository_context(
-        catalog_meta_table=catalog_meta_table,
-        timeout=timeout,
-    )
-    storage_hash_mapping = dict(storage_hash_by_identifier or {})
-    model_plans: list[_CatalogBootstrapModelPlan] = []
-    for model in resolved_models:
-        identifier = markets_meta_table_identifier(model)
-        namespace = _catalog_model_namespace(model)
-        model_plans.append(
-            _CatalogBootstrapModelPlan(
-                model=model,
-                storage_hash=_catalog_model_storage_hash(
-                    model,
-                    storage_hash=storage_hash_mapping.get(identifier),
-                ),
-                namespace=namespace,
-                identifier=identifier,
-            )
-        )
-    catalog_rows_by_identifier = find_catalog_rows_by_identifier(
-        catalog_context,
-        identifiers=[plan.identifier for plan in model_plans],
-    )
-
-    meta_tables: list[MetaTable] = []
-    meta_table_by_identifier: dict[str, MetaTable] = {}
-    attached_count = 0
-    imported_count = 0
-    registered_count = 0
-
-    for position, plan in enumerate(model_plans, start=1):
-        model = plan.model
-        catalog_row = catalog_rows_by_identifier.get(plan.identifier)
-        target_meta_tables = _target_meta_tables_from_bound_models(resolved_models)
-        resolved_catalog_meta_table: MetaTable | None = None
-        if catalog_row is not None and not is_time_index_meta_table_model(model):
-            try:
-                resolved_catalog_meta_table = resolve_catalog_meta_table(
-                    catalog_row,
-                    model=model,
-                    timeout=timeout,
-                )
-            except CatalogStaleMetaTableUidError as exc:
-                invalidate_stale_catalog_row(
-                    catalog_context,
-                    catalog_row=catalog_row,
-                    model=model,
-                    reason=str(exc),
-                )
-                catalog_row = None
-
-        if catalog_row is not None:
-            validate_catalog_contract(catalog_row, model=model)
-            if is_time_index_meta_table_model(model):
-                meta_table = register_catalog_missing_meta_table(
-                    model,
-                    data_source_uid=_external_data_source_uid(
-                        management_mode=management_mode,
-                        data_source_uid=data_source_uid,
-                    ),
-                    management_mode=management_mode,
-                    target_meta_tables=target_meta_tables,
-                    open_for_everyone=open_for_everyone,
-                    protect_from_deletion=protect_from_deletion,
-                    introspect=introspect,
-                    storage_hash=plan.storage_hash,
-                    timeout=timeout,
-                )
-                catalog_uid = str(catalog_row["meta_table_uid"])
-                if _meta_table_uid(meta_table) != catalog_uid:
-                    raise CatalogBootstrapError(
-                        "Markets MetaTable catalog drift detected for "
-                        f"{model.__name__}. Catalog UID {catalog_uid!r} does not match "
-                        f"the registered storage UID {_meta_table_uid(meta_table)!r}."
-                    )
-            else:
-                meta_table = resolved_catalog_meta_table
-                if meta_table is None:
-                    meta_table = resolve_catalog_meta_table(
-                        catalog_row,
-                        model=model,
-                        timeout=timeout,
-                    )
-                validate_platform_meta_table_physical_contract(
-                    meta_table,
-                    model=model,
-                    timeout=timeout,
-                )
-            attached_count += 1
-            logger.debug(
-                "Attached markets MetaTable from catalog",
-                model=model.__name__,
-                namespace=catalog_row.get("namespace"),
-                identifier=catalog_row.get("identifier"),
-                meta_table_uid=_meta_table_uid(meta_table),
-                model_index=position,
-                model_count=len(resolved_models),
-            )
-        else:
-            meta_table = None
-            if not is_time_index_meta_table_model(model):
-                meta_table = _resolve_platform_meta_table(
-                    model,
-                    data_source_uid=_external_data_source_uid(
-                        management_mode=management_mode,
-                        data_source_uid=data_source_uid,
-                    ),
-                    management_mode=management_mode,
-                    timeout=timeout,
-                )
-            if meta_table is not None:
-                validate_platform_meta_table_physical_contract(
-                    meta_table,
-                    model=model,
-                    timeout=timeout,
-                )
-                imported_count += 1
-                logger.info(
-                    "Importing existing markets MetaTable into catalog",
-                    model=model.__name__,
-                    namespace=getattr(model, "__metatable_namespace__", None),
-                    identifier=getattr(model, "__metatable_identifier__", None),
-                    meta_table_uid=_meta_table_uid(meta_table),
-                    model_index=position,
-                    model_count=len(resolved_models),
-                )
-            else:
-                meta_table = register_catalog_missing_meta_table(
-                    model,
-                    data_source_uid=_external_data_source_uid(
-                        management_mode=management_mode,
-                        data_source_uid=data_source_uid,
-                    ),
-                    management_mode=management_mode,
-                    target_meta_tables=target_meta_tables,
-                    open_for_everyone=open_for_everyone,
-                    protect_from_deletion=protect_from_deletion,
-                    introspect=introspect,
-                    storage_hash=plan.storage_hash,
-                    timeout=timeout,
-                )
-                registered_count += 1
-                logger.info(
-                    "Registered missing markets MetaTable from catalog bootstrap",
-                    model=model.__name__,
-                    namespace=getattr(model, "__metatable_namespace__", None),
-                    identifier=getattr(model, "__metatable_identifier__", None),
-                    meta_table_uid=_meta_table_uid(meta_table),
-                    model_index=position,
-                    model_count=len(resolved_models),
-                )
-
-            upsert_catalog_row(
-                catalog_context,
-                model=model,
-                meta_table=meta_table,
-            )
-
-        _bind_model_meta_table(model, meta_table)
-        meta_tables.append(meta_table)
-        meta_table_by_identifier[plan.identifier] = meta_table
-
-    return CatalogBootstrapResult(
-        registration=MarketsMetaTableRegistrationResult(
-            meta_tables=meta_tables,
-            models=resolved_models,
-            meta_table_by_identifier=meta_table_by_identifier,
-        ),
-        catalog_meta_table=catalog_meta_table,
-        attached_count=attached_count,
-        imported_count=imported_count,
-        registered_count=registered_count,
-    )
-
-
-def rotate_catalogue(model_or_row_type: MarketsModelSelector | type[Any]) -> CatalogRotationResult:
-    """Replace one catalog row from the model's current registered MetaTable.
-
-    This is the explicit override for metadata-only catalog drift. The caller
-    passes the authored model/API row type, for example ``rotate_catalogue(Account)``.
-    The registered backend ``MetaTable`` is resolved through ``model.register()``;
-    this function does not accept UID, identifier, or data-source lookup knobs.
-    """
-
-    model = resolve_catalogue_model(model_or_row_type)
-    catalog_meta_table = bootstrap_catalog_table()
-    catalog_context = catalog_repository_context(catalog_meta_table=catalog_meta_table)
-    existing_row = find_catalog_row(catalog_context, model=model)
-    meta_table = _register_catalogue_rotation_meta_table(model)
-    validate_platform_meta_table_physical_contract(
-        meta_table,
-        model=model,
-        timeout=None,
-    )
-
-    row = MarketsMetaTableCatalogRow.from_meta_table(
-        model=model,
-        meta_table=meta_table,
-        sdk_version=_sdk_version(),
-    )
-    payload = row.to_payload()
-    changed = _catalog_row_changed(existing_row, payload)
-    upserted = _upsert_catalog_payload(catalog_context, payload)
-    old_contract_hash = str(existing_row.get("contract_hash")) if existing_row else None
-    logger.info(
-        "Rotated markets MetaTable catalog row",
-        model=model.__name__,
-        namespace=payload["namespace"],
-        identifier=payload["identifier"],
-        meta_table_uid=payload["meta_table_uid"],
-        old_contract_hash=old_contract_hash,
-        new_contract_hash=payload["contract_hash"],
-        changed=changed,
-    )
-    return CatalogRotationResult(
-        namespace=payload["namespace"],
-        identifier=payload["identifier"],
-        model_name=model.__name__,
-        meta_table_uid=payload["meta_table_uid"],
-        old_contract_hash=old_contract_hash,
-        new_contract_hash=payload["contract_hash"],
-        changed=changed,
-        row=_first_operation_row(upserted) or payload,
-    )
-
-
-def resolve_catalogue_model(
-    model_or_row_type: MarketsModelSelector | type[Any],
-) -> type[MarketsBase]:
-    """Resolve a catalog rotation input to its SQLAlchemy MetaTable model."""
-
-    if isinstance(model_or_row_type, type):
-        if issubclass(model_or_row_type, MarketsBase):
-            return model_or_row_type
-        table_model = getattr(model_or_row_type, "__table__", None)
-        if isinstance(table_model, type) and issubclass(table_model, MarketsBase):
-            return table_model
-    return resolve_markets_meta_table_model(model_or_row_type)
-
-
-def bootstrap_catalog_table(
-    *,
-    timeout: int | float | tuple[float, float] | None = None,
-) -> MetaTable:
-    """Attach or create the maintenance catalog MetaTable."""
-
-    existing = _resolve_platform_meta_table(
-        MarketsMetaTableCatalogTable,
-        management_mode="platform_managed",
-        timeout=timeout,
-    )
-    if existing is not None:
-        validate_platform_meta_table_physical_contract(
-            existing,
-            model=MarketsMetaTableCatalogTable,
-            timeout=timeout,
-        )
-        logger.info(
-            "Attached markets MetaTable catalog",
-            namespace=getattr(existing, "namespace", None),
-            identifier=getattr(existing, "identifier", None),
-            meta_table_uid=_meta_table_uid(existing),
-        )
-        return existing
-
-    logger.info(
-        "Creating markets MetaTable catalog",
-        namespace=getattr(MarketsMetaTableCatalogTable, "__metatable_namespace__", None),
-        identifier=getattr(MarketsMetaTableCatalogTable, "__metatable_identifier__", None),
-    )
-    try:
-        return MarketsMetaTableCatalogTable.register(timeout=timeout)
-    except ConflictError as exc:
-        recovered = _meta_table_from_conflict(
-            exc,
-            model=MarketsMetaTableCatalogTable,
-            management_mode="platform_managed",
-            timeout=timeout,
-        )
-        if recovered is not None:
-            logger.info(
-                "Attached markets MetaTable catalog after duplicate registration",
-                meta_table_uid=_meta_table_uid(recovered),
-            )
-            return recovered
-        raise CatalogBootstrapError(
-            "Could not create or attach the markets MetaTable catalog. "
-            "Resolve the catalog MetaTable conflict before registering application tables."
-        ) from exc
 
 
 def resolve_catalog_table(
@@ -643,38 +305,6 @@ def resolve_catalog_meta_table(
             f"{model.__name__}: platform MetaTable {catalog_row.get('meta_table_uid')!r} "
             "could not be resolved. Repair or rebuild the catalog before startup."
         ) from exc
-
-
-def invalidate_stale_catalog_row(
-    context: MarketsRepositoryContext,
-    *,
-    catalog_row: Mapping[str, Any],
-    model: type[MarketsBase],
-    reason: str,
-) -> None:
-    row_uid = catalog_row.get("uid")
-    logger.warning(
-        "Invalidating stale markets MetaTable catalog row",
-        model=model.__name__,
-        namespace=catalog_row.get("namespace"),
-        identifier=catalog_row.get("identifier"),
-        meta_table_uid=catalog_row.get("meta_table_uid"),
-        catalog_row_uid=row_uid,
-        reason=reason,
-    )
-    if row_uid in (None, ""):
-        logger.warning(
-            "Could not delete stale markets MetaTable catalog row without row uid",
-            model=model.__name__,
-            identifier=catalog_row.get("identifier"),
-            meta_table_uid=catalog_row.get("meta_table_uid"),
-        )
-        return
-    delete_model(
-        context,
-        model=MarketsMetaTableCatalogTable,
-        uid=str(row_uid),
-    )
 
 
 def validate_catalog_contract(
@@ -869,51 +499,6 @@ def _physical_index_columns(value: Any) -> list[str] | None:
     return columns or None
 
 
-def register_catalog_missing_meta_table(
-    model: type[MarketsBase],
-    *,
-    data_source_uid: str | None,
-    management_mode: MarketsManagementMode,
-    target_meta_tables: Mapping[type[MarketsBase], Any],
-    open_for_everyone: bool,
-    protect_from_deletion: bool,
-    introspect: bool | None,
-    storage_hash: str | None,
-    timeout: int | float | tuple[float, float] | None,
-) -> MetaTable:
-    platform_kwargs = {
-        "data_source_uid": data_source_uid,
-        "open_for_everyone": open_for_everyone,
-        "protect_from_deletion": protect_from_deletion,
-        "timeout": timeout,
-    }
-    external_kwargs = {
-        **platform_kwargs,
-        "target_meta_tables": target_meta_tables,
-    }
-    try:
-        if is_time_index_meta_table_model(model):
-            return model.register(timeout=timeout)
-        if management_mode == "platform_managed":
-            return model.register(timeout=timeout)
-        if management_mode == "external_registered":
-            return register_external_sqlalchemy_model(
-                model,
-                introspect=True if introspect is None else introspect,
-                storage_hash=storage_hash,
-                schema=MARKETS_SCHEMA,
-                **external_kwargs,
-            )
-    except ConflictError as exc:
-        raise CatalogBootstrapError(
-            "Markets MetaTable catalog drift detected while registering "
-            f"{model.__name__}. The platform reports that the physical table already "
-            "exists, but the catalog has no matching row. Run the catalog import/repair "
-            "flow before normal schema bootstrap."
-        ) from exc
-    raise ValueError("management_mode must be 'platform_managed' or 'external_registered'.")
-
-
 def upsert_catalog_row(
     context: MarketsRepositoryContext,
     *,
@@ -944,61 +529,6 @@ def _upsert_catalog_payload(
     )
 
 
-def _register_catalogue_rotation_meta_table(model: type[MarketsBase]) -> MetaTable:
-    try:
-        meta_table = model.register()
-    except ConflictError as exc:
-        recovered = _meta_table_from_conflict(
-            exc,
-            model=model,
-            management_mode="platform_managed",
-            timeout=None,
-        )
-        if recovered is None:
-            raise CatalogBootstrapError(
-                "Could not resolve registered markets MetaTable for catalog rotation "
-                f"through {model.__name__}.register()."
-            ) from exc
-        meta_table = recovered
-    _bind_model_meta_table(model, meta_table)
-    return meta_table
-
-
-def _catalog_row_changed(
-    existing_row: Mapping[str, Any] | None,
-    new_payload: Mapping[str, Any],
-) -> bool:
-    if existing_row is None:
-        return True
-    for key in (
-        "namespace",
-        "identifier",
-        "description",
-        "model_name",
-        "meta_table_uid",
-        "contract_hash",
-        "sdk_version",
-    ):
-        if _catalog_compare_value(existing_row.get(key)) != _catalog_compare_value(
-            new_payload.get(key)
-        ):
-            return True
-    return False
-
-
-def _catalog_compare_value(value: Any) -> str | None:
-    if value is None:
-        return None
-    return str(value)
-
-
-def _first_operation_row(result: Mapping[str, Any] | list[Any] | None) -> dict[str, Any] | None:
-    rows = _operation_result_rows(result)
-    if not rows:
-        return None
-    return rows[0]
-
-
 def _resolve_platform_meta_table(
     model: type[MarketsBase],
     *,
@@ -1026,16 +556,6 @@ def _resolve_platform_meta_table(
             "platform registrations before startup."
         )
     return matches[0]
-
-
-def _external_data_source_uid(
-    *,
-    management_mode: MarketsManagementMode,
-    data_source_uid: str | None,
-) -> str | None:
-    if management_mode == "external_registered":
-        return data_source_uid
-    return None
 
 
 def _registered_meta_table_filter_candidates(
@@ -1075,51 +595,6 @@ def _catalog_model_namespace(model: type[MarketsBase]) -> str:
             f"Markets MetaTable model {model.__name__} does not expose catalog namespace."
         )
     return namespace
-
-
-def _meta_table_from_conflict(
-    exc: ConflictError,
-    *,
-    model: type[MarketsBase],
-    management_mode: MarketsManagementMode,
-    timeout: int | float | tuple[float, float] | None,
-) -> MetaTable | None:
-    payload = _conflict_payload(exc)
-    existing_uid = payload.get("existing_meta_table_uid")
-    if not existing_uid:
-        return None
-
-    try:
-        return MetaTable.get_by_uid(uid=str(existing_uid), timeout=timeout)
-    except Exception:
-        table_name = str(payload.get("physical_table_name") or model.__table__.name)
-        storage_hash = str(payload.get("storage_hash") or table_name)
-        return MetaTable(
-            uid=str(existing_uid),
-            data_source_uid=payload.get("data_source_uid"),
-            storage_hash=storage_hash,
-            identifier=getattr(model, "__metatable_identifier__", model.__name__),
-            namespace=getattr(model, "__metatable_namespace__", None),
-            management_mode=management_mode,
-            physical_table_name=table_name,
-        )
-
-
-def _conflict_payload(exc: ConflictError) -> dict[str, Any]:
-    payload = getattr(exc, "payload", None)
-    if isinstance(payload, Mapping):
-        return dict(payload)
-
-    response = getattr(exc, "response", None)
-    if response is None:
-        return {}
-    try:
-        response_payload = response.json()
-    except Exception:
-        return {}
-    if isinstance(response_payload, Mapping):
-        return dict(response_payload)
-    return {}
 
 
 def _meta_table_uid(value: Any) -> str:
@@ -1176,22 +651,15 @@ def _sdk_version() -> str | None:
 __all__ = [
     "CatalogBootstrapError",
     "CatalogBootstrapResult",
-    "CatalogRotationResult",
     "CatalogStaleMetaTableUidError",
     "attach_markets_meta_tables_from_catalog",
-    "bootstrap_catalog_table",
-    "bootstrap_markets_meta_tables_from_catalog",
     "catalog_repository_context",
     "find_catalog_row",
     "find_catalog_rows_by_identifier",
-    "invalidate_stale_catalog_row",
     "meta_table_from_catalog_row",
-    "register_catalog_missing_meta_table",
     "refresh_markets_catalog_from_registered_metatables",
     "resolve_catalog_table",
     "resolve_catalog_meta_table",
-    "resolve_catalogue_model",
-    "rotate_catalogue",
     "upsert_catalog_row",
     "validate_catalog_contract",
     "validate_platform_meta_table_physical_contract",

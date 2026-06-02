@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
-from mainsequence.client.exceptions import ConflictError
 from mainsequence.meta_tables import (
     MetaTableForeignKey,
     PlatformManagedMetaTable,
@@ -714,126 +713,9 @@ def test_markets_models_build_external_registration_requests_in_dependency_order
     )
 
 
-def test_external_registration_mode_routes_storage_classes_through_sdk_register(
-    monkeypatch,
-) -> None:
-    register_calls: list[dict] = []
-    external_register_calls: list[type] = []
-
-    def fake_external_register(model, *_args, **_kwargs):
-        external_register_calls.append(model)
-        return SimpleNamespace(uid=f"{model.__name__}-uid")
-
-    def fake_register(cls, **kwargs):
-        register_calls.append(kwargs)
-        return SimpleNamespace(uid="account-holdings-storage-uid")
-
-    monkeypatch.setattr(
-        meta_tables,
-        "register_external_sqlalchemy_model",
-        fake_external_register,
-    )
-    monkeypatch.setattr(AccountHoldingsStorage, "register", classmethod(fake_register))
-
-    result = meta_tables.register_markets_meta_tables(
-        data_source_uid="data-source-uid",
-        management_mode="external_registered",
-        models=[AccountHoldingsStorage],
-    )
-
-    assert register_calls
-    assert register_calls[0] == {"timeout": None}
-    assert AccountHoldingsStorage not in external_register_calls
-    assert (
-        result.meta_table_by_identifier[markets_meta_table_identifier(AccountHoldingsStorage)].uid
-        == "account-holdings-storage-uid"
-    )
-
-
-def test_register_markets_meta_tables_logs_each_table(monkeypatch) -> None:
-    class SpyLogger:
-        def __init__(self) -> None:
-            self.events = []
-
-        def info(self, event: str, **kwargs) -> None:
-            self.events.append((event, kwargs))
-
-    class LogFakeModel(MarketsMetaTableMixin, MarketsBase):
-        __metatable_namespace__ = "mainsequence.test"
-        __metatable_identifier__ = "FakeModel"
-        __metatable_extra_hash_components__ = {"storage_name": "fake_model_logs"}
-
-        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-
-        @classmethod
-        def register(cls, **_kwargs):
-            return SimpleNamespace(uid="fake-meta-table-uid")
-
-    spy_logger = SpyLogger()
-    monkeypatch.setattr(meta_tables, "logger", spy_logger)
-
-    result = meta_tables.register_markets_meta_tables(
-        data_source_uid="data-source-uid",
-        models=[LogFakeModel],
-    )
-
-    identifier = markets_meta_table_identifier(LogFakeModel)
-
-    assert result.models == [LogFakeModel]
-    assert result.meta_table_by_identifier[identifier].uid == "fake-meta-table-uid"
-    assert [event for event, _kwargs in spy_logger.events] == [
-        "Registering markets MetaTable schema",
-        "Registered markets MetaTable schema",
-    ]
-    registering_event = spy_logger.events[0][1]
-    assert registering_event["model"] == "LogFakeModel"
-    assert registering_event["namespace"] == "mainsequence.test"
-    assert registering_event["identifier"] == identifier
-    assert registering_event["model_index"] == 1
-    assert registering_event["model_count"] == 1
-    assert "table_fullname" not in registering_event
-    registered_event = spy_logger.events[1][1]
-    assert registered_event["meta_table_uid"] == "fake-meta-table-uid"
-
-
-def test_register_markets_meta_tables_reuses_duplicate_physical_table_conflict(
-    monkeypatch,
-) -> None:
-    class ConflictFakeModel(MarketsMetaTableMixin, MarketsBase):
-        __metatable_namespace__ = "mainsequence.examples"
-        __metatable_identifier__ = "FakeModel"
-        __metatable_extra_hash_components__ = {"storage_name": "fake_model_conflict"}
-
-        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-
-        @classmethod
-        def register(cls, **_kwargs):
-            raise ConflictError(
-                "duplicate",
-                payload={
-                    "code": "duplicate_meta_table",
-                    "existing_meta_table_uid": "existing-meta-table-uid",
-                    "storage_hash": "fake_asset",
-                    "physical_table_name": "fake_asset",
-                    "data_source_uid": "data-source-uid",
-                },
-            )
-
-    monkeypatch.setattr(
-        meta_tables.MetaTable,
-        "get_by_uid",
-        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("not visible")),
-    )
-
-    result = meta_tables.register_markets_meta_tables(
-        data_source_uid="data-source-uid",
-        models=[ConflictFakeModel],
-    )
-
-    meta_table = result.meta_table_by_identifier[markets_meta_table_identifier(ConflictFakeModel)]
-    assert meta_table.uid == "existing-meta-table-uid"
-    assert meta_table.physical_table_name == "fake_asset"
-    assert meta_table.storage_hash == "fake_asset"
+def test_markets_models_do_not_expose_direct_registration_helper() -> None:
+    assert not hasattr(meta_tables, "register_markets_meta_tables")
+    assert not hasattr(meta_tables, "register_external_sqlalchemy_model")
 
 
 def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monkeypatch) -> None:

@@ -393,9 +393,10 @@ msm.start_engine(
 ```
 
 The DataNode class itself does not need to be in the MetaTable model list. Its
-storage class does. Register holdings storage through catalog/bootstrap before
-constructing or running the DataNode. The registration path is
-`PlatformTimeIndexMetaData.register(...)`; do not manually bind by UID or call
+storage class does. Add holdings storage to the migration model registry, run
+the SDK migration flow, and attach runtime with `msm.start_engine(...)` before
+constructing or running the DataNode. Do not call
+`PlatformTimeIndexMetaData.register(...)`, manually bind by UID, or call
 `initialize_source_table`.
 
 ## Extension Rules

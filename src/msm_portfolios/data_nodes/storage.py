@@ -318,47 +318,6 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
-class ExternalPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
-    """External provider price observations keyed by asset unique identifier."""
-
-    __markets_base_identifier__: ClassVar[str] = "ExternalPricesTS"
-    __metatable_description__ = (
-        "Timestamped external-price storage keyed by (time_index, "
-        "unique_identifier). Stores provider-supplied price observations for assets "
-        "when external pricing data is injected into portfolio workflows."
-    )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "ExternalPricesTS",
-    }
-    __time_index_name__: ClassVar[str] = "time_index"
-    __index_names__: ClassVar[list[str]] = ["time_index", "unique_identifier"]
-
-    time_index: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        info={
-            "label": "Time Index",
-            "description": "UTC timestamp for the external price observation.",
-        },
-    )
-    unique_identifier: Mapped[str] = mapped_column(
-        String,
-        nullable=False,
-        info={
-            "label": "Unique Identifier",
-            "description": "Asset unique identifier for the priced instrument.",
-        },
-    )
-    open: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "Open",
-            "description": "External price observation mapped to the open field.",
-        },
-    )
-
-
 class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Fund historical holdings keyed by fund UID and held asset."""
 
@@ -468,7 +427,6 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 
 
 __all__ = [
-    "ExternalPricesStorage",
     "FundHoldingsStorage",
     "InterpolatedPricesStorage",
     "PortfolioWeightsStorage",
