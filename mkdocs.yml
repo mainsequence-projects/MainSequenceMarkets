@@ -81,6 +81,7 @@ nav:
       - msm_portfolios Package Boundary: ADR/0019-msm-portfolios-package-boundary.md
       - SDK-Managed MetaTable Migrations: ADR/0020-sdk-managed-metatable-migrations.md
       - Virtual Fund Allocation Holdings Contract: ADR/0021-virtual-fund-allocation-holdings-contract.md
+      - Thin Alembic MetaTable Migration Integration: ADR/0022-alembic-metatable-migration-alignment.md
       - API v1:
           - Asset Category Route Plan: ADR/fast_api/v1/0012-asset-category-route-plan.md
           - Index Route Plan: ADR/fast_api/v1/0013-index-route-plan.md

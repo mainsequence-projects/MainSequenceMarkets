@@ -58,7 +58,6 @@ def fake_sdk():
         },
         sha256_payload=lambda value: f"payload-sha-{len(value)}",
         sha256_text=lambda value: f"sha-{len(value)}",
-        validate_migration_managed_models=lambda models: None,
     )
 
 

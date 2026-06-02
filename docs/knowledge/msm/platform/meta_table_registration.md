@@ -11,10 +11,10 @@ configured DynamicTable data source. Creating or evolving those tables is now
 handled by `msm migrations ...` admin commands, not by runtime startup.
 
 Market models inherit `MarketsMetaTableMixin`, which itself inherits the SDK
-`MigrationManagedMetaTable` mixin. Time-indexed DataNode storage inherits
-`MigrationManagedTimeIndexMetaData` through `MarketsTimeIndexMetaTableMixin`.
+`PlatformManagedMetaTable` base. Time-indexed DataNode storage inherits
+`PlatformTimeIndexMetaData` through `MarketsTimeIndexMetaTableMixin`.
 Do not set `__tablename__` on normal markets MetaTable models. The SDK derives
-the physical table name from the stable migration-managed storage identity.
+the physical table name from the stable platform-managed storage identity.
 
 Every concrete markets MetaTable model must declare `__metatable_description__`.
 That description is the durable platform-level discovery text copied into the

@@ -490,22 +490,16 @@ repair.
 
 ## Implementation Tasks
 
-### SDK `4.1.15` Alignment Tasks
+### SDK/Alembic Alignment Tasks
 
-- [x] Bump `pyproject.toml` and `uv.lock` from the previous SDK release to the
-      SDK release that exposes `MigrationManagedMetaTable`,
-      `MigrationManagedTimeIndexMetaData`, `MigrationMetaTable`,
-      `PackagedMetaTableMigration.operations_sha256`, and the
-      `metatable-migration.v1` helpers. A clean `uv sync` must keep those APIs
-      available.
-- [x] Change the shared `ms-markets` MetaTable base so managed models inherit
-      the SDK `MigrationManagedMetaTable`, not only `PlatformManagedMetaTable`.
-- [x] Change the shared `ms-markets` time-index storage base so DataNode storage
-      models inherit the SDK `MigrationManagedTimeIndexMetaData`.
-- [x] Add a startup/import validation that every model in
-      `MIGRATION_MODEL_REGISTRY` is accepted by
-      `validate_migration_managed_models(...)` before any sync, upgrade, or
-      runtime status check proceeds.
+- [x] Keep shared `ms-markets` MetaTable bases on the normal SDK authoring
+      classes: `PlatformManagedMetaTable` for domain MetaTables and
+      `PlatformTimeIndexMetaData` for time-indexed storage.
+- [x] Keep `MIGRATION_MODEL_REGISTRY` as the package-owned model graph, not as a
+      filter over SDK migration-specific marker classes.
+- [x] Validate registry shape locally: entries must be `MarketsBase`
+      subclasses with unique identifiers, and time-index storage entries must
+      declare `__time_index_name__` and `__index_names__`.
 - [x] Stop bypassing SDK migration validation when packaging migrations. The
       package runner must either use the SDK packaged-migration loader or call
       the same SDK validators before constructing/syncing registry rows.
@@ -593,8 +587,8 @@ repair.
       finalized on the next `msm migrations upgrade`.
 - [ ] Test empty materialized migration revisions fail when the managed model
       registry is non-empty.
-- [x] Test registered models must inherit SDK migration-managed bases, including
-      `MigrationManagedTimeIndexMetaData` for time-indexed storage.
+- [x] Test registered models inherit SDK base authoring classes, including
+      `PlatformTimeIndexMetaData` for time-indexed storage.
 - [x] Test packaged migrations use structured operations and
       `operations_sha256`, without `.sql` files or SQL path metadata.
 - [ ] Test runtime migration checks are scoped to the requested model graph and
@@ -609,7 +603,7 @@ repair.
 ### Documentation Tasks
 
 - [x] Update `docs/knowledge/msm/platform/meta_table_registration.md` with the
-      migration-managed lifecycle.
+      admin-managed migration lifecycle.
 - [x] Add a dedicated migration lifecycle page that documents the intended
       scalable registration path: packaged migration artifacts, SDK registry
       sync/apply, catalog finalization, and runtime attachment.

@@ -6,9 +6,9 @@ from collections.abc import Mapping
 from typing import Any, ClassVar
 
 from mainsequence.meta_tables import (
-    MigrationManagedMetaTable,
-    MigrationManagedTimeIndexMetaData,
     POSTGRES_IDENTIFIER_MAX_LENGTH,
+    PlatformManagedMetaTable,
+    PlatformTimeIndexMetaData,
     metatable_tablename,
     slugify_identifier,
 )
@@ -169,7 +169,7 @@ def _assign_markets_metatable_identifiers(cls: type) -> None:
     )
 
 
-class MarketsMetaTableMixin(MigrationManagedMetaTable):
+class MarketsMetaTableMixin(PlatformManagedMetaTable):
     """Shared metadata contract for markets SQLAlchemy MetaTable models."""
 
     __abstract__ = True
@@ -187,14 +187,13 @@ class MarketsMetaTableMixin(MigrationManagedMetaTable):
         return getattr(cls, "__metatable_identifier__", cls.__name__)
 
 
-class MarketsTimeIndexMetaTableMixin(MigrationManagedTimeIndexMetaData):
+class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaData):
     """Shared contract for markets storage-first time-indexed MetaTable models.
 
-    Sibling of `MarketsMetaTableMixin` for migration-managed time-index storage
-    classes. Concrete subclasses set `__markets_base_identifier__`,
-    `__time_index_name__`, and `__index_names__`. The SDK migration-managed
-    time-index base keeps the logical storage identity tied to the stable
-    package identifier.
+    Sibling of `MarketsMetaTableMixin` for time-index storage classes. Concrete
+    subclasses set `__markets_base_identifier__`, `__time_index_name__`, and
+    `__index_names__`. The SDK time-index base keeps the logical storage
+    identity tied to the stable package identifier.
     """
 
     __abstract__ = True

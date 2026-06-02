@@ -182,7 +182,7 @@ def current_migrations(
             migration_meta_table,
             package=MIGRATION_PACKAGE,
             migration_namespace=migration_namespace,
-            data_source_uid=resolved_data_source_uid,
+            data_source_uid=data_source_uid,
             timeout=timeout,
         )
     catalog_status = _catalog_status(timeout=timeout, models=scoped_models)
@@ -244,7 +244,6 @@ def sync_migrations(
             migration_meta_table,
             package=MIGRATION_PACKAGE,
             migration_namespace=migration_namespace,
-            data_source_uid=data_source_uid,
             timeout=timeout,
         )
     return MigrationCommandResult(
@@ -294,7 +293,6 @@ def upgrade_migrations(
         migration_meta_table,
         package=MIGRATION_PACKAGE,
         migration_namespace=migration_namespace,
-        data_source_uid=data_source_uid,
         timeout=timeout,
     )
     applied_revisions = _applied_revisions(status)
@@ -338,7 +336,6 @@ def upgrade_migrations(
         migration_meta_table,
         package=MIGRATION_PACKAGE,
         migration_namespace=migration_namespace,
-        data_source_uid=data_source_uid,
         timeout=timeout,
     )
     expected_revisions = [item.spec.revision for item in materialized]
@@ -606,7 +603,6 @@ def _build_packaged_migration(
     model_by_identifier = {
         markets_meta_table_identifier(model): model for model in spec.affected_models
     }
-    sdk.validate_migration_managed_models(model_by_identifier)
     target_meta_tables = _contract_target_meta_tables(model_by_identifier.values())
     new_contracts = sdk.contracts_from_models(
         model_by_identifier,
@@ -675,7 +671,6 @@ def _sdk_migrations() -> SimpleNamespace:
         "sha256_payload",
         "sha256_text",
         "sync_packaged_migration",
-        "validate_migration_managed_models",
     ]
     missing = [name for name in required_names if not hasattr(sdk, name)]
     if missing or not hasattr(MetaTable, "apply_migration"):
@@ -697,7 +692,6 @@ def _sdk_migrations() -> SimpleNamespace:
         sha256_payload=sdk.sha256_payload,
         sha256_text=sdk.sha256_text,
         sync_packaged_migration=sdk.sync_packaged_migration,
-        validate_migration_managed_models=sdk.validate_migration_managed_models,
     )
 
 
@@ -735,10 +729,30 @@ def _contract_target_meta_tables(
 
 
 def _validate_migration_model_registry(sdk: SimpleNamespace | None = None) -> None:
-    migration_sdk = sdk or _sdk_migrations()
     models = migration_model_registry()
-    model_by_identifier = {markets_meta_table_identifier(model): model for model in models}
-    migration_sdk.validate_migration_managed_models(model_by_identifier)
+    identifiers: set[str] = set()
+    for model in models:
+        if not isinstance(model, type) or not issubclass(model, MarketsBase):
+            raise MigrationSupportError(
+                "Migration model registry entries must be MarketsBase subclasses."
+            )
+        identifier = markets_meta_table_identifier(model)
+        if identifier in identifiers:
+            raise MigrationSupportError(
+                f"Duplicate migration model identifier {identifier!r}."
+            )
+        identifiers.add(identifier)
+        if is_time_index_meta_table_model(model):
+            if not getattr(model, "__time_index_name__", None):
+                raise MigrationSupportError(
+                    f"Time-index migration model {model.__name__} is missing "
+                    "__time_index_name__."
+                )
+            if not getattr(model, "__index_names__", None):
+                raise MigrationSupportError(
+                    f"Time-index migration model {model.__name__} is missing "
+                    "__index_names__."
+                )
 
 
 def _ensure_packaged_migrations_exist(materialized: Sequence[MaterializedMigration]) -> None:

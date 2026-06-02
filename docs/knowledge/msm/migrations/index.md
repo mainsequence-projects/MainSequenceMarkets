@@ -41,9 +41,9 @@ structured SDK operation payloads. The runner materializes SDK manifest JSON at
 `sync` or `upgrade` time; hand-authored YAML/JSON manifests and SQL migration
 folders are not the source of truth.
 
-Managed models must inherit SDK migration-managed bases. Plain MetaTables use
-`MigrationManagedMetaTable` through `MarketsMetaTableMixin`; time-indexed
-DataNode storage uses `MigrationManagedTimeIndexMetaData` through
+Managed models must inherit the normal SDK authoring bases. Plain MetaTables use
+`PlatformManagedMetaTable` through `MarketsMetaTableMixin`; time-indexed
+DataNode storage uses `PlatformTimeIndexMetaData` through
 `MarketsTimeIndexMetaTableMixin`.
 
 Human-readable `msm migrations current` output groups catalog status by model

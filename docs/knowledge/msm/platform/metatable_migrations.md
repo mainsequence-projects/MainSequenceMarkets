@@ -32,9 +32,9 @@ The registry is not migration history. Individual Python migration modules
 define revision metadata and `affected_models()` or `AFFECTED_MODELS`; the
 runner materializes SDK manifest JSON at `sync` or `upgrade` time.
 
-Models in the registry must use SDK migration-managed bases. Plain MetaTables
-inherit `MigrationManagedMetaTable` through `MarketsMetaTableMixin`; time-indexed
-DataNode storage inherits `MigrationManagedTimeIndexMetaData` through
+Models in the registry use the normal SDK authoring bases. Plain MetaTables
+inherit `PlatformManagedMetaTable` through `MarketsMetaTableMixin`; time-indexed
+DataNode storage inherits `PlatformTimeIndexMetaData` through
 `MarketsTimeIndexMetaTableMixin`.
 
 ## Commands
@@ -123,9 +123,7 @@ schema change needs correction, add another forward migration.
 
 ## SDK Requirement
 
-The implementation requires a Main Sequence SDK version that exposes
-`mainsequence.meta_tables.migrations`, `MigrationManagedMetaTable`,
-`MigrationManagedTimeIndexMetaData`, `MetaTable.apply_migration(...)`, and
-`MetaTable.get_migration_status(...)`. `ms-markets` currently targets SDK
-`4.1.15` or newer. Older SDK versions fail clearly before admin migration
+The implementation requires a Main Sequence SDK version that exposes the base
+MetaTable authoring classes, Alembic migration support, and backend SQL
+migration execution. Older SDK versions fail clearly before admin migration
 execution or runtime attachment.

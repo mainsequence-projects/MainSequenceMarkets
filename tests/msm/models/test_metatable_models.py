@@ -7,10 +7,9 @@ from typing import ClassVar
 import pytest
 from mainsequence.client.exceptions import ConflictError
 from mainsequence.meta_tables import (
-    MigrationManagedMetaTable,
-    MigrationManagedTimeIndexMetaData,
     MetaTableForeignKey,
     PlatformManagedMetaTable,
+    PlatformTimeIndexMetaData,
 )
 from pydantic import AliasChoices, Field
 from sqlalchemy import String
@@ -671,12 +670,12 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
     assert all(request.storage_hash for request in storage_requests)
 
 
-def test_migration_registry_models_use_sdk_migration_managed_bases() -> None:
+def test_migration_registry_models_use_sdk_base_metatable_classes() -> None:
     registry = migration_model_registry()
     assert registry
     assert AccountHoldingsStorage in registry
-    assert all(issubclass(model, MigrationManagedMetaTable) for model in registry)
-    assert issubclass(AccountHoldingsStorage, MigrationManagedTimeIndexMetaData)
+    assert all(issubclass(model, PlatformManagedMetaTable) for model in registry)
+    assert issubclass(AccountHoldingsStorage, PlatformTimeIndexMetaData)
 
 
 def test_markets_models_build_external_registration_requests_in_dependency_order(
