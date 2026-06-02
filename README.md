@@ -79,8 +79,6 @@ Repository areas:
 - `examples/msm_pricing/`: optional pricing and QuantLib-backed examples
 - `.agents/skills/ms_markets/`: source agent skills for market-domain workflows
 - `tests/`: automated tests
-- `src/msm/.agents/ms_markets/`: packaged agent-skill bundle installed with
-  the wheel
 
 ## Documentation Map
 

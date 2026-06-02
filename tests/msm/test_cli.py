@@ -6,7 +6,7 @@ import pathlib
 
 import pytest
 
-from cli.main import bundled_msm_skills_root, main
+from cli.main import bundled_msm_skills_root, main, source_tree_msm_skills_root
 
 cli_main = importlib.import_module("cli.main")
 
@@ -49,6 +49,14 @@ def test_import_msm_does_not_copy_skills(tmp_path, monkeypatch) -> None:
 def test_msm_cli_module_is_not_runtime_surface() -> None:
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("msm.cli")
+
+
+def test_msm_skills_source_of_truth_is_root_agents() -> None:
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
+
+    assert source_tree_msm_skills_root() == repo_root / ".agents" / "skills" / "ms_markets"
+    assert bundled_msm_skills_root() == source_tree_msm_skills_root()
+    assert not (repo_root / "src" / "msm" / ".agents").exists()
 
 
 def test_copy_msm_skills_dry_run_writes_nothing(tmp_path, capsys) -> None:

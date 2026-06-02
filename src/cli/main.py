@@ -4,12 +4,12 @@ import argparse
 import json
 import shutil
 import sys
-from importlib import resources
-from importlib.abc import Traversable
+from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from typing import Any
 
-MSM_SKILLS_RESOURCE = (".agents", "ms_markets")
+SOURCE_MSM_SKILLS_PATH = (".agents", "skills", "ms_markets")
+BUNDLED_MSM_SKILLS_PATH = SOURCE_MSM_SKILLS_PATH
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -39,18 +39,19 @@ def copy_msm_skills_command(
     project_dir = path.expanduser().resolve()
     destination_root = project_dir / ".agents" / "skills" / "ms_markets"
     skill_sources = _iter_skill_roots(source_root)
+    source_label = _source_root_label(source_root)
 
     copied = [
         {
             "name": source.name,
-            "source": "/".join(MSM_SKILLS_RESOURCE + (source.name,)),
+            "source": f"{source_label}/{source.name}",
             "destination": str(destination_root / source.name),
         }
         for source in skill_sources
     ]
     payload = {
         "project": str(project_dir),
-        "source": "/".join(MSM_SKILLS_RESOURCE),
+        "source": source_label,
         "destination_root": str(destination_root),
         "dry_run": dry_run,
         "updated_count": len(copied),
@@ -76,11 +77,20 @@ def copy_msm_skills_command(
     return 0
 
 
-def bundled_msm_skills_root() -> Traversable:
-    root = resources.files("msm")
-    for part in MSM_SKILLS_RESOURCE:
-        root = root.joinpath(part)
-    return root
+def bundled_msm_skills_root() -> Path:
+    source_root = source_tree_msm_skills_root()
+    if source_root.is_dir():
+        return source_root
+
+    try:
+        dist = distribution("ms-markets")
+    except PackageNotFoundError as exc:
+        raise RuntimeError("ms-markets package metadata is unavailable.") from exc
+    return Path(dist.locate_file("/".join(BUNDLED_MSM_SKILLS_PATH)))
+
+
+def source_tree_msm_skills_root() -> Path:
+    return Path(__file__).resolve().parents[2].joinpath(*SOURCE_MSM_SKILLS_PATH)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -113,7 +123,13 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _iter_skill_roots(source_root: Traversable) -> list[Traversable]:
+def _source_root_label(source_root: Path) -> str:
+    if source_root.resolve() == source_tree_msm_skills_root().resolve():
+        return "/".join(SOURCE_MSM_SKILLS_PATH)
+    return "/".join(BUNDLED_MSM_SKILLS_PATH)
+
+
+def _iter_skill_roots(source_root: Path) -> list[Path]:
     return [
         item
         for item in sorted(source_root.iterdir(), key=lambda child: child.name)
@@ -121,7 +137,7 @@ def _iter_skill_roots(source_root: Traversable) -> list[Traversable]:
     ]
 
 
-def _copy_traversable_tree(source: Traversable, destination: Path) -> None:
+def _copy_traversable_tree(source: Path, destination: Path) -> None:
     if destination.exists():
         shutil.rmtree(destination)
     destination.mkdir(parents=True, exist_ok=True)

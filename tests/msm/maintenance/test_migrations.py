@@ -15,6 +15,7 @@ from msm.maintenance.catalog import SDK_MIGRATION_UPGRADE_COMMAND
 from msm.maintenance.models import MarketsMetaTableCatalogTable
 from msm.migrations import MarketsAlembicVersion, migration
 from msm.migrations.registry import migration_model_registry
+from msm.settings import markets_identifier, markets_namespace
 
 
 def test_migration_provider_is_single_sdk_alembic_provider() -> None:
@@ -23,6 +24,10 @@ def test_migration_provider_is_single_sdk_alembic_provider() -> None:
     assert migration.script_location == "msm:migrations"
     assert migration.target_metadata is MarketsBase.metadata
     assert migration.alembic_registry is MarketsAlembicVersion
+    assert MarketsAlembicVersion.__metatable_namespace__ == markets_namespace()
+    assert MarketsAlembicVersion.__metatable_identifier__ == markets_identifier(
+        "msm.alembic_version"
+    )
     assert migration.version_table == "msm_alembic_version"
     assert migration.version_table_schema == MARKETS_SCHEMA
     assert migration.alembic_version_table == f"{MARKETS_SCHEMA}.msm_alembic_version"

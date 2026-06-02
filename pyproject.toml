@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ms-markets"
-version = "0.0.24"
+version = "0.0.25"
 description = "Financial markets ORM, engines, and application management extensions for Main Sequence."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -105,8 +105,12 @@ msm = "cli.main:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/cli", "src/msm", "src/msm_portfolios", "src/msm_pricing"]
 
+[tool.hatch.build.targets.wheel.force-include]
+".agents/skills/ms_markets" = ".agents/skills/ms_markets"
+
 [tool.hatch.build.targets.sdist]
 include = [
+  "/.agents/skills/ms_markets",
   "/CHANGELOG.md",
   "/LICENSE",
   "/README.md",

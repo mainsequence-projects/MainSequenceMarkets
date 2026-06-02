@@ -8,12 +8,12 @@ from mainsequence.meta_tables.migrations import (
 from msm.base import MARKETS_SCHEMA, MarketsBase
 from msm.maintenance.catalog import refresh_markets_catalog_from_registered_metatables
 from msm.migrations.registry import migration_model_registry
-from msm.settings import markets_namespace
+from msm.settings import markets_identifier, markets_namespace
 
 
 class MarketsAlembicVersion(AlembicVersionMetaTable):
-    __metatable_namespace__ = "msm"
-    __metatable_identifier__ = "msm.alembic_version"
+    __metatable_namespace__ = markets_namespace()
+    __metatable_identifier__ = markets_identifier("msm.alembic_version")
     __alembic_version_schema__ = MARKETS_SCHEMA
     __alembic_version_table_name__ = "msm_alembic_version"
     __alembic_version_column_name__ = "version_num"
