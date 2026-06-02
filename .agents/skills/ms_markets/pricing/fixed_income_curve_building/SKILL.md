@@ -105,7 +105,10 @@ identity override.
 rows describe which convention/index the curve belongs to and how to interpret
 published curve observations.
 
-Pricing startup order matters:
+Pricing runtime attachment order matters. `create_pricing_schemas(...)` is a
+legacy-named startup entrypoint; in current code it attaches already-registered
+pricing MetaTables and configures pricing market-data bindings. It does not
+create schemas or register missing MetaTables at runtime:
 
 ```python
 from msm_pricing.bootstrap import create_pricing_schemas
@@ -114,11 +117,12 @@ create_pricing_schemas()
 ```
 
 `create_pricing_schemas(...)` uses the same maintenance catalog bootstrap as
-`msm.start_engine(...)`: already-cataloged tables are attached, missing tables
-are registered, and dependencies are processed in FK order. The dependency order
-includes `AssetTable`, `IndexTypeTable`, `IndexTable`,
-`IndexConventionDetailsTable`, `CurveTable`, then pricing details and pricing
-DataNode storage tables.
+`msm.start_engine(...)`: already-cataloged tables are attached, and dependency
+order is resolved before runtime binding. The dependency order includes
+`AssetTable`, `IndexTypeTable`, `IndexTable`, `IndexConventionDetailsTable`,
+`CurveTable`, then pricing details and pricing DataNode storage tables. Missing
+MetaTables indicate SDK migration/provider work still needs to run before
+pricing startup.
 
 ## Creation Workflow
 

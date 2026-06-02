@@ -46,7 +46,7 @@ Use the asset model extension skill instead when the task is about `AssetTable`,
 - Keeping schema details on storage classes: `__time_index_name__`,
   `__index_names__`, mapped columns, dtypes, nullability, and source-table
   foreign keys.
-- Deriving published identifiers from the registered storage table and active
+- Deriving published identifiers from the migrated/cataloged storage table and active
   markets namespace.
 - Deriving validation from `_required_storage_table()` and the instance's bound
   `storage_table`.
@@ -125,12 +125,12 @@ should explain the table's market intention, row grain, and downstream use, not
 only the schema. For asset-indexed tables, say what the asset row represents and
 why it is published over time.
 
-Storage must be registered before a process writes through the DataNode. The
-normal path is the markets runtime/catalog registration flow, usually
-`msm.start_engine(models=[...])`, which reaches
-`PlatformTimeIndexMetaData.register(...)` in dependency order. Do not manually
-bind a UID, reconstruct a generic `MetaTable`, or use manual bind helpers as an
-authoring step.
+Storage must be migrated, registered, and cataloged by the SDK migration
+provider before a process writes through the DataNode. The runtime path,
+usually `msm.start_engine(models=[...])`, attaches the already-finalized
+storage metadata from the markets catalog. Do not manually bind a UID,
+reconstruct a generic `MetaTable`, call storage `.register()` from runtime
+startup, or use manual bind helpers as an authoring step.
 
 Minimal storage-first pattern:
 
@@ -398,13 +398,13 @@ Before marking work complete:
   `ASSET_UNIQUE_IDENTIFIER_DIMENSION`.
 - The storage table declares the canonical `unique_identifier ->
   AssetTable.unique_identifier` SQLAlchemy `ForeignKey`.
-- The storage table is registered through the markets runtime/catalog
-  registration flow before writes.
+- The storage table is migrated, registered, and cataloged by the SDK migration
+  provider before writes.
 - `asset_list` is updater scope, not part of table meaning.
-- Identifier generation derives from the registered storage table.
+- Identifier generation derives from the migrated/cataloged storage table.
 - The implementation does not hardcode example or production namespaces.
 - Frame validation rejects missing index columns and duplicate keys.
 - Tests cover frame validation, storage columns, foreign keys, namespace identifier
   resolution, and any duplicate-backend-key guard.
 - Docs/examples use the user-facing `msm.api` asset API where assets are
-  registered before DataNode writes.
+  created before DataNode writes.

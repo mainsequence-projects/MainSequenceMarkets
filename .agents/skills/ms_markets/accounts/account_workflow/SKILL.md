@@ -82,10 +82,11 @@ Rules:
 - DataNodes do not fabricate bootstrap rows. Attach a real frame or implement a
   real source-specific `update()`.
 
-## Bootstrap
+## Runtime Attachment
 
-Examples and scripts must initialize schemas before row operations or DataNode
-writes:
+Examples and scripts must run after the SDK migration provider has registered
+and cataloged the required MetaTables. Application startup then attaches the
+markets runtime before row operations or DataNode writes:
 
 ```python
 import msm
@@ -105,7 +106,7 @@ msm.start_engine(
 )
 ```
 
-Register assets before holdings or target rows reference their
+Create or upsert asset rows before holdings or target rows reference their
 `unique_identifier`.
 
 ## Full Workflow Pattern

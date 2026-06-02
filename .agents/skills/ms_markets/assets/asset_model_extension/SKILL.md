@@ -91,8 +91,9 @@ part of the canonical asset identity.
 
 ## Public API Pattern
 
-Application code should bootstrap the SQLAlchemy detail model through the shared
-catalog path, then work through the Pydantic row API:
+After the SDK migration provider has migrated and cataloged the SQLAlchemy
+detail model, application code should attach it through `msm.start_engine(...)`
+and then work through the Pydantic row API:
 
 1. Upsert the `AssetType`.
 2. Upsert the canonical `Asset`.
@@ -236,5 +237,5 @@ When changing asset extension code, verify:
   the detail row should not outlive the asset.
 - Pydantic row models, repository helpers, tests, docs, and examples match the
   table identity shape.
-- startup examples call `msm.start_engine(models=[DetailTable])`, not direct
-  registration or row-level schema helpers.
+- startup examples call `msm.start_engine(models=[DetailTable])` after SDK
+  migrations, not direct registration or row-level schema helpers.
