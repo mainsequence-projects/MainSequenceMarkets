@@ -113,8 +113,8 @@ IndexTable
 ```
 
 Production code normally assumes this MetaTable already exists and the catalog
-has been finalized by `msm migrations upgrade`. Application startup can attach
-only this dependency set explicitly:
+has been finalized by the SDK migration upgrade flow. Application startup can
+attach only this dependency set explicitly:
 
 ```python
 import msm

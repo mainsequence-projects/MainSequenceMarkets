@@ -4,7 +4,7 @@ import datetime as dt
 import uuid
 from typing import Any
 
-from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
+from mainsequence.client.metatables import MetaTableCompiledSQLOperation
 
 from msm.models import OrderManagerTable
 

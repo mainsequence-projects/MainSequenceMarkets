@@ -48,21 +48,20 @@ not copy skills into the current working tree.
 
 ## Schema Migrations Before Runtime
 
-`msm.start_engine(...)` is runtime attachment. It verifies SDK-managed
-MetaTable migration status and finalized catalog rows, then binds platform
-MetaTables for row APIs. It does not create or evolve schema.
+`msm.start_engine(...)` is runtime attachment. It reads finalized catalog rows,
+validates the selected table contracts, then binds platform MetaTables for row
+APIs. It does not create or evolve schema.
 
 Run admin migrations before application startup:
 
 ```bash
-msm migrations current --json
-msm migrations upgrade
-msm migrations validate
+mainsequence migrations current --provider msm.migrations:migration --json
+mainsequence migrations upgrade --provider msm.migrations:migration --to head
 ```
 
 See [Migrations](../knowledge/msm/migrations/index.md)
-for the package registry, Python migration modules, SDK registry
-sync/apply, catalog finalization, and runtime attachment lifecycle.
+for the package registry, SDK Alembic provider, SQL render/apply flow, catalog
+finalization, and runtime attachment lifecycle.
 
 ## Asset Identity And Provider Rows
 
@@ -113,7 +112,8 @@ Constant-name fields.
 Use this workflow when publishing and inspecting account positions:
 
 1. Before runtime, run the admin migration flow with
-   `msm migrations upgrade` so the package schema and catalog are finalized.
+   `mainsequence migrations upgrade --provider msm.migrations:migration --to head`
+   so the package schema and catalog are finalized.
 2. Attach `AssetType`, `Asset`, `AccountModelPortfolio`, `AccountGroup`,
    `Account`, `AccountTargetPortfolio`, `PositionSet`,
    `AccountHoldingsStorage`, and `TargetPositionsStorage` through
@@ -264,14 +264,14 @@ Use this workflow when adding or reviewing a market-domain relational table:
    the platform-managed physical table name from the resolved table contract.
 5. Add the model to `markets_sqlalchemy_models()` in foreign-key dependency
    order.
-6. Add or update a packaged migration under `src/msm/migrations/`.
-7. Use `msm migrations upgrade` for schema/catalog mutation, then
+6. Generate or update a normal Alembic revision under `src/msm/migrations/`.
+7. Use the SDK migration upgrade flow for schema/catalog mutation, then
    `msm.start_engine(...)` for runtime attachment. Treat
    `register_markets_meta_tables(...)` as lower-level migration/admin plumbing,
    not the normal application workflow.
 
-`msm.start_engine(...)` verifies SDK migration status and uses the internal
-maintenance catalog during startup. It attaches cataloged tables by platform
+`msm.start_engine(...)` uses the internal maintenance catalog during startup. It
+attaches cataloged tables by platform
 `MetaTable.uid`; it does not import or register missing tables.
 
 Examples that use example-scoped platform-managed MetaTables must set

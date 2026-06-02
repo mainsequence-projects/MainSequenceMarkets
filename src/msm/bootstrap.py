@@ -177,7 +177,6 @@ def start_engine(
             configure_metatable_namespace(namespace)
 
         from msm.maintenance.catalog import attach_markets_meta_tables_from_catalog
-        from msm.maintenance.migrations import verify_runtime_migrations_current
         from msm.models.registration import resolve_markets_meta_table_models
         from msm.repositories.base import MarketsRepositoryContext
 
@@ -187,12 +186,6 @@ def start_engine(
             namespace=namespace,
             model_count=len(meta_table_models),
             models=[_model_name(model) for model in meta_table_models],
-        )
-        verify_runtime_migrations_current(
-            data_source_uid=data_source_uid,
-            namespace=namespace,
-            timeout=timeout,
-            models=meta_table_models,
         )
         catalog_bootstrap = attach_markets_meta_tables_from_catalog(
             management_mode=management_mode,
@@ -266,17 +259,10 @@ def attach_schemas(
             return cached_runtime
 
         from msm.maintenance.catalog import attach_markets_meta_tables_from_catalog
-        from msm.maintenance.migrations import verify_runtime_migrations_current
         from msm.models.registration import resolve_markets_meta_table_models
         from msm.repositories.base import MarketsRepositoryContext
 
         meta_table_models = resolve_markets_meta_table_models(models)
-        verify_runtime_migrations_current(
-            data_source_uid=data_source_uid,
-            namespace=namespace,
-            timeout=timeout,
-            models=meta_table_models,
-        )
         catalog_attach = attach_markets_meta_tables_from_catalog(
             management_mode=management_mode,
             timeout=timeout,

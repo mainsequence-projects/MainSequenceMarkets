@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy import delete, insert, select, update
 
-from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
+from mainsequence.client.metatables import MetaTableCompiledSQLOperation
 from msm.models import (
     AccountGroupTable,
     AccountTable,

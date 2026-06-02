@@ -10,7 +10,7 @@ import pandas as pd
 import pytz
 
 import mainsequence.meta_tables.data_nodes.build_operations as build_operations
-from mainsequence.client.models_metatables import UpdateStatistics
+from mainsequence.client.metatables import UpdateStatistics
 from mainsequence.meta_tables import APIDataNode, DataNode
 from msm_portfolios.asset_scope import dedupe_asset_scope
 

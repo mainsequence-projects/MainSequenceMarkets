@@ -176,8 +176,8 @@ FutureAssetDetailsTable
 ```
 
 Production code normally assumes these MetaTables already exist and the catalog
-has been finalized by `msm migrations upgrade`. Application startup can attach
-only this dependency set explicitly:
+has been finalized by the SDK migration upgrade flow. Application startup can
+attach only this dependency set explicitly:
 
 ```python
 import msm

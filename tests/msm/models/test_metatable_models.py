@@ -79,10 +79,10 @@ class ExtensionAssetDetails(MarketsMetaTableRow):
 
 
 def _install_fake_session_data_source(monkeypatch) -> None:
-    from mainsequence.client import models_metatables
+    from mainsequence.client import metatables
 
     monkeypatch.setattr(
-        models_metatables,
+        metatables,
         "get_session_data_source",
         lambda: SimpleNamespace(
             uid=str(uuid.uuid4()),

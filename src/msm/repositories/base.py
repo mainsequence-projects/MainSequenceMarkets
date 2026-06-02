@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from mainsequence.client.models_metatables import (
+from mainsequence.client.metatables import (
     MetaTable,
     MetaTableCompiledSQLOperation,
     MetaTableOperation,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
+from mainsequence.client.metatables import MetaTableCompiledSQLOperation
 
 from msm.repositories.base import MarketsRepositoryContext, execute_markets_operation
 from msm.repositories.crud import (

@@ -83,7 +83,7 @@ Symbols that simply moved and must be re-pointed:
 - `UpdateStatistics`, `ColumnMetaData`, `TableMetaData` →
   `mainsequence.client`.
 - `MetaTable`, `MetaTableRegistrationRequest` → `mainsequence.client`
-  (`mainsequence.client.models_metatables` still resolves).
+  (`mainsequence.client.metatables` still resolves).
 - `UniqueIdentifierRangeMap` → exact new path **not yet located**; resolved in
   Stage 0.
 
@@ -265,7 +265,7 @@ backend use an explicit `hash_namespace(...)`.
 
 - [x] Mapped every symbol still imported from a removed module to its new home
   (table below). `UniqueIdentifierRangeMap` and its neighbours are in
-  `mainsequence.client.models_metatables`.
+  `mainsequence.client.metatables`.
 - [x] Runtime APIs used by the base layer are **unchanged**: `DataNode.run`,
   `get_df_between_dates`, `get_last_observation`, `local_persist_manager`,
   `update_statistics`, `get_offset_start`, `_get_data_node_configuration`,
@@ -289,7 +289,7 @@ Verified against the project `.venv` (SDK `4.1.5`):
 | `DataNode`, `DataNodeConfiguration`, `APIDataNode`, `RecordDefinition`, `DataNodeMetaData`, `hash_namespace` | `mainsequence.tdag.data_nodes` | `mainsequence.meta_tables.data_nodes` (also re-exported from `mainsequence.meta_tables`) |
 | `string_freq_to_time_delta`, `string_frequency_to_minutes` | `mainsequence.tdag.data_nodes.utils` | `mainsequence.meta_tables.data_nodes.utils` |
 | `PlatformManagedMetaTable`, `POSTGRES_IDENTIFIER_MAX_LENGTH`, `metatable_tablename`, `metatable_configured_tablename`, `slugify_identifier`, `compile_sqlalchemy_statement`, `register_external_sqlalchemy_model`, `external_registered_registration_request_from_sqlalchemy_model` | `mainsequence.tdag.meta_tables` | `mainsequence.meta_tables` |
-| `UniqueIdentifierRangeMap`, `UpdateStatistics`, `ColumnMetaData`, `TableMetaData`, `LOGICAL_COLUMN_DTYPES_ATTR` | `mainsequence.client.models_tdag` | `mainsequence.client.models_metatables` |
+| `UniqueIdentifierRangeMap`, `UpdateStatistics`, `ColumnMetaData`, `TableMetaData`, `LOGICAL_COLUMN_DTYPES_ATTR` | `mainsequence.client.models_tdag` | `mainsequence.client.metatables` |
 | `Artifact` | `mainsequence.client.models_tdag` | `mainsequence.client` |
 | `SourceTableForeignKey` | `mainsequence.tdag.data_nodes` | **removed** — model FKs as SDK `MetaTableForeignKey(TargetModel, column=...)` on the storage class (Decision §4, ADR 0019) |
 | `DataNodeStorage` | `mainsequence.client.models_tdag` | **no exported drop-in** — runtime source-table provisioning is superseded by storage-class registration |

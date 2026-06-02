@@ -7,7 +7,7 @@ from importlib.metadata import version as package_version
 from typing import Any
 
 from mainsequence.client.exceptions import ConflictError, NotFoundError
-from mainsequence.client.models_metatables import MetaTable
+from mainsequence.client.metatables import MetaTable
 from mainsequence.logconf import logger as _mainsequence_logger
 from mainsequence.meta_tables import register_external_sqlalchemy_model
 
@@ -32,6 +32,9 @@ from .models import (
 
 
 logger = _mainsequence_logger.bind(sub_application="markets", component="maintenance")
+SDK_MIGRATION_UPGRADE_COMMAND = (
+    "mainsequence migrations upgrade --provider msm.migrations:migration --to head"
+)
 
 
 class CatalogBootstrapError(RuntimeError):
@@ -120,7 +123,7 @@ def attach_markets_meta_tables_from_catalog(
     if missing_identifiers:
         raise CatalogBootstrapError(
             "Markets MetaTable catalog is missing finalized rows for "
-            f"{missing_identifiers!r}. Run `msm migrations upgrade` before runtime startup."
+            f"{missing_identifiers!r}. Run `{SDK_MIGRATION_UPGRADE_COMMAND}` before runtime startup."
         )
 
     meta_tables: list[MetaTable] = []
@@ -482,7 +485,8 @@ def resolve_catalog_table(
     )
     if existing is None:
         raise CatalogBootstrapError(
-            "Markets MetaTable catalog is not initialized. Run `msm migrations upgrade` "
+            "Markets MetaTable catalog is not initialized. "
+            f"Run `{SDK_MIGRATION_UPGRADE_COMMAND}` "
             "before runtime startup."
         )
     validate_platform_meta_table_physical_contract(
@@ -503,6 +507,46 @@ def catalog_repository_context(
         timeout=timeout,
         namespace=getattr(catalog_meta_table, "namespace", None),
     )
+
+
+def refresh_markets_catalog_from_registered_metatables(
+    registered_metatables: Sequence[Any],
+) -> list[dict[str, Any]]:
+    """Refresh the internal markets catalog after SDK provider registration."""
+
+    from msm.migrations.registry import migration_model_registry
+
+    models = migration_model_registry()
+    meta_tables = list(registered_metatables)
+    if len(meta_tables) != len(models):
+        raise CatalogBootstrapError(
+            "SDK provider registered a different number of MetaTables than the "
+            f"markets migration model registry. Registered={len(meta_tables)}, "
+            f"expected={len(models)}."
+        )
+
+    registered_by_model = dict(zip(models, meta_tables, strict=True))
+    catalog_meta_table = registered_by_model.get(MarketsMetaTableCatalogTable)
+    if catalog_meta_table is None:
+        raise CatalogBootstrapError(
+            "The markets migration provider must include MarketsMetaTableCatalogTable "
+            "so catalog rows can be refreshed after registration."
+        )
+
+    _bind_model_meta_table(MarketsMetaTableCatalogTable, catalog_meta_table)
+    catalog_context = catalog_repository_context(catalog_meta_table=catalog_meta_table)
+    rows: list[dict[str, Any]] = []
+    for model, meta_table in registered_by_model.items():
+        _meta_table_uid(meta_table)
+        _bind_model_meta_table(model, meta_table)
+        rows.append(
+            upsert_catalog_row(
+                catalog_context,
+                model=model,
+                meta_table=meta_table,
+            )
+        )
+    return rows
 
 
 def find_catalog_row(
@@ -1143,6 +1187,7 @@ __all__ = [
     "invalidate_stale_catalog_row",
     "meta_table_from_catalog_row",
     "register_catalog_missing_meta_table",
+    "refresh_markets_catalog_from_registered_metatables",
     "resolve_catalog_table",
     "resolve_catalog_meta_table",
     "resolve_catalogue_model",

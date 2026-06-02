@@ -33,9 +33,10 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
+  "alembic>=1.18.4",
   "cachetools",
   "fastapi>=0.136.3",
-  "mainsequence>=4.1.15",
+  "mainsequence>=4.1.18",
   "numpy",
   "pandas",
   "pip>=26.1.1",

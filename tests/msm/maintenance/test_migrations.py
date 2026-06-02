@@ -1,213 +1,133 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
-import msm.maintenance.migrations as migrations
+from mainsequence.meta_tables import PlatformManagedMetaTable, PlatformTimeIndexMetaData
+from mainsequence.meta_tables.migrations import (
+    AlembicMetaTableMigration,
+    load_alembic_metatable_migration_provider,
+)
+
+from msm.base import MARKETS_SCHEMA, MarketsBase
+from msm.maintenance.catalog import SDK_MIGRATION_UPGRADE_COMMAND
+from msm.maintenance.models import MarketsMetaTableCatalogTable
+from msm.migrations import MarketsAlembicVersion, migration
 from msm.migrations.registry import migration_model_registry
 
 
-class FakeAffectedTable:
-    def __init__(self, **kwargs) -> None:
-        self.payload = dict(kwargs)
-
-    def model_dump(self, **_kwargs):
-        return dict(self.payload)
-
-
-class FakeSchemaOperation:
-    def __init__(self, **kwargs) -> None:
-        self.payload = dict(kwargs)
-
-    def model_dump(self, **_kwargs):
-        return dict(self.payload)
-
-
-class FakeManifest:
-    def __init__(self, **kwargs) -> None:
-        self.__dict__.update(kwargs)
-
-    def model_dump(self, **_kwargs):
-        payload = dict(self.__dict__)
-        payload["affected_tables"] = [
-            affected.model_dump() for affected in payload.get("affected_tables", [])
-        ]
-        payload["operations"] = [
-            operation.model_dump() if hasattr(operation, "model_dump") else operation
-            for operation in payload.get("operations", [])
-        ]
-        return payload
+def test_migration_provider_is_single_sdk_alembic_provider() -> None:
+    assert isinstance(migration, AlembicMetaTableMigration)
+    assert migration.package == "msm"
+    assert migration.script_location == "msm:migrations"
+    assert migration.target_metadata is MarketsBase.metadata
+    assert migration.alembic_registry is MarketsAlembicVersion
+    assert migration.version_table == "msm_alembic_version"
+    assert migration.version_table_schema == MARKETS_SCHEMA
+    assert migration.alembic_version_table == f"{MARKETS_SCHEMA}.msm_alembic_version"
+    assert migration.after_register_metatables is not None
+    assert (
+        migration.after_register_metatables.__name__
+        == "refresh_markets_catalog_from_registered_metatables"
+    )
+    assert list(migration.metatable_models) == migration_model_registry()
 
 
-class FakePackagedMigration:
-    def __init__(self, **kwargs) -> None:
-        self.__dict__.update(kwargs)
+def test_migration_upgrade_command_uses_current_sdk_flags() -> None:
+    assert SDK_MIGRATION_UPGRADE_COMMAND == (
+        "mainsequence migrations upgrade --provider msm.migrations:migration --to head"
+    )
+    assert "--register-metatables" not in SDK_MIGRATION_UPGRADE_COMMAND
+    assert "--apply" not in SDK_MIGRATION_UPGRADE_COMMAND
 
 
-def fake_sdk():
-    return SimpleNamespace(
-        MetaTableMigrationAffectedTable=FakeAffectedTable,
-        MetaTableMigrationManifest=FakeManifest,
-        MetaTableMigrationSchemaOperation=FakeSchemaOperation,
-        PackagedMetaTableMigration=FakePackagedMigration,
-        contract_hash=lambda contract: f"hash-{contract['identifier']}",
-        contract_hashes_from_models=lambda models: {
-            identifier: f"hash-{identifier}" for identifier in models
-        },
-        contracts_from_models=lambda models, target_meta_tables=None: {
-            identifier: {"identifier": identifier} for identifier in models
-        },
-        sha256_payload=lambda value: f"payload-sha-{len(value)}",
-        sha256_text=lambda value: f"sha-{len(value)}",
+def test_sdk_loader_resolves_msm_migration_provider() -> None:
+    loaded = load_alembic_metatable_migration_provider("msm.migrations:migration")
+
+    assert loaded is migration
+
+
+def test_migration_provider_filters_unrelated_tables() -> None:
+    catalog_table_name = MarketsMetaTableCatalogTable.__table__.name
+
+    assert migration.include_name(catalog_table_name, "table", {"schema_name": MARKETS_SCHEMA})
+    assert not migration.include_name("unrelated_table", "table", {"schema_name": MARKETS_SCHEMA})
+    assert migration.include_name("unrelated_index", "index", {"schema_name": MARKETS_SCHEMA})
+
+
+def test_package_migration_registry_covers_all_markets_subpackages() -> None:
+    model_names = {model.__name__ for model in migration_model_registry()}
+
+    assert "MarketsMetaTableCatalogTable" in model_names
+    assert "AssetTable" in model_names
+    assert "PortfolioTable" in model_names
+    assert "CurveTable" in model_names
+    assert "OrdersStorage" in model_names
+    assert "OrderEventsStorage" in model_names
+    assert "TradesStorage" in model_names
+    assert "ExecutionErrorTable" not in model_names
+    assert "OrderTargetQuantityTable" not in model_names
+
+
+def test_portfolios_and_pricing_do_not_define_separate_migration_providers() -> None:
+    assert not Path("src/msm_portfolios/migrations").exists()
+    assert not Path("src/msm_pricing/migrations").exists()
+
+
+def test_package_migration_registry_is_deduplicated_and_sdk_managed() -> None:
+    models = migration_model_registry()
+    identifiers = [model.__metatable_identifier__ for model in models]
+
+    assert len(identifiers) == len(set(identifiers))
+    assert all(issubclass(model, MarketsBase) for model in models)
+    assert all(
+        issubclass(model, (PlatformManagedMetaTable, PlatformTimeIndexMetaData))
+        for model in models
     )
 
 
-def test_load_migration_specs_uses_package_registry() -> None:
-    specs = migrations.load_migration_specs()
-
-    assert [spec.revision for spec in specs] == ["0001_initial"]
-    assert specs[0].affected_models == migration_model_registry()
-    assert specs[0].operations
-
-
-def test_materialize_migrations_loads_python_modules(monkeypatch) -> None:
-    monkeypatch.setattr(migrations, "_sdk_migrations", fake_sdk)
-
-    materialized = migrations.materialize_migrations(namespace="mainsequence.examples")
-
-    assert [item.spec.revision for item in materialized] == ["0001_initial"]
-    assert materialized[0].packaged.sql == ""
-    assert materialized[0].packaged.operations_sha256.startswith("payload-sha-")
-
-
-def test_status_reaches_expected_revision_accepts_later_package_revision(monkeypatch) -> None:
-    specs = [
-        SimpleNamespace(revision="0001_initial"),
-        SimpleNamespace(revision="0002_add_asset_status"),
+def test_refresh_catalog_hook_upserts_registered_metatables(monkeypatch) -> None:
+    refresh_hook = migration.after_register_metatables
+    assert refresh_hook is not None
+    models = migration_model_registry()
+    metatables = [
+        SimpleNamespace(
+            uid=f"meta-table-{index}",
+            identifier=model.__metatable_identifier__,
+            namespace=getattr(model, "__metatable_namespace__", None),
+            physical_table_name=f"physical_table_{index}",
+        )
+        for index, model in enumerate(models)
     ]
-    monkeypatch.setattr(migrations, "load_migration_specs", lambda: specs)
-    status = SimpleNamespace(current_revision="0002_add_asset_status")
+    upserts: list[dict[str, object]] = []
 
-    assert migrations._status_reaches_expected_revision(status, ["0001_initial"]) is True
-
-
-def test_sync_data_source_kwargs_do_not_resolve_session_data_source() -> None:
-    assert migrations._sync_data_source_kwargs(None) == {}
-    assert migrations._sync_data_source_kwargs("data-source-uid") == {
-        "data_source_uid": "data-source-uid"
-    }
-
-
-def test_build_packaged_migration_uses_python_operations_only(monkeypatch) -> None:
-    monkeypatch.setattr(migrations, "_sdk_migrations", fake_sdk)
-    model = migration_model_registry()[0]
-    spec = migrations.MigrationSpec(
-        module_name="test",
-        revision="0002_add_column",
-        expected_current_revision=None,
-        migration_namespace=None,
-        operations=[
-            {
-                "op": "add_column",
-                "table_identifier": getattr(model, "__metatable_identifier__"),
-                "column": {"name": "status", "data_type": "str", "nullable": True},
-            }
-        ],
-        affected_models=[model],
-        old_contract_hashes={},
-    )
-
-    packaged = migrations._build_packaged_migration(
-        fake_sdk(),
-        spec,
-        migration_namespace="mainsequence.examples",
-    )
-
-    assert packaged.manifest.migration_namespace == "mainsequence.examples"
-    assert packaged.manifest.revision == "0002_add_column"
-    assert [operation.model_dump() for operation in packaged.manifest.operations] == spec.operations
-    assert packaged.manifest.affected_tables
-    assert packaged.sql_sha256.startswith("sha-")
-    assert packaged.sql == ""
-    assert packaged.operations_sha256.startswith("payload-sha-")
-
-
-def test_finalize_catalog_from_apply_response_upserts_affected_model(monkeypatch) -> None:
-    model = migration_model_registry()[0]
-    spec = migrations.MigrationSpec(
-        module_name="test",
-        revision="0001_initial",
-        expected_current_revision=None,
-        migration_namespace=None,
-        operations=[
-            {
-                "op": "add_column",
-                "table_identifier": getattr(model, "__metatable_identifier__"),
-                "column": {"name": "uid", "data_type": "uuid", "nullable": False},
-            }
-        ],
-        affected_models=[model],
-        old_contract_hashes={},
-    )
-    materialized = migrations.MaterializedMigration(
-        spec=spec,
-        packaged=SimpleNamespace(),
-    )
-    upserts = []
-
-    monkeypatch.setattr(
-        migrations,
-        "bootstrap_catalog_table",
-        lambda timeout=None: SimpleNamespace(uid="catalog-uid", namespace="msm"),
-    )
-    monkeypatch.setattr(
-        migrations,
+    monkeypatch.setitem(
+        refresh_hook.__globals__,
         "catalog_repository_context",
-        lambda catalog_meta_table, timeout=None: SimpleNamespace(
-            catalog_meta_table=catalog_meta_table
+        lambda *, catalog_meta_table, timeout=None: SimpleNamespace(
+            catalog_meta_table=catalog_meta_table,
+            timeout=timeout,
         ),
     )
 
     def fake_upsert_catalog_row(context, *, model, meta_table, contract_hash=None):
-        upserts.append(
-            {
-                "context": context,
-                "model": model,
-                "meta_table_uid": meta_table.uid,
-                "identifier": meta_table.identifier,
-                "contract_hash": contract_hash,
-            }
-        )
-        return {"identifier": meta_table.identifier}
-
-    monkeypatch.setattr(migrations, "upsert_catalog_row", fake_upsert_catalog_row)
-    response = SimpleNamespace(
-        ok=True,
-        status="applied",
-        revision="0001_initial",
-        affected_tables=[
-            SimpleNamespace(
-                identifier=getattr(model, "__metatable_identifier__"),
-                meta_table_uid="meta-table-uid",
-                physical_table_name="physical_table",
-                storage_hash="storage_hash",
-            )
-        ]
-    )
-
-    rows = migrations.finalize_catalog_from_apply_response(
-        response,
-        materialized=materialized,
-    )
-
-    assert rows == [{"identifier": getattr(model, "__metatable_identifier__")}]
-    assert upserts == [
-        {
-            "context": SimpleNamespace(
-                catalog_meta_table=SimpleNamespace(uid="catalog-uid", namespace="msm")
-            ),
+        upsert = {
+            "context": context,
             "model": model,
-            "meta_table_uid": "meta-table-uid",
-            "identifier": getattr(model, "__metatable_identifier__"),
-            "contract_hash": None,
+            "meta_table": meta_table,
+            "contract_hash": contract_hash,
         }
-    ]
+        upserts.append(upsert)
+        return {
+            "identifier": model.__metatable_identifier__,
+            "meta_table_uid": meta_table.uid,
+        }
+
+    monkeypatch.setitem(refresh_hook.__globals__, "upsert_catalog_row", fake_upsert_catalog_row)
+
+    rows = refresh_hook(metatables)
+
+    assert len(rows) == len(models)
+    assert upserts[0]["model"] is MarketsMetaTableCatalogTable
+    assert upserts[0]["meta_table"] is metatables[0]
+    assert rows[0]["identifier"] == MarketsMetaTableCatalogTable.__metatable_identifier__

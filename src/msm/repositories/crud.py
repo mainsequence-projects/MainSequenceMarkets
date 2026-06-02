@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import delete, insert, inspect, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
-from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
+from mainsequence.client.metatables import MetaTableCompiledSQLOperation
 
 from msm.base import MarketsBase
 

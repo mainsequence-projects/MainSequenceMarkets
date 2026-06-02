@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR 0022](0022-alembic-metatable-migration-alignment.md).
+
+ADR 0020 is retained as historical context only. It describes the old
+`MigrationMetaTable`/`msm migrations` design that was removed after the SDK moved
+to provider-based Alembic MetaTable migrations.
 
 ## Context
 
@@ -51,7 +55,7 @@ new `MetaTable.execute_migration(...)` API proposed by this project ADR. The SDK
 API shape to use is:
 
 ```python
-from mainsequence.client.models_metatables import MetaTable
+from mainsequence.client.metatables import MetaTable
 from mainsequence.meta_tables.migrations import (
     MigrationMetaTable,
     apply_migration,

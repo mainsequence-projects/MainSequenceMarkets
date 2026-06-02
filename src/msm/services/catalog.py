@@ -241,7 +241,7 @@ def _row_context_for_catalog_row(
     catalog_row: Mapping[str, Any],
     model: type[Any],
 ) -> MarketsRepositoryContext:
-    from mainsequence.client.models_metatables import MetaTable
+    from mainsequence.client.metatables import MetaTable
 
     meta_table = MetaTable.get_by_uid(
         uid=_string_value(catalog_row.get("meta_table_uid")),

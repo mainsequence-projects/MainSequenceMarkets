@@ -10,7 +10,7 @@ from joblib import Parallel, delayed
 from pydantic import ConfigDict, Field
 from tqdm import tqdm
 
-from mainsequence.client.models_metatables import UpdateStatistics
+from mainsequence.client.metatables import UpdateStatistics
 from mainsequence.meta_tables import APIDataNode, DataNode
 from mainsequence.meta_tables.data_nodes.utils import (
     string_freq_to_time_delta,

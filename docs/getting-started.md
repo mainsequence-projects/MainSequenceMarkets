@@ -59,7 +59,7 @@ Implementation decisions should be recorded under `docs/ADR`.
 Start with the typed row API for simple workflows:
 
 ```bash
-msm migrations upgrade
+mainsequence migrations upgrade --provider msm.migrations:migration --to head
 ```
 
 ```python
@@ -96,10 +96,10 @@ context = runtime.context
 asset_table = runtime.table("Asset")
 ```
 
-That startup preflight verifies SDK-managed migration status and uses the
-internal maintenance catalog. Cataloged tables are attached by platform
+That startup preflight uses the internal maintenance catalog. Cataloged tables
+are attached by platform
 `MetaTable.uid`; missing or stale catalog rows fail startup and should be fixed
-through `msm migrations upgrade`.
+through the SDK migration upgrade flow.
 
 For development examples that should use an example namespace, set
 `MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`, then call

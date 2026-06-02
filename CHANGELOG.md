@@ -9,6 +9,9 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Removed the local `msm migrations` command group and the old
+  `msm.maintenance.migrations` runner. MetaTable schema migration now uses the
+  SDK CLI with `--provider msm.migrations:migration`.
 - Removed the duplicated row-oriented execution fact MetaTables/APIs for
   orders, order events, trades, and execution errors. Execution facts are now
   storage-first through explicit time-index storage contracts, while
@@ -184,16 +187,14 @@ and this project follows versioned releases.
 
 ### Added
 
-- Added ADR 0020 to define how `ms-markets` should consume the SDK
-  `metatable-migration.v1` registry/apply workflow, including the admin-owned
-  migration lifecycle, read-only `msm.start_engine(...)` attachment path,
-  catalog finalization, packaged migration resources, and implementation task
-  list.
-- Implemented the ADR 0020 package surface: `MarketsMigrationTable`,
-  `src/msm/migrations/` package registry and baseline revision resources,
-  `msm.maintenance.migrations`, `msm migrations current/sync/upgrade/validate`,
-  read-only catalog attachment for `msm.start_engine(...)`, migration lifecycle
-  docs, an example command sequence, and packaged migration skills.
+- Added ADR 0022 to align `ms-markets` with the SDK Alembic MetaTable
+  migration provider API.
+- Implemented the ADR 0022 package surface: `msm.migrations:migration`, the
+  package-specific `public.msm_alembic_version` registry table, a single
+  migration model registry spanning `msm`, `msm_portfolios`, and `msm_pricing`,
+  an Alembic environment under `src/msm/migrations/`, and automatic markets
+  catalog refresh through SDK provider MetaTable catalog sync and the
+  `after_register_metatables` hook.
 - Added `IndexTypeTable`, the `msm.api.indices.IndexType` row API, and the
   built-in `INDEX_TYPE_INTEREST_RATE` definition so indexes can be classified
   through the same registry pattern used by asset types.

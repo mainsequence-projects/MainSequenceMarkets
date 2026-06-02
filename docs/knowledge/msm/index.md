@@ -22,8 +22,8 @@ integration live in `msm_pricing`.
   order, event, and trade DataNodes.
 - [Indexes](indices/index.md): non-tradable index reference data used by
   derivative underlyings and pricing workflows.
-- [Migrations](migrations/index.md): admin-owned schema evolution, SDK migration
-  registry sync/apply, and catalog finalization.
+- [Migrations](migrations/index.md): admin-owned schema evolution through the SDK
+  Alembic provider and automatic catalog finalization.
 - [Models](models/index.md): SQLAlchemy MetaTable declarations and registration
   order for core market tables.
 - [Platform](platform/index.md): Main Sequence integration primitives,

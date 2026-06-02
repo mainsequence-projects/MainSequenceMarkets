@@ -1,10 +1,36 @@
-"""Packaged ms-markets MetaTable migrations."""
-
 from __future__ import annotations
 
-from .registry import MIGRATION_MODEL_REGISTRY, migration_model_registry
+from mainsequence.meta_tables.migrations import (
+    AlembicMetaTableMigration,
+    AlembicVersionMetaTable,
+)
+
+from msm.base import MARKETS_SCHEMA, MarketsBase
+from msm.maintenance.catalog import refresh_markets_catalog_from_registered_metatables
+from msm.migrations.registry import migration_model_registry
+from msm.settings import markets_namespace
+
+
+class MarketsAlembicVersion(AlembicVersionMetaTable):
+    __metatable_namespace__ = "msm"
+    __metatable_identifier__ = "msm.alembic_version"
+    __alembic_version_schema__ = MARKETS_SCHEMA
+    __alembic_version_table_name__ = "msm_alembic_version"
+    __alembic_version_column_name__ = "version_num"
+
+
+migration = AlembicMetaTableMigration(
+    package="msm",
+    migration_namespace=markets_namespace(),
+    script_location="msm:migrations",
+    target_metadata=MarketsBase.metadata,
+    alembic_registry=MarketsAlembicVersion,
+    metatable_models=migration_model_registry(),
+    after_register_metatables=refresh_markets_catalog_from_registered_metatables,
+)
+
 
 __all__ = [
-    "MIGRATION_MODEL_REGISTRY",
-    "migration_model_registry",
+    "MarketsAlembicVersion",
+    "migration",
 ]

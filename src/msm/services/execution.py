@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
+from mainsequence.client.metatables import MetaTableCompiledSQLOperation
 
 from msm.repositories import MarketsRepositoryContext
 from msm.repositories.execution import (

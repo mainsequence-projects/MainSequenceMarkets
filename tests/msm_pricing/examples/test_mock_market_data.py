@@ -9,7 +9,7 @@ import pandas as pd
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(_PROJECT_ROOT)]
 
-from examples.pricing.utils import (  # noqa: E402
+from examples.msm_pricing.utils import (  # noqa: E402
     DEFAULT_FIXING_LOOKBACK_DAYS,
     EXAMPLE_INDEX_UNIQUE_IDENTIFIER,
     build_mock_fixings_frame,

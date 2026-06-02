@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mainsequence.client.models_metatables import TimeIndexMetaData as DataNodeStorage
+from mainsequence.client.metatables import TimeIndexMetaData as DataNodeStorage
 
 from .base import PortfolioCanonicalDataNode, _storage_source_config
 

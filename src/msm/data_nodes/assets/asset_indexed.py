@@ -8,7 +8,7 @@ from typing import Any
 import pandas as pd
 from pydantic import Field
 
-from mainsequence.client.models_metatables import UpdateStatistics
+from mainsequence.client.metatables import UpdateStatistics
 from mainsequence.meta_tables import (
     DataNode,
     DataNodeConfiguration,

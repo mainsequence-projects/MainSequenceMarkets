@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -39,7 +39,7 @@ should be small and package-specific.
 
 ## Current Project Machinery
 
-The project currently has an obsolete custom migration implementation in
+Before this ADR, the project had an obsolete custom migration implementation in
 `src/msm/maintenance/migrations.py`.
 
 It loads modules from:
@@ -112,6 +112,28 @@ It does not contain:
 Alembic environment. Migration execution will use the SDK provider workflow and
 SDK CLI.
 
+The repository has three import packages with MetaTables:
+
+```text
+msm
+msm_portfolios
+msm_pricing
+```
+
+They are handled by one migration provider, not three. They share the same
+`MarketsBase.metadata`, the same Alembic script location, the same physical
+Alembic version table, and the same `ms-markets` revision graph.
+
+There must not be separate providers such as:
+
+```text
+msm_portfolios.migrations:migration
+msm_pricing.migrations:migration
+```
+
+unless those packages are split into independently installed distributions with
+independent schema lifecycles.
+
 The preferred operational command shape is:
 
 ```text
@@ -119,7 +141,7 @@ mainsequence migrations current --provider msm.migrations:migration
 mainsequence migrations revision --provider msm.migrations:migration --autogenerate -m "..."
 mainsequence migrations render --provider msm.migrations:migration --to head
 mainsequence migrations upgrade --provider msm.migrations:migration --to head --dry-run
-mainsequence migrations upgrade --provider msm.migrations:migration --to head --apply --register-metatables
+mainsequence migrations upgrade --provider msm.migrations:migration --to head
 ```
 
 `msm` will not keep a migration command group. `msm migrations current`,
@@ -181,6 +203,25 @@ migration = AlembicMetaTableMigration(
 The package model registry remains useful, but only as provider scope. It tells
 the SDK which SQLAlchemy MetaTable models belong to this migration stream.
 It is not migration history.
+
+The provider's model registry must include the combined `msm`,
+`msm_portfolios`, and `msm_pricing` MetaTable graph:
+
+```python
+def migration_model_registry() -> list[type[MarketsBase]]:
+    return dedupe_in_dependency_order(
+        [
+            *markets_sqlalchemy_models(),
+            *portfolio_sqlalchemy_models(),
+            *pricing_sqlalchemy_models(),
+        ]
+    )
+```
+
+`msm_portfolios` and `msm_pricing` include some core `msm` dependency models,
+such as `IndexTable` or `AssetTable`. The combined registry must de-duplicate by
+model identity and logical MetaTable identifier so Alembic, SDK registration,
+and catalog refresh see each managed table once.
 
 The physical Alembic version table is package-specific:
 
@@ -264,10 +305,10 @@ SDK CLI's explicit option, not a new `msm`-specific mechanism.
 
 ## Catalog Integration
 
-The SDK can register provider-scoped MetaTables after apply with:
+The SDK synchronizes provider-scoped MetaTables after a successful apply with:
 
 ```text
-mainsequence migrations upgrade --provider msm.migrations:migration --to head --apply --register-metatables
+mainsequence migrations upgrade --provider msm.migrations:migration --to head
 ```
 
 `ms-markets` still has one package-specific responsibility: keep
@@ -280,8 +321,9 @@ That catalog work will be automatic through the SDK provider hook:
 after_register_metatables=refresh_markets_catalog_from_registered_metatables
 ```
 
-The hook runs after the SDK applies the migration and registers/refreshes
-`migration.metatable_models`. It is not part of SQL execution and does not
+The hook runs after the SDK applies the migration and synchronizes
+`migration.metatable_models` through `migration.sync_metatable_catalog(...)`.
+It is not part of SQL execution and does not
 create a separate `msm migrations` command surface.
 
 The hook should:
@@ -302,7 +344,6 @@ is the schema revision state.
 
 Runtime startup may validate:
 
-- SDK Alembic status is at the expected head;
 - expected catalog rows exist;
 - catalog contract hashes match the current models.
 
@@ -318,67 +359,76 @@ Runtime startup must not:
 
 ### Phase 1. Delete The Obsolete Project Runner
 
-- [ ] Remove `MigrationSpec`, `MaterializedMigration`, and custom operation parsing.
-- [ ] Remove `_build_packaged_migration(...)`.
-- [ ] Remove `_sdk_migrations()` checks for old SDK names.
-- [ ] Remove `MarketsMigrationTable`.
-- [ ] Remove `sync_packaged_migration(...)` usage.
-- [ ] Remove old tests that assert custom operation manifests.
+- [x] Remove `MigrationSpec`, `MaterializedMigration`, and custom operation parsing.
+- [x] Remove `_build_packaged_migration(...)`.
+- [x] Remove `_sdk_migrations()` checks for old SDK names.
+- [x] Remove `MarketsMigrationTable`.
+- [x] Remove `sync_packaged_migration(...)` usage.
+- [x] Remove old tests that assert custom operation manifests.
 
 ### Phase 2. Add The SDK Provider
 
-- [ ] Define `MarketsAlembicVersion`.
-- [ ] Define `migration = AlembicMetaTableMigration(...)`.
-- [ ] Keep `migration_model_registry()` as the provider's `metatable_models` scope.
-- [ ] Add tests that `msm.migrations:migration` loads with
+- [x] Define `MarketsAlembicVersion`.
+- [x] Define `migration = AlembicMetaTableMigration(...)`.
+- [x] Make `migration_model_registry()` combine `msm`, `msm_portfolios`, and
+  `msm_pricing` MetaTable models into one de-duplicated dependency-ordered list.
+- [x] Use the combined `migration_model_registry()` as the provider's
+  `metatable_models` scope.
+- [x] Do not create `msm_portfolios.migrations:migration` or
+  `msm_pricing.migrations:migration`.
+- [x] Add tests that `msm.migrations:migration` loads with
   `load_alembic_metatable_migration_provider(...)`.
-- [ ] Add tests that provider `include_name(...)` excludes unrelated tables.
+- [x] Add tests that provider `include_name(...)` excludes unrelated tables.
+- [x] Add tests that the combined provider registry includes portfolio and
+  pricing MetaTables once, without duplicate core dependency models.
 
 ### Phase 3. Add Standard Alembic Files
 
-- [ ] Add `src/msm/migrations/env.py`.
-- [ ] Delete the legacy custom `src/msm/migrations/versions/v0001_initial.py`.
-- [ ] Keep `src/msm/migrations/versions/` as the generated Alembic revision output
+- [x] Add `src/msm/migrations/env.py`.
+- [x] Delete the legacy custom `src/msm/migrations/versions/v0001_initial.py`.
+- [x] Keep `src/msm/migrations/versions/` as the generated Alembic revision output
   directory.
-- [ ] Do not hand-author an initial revision as an implementation task.
-- [ ] Let `mainsequence migrations revision --provider msm.migrations:migration
-  --autogenerate -m "..."` create revision files.
-- [ ] Ensure Alembic version-table settings come from `MarketsAlembicVersion`.
-- [ ] Ensure Alembic revision files are included in wheels and source
+- [x] Do not hand-author an initial revision as an implementation task.
+- [x] Document that the SDK revision command creates revision files.
+- [x] Ensure Alembic version-table settings come from `MarketsAlembicVersion`.
+- [x] Ensure Alembic revision files are included in wheels and source
   distributions.
 
 ### Phase 4. Replace CLI Behavior
 
-- [ ] Delete the `migrations` command group from the `msm` CLI.
-- [ ] Delete `msm migrations current`.
-- [ ] Delete `msm migrations sync`.
-- [ ] Delete `msm migrations upgrade`.
-- [ ] Delete `msm migrations validate`.
-- [ ] Do not add compatibility aliases.
-- [ ] Do not add a wrapper that prints equivalent `mainsequence migrations`
+- [x] Delete the `migrations` command group from the `msm` CLI.
+- [x] Delete `msm migrations current`.
+- [x] Delete `msm migrations sync`.
+- [x] Delete `msm migrations upgrade`.
+- [x] Delete `msm migrations validate`.
+- [x] Do not add compatibility aliases.
+- [x] Do not add a wrapper that prints equivalent `mainsequence migrations`
   commands.
-- [ ] Document the SDK CLI as the only migration command surface.
+- [x] Document the SDK CLI as the only migration command surface.
 
 ### Phase 5. Add Minimal Catalog Finalization
 
-- [ ] Add a small function that refreshes `MarketsMetaTableCatalogTable` from
+- [x] Add a small function that refreshes `MarketsMetaTableCatalogTable` from
   provider-scoped registered MetaTables.
-- [ ] Wire it into the SDK provider through
+- [x] Wire it into the SDK provider through
   `after_register_metatables=refresh_markets_catalog_from_registered_metatables`.
-- [ ] Let the SDK call it automatically after `--apply --register-metatables`.
-- [ ] Keep runtime bootstrap dependent on catalog state, not responsible for writing
+- [x] Let the SDK call it automatically after a successful `upgrade`.
+- [x] Keep runtime bootstrap dependent on catalog state, not responsible for writing
   it.
 
 ### Phase 6. Update Documentation And Tests
 
-- [ ] Rewrite `docs/knowledge/msm/migrations/` around
+- [x] Rewrite `docs/knowledge/msm/migrations/` around
   `mainsequence migrations --provider msm.migrations:migration`.
-- [ ] Rewrite the platform migration docs that still mention SDK
+- [x] Rewrite the platform migration docs that still mention SDK
   `MigrationMetaTable` or package migration rows.
-- [ ] Add a concise maintainer note explaining how to generate a revision and how
+- [x] Add a concise maintainer note explaining how to generate a revision and how
   to finalize catalog rows.
-- [ ] Add focused tests for provider loading, Alembic render integration,
+- [x] Add focused tests for provider loading, include filtering,
   `msm migrations` removal, and catalog refresh.
+- [ ] Raise the project dependency floor to the first published SDK release that
+  removes deprecated `upgrade --apply` / `upgrade --register-metatables` flags
+  and applies `upgrade` by default after validation.
 
 ## Open Decisions
 
@@ -386,7 +436,7 @@ No open decisions remain for the initial implementation plan.
 
 ## Resolved Decisions
 
-- Catalog refresh is automatic after SDK `--apply --register-metatables` through
+- Catalog refresh is automatic after SDK `upgrade` through
   the provider hook
   `after_register_metatables=refresh_markets_catalog_from_registered_metatables`.
 - There is no `msm migrations` wrapper for this catalog refresh.
@@ -394,6 +444,10 @@ No open decisions remain for the initial implementation plan.
   table `public.msm_alembic_version`.
 - Projects that inherit or use the `ms-markets` provider share
   `public.msm_alembic_version` for the `ms-markets` revision graph.
+- `msm`, `msm_portfolios`, and `msm_pricing` are covered by one provider:
+  `msm.migrations:migration`.
+- There is one Alembic script location and one revision graph for the repository:
+  `msm:migrations`.
 - There are no existing deployed `ms-markets` tables to adopt for this initial
   implementation. The first Alembic revision is a normal generated initial
   create-schema revision.
@@ -404,16 +458,22 @@ The project is aligned with the SDK migration machinery when:
 
 - `load_alembic_metatable_migration_provider("msm.migrations:migration")`
   loads the `ms-markets` provider;
+- the loaded provider includes `msm`, `msm_portfolios`, and `msm_pricing`
+  MetaTables in one de-duplicated model registry;
+- no `msm_portfolios` or `msm_pricing` migration providers exist;
 - `mainsequence migrations revision --provider msm.migrations:migration --autogenerate -m "..."`
   creates normal Alembic revision files;
 - `mainsequence migrations render --provider msm.migrations:migration --to head`
   renders Alembic SQL;
 - `mainsequence migrations upgrade --provider msm.migrations:migration --to head --dry-run`
   validates through the SDK backend apply path;
-- `mainsequence migrations upgrade --provider msm.migrations:migration --to head --apply --register-metatables`
+- `mainsequence migrations upgrade --provider msm.migrations:migration --to head`
   executes through SDK machinery;
+- the installed SDK `mainsequence migrations upgrade --help` output does not
+  expose `--apply` or `--register-metatables`;
 - `MarketsMetaTableCatalogTable` is refreshed by the provider
-  `after_register_metatables` hook after the SDK registers provider MetaTables;
+  `after_register_metatables` hook after the SDK synchronizes provider
+  MetaTables;
 - `msm migrations ...` is not available;
 - no project runtime code depends on `MigrationMetaTable`,
   `PackagedMetaTableMigration`, `sync_packaged_migration(...)`, or custom

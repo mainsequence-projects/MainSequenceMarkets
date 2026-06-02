@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy import delete, insert, select, update
 
-from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
+from mainsequence.client.metatables import MetaTableCompiledSQLOperation
 from msm.repositories.base import (
     MarketsRepositoryContext,
     compile_markets_statement,

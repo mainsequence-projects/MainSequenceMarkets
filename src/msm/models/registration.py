@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from mainsequence.client.exceptions import ConflictError
-from mainsequence.client.models_metatables import MetaTable, MetaTableRegistrationRequest
+from mainsequence.client.metatables import MetaTable, MetaTableRegistrationRequest
 from mainsequence.logconf import logger as _mainsequence_logger
 from mainsequence.meta_tables import (
     PlatformTimeIndexMetaData,

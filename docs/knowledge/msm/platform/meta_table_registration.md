@@ -8,7 +8,8 @@ order; TS Manager owns governed execution.
 
 Use platform-managed models when TS Manager should own physical tables on the
 configured DynamicTable data source. Creating or evolving those tables is now
-handled by `msm migrations ...` admin commands, not by runtime startup.
+handled by the SDK `mainsequence migrations ... --provider msm.migrations:migration`
+admin flow, not by runtime startup.
 
 Market models inherit `MarketsMetaTableMixin`, which itself inherits the SDK
 `PlatformManagedMetaTable` base. Time-indexed DataNode storage inherits
@@ -39,15 +40,15 @@ runtime = msm.start_engine(
 
 `msm.start_engine(...)` is the supported runtime attachment entrypoint for
 platform-managed markets tables. It resolves requested models in foreign-key
-dependency order, verifies SDK migration status and catalog finalization, reads
-the maintenance catalog, and binds registered platform `MetaTable` objects back
+dependency order, reads the finalized maintenance catalog, and binds registered
+platform `MetaTable` objects back
 onto their SQLAlchemy model classes. It must not create application tables,
 apply migrations, or repair catalog drift.
 
 The schema mutation entrypoint is the admin CLI:
 
 ```bash
-msm migrations upgrade
+mainsequence migrations upgrade --provider msm.migrations:migration --to head
 ```
 
 The lower-level `register_markets_meta_tables(...)` helper remains an internal
@@ -119,18 +120,18 @@ import msm
 msm.start_engine()
 ```
 
-`msm.start_engine(...)` is catalog-based and read-only. Startup first verifies
-the SDK migration stream, then attaches the existing
+`msm.start_engine(...)` is catalog-based and read-only. Startup attaches the existing
 `msm.maintenance.models.MarketsMetaTableCatalogTable` and reads catalog rows for
 requested identifiers. Tables missing from the catalog are treated as missing
 migration finalization, not as permission to register application tables.
 
-The catalog is finalized by `msm migrations upgrade`. That command applies SDK
-migrations, receives refreshed platform `MetaTable` UIDs from TS Manager, and
-writes the catalog projection with the current platform UID, namespace,
-identifier, description, model name, SDK version, and local contract hash. The
-catalog is intentionally MetaTable-specific; DataNode registration state belongs
-in a separate catalog if it is needed later.
+The catalog is finalized by the SDK migration upgrade flow. That command applies
+Alembic-rendered SQL through the backend migration endpoint, synchronizes the
+provider MetaTable catalog, and runs the `msm` provider hook that writes the
+catalog projection with the current platform UID, namespace, identifier,
+description, model name, SDK version, and local contract hash. The catalog is
+intentionally MetaTable-specific; DataNode registration state belongs in a
+separate catalog if it is needed later.
 
 When startup attaches an already-cataloged platform-managed MetaTable, it
 introspects the physical table before exposing it to row APIs.
@@ -244,17 +245,17 @@ error.
 
 When explicit runtime attachment is used, call it once during application
 initialization, before row operations, repositories, or services depend on the
-registered tables. The call verifies migrations and the selected markets table
-set, builds the repository context, and caches the runtime for the current
-Python process. A second call with the same arguments returns the cached
+registered tables. The call verifies the selected markets table set, builds the
+repository context, and caches the runtime for the current Python process. A
+second call with the same arguments returns the cached
 runtime; a second call with different arguments raises instead of silently
 rotating table names or execution context.
 
 Runtime attachment emits structured Main Sequence `info` logs for namespace
-selection, migration verification, catalog attachment, repository context
-creation, final runtime creation, and cached-runtime reuse. Missing catalog
+selection, model resolution, catalog attachment, repository context creation,
+final runtime creation, and cached-runtime reuse. Missing catalog
 rows, stale catalog hashes, or missing backend `MetaTable.uid` resources fail
-startup and must be corrected by `msm migrations upgrade` or an explicit
+startup and must be corrected by the SDK migration upgrade flow or an explicit
 admin/platform repair.
 
 `msm.start_engine(...)` does not accept labels because initialization should
@@ -287,7 +288,7 @@ Asset.upsert(unique_identifier="example-asset-btc", asset_type="crypto")
 ```
 
 With the environment variable set, `msm.start_engine(...)` uses the example
-namespace, verifies migrations, and attaches the finalized catalog rows for the
+namespace and attaches the finalized catalog rows for the
 selected tables.
 The namespace cannot be changed safely after `msm.models` or
 `msm.maintenance.models` is imported because `PlatformManagedMetaTable` derives

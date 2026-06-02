@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
-from mainsequence.client.models_metatables import MetaTableCompiledSQLOperation
+from mainsequence.client.metatables import MetaTableCompiledSQLOperation
 
 from msm.base import new_markets_uid
 from msm.models import AssetTable

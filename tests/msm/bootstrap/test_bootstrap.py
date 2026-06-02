@@ -45,7 +45,6 @@ def reset_schema_runtime(monkeypatch) -> None:
     monkeypatch.setattr(bootstrap, "_RUNTIME_BY_CONFIG", {})
     monkeypatch.delenv("MSM_AUTO_REGISTER_NAMESPACE", raising=False)
     sys.modules.pop("msm.maintenance.catalog", None)
-    sys.modules.pop("msm.maintenance.migrations", None)
     sys.modules.pop("msm.maintenance", None)
 
 
@@ -86,9 +85,6 @@ def install_fake_bootstrap_modules(monkeypatch):
         legacy_attach_calls.append(kwargs)
         return registration
 
-    def fake_verify_runtime_migrations_current(**kwargs):
-        migration_calls.append(kwargs)
-
     def fake_markets_meta_table_identifier(model):
         model_name = str(getattr(model, "__name__", model))
         return {
@@ -121,11 +117,6 @@ def install_fake_bootstrap_modules(monkeypatch):
             attach_markets_meta_tables_from_catalog=fake_attach_markets_meta_tables_from_catalog
         ),
     )
-    monkeypatch.setitem(
-        sys.modules,
-        "msm.maintenance.migrations",
-        SimpleNamespace(verify_runtime_migrations_current=fake_verify_runtime_migrations_current),
-    )
     return catalog_attach_calls, migration_calls, legacy_attach_calls, registration
 
 
@@ -151,7 +142,7 @@ def test_start_engine_attaches_metatables_and_returns_repository_context(
     assert runtime.meta_table_models == ["Asset"]
     assert runtime.namespace == DEFAULT_MARKETS_NAMESPACE
     assert runtime.context.namespace == DEFAULT_MARKETS_NAMESPACE
-    assert migration_calls[0]["data_source_uid"] == "data-source-uid"
+    assert migration_calls == []
     assert calls[0]["models"] == ["Asset"]
     assert "data_source_uid" not in calls[0]
 
@@ -173,8 +164,6 @@ def test_start_engine_can_attach_selected_models(monkeypatch) -> None:
 
 def test_start_engine_expands_project_local_model_dependencies(monkeypatch) -> None:
     import msm.maintenance.catalog as catalog
-    import msm.maintenance.migrations as migrations
-
     captured_models = []
 
     def fake_attach_markets_meta_tables_from_catalog(**kwargs):
@@ -196,8 +185,6 @@ def test_start_engine_expands_project_local_model_dependencies(monkeypatch) -> N
         "attach_markets_meta_tables_from_catalog",
         fake_attach_markets_meta_tables_from_catalog,
     )
-    monkeypatch.setattr(migrations, "verify_runtime_migrations_current", lambda **kwargs: None)
-
     runtime = bootstrap.start_engine(models=[BootstrapExtensionAssetDetailsTable])
 
     assert captured_models == [[AssetTable, BootstrapExtensionAssetDetailsTable]]
@@ -337,14 +324,7 @@ def test_attach_schemas_resolves_registered_metatables_without_registering(monke
 
     bootstrap.attach_schemas(namespace="mainsequence.markets", models=["Asset"])
 
-    assert migration_calls == [
-        {
-            "data_source_uid": None,
-            "namespace": "mainsequence.markets",
-            "timeout": None,
-            "models": ["Asset"],
-        }
-    ]
+    assert migration_calls == []
     assert catalog_attach_calls == [
         {
             "management_mode": "platform_managed",
@@ -365,14 +345,7 @@ def test_attach_schemas_uses_auto_register_namespace_when_omitted(monkeypatch) -
 
     assert runtime.namespace == "mainsequence.examples"
     assert runtime.context.namespace == "mainsequence.examples"
-    assert migration_calls == [
-        {
-            "data_source_uid": None,
-            "namespace": "mainsequence.examples",
-            "timeout": None,
-            "models": ["Asset"],
-        }
-    ]
+    assert migration_calls == []
     assert catalog_attach_calls == [
         {
             "management_mode": "platform_managed",

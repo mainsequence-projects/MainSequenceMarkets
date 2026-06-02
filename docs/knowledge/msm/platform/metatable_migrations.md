@@ -1,129 +1,86 @@
 # MetaTable Migrations
 
-`msm` schema creation and schema evolution are admin operations. Runtime code
-attaches to an already-finalized catalog; it does not create tables, apply DDL,
-or accept catalog drift.
+`msm` uses the Main Sequence SDK Alembic migration provider API. The repository
+does not maintain its own migration runner, migration ledger, or `msm
+migrations` CLI.
 
-## Lifecycle
+## Provider
 
-Use this sequence for library-owned MetaTables:
+The provider is exported from `msm.migrations:migration` and contains:
 
-1. Add or change SQLAlchemy model declarations under `src/msm/models/`.
-2. Add a Python migration module under `src/msm/migrations/versions/`.
-3. Define structured SDK migration operations in that Python module.
-4. Run `msm migrations sync` to write SDK migration registry rows.
-5. Run `msm migrations upgrade` to apply pending SDK migrations and finalize
-   `MarketsMetaTableCatalogTable`.
-6. Start application/runtime code with `msm.start_engine(...)`.
+- package: `msm`;
+- script location: `msm:migrations`;
+- target metadata: `MarketsBase.metadata`;
+- Alembic version registry: `MarketsAlembicVersion`;
+- managed model registry: `migration_model_registry()`;
+- post-registration hook:
+  `refresh_markets_catalog_from_registered_metatables`.
 
-The SDK `MigrationMetaTable` registry stores migration rows and status for
-idempotency, locking, checksums, and audit. `MarketsMetaTableCatalogTable` is a
-runtime projection that maps logical `msm` model identifiers to current platform
-`MetaTable` UIDs and local contract hashes.
-
-## Package Registry
-
-The table universe is defined in code by `MIGRATION_MODEL_REGISTRY` under
-`src/msm/migrations/registry.py`. It is the `msm` equivalent of an installed-app
-registry: migration commands use it to decide which package-owned models belong
-to the managed schema lifecycle.
-
-The registry is not migration history. Individual Python migration modules
-define revision metadata and `affected_models()` or `AFFECTED_MODELS`; the
-runner materializes SDK manifest JSON at `sync` or `upgrade` time.
-
-Models in the registry use the normal SDK authoring bases. Plain MetaTables
-inherit `PlatformManagedMetaTable` through `MarketsMetaTableMixin`; time-indexed
-DataNode storage inherits `PlatformTimeIndexMetaData` through
-`MarketsTimeIndexMetaTableMixin`.
+`MarketsAlembicVersion` stores Alembic state in
+`public.msm_alembic_version`. This package-specific version table avoids
+collisions in databases that host multiple independent providers. Downstream
+projects that inherit from ms-markets should use this same provider and version
+table when they are extending the ms-markets revision graph.
 
 ## Commands
 
+Use the SDK CLI:
+
 ```bash
-msm migrations current --json
-msm migrations sync
-msm migrations upgrade
-msm migrations validate
+mainsequence migrations register-version-table --provider msm.migrations:migration
+mainsequence migrations current --provider msm.migrations:migration --json
+mainsequence migrations revision --provider msm.migrations:migration -m "describe change" --autogenerate
+mainsequence migrations render --provider msm.migrations:migration --to head
+mainsequence migrations upgrade --provider msm.migrations:migration --to head
 ```
 
-`current` is read-only. It reports package revisions, SDK migration status, and
-catalog finalization state. Human-readable output groups catalog rows into
-Domain MetaTables and Time-index Storage MetaTables so row-oriented contracts
-and DataNode storage contracts are not shown as one flat list.
-Time-index storage identifiers use the same `CamelCase` style as domain
-MetaTables plus a `TS` suffix, for example `OrdersTS`.
+`revision` is the authoring entrypoint. It creates normal Alembic revision files
+under `src/msm/migrations/versions/`.
 
-`sync` registers or attaches the package migration registry and upserts packaged
-migration rows. It does not apply migrations.
+`render` creates the SQL artifact from Alembic. The package does not execute SQL
+locally.
 
-`upgrade` syncs rows, applies pending migrations through the SDK migration
-engine, and finalizes catalog rows for affected identifiers.
-
-`validate` fails unless SDK status and catalog finalization match the package
-code.
-
-See `examples/msm/platform/metatable_migration_lifecycle.py` for a small
-inspection example that lists packaged revisions and prints the intended admin
-command sequence.
-
-The commands do not resolve a data-source UID in `msm` and do not ask users for
-one. Target data-source handling belongs to the Main Sequence SDK migration API.
-They do not accept database URLs and do not connect directly to the database.
-SQL execution is owned by the SDK/TS Manager `metatable-migration.v1` endpoint.
+`upgrade` sends the rendered SQL to the backend migration endpoint. After a
+successful apply, the SDK synchronizes the provider MetaTable catalog and calls
+the provider hook. The hook refreshes
+`MarketsMetaTableCatalogTable` using the registered platform `MetaTable` objects.
 
 ## Runtime Contract
 
-`msm.start_engine(...)` verifies migration status, reads finalized catalog rows,
-resolves platform `MetaTable` resources by UID, validates local contract hashes,
-and binds the runtime context. It must fail if migrations or catalog
-finalization are not current.
-
-Runtime startup may read:
-
-- SDK migration status;
-- `MarketsMetaTableCatalogTable`;
-- affected platform `MetaTable` resources.
+`msm.start_engine(...)` is runtime attachment only. It reads the finalized
+catalog, resolves platform `MetaTable` resources by UID, validates local
+contract hashes and physical table shape, and binds the runtime context.
 
 Runtime startup must not call:
 
-- `sync_packaged_migration(...)`;
-- `apply_migration(...)`;
+- Alembic revision generation;
+- migration render/apply;
 - normal model `register()` for application tables;
 - catalog reconciliation for application tables.
 
-## Adding A Migration
+Missing catalog rows, stale contract hashes, or missing platform `MetaTable.uid`
+resources are deployment errors. Fix them by running the SDK migration upgrade
+flow or by performing an explicit platform repair.
 
-Each migration revision should have:
+## Adding A Table Or Schema Change
 
-- a Python module under `src/msm/migrations/versions/`;
-- structured SDK migration operations in that Python module;
-- explicit old contract hashes when the previous SQLAlchemy declaration no
-  longer exists in the current package;
-- affected model classes listed by the Python module.
+1. Define or change the SQLAlchemy model.
+2. Add new models to the appropriate package model graph:
+   `markets_sqlalchemy_models()`, `portfolio_sqlalchemy_models()`, or
+   `pricing_sqlalchemy_models()`.
+3. Confirm `migration_model_registry()` contains the expected model exactly once.
+4. Generate an Alembic revision with the SDK CLI.
+5. Review the generated revision.
+6. Render or upgrade through the SDK CLI.
+7. Let the SDK `upgrade` command refresh the markets catalog automatically.
 
-Example shape:
-
-```python
-REVISION = "0002_add_asset_status"
-EXPECTED_CURRENT_REVISION = "0001_initial"
-MIGRATION_NAMESPACE = None
-AFFECTED_MODELS = [AssetTable]
-OPERATIONS = [
-    {
-        "op": "add_column",
-        "table_identifier": "Asset",
-        "column": {"name": "status", "data_type": "str", "nullable": True},
-    }
-]
-OLD_CONTRACT_HASHES = {"Asset": "..."}
-```
-
-Forward migrations are the only supported package workflow. If a released
-schema change needs correction, add another forward migration.
+There is no hand-authored YAML, JSON, or SDK operation manifest. Migration
+history is the Alembic revision graph plus the provider's version table.
 
 ## SDK Requirement
 
-The implementation requires a Main Sequence SDK version that exposes the base
-MetaTable authoring classes, Alembic migration support, and backend SQL
-migration execution. Older SDK versions fail clearly before admin migration
-execution or runtime attachment.
+The implementation requires a Main Sequence SDK version that exposes
+`AlembicMetaTableMigration`, `AlembicVersionMetaTable`, SDK migration rendering,
+backend SQL migration execution, and the current `upgrade` command shape where
+`mainsequence migrations upgrade --provider msm.migrations:migration --to head`
+applies after validation without `--apply` or `--register-metatables`.
