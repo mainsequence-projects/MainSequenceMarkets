@@ -914,7 +914,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "4.1.19"
+version = "4.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -927,6 +927,7 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "pandas" },
     { name = "psutil" },
+    { name = "psycopg2" },
     { name = "pydantic" },
     { name = "pytz" },
     { name = "pyyaml" },
@@ -937,9 +938,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/73/f9/bdb56c38345fb0e374ea87f56ba96c7aff3d988144282761b42f0e2189ea/mainsequence-4.1.19.tar.gz", hash = "sha256:2b6c873817ecc5536503d4a16e6831f207e66859934653115c81e9045b8c7731", size = 461002, upload-time = "2026-06-02T08:34:24.766Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fd/ab/3e150322c66390da1ebc2ac1df93b2a03eea90063ad241229c2fe4be5459/mainsequence-4.2.2.tar.gz", hash = "sha256:b473015c3427baa1ae69b180311170f10e1bc7b784d25277b397ff440ffd8ea3", size = 466222, upload-time = "2026-06-02T16:06:37.654Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/27/61/dcd211c41f8c426b95222ec562900b58aef4e3b560f6bcb44248eb58c714/mainsequence-4.1.19-py3-none-any.whl", hash = "sha256:904f60bc2e3863ca19846c5371b0f3599d60f6f527f65b9eee20c11400e25727", size = 400929, upload-time = "2026-06-02T08:34:23.324Z" },
+    { url = "https://files.pythonhosted.org/packages/92/e4/097efcdafef81b7b4b953927042a95031a3d48159bec18616c7ca5a89688/mainsequence-4.2.2-py3-none-any.whl", hash = "sha256:9aab87f37f5c4235ffb267245f5a8d8e052a7e945eb71ba5f01ba448d0b3a15f", size = 403768, upload-time = "2026-06-02T16:06:36.045Z" },
 ]
 
 [[package]]
@@ -1269,7 +1270,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.27"
+version = "0.0.28"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },

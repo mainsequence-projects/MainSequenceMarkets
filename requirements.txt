@@ -48,7 +48,7 @@ idna==3.17
     # via
     #   anyio
     #   requests
-mainsequence==4.1.19
+mainsequence==4.2.2
     # via ms-markets
 mako==1.3.12
     # via alembic
@@ -107,7 +107,9 @@ protobuf==6.33.6
 psutil==7.2.2
     # via mainsequence
 psycopg2==2.9.12
-    # via ms-markets
+    # via
+    #   mainsequence
+    #   ms-markets
 pydantic==2.13.4
     # via
     #   fastapi
