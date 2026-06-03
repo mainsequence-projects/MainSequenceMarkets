@@ -27,7 +27,7 @@ def test_fund_holdings_storage_declares_fund_and_asset_foreign_keys() -> None:
         FundTable.__metatable_identifier__,
     ]
 
-    fund_asset_column = FundHoldingsStorage.__table__.columns["unique_identifier"]
+    fund_asset_column = FundHoldingsStorage.__table__.columns["asset_identifier"]
     assert any(
         foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AssetTable
         and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
@@ -59,7 +59,7 @@ def test_fund_holdings_dtype_tokens_match_storage_columns() -> None:
     assert dtype_map["target_weight"] == dc.FLOAT64
     assert dtype_map["quantity"] == dc.FLOAT64
     assert dtype_map["target_trade_time"] == dc.TIMESTAMP_TZ
-    assert dtype_map["unique_identifier"] == dc.STRING
+    assert dtype_map["asset_identifier"] == dc.STRING
     assert dtype_map["fund_uid"] == dc.UUID_TOKEN
 
 
@@ -86,7 +86,7 @@ def test_fund_holdings_frame_builder_keeps_target_weight_contract() -> None:
         fund_uid=fund_uid,
         positions=[
             {
-                "unique_identifier": "ETH",
+                "asset_identifier": "ETH",
                 "quantity": "3",
                 "target_weight": "0.15",
             }

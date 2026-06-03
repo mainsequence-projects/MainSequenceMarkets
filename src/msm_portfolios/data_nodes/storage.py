@@ -6,9 +6,9 @@ interpolated/external price node output. The DataNode validators derive their
 column dtype maps from these declarations; catalog registration follows in
 Stage 5.
 
-Portfolio output tables use logical asset identifiers. Virtual-fund holdings
-also declare canonical foreign keys to their owning `FundTable` row and held
-`AssetTable.unique_identifier`.
+Portfolio output tables use explicit storage identifier dimensions. Virtual-fund
+holdings also declare canonical foreign keys to their owning `FundTable` row and
+held `AssetTable.unique_identifier`.
 """
 
 from __future__ import annotations
@@ -25,8 +25,12 @@ from sqlalchemy.types import Uuid
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.assets.core import AssetTable
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
 from msm_portfolios.models.virtual_funds import FundTable
+
+PORTFOLIO_IDENTIFIER_DIMENSION = "portfolio_identifier"
+PORTFOLIO_INDEX_IDENTIFIER_DIMENSION = "portfolio_index_identifier"
 
 
 class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
@@ -35,7 +39,7 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__: ClassVar[str] = "PortfolioWeightsTS"
     __metatable_description__ = (
         "Timestamped portfolio weight storage keyed by time_index, "
-        "portfolio_index_unique_identifier, and unique_identifier. Stores "
+        "portfolio_index_identifier, and asset_identifier. Stores "
         "executed asset allocation weights and supporting price/volume facts."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
@@ -44,8 +48,8 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
-        "portfolio_index_unique_identifier",
-        "unique_identifier",
+        PORTFOLIO_INDEX_IDENTIFIER_DIMENSION,
+        ASSET_IDENTIFIER_DIMENSION,
     ]
 
     time_index: Mapped[datetime.datetime] = mapped_column(
@@ -56,22 +60,22 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             "description": "UTC timestamp for the executed portfolio weight row.",
         },
     )
-    portfolio_index_unique_identifier: Mapped[str] = mapped_column(
+    portfolio_index_identifier: Mapped[str] = mapped_column(
         String,
         nullable=False,
         info={
-            "label": "Portfolio Index Unique Identifier",
+            "label": "Portfolio Index Identifier",
             "description": (
                 "Stable PortfolioIndex unique identifier for the portfolio that "
                 "owns this executed weight row."
             ),
         },
     )
-    unique_identifier: Mapped[str] = mapped_column(
+    asset_identifier: Mapped[str] = mapped_column(
         String,
         nullable=False,
         info={
-            "label": "Unique Identifier",
+            "label": "Asset Identifier",
             "description": "Asset unique identifier for the weighted instrument.",
         },
     )
@@ -131,14 +135,14 @@ class SignalWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__: ClassVar[str] = "SignalWeightsTS"
     __metatable_description__ = (
         "Timestamped signal weight storage keyed by (time_index, signal_uid, "
-        "unique_identifier). Stores raw signal allocation weights for signaled "
+        "asset_identifier). Stores raw signal allocation weights for signaled "
         "assets before portfolio execution."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "SignalWeightsTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
-    __index_names__: ClassVar[list[str]] = ["time_index", "signal_uid", "unique_identifier"]
+    __index_names__: ClassVar[list[str]] = ["time_index", "signal_uid", ASSET_IDENTIFIER_DIMENSION]
 
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -156,11 +160,11 @@ class SignalWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             ),
         },
     )
-    unique_identifier: Mapped[str] = mapped_column(
+    asset_identifier: Mapped[str] = mapped_column(
         String,
         nullable=False,
         info={
-            "label": "Unique Identifier",
+            "label": "Asset Identifier",
             "description": "Asset unique identifier for the signaled instrument.",
         },
     )
@@ -180,25 +184,25 @@ class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__: ClassVar[str] = "PortfoliosTS"
     __metatable_description__ = (
         "Timestamped portfolio value storage keyed by (time_index, "
-        "unique_identifier). Stores close, return, calculated close, and close "
+        "portfolio_identifier). Stores close, return, calculated close, and close "
         "timestamp for canonical portfolio value series."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "PortfoliosTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
-    __index_names__: ClassVar[list[str]] = ["time_index", "unique_identifier"]
+    __index_names__: ClassVar[list[str]] = ["time_index", PORTFOLIO_IDENTIFIER_DIMENSION]
 
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         info={"label": "Time Index", "description": "UTC timestamp for the portfolio value row."},
     )
-    unique_identifier: Mapped[str] = mapped_column(
+    portfolio_identifier: Mapped[str] = mapped_column(
         String,
         nullable=False,
         info={
-            "label": "Unique Identifier",
+            "label": "Portfolio Identifier",
             "description": "Stable portfolio or portfolio-index unique identifier for the value series.",
         },
     )
@@ -240,14 +244,14 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__: ClassVar[str] = "InterpolatedPricesTS"
     __metatable_description__ = (
         "Timestamped interpolated-price storage keyed by (time_index, "
-        "unique_identifier). Stores OHLCV bars, VWAP, trade count, and interpolation "
+        "asset_identifier). Stores OHLCV bars, VWAP, trade count, and interpolation "
         "flags for asset price feeds used by portfolio workflows."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "InterpolatedPricesTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
-    __index_names__: ClassVar[list[str]] = ["time_index", "unique_identifier"]
+    __index_names__: ClassVar[list[str]] = ["time_index", ASSET_IDENTIFIER_DIMENSION]
 
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -257,11 +261,11 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             "description": "UTC timestamp for the interpolated price bar.",
         },
     )
-    unique_identifier: Mapped[str] = mapped_column(
+    asset_identifier: Mapped[str] = mapped_column(
         String,
         nullable=False,
         info={
-            "label": "Unique Identifier",
+            "label": "Asset Identifier",
             "description": "Asset unique identifier for the priced instrument.",
         },
     )
@@ -324,7 +328,7 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__: ClassVar[str] = "FundHoldingsTS"
     __metatable_description__ = (
         "Timestamped virtual-fund holdings storage keyed by (time_index, fund_uid, "
-        "unique_identifier). Each row is one asset position in a fund holdings "
+        "asset_identifier). Each row is one asset position in a fund holdings "
         "observation, including target weights, trade timing, and provider metadata "
         "when available."
     )
@@ -332,7 +336,7 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "storage_name": "FundHoldingsTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
-    __index_names__: ClassVar[list[str]] = ["time_index", "fund_uid", "unique_identifier"]
+    __index_names__: ClassVar[list[str]] = ["time_index", "fund_uid", ASSET_IDENTIFIER_DIMENSION]
 
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -361,7 +365,7 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             ),
         },
     )
-    unique_identifier: Mapped[str] = mapped_column(
+    asset_identifier: Mapped[str] = mapped_column(
         String(255),
         MetaTableForeignKey(
             AssetTable,
@@ -370,7 +374,7 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         ),
         nullable=False,
         info={
-            "label": "Unique Identifier",
+            "label": "Asset Identifier",
             "description": "Asset unique identifier for the held instrument at this fund timestamp.",
         },
     )
@@ -429,6 +433,8 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 __all__ = [
     "FundHoldingsStorage",
     "InterpolatedPricesStorage",
+    "PORTFOLIO_IDENTIFIER_DIMENSION",
+    "PORTFOLIO_INDEX_IDENTIFIER_DIMENSION",
     "PortfolioWeightsStorage",
     "PortfoliosStorage",
     "SignalWeightsStorage",

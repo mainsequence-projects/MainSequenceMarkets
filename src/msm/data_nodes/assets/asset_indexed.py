@@ -21,7 +21,7 @@ from msm.data_nodes.utils.storage_metadata import (
 )
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.settings import (
-    ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+    ASSET_IDENTIFIER_DIMENSION,
 )
 
 MarketAssetScopeItem = str | Mapping[str, Any] | Any
@@ -38,7 +38,7 @@ class AssetIndexedDataNodeConfiguration(DataNodeConfiguration):
             "Optional platform asset scope for updater partitioning. Asset "
             "semantics are owned by the markets layer, not core TDAG."
         ),
-        examples=[["asset_us_equity_aapl", {"unique_identifier": "asset_us_equity_msft"}]],
+        examples=[["asset_us_equity_aapl", {"asset_identifier": "asset_us_equity_msft"}]],
     )
 
 
@@ -47,10 +47,12 @@ class AssetIndexedDataNode(DataNode):
     DataNode boundary for datasets whose identity dimension is a platform asset.
 
     Core TDAG works with generic dimensions. This class owns the market-specific
-    contract that platform assets are addressed by ``unique_identifier``.
+    contract that platform assets are stored under the ``asset_identifier``
+    dimension while asset objects continue to expose their registry
+    ``unique_identifier``.
     """
 
-    asset_identity_dimension = ASSET_UNIQUE_IDENTIFIER_DIMENSION
+    asset_identity_dimension = ASSET_IDENTIFIER_DIMENSION
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -101,6 +103,8 @@ class AssetIndexedDataNode(DataNode):
             value = asset.get(cls.asset_identity_dimension)
         else:
             value = getattr(asset, cls.asset_identity_dimension, None)
+            if value is None:
+                value = getattr(asset, "unique_identifier", None)
 
         if not isinstance(value, str):
             raise TypeError(
@@ -482,7 +486,7 @@ class AssetIndexedDataNode(DataNode):
 
 
 __all__ = [
-    "ASSET_UNIQUE_IDENTIFIER_DIMENSION",
+    "ASSET_IDENTIFIER_DIMENSION",
     "AssetIndexedDataNode",
     "AssetIndexedDataNodeConfiguration",
     "MarketAssetScopeItem",

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import datetime as dt
 
-from apps.v1.schemas.accounts import AccountHoldingsSnapshotResponse, AccountListResponse
+from apps.v1.schemas.accounts import (
+    AccountHoldingsSnapshotResponse,
+    AccountListResponse,
+    AccountTargetPositionsSnapshotResponse,
+)
 from apps.v1.schemas.common import FrontEndDetailSummary
 
 
@@ -52,6 +56,28 @@ def get_account_holdings(
     return AccountHoldingsSnapshotResponse.model_validate(snapshot)
 
 
+def get_account_target_positions(
+    *,
+    account_uid: str,
+    order: str = "desc",
+    limit: int = 1,
+    include_asset_detail: bool = True,
+    target_positions_date: dt.datetime | None = None,
+) -> AccountTargetPositionsSnapshotResponse | None:
+    runtime = _get_target_positions_runtime()
+    snapshot = _get_account_target_positions_snapshot_response(
+        runtime.context,
+        account_uid=account_uid,
+        order=order,
+        limit=limit,
+        include_asset_detail=include_asset_detail,
+        target_positions_date=target_positions_date,
+    )
+    if snapshot is None:
+        return None
+    return AccountTargetPositionsSnapshotResponse.model_validate(snapshot)
+
+
 def _get_runtime():
     from apps.v1.runtime_bootstrap import resolve_apps_v1_runtime
 
@@ -75,6 +101,22 @@ def _get_holdings_runtime():
     )
 
 
+def _get_target_positions_runtime():
+    from apps.v1.runtime_bootstrap import resolve_apps_v1_runtime
+
+    return resolve_apps_v1_runtime(
+        models=[
+            "Account",
+            "AccountTargetPortfolio",
+            "PositionSet",
+            "TargetPositionsStorage",
+            "Asset",
+            "AssetSnapshotsStorage",
+        ],
+        row_model_name="GET /api/v1/account/{account_uid}/target-positions/",
+    )
+
+
 def _list_account_rows_response(context, **kwargs):
     from msm.services import list_account_rows_response
 
@@ -91,3 +133,9 @@ def _get_account_holdings_snapshot_response(context, **kwargs):
     from msm.services import get_account_holdings_snapshot_response
 
     return get_account_holdings_snapshot_response(context, **kwargs)
+
+
+def _get_account_target_positions_snapshot_response(context, **kwargs):
+    from msm.services import get_account_target_positions_snapshot_response
+
+    return get_account_target_positions_snapshot_response(context, **kwargs)

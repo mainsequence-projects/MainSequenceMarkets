@@ -83,6 +83,17 @@ def test_openapi_json_documents_account_list_endpoint() -> None:
         "schema"
     ] == {"$ref": "#/components/schemas/FrontEndDetailSummary"}
 
+    account_target_positions_operation = payload["paths"][
+        "/api/v1/account/{account_uid}/target-positions/"
+    ]["get"]
+    assert account_target_positions_operation["summary"] == (
+        "Get account target positions snapshot"
+    )
+    assert account_target_positions_operation["operationId"] == "getAccountTargetPositions"
+    assert account_target_positions_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/AccountTargetPositionsSnapshotResponse"}
+
 
 def test_openapi_json_documents_asset_category_routes() -> None:
     client = TestClient(app)

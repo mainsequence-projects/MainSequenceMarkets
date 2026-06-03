@@ -6,7 +6,7 @@ import pandas as pd
 
 from mainsequence.client import Artifact
 from msm_portfolios.asset_scope import asset_field
-from msm_portfolios.data_nodes import SignalWeights
+from msm_portfolios.data_nodes import ASSET_IDENTIFIER, SignalWeights
 from msm_portfolios.configuration import (
     AssetsConfiguration,
     PortfolioConfigBaseModel,
@@ -64,12 +64,12 @@ class ExternalWeights(SignalWeights):
         for asset in self.get_update_asset_list() or []:
             weights_source.loc[
                 weights_source["figi"] == asset_field(asset, "figi"),
-                "unique_identifier",
+                ASSET_IDENTIFIER,
             ] = asset_field(asset, "unique_identifier")
 
-        weights = weights_source[["time_index", "unique_identifier", "weight"]]
+        weights = weights_source[["time_index", ASSET_IDENTIFIER, "weight"]]
         weights.rename(columns={"weight": "signal_weight"}, inplace=True)
-        weights.set_index(["time_index", "unique_identifier"], inplace=True)
+        weights.set_index(["time_index", ASSET_IDENTIFIER], inplace=True)
 
         weights = self.update_statistics.filter_df_by_latest_value(weights)
         return weights

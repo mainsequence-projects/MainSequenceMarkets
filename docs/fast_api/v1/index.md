@@ -53,6 +53,16 @@ Current local-dev behavior:
     holdings snapshot matches
   - nullable compatibility fields such as `id`, `snapshot_uid`, `nav`, and
     `price` are not invented when the storage row does not provide them
+- `GET /api/v1/account/{account_uid}/target-positions/`
+  - supports `order`, `limit=1`, `include_asset_detail`, and exact
+    `target_positions_date`
+  - resolves active account target portfolios, selects one `PositionSetTable`
+    snapshot, and returns its `TargetPositionsStorage` exposure rows
+  - returns 200 with an empty `positions` list when the account exists but no
+    target-position snapshot matches
+  - asset details include `uid`, `unique_identifier`, and latest
+    `AssetSnapshotsStorage` `name` / `ticker`; no OpenFIGI or numeric asset id
+    fields are returned
 
 ### Assets
 

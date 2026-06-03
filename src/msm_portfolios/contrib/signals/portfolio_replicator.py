@@ -13,7 +13,7 @@ from msm_portfolios.asset_scope import asset_field, asset_unique_identifier
 from msm_portfolios.contrib.prices.data_nodes import (
     get_interpolated_prices_timeseries,
 )
-from msm_portfolios.data_nodes import SignalWeights
+from msm_portfolios.data_nodes import ASSET_IDENTIFIER, SignalWeights
 from msm_portfolios.configuration import AssetsConfiguration, PortfolioConfigBaseModel
 from msm_portfolios.utils import TIMEDELTA
 
@@ -281,7 +281,7 @@ class ETFReplicator(SignalWeights):
             great_or_equal=True,
             less_or_equal=True,
             dimension_filters={
-                "unique_identifier": [asset_unique_identifier(a) for a in self.price_assets]
+                ASSET_IDENTIFIER: [asset_unique_identifier(a) for a in self.price_assets]
             },
         )
         etf_prices = self.etf_bars_ts.get_df_between_dates(
@@ -289,13 +289,13 @@ class ETFReplicator(SignalWeights):
             end_date=None,
             great_or_equal=True,
             less_or_equal=True,
-            dimension_filters={"unique_identifier": [asset_unique_identifier(self.etf_asset)]},
+            dimension_filters={ASSET_IDENTIFIER: [asset_unique_identifier(self.etf_asset)]},
         )
 
         prices = pd.concat([prices, etf_prices])
         prices = prices.reset_index().pivot_table(
             index="time_index",
-            columns="unique_identifier",
+            columns=ASSET_IDENTIFIER,
             values=self.assets_configuration.price_type.value,
         )
 

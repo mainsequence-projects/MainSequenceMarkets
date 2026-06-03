@@ -7,7 +7,7 @@ from msm.data_nodes.utils.stamped import (
     StampedDataNodeConfiguration,
     StampedFrameMixin,
 )
-from msm.settings import INDEX_UNIQUE_IDENTIFIER_DIMENSION
+from msm.settings import INDEX_IDENTIFIER_DIMENSION
 
 
 class IndexDataNodeConfiguration(StampedDataNodeConfiguration):
@@ -19,7 +19,7 @@ class IndexDataNodeConfiguration(StampedDataNodeConfiguration):
     not on this configuration.
     """
 
-    reference_dimension: ClassVar[str] = INDEX_UNIQUE_IDENTIFIER_DIMENSION
+    reference_dimension: ClassVar[str] = INDEX_IDENTIFIER_DIMENSION
     frame_label: ClassVar[str] = "Index DataNode"
 
 
@@ -31,7 +31,7 @@ class IndexTimestampedFrameMixin(StampedFrameMixin):
 
 
 class IndexTimestampedDataNode(IndexTimestampedFrameMixin, StampedDataNode):
-    """Base index-indexed DataNode for timestamped facts keyed by unique_identifier."""
+    """Base index-indexed DataNode for timestamped facts keyed by index_identifier."""
 
 
 __all__ = [

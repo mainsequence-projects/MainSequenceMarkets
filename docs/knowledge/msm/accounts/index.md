@@ -78,7 +78,7 @@ target_positions = build_target_positions_frame(
     target_positions_date=position_set.position_set_time,
     position_set_uid=position_set.uid,
     positions=[
-        {"unique_identifier": "BTC-USD", "weight_notional_exposure": 1.0},
+        {"asset_identifier": "BTC-USD", "weight_notional_exposure": 1.0},
     ],
 )
 ```
@@ -98,7 +98,7 @@ holdings_node.set_account_holdings_frame(
     account_uid=account.uid,
     positions=[
         {
-            "unique_identifier": "BTC-USD",
+            "asset_identifier": "BTC-USD",
             "quantity": 10.0,
             "extra_details": {"ticker": "BTC"},
         }
@@ -126,11 +126,13 @@ reads explicit by requiring the caller to pass the holdings frame. Do not pass
 the raw `AccountHoldings.run(...)` tuple; unpack it and pass the DataFrame.
 
 The full workflow example is `examples/msm/accounts/account_workflow.py`. It creates
-two accounts, assigns both to one account group, points both account-specific
-target portfolio relationships at the same reusable `AccountModelPortfolio`,
-builds target position rows for each `PositionSet`, publishes account holdings,
-and pretty-prints positions for each account. It reuses the shared asset example
-payloads from `examples/msm/assets/utils` and account-specific payloads from
+two crypto assets, publishes `AssetSnapshot` rows with canonical ticker and name
+metadata, creates two accounts, assigns both to one account group, points both
+account-specific target portfolio relationships at the same reusable
+`AccountModelPortfolio`, publishes two-asset target position rows for each
+`PositionSet`, publishes two-asset account holdings, and pretty-prints positions
+for each account. It reuses the shared asset example payloads from
+`examples/msm/assets/utils` and account-specific payloads from
 `examples/msm/accounts/utils`.
 
 There is no top-level `msm.accounts` shim. Import account rows from
@@ -211,7 +213,7 @@ There is no top-level `msm.accounts` shim. Import account rows from
 |-------------------------------|
 | time_index                    |
 | position_set_uid              |
-| unique_identifier FK          |
+| asset_identifier FK           |
 |  -> Asset.unique_identifier   |
 | weight_notional_exposure      |
 | constant_notional_exposure    |
@@ -219,7 +221,7 @@ There is no top-level `msm.accounts` shim. Import account rows from
 | exactly one exposure required |
 +-------------------------------+
                 |
-                | unique_identifier FK
+                | asset_identifier FK
                 v
 +-------------------------------+
 | AssetTable                    |
@@ -253,7 +255,7 @@ are versioned through `AccountTargetPortfolioTable` and `PositionSetTable`:
    portfolio at a UTC `position_set_time`.
 3. `TargetPositionsStorage` stores the actual asset exposure rows, points back
    to `PositionSetTable.uid` with `position_set_uid`, and points to
-   `AssetTable.unique_identifier` with `unique_identifier`.
+   `AssetTable.unique_identifier` with `asset_identifier`.
 
 This keeps account identity, account grouping, model-portfolio intent, and
 timestamped target rows in separate places.
@@ -276,18 +278,18 @@ storage class with a fixed index and column contract.
 | and dtype contract derive     |                           | index_names:                |
 | from AccountHoldingsStorage.  |                           |  - time_index               |
 |                               |                           |  - account_uid              |
-| update() returns DataFrame    |                           |  - unique_identifier        |
+| update() returns DataFrame    |                           |  - asset_identifier         |
 +---------------+---------------+                           | records:                   |
                 |                                           |  - holdings_set_uid uuid    |
                 | publishes rows                            |  - is_trade_snapshot bool   |
-                |                                           |  - unique_identifier string |
+                |                                           |  - asset_identifier string  |
                 v                                           |  - quantity float64         |
 +-------------------------------+                           |  - target_trade_time        |
 | Source table rows             |                           |    datetime64[ns, UTC]      |
 |-------------------------------|                           |  - extra_details jsonb      |
 | time_index                    |                           |-----------------------------|
 | account_uid ------------------+-------------------------->| FK -> AccountTable.uid      |
-| unique_identifier ------------+-------------------------->| FK -> AssetTable            |
+| asset_identifier -------------+-------------------------->| FK -> AssetTable            |
 | holdings_set_uid              |                           |       .unique_identifier    |
 | quantity                      |                           +-----------------------------+
 | target_trade_time             |
@@ -298,12 +300,12 @@ storage class with a fixed index and column contract.
 The row grain is one asset position for one account at one timestamp:
 
 ```text
-unique row = (time_index, account_uid, unique_identifier)
+unique row = (time_index, account_uid, asset_identifier)
 ```
 
-`unique_identifier` is the held asset's `Asset.unique_identifier`. The holdings
+`asset_identifier` is the held asset's `Asset.unique_identifier`. The holdings
 storage MetaTable declares `account_uid -> AccountTable.uid` and
-`unique_identifier -> AssetTable.unique_identifier` as storage-level foreign
+`asset_identifier -> AssetTable.unique_identifier` as storage-level foreign
 keys so callers can query history by account, date range, and asset without
 duplicating relationship metadata on the DataNode configuration.
 

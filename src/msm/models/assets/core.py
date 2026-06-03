@@ -51,7 +51,10 @@ class AssetTable(MarketsMetaTableMixin, MarketsBase):
         nullable=False,
         info={
             "label": "Unique Identifier",
-            "description": "Stable business identifier used for idempotent upserts, lookup, and joins.",
+            "description": (
+                "Unique stable asset business identifier used for idempotent upserts, "
+                "lookup, and asset-indexed DataNode joins."
+            ),
         },
     )
     asset_type: Mapped[str | None] = mapped_column(

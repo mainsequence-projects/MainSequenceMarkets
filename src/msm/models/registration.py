@@ -323,56 +323,65 @@ def resolve_registered_markets_meta_tables(
     """Resolve already-registered markets MetaTables without creating schemas."""
 
     resolved_models = resolve_markets_meta_table_models(models)
-    meta_tables: list[MetaTable] = []
-    meta_table_by_identifier: dict[str, MetaTable] = {}
-
-    for model in resolved_models:
-        identifier = markets_meta_table_identifier(model)
-        filter_candidates = _registered_meta_table_filter_candidates(
-            model,
-            data_source_uid=data_source_uid,
-            management_mode=management_mode,
-            namespace=namespace,
-        )
-        matches = []
-        matched_filters: dict[str, Any] | None = None
-        for filters in filter_candidates:
-            logger.info(
-                "Resolving registered markets MetaTable schema",
-                management_mode=management_mode,
-                model=model.__name__,
-                namespace=filters.get("namespace"),
-                identifier=identifier,
-                data_source_uid=data_source_uid,
-            )
-            matches = MetaTable.filter(timeout=timeout, **filters)
-            if matches:
-                matched_filters = filters
-                break
-        if not matches:
-            raise LookupError(
-                "Could not resolve registered markets MetaTable for "
-                f"{model.__name__} with filters {filter_candidates!r}."
-            )
-        if len(matches) > 1:
+    identifiers_by_model = {
+        model: markets_meta_table_identifier(model) for model in resolved_models
+    }
+    requested_identifiers = list(dict.fromkeys(identifiers_by_model.values()))
+    filters = _registered_meta_table_bulk_filter(
+        identifiers=requested_identifiers,
+        data_source_uid=data_source_uid,
+        management_mode=management_mode,
+        namespace=namespace,
+    )
+    logger.info(
+        "Resolving registered markets MetaTable schemas",
+        management_mode=management_mode,
+        namespace=filters.get("namespace"),
+        identifier_count=len(requested_identifiers),
+        model_count=len(resolved_models),
+        data_source_uid=data_source_uid,
+    )
+    matches = MetaTable.filter(timeout=timeout, **filters) if requested_identifiers else []
+    matches_by_identifier: dict[str, MetaTable] = {}
+    for meta_table in matches:
+        identifier = str(getattr(meta_table, "identifier", "") or "")
+        if identifier not in requested_identifiers:
+            continue
+        if identifier in matches_by_identifier:
             raise LookupError(
                 "Multiple registered markets MetaTables matched "
-                f"{model.__name__} with filters {matched_filters!r}. Pass data_source_uid "
-                "or use explicit schema initialization."
+                f"identifier {identifier!r} with filters {filters!r}. Pass data_source_uid "
+                "or repair duplicate platform registrations."
             )
+        matches_by_identifier[identifier] = meta_table
 
-        meta_table = matches[0]
+    missing_identifiers = [
+        identifier
+        for identifier in requested_identifiers
+        if identifier not in matches_by_identifier
+    ]
+    if missing_identifiers:
+        raise LookupError(
+            "Could not resolve registered markets MetaTables for "
+            f"{missing_identifiers!r} with filters {filters!r}."
+        )
+
+    meta_tables: list[MetaTable] = []
+    meta_table_by_identifier: dict[str, MetaTable] = {}
+    for model in resolved_models:
+        identifier = identifiers_by_model[model]
+        meta_table = matches_by_identifier[identifier]
         _bind_model_meta_table(model, meta_table)
         meta_tables.append(meta_table)
         meta_table_by_identifier[identifier] = meta_table
-        logger.info(
-            "Resolved registered markets MetaTable schema",
-            management_mode=management_mode,
-            model=model.__name__,
-            namespace=getattr(meta_table, "namespace", None),
-            identifier=identifier,
-            meta_table_uid=_meta_table_uid(meta_table),
-        )
+
+    logger.info(
+        "Resolved registered markets MetaTable schemas",
+        management_mode=management_mode,
+        namespace=namespace,
+        meta_table_count=len(meta_tables),
+        model_count=len(resolved_models),
+    )
 
     return MarketsMetaTableRegistrationResult(
         meta_tables=meta_tables,
@@ -381,15 +390,15 @@ def resolve_registered_markets_meta_tables(
     )
 
 
-def _registered_meta_table_filter_candidates(
-    model: type[MarketsBase],
+def _registered_meta_table_bulk_filter(
     *,
+    identifiers: Sequence[str],
     data_source_uid: str | None,
     management_mode: MarketsManagementMode,
     namespace: str | None,
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     base_filters: dict[str, Any] = {
-        "identifier": getattr(model, "__metatable_identifier__", model.__name__),
+        "identifier__in": sorted(dict.fromkeys(identifiers)),
         "management_mode": management_mode,
     }
     if namespace:
@@ -397,7 +406,7 @@ def _registered_meta_table_filter_candidates(
     if management_mode == "external_registered" and data_source_uid:
         base_filters["data_source__uid"] = data_source_uid
 
-    return [_clean_filters(base_filters)]
+    return _clean_filters(base_filters)
 
 
 def _clean_filters(filters: Mapping[str, Any]) -> dict[str, Any]:

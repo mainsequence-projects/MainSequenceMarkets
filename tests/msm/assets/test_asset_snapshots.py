@@ -26,7 +26,7 @@ def test_asset_snapshot_build_frame_validates_storage_index() -> None:
     frame = AssetSnapshot.build_frame(
         [
             {
-                "unique_identifier": "BBG000B9XRY4",
+                "asset_identifier": "BBG000B9XRY4",
                 "time_index": dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
                 "name": "APPLE INC",
                 "ticker": "AAPL",
@@ -38,7 +38,7 @@ def test_asset_snapshot_build_frame_validates_storage_index() -> None:
 
     assert list(frame.index.names) == list(AssetSnapshotsStorage.__index_names__)
     row = frame.reset_index().iloc[0]
-    assert row["unique_identifier"] == "BBG000B9XRY4"
+    assert row["asset_identifier"] == "BBG000B9XRY4"
     assert row["ticker"] == "AAPL"
     assert "venue_specific_properties" not in frame.reset_index().columns
     assert str(frame.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
@@ -53,7 +53,7 @@ def test_asset_snapshot_resolves_storage_first_surface() -> None:
     # Storage class is the single source of the snapshot column contract.
     assert [column.name for column in AssetSnapshotsStorage.__table__.columns] == [
         "time_index",
-        "unique_identifier",
+        "asset_identifier",
         "name",
         "ticker",
         "exchange_code",
@@ -69,7 +69,7 @@ def test_asset_pricing_detail_resolves_storage_first_surface() -> None:
     )
     assert [column.name for column in AssetPricingDetailsStorage.__table__.columns] == [
         "time_index",
-        "unique_identifier",
+        "asset_identifier",
         "instrument_dump",
     ]
 
@@ -78,27 +78,27 @@ def test_asset_snapshot_build_frame_is_easy_entrypoint() -> None:
     frame = AssetSnapshot.build_frame(
         {
             "time_index": "2026-05-25T00:00:00Z",
-            "unique_identifier": "example-asset-eth",
+            "asset_identifier": "example-asset-eth",
             "ticker": "ETH",
         },
     )
 
-    assert frame.index.get_level_values("unique_identifier").tolist() == ["example-asset-eth"]
+    assert frame.index.get_level_values("asset_identifier").tolist() == ["example-asset-eth"]
 
 
 def test_asset_snapshot_frame_rejects_blank_identifier() -> None:
-    with pytest.raises(ValueError, match="non-empty unique_identifier"):
+    with pytest.raises(ValueError, match="non-empty asset_identifier"):
         AssetSnapshot.build_frame(
             {
                 "time_index": "2026-05-25T00:00:00Z",
-                "unique_identifier": " ",
+                "asset_identifier": " ",
             }
         )
 
 
 def test_asset_snapshot_frame_requires_row_time_index() -> None:
     with pytest.raises(ValueError, match="per-row time_index"):
-        AssetSnapshot.build_frame({"unique_identifier": "BTC"})
+        AssetSnapshot.build_frame({"asset_identifier": "BTC"})
 
 
 def test_asset_snapshot_frame_rejects_duplicate_index_rows() -> None:
@@ -107,8 +107,8 @@ def test_asset_snapshot_frame_rejects_duplicate_index_rows() -> None:
     with pytest.raises(ValueError, match="duplicate rows"):
         AssetSnapshot.build_frame(
             [
-                {"time_index": time_index, "unique_identifier": "BTC"},
-                {"time_index": time_index, "unique_identifier": "BTC"},
+                {"time_index": time_index, "asset_identifier": "BTC"},
+                {"time_index": time_index, "asset_identifier": "BTC"},
             ],
         )
 
@@ -126,7 +126,7 @@ def test_openfigi_snapshot_builder_uses_generic_entrypoint() -> None:
     )
 
     row = frame.reset_index().iloc[0]
-    assert row["unique_identifier"] == "BBG000B9XRY4"
+    assert row["asset_identifier"] == "BBG000B9XRY4"
     assert row["ticker"] == "AAPL"
     assert "venue_specific_properties" not in frame.reset_index().columns
 
@@ -139,8 +139,8 @@ def test_asset_snapshot_set_snapshots_and_update() -> None:
     node.set_snapshots(
         {
             "time_index": dt.datetime(2026, 5, 25, tzinfo=dt.UTC),
-            "unique_identifier": "example-asset-btc",
+            "asset_identifier": "example-asset-btc",
             "ticker": "BTC",
         },
     )
-    assert list(node.update().index.names) == ["time_index", "unique_identifier"]
+    assert list(node.update().index.names) == ["time_index", "asset_identifier"]

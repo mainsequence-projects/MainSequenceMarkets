@@ -124,7 +124,7 @@ def build_asset_snapshot_frame_from_openfigi_result(
     return AssetSnapshot.build_frame(
         {
             "time_index": time_index,
-            "unique_identifier": unique_identifier,
+            "asset_identifier": unique_identifier,
             "name": normalized.get("name") or "",
             "ticker": normalized.get("ticker") or "",
             "exchange_code": normalized.get("exchange_code") or "",

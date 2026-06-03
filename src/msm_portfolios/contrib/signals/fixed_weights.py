@@ -5,6 +5,7 @@ from typing import Union
 import pandas as pd
 
 from msm_portfolios.data_nodes import (
+    ASSET_IDENTIFIER,
     SIGNAL_UID,
     SignalWeights,
 )
@@ -57,16 +58,16 @@ class FixedWeights(SignalWeights):
             dimension_filters={SIGNAL_UID: [self.signal_uid]}
         )
         if not existing_signal_rows.empty:
-            return pd.DataFrame(columns=["time_index", "unique_identifier", "signal_weight"])
+            return pd.DataFrame(columns=["time_index", ASSET_IDENTIFIER, "signal_weight"])
 
         df = pd.DataFrame([m.model_dump() for m in self.asset_unique_identifier_weights]).rename(
-            columns={"weight": "signal_weight"}
+            columns={"unique_identifier": ASSET_IDENTIFIER, "weight": "signal_weight"}
         )
-        df = df.set_index(["unique_identifier"])
+        df = df.set_index([ASSET_IDENTIFIER])
         # offset 1 day to avoid last filter
         signals_weights = pd.concat(
             [df], axis=0, keys=[SIGNAL_OFFSET_START + datetime.timedelta(days=1)]
-        ).rename_axis(["time_index", "unique_identifier"])
+        ).rename_axis(["time_index", ASSET_IDENTIFIER])
 
         signals_weights = signals_weights.dropna()
         return signals_weights

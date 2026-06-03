@@ -10,6 +10,7 @@ import pandas as pd
 
 from msm.data_nodes.storage import TargetPositionsStorage
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
 
 TARGET_POSITION_EXPOSURE_FIELDS = (
@@ -21,9 +22,10 @@ TARGET_POSITION_EXPOSURE_FIELDS = (
 
 def validate_target_position_payload(position: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(position)
-    unique_identifier = payload.get("unique_identifier")
-    if not isinstance(unique_identifier, str) or not unique_identifier.strip():
-        raise ValueError("Target positions require a non-empty unique_identifier.")
+    asset_identifier = payload.get("asset_identifier")
+    if not isinstance(asset_identifier, str) or not asset_identifier.strip():
+        raise ValueError("Target positions require a non-empty asset_identifier.")
+    payload[ASSET_IDENTIFIER_DIMENSION] = asset_identifier.strip()
 
     provided_fields = [
         field_name
@@ -51,7 +53,7 @@ def build_target_positions_frame(
         row = {
             "time_index": target_positions_date,
             "position_set_uid": position_set_uid,
-            "unique_identifier": payload["unique_identifier"],
+            ASSET_IDENTIFIER_DIMENSION: payload[ASSET_IDENTIFIER_DIMENSION],
             "weight_notional_exposure": payload.get("weight_notional_exposure"),
             "constant_notional_exposure": payload.get("constant_notional_exposure"),
             "single_asset_quantity": payload.get("single_asset_quantity"),
@@ -87,7 +89,7 @@ def validate_target_positions_frame(data_frame: pd.DataFrame) -> pd.DataFrame:
 
     flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True).astype("datetime64[ns, UTC]")
     flat["position_set_uid"] = flat["position_set_uid"].map(lambda value: str(UUID(str(value))))
-    flat["unique_identifier"] = flat["unique_identifier"].map(str)
+    flat[ASSET_IDENTIFIER_DIMENSION] = flat[ASSET_IDENTIFIER_DIMENSION].map(str)
     for field_name in TARGET_POSITION_EXPOSURE_FIELDS:
         flat[field_name] = _normalize_optional_float64_column(flat[field_name])
 

@@ -139,6 +139,13 @@ MetaTables:
           DataNode update logic                                  PlatformTimeIndexMetaData
 ```
 
+Storage dimensions use explicit names instead of reusing bare
+`unique_identifier`: `asset_identifier` for asset-keyed rows,
+`portfolio_identifier` for portfolio value rows, and
+`portfolio_index_identifier` for portfolio index publication rows. These
+columns still point to the corresponding MetaTable `unique_identifier` values
+where a source-table foreign key exists.
+
 See `examples/msm_portfolios/portfolio_equal_weights_example.py` for the
 end-to-end workflow that creates the portfolio `Index`, prepares
 `SignalWeights`, `PortfolioWeights`, and `PortfoliosDataNode`, and upserts the

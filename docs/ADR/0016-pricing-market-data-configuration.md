@@ -55,11 +55,11 @@ pricing, the built-in datasets are package-level concepts:
 ```text
 DiscountCurvesNode
   identifier: markets_data_node_identifier("DiscountCurvesTS")
-  rows:       (time_index, curve_unique_identifier)
+  rows:       (time_index, curve_identifier)
 
 FixingRatesNode
   identifier: markets_data_node_identifier("IndexFixingsTS")
-  rows:       (time_index, unique_identifier)
+  rows:       (time_index, index_identifier)
 ```
 
 Platform table UIDs are runtime-resolved objects, not stable static library

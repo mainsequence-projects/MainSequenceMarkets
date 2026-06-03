@@ -200,9 +200,9 @@ class Account(MarketsMetaTableRow):
         resolve_asset = asset_resolver or Asset.get_by_unique_identifier
         rows = []
         for _, position in flat.iterrows():
-            unique_identifier = position.get("unique_identifier")
+            unique_identifier = position.get("asset_identifier")
             if _is_missing(unique_identifier):
-                raise ValueError("Holdings positions require a unique_identifier column.")
+                raise ValueError("Holdings positions require an asset_identifier column.")
 
             asset = resolve_asset(str(unique_identifier))
             extra_details = _position_extra_details(position)

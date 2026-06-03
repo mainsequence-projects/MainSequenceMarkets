@@ -13,6 +13,10 @@ V1_RUNTIME_MODELS = [
     "IndexType",
     "Index",
     "AccountHoldingsStorage",
+    "AccountTargetPortfolio",
+    "PositionSet",
+    "TargetPositionsStorage",
+    "AssetSnapshotsStorage",
 ]
 _BOOTSTRAP_COMPLETE = False
 

@@ -18,7 +18,7 @@ from msm.data_nodes.assets import (
     AssetSnapshot,
 )
 from msm.data_nodes.assets.asset_indexed import (
-    ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+    ASSET_IDENTIFIER_DIMENSION,
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
 )
@@ -40,7 +40,7 @@ from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.models import AssetTable, markets_sqlalchemy_models
 from msm.models.registration import markets_foreign_key_target_identifiers
 from msm.settings import (
-    ASSET_UNIQUE_IDENTIFIER_DIMENSION as SETTINGS_ASSET_DIMENSION,
+    ASSET_IDENTIFIER_DIMENSION as SETTINGS_ASSET_DIMENSION,
 )
 from msm_pricing.data_nodes import AssetPricingDetail
 from msm_pricing.data_nodes.storage import AssetPricingDetailsStorage
@@ -48,7 +48,7 @@ from msm_pricing.meta_tables import pricing_sqlalchemy_models
 
 
 def test_asset_identity_dimension_is_shared_with_settings() -> None:
-    assert ASSET_UNIQUE_IDENTIFIER_DIMENSION == SETTINGS_ASSET_DIMENSION
+    assert ASSET_IDENTIFIER_DIMENSION == SETTINGS_ASSET_DIMENSION
     assert AssetIndexedDataNode.asset_identity_dimension == SETTINGS_ASSET_DIMENSION
 
 
@@ -167,8 +167,8 @@ def test_timestamped_storage_identifiers_use_camel_case_ts_suffix() -> None:
 )
 def test_timestamped_asset_nodes_bind_their_storage_class(node_cls, storage_cls) -> None:
     assert node_cls._required_storage_table() is storage_cls
-    assert storage_cls.__index_names__ == ["time_index", ASSET_UNIQUE_IDENTIFIER_DIMENSION]
-    assert ASSET_UNIQUE_IDENTIFIER_DIMENSION in {
+    assert storage_cls.__index_names__ == ["time_index", ASSET_IDENTIFIER_DIMENSION]
+    assert ASSET_IDENTIFIER_DIMENSION in {
         column.name for column in storage_cls.__table__.columns
     }
 
@@ -189,14 +189,14 @@ def test_timestamped_asset_nodes_validate_real_frames_as_datetime64_ns_utc(
             [
                 {
                     "time_index": "2026-05-26T00:00:00Z",
-                    ASSET_UNIQUE_IDENTIFIER_DIMENSION: "asset-1",
+                    ASSET_IDENTIFIER_DIMENSION: "asset-1",
                     **{
                         column.name: ""
                         for column in storage_cls.__table__.columns
                         if column.name
                         not in {
                             "time_index",
-                            ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+                            ASSET_IDENTIFIER_DIMENSION,
                             "instrument_dump",
                             "metadata",
                         }
@@ -218,7 +218,7 @@ def test_timestamped_asset_nodes_validate_real_frames_as_datetime64_ns_utc(
 @pytest.mark.parametrize("storage_cls", [AssetSnapshotsStorage, AssetPricingDetailsStorage])
 def test_timestamped_asset_storage_has_asset_foreign_key(storage_cls) -> None:
     asset_identifier = AssetTable.__metatable_identifier__
-    fk_column = storage_cls.__table__.columns[ASSET_UNIQUE_IDENTIFIER_DIMENSION]
+    fk_column = storage_cls.__table__.columns[ASSET_IDENTIFIER_DIMENSION]
 
     assert markets_foreign_key_target_identifiers(storage_cls) == [asset_identifier]
     assert any(
@@ -232,7 +232,7 @@ def test_timestamped_asset_storage_has_asset_foreign_key(storage_cls) -> None:
 def test_asset_indexed_node_normalizes_asset_scope_helpers() -> None:
     assert AssetSnapshot.validate_asset_list(["BTC", "ETH"]) == ["BTC", "ETH"]
     assert AssetSnapshot.asset_dimension_filters(["BTC", "ETH"]) == {
-        ASSET_UNIQUE_IDENTIFIER_DIMENSION: ["BTC", "ETH"]
+        ASSET_IDENTIFIER_DIMENSION: ["BTC", "ETH"]
     }
     assert AssetSnapshot.asset_dimension_filters(None) is None
 

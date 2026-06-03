@@ -10,6 +10,7 @@ from msm_portfolios.asset_scope import (
     asset_unique_identifier,
 )
 from msm_portfolios.data_nodes import (
+    ASSET_IDENTIFIER,
     SignalWeights,
 )
 from msm_portfolios.configuration import (
@@ -188,7 +189,7 @@ class MarketCap(SignalWeights):
 
         mc = self.historical_market_cap_ts.get_df_between_dates(
             dimension_range_map=[
-                {"coordinate": {"unique_identifier": uid}, **date_info}
+                {"coordinate": {ASSET_IDENTIFIER: uid}, **date_info}
                 for uid, date_info in market_cap_uid_range_map.items()
             ],
             great_or_equal=False,
@@ -197,13 +198,13 @@ class MarketCap(SignalWeights):
 
         if mc.shape[0] == 0:
             self.logger.info("No data in Market Cap historical market cap")
-            return pd.DataFrame(columns=["time_index", "unique_identifier", "signal_weight"])
+            return pd.DataFrame(columns=["time_index", ASSET_IDENTIFIER, "signal_weight"])
 
-        mc = mc.reset_index("unique_identifier")
-        mc["unique_identifier"] = mc["unique_identifier"].map(market_cap_uid_to_asset_uid)
-        mc = mc.set_index("unique_identifier", append=True)
+        mc = mc.reset_index(ASSET_IDENTIFIER)
+        mc[ASSET_IDENTIFIER] = mc[ASSET_IDENTIFIER].map(market_cap_uid_to_asset_uid)
+        mc = mc.set_index(ASSET_IDENTIFIER, append=True)
         # ends loop on unique identifier
-        unique_in_mc = mc.index.get_level_values("unique_identifier").unique().shape[0]
+        unique_in_mc = mc.index.get_level_values(ASSET_IDENTIFIER).unique().shape[0]
 
         if unique_in_mc != len(asset_list):
             self.logger.warning(
@@ -212,10 +213,10 @@ class MarketCap(SignalWeights):
 
         # If there is no market cap data, return an empty DataFrame.
         if mc.shape[0] == 0:
-            return pd.DataFrame(columns=["time_index", "unique_identifier", "signal_weight"])
+            return pd.DataFrame(columns=["time_index", ASSET_IDENTIFIER, "signal_weight"])
 
         # 3. Pivot the market cap data to get a DataFrame with a datetime index and one column per asset.
-        mc_raw = mc.pivot_table(columns="unique_identifier", index="time_index")
+        mc_raw = mc.pivot_table(columns=ASSET_IDENTIFIER, index="time_index")
         mc_raw = mc_raw.ffill().bfill()
 
         # 4. Using the prices dataframe, compute a rolling statistic on volume.

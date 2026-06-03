@@ -21,6 +21,7 @@ from sqlalchemy.types import Uuid
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.accounts import AccountTable, PositionSetTable
 from msm.models.assets.core import AssetTable
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
 
 def _execution_info(column_name: str) -> dict[str, str]:
@@ -40,7 +41,7 @@ class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__: ClassVar[str] = "AssetSnapshotsTS"
     __metatable_description__ = (
         "Timestamped asset display-fact storage keyed by (time_index, "
-        "unique_identifier). Used by the AssetSnapshot DataNode to publish "
+        "asset_identifier). Used by the AssetSnapshot DataNode to publish "
         "historical asset names, tickers, exchange codes, and share-class grouping "
         "without widening AssetTable."
     )
@@ -48,14 +49,14 @@ class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "storage_name": "AssetSnapshotsTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
-    __index_names__: ClassVar[list[str]] = ["time_index", "unique_identifier"]
+    __index_names__: ClassVar[list[str]] = ["time_index", ASSET_IDENTIFIER_DIMENSION]
 
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         info={"label": "Time Index", "description": "UTC timestamp for the asset fact row."},
     )
-    unique_identifier: Mapped[str] = mapped_column(
+    asset_identifier: Mapped[str] = mapped_column(
         String(255),
         MetaTableForeignKey(
             AssetTable,
@@ -64,7 +65,7 @@ class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         ),
         nullable=False,
         info={
-            "label": "Unique Identifier",
+            "label": "Asset Identifier",
             "description": "Asset unique identifier from the Asset MetaTable.",
         },
     )
@@ -105,14 +106,18 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__: ClassVar[str] = "AccountHoldingsTS"
     __metatable_description__ = (
         "Timestamped account holdings storage keyed by (time_index, account_uid, "
-        "unique_identifier). Each row is one asset position in an account holdings "
+        "asset_identifier). Each row is one asset position in an account holdings "
         "observation, with optional trade-snapshot and provider metadata fields."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "AccountHoldingsTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
-    __index_names__: ClassVar[list[str]] = ["time_index", "account_uid", "unique_identifier"]
+    __index_names__: ClassVar[list[str]] = [
+        "time_index",
+        "account_uid",
+        ASSET_IDENTIFIER_DIMENSION,
+    ]
 
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -141,7 +146,7 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             ),
         },
     )
-    unique_identifier: Mapped[str] = mapped_column(
+    asset_identifier: Mapped[str] = mapped_column(
         String(255),
         MetaTableForeignKey(
             AssetTable,
@@ -150,7 +155,7 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         ),
         nullable=False,
         info={
-            "label": "Unique Identifier",
+            "label": "Asset Identifier",
             "description": "Asset unique identifier for the held instrument at this account timestamp.",
         },
     )
@@ -204,14 +209,18 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__: ClassVar[str] = "TargetPositionsTS"
     __metatable_description__ = (
         "Reusable target-position storage keyed by (time_index, position_set_uid, "
-        "unique_identifier). Each row stores one target exposure instruction that "
+        "asset_identifier). Each row stores one target exposure instruction that "
         "belongs to a PositionSetTable row for an account target portfolio."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "TargetPositionsTS",
     }
     __time_index_name__: ClassVar[str] = "time_index"
-    __index_names__: ClassVar[list[str]] = ["time_index", "position_set_uid", "unique_identifier"]
+    __index_names__: ClassVar[list[str]] = [
+        "time_index",
+        "position_set_uid",
+        ASSET_IDENTIFIER_DIMENSION,
+    ]
 
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -236,7 +245,7 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             ),
         },
     )
-    unique_identifier: Mapped[str] = mapped_column(
+    asset_identifier: Mapped[str] = mapped_column(
         String,
         MetaTableForeignKey(
             AssetTable,
@@ -245,7 +254,7 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         ),
         nullable=False,
         info={
-            "label": "Unique Identifier",
+            "label": "Asset Identifier",
             "description": "AssetTable.unique_identifier for the target exposure row.",
         },
     )
@@ -281,8 +290,8 @@ class OrdersStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__: ClassVar[str] = "OrdersTS"
     __metatable_description__ = (
         "Timestamped execution-order storage keyed by order_time, "
-        "order_unique_identifier, account_unique_identifier, and "
-        "asset_unique_identifier. Used by execution DataNodes to persist broker or "
+        "order_identifier, account_identifier, and "
+        "asset_identifier. Used by execution DataNodes to persist broker or "
         "venue order state over time."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
@@ -291,28 +300,28 @@ class OrdersStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __time_index_name__: ClassVar[str] = "order_time"
     __index_names__: ClassVar[list[str]] = [
         "order_time",
-        "order_unique_identifier",
-        "account_unique_identifier",
-        "asset_unique_identifier",
+        "order_identifier",
+        "account_identifier",
+        "asset_identifier",
     ]
 
     order_time: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, info=_execution_info("order_time")
     )
-    order_unique_identifier: Mapped[str] = mapped_column(
-        String, nullable=False, info=_execution_info("order_unique_identifier")
+    order_identifier: Mapped[str] = mapped_column(
+        String, nullable=False, info=_execution_info("order_identifier")
     )
-    account_unique_identifier: Mapped[str] = mapped_column(
-        String, nullable=False, info=_execution_info("account_unique_identifier")
+    account_identifier: Mapped[str] = mapped_column(
+        String, nullable=False, info=_execution_info("account_identifier")
     )
-    fund_unique_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("fund_unique_identifier")
+    fund_identifier: Mapped[str | None] = mapped_column(
+        String, nullable=True, info=_execution_info("fund_identifier")
     )
-    order_manager_unique_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("order_manager_unique_identifier")
+    order_manager_identifier: Mapped[str | None] = mapped_column(
+        String, nullable=True, info=_execution_info("order_manager_identifier")
     )
-    asset_unique_identifier: Mapped[str] = mapped_column(
-        String, nullable=False, info=_execution_info("asset_unique_identifier")
+    asset_identifier: Mapped[str] = mapped_column(
+        String, nullable=False, info=_execution_info("asset_identifier")
     )
     order_remote_id: Mapped[str | None] = mapped_column(
         String, nullable=True, info=_execution_info("order_remote_id")
@@ -361,20 +370,20 @@ class OrderEventsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__: ClassVar[str] = "OrderEventsTS"
     __metatable_description__ = (
         "Timestamped order-event storage keyed by (event_time, "
-        "order_unique_identifier). Used by execution DataNodes to persist status "
+        "order_identifier). Used by execution DataNodes to persist status "
         "transitions and event metadata for previously published orders."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "OrderEventsTS",
     }
     __time_index_name__: ClassVar[str] = "event_time"
-    __index_names__: ClassVar[list[str]] = ["event_time", "order_unique_identifier"]
+    __index_names__: ClassVar[list[str]] = ["event_time", "order_identifier"]
 
     event_time: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, info=_execution_info("event_time")
     )
-    order_unique_identifier: Mapped[str] = mapped_column(
-        String, nullable=False, info=_execution_info("order_unique_identifier")
+    order_identifier: Mapped[str] = mapped_column(
+        String, nullable=False, info=_execution_info("order_identifier")
     )
     order_status: Mapped[str | None] = mapped_column(
         String, nullable=True, info=_execution_info("order_status")
@@ -390,8 +399,8 @@ class TradesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__: ClassVar[str] = "TradesTS"
     __metatable_description__ = (
         "Timestamped trade-execution storage keyed by trade_time, "
-        "trade_unique_identifier, account_unique_identifier, and "
-        "asset_unique_identifier. Used by execution DataNodes to persist fills, "
+        "trade_identifier, account_identifier, and "
+        "asset_identifier. Used by execution DataNodes to persist fills, "
         "prices, commissions, and settlement facts."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
@@ -400,28 +409,28 @@ class TradesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __time_index_name__: ClassVar[str] = "trade_time"
     __index_names__: ClassVar[list[str]] = [
         "trade_time",
-        "trade_unique_identifier",
-        "account_unique_identifier",
-        "asset_unique_identifier",
+        "trade_identifier",
+        "account_identifier",
+        "asset_identifier",
     ]
 
     trade_time: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, info=_execution_info("trade_time")
     )
-    trade_unique_identifier: Mapped[str] = mapped_column(
-        String, nullable=False, info=_execution_info("trade_unique_identifier")
+    trade_identifier: Mapped[str] = mapped_column(
+        String, nullable=False, info=_execution_info("trade_identifier")
     )
-    account_unique_identifier: Mapped[str] = mapped_column(
-        String, nullable=False, info=_execution_info("account_unique_identifier")
+    account_identifier: Mapped[str] = mapped_column(
+        String, nullable=False, info=_execution_info("account_identifier")
     )
-    fund_unique_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("fund_unique_identifier")
+    fund_identifier: Mapped[str | None] = mapped_column(
+        String, nullable=True, info=_execution_info("fund_identifier")
     )
-    order_unique_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("order_unique_identifier")
+    order_identifier: Mapped[str | None] = mapped_column(
+        String, nullable=True, info=_execution_info("order_identifier")
     )
-    asset_unique_identifier: Mapped[str] = mapped_column(
-        String, nullable=False, info=_execution_info("asset_unique_identifier")
+    asset_identifier: Mapped[str] = mapped_column(
+        String, nullable=False, info=_execution_info("asset_identifier")
     )
     trade_side: Mapped[int | None] = mapped_column(
         BigInteger, nullable=True, info=_execution_info("trade_side")
@@ -433,14 +442,14 @@ class TradesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     commission: Mapped[float | None] = mapped_column(
         Float, nullable=True, info=_execution_info("commission")
     )
-    commission_asset_unique_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("commission_asset_unique_identifier")
+    commission_asset_identifier: Mapped[str | None] = mapped_column(
+        String, nullable=True, info=_execution_info("commission_asset_identifier")
     )
     settlement_cost: Mapped[float | None] = mapped_column(
         Float, nullable=True, info=_execution_info("settlement_cost")
     )
-    settlement_asset_unique_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("settlement_asset_unique_identifier")
+    settlement_asset_identifier: Mapped[str | None] = mapped_column(
+        String, nullable=True, info=_execution_info("settlement_asset_identifier")
     )
     comments: Mapped[str | None] = mapped_column(
         String, nullable=True, info=_execution_info("comments")

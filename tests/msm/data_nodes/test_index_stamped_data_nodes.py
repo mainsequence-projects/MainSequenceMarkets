@@ -20,7 +20,7 @@ from msm.data_nodes.indices import (
 from msm.data_nodes.utils.stamped import StampedDataNodeConfiguration
 from msm.models import IndexTable
 from msm.models.registration import markets_foreign_key_target_identifiers
-from msm.settings import INDEX_UNIQUE_IDENTIFIER_DIMENSION
+from msm.settings import INDEX_IDENTIFIER_DIMENSION
 from msm_pricing.data_nodes.index_fixings import FixingRatesNode
 from msm_pricing.data_nodes.storage import IndexFixingsStorage
 from msm_pricing.meta_tables import pricing_sqlalchemy_models
@@ -41,7 +41,7 @@ def test_index_data_node_configuration_is_stamped() -> None:
 
     assert isinstance(config, StampedDataNodeConfiguration)
     assert isinstance(config, IndexDataNodeConfiguration)
-    assert config.reference_dimension == INDEX_UNIQUE_IDENTIFIER_DIMENSION
+    assert config.reference_dimension == INDEX_IDENTIFIER_DIMENSION
     # Storage-first: schema/identity/FK fields no longer live on the config.
     assert "records" not in IndexDataNodeConfiguration.model_fields
     assert "node_metadata" not in IndexDataNodeConfiguration.model_fields
@@ -52,13 +52,13 @@ def test_index_node_resolves_storage_table_and_index_contract() -> None:
     storage_table = ExampleIndexFact._required_storage_table()
 
     assert storage_table is IndexFixingsStorage
-    assert storage_table.__index_names__ == ["time_index", INDEX_UNIQUE_IDENTIFIER_DIMENSION]
+    assert storage_table.__index_names__ == ["time_index", INDEX_IDENTIFIER_DIMENSION]
     assert storage_table.__time_index_name__ == "time_index"
 
 
 def test_index_node_storage_has_index_foreign_key() -> None:
     index_identifier = IndexTable.__metatable_identifier__
-    fk_column = IndexFixingsStorage.__table__.columns[INDEX_UNIQUE_IDENTIFIER_DIMENSION]
+    fk_column = IndexFixingsStorage.__table__.columns[INDEX_IDENTIFIER_DIMENSION]
 
     assert markets_foreign_key_target_identifiers(IndexFixingsStorage) == [index_identifier]
     assert any(
@@ -81,16 +81,16 @@ def test_index_node_validate_frame_normalizes_datetime64_ns_utc() -> None:
             [
                 {
                     "time_index": dt.datetime(2026, 5, 26, 18, 50, 19, 240235, tzinfo=dt.UTC),
-                    "unique_identifier": "SPX",
+                    "index_identifier": "SPX",
                     "rate": 5340.26,
                 }
             ]
         )
     )
 
-    assert list(frame.index.names) == ["time_index", INDEX_UNIQUE_IDENTIFIER_DIMENSION]
+    assert list(frame.index.names) == ["time_index", INDEX_IDENTIFIER_DIMENSION]
     assert str(frame.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
-    assert frame.reset_index()["unique_identifier"].iloc[0] == "SPX"
+    assert frame.reset_index()["index_identifier"].iloc[0] == "SPX"
 
 
 def test_index_node_validate_frame_rejects_duplicate_keys() -> None:
@@ -100,8 +100,8 @@ def test_index_node_validate_frame_rejects_duplicate_keys() -> None:
         ExampleIndexFact.validate_frame(
             pd.DataFrame(
                 [
-                    {"time_index": time_index, "unique_identifier": "SPX", "rate": 5340.26},
-                    {"time_index": time_index, "unique_identifier": "SPX", "rate": 5340.27},
+                    {"time_index": time_index, "index_identifier": "SPX", "rate": 5340.26},
+                    {"time_index": time_index, "index_identifier": "SPX", "rate": 5340.27},
                 ]
             )
         )

@@ -17,7 +17,7 @@ from mainsequence.client.utils import DataFrequency
 from msm.data_nodes.indices import IndexDataNodeConfiguration, IndexTimestampedDataNode
 from msm.models import IndexTable
 from msm.models.registration import markets_foreign_key_target_identifiers
-from msm.settings import INDEX_UNIQUE_IDENTIFIER_DIMENSION
+from msm.settings import INDEX_IDENTIFIER_DIMENSION
 from msm_pricing.data_nodes.index_fixings import (
     FixingRatesNode,
     IndexFixingConfiguration,
@@ -49,20 +49,20 @@ def test_fixing_rates_node_resolves_index_storage_first_surface() -> None:
     assert issubclass(FixingRatesNode, IndexTimestampedDataNode)
     assert storage_table is IndexFixingsStorage
     assert storage_table.metatable_identifier() == "IndexFixingsTS"
-    assert storage_table.__index_names__ == ["time_index", INDEX_UNIQUE_IDENTIFIER_DIMENSION]
+    assert storage_table.__index_names__ == ["time_index", INDEX_IDENTIFIER_DIMENSION]
     assert "__data_node_identifier__" not in FixingRatesNode.__dict__
     assert FixingRatesNode._default_identifier() == storage_table.metatable_identifier()
     assert FixingRatesNode._default_description() == storage_table.__metatable_description__
     assert {column.name for column in storage_table.__table__.columns} == {
         "time_index",
-        INDEX_UNIQUE_IDENTIFIER_DIMENSION,
+        INDEX_IDENTIFIER_DIMENSION,
         "rate",
     }
 
 
 def test_index_fixings_storage_has_index_foreign_key() -> None:
     index_identifier = IndexTable.__metatable_identifier__
-    fk_column = IndexFixingsStorage.__table__.columns[INDEX_UNIQUE_IDENTIFIER_DIMENSION]
+    fk_column = IndexFixingsStorage.__table__.columns[INDEX_IDENTIFIER_DIMENSION]
 
     assert markets_foreign_key_target_identifiers(IndexFixingsStorage) == [index_identifier]
     assert any(
@@ -85,33 +85,47 @@ def test_fixing_rates_node_validate_frame_uses_index_unique_identifier() -> None
             [
                 {
                     "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
-                    "unique_identifier": "SOFR",
+                    "index_identifier": "SOFR",
                     "rate": 0.0525,
                 }
             ]
         )
     )
 
-    assert list(frame.index.names) == ["time_index", INDEX_UNIQUE_IDENTIFIER_DIMENSION]
-    assert frame.reset_index()[INDEX_UNIQUE_IDENTIFIER_DIMENSION].tolist() == ["SOFR"]
+    assert list(frame.index.names) == ["time_index", INDEX_IDENTIFIER_DIMENSION]
+    assert frame.reset_index()[INDEX_IDENTIFIER_DIMENSION].tolist() == ["SOFR"]
     assert frame.reset_index()["rate"].tolist() == [0.0525]
 
 
-def test_fixing_rates_node_normalizes_legacy_index_uid_builder_frame() -> None:
+def test_fixing_rates_node_normalizes_index_identifier_builder_frame() -> None:
     normalized = FixingRatesNode._normalize_builder_frame(
         pd.DataFrame(
             [
                 {
                     "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
-                    "index_uid": "SOFR",
+                    "index_identifier": "SOFR",
                     "rate": 0.0525,
                 }
             ]
-        ).set_index(["time_index", "index_uid"])
+        ).set_index(["time_index", "index_identifier"])
     )
 
-    assert "index_uid" not in normalized.columns
-    assert normalized[INDEX_UNIQUE_IDENTIFIER_DIMENSION].tolist() == ["SOFR"]
+    assert normalized[INDEX_IDENTIFIER_DIMENSION].tolist() == ["SOFR"]
+
+
+def test_fixing_rates_node_rejects_stale_builder_identity_names() -> None:
+    with pytest.raises(ValueError, match="index_identifier"):
+        FixingRatesNode._normalize_builder_frame(
+            pd.DataFrame(
+                [
+                    {
+                        "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+                        "unique_identifier": "SOFR",
+                        "rate": 0.0525,
+                    }
+                ]
+            )
+        )
 
 
 @pytest.mark.skip(reason="requires platform backend (Stage 5 registration)")

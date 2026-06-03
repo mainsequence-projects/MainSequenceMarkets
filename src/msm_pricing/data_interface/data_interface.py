@@ -7,7 +7,7 @@ from typing import Any, Callable, TypedDict
 import pandas as pd
 from cachetools import LRUCache, cachedmethod
 
-from msm.settings import INDEX_UNIQUE_IDENTIFIER_DIMENSION
+from msm.settings import INDEX_IDENTIFIER_DIMENSION
 from msm_pricing.config import (
     PricingMarketDataConfiguration,
     get_pricing_market_data_configuration,
@@ -15,7 +15,7 @@ from msm_pricing.config import (
 from msm_pricing.data_nodes.curve_codec import (
     decompress_string_to_curve as _decompress_string_to_curve,
 )
-from msm_pricing.data_nodes.curves import CURVE_UNIQUE_IDENTIFIER_DIMENSION
+from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
@@ -166,7 +166,7 @@ class MSDataInterface:
 
         curve = data_node.get_df_between_dates(
             dimension_range_map=dimension_range_for_identity(
-                identity_dimension=CURVE_UNIQUE_IDENTIFIER_DIMENSION,
+                identity_dimension=CURVE_IDENTIFIER,
                 identity=curve_name,
                 date_info={
                     "start_date": target_date,
@@ -217,7 +217,7 @@ class MSDataInterface:
 
         fixings_df = data_node.get_df_between_dates(
             dimension_range_map=dimension_range_for_identity(
-                identity_dimension=INDEX_UNIQUE_IDENTIFIER_DIMENSION,
+                identity_dimension=INDEX_IDENTIFIER_DIMENSION,
                 identity=reference_rate_uid,
                 date_info={
                     "start_date": start_date,
@@ -235,7 +235,7 @@ class MSDataInterface:
                 logger.warning("Fixings are using last observation and filled forward")
                 fixings_df = data_node.get_df_between_dates(
                     dimension_range_map=dimension_range_for_identity(
-                        identity_dimension=INDEX_UNIQUE_IDENTIFIER_DIMENSION,
+                        identity_dimension=INDEX_IDENTIFIER_DIMENSION,
                         identity=reference_rate_uid,
                         date_info={
                             "start_date": datetime.datetime(1900, 1, 1, tzinfo=pytz.utc),

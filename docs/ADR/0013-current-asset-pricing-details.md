@@ -20,7 +20,7 @@ and an as-of timestamp for those terms. The relevant documented fields are:
 - `pricing_details_date`
 
 Local `ms-markets` already has a timestamped `AssetPricingDetail` DataNode keyed
-by `(time_index, unique_identifier)`, but it currently lives under
+by `(time_index, asset_identifier)`, but it currently lives under
 `src/msm/data_nodes/assets/snapshots.py`. That placement is wrong for the new ownership
 boundary. Pricing details are not generic asset snapshots; they are pricing
 runtime inputs and should move into `msm_pricing`.
@@ -147,7 +147,7 @@ src/msm_pricing/data_nodes/pricing_details.py
 ```
 
 The DataNode keeps its existing dataset meaning: timestamped pricing metadata
-keyed by `(time_index, unique_identifier)`. It remains distinct from the current
+keyed by `(time_index, asset_identifier)`. It remains distinct from the current
 pricing details MetaTable:
 
 - `AssetCurrentPricingDetailsTable` stores one current priceable definition per
@@ -442,9 +442,9 @@ The target curve DataNode contract is:
 
 ```text
 DiscountCurves DataNode
-  index:   (time_index, curve_unique_identifier)
+  index:   (time_index, curve_identifier)
   columns: curve
-  FK:      curve_unique_identifier -> CurveTable.unique_identifier
+  FK:      curve_identifier -> CurveTable.unique_identifier
 ```
 
 The curve DataNode should reference `CurveTable` by curve unique identifier
@@ -453,9 +453,9 @@ instead of pretending curves are assets:
 ```text
 +-----------------------------+        observations keyed by      +-----------------------------+
 | CurveTable                  |<--------------------------------| DiscountCurves DataNode     |
-|-----------------------------|        curve_unique_identifier   |-----------------------------|
+|-----------------------------|        curve_identifier          |-----------------------------|
 | uid                  PK     |                                  | time_index                  |
-| unique_identifier    unique |                                  | curve_unique_identifier     |
+| unique_identifier    unique |                                  | curve_identifier            |
 | curve_type                  |                                  | curve                       |
 | index_uid            FK     |                                  +-----------------------------+
 +-----------------------------+
@@ -464,7 +464,7 @@ instead of pretending curves are assets:
 The DataNode migration should preserve the published curve data meaning:
 
 - `time_index` remains the observation date or effective curve date.
-- `curve_unique_identifier` identifies the curve series, not an asset.
+- `curve_identifier` identifies the curve series, not an asset.
 - `curve` remains the serialized curve points payload until a separate decision
   normalizes curve nodes into point-level rows.
 - The DataNode should declare a source-table foreign key to
@@ -551,7 +551,7 @@ The runtime reconstruction path should be:
 +-----------------------------+
 | DiscountCurves DataNode     |
 |-----------------------------|
-| curve_unique_identifier     |
+| curve_identifier            |
 | curve                       |
 +--------------+--------------+
                |
@@ -678,7 +678,7 @@ Index fixings are index facts, not assets and not a separate `Rate` model.
 Pricing keeps a `FixingRatesNode` helper because pricing needs a direct hook for
 hydrating QuantLib indexes from stored fixings, but that helper extends
 `IndexTimestampedDataNode` and stores rows keyed by
-`(time_index, unique_identifier)` where `unique_identifier` references
+`(time_index, index_identifier)` where `index_identifier` references
 `IndexTable.unique_identifier`. The fixing node configuration owns a hashable
 `frequency` field so datasets with different observation frequencies produce
 different DataNode identities.
@@ -832,8 +832,8 @@ table prematurely.
 - [x] Migrate the discount-curves DataNode contract so curve observations are
   keyed to `CurveTable.unique_identifier` rather than to `AssetTable` identity.
 - [x] Add a curve DataNode table contract with index
-  `(time_index, curve_unique_identifier)`, a `curve` payload column, and a
-  source-table foreign key from `curve_unique_identifier` to
+  `(time_index, curve_identifier)`, a `curve` payload column, and a
+  source-table foreign key from `curve_identifier` to
   `CurveTable.unique_identifier`.
 - [x] Stop inheriting new curve DataNode code from `AssetIndexedDataNode`; use a
   curve-specific DataNode base or a normal `DataNode` with an explicit

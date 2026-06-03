@@ -12,7 +12,6 @@ from msm.data_nodes.indices import (
     IndexDataNodeConfiguration,
     IndexTimestampedDataNode,
 )
-from msm.settings import INDEX_UNIQUE_IDENTIFIER_DIMENSION
 
 from .storage import IndexFixingsStorage
 
@@ -24,7 +23,7 @@ class IndexFixingBuilder(Protocol):
         self,
         *,
         update_statistics,
-        unique_identifier: str,
+        index_identifier: str,
     ) -> pd.DataFrame: ...
 
 
@@ -111,10 +110,10 @@ class FixingRatesNode(IndexTimestampedDataNode):
 
     def update(self) -> pd.DataFrame:
         frames = []
-        for unique_identifier in self.index_unique_identifiers():
+        for index_identifier in self.index_unique_identifiers():
             frame = self.build_fixing_frame(
                 update_statistics=self.update_statistics,
-                unique_identifier=unique_identifier,
+                index_identifier=index_identifier,
             )
             if not frame.empty:
                 frames.append(frame)
@@ -133,10 +132,10 @@ class FixingRatesNode(IndexTimestampedDataNode):
         self,
         *,
         update_statistics,
-        unique_identifier: str,
+        index_identifier: str,
     ) -> pd.DataFrame:
         try:
-            builder = self.fixing_builders[unique_identifier]
+            builder = self.fixing_builders[index_identifier]
         except KeyError as exc:
             raise NotImplementedError(
                 "FixingRatesNode requires fixing_builders keyed by IndexTable "
@@ -144,28 +143,19 @@ class FixingRatesNode(IndexTimestampedDataNode):
             ) from exc
         return builder(
             update_statistics=update_statistics,
-            unique_identifier=unique_identifier,
+            index_identifier=index_identifier,
         )
 
     @staticmethod
     def _normalize_builder_frame(frame: pd.DataFrame) -> pd.DataFrame:
         normalized = frame.copy()
-        if normalized.index.name == "index_uid":
-            normalized.index.name = INDEX_UNIQUE_IDENTIFIER_DIMENSION
-        if isinstance(normalized.index, pd.MultiIndex):
-            normalized.index = normalized.index.set_names(
-                [
-                    INDEX_UNIQUE_IDENTIFIER_DIMENSION if name == "index_uid" else name
-                    for name in normalized.index.names
-                ]
-            )
-
         normalized = normalized.reset_index()
-        if (
-            "index_uid" in normalized.columns
-            and INDEX_UNIQUE_IDENTIFIER_DIMENSION not in normalized.columns
-        ):
-            normalized = normalized.rename(columns={"index_uid": INDEX_UNIQUE_IDENTIFIER_DIMENSION})
+        stale_columns = {"index_uid", "unique_identifier"}.intersection(normalized.columns)
+        if stale_columns:
+            raise ValueError(
+                "Index fixing builder frames must use index_identifier, not "
+                f"{sorted(stale_columns)!r}."
+            )
         return normalized
 
 

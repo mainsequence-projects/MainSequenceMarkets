@@ -24,6 +24,7 @@ from .base import (
     _reset_frame_index,
 )
 from .constants import (
+    ASSET_IDENTIFIER,
     SIGNAL_UID,
     SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS,
 )
@@ -217,7 +218,7 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
         weights = self._normalize_signal_weights_time_index(weights)
         weights_pivot = (
             weights.reset_index()
-            .pivot(index="time_index", columns=["unique_identifier"], values="signal_weight")
+            .pivot(index="time_index", columns=[ASSET_IDENTIFIER], values="signal_weight")
             .fillna(0)
         )
         weights_pivot["last_weights"] = weights_pivot.index.get_level_values(level="time_index")

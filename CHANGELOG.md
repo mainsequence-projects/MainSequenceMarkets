@@ -9,6 +9,13 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Renamed non-unique DataNode storage identity dimensions to explicit
+  identifiers so migration diffs match the real row grain:
+  `asset_identifier`, `index_identifier`, `curve_identifier`,
+  `portfolio_identifier`, `portfolio_index_identifier`, and execution
+  `*_identifier` columns. MetaTable business keys such as
+  `AssetTable.unique_identifier`, `IndexTable.unique_identifier`, and
+  `CurveTable.unique_identifier` remain the foreign-key targets.
 - Removed the local `msm migrations` command group and the old
   `msm.maintenance.migrations` runner. MetaTable schema migration now uses the
   SDK CLI with `--provider msm.migrations:migration`.
@@ -52,21 +59,27 @@ and this project follows versioned releases.
 - Removed holdings time-index and index-name constants that duplicated storage
   MetaTable declarations.
 - Added storage-level foreign keys from account and fund holdings
-  `unique_identifier` columns to `AssetTable.unique_identifier`.
+  `asset_identifier` columns to `AssetTable.unique_identifier`.
 - Replaced the old account target-position assignment table with
   `AccountTargetPortfolioTable` and `PositionSetTable`; target-position storage
   now references `PositionSetTable.uid`, so account target intent and concrete
   position snapshots are modeled separately.
-- Added storage-level foreign keys from target-position `unique_identifier`
+- Added storage-level foreign keys from target-position `asset_identifier`
   rows to `AssetTable.unique_identifier`, and added column-level descriptions
   to account MetaTables.
 - Added inline SQLAlchemy `mapped_column(info={...})` labels and descriptions
   across built-in markets, pricing, maintenance, and DataNode storage
   MetaTables, with regression coverage to prevent undocumented columns.
+- Added regression coverage that `AssetTable.unique_identifier` remains a
+  schema-level unique asset business identifier for upserts, lookups, and
+  asset-indexed DataNode joins.
 - Added a packaged ms-markets account workflow agent skill covering
   `Account`, `AccountGroup`, `AccountModelPortfolio`, `AccountTargetPortfolio`,
   `PositionSet`, holdings publication, target positions, and account
   pretty-printing.
+- Expanded the account workflow example to register two crypto assets, publish
+  `AssetSnapshot` ticker/name metadata, insert two-asset target-position rows,
+  and insert two-asset account holdings.
 - Moved virtual-fund documentation out of the accounts knowledge page into
   `docs/knowledge/msm_portfolios/virtualfunds/`, with its own FundTable and
   `VirtualFundHoldings` diagrams.
@@ -81,8 +94,8 @@ and this project follows versioned releases.
   back to `Portfolio`.
 - Added ADR 0021 for the planned virtual-fund allocation contract: account and
   virtual-fund holdings use positive quantities plus `direction`, virtual-fund
-  holdings allocate from account holdings sets, and virtual funds can expose a
-  one-to-one `VirtualFundAsset` proxy for account-facing systems.
+  holdings allocate from account holdings sets, and virtual funds are
+  account-owned allocation views rather than synthetic `Asset` rows.
 - Simplified `PortfolioTable`: removed portfolio construction booleans,
   `stats_json`, `metadata_json`, portfolio asset-detail rows, and synthetic
   asset linkage. Portfolios now optionally link to a core `IndexTable` row

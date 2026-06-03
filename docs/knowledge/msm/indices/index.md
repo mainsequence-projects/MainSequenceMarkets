@@ -140,9 +140,9 @@ An index-stamped table should use this shape:
 ```text
 +-----------------------------+      source-table FK       +-----------------------------+
 | IndexTimestampedDataNode   |--------------------------->| IndexTable                  |
-|-----------------------------| unique_identifier          |-----------------------------|
+|-----------------------------| index_identifier           |-----------------------------|
 | time_index           index  |                            | unique_identifier unique    |
-| unique_identifier    index  |                            | display_name                |
+| index_identifier     index  |                            | display_name                |
 | value columns               |                            | provider                    |
 +-----------------------------+                            +-----------------------------+
 ```
@@ -150,10 +150,10 @@ An index-stamped table should use this shape:
 DataNode classes should inherit `IndexTimestampedDataNode` and use a registered
 `PlatformTimeIndexMetaData` storage class through `_required_storage_table()`.
 That storage class declares the output schema and the canonical
-`IndexTable.unique_identifier` foreign key. The shared stamped base validates
-required columns against the storage contract, normalizes timestamps to
-`datetime64[ns, UTC]`, sets the
-`["time_index", "unique_identifier"]` MultiIndex, rejects duplicate keys, and
+`index_identifier -> IndexTable.unique_identifier` foreign key. The shared
+stamped base validates required columns against the storage contract, normalizes
+timestamps to `datetime64[ns, UTC]`, sets the
+`["time_index", "index_identifier"]` MultiIndex, rejects duplicate keys, and
 uses the active markets namespace for default DataNode identifiers and
 `hash_namespace`.
 

@@ -273,6 +273,14 @@ def test_asset_model_does_not_store_arbitrary_metadata_json() -> None:
     assert "metadata_json" not in AssetTable.__table__.c
 
 
+def test_asset_unique_identifier_is_declared_unique() -> None:
+    assert "unique_identifier" in AssetTable.__table__.c
+    assert any(
+        index.unique and [column.name for column in index.columns] == ["unique_identifier"]
+        for index in AssetTable.__table__.indexes
+    )
+
+
 def test_asset_type_model_is_registry_table() -> None:
     assert AssetTypeTable.__markets_base_identifier__ == "AssetType"
     assert AssetTypeTable.__metatable_identifier__ == "AssetType"
@@ -737,7 +745,7 @@ def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monk
         calls.append(kwargs)
         return [meta_table]
 
-    monkeypatch.setattr(meta_tables.MetaTable, "filter", fake_filter)
+    monkeypatch.setattr(meta_tables.MetaTable, "filter", staticmethod(fake_filter))
 
     result = meta_tables.resolve_registered_markets_meta_tables(
         data_source_uid="data-source-uid",
@@ -750,7 +758,7 @@ def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monk
     assert calls == [
         {
             "timeout": None,
-            "identifier": "FakeModel",
+            "identifier__in": ["FakeModel"],
             "management_mode": "platform_managed",
         }
     ]
@@ -764,7 +772,7 @@ def test_resolve_registered_markets_meta_tables_rejects_missing_table(monkeypatc
 
         uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
 
-    monkeypatch.setattr(meta_tables.MetaTable, "filter", lambda **_kwargs: [])
+    monkeypatch.setattr(meta_tables.MetaTable, "filter", staticmethod(lambda **_kwargs: []))
 
     with pytest.raises(LookupError, match="Could not resolve registered"):
         meta_tables.resolve_registered_markets_meta_tables(models=[MissingFakeModel])

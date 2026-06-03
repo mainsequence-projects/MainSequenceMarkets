@@ -14,10 +14,10 @@ This skill treats index conventions, fixings, and curves as one coupled runtime:
 IndexTable.uid
   -> IndexConventionDetails.index_uid
   -> Curve.index_uid
-  -> DiscountCurvesNode(curve_unique_identifier)
+  -> DiscountCurvesNode(curve_identifier)
 
 IndexTable.unique_identifier
-  -> FixingRatesNode(unique_identifier, rate)
+  -> FixingRatesNode(index_identifier, rate)
   -> QuantLib index hydration
 ```
 
@@ -191,15 +191,17 @@ Rules:
 
 - Use `IndexTable.uid` for pricing relationships stored in instruments and
   convention/curve MetaTables.
-- Use `IndexTable.unique_identifier` only for index-stamped DataNode rows.
-- Use `Curve.unique_identifier` for curve DataNode rows.
+- Use `index_identifier` for index-stamped DataNode rows. It stores
+  `IndexTable.unique_identifier`.
+- Use `curve_identifier` for curve DataNode rows. It stores
+  `Curve.unique_identifier`.
 - Do not use Main Sequence Constant names as curve or index identity.
 
 ## Fixings Pattern
 
 Use `FixingRatesNode` for observed index fixings. It extends
 `IndexTimestampedDataNode`, so rows are keyed by
-`["time_index", "unique_identifier"]`, where `unique_identifier` is
+`["time_index", "index_identifier"]`, where `index_identifier` is
 `IndexTable.unique_identifier`.
 
 Subclass `FixingRatesNode` when the source is specific:
@@ -211,12 +213,12 @@ from msm_pricing.data_nodes import FixingRatesNode, IndexFixingConfiguration
 
 
 class ExampleFixingsNode(FixingRatesNode):
-    def build_fixing_frame(self, *, update_statistics, unique_identifier: str) -> pd.DataFrame:
+    def build_fixing_frame(self, *, update_statistics, index_identifier: str) -> pd.DataFrame:
         return pd.DataFrame(
             [
                 {
                     "time_index": "2026-05-27T00:00:00Z",
-                    "unique_identifier": unique_identifier,
+                    "index_identifier": index_identifier,
                     "rate": 0.0525,
                 }
             ]
@@ -241,8 +243,8 @@ Rules:
 ## Curve Pattern
 
 Use `DiscountCurvesNode` for compressed discount curves. Rows are keyed by
-`["time_index", "curve_unique_identifier"]`, where
-`curve_unique_identifier` is `Curve.unique_identifier`.
+`["time_index", "curve_identifier"]`, where `curve_identifier` is
+`Curve.unique_identifier`.
 
 Subclass `DiscountCurvesNode` when the curve source is specific:
 
@@ -257,14 +259,14 @@ class ExampleDiscountCurveNode(DiscountCurvesNode):
         self,
         *,
         update_statistics,
-        curve_unique_identifier: str,
+        curve_identifier: str,
         base_node_curve_points,
     ) -> pd.DataFrame:
         return pd.DataFrame(
             [
                 {
                     "time_index": "2026-05-27T00:00:00Z",
-                    "curve_unique_identifier": curve_unique_identifier,
+                    "curve_identifier": curve_identifier,
                     "curve": {30: 0.05, 90: 0.051, 365: 0.052},
                 }
             ]
@@ -281,7 +283,8 @@ Rules:
 
 - The builder returns a mapping from days-to-maturity to zero rates; the node
   compresses it before persistence.
-- `curve_unique_identifier` must exist as a `Curve` row before publishing.
+- The builder configuration's `curve_unique_identifier` must exist as a `Curve`
+  row before publishing; emitted storage rows use `curve_identifier`.
 - Keep interpolation and compounding metadata on `Curve`, not in ad hoc builder
   globals.
 
@@ -350,8 +353,8 @@ Before finishing a change:
 - `IndexTable` remains free of Constant-name and curve fields.
 - `IndexConventionDetailsTable.index_uid` is one-to-one with `IndexTable.uid`.
 - `CurveTable.index_uid` depends on `IndexConventionDetailsTable.index_uid`.
-- Fixing DataNode rows use `time_index`, `unique_identifier`, and `rate`.
-- Curve DataNode rows use `time_index`, `curve_unique_identifier`, and `curve`.
+- Fixing DataNode rows use `time_index`, `index_identifier`, and `rate`.
+- Curve DataNode rows use `time_index`, `curve_identifier`, and `curve`.
 - Instrument payloads store backend index UUIDs and reject raw index-name
   relationship fields.
 - Tests cover payload validation, resolver selection, and DataNode frame shape

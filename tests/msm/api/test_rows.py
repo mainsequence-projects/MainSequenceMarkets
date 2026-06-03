@@ -120,12 +120,12 @@ def test_account_pretty_print_positions_formats_holdings(capsys) -> None:
             {
                 "time_index": dt.datetime(2026, 5, 25, tzinfo=dt.UTC),
                 "account_uid": account_uid,
-                "unique_identifier": "example-asset-btc",
+                "asset_identifier": "example-asset-btc",
                 "quantity": 10.0,
                 "extra_details": {"ticker": "BTC"},
             }
         ]
-    ).set_index(["time_index", "account_uid", "unique_identifier"])
+    ).set_index(["time_index", "account_uid", "asset_identifier"])
 
     positions = account.pretty_print_positions(
         holdings,
@@ -159,11 +159,11 @@ def test_account_pretty_print_positions_rejects_datanode_run_tuple() -> None:
             {
                 "time_index": dt.datetime(2026, 5, 25, tzinfo=dt.UTC),
                 "account_uid": account.uid,
-                "unique_identifier": "example-asset-btc",
+                "asset_identifier": "example-asset-btc",
                 "quantity": 10.0,
             }
         ]
-    ).set_index(["time_index", "account_uid", "unique_identifier"])
+    ).set_index(["time_index", "account_uid", "asset_identifier"])
 
     with pytest.raises(TypeError, match="Unpack DataNode run results"):
         account.pretty_print_positions((False, holdings))

@@ -5,9 +5,18 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from apps.v1.schemas.accounts import AccountHoldingsSnapshotResponse, AccountListResponse
+from apps.v1.schemas.accounts import (
+    AccountHoldingsSnapshotResponse,
+    AccountListResponse,
+    AccountTargetPositionsSnapshotResponse,
+)
 from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
-from apps.v1.services.accounts import get_account_holdings, get_account_summary, list_accounts
+from apps.v1.services.accounts import (
+    get_account_holdings,
+    get_account_summary,
+    get_account_target_positions,
+    list_accounts,
+)
 
 router = APIRouter(prefix="/account", tags=["account"])
 
@@ -127,6 +136,67 @@ def get_account_holdings_by_uid(
         limit=limit,
         include_asset_detail=include_asset_detail,
         holdings_date=holdings_date,
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"Account {account_uid!r} was not found.")
+    return snapshot
+
+
+@router.get(
+    "/{account_uid}/target-positions/",
+    response_model=AccountTargetPositionsSnapshotResponse,
+    summary="Get account target positions snapshot",
+    description=(
+        "Return one account target-position snapshot. When the account exists but no "
+        "target-position snapshot matches the request, the response is 200 with an "
+        "empty positions list."
+    ),
+    operation_id="getAccountTargetPositions",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested account uid was not found.",
+        }
+    },
+)
+def get_account_target_positions_by_uid(
+    account_uid: str,
+    order: Annotated[
+        Literal["asc", "desc"],
+        Query(
+            description="Position-set ordering used when target_positions_date is omitted.",
+        ),
+    ] = "desc",
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=1,
+            description="Number of snapshots to return. The current contract returns one snapshot.",
+        ),
+    ] = 1,
+    include_asset_detail: Annotated[
+        bool,
+        Query(
+            description=(
+                "When true, include asset.uid, asset.unique_identifier, and the latest "
+                "AssetSnapshotsStorage name/ticker labels when available."
+            ),
+        ),
+    ] = True,
+    target_positions_date: Annotated[
+        dt.datetime | None,
+        Query(
+            description="Exact target-position snapshot timestamp to fetch. Use ISO 8601.",
+        ),
+    ] = None,
+) -> AccountTargetPositionsSnapshotResponse:
+    snapshot = get_account_target_positions(
+        account_uid=account_uid,
+        order=order,
+        limit=limit,
+        include_asset_detail=include_asset_detail,
+        target_positions_date=target_positions_date,
     )
     if snapshot is None:
         raise HTTPException(status_code=404, detail=f"Account {account_uid!r} was not found.")

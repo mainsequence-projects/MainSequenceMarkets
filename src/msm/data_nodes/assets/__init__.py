@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from msm.data_nodes.assets.asset_indexed import (
-    ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+    ASSET_IDENTIFIER_DIMENSION,
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
     MarketAssetScopeItem,
@@ -16,7 +16,7 @@ from msm.data_nodes.assets.snapshots import (
 )
 
 __all__ = [
-    "ASSET_UNIQUE_IDENTIFIER_DIMENSION",
+    "ASSET_IDENTIFIER_DIMENSION",
     "AssetDataNodeConfiguration",
     "AssetIndexedDataNode",
     "AssetIndexedDataNodeConfiguration",

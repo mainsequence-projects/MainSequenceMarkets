@@ -70,3 +70,32 @@ class AccountHoldingsSnapshotResponse(BaseModel):
     target_trade_time: dt.datetime | None = None
     related_expected_asset_exposure_df: list[Any] = Field(default_factory=list)
     holdings: list[AccountHoldingRow] = Field(default_factory=list)
+
+
+class AccountTargetPositionAssetReference(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    uid: str | None = None
+    unique_identifier: str
+    current_snapshot: AccountHoldingAssetCurrentSnapshot = Field(
+        default_factory=AccountHoldingAssetCurrentSnapshot,
+    )
+
+
+class AccountTargetPositionRow(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    unique_identifier: str
+    weight_notional_exposure: str | None = None
+    constant_notional_exposure: str | None = None
+    single_asset_quantity: str | None = None
+    asset: AccountTargetPositionAssetReference | None = None
+
+
+class AccountTargetPositionsSnapshotResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    related_account_uid: str | None = None
+    target_positions_date: dt.datetime | None = None
+    position_set_uid: str | None = None
+    positions: list[AccountTargetPositionRow] = Field(default_factory=list)

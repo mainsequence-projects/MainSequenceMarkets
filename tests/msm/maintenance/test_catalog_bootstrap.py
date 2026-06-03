@@ -3,7 +3,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from mainsequence.client.exceptions import NotFoundError
 
 import msm.maintenance.catalog as catalog
 from msm.maintenance.models import (
@@ -58,16 +57,7 @@ def _catalog_row(model, *, meta_table_uid: str) -> dict[str, str]:
     }
 
 
-def _disable_physical_contract_validation(monkeypatch) -> None:
-    monkeypatch.setattr(
-        catalog,
-        "validate_platform_meta_table_physical_contract",
-        lambda *_args, **_kwargs: None,
-    )
-
-
 def test_resolve_catalog_table_attaches_existing_catalog(monkeypatch) -> None:
-    _disable_physical_contract_validation(monkeypatch)
     existing_catalog = _meta_table(
         "catalog-meta-table-uid",
         identifier="MarketsMetaTableCatalog",
@@ -96,15 +86,21 @@ def test_resolve_catalog_table_rejects_missing_catalog(monkeypatch) -> None:
 
 
 def test_catalog_attach_attaches_cataloged_application_table(monkeypatch) -> None:
-    _disable_physical_contract_validation(monkeypatch)
     asset_storage_hash = AssetTable.__table__.name
     search_in_filters: list[dict] = []
+    filter_calls: list[dict] = []
     catalog_meta_table = _meta_table(
         "catalog-meta-table-uid",
         identifier="MarketsMetaTableCatalog",
         storage_hash=MarketsMetaTableCatalogTable.__table__.name,
     )
     catalog_row = _catalog_row(AssetTable, meta_table_uid="asset-meta-table-uid")
+    asset_meta_table = _meta_table(
+        "asset-meta-table-uid",
+        **_catalog_row_identity(AssetTable),
+        description="Asset catalog rows.",
+        storage_hash=asset_storage_hash,
+    )
 
     monkeypatch.setattr(catalog, "resolve_catalog_table", lambda **_kwargs: catalog_meta_table)
 
@@ -113,17 +109,20 @@ def test_catalog_attach_attaches_cataloged_application_table(monkeypatch) -> Non
         return {"rows": [catalog_row]}
 
     monkeypatch.setattr(catalog, "search_model", fake_search_model)
+
+    def fake_filter(**kwargs):
+        filter_calls.append(dict(kwargs))
+        return [asset_meta_table]
+
+    monkeypatch.setattr(
+        catalog.MetaTable,
+        "filter",
+        staticmethod(fake_filter),
+    )
     monkeypatch.setattr(
         catalog.MetaTable,
         "get_by_uid",
-        staticmethod(
-            lambda **_kwargs: _meta_table(
-                "asset-meta-table-uid",
-                **_catalog_row_identity(AssetTable),
-                description="Asset catalog rows.",
-                storage_hash=asset_storage_hash,
-            )
-        ),
+        staticmethod(lambda **_kwargs: pytest.fail("get_by_uid should not run")),
     )
     monkeypatch.setattr(
         AssetTable,
@@ -142,6 +141,13 @@ def test_catalog_attach_attaches_cataloged_application_table(monkeypatch) -> Non
     assert result.registered_count == 0
     assert result.imported_count == 0
     assert search_in_filters == [_catalog_search_filter(AssetTable)]
+    assert filter_calls == [
+        {
+            "timeout": None,
+            "uid__in": ["asset-meta-table-uid"],
+            "management_mode": "platform_managed",
+        }
+    ]
     resolved = result.registration.meta_table_by_identifier[
         markets_meta_table_identifier(AssetTable)
     ]
@@ -151,8 +157,8 @@ def test_catalog_attach_attaches_cataloged_application_table(monkeypatch) -> Non
 
 
 def test_catalog_attach_bulk_attaches_cataloged_tables(monkeypatch) -> None:
-    _disable_physical_contract_validation(monkeypatch)
     search_in_filters: list[dict] = []
+    filter_calls: list[dict] = []
     catalog_meta_table = _meta_table(
         "catalog-meta-table-uid",
         identifier="MarketsMetaTableCatalog",
@@ -182,10 +188,23 @@ def test_catalog_attach_bulk_attaches_cataloged_tables(monkeypatch) -> None:
         return {"rows": catalog_rows}
 
     monkeypatch.setattr(catalog, "search_model", fake_search_model)
+
+    def fake_filter(**kwargs):
+        filter_calls.append(dict(kwargs))
+        return [
+            attached_meta_tables[uid]
+            for uid in kwargs["uid__in"]
+        ]
+
+    monkeypatch.setattr(
+        catalog.MetaTable,
+        "filter",
+        staticmethod(fake_filter),
+    )
     monkeypatch.setattr(
         catalog.MetaTable,
         "get_by_uid",
-        staticmethod(lambda uid, **_kwargs: attached_meta_tables[uid]),
+        staticmethod(lambda **_kwargs: pytest.fail("get_by_uid should not run")),
     )
     monkeypatch.setattr(
         catalog,
@@ -199,6 +218,16 @@ def test_catalog_attach_bulk_attaches_cataloged_tables(monkeypatch) -> None:
     assert result.registered_count == 0
     assert result.imported_count == 0
     assert search_in_filters == [_catalog_search_filter(AssetTypeTable, AssetTable)]
+    assert filter_calls == [
+        {
+            "timeout": None,
+            "uid__in": [
+                "asset-type-meta-table-uid",
+                "asset-meta-table-uid",
+            ],
+            "management_mode": "platform_managed",
+        }
+    ]
     assert {
         identifier: meta_table.uid
         for identifier, meta_table in result.registration.meta_table_by_identifier.items()
@@ -240,184 +269,36 @@ def test_catalog_attach_rejects_catalog_contract_drift(monkeypatch) -> None:
     monkeypatch.setattr(catalog, "search_model", lambda *_args, **_kwargs: {"rows": [catalog_row]})
     monkeypatch.setattr(
         catalog.MetaTable,
-        "get_by_uid",
-        staticmethod(
-            lambda **_kwargs: _meta_table(
-                "asset-meta-table-uid",
-                **_catalog_row_identity(AssetTable),
-                storage_hash=AssetTable.__table__.name,
-            )
-        ),
+        "filter",
+        staticmethod(lambda **_kwargs: pytest.fail("filter should not run on drift")),
     )
 
     with pytest.raises(catalog.CatalogBootstrapError, match="contract drift"):
         catalog.attach_markets_meta_tables_from_catalog(models=[AssetTable])
 
 
-def test_resolve_catalog_meta_table_rejects_stale_catalog_uid(monkeypatch) -> None:
+def test_resolve_catalog_meta_tables_rejects_stale_catalog_uid(monkeypatch) -> None:
     catalog_row = _catalog_row(AssetTable, meta_table_uid="dead-asset-meta-table-uid")
+    plan = catalog._CatalogBootstrapModelPlan(
+        model=AssetTable,
+        storage_hash=AssetTable.__table__.name,
+        namespace=AssetTable.__metatable_namespace__,
+        identifier=AssetTable.__metatable_identifier__,
+    )
+    monkeypatch.setattr(
+        catalog.MetaTable,
+        "filter",
+        staticmethod(lambda **_kwargs: []),
+    )
     monkeypatch.setattr(
         catalog.MetaTable,
         "get_by_uid",
-        staticmethod(lambda **_kwargs: (_ for _ in ()).throw(NotFoundError("missing"))),
+        staticmethod(lambda **_kwargs: pytest.fail("get_by_uid should not run")),
     )
 
-    with pytest.raises(catalog.CatalogStaleMetaTableUidError, match="missing backend MetaTable"):
-        catalog.resolve_catalog_meta_table(catalog_row, model=AssetTable)
-
-
-class _IntrospectableMetaTable:
-    management_mode = "platform_managed"
-
-    def __init__(self, snapshot: dict) -> None:
-        self._snapshot = snapshot
-
-    def introspect(self, *, timeout=None):
-        return {"introspection_snapshot": self._snapshot}
-
-
-class _TopLevelIntrospectableMetaTable:
-    management_mode = "platform_managed"
-
-    def __init__(self, snapshot: dict) -> None:
-        self._snapshot = snapshot
-
-    def introspect(self, *, timeout=None):
-        return {
-            "introspection_snapshot": {},
-            "columns": self._snapshot["columns"],
-            "indexes_meta": self._snapshot["indexes"],
-        }
-
-
-def _physical_snapshot_for_model(model, *, include_indexes: bool = True) -> dict:
-    return {
-        "columns": [{"name": str(column.name)} for column in model.__table__.columns],
-        "indexes": [
-            {
-                "name": str(index.name),
-                "columns": [str(column.name) for column in index.columns],
-                "unique": bool(index.unique),
-            }
-            for index in getattr(model.__table__, "indexes", set())
-        ]
-        if include_indexes
-        else [],
-    }
-
-
-def test_platform_meta_table_physical_validation_accepts_expected_columns_and_indexes() -> None:
-    meta_table = _IntrospectableMetaTable(
-        _physical_snapshot_for_model(MarketsMetaTableCatalogTable)
-    )
-
-    catalog.validate_platform_meta_table_physical_contract(
-        meta_table,
-        model=MarketsMetaTableCatalogTable,
-        timeout=7,
-    )
-
-
-def test_platform_meta_table_physical_validation_accepts_top_level_indexes_meta() -> None:
-    meta_table = _TopLevelIntrospectableMetaTable(_physical_snapshot_for_model(AssetTypeTable))
-
-    catalog.validate_platform_meta_table_physical_contract(
-        meta_table,
-        model=AssetTypeTable,
-        timeout=7,
-    )
-
-
-def test_platform_meta_table_physical_validation_accepts_name_only_index_introspection() -> None:
-    snapshot = _physical_snapshot_for_model(MarketsMetaTableCatalogTable)
-    snapshot["indexes"] = [
-        {
-            "name": index["name"],
-            "columns": [],
-            "unique": False,
-        }
-        for index in snapshot["indexes"]
-    ]
-    meta_table = _IntrospectableMetaTable(snapshot)
-
-    catalog.validate_platform_meta_table_physical_contract(
-        meta_table,
-        model=MarketsMetaTableCatalogTable,
-        timeout=7,
-    )
-
-
-def test_platform_meta_table_physical_validation_rejects_stale_missing_indexes() -> None:
-    meta_table = _IntrospectableMetaTable(
-        _physical_snapshot_for_model(
-            MarketsMetaTableCatalogTable,
-            include_indexes=False,
-        )
-    )
-
-    with pytest.raises(catalog.CatalogBootstrapError, match="stale physical storage"):
-        catalog.validate_platform_meta_table_physical_contract(
-            meta_table,
-            model=MarketsMetaTableCatalogTable,
-            timeout=7,
-        )
-
-
-def test_platform_meta_table_physical_validation_rejects_stale_extra_columns() -> None:
-    snapshot = _physical_snapshot_for_model(MarketsMetaTableCatalogTable)
-    snapshot["columns"].append({"name": "resource_type"})
-    meta_table = _IntrospectableMetaTable(snapshot)
-
-    with pytest.raises(catalog.CatalogBootstrapError, match="extra columns"):
-        catalog.validate_platform_meta_table_physical_contract(
-            meta_table,
-            model=MarketsMetaTableCatalogTable,
-            timeout=7,
-        )
-
-
-def test_platform_meta_table_physical_validation_rejects_stale_index_uniqueness() -> None:
-    snapshot = _physical_snapshot_for_model(AssetTypeTable)
-    asset_type_index = next(
-        index for index in snapshot["indexes"] if index["columns"] == ["asset_type"]
-    )
-    asset_type_index["unique"] = False
-    meta_table = _IntrospectableMetaTable(snapshot)
-
-    with pytest.raises(catalog.CatalogBootstrapError, match="mismatched indexes"):
-        catalog.validate_platform_meta_table_physical_contract(
-            meta_table,
-            model=AssetTypeTable,
-            timeout=7,
-        )
-
-
-def test_platform_meta_table_physical_validation_rejects_stale_index_columns() -> None:
-    snapshot = _physical_snapshot_for_model(AssetTypeTable)
-    asset_type_index = next(
-        index for index in snapshot["indexes"] if index["columns"] == ["asset_type"]
-    )
-    asset_type_index["columns"] = ["display_name"]
-    meta_table = _IntrospectableMetaTable(snapshot)
-
-    with pytest.raises(catalog.CatalogBootstrapError, match="mismatched indexes"):
-        catalog.validate_platform_meta_table_physical_contract(
-            meta_table,
-            model=AssetTypeTable,
-            timeout=7,
-        )
-
-
-def test_platform_meta_table_physical_validation_rejects_missing_snapshot() -> None:
-    class EmptyResponseMetaTable:
-        management_mode = "platform_managed"
-
-        def introspect(self, *, timeout=None):
-            return {}
-
-    with pytest.raises(catalog.CatalogBootstrapError, match="no physical snapshot"):
-        catalog.validate_platform_meta_table_physical_contract(
-            EmptyResponseMetaTable(),
-            model=MarketsMetaTableCatalogTable,
-            timeout=7,
+    with pytest.raises(catalog.CatalogStaleMetaTableUidError, match="missing backend MetaTables"):
+        catalog.resolve_catalog_meta_tables(
+            {AssetTable.__metatable_identifier__: catalog_row},
+            model_plans=[plan],
+            management_mode="platform_managed",
         )

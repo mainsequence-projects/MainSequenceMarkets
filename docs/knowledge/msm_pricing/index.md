@@ -71,10 +71,10 @@ IndexTypeTable.index_type
   -> IndexTable.index_type
   -> IndexConventionDetailsTable.index_uid
   -> CurveTable.index_uid
-  -> DiscountCurvesNode(curve_unique_identifier)
+  -> DiscountCurvesNode(curve_identifier)
 
 IndexTable.unique_identifier
-  -> FixingRatesNode(unique_identifier, rate)
+  -> FixingRatesNode(index_identifier, rate)
   -> QuantLib index hydration
 ```
 
@@ -209,7 +209,7 @@ AssetCurrentPricingDetailsTable
   purpose: fast load/rebuild of the current priceable instrument
 
 AssetPricingDetail DataNode
-  grain:   (time_index, unique_identifier)
+  grain:   (time_index, asset_identifier)
   purpose: timestamped pricing metadata or historical pricing-detail records
 ```
 
@@ -339,8 +339,8 @@ That makes curve identity dependent on an index that has pricing conventions.
 Curve identity rules:
 
 - `CurveTable.uid` is the canonical row identity for MetaTable operations.
-- `CurveTable.unique_identifier` is the stable storage key for curve DataNodes
-  and external curve publishers.
+- `CurveTable.unique_identifier` is the stable curve row key. Curve DataNode
+  storage publishes that value in the `curve_identifier` column.
 - `CurveTable.index_uid` targets `IndexConventionDetailsTable.index_uid`.
 - Do not add day counter, currency, calendar, tenor, or fixing rules to
   `CurveTable`; those belong to `IndexConventionDetailsTable`.
@@ -365,14 +365,14 @@ curve = Curve.upsert(
 
 `DiscountCurvesNode` publishes timestamped curve observations. Its storage key
 is `CurveTable.unique_identifier`, exposed on the DataNode row as
-`curve_unique_identifier`.
+`curve_identifier`.
 
 ```text
 +-----------------------------+        observations keyed by      +-----------------------------+
 | CurveTable                  |<--------------------------------| DiscountCurvesNode          |
-|-----------------------------|        curve_unique_identifier   |-----------------------------|
+|-----------------------------|        curve_identifier          |-----------------------------|
 | uid                  PK     |                                  | time_index                  |
-| unique_identifier    unique |                                  | curve_unique_identifier     |
+| unique_identifier    unique |                                  | curve_identifier            |
 | curve_type                  |                                  | curve                       |
 | index_uid            FK     |                                  +-----------------------------+
 +-----------------------------+
@@ -382,9 +382,9 @@ The curve DataNode contract is:
 
 ```text
 DiscountCurvesNode
-  index:   (time_index, curve_unique_identifier)
+  index:   (time_index, curve_identifier)
   columns: curve
-  FK:      curve_unique_identifier -> CurveTable.unique_identifier
+  FK:      curve_identifier -> CurveTable.unique_identifier
 ```
 
 `curve` remains a serialized compressed curve payload. Do not normalize curve
@@ -400,15 +400,15 @@ Fixings are observed facts about an index. They are not assets and they are not
 a separate `Rate` model.
 
 `FixingRatesNode` extends `IndexTimestampedDataNode`, so rows are keyed by
-`(time_index, unique_identifier)`, where `unique_identifier` is
+`(time_index, index_identifier)`, where `index_identifier` is
 `IndexTable.unique_identifier`.
 
 ```text
 +-----------------------------+        observations keyed by      +-----------------------------+
 | IndexTable                  |<--------------------------------| FixingRatesNode             |
-|-----------------------------|        unique_identifier         |-----------------------------|
+|-----------------------------|        index_identifier          |-----------------------------|
 | uid                  PK     |                                  | time_index                  |
-| unique_identifier    unique |                                  | unique_identifier           |
+| unique_identifier    unique |                                  | index_identifier            |
 | index_type                  |                                  | rate                        |
 +-----------------------------+                                  +-----------------------------+
 ```
@@ -417,9 +417,9 @@ The fixing DataNode contract is:
 
 ```text
 FixingRatesNode
-  index:   (time_index, unique_identifier)
+  index:   (time_index, index_identifier)
   columns: rate
-  FK:      unique_identifier -> IndexTable.unique_identifier
+  FK:      index_identifier -> IndexTable.unique_identifier
 ```
 
 The DataNode configuration carries a hashable `frequency` field so daily,
@@ -481,7 +481,7 @@ the runtime should follow the persisted graph:
 +-----------------------------+
 | DiscountCurvesNode          |
 |-----------------------------|
-| curve_unique_identifier     |
+| curve_identifier            |
 | curve                       |
 +--------------+--------------+
                |

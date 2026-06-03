@@ -14,6 +14,7 @@ from msm.data_nodes.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,
 )
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
 
 def build_account_holdings_frame(
@@ -57,15 +58,15 @@ def build_holdings_frame(
 
     for raw_position in positions:
         position = _position_payload(raw_position)
-        unique_identifier = _required_position_string(position, "unique_identifier")
-        if unique_identifier in seen_identifiers:
-            duplicate_identifiers.add(unique_identifier)
-        seen_identifiers.add(unique_identifier)
+        asset_identifier = _required_position_string(position, "asset_identifier")
+        if asset_identifier in seen_identifiers:
+            duplicate_identifiers.add(asset_identifier)
+        seen_identifiers.add(asset_identifier)
 
         row: dict[str, Any] = {
             storage_table.__time_index_name__: holdings_date,
             owner_index_name: owner_uid,
-            "unique_identifier": unique_identifier,
+            ASSET_IDENTIFIER_DIMENSION: asset_identifier,
             "holdings_set_uid": resolved_holdings_set_uid,
             "is_trade_snapshot": bool(position.get("is_trade_snapshot", is_trade_snapshot)),
             "quantity": position.get("quantity", "0"),
@@ -78,7 +79,7 @@ def build_holdings_frame(
 
     if duplicate_identifiers:
         raise ValueError(
-            "Each holdings position must use a unique unique_identifier. "
+            "Each holdings position must use a unique asset_identifier. "
             "Duplicate values: " + ", ".join(sorted(duplicate_identifiers)) + "."
         )
 
@@ -152,7 +153,7 @@ def _position_payload(position: Mapping[str, Any] | Any) -> dict[str, Any]:
     return {
         key: getattr(position, key)
         for key in (
-            "unique_identifier",
+            "asset_identifier",
             "quantity",
             "target_trade_time",
             "target_weight",

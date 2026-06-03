@@ -27,7 +27,7 @@ def test_asset_snapshot_time_index_is_datetime64_ns_utc() -> None:
     frame = AssetSnapshot.build_frame(
         {
             "time_index": MICROSECOND_TIME,
-            "unique_identifier": "example-asset-btc",
+            "asset_identifier": "example-asset-btc",
             "ticker": "BTC",
         }
     )
@@ -41,11 +41,11 @@ def test_execution_time_columns_are_datetime64_ns_utc() -> None:
             [
                 {
                     "order_time": MICROSECOND_TIME,
-                    "order_unique_identifier": "order-1",
-                    "account_unique_identifier": "account-1",
-                    "fund_unique_identifier": "",
-                    "order_manager_unique_identifier": "",
-                    "asset_unique_identifier": "asset-1",
+                    "order_identifier": "order-1",
+                    "account_identifier": "account-1",
+                    "fund_identifier": "",
+                    "order_manager_identifier": "",
+                    "asset_identifier": "asset-1",
                     "order_remote_id": "",
                     "client_order_id": "",
                     "order_type": "market",
@@ -74,7 +74,7 @@ def test_holdings_time_columns_are_datetime64_ns_utc() -> None:
         account_uid=uuid.uuid4(),
         positions=[
             {
-                "unique_identifier": "asset-1",
+                "asset_identifier": "asset-1",
                 "quantity": 1,
                 "target_trade_time": MICROSECOND_TIME,
             }

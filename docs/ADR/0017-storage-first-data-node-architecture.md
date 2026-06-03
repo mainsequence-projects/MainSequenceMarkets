@@ -335,13 +335,13 @@ Verified against the project `.venv` (SDK `4.1.5`):
   so their descriptions are net-new.
 - [x] FK columns (Decision §4; legacy only declared canonical FKs on
   curve/index/fixings/asset-snapshot nodes, plus holdings gain account/fund
-  identity FKs): `DiscountCurvesStorage.curve_unique_identifier` → `Curve`,
-  `IndexFixingsStorage.unique_identifier` → `Index`,
-  `AssetPricingDetailsStorage.unique_identifier` / `AssetSnapshotsStorage.unique_identifier`
+  identity FKs): `DiscountCurvesStorage.curve_identifier` → `Curve`,
+  `IndexFixingsStorage.index_identifier` → `Index`,
+  `AssetPricingDetailsStorage.asset_identifier` / `AssetSnapshotsStorage.asset_identifier`
   → `Asset`, `AccountHoldingsStorage.account_uid` → `Account.uid`,
-  `AccountHoldingsStorage.unique_identifier` → `Asset.unique_identifier`,
+  `AccountHoldingsStorage.asset_identifier` → `Asset.unique_identifier`,
   `FundHoldingsStorage.fund_uid` → `Fund.uid`,
-  `FundHoldingsStorage.unique_identifier` → `Asset.unique_identifier`
+  `FundHoldingsStorage.asset_identifier` → `Asset.unique_identifier`
   (all `ondelete="RESTRICT"`). The
   other 10 outputs carry no FK. Convention: `String(255)` only on FK string
   columns (to match the target `unique_identifier`); plain `String` otherwise.

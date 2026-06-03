@@ -15,7 +15,7 @@ os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 from msm.data_nodes.utils.stamped import StampedDataNodeConfiguration
 from msm.models.registration import markets_foreign_key_target_identifiers
 from msm_pricing.data_nodes.curves import (
-    CURVE_UNIQUE_IDENTIFIER_DIMENSION,
+    CURVE_IDENTIFIER,
     CurveConfig,
     CurveDataNodeConfiguration,
     DiscountCurvesNode,
@@ -30,7 +30,7 @@ def test_curve_data_node_configuration_is_stamped() -> None:
 
     assert isinstance(config, StampedDataNodeConfiguration)
     assert isinstance(config, CurveDataNodeConfiguration)
-    assert config.reference_dimension == CURVE_UNIQUE_IDENTIFIER_DIMENSION
+    assert config.reference_dimension == CURVE_IDENTIFIER
     # Storage-first: schema/identity/FK fields no longer live on the config.
     assert "records" not in CurveDataNodeConfiguration.model_fields
     assert "node_metadata" not in CurveDataNodeConfiguration.model_fields
@@ -49,18 +49,18 @@ def test_discount_curves_node_resolves_storage_and_curve_identity() -> None:
 
     assert storage_table is DiscountCurvesStorage
     assert storage_table.metatable_identifier() == "DiscountCurvesTS"
-    assert storage_table.__index_names__ == ["time_index", CURVE_UNIQUE_IDENTIFIER_DIMENSION]
+    assert storage_table.__index_names__ == ["time_index", CURVE_IDENTIFIER]
     assert storage_table.__time_index_name__ == "time_index"
     assert "__data_node_identifier__" not in DiscountCurvesNode.__dict__
     assert DiscountCurvesNode._default_identifier() == storage_table.metatable_identifier()
     assert DiscountCurvesNode._default_description() == storage_table.__metatable_description__
-    assert "curve_unique_identifier" in DiscountCurvesNode._default_description()
+    assert "curve_identifier" in DiscountCurvesNode._default_description()
     assert "Curve MetaTable" in DiscountCurvesNode._default_description()
 
 
 def test_discount_curves_storage_has_curve_foreign_key() -> None:
     curve_identifier = CurveTable.__metatable_identifier__
-    fk_column = DiscountCurvesStorage.__table__.columns[CURVE_UNIQUE_IDENTIFIER_DIMENSION]
+    fk_column = DiscountCurvesStorage.__table__.columns[CURVE_IDENTIFIER]
 
     assert markets_foreign_key_target_identifiers(DiscountCurvesStorage) == [curve_identifier]
     assert any(
@@ -83,37 +83,52 @@ def test_discount_curves_node_validate_frame_normalizes_curve_frame() -> None:
             [
                 {
                     "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
-                    "curve_unique_identifier": "mxn_tiie_discount",
+                    "curve_identifier": "mxn_tiie_discount",
                     "curve": "compressed-payload",
                 }
             ]
         )
     )
 
-    assert list(frame.index.names) == ["time_index", CURVE_UNIQUE_IDENTIFIER_DIMENSION]
+    assert list(frame.index.names) == ["time_index", CURVE_IDENTIFIER]
     assert str(frame.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
-    assert frame.reset_index()[CURVE_UNIQUE_IDENTIFIER_DIMENSION].tolist() == ["mxn_tiie_discount"]
+    assert frame.reset_index()[CURVE_IDENTIFIER].tolist() == ["mxn_tiie_discount"]
 
 
-def test_discount_curves_node_normalizes_legacy_builder_identity_name() -> None:
+def test_discount_curves_node_normalizes_curve_identifier_builder_name() -> None:
     time_index = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
     frame = pd.DataFrame(
         [
             {
                 "time_index": time_index,
-                "unique_identifier": "mxn_tiie_discount",
+                "curve_identifier": "mxn_tiie_discount",
                 "curve": {28: 0.11, 91: 0.105},
             }
         ]
-    ).set_index(["time_index", "unique_identifier"])
+    ).set_index(["time_index", "curve_identifier"])
 
     normalized = DiscountCurvesNode._normalize_builder_frame(
         frame,
-        curve_unique_identifier="mxn_tiie_discount",
+        curve_identifier="mxn_tiie_discount",
     )
 
-    assert "unique_identifier" not in normalized.columns
-    assert normalized[CURVE_UNIQUE_IDENTIFIER_DIMENSION].tolist() == ["mxn_tiie_discount"]
+    assert normalized[CURVE_IDENTIFIER].tolist() == ["mxn_tiie_discount"]
+
+
+def test_discount_curves_node_rejects_stale_builder_identity_name() -> None:
+    with pytest.raises(ValueError, match="curve_identifier"):
+        DiscountCurvesNode._normalize_builder_frame(
+            pd.DataFrame(
+                [
+                    {
+                        "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+                        "curve_unique_identifier": "mxn_tiie_discount",
+                        "curve": {28: 0.11, 91: 0.105},
+                    }
+                ]
+            ),
+            curve_identifier="mxn_tiie_discount",
+        )
 
 
 @pytest.mark.skip(reason="requires platform backend (Stage 5 registration)")

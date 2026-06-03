@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .curves import (
-    CURVE_UNIQUE_IDENTIFIER_DIMENSION,
+    CURVE_IDENTIFIER,
     CurveConfig,
     CurveDataNodeConfiguration,
     CurveTimestampedDataNode,
@@ -21,7 +21,7 @@ from .pricing_details import (
 __all__ = [
     "AssetPricingDetail",
     "AssetPricingDetailConfiguration",
-    "CURVE_UNIQUE_IDENTIFIER_DIMENSION",
+    "CURVE_IDENTIFIER",
     "CurveConfig",
     "CurveDataNodeConfiguration",
     "CurveTimestampedDataNode",

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
-from msm.settings import ASSET_UNIQUE_IDENTIFIER_DIMENSION
-from msm_portfolios.asset_scope import ASSET_UNIQUE_IDENTIFIER
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
+from msm_portfolios.asset_scope import ASSET_IDENTIFIER
 from msm_portfolios.data_nodes.portfolio_weights import PortfolioWeights
 from msm_portfolios.data_nodes.portfolios import PortfoliosDataNode
 from msm_portfolios.data_nodes.signal_weights import SignalWeights
@@ -17,7 +17,7 @@ from msm_portfolios.models import portfolio_sqlalchemy_models
 
 
 def test_portfolio_asset_scope_uses_markets_asset_dimension() -> None:
-    assert ASSET_UNIQUE_IDENTIFIER == ASSET_UNIQUE_IDENTIFIER_DIMENSION
+    assert ASSET_IDENTIFIER == ASSET_IDENTIFIER_DIMENSION
 
 
 def test_portfolio_nodes_expose_storage_first_surface() -> None:

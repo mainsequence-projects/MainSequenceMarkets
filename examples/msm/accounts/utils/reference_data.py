@@ -3,7 +3,12 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any
 
-from examples.msm.assets.utils import EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER, EXAMPLE_BTC_TICKER
+from examples.msm.assets.utils import (
+    EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
+    EXAMPLE_BTC_TICKER,
+    EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
+    EXAMPLE_ETH_TICKER,
+)
 
 EXAMPLE_ACCOUNT_WORKFLOW_SOURCE = "examples/msm/accounts/account_workflow.py"
 
@@ -50,24 +55,35 @@ EXAMPLE_ACCOUNT_TARGET_PORTFOLIO = {
 def example_account_holdings_positions(
     *,
     target_trade_time: dt.datetime,
-    quantity: float,
+    btc_quantity: float,
+    eth_quantity: float,
 ) -> list[dict[str, Any]]:
     return [
         {
-            "unique_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
-            "quantity": quantity,
+            "asset_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
+            "quantity": btc_quantity,
             "target_trade_time": target_trade_time,
-            "extra_details": {"ticker": EXAMPLE_BTC_TICKER},
-        }
+            "extra_details": {"ticker": EXAMPLE_BTC_TICKER, "name": "Bitcoin"},
+        },
+        {
+            "asset_identifier": EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
+            "quantity": eth_quantity,
+            "target_trade_time": target_trade_time,
+            "extra_details": {"ticker": EXAMPLE_ETH_TICKER, "name": "Ethereum"},
+        },
     ]
 
 
 def example_account_target_positions() -> list[dict[str, Any]]:
     return [
         {
-            "unique_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
-            "weight_notional_exposure": 1.0,
-        }
+            "asset_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
+            "weight_notional_exposure": 0.6,
+        },
+        {
+            "asset_identifier": EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
+            "weight_notional_exposure": 0.4,
+        },
     ]
 
 

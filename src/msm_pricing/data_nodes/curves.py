@@ -13,9 +13,9 @@ from msm.data_nodes.utils.stamped import (
 )
 
 from .curve_codec import compress_curve_to_string
-from .storage import DiscountCurvesStorage
+from .storage import CURVE_IDENTIFIER_DIMENSION, DiscountCurvesStorage
 
-CURVE_UNIQUE_IDENTIFIER_DIMENSION = "curve_unique_identifier"
+CURVE_IDENTIFIER = CURVE_IDENTIFIER_DIMENSION
 
 
 class DiscountCurveBuilder(Protocol):
@@ -25,7 +25,7 @@ class DiscountCurveBuilder(Protocol):
         self,
         *,
         update_statistics,
-        curve_unique_identifier: str,
+        curve_identifier: str,
         base_node_curve_points: APIDataNode | None,
     ) -> pd.DataFrame: ...
 
@@ -39,12 +39,12 @@ class CurveDataNodeConfiguration(StampedDataNodeConfiguration):
     not on this configuration.
     """
 
-    reference_dimension: ClassVar[str] = CURVE_UNIQUE_IDENTIFIER_DIMENSION
+    reference_dimension: ClassVar[str] = CURVE_IDENTIFIER
     frame_label: ClassVar[str] = "Curve DataNode"
 
 
 class CurveTimestampedDataNode(StampedDataNode):
-    """Base curve DataNode for timestamped facts keyed by curve unique identifier."""
+    """Base curve DataNode for timestamped facts keyed by curve_identifier."""
 
     configuration_class: ClassVar[type[CurveDataNodeConfiguration]] = CurveDataNodeConfiguration
     frame_label: ClassVar[str] = "Curve DataNode"
@@ -101,10 +101,10 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
         return self
 
     def update(self) -> pd.DataFrame:
-        curve_unique_identifier = self.curve_config.curve_unique_identifier
+        curve_identifier = self.curve_config.curve_unique_identifier
         frame = self.build_curve_frame(
             update_statistics=self.update_statistics,
-            curve_unique_identifier=curve_unique_identifier,
+            curve_identifier=curve_identifier,
             base_node_curve_points=self.base_node_curve_points,
         )
         if frame.empty:
@@ -112,12 +112,12 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
 
         normalized = self._normalize_builder_frame(
             frame,
-            curve_unique_identifier=curve_unique_identifier,
+            curve_identifier=curve_identifier,
         )
         normalized["curve"] = normalized["curve"].apply(compress_curve_to_string)
         normalized["time_index"] = pd.to_datetime(normalized["time_index"], utc=True)
 
-        last = self.update_statistics.get_last_update_for_identity(curve_unique_identifier)
+        last = self.update_statistics.get_last_update_for_identity(curve_identifier)
         if last is not None:
             normalized = normalized[normalized["time_index"] > pd.Timestamp(last)]
         if normalized.empty:
@@ -129,7 +129,7 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
         self,
         *,
         update_statistics,
-        curve_unique_identifier: str,
+        curve_identifier: str,
         base_node_curve_points: APIDataNode | None,
     ) -> pd.DataFrame:
         if self.curve_builder is None:
@@ -139,7 +139,7 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
             )
         return self.curve_builder(
             update_statistics=update_statistics,
-            curve_unique_identifier=curve_unique_identifier,
+            curve_identifier=curve_identifier,
             base_node_curve_points=base_node_curve_points,
         )
 
@@ -147,33 +147,25 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
     def _normalize_builder_frame(
         frame: pd.DataFrame,
         *,
-        curve_unique_identifier: str,
+        curve_identifier: str,
     ) -> pd.DataFrame:
         normalized = frame.copy()
-        if isinstance(normalized.index, pd.MultiIndex):
-            index_names = [
-                CURVE_UNIQUE_IDENTIFIER_DIMENSION if name == "unique_identifier" else name
-                for name in normalized.index.names
-            ]
-            normalized.index = normalized.index.set_names(index_names)
-        elif normalized.index.name == "unique_identifier":
-            normalized.index.name = CURVE_UNIQUE_IDENTIFIER_DIMENSION
-
         normalized = normalized.reset_index()
-        if (
-            "unique_identifier" in normalized.columns
-            and CURVE_UNIQUE_IDENTIFIER_DIMENSION not in normalized.columns
-        ):
-            normalized = normalized.rename(
-                columns={"unique_identifier": CURVE_UNIQUE_IDENTIFIER_DIMENSION}
+        stale_columns = {"unique_identifier", "curve_unique_identifier"}.intersection(
+            normalized.columns
+        )
+        if stale_columns:
+            raise ValueError(
+                "Discount curve builder frames must use curve_identifier, not "
+                f"{sorted(stale_columns)!r}."
             )
-        if CURVE_UNIQUE_IDENTIFIER_DIMENSION not in normalized.columns:
-            normalized[CURVE_UNIQUE_IDENTIFIER_DIMENSION] = curve_unique_identifier
+        if CURVE_IDENTIFIER not in normalized.columns:
+            normalized[CURVE_IDENTIFIER] = curve_identifier
         return normalized
 
 
 __all__ = [
-    "CURVE_UNIQUE_IDENTIFIER_DIMENSION",
+    "CURVE_IDENTIFIER",
     "CurveConfig",
     "CurveDataNodeConfiguration",
     "CurveTimestampedDataNode",

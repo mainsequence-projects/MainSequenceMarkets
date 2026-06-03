@@ -6,11 +6,13 @@ from typing import Any
 import pandas as pd
 
 from msm_pricing.data_nodes import (
+    CURVE_IDENTIFIER,
     CurveConfig,
     DiscountCurvesNode,
     FixingRatesNode,
     IndexFixingConfiguration,
 )
+from msm.settings import INDEX_IDENTIFIER_DIMENSION
 from msm_pricing.utils import to_ql_date
 
 EXAMPLE_INDEX_UNIQUE_IDENTIFIER = "USD-SOFR-EXAMPLE"
@@ -53,7 +55,7 @@ def build_flat_forward_zero_curve(
 
 def build_mock_fixings_frame(
     *,
-    unique_identifier: str,
+    index_identifier: str,
     valuation_date: dt.date | dt.datetime,
     fixing_rate: float,
     lookback_days: int = DEFAULT_FIXING_LOOKBACK_DAYS,
@@ -73,7 +75,7 @@ def build_mock_fixings_frame(
         rows.append(
             {
                 "time_index": _utc_timestamp(fixing_date),
-                "unique_identifier": unique_identifier,
+                INDEX_IDENTIFIER_DIMENSION: index_identifier,
                 "rate": float(fixing_rate),
             }
         )
@@ -114,7 +116,7 @@ class MockFlatForwardDiscountCurvesNode(DiscountCurvesNode):
         self,
         *,
         update_statistics,
-        curve_unique_identifier: str,
+        curve_identifier: str,
         base_node_curve_points,
     ) -> pd.DataFrame:
         curve = build_flat_forward_zero_curve(
@@ -125,7 +127,7 @@ class MockFlatForwardDiscountCurvesNode(DiscountCurvesNode):
             [
                 {
                     "time_index": _utc_timestamp(self.valuation_date),
-                    "curve_unique_identifier": curve_unique_identifier,
+                    CURVE_IDENTIFIER: curve_identifier,
                     "curve": curve,
                 }
             ]
@@ -153,10 +155,10 @@ class MockIndexFixingsNode(FixingRatesNode):
         self,
         *,
         update_statistics,
-        unique_identifier: str,
+        index_identifier: str,
     ) -> pd.DataFrame:
         return build_mock_fixings_frame(
-            unique_identifier=unique_identifier,
+            index_identifier=index_identifier,
             valuation_date=self.valuation_date,
             fixing_rate=self.fixing_rate,
             lookback_days=self.lookback_days,

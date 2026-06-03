@@ -136,23 +136,20 @@ description, model name, SDK version, and local contract hash. The catalog is
 intentionally MetaTable-specific; DataNode registration state belongs in a
 separate catalog if it is needed later.
 
-When startup attaches an already-cataloged platform-managed MetaTable, it
-introspects the physical table before exposing it to row APIs.
-The preflight checks required columns, extra columns, expected index names,
-index columns, and index uniqueness. A stale table can therefore fail during
-runtime attachment instead of later during a compiled upsert. For example,
-`AssetType.upsert(...)` uses `ON CONFLICT (asset_type)`, so the physical
-`AssetType` table must have the unique `asset_type` index declared by
-`AssetTypeTable`; a same-named non-unique index is treated as catalog drift and
-must be repaired or migrated before normal startup.
+When startup attaches already-cataloged platform-managed MetaTables, it uses a
+bulk backend lookup for the cataloged MetaTable UIDs and binds the returned
+handles. Runtime attachment does not call `MetaTable.get_by_uid(...)` one table
+at a time and does not introspect physical storage. Physical schema validation
+belongs to the SDK migration flow and explicit diagnostics, not to normal
+application startup.
 
 The same rule applies to the internal maintenance catalog itself. Installations
 with an older catalog physical table that still contains removed fields such as
 `storage_hash` must repair or recreate that catalog resource before normal
 startup.
 
-For narrow explicit preflight, pass `models=[...]` to verify and attach only the
-tables the process needs:
+For narrow explicit startup, pass `models=[...]` to attach only the tables the
+process needs:
 
 ```python
 import msm

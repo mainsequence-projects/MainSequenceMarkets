@@ -101,11 +101,11 @@ that prints the built-in constants and `AssetType.upsert(...)` payloads.
 
 For timestamped facts keyed to index reference rows, use the same stamped
 DataNode workflow with `msm.data_nodes.indices.IndexTimestampedDataNode` and an
-`IndexDataNodeConfiguration` subclass. The frame contract is still
-`["time_index", "unique_identifier"]`, but the canonical source-table foreign
-key points to `IndexTable.unique_identifier` instead of `AssetTable`. Keep
-index identity on `uid` and `unique_identifier`; do not add legacy platform
-Constant-name fields.
+`IndexDataNodeConfiguration` subclass. The frame contract is
+`["time_index", "index_identifier"]`, with a canonical source-table foreign key
+from `index_identifier` to `IndexTable.unique_identifier`. Keep index identity
+on `uid` and `unique_identifier`; do not add legacy platform Constant-name
+fields.
 
 ## Account Holdings Workflow
 
@@ -132,9 +132,11 @@ Use this workflow when publishing and inspecting account positions:
 8. Pass only `holdings_frame` to `Account.pretty_print_positions(...)`.
 
 See `examples/msm/accounts/account_workflow.py` for the full account path: account
-group creation, two account registrations, one shared account model portfolio,
-account-owned target portfolio relationships, `PositionSet` target rows,
-holdings publication, and pretty-printed account positions.
+group creation, two account registrations, two asset registrations, canonical
+asset snapshot publication with ticker/name metadata, one shared account model
+portfolio, account-owned target portfolio relationships, two-asset `PositionSet`
+target-row publication, holdings publication, and pretty-printed account
+positions.
 
 ## Pricing Instrument Identity
 
@@ -218,8 +220,8 @@ before publishing curve observations:
    serializable convention payload needed to rebuild the pricing index.
 4. Upsert `msm_pricing.api.Curve` with a stable curve `unique_identifier`, the
    index UID, and curve construction metadata.
-5. Publish curve observations through `DiscountCurvesNode` keyed by the same
-   curve `unique_identifier`.
+5. Publish curve observations through `DiscountCurvesNode` with
+   `curve_identifier` set to the same curve `unique_identifier`.
 
 See `examples/msm_pricing/pricing_registry_rows.py` for the row API workflow.
 

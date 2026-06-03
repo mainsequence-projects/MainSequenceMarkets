@@ -157,7 +157,7 @@ def _asset_snapshot_payloads(
     return [
         {
             "time_index": snapshot_time,
-            "unique_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
+            "asset_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
             "name": "Bitcoin",
             "ticker": "BTC",
             "exchange_code": "CRYPTO",
@@ -165,7 +165,7 @@ def _asset_snapshot_payloads(
         },
         {
             "time_index": snapshot_time,
-            "unique_identifier": EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
+            "asset_identifier": EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
             "name": "Ethereum",
             "ticker": "ETH",
             "exchange_code": "CRYPTO",
@@ -173,7 +173,7 @@ def _asset_snapshot_payloads(
         },
         {
             "time_index": snapshot_time,
-            "unique_identifier": normalized_openfigi["unique_identifier"],
+            "asset_identifier": normalized_openfigi["unique_identifier"],
             "name": normalized_openfigi["name"],
             "ticker": normalized_openfigi["ticker"],
             "exchange_code": normalized_openfigi["exchange_code"],

@@ -16,7 +16,7 @@ from msm.data_nodes.utils.stamped import (
     StampedFrameMixin,
     reset_frame_index,
 )
-from msm.settings import ASSET_UNIQUE_IDENTIFIER_DIMENSION
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
 AssetSnapshotInput = Mapping[str, Any] | Any
 
@@ -30,7 +30,7 @@ class AssetDataNodeConfiguration(StampedDataNodeConfiguration, AssetIndexedDataN
     not on this configuration.
     """
 
-    reference_dimension: ClassVar[str] = ASSET_UNIQUE_IDENTIFIER_DIMENSION
+    reference_dimension: ClassVar[str] = ASSET_IDENTIFIER_DIMENSION
     frame_label: ClassVar[str] = "Asset DataNode"
 
 
@@ -46,14 +46,14 @@ class AssetTimestampedFrameMixin(StampedFrameMixin):
 
 
 class AssetTimestampedDataNode(AssetTimestampedFrameMixin, AssetIndexedDataNode):
-    """Base asset-indexed DataNode for timestamped facts keyed by unique_identifier."""
+    """Base asset-indexed DataNode for timestamped facts keyed by asset_identifier."""
 
     def dependencies(self) -> dict:
         return {}
 
 
 class AssetSnapshot(AssetTimestampedDataNode):
-    """Timestamped asset display snapshots keyed by asset unique_identifier."""
+    """Timestamped asset display snapshots keyed by asset_identifier."""
 
     configuration_class = AssetSnapshotConfiguration
 
@@ -67,11 +67,11 @@ class AssetSnapshot(AssetTimestampedDataNode):
         rows = []
         for snapshot in _snapshot_items(snapshots):
             payload = _snapshot_payload(snapshot)
-            unique_identifier = _required_snapshot_string(payload, "unique_identifier")
+            asset_identifier = _required_snapshot_string(payload, ASSET_IDENTIFIER_DIMENSION)
             rows.append(
                 {
                     "time_index": _required_snapshot_time(payload),
-                    "unique_identifier": unique_identifier,
+                    ASSET_IDENTIFIER_DIMENSION: asset_identifier,
                     "name": _optional_snapshot_string(payload, "name"),
                     "ticker": _optional_snapshot_string(payload, "ticker"),
                     "exchange_code": _optional_snapshot_string(payload, "exchange_code"),
@@ -108,7 +108,7 @@ class AssetSnapshot(AssetTimestampedDataNode):
         return frame
 
     def verify_backend_index_available(self, frame: pd.DataFrame) -> None:
-        """Raise when any `(time_index, unique_identifier)` key already exists."""
+        """Raise when any `(time_index, asset_identifier)` key already exists."""
 
         existing_keys = self.existing_backend_index_keys(frame)
         if existing_keys:
@@ -118,7 +118,7 @@ class AssetSnapshot(AssetTimestampedDataNode):
             )
             raise ValueError(
                 "AssetSnapshot rows already exist for "
-                f"(time_index, unique_identifier): {formatted_keys}."
+                f"(time_index, asset_identifier): {formatted_keys}."
             )
 
     def existing_backend_index_keys(self, frame: pd.DataFrame) -> list[tuple[str, str]]:
@@ -135,7 +135,7 @@ class AssetSnapshot(AssetTimestampedDataNode):
                 great_or_equal=True,
                 less_or_equal=True,
                 dimension_filters={
-                    ASSET_UNIQUE_IDENTIFIER_DIMENSION: [unique_identifier],
+                    ASSET_IDENTIFIER_DIMENSION: [unique_identifier],
                 },
             )
             if _backend_frame_contains_asset_snapshot_key(
@@ -176,20 +176,20 @@ def _asset_snapshot_index_keys(frame: pd.DataFrame) -> list[tuple[pd.Timestamp, 
         frame.copy(),
         index_names=[
             "time_index",
-            ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+            ASSET_IDENTIFIER_DIMENSION,
         ],
     )
     flat["time_index"] = normalize_datetime64_ns_utc(flat["time_index"])
     keys = flat[
         [
             "time_index",
-            ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+            ASSET_IDENTIFIER_DIMENSION,
         ]
     ].drop_duplicates()
     return [
         (
             normalize_timestamp_ns_utc(row["time_index"]),
-            str(row[ASSET_UNIQUE_IDENTIFIER_DIMENSION]),
+            str(row[ASSET_IDENTIFIER_DIMENSION]),
         )
         for _, row in keys.iterrows()
     ]
@@ -208,19 +208,19 @@ def _backend_frame_contains_asset_snapshot_key(
         frame.copy(),
         index_names=[
             "time_index",
-            ASSET_UNIQUE_IDENTIFIER_DIMENSION,
+            ASSET_IDENTIFIER_DIMENSION,
         ],
     )
     if "time_index" not in flat.columns:
         return True
-    if ASSET_UNIQUE_IDENTIFIER_DIMENSION not in flat.columns:
+    if ASSET_IDENTIFIER_DIMENSION not in flat.columns:
         return True
 
     flat["time_index"] = normalize_datetime64_ns_utc(flat["time_index"])
-    flat[ASSET_UNIQUE_IDENTIFIER_DIMENSION] = flat[ASSET_UNIQUE_IDENTIFIER_DIMENSION].astype(str)
+    flat[ASSET_IDENTIFIER_DIMENSION] = flat[ASSET_IDENTIFIER_DIMENSION].astype(str)
     return (
         (flat["time_index"] == time_index)
-        & (flat[ASSET_UNIQUE_IDENTIFIER_DIMENSION] == unique_identifier)
+        & (flat[ASSET_IDENTIFIER_DIMENSION] == unique_identifier)
     ).any()
 
 
@@ -241,7 +241,7 @@ def _snapshot_payload(snapshot: AssetSnapshotInput) -> dict[str, Any]:
         field_name: getattr(snapshot, field_name)
         for field_name in (
             "time_index",
-            "unique_identifier",
+            ASSET_IDENTIFIER_DIMENSION,
             "name",
             "ticker",
             "exchange_code",

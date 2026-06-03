@@ -169,10 +169,10 @@ def build_signal_weights_frame() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "time_index": [TIME_INDEX] * len(ASSET_UNIQUE_IDENTIFIERS),
-            "unique_identifier": ASSET_UNIQUE_IDENTIFIERS,
+            "asset_identifier": ASSET_UNIQUE_IDENTIFIERS,
             "signal_weight": [weight] * len(ASSET_UNIQUE_IDENTIFIERS),
         }
-    ).set_index(["time_index", "unique_identifier"])
+    ).set_index(["time_index", "asset_identifier"])
 
 
 def build_portfolio_weights_frame() -> pd.DataFrame:
@@ -180,7 +180,7 @@ def build_portfolio_weights_frame() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "time_index": [TIME_INDEX] * len(ASSET_UNIQUE_IDENTIFIERS),
-            "unique_identifier": ASSET_UNIQUE_IDENTIFIERS,
+            "asset_identifier": ASSET_UNIQUE_IDENTIFIERS,
             "weight": [weight] * len(ASSET_UNIQUE_IDENTIFIERS),
             "weight_before": [0.0] * len(ASSET_UNIQUE_IDENTIFIERS),
             "price_current": [100.0, 50.0, 25.0],
@@ -188,7 +188,7 @@ def build_portfolio_weights_frame() -> pd.DataFrame:
             "volume_current": [1.0, 1.0, 1.0],
             "volume_before": [0.0, 0.0, 0.0],
         }
-    ).set_index(["time_index", "unique_identifier"])
+    ).set_index(["time_index", "asset_identifier"])
 
 
 def build_portfolio_values_frame() -> pd.DataFrame:
@@ -248,7 +248,7 @@ def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, An
         ),
         "portfolio_weights_frame": PortfolioWeights.normalize_weights_frame(
             build_portfolio_weights_frame(),
-            portfolio_index_unique_identifier=portfolio_index.unique_identifier,
+            portfolio_index_identifier=portfolio_index.unique_identifier,
         ),
         "portfolio_values_frame": PortfoliosDataNode.normalize_values_frame(
             build_portfolio_values_frame(),

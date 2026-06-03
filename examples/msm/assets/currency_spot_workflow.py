@@ -147,7 +147,7 @@ def _asset_snapshot_payloads(
         ),
         {
             "time_index": snapshot_time,
-            "unique_identifier": eurusd_asset.unique_identifier,
+            "asset_identifier": eurusd_asset.unique_identifier,
             "name": (
                 f"{EXAMPLE_EUR_CURRENCY['currency_name']} / {EXAMPLE_USD_CURRENCY['currency_name']}"
             ),
@@ -166,7 +166,7 @@ def _currency_asset_snapshot(
 ) -> dict[str, Any]:
     return {
         "time_index": snapshot_time,
-        "unique_identifier": asset.unique_identifier,
+        "asset_identifier": asset.unique_identifier,
         "name": currency["currency_name"],
         "ticker": currency["code"],
         "exchange_code": "CURRENCY",

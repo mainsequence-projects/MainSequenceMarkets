@@ -6,7 +6,6 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from typing import Any
 
-from mainsequence.client.exceptions import NotFoundError
 from mainsequence.client.metatables import MetaTable
 from mainsequence.logconf import logger as _mainsequence_logger
 
@@ -95,21 +94,21 @@ def attach_markets_meta_tables_from_catalog(
             f"{missing_identifiers!r}. Run `{SDK_MIGRATION_UPGRADE_COMMAND}` before runtime startup."
         )
 
+    for plan in model_plans:
+        validate_catalog_contract(catalog_rows_by_identifier[plan.identifier], model=plan.model)
+
+    resolved_meta_tables = resolve_catalog_meta_tables(
+        catalog_rows_by_identifier,
+        model_plans=model_plans,
+        management_mode=management_mode,
+        timeout=timeout,
+    )
+
     meta_tables: list[MetaTable] = []
     meta_table_by_identifier: dict[str, MetaTable] = {}
     for position, plan in enumerate(model_plans, start=1):
         catalog_row = catalog_rows_by_identifier[plan.identifier]
-        validate_catalog_contract(catalog_row, model=plan.model)
-        meta_table = resolve_catalog_meta_table(
-            catalog_row,
-            model=plan.model,
-            timeout=timeout,
-        )
-        validate_platform_meta_table_physical_contract(
-            meta_table,
-            model=plan.model,
-            timeout=timeout,
-        )
+        meta_table = resolved_meta_tables[plan.identifier]
         _bind_model_meta_table(plan.model, meta_table)
         meta_tables.append(meta_table)
         meta_table_by_identifier[plan.identifier] = meta_table
@@ -151,11 +150,6 @@ def resolve_catalog_table(
             f"Run `{SDK_MIGRATION_UPGRADE_COMMAND}` "
             "before runtime startup."
         )
-    validate_platform_meta_table_physical_contract(
-        existing,
-        model=MarketsMetaTableCatalogTable,
-        timeout=timeout,
-    )
     return existing
 
 
@@ -283,28 +277,123 @@ def meta_table_from_catalog_row(
     )
 
 
-def resolve_catalog_meta_table(
+def resolve_catalog_meta_tables(
+    catalog_rows_by_identifier: Mapping[str, Mapping[str, Any]],
+    *,
+    model_plans: Sequence[_CatalogBootstrapModelPlan],
+    management_mode: MarketsManagementMode,
+    timeout: int | float | tuple[float, float] | None = None,
+) -> dict[str, MetaTable]:
+    uid_by_identifier = {
+        plan.identifier: str(
+            catalog_rows_by_identifier[plan.identifier].get("meta_table_uid") or ""
+        )
+        for plan in model_plans
+    }
+    missing_catalog_uid_identifiers = [
+        identifier for identifier, uid in uid_by_identifier.items() if not uid
+    ]
+    if missing_catalog_uid_identifiers:
+        raise CatalogBootstrapError(
+            "Markets MetaTable catalog has rows without meta_table_uid for "
+            f"{missing_catalog_uid_identifiers!r}."
+        )
+    duplicate_uids = sorted(
+        {
+            uid
+            for uid in uid_by_identifier.values()
+            if list(uid_by_identifier.values()).count(uid) > 1
+        }
+    )
+    if duplicate_uids:
+        raise CatalogBootstrapError(
+            "Markets MetaTable catalog maps multiple identifiers to the same "
+            f"MetaTable UID(s) {duplicate_uids!r}."
+        )
+    requested_uids = list(dict.fromkeys(uid_by_identifier.values()))
+
+    if not requested_uids:
+        return {}
+
+    logger.info(
+        "Resolving cataloged markets MetaTables",
+        meta_table_uid_count=len(requested_uids),
+        model_count=len(model_plans),
+        management_mode=management_mode,
+    )
+    matches = MetaTable.filter(
+        timeout=timeout,
+        uid__in=requested_uids,
+        management_mode=management_mode,
+    )
+    matches_by_uid: dict[str, MetaTable] = {}
+    for meta_table in matches:
+        uid = _meta_table_uid(meta_table)
+        if uid in matches_by_uid:
+            raise CatalogBootstrapError(
+                f"Multiple platform MetaTables matched catalog UID {uid!r}."
+            )
+        matches_by_uid[uid] = meta_table
+
+    missing_uids = sorted(set(requested_uids) - set(matches_by_uid))
+    if missing_uids:
+        raise CatalogStaleMetaTableUidError(
+            "Markets MetaTable catalog rows point to missing backend MetaTables "
+            f"{missing_uids!r}."
+        )
+
+    resolved: dict[str, MetaTable] = {}
+    for plan in model_plans:
+        catalog_row = catalog_rows_by_identifier[plan.identifier]
+        uid = str(catalog_row["meta_table_uid"])
+        meta_table = matches_by_uid[uid]
+        _validate_catalog_meta_table_identity(
+            catalog_row,
+            meta_table=meta_table,
+            model=plan.model,
+        )
+        resolved[plan.identifier] = meta_table
+
+    logger.info(
+        "Resolved cataloged markets MetaTables",
+        meta_table_count=len(resolved),
+        model_count=len(model_plans),
+        management_mode=management_mode,
+    )
+    return resolved
+
+
+def _validate_catalog_meta_table_identity(
     catalog_row: Mapping[str, Any],
     *,
+    meta_table: MetaTable,
     model: type[MarketsBase],
-    timeout: int | float | tuple[float, float] | None = None,
-) -> MetaTable:
-    try:
-        return MetaTable.get_by_uid(
-            uid=str(catalog_row["meta_table_uid"]),
-            timeout=timeout,
-        )
-    except NotFoundError as exc:
-        raise CatalogStaleMetaTableUidError(
-            "Markets MetaTable catalog row points to missing backend MetaTable "
-            f"{catalog_row.get('meta_table_uid')!r} for {model.__name__}."
-        ) from exc
-    except Exception as exc:
+) -> None:
+    expected_uid = str(catalog_row.get("meta_table_uid") or "")
+    actual_uid = _meta_table_uid(meta_table)
+    if actual_uid != expected_uid:
         raise CatalogBootstrapError(
-            "Markets MetaTable catalog row is stale for "
-            f"{model.__name__}: platform MetaTable {catalog_row.get('meta_table_uid')!r} "
-            "could not be resolved. Repair or rebuild the catalog before startup."
-        ) from exc
+            "Markets MetaTable catalog UID mismatch for "
+            f"{model.__name__}: catalog={expected_uid!r}, backend={actual_uid!r}."
+        )
+
+    expected_identifier = str(catalog_row.get("identifier") or "")
+    actual_identifier = str(getattr(meta_table, "identifier", "") or "")
+    if actual_identifier and actual_identifier != expected_identifier:
+        raise CatalogBootstrapError(
+            "Markets MetaTable catalog identifier mismatch for "
+            f"{model.__name__}: catalog={expected_identifier!r}, "
+            f"backend={actual_identifier!r}."
+        )
+
+    expected_namespace = str(catalog_row.get("namespace") or "")
+    actual_namespace = str(getattr(meta_table, "namespace", "") or "")
+    if actual_namespace and actual_namespace != expected_namespace:
+        raise CatalogBootstrapError(
+            "Markets MetaTable catalog namespace mismatch for "
+            f"{model.__name__}: catalog={expected_namespace!r}, "
+            f"backend={actual_namespace!r}."
+        )
 
 
 def validate_catalog_contract(
@@ -321,182 +410,6 @@ def validate_catalog_contract(
             f"local hash {expected_contract_hash!r}. Add an explicit migration or repair "
             "the catalog before startup."
         )
-
-
-def validate_platform_meta_table_physical_contract(
-    meta_table: MetaTable,
-    *,
-    model: type[MarketsBase],
-    timeout: int | float | tuple[float, float] | None,
-) -> None:
-    if getattr(meta_table, "management_mode", None) != "platform_managed":
-        return
-
-    try:
-        response = meta_table.introspect(timeout=timeout)
-    except Exception as exc:
-        raise CatalogBootstrapError(
-            "Could not introspect platform-managed MetaTable physical table for "
-            f"{model.__name__}. Repair or recreate the MetaTable before startup."
-        ) from exc
-
-    snapshot = response.get("introspection_snapshot") if isinstance(response, Mapping) else None
-    if not isinstance(snapshot, Mapping):
-        snapshot = getattr(meta_table, "introspection_snapshot", None)
-    if not isinstance(snapshot, Mapping):
-        raise CatalogBootstrapError(
-            "MetaTable introspection returned no physical snapshot for "
-            f"{model.__name__}. Repair or recreate the MetaTable before startup."
-        )
-
-    expected_columns = {str(column.name) for column in model.__table__.columns}
-    actual_columns = {
-        str(_physical_item_field(column, "name"))
-        for column in _physical_collection(response, snapshot, meta_table, "columns")
-        if _physical_item_field(column, "name")
-    }
-    expected_indexes = {
-        str(index.name): _expected_index_signature(index)
-        for index in getattr(model.__table__, "indexes", set()) or []
-        if getattr(index, "name", None)
-    }
-    actual_indexes = {
-        str(_physical_item_field(index, "name")): _physical_index_signature(index)
-        for index in _physical_collection(
-            response,
-            snapshot,
-            meta_table,
-            "indexes",
-            "indexes_meta",
-        )
-        if _physical_item_field(index, "name")
-    }
-
-    missing_columns = sorted(expected_columns - actual_columns)
-    extra_columns = sorted(actual_columns - expected_columns)
-    missing_indexes = sorted(set(expected_indexes) - set(actual_indexes))
-    mismatched_indexes = {
-        name: {
-            "expected": expected_indexes[name],
-            "actual": actual_indexes[name],
-        }
-        for name in sorted(set(expected_indexes).intersection(actual_indexes))
-        if _physical_index_signature_mismatch(expected_indexes[name], actual_indexes[name])
-    }
-    if missing_columns or extra_columns or missing_indexes or mismatched_indexes:
-        raise CatalogBootstrapError(
-            "Registered platform-managed MetaTable has stale physical storage for "
-            f"{model.__name__}. Missing columns={missing_columns!r}, "
-            f"extra columns={extra_columns!r}, "
-            f"missing indexes={missing_indexes!r}, "
-            f"mismatched indexes={mismatched_indexes!r}. Repair or recreate the "
-            "MetaTable before normal schema bootstrap."
-        )
-
-
-def _expected_index_signature(index: Any) -> dict[str, Any]:
-    return {
-        "columns": [str(column.name) for column in index.columns],
-        "unique": bool(index.unique),
-    }
-
-
-def _physical_collection(
-    response: Any,
-    snapshot: Mapping[str, Any],
-    meta_table: MetaTable,
-    *field_names: str,
-) -> list[Any]:
-    for field_name in field_names:
-        snapshot_items = snapshot.get(field_name)
-        if isinstance(snapshot_items, list):
-            return snapshot_items
-
-    if isinstance(response, Mapping):
-        for field_name in field_names:
-            response_items = response.get(field_name)
-            if isinstance(response_items, list):
-                return response_items
-
-    for field_name in field_names:
-        meta_table_items = getattr(meta_table, field_name, None)
-        if isinstance(meta_table_items, list):
-            return meta_table_items
-
-    return []
-
-
-def _physical_item_field(item: Any, field_name: str) -> Any:
-    if isinstance(item, Mapping):
-        return item.get(field_name)
-    return getattr(item, field_name, None)
-
-
-def _physical_item_has_field(item: Any, field_name: str) -> bool:
-    if isinstance(item, Mapping):
-        return field_name in item
-    model_fields_set = getattr(item, "model_fields_set", None)
-    if isinstance(model_fields_set, set):
-        return field_name in model_fields_set
-    fields_set = getattr(item, "__fields_set__", None)
-    if isinstance(fields_set, set):
-        return field_name in fields_set
-    return getattr(item, field_name, None) is not None
-
-
-def _physical_index_signature_mismatch(
-    expected: Mapping[str, Any],
-    actual: Mapping[str, Any],
-) -> bool:
-    actual_columns = actual.get("columns")
-    actual_unique = actual.get("unique")
-    if actual_columns is None:
-        return False
-    if list(expected.get("columns", [])) != list(actual_columns):
-        return True
-    return actual_unique is not None and bool(expected.get("unique")) != bool(actual_unique)
-
-
-def _physical_index_signature(index: Any) -> dict[str, Any]:
-    contract_fragment = _physical_item_field(index, "contract_fragment")
-    if not isinstance(contract_fragment, Mapping):
-        contract_fragment = {}
-
-    raw_columns = (
-        _physical_item_field(index, "columns")
-        or _physical_item_field(index, "column_names")
-        or contract_fragment.get("columns")
-        or contract_fragment.get("column_names")
-    )
-    columns = _physical_index_columns(raw_columns)
-    raw_unique = None
-    for field_name in ("unique", "is_unique"):
-        if _physical_item_has_field(index, field_name):
-            raw_unique = _physical_item_field(index, field_name)
-            break
-    if raw_unique is None:
-        raw_unique = contract_fragment.get("unique")
-    if raw_unique is None:
-        raw_unique = contract_fragment.get("is_unique")
-
-    return {
-        "columns": columns,
-        "unique": bool(raw_unique) if raw_unique is not None and columns is not None else None,
-    }
-
-
-def _physical_index_columns(value: Any) -> list[str] | None:
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
-        return None
-
-    columns: list[str] = []
-    for column in value:
-        column_name = _physical_item_field(column, "name")
-        if column_name in (None, ""):
-            column_name = column
-        if column_name not in (None, ""):
-            columns.append(str(column_name))
-    return columns or None
 
 
 def upsert_catalog_row(
@@ -659,8 +572,7 @@ __all__ = [
     "meta_table_from_catalog_row",
     "refresh_markets_catalog_from_registered_metatables",
     "resolve_catalog_table",
-    "resolve_catalog_meta_table",
+    "resolve_catalog_meta_tables",
     "upsert_catalog_row",
     "validate_catalog_contract",
-    "validate_platform_meta_table_physical_contract",
 ]

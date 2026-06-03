@@ -209,7 +209,7 @@ from msm.data_nodes.assets import AssetSnapshot
 snapshot_node = AssetSnapshot().set_snapshots(
     {
         "time_index": datetime.now(UTC),
-        "unique_identifier": "example-asset-btc",
+        "asset_identifier": "example-asset-btc",
         "ticker": "BTC",
     },
 )
@@ -225,13 +225,13 @@ is also `mainsequence.examples`. Pass explicit `identifier` or `hash_namespace`
 only when a test or experiment needs isolation.
 
 Asset snapshot source tables have a canonical foreign key from
-`unique_identifier` to `AssetTable.unique_identifier`, so the `Asset` MetaTable
+`asset_identifier` to `AssetTable.unique_identifier`, so the `Asset` MetaTable
 must exist before a snapshot DataNode initializes its source table. In examples
 that perform source-table initialization, run `msm.start_engine(models=["Asset"])`
 with the intended namespace before creating the DataNode.
 
 Before the write path persists rows, `AssetSnapshot` checks the backend for the
-incoming `(time_index, unique_identifier)` tuples and fails if any tuple already
+incoming `(time_index, asset_identifier)` tuples and fails if any tuple already
 exists. Publish corrections as a new timestamped snapshot instead of overwriting
 the existing row.
 
@@ -310,8 +310,8 @@ holdings = build_account_holdings_frame(
     holdings_date="2026-05-25T00:00:00Z",
     account_uid=account.uid,
     positions=[
-        {"unique_identifier": "BTC", "quantity": 1.0},
-        {"unique_identifier": "ETH", "quantity": 10.0},
+        {"asset_identifier": "BTC", "quantity": 1.0},
+        {"asset_identifier": "ETH", "quantity": 10.0},
     ],
 )
 
@@ -329,8 +329,8 @@ targets = build_target_positions_frame(
     target_positions_date="2026-05-25T00:00:00Z",
     position_set_uid=position_set.uid,
     positions=[
-        {"unique_identifier": "BTC", "weight_notional_exposure": 0.6},
-        {"unique_identifier": "ETH", "weight_notional_exposure": 0.4},
+        {"asset_identifier": "BTC", "weight_notional_exposure": 0.6},
+        {"asset_identifier": "ETH", "weight_notional_exposure": 0.4},
     ],
 )
 ```

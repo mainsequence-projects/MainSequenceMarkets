@@ -13,7 +13,7 @@ class AssetPricingDetailConfiguration(AssetDataNodeConfiguration):
 
 
 class AssetPricingDetail(AssetTimestampedDataNode):
-    """Timestamped provider pricing metadata keyed by asset unique_identifier."""
+    """Timestamped provider pricing metadata keyed by asset_identifier."""
 
     configuration_class = AssetPricingDetailConfiguration
 

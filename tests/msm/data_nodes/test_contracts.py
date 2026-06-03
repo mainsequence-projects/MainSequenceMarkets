@@ -14,6 +14,8 @@ import msm.services.holdings as holdings_service_module
 from msm.data_nodes.accounts import (
     AccountHoldings,
     HoldingsDataNodeConfiguration,
+    TargetPositions,
+    TargetPositionsDataNodeConfiguration,
 )
 from msm.data_nodes.storage import (
     AccountHoldingsStorage,
@@ -50,7 +52,7 @@ def test_holdings_storage_declares_owner_and_asset_foreign_keys() -> None:
         AssetTable.__metatable_identifier__,
     ]
 
-    account_asset_column = AccountHoldingsStorage.__table__.columns["unique_identifier"]
+    account_asset_column = AccountHoldingsStorage.__table__.columns["asset_identifier"]
 
     assert any(
         foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AssetTable
@@ -67,7 +69,7 @@ def test_target_positions_storage_declares_position_set_foreign_key() -> None:
     ]
 
     position_set_column = TargetPositionsStorage.__table__.columns["position_set_uid"]
-    asset_column = TargetPositionsStorage.__table__.columns["unique_identifier"]
+    asset_column = TargetPositionsStorage.__table__.columns["asset_identifier"]
     assert any(
         foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is PositionSetTable
         and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"] == "uid"
@@ -95,6 +97,10 @@ def test_holdings_nodes_source_column_dtypes_from_storage_classes() -> None:
         AccountHoldingsStorage
     ) == storage_column_dtypes_map(AccountHoldingsStorage)
     assert AccountHoldings._required_storage_table() is AccountHoldingsStorage
+    assert TargetPositions._column_dtypes_map_for_storage(
+        TargetPositionsStorage
+    ) == storage_column_dtypes_map(TargetPositionsStorage)
+    assert TargetPositions._required_storage_table() is TargetPositionsStorage
 
 
 def test_holdings_nullability_is_sourced_from_storage_classes() -> None:
@@ -111,7 +117,7 @@ def test_account_holdings_dtype_tokens_match_storage_columns() -> None:
     dtype_map = AccountHoldings._column_dtypes_map_for_storage(AccountHoldingsStorage)
 
     assert dtype_map["quantity"] == dc.FLOAT64
-    assert dtype_map["unique_identifier"] == dc.STRING
+    assert dtype_map["asset_identifier"] == dc.STRING
     assert dtype_map["time_index"] == dc.TIMESTAMP_TZ
     assert dtype_map["target_trade_time"] == dc.TIMESTAMP_TZ
     # Holdings identity/grouping UUID columns are uuid-typed on the storage class.
@@ -133,6 +139,20 @@ def test_holdings_nodes_do_not_expose_bootstrap_frame_api() -> None:
     assert not hasattr(AccountHoldings, "build_initialization_frame")
 
 
+def test_target_positions_node_uses_target_position_configuration() -> None:
+    config = TargetPositions.default_config()
+
+    assert isinstance(config, TargetPositionsDataNodeConfiguration)
+    assert TargetPositions._required_storage_table() is TargetPositionsStorage
+
+
+def test_target_positions_node_requires_real_frame() -> None:
+    node = object.__new__(TargetPositions)
+
+    with pytest.raises(ValueError, match="requires a real target-position frame"):
+        node.get_target_positions_frame()
+
+
 def test_account_holdings_frame_builder_uses_storage_contract() -> None:
     account_uid = uuid.uuid4()
     holdings_set_uid = uuid.uuid4()
@@ -143,7 +163,7 @@ def test_account_holdings_frame_builder_uses_storage_contract() -> None:
         holdings_set_uid=holdings_set_uid,
         positions=[
             {
-                "unique_identifier": "BTC",
+                "asset_identifier": "BTC",
                 "quantity": "1.25",
                 "target_trade_time": dt.datetime(2026, 5, 25, 11, tzinfo=dt.UTC),
                 "extra_details": {"venue": "test"},
@@ -165,7 +185,7 @@ def test_account_holdings_datanode_exposes_frame_helpers_only() -> None:
     frame = build_account_holdings_frame(
         holdings_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
         account_uid=uuid.uuid4(),
-        positions=[{"unique_identifier": "BTC", "quantity": "1"}],
+        positions=[{"asset_identifier": "BTC", "quantity": "1"}],
     )
 
     assert list(frame.index.names) == list(AccountHoldingsStorage.__index_names__)
@@ -180,8 +200,8 @@ def test_holdings_frame_builder_rejects_duplicate_position_identifiers() -> None
             holdings_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
             account_uid=uuid.uuid4(),
             positions=[
-                {"unique_identifier": "BTC", "quantity": "1"},
-                {"unique_identifier": "BTC", "quantity": "2"},
+                {"asset_identifier": "BTC", "quantity": "1"},
+                {"asset_identifier": "BTC", "quantity": "2"},
             ],
         )
 
@@ -193,7 +213,7 @@ def test_target_positions_frame_validation_keeps_storage_dtype_contract() -> Non
         position_set_uid=position_set_uid,
         positions=[
             {
-                "unique_identifier": "BTC",
+                "asset_identifier": "BTC",
                 "weight_notional_exposure": "0.25",
             }
         ],
@@ -209,7 +229,7 @@ def test_target_positions_require_exactly_one_exposure_shape() -> None:
     with pytest.raises(ValueError):
         validate_target_position_payload(
             {
-                "unique_identifier": "BTC",
+                "asset_identifier": "BTC",
                 "weight_notional_exposure": "0.25",
                 "single_asset_quantity": "1",
             }

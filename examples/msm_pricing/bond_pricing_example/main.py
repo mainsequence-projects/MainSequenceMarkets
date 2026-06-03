@@ -88,7 +88,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
             "PricingMarketDataBinding",
         ],
     )
-    _print_step("Initialized pricing MetaTable runtime")
+    _print_step("Attached pricing MetaTable runtime")
     default_bindings = PricingMarketDataBinding.filter(
         context_key=PRICING_CONTEXT_DEFAULT,
         limit=10,
@@ -111,12 +111,12 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
 
     bond_asset_type = AssetType.upsert(**ASSET_TYPE_BOND_DEFINITION.as_payload())
     _print_step(
-        "Registered bond asset type",
+        "Upserted bond asset type",
         asset_type=bond_asset_type.asset_type,
     )
     currency_asset_type = AssetType.upsert(**ASSET_TYPE_CURRENCY_DEFINITION.as_payload())
     _print_step(
-        "Registered currency asset type",
+        "Upserted currency asset type",
         asset_type=currency_asset_type.asset_type,
     )
     issuer = Issuer.upsert(
@@ -124,13 +124,13 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         display_name="MSM Pricing Example Issuer",
     )
     _print_step(
-        "Registered issuer",
+        "Upserted issuer",
         issuer_uid=issuer.uid,
         unique_identifier=issuer.unique_identifier,
     )
     currency_asset = Asset.upsert(unique_identifier="USD", asset_type=ASSET_TYPE_CURRENCY)
     _print_step(
-        "Registered denomination currency asset",
+        "Upserted denomination currency asset",
         asset_uid=currency_asset.uid,
         unique_identifier=currency_asset.unique_identifier,
     )
@@ -143,7 +143,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         status="ACTIVE",
     )
     _print_step(
-        "Registered bond asset",
+        "Upserted bond asset",
         asset_uid=bond.asset_uid,
         unique_identifier=bond.unique_identifier,
     )
@@ -158,7 +158,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
 
     index_type = IndexType.upsert(**INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload())
     _print_step(
-        "Registered interest-rate index type",
+        "Upserted interest-rate index type",
         index_type=index_type.index_type,
     )
     index = Index.upsert(
@@ -169,7 +169,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         provider="example",
     )
     _print_step(
-        "Registered floating-rate index",
+        "Upserted floating-rate index",
         index_uid=index.uid,
         index_type=index.index_type,
         unique_identifier=index.unique_identifier,
@@ -181,7 +181,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         source="example",
     )
     _print_step(
-        "Registered index convention details",
+        "Upserted index convention details",
         index_uid=convention_details.index_uid,
         index_family=convention_details.index_family,
     )
@@ -196,7 +196,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         metadata_json={"example": "flat-forward zero curve"},
     )
     _print_step(
-        "Registered discount curve",
+        "Upserted discount curve",
         curve_uid=curve.uid,
         unique_identifier=curve.unique_identifier,
     )
@@ -238,7 +238,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         source="example",
     )
     _print_step(
-        "Registered EOD pricing market-data context",
+        "Upserted EOD pricing market-data context",
         context_key=PRICING_CONTEXT_EOD,
         bindings=[
             {
@@ -282,8 +282,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         source="example",
         metadata_json={
             "workflow": "floating-rate-bond-pricing-example",
-            "curve_unique_identifier": curve.unique_identifier,
-            "index_unique_identifier": index.unique_identifier,
+            "curve_identifier": curve.unique_identifier,
+            "index_identifier": index.unique_identifier,
         },
     )
     _print_step(

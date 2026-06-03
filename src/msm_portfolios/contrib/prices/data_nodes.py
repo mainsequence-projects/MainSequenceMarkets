@@ -16,6 +16,7 @@ from mainsequence.meta_tables.data_nodes.utils import (
     string_freq_to_time_delta,
     string_frequency_to_minutes,
 )
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
@@ -211,7 +212,7 @@ class UpsampleAndInterpolation:
         all_dfs = []
         for i in tqdm(
             range(bars_df.shape[0] - upsample_frequency_obs + 1),
-            desc=f"Upsampling from {bars_df['trade_day'].iloc[0]} to {bars_df['trade_day'].iloc[-1]} for assets {bars_df['unique_identifier'].dropna().unique()}",
+            desc=f"Upsampling from {bars_df['trade_day'].iloc[0]} to {bars_df['trade_day'].iloc[-1]} for assets {bars_df[ASSET_IDENTIFIER_DIMENSION].dropna().unique()}",
         ):
             start = i
             end = i + upsample_frequency_obs
@@ -251,7 +252,7 @@ class UpsampleAndInterpolation:
             all_dfs.append(new_bar)
 
         all_dfs = pd.DataFrame(all_dfs)
-        all_dfs["unique_identifier"] = bars_df["unique_identifier"].iloc[0]
+        all_dfs[ASSET_IDENTIFIER_DIMENSION] = bars_df[ASSET_IDENTIFIER_DIMENSION].iloc[0]
         all_dfs = all_dfs.set_index("time")
 
         return all_dfs
@@ -356,9 +357,9 @@ def interpolate_daily_bars(
                     last_observation = last_observation.drop(columns="interpolated")
 
                 bars_df = pd.concat([last_observation, bars_df], axis=0).sort_index()
-                if "unique_identifier" in bars_df.columns:
-                    bars_df.loc[:, ["unique_identifier"]] = (
-                        bars_df[["unique_identifier"]].bfill().ffill()
+                if ASSET_IDENTIFIER_DIMENSION in bars_df.columns:
+                    bars_df.loc[:, [ASSET_IDENTIFIER_DIMENSION]] = (
+                        bars_df[[ASSET_IDENTIFIER_DIMENSION]].bfill().ffill()
                     )
 
             null_index = bars_df.isnull().any(axis=1)
@@ -676,64 +677,66 @@ class InterpolatedPrices(AssetIndexedDataNode):
         full_last_observation = self.get_df_between_dates(dimension_range_map=dimension_range_map)
         last_observation_map = {}
 
-        for unique_identifier in raw_data_df["unique_identifier"].unique():
+        for asset_identifier in raw_data_df[ASSET_IDENTIFIER_DIMENSION].unique():
             if full_last_observation is None or full_last_observation.empty:
-                last_observation_map[unique_identifier] = None
+                last_observation_map[asset_identifier] = None
                 continue
 
             if (
-                unique_identifier
-                in full_last_observation.index.get_level_values("unique_identifier").to_list()
+                asset_identifier
+                in full_last_observation.index.get_level_values(
+                    ASSET_IDENTIFIER_DIMENSION
+                ).to_list()
             ):
                 last_obs = full_last_observation.loc[
-                    (slice(None), unique_identifier), :
-                ].reset_index(["unique_identifier"], drop=True)
+                    (slice(None), asset_identifier), :
+                ].reset_index([ASSET_IDENTIFIER_DIMENSION], drop=True)
                 last_obs.index.name = None
                 if "open_time" in last_obs.columns:
                     last_obs["open_time"] = pd.to_datetime(last_obs["open_time"], utc=True)
-                last_observation_map[unique_identifier] = last_obs
+                last_observation_map[asset_identifier] = last_obs
             else:
-                last_observation_map[unique_identifier] = None
+                last_observation_map[asset_identifier] = None
 
         def multiproc_upsample(
-            calendar, tmp_df, unique_identifier, last_observation, interpolator_kwargs
+            calendar, tmp_df, asset_identifier, last_observation, interpolator_kwargs
         ):
             interpolator = UpsampleAndInterpolation(**interpolator_kwargs)
             df = interpolator.get_interpolated_upsampled_bars(
                 calendar=calendar,
                 tmp_df=tmp_df,
-                last_observation=last_observation_map[unique_identifier],
+                last_observation=last_observation_map[asset_identifier],
             )
-            df["unique_identifier"] = unique_identifier
+            df[ASSET_IDENTIFIER_DIMENSION] = asset_identifier
             return df
 
         required_cores = self._get_required_cores(last_observation_map=last_observation_map)
         required_cores = 1
         if required_cores == 1:
             # Single-core processing
-            for unique_identifier, df in raw_data_df.groupby("unique_identifier"):
+            for asset_identifier, df in raw_data_df.groupby(ASSET_IDENTIFIER_DIMENSION):
                 if df.shape[0] > 1:
                     df = self.interpolator.get_interpolated_upsampled_bars(
-                        calendar=self.asset_calendar_map[unique_identifier],
+                        calendar=self.asset_calendar_map[asset_identifier],
                         tmp_df=df,
-                        last_observation=last_observation_map[unique_identifier],
+                        last_observation=last_observation_map[asset_identifier],
                     )
-                    df["unique_identifier"] = unique_identifier
+                    df[ASSET_IDENTIFIER_DIMENSION] = asset_identifier
                     upsampled_df.append(df)
         else:
             upsampled_df = Parallel(n_jobs=required_cores)(
                 delayed(multiproc_upsample)(
-                    calendar=self.asset_calendar_map[unique_identifier],
+                    calendar=self.asset_calendar_map[asset_identifier],
                     tmp_df=tmp_df,
-                    unique_identifier=unique_identifier,
-                    last_observation=last_observation_map[unique_identifier],
+                    asset_identifier=asset_identifier,
+                    last_observation=last_observation_map[asset_identifier],
                     interpolator_kwargs=dict(
                         bar_frequency_id=self.bar_frequency_id,
                         upsample_frequency_id=self.upsample_frequency_id,
                         intraday_bar_interpolation_rule=self.intraday_bar_interpolation_rule,
                     ),
                 )
-                for unique_identifier, tmp_df in raw_data_df.groupby("unique_identifier")
+                for asset_identifier, tmp_df in raw_data_df.groupby(ASSET_IDENTIFIER_DIMENSION)
                 if tmp_df.shape[0] > 0
             )
 
@@ -741,7 +744,9 @@ class InterpolatedPrices(AssetIndexedDataNode):
         if len(upsampled_df) == 0:
             return pd.DataFrame()
 
-        max_value_per_asset = {d.index.max(): d.unique_identifier.iloc[0] for d in upsampled_df}
+        max_value_per_asset = {
+            d.index.max(): d[ASSET_IDENTIFIER_DIMENSION].iloc[0] for d in upsampled_df
+        }
 
         min_end_time = min(max_value_per_asset.keys())
         max_end_time = max(max_value_per_asset.keys())
@@ -756,7 +761,7 @@ class InterpolatedPrices(AssetIndexedDataNode):
         upsampled_df.volume = upsampled_df.volume.fillna(0)
 
         upsampled_df.index.name = "time_index"
-        upsampled_df = upsampled_df.set_index("unique_identifier", append=True)
+        upsampled_df = upsampled_df.set_index(ASSET_IDENTIFIER_DIMENSION, append=True)
         upsampled_df = upsampled_df.sort_index(level=0)
 
         if upsampled_df.shape[0] == 0:
@@ -776,7 +781,7 @@ class InterpolatedPrices(AssetIndexedDataNode):
             return pd.DataFrame()
 
         upsampled_df = self._transform_raw_data_to_upsampled_df(
-            raw_data_df.reset_index(["unique_identifier"])
+            raw_data_df.reset_index([ASSET_IDENTIFIER_DIMENSION])
         )
         return upsampled_df
 
@@ -823,7 +828,9 @@ class InterpolatedPrices(AssetIndexedDataNode):
         prices = self.update_statistics.filter_df_by_latest_value(prices)
 
         duplicates_exist = (
-            prices.reset_index().duplicated(subset=["time_index", "unique_identifier"]).any()
+            prices.reset_index()
+            .duplicated(subset=["time_index", ASSET_IDENTIFIER_DIMENSION])
+            .any()
         )
         if duplicates_exist:
             raise Exception()

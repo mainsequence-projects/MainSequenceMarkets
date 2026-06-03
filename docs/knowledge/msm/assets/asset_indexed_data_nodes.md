@@ -8,7 +8,7 @@ asset scoping API, namespace behavior, and source-table relationship to
 
 Use this page for timestamped asset facts such as snapshots, pricing details,
 prices, signals, weights, holdings, or any table whose natural row identity is
-`(time_index, unique_identifier)`.
+`(time_index, asset_identifier)`.
 
 ## How It Differs From A Normal DataNode
 
@@ -19,14 +19,14 @@ market asset.
 
 `AssetIndexedDataNode` adds the market layer:
 
-- the canonical asset dimension is `unique_identifier`;
+- the canonical asset storage dimension is `asset_identifier`;
 - `asset_list` is an optional updater scope, not table meaning;
 - `get_asset_list()` validates string, mapping, or object asset scopes;
 - asset scopes can be translated into DataNode `dimension_filters`;
 - per-asset update ranges are exposed through helpers such as
   `get_asset_dimension_range_map_great_or_equal(...)`;
 - the default `hash_namespace` follows the active markets namespace;
-- the registered storage class declares a foreign key from `unique_identifier` to
+- the registered storage class declares a foreign key from `asset_identifier` to
   `AssetTable.unique_identifier`.
 
 ```text
@@ -45,7 +45,7 @@ market asset.
               |
 +-----------------------------+           asset-indexed          +-----------------------------+
 | AssetIndexedDataNode        |---------------------------------->| AssetTable                  |
-|-----------------------------|       unique_identifier FK        |-----------------------------|
+|-----------------------------|       asset_identifier FK         |-----------------------------|
 | asset_identity_dimension    |                                   | unique_identifier unique    |
 | asset_list update scope     |                                   | asset_type                  |
 | dimension filter helpers    |                                   +-----------------------------+
@@ -55,7 +55,7 @@ market asset.
 
 The important distinction is identity. A generic DataNode can publish any table
 shape. An asset-indexed DataNode publishes a market table where
-`unique_identifier` is expected to mean an `Asset.unique_identifier` value.
+`asset_identifier` contains an `Asset.unique_identifier` value.
 
 ## Core Contract
 
@@ -65,18 +65,19 @@ documented reason not to:
 ```text
 +-----------------------------+      source-table FK       +-----------------------------+
 | AssetIndexedDataNode table  |--------------------------->| AssetTable                  |
-|-----------------------------| unique_identifier          |-----------------------------|
+|-----------------------------| asset_identifier           |-----------------------------|
 | time_index           index  |                            | uid                         |
-| unique_identifier    index  |                            | unique_identifier unique    |
+| asset_identifier     index  |                            | unique_identifier unique    |
 | value columns               |                            | asset_type                  |
 +-----------------------------+                            +-----------------------------+
 ```
 
-The `unique_identifier` column should not be an arbitrary provider ticker. It
-should be the same canonical identifier registered through `msm.api.assets.Asset`.
-Provider-specific tickers, FIGIs, ISINs, symbols, and raw payloads belong either
-in provider detail tables, such as `OpenFigiAssetDetailsTable`, or in DataNode value
-columns when the table is explicitly a timestamped provider fact.
+The `asset_identifier` column should not be an arbitrary provider ticker. It
+should contain the same canonical identifier registered through
+`msm.api.assets.Asset.unique_identifier`. Provider-specific tickers, FIGIs,
+ISINs, symbols, and raw payloads belong either in provider detail tables, such
+as `OpenFigiAssetDetailsTable`, or in DataNode value columns when the table is
+explicitly a timestamped provider fact.
 
 The `AssetIndexedDataNodeConfiguration.asset_list` field is updater scope. Asset
 universe selection affects update identity, not the storage identity of the
@@ -117,7 +118,7 @@ class AssetIndexedDataNodeConfiguration(DataNodeConfiguration):
         ),
         examples=["us_equities"],
     )
-    reference_dimension: ClassVar[str] = "unique_identifier"
+    reference_dimension: ClassVar[str] = "asset_identifier"
 ```
 
 `asset_list` and `asset_category_unique_identifier` are fields because they
@@ -137,7 +138,7 @@ Under ADR 0017 the schema contract lives on a storage class
 (`PlatformTimeIndexMetaData` / `MarketsTimeIndexMetaTableMixin`), not on the
 DataNode configuration. The canonical asset foreign key is an SDK
 `MetaTableForeignKey(AssetTable, column="unique_identifier")` declaration on
-that storage class. The DataNode uses its storage class through
+the storage class `asset_identifier` column. The DataNode uses its storage class through
 `_required_storage_table()`.
 
 ```python
@@ -156,18 +157,18 @@ from msm.models.assets.core import AssetTable
 class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __markets_base_identifier__ = "example_asset_metrics"
     __metatable_description__ = (
-        "Timestamped asset metric observations keyed by asset unique identifier "
+        "Timestamped asset metric observations keyed by asset identifier "
         "for market analytics and portfolio workflows."
     )
     __time_index_name__ = "time_index"
-    __index_names__ = ["time_index", "unique_identifier"]
+    __index_names__ = ["time_index", "asset_identifier"]
 
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         info={"label": "Time", "description": "UTC observation timestamp."},
     )
-    unique_identifier: Mapped[str] = mapped_column(
+    asset_identifier: Mapped[str] = mapped_column(
         String(255),
         MetaTableForeignKey(
             AssetTable,
@@ -175,7 +176,7 @@ class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             ondelete="RESTRICT",
         ),
         nullable=False,
-        info={"label": "Asset", "description": "Asset unique identifier from AssetTable."},
+        info={"label": "Asset", "description": "AssetTable.unique_identifier value."},
     )
     metric_value: Mapped[float | None] = mapped_column(
         Float,
@@ -226,9 +227,9 @@ provider or observation date.
 ```text
 +-----------------------------+      canonical FK        +-----------------------------+
 | AssetSnapshot DataNode      |------------------------->| AssetTable                  |
-|-----------------------------| unique_identifier        |-----------------------------|
+|-----------------------------| asset_identifier         |-----------------------------|
 | time_index           index  |                          | unique_identifier unique    |
-| unique_identifier    index  |                          | asset_type                  |
+| asset_identifier     index  |                          | asset_type                  |
 | name                        |                          +-----------------------------+
 | ticker                      |
 | exchange_code               |
@@ -238,7 +239,7 @@ provider or observation date.
 
 `AssetSnapshotsStorage` (in `msm.data_nodes.storage`) declares the persisted
 schema as SQLAlchemy mapped columns and owns the canonical
-`unique_identifier -> AssetTable.unique_identifier` foreign key. `AssetSnapshot`
+`asset_identifier -> AssetTable.unique_identifier` foreign key. `AssetSnapshot`
 uses it through `_required_storage_table()`.
 
 ## Register Assets Before Publishing Snapshots
@@ -285,7 +286,7 @@ from msm.data_nodes.assets import AssetSnapshot
 snapshots = [
     {
         "time_index": datetime.now(UTC),
-        "unique_identifier": "example-asset-btc",
+        "asset_identifier": "example-asset-btc",
         "name": "Bitcoin",
         "ticker": "BTC",
         "exchange_code": "CRYPTO",
@@ -300,11 +301,11 @@ result_frame = snapshot_node.run(debug_mode=True, force_update=True)
 
 Each snapshot row must carry its own `time_index`. `AssetSnapshot` validates the
 frame, normalizes timestamps to `datetime64[ns, UTC]`, sets the
-`["time_index", "unique_identifier"]` MultiIndex, and rejects duplicate keys
+`["time_index", "asset_identifier"]` MultiIndex, and rejects duplicate keys
 inside the frame.
 
 Before a run persists rows, `AssetSnapshot` checks the backend for existing
-`(time_index, unique_identifier)` keys and fails if any incoming key already
+`(time_index, asset_identifier)` keys and fails if any incoming key already
 exists. Publish corrections as a new timestamped snapshot instead of overwriting
 the previous observation.
 
@@ -351,7 +352,7 @@ parallel runs that must not collide on a shared backend.
 ## Related Code
 
 - `src/msm/data_nodes/assets/asset_indexed.py`: base class, asset scope validation,
-  namespace behavior, asset dimension filters, and per-asset update range helpers.
+  namespace behavior, `asset_identifier` filters, and per-asset update range helpers.
 - `src/msm/data_nodes/storage.py`: storage classes (including
   `AssetSnapshotsStorage`) that own the schema, dtypes, and canonical `AssetTable`
   foreign keys.

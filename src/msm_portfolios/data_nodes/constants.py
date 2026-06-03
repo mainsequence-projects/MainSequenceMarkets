@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
+from msm_portfolios.data_nodes.storage import (
+    PORTFOLIO_IDENTIFIER_DIMENSION,
+    PORTFOLIO_INDEX_IDENTIFIER_DIMENSION,
+)
+
 PORTFOLIO_CANONICAL_TIME_INDEX_NAME = "time_index"
-PORTFOLIO_INDEX_UNIQUE_IDENTIFIER = "portfolio_index_unique_identifier"
-ASSET_UNIQUE_IDENTIFIER = "unique_identifier"
+PORTFOLIO_INDEX_IDENTIFIER = PORTFOLIO_INDEX_IDENTIFIER_DIMENSION
+ASSET_IDENTIFIER = ASSET_IDENTIFIER_DIMENSION
+PORTFOLIO_IDENTIFIER = PORTFOLIO_IDENTIFIER_DIMENSION
 PORTFOLIO_METADATA_UNIQUE_IDENTIFIER = "unique_identifier"
 PORTFOLIO_DESCRIPTION = "description"
 SIGNAL_UID = "signal_uid"
@@ -12,19 +19,19 @@ REBALANCE_STRATEGY_DESCRIPTION = "rebalance_strategy_description"
 
 PORTFOLIO_WEIGHTS_INDEX_NAMES = [
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
-    PORTFOLIO_INDEX_UNIQUE_IDENTIFIER,
-    ASSET_UNIQUE_IDENTIFIER,
+    PORTFOLIO_INDEX_IDENTIFIER,
+    ASSET_IDENTIFIER,
 ]
 
 SIGNAL_WEIGHTS_INDEX_NAMES = [
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
     SIGNAL_UID,
-    ASSET_UNIQUE_IDENTIFIER,
+    ASSET_IDENTIFIER,
 ]
 
 PORTFOLIOS_INDEX_NAMES = [
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
-    ASSET_UNIQUE_IDENTIFIER,
+    PORTFOLIO_IDENTIFIER,
 ]
 
 SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS = frozenset(
@@ -45,7 +52,7 @@ SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS = frozenset(
         "portfolio_consumers",
         "portfolio_id",
         "portfolio_uid",
-        "portfolio_index_unique_identifier",
+        "portfolio_index_identifier",
         "display_name",
         "display_label",
         "signal_name",
@@ -75,7 +82,7 @@ REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS = frozenset(
         "portfolio_consumers",
         "portfolio_id",
         "portfolio_uid",
-        "portfolio_index_unique_identifier",
+        "portfolio_index_identifier",
         "display_name",
         "display_label",
         "rebalance_strategy_name",

@@ -26,9 +26,10 @@ from .base import (
     _reset_frame_index,
 )
 from .constants import (
-    ASSET_UNIQUE_IDENTIFIER,
+    ASSET_IDENTIFIER,
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
-    PORTFOLIO_INDEX_UNIQUE_IDENTIFIER,
+    PORTFOLIO_IDENTIFIER,
+    PORTFOLIO_INDEX_IDENTIFIER,
 )
 from .metadata import emit_portfolio_metadata, extract_portfolio_description
 from .portfolio_identity import get_or_create_portfolio_index
@@ -217,7 +218,7 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
         if weights is not None and not weights.empty:
             portfolio_weights_node.set_weights_frame(
                 weights,
-                portfolio_index_unique_identifier=portfolio_index_unique_identifier,
+                portfolio_index_identifier=portfolio_index_unique_identifier,
                 portfolio_configuration=self.portfolio_configuration,
                 portfolio_index=portfolio_index,
                 portfolio_description=self._resolve_portfolio_description(),
@@ -289,7 +290,7 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
             new_index <= signal_weights.index.max() + self.signal_weights.maximum_forward_fill()
         ]
 
-        expected_columns = ["unique_identifier"]
+        expected_columns = [ASSET_IDENTIFIER]
         assert signal_weights.columns.names == expected_columns, (
             f"signal_weights must have columns named {expected_columns}"
         )
@@ -298,7 +299,7 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
             new_index=new_index,
             bars_ts=self.bars_ts,
             index_freq=index_freq,
-            unique_identifiers=list(signal_weights.columns.get_level_values("unique_identifier")),
+            unique_identifiers=list(signal_weights.columns.get_level_values(ASSET_IDENTIFIER)),
         )
 
         latest_value = self._latest_portfolio_time_index_value()
@@ -349,7 +350,7 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
                 self.logger.error("No Prices on portfolio target asset")
                 return pd.DataFrame()
 
-            new_portfolio_price = new_portfolio_price.reset_index("unique_identifier", drop=True)
+            new_portfolio_price = new_portfolio_price.reset_index(ASSET_IDENTIFIER, drop=True)
             union_index = new_portfolio_price.index.union(portfolio.index.unique()).unique()
             new_portfolio_price = new_portfolio_price.reindex(union_index).ffill().bfill()
             new_portfolio_price = new_portfolio_price.reindex(portfolio.index)
@@ -436,10 +437,11 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
         *,
         start_date,
         start_date_operand: str = ">=",
+        identifier_dimension: str = PORTFOLIO_IDENTIFIER,
     ) -> list[dict]:
         return [
             {
-                "coordinate": {ASSET_UNIQUE_IDENTIFIER: self._unique_identifier()},
+                "coordinate": {identifier_dimension: self._unique_identifier()},
                 "start_date": start_date,
                 "start_date_operand": start_date_operand,
             }
@@ -517,7 +519,7 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
     ) -> pd.DataFrame:
         weights = weights.reset_index().pivot(
             index="time_index",
-            columns=["unique_identifier"],
+            columns=[ASSET_IDENTIFIER],
             values=["price_current", "weights_before", "weights_current"],
         )
 
@@ -573,6 +575,7 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
             dimension_range_map=self._portfolio_dimension_range_map(
                 start_date=latest_value,
                 start_date_operand=">=",
+                identifier_dimension=PORTFOLIO_INDEX_IDENTIFIER,
             )
         )
         if last_obs is None or last_obs.empty:
@@ -583,8 +586,8 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
         last_weights = last_obs[
             last_obs.index.get_level_values("time_index") == latest_time_index
         ].copy()
-        if PORTFOLIO_INDEX_UNIQUE_IDENTIFIER in last_weights.index.names:
-            last_weights = last_weights.droplevel(PORTFOLIO_INDEX_UNIQUE_IDENTIFIER)
+        if PORTFOLIO_INDEX_IDENTIFIER in last_weights.index.names:
+            last_weights = last_weights.droplevel(PORTFOLIO_INDEX_IDENTIFIER)
         return last_weights.rename(columns={"weight": "weights_current"})
 
     def _interpolate_bars_index(
@@ -601,7 +604,7 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
             end_date=fetch_end_date,
             great_or_equal=True,
             less_or_equal=True,
-            dimension_filters={"unique_identifier": unique_identifiers},
+            dimension_filters={ASSET_IDENTIFIER: unique_identifiers},
         )
 
         if len(raw_prices) == 0:
@@ -623,13 +626,13 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
                 freq=pandas_freq,
             )
 
-        interpolated_prices = raw_prices.unstack(["unique_identifier"])
+        interpolated_prices = raw_prices.unstack([ASSET_IDENTIFIER])
         interpolated_prices = interpolated_prices.reindex(
             final_index_for_interpolation,
             method="ffill",
         )
         interpolated_prices.index.names = ["time_index"]
-        interpolated_prices = interpolated_prices.stack(["unique_identifier"])
+        interpolated_prices = interpolated_prices.stack([ASSET_IDENTIFIER])
         return raw_prices, interpolated_prices
 
     def _resample_portfolio_with_calendar(self, portfolio: pd.DataFrame) -> pd.DataFrame:
@@ -712,9 +715,9 @@ rebalance details:"""
             return
 
         flat = frame.reset_index()
-        if flat.empty or ASSET_UNIQUE_IDENTIFIER not in flat.columns:
+        if flat.empty or PORTFOLIO_IDENTIFIER not in flat.columns:
             return
-        unique_identifier = flat[ASSET_UNIQUE_IDENTIFIER].iloc[0]
+        unique_identifier = flat[PORTFOLIO_IDENTIFIER].iloc[0]
         if unique_identifier in (None, ""):
             return
 
@@ -761,7 +764,7 @@ def normalize_portfolio_values_frame(
 
     if PORTFOLIO_CANONICAL_TIME_INDEX_NAME not in flat.columns and "index" in flat.columns:
         flat = flat.rename(columns={"index": PORTFOLIO_CANONICAL_TIME_INDEX_NAME})
-    flat[ASSET_UNIQUE_IDENTIFIER] = str(unique_identifier)
+    flat[PORTFOLIO_IDENTIFIER] = str(unique_identifier)
     if "calculated_close" not in flat.columns and "close" in flat.columns:
         flat["calculated_close"] = flat["close"]
     if "close_time" not in flat.columns and PORTFOLIO_CANONICAL_TIME_INDEX_NAME in flat.columns:

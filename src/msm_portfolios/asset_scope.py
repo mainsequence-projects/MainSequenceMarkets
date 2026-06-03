@@ -3,9 +3,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from msm.settings import ASSET_UNIQUE_IDENTIFIER_DIMENSION
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
-ASSET_UNIQUE_IDENTIFIER = ASSET_UNIQUE_IDENTIFIER_DIMENSION
+ASSET_IDENTIFIER = ASSET_IDENTIFIER_DIMENSION
 DEFAULT_MARKET_CALENDAR = "24/7"
 
 _MISSING = object()
@@ -36,7 +36,7 @@ def asset_field(asset: Any, field_name: str, default: Any = _MISSING) -> Any:
 def asset_unique_identifier(asset: Any) -> str:
     if isinstance(asset, str):
         return asset
-    value = asset_field(asset, ASSET_UNIQUE_IDENTIFIER)
+    value = asset_field(asset, "unique_identifier")
     if not isinstance(value, str) or not value.strip():
         raise TypeError("Asset scope item requires a non-empty unique_identifier string.")
     return value
@@ -105,7 +105,7 @@ def asset_spot_reference_unique_identifier(asset: Any) -> str:
 
 
 __all__ = [
-    "ASSET_UNIQUE_IDENTIFIER",
+    "ASSET_IDENTIFIER",
     "DEFAULT_MARKET_CALENDAR",
     "asset_calendar",
     "asset_display_name",

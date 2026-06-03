@@ -12,12 +12,12 @@ os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
-from msm.settings import INDEX_UNIQUE_IDENTIFIER_DIMENSION
+from msm.settings import INDEX_IDENTIFIER_DIMENSION
 from msm_pricing.data_interface.data_interface import (
     MSDataInterface,
     dimension_range_for_identity,
 )
-from msm_pricing.data_nodes.curves import CURVE_UNIQUE_IDENTIFIER_DIMENSION
+from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER
 from msm_pricing.config import reset_pricing_market_data_configuration
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
@@ -37,7 +37,7 @@ def test_dimension_range_for_identity_builds_generic_dimension_range_map() -> No
     start_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
 
     assert dimension_range_for_identity(
-        identity_dimension=INDEX_UNIQUE_IDENTIFIER_DIMENSION,
+        identity_dimension=INDEX_IDENTIFIER_DIMENSION,
         identity="SOFR",
         date_info={
             "start_date": start_date,
@@ -45,7 +45,7 @@ def test_dimension_range_for_identity_builds_generic_dimension_range_map() -> No
         },
     ) == [
         {
-            "coordinate": {"unique_identifier": "SOFR"},
+            "coordinate": {"index_identifier": "SOFR"},
             "start_date": start_date,
             "start_date_operand": ">=",
         }
@@ -68,11 +68,11 @@ def test_get_historical_fixings_reads_index_stamped_data(monkeypatch) -> None:
                 [
                     {
                         "time_index": dt.datetime(2026, 5, 26, tzinfo=dt.UTC),
-                        "unique_identifier": "SOFR",
+                        "index_identifier": "SOFR",
                         "rate": 0.0525,
                     }
                 ]
-            ).set_index(["time_index", "unique_identifier"])
+            ).set_index(["time_index", "index_identifier"])
 
     import mainsequence.meta_tables as meta_tables
 
@@ -96,7 +96,7 @@ def test_get_historical_fixings_reads_index_stamped_data(monkeypatch) -> None:
     assert calls == [
         [
             {
-                "coordinate": {INDEX_UNIQUE_IDENTIFIER_DIMENSION: "SOFR"},
+                "coordinate": {INDEX_IDENTIFIER_DIMENSION: "SOFR"},
                 "start_date": dt.datetime(2026, 5, 1, tzinfo=dt.UTC),
                 "start_date_operand": ">=",
                 "end_date": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
@@ -124,11 +124,11 @@ def test_get_historical_fixings_defaults_to_pricing_market_data_configuration(
                 [
                     {
                         "time_index": dt.datetime(2026, 5, 26, tzinfo=dt.UTC),
-                        "unique_identifier": "SOFR",
+                        "index_identifier": "SOFR",
                         "rate": 0.0525,
                     }
                 ]
-            ).set_index(["time_index", "unique_identifier"])
+            ).set_index(["time_index", "index_identifier"])
 
     import mainsequence.meta_tables as meta_tables
 
@@ -164,11 +164,11 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
                 [
                     {
                         "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
-                        "curve_unique_identifier": "mxn_tiie_discount",
+                        "curve_identifier": "mxn_tiie_discount",
                         "curve": compress_curve_to_string({28: 0.11, 91: 0.105}),
                     }
                 ]
-            ).set_index(["time_index", "curve_unique_identifier"])
+            ).set_index(["time_index", "curve_identifier"])
 
     import mainsequence.meta_tables as meta_tables
 
@@ -195,7 +195,7 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
     assert calls == [
         [
             {
-                "coordinate": {CURVE_UNIQUE_IDENTIFIER_DIMENSION: "mxn_tiie_discount"},
+                "coordinate": {CURVE_IDENTIFIER: "mxn_tiie_discount"},
                 "start_date": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
                 "start_date_operand": ">=",
                 "end_date": dt.datetime(2026, 5, 28, tzinfo=dt.UTC),
@@ -225,11 +225,11 @@ def test_get_historical_discount_curve_defaults_to_pricing_market_data_configura
                 [
                     {
                         "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
-                        "curve_unique_identifier": "mxn_tiie_discount",
+                        "curve_identifier": "mxn_tiie_discount",
                         "curve": compress_curve_to_string({28: 0.11}),
                     }
                 ]
-            ).set_index(["time_index", "curve_unique_identifier"])
+            ).set_index(["time_index", "curve_identifier"])
 
     import mainsequence.meta_tables as meta_tables
 
@@ -285,11 +285,11 @@ def test_get_historical_fixings_uses_persisted_binding_before_static_default(
                 [
                     {
                         "time_index": dt.datetime(2026, 5, 26, tzinfo=dt.UTC),
-                        "unique_identifier": "SOFR",
+                        "index_identifier": "SOFR",
                         "rate": 0.0525,
                     }
                 ]
-            ).set_index(["time_index", "unique_identifier"])
+            ).set_index(["time_index", "index_identifier"])
 
     import mainsequence.meta_tables as meta_tables
 

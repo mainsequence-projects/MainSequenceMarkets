@@ -70,18 +70,18 @@ Fund holdings are time-series-like observations. They are not static fund rows.
 | and dtype contract derive     |                           | index_names:                |
 | from FundHoldingsStorage.     |                           |  - time_index               |
 |                               |                           |  - fund_uid                 |
-| update() returns DataFrame    |                           |  - unique_identifier        |
+| update() returns DataFrame    |                           |  - asset_identifier         |
 +---------------+---------------+                           | records:                    |
                 |                                           |  - holdings_set_uid uuid    |
                 | publishes rows                            |  - is_trade_snapshot bool   |
-                |                                           |  - unique_identifier string |
+                |                                           |  - asset_identifier string  |
                 v                                           |  - quantity float64         |
 +-------------------------------+                           |  - target_weight float64    |
 | Source table rows             |                           |  - target_trade_time        |
 |-------------------------------|                           |    datetime64[ns, UTC]      |
 | time_index                    |                           |  - extra_details jsonb      |
 | fund_uid ---------------------+-------------------------->| FK -> FundTable.uid         |
-| unique_identifier ------------+-------------------------->| FK -> AssetTable            |
+| asset_identifier -------------+-------------------------->| FK -> AssetTable            |
 | holdings_set_uid              |                           |       .unique_identifier    |
 | quantity                      |                           +-----------------------------+
 | target_weight                 |
@@ -93,12 +93,12 @@ Fund holdings are time-series-like observations. They are not static fund rows.
 The row grain is one asset position for one fund at one timestamp:
 
 ```text
-unique row = (time_index, fund_uid, unique_identifier)
+unique row = (time_index, fund_uid, asset_identifier)
 ```
 
-`unique_identifier` is the held asset's `AssetTable.unique_identifier`.
+`asset_identifier` is the held asset's `AssetTable.unique_identifier`.
 `FundHoldingsStorage` declares both `fund_uid -> FundTable.uid` and
-`unique_identifier -> AssetTable.unique_identifier` as storage-level foreign
+`asset_identifier -> AssetTable.unique_identifier` as storage-level foreign
 keys.
 
 ## Registration Order

@@ -20,8 +20,8 @@ The intended workflow is:
 4. The user creates a `VirtualFund`.
 5. The virtual fund has holdings-like rows, but those rows are allocations from
    one account holdings set, not independent custody.
-6. Because account systems can only hold assets, the virtual fund can optionally
-   create a one-to-one `VirtualFundAsset` proxy.
+6. Account-facing reports reconstruct the account's virtual-fund exposure from
+   allocation pointers; the account still holds the underlying assets.
 
 This ADR extends ADR 0019's package boundary. It also changes the shared base
 holdings contract in core `msm` accounts because account holdings and
@@ -44,6 +44,11 @@ holdings set. The platform should be able to answer:
 - which virtual funds allocated from the same source holdings set;
 - whether virtual-fund allocations over-allocate any source asset;
 - whether each allocation is long or short without using negative quantities.
+
+A virtual fund is not an asset in this contract. It is an account-owned
+allocation view over real account holdings. It must not appear as a synthetic
+row in `AccountHoldingsStorage`, and this ADR does not introduce
+`VirtualFundAssetDetailsTable`.
 
 ### Base Holdings Direction Contract
 
@@ -206,7 +211,6 @@ Target table:
 | unique_identifier unique      |
 | account_uid FK -> Account     |
 | target_portfolio_uid FK       |
-| virtual_fund_asset_uid FK     |
 +-------------------------------+
 ```
 
@@ -218,27 +222,49 @@ requires_nav_adjustment
 metadata_json
 ```
 
-### VirtualFundAsset Proxy
+### No VirtualFundAsset In This Contract
 
-Accounts hold assets. A virtual fund that needs to be visible to account-facing
-systems should have a one-to-one asset proxy:
+A `VirtualFund` is not an `Asset`. It is a portfolio/allocation workflow row
+owned by `msm_portfolios`.
 
 ```text
-+-------------------------------+      +-------------------------------+
-| VirtualFundTable              |      | VirtualFundAssetDetailsTable  |
-|-------------------------------|      |-------------------------------|
-| uid PK                        |<-----| virtual_fund_uid unique FK    |
-| virtual_fund_asset_uid FK ----+----->| asset_uid PK/FK -> AssetTable |
-+-------------------------------+      +-------------------------------+
++------------------+        owns real holdings        +------------------------+
+| AccountTable     |---------------------------------->| AccountHoldingsStorage |
++------------------+                                   | unique_identifier      |
+                                                       | quantity               |
+                                                       | direction              |
+                                                       +------------------------+
+         |
+         | account_uid
+         v
++------------------+        target_portfolio_uid       +------------------+
+| VirtualFundTable |---------------------------------->| PortfolioTable   |
+| allocation view  |                                   | portfolio output |
++------------------+                                   +------------------+
+         |
+         | allocation sets reconstruct grouped exposure
+         v
++----------------------------+
+| VirtualFundHoldingsStorage |
+| allocated_quantity         |
+| direction                  |
+| unique_identifier -> Asset |
++----------------------------+
 ```
 
-Rules:
+Rules for this ADR:
 
-- the proxy asset must use asset type `virtual_fund`;
-- one virtual fund has at most one proxy asset;
-- one proxy asset points to exactly one virtual fund;
-- the proxy asset is an account-facing handle, not the source of underlying
-  allocations.
+- `AccountHoldingsStorage` stores real account-held assets, not virtual-fund
+  wrappers.
+- account-level virtual-fund exposure is reconstructed from
+  `VirtualFundTable`, `VirtualFundHoldingsSetTable`, and
+  `VirtualFundHoldingsStorage`.
+- virtual-fund allocations cannot double count the account because they are
+  bounded by source account holdings sets.
+- if the product later needs fund-share accounting, NAV units,
+  subscription/redemption flows, or account rows that hold fund shares, that
+  requires a separate ADR for a fund-share asset model. That is not this
+  allocation contract.
 
 ### Virtual Fund Holdings Sets
 
@@ -381,9 +407,9 @@ user-facing helper must enforce the allocation bound before writing.
 - [ ] Rename public `Fund` API to `VirtualFund`.
 - [ ] Remove generic `requires_nav_adjustment` and `metadata_json` fields unless
   another ADR defines them as first-class virtual-fund concepts.
-- [ ] Add `VirtualFundAssetDetailsTable` and the `virtual_fund` asset type
-  workflow.
-- [ ] Add the `VirtualFundAsset` public API helper.
+- [ ] Remove any planned `virtual_fund_asset_uid`,
+  `VirtualFundAssetDetailsTable`, `VirtualFundAsset`, or `virtual_fund` asset
+  type workflow from this allocation contract.
 
 ### Stage 3: Allocation Sets And Storage
 
@@ -411,10 +437,9 @@ user-facing helper must enforce the allocation bound before writing.
 - [ ] Update `docs/knowledge/msm/accounts/index.md` for the new direction
   contract.
 - [ ] Update `docs/knowledge/msm_portfolios/virtualfunds/index.md` with the
-  allocation model and proxy asset diagram.
+  allocation model and the explicit rule that virtual funds are not assets.
 - [ ] Add one `examples/msm_portfolios` workflow that creates an account
-  holdings set, allocates from it into a virtual fund, and creates the
-  `VirtualFundAsset` proxy.
+  holdings set and allocates from it into a virtual fund.
 - [ ] Update packaged ms-markets account and portfolio skills so agents do not
   reintroduce negative quantities or independent virtual-fund holdings.
 - [ ] Update changelog and tutorial references.
@@ -423,7 +448,8 @@ user-facing helper must enforce the allocation bound before writing.
 
 - [ ] Add tests for positive quantity and valid direction in account holdings.
 - [ ] Add tests for `AccountHoldingsSetTable` FK wiring.
-- [ ] Add tests for virtual-fund proxy asset one-to-one constraints.
+- [ ] Add tests proving virtual-fund allocation workflows do not require
+  `AssetTable` proxy rows.
 - [ ] Add tests for allocation bounds across multiple virtual funds sharing one
   account holdings set.
 - [ ] Add tests proving short holdings allocate only to short virtual-fund

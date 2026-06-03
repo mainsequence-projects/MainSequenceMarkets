@@ -23,7 +23,7 @@ from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
 from msm.settings import markets_namespace
 
 from .constants import (
-    ASSET_UNIQUE_IDENTIFIER,
+    ASSET_IDENTIFIER,
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
 )
 
@@ -304,7 +304,7 @@ def _normalize_pivoted_signal_weights(frame: pd.DataFrame) -> pd.DataFrame:
     return frame.melt(
         id_vars=[PORTFOLIO_CANONICAL_TIME_INDEX_NAME],
         value_vars=value_columns,
-        var_name=ASSET_UNIQUE_IDENTIFIER,
+        var_name=ASSET_IDENTIFIER,
         value_name="signal_weight",
     )
 

@@ -58,8 +58,8 @@ PositionSetTable
   <- TargetPositionsStorage.position_set_uid
 
 AssetTable.unique_identifier
-  <- AccountHoldingsStorage.unique_identifier
-  <- TargetPositionsStorage.unique_identifier
+  <- AccountHoldingsStorage.asset_identifier
+  <- TargetPositionsStorage.asset_identifier
 ```
 
 Rules:
@@ -78,7 +78,7 @@ Rules:
   `weight_notional_exposure`, `constant_notional_exposure`, or
   `single_asset_quantity`.
 - `AccountHoldingsStorage` stores real holdings rows keyed by
-  `(time_index, account_uid, unique_identifier)`.
+  `(time_index, account_uid, asset_identifier)`.
 - DataNodes do not fabricate bootstrap rows. Attach a real frame or implement a
   real source-specific `update()`.
 
@@ -95,6 +95,7 @@ msm.start_engine(
     models=[
         "AssetType",
         "Asset",
+        "AssetSnapshotsStorage",
         "AccountModelPortfolio",
         "AccountGroup",
         "Account",
@@ -107,7 +108,9 @@ msm.start_engine(
 ```
 
 Create or upsert asset rows before holdings or target rows reference their
-`unique_identifier`.
+`unique_identifier`. When an account example needs display fields, publish
+`AssetSnapshot` rows with canonical `ticker` and `name` metadata instead of
+only putting display data in holdings `extra_details`.
 
 ## Full Workflow Pattern
 
@@ -125,13 +128,37 @@ from msm.api.accounts import (
     PositionSet,
 )
 from msm.api.assets import Asset, AssetType
-from msm.data_nodes.accounts import AccountHoldings
+from msm.data_nodes.accounts import AccountHoldings, TargetPositions
+from msm.data_nodes.assets import AssetSnapshot
 from msm.services import build_account_holdings_frame, build_target_positions_frame
 
 workflow_time = dt.datetime.now(dt.UTC).replace(microsecond=0)
 
 asset_type = AssetType.upsert(...)
-asset = Asset.upsert(...)
+assets = [
+    Asset.upsert(unique_identifier="example-asset-btc", asset_type=asset_type.asset_type),
+    Asset.upsert(unique_identifier="example-asset-eth", asset_type=asset_type.asset_type),
+]
+
+asset_snapshot_node = AssetSnapshot().set_snapshots(
+    [
+        {
+            "time_index": workflow_time,
+            "asset_identifier": assets[0].unique_identifier,
+            "name": "Bitcoin",
+            "ticker": "BTC",
+        },
+        {
+            "time_index": workflow_time,
+            "asset_identifier": assets[1].unique_identifier,
+            "name": "Ethereum",
+            "ticker": "ETH",
+        },
+    ]
+)
+snapshot_error, snapshot_frame = asset_snapshot_node.run(debug_mode=True, force_update=True)
+if snapshot_error:
+    raise RuntimeError("AssetSnapshot update failed.")
 
 model_portfolio = AccountModelPortfolio.upsert(
     model_portfolio_name="Example Balanced Account Model",
@@ -174,25 +201,48 @@ for account in accounts:
             position_set_uid=position_set.uid,
             positions=[
                 {
-                    "unique_identifier": asset.unique_identifier,
-                    "weight_notional_exposure": 1.0,
+                    "asset_identifier": assets[0].unique_identifier,
+                    "weight_notional_exposure": 0.6,
+                },
+                {
+                    "asset_identifier": assets[1].unique_identifier,
+                    "weight_notional_exposure": 0.4,
                 }
             ],
         )
     )
 
 holdings_frames = []
-for account, quantity in zip(accounts, (10.0, 5.0), strict=True):
+target_positions_node = TargetPositions(config=TargetPositions.default_config())
+target_positions_node.set_frame(pd.concat(target_position_frames).sort_index())
+target_error, target_positions_frame = target_positions_node.run(
+    debug_mode=True,
+    force_update=True,
+)
+if target_error:
+    raise RuntimeError("TargetPositions update failed.")
+
+for account, quantities in zip(
+    accounts,
+    ({"btc": 10.0, "eth": 25.0}, {"btc": 5.0, "eth": 12.5}),
+    strict=True,
+):
     holdings_frames.append(
         build_account_holdings_frame(
             holdings_date=workflow_time,
             account_uid=account.uid,
             positions=[
                 {
-                    "unique_identifier": asset.unique_identifier,
-                    "quantity": quantity,
+                    "asset_identifier": assets[0].unique_identifier,
+                    "quantity": quantities["btc"],
                     "target_trade_time": workflow_time,
-                    "extra_details": {"ticker": "BTC"},
+                    "extra_details": {"ticker": "BTC", "name": "Bitcoin"},
+                },
+                {
+                    "asset_identifier": assets[1].unique_identifier,
+                    "quantity": quantities["eth"],
+                    "target_trade_time": workflow_time,
+                    "extra_details": {"ticker": "ETH", "name": "Ethereum"},
                 }
             ],
         )
@@ -212,6 +262,12 @@ Prefer `set_account_holdings_frame(...)` only for a single-account frame. For
 multi-account examples, build frames with `build_account_holdings_frame(...)`,
 concatenate them, and call `AccountHoldings.set_frame(...)`.
 
+Target positions follow the same rule: build concrete rows with
+`build_target_positions_frame(...)`, concatenate the real frames, attach them to
+`TargetPositions.set_frame(...)`, and run the node. Do not stop at creating
+`AccountTargetPortfolio` or `PositionSet`; those rows only define the target
+relationship and snapshot identity.
+
 ## Timestamp And Dtype Rules
 
 - `position_set_time` is a timezone-aware UTC timestamp, not an `"eod"` string.
@@ -219,7 +275,7 @@ concatenate them, and call `AccountHoldings.set_frame(...)`.
 - Holdings builders normalize timestamp columns to SDK-compatible
   `datetime64[ns, UTC]`.
 - Quantities and exposure values must be numeric, not strings.
-- `unique_identifier` means `Asset.unique_identifier`, not ticker, FIGI, ISIN,
+- `asset_identifier` stores `Asset.unique_identifier`, not ticker, FIGI, ISIN,
   or a platform UID.
 
 ## Pretty-Printing Positions

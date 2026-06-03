@@ -12,7 +12,7 @@ from .base import (
     _reset_frame_index,
 )
 from .constants import (
-    PORTFOLIO_INDEX_UNIQUE_IDENTIFIER,
+    PORTFOLIO_INDEX_IDENTIFIER,
     PORTFOLIO_WEIGHT_SOURCE_COLUMN_ALIASES,
 )
 from .metadata import emit_portfolio_metadata, extract_portfolio_description
@@ -31,7 +31,7 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
         self,
         weights_frame: pd.DataFrame,
         *,
-        portfolio_index_unique_identifier: str | None = None,
+        portfolio_index_identifier: str | None = None,
         portfolio_configuration: Any | None = None,
         portfolio_index: Any | None = None,
         portfolio_resolver: Any | None = None,
@@ -40,7 +40,7 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
     ) -> PortfolioWeights:
         """Attach runtime calculation inputs without changing table identity."""
         self._weights_frame = weights_frame
-        self._portfolio_index_unique_identifier = portfolio_index_unique_identifier
+        self._portfolio_index_identifier = portfolio_index_identifier
         self._portfolio_configuration = portfolio_configuration
         self._portfolio_index = portfolio_index
         self._portfolio_resolver = portfolio_resolver
@@ -63,16 +63,14 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
 
         return normalize_portfolio_weights_frame(
             weights_frame,
-            portfolio_index_unique_identifier=(
-                self._resolve_portfolio_index_unique_identifier()
-            ),
+            portfolio_index_identifier=(self._resolve_portfolio_index_identifier()),
             storage_table=self.storage_table,
         )
 
-    def _resolve_portfolio_index_unique_identifier(self) -> str:
+    def _resolve_portfolio_index_identifier(self) -> str:
         explicit_identifier = getattr(
             self,
-            "_portfolio_index_unique_identifier",
+            "_portfolio_index_identifier",
             None,
         )
         if explicit_identifier:
@@ -98,7 +96,7 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
                 return str(resolved_identifier)
 
         raise ValueError(
-            "PortfolioWeights requires a portfolio_index_unique_identifier, "
+            "PortfolioWeights requires a portfolio_index_identifier, "
             "a PortfolioIndex, or a portfolio_configuration that can resolve "
             "one before canonical rows can be written."
         )
@@ -110,9 +108,9 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
             return
 
         flat = frame.reset_index()
-        if flat.empty or PORTFOLIO_INDEX_UNIQUE_IDENTIFIER not in flat.columns:
+        if flat.empty or PORTFOLIO_INDEX_IDENTIFIER not in flat.columns:
             return
-        unique_identifier = flat[PORTFOLIO_INDEX_UNIQUE_IDENTIFIER].iloc[0]
+        unique_identifier = flat[PORTFOLIO_INDEX_IDENTIFIER].iloc[0]
         if unique_identifier in (None, ""):
             return
 
@@ -145,11 +143,11 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
     def normalize_weights_frame(
         weights_frame: pd.DataFrame,
         *,
-        portfolio_index_unique_identifier: str,
+        portfolio_index_identifier: str,
     ) -> pd.DataFrame:
         return normalize_portfolio_weights_frame(
             weights_frame,
-            portfolio_index_unique_identifier=(portfolio_index_unique_identifier),
+            portfolio_index_identifier=(portfolio_index_identifier),
         )
 
     @classmethod
@@ -160,7 +158,7 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
 def normalize_portfolio_weights_frame(
     weights_frame: pd.DataFrame,
     *,
-    portfolio_index_unique_identifier: str,
+    portfolio_index_identifier: str,
     storage_table: StorageTable | None = None,
 ) -> pd.DataFrame:
     """Normalize postprocessed Portfolios weights into canonical PortfolioWeights rows."""
@@ -170,7 +168,7 @@ def normalize_portfolio_weights_frame(
         flat = _empty_flat_frame(column_names=required_columns)
 
     flat = flat.rename(columns=PORTFOLIO_WEIGHT_SOURCE_COLUMN_ALIASES)
-    flat[PORTFOLIO_INDEX_UNIQUE_IDENTIFIER] = str(portfolio_index_unique_identifier)
+    flat[PORTFOLIO_INDEX_IDENTIFIER] = str(portfolio_index_identifier)
 
     _require_columns(
         flat,
