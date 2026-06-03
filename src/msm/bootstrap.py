@@ -111,14 +111,9 @@ def _loaded_metatable_namespace() -> str | None:
 
 def start_engine(
     *,
-    data_source_uid: str | None = None,
     management_mode: MarketsManagementMode = "platform_managed",
     namespace: str | None = None,
     models: Sequence["MarketsModelSelector"] | None = None,
-    open_for_everyone: bool = False,
-    protect_from_deletion: bool = False,
-    introspect: bool | None = None,
-    storage_hash_by_identifier: Mapping[str, str] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRuntime:
     """Bootstrap the markets runtime once and return a repository context."""
@@ -126,14 +121,9 @@ def start_engine(
     requested_namespace = namespace
     namespace = markets_namespace(namespace)
     schema_config = _schema_config(
-        data_source_uid=data_source_uid,
         management_mode=management_mode,
         namespace=namespace,
         models=models,
-        open_for_everyone=open_for_everyone,
-        protect_from_deletion=protect_from_deletion,
-        introspect=introspect,
-        storage_hash_by_identifier=storage_hash_by_identifier,
         timeout=timeout,
     )
 
@@ -164,12 +154,7 @@ def start_engine(
             "Starting markets runtime attachment",
             management_mode=management_mode,
             namespace=namespace,
-            data_source_uid=data_source_uid,
-            storage_hash_count=len(storage_hash_by_identifier or {}),
             requested_model_count=None if models is None else len(models),
-            open_for_everyone=open_for_everyone,
-            protect_from_deletion=protect_from_deletion,
-            introspect=introspect,
             timeout=timeout,
         )
         if _should_configure_metatable_namespace(requested_namespace):
@@ -228,7 +213,6 @@ def start_engine(
 
 def attach_schemas(
     *,
-    data_source_uid: str | None = None,
     management_mode: MarketsManagementMode = "platform_managed",
     namespace: str | None = None,
     models: Sequence["MarketsModelSelector"] | None = None,
@@ -239,7 +223,6 @@ def attach_schemas(
     namespace = markets_namespace(namespace)
     schema_config = _schema_config(
         action="attach",
-        data_source_uid=data_source_uid,
         management_mode=management_mode,
         namespace=namespace,
         models=models,

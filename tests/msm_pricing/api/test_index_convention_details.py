@@ -40,7 +40,7 @@ def test_index_convention_details_create_schemas_uses_pricing_dependencies(
         fake_create_pricing_schemas,
     )
 
-    assert IndexConventionDetails.create_schemas(namespace="pricing-test") is runtime
+    assert IndexConventionDetails.start_engine(namespace="pricing-test") is runtime
     assert calls == [
         {
             "models": [IndexTypeTable, IndexTable, IndexConventionDetailsTable],

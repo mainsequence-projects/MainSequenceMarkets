@@ -72,7 +72,7 @@ def test_openfigi_details_api_uses_asset_uid_as_row_identity() -> None:
     assert details.asset_uid == asset_uid
 
 
-def test_asset_create_schemas_delegates_to_required_table(monkeypatch) -> None:
+def test_asset_start_engine_delegates_to_required_table(monkeypatch) -> None:
     calls = []
     runtime = SimpleNamespace()
 
@@ -82,7 +82,7 @@ def test_asset_create_schemas_delegates_to_required_table(monkeypatch) -> None:
 
     monkeypatch.setattr("msm.bootstrap.start_engine", fake_start_engine)
 
-    assert Asset.create_schemas(namespace="mainsequence.examples") is runtime
+    assert Asset.start_engine(namespace="mainsequence.examples") is runtime
     assert calls == [
         {
             "models": [AssetTable],
@@ -167,7 +167,7 @@ def test_asset_type_upsert_normalizes_keyword_payload(monkeypatch) -> None:
     assert calls[0][2]["asset_type"] == "asset_future"
 
 
-def test_asset_create_schemas_merges_additional_models(monkeypatch) -> None:
+def test_asset_start_engine_merges_additional_models(monkeypatch) -> None:
     calls = []
 
     def fake_start_engine(**kwargs):
@@ -176,7 +176,22 @@ def test_asset_create_schemas_merges_additional_models(monkeypatch) -> None:
 
     monkeypatch.setattr("msm.bootstrap.start_engine", fake_start_engine)
 
-    Asset.create_schemas(models=["OpenFigiAssetDetails"])
+    Asset.start_engine(models=["OpenFigiAssetDetails"])
+
+    assert calls == [{"models": [AssetTable, "OpenFigiAssetDetails"]}]
+
+
+def test_asset_create_schemas_warns_and_delegates(monkeypatch) -> None:
+    calls = []
+
+    def fake_start_engine(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace()
+
+    monkeypatch.setattr("msm.bootstrap.start_engine", fake_start_engine)
+
+    with pytest.warns(DeprecationWarning, match="Asset.create_schemas"):
+        Asset.create_schemas(models=["OpenFigiAssetDetails"])
 
     assert calls == [{"models": [AssetTable, "OpenFigiAssetDetails"]}]
 

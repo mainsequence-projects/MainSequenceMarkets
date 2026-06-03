@@ -56,7 +56,7 @@ Run admin migrations before application startup:
 
 ```bash
 mainsequence migrations current --provider msm.migrations:migration --json
-mainsequence migrations upgrade --provider msm.migrations:migration --to head
+mainsequence migrations upgrade --provider msm.migrations:migration head
 ```
 
 See [Migrations](../knowledge/msm/migrations/index.md)
@@ -112,7 +112,7 @@ fields.
 Use this workflow when publishing and inspecting account positions:
 
 1. Before runtime, run the admin migration flow with
-   `mainsequence migrations upgrade --provider msm.migrations:migration --to head`
+   `mainsequence migrations upgrade --provider msm.migrations:migration head`
    so the package schema and catalog are finalized.
 2. Attach `AssetType`, `Asset`, `AccountModelPortfolio`, `AccountGroup`,
    `Account`, `AccountTargetPortfolio`, `PositionSet`,

@@ -33,8 +33,6 @@ import msm
 
 runtime = msm.start_engine(
     management_mode="platform_managed",
-    open_for_everyone=False,
-    protect_from_deletion=True,
 )
 ```
 
@@ -48,7 +46,7 @@ apply migrations, or repair catalog drift.
 The schema mutation entrypoint is the admin CLI:
 
 ```bash
-mainsequence migrations upgrade --provider msm.migrations:migration --to head
+mainsequence migrations upgrade --provider msm.migrations:migration head
 ```
 
 MetaTable registration is migration-owned. Normal applications, examples, and

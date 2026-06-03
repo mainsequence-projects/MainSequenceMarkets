@@ -9,6 +9,20 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Removed migration/provider setup arguments from runtime attachment APIs:
+  `msm.start_engine(...)`, `msm.attach_schemas(...)`,
+  `msm_portfolios.start_engine(...)`, `msm_portfolios.attach_schemas(...)`,
+  `msm_pricing.bootstrap.create_pricing_schemas(...)`, and
+  `msm_pricing.bootstrap.attach_pricing_schemas(...)` no longer accept
+  `data_source_uid`, `open_for_everyone`, `protect_from_deletion`,
+  `introspect`, or `storage_hash_by_identifier`.
+- Aligned the migration provider registry with SDK terminology:
+  `METATABLE_PROVIDER_MODELS` and `metatable_provider_models()` replace the old
+  migration-registry names, and the Alembic environment now applies the SDK
+  migration owner role before configuring online migrations.
+- Row API bootstrap helpers now use `*.start_engine(...)` as the preferred
+  runtime attachment name. Remaining `*.create_schemas(...)` methods are
+  deprecated compatibility aliases.
 - Reworked virtual-fund holdings into an allocation contract: `FundTable` is now
   `VirtualFundTable`, `FundHoldingsStorage` is now
   `VirtualFundHoldingsStorage`, virtual funds no longer model asset proxies,

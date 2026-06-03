@@ -21,7 +21,7 @@ from msm.api.base import MarketsMetaTableRow, MarketsRow
 from msm.base import MarketsBase, MarketsMetaTableMixin, markets_table_storage_name
 from msm.data_nodes.storage import AccountHoldingsStorage
 from msm.maintenance.models import MarketsMetaTableCatalogTable
-from msm.migrations.registry import migration_model_registry
+from msm.migrations.registry import metatable_provider_models
 from msm.models.registration import (
     build_markets_registration_requests,
     is_time_index_meta_table_model,
@@ -678,7 +678,7 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
 
 
 def test_migration_registry_models_use_sdk_base_metatable_classes() -> None:
-    registry = migration_model_registry()
+    registry = metatable_provider_models()
     assert registry
     assert AccountHoldingsStorage in registry
     assert all(issubclass(model, PlatformManagedMetaTable) for model in registry)

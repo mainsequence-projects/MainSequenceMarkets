@@ -67,29 +67,19 @@ The provider is broadly aligned with the SDK:
   `msm_pricing`;
 - it wires `after_register_metatables` to refresh the markets catalog.
 
-The project is not fully current yet:
+The repository-side integration is now current except for source revision files
+that must be generated through the SDK CLI:
 
-1. `src/msm/migrations/env.py` does not call
-   `apply_mainsequence_migration_role(connection, config)` before Alembic runs.
-2. `src/msm/migrations/versions/` has no source Alembic revision file. A
+1. `src/msm/migrations/versions/` has no source Alembic revision file. A
    `__pycache__/v0001_initial...pyc` file is not migration history.
-3. `src/msm/maintenance/catalog.py` still reports the old
-   `mainsequence migrations upgrade --provider msm.migrations:migration --to head`
-   command.
-4. Project docs, tutorials, examples, and skills still reference removed command
-   forms such as `register-version-table`, `render`, `--to head`, and
-   `--dry-run`.
-5. `msm.start_engine(...)` is attach-only, but it still exposes old
-   creation/registration-era arguments: `data_source_uid`,
+2. `msm.start_engine(...)` is attach-only, and the old
+   creation/registration-era arguments `data_source_uid`,
    `open_for_everyone`, `protect_from_deletion`, `introspect`, and
-   `storage_hash_by_identifier`. Those arguments are also carried into runtime
-   cache keys and logs even though they no longer control runtime attachment.
-   They must be removed from `msm.start_engine(...)` and from wrappers that
-   forward into it.
-6. Several row API helpers are still named `create_schemas()`, although they now
-   attach to an already-migrated runtime instead of creating schemas.
-   That name is misleading under the new architecture and must not remain the
-   primary row API bootstrap name.
+   `storage_hash_by_identifier` have been removed from its public signature,
+   runtime cache key, logs, and package wrappers that forward into it.
+3. Row API helpers now expose `start_engine(...)` as the primary attach helper.
+   Any remaining `create_schemas(...)` symbol is a deprecated compatibility
+   alias.
 
 ## Decision
 
@@ -363,13 +353,8 @@ mainsequence migrations revision --provider msm.migrations:migration --autogener
 mainsequence migrations upgrade --provider msm.migrations:migration head
 ```
 
-For an environment where the physical tables already exist, the correct baseline
-is not to run a create-table revision against existing tables. The project needs
-a fake-applied/stamp flow using the same SDK provider preflight and scoped
-connection, so Alembic records the baseline revision without executing duplicate
-DDL. Until the SDK exposes a supported `mainsequence migrations stamp ...`
-command or equivalent API, already-created environments remain a migration
-adoption gap and must not be treated as fully current.
+This ADR does not define an existing-physical-table adoption workflow. Do not
+add a local `msm` command surface or project-owned workaround for that case.
 
 ## Data Source Boundary
 
@@ -492,50 +477,40 @@ It should not add built-in `ms-markets` tables to project extension hooks.
 - [x] Wire catalog refresh through
   `after_register_metatables=refresh_markets_catalog_from_registered_metatables`.
 
-### Required To Make The Project Current
+### Required To Make The Repository Current
 
-- [ ] Update `src/msm/migrations/env.py` to call
+- [x] Update `src/msm/migrations/env.py` to call
   `apply_mainsequence_migration_role(connection, config)` before Alembic
   configures each online connection.
-- [ ] Generate and commit real source Alembic revision files under
-  `src/msm/migrations/versions/`; do not leave only `__pycache__`.
-- [ ] Update `src/msm/maintenance/catalog.py` so runtime errors point to
+- [x] Update `src/msm/maintenance/catalog.py` so runtime errors point to
   `mainsequence migrations upgrade --provider msm.migrations:migration head`.
-- [ ] Remove `register-version-table`, `render`, `--to head`, and `--dry-run`
+- [x] Remove `register-version-table`, `render`, `--to head`, and `--dry-run`
   command references from project docs, tutorials, examples, and skills.
-- [ ] Update docs and skills so the only migration command surface is the SDK
+- [x] Update docs and skills so the only migration command surface is the SDK
   `mainsequence migrations current|revision|upgrade|downgrade` surface.
-- [ ] Rename `MIGRATION_MODEL_REGISTRY` / `migration_model_registry()` to
+- [x] Rename `MIGRATION_MODEL_REGISTRY` / `migration_model_registry()` to
   provider-scope names such as `METATABLE_PROVIDER_MODELS` /
   `metatable_provider_models()`.
-- [ ] Remove stale `msm.start_engine(...)` arguments that are not consumed by
+- [x] Remove stale `msm.start_engine(...)` arguments that are not consumed by
   runtime attachment: `data_source_uid`, `open_for_everyone`,
   `protect_from_deletion`, `introspect`, and `storage_hash_by_identifier`.
   Remove them from the public signature, runtime cache key, logs, and any
   wrappers that forward into `msm.start_engine(...)`.
-- [ ] Rename row API `create_schemas()` helpers because they now attach an
+- [x] Rename row API `create_schemas()` helpers because they now attach an
   already-migrated runtime instead of creating schemas. Any remaining
   `create_schemas()` symbol must be an explicitly deprecated compatibility
   alias, not the documented or preferred API.
-- [ ] Update bootstrap docs and skills so `msm.start_engine(...)` is described as
+- [x] Update bootstrap docs and skills so `msm.start_engine(...)` is described as
   runtime attachment only.
-- [ ] Decide whether the current target environments are fresh or already contain
-  physical `ms-markets` tables.
-- [ ] For fresh environments, generate and apply the initial Alembic revision
-  with the SDK CLI.
-- [ ] For existing physical tables, use a supported SDK fake-applied/stamp flow
-  before treating the environment as current.
-- [ ] If the SDK does not expose that stamp flow yet, add or request it in the
-  SDK instead of inventing an `msm` migration command surface.
-- [ ] Raise the project dependency floor to the first published SDK release that
+- [x] Raise the project dependency floor to the first published SDK release that
   includes the direct Alembic scoped-connection migration CLI.
 
-## Open Decisions
+### Operator Required After This Repository Change
 
-- Existing-table adoption requires a supported fake-applied/stamp path through
-  the SDK provider preflight and scoped migration connection. The current project
-  should not claim this is solved until that command/API exists and has been run
-  where needed.
+- [ ] Generate and commit real source Alembic revision files under
+  `src/msm/migrations/versions/`; do not leave only `__pycache__`.
+- [ ] For fresh environments, generate and apply the initial Alembic revision
+  with the SDK CLI.
 
 ## Resolved Decisions
 

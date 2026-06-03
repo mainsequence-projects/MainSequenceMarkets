@@ -59,7 +59,7 @@ Implementation decisions should be recorded under `docs/ADR`.
 Start with the typed row API for simple workflows:
 
 ```bash
-mainsequence migrations upgrade --provider msm.migrations:migration --to head
+mainsequence migrations upgrade --provider msm.migrations:migration head
 ```
 
 ```python

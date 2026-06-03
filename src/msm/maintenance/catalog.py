@@ -27,7 +27,7 @@ from .models import (
 
 logger = _mainsequence_logger.bind(sub_application="markets", component="maintenance")
 SDK_MIGRATION_UPGRADE_COMMAND = (
-    "mainsequence migrations upgrade --provider msm.migrations:migration --to head"
+    "mainsequence migrations upgrade --provider msm.migrations:migration head"
 )
 
 
@@ -170,9 +170,9 @@ def refresh_markets_catalog_from_registered_metatables(
 ) -> list[dict[str, Any]]:
     """Refresh the internal markets catalog after SDK provider registration."""
 
-    from msm.migrations.registry import migration_model_registry
+    from msm.migrations.registry import metatable_provider_models
 
-    models = migration_model_registry()
+    models = metatable_provider_models()
     meta_tables = list(registered_metatables)
     if len(meta_tables) != len(models):
         raise CatalogBootstrapError(
@@ -338,8 +338,7 @@ def resolve_catalog_meta_tables(
     missing_uids = sorted(set(requested_uids) - set(matches_by_uid))
     if missing_uids:
         raise CatalogStaleMetaTableUidError(
-            "Markets MetaTable catalog rows point to missing backend MetaTables "
-            f"{missing_uids!r}."
+            f"Markets MetaTable catalog rows point to missing backend MetaTables {missing_uids!r}."
         )
 
     resolved: dict[str, MetaTable] = {}

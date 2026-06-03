@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import warnings
 from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar, TypeVar
 
@@ -33,14 +34,21 @@ class MarketsMetaTableRow(BaseModel):
     uid: uuid.UUID
 
     @classmethod
-    def create_schemas(cls, **kwargs: Any):
-        """Create the MetaTable schemas required by this row API."""
+    def start_engine(cls, **kwargs: Any):
+        """Attach the runtime tables required by this row API."""
 
         from msm.bootstrap import start_engine
 
         requested_models = kwargs.pop("models", None)
         models = _dedupe_models([*cls.__required_tables__, *(requested_models or [])])
         return start_engine(models=models, **kwargs)
+
+    @classmethod
+    def create_schemas(cls, **kwargs: Any):
+        """Deprecated compatibility alias for :meth:`start_engine`."""
+
+        _warn_deprecated_create_schemas(cls.__name__)
+        return cls.start_engine(**kwargs)
 
     @classmethod
     def create(cls: type[RowT], payload: Payload = None, **kwargs: Any) -> RowT:
@@ -224,6 +232,15 @@ def _dedupe_models(models: Sequence[Any]) -> list[Any]:
         seen.add(key)
         deduped.append(model)
     return deduped
+
+
+def _warn_deprecated_create_schemas(row_model_name: str) -> None:
+    warnings.warn(
+        f"{row_model_name}.create_schemas(...) is deprecated; use "
+        f"{row_model_name}.start_engine(...) or msm.start_engine(models=[...]) instead.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
 
 
 MarketsRow = MarketsMetaTableRow

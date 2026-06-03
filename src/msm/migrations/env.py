@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 from alembic import context
+from mainsequence.meta_tables.migrations import apply_mainsequence_migration_role
 from sqlalchemy import engine_from_config, pool
 
 from msm.migrations import migration as default_migration
 
 
 def _migration_provider():
-    return (
-        context.config.attributes.get("mainsequence_migration_provider")
-        or default_migration
-    )
+    return context.config.attributes.get("mainsequence_migration_provider") or default_migration
 
 
 def include_name(name, type_, parent_names):
@@ -54,6 +52,7 @@ def run_migrations_online() -> None:
     config = context.config
     connection = config.attributes.get("connection")
     if connection is not None:
+        apply_mainsequence_migration_role(connection, config)
         context.configure(connection=connection, **_configure_kwargs())
         with context.begin_transaction():
             context.run_migrations()
@@ -65,6 +64,7 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
+        apply_mainsequence_migration_role(connection, config)
         context.configure(connection=connection, **_configure_kwargs())
         with context.begin_transaction():
             context.run_migrations()

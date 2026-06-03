@@ -65,7 +65,7 @@ def test_portfolio_create_schemas_includes_domain_required_tables(monkeypatch) -
 
     monkeypatch.setattr("msm.bootstrap.start_engine", fake_start_engine)
 
-    assert Portfolio.create_schemas(namespace="mainsequence.examples") is runtime
+    assert Portfolio.start_engine(namespace="mainsequence.examples") is runtime
     assert calls == [
         {
             "models": [IndexTable, PortfolioTable],

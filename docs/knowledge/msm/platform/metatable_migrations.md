@@ -12,7 +12,7 @@ The provider is exported from `msm.migrations:migration` and contains:
 - script location: `msm:migrations`;
 - target metadata: `MarketsBase.metadata`;
 - Alembic version registry: `MarketsAlembicVersion`;
-- managed model registry: `migration_model_registry()`;
+- provider model scope: `metatable_provider_models()`;
 - post-registration hook:
   `refresh_markets_catalog_from_registered_metatables`.
 
@@ -27,23 +27,20 @@ table when they are extending the ms-markets revision graph.
 Use the SDK CLI:
 
 ```bash
-mainsequence migrations register-version-table --provider msm.migrations:migration
 mainsequence migrations current --provider msm.migrations:migration --json
 mainsequence migrations revision --provider msm.migrations:migration -m "describe change" --autogenerate
-mainsequence migrations render --provider msm.migrations:migration --to head
-mainsequence migrations upgrade --provider msm.migrations:migration --to head
+mainsequence migrations upgrade --provider msm.migrations:migration head
+mainsequence migrations downgrade --provider msm.migrations:migration <revision>
 ```
 
 `revision` is the authoring entrypoint. It creates normal Alembic revision files
 under `src/msm/migrations/versions/`.
 
-`render` creates the SQL artifact from Alembic. The package does not execute SQL
-locally.
-
-`upgrade` sends the rendered SQL to the backend migration endpoint. After a
-successful apply, the SDK synchronizes the provider MetaTable catalog and calls
-the provider hook. The hook refreshes
-`MarketsMetaTableCatalogTable` using the registered platform `MetaTable` objects.
+`upgrade` runs Alembic through the SDK provider and backend-scoped migration
+connection. After a successful apply, the SDK synchronizes the provider
+MetaTable catalog and calls the provider hook. The hook refreshes
+`MarketsMetaTableCatalogTable` using the registered platform `MetaTable`
+objects.
 
 ## Runtime Contract
 
@@ -68,10 +65,10 @@ flow or by performing an explicit platform repair.
 2. Add new models to the appropriate package model graph:
    `markets_sqlalchemy_models()`, `portfolio_sqlalchemy_models()`, or
    `pricing_sqlalchemy_models()`.
-3. Confirm `migration_model_registry()` contains the expected model exactly once.
+3. Confirm `metatable_provider_models()` contains the expected model exactly once.
 4. Generate an Alembic revision with the SDK CLI.
 5. Review the generated revision.
-6. Render or upgrade through the SDK CLI.
+6. Upgrade through the SDK CLI.
 7. Let the SDK `upgrade` command refresh the markets catalog automatically.
 
 There is no hand-authored YAML, JSON, or SDK operation manifest. Migration
@@ -80,7 +77,7 @@ history is the Alembic revision graph plus the provider's version table.
 ## SDK Requirement
 
 The implementation requires a Main Sequence SDK version that exposes
-`AlembicMetaTableMigration`, `AlembicVersionMetaTable`, SDK migration rendering,
-backend SQL migration execution, and the current `upgrade` command shape where
-`mainsequence migrations upgrade --provider msm.migrations:migration --to head`
-applies after validation without `--apply` or `--register-metatables`.
+`AlembicMetaTableMigration`, `AlembicVersionMetaTable`, backend-scoped Alembic
+migration execution, and the current SDK migration command shape where
+`mainsequence migrations upgrade --provider msm.migrations:migration head`
+applies without `--apply`, `--to`, or `--register-metatables`.

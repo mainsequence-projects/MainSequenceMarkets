@@ -24,11 +24,7 @@ import msm
 msm.start_engine(models=["AssetType", "Asset"])
 ```
 
-Do not recommend row-class schema shortcuts such as:
-
-```python
-Asset.create_schemas()
-```
+Do not recommend row-class schema shortcuts for schema creation.
 
 Typed row classes such as `Asset`, `Account`, and `Portfolio` are row-operation
 APIs. They may depend on an active runtime, but user-facing workflows should not

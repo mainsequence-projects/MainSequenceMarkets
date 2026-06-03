@@ -10,7 +10,7 @@ from typing import Any, ClassVar
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from msm.api.assets import Asset
-from msm.api.base import _dedupe_models, operation_result_rows
+from msm.api.base import _dedupe_models, _warn_deprecated_create_schemas, operation_result_rows
 from msm.constants import ASSET_TYPE_FUTURE, ASSET_TYPE_FUTURE_DEFINITION
 from msm.models import (
     AssetTable,
@@ -120,14 +120,21 @@ class Future(BaseModel):
     )
 
     @classmethod
-    def create_schemas(cls, **kwargs: Any):
-        """Create the MetaTable schemas required by the future API."""
+    def start_engine(cls, **kwargs: Any):
+        """Attach the runtime tables required by the future API."""
 
         from msm.bootstrap import start_engine
 
         requested_models = kwargs.pop("models", None)
         models = _dedupe_models([*cls.__required_tables__, *(requested_models or [])])
         return start_engine(models=models, **kwargs)
+
+    @classmethod
+    def create_schemas(cls, **kwargs: Any):
+        """Deprecated compatibility alias for :meth:`start_engine`."""
+
+        _warn_deprecated_create_schemas(cls.__name__)
+        return cls.start_engine(**kwargs)
 
     @classmethod
     def upsert(

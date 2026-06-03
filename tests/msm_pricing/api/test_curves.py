@@ -35,7 +35,7 @@ def test_curve_create_schemas_uses_pricing_dependencies(monkeypatch) -> None:
         fake_create_pricing_schemas,
     )
 
-    assert Curve.create_schemas(namespace="pricing-test") is runtime
+    assert Curve.start_engine(namespace="pricing-test") is runtime
     assert calls == [
         {
             "models": [IndexTypeTable, IndexTable, IndexConventionDetailsTable, CurveTable],

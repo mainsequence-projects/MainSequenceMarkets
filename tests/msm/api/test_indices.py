@@ -58,7 +58,7 @@ def test_index_create_schemas_delegates_to_required_table(monkeypatch) -> None:
 
     monkeypatch.setattr("msm.bootstrap.start_engine", fake_start_engine)
 
-    assert Index.create_schemas(namespace="mainsequence.examples") is runtime
+    assert Index.start_engine(namespace="mainsequence.examples") is runtime
     assert calls == [
         {
             "models": [IndexTypeTable, IndexTable],

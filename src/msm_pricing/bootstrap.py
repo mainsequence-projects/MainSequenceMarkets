@@ -54,17 +54,12 @@ class PricingRuntime:
 
 def create_pricing_schemas(
     *,
-    data_source_uid: str | None = None,
     management_mode: PricingManagementMode = "platform_managed",
     namespace: str | None = None,
     market_data_configuration: PricingMarketDataConfigurationInput | None = None,
     seed_default_market_data_bindings: bool = True,
     replace_default_market_data_bindings: bool = False,
     models: Sequence[PricingModelSelector] | None = None,
-    open_for_everyone: bool = False,
-    protect_from_deletion: bool = False,
-    introspect: bool | None = None,
-    storage_hash_by_identifier: Mapping[str, str] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> PricingRuntime:
     """Attach pricing schemas and return a pricing repository runtime.
@@ -78,14 +73,9 @@ def create_pricing_schemas(
     resolved_models = resolve_pricing_meta_table_models(models)
     namespace = markets_namespace(namespace)
     schema_config = _schema_config(
-        data_source_uid=data_source_uid,
         management_mode=management_mode,
         namespace=namespace,
         models=resolved_models,
-        open_for_everyone=open_for_everyone,
-        protect_from_deletion=protect_from_deletion,
-        introspect=introspect,
-        storage_hash_by_identifier=storage_hash_by_identifier,
         timeout=timeout,
     )
 
@@ -118,7 +108,6 @@ def create_pricing_schemas(
             )
 
         registration = resolve_registered_markets_meta_tables(
-            data_source_uid=data_source_uid,
             management_mode=management_mode,
             namespace=namespace,
             timeout=timeout,
@@ -147,7 +136,6 @@ def create_pricing_schemas(
 
 def attach_pricing_schemas(
     *,
-    data_source_uid: str | None = None,
     management_mode: PricingManagementMode = "platform_managed",
     namespace: str | None = None,
     market_data_configuration: PricingMarketDataConfigurationInput | None = None,
@@ -164,7 +152,6 @@ def attach_pricing_schemas(
     namespace = markets_namespace(namespace)
     schema_config = _schema_config(
         action="attach",
-        data_source_uid=data_source_uid,
         management_mode=management_mode,
         namespace=namespace,
         models=resolved_models,
@@ -183,7 +170,6 @@ def attach_pricing_schemas(
             )
             return cached_runtime
         registration = resolve_registered_markets_meta_tables(
-            data_source_uid=data_source_uid,
             management_mode=management_mode,
             namespace=namespace,
             timeout=timeout,

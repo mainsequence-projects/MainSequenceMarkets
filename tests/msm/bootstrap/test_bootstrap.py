@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import os
 import sys
 from types import ModuleType
@@ -127,7 +128,7 @@ def test_start_engine_attaches_metatables_and_returns_repository_context(
 ) -> None:
     calls, _legacy_attach_calls, registration = install_fake_bootstrap_modules(monkeypatch)
 
-    runtime = bootstrap.start_engine(data_source_uid="data-source-uid")
+    runtime = bootstrap.start_engine()
 
     assert runtime.registration is registration
     assert runtime.meta_tables == ["asset-meta-table"]
@@ -136,6 +137,16 @@ def test_start_engine_attaches_metatables_and_returns_repository_context(
     assert runtime.context.namespace == DEFAULT_MARKETS_NAMESPACE
     assert calls[0]["models"] == ["Asset"]
     assert "data_source_uid" not in calls[0]
+
+
+def test_start_engine_signature_excludes_migration_setup_arguments() -> None:
+    parameters = inspect.signature(bootstrap.start_engine).parameters
+
+    assert "data_source_uid" not in parameters
+    assert "open_for_everyone" not in parameters
+    assert "protect_from_deletion" not in parameters
+    assert "introspect" not in parameters
+    assert "storage_hash_by_identifier" not in parameters
 
 
 def test_start_engine_can_attach_selected_models(monkeypatch) -> None:
@@ -153,6 +164,7 @@ def test_start_engine_can_attach_selected_models(monkeypatch) -> None:
 
 def test_start_engine_expands_project_local_model_dependencies(monkeypatch) -> None:
     import msm.maintenance.catalog as catalog
+
     captured_models = []
 
     def fake_attach_markets_meta_tables_from_catalog(**kwargs):
@@ -240,7 +252,7 @@ def test_runtime_exposes_data_node_classes(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "msm.data_nodes.assets", asset_data_nodes_module)
     monkeypatch.setitem(sys.modules, "msm_pricing.data_nodes", pricing_data_nodes_module)
 
-    runtime = bootstrap.start_engine(data_source_uid="data-source-uid")
+    runtime = bootstrap.start_engine()
 
     assert runtime.data_nodes == {
         "AccountHoldings": account_data_nodes_module.AccountHoldings,

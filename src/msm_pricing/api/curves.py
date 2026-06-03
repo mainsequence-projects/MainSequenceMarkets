@@ -6,7 +6,7 @@ from typing import Any, ClassVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
-from msm.api.base import operation_result_rows
+from msm.api.base import _warn_deprecated_create_schemas, operation_result_rows
 from msm.models import IndexTable, IndexTypeTable
 from msm.repositories.crud import (
     create_model,
@@ -68,10 +68,19 @@ class Curve(BaseModel):
     )
 
     @classmethod
-    def create_schemas(cls, **kwargs: Any):
+    def start_engine(cls, **kwargs: Any):
+        """Attach the pricing runtime tables required by this row API."""
+
         requested_models = kwargs.pop("models", None)
         models = [*cls.__required_tables__, *(requested_models or [])]
         return create_pricing_schemas(models=models, **kwargs)
+
+    @classmethod
+    def create_schemas(cls, **kwargs: Any):
+        """Deprecated compatibility alias for :meth:`start_engine`."""
+
+        _warn_deprecated_create_schemas(cls.__name__)
+        return cls.start_engine(**kwargs)
 
     @classmethod
     def create(

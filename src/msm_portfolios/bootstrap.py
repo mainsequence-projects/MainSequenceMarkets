@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 
 from msm.bootstrap import (
     MarketsRuntime,
@@ -15,34 +15,23 @@ from msm_portfolios.models import portfolio_sqlalchemy_models
 
 def start_engine(
     *,
-    data_source_uid: str | None = None,
     management_mode: str = "platform_managed",
     namespace: str | None = None,
     models: Sequence[MarketsModelSelector] | None = None,
-    open_for_everyone: bool = False,
-    protect_from_deletion: bool = False,
-    introspect: bool | None = None,
-    storage_hash_by_identifier: Mapping[str, str] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRuntime:
     """Bootstrap the portfolio runtime through the shared markets catalog."""
 
     return _start_engine(
-        data_source_uid=data_source_uid,
         management_mode=management_mode,  # type: ignore[arg-type]
         namespace=namespace,
         models=resolve_portfolio_models(models),
-        open_for_everyone=open_for_everyone,
-        protect_from_deletion=protect_from_deletion,
-        introspect=introspect,
-        storage_hash_by_identifier=storage_hash_by_identifier,
         timeout=timeout,
     )
 
 
 def attach_schemas(
     *,
-    data_source_uid: str | None = None,
     management_mode: str = "platform_managed",
     namespace: str | None = None,
     models: Sequence[MarketsModelSelector] | None = None,
@@ -51,7 +40,6 @@ def attach_schemas(
     """Attach portfolio schemas through the shared markets runtime."""
 
     return _attach_schemas(
-        data_source_uid=data_source_uid,
         management_mode=management_mode,  # type: ignore[arg-type]
         namespace=namespace,
         models=resolve_portfolio_models(models),

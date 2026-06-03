@@ -25,7 +25,7 @@ Current local-dev behavior:
 - the app calls `msm.start_engine(...)` during startup for the `apps/v1`
   table set
 - schema and catalog mutation must already have been handled by
-  `mainsequence migrations upgrade --provider msm.migrations:migration --to head`
+  `mainsequence migrations upgrade --provider msm.migrations:migration head`
 - the app uses the real project/session data source already configured for the
   Main Sequence client session
 - if the session cannot resolve a valid DynamicTable data source, startup

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from types import SimpleNamespace
 
 import pytest
@@ -103,6 +104,16 @@ def test_create_pricing_schemas_returns_cached_runtime_for_same_config(monkeypat
     assert first_runtime.namespace == "mainsequence.examples"
     assert first_runtime.context.namespace == "mainsequence.examples"
     assert len(attach_calls) == 1
+
+
+def test_create_pricing_schemas_signature_excludes_migration_setup_arguments() -> None:
+    parameters = inspect.signature(pricing_bootstrap.create_pricing_schemas).parameters
+
+    assert "data_source_uid" not in parameters
+    assert "open_for_everyone" not in parameters
+    assert "protect_from_deletion" not in parameters
+    assert "introspect" not in parameters
+    assert "storage_hash_by_identifier" not in parameters
 
 
 def test_create_pricing_schemas_installs_market_data_configuration_override(

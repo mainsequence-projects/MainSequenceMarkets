@@ -7,7 +7,7 @@ from mainsequence.meta_tables import PlatformManagedMetaTable, PlatformTimeIndex
 from msm.base import MarketsBase
 
 
-def _migration_model_sources() -> list[type[MarketsBase]]:
+def _metatable_provider_model_sources() -> list[type[MarketsBase]]:
     from msm.maintenance.models import MarketsMetaTableCatalogTable
     from msm.models import markets_sqlalchemy_models
     from msm_portfolios.models import portfolio_sqlalchemy_models
@@ -21,11 +21,11 @@ def _migration_model_sources() -> list[type[MarketsBase]]:
     ]
 
 
-def _is_migration_model(model: type[MarketsBase]) -> bool:
+def _is_metatable_provider_model(model: type[MarketsBase]) -> bool:
     return issubclass(model, (PlatformManagedMetaTable, PlatformTimeIndexMetaData))
 
 
-def _dedupe_migration_models(
+def _dedupe_metatable_provider_models(
     models: Iterable[type[MarketsBase]],
 ) -> tuple[type[MarketsBase], ...]:
     deduped: list[type[MarketsBase]] = []
@@ -35,7 +35,7 @@ def _dedupe_migration_models(
     for model in models:
         if not isinstance(model, type) or not issubclass(model, MarketsBase):
             continue
-        if not _is_migration_model(model):
+        if not _is_metatable_provider_model(model):
             continue
         identifier = str(getattr(model, "__metatable_identifier__", "") or "")
         if not identifier:
@@ -43,7 +43,7 @@ def _dedupe_migration_models(
         existing = model_by_identifier.get(identifier)
         if existing is not None and existing is not model:
             raise ValueError(
-                "Duplicate migration model identifier "
+                "Duplicate MetaTable provider model identifier "
                 f"{identifier!r} for {existing.__name__} and {model.__name__}."
             )
         model_by_identifier[identifier] = model
@@ -55,19 +55,19 @@ def _dedupe_migration_models(
     return tuple(deduped)
 
 
-MIGRATION_MODEL_REGISTRY: tuple[type[MarketsBase], ...] = _dedupe_migration_models(
-    _migration_model_sources()
+METATABLE_PROVIDER_MODELS: tuple[type[MarketsBase], ...] = _dedupe_metatable_provider_models(
+    _metatable_provider_model_sources()
 )
 """Library-owned MetaTable models managed by the SDK Alembic provider."""
 
 
-def migration_model_registry() -> list[type[MarketsBase]]:
-    """Return the package-owned MetaTable migration scope."""
+def metatable_provider_models() -> list[type[MarketsBase]]:
+    """Return the package-owned MetaTable provider model scope."""
 
-    return list(MIGRATION_MODEL_REGISTRY)
+    return list(METATABLE_PROVIDER_MODELS)
 
 
 __all__ = [
-    "MIGRATION_MODEL_REGISTRY",
-    "migration_model_registry",
+    "METATABLE_PROVIDER_MODELS",
+    "metatable_provider_models",
 ]

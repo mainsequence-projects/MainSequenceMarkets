@@ -7,7 +7,7 @@ from mainsequence.meta_tables.migrations import (
 
 from msm.base import MARKETS_SCHEMA, MarketsBase
 from msm.maintenance.catalog import refresh_markets_catalog_from_registered_metatables
-from msm.migrations.registry import migration_model_registry
+from msm.migrations.registry import metatable_provider_models
 from msm.settings import markets_identifier, markets_namespace
 
 
@@ -25,7 +25,7 @@ migration = AlembicMetaTableMigration(
     script_location="msm:migrations",
     target_metadata=MarketsBase.metadata,
     alembic_registry=MarketsAlembicVersion,
-    metatable_models=migration_model_registry(),
+    metatable_models=metatable_provider_models(),
     after_register_metatables=refresh_markets_catalog_from_registered_metatables,
 )
 

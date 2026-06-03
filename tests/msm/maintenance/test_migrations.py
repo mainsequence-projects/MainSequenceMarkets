@@ -14,7 +14,7 @@ from msm.base import MARKETS_SCHEMA, MarketsBase
 from msm.maintenance.catalog import SDK_MIGRATION_UPGRADE_COMMAND
 from msm.maintenance.models import MarketsMetaTableCatalogTable
 from msm.migrations import MarketsAlembicVersion, migration
-from msm.migrations.registry import migration_model_registry
+from msm.migrations.registry import metatable_provider_models
 from msm.settings import markets_identifier, markets_namespace
 
 
@@ -36,12 +36,12 @@ def test_migration_provider_is_single_sdk_alembic_provider() -> None:
         migration.after_register_metatables.__name__
         == "refresh_markets_catalog_from_registered_metatables"
     )
-    assert list(migration.metatable_models) == migration_model_registry()
+    assert list(migration.metatable_models) == metatable_provider_models()
 
 
 def test_migration_upgrade_command_uses_current_sdk_flags() -> None:
     assert SDK_MIGRATION_UPGRADE_COMMAND == (
-        "mainsequence migrations upgrade --provider msm.migrations:migration --to head"
+        "mainsequence migrations upgrade --provider msm.migrations:migration head"
     )
     assert "--register-metatables" not in SDK_MIGRATION_UPGRADE_COMMAND
     assert "--apply" not in SDK_MIGRATION_UPGRADE_COMMAND
@@ -72,7 +72,7 @@ def test_migration_provider_filters_unrelated_tables() -> None:
 
 
 def test_package_migration_registry_covers_all_markets_subpackages() -> None:
-    model_names = {model.__name__ for model in migration_model_registry()}
+    model_names = {model.__name__ for model in metatable_provider_models()}
 
     assert "MarketsMetaTableCatalogTable" in model_names
     assert "AssetTable" in model_names
@@ -91,21 +91,20 @@ def test_portfolios_and_pricing_do_not_define_separate_migration_providers() -> 
 
 
 def test_package_migration_registry_is_deduplicated_and_sdk_managed() -> None:
-    models = migration_model_registry()
+    models = metatable_provider_models()
     identifiers = [model.__metatable_identifier__ for model in models]
 
     assert len(identifiers) == len(set(identifiers))
     assert all(issubclass(model, MarketsBase) for model in models)
     assert all(
-        issubclass(model, (PlatformManagedMetaTable, PlatformTimeIndexMetaData))
-        for model in models
+        issubclass(model, (PlatformManagedMetaTable, PlatformTimeIndexMetaData)) for model in models
     )
 
 
 def test_refresh_catalog_hook_upserts_registered_metatables(monkeypatch) -> None:
     refresh_hook = migration.after_register_metatables
     assert refresh_hook is not None
-    models = migration_model_registry()
+    models = metatable_provider_models()
     metatables = [
         SimpleNamespace(
             uid=f"meta-table-{index}",

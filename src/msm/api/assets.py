@@ -16,7 +16,12 @@ from pydantic import (
     model_validator,
 )
 
-from msm.api.base import MarketsMetaTableRow, _dedupe_models, operation_result_rows
+from msm.api.base import (
+    MarketsMetaTableRow,
+    _dedupe_models,
+    _warn_deprecated_create_schemas,
+    operation_result_rows,
+)
 from msm.constants import (
     ASSET_TYPE_BOND,
     ASSET_TYPE_BOND_DEFINITION,
@@ -242,14 +247,21 @@ class CurrencySpot(BaseModel):
     quote_currency_uid: uuid.UUID
 
     @classmethod
-    def create_schemas(cls, **kwargs: Any):
-        """Create the MetaTable schemas required by the currency spot API."""
+    def start_engine(cls, **kwargs: Any):
+        """Attach the runtime tables required by the currency spot API."""
 
         from msm.bootstrap import start_engine
 
         requested_models = kwargs.pop("models", None)
         models = _dedupe_models([*cls.__required_tables__, *(requested_models or [])])
         return start_engine(models=models, **kwargs)
+
+    @classmethod
+    def create_schemas(cls, **kwargs: Any):
+        """Deprecated compatibility alias for :meth:`start_engine`."""
+
+        _warn_deprecated_create_schemas(cls.__name__)
+        return cls.start_engine(**kwargs)
 
     @classmethod
     def upsert(
@@ -381,14 +393,21 @@ class Bond(BaseModel):
     status: BondStatus
 
     @classmethod
-    def create_schemas(cls, **kwargs: Any):
-        """Create the MetaTable schemas required by the bond API."""
+    def start_engine(cls, **kwargs: Any):
+        """Attach the runtime tables required by the bond API."""
 
         from msm.bootstrap import start_engine
 
         requested_models = kwargs.pop("models", None)
         models = _dedupe_models([*cls.__required_tables__, *(requested_models or [])])
         return start_engine(models=models, **kwargs)
+
+    @classmethod
+    def create_schemas(cls, **kwargs: Any):
+        """Deprecated compatibility alias for :meth:`start_engine`."""
+
+        _warn_deprecated_create_schemas(cls.__name__)
+        return cls.start_engine(**kwargs)
 
     @classmethod
     def upsert(
