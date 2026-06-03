@@ -44,6 +44,7 @@ def run_account_workflow() -> dict[str, Any]:
             "AccountModelPortfolio",
             "AccountGroup",
             "Account",
+            "AccountHoldingsSet",
             "AccountTargetPortfolio",
             "PositionSet",
             "AccountHoldingsStorage",
@@ -55,6 +56,7 @@ def run_account_workflow() -> dict[str, Any]:
     from msm.api.accounts import (
         Account,
         AccountGroup,
+        AccountHoldingsSet,
         AccountModelPortfolio,
         AccountTargetPortfolio,
         PositionSet,
@@ -217,9 +219,14 @@ def run_account_workflow() -> dict[str, Any]:
         {"btc_quantity": 5.0, "eth_quantity": 12.5},
     )
     for account, quantities in zip(accounts, account_quantities, strict=True):
+        holdings_set = AccountHoldingsSet.upsert(
+            account_uid=account.uid,
+            time_index=workflow_time,
+        )
         holdings_frame = build_account_holdings_frame(
             holdings_date=workflow_time,
             account_uid=account.uid,
+            holdings_set_uid=holdings_set.uid,
             positions=example_account_holdings_positions(
                 target_trade_time=workflow_time,
                 **quantities,
@@ -228,6 +235,7 @@ def run_account_workflow() -> dict[str, Any]:
         print(
             "   AccountHoldingsStorage rows built for "
             f"{account.unique_identifier}: "
+            f"holdings_set_uid={holdings_set.uid} "
             f"btc_quantity={quantities['btc_quantity']} "
             f"eth_quantity={quantities['eth_quantity']} rows={len(holdings_frame)}"
         )

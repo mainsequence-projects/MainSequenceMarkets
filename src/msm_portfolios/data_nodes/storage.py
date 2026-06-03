@@ -7,8 +7,9 @@ column dtype maps from these declarations; catalog registration follows in
 Stage 5.
 
 Portfolio output tables use explicit storage identifier dimensions. Virtual-fund
-holdings also declare canonical foreign keys to their owning `FundTable` row and
-held `AssetTable.unique_identifier`.
+allocation holdings declare canonical foreign keys to their owning
+`VirtualFundTable` row, source account holdings set, and held
+`AssetTable.unique_identifier`.
 """
 
 from __future__ import annotations
@@ -18,16 +19,17 @@ import uuid
 from typing import Any, ClassVar
 
 from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import Boolean, DateTime, Float, String
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, SmallInteger, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.models.accounts import AccountHoldingsSetTable
 from msm.models.assets.core import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
-from msm_portfolios.models.virtual_funds import FundTable
+from msm_portfolios.models.virtual_funds import VirtualFundHoldingsSetTable, VirtualFundTable
 
 PORTFOLIO_IDENTIFIER_DIMENSION = "portfolio_identifier"
 PORTFOLIO_INDEX_IDENTIFIER_DIMENSION = "portfolio_index_identifier"
@@ -322,21 +324,28 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
-class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
-    """Fund historical holdings keyed by fund UID and held asset."""
+class VirtualFundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+    """Virtual-fund allocations keyed by virtual fund UID and held asset."""
 
-    __markets_base_identifier__: ClassVar[str] = "FundHoldingsTS"
+    __markets_base_identifier__: ClassVar[str] = "VirtualFundHoldingsTS"
     __metatable_description__ = (
-        "Timestamped virtual-fund holdings storage keyed by (time_index, fund_uid, "
-        "asset_identifier). Each row is one asset position in a fund holdings "
-        "observation, including target weights, trade timing, and provider metadata "
-        "when available."
+        "Timestamped virtual-fund allocation storage keyed by (time_index, "
+        "virtual_fund_uid, asset_identifier). Each row is a positive allocated "
+        "quantity from a source account holdings set, with direction storing the "
+        "long/short side."
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "FundHoldingsTS",
+        "storage_name": "VirtualFundHoldingsTS",
     }
+    __table_args__ = (
+        CheckConstraint("direction IN (1, -1)", name="ck_virtual_fund_holdings_direction"),
+    )
     __time_index_name__: ClassVar[str] = "time_index"
-    __index_names__: ClassVar[list[str]] = ["time_index", "fund_uid", ASSET_IDENTIFIER_DIMENSION]
+    __index_names__: ClassVar[list[str]] = [
+        "time_index",
+        "virtual_fund_uid",
+        ASSET_IDENTIFIER_DIMENSION,
+    ]
 
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -344,24 +353,24 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         info={
             "label": "Time Index",
             "description": (
-                "UTC timestamp for the fund holdings snapshot. Rows with the same "
-                "fund_uid and time_index belong to the same fund observation."
+                "UTC timestamp for the virtual-fund allocation snapshot. Rows with "
+                "the same virtual_fund_uid and time_index belong to one allocation view."
             ),
         },
     )
-    fund_uid: Mapped[uuid.UUID] = mapped_column(
+    virtual_fund_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         MetaTableForeignKey(
-            FundTable,
+            VirtualFundTable,
             column="uid",
-            ondelete="RESTRICT",
+            ondelete="CASCADE",
         ),
         nullable=False,
         info={
-            "label": "Fund UID",
+            "label": "Virtual Fund UID",
             "description": (
-                "Stable Fund UID that owns the holdings row. This dimension scopes "
-                "holdings history to one fund."
+                "Stable VirtualFundTable.uid that owns the allocation row. This "
+                "dimension scopes allocation history to one virtual fund."
             ),
         },
     )
@@ -375,39 +384,50 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=False,
         info={
             "label": "Asset Identifier",
-            "description": "Asset unique identifier for the held instrument at this fund timestamp.",
+            "description": "Asset unique identifier for the allocated instrument.",
         },
     )
-    holdings_set_uid: Mapped[uuid.UUID | None] = mapped_column(
+    virtual_fund_holdings_set_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        nullable=True,
+        MetaTableForeignKey(
+            VirtualFundHoldingsSetTable,
+            column="uid",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
         info={
-            "label": "Holdings Set UID",
-            "description": "Stable UUID shared by rows written together as one fund holdings set.",
+            "label": "Virtual Fund Holdings Set UID",
+            "description": "VirtualFundHoldingsSetTable.uid shared by rows in one allocation set.",
         },
     )
-    is_trade_snapshot: Mapped[bool | None] = mapped_column(
-        Boolean,
-        nullable=True,
+    source_account_holdings_set_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        MetaTableForeignKey(
+            AccountHoldingsSetTable,
+            column="uid",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
         info={
-            "label": "Is Trade Snapshot",
-            "description": "Whether the holdings row belongs to an execution or trade snapshot.",
+            "label": "Source Account Holdings Set UID",
+            "description": "AccountHoldingsSetTable.uid that bounds this allocation row.",
         },
     )
-    quantity: Mapped[float | None] = mapped_column(
+    allocated_quantity: Mapped[float] = mapped_column(
         Float,
-        nullable=True,
+        nullable=False,
         info={
-            "label": "Quantity",
-            "description": "Position quantity held for this asset in the fund snapshot.",
+            "label": "Allocated Quantity",
+            "description": "Positive source-account holdings magnitude allocated to this virtual fund.",
         },
     )
-    target_weight: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
+    direction: Mapped[int] = mapped_column(
+        SmallInteger,
+        default=1,
+        nullable=False,
         info={
-            "label": "Target Weight",
-            "description": "Target portfolio weight for this asset when available.",
+            "label": "Direction",
+            "description": "Allocation side: 1 for long, -1 for short.",
         },
     )
     target_trade_time: Mapped[datetime.datetime | None] = mapped_column(
@@ -431,11 +451,11 @@ class FundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 
 
 __all__ = [
-    "FundHoldingsStorage",
     "InterpolatedPricesStorage",
     "PORTFOLIO_IDENTIFIER_DIMENSION",
     "PORTFOLIO_INDEX_IDENTIFIER_DIMENSION",
     "PortfolioWeightsStorage",
     "PortfoliosStorage",
     "SignalWeightsStorage",
+    "VirtualFundHoldingsStorage",
 ]

@@ -269,16 +269,16 @@ normal run leaves assets in the category unless the cleanup flag is used. Asset
 examples reuse shared identifiers and FIGI constants from
 `examples/msm/assets/utils/reference_data.py`.
 
-## Accounts, Funds, And Portfolios
+## Accounts, Virtual Funds, And Portfolios
 
 ```python
 import msm_portfolios
 
 from msm.api.accounts import Account
 from msm_portfolios.api.portfolios import Portfolio
-from msm_portfolios.api.virtual_funds import Fund
+from msm_portfolios.api.virtual_funds import VirtualFund
 
-msm_portfolios.start_engine(models=["Account", "Portfolio", "Fund"])
+msm_portfolios.start_engine(models=["Account", "Portfolio", "VirtualFund"])
 
 account = Account.upsert(
     unique_identifier="acct-main",
@@ -288,9 +288,9 @@ portfolio = Portfolio.upsert(
     unique_identifier="btc-eth-target",
     calendar_name="24/7",
 )
-fund = Fund.upsert(
-    unique_identifier="fund-core",
-    target_account_uid=account.uid,
+virtual_fund = VirtualFund.upsert(
+    unique_identifier="vf-core",
+    account_uid=account.uid,
     target_portfolio_uid=portfolio.uid,
 )
 ```
@@ -303,15 +303,20 @@ workflow that creates the optional portfolio `Index`, prepares `SignalWeights`,
 the `Portfolio` row.
 
 ```python
-from msm.api.accounts import AccountTargetPortfolio, PositionSet
+from msm.api.accounts import AccountHoldingsSet, AccountTargetPortfolio, PositionSet
 from msm.services import build_account_holdings_frame, build_target_positions_frame
 
+holdings_set = AccountHoldingsSet.upsert(
+    account_uid=account.uid,
+    time_index="2026-05-25T00:00:00Z",
+)
 holdings = build_account_holdings_frame(
     holdings_date="2026-05-25T00:00:00Z",
     account_uid=account.uid,
+    holdings_set_uid=holdings_set.uid,
     positions=[
-        {"asset_identifier": "BTC", "quantity": 1.0},
-        {"asset_identifier": "ETH", "quantity": 10.0},
+        {"asset_identifier": "BTC", "quantity": 1.0, "direction": 1},
+        {"asset_identifier": "ETH", "quantity": 10.0, "direction": 1},
     ],
 )
 

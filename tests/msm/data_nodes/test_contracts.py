@@ -26,6 +26,7 @@ from msm.data_nodes.utils.storage_schema import (
     storage_column_nullable_map,
 )
 from msm.models import (
+    AccountHoldingsSetTable,
     AccountTable,
     AssetTable,
     PositionSetTable,
@@ -47,10 +48,11 @@ def test_holdings_storage_classes_are_registered_metatables() -> None:
 
 
 def test_holdings_storage_declares_owner_and_asset_foreign_keys() -> None:
-    assert markets_foreign_key_target_identifiers(AccountHoldingsStorage) == [
+    assert set(markets_foreign_key_target_identifiers(AccountHoldingsStorage)) == {
         AccountTable.__metatable_identifier__,
         AssetTable.__metatable_identifier__,
-    ]
+        AccountHoldingsSetTable.__metatable_identifier__,
+    }
 
     account_asset_column = AccountHoldingsStorage.__table__.columns["asset_identifier"]
 
@@ -117,6 +119,7 @@ def test_account_holdings_dtype_tokens_match_storage_columns() -> None:
     dtype_map = AccountHoldings._column_dtypes_map_for_storage(AccountHoldingsStorage)
 
     assert dtype_map["quantity"] == dc.FLOAT64
+    assert dtype_map["direction"] == dc.INT16
     assert dtype_map["asset_identifier"] == dc.STRING
     assert dtype_map["time_index"] == dc.TIMESTAMP_TZ
     assert dtype_map["target_trade_time"] == dc.TIMESTAMP_TZ
@@ -165,6 +168,7 @@ def test_account_holdings_frame_builder_uses_storage_contract() -> None:
             {
                 "asset_identifier": "BTC",
                 "quantity": "1.25",
+                "direction": -1,
                 "target_trade_time": dt.datetime(2026, 5, 25, 11, tzinfo=dt.UTC),
                 "extra_details": {"venue": "test"},
             }
@@ -176,7 +180,9 @@ def test_account_holdings_frame_builder_uses_storage_contract() -> None:
     assert row["account_uid"] == str(account_uid)
     assert row["holdings_set_uid"] == str(holdings_set_uid)
     assert row["quantity"] == 1.25
+    assert row["direction"] == -1
     assert str(frame.reset_index()["quantity"].dtype) == "float64"
+    assert str(frame.reset_index()["direction"].dtype) == "int16"
     assert str(frame.reset_index()["target_trade_time"].dtype) == "datetime64[ns, UTC]"
     assert row["target_trade_time"] == pd.Timestamp("2026-05-25T11:00:00Z")
 
@@ -185,6 +191,7 @@ def test_account_holdings_datanode_exposes_frame_helpers_only() -> None:
     frame = build_account_holdings_frame(
         holdings_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
         account_uid=uuid.uuid4(),
+        holdings_set_uid=uuid.uuid4(),
         positions=[{"asset_identifier": "BTC", "quantity": "1"}],
     )
 
@@ -199,10 +206,41 @@ def test_holdings_frame_builder_rejects_duplicate_position_identifiers() -> None
         build_account_holdings_frame(
             holdings_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
             account_uid=uuid.uuid4(),
+            holdings_set_uid=uuid.uuid4(),
             positions=[
                 {"asset_identifier": "BTC", "quantity": "1"},
                 {"asset_identifier": "BTC", "quantity": "2"},
             ],
+        )
+
+
+def test_holdings_frame_builder_rejects_negative_quantity() -> None:
+    with pytest.raises(ValueError, match="positive quantities"):
+        build_account_holdings_frame(
+            holdings_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
+            account_uid=uuid.uuid4(),
+            holdings_set_uid=uuid.uuid4(),
+            positions=[{"asset_identifier": "BTC", "quantity": "-1", "direction": 1}],
+        )
+
+
+def test_holdings_frame_builder_rejects_invalid_direction() -> None:
+    with pytest.raises(ValueError, match="direction must be 1"):
+        build_account_holdings_frame(
+            holdings_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
+            account_uid=uuid.uuid4(),
+            holdings_set_uid=uuid.uuid4(),
+            positions=[{"asset_identifier": "BTC", "quantity": "1", "direction": 0}],
+        )
+
+
+def test_holdings_frame_builder_requires_account_holdings_set_uid() -> None:
+    with pytest.raises(ValueError, match="holdings_set_uid"):
+        build_account_holdings_frame(
+            holdings_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
+            account_uid=uuid.uuid4(),
+            holdings_set_uid=None,
+            positions=[{"asset_identifier": "BTC", "quantity": "1"}],
         )
 
 

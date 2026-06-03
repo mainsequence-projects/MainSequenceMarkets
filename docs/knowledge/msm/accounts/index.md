@@ -284,14 +284,16 @@ storage class with a fixed index and column contract.
                 | publishes rows                            |  - is_trade_snapshot bool   |
                 |                                           |  - asset_identifier string  |
                 v                                           |  - quantity float64         |
+                                                            |  - direction int16          |
 +-------------------------------+                           |  - target_trade_time        |
 | Source table rows             |                           |    datetime64[ns, UTC]      |
 |-------------------------------|                           |  - extra_details jsonb      |
 | time_index                    |                           |-----------------------------|
 | account_uid ------------------+-------------------------->| FK -> AccountTable.uid      |
 | asset_identifier -------------+-------------------------->| FK -> AssetTable            |
-| holdings_set_uid              |                           |       .unique_identifier    |
+| holdings_set_uid -------------+-------------------------->| FK -> AccountHoldingsSet    |
 | quantity                      |                           +-----------------------------+
+| direction                     |
 | target_trade_time             |
 | extra_details                 |
 +-------------------------------+
@@ -303,18 +305,24 @@ The row grain is one asset position for one account at one timestamp:
 unique row = (time_index, account_uid, asset_identifier)
 ```
 
-`asset_identifier` is the held asset's `Asset.unique_identifier`. The holdings
-storage MetaTable declares `account_uid -> AccountTable.uid` and
-`asset_identifier -> AssetTable.unique_identifier` as storage-level foreign
-keys so callers can query history by account, date range, and asset without
-duplicating relationship metadata on the DataNode configuration.
+`asset_identifier` is the held asset's `Asset.unique_identifier`.
+`holdings_set_uid` references `AccountHoldingsSetTable.uid`, which names the
+source account snapshot. `quantity` is always a positive magnitude and
+`direction` carries side: `1` for long, `-1` for short. The signed exposure is
+`quantity * direction`.
+
+The holdings storage MetaTable declares `account_uid -> AccountTable.uid`,
+`asset_identifier -> AssetTable.unique_identifier`, and
+`holdings_set_uid -> AccountHoldingsSetTable.uid` as storage-level foreign keys
+so callers can query history by account, date range, holdings set, and asset
+without duplicating relationship metadata on the DataNode configuration.
 
 The holdings DataNode configuration does not carry `time_index_name`,
 `index_names`, nullable columns, or dtype declarations. Those are storage
 MetaTable fields on `AccountHoldingsStorage`.
 
-Fund-level holdings belong to the [Virtual Funds](../../msm_portfolios/virtualfunds/index.md)
-knowledge page.
+Virtual-fund allocation holdings belong to the
+[Virtual Funds](../../msm_portfolios/virtualfunds/index.md) knowledge page.
 
 ## End-To-End Flow
 

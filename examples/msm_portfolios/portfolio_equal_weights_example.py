@@ -20,8 +20,12 @@ from examples.msm.platform.bootstrap import (  # noqa: E402
 os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
 import msm_portfolios  # noqa: E402
+from msm.api.accounts import Account, AccountGroup, AccountHoldingsSet  # noqa: E402
+from msm.api.assets import Asset, AssetType  # noqa: E402
 from msm.api.indices import Index, IndexType  # noqa: E402
+from msm.data_nodes.accounts import AccountHoldings  # noqa: E402
 from msm_portfolios.api.portfolios import Portfolio  # noqa: E402
+from msm_portfolios.api.virtual_funds import VirtualFund  # noqa: E402
 from msm_portfolios.configuration import (  # noqa: E402
     AssetsConfiguration,
     BacktestingWeightsConfig,
@@ -40,6 +44,7 @@ from msm_portfolios.contrib.signals.fixed_weights import (  # noqa: E402
 from msm_portfolios.data_nodes import (  # noqa: E402
     PortfoliosDataNode,
     PortfolioWeights,
+    VirtualFundHoldings,
     compute_portfolio_configuration_hash,
     normalize_signal_weights_frame,
 )
@@ -57,6 +62,9 @@ ASSET_UNIQUE_IDENTIFIERS = [
     "BINANCE_SPOT_ETH_USDT",
     "BINANCE_SPOT_SOL_USDT",
 ]
+ACCOUNT_GROUP_NAME = "Example Portfolio Allocation Accounts"
+ACCOUNT_UNIQUE_IDENTIFIER = "example-portfolio-allocation-account"
+VIRTUAL_FUND_UNIQUE_IDENTIFIER = "example-equal-weight-virtual-fund"
 
 
 def start_portfolio_example_runtime() -> None:
@@ -66,13 +74,48 @@ def start_portfolio_example_runtime() -> None:
         models=[
             "IndexType",
             "Index",
+            "AssetType",
+            "Asset",
+            "AccountGroup",
+            "Account",
+            "AccountHoldingsSet",
+            "AccountHoldingsStorage",
             "Portfolio",
+            "VirtualFund",
+            "VirtualFundHoldingsSet",
+            "VirtualFundHoldingsStorage",
             "SignalMetadata",
             "RebalanceStrategyMetadata",
             "PortfolioWeightsStorage",
             "SignalWeightsStorage",
             "PortfoliosStorage",
         ],
+    )
+
+
+def register_assets() -> list[Asset]:
+    AssetType.upsert(
+        asset_type="crypto",
+        display_name="Crypto",
+        description="Crypto spot instruments used by portfolio examples.",
+    )
+    return [
+        Asset.upsert(unique_identifier=asset_identifier, asset_type="crypto")
+        for asset_identifier in ASSET_UNIQUE_IDENTIFIERS
+    ]
+
+
+def register_account() -> Account:
+    account_group = AccountGroup.upsert(
+        group_name=ACCOUNT_GROUP_NAME,
+        group_description="Example group for portfolio virtual-fund allocation.",
+    )
+    return Account.upsert(
+        unique_identifier=ACCOUNT_UNIQUE_IDENTIFIER,
+        account_name="Example Portfolio Allocation Account",
+        is_paper=True,
+        account_is_active=True,
+        account_group_uid=account_group.uid,
     )
 
 
@@ -203,6 +246,35 @@ def build_portfolio_values_frame() -> pd.DataFrame:
     ).set_index("time_index")
 
 
+def build_account_holdings_frame(
+    node: AccountHoldings,
+    account: Account,
+    holdings_set: AccountHoldingsSet,
+) -> pd.DataFrame:
+    return node.build_account_holdings_frame(
+        holdings_date=TIME_INDEX,
+        account_uid=account.uid,
+        holdings_set_uid=holdings_set.uid,
+        positions=[
+            {
+                "asset_identifier": ASSET_UNIQUE_IDENTIFIERS[0],
+                "quantity": 10.0,
+                "direction": 1,
+            },
+            {
+                "asset_identifier": ASSET_UNIQUE_IDENTIFIERS[1],
+                "quantity": 5.0,
+                "direction": 1,
+            },
+            {
+                "asset_identifier": ASSET_UNIQUE_IDENTIFIERS[2],
+                "quantity": 20.0,
+                "direction": 1,
+            },
+        ],
+    )
+
+
 def run_storage_node(node: Any, *, enabled: bool) -> str | None:
     if not enabled:
         return None
@@ -213,6 +285,8 @@ def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, An
     """Create the portfolio index, run portfolio DataNodes, and upsert Portfolio."""
 
     start_portfolio_example_runtime()
+    assets = register_assets()
+    account = register_account()
     portfolio_index = register_portfolio_index()
 
     signal_weights_node = build_signal_weights_node()
@@ -233,9 +307,48 @@ def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, An
         portfolio_data_node_uid=portfolio_values_node_uid,
     )
 
+    holdings_set = AccountHoldingsSet.upsert(account_uid=account.uid, time_index=TIME_INDEX)
+    account_holdings_node = AccountHoldings(config=AccountHoldings.default_config())
+    account_holdings_frame = build_account_holdings_frame(
+        account_holdings_node, account, holdings_set
+    )
+    account_holdings_node.set_frame(account_holdings_frame)
+    account_holdings_node_uid = run_storage_node(account_holdings_node, enabled=run_data_nodes)
+
+    virtual_fund = VirtualFund.upsert(
+        unique_identifier=VIRTUAL_FUND_UNIQUE_IDENTIFIER,
+        account_uid=account.uid,
+        target_portfolio_uid=portfolio.uid,
+    )
+    virtual_fund_node = VirtualFundHoldings()
+    virtual_fund_allocations_frame = virtual_fund.allocate_from_account_holdings_set(
+        source_account_holdings_set_uid=holdings_set.uid,
+        allocation_time=TIME_INDEX,
+        allocations=[
+            {
+                "asset_identifier": ASSET_UNIQUE_IDENTIFIERS[0],
+                "allocated_quantity": 4.0,
+                "direction": 1,
+            },
+            {
+                "asset_identifier": ASSET_UNIQUE_IDENTIFIERS[1],
+                "allocated_quantity": 2.0,
+                "direction": 1,
+            },
+        ],
+        data_node=virtual_fund_node if run_data_nodes else None,
+        run=run_data_nodes,
+        validate_bounds=run_data_nodes,
+    )
+
     return {
+        "assets": assets,
+        "account": account,
+        "account_holdings_set": holdings_set,
+        "account_holdings_node_uid": account_holdings_node_uid,
         "portfolio": portfolio,
         "portfolio_index": portfolio_index,
+        "virtual_fund": virtual_fund,
         "portfolio_configuration_hash": compute_portfolio_configuration_hash(
             portfolio_configuration
         ),
@@ -254,6 +367,8 @@ def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, An
             build_portfolio_values_frame(),
             unique_identifier=portfolio_index.unique_identifier,
         ),
+        "account_holdings_frame": account_holdings_frame,
+        "virtual_fund_allocations_frame": virtual_fund_allocations_frame,
     }
 
 

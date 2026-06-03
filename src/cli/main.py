@@ -5,6 +5,7 @@ import json
 import shutil
 import sys
 from importlib.metadata import PackageNotFoundError, distribution
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 

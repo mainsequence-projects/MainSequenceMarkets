@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from msm.models import IndexTable
+from msm.models import (
+    AccountGroupTable,
+    AccountHoldingsSetTable,
+    AccountTable,
+    AssetTable,
+    AssetTypeTable,
+    IndexTable,
+)
 
 from .portfolios import (
     PortfolioMetadataTable,
@@ -8,39 +15,51 @@ from .portfolios import (
 )
 from .rebalancing import RebalanceStrategyMetadataTable
 from .signals import SignalMetadataTable
-from .virtual_funds import FundTable
+from .virtual_funds import VirtualFundHoldingsSetTable, VirtualFundTable
 
 
 def portfolio_sqlalchemy_models() -> list[type]:
     from msm_portfolios.data_nodes.storage import (
-        FundHoldingsStorage,
         InterpolatedPricesStorage,
         PortfoliosStorage,
         PortfolioWeightsStorage,
         SignalWeightsStorage,
+        VirtualFundHoldingsStorage,
     )
 
     return [
+        AssetTypeTable,
+        AssetTable,
         IndexTable,
+        AccountGroupTable,
+        AccountTable,
+        AccountHoldingsSetTable,
         PortfolioTable,
         SignalMetadataTable,
         RebalanceStrategyMetadataTable,
         PortfolioMetadataTable,
-        FundTable,
+        VirtualFundTable,
+        VirtualFundHoldingsSetTable,
         PortfolioWeightsStorage,
         SignalWeightsStorage,
         PortfoliosStorage,
         InterpolatedPricesStorage,
-        FundHoldingsStorage,
+        VirtualFundHoldingsStorage,
     ]
 
 
 __all__ = [
-    "FundTable",
+    "AccountGroupTable",
+    "AccountHoldingsSetTable",
+    "AccountTable",
+    "AssetTable",
+    "AssetTypeTable",
     "IndexTable",
     "PortfolioMetadataTable",
     "PortfolioTable",
     "RebalanceStrategyMetadataTable",
     "SignalMetadataTable",
+    "VirtualFundHoldingsSetTable",
+    "VirtualFundTable",
     "portfolio_sqlalchemy_models",
 ]

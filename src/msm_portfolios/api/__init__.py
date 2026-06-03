@@ -20,13 +20,18 @@ from .portfolios import (
     PortfolioUpdate,
     PortfolioUpsert,
 )
-from .virtual_funds import Fund, FundCreate, FundUpdate, FundUpsert
+from .virtual_funds import (
+    VirtualFund,
+    VirtualFundAllocation,
+    VirtualFundCreate,
+    VirtualFundHoldingsSet,
+    VirtualFundHoldingsSetCreate,
+    VirtualFundHoldingsSetUpsert,
+    VirtualFundUpdate,
+    VirtualFundUpsert,
+)
 
 __all__ = [
-    "Fund",
-    "FundCreate",
-    "FundUpdate",
-    "FundUpsert",
     "Portfolio",
     "PortfolioCreate",
     "PortfolioMetadata",
@@ -43,4 +48,12 @@ __all__ = [
     "SignalMetadataCreate",
     "SignalMetadataUpdate",
     "SignalMetadataUpsert",
+    "VirtualFund",
+    "VirtualFundAllocation",
+    "VirtualFundCreate",
+    "VirtualFundHoldingsSet",
+    "VirtualFundHoldingsSetCreate",
+    "VirtualFundHoldingsSetUpsert",
+    "VirtualFundUpdate",
+    "VirtualFundUpsert",
 ]

@@ -4,72 +4,72 @@ from typing import Any
 
 from msm.repositories import MarketsRepositoryContext
 from msm_portfolios.repositories import (
-    create_fund as repository_create_fund,
+    create_virtual_fund as repository_create_virtual_fund,
 )
 from msm_portfolios.repositories import (
-    delete_fund as repository_delete_fund,
+    delete_virtual_fund as repository_delete_virtual_fund,
 )
 from msm_portfolios.repositories import (
-    get_fund_by_unique_identifier as repository_get_fund_by_unique_identifier,
+    get_virtual_fund_by_unique_identifier as repository_get_virtual_fund_by_unique_identifier,
 )
 from msm_portfolios.repositories import (
-    get_funds_by_account as repository_get_funds_by_account,
+    get_virtual_funds_by_account as repository_get_virtual_funds_by_account,
 )
 from msm_portfolios.repositories import (
-    get_funds_by_portfolio as repository_get_funds_by_portfolio,
+    get_virtual_funds_by_portfolio as repository_get_virtual_funds_by_portfolio,
 )
 from msm_portfolios.repositories import (
-    update_fund as repository_update_fund,
+    update_virtual_fund as repository_update_virtual_fund,
 )
 
 
-def create_fund(
+def create_virtual_fund(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return repository_create_fund(context, **kwargs)
+    return repository_create_virtual_fund(context, **kwargs)
 
 
-def get_funds_by_portfolio(
+def get_virtual_funds_by_portfolio(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return repository_get_funds_by_portfolio(context, **kwargs)
+    return repository_get_virtual_funds_by_portfolio(context, **kwargs)
 
 
-def get_fund_by_unique_identifier(
+def get_virtual_fund_by_unique_identifier(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return repository_get_fund_by_unique_identifier(context, **kwargs)
+    return repository_get_virtual_fund_by_unique_identifier(context, **kwargs)
 
 
-def get_funds_by_account(
+def get_virtual_funds_by_account(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return repository_get_funds_by_account(context, **kwargs)
+    return repository_get_virtual_funds_by_account(context, **kwargs)
 
 
-def update_fund(
+def update_virtual_fund(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return repository_update_fund(context, **kwargs)
+    return repository_update_virtual_fund(context, **kwargs)
 
 
-def delete_fund(
+def delete_virtual_fund(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return repository_delete_fund(context, **kwargs)
+    return repository_delete_virtual_fund(context, **kwargs)
 
 
 __all__ = [
-    "create_fund",
-    "delete_fund",
-    "get_fund_by_unique_identifier",
-    "get_funds_by_account",
-    "get_funds_by_portfolio",
-    "update_fund",
+    "create_virtual_fund",
+    "delete_virtual_fund",
+    "get_virtual_fund_by_unique_identifier",
+    "get_virtual_funds_by_account",
+    "get_virtual_funds_by_portfolio",
+    "update_virtual_fund",
 ]

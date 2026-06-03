@@ -13,13 +13,13 @@ import uuid
 from typing import Any, ClassVar
 
 from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, String
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Float, SmallInteger, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
-from msm.models.accounts import AccountTable, PositionSetTable
+from msm.models.accounts import AccountHoldingsSetTable, AccountTable, PositionSetTable
 from msm.models.assets.core import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
@@ -107,7 +107,11 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __metatable_description__ = (
         "Timestamped account holdings storage keyed by (time_index, account_uid, "
         "asset_identifier). Each row is one asset position in an account holdings "
-        "observation, with optional trade-snapshot and provider metadata fields."
+        "set. quantity is a positive magnitude and direction stores the long/short "
+        "side."
+    )
+    __table_args__ = (
+        CheckConstraint("direction IN (1, -1)", name="ck_account_holdings_direction"),
     )
     __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
         "storage_name": "AccountHoldingsTS",
@@ -159,12 +163,17 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             "description": "Asset unique identifier for the held instrument at this account timestamp.",
         },
     )
-    holdings_set_uid: Mapped[uuid.UUID | None] = mapped_column(
+    holdings_set_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        nullable=True,
+        MetaTableForeignKey(
+            AccountHoldingsSetTable,
+            column="uid",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
         info={
             "label": "Holdings Set UID",
-            "description": "Stable UUID shared by rows written together as one account holdings set.",
+            "description": "AccountHoldingsSetTable.uid shared by rows in one account snapshot.",
         },
     )
     is_trade_snapshot: Mapped[bool | None] = mapped_column(
@@ -180,7 +189,16 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Quantity",
-            "description": "Position quantity held for this asset in the account snapshot.",
+            "description": "Positive position magnitude held for this asset in the account snapshot.",
+        },
+    )
+    direction: Mapped[int] = mapped_column(
+        SmallInteger,
+        default=1,
+        nullable=False,
+        info={
+            "label": "Direction",
+            "description": "Position side: 1 for long, -1 for short.",
         },
     )
     target_trade_time: Mapped[datetime.datetime | None] = mapped_column(

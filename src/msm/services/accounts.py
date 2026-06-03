@@ -220,9 +220,7 @@ def get_account_target_positions_snapshot_response(
     position_set_rows = _search_position_set_rows_for_target_portfolios(
         context,
         target_portfolio_uids=[
-            str(row["uid"])
-            for row in target_portfolio_rows
-            if row.get("uid") not in (None, "")
+            str(row["uid"]) for row in target_portfolio_rows if row.get("uid") not in (None, "")
         ],
         position_set_time=target_positions_date,
     )
@@ -457,6 +455,7 @@ def _build_account_holding_row(
         "position_type": "units",
         "price": None,
         "quantity": _number_string_or_none(row.get("quantity")),
+        "direction": _int_or_default(row.get("direction"), default=1),
         "missing_price": True,
         "target_trade_time": _datetime_or_none(row.get("target_trade_time")),
         "extra_details": _mapping_or_empty(row.get("extra_details")),
@@ -581,9 +580,7 @@ def _search_target_position_rows(
     if target_positions_date is None:
         return rows
     return [
-        row
-        for row in rows
-        if _datetime_or_none(row.get("time_index")) == target_positions_date
+        row for row in rows if _datetime_or_none(row.get("time_index")) == target_positions_date
     ]
 
 
@@ -619,12 +616,8 @@ def _build_account_target_position_row(
 ) -> dict[str, Any]:
     return {
         "unique_identifier": _string_or_empty(row.get("asset_identifier")),
-        "weight_notional_exposure": _number_string_or_none(
-            row.get("weight_notional_exposure")
-        ),
-        "constant_notional_exposure": _number_string_or_none(
-            row.get("constant_notional_exposure")
-        ),
+        "weight_notional_exposure": _number_string_or_none(row.get("weight_notional_exposure")),
+        "constant_notional_exposure": _number_string_or_none(row.get("constant_notional_exposure")),
         "single_asset_quantity": _number_string_or_none(row.get("single_asset_quantity")),
         "asset": asset_reference if include_asset_detail else None,
     }
@@ -726,14 +719,10 @@ def _build_asset_snapshot_reference(
         or unique_identifier,
         "current_snapshot": {
             "name": (
-                _string_or_none(snapshot_row.get("name"))
-                if snapshot_row is not None
-                else None
+                _string_or_none(snapshot_row.get("name")) if snapshot_row is not None else None
             ),
             "ticker": (
-                _string_or_none(snapshot_row.get("ticker"))
-                if snapshot_row is not None
-                else None
+                _string_or_none(snapshot_row.get("ticker")) if snapshot_row is not None else None
             ),
         },
     }
@@ -832,6 +821,12 @@ def _number_string_or_none(value: Any) -> str | None:
     if isinstance(value, float) and math.isnan(value):
         return None
     return str(value)
+
+
+def _int_or_default(value: Any, *, default: int) -> int:
+    if value in (None, ""):
+        return default
+    return int(value)
 
 
 def _mapping_or_empty(value: Any) -> dict[str, Any]:

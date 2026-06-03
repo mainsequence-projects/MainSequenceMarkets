@@ -1,105 +1,146 @@
 # Virtual Funds
 
-Virtual funds are portfolio-tracking entities that bind an account to a target
-portfolio. They are not account identities. Accounts own custody or execution;
-portfolios own target composition; funds connect the two for fund-level
-holdings and workflow tracking.
+Virtual funds are allocation views over real account holdings. They bind an
+`Account` to a target `Portfolio`, then allocate part of one
+`AccountHoldingsSet` into that portfolio workflow.
 
-The next virtual-fund contract is specified in
-[ADR 0021](../../../ADR/0021-virtual-fund-allocation-holdings-contract.md). It
-tightens this model so virtual-fund holdings are allocations from account
-holdings sets, quantities are positive magnitudes, and `direction` carries long
-or short side.
+A virtual fund is not an `Asset`, not an account, and not custody. Account
+holdings continue to store real asset rows only.
 
-## Scope
-
-Virtual funds own:
-
-- `FundTable` rows that link `target_account_uid` to `AccountTable.uid`.
-- `FundTable` rows that link `target_portfolio_uid` to `PortfolioTable.uid`.
-- `VirtualFundHoldings` DataNodes for fund-level holdings observations.
-- `FundHoldingsStorage` as the storage contract for fund holdings history.
-
-Virtual funds do not own account identity, account groups, account target
-portfolio mandates, or account target-position sets.
-
-## Fund MetaTable
+## Relationship
 
 ```text
-------------------+      target_account_uid FK       +----------------+
-| AccountTable     |<-------------------------------+ | FundTable      |
-| MetaTable        |                                  | MetaTable      |
-| uid PK           |                                  | uid PK         |
-+------------------+                                  | unique_id uniq |
-                                                      | target_account |
-+------------------+      target_portfolio_uid FK     | target_portf. |
-| PortfolioTable   |<-------------------------------+ | metadata_json |
-| MetaTable        |                                  +----------------+
-| uid PK           |
-+------------------+
++---------------------+        target_portfolio_uid        +---------------------+
+| PortfolioTable      |<-----------------------------------| VirtualFundTable    |
+| portfolio identity  |                                    | allocation identity |
++---------------------+                                    | account_uid         |
+                                                           +----------+----------+
+                                                                      |
+                                                                      | account_uid
+                                                                      v
++---------------------+        account_uid                +---------------------+
+| AccountTable        |<-----------------------------------| AccountHoldingsSet |
+| custody account     |                                    | source snapshot    |
++---------------------+                                    +----------+----------+
+                                                                      |
+                                                                      | source_account_holdings_set_uid
+                                                                      v
+                                                           +-----------------------------+
+                                                           | VirtualFundHoldingsSetTable |
+                                                           | allocation set identity     |
+                                                           +-------------+---------------+
+                                                                         |
+                                                                         v
+                                                           +-----------------------------+
+                                                           | VirtualFundHoldingsStorage  |
+                                                           | allocated_quantity          |
+                                                           | direction                   |
+                                                           | asset_identifier -> Asset   |
+                                                           +-----------------------------+
 ```
 
-The fund row API lives in `msm_portfolios.api.virtual_funds` because virtual
-funds are packaged with the portfolio workflow but keep their own row API
-module:
-
-```python
-from msm_portfolios.api.virtual_funds import Fund
-
-fund = Fund.upsert(
-    unique_identifier="fund-core",
-    target_account_uid=account.uid,
-    target_portfolio_uid=portfolio.uid,
-)
-```
-
-## Fund Holdings DataNode
-
-Fund holdings are time-series-like observations. They are not static fund rows.
-`VirtualFundHoldings` writes to a table described by `FundHoldingsStorage`.
+`VirtualFundTable` stores identity only:
 
 ```text
-                                    DataNode / PlatformTimeIndexMetaData
-                                    ------------------------------------
-
-+-------------------------------+       uses registered     +-----------------------------+
-| VirtualFundHoldings           |-------------------------->| FundHoldingsStorage         |
-| DataNode class                |                           | virtual_fund_historical...  |
-|-------------------------------|                           |-----------------------------|
-| identifier, index contract,   |                           | time_index_name=time_index  |
-| and dtype contract derive     |                           | index_names:                |
-| from FundHoldingsStorage.     |                           |  - time_index               |
-|                               |                           |  - fund_uid                 |
-| update() returns DataFrame    |                           |  - asset_identifier         |
-+---------------+---------------+                           | records:                    |
-                |                                           |  - holdings_set_uid uuid    |
-                | publishes rows                            |  - is_trade_snapshot bool   |
-                |                                           |  - asset_identifier string  |
-                v                                           |  - quantity float64         |
-+-------------------------------+                           |  - target_weight float64    |
-| Source table rows             |                           |  - target_trade_time        |
-|-------------------------------|                           |    datetime64[ns, UTC]      |
-| time_index                    |                           |  - extra_details jsonb      |
-| fund_uid ---------------------+-------------------------->| FK -> FundTable.uid         |
-| asset_identifier -------------+-------------------------->| FK -> AssetTable            |
-| holdings_set_uid              |                           |       .unique_identifier    |
-| quantity                      |                           +-----------------------------+
-| target_weight                 |
-| target_trade_time             |
-| extra_details                 |
++-------------------------------+
+| VirtualFundTable              |
+|-------------------------------|
+| uid PK                        |
+| unique_identifier unique      |
+| account_uid FK -> Account     |
+| target_portfolio_uid FK       |
 +-------------------------------+
 ```
 
-The row grain is one asset position for one fund at one timestamp:
+`VirtualFundHoldingsSetTable` groups one allocation view from one source account
+holdings set:
 
 ```text
-unique row = (time_index, fund_uid, asset_identifier)
++----------------------------------------------+
+| VirtualFundHoldingsSetTable                  |
+|----------------------------------------------|
+| uid PK                                       |
+| virtual_fund_uid FK -> VirtualFundTable.uid  |
+| source_account_holdings_set_uid FK           |
+| time_index                                   |
++----------------------------------------------+
 ```
 
-`asset_identifier` is the held asset's `AssetTable.unique_identifier`.
-`FundHoldingsStorage` declares both `fund_uid -> FundTable.uid` and
-`asset_identifier -> AssetTable.unique_identifier` as storage-level foreign
-keys.
+`VirtualFundHoldingsStorage` stores the allocated exposure rows:
+
+```text
+unique row = (time_index, virtual_fund_uid, asset_identifier)
+```
+
+Records include:
+
+- `virtual_fund_holdings_set_uid`
+- `source_account_holdings_set_uid`
+- `allocated_quantity`
+- `direction`
+- `target_trade_time`
+- `extra_details`
+
+`allocated_quantity` is a positive magnitude. `direction` is `1` for long and
+`-1` for short. This mirrors account holdings, where `quantity` is positive and
+`direction` carries the side.
+
+## Allocation Bound
+
+Before publishing virtual-fund allocation rows, the API validates the source
+holdings set:
+
+```text
+sum(existing allocated_quantity)
++ sum(new allocated_quantity)
+<= source account holdings quantity
+```
+
+The bound key is:
+
+```text
+(source_account_holdings_set_uid, asset_identifier, direction)
+```
+
+A short source holding only funds short virtual-fund allocations. A long source
+holding only funds long virtual-fund allocations.
+
+## API Flow
+
+```python
+from msm.api.accounts import AccountHoldingsSet
+from msm_portfolios.api.virtual_funds import VirtualFund
+from msm_portfolios.data_nodes import VirtualFundHoldings
+
+holdings_set = AccountHoldingsSet.upsert(
+    account_uid=account.uid,
+    time_index=workflow_time,
+)
+
+virtual_fund = VirtualFund.upsert(
+    unique_identifier="vf-core",
+    account_uid=account.uid,
+    target_portfolio_uid=portfolio.uid,
+)
+
+virtual_fund_node = VirtualFundHoldings()
+allocation_frame = virtual_fund.allocate_from_account_holdings_set(
+    source_account_holdings_set_uid=holdings_set.uid,
+    allocation_time=workflow_time,
+    allocations=[
+        {
+            "asset_identifier": "BTC",
+            "allocated_quantity": 6,
+            "direction": 1,
+        },
+    ],
+    data_node=virtual_fund_node,
+    run=True,
+)
+```
+
+The helper creates a `VirtualFundHoldingsSetTable` row after validation, attaches
+the allocation frame to the DataNode, and can run the DataNode when `run=True`.
 
 ## Registration Order
 
@@ -110,17 +151,21 @@ import msm_portfolios
 
 msm_portfolios.start_engine(
     models=[
+        "AssetType",
         "Asset",
         "Account",
+        "AccountHoldingsSet",
+        "AccountHoldingsStorage",
         "Portfolio",
-        "Fund",
-        "FundHoldingsStorage",
+        "VirtualFund",
+        "VirtualFundHoldingsSet",
+        "VirtualFundHoldingsStorage",
     ]
 )
 ```
 
 The DataNode class itself does not need to be in the MetaTable model list. Its
-storage class does. Register `FundHoldingsStorage` before constructing or
+storage class does. Register `VirtualFundHoldingsStorage` before constructing or
 running `VirtualFundHoldings`.
 
 ## Related Concepts
@@ -128,5 +173,5 @@ running `VirtualFundHoldings`.
 - [Accounts](../../msm/accounts/index.md): account identity and account holdings.
 - [Portfolios](../portfolios/index.md): portfolio configuration and canonical
   portfolio data.
-- [Asset-Indexed DataNodes](../../msm/assets/asset_indexed_data_nodes.md): shared
-  market DataNode conventions keyed by `AssetTable.unique_identifier`.
+- [Asset-Indexed DataNodes](../../msm/assets/asset_indexed_data_nodes.md):
+  shared market DataNode conventions keyed by `AssetTable.unique_identifier`.

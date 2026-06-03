@@ -8,9 +8,9 @@ import pandas as pd
 
 from msm.data_nodes.accounts import HoldingsDataNode
 
-from msm_portfolios.data_nodes.storage import FundHoldingsStorage
+from msm_portfolios.data_nodes.storage import VirtualFundHoldingsStorage
 from msm_portfolios.services.holdings import (
-    build_fund_holdings_frame as build_fund_holdings_service_frame,
+    build_virtual_fund_holdings_frame as build_virtual_fund_holdings_service_frame,
 )
 
 
@@ -18,45 +18,45 @@ class VirtualFundHoldings(HoldingsDataNode):
     """DataNode users can subclass to import virtual-fund holdings."""
 
     @classmethod
-    def _required_storage_table(cls) -> type[FundHoldingsStorage]:
-        return FundHoldingsStorage
+    def _required_storage_table(cls) -> type[VirtualFundHoldingsStorage]:
+        return VirtualFundHoldingsStorage
 
-    def build_fund_holdings_frame(
+    def build_virtual_fund_holdings_frame(
         self,
         *,
-        holdings_date: dt.datetime | str,
-        fund_uid: UUID | str,
-        positions: list[dict[str, Any] | Any],
-        holdings_set_uid: UUID | str | None = None,
-        is_trade_snapshot: bool = False,
+        allocation_time: dt.datetime | str,
+        virtual_fund_uid: UUID | str,
+        source_account_holdings_set_uid: UUID | str,
+        virtual_fund_holdings_set_uid: UUID | str,
+        allocations: list[dict[str, Any] | Any],
         target_trade_time: dt.datetime | str | None = None,
     ) -> pd.DataFrame:
-        return build_fund_holdings_service_frame(
-            holdings_date=holdings_date,
-            fund_uid=fund_uid,
-            positions=positions,
-            holdings_set_uid=holdings_set_uid,
-            is_trade_snapshot=is_trade_snapshot,
+        return build_virtual_fund_holdings_service_frame(
+            allocation_time=allocation_time,
+            virtual_fund_uid=virtual_fund_uid,
+            source_account_holdings_set_uid=source_account_holdings_set_uid,
+            virtual_fund_holdings_set_uid=virtual_fund_holdings_set_uid,
+            allocations=allocations,
             target_trade_time=target_trade_time,
         )
 
-    def set_fund_holdings_frame(
+    def set_virtual_fund_holdings_frame(
         self,
         *,
-        holdings_date: dt.datetime | str,
-        fund_uid: UUID | str,
-        positions: list[dict[str, Any] | Any],
-        holdings_set_uid: UUID | str | None = None,
-        is_trade_snapshot: bool = False,
+        allocation_time: dt.datetime | str,
+        virtual_fund_uid: UUID | str,
+        source_account_holdings_set_uid: UUID | str,
+        virtual_fund_holdings_set_uid: UUID | str,
+        allocations: list[dict[str, Any] | Any],
         target_trade_time: dt.datetime | str | None = None,
     ) -> VirtualFundHoldings:
         return self.set_frame(
-            self.build_fund_holdings_frame(
-                holdings_date=holdings_date,
-                fund_uid=fund_uid,
-                positions=positions,
-                holdings_set_uid=holdings_set_uid,
-                is_trade_snapshot=is_trade_snapshot,
+            self.build_virtual_fund_holdings_frame(
+                allocation_time=allocation_time,
+                virtual_fund_uid=virtual_fund_uid,
+                source_account_holdings_set_uid=source_account_holdings_set_uid,
+                virtual_fund_holdings_set_uid=virtual_fund_holdings_set_uid,
+                allocations=allocations,
                 target_trade_time=target_trade_time,
             )
         )

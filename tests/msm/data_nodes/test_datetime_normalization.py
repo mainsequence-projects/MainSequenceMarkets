@@ -72,6 +72,7 @@ def test_holdings_time_columns_are_datetime64_ns_utc() -> None:
     frame = build_account_holdings_frame(
         holdings_date=MICROSECOND_TIME,
         account_uid=uuid.uuid4(),
+        holdings_set_uid=uuid.uuid4(),
         positions=[
             {
                 "asset_identifier": "asset-1",

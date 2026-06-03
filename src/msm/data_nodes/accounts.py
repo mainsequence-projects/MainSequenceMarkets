@@ -90,7 +90,7 @@ class HoldingsDataNode(AssetIndexedDataNode):
             raise ValueError(
                 f"{self.__class__.__name__} requires a real holdings frame. "
                 "Call set_frame(), set_account_holdings_frame(), or "
-                "set_fund_holdings_frame() before update()."
+                "set_virtual_fund_holdings_frame() before update()."
             )
         return frame
 
@@ -215,7 +215,7 @@ class AccountHoldings(HoldingsDataNode):
         holdings_date: dt.datetime | str,
         account_uid: UUID | str,
         positions: list[dict[str, Any] | Any],
-        holdings_set_uid: UUID | str | None = None,
+        holdings_set_uid: UUID | str,
         is_trade_snapshot: bool = False,
         target_trade_time: dt.datetime | str | None = None,
     ) -> pd.DataFrame:
@@ -234,7 +234,7 @@ class AccountHoldings(HoldingsDataNode):
         holdings_date: dt.datetime | str,
         account_uid: UUID | str,
         positions: list[dict[str, Any] | Any],
-        holdings_set_uid: UUID | str | None = None,
+        holdings_set_uid: UUID | str,
         is_trade_snapshot: bool = False,
         target_trade_time: dt.datetime | str | None = None,
     ) -> AccountHoldings:

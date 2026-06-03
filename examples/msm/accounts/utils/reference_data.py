@@ -62,12 +62,14 @@ def example_account_holdings_positions(
         {
             "asset_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
             "quantity": btc_quantity,
+            "direction": 1,
             "target_trade_time": target_trade_time,
             "extra_details": {"ticker": EXAMPLE_BTC_TICKER, "name": "Bitcoin"},
         },
         {
             "asset_identifier": EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
             "quantity": eth_quantity,
+            "direction": 1,
             "target_trade_time": target_trade_time,
             "extra_details": {"ticker": EXAMPLE_ETH_TICKER, "name": "Ethereum"},
         },

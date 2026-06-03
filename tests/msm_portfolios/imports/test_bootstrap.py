@@ -3,10 +3,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import msm_portfolios.bootstrap as bootstrap
-from msm.models import IndexTable
+from msm.models import AccountTable, AssetTable, IndexTable
 from msm_portfolios.models import (
-    FundTable,
     PortfolioTable,
+    VirtualFundTable,
     portfolio_sqlalchemy_models,
 )
 
@@ -42,15 +42,15 @@ def test_portfolio_bootstrap_resolves_portfolio_names_and_passes_core_names(monk
                 "Account",
                 "Index",
                 "Portfolio",
-                "Fund",
+                "VirtualFund",
             ]
         )
         is runtime
     )
     assert calls[0]["models"] == [
-        "Asset",
-        "Account",
+        AssetTable,
+        AccountTable,
         IndexTable,
         PortfolioTable,
-        FundTable,
+        VirtualFundTable,
     ]

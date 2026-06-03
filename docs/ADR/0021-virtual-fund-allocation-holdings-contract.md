@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented
 
 ## Context
 
@@ -72,6 +72,18 @@ signed_quantity = direction * quantity
 This applies to core account holdings and to virtual-fund allocation holdings.
 The implementation must update the shared holdings builder/validator used by
 `AccountHoldingsStorage` and virtual-fund holdings storage.
+
+Storage contracts must use the project asset-reference dimension:
+
+```text
+ASSET_IDENTIFIER_DIMENSION = "asset_identifier"
+```
+
+`asset_identifier` is the storage column name. It references
+`AssetTable.unique_identifier`. Do not use `unique_identifier` as the storage
+dimension name for account holdings or virtual-fund allocation rows; reserve
+`unique_identifier` for registry MetaTable business keys such as
+`AssetTable.unique_identifier` and `VirtualFundTable.unique_identifier`.
 
 Do not allow negative `quantity`. Negative quantities make the side ambiguous
 and create invalid combinations such as `quantity=-10, direction=-1`.
@@ -155,7 +167,7 @@ target portfolio:
                                                            | VirtualFundHoldingsStorage  |
                                                            | allocated_quantity          |
                                                            | direction                   |
-                                                           | unique_identifier -> Asset  |
+                                                           | asset_identifier -> Asset   |
                                                            +-----------------------------+
 ```
 
@@ -230,7 +242,7 @@ owned by `msm_portfolios`.
 ```text
 +------------------+        owns real holdings        +------------------------+
 | AccountTable     |---------------------------------->| AccountHoldingsStorage |
-+------------------+                                   | unique_identifier      |
++------------------+                                   | asset_identifier       |
                                                        | quantity               |
                                                        | direction              |
                                                        +------------------------+
@@ -248,7 +260,7 @@ owned by `msm_portfolios`.
 | VirtualFundHoldingsStorage |
 | allocated_quantity         |
 | direction                  |
-| unique_identifier -> Asset |
+| asset_identifier -> Asset  |
 +----------------------------+
 ```
 
@@ -300,7 +312,7 @@ Virtual-fund holdings storage should be explicit that it stores allocations:
 |------------------------------------------------|
 | time_index                                     |
 | virtual_fund_uid                               |
-| unique_identifier                              |
+| asset_identifier                               |
 | virtual_fund_holdings_set_uid                  |
 | source_account_holdings_set_uid                |
 | allocated_quantity                             |
@@ -313,7 +325,7 @@ Virtual-fund holdings storage should be explicit that it stores allocations:
 The row grain is:
 
 ```text
-(time_index, virtual_fund_uid, unique_identifier)
+(time_index, virtual_fund_uid, asset_identifier)
 ```
 
 `quantity` should be renamed to `allocated_quantity` for virtual-fund storage so
@@ -340,7 +352,7 @@ Expanded key:
 ```text
 (
   source_account_holdings_set_uid,
-  unique_identifier,
+  asset_identifier,
   direction,
 )
 ```
@@ -349,7 +361,7 @@ Example:
 
 ```text
 Account source holding:
-  unique_identifier = BTC
+  asset_identifier = BTC
   quantity = 10
   direction = -1
 
@@ -376,7 +388,7 @@ virtual_fund.allocate_from_account_holdings_set(
     source_account_holdings_set_uid=account_holdings_set.uid,
     allocations=[
         {
-            "unique_identifier": "BTC",
+            "asset_identifier": "BTC",
             "allocated_quantity": 6,
             "direction": -1,
         },
@@ -391,68 +403,68 @@ user-facing helper must enforce the allocation bound before writing.
 
 ### Stage 1: Account Holdings Base Contract
 
-- [ ] Add `direction` to the shared holdings builder and validator.
-- [ ] Add `direction` to `AccountHoldingsStorage` with allowed values `1` and
+- [x] Add `direction` to the shared holdings builder and validator.
+- [x] Add `direction` to `AccountHoldingsStorage` with allowed values `1` and
   `-1`.
-- [ ] Enforce positive `quantity` in account holdings.
-- [ ] Add `AccountHoldingsSetTable`.
-- [ ] Make `AccountHoldingsStorage.holdings_set_uid` reference
+- [x] Enforce positive `quantity` in account holdings.
+- [x] Add `AccountHoldingsSetTable`.
+- [x] Make `AccountHoldingsStorage.holdings_set_uid` reference
   `AccountHoldingsSetTable.uid`.
-- [ ] Update account docs, examples, and tests to show positive quantity plus
+- [x] Update account docs, examples, and tests to show positive quantity plus
   direction.
 
 ### Stage 2: Virtual Fund Identity
 
-- [ ] Rename `FundTable` to `VirtualFundTable`.
-- [ ] Rename public `Fund` API to `VirtualFund`.
-- [ ] Remove generic `requires_nav_adjustment` and `metadata_json` fields unless
+- [x] Rename `FundTable` to `VirtualFundTable`.
+- [x] Rename public `Fund` API to `VirtualFund`.
+- [x] Remove generic `requires_nav_adjustment` and `metadata_json` fields unless
   another ADR defines them as first-class virtual-fund concepts.
-- [ ] Remove any planned `virtual_fund_asset_uid`,
+- [x] Remove any planned `virtual_fund_asset_uid`,
   `VirtualFundAssetDetailsTable`, `VirtualFundAsset`, or `virtual_fund` asset
   type workflow from this allocation contract.
 
 ### Stage 3: Allocation Sets And Storage
 
-- [ ] Add `VirtualFundHoldingsSetTable`.
-- [ ] Rename `FundHoldingsStorage` to `VirtualFundHoldingsStorage`.
-- [ ] Replace `quantity` with `allocated_quantity` in virtual-fund holdings
+- [x] Add `VirtualFundHoldingsSetTable`.
+- [x] Rename `FundHoldingsStorage` to `VirtualFundHoldingsStorage`.
+- [x] Replace `quantity` with `allocated_quantity` in virtual-fund holdings
   storage.
-- [ ] Add `direction` to virtual-fund holdings storage.
-- [ ] Remove `target_weight` from the core virtual-fund holdings storage
+- [x] Add `direction` to virtual-fund holdings storage.
+- [x] Remove `target_weight` from the core virtual-fund holdings storage
   contract.
-- [ ] Add source account holdings set foreign keys.
+- [x] Add source account holdings set foreign keys.
 
 ### Stage 4: Allocation API And Validation
 
-- [ ] Add a typed allocation helper that writes virtual-fund allocations from an
+- [x] Add a typed allocation helper that writes virtual-fund allocations from an
   account holdings set.
-- [ ] Query existing allocations from the same source holdings set before
+- [x] Query existing allocations from the same source holdings set before
   writing.
-- [ ] Enforce the per-asset, per-direction allocation bound.
-- [ ] Log rejected allocations with source set, virtual fund, asset, direction,
+- [x] Enforce the per-asset, per-direction allocation bound.
+- [x] Log rejected allocations with source set, virtual fund, asset, direction,
   source quantity, existing allocated quantity, and requested quantity.
 
 ### Stage 5: Documentation, Examples, And Skills
 
-- [ ] Update `docs/knowledge/msm/accounts/index.md` for the new direction
+- [x] Update `docs/knowledge/msm/accounts/index.md` for the new direction
   contract.
-- [ ] Update `docs/knowledge/msm_portfolios/virtualfunds/index.md` with the
+- [x] Update `docs/knowledge/msm_portfolios/virtualfunds/index.md` with the
   allocation model and the explicit rule that virtual funds are not assets.
-- [ ] Add one `examples/msm_portfolios` workflow that creates an account
+- [x] Add one `examples/msm_portfolios` workflow that creates an account
   holdings set and allocates from it into a virtual fund.
-- [ ] Update packaged ms-markets account and portfolio skills so agents do not
+- [x] Update packaged ms-markets account and portfolio skills so agents do not
   reintroduce negative quantities or independent virtual-fund holdings.
-- [ ] Update changelog and tutorial references.
+- [x] Update changelog and tutorial references.
 
 ### Stage 6: Tests
 
-- [ ] Add tests for positive quantity and valid direction in account holdings.
-- [ ] Add tests for `AccountHoldingsSetTable` FK wiring.
-- [ ] Add tests proving virtual-fund allocation workflows do not require
+- [x] Add tests for positive quantity and valid direction in account holdings.
+- [x] Add tests for `AccountHoldingsSetTable` FK wiring.
+- [x] Add tests proving virtual-fund allocation workflows do not require
   `AssetTable` proxy rows.
-- [ ] Add tests for allocation bounds across multiple virtual funds sharing one
+- [x] Add tests for allocation bounds across multiple virtual funds sharing one
   account holdings set.
-- [ ] Add tests proving short holdings allocate only to short virtual-fund
+- [x] Add tests proving short holdings allocate only to short virtual-fund
   allocations.
 
 ## Consequences

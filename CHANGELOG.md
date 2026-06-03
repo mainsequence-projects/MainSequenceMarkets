@@ -9,6 +9,15 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Reworked virtual-fund holdings into an allocation contract: `FundTable` is now
+  `VirtualFundTable`, `FundHoldingsStorage` is now
+  `VirtualFundHoldingsStorage`, virtual funds no longer model asset proxies,
+  allocation rows use positive `allocated_quantity` plus `direction`, and
+  allocation helpers validate source `AccountHoldingsSet` bounds before
+  publishing.
+- Added `AccountHoldingsSetTable`; `AccountHoldingsStorage.holdings_set_uid`
+  now references that table, and account holdings use positive `quantity` plus
+  `direction` instead of negative quantities.
 - Renamed non-unique DataNode storage identity dimensions to explicit
   identifiers so migration diffs match the real row grain:
   `asset_identifier`, `index_identifier`, `curve_identifier`,
@@ -58,8 +67,8 @@ and this project follows versioned releases.
   validators now derive nullable columns from the storage MetaTable.
 - Removed holdings time-index and index-name constants that duplicated storage
   MetaTable declarations.
-- Added storage-level foreign keys from account and fund holdings
-  `asset_identifier` columns to `AssetTable.unique_identifier`.
+- Added storage-level foreign keys from account holdings and virtual-fund
+  allocation `asset_identifier` columns to `AssetTable.unique_identifier`.
 - Replaced the old account target-position assignment table with
   `AccountTargetPortfolioTable` and `PositionSetTable`; target-position storage
   now references `PositionSetTable.uid`, so account target intent and concrete

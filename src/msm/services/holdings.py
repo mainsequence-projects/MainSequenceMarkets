@@ -4,7 +4,7 @@ import datetime as dt
 from collections.abc import Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pandas as pd
 
@@ -22,7 +22,7 @@ def build_account_holdings_frame(
     holdings_date: dt.datetime | str,
     account_uid: UUID | str,
     positions: Sequence[Mapping[str, Any] | Any],
-    holdings_set_uid: UUID | str | None = None,
+    holdings_set_uid: UUID | str,
     is_trade_snapshot: bool = False,
     target_trade_time: dt.datetime | str | None = None,
 ) -> pd.DataFrame:
@@ -43,14 +43,15 @@ def build_holdings_frame(
     holdings_date: dt.datetime | str,
     owner_uid: UUID | str,
     positions: Sequence[Mapping[str, Any] | Any],
-    holdings_set_uid: UUID | str | None = None,
+    holdings_set_uid: UUID | str,
     is_trade_snapshot: bool = False,
     target_trade_time: dt.datetime | str | None = None,
 ) -> pd.DataFrame:
     if not positions:
         raise ValueError("At least one holdings position is required.")
+    if holdings_set_uid is None or str(holdings_set_uid).strip() == "":
+        raise ValueError("Holdings rows require a holdings_set_uid.")
 
-    resolved_holdings_set_uid = holdings_set_uid or uuid4()
     owner_index_name = list(storage_table.__index_names__)[1]
     rows: list[dict[str, Any]] = []
     seen_identifiers: set[str] = set()
@@ -67,14 +68,13 @@ def build_holdings_frame(
             storage_table.__time_index_name__: holdings_date,
             owner_index_name: owner_uid,
             ASSET_IDENTIFIER_DIMENSION: asset_identifier,
-            "holdings_set_uid": resolved_holdings_set_uid,
+            "holdings_set_uid": holdings_set_uid,
             "is_trade_snapshot": bool(position.get("is_trade_snapshot", is_trade_snapshot)),
             "quantity": position.get("quantity", "0"),
+            "direction": position.get("direction", 1),
             "target_trade_time": position.get("target_trade_time", target_trade_time),
             "extra_details": position.get("extra_details") or {},
         }
-        if "target_weight" in storage_table.__table__.columns:
-            row["target_weight"] = position.get("target_weight")
         rows.append(row)
 
     if duplicate_identifiers:
@@ -129,6 +129,13 @@ def validate_holdings_frame(
                 values,
                 nullable=column_nullable_map[column_name],
             )
+            if (
+                column_name in {"quantity", "allocated_quantity"}
+                and (flat[column_name].isna() | (flat[column_name] <= 0)).any()
+            ):
+                raise ValueError(f"{column_name} must contain positive quantities.")
+        elif dtype in {dc.INT16, dc.INT32, dc.INT64}:
+            flat[column_name] = values.map(_normalize_direction_int).astype("int16")
         elif dtype == dc.BOOL:
             flat[column_name] = values.map(_normalize_bool)
         elif dtype == dc.JSONB:
@@ -155,8 +162,8 @@ def _position_payload(position: Mapping[str, Any] | Any) -> dict[str, Any]:
         for key in (
             "asset_identifier",
             "quantity",
+            "direction",
             "target_trade_time",
-            "target_weight",
             "is_trade_snapshot",
             "extra_details",
         )
@@ -199,6 +206,16 @@ def _normalize_bool(value: Any) -> bool:
     if isinstance(value, str) and value.lower() in {"true", "false"}:
         return value.lower() == "true"
     raise ValueError(f"Invalid boolean holdings value {value!r}.")
+
+
+def _normalize_direction_int(value: Any) -> int:
+    try:
+        direction = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid holdings direction {value!r}.") from exc
+    if direction not in {1, -1}:
+        raise ValueError("Holdings direction must be 1 for long or -1 for short.")
+    return direction
 
 
 def _normalize_jsonb(value: Any) -> dict[str, Any] | list[Any]:

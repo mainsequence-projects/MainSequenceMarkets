@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from msm.api.base import MarketsMetaTableRow
 from msm.models import (
     AccountGroupTable,
+    AccountHoldingsSetTable,
     AccountModelPortfolioTable,
     AccountTable,
     AccountTargetPortfolioTable,
@@ -251,6 +252,73 @@ class AccountUpdate(BaseModel):
     metadata_json: dict[str, Any] | None = None
 
 
+class AccountHoldingsSet(MarketsMetaTableRow):
+    """Typed account holdings-set row."""
+
+    __table__: ClassVar[type[AccountHoldingsSetTable]] = AccountHoldingsSetTable
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        AccountGroupTable,
+        AccountTable,
+        AccountHoldingsSetTable,
+    ]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("account_uid", "time_index")
+
+    account_uid: uuid.UUID
+    time_index: dt.datetime
+    source_data_node_uid: uuid.UUID | None = None
+
+    @classmethod
+    def create(
+        cls,
+        payload: AccountHoldingsSetCreate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AccountHoldingsSet:
+        values = _validated_payload_values(AccountHoldingsSetCreate, payload, kwargs)
+        return super().create(values)
+
+    @classmethod
+    def upsert(
+        cls,
+        payload: AccountHoldingsSetUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AccountHoldingsSet:
+        values = _validated_payload_values(AccountHoldingsSetUpsert, payload, kwargs)
+        return super().upsert(values)
+
+    @classmethod
+    def update(
+        cls,
+        uid: uuid.UUID | str,
+        payload: AccountHoldingsSetUpdate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AccountHoldingsSet:
+        values = _validated_payload_values(AccountHoldingsSetUpdate, payload, kwargs)
+        return super().update(uid, values)
+
+
+class AccountHoldingsSetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_uid: uuid.UUID | str
+    time_index: dt.datetime
+    source_data_node_uid: uuid.UUID | str | None = None
+
+    @field_validator("time_index")
+    @classmethod
+    def _validate_time_index(cls, value: dt.datetime) -> dt.datetime:
+        return _utc_timestamp(value, field_name="time_index")
+
+
+class AccountHoldingsSetUpsert(AccountHoldingsSetCreate):
+    """Payload for inserting or updating an account holdings set."""
+
+
+class AccountHoldingsSetUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_data_node_uid: uuid.UUID | str | None = None
+
+
 class AccountTargetPortfolio(MarketsMetaTableRow):
     """Typed account target portfolio row."""
 
@@ -478,6 +546,10 @@ __all__ = [
     "AccountGroupCreate",
     "AccountGroupUpdate",
     "AccountGroupUpsert",
+    "AccountHoldingsSet",
+    "AccountHoldingsSetCreate",
+    "AccountHoldingsSetUpdate",
+    "AccountHoldingsSetUpsert",
     "AccountModelPortfolio",
     "AccountModelPortfolioCreate",
     "AccountModelPortfolioUpdate",

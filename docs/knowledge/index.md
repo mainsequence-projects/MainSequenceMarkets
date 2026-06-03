@@ -35,7 +35,7 @@ This split is enforced across the markets MetaTables. `msm.models` exports
 core `*Table` declarations only; row names such as `Asset`, `Account`, and
 `OrderManager` live in `msm.api.*`. Timestamped execution facts such as orders,
 order events, and trades live in DataNode storage, not duplicate row tables.
-Portfolio row names such as `Portfolio` and `Fund` live in
+Portfolio row names such as `Portfolio` and `VirtualFund` live in
 `msm_portfolios.api.*`.
 
 This pattern is recorded in

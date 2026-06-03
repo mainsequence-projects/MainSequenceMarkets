@@ -35,8 +35,9 @@ account-holdings pattern.
 
 Execution records should preserve enough raw platform or broker payload in JSON
 fields for audit, but normalized identifiers should still be present for joins.
-Core execution does not carry a `FundTable` foreign key. Fund-linked execution
-workflows should be added in `msm_portfolios` as extensions when needed.
+Core execution does not carry a `VirtualFundTable` foreign key. Virtual-fund
+execution workflows should be added in `msm_portfolios` as extensions when
+needed.
 
 Use class-owned lifecycle methods only for order-manager intent:
 

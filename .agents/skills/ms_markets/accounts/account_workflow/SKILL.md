@@ -79,6 +79,11 @@ Rules:
   `single_asset_quantity`.
 - `AccountHoldingsStorage` stores real holdings rows keyed by
   `(time_index, account_uid, asset_identifier)`.
+- Account holdings use positive `quantity` plus `direction` (`1` long, `-1`
+  short). Do not encode short exposure with negative quantities.
+- `AccountHoldingsStorage.holdings_set_uid` must reference a real
+  `AccountHoldingsSet` row. Do not invent anonymous holdings set UUIDs inside
+  examples.
 - DataNodes do not fabricate bootstrap rows. Attach a real frame or implement a
   real source-specific `update()`.
 
@@ -99,6 +104,7 @@ msm.start_engine(
         "AccountModelPortfolio",
         "AccountGroup",
         "Account",
+        "AccountHoldingsSet",
         "AccountTargetPortfolio",
         "PositionSet",
         "AccountHoldingsStorage",
@@ -123,6 +129,7 @@ import pandas as pd
 from msm.api.accounts import (
     Account,
     AccountGroup,
+    AccountHoldingsSet,
     AccountModelPortfolio,
     AccountTargetPortfolio,
     PositionSet,
@@ -227,20 +234,27 @@ for account, quantities in zip(
     ({"btc": 10.0, "eth": 25.0}, {"btc": 5.0, "eth": 12.5}),
     strict=True,
 ):
+    holdings_set = AccountHoldingsSet.upsert(
+        account_uid=account.uid,
+        time_index=workflow_time,
+    )
     holdings_frames.append(
         build_account_holdings_frame(
             holdings_date=workflow_time,
             account_uid=account.uid,
+            holdings_set_uid=holdings_set.uid,
             positions=[
                 {
                     "asset_identifier": assets[0].unique_identifier,
                     "quantity": quantities["btc"],
+                    "direction": 1,
                     "target_trade_time": workflow_time,
                     "extra_details": {"ticker": "BTC", "name": "Bitcoin"},
                 },
                 {
                     "asset_identifier": assets[1].unique_identifier,
                     "quantity": quantities["eth"],
+                    "direction": 1,
                     "target_trade_time": workflow_time,
                     "extra_details": {"ticker": "ETH", "name": "Ethereum"},
                 }

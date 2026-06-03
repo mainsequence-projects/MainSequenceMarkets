@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 
 from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import Index, String
+from sqlalchemy import DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.types import JSON, Uuid
+from sqlalchemy.types import Uuid
 
 from msm.base import (
     MarketsBase,
@@ -15,19 +16,19 @@ from msm.base import (
     new_markets_uid,
 )
 
-from msm.models.accounts import AccountTable
+from msm.models.accounts import AccountHoldingsSetTable, AccountTable
 
 from msm_portfolios.models.portfolios import PortfolioTable
 
 
-class FundTable(MarketsMetaTableMixin, MarketsBase):
-    """Fund runtime model for account-bound portfolio tracking."""
+class VirtualFundTable(MarketsMetaTableMixin, MarketsBase):
+    """Account-owned virtual-fund allocation view targeting a portfolio."""
 
-    __metatable_identifier__ = "Fund"
+    __metatable_identifier__ = "VirtualFund"
     __metatable_description__ = (
-        "Virtual fund registry keyed by uid and fund_name. Stores account linkage, "
-        "portfolio construction mode, portfolio/execution DataNode pointers, and "
-        "fund metadata for tracking workflows."
+        "Virtual-fund registry keyed by unique_identifier. A virtual fund is not "
+        "an asset or a custody account; it is an account-owned allocation view "
+        "over real account holdings that targets one PortfolioTable row."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
@@ -37,8 +38,8 @@ class FundTable(MarketsMetaTableMixin, MarketsBase):
             unique=True,
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "target_account_uid"),
-            "target_account_uid",
+            markets_index_name(__metatable_identifier__, "account_uid"),
+            "account_uid",
         ),
         Index(
             markets_index_name(__metatable_identifier__, "target_portfolio_uid"),
@@ -63,7 +64,7 @@ class FundTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Stable business identifier used for idempotent upserts, lookup, and joins.",
         },
     )
-    target_account_uid: Mapped[uuid.UUID] = mapped_column(
+    account_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         MetaTableForeignKey(
             AccountTable,
@@ -72,8 +73,8 @@ class FundTable(MarketsMetaTableMixin, MarketsBase):
         ),
         nullable=False,
         info={
-            "label": "Target Account UID",
-            "description": "Foreign key to AccountTable.uid for the account targeted by the workflow.",
+            "label": "Account UID",
+            "description": "AccountTable.uid for the account that owns this virtual-fund view.",
         },
     )
     target_portfolio_uid: Mapped[uuid.UUID] = mapped_column(
@@ -89,22 +90,82 @@ class FundTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Foreign key to PortfolioTable.uid for the target portfolio.",
         },
     )
-    requires_nav_adjustment: Mapped[bool] = mapped_column(
-        default=False,
+
+
+class VirtualFundHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
+    """Allocation set that binds one virtual fund to one source account holdings set."""
+
+    __metatable_identifier__ = "VirtualFundHoldingsSet"
+    __metatable_description__ = (
+        "Virtual-fund holdings-set registry. Each row identifies one allocation "
+        "view for a virtual fund funded by one AccountHoldingsSetTable row."
+    )
+    __table_args__ = markets_table_args(
+        __metatable_identifier__,
+        Index(
+            markets_index_name(__metatable_identifier__, "virtual_fund_uid"),
+            "virtual_fund_uid",
+        ),
+        Index(
+            markets_index_name(__metatable_identifier__, "source_account_holdings_set_uid"),
+            "source_account_holdings_set_uid",
+        ),
+        Index(
+            markets_index_name(
+                __metatable_identifier__,
+                "virtual_fund_uid",
+                "source_account_holdings_set_uid",
+                unique=True,
+            ),
+            "virtual_fund_uid",
+            "source_account_holdings_set_uid",
+            unique=True,
+        ),
+    )
+
+    uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Stable virtual-fund holdings-set identity referenced by allocation storage.",
+        },
+    )
+    virtual_fund_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        MetaTableForeignKey(
+            VirtualFundTable,
+            column="uid",
+            ondelete="CASCADE",
+        ),
         nullable=False,
         info={
-            "label": "Requires NAV Adjustment",
-            "description": "Whether the fund workflow requires NAV adjustment handling.",
+            "label": "Virtual Fund UID",
+            "description": "VirtualFundTable.uid for the virtual fund receiving the allocation view.",
         },
     )
-    metadata_json: Mapped[dict | None] = mapped_column(
-        JSON,
-        nullable=True,
+    source_account_holdings_set_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        MetaTableForeignKey(
+            AccountHoldingsSetTable,
+            column="uid",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
         info={
-            "label": "Metadata JSON",
-            "description": "Structured metadata JSON for provider, application, or workflow-specific attributes.",
+            "label": "Source Account Holdings Set UID",
+            "description": "AccountHoldingsSetTable.uid for the real account holdings source.",
+        },
+    )
+    time_index: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        info={
+            "label": "Time Index",
+            "description": "UTC timestamp for this virtual-fund allocation set.",
         },
     )
 
 
-__all__ = ["FundTable"]
+__all__ = ["VirtualFundHoldingsSetTable", "VirtualFundTable"]

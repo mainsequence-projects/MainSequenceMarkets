@@ -230,6 +230,79 @@ class AccountTargetPortfolioTable(MarketsMetaTableMixin, MarketsBase):
     )
 
 
+class AccountHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
+    """Concrete source holdings snapshot for an account."""
+
+    __metatable_identifier__ = "AccountHoldingsSet"
+    __metatable_description__ = (
+        "Account holdings-set registry keyed by account_uid and time_index. Each "
+        "row identifies one real account holdings snapshot; AccountHoldingsStorage "
+        "rows reference it through holdings_set_uid, and virtual-fund allocation "
+        "sets use it as their source holdings bound."
+    )
+    __table_args__ = markets_table_args(
+        __metatable_identifier__,
+        Index(
+            markets_index_name(__metatable_identifier__, "account_uid"),
+            "account_uid",
+        ),
+        Index(
+            markets_index_name(__metatable_identifier__, "time_index"),
+            "time_index",
+        ),
+        Index(
+            markets_index_name(
+                __metatable_identifier__,
+                "account_uid",
+                "time_index",
+                unique=True,
+            ),
+            "account_uid",
+            "time_index",
+            unique=True,
+        ),
+    )
+
+    uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=new_markets_uid,
+        info={
+            "label": "UID",
+            "description": "Stable account holdings-set identity referenced by holdings storage.",
+        },
+    )
+    account_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        MetaTableForeignKey(
+            AccountTable,
+            column="uid",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+        info={
+            "label": "Account UID",
+            "description": "AccountTable.uid for the account that owns this holdings snapshot.",
+        },
+    )
+    time_index: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        info={
+            "label": "Time Index",
+            "description": "UTC timestamp identifying this account holdings snapshot.",
+        },
+    )
+    source_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+        info={
+            "label": "Source DataNode UID",
+            "description": "Optional DataNodeStorage uid that produced this holdings set.",
+        },
+    )
+
+
 class PositionSetTable(MarketsMetaTableMixin, MarketsBase):
     """Concrete target-position snapshot for an account target portfolio."""
 
@@ -318,6 +391,7 @@ class PositionSetTable(MarketsMetaTableMixin, MarketsBase):
 
 
 __all__ = [
+    "AccountHoldingsSetTable",
     "AccountTable",
     "AccountTargetPortfolioTable",
     "PositionSetTable",

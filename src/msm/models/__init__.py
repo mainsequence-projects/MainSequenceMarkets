@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .accounts import (
     AccountGroupTable,
+    AccountHoldingsSetTable,
     AccountModelPortfolioTable,
     AccountTable,
     AccountTargetPortfolioTable,
@@ -44,6 +45,7 @@ def markets_sqlalchemy_models() -> list[type]:
         AccountModelPortfolioTable,
         AccountGroupTable,
         AccountTable,
+        AccountHoldingsSetTable,
         AssetCategoryTable,
         AssetCategoryMembershipTable,
         OpenFigiAssetDetailsTable,
@@ -83,6 +85,7 @@ def _markets_data_node_storage_models() -> list[type]:
 
 __all__ = [
     "AccountGroupTable",
+    "AccountHoldingsSetTable",
     "AccountModelPortfolioTable",
     "AccountTable",
     "AccountTargetPortfolioTable",
