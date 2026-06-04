@@ -133,7 +133,16 @@ first version, use Alembic. Keep the SDK model as a normal
 `PlatformManagedMetaTable` or `PlatformTimeIndexMetaData` catalog contract, and
 apply physical schema changes through the Alembic migration workflow.
 
-Schema must come from SQLAlchemy table metadata, usually `__table_args__ = {"schema": "public"}` or the tuple form ending in `{"schema": ...}`. Do not add a separate MetaTable-specific schema attribute.
+Schema must come from SQLAlchemy table metadata. Treat PostgreSQL `public` as
+the default schema: default-schema tables should be authored with
+`schema=None`, meaning no explicit `schema` table option. Use an explicit
+`{"schema": "..."}` table option only for real non-default schemas.
+
+Do not add a separate MetaTable-specific schema attribute. Do not author
+default-schema metadata as `schema="public"` when Alembic autogenerate will
+compare against PostgreSQL reflection. Reflection reports default-schema
+objects as `schema=None`, and `None` versus `public` causes false FK
+drop/create churn.
 
 Always declare `__metatable_description__` on the model. The description must
 explain the table's business intention, row grain, and expected use, not only
@@ -386,6 +395,9 @@ Do not claim success until you have checked:
 - the provider's Alembic version-table binding is registered before apply/current
 - post-apply catalog registration is scoped to `migration.metatable_models`
 - catalog sync resolves application MetaTables by exact `identifier`
+- default PostgreSQL `public` tables are authored as `schema=None`
+- generated revisions do not contain false FK churn caused only by `None`
+  versus `public` schema mismatch
 - user-facing migration instructions stay on the documented CLI/provider lifecycle
 
 For related tables, also check:

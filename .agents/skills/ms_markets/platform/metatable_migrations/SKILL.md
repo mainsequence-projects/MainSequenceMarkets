@@ -69,6 +69,10 @@ or mutate schema. The SDK provider already owns schema work.
 
 - The provider is an SDK `AlembicMetaTableMigration`.
 - Project tables are listed in the project provider.
+- Default PostgreSQL `public` tables are authored as `schema=None`, not
+  `schema="public"`.
+- Generated revisions with unchanged FK drop/create churn from `None` versus
+  `public` schema mismatch are rejected.
 - `after_register_metatables` is present only when project table specs need
   refresh.
 - The hook handles project tables/specs only.

@@ -16,7 +16,15 @@ from mainsequence.meta_tables.migrations import (
     load_alembic_metatable_migration_provider,
 )
 
-from msm.base import MARKETS_SCHEMA, MARKETS_TABLE_APP, MarketsBase, markets_table_name
+from msm.base import (
+    MARKETS_DEFAULT_SCHEMA,
+    MARKETS_SCHEMA,
+    MARKETS_TABLE_APP,
+    MarketsBase,
+    markets_table_args,
+    markets_table_name,
+    normalize_metatable_schema,
+)
 from msm.maintenance.catalog import SDK_MIGRATION_UPGRADE_COMMAND
 from msm.maintenance.models import MarketsMetaTableCatalogTable
 from msm.migrations import MarketsAlembicVersion, migration
@@ -35,9 +43,10 @@ def test_migration_provider_is_single_sdk_alembic_provider() -> None:
         "msm.alembic_version"
     )
     assert migration.version_table == markets_table_name(MARKETS_TABLE_APP, "alembic_version")
-    assert migration.version_table_schema == MARKETS_SCHEMA
-    assert migration.alembic_version_table == (
-        f"{MARKETS_SCHEMA}.{markets_table_name(MARKETS_TABLE_APP, 'alembic_version')}"
+    assert MARKETS_SCHEMA is None
+    assert migration.version_table_schema is None
+    assert migration.alembic_version_table == markets_table_name(
+        MARKETS_TABLE_APP, "alembic_version"
     )
     assert migration.after_register_metatables is not None
     assert (
@@ -74,9 +83,27 @@ def test_migration_script_template_is_packaged() -> None:
 def test_migration_provider_filters_unrelated_tables() -> None:
     catalog_table_name = MarketsMetaTableCatalogTable.__table__.name
 
-    assert migration.include_name(catalog_table_name, "table", {"schema_name": MARKETS_SCHEMA})
-    assert not migration.include_name("unrelated_table", "table", {"schema_name": MARKETS_SCHEMA})
-    assert migration.include_name("unrelated_index", "index", {"schema_name": MARKETS_SCHEMA})
+    assert migration.include_name(catalog_table_name, "table", {"schema_name": None})
+    assert migration.include_name(
+        catalog_table_name,
+        "table",
+        {"schema_name": MARKETS_DEFAULT_SCHEMA},
+    )
+    assert not migration.include_name("unrelated_table", "table", {"schema_name": None})
+    assert migration.include_name("unrelated_index", "index", {"schema_name": None})
+
+
+def test_default_postgres_schema_is_authored_as_none() -> None:
+    assert normalize_metatable_schema(None) is None
+    assert normalize_metatable_schema("") is None
+    assert normalize_metatable_schema(" public ") is None
+    assert normalize_metatable_schema(MARKETS_DEFAULT_SCHEMA) is None
+    assert normalize_metatable_schema("analytics") == "analytics"
+    assert "schema" not in markets_table_args("Example")[-1]
+
+
+def test_migration_metadata_uses_default_schema_not_explicit_public() -> None:
+    assert all(table.schema is None for table in migration.target_metadata.tables.values())
 
 
 def test_migration_metadata_uses_deterministic_bounded_names() -> None:
@@ -122,11 +149,12 @@ def test_account_holdings_single_and_composite_indexes_have_distinct_names() -> 
     )
 
 
-def test_alembic_env_uses_schema_aware_reflection() -> None:
+def test_alembic_env_normalizes_default_schema_reflection() -> None:
     env_text = Path("src/msm/migrations/env.py").read_text(encoding="utf-8")
 
-    assert '"include_schemas": True' in env_text
+    assert '"include_schemas": _uses_named_schemas()' in env_text
     assert "def _included_schema" in env_text
+    assert "def _uses_named_schemas" in env_text
     assert 'type_ == "schema"' in env_text
 
 

@@ -40,6 +40,20 @@ The package migration environment must include the standard Alembic files:
 `script.py.mako` is required by Alembic when
 `mainsequence migrations revision ...` writes the generated revision module.
 
+## Default Schema Rule
+
+PostgreSQL `public` is the default schema. In this provider's SQLAlchemy
+metadata, default-schema tables must be authored with `schema=None`, not
+`schema="public"`.
+
+This matters for Alembic autogenerate. PostgreSQL reflection reports
+default-schema foreign keys as `schema=None`. If model metadata says
+`schema="public"`, Alembic treats identical foreign keys as changed and emits
+false `drop_constraint(...)` / `create_foreign_key(...)` pairs. Reject that
+generated revision; the model or migration environment is wrong.
+
+Use explicit schema metadata only for real non-default schemas.
+
 `upgrade` runs the SDK provider flow, applies the Alembic migration through the
 backend-scoped migration connection, synchronizes the provider MetaTable
 catalog, and then runs the provider hook that refreshes
@@ -56,7 +70,8 @@ schema back to an earlier revision.
    `pricing_sqlalchemy_models()`.
 3. Let `mainsequence migrations revision --provider msm.migrations:migration`
    generate a normal Alembic revision.
-4. Review the generated Alembic operations.
+4. Review the generated Alembic operations. A no-op model state must not produce
+   FK drop/create churn, index churn, or `public` versus default-schema churn.
 5. Run the SDK apply and registration command:
    ```bash
    mainsequence migrations upgrade --provider msm.migrations:migration head

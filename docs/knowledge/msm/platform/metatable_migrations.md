@@ -22,6 +22,12 @@ collisions in databases that host multiple independent providers. Downstream
 projects that inherit from ms-markets should use this same provider and version
 table when they are extending the ms-markets revision graph.
 
+Although the physical table is in PostgreSQL `public`, the provider metadata
+authors default-schema tables as `schema=None`. `public` is the database
+default, not a named provider schema. This keeps Alembic reflection and model
+metadata on the same side of the comparison and prevents false FK drop/create
+revisions.
+
 ## Commands
 
 Use the SDK CLI:
@@ -67,7 +73,9 @@ flow or by performing an explicit platform repair.
    `pricing_sqlalchemy_models()`.
 3. Confirm `metatable_provider_models()` contains the expected model exactly once.
 4. Generate an Alembic revision with the SDK CLI.
-5. Review the generated revision.
+5. Review the generated revision. Reject revisions that only drop and recreate
+   unchanged foreign keys because one side is `schema=None` and the other is
+   `schema="public"`.
 6. Upgrade through the SDK CLI.
 7. Let the SDK `upgrade` command refresh the markets catalog automatically.
 

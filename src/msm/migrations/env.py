@@ -4,7 +4,7 @@ from alembic import context
 from mainsequence.meta_tables.migrations import apply_mainsequence_migration_role
 from sqlalchemy import engine_from_config, pool
 
-from msm.base import MARKETS_SCHEMA
+from msm.base import MARKETS_DEFAULT_SCHEMA, MARKETS_SCHEMA
 from msm.migrations import migration as default_migration
 
 
@@ -13,7 +13,16 @@ def _migration_provider():
 
 
 def _included_schema(name: str | None) -> bool:
-    return name in (None, MARKETS_SCHEMA)
+    if MARKETS_SCHEMA is None:
+        return name in (None, MARKETS_DEFAULT_SCHEMA)
+    return name == MARKETS_SCHEMA
+
+
+def _uses_named_schemas() -> bool:
+    migration = _migration_provider()
+    if migration.version_table_schema is not None:
+        return True
+    return any(table.schema is not None for table in migration.target_metadata.tables.values())
 
 
 def include_name(name, type_, parent_names):
@@ -47,7 +56,7 @@ def _configure_kwargs():
         "target_metadata": migration.target_metadata,
         "version_table": migration.version_table,
         "version_table_schema": migration.version_table_schema,
-        "include_schemas": True,
+        "include_schemas": _uses_named_schemas(),
         "include_name": include_name,
         "include_object": include_object,
         "compare_type": True,

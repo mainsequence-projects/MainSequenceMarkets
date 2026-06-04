@@ -82,7 +82,7 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Whether the account is a paper or simulated account.",
         },
     )
-    #
+
     # mock_att: Mapped[bool] = mapped_column(
     #     default=True,
     #     nullable=False,

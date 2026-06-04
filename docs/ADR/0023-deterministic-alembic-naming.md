@@ -32,14 +32,20 @@ caused by a missing backend constraint. It is caused by Alembic comparing
 schema-qualified SQLAlchemy metadata against reflected default-schema database
 objects and by unstable Python-side constraint names.
 
-The current Alembic environment configures `target_metadata`,
-`include_name`, `include_object`, `compare_type`, and
-`compare_server_default`, but not `include_schemas=True`. Meanwhile every
-markets table is authored with `schema="public"`. Alembic foreign-key
-comparison includes source schema, source table, source columns, target schema,
-target table, target columns, and FK options. If reflection reports default
-schema as `None` while metadata reports `public`, Alembic treats the existing
-FK as removed and the metadata FK as added.
+Alembic foreign-key comparison includes source schema, source table, source
+columns, target schema, target table, target columns, and FK options.
+PostgreSQL's `public` schema is the default schema. In autogenerate,
+default-schema reflected objects are represented as `schema=None`. Therefore
+authoring package metadata with explicit `schema="public"` makes Alembic see a
+false difference:
+
+```text
+reflected FK: schema=None
+metadata FK:  schema="public"
+```
+
+That false `None` versus `public` difference is enough for Alembic to emit FK
+drop/create churn even when the FK names and options are identical.
 
 The current metadata also lacks deterministic FK naming:
 
@@ -77,29 +83,46 @@ The fix has two parts:
 2. Centralize all physical table, foreign-key, primary-key, unique-constraint,
    check-constraint, and index naming in one package-owned naming module.
 
-### Schema Reflection
+### Default Schema Normalization
 
-`src/msm/migrations/env.py` must configure Alembic with `include_schemas=True`
-because `MarketsBase.metadata` tables are explicitly in the `public` schema.
-The provider's `include_name(...)` / `include_object(...)` filtering must remain
-strict, but it must be compatible with schema-qualified reflection. It should
-include only:
+`ms-markets` must treat PostgreSQL `public` as the default schema in authored
+SQLAlchemy metadata. Default-schema package tables and the package Alembic
+version table are authored as `schema=None`, not `schema="public"`.
 
-- the provider target tables in `MarketsBase.metadata`;
-- the provider Alembic version table;
-- the `public` schema used by `ms-markets`.
+This means:
 
-This should remove the false FK diff where the reflected FK is default-schema
-and the metadata FK is `public`.
+- `MARKETS_SCHEMA` is `None`;
+- `MARKETS_DEFAULT_SCHEMA` records the database default name `public`;
+- `markets_table_args(...)` omits the SQLAlchemy `schema` table option when
+  the requested schema is `None`, empty, or `public`;
+- `MarketsAlembicVersion.__alembic_version_schema__` is `None`;
+- the SDK `PlatformManagedMetaTable.__table_cls__` default-schema behavior is
+  overridden in the `ms-markets` mixins so it cannot force `public` into the
+  SQLAlchemy `Table` metadata;
+- explicit named schemas remain supported, but only non-default schemas are
+  authored as schema-qualified metadata.
 
-The Alembic environment fix must be explicit. The target shape is:
+`src/msm/migrations/env.py` must not force schema-aware comparison for default
+schema metadata. It should enable `include_schemas` only when the provider
+metadata or version table actually uses a non-default named schema.
+
+The Alembic environment shape is:
 
 ```python
-from msm.base import MARKETS_SCHEMA
+from msm.base import MARKETS_DEFAULT_SCHEMA, MARKETS_SCHEMA
 
 
 def _included_schema(name: str | None) -> bool:
-    return name in (None, MARKETS_SCHEMA)
+    if MARKETS_SCHEMA is None:
+        return name in (None, MARKETS_DEFAULT_SCHEMA)
+    return name == MARKETS_SCHEMA
+
+
+def _uses_named_schemas() -> bool:
+    migration = _migration_provider()
+    if migration.version_table_schema is not None:
+        return True
+    return any(table.schema is not None for table in migration.target_metadata.tables.values())
 
 
 def include_name(name, type_, parent_names):
@@ -133,7 +156,7 @@ def _configure_kwargs():
         "target_metadata": migration.target_metadata,
         "version_table": migration.version_table,
         "version_table_schema": migration.version_table_schema,
-        "include_schemas": True,
+        "include_schemas": _uses_named_schemas(),
         "include_name": include_name,
         "include_object": include_object,
         "compare_type": True,
@@ -141,10 +164,8 @@ def _configure_kwargs():
     }
 ```
 
-The important behavior is that Alembic reflects schema-qualified objects and
-the environment filters schemas before delegating table/object inclusion to the
-SDK provider. The provider should still own table scope. The environment should
-only prevent cross-schema reflection from making autogenerate slow or noisy.
+The important behavior is that default-schema metadata and default-schema
+reflection both compare as `None`. The provider still owns table scope.
 
 ### Naming Module
 
@@ -242,19 +263,21 @@ migration revisions as part of this implementation.
 A follow-up revision for a single model change must not drop and recreate
 unrelated FKs or indexes.
 
-### Current Generated Revision Review
+### Generated Revision Review
 
-The generated file:
+The first generated file:
 
 ```text
 src/msm/migrations/versions/0001_migration.py
 ```
 
-has been reviewed after the schema reflection and naming changes. The current
-file is an initial/base revision, not a no-op drift check against an already
-upgraded database.
+fixed deterministic constraint and index naming, but it was still generated
+from explicit `schema="public"` metadata. The second no-op autogenerate check
+proved that explicit default-schema metadata is still wrong: Alembic generated
+FK drop/create churn where every FK name matched but the reflected side was
+`schema=None` and the metadata side was `schema="public"`.
 
-Observed shape:
+Observed shape from the initial/base revision:
 
 - `44` `op.create_table(...)` operations and matching `44`
   `op.drop_table(...)` operations;
@@ -266,16 +289,24 @@ Observed shape:
 - no `op.drop_constraint(None, ...)` downgrade operations;
 - PK, FK, CK, and index names are deterministic `op.f(...)` names;
 - generated `op.f(...)` names stay within the PostgreSQL identifier length
-  limit;
-- reflected objects are schema-qualified with `schema="public"`.
+  limit.
 
-The old bad generated shape with unnamed primary keys and `ix_public_...`
-index names is superseded by this reviewed output.
+Observed shape from the no-op revision attempt:
+
+- `40` FK `drop_constraint(...)` operations;
+- `40` FK `create_foreign_key(...)` operations;
+- no index churn;
+- the FK name sets were identical between drop and create;
+- the drop side had no schema argument;
+- the create side had `source_schema="public"` and `referent_schema="public"`.
+
+That proves the remaining issue was default-schema normalization, not FK
+naming.
 
 This review does not close the no-op autogenerate task. A separate check must
 still apply the baseline to a database and run autogenerate again without model
-changes. That no-op check is the evidence that unchanged FKs and indexes do not
-produce churn.
+changes after default-schema normalization. That no-op check is the evidence
+that unchanged FKs and indexes do not produce churn.
 
 The reviewed revision includes the `mainsequence_examples` namespace suffix in
 physical table names. That is valid only when the intended migration target is
@@ -302,12 +333,15 @@ reviewed for accidental namespace suffix changes before they are accepted.
       PKs, FKs, indexes, unique constraints, and check constraints.
 - [x] Verify loaded provider metadata has no unnamed FK constraints and no
       unnamed or over-limit indexes.
-- [x] Update `src/msm/migrations/env.py` to pass `include_schemas=True` and
-      verify provider filtering still limits Alembic to the `ms-markets`
-      provider scope and the package Alembic version table.
+- [x] Normalize the PostgreSQL default schema so `public` is authored as
+      `schema=None` in SQLAlchemy metadata and the Alembic version table schema.
+- [x] Override the SDK default table-construction path in the `ms-markets`
+      mixins so default-schema tables are not forced back to `schema="public"`.
+- [x] Update `src/msm/migrations/env.py` so `include_schemas` is enabled only
+      when provider metadata actually uses non-default named schemas.
 - [x] Review the generated `src/msm/migrations/versions/0001_migration.py`
-      baseline for deterministic PK/FK/CK/index names, schema-qualified
-      objects, and absence of standalone FK drop/create churn.
+      baseline for deterministic PK/FK/CK/index names and absence of standalone
+      FK drop/create churn.
 - [ ] Verify Alembic autogenerate no longer emits FK drop/create pairs for
       unchanged FKs in `public`.
 - [ ] Verify Alembic autogenerate no longer emits index churn for unchanged
@@ -319,9 +353,10 @@ reviewed for accidental namespace suffix changes before they are accepted.
       `src/msm/migrations/versions/0001_migration.py` so the reviewed generated
       file is tracked normally instead of appearing as a staged delete plus an
       untracked replacement.
-- [ ] Update MetaTable migration docs to state that migrations require
-      schema-aware reflection and deterministic naming, and that generated
-      revisions with unrelated FK/index churn must be rejected.
+- [x] Update MetaTable migration docs to state that default PostgreSQL `public`
+      schema is authored as `schema=None`, named schemas are opt-in, deterministic
+      naming is required, and generated revisions with unrelated FK/index churn
+      must be rejected.
 
 ## Consequences
 
@@ -337,6 +372,6 @@ The naming module becomes a long-lived compatibility boundary. Once a migration
 has been released, changing name-generation rules is itself a migration concern
 because it can cause Alembic to see rename/drop/create operations.
 
-Using `include_schemas=True` may reveal other schema-filtering mistakes. The
-provider filters must be tested so Alembic does not scan unrelated tables in the
-same database.
+If a future provider uses a real non-default schema, `include_schemas` must be
+enabled and provider filters must be tested so Alembic does not scan unrelated
+tables in the same database.

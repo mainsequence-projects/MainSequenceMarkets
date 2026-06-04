@@ -7,8 +7,9 @@ from typing import Any, ClassVar
 from mainsequence.meta_tables import (
     PlatformManagedMetaTable,
     PlatformTimeIndexMetaData,
+    schema_table_name,
+    sqlalchemy_naming_convention,
 )
-from msm.schema_names import schema_table_name, sqlalchemy_naming_convention
 
 from msm.settings import (
     DEFAULT_MARKETS_NAMESPACE,
@@ -19,7 +20,7 @@ from msm.settings import (
 )
 
 try:
-    from sqlalchemy import MetaData
+    from sqlalchemy import MetaData, Table
     from sqlalchemy.orm import DeclarativeBase, declared_attr
 except ImportError as exc:  # pragma: no cover - exercised only in partial envs.
     raise ImportError(
@@ -28,9 +29,19 @@ except ImportError as exc:  # pragma: no cover - exercised only in partial envs.
 
 
 MARKETS_NAMESPACE = DEFAULT_MARKETS_NAMESPACE
-MARKETS_SCHEMA = "public"
+MARKETS_DEFAULT_SCHEMA = "public"
+MARKETS_SCHEMA = None
 MARKETS_TABLE_APP = "ms_markets"
 markets_table_name = schema_table_name
+
+
+def normalize_metatable_schema(schema: str | None) -> str | None:
+    if schema is None:
+        return None
+    schema_name = str(schema).strip()
+    if schema_name in ("", MARKETS_DEFAULT_SCHEMA):
+        return None
+    return schema_name
 
 
 def markets_meta_table_identifier(model_or_table: Any) -> str:
@@ -89,17 +100,21 @@ def _markets_table(model_or_table: Any) -> Any:
 def markets_table_args(
     identifier: str,
     *constraints: Any,
-    schema: str = MARKETS_SCHEMA,
+    schema: str | None = MARKETS_SCHEMA,
 ) -> tuple[Any, ...]:
+    table_options: dict[str, Any] = {
+        "info": {
+            "namespace": markets_namespace(),
+            "identifier": markets_identifier(identifier),
+        },
+    }
+    normalized_schema = normalize_metatable_schema(schema)
+    if normalized_schema is not None:
+        table_options["schema"] = normalized_schema
+
     return (
         *constraints,
-        {
-            "schema": schema,
-            "info": {
-                "namespace": markets_namespace(),
-                "identifier": markets_identifier(identifier),
-            },
-        },
+        table_options,
     )
 
 
@@ -129,13 +144,34 @@ def _authored_metatable_identifier_for_model(cls: type) -> str:
     return str(cls.__dict__["__metatable_identifier__"]).strip(".")
 
 
+def _build_markets_table(cls: type, *args: Any, **kwargs: Any) -> Any:
+    if len(args) < 2:
+        raise TypeError("SQLAlchemy __table_cls__ expected name, metadata, and columns.")
+
+    name, metadata, *table_items = args
+    table_kwargs = dict(kwargs)
+    schema = normalize_metatable_schema(
+        table_kwargs.get("schema", getattr(cls, "__metatable_schema__", None))
+    )
+    if schema is None:
+        table_kwargs.pop("schema", None)
+    else:
+        table_kwargs["schema"] = schema
+
+    return Table(str(name), metadata, *table_items, **table_kwargs)
+
+
 class MarketsMetaTableMixin(PlatformManagedMetaTable):
     """Shared metadata contract for markets SQLAlchemy MetaTable models."""
 
     __abstract__ = True
     __metatable_namespace__: ClassVar[str] = markets_namespace()
-    __metatable_schema__: ClassVar[str] = MARKETS_SCHEMA
+    __metatable_schema__: ClassVar[str | None] = MARKETS_SCHEMA
     __metatable_identifier__: ClassVar[str]
+
+    @classmethod
+    def __table_cls__(cls, *args: Any, **kwargs: Any) -> Any:
+        return _build_markets_table(cls, *args, **kwargs)
 
     def __init_subclass__(cls, **kwargs: Any):
         super().__init_subclass__(**kwargs)
@@ -161,8 +197,12 @@ class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaData):
 
     __abstract__ = True
     __metatable_namespace__: ClassVar[str] = markets_namespace()
-    __metatable_schema__: ClassVar[str] = MARKETS_SCHEMA
+    __metatable_schema__: ClassVar[str | None] = MARKETS_SCHEMA
     __metatable_identifier__: ClassVar[str]
+
+    @classmethod
+    def __table_cls__(cls, *args: Any, **kwargs: Any) -> Any:
+        return _build_markets_table(cls, *args, **kwargs)
 
     def __init_subclass__(cls, **kwargs: Any):
         super().__init_subclass__(**kwargs)
@@ -183,6 +223,7 @@ def new_markets_uid() -> uuid.UUID:
 
 __all__ = [
     "MARKETS_NAMESPACE",
+    "MARKETS_DEFAULT_SCHEMA",
     "MARKETS_SCHEMA",
     "MARKETS_TABLE_APP",
     "MSM_AUTO_REGISTER_NAMESPACE_ENV",
@@ -196,4 +237,5 @@ __all__ = [
     "markets_table_storage_name",
     "markets_namespace",
     "new_markets_uid",
+    "normalize_metatable_schema",
 ]
