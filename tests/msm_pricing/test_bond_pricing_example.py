@@ -26,6 +26,19 @@ def test_bond_pricing_example_replaces_default_market_data_bindings() -> None:
     assert "Upserted EOD pricing market-data context" not in source
 
 
+def test_bond_pricing_example_uses_storage_identifiers_for_bindings() -> None:
+    example_path = (
+        Path(__file__).parents[2] / "examples/msm_pricing/bond_pricing_example/main.py"
+    )
+    source = example_path.read_text()
+
+    assert "DiscountCurvesStorage.get_identifier()" in source
+    assert "IndexFixingsStorage.get_identifier()" in source
+    assert "PricingMarketDataBinding.upsert(" in source
+    assert "curve_node._default_identifier()" not in source
+    assert "fixing_node._default_identifier()" not in source
+
+
 def _has_true_keyword(call: ast.Call, keyword_name: str) -> bool:
     return any(
         keyword.arg == keyword_name

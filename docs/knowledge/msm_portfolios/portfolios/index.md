@@ -139,6 +139,104 @@ MetaTables:
           DataNode update logic                                  PlatformTimeIndexMetaTable
 ```
 
+## Portfolio Construction And Virtual Fund Allocation Relationships
+
+Portfolio construction produces portfolio artifacts. It does not own
+virtual-fund identity, and it does not write virtual-fund allocation rows.
+Virtual funds are account-owned allocation views that target a portfolio after
+that portfolio exists.
+
+```text
+Virtual Fund Builder / portfolio construction produces portfolio artifacts.
+It does not own virtual-fund identity and it does not connect directly to
+virtual-fund allocation rows.
+
++------------------+       +------------------+       +------------------+
+| Price DataNodes  |       | Signal DataNodes |       | Rebalance Logic  |
++--------+---------+       +--------+---------+       +--------+---------+
+         \                          |                          /
+          \                         |                         /
+           v                        v                        v
+        +---------------------------------------------------------+
+        | Portfolio construction / VFB                            |
+        | - computes signal weights, portfolio weights, values    |
+        | - writes portfolio DataNode outputs                     |
+        +---------------------------+-----------------------------+
+                                    |
+                                    v
++-------------------------+   +-------------------------+   +-------------------------+
+| SignalWeights           |   | PortfolioWeights        |   | PortfoliosDataNode      |
+| DataNode                |   | DataNode                |   | DataNode                |
++------------+------------+   +------------+------------+   +------------+------------+
+             |                             |                             |
+             v                             v                             v
++-------------------------+   +-------------------------+   +-------------------------+
+| SignalWeightsStorage    |   | PortfolioWeightsStorage |   | PortfoliosStorage       |
+| PlatformTimeIndexMeta   |   | PlatformTimeIndexMeta   |   | PlatformTimeIndexMeta   |
++------------+------------+   +------------+------------+   +------------+------------+
+             |                             |                             |
+             | storage UID                 | storage UID                 | storage UID
+             +-----------------------------+-----------------------------+
+                                           |
+                                           v
+        +---------------------------------------------------------+
+        | PortfolioTable                                          |
+        | - portfolio identity                                    |
+        | - signal_weights_data_node_uid                          |
+        | - portfolio_weights_data_node_uid                       |
+        | - portfolio_data_node_uid                               |
+        | - optional portfolio_index_uid -> IndexTable.uid        |
+        +---------------------------------------------------------+
+```
+
+Virtual-fund allocation is a separate relationship over account holdings and a
+target portfolio:
+
+```text
++---------------------+        target_portfolio_uid        +---------------------+
+| PortfolioTable      |<-----------------------------------| VirtualFundTable    |
+| portfolio identity  |                                    | allocation identity |
++---------------------+                                    | account_uid         |
+                                                           +----------+----------+
+                                                                      |
+                                                                      | account_uid
+                                                                      v
++---------------------+        account_uid                +---------------------+
+| AccountTable        |<-----------------------------------| AccountHoldingsSet |
+| custody account     |                                    | source snapshot    |
++---------------------+                                    +----------+----------+
+                                                                      |
+                                                                      | source_account_holdings_set_uid
+                                                                      v
+                                                           +-----------------------------+
+                                                           | VirtualFundHoldingsSetTable |
+                                                           | allocation set identity     |
+                                                           +-------------+---------------+
+                                                                         |
+                                                                         v
+                                                           +-----------------------------+
+                                                           | VirtualFundHoldingsStorage  |
+                                                           | allocated_quantity          |
+                                                           | direction                   |
+                                                           | asset_identifier -> Asset   |
+                                                           +-----------------------------+
+```
+
+The boundary is intentional:
+
+- `PortfolioTable` identifies the portfolio and points at portfolio output
+  storage.
+- `VirtualFundTable` binds an account to a target portfolio.
+- `AccountHoldingsSetTable` is the source account snapshot.
+- `VirtualFundHoldingsSetTable` records one allocation view from one source
+  holdings set.
+- `VirtualFundHoldingsStorage` stores allocated exposure rows, not custody.
+
+Virtual funds are not assets. They should not appear as synthetic rows in
+`AccountHoldingsStorage`; account-level virtual-fund exposure is reconstructed
+from `VirtualFundTable`, `VirtualFundHoldingsSetTable`, and
+`VirtualFundHoldingsStorage`.
+
 Storage dimensions use explicit names instead of reusing bare
 `unique_identifier`: `asset_identifier` for asset-keyed rows,
 `portfolio_identifier` for portfolio value rows, and

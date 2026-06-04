@@ -27,6 +27,13 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Pruned obsolete ADRs that described superseded migration runners, lazy
+  registration, route implementation plans, and deprecated DataNode foreign-key
+  architecture; the ADR index and MkDocs navigation now list current
+  architecture decisions plus active proposed ADR 0026.
+- Moved durable virtual-fund allocation relationship diagrams and portfolio
+  construction boundary guidance out of removed ADR history and into the
+  `msm_portfolios` knowledge documentation.
 - Added ADR 0024 for moving the package Alembic provider out of `msm` and
   scoping revision files by migration namespace.
 - Delegated `MarketsTimeIndexMetaTableMixin` table construction to the SDK
@@ -99,7 +106,7 @@ and this project follows versioned releases.
 - Moved portfolio configuration Pydantic models to
   `msm_portfolios.configuration`, leaving `msm_portfolios.models` as the
   SQLAlchemy MetaTable model package.
-- Migrated the DataNode layer to the storage-first architecture (ADR 0017):
+- Migrated the DataNode layer to the storage-first architecture:
   every DataNode output now has a `PlatformTimeIndexMetaTable` storage class as its
   single source of schema, dtypes, and identity foreign keys; DataNodes bind their
   storage through `storage_table` / `_required_storage_table()`; column dtypes are
@@ -152,10 +159,10 @@ and this project follows versioned releases.
   that creates an optional `Index` reference, uses `SignalWeights`,
   `PortfolioWeights`, and `PortfoliosDataNode`, and writes their storage UIDs
   back to `Portfolio`.
-- Added ADR 0021 for the planned virtual-fund allocation contract: account and
-  virtual-fund holdings use positive quantities plus `direction`, virtual-fund
-  holdings allocate from account holdings sets, and virtual funds are
-  account-owned allocation views rather than synthetic `Asset` rows.
+- Added the virtual-fund allocation contract: account and virtual-fund holdings
+  use positive quantities plus `direction`, virtual-fund holdings allocate from
+  account holdings sets, and virtual funds are account-owned allocation views
+  rather than synthetic `Asset` rows.
 - Simplified `PortfolioTable`: removed portfolio construction booleans,
   `stats_json`, `metadata_json`, portfolio asset-detail rows, and synthetic
   asset linkage. Portfolios now optionally link to a core `IndexTable` row
@@ -174,10 +181,10 @@ and this project follows versioned releases.
 - Made `IndexTable.index_type` required and updated Index create/upsert,
   OpenFIGI registration helpers, examples, and API response schemas to carry an
   explicit index type.
-- Reworked the pricing knowledge documentation around ADR 0013's explicit
-  asset, index convention, curve, fixing, and runtime resolver diagrams.
-- Added ADR 0016 to replace legacy instrument configuration wiring with
-  pricing-owned market-data binding rows keyed by `(context_key, concept_key)`.
+- Reworked the pricing knowledge documentation around explicit asset, index
+  convention, curve, fixing, and runtime resolver diagrams.
+- Replaced legacy instrument configuration wiring with pricing-owned
+  market-data binding rows keyed by `(context_key, concept_key)`.
 - Renamed `MSInterface` to `MSDataInterface` and renamed runtime configuration
   methods and constructor arguments from instrument configuration to pricing
   market-data configuration.
@@ -221,10 +228,10 @@ and this project follows versioned releases.
   SDK migrations first, then initialize runtime through `msm.start_engine(...)`.
 - Added migration-first ADR guidance for extension models: project-local models
   enter the provider registry and runtime only attaches finalized catalog rows.
-- Implemented ADR 0018: `msm.start_engine(models=[...])` now accepts
-  project-local markets SQLAlchemy model classes and `MarketsMetaTableRow`
-  wrappers, expands SQLAlchemy `ForeignKey(...)` dependencies, and routes the
-  ordered model set through the shared catalog bootstrap.
+- Updated `msm.start_engine(models=[...])` to accept project-local markets
+  SQLAlchemy model classes and `MarketsMetaTableRow` wrappers, expand
+  SQLAlchemy `ForeignKey(...)` dependencies, and route the ordered model set
+  through the shared catalog bootstrap.
 - Added `MarketsMetaTableRow` as the explicit Pydantic base for MetaTable-backed
   row APIs while keeping `MarketsRow` as a compatibility alias.
 
@@ -510,10 +517,9 @@ and this project follows versioned releases.
 - Removed `venue_specific_properties` from the `AssetSnapshot` DataNode schema;
   provider-specific payloads belong in provider detail tables such as
   `OpenFigiDetails`.
-- Implemented the first ADR 0007 slice: `AssetSnapshot` and
-  `AssetPricingDetail` now use `AssetIndexedDataNode` configuration and declare
-  a canonical source-table FK from `unique_identifier` to
-  `AssetTable.unique_identifier`.
+- Updated `AssetSnapshot` and `AssetPricingDetail` to use
+  `AssetIndexedDataNode` configuration and declare a canonical source-table FK
+  from `unique_identifier` to `AssetTable.unique_identifier`.
 - Removed the legacy asset-indexed DataNode compatibility aliases, shim module,
   and old table-contract class name; use `AssetIndexedDataNode`,
   `AssetIndexedDataNodeConfiguration`, and `DataNodeTableContract` directly.

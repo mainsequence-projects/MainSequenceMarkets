@@ -61,7 +61,7 @@ metadata owns schema correctness.
 Runtime startup must not call:
 
 - Alembic revision generation;
-- migration render/apply;
+- migration execution;
 - normal model `register()` for application tables;
 - catalog reconciliation for application tables.
 

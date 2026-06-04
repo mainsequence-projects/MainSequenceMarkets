@@ -102,7 +102,7 @@ This means:
 - explicit named schemas remain supported, but only non-default schemas are
   authored as schema-qualified metadata.
 
-`src/msm/migrations/env.py` must not force schema-aware comparison for default
+`src/migrations/env.py` must not force schema-aware comparison for default
 schema metadata. It should enable `include_schemas` only when the provider
 metadata or version table actually uses a non-default named schema.
 
@@ -241,7 +241,7 @@ constraint identity.
 Generated revision files under:
 
 ```text
-src/msm/migrations/versions/
+src/migrations/versions/mainsequence_examples/
 ```
 
 must not be accepted when they contain unrelated FK/index churn. This ADR fixes
@@ -257,7 +257,7 @@ unrelated FKs or indexes.
 The first generated file:
 
 ```text
-src/msm/migrations/versions/0001_migration.py
+src/migrations/versions/mainsequence_examples/0001_migration.py
 ```
 
 fixed deterministic constraint and index naming, but it was still generated
@@ -325,9 +325,10 @@ reviewed for accidental namespace suffix changes before they are accepted.
       `schema=None` in SQLAlchemy metadata and the Alembic version table schema.
 - [x] Override the SDK default table-construction path in the `ms-markets`
       mixins so default-schema tables are not forced back to `schema="public"`.
-- [x] Update `src/msm/migrations/env.py` so `include_schemas` is enabled only
+- [x] Update `src/migrations/env.py` so `include_schemas` is enabled only
       when provider metadata actually uses non-default named schemas.
-- [x] Review the generated `src/msm/migrations/versions/0001_migration.py`
+- [x] Review the generated
+      `src/migrations/versions/mainsequence_examples/0001_migration.py`
       baseline for deterministic PK/FK/CK/index names and absence of standalone
       FK drop/create churn.
 - [x] Verify Alembic autogenerate no longer emits FK drop/create pairs for
@@ -338,9 +339,9 @@ reviewed for accidental namespace suffix changes before they are accepted.
       autogenerate again without model changes, and confirms no schema
       operations are produced.
 - [x] Resolve the git/index state for
-      `src/msm/migrations/versions/0001_migration.py` so the reviewed generated
-      file is tracked normally instead of appearing as a staged delete plus an
-      untracked replacement.
+      `src/migrations/versions/mainsequence_examples/0001_migration.py` so the
+      reviewed generated file is tracked normally instead of appearing as a
+      staged delete plus an untracked replacement.
 - [x] Update MetaTable migration docs to state that default PostgreSQL `public`
       schema is authored as `schema=None`, named schemas are opt-in, deterministic
       naming is required, and generated revisions with unrelated FK/index churn

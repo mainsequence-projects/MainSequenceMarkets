@@ -4,10 +4,14 @@
 
 Accepted
 
-This ADR supersedes the runtime-control part of
-[ADR 0015](0015-catalog-based-metatable-bootstrap.md). ADR 0015 remains valid
-for catalog inventory and post-migration catalog refresh, but the catalog must
-not be the source of truth for runtime attachment.
+This ADR replaces the earlier catalog-driven runtime binding design. The catalog
+remains useful for inventory and post-migration refresh evidence, but it is not
+the source of truth for runtime attachment.
+
+[ADR 0026](0026-explicit-pricing-market-data-sets.md) proposes a future
+replacement for pricing market-data bindings. That proposal is not implemented;
+the current implementation still stores attached storage identifiers in
+`PricingMarketDataBindingTable`.
 
 ## Context
 
@@ -214,8 +218,8 @@ actual backend MetaTable identifier.
       remain for diagnostics.
 - [x] Update catalog docs to state that `model_name` is descriptive and not a
       binding key.
-- [x] Update ADR 0015 status text to say runtime control is superseded by this
-      ADR while catalog inventory remains.
+- [x] Update documentation so catalog rows are described as inventory and
+      maintenance evidence, not runtime binding state.
 
 ### Stage 4: DataNode Identifier Resolution
 

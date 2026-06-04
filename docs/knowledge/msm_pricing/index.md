@@ -9,12 +9,13 @@ tables.
 Install pricing explicitly with `ms-markets[pricing]` and import the runtime
 through `msm_pricing`. The core `ms-markets` install does not require QuantLib.
 
-The instrument and persistence design is recorded in
-[ADR 0013](../../ADR/0013-current-asset-pricing-details.md). The pricing
-market-data wiring decision is recorded in
-[ADR 0016](../../ADR/0016-pricing-market-data-configuration.md). This page is
-the operational view: which objects exist, how they point to each other, and
-what a user or source publisher must create before pricing works.
+This page is the operational view for pricing persistence: which objects exist,
+how they point to each other, and what a user or source publisher must create
+before pricing works.
+
+[ADR 0026](../../ADR/0026-explicit-pricing-market-data-sets.md) tracks the
+proposed future replacement for pricing market-data bindings. It is not yet
+implemented; this page describes the current implemented behavior.
 
 ## What Pricing Owns
 

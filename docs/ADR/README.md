@@ -15,31 +15,14 @@ Recommended sections:
 - Decision
 - Consequences
 
-Current decisions:
+Current architecture decisions:
 
-- [0001. Project Scaffold](0001-project-scaffold.md)
-- [0002. Import Package Name](0002-import-package-name.md)
-- [0003. SDK Markets Migration](0003-sdk-markets-migration.md)
-- [0004. VAM Markets Ownership Transfer](0004-vam-markets-ownership-transfer.md)
 - [0005. Pricing Package Refactor](0005-pricing-package-refactor.md)
 - [0006. Asset Package Boundary](0006-asset-package-boundary.md)
-- [0007. AssetIndexedDataNode Asset Foreign Keys](0007-market-data-node-asset-foreign-keys.md)
 - [0008. MetaTable Table And API Model Split](0008-metatable-table-and-api-model-split.md)
-- [0009. Lazy MetaTable Runtime Resolution](0009-lazy-metatable-runtime-resolution.md)
-- [0010. Currency Asset Extension](0010-currency-asset-extension.md)
-- [0011. Future Contracts And Index Underlyings](0011-future-contracts-and-index-underlyings.md)
-- [0012. API v1 Asset Category Route Plan](fast_api/v1/0012-asset-category-route-plan.md)
-- [0013. API v1 Index Route Plan](fast_api/v1/0013-index-route-plan.md)
-- [0013. Current Asset Pricing Details](0013-current-asset-pricing-details.md)
-- [0014. Bond Asset And Issuer Extension](0014-bond-asset-extension.md)
-- [0015. Catalog-Based MetaTable Bootstrap](0015-catalog-based-metatable-bootstrap.md)
-- [0016. Pricing Market Data Configuration](0016-pricing-market-data-configuration.md)
-- [0017. Storage-First DataNode Architecture Migration](0017-storage-first-data-node-architecture.md)
-- [0018. Extension Model Catalog Bootstrap](0018-extension-model-catalog-bootstrap.md)
 - [0019. msm_portfolios Package Boundary](0019-msm-portfolios-package-boundary.md)
-- [0020. SDK-Managed MetaTable Migrations](0020-sdk-managed-metatable-migrations.md)
-- [0021. Virtual Fund Allocation Holdings Contract](0021-virtual-fund-allocation-holdings-contract.md)
 - [0022. Thin Alembic MetaTable Migration Integration](0022-alembic-metatable-migration-alignment.md)
 - [0023. Deterministic Alembic Schema And Identifier Naming](0023-deterministic-alembic-naming.md)
 - [0024. Namespace-Scoped Alembic Version Locations](0024-namespace-scoped-alembic-version-locations.md)
 - [0025. Direct MetaTable Runtime Binding](0025-direct-metatable-runtime-binding.md)
+- [0026. Explicit Pricing Market Data Sets](0026-explicit-pricing-market-data-sets.md)

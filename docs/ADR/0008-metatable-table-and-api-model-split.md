@@ -200,10 +200,9 @@ This ADR does not move deployable FastAPI route modules into `src/msm/api`.
 `src/msm/api` is the packaged library API contract layer. Repository-level
 FastAPI apps still belong under the project-level `api/` directory when needed.
 
-This ADR originally did not make row mutation methods bootstrap schemas. ADR
-0015 restores that boundary after ADR 0009's lazy/on-demand experiment: row
-operations require an active runtime created by explicit startup bootstrap and
-do not attach or register schemas on first use.
+Row mutation methods do not bootstrap schemas. Row operations require an active
+runtime created by explicit startup bootstrap and do not attach or register
+schemas on first use.
 
 This ADR does not remove lower-level repository helpers. Repositories remain
 useful for compiled operation construction, multi-table internals, and workflows

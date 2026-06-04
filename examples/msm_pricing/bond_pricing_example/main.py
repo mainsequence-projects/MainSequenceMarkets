@@ -62,6 +62,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     )
     from msm_pricing.bootstrap import attach_pricing_schemas
     from msm_pricing.data_nodes import CurveConfig, IndexFixingConfiguration
+    from msm_pricing.data_nodes.storage import DiscountCurvesStorage, IndexFixingsStorage
     from msm_pricing.instruments import FloatingRateBond, Instrument
     from msm_pricing.settings import (
         PRICING_CONCEPT_DISCOUNT_CURVES,
@@ -90,22 +91,33 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         replace_default_market_data_bindings=True,
     )
     _print_step("Attached pricing MetaTable runtime")
-    startup_bindings = PricingMarketDataBinding.filter(
+
+    curve_data_node_identifier = DiscountCurvesStorage.get_identifier()
+    fixing_data_node_identifier = IndexFixingsStorage.get_identifier()
+    curve_binding = PricingMarketDataBinding.upsert(
         context_key=PRICING_CONTEXT_DEFAULT,
-        limit=10,
+        concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
+        data_node_identifier=curve_data_node_identifier,
+        source="examples/msm_pricing/bond_pricing_example",
+        metadata_json={"workflow": "floating-rate-bond-pricing-example"},
+    )
+    fixing_binding = PricingMarketDataBinding.upsert(
+        context_key=PRICING_CONTEXT_DEFAULT,
+        concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+        data_node_identifier=fixing_data_node_identifier,
+        source="examples/msm_pricing/bond_pricing_example",
+        metadata_json={"workflow": "floating-rate-bond-pricing-example"},
     )
     _print_step(
-        "Seeded startup pricing market-data bindings",
+        "Upserted startup pricing market-data bindings",
         bindings=[
             {
-                "concept_key": binding.concept_key,
-                "data_node_identifier": binding.data_node_identifier,
-            }
-            for binding in startup_bindings
-            if binding.concept_key
-            in {
-                PRICING_CONCEPT_DISCOUNT_CURVES,
-                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+                "concept_key": curve_binding.concept_key,
+                "data_node_identifier": curve_binding.data_node_identifier,
+            },
+            {
+                "concept_key": fixing_binding.concept_key,
+                "data_node_identifier": fixing_binding.data_node_identifier,
             }
         ],
     )
@@ -211,7 +223,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     _print_step(
         "Published mock discount curve rows",
         rows=len(curve_frame),
-        node_identifier=curve_node._default_identifier(),
+        node_identifier=curve_data_node_identifier,
     )
 
     fixing_node = MockIndexFixingsNode(
@@ -223,13 +235,13 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     _print_step(
         "Published mock index fixing rows",
         rows=len(fixing_frame),
-        node_identifier=fixing_node._default_identifier(),
+        node_identifier=fixing_data_node_identifier,
     )
 
     _print_step(
         "Using startup pricing market-data bindings",
-        curve_data_node_identifier=curve_node._default_identifier(),
-        fixing_data_node_identifier=fixing_node._default_identifier(),
+        curve_data_node_identifier=curve_data_node_identifier,
+        fixing_data_node_identifier=fixing_data_node_identifier,
     )
 
     instrument = FloatingRateBond(
@@ -305,8 +317,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         "index": index,
         "index_convention_details": convention_details,
         "curve": curve,
-        "curve_node_identifier": curve_node._default_identifier(),
-        "fixing_node_identifier": fixing_node._default_identifier(),
+        "curve_node_identifier": curve_data_node_identifier,
+        "fixing_node_identifier": fixing_data_node_identifier,
         "curve_rows": len(curve_frame),
         "fixing_rows": len(fixing_frame),
         "stored_pricing_details": stored_pricing_details,

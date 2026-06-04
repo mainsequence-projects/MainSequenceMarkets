@@ -134,7 +134,8 @@ config field.
 
 ## Canonical Foreign Key
 
-Under ADR 0017 the schema contract lives on a storage class
+In the current storage-first architecture, the schema contract lives on a
+storage class
 (`PlatformTimeIndexMetaTable` / `MarketsTimeIndexMetaTableMixin`), not on the
 DataNode configuration. The canonical asset foreign key is an SDK
 SQLAlchemy `ForeignKey(...)` declaration on the storage class
@@ -368,5 +369,5 @@ parallel runs that must not collide on a shared backend.
   its pricing-specific configuration.
 - `examples/msm/assets/asset_crud_workflow.py`: asset workflow that includes
   `AssetSnapshot` frame construction and DataNode execution.
-- `docs/ADR/0017-storage-first-data-node-architecture.md`: storage-first DataNode
-  architecture (supersedes ADR 0007's DataNode-side asset foreign keys).
+- `docs/knowledge/msm/migrations/index.md`: current storage registration and
+  migration workflow for MetaTables and time-index storage tables.

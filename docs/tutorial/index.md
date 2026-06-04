@@ -64,7 +64,7 @@ mainsequence migrations upgrade --provider migrations:migration head
 ```
 
 See [Migrations](../knowledge/msm/migrations/index.md)
-for the package registry, SDK Alembic provider, SQL render/apply flow, catalog
+for the package registry, SDK Alembic provider, upgrade flow, catalog
 finalization, and runtime attachment lifecycle.
 
 ## Asset Identity And Provider Rows

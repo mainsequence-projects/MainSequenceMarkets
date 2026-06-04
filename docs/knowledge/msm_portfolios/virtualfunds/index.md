@@ -7,6 +7,10 @@ Virtual funds are allocation views over real account holdings. They bind an
 A virtual fund is not an `Asset`, not an account, and not custody. Account
 holdings continue to store real asset rows only.
 
+Portfolio construction remains separate from virtual-fund allocation. See
+[Portfolios](../portfolios/index.md#portfolio-construction-and-virtual-fund-allocation-relationships)
+for the construction and allocation relationship diagrams.
+
 ## Relationship
 
 ```text

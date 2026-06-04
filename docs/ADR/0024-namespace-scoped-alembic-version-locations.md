@@ -6,8 +6,8 @@ Accepted
 
 Project-side package relocation is implemented. SDK support for provider-owned
 `version_locations` remains required before the SDK CLI can fully enforce one
-active namespace revision directory for `current`, `revision`, `render`,
-`upgrade`, and `downgrade`.
+active namespace revision directory for `current`, `revision`, `upgrade`, and
+`downgrade`.
 
 ## Context
 
@@ -163,7 +163,7 @@ version_locations =
   src/migrations/versions/client_a
 ```
 
-Normal `current`, `revision`, `render`, `upgrade`, and `downgrade` commands must
+Normal `current`, `revision`, `upgrade`, and `downgrade` commands must
 not load every namespace directory at once. Each namespace is an independent
 revision graph. Loading all of them together creates multiple unrelated heads
 and makes Alembic treat independent namespace histories as one branched graph.
@@ -190,9 +190,8 @@ other namespace histories.
 
 ### Upgrade And Current
 
-`current`, `upgrade`, `downgrade`, and SQL render paths must use the same active
-namespace version directory and the matching namespace-specific database version
-table.
+`current`, `upgrade`, and `downgrade` paths must use the same active namespace
+version directory and the matching namespace-specific database version table.
 
 For `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`, the command should
 read/write:
@@ -326,8 +325,8 @@ Only the SDK migration CLI imports the provider.
 - [ ] Update SDK revision generation to pass Alembic `version_path`.
 - [ ] Update SDK sequential revision ID scanning to scan only the active
       namespace directory.
-- [ ] Update SDK `current`, `upgrade`, `downgrade`, and render paths to use the
-      same active version location.
+- [ ] Update SDK `current`, `upgrade`, and `downgrade` paths to use the same
+      active version location.
 - [ ] Include the active namespace version location in SDK migration CLI status
       output.
 - [x] Create `src/migrations/` as the canonical provider package.
@@ -340,8 +339,7 @@ Only the SDK migration CLI imports the provider.
       history belongs to `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`.
       Do not move or copy those files into the default namespace directory.
 - [x] Leave `src/msm/migrations/__init__.py` as a temporary compatibility import
-      only if existing docs or deployed commands still reference
-      `msm.migrations:migration`.
+      only. Current docs and examples must use `migrations:migration`.
 - [x] Update docs and examples to use `mainsequence migrations ... --provider
       migrations:migration`.
 - [ ] Add a validation test that changing `MSM_AUTO_REGISTER_NAMESPACE` changes
