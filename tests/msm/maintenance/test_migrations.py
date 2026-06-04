@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import datetime as dt
 from importlib import resources
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
+from sqlalchemy import DateTime, MetaData
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from mainsequence.client.metatables import MetaTable
 from mainsequence.meta_tables import (
@@ -21,6 +26,7 @@ from msm.base import (
     MARKETS_SCHEMA,
     MARKETS_TABLE_APP,
     MarketsBase,
+    MarketsTimeIndexMetaTableMixin,
     markets_table_args,
     markets_table_name,
     normalize_metatable_schema,
@@ -102,8 +108,35 @@ def test_default_postgres_schema_is_authored_as_none() -> None:
     assert "schema" not in markets_table_args("Example")[-1]
 
 
-def test_migration_metadata_uses_default_schema_not_explicit_public() -> None:
-    assert all(table.schema is None for table in migration.target_metadata.tables.values())
+def test_platform_managed_migration_metadata_uses_default_schema_not_explicit_public() -> None:
+    row_tables = [
+        model.__table__
+        for model in metatable_provider_models()
+        if not issubclass(model, PlatformTimeIndexMetaData)
+    ]
+
+    assert row_tables
+    assert all(table.schema is None for table in row_tables)
+
+
+def test_markets_time_index_mixin_uses_sdk_table_contract_validation() -> None:
+    class TestBase(DeclarativeBase):
+        metadata = MetaData()
+
+    with pytest.raises(
+        ValueError,
+        match="PlatformTimeIndexMetaData index_names must all exist as table columns",
+    ):
+
+        class BrokenTimeIndexStorage(MarketsTimeIndexMetaTableMixin, TestBase):
+            __metatable_identifier__ = "BrokenTimeIndexStorage"
+            __time_index_name__ = "time_index"
+            __index_names__ = ["time_index", "missing_identifier"]
+
+            time_index: Mapped[dt.datetime] = mapped_column(
+                DateTime(timezone=True),
+                nullable=False,
+            )
 
 
 def test_migration_metadata_uses_deterministic_bounded_names() -> None:

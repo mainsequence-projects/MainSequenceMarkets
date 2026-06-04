@@ -22,6 +22,9 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Delegated `MarketsTimeIndexMetaTableMixin` table construction to the SDK
+  `PlatformTimeIndexMetaData` parent so time-index contract validation and
+  future SDK-owned storage behavior are not bypassed by ms-markets.
 - Renamed the internal MetaTable catalog identity column from `identifier` to
   `table_name`; runtime catalog resolution now searches and upserts by
   SQLAlchemy table name.

@@ -188,7 +188,15 @@ class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaData):
 
     @classmethod
     def __table_cls__(cls, *args: Any, **kwargs: Any) -> Any:
-        return _build_markets_table(cls, *args, **kwargs)
+        table_kwargs = dict(kwargs)
+        schema = normalize_metatable_schema(
+            table_kwargs.get("schema", getattr(cls, "__metatable_schema__", None))
+        )
+        if schema is None:
+            table_kwargs.pop("schema", None)
+        else:
+            table_kwargs["schema"] = schema
+        return PlatformTimeIndexMetaData.__table_cls__.__func__(cls, *args, **table_kwargs)
 
     def __init_subclass__(cls, **kwargs: Any):
         super().__init_subclass__(**kwargs)
