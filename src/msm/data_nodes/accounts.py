@@ -418,6 +418,13 @@ def _normalize_config_values(
                 values,
                 nullable=column_nullable_map[column_name],
             )
+        elif dtype in {dc.INT16, dc.INT32, dc.INT64}:
+            normalized[column_name] = _normalize_integer_column(
+                values,
+                dtype=dtype,
+                nullable=column_nullable_map[column_name],
+                column_name=column_name,
+            )
         elif dtype == dc.BOOL:
             normalized[column_name] = values.map(_normalize_bool)
         elif dtype == dc.JSONB:
@@ -449,6 +456,32 @@ def _normalize_optional_float64(value: Any, *, nullable: bool) -> float | None:
         return float(Decimal(str(value)))
     except (InvalidOperation, ValueError) as exc:
         raise ValueError(f"Invalid numeric holdings value {value!r}.") from exc
+
+
+def _normalize_integer_column(
+    values: pd.Series,
+    *,
+    dtype: str,
+    nullable: bool,
+    column_name: str,
+) -> pd.Series:
+    normalized = pd.to_numeric(values, errors="raise")
+    if not nullable and normalized.isna().any():
+        raise ValueError(f"{column_name} cannot contain null values.")
+    if column_name == "direction":
+        invalid_direction = normalized.dropna()[~normalized.dropna().isin({1, -1})]
+        if not invalid_direction.empty:
+            raise ValueError("Holdings direction must be 1 for long or -1 for short.")
+    return normalized.astype(_integer_pandas_dtype(dtype, nullable=nullable))
+
+
+def _integer_pandas_dtype(dtype: str, *, nullable: bool) -> str:
+    dtype_map = {
+        dc.INT16: "Int16" if nullable else "int16",
+        dc.INT32: "Int32" if nullable else "int32",
+        dc.INT64: "Int64" if nullable else "int64",
+    }
+    return dtype_map[dtype]
 
 
 def _normalize_bool(value: Any) -> bool:

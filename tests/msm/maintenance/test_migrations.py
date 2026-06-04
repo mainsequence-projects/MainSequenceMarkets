@@ -221,7 +221,7 @@ def test_package_migration_registry_is_deduplicated_and_sdk_managed() -> None:
     )
 
 
-def test_refresh_catalog_hook_upserts_registered_metatables(monkeypatch) -> None:
+def test_refresh_catalog_hook_bulk_upserts_registered_metatables(monkeypatch) -> None:
     refresh_hook = migration.after_register_metatables
     assert refresh_hook is not None
     models = metatable_provider_models()
@@ -238,7 +238,7 @@ def test_refresh_catalog_hook_upserts_registered_metatables(monkeypatch) -> None
         )
         for index, model in enumerate(models)
     ]
-    upserts: list[dict[str, object]] = []
+    bulk_upserts: list[dict[str, object]] = []
 
     monkeypatch.setitem(
         refresh_hook.__globals__,
@@ -249,27 +249,42 @@ def test_refresh_catalog_hook_upserts_registered_metatables(monkeypatch) -> None
         ),
     )
 
-    def fake_upsert_catalog_row(
+    def fake_upsert_catalog_row(*_args, **_kwargs):
+        raise AssertionError("Catalog refresh must bulk upsert rows, not upsert row by row.")
+
+    def fake_bulk_upsert_model(
         context,
         *,
         model,
-        meta_table,
+        values,
+        conflict_columns,
     ):
-        upsert = {
+        bulk_upsert = {
             "context": context,
             "model": model,
-            "meta_table": meta_table,
+            "values": values,
+            "conflict_columns": conflict_columns,
         }
-        upserts.append(upsert)
+        bulk_upserts.append(bulk_upsert)
         return {
-            "table_name": model.__table__.name,
-            "meta_table_uid": meta_table.uid,
+            "rows": [
+                {
+                    "table_name": row["table_name"],
+                    "meta_table_uid": row["meta_table_uid"],
+                }
+                for row in values
+            ]
         }
 
     monkeypatch.setitem(
         refresh_hook.__globals__,
         "upsert_catalog_row",
         fake_upsert_catalog_row,
+    )
+    monkeypatch.setitem(
+        refresh_hook.__globals__,
+        "bulk_upsert_model",
+        fake_bulk_upsert_model,
     )
 
     rows = refresh_hook(
@@ -282,7 +297,13 @@ def test_refresh_catalog_hook_upserts_registered_metatables(monkeypatch) -> None
     )
 
     assert len(rows) == len(models)
-    assert upserts[0]["model"] is MarketsMetaTableCatalogTable
-    assert upserts[0]["meta_table"] is metatables[0]
-    assert upserts[0]["context"].reserved_policy == "reconcile"
+    assert len(bulk_upserts) == 1
+    bulk_upsert = bulk_upserts[0]
+    assert bulk_upsert["model"] is MarketsMetaTableCatalogTable
+    assert bulk_upsert["conflict_columns"] == ["table_name"]
+    assert bulk_upsert["context"].reserved_policy == "reconcile"
+    values = bulk_upsert["values"]
+    assert len(values) == len(models)
+    assert values[0]["table_name"] == MarketsMetaTableCatalogTable.__table__.name
+    assert values[0]["meta_table_uid"] == metatables[0].uid
     assert rows[0]["table_name"] == MarketsMetaTableCatalogTable.__table__.name

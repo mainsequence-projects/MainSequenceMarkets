@@ -59,11 +59,11 @@ Instrument payloads contain pricing terms only. Asset identity must live on the
 pricing-details relationship, not inside `InstrumentModel`; legacy
 `main_sequence_asset_id` payloads are rejected.
 
-Use `msm_pricing.bootstrap.create_pricing_schemas(...)` to initialize the
-pricing MetaTable graph. The graph includes core dependencies such as
-`AssetTable`, `IndexTypeTable`, and `IndexTable` before pricing extension
-tables, and startup uses the same maintenance catalog as `msm.start_engine(...)`
-so already-cataloged core tables are attached rather than registered again.
+Use `msm_pricing.bootstrap.attach_pricing_schemas(...)` to attach the pricing
+MetaTable graph. The graph includes core dependencies such as `AssetTable`,
+`IndexTypeTable`, and `IndexTable` before pricing extension tables, and startup
+uses the same maintenance catalog as `msm.start_engine(...)` so already-cataloged
+core tables are attached rather than registered again.
 
 Curves are pricing-owned reference data, not assets. `CurveTable` owns curve
 identity, and `DiscountCurvesNode` lives under `msm_pricing.data_nodes` as a

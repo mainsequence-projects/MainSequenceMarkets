@@ -25,19 +25,19 @@ def test_index_convention_details_api_declares_table_contract() -> None:
     assert IndexConventionDetails.__upsert_keys__ == ("index_uid",)
 
 
-def test_index_convention_details_create_schemas_uses_pricing_dependencies(
+def test_index_convention_details_start_engine_uses_pricing_dependencies(
     monkeypatch,
 ) -> None:
     calls = []
     runtime = SimpleNamespace()
 
-    def fake_create_pricing_schemas(**kwargs):
+    def fake_attach_pricing_schemas(**kwargs):
         calls.append(kwargs)
         return runtime
 
     monkeypatch.setattr(
-        "msm_pricing.api.index_convention_details.create_pricing_schemas",
-        fake_create_pricing_schemas,
+        "msm_pricing.api.index_convention_details.attach_pricing_schemas",
+        fake_attach_pricing_schemas,
     )
 
     assert IndexConventionDetails.start_engine(namespace="pricing-test") is runtime

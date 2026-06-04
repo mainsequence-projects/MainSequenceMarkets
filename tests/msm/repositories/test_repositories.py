@@ -26,6 +26,7 @@ from msm.repositories.assets import (
     build_upsert_asset_operation,
 )
 from msm.repositories.crud import (
+    build_bulk_upsert_model_operation,
     build_get_model_by_uid_operation,
     build_search_model_operation,
     build_upsert_model_operation,
@@ -145,6 +146,44 @@ def test_generic_upsert_operation_populates_python_defaults_for_backend_sql() ->
     assert operation.statement.parameters["created_at"].endswith("Z")
     assert operation.statement.parameters["updated_at"].endswith("Z")
     assert "updated_at =" in operation.statement.sql
+
+
+def test_generic_bulk_upsert_operation_compiles_one_statement_for_many_rows() -> None:
+    context = MarketsRepositoryContext()
+    rows = [
+        MarketsMetaTableCatalogRow(
+            namespace="ms-markets",
+            table_name="ms_markets__asset",
+            description=None,
+            model_name="AssetTable",
+            meta_table_uid=str(uuid.uuid4()),
+            sdk_version="0.0.test",
+        ),
+        MarketsMetaTableCatalogRow(
+            namespace="ms-markets",
+            table_name="ms_markets__account",
+            description=None,
+            model_name="AccountTable",
+            meta_table_uid=str(uuid.uuid4()),
+            sdk_version="0.0.test",
+        ),
+    ]
+
+    operation = build_bulk_upsert_model_operation(
+        context,
+        model=MarketsMetaTableCatalogTable,
+        values=[row.to_payload() for row in rows],
+        conflict_columns=["table_name"],
+    )
+
+    assert operation.operation == "upsert"
+    assert operation.scope.tables[0].access == "write"
+    assert "ON CONFLICT" in operation.statement.sql
+    assert operation.statement.sql.count("meta_table_uid") >= 2
+    assert operation.statement.sql.count("VALUES") == 1
+    assert {rows[0].meta_table_uid, rows[1].meta_table_uid}.issubset(
+        set(operation.statement.parameters.values())
+    )
 
 
 def test_generic_upsert_operation_uses_physical_name_for_aliased_columns() -> None:

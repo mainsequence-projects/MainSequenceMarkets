@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from mainsequence.meta_tables import POSTGRES_IDENTIFIER_MAX_LENGTH
-
-from msm.schema_names import (
+from mainsequence.meta_tables import (
+    POSTGRES_IDENTIFIER_MAX_LENGTH,
     bounded_identifier,
     parse_schema_table_name,
     schema_foreign_key_name,

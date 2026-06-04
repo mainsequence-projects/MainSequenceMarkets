@@ -752,8 +752,8 @@ table prematurely.
 - [x] Export the table from `msm_pricing.models`.
 - [x] Add `msm_pricing.meta_tables.pricing_sqlalchemy_models()` in dependency
   order, including `AssetTable` before `AssetCurrentPricingDetailsTable`.
-- [x] Add `msm_pricing.meta_tables.register_pricing_meta_tables(...)` or an
-  equivalent helper that registers pricing MetaTables while resolving core
+- [x] Add `msm_pricing.bootstrap.attach_pricing_schemas(...)` to attach pricing
+  MetaTables from the migration-maintained catalog while resolving core
   asset-table dependencies.
 - [x] Add tests proving the table uses `asset_uid` as the one-to-one primary
   key, has no separate `uid`, and points at `AssetTable.uid` with cascade

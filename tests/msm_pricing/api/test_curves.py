@@ -22,17 +22,17 @@ def test_curve_api_declares_table_contract() -> None:
     assert Curve.__upsert_keys__ == ("unique_identifier",)
 
 
-def test_curve_create_schemas_uses_pricing_dependencies(monkeypatch) -> None:
+def test_curve_start_engine_uses_pricing_dependencies(monkeypatch) -> None:
     calls = []
     runtime = SimpleNamespace()
 
-    def fake_create_pricing_schemas(**kwargs):
+    def fake_attach_pricing_schemas(**kwargs):
         calls.append(kwargs)
         return runtime
 
     monkeypatch.setattr(
-        "msm_pricing.api.curves.create_pricing_schemas",
-        fake_create_pricing_schemas,
+        "msm_pricing.api.curves.attach_pricing_schemas",
+        fake_attach_pricing_schemas,
     )
 
     assert Curve.start_engine(namespace="pricing-test") is runtime

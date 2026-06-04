@@ -541,7 +541,7 @@ It should not add built-in `ms-markets` tables to project extension hooks.
   runtime attachment only.
 - [x] Raise the project dependency floor to the first published SDK release that
   includes the direct Alembic scoped-connection migration CLI.
-- [ ] Replace per-row catalog refresh upserts in
+- [x] Replace per-row catalog refresh upserts in
   `refresh_markets_catalog_from_registered_metatables(...)` with one batched
   catalog upsert operation. Upgrade must not emit one `execute-operation` POST
   per provider model during the post-upgrade catalog refresh.

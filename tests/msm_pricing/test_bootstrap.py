@@ -59,11 +59,13 @@ def install_fake_pricing_bootstrap(monkeypatch):
             "PricingMarketDataBindingTable": "PricingMarketDataBinding",
         }.get(model_name, model_name)
 
-    def fake_resolve_registered_markets_meta_tables(**kwargs):
+    def fake_attach_markets_meta_tables_from_catalog(**kwargs):
         attach_calls.append(kwargs)
         return SimpleNamespace(
-            meta_tables=["curve-meta-table"],
-            models=kwargs["models"],
+            registration=SimpleNamespace(
+                meta_tables=["curve-meta-table"],
+                models=kwargs["models"],
+            )
         )
 
     monkeypatch.setattr(
@@ -82,8 +84,8 @@ def install_fake_pricing_bootstrap(monkeypatch):
         fake_pricing_meta_table_identifier,
     )
     monkeypatch.setattr(
-        "msm.models.registration.resolve_registered_markets_meta_tables",
-        fake_resolve_registered_markets_meta_tables,
+        "msm.maintenance.catalog.attach_markets_meta_tables_from_catalog",
+        fake_attach_markets_meta_tables_from_catalog,
     )
     return attach_calls
 

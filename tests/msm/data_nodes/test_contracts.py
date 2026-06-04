@@ -184,6 +184,33 @@ def test_account_holdings_frame_builder_uses_storage_contract() -> None:
     assert row["target_trade_time"] == pd.Timestamp("2026-05-25T11:00:00Z")
 
 
+def test_account_holdings_datanode_validator_accepts_int16_direction() -> None:
+    frame = build_account_holdings_frame(
+        holdings_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
+        account_uid=uuid.uuid4(),
+        holdings_set_uid=uuid.uuid4(),
+        positions=[{"asset_identifier": "BTC", "quantity": "1.25", "direction": -1}],
+    )
+
+    validated = AccountHoldings.validate_holdings_frame(frame)
+
+    assert str(validated.reset_index()["direction"].dtype) == "int16"
+
+
+def test_account_holdings_datanode_validator_rejects_invalid_direction() -> None:
+    frame = build_account_holdings_frame(
+        holdings_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
+        account_uid=uuid.uuid4(),
+        holdings_set_uid=uuid.uuid4(),
+        positions=[{"asset_identifier": "BTC", "quantity": "1.25", "direction": -1}],
+    )
+    flat = frame.reset_index()
+    flat["direction"] = 0
+
+    with pytest.raises(ValueError, match="Holdings direction must be 1"):
+        AccountHoldings.validate_holdings_frame(flat)
+
+
 def test_account_holdings_datanode_exposes_frame_helpers_only() -> None:
     frame = build_account_holdings_frame(
         holdings_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),

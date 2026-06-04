@@ -31,9 +31,9 @@ def main() -> None:
         INDEX_TYPE_INTEREST_RATE_DEFINITION,
     )
     from msm_pricing.api import Curve, IndexConventionDetails
-    from msm_pricing.bootstrap import create_pricing_schemas
+    from msm_pricing.bootstrap import attach_pricing_schemas
 
-    create_pricing_schemas(
+    attach_pricing_schemas(
         models=[
             "IndexType",
             "Index",

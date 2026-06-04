@@ -5,7 +5,8 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from msm.base import slugify_identifier
+from mainsequence.meta_tables import slugify_identifier
+
 from msm.models import IndexTable
 from msm.repositories import MarketsRepositoryContext
 from msm.repositories.crud import delete_model, get_model_by_uid, search_model

@@ -6,6 +6,7 @@ from threading import Lock
 from typing import Any
 
 from msm.api.base import operation_result_rows
+from msm.base import MarketsBase
 from msm.repositories.base import MarketsRepositoryContext
 from msm.repositories.crud import create_model, search_model, upsert_model
 from msm.settings import markets_namespace
@@ -68,8 +69,6 @@ def create_pricing_schemas(
     for callers that also want pricing market-data configuration during startup.
     """
 
-    from msm.models.registration import resolve_registered_markets_meta_tables
-
     resolved_models = resolve_pricing_meta_table_models(models)
     namespace = markets_namespace(namespace)
     schema_config = _schema_config(
@@ -107,9 +106,8 @@ def create_pricing_schemas(
                 "process startup before pricing row operations."
             )
 
-        registration = resolve_registered_markets_meta_tables(
+        registration = _attach_pricing_meta_tables_from_catalog(
             management_mode=management_mode,
-            namespace=namespace,
             timeout=timeout,
             models=resolved_models,
         )
@@ -146,8 +144,6 @@ def attach_pricing_schemas(
 ) -> PricingRuntime:
     """Attach to already-registered pricing MetaTables without creating schemas."""
 
-    from msm.models.registration import resolve_registered_markets_meta_tables
-
     resolved_models = resolve_pricing_meta_table_models(models)
     namespace = markets_namespace(namespace)
     schema_config = _schema_config(
@@ -169,9 +165,8 @@ def attach_pricing_schemas(
                 replace_default_market_data_bindings=replace_default_market_data_bindings,
             )
             return cached_runtime
-        registration = resolve_registered_markets_meta_tables(
+        registration = _attach_pricing_meta_tables_from_catalog(
             management_mode=management_mode,
-            namespace=namespace,
             timeout=timeout,
             models=resolved_models,
         )
@@ -317,6 +312,22 @@ def _configure_pricing_runtime_market_data(
     return configuration
 
 
+def _attach_pricing_meta_tables_from_catalog(
+    *,
+    management_mode: PricingManagementMode,
+    timeout: int | float | tuple[float, float] | None,
+    models: Sequence[type[MarketsBase]],
+) -> PricingMetaTableRegistrationResult:
+    from msm.maintenance.catalog import attach_markets_meta_tables_from_catalog
+
+    catalog_bootstrap = attach_markets_meta_tables_from_catalog(
+        management_mode=management_mode,
+        timeout=timeout,
+        models=models,
+    )
+    return catalog_bootstrap.registration
+
+
 def _missing_models_from_runtime(
     runtime: PricingRuntime,
     models: Sequence[Any],
@@ -338,7 +349,7 @@ def _pricing_not_initialized_error_message(
     prefix = f"{row_model_name} " if row_model_name else ""
     return (
         f"{prefix}requires an initialized pricing runtime for {model_names}. "
-        "Call msm_pricing.bootstrap.create_pricing_schemas(...) during application "
+        "Call msm_pricing.bootstrap.attach_pricing_schemas(...) during application "
         "initialization before pricing row operations."
     )
 

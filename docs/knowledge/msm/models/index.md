@@ -16,7 +16,7 @@ Pricing-specific MetaTables are not core markets models. Tables such as
 `AssetCurrentPricingDetailsTable` live under `msm_pricing.models` and are
 selected through `msm_pricing.meta_tables.pricing_sqlalchemy_models()`.
 Runtime initialization should use
-`msm_pricing.bootstrap.create_pricing_schemas(...)`, which includes core
+`msm_pricing.bootstrap.attach_pricing_schemas(...)`, which includes core
 dependencies such as `AssetTable`, `IndexTypeTable`, and `IndexTable` before
 pricing extension tables and resolves them through the maintenance catalog.
 

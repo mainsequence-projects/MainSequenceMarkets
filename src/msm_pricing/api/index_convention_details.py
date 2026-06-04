@@ -15,7 +15,7 @@ from msm.repositories.crud import (
     upsert_model,
 )
 
-from msm_pricing.bootstrap import create_pricing_schemas, resolve_pricing_runtime
+from msm_pricing.bootstrap import attach_pricing_schemas, resolve_pricing_runtime
 from msm_pricing.models.index_convention_details import IndexConventionDetailsTable
 
 DEFAULT_INDEX_CONVENTION_SERIALIZATION_FORMAT = "msm_pricing.index_convention.v1"
@@ -68,7 +68,7 @@ class IndexConventionDetails(BaseModel):
 
         requested_models = kwargs.pop("models", None)
         models = [*cls.__required_tables__, *(requested_models or [])]
-        return create_pricing_schemas(models=models, **kwargs)
+        return attach_pricing_schemas(models=models, **kwargs)
 
     @classmethod
     def create_schemas(cls, **kwargs: Any):

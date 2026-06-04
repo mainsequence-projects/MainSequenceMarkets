@@ -51,7 +51,7 @@ The registration lifecycle becomes:
 8. row operations use that runtime and never register or attach lazily.
 
 The same rule applies to optional pricing MetaTables. Pricing startup through
-`msm_pricing.bootstrap.create_pricing_schemas(...)` must use the maintenance
+`msm_pricing.bootstrap.attach_pricing_schemas(...)` must use the maintenance
 catalog instead of re-running direct registration for core asset/index tables.
 
 ### Catalog Table

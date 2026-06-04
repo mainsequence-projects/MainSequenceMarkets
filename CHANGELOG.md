@@ -9,6 +9,11 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- Fixed `AccountHoldings` DataNode validation so storage-backed `direction`
+  columns with SDK dtype `int16` are accepted and preserved as `int16`.
+- Fixed pricing runtime attachment so `msm_pricing` uses the migration-maintained
+  MetaTable catalog instead of deprecated direct registered-MetaTable lookup,
+  and updated pricing examples to use `attach_pricing_schemas(...)`.
 - Blocked `msm copy-msm-skills` from running inside the ms-markets source
   checkout, including dry-run mode, so the command cannot delete the
   package-owned `.agents/skills/ms_markets` source bundle.
@@ -17,11 +22,13 @@ and this project follows versioned releases.
   backend finalize DTOs.
 - Added schema-aware Alembic reflection and deterministic bounded table,
   constraint, and index naming to prevent false FK/index drop-create churn.
-- Documented the required follow-up to batch post-upgrade catalog refresh writes
-  instead of issuing one compiled MetaTable operation per provider model.
+- Batched post-upgrade catalog refresh writes into one compiled bulk upsert
+  instead of issuing one MetaTable operation per provider model.
 
 ### Changed
 
+- Added ADR 0024 for moving the package Alembic provider out of `msm` and
+  scoping revision files by migration namespace.
 - Delegated `MarketsTimeIndexMetaTableMixin` table construction to the SDK
   `PlatformTimeIndexMetaData` parent so time-index contract validation and
   future SDK-owned storage behavior are not bypassed by ms-markets.
@@ -247,9 +254,9 @@ and this project follows versioned releases.
 - Fixed compiled MetaTable insert/upsert operations so Python-side SQLAlchemy
   defaults such as UUID primary keys and catalog timestamps are materialized
   before the SQL is sent to the backend.
-- Fixed pricing schema startup so `msm_pricing.create_pricing_schemas(...)`
-  uses the maintenance catalog bootstrap instead of re-running direct
-  MetaTable registration for core asset/index tables.
+- Fixed pricing schema startup so pricing runtime attachment uses the
+  maintenance catalog bootstrap instead of re-running direct MetaTable
+  registration for core asset/index tables.
 
 ### Added
 

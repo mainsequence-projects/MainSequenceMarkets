@@ -241,8 +241,8 @@ IndexTable.unique_identifier
 
 ## Bootstrap Contract
 
-`create_pricing_schemas(...)` registers pricing MetaTables and then seeds default
-market-data bindings unless explicitly disabled.
+`attach_pricing_schemas(...)` attaches already-cataloged pricing MetaTables and
+seeds default market-data bindings only when explicitly requested.
 
 `attach_pricing_schemas(...)` attaches to existing pricing MetaTables without
 seeding defaults unless the caller opts in. It must not silently mutate existing
@@ -313,7 +313,7 @@ The seeded rows are pricing-owned MetaTable rows, not core `msm` rows.
   `interest_rate_index_fixings` through direct override, persisted binding, then
   static default.
 - [x] Add bootstrap seeding for default `PricingMarketDataBinding` rows after
-  pricing MetaTables are registered.
+  pricing MetaTables are attached from the migration-maintained catalog.
 - [x] Seed `(PRICING_CONTEXT_DEFAULT, PRICING_CONCEPT_DISCOUNT_CURVES)` to
   `markets_data_node_identifier("DiscountCurvesTS")`.
 - [x] Seed

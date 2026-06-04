@@ -93,6 +93,83 @@ def build_upsert_model_operation(
     )
 
 
+def build_bulk_upsert_model_operation(
+    context: MarketsOperationContext,
+    *,
+    model: type[MarketsBase],
+    values: Sequence[Mapping[str, Any]],
+    conflict_columns: Sequence[str],
+) -> MetaTableCompiledSQLOperation:
+    """Build one PostgreSQL upsert operation for multiple rows."""
+
+    if not conflict_columns:
+        raise ValueError("Bulk upsert operations require at least one conflict column.")
+    if not values:
+        raise ValueError("Bulk upsert operations require at least one values row.")
+
+    insert_payloads = [_model_insert_payload(model, row) for row in values]
+    statement = postgresql_insert(model).values(
+        [_model_value_mapping(model, payload) for payload in insert_payloads]
+    )
+    conflict_property_keys = {
+        _model_column_property(model, conflict_column).key for conflict_column in conflict_columns
+    }
+    primary_key_property_keys = _model_primary_key_property_keys(model)
+    update_payload = _model_update_payload(model, values[0])
+    update_values = {}
+    for key, value in update_payload.items():
+        column_property = _model_column_property(model, key)
+        if column_property.key in {*conflict_property_keys, *primary_key_property_keys}:
+            continue
+        physical_name = column_property.columns[0].name
+        if key in insert_payloads[0]:
+            update_values[_model_attribute(model, key)] = statement.excluded[physical_name]
+        else:
+            update_values[_model_attribute(model, key)] = value
+
+    if not update_values:
+        first_conflict_column = conflict_columns[0]
+        first_conflict_property = _model_column_property(model, first_conflict_column)
+        first_conflict_physical_name = first_conflict_property.columns[0].name
+        update_values = {
+            _model_attribute(model, first_conflict_column): statement.excluded[
+                first_conflict_physical_name
+            ]
+        }
+
+    statement = statement.on_conflict_do_update(
+        index_elements=[
+            _model_attribute(model, conflict_column) for conflict_column in conflict_columns
+        ],
+        set_=update_values,
+    ).returning(model)
+    return compile_markets_statement(
+        statement,
+        context=context,
+        operation="upsert",
+        models=[model],
+        access="write",
+    )
+
+
+def bulk_upsert_model(
+    context: MarketsOperationContext,
+    *,
+    model: type[MarketsBase],
+    values: Sequence[Mapping[str, Any]],
+    conflict_columns: Sequence[str],
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_bulk_upsert_model_operation(
+            context,
+            model=model,
+            values=values,
+            conflict_columns=conflict_columns,
+        ),
+        context=context,
+    )
+
+
 def upsert_model(
     context: MarketsOperationContext,
     *,
@@ -426,6 +503,7 @@ def _model_attribute(model: type[MarketsBase], field_name: str) -> Any:
 
 
 __all__ = [
+    "build_bulk_upsert_model_operation",
     "build_create_model_operation",
     "build_delete_model_operation",
     "build_get_model_by_uid_operation",
@@ -433,6 +511,7 @@ __all__ = [
     "build_search_model_operation",
     "build_upsert_model_operation",
     "build_update_model_operation",
+    "bulk_upsert_model",
     "create_model",
     "delete_model",
     "get_model_by_uid",

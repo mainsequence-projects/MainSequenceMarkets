@@ -60,7 +60,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         IndexConventionDetails,
         PricingMarketDataBinding,
     )
-    from msm_pricing.bootstrap import create_pricing_schemas
+    from msm_pricing.bootstrap import attach_pricing_schemas
     from msm_pricing.data_nodes import CurveConfig, IndexFixingConfiguration
     from msm_pricing.instruments import FloatingRateBond, Instrument
     from msm_pricing.settings import (
@@ -77,7 +77,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         valuation_date=valuation_date.isoformat(),
     )
 
-    create_pricing_schemas(
+    attach_pricing_schemas(
         models=[
             "Asset",
             "IndexType",
@@ -87,6 +87,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
             "AssetCurrentPricingDetails",
             "PricingMarketDataBinding",
         ],
+        seed_default_market_data_bindings=True,
     )
     _print_step("Attached pricing MetaTable runtime")
     default_bindings = PricingMarketDataBinding.filter(

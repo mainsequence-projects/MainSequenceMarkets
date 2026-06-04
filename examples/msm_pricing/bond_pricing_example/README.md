@@ -20,5 +20,5 @@ uv run python examples/msm_pricing/bond_pricing_example/main.py
 ```
 
 The migration step must complete before the script starts. The script uses
-`msm.start_engine(...)` and `msm_pricing.bootstrap.create_pricing_schemas(...)`
+`msm.start_engine(...)` and `msm_pricing.bootstrap.attach_pricing_schemas(...)`
 only to attach already-migrated MetaTables and configure pricing runtime state.

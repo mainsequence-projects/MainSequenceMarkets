@@ -123,14 +123,14 @@ Deployments can add or replace bindings for `eod`, `live`, `risk_manager`, or
 other application contexts:
 
 ```python
-from msm_pricing.bootstrap import create_pricing_schemas
+from msm_pricing.bootstrap import attach_pricing_schemas
 from msm_pricing.api import PricingMarketDataBinding
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONTEXT_EOD,
 )
 
-create_pricing_schemas()
+attach_pricing_schemas(seed_default_market_data_bindings=True)
 
 PricingMarketDataBinding.upsert(
     context_key=PRICING_CONTEXT_EOD,
@@ -164,9 +164,9 @@ tables already present in the catalog are attached instead of registered again.
 Run the relevant `msm` migrations before pricing runtime startup:
 
 ```python
-from msm_pricing.bootstrap import create_pricing_schemas
+from msm_pricing.bootstrap import attach_pricing_schemas
 
-create_pricing_schemas()
+attach_pricing_schemas(seed_default_market_data_bindings=True)
 ```
 
 ## Asset To Instrument

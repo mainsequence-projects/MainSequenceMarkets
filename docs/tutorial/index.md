@@ -158,8 +158,8 @@ serialized instrument definition. See
 `examples/msm_pricing/instrument_identity_boundary.py` for a minimal payload
 boundary example.
 
-When the pricing persistence tables are needed, initialize them through
-`msm_pricing.bootstrap.create_pricing_schemas(...)`. That startup flow includes
+When the pricing persistence tables are needed, attach them through
+`msm_pricing.bootstrap.attach_pricing_schemas(...)`. That startup flow includes
 the core asset and index tables first, then pricing extension tables, and uses
 the same maintenance catalog as `msm.start_engine(...)` so already-cataloged
 core tables are attached rather than registered again.

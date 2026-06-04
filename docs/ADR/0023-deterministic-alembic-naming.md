@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Completed
 
 ## Context
 
@@ -167,25 +167,14 @@ def _configure_kwargs():
 The important behavior is that default-schema metadata and default-schema
 reflection both compare as `None`. The provider still owns table scope.
 
-### Naming Module
+### SDK Naming Helpers
 
-Add one independent naming module under `src/msm/`, for example:
-
-```text
-src/msm/schema_names.py
-```
-
-This module owns all deterministic physical names used by SQLAlchemy metadata.
-It should not import model classes. It should operate on strings and normalized
-name parts only, so it can be used safely by `msm.base`, tests, and migration
-configuration without creating model import cycles.
-
-The module must stay domain-neutral. It is intended to be portable to
-`mainsequence-sdk`, so it must not expose markets-specific helper names or know
-about `ms-markets` models. Package-specific code such as `msm.base` supplies
+Deterministic physical-name helpers are SDK-owned and imported from
+`mainsequence.meta_tables`. `ms-markets` must not carry a duplicate
+`msm.schema_names` module. Package-specific code such as `msm.base` supplies
 the app prefix, namespace suffix, and any compatibility aliases.
 
-The module should provide helpers with this intent:
+The SDK helpers provide this intent:
 
 ```python
 normalize_identifier_part(value: str, *, field_name: str = "identifier part") -> str
@@ -303,10 +292,8 @@ Observed shape from the no-op revision attempt:
 That proves the remaining issue was default-schema normalization, not FK
 naming.
 
-This review does not close the no-op autogenerate task. A separate check must
-still apply the baseline to a database and run autogenerate again without model
-changes after default-schema normalization. That no-op check is the evidence
-that unchanged FKs and indexes do not produce churn.
+The no-op autogenerate check has been completed after default-schema
+normalization. Unchanged FKs and indexes no longer produce unrelated churn.
 
 The reviewed revision includes the `mainsequence_examples` namespace suffix in
 physical table names. That is valid only when the intended migration target is
@@ -315,14 +302,15 @@ reviewed for accidental namespace suffix changes before they are accepted.
 
 ## Implementation Tasks
 
-- [ ] Add regression tests that reproduce the current bad autogenerate inputs:
+- [x] Add regression tests that reproduce the current bad autogenerate inputs:
       explicit `public` metadata, reflected/default-schema comparison, unnamed
       FKs, and duplicate/overlong index names.
-- [x] Add `src/msm/schema_names.py` or an equivalent independent naming module
-      for table, FK, PK, UQ, CK, and index names.
-- [x] Move the current table-name normalization/truncation logic out of
-      `src/msm/base.py` into the naming module, leaving compatibility imports
-      in `msm.base` if public callers already import `markets_table_name`.
+- [x] Use SDK naming helpers from `mainsequence.meta_tables` for table, FK,
+      PK, UQ, CK, and index names instead of carrying a duplicate
+      `msm.schema_names` module.
+- [x] Keep table-name normalization/truncation logic out of `src/msm/base.py`;
+      `msm.base` imports the SDK helper and only supplies the markets app
+      prefix and namespace suffix.
 - [x] Implement bounded-name generation that always stays within
       `POSTGRES_IDENTIFIER_MAX_LENGTH` and uses a deterministic digest from the
       full semantic payload.
@@ -342,14 +330,14 @@ reviewed for accidental namespace suffix changes before they are accepted.
 - [x] Review the generated `src/msm/migrations/versions/0001_migration.py`
       baseline for deterministic PK/FK/CK/index names and absence of standalone
       FK drop/create churn.
-- [ ] Verify Alembic autogenerate no longer emits FK drop/create pairs for
+- [x] Verify Alembic autogenerate no longer emits FK drop/create pairs for
       unchanged FKs in `public`.
-- [ ] Verify Alembic autogenerate no longer emits index churn for unchanged
+- [x] Verify Alembic autogenerate no longer emits index churn for unchanged
       single-column/composite index pairs.
-- [ ] Add a focused test or scripted check that upgrades to head, runs
+- [x] Add a focused test or scripted check that upgrades to head, runs
       autogenerate again without model changes, and confirms no schema
       operations are produced.
-- [ ] Resolve the git/index state for
+- [x] Resolve the git/index state for
       `src/msm/migrations/versions/0001_migration.py` so the reviewed generated
       file is tracked normally instead of appearing as a staged delete plus an
       untracked replacement.

@@ -564,8 +564,9 @@ DataNode storage now registers through the same ADR 0015 catalog bootstrap as
 domain MetaTables: the 13 msm storage classes are appended to
 `markets_sqlalchemy_models()` and the 3 pricing storage classes to
 `pricing_sqlalchemy_models()`, each after their FK target MetaTables, so
-`start_engine()` / `create_pricing_schemas()` register them in dependency order.
-Catalog rows keep identifier-keyed backend references. Runtime row operations
+`start_engine()` / `attach_pricing_schemas()` attach them in dependency order
+after SDK-managed migration registration. Catalog rows keep table-name-keyed
+backend references. Runtime row operations
 read operation-scope UIDs from the bound model classes. FK declarations are
 SQLAlchemy `ForeignKey(...)` columns, so Alembic owns the physical FK DDL.
 

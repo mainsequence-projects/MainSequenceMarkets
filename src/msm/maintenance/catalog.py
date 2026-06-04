@@ -17,7 +17,7 @@ from msm.models.registration import (
     is_time_index_meta_table_model,
 )
 from msm.repositories.base import MarketsRepositoryContext
-from msm.repositories.crud import search_model, upsert_model
+from msm.repositories.crud import bulk_upsert_model, search_model, upsert_model
 
 from .models import (
     MarketsMetaTableCatalogRow,
@@ -190,16 +190,15 @@ def refresh_markets_catalog_from_registered_metatables(
         catalog_meta_table=registered_catalog_meta_table,
         reserved_policy=context.reserved_policy,
     )
-    rows: list[dict[str, Any]] = []
-    for model, registered_meta_table in registered_by_model.items():
-        rows.append(
-            upsert_catalog_row(
-                catalog_context,
-                model=model,
-                meta_table=registered_meta_table,
-            )
+    catalog_rows = [
+        MarketsMetaTableCatalogRow.from_meta_table(
+            model=model,
+            meta_table=registered_meta_table,
+            sdk_version=_sdk_version(),
         )
-    return rows
+        for model, registered_meta_table in registered_by_model.items()
+    ]
+    return upsert_catalog_rows(catalog_context, rows=catalog_rows)
 
 
 def find_catalog_row(
@@ -451,6 +450,25 @@ def upsert_catalog_row(
     return _upsert_catalog_payload(context, row.to_payload())
 
 
+def upsert_catalog_rows(
+    context: MarketsRepositoryContext,
+    *,
+    rows: Sequence[MarketsMetaTableCatalogRow],
+) -> list[dict[str, Any]]:
+    payloads = [row.to_payload() for row in rows]
+    if not payloads:
+        return []
+    result = bulk_upsert_model(
+        context,
+        model=MarketsMetaTableCatalogTable,
+        values=payloads,
+        conflict_columns=[
+            "table_name",
+        ],
+    )
+    return _operation_result_rows(result)
+
+
 def _upsert_catalog_payload(
     context: MarketsRepositoryContext,
     payload: Mapping[str, Any],
@@ -589,4 +607,5 @@ __all__ = [
     "resolve_catalog_table",
     "resolve_catalog_meta_tables",
     "upsert_catalog_row",
+    "upsert_catalog_rows",
 ]
