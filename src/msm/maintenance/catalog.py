@@ -167,17 +167,6 @@ def catalog_repository_context(
     )
 
 
-def finalized_catalog_repository_context(
-    *,
-    finalized_catalog_meta_table: ManagedMetaTableFinalizeTableResult,
-    reserved_policy: str | None = None,
-) -> MarketsRepositoryContext:
-    _bind_model_meta_table(MarketsMetaTableCatalogTable, finalized_catalog_meta_table)
-    return MarketsRepositoryContext(
-        reserved_policy=reserved_policy,
-    )
-
-
 def refresh_markets_catalog_from_registered_metatables(
     context: AlembicMetaTableCatalogRefreshContext,
 ) -> list[dict[str, Any]]:
@@ -186,33 +175,33 @@ def refresh_markets_catalog_from_registered_metatables(
     from msm.migrations.registry import metatable_provider_models
 
     models = metatable_provider_models()
-    finalized_meta_tables = list(context.registered_metatables)
-    if len(finalized_meta_tables) != len(models):
+    registered_meta_tables = list(context.registered_metatables)
+    if len(registered_meta_tables) != len(models):
         raise CatalogBootstrapError(
             "SDK provider registered a different number of MetaTables than the "
-            f"markets migration model registry. Registered={len(finalized_meta_tables)}, "
+            f"markets migration model registry. Registered={len(registered_meta_tables)}, "
             f"expected={len(models)}."
         )
 
-    finalized_by_model = dict(zip(models, finalized_meta_tables, strict=True))
-    finalized_catalog_meta_table = finalized_by_model.get(MarketsMetaTableCatalogTable)
-    if finalized_catalog_meta_table is None:
+    registered_by_model = dict(zip(models, registered_meta_tables, strict=True))
+    registered_catalog_meta_table = registered_by_model.get(MarketsMetaTableCatalogTable)
+    if registered_catalog_meta_table is None:
         raise CatalogBootstrapError(
             "The markets migration provider must include MarketsMetaTableCatalogTable "
             "so catalog rows can be refreshed after registration."
         )
 
-    catalog_context = finalized_catalog_repository_context(
-        finalized_catalog_meta_table=finalized_catalog_meta_table,
+    catalog_context = catalog_repository_context(
+        catalog_meta_table=registered_catalog_meta_table,
         reserved_policy=context.reserved_policy,
     )
     rows: list[dict[str, Any]] = []
-    for model, finalized_meta_table in finalized_by_model.items():
+    for model, registered_meta_table in registered_by_model.items():
         rows.append(
-            upsert_catalog_row_from_finalized_meta_table(
+            upsert_catalog_row(
                 catalog_context,
                 model=model,
-                finalized_meta_table=finalized_meta_table,
+                meta_table=registered_meta_table,
             )
         )
     return rows
@@ -437,22 +426,6 @@ def upsert_catalog_row(
     return _upsert_catalog_payload(context, row.to_payload())
 
 
-def upsert_catalog_row_from_finalized_meta_table(
-    context: MarketsRepositoryContext,
-    *,
-    model: type[MarketsBase],
-    finalized_meta_table: ManagedMetaTableFinalizeTableResult,
-    contract_hash: str | None = None,
-) -> dict[str, Any]:
-    row = MarketsMetaTableCatalogRow.from_finalized_meta_table(
-        model=model,
-        finalized_meta_table=finalized_meta_table,
-        contract_hash=contract_hash,
-        sdk_version=_sdk_version(),
-    )
-    return _upsert_catalog_payload(context, row.to_payload())
-
-
 def _upsert_catalog_payload(
     context: MarketsRepositoryContext,
     payload: Mapping[str, Any],
@@ -601,6 +574,5 @@ __all__ = [
     "resolve_catalog_table",
     "resolve_catalog_meta_tables",
     "upsert_catalog_row",
-    "upsert_catalog_row_from_finalized_meta_table",
     "validate_catalog_contract",
 ]
