@@ -258,21 +258,21 @@ the database to define scope.
 For each migration revision, the Python migration module's `AFFECTED_MODELS`
 field is the authoritative list of managed SQLAlchemy models touched by that
 revision. The runner converts those models to SDK `affected_tables` entries by
-using the same identifier/namespace logic as the catalog.
+using the model's SQLAlchemy table name and namespace.
 
 The generated SDK payload should contain entries shaped like:
 
 ```json
 [
-  {"identifier": "Asset", "namespace": "msm"},
-  {"identifier": "AssetType", "namespace": "msm"}
+  {"table_name": "ms_markets__asset", "namespace": "msm"},
+  {"table_name": "ms_markets__assettype", "namespace": "msm"}
 ]
 ```
 
 Optional `meta_table_uid` and `physical_table_name` values are hints for
 adoption or repair-style migrations. They are not the primary identity. The
-primary identity is the logical MetaTable identifier used by the package catalog
-and SDK migration registry.
+primary identity is the SQLAlchemy table name used by the package catalog and
+SDK migration registry.
 
 `msm migrations current` should determine its table scope as follows:
 

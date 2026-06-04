@@ -47,11 +47,13 @@ def resolve_markets_meta_table_model(model: MarketsModelSelector) -> type[Market
 
     model_key = str(model)
     for candidate in markets_meta_table_models():
+        identifier = candidate.__metatable_identifier__
         keys = {
             candidate.__name__,
-            str(getattr(candidate, "__markets_base_identifier__", "")),
-            str(getattr(candidate, "__metatable_identifier__", "")),
+            identifier,
+            identifier.rsplit(".", 1)[-1],
             markets_meta_table_identifier(candidate),
+            candidate.__table__.name,
         }
         if model_key in keys:
             return candidate
@@ -89,6 +91,7 @@ def _dependency_ordered_markets_meta_table_models(
     requested_models: Sequence[type[MarketsBase]],
 ) -> list[type[MarketsBase]]:
     built_in_models = markets_meta_table_models()
+    candidate_models = _dependency_candidate_models(built_in_models, requested_models)
     built_in_order = {model: index for index, model in enumerate(built_in_models)}
     caller_order = _model_order(requested_models)
     discovery_order: dict[type[MarketsBase], int] = {}
@@ -97,7 +100,10 @@ def _dependency_ordered_markets_meta_table_models(
         if model in discovery_order:
             return
         discovery_order[model] = len(discovery_order)
-        for dependency in _metatable_foreign_key_target_models(model):
+        for dependency in _metatable_foreign_key_target_models(
+            model,
+            candidate_models=candidate_models,
+        ):
             collect(dependency)
 
     for model in requested_models:
@@ -109,7 +115,10 @@ def _dependency_ordered_markets_meta_table_models(
     dependencies = {
         model: {
             dependency
-            for dependency in _metatable_foreign_key_target_models(model)
+            for dependency in _metatable_foreign_key_target_models(
+                model,
+                candidate_models=candidate_models,
+            )
             if dependency in discovery_order
         }
         for model in resolved_models
@@ -165,6 +174,31 @@ def _validate_unique_markets_meta_table_identifiers(models: Sequence[type[Market
         models_by_identifier[identifier] = model
 
 
+def _dependency_candidate_models(
+    *model_groups: Sequence[type[MarketsBase]],
+) -> list[type[MarketsBase]]:
+    candidates: list[type[MarketsBase]] = []
+    seen: set[type[MarketsBase]] = set()
+    for model in [
+        *_loaded_markets_meta_table_models(),
+        *(model for group in model_groups for model in group),
+    ]:
+        if model in seen:
+            continue
+        seen.add(model)
+        candidates.append(model)
+    return candidates
+
+
+def _loaded_markets_meta_table_models() -> list[type[MarketsBase]]:
+    models: list[type[MarketsBase]] = []
+    for mapper in MarketsBase.registry.mappers:
+        model = mapper.class_
+        if isinstance(model, type) and issubclass(model, MarketsBase):
+            models.append(model)
+    return models
+
+
 def _dependency_cycle_message(
     remaining_models: Sequence[type[MarketsBase]],
     dependencies: Mapping[type[MarketsBase], set[type[MarketsBase]]],
@@ -198,14 +232,15 @@ def _dependency_cycle_message(
 
 
 def markets_foreign_key_target_identifiers(model: type[MarketsBase]) -> list[str]:
+    candidate_models = _dependency_candidate_models(markets_meta_table_models(), [model])
     targets: set[str] = set()
     for foreign_key_constraint in model.__table__.foreign_key_constraints:
         for element in foreign_key_constraint.elements:
-            target_model = _metatable_foreign_key_target_model(element)
-            if target_model is not None:
-                targets.add(markets_meta_table_identifier(target_model))
-                continue
-            targets.add(markets_meta_table_identifier(element.column.table))
+            target_model = _metatable_foreign_key_target_model(
+                element,
+                candidate_models=candidate_models,
+            )
+            targets.add(markets_meta_table_identifier(target_model))
     return sorted(targets)
 
 
@@ -250,9 +285,10 @@ def build_markets_registration_requests(
 ) -> list[MetaTableRegistrationRequest]:
     """Build MetaTable registration requests for all markets SQLAlchemy models.
 
-    Platform-managed foreign keys are declared with SDK `MetaTableForeignKey`
-    targets. Explicit target UIDs are needed only when constructing external
-    registered contracts outside the SDK-managed lifecycle.
+    Platform-managed foreign keys are declared with normal SQLAlchemy
+    ``ForeignKey`` targets. Explicit target UIDs are needed only when
+    constructing external registered contracts outside the SDK-managed
+    lifecycle.
     """
 
     resolved_models = resolve_markets_meta_table_models(models)
@@ -445,49 +481,60 @@ def _target_meta_tables_from_bound_models(
     return target_meta_tables
 
 
-def _metatable_foreign_key_target_model(element: Any) -> type[MarketsBase] | None:
-    info = getattr(element, "info", None)
-    if not isinstance(info, Mapping):
-        return None
-    metadata = info.get("mainsequence_metatable_foreign_key")
-    if not isinstance(metadata, Mapping):
-        return None
-    target_model = metadata.get("target_model")
-    if isinstance(target_model, type):
-        return target_model
-    return None
+def _metatable_foreign_key_target_model(
+    element: Any,
+    *,
+    candidate_models: Sequence[type[MarketsBase]],
+) -> type[MarketsBase]:
+    target_table = element.column.table
+    models_by_table = _models_by_table_fullname(candidate_models)
+    target_model = models_by_table.get(str(target_table.fullname))
+    if target_model is None:
+        raise ValueError(
+            "Markets MetaTable foreign key target is not in the loaded provider model graph: "
+            f"{target_table.fullname!r}."
+        )
+    return target_model
 
 
-def _metatable_foreign_key_target_models(model: type[MarketsBase]) -> list[type[MarketsBase]]:
+def _metatable_foreign_key_target_models(
+    model: type[MarketsBase],
+    *,
+    candidate_models: Sequence[type[MarketsBase]],
+) -> list[type[MarketsBase]]:
     targets: list[type[MarketsBase]] = []
     seen: set[type[MarketsBase]] = set()
     for foreign_key_constraint in model.__table__.foreign_key_constraints:
         for element in foreign_key_constraint.elements:
-            target_model = _metatable_foreign_key_target_model(element)
-            if (
-                target_model is None
-                or not issubclass(target_model, MarketsBase)
-                or target_model in seen
-            ):
+            target_model = _metatable_foreign_key_target_model(
+                element,
+                candidate_models=candidate_models,
+            )
+            if target_model in seen:
                 continue
             seen.add(target_model)
             targets.append(target_model)
     return targets
 
 
-def _meta_table_uid(value: Any) -> str:
-    uid = getattr(value, "uid", value)
-    if uid in (None, ""):
-        raise ValueError("Registered MetaTable objects must expose a non-empty uid.")
-    return str(uid)
+def _models_by_table_fullname(
+    models: Sequence[type[MarketsBase]],
+) -> dict[str, type[MarketsBase]]:
+    models_by_table: dict[str, type[MarketsBase]] = {}
+    for model in models:
+        table_fullname = str(model.__table__.fullname)
+        existing = models_by_table.get(table_fullname)
+        if existing is not None and existing is not model:
+            raise ValueError(
+                "Duplicate markets SQLAlchemy table name "
+                f"{table_fullname!r} for {existing.__name__} and {model.__name__}."
+            )
+        models_by_table[table_fullname] = model
+    return models_by_table
 
 
 def _bind_model_meta_table(model: type[MarketsBase], meta_table: MetaTable) -> None:
-    if not isinstance(meta_table, MetaTable):
-        return
-    bind = getattr(model, "_bind_meta_table", None)
-    if callable(bind):
-        bind(meta_table)
+    model._bind_meta_table(meta_table)
 
 
 __all__ = [

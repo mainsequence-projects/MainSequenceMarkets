@@ -71,11 +71,13 @@ def resolve_pricing_meta_table_model(model: PricingModelSelector) -> type[Market
 
     model_key = str(model)
     for candidate in pricing_sqlalchemy_models():
+        identifier = candidate.__metatable_identifier__
         keys = {
             candidate.__name__,
-            str(getattr(candidate, "__markets_base_identifier__", "")),
-            str(getattr(candidate, "__metatable_identifier__", "")),
+            identifier,
+            identifier.rsplit(".", 1)[-1],
             pricing_meta_table_identifier(candidate),
+            candidate.__table__.name,
         }
         if model_key in keys:
             return candidate

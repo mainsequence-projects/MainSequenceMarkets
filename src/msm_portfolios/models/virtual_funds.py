@@ -3,15 +3,13 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import DateTime, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_index_name,
     markets_table_args,
     new_markets_uid,
 )
@@ -33,16 +31,16 @@ class VirtualFundTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "unique_identifier", unique=True),
+            None,
             "unique_identifier",
             unique=True,
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "account_uid"),
+            None,
             "account_uid",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "target_portfolio_uid"),
+            None,
             "target_portfolio_uid",
         ),
     )
@@ -66,9 +64,8 @@ class VirtualFundTable(MarketsMetaTableMixin, MarketsBase):
     )
     account_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AccountTable,
-            column="uid",
+        ForeignKey(
+            f"{AccountTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -79,9 +76,8 @@ class VirtualFundTable(MarketsMetaTableMixin, MarketsBase):
     )
     target_portfolio_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            PortfolioTable,
-            column="uid",
+        ForeignKey(
+            f"{PortfolioTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -103,20 +99,15 @@ class VirtualFundHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "virtual_fund_uid"),
+            None,
             "virtual_fund_uid",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "source_account_holdings_set_uid"),
+            None,
             "source_account_holdings_set_uid",
         ),
         Index(
-            markets_index_name(
-                __metatable_identifier__,
-                "virtual_fund_uid",
-                "source_account_holdings_set_uid",
-                unique=True,
-            ),
+            None,
             "virtual_fund_uid",
             "source_account_holdings_set_uid",
             unique=True,
@@ -134,9 +125,8 @@ class VirtualFundHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
     )
     virtual_fund_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            VirtualFundTable,
-            column="uid",
+        ForeignKey(
+            f"{VirtualFundTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -147,9 +137,8 @@ class VirtualFundHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
     )
     source_account_holdings_set_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AccountHoldingsSetTable,
-            column="uid",
+        ForeignKey(
+            f"{AccountHoldingsSetTable.__table__.fullname}.uid",
             ondelete="RESTRICT",
         ),
         nullable=False,

@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import uuid
 
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import Index, String
+from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_index_name,
     markets_table_args,
 )
 from msm.models import IndexTable
@@ -28,20 +26,19 @@ class IndexConventionDetailsTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "index_family"),
+            None,
             "index_family",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "source"),
+            None,
             "source",
         ),
     )
 
     index_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            IndexTable,
-            column="uid",
+        ForeignKey(
+            f"{IndexTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         primary_key=True,

@@ -17,7 +17,7 @@ The provider is exported from `msm.migrations:migration` and contains:
   `refresh_markets_catalog_from_registered_metatables`.
 
 `MarketsAlembicVersion` stores Alembic state in
-`public.msm_alembic_version`. This package-specific version table avoids
+`public.ms_markets__alembic_version`. This package-specific version table avoids
 collisions in databases that host multiple independent providers. Downstream
 projects that inherit from ms-markets should use this same provider and version
 table when they are extending the ms-markets revision graph.

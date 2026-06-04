@@ -18,8 +18,15 @@ import datetime
 import uuid
 from typing import Any, ClassVar
 
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, SmallInteger, String
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    SmallInteger,
+    String,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
@@ -38,7 +45,7 @@ PORTFOLIO_INDEX_IDENTIFIER_DIMENSION = "portfolio_index_identifier"
 class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Executed portfolio weights keyed by portfolio index and held asset."""
 
-    __markets_base_identifier__: ClassVar[str] = "PortfolioWeightsTS"
+    __metatable_identifier__ = "PortfolioWeightsTS"
     __metatable_description__ = (
         "Timestamped portfolio weight storage keyed by time_index, "
         "portfolio_index_identifier, and asset_identifier. Stores "
@@ -134,7 +141,7 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class SignalWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Raw signal weights keyed by signal UID and signaled asset."""
 
-    __markets_base_identifier__: ClassVar[str] = "SignalWeightsTS"
+    __metatable_identifier__ = "SignalWeightsTS"
     __metatable_description__ = (
         "Timestamped signal weight storage keyed by (time_index, signal_uid, "
         "asset_identifier). Stores raw signal allocation weights for signaled "
@@ -183,7 +190,7 @@ class SignalWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Canonical portfolio value series keyed by portfolio unique identifier."""
 
-    __markets_base_identifier__: ClassVar[str] = "PortfoliosTS"
+    __metatable_identifier__ = "PortfoliosTS"
     __metatable_description__ = (
         "Timestamped portfolio value storage keyed by (time_index, "
         "portfolio_identifier). Stores close, return, calculated close, and close "
@@ -243,7 +250,7 @@ class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Interpolated/upsampled OHLCV price bars keyed by asset unique identifier."""
 
-    __markets_base_identifier__: ClassVar[str] = "InterpolatedPricesTS"
+    __metatable_identifier__ = "InterpolatedPricesTS"
     __metatable_description__ = (
         "Timestamped interpolated-price storage keyed by (time_index, "
         "asset_identifier). Stores OHLCV bars, VWAP, trade count, and interpolation "
@@ -327,7 +334,7 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class VirtualFundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Virtual-fund allocations keyed by virtual fund UID and held asset."""
 
-    __markets_base_identifier__: ClassVar[str] = "VirtualFundHoldingsTS"
+    __metatable_identifier__ = "VirtualFundHoldingsTS"
     __metatable_description__ = (
         "Timestamped virtual-fund allocation storage keyed by (time_index, "
         "virtual_fund_uid, asset_identifier). Each row is a positive allocated "
@@ -360,9 +367,8 @@ class VirtualFundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     virtual_fund_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            VirtualFundTable,
-            column="uid",
+        ForeignKey(
+            f"{VirtualFundTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -376,9 +382,8 @@ class VirtualFundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     asset_identifier: Mapped[str] = mapped_column(
         String(255),
-        MetaTableForeignKey(
-            AssetTable,
-            column="unique_identifier",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -389,9 +394,8 @@ class VirtualFundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     virtual_fund_holdings_set_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            VirtualFundHoldingsSetTable,
-            column="uid",
+        ForeignKey(
+            f"{VirtualFundHoldingsSetTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -402,9 +406,8 @@ class VirtualFundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     source_account_holdings_set_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AccountHoldingsSetTable,
-            column="uid",
+        ForeignKey(
+            f"{AccountHoldingsSetTable.__table__.fullname}.uid",
             ondelete="RESTRICT",
         ),
         nullable=False,

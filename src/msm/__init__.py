@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from importlib.metadata import version as _package_version
 
-from msm.bootstrap import get_runtime, start_engine
+from msm.bootstrap import start_engine
 from msm.constants import (
     ASSET_TYPE_BOND,
     ASSET_TYPE_CRYPTO,
@@ -60,6 +60,5 @@ __all__ = [
     "models",
     "portfolios",
     "services",
-    "get_runtime",
     "start_engine",
 ]

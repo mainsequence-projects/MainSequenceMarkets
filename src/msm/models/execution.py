@@ -3,20 +3,19 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import DateTime, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_index_name,
     markets_table_args,
     new_markets_uid,
 )
 
 from .accounts import AccountTable
+
 
 class OrderManagerTable(MarketsMetaTableMixin, MarketsBase):
     """Order-manager or rebalance execution batch row."""
@@ -30,16 +29,16 @@ class OrderManagerTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "unique_identifier", unique=True),
+            None,
             "unique_identifier",
             unique=True,
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "target_account_uid"),
+            None,
             "target_account_uid",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "status"),
+            None,
             "status",
         ),
     )
@@ -63,9 +62,8 @@ class OrderManagerTable(MarketsMetaTableMixin, MarketsBase):
     )
     target_account_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AccountTable,
-            column="uid",
+        ForeignKey(
+            f"{AccountTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,

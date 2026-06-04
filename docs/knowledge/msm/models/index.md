@@ -78,11 +78,13 @@ rows.
 Every model returned by `markets_sqlalchemy_models()` must be registerable as a
 MetaTable in both platform-managed and external-registered modes.
 
-Platform-managed models inherit `MarketsMetaTableMixin`, which delegates table
-name derivation to the SDK `PlatformManagedMetaTable` mixin. Model classes should
-declare `__metatable_identifier__`, `__metatable_description__`, and SQLAlchemy
-`__table_args__`, but should not hand-write `__tablename__`; the physical name
-is the SDK configured storage hash for the resolved table contract.
+Platform-managed models inherit `MarketsMetaTableMixin`, which assigns the
+physical SQLAlchemy table name through the package naming convention. Model
+classes should declare `__metatable_identifier__`, `__metatable_description__`,
+and SQLAlchemy `__table_args__`, but should not hand-write `__tablename__`.
+The physical name is `ms_markets__<lowercase-concept>` and gains an
+`MSM_AUTO_REGISTER_NAMESPACE` suffix when that environment variable is set
+before model import.
 
 `__metatable_description__` is required on every concrete markets MetaTable,
 including `PlatformTimeIndexMetaData` storage classes used by DataNodes. The
@@ -111,9 +113,9 @@ When adding a built-in library model:
 
 Project-local extension models do not need to modify `markets_sqlalchemy_models()`.
 Pass the SQLAlchemy model class directly to
-`msm.start_engine(models=[MyExtensionTable])`; bootstrap expands
-`MetaTableForeignKey(...)` dependencies and registers the model through the
-shared catalog path.
+`msm.start_engine(models=[MyExtensionTable])`; bootstrap expands SQLAlchemy
+`ForeignKey(...)` dependencies and attaches the model through the shared catalog
+path.
 
 ## Related Concepts
 

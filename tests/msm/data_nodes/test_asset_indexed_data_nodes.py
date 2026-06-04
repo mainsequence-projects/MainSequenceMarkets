@@ -168,9 +168,7 @@ def test_timestamped_storage_identifiers_use_camel_case_ts_suffix() -> None:
 def test_timestamped_asset_nodes_bind_their_storage_class(node_cls, storage_cls) -> None:
     assert node_cls._required_storage_table() is storage_cls
     assert storage_cls.__index_names__ == ["time_index", ASSET_IDENTIFIER_DIMENSION]
-    assert ASSET_IDENTIFIER_DIMENSION in {
-        column.name for column in storage_cls.__table__.columns
-    }
+    assert ASSET_IDENTIFIER_DIMENSION in {column.name for column in storage_cls.__table__.columns}
 
 
 @pytest.mark.parametrize(
@@ -222,9 +220,8 @@ def test_timestamped_asset_storage_has_asset_foreign_key(storage_cls) -> None:
 
     assert markets_foreign_key_target_identifiers(storage_cls) == [asset_identifier]
     assert any(
-        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AssetTable
-        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
-        == "unique_identifier"
+        foreign_key.column is AssetTable.__table__.c.unique_identifier
+        and foreign_key.ondelete == "RESTRICT"
         for foreign_key in fk_column.foreign_keys
     )
 

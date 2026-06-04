@@ -3,15 +3,13 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import DateTime, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_index_name,
     markets_table_args,
 )
 from msm.models.assets import AssetTable
@@ -30,20 +28,19 @@ class AssetCurrentPricingDetailsTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "instrument_type"),
+            None,
             "instrument_type",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "pricing_details_date"),
+            None,
             "pricing_details_date",
         ),
     )
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AssetTable,
-            column="uid",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         primary_key=True,

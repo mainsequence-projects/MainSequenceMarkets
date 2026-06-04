@@ -4,13 +4,15 @@ from importlib import resources
 from pathlib import Path
 from types import SimpleNamespace
 
+from mainsequence.client.metatables import ManagedMetaTableFinalizeTableResult
 from mainsequence.meta_tables import PlatformManagedMetaTable, PlatformTimeIndexMetaData
 from mainsequence.meta_tables.migrations import (
+    AlembicMetaTableCatalogRefreshContext,
     AlembicMetaTableMigration,
     load_alembic_metatable_migration_provider,
 )
 
-from msm.base import MARKETS_SCHEMA, MarketsBase
+from msm.base import MARKETS_SCHEMA, MARKETS_TABLE_APP, MarketsBase, markets_table_name
 from msm.maintenance.catalog import SDK_MIGRATION_UPGRADE_COMMAND
 from msm.maintenance.models import MarketsMetaTableCatalogTable
 from msm.migrations import MarketsAlembicVersion, migration
@@ -28,9 +30,11 @@ def test_migration_provider_is_single_sdk_alembic_provider() -> None:
     assert MarketsAlembicVersion.__metatable_identifier__ == markets_identifier(
         "msm.alembic_version"
     )
-    assert migration.version_table == "msm_alembic_version"
+    assert migration.version_table == markets_table_name(MARKETS_TABLE_APP, "alembic_version")
     assert migration.version_table_schema == MARKETS_SCHEMA
-    assert migration.alembic_version_table == f"{MARKETS_SCHEMA}.msm_alembic_version"
+    assert migration.alembic_version_table == (
+        f"{MARKETS_SCHEMA}.{markets_table_name(MARKETS_TABLE_APP, 'alembic_version')}"
+    )
     assert migration.after_register_metatables is not None
     assert (
         migration.after_register_metatables.__name__
@@ -106,11 +110,17 @@ def test_refresh_catalog_hook_upserts_registered_metatables(monkeypatch) -> None
     assert refresh_hook is not None
     models = metatable_provider_models()
     metatables = [
-        SimpleNamespace(
-            uid=f"meta-table-{index}",
-            identifier=model.__metatable_identifier__,
-            namespace=getattr(model, "__metatable_namespace__", None),
-            physical_table_name=f"physical_table_{index}",
+        ManagedMetaTableFinalizeTableResult(
+            meta_table_uid=f"meta-table-{index}",
+            identifier=model.__table__.name,
+            storage_hash=f"storage_hash_{index}",
+            physical_table_name=model.__table__.name,
+            previous_provisioning_status="reserved",
+            provisioning_status="active",
+            table_kind="relational",
+            time_indexed=False,
+            finalized=True,
+            physical_table_exists=True,
         )
         for index, model in enumerate(models)
     ]
@@ -118,31 +128,49 @@ def test_refresh_catalog_hook_upserts_registered_metatables(monkeypatch) -> None
 
     monkeypatch.setitem(
         refresh_hook.__globals__,
-        "catalog_repository_context",
-        lambda *, catalog_meta_table, timeout=None: SimpleNamespace(
-            catalog_meta_table=catalog_meta_table,
-            timeout=timeout,
+        "finalized_catalog_repository_context",
+        lambda *, finalized_catalog_meta_table, reserved_policy=None: SimpleNamespace(
+            finalized_catalog_meta_table=finalized_catalog_meta_table,
+            reserved_policy=reserved_policy,
         ),
     )
 
-    def fake_upsert_catalog_row(context, *, model, meta_table, contract_hash=None):
+    def fake_upsert_catalog_row_from_finalized_meta_table(
+        context,
+        *,
+        model,
+        finalized_meta_table,
+        contract_hash=None,
+    ):
         upsert = {
             "context": context,
             "model": model,
-            "meta_table": meta_table,
+            "finalized_meta_table": finalized_meta_table,
             "contract_hash": contract_hash,
         }
         upserts.append(upsert)
         return {
-            "identifier": model.__metatable_identifier__,
-            "meta_table_uid": meta_table.uid,
+            "table_name": model.__table__.name,
+            "meta_table_uid": finalized_meta_table.meta_table_uid,
         }
 
-    monkeypatch.setitem(refresh_hook.__globals__, "upsert_catalog_row", fake_upsert_catalog_row)
+    monkeypatch.setitem(
+        refresh_hook.__globals__,
+        "upsert_catalog_row_from_finalized_meta_table",
+        fake_upsert_catalog_row_from_finalized_meta_table,
+    )
 
-    rows = refresh_hook(metatables)
+    rows = refresh_hook(
+        AlembicMetaTableCatalogRefreshContext(
+            package="msm",
+            migration_namespace=markets_namespace(),
+            registered_metatables=metatables,
+            reserved_policy="reconcile",
+        )
+    )
 
     assert len(rows) == len(models)
     assert upserts[0]["model"] is MarketsMetaTableCatalogTable
-    assert upserts[0]["meta_table"] is metatables[0]
-    assert rows[0]["identifier"] == MarketsMetaTableCatalogTable.__metatable_identifier__
+    assert upserts[0]["finalized_meta_table"] is metatables[0]
+    assert upserts[0]["context"].reserved_policy == "reconcile"
+    assert rows[0]["table_name"] == MarketsMetaTableCatalogTable.__table__.name

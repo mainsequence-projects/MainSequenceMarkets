@@ -65,10 +65,12 @@ def _resolve_portfolio_model(model: MarketsModelSelector) -> MarketsModelSelecto
 
     model_key = str(model)
     for candidate in portfolio_sqlalchemy_models():
+        identifier = candidate.__metatable_identifier__
         keys = {
             candidate.__name__,
-            str(getattr(candidate, "__markets_base_identifier__", "")),
-            str(getattr(candidate, "__metatable_identifier__", "")),
+            identifier,
+            identifier.rsplit(".", 1)[-1],
+            candidate.__table__.name,
         }
         if model_key in keys:
             return candidate

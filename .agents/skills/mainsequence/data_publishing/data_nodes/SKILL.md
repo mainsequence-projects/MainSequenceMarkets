@@ -1,6 +1,6 @@
 ---
 name: mainsequence-data-nodes
-description: Use this skill when the task is about producing, changing, validating, or reviewing Main Sequence DataNode update processes. This skill owns DataNode update configuration, dependencies, update logic, hashing, namespaces, and validation against a PlatformTimeIndexMetaData storage contract. It does not own generic MetaTable governance, API route contracts, scheduling, sharing policy, or storage registration internals.
+description: Use this skill when the task is about producing, changing, validating, or reviewing Main Sequence DataNode update processes. This skill owns DataNode update configuration, dependencies, update logic, hashing, namespaces, and validation against a PlatformTimeIndexMetaData storage contract. It does not own generic MetaTable governance, Alembic migration execution, API route contracts, scheduling, sharing policy, or storage registration internals.
 ---
 
 # Main Sequence Data Nodes
@@ -10,7 +10,8 @@ description: Use this skill when the task is about producing, changing, validati
 Use this skill when the task changes a DataNode producer.
 
 A DataNode is an update process. It is not the canonical storage model. Storage
-is defined by a `PlatformTimeIndexMetaData` SQLAlchemy model.
+is defined by a `PlatformTimeIndexMetaData` SQLAlchemy model. Physical schema
+evolution is handled with Alembic, not a DataNode storage subclass.
 
 Canonical workflow:
 
@@ -76,7 +77,7 @@ If the task depends on one of those areas, route it explicitly instead of guessi
 Before changing code, collect or infer:
 
 - dataset meaning
-- `PlatformTimeIndexMetaData` output storage class or the class to create
+- `PlatformTimeIndexMetaData` output storage class, or the class to create
 - expected time index and identity index shape
 - expected columns and dtypes from the storage class
 - upstream dependencies
@@ -98,7 +99,7 @@ For every non-trivial DataNode task, make these decisions explicitly:
 
 ## Build Rules
 
-### 1. Treat Storage As A PlatformTimeIndexMetaData Contract
+### 1. Treat Storage As A TimeIndex MetaTable Contract
 
 The following are storage-contract decisions:
 
@@ -147,7 +148,7 @@ class Base(DeclarativeBase):
 
 class PricesTable(PlatformTimeIndexMetaData, Base):
     __metatable_namespace__ = "<domain_namespace>"
-    __metatable_identifier__ = "<table_identifier>"
+    __metatable_identifier__ = "<project_name>.<table_identifier>"
     __metatable_extra_hash_components__ = {"storage_name": "<stable_storage_name>"}
     __metatable_description__ = (
         "Daily close prices keyed by asset unique identifier for portfolio and "
@@ -181,20 +182,14 @@ class PricesTable(PlatformTimeIndexMetaData, Base):
     )
 ```
 
-Storage registration is inferred from the class metadata and active Main
-Sequence project/session. The DataNode constructor ensures the output
-`storage_table` is registered when needed. You may still call it explicitly
-during bootstrap when code needs the returned metadata object:
+Storage registration is migration-first. Add the storage model to the
+MetaTable migration provider and run `mainsequence migrations upgrade --provider
+... head`. Do not call `PricesTable.register()` directly and do not rely on
+DataNode construction to register storage tables.
 
-```python
-PricesTable.register()
-```
-
-`PlatformTimeIndexMetaData.register()` is the storage lifecycle path. Treat it
-as an idempotent get-or-create operation: the platform returns the registered
-metadata and UID, and the SDK records that metadata on the class. Do not manually
-attach an existing UID, reconstruct a generic `MetaTable`, or use manual bind
-helpers as an authoring step.
+`PlatformTimeIndexMetaData.register()` remains SDK plumbing for the migration
+workflow. Do not manually attach an existing UID, reconstruct a generic
+`MetaTable`, or use manual bind helpers as an authoring step.
 
 ### 2. Keep DataNode As Update Logic
 
@@ -205,17 +200,16 @@ The DataNode constructor should accept:
 - optional `hash_namespace`
 
 The constructor `storage_table` is the output storage contract. Keep it out of
-`DataNodeConfiguration`. Do not pre-register this output storage class just to
-construct the node; `DataNode` and `PersistManager` call the SDK registration
-lifecycle automatically when the class is not yet bound.
+`DataNodeConfiguration`. The storage class must already be registered by the
+migration workflow before the node is constructed or run.
 
 If the DataNode needs to select another DataNode's storage table as a
 dependency, put that dependency storage reference in the config as
 `type[PlatformTimeIndexMetaData]`. Do not add an extra constructor argument for
 dependency storage tables. Config values of this type are hashed by the bound
-`TimeIndexMetaData.uid` from `StorageClass.__time_index_metadata__`; if the
-class is not yet bound, the config serializer calls `StorageClass.register()`
-before reading the UID.
+`TimeIndexMetaData.uid` from `StorageClass.__time_index_metadata__`. If the
+class is not yet bound, config serialization must fail and tell the user to run
+the migration workflow.
 
 Do not accept `test_node`. It has been removed. Use explicit
 `hash_namespace(...)` or `hash_namespace="..."`.
@@ -370,6 +364,11 @@ The validator error to prevent is:
 Time index must be datetime64[ns, UTC]
 ```
 
+Use Alembic from the first version when a DataNode storage table must support
+physical schema evolution. Keep the `PlatformTimeIndexMetaData` catalog model as
+the SDK storage contract, apply Alembic-rendered SQL through the migration
+workflow, then register or refresh the MetaTable catalog binding separately.
+
 ### 7. Dependencies Must Be Deterministic
 
 Dependencies belong in constructor setup and `dependencies()`.
@@ -382,20 +381,20 @@ Do not construct dependency graphs dynamically inside `update()`.
 ### 8. Foreign Keys Belong To The Storage Contract
 
 For new code, model foreign keys on the `PlatformTimeIndexMetaData` storage
-class or route the storage-contract work to the MetaTable skill. When a
+class, or route the storage-contract work to the MetaTable skill. When a
 DataNode storage table needs a platform-managed FK, use
 `MetaTableForeignKey(TargetModel, column=...)` on the storage class. Do not use
 `ForeignKey(Target.__table__.c.uid)`, table fullnames, or explicit target UID
 maps in DataNode examples.
 
-Do not ask users to name these foreign keys. `MetaTableForeignKey(...)` derives
-a stable contract name when `name` is omitted; `name=...` is only for deliberate
-overrides.
+Do not ask users to name these foreign keys. Platform-managed
+`MetaTableForeignKey(...)` contracts store logical relationships only. Alembic,
+SQLAlchemy, and the database own physical FK constraint names.
 
-Registration of the storage class follows the MetaTable lifecycle:
-`register()` recursively registers unresolved FK target model classes, uses the
-local process registry keyed by `storage_hash`, and writes the target
-`MetaTable.uid` into the FK contract.
+Registration of the storage class follows the MetaTable migration lifecycle.
+Migration tooling recursively resolves/registers unresolved FK target model
+classes, uses the local process registry keyed by `storage_hash`, and writes the
+target `MetaTable.uid` into the FK contract.
 
 Do not add DataNode configuration fields just to mutate storage metadata.
 
@@ -403,6 +402,9 @@ Do not add DataNode configuration fields just to mutate storage metadata.
 
 Production-quality table identifiers, descriptions, labels, column docs, and
 foreign-key metadata belong to the storage class/MetaTable registration path.
+Prefix explicit table identifiers, explicit physical table names, and Alembic
+version table names with the project or package name rather than using bare
+names that can collide across projects.
 
 Do not put schema or published table metadata on the DataNode configuration.
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from mainsequence.client.metatables import (
     MetaTable,
@@ -25,6 +25,7 @@ class MarketsMetaTableHandle:
     limits: MetaTableOperationLimits | Mapping[str, Any] | None = None
     timeout: int | float | tuple[float, float] | None = None
     namespace: str | None = None
+    reserved_policy: Literal["reject", "reconcile"] | None = None
 
     @property
     def meta_table_uid(self) -> str:
@@ -48,6 +49,7 @@ class MarketsMetaTableHandle:
             meta_table_uid=self.meta_table_uid_for_model(model),
             alias=alias,
             access=access,
+            reserved_policy=self.reserved_policy,
         )
 
 
@@ -62,16 +64,19 @@ class MarketsRepositoryContext:
     limits: MetaTableOperationLimits | Mapping[str, Any] | None = None
     timeout: int | float | tuple[float, float] | None = None
     namespace: str | None = None
+    reserved_policy: Literal["reject", "reconcile"] | None = None
 
     def __init__(
         self,
         limits: MetaTableOperationLimits | Mapping[str, Any] | None = None,
         timeout: int | float | tuple[float, float] | None = None,
         namespace: str | None = None,
+        reserved_policy: Literal["reject", "reconcile"] | None = None,
     ) -> None:
         object.__setattr__(self, "limits", limits)
         object.__setattr__(self, "timeout", timeout)
         object.__setattr__(self, "namespace", namespace)
+        object.__setattr__(self, "reserved_policy", reserved_policy)
 
     def meta_table_uid_for_model(self, model: type[MarketsBase]) -> str:
         return _bound_meta_table_uid(model)
@@ -86,6 +91,7 @@ class MarketsRepositoryContext:
             limits=self.limits,
             timeout=self.timeout,
             namespace=self.namespace,
+            reserved_policy=self.reserved_policy,
         )
 
     def scope_table(
@@ -99,6 +105,7 @@ class MarketsRepositoryContext:
             meta_table_uid=self.meta_table_uid_for_model(model),
             alias=alias,
             access=access,
+            reserved_policy=self.reserved_policy,
         )
 
 

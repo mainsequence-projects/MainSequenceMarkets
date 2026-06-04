@@ -258,12 +258,11 @@ Use this workflow when adding or reviewing a market-domain relational table:
 
 1. Define the SQLAlchemy model under `msm.models` with
    `MarketsMetaTableMixin` and `MarketsBase`.
-2. Set `__metatable_identifier__` to the stable bare logical table name.
-   The shared markets identifier rule prefixes it only for non-default runtime
-   namespaces such as `mainsequence.examples`.
+2. Set `__metatable_identifier__` to the stable table identity.
 3. Put schema, table info, indexes, and constraints in `__table_args__`.
-4. Do not set `__tablename__`; the SDK `PlatformManagedMetaTable` mixin derives
-   the platform-managed physical table name from the resolved table contract.
+4. Do not set `__tablename__`; the markets mixin assigns the package-owned
+   physical table name as `ms_markets__<lowercase-identity>`, with an
+   `MSM_AUTO_REGISTER_NAMESPACE` suffix when configured before model import.
 5. Add the model to `markets_sqlalchemy_models()` in foreign-key dependency
    order.
 6. Generate or update a normal Alembic revision under `src/msm/migrations/`.
@@ -298,7 +297,7 @@ cataloged with the same migration/finalization path as built-in tables:
 
 1. Define the SQLAlchemy model with `MarketsMetaTableMixin` and `MarketsBase`.
 2. Give it one stable `__metatable_identifier__`.
-3. Declare relationships with class-based `MetaTableForeignKey(TargetModel, ...)`.
+3. Declare relationships with normal SQLAlchemy `ForeignKey(...)` targets.
 4. Add or sync the package/project migration that creates or refreshes the
    table and finalizes the catalog.
 5. Attach at runtime with `msm.start_engine(models=[MyModelTable])`.

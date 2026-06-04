@@ -40,9 +40,8 @@ def test_virtual_fund_holdings_storage_declares_allocation_foreign_keys() -> Non
 
     asset_column = VirtualFundHoldingsStorage.__table__.columns["asset_identifier"]
     assert any(
-        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AssetTable
-        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
-        == "unique_identifier"
+        foreign_key.column is AssetTable.__table__.c.unique_identifier
+        and foreign_key.ondelete == "RESTRICT"
         for foreign_key in asset_column.foreign_keys
     )
 

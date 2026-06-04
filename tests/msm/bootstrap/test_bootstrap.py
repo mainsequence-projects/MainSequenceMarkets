@@ -3,13 +3,11 @@ from __future__ import annotations
 import inspect
 import os
 import sys
-from types import ModuleType
 from types import SimpleNamespace
 import uuid
 
 import pytest
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import String
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -32,7 +30,7 @@ class BootstrapExtensionAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(AssetTable, column="uid", ondelete="CASCADE"),
+        ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
     )
@@ -237,28 +235,7 @@ def test_start_engine_logs_bootstrap_resources(monkeypatch) -> None:
     assert attached_event["attached_count"] == 1
     assert attached_event["catalog_meta_table_uid"] == "catalog-meta-table-uid"
     runtime_event = spy_logger.events[5][1]
-    assert runtime_event["data_node_handles"] == list(bootstrap.DATA_NODE_HANDLE_NAMES)
-
-
-def test_runtime_exposes_data_node_classes(monkeypatch) -> None:
-    install_fake_bootstrap_modules(monkeypatch)
-    account_data_nodes_module = ModuleType("msm.data_nodes.accounts")
-    account_data_nodes_module.AccountHoldings = type("AccountHoldings", (), {})
-    asset_data_nodes_module = ModuleType("msm.data_nodes.assets")
-    asset_data_nodes_module.AssetSnapshot = type("AssetSnapshot", (), {})
-    pricing_data_nodes_module = ModuleType("msm_pricing.data_nodes")
-    pricing_data_nodes_module.AssetPricingDetail = type("AssetPricingDetail", (), {})
-    monkeypatch.setitem(sys.modules, "msm.data_nodes.accounts", account_data_nodes_module)
-    monkeypatch.setitem(sys.modules, "msm.data_nodes.assets", asset_data_nodes_module)
-    monkeypatch.setitem(sys.modules, "msm_pricing.data_nodes", pricing_data_nodes_module)
-
-    runtime = bootstrap.start_engine()
-
-    assert runtime.data_nodes == {
-        "AccountHoldings": account_data_nodes_module.AccountHoldings,
-        "AssetPricingDetail": pricing_data_nodes_module.AssetPricingDetail,
-        "AssetSnapshot": asset_data_nodes_module.AssetSnapshot,
-    }
+    assert "data_node_handles" not in runtime_event
 
 
 def test_start_engine_returns_existing_runtime_for_same_process_config(

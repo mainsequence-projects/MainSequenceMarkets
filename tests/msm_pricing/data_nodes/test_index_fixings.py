@@ -66,9 +66,8 @@ def test_index_fixings_storage_has_index_foreign_key() -> None:
 
     assert markets_foreign_key_target_identifiers(IndexFixingsStorage) == [index_identifier]
     assert any(
-        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is IndexTable
-        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
-        == "unique_identifier"
+        foreign_key.column is IndexTable.__table__.c.unique_identifier
+        and foreign_key.ondelete == "RESTRICT"
         for foreign_key in fk_column.foreign_keys
     )
     assert IndexFixingsStorage in set(pricing_sqlalchemy_models())

@@ -14,8 +14,11 @@ admin flow, not by runtime startup.
 Market models inherit `MarketsMetaTableMixin`, which itself inherits the SDK
 `PlatformManagedMetaTable` base. Time-indexed DataNode storage inherits
 `PlatformTimeIndexMetaData` through `MarketsTimeIndexMetaTableMixin`.
-Do not set `__tablename__` on normal markets MetaTable models. The SDK derives
-the physical table name from the stable platform-managed storage identity.
+Do not set `__tablename__` on normal markets MetaTable models. The markets
+mixins assign package-owned physical names with the convention
+`ms_markets__<lowercase-concept>`. When `MSM_AUTO_REGISTER_NAMESPACE` is set
+before model import, the namespace is appended as a suffix, for example
+`ms_markets__account__mainsequence_examples`.
 
 Every concrete markets MetaTable model must declare `__metatable_description__`.
 That description is the durable platform-level discovery text copied into the
@@ -55,18 +58,20 @@ registration helpers. The SDK migration provider resolves the package model
 registry, applies Alembic migrations, registers the MetaTables, and refreshes
 the markets catalog as part of the admin migration flow.
 
-Catalog bookkeeping is keyed by the globally unique MetaTable identifier from
-`__metatable_identifier__`, for example `AssetType` in the default namespace or
-`mainsequence.examples.AssetType` when a namespace override is configured before
-model import. The registered platform `MetaTable.uid` is only known after
-migration finalization and catalog attach. Row operations read that UID from the
-bound model when compiling operation scope. SQLAlchemy table names are storage
-contract details, not runtime identity keys.
+Catalog bookkeeping is keyed by the `table_name` column because the SDK
+migration flow uses the SQLAlchemy table name as the stable MetaTable identity. For
+example, `AccountTable` is cataloged as `ms_markets__account`, or as
+`ms_markets__account__mainsequence_examples` when
+`MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` is set before model import.
+The registered platform `MetaTable.uid` is only known after migration
+finalization and catalog attach. Row operations read that UID from the bound
+model when compiling operation scope.
 
-Foreign keys between platform-managed MetaTables use the SDK class-based helper:
+Foreign keys between platform-managed MetaTables are normal SQLAlchemy/Alembic
+foreign keys:
 
 ```python
-from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import ForeignKey
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.types import Uuid
 
@@ -75,20 +80,14 @@ from msm.models.assets import AssetTable
 
 asset_uid = mapped_column(
     Uuid(as_uuid=True),
-    MetaTableForeignKey(
-        AssetTable,
-        column="uid",
-        ondelete="RESTRICT",
-    ),
+    ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="RESTRICT"),
     nullable=False,
 )
 ```
 
-The authored target is the `AssetTable` model class. The SDK migration provider
-resolves target MetaTables during migration-time registration and writes the
-target `MetaTable.uid` into the backend foreign-key contract. Do not build
-platform-managed foreign keys from `Target.__table__` strings or
-caller-maintained table-name maps.
+The authored target is the SQLAlchemy table/column. The SDK migration provider
+reserves and finalizes the MetaTables, while Alembic renders and applies the
+physical FK DDL from the SQLAlchemy metadata.
 
 User-facing row operations use the active markets runtime. They do not attach
 to MetaTables, register tables, or run platform discovery on first use. In
@@ -123,13 +122,13 @@ msm.start_engine()
 
 `msm.start_engine(...)` is catalog-based and read-only. Startup attaches the existing
 `msm.maintenance.models.MarketsMetaTableCatalogTable` and reads catalog rows for
-requested identifiers. Tables missing from the catalog are treated as missing
+requested table names. Tables missing from the catalog are treated as missing
 migration finalization, not as permission to register application tables.
 
 The catalog is finalized by the SDK migration upgrade flow. That command applies
 Alembic-rendered SQL through the backend migration endpoint, synchronizes the
 provider MetaTable catalog, and runs the `msm` provider hook that writes the
-catalog projection with the current platform UID, namespace, identifier,
+catalog projection with the current platform UID, namespace, table name,
 description, model name, SDK version, and local contract hash. The catalog is
 intentionally MetaTable-specific; DataNode registration state belongs in a
 separate catalog if it is needed later.
@@ -162,7 +161,7 @@ artifact is the SQLAlchemy MetaTable model class, not the Pydantic row wrapper:
 import uuid
 
 import msm
-from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import String, Uuid
 
@@ -180,7 +179,7 @@ class MyAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(AssetTable, column="uid", ondelete="CASCADE"),
+        ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
         info={"description": "Canonical AssetTable uid for this custom detail row."},
@@ -195,9 +194,9 @@ class MyAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
 msm.start_engine(models=[MyAssetDetailsTable])
 ```
 
-Startup expands class-based `MetaTableForeignKey(...)` dependencies, so
-`AssetTable` is verified and attached before `MyAssetDetailsTable`. The caller
-does not pass a target table name or MetaTable UID.
+Startup expands SQLAlchemy `ForeignKey(...)` dependencies, so `AssetTable` is
+verified and attached before `MyAssetDetailsTable`. The caller does not pass a
+MetaTable UID.
 
 If a project wants a typed row API for that table, subclass
 `MarketsMetaTableRow` and keep it as a Pydantic row-operation wrapper:
@@ -258,11 +257,11 @@ admin/platform repair.
 
 `msm.start_engine(...)` does not accept labels because initialization should
 not broadcast the same labels to every platform resource. The returned runtime
-exposes `runtime.meta_tables`, `runtime.meta_table_models`, and
-`runtime.data_nodes` so callers can decide which concrete MetaTables or
-DataNodes need labels or other follow-up handling. When `models=[...]` is used,
-`runtime.meta_tables` and `runtime.meta_table_models` contain only the selected
-registered models.
+exposes `runtime.meta_tables` and `runtime.meta_table_models` so callers can
+decide which concrete MetaTables need labels or other follow-up handling. When
+`models=[...]` is used, those runtime collections contain only the selected
+registered models. DataNode classes are imported from their owning package
+modules, not from the runtime attachment object.
 
 Examples and notebooks can use `MSM_AUTO_REGISTER_NAMESPACE` only as a startup
 namespace default. The explicit startup call is still required before row
@@ -289,8 +288,8 @@ With the environment variable set, `msm.start_engine(...)` uses the example
 namespace and attaches the finalized catalog rows for the
 selected tables.
 The namespace cannot be changed safely after `msm.models` or
-`msm.maintenance.models` is imported because `PlatformManagedMetaTable` derives
-the physical storage hash while SQLAlchemy maps each model class.
+`msm.maintenance.models` is imported because the markets mixins assign the
+physical table name while SQLAlchemy maps each model class.
 
 Examples can still use explicit startup when the workflow is specifically
 demonstrating runtime attachment. When `namespace` is omitted,
@@ -336,9 +335,9 @@ runtime state by SQLAlchemy table names.
 ## Table Handles And Repository Context
 
 Repository and service functions assume the relevant model classes have already
-been bound by `msm.start_engine(...)` or `msm.attach_schemas(...)`. Single-table
-helpers should receive a `MarketsMetaTableHandle`; multi-table helpers should
-receive the full `MarketsRepositoryContext`.
+been bound by `msm.start_engine(...)`. Single-table helpers should receive a
+`MarketsMetaTableHandle`; multi-table helpers should receive the full
+`MarketsRepositoryContext`.
 
 ```python
 from msm.repositories.base import MarketsRepositoryContext

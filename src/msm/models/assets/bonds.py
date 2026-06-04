@@ -3,15 +3,13 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import Date, Index, String
+from sqlalchemy import Date, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_index_name,
     markets_table_args,
 )
 
@@ -31,28 +29,27 @@ class BondAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "issuer_uid"),
+            None,
             "issuer_uid",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "currency_asset_uid"),
+            None,
             "currency_asset_uid",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "status"),
+            None,
             "status",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "maturity_date"),
+            None,
             "maturity_date",
         ),
     )
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AssetTable,
-            column="uid",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         primary_key=True,
@@ -64,9 +61,8 @@ class BondAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     )
     issuer_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            IssuerTable,
-            column="uid",
+        ForeignKey(
+            f"{IssuerTable.__table__.fullname}.uid",
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -77,9 +73,8 @@ class BondAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     )
     currency_asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AssetTable,
-            column="uid",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.uid",
             ondelete="RESTRICT",
         ),
         nullable=False,

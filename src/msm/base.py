@@ -9,20 +9,20 @@ from mainsequence.meta_tables import (
     POSTGRES_IDENTIFIER_MAX_LENGTH,
     PlatformManagedMetaTable,
     PlatformTimeIndexMetaData,
-    metatable_tablename,
     slugify_identifier,
 )
 
 from msm.settings import (
     DEFAULT_MARKETS_NAMESPACE,
     MSM_AUTO_REGISTER_NAMESPACE_ENV,
+    markets_auto_register_namespace,
     markets_identifier,
     markets_namespace,
 )
 
 try:
     from sqlalchemy import MetaData
-    from sqlalchemy.orm import DeclarativeBase
+    from sqlalchemy.orm import DeclarativeBase, declared_attr
 except ImportError as exc:  # pragma: no cover - exercised only in partial envs.
     raise ImportError(
         "msm SQLAlchemy MetaTable models require SQLAlchemy in the runtime environment."
@@ -31,28 +31,92 @@ except ImportError as exc:  # pragma: no cover - exercised only in partial envs.
 
 MARKETS_NAMESPACE = DEFAULT_MARKETS_NAMESPACE
 MARKETS_SCHEMA = "public"
+MARKETS_TABLE_APP = "ms_markets"
+_TABLE_NAME_HASH_LENGTH = 10
 
 
 def markets_table_name(
-    identifier: str,
-    *,
-    schema: str = MARKETS_SCHEMA,
-    hash_namespace: str | None = None,
-    extra_hash_components: Mapping[str, Any] | None = None,
+    app: str,
+    concept: str,
+    suffix: str | None = None,
 ) -> str:
-    """Return the low-level explicit MetaTable name for a markets identifier.
+    """Return a PostgreSQL-safe markets table name as ``app__concept``.
 
-    Normal markets models inherit `MarketsMetaTableMixin` and let the SDK derive
-    `__tablename__` from the resolved SQLAlchemy table contract.
+    The optional suffix is appended as ``app__concept__suffix`` and is used for
+    environment-scoped namespaces such as ``MSM_AUTO_REGISTER_NAMESPACE``.
     """
 
-    return metatable_tablename(
-        namespace=markets_namespace(),
-        identifier=markets_identifier(identifier),
-        schema=schema,
-        hash_namespace=hash_namespace,
-        extra_hash_components=extra_hash_components,
+    app_name = _required_table_name_part(app, field_name="app")
+    concept_name = _required_table_name_part(concept, field_name="concept")
+    suffix_name = None
+    if suffix is not None:
+        suffix_name = _required_table_name_part(suffix, field_name="suffix")
+
+    if suffix_name is None:
+        candidate = f"{app_name}__{concept_name}"
+    else:
+        candidate = f"{app_name}__{concept_name}__{suffix_name}"
+
+    if len(candidate) <= POSTGRES_IDENTIFIER_MAX_LENGTH:
+        return candidate
+    return _truncate_table_name(
+        app=app_name,
+        concept=concept_name,
+        suffix=suffix_name,
+        candidate=candidate,
     )
+
+
+def _required_table_name_part(value: str, *, field_name: str) -> str:
+    raw_value = str(value).strip()
+    if not raw_value:
+        raise ValueError(f"Markets table name {field_name} is required.")
+    if not any(character.isalnum() for character in raw_value):
+        raise ValueError(f"Markets table name {field_name} must contain letters or digits.")
+    return slugify_identifier(raw_value)
+
+
+def _truncate_table_name(
+    *,
+    app: str,
+    concept: str,
+    suffix: str | None,
+    candidate: str,
+) -> str:
+    digest = hashlib.md5(candidate.encode()).hexdigest()[:_TABLE_NAME_HASH_LENGTH]
+    digest_marker = f"_{digest}"
+    app_prefix = f"{app}__"
+
+    if suffix is None:
+        concept_budget = POSTGRES_IDENTIFIER_MAX_LENGTH - len(app_prefix) - len(digest_marker)
+        if concept_budget < 1:
+            raise ValueError(f"Markets table name app is too long: {app!r}.")
+        concept_part = concept[:concept_budget].rstrip("_") or concept[:1]
+        return f"{app_prefix}{concept_part}{digest_marker}"
+
+    suffix_separator = "__"
+    remaining = (
+        POSTGRES_IDENTIFIER_MAX_LENGTH
+        - len(app_prefix)
+        - len(digest_marker)
+        - len(suffix_separator)
+    )
+    if remaining < 2:
+        raise ValueError(f"Markets table name app is too long: {app!r}.")
+
+    suffix_budget = min(len(suffix), max(1, remaining // 2))
+    concept_budget = remaining - suffix_budget
+
+    if concept_budget > len(concept):
+        suffix_budget = min(len(suffix), suffix_budget + concept_budget - len(concept))
+        concept_budget = len(concept)
+    if suffix_budget > len(suffix):
+        concept_budget = min(len(concept), concept_budget + suffix_budget - len(suffix))
+        suffix_budget = len(suffix)
+
+    concept_part = concept[:concept_budget].rstrip("_") or concept[:1]
+    suffix_part = suffix[-suffix_budget:].strip("_") or suffix[-1]
+    return f"{app_prefix}{concept_part}{digest_marker}{suffix_separator}{suffix_part}"
 
 
 def markets_meta_table_identifier(model_or_table: Any) -> str:
@@ -108,26 +172,6 @@ def _markets_table(model_or_table: Any) -> Any:
     return table
 
 
-def markets_postgres_identifier(*parts: str, suffix: str) -> str:
-    """Build a stable PostgreSQL-safe name for indexes and foreign keys."""
-
-    base = slugify_identifier("_".join(str(part) for part in parts if part))
-    suffix = slugify_identifier(suffix)
-    digest = hashlib.md5(f"{base}:{suffix}".encode()).hexdigest()[:12]
-    max_prefix_length = POSTGRES_IDENTIFIER_MAX_LENGTH - len(digest) - len(suffix) - 2
-    prefix = base[:max_prefix_length].rstrip("_") or "markets"
-    return f"{prefix}_{digest}_{suffix}"
-
-
-def markets_index_name(model_identifier: str, *columns: str, unique: bool = False) -> str:
-    return markets_postgres_identifier(
-        "mainsequence_markets",
-        model_identifier,
-        *columns,
-        suffix="uidx" if unique else "idx",
-    )
-
-
 def markets_table_args(
     identifier: str,
     *constraints: Any,
@@ -150,23 +194,25 @@ class MarketsBase(DeclarativeBase):
 
 
 def _assign_markets_metatable_identifiers(cls: type) -> None:
-    """Resolve and assign `__markets_base_identifier__`/`__metatable_identifier__`.
+    """Assign the SDK MetaTable identifier from the authored table identity."""
 
-    Shared by the plain and time-indexed markets mixins so both derive the
-    namespaced identifier the same way.
-    """
-
-    base_identifier = (
-        cls.__dict__.get("__markets_base_identifier__")
-        or cls.__dict__.get("__metatable_identifier__")
-        or getattr(cls, "__markets_base_identifier__", None)
-        or getattr(cls, "__metatable_identifier__", cls.__name__)
-    )
-    cls.__markets_base_identifier__ = str(base_identifier).strip(".")
+    authored_identifier = _authored_metatable_identifier_for_model(cls)
     cls.__metatable_identifier__ = markets_identifier(
-        cls.__markets_base_identifier__,
+        authored_identifier,
         namespace=getattr(cls, "__metatable_namespace__", None),
     )
+
+
+def _markets_table_name_for_model(cls: type) -> str:
+    return markets_table_name(
+        MARKETS_TABLE_APP,
+        _authored_metatable_identifier_for_model(cls),
+        suffix=markets_auto_register_namespace(),
+    )
+
+
+def _authored_metatable_identifier_for_model(cls: type) -> str:
+    return str(cls.__dict__["__metatable_identifier__"]).strip(".")
 
 
 class MarketsMetaTableMixin(PlatformManagedMetaTable):
@@ -176,39 +222,45 @@ class MarketsMetaTableMixin(PlatformManagedMetaTable):
     __metatable_namespace__: ClassVar[str] = markets_namespace()
     __metatable_schema__: ClassVar[str] = MARKETS_SCHEMA
     __metatable_identifier__: ClassVar[str]
-    __markets_base_identifier__: ClassVar[str]
 
     def __init_subclass__(cls, **kwargs: Any):
         super().__init_subclass__(**kwargs)
         _assign_markets_metatable_identifiers(cls)
 
+    @declared_attr.directive
+    def __tablename__(cls) -> str:
+        return _markets_table_name_for_model(cls)
+
     @classmethod
     def metatable_identifier(cls) -> str:
-        return getattr(cls, "__metatable_identifier__", cls.__name__)
+        return cls.__metatable_identifier__
 
 
 class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaData):
     """Shared contract for markets storage-first time-indexed MetaTable models.
 
     Sibling of `MarketsMetaTableMixin` for time-index storage classes. Concrete
-    subclasses set `__markets_base_identifier__`, `__time_index_name__`, and
-    `__index_names__`. The SDK time-index base keeps the logical storage
-    identity tied to the stable package identifier.
+    subclasses set `__metatable_identifier__`, `__time_index_name__`, and
+    `__index_names__`. The authored MetaTable identifier seeds the package-owned
+    SQLAlchemy table name and default DataNode identifier.
     """
 
     __abstract__ = True
     __metatable_namespace__: ClassVar[str] = markets_namespace()
     __metatable_schema__: ClassVar[str] = MARKETS_SCHEMA
     __metatable_identifier__: ClassVar[str]
-    __markets_base_identifier__: ClassVar[str]
 
     def __init_subclass__(cls, **kwargs: Any):
         super().__init_subclass__(**kwargs)
         _assign_markets_metatable_identifiers(cls)
 
+    @declared_attr.directive
+    def __tablename__(cls) -> str:
+        return _markets_table_name_for_model(cls)
+
     @classmethod
     def metatable_identifier(cls) -> str:
-        return getattr(cls, "__metatable_identifier__", cls.__name__)
+        return cls.__metatable_identifier__
 
 
 def new_markets_uid() -> uuid.UUID:
@@ -218,14 +270,13 @@ def new_markets_uid() -> uuid.UUID:
 __all__ = [
     "MARKETS_NAMESPACE",
     "MARKETS_SCHEMA",
+    "MARKETS_TABLE_APP",
     "MSM_AUTO_REGISTER_NAMESPACE_ENV",
     "MarketsBase",
     "MarketsMetaTableMixin",
     "MarketsTimeIndexMetaTableMixin",
-    "markets_index_name",
     "markets_identifier",
     "markets_meta_table_identifier",
-    "markets_postgres_identifier",
     "markets_table_args",
     "markets_table_name",
     "markets_table_storage_name",

@@ -11,8 +11,7 @@ from __future__ import annotations
 import datetime
 from typing import Any, ClassVar
 
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import DateTime, Float, String
+from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +23,7 @@ from msm_pricing.models.curves import CurveTable
 
 CURVE_IDENTIFIER_DIMENSION = "curve_identifier"
 
+
 class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Daily compressed discount curves used by msm_pricing valuation workflows.
 
@@ -34,7 +34,7 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     instruments.
     """
 
-    __markets_base_identifier__: ClassVar[str] = "DiscountCurvesTS"
+    __metatable_identifier__ = "DiscountCurvesTS"
     __metatable_description__ = (
         "Timestamped discount-curve storage keyed by (time_index, "
         "curve_identifier). Stores compressed curve payloads that reconstruct "
@@ -54,9 +54,8 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     curve_identifier: Mapped[str] = mapped_column(
         String(255),
-        MetaTableForeignKey(
-            CurveTable,
-            column="unique_identifier",
+        ForeignKey(
+            f"{CurveTable.__table__.fullname}.unique_identifier",
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -84,7 +83,7 @@ class IndexFixingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     reference-rate fixings for floating-rate bonds and swaps.
     """
 
-    __markets_base_identifier__: ClassVar[str] = "IndexFixingsTS"
+    __metatable_identifier__ = "IndexFixingsTS"
     __metatable_description__ = (
         "Timestamped interest-rate index fixing storage keyed by (time_index, "
         "index_identifier). Stores observed index fixing rates used by pricing "
@@ -103,9 +102,8 @@ class IndexFixingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     index_identifier: Mapped[str] = mapped_column(
         String(255),
-        MetaTableForeignKey(
-            IndexTable,
-            column="unique_identifier",
+        ForeignKey(
+            f"{IndexTable.__table__.fullname}.unique_identifier",
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -127,7 +125,7 @@ class IndexFixingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class AssetPricingDetailsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Timestamped provider pricing metadata keyed by asset unique identifier."""
 
-    __markets_base_identifier__: ClassVar[str] = "AssetPricingDetailsTS"
+    __metatable_identifier__ = "AssetPricingDetailsTS"
     __metatable_description__ = (
         "Timestamped asset pricing-detail storage keyed by (time_index, "
         "asset_identifier). Stores serialized pricing instrument payloads for "
@@ -146,9 +144,8 @@ class AssetPricingDetailsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     asset_identifier: Mapped[str] = mapped_column(
         String(255),
-        MetaTableForeignKey(
-            AssetTable,
-            column="unique_identifier",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
             ondelete="RESTRICT",
         ),
         nullable=False,

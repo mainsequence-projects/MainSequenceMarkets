@@ -3,8 +3,6 @@ from __future__ import annotations
 import inspect
 from typing import Any
 
-from msm.settings import markets_data_node_identifier
-
 
 def storage_data_node_identifier(storage_table: Any) -> str:
     """Return the DataNode identifier owned by a storage MetaTable class."""
@@ -15,13 +13,7 @@ def storage_data_node_identifier(storage_table: Any) -> str:
         if identifier not in (None, ""):
             return str(identifier)
 
-    base_identifier = getattr(storage_table, "__markets_base_identifier__", None)
-    if base_identifier not in (None, ""):
-        return markets_data_node_identifier(str(base_identifier))
-
-    raise NotImplementedError(
-        f"{storage_table!r} must define metatable_identifier() or __markets_base_identifier__."
-    )
+    raise NotImplementedError(f"{storage_table!r} must define metatable_identifier().")
 
 
 def storage_data_node_description(storage_table: Any) -> str:

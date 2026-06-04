@@ -46,7 +46,7 @@ The registration lifecycle becomes:
 4. tables already present in the catalog are attached, not registered again;
 5. missing tables are registered in dependency order;
 6. each successful registration is written back to the catalog with the real
-   platform MetaTable identity, namespace, and logical identifier;
+   platform MetaTable UID, namespace, and SQLAlchemy table name;
 7. bootstrap returns one immutable `MarketsRuntime` for the process;
 8. row operations use that runtime and never register or attach lazily.
 
@@ -60,14 +60,14 @@ Add an internal catalog table owned by `ms-markets` under
 `msm.maintenance.models`. This is maintenance infrastructure, not a normal
 domain model under `msm.models`.
 
-The catalog stores one row per registered markets MetaTable logical identity.
+The catalog stores one row per registered markets SQLAlchemy table name.
 The minimum row contract is:
 
 | Field | Meaning |
 | --- | --- |
 | `uid` | Catalog row identity. |
 | `namespace` | Markets namespace used for the logical table. |
-| `identifier` | Logical MetaTable identifier, for example `Asset`. |
+| `table_name` | SQLAlchemy table name, for example `ms_markets__asset`. |
 | `description` | Platform MetaTable description returned by registration or discovery. |
 | `model_name` | SQLAlchemy table declaration class name, for example `AssetTable`. |
 | `meta_table_uid` | Platform `MetaTable.uid` returned by registration or discovery. |
@@ -76,12 +76,12 @@ The minimum row contract is:
 | `created_at` | First catalog insertion timestamp. |
 | `updated_at` | Last catalog update timestamp. |
 
-The uniqueness rule is the logical MetaTable identifier. Identifiers are
-globally unique in `ms-markets`; namespace-specific identifiers carry their
-namespace prefix, for example `mainsequence.examples.Asset`.
+The uniqueness rule is the SQLAlchemy table name. Names are globally unique in
+`ms-markets`; namespace-specific model imports append the namespace suffix to
+the physical table name, for example `ms_markets__asset__mainsequence_examples`.
 
 ```text
-identifier
+table_name
 ```
 
 The catalog stores the platform response identity fields needed by row
@@ -107,11 +107,11 @@ The catalog bootstrap must be deterministic:
 
 For each requested table, bootstrap uses this order:
 
-1. read the catalog row for the requested identifier;
+1. read the catalog row for the requested table name;
 2. if a catalog row exists, resolve the referenced platform `MetaTable` and
    attach it to the runtime;
 3. if no catalog row exists, try one explicit platform lookup using the expected
-   identifier so pre-catalog installations can be imported without duplicate
+   table name so pre-catalog installations can be imported without duplicate
    registration;
 4. if platform lookup finds an existing table, write a catalog row and attach it;
 5. if neither catalog nor platform lookup finds a table, register the table;
@@ -191,8 +191,8 @@ This ADR is implemented only when:
   MetaTable identities.
 - [x] Add a typed API/internal helper for catalog rows without exposing catalog
   mutation as a normal user workflow.
-- [x] Add a unique `identifier` index for catalog row identity.
-- [x] Store the platform `MetaTable.uid`, namespace, identifier, description,
+- [x] Add a unique `table_name` index for catalog row identity.
+- [x] Store the platform `MetaTable.uid`, namespace, table name, description,
   and real storage hash returned by the backend.
 - [x] Keep the catalog MetaTable-specific and omit any DataNode-versus-MetaTable
   discriminator column.

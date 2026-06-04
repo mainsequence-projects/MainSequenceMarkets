@@ -10,7 +10,6 @@ from msm.maintenance.models import (
     markets_meta_table_contract_hash,
 )
 from msm.models import AssetTable, AssetTypeTable
-from msm.models.registration import markets_meta_table_identifier
 
 
 def _meta_table(
@@ -36,13 +35,20 @@ def _meta_table(
 def _catalog_row_identity(model) -> dict[str, str]:
     return {
         "namespace": model.__metatable_namespace__,
-        "identifier": model.__metatable_identifier__,
+        "table_name": model.__table__.name,
+    }
+
+
+def _meta_table_identity(model) -> dict[str, str]:
+    return {
+        "namespace": model.__metatable_namespace__,
+        "identifier": model.__table__.name,
     }
 
 
 def _catalog_search_filter(*models) -> dict[str, list[str]]:
     return {
-        "identifier": sorted({model.__metatable_identifier__ for model in models}),
+        "table_name": sorted({model.__table__.name for model in models}),
     }
 
 
@@ -60,7 +66,7 @@ def _catalog_row(model, *, meta_table_uid: str) -> dict[str, str]:
 def test_resolve_catalog_table_attaches_existing_catalog(monkeypatch) -> None:
     existing_catalog = _meta_table(
         "catalog-meta-table-uid",
-        identifier="MarketsMetaTableCatalog",
+        identifier=MarketsMetaTableCatalogTable.__table__.name,
         storage_hash=MarketsMetaTableCatalogTable.__table__.name,
     )
 
@@ -91,13 +97,13 @@ def test_catalog_attach_attaches_cataloged_application_table(monkeypatch) -> Non
     filter_calls: list[dict] = []
     catalog_meta_table = _meta_table(
         "catalog-meta-table-uid",
-        identifier="MarketsMetaTableCatalog",
+        identifier=MarketsMetaTableCatalogTable.__table__.name,
         storage_hash=MarketsMetaTableCatalogTable.__table__.name,
     )
     catalog_row = _catalog_row(AssetTable, meta_table_uid="asset-meta-table-uid")
     asset_meta_table = _meta_table(
         "asset-meta-table-uid",
-        **_catalog_row_identity(AssetTable),
+        **_meta_table_identity(AssetTable),
         description="Asset catalog rows.",
         storage_hash=asset_storage_hash,
     )
@@ -148,9 +154,7 @@ def test_catalog_attach_attaches_cataloged_application_table(monkeypatch) -> Non
             "management_mode": "platform_managed",
         }
     ]
-    resolved = result.registration.meta_table_by_identifier[
-        markets_meta_table_identifier(AssetTable)
-    ]
+    resolved = result.registration.meta_table_by_identifier[AssetTable.__table__.name]
     assert resolved.uid == "asset-meta-table-uid"
     assert resolved.storage_hash == asset_storage_hash
     assert resolved.physical_table_name == asset_storage_hash
@@ -161,7 +165,7 @@ def test_catalog_attach_bulk_attaches_cataloged_tables(monkeypatch) -> None:
     filter_calls: list[dict] = []
     catalog_meta_table = _meta_table(
         "catalog-meta-table-uid",
-        identifier="MarketsMetaTableCatalog",
+        identifier=MarketsMetaTableCatalogTable.__table__.name,
         storage_hash=MarketsMetaTableCatalogTable.__table__.name,
     )
     catalog_rows = [
@@ -171,12 +175,12 @@ def test_catalog_attach_bulk_attaches_cataloged_tables(monkeypatch) -> None:
     attached_meta_tables = {
         "asset-type-meta-table-uid": _meta_table(
             "asset-type-meta-table-uid",
-            **_catalog_row_identity(AssetTypeTable),
+            **_meta_table_identity(AssetTypeTable),
             storage_hash=AssetTypeTable.__table__.name,
         ),
         "asset-meta-table-uid": _meta_table(
             "asset-meta-table-uid",
-            **_catalog_row_identity(AssetTable),
+            **_meta_table_identity(AssetTable),
             storage_hash=AssetTable.__table__.name,
         ),
     }
@@ -191,10 +195,7 @@ def test_catalog_attach_bulk_attaches_cataloged_tables(monkeypatch) -> None:
 
     def fake_filter(**kwargs):
         filter_calls.append(dict(kwargs))
-        return [
-            attached_meta_tables[uid]
-            for uid in kwargs["uid__in"]
-        ]
+        return [attached_meta_tables[uid] for uid in kwargs["uid__in"]]
 
     monkeypatch.setattr(
         catalog.MetaTable,
@@ -232,15 +233,15 @@ def test_catalog_attach_bulk_attaches_cataloged_tables(monkeypatch) -> None:
         identifier: meta_table.uid
         for identifier, meta_table in result.registration.meta_table_by_identifier.items()
     } == {
-        markets_meta_table_identifier(AssetTypeTable): "asset-type-meta-table-uid",
-        markets_meta_table_identifier(AssetTable): "asset-meta-table-uid",
+        AssetTypeTable.__table__.name: "asset-type-meta-table-uid",
+        AssetTable.__table__.name: "asset-meta-table-uid",
     }
 
 
 def test_catalog_attach_rejects_missing_catalog_row(monkeypatch) -> None:
     catalog_meta_table = _meta_table(
         "catalog-meta-table-uid",
-        identifier="MarketsMetaTableCatalog",
+        identifier=MarketsMetaTableCatalogTable.__table__.name,
         storage_hash=MarketsMetaTableCatalogTable.__table__.name,
     )
 
@@ -259,7 +260,7 @@ def test_catalog_attach_rejects_missing_catalog_row(monkeypatch) -> None:
 def test_catalog_attach_rejects_catalog_contract_drift(monkeypatch) -> None:
     catalog_meta_table = _meta_table(
         "catalog-meta-table-uid",
-        identifier="MarketsMetaTableCatalog",
+        identifier=MarketsMetaTableCatalogTable.__table__.name,
         storage_hash=MarketsMetaTableCatalogTable.__table__.name,
     )
     catalog_row = _catalog_row(AssetTable, meta_table_uid="asset-meta-table-uid")
@@ -283,7 +284,7 @@ def test_resolve_catalog_meta_tables_rejects_stale_catalog_uid(monkeypatch) -> N
         model=AssetTable,
         storage_hash=AssetTable.__table__.name,
         namespace=AssetTable.__metatable_namespace__,
-        identifier=AssetTable.__metatable_identifier__,
+        table_name=AssetTable.__table__.name,
     )
     monkeypatch.setattr(
         catalog.MetaTable,
@@ -298,7 +299,7 @@ def test_resolve_catalog_meta_tables_rejects_stale_catalog_uid(monkeypatch) -> N
 
     with pytest.raises(catalog.CatalogStaleMetaTableUidError, match="missing backend MetaTables"):
         catalog.resolve_catalog_meta_tables(
-            {AssetTable.__metatable_identifier__: catalog_row},
+            {AssetTable.__table__.name: catalog_row},
             model_plans=[plan],
             management_mode="platform_managed",
         )

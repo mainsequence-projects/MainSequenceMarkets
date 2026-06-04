@@ -9,6 +9,20 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Renamed the internal MetaTable catalog identity column from `identifier` to
+  `table_name`; runtime catalog resolution now searches and upserts by
+  SQLAlchemy table name.
+- Removed the extra markets table-name seed attribute; authored
+  `__metatable_identifier__` now directly seeds the SDK MetaTable identifier,
+  DataNode identifier, and package-owned SQLAlchemy table name.
+- Removed hard-coded DataNode handle exports from generic markets runtime
+  bootstrap; DataNode classes are imported from their owning package modules.
+- Restricted the public markets bootstrap surface to `msm.start_engine(...)`;
+  runtime/cache helpers remain internal implementation details.
+- Replaced deprecated SDK foreign-key helper declarations with natural
+  SQLAlchemy `ForeignKey(...)` declarations across ms-markets, portfolios,
+  pricing, tests, examples, and documentation. Dependency ordering and catalog
+  contract hashing now read FK targets from SQLAlchemy metadata.
 - Removed migration/provider setup arguments from runtime attachment APIs:
   `msm.start_engine(...)`, `msm.attach_schemas(...)`,
   `msm_portfolios.start_engine(...)`, `msm_portfolios.attach_schemas(...)`,
@@ -169,13 +183,12 @@ and this project follows versioned releases.
 - Removed redundant persisted physical schema and physical table name fields
   from the internal maintenance catalog.
 - Removed `storage_hash` from the internal maintenance catalog; catalog rows are
-  now keyed by the globally unique logical MetaTable identifier.
+  now keyed by SQLAlchemy `table_name`.
 - Removed local catalog rotation/repair entrypoints. The SDK migration provider
   refreshes the markets catalog after migration-time MetaTable registration.
 - Made markets and pricing runtime bookkeeping use stable MetaTable identifiers,
-  and moved platform-managed FK declarations to the SDK
-  `MetaTableForeignKey(TargetModel, column=...)` helper instead of
-  SQLAlchemy table-name target maps.
+  and moved platform-managed FK declarations onto SQLAlchemy `ForeignKey(...)`
+  metadata.
 - Replaced lazy MetaTable row-operation registration with catalog-based process
   bootstrap. Row operations now require an active initialized runtime and do not
   attach or register schemas on first use.
@@ -187,8 +200,8 @@ and this project follows versioned releases.
   enter the provider registry and runtime only attaches finalized catalog rows.
 - Implemented ADR 0018: `msm.start_engine(models=[...])` now accepts
   project-local markets SQLAlchemy model classes and `MarketsMetaTableRow`
-  wrappers, expands class-based `MetaTableForeignKey(...)` dependencies, and
-  routes the ordered model set through the shared catalog bootstrap.
+  wrappers, expands SQLAlchemy `ForeignKey(...)` dependencies, and routes the
+  ordered model set through the shared catalog bootstrap.
 - Added `MarketsMetaTableRow` as the explicit Pydantic base for MetaTable-backed
   row APIs while keeping `MarketsRow` as a compatibility alias.
 

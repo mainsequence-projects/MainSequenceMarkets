@@ -221,8 +221,8 @@ or portfolio DataNode storage by default after the migration.
 
 ### Execution And Fund References
 
-Execution currently references `FundTable` through hard `MetaTableForeignKey`
-columns such as `related_fund_uid`. Once `FundTable` moves to
+Execution currently references `FundTable` through hard SQLAlchemy
+`ForeignKey(...)` columns such as `related_fund_uid`. Once `FundTable` moves to
 `msm_portfolios`, core execution cannot keep a hard foreign key to it without
 making core import `msm_portfolios`.
 
@@ -353,7 +353,7 @@ explicit compatibility decision requires it.
 
 ### Stage 3: Resolve Execution/Fund Coupling
 
-- [x] Remove hard `MetaTableForeignKey(FundTable, ...)` declarations from core
+- [x] Remove hard `ForeignKey(...)` declarations to `FundTable` from core
   execution models.
 - [x] Remove `related_fund_uid` from core execution models, APIs, repository
   filters, tests, and docs.
@@ -379,8 +379,8 @@ explicit compatibility decision requires it.
 - [x] Move portfolio DataNode logic into `msm_portfolios`.
 - [x] Move `VirtualFundHoldings` and `FundHoldingsStorage` into
   `msm_portfolios`.
-- [x] Remove portfolio and virtual-fund DataNode handles from core
-  `msm.bootstrap.DATA_NODE_HANDLE_NAMES` and `MarketsRuntime.data_nodes`.
+- [x] Remove hard-coded DataNode handles from core `msm.bootstrap` runtime
+  attachment. DataNode classes stay in their owning package modules.
 - [x] Remove portfolio storage classes from core model registration.
 - [x] Update DataNode tests under `tests/msm_portfolios/data_nodes`.
 

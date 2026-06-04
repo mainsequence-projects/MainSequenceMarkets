@@ -57,9 +57,8 @@ def test_holdings_storage_declares_owner_and_asset_foreign_keys() -> None:
     account_asset_column = AccountHoldingsStorage.__table__.columns["asset_identifier"]
 
     assert any(
-        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AssetTable
-        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
-        == "unique_identifier"
+        foreign_key.column is AssetTable.__table__.c.unique_identifier
+        and foreign_key.ondelete == "RESTRICT"
         for foreign_key in account_asset_column.foreign_keys
     )
 
@@ -73,14 +72,12 @@ def test_target_positions_storage_declares_position_set_foreign_key() -> None:
     position_set_column = TargetPositionsStorage.__table__.columns["position_set_uid"]
     asset_column = TargetPositionsStorage.__table__.columns["asset_identifier"]
     assert any(
-        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is PositionSetTable
-        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"] == "uid"
+        foreign_key.column is PositionSetTable.__table__.c.uid and foreign_key.ondelete == "CASCADE"
         for foreign_key in position_set_column.foreign_keys
     )
     assert any(
-        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AssetTable
-        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"]
-        == "unique_identifier"
+        foreign_key.column is AssetTable.__table__.c.unique_identifier
+        and foreign_key.ondelete == "RESTRICT"
         for foreign_key in asset_column.foreign_keys
     )
 

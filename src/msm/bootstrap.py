@@ -19,11 +19,6 @@ if TYPE_CHECKING:
     from msm.repositories.base import MarketsMetaTableHandle, MarketsRepositoryContext
 
 MarketsManagementMode = Literal["platform_managed", "external_registered"]
-DATA_NODE_HANDLE_NAMES = (
-    "AccountHoldings",
-    "AssetPricingDetail",
-    "AssetSnapshot",
-)
 
 _START_ENGINE_LOCK = Lock()
 _RUNTIME: MarketsRuntime | None = None
@@ -56,18 +51,6 @@ class MarketsRuntime:
         if meta_table is None:
             return handle
         return replace(handle, meta_table=meta_table)
-
-    @property
-    def data_nodes(self) -> dict[str, type[Any]]:
-        from msm.data_nodes.accounts import AccountHoldings
-        from msm.data_nodes.assets import AssetSnapshot
-        from msm_pricing.data_nodes import AssetPricingDetail
-
-        return {
-            "AccountHoldings": AccountHoldings,
-            "AssetPricingDetail": AssetPricingDetail,
-            "AssetSnapshot": AssetSnapshot,
-        }
 
 
 def configure_metatable_namespace(namespace: str) -> None:
@@ -206,7 +189,6 @@ def start_engine(
             "Created markets runtime",
             namespace=namespace,
             meta_table_count=len(_RUNTIME.meta_tables),
-            data_node_handles=list(DATA_NODE_HANDLE_NAMES),
         )
         return _RUNTIME
 
@@ -399,12 +381,4 @@ def _freeze_start_value(value: Any) -> Any:
     return value
 
 
-__all__ = [
-    "DATA_NODE_HANDLE_NAMES",
-    "MarketsRuntime",
-    "attach_schemas",
-    "configure_metatable_namespace",
-    "get_runtime",
-    "resolve_runtime",
-    "start_engine",
-]
+__all__ = ["start_engine"]

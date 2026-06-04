@@ -26,11 +26,12 @@ import msm
 runtime = msm.start_engine(models=["Asset"])
 ```
 
-Runtime attachment does not take labels. Use `runtime.meta_tables`,
-`runtime.meta_table_models`, and `runtime.data_nodes` after bootstrap when a
-specific returned resource needs follow-up labeling or handling. The preflight
-uses the Main Sequence logger at `info` level to report each MetaTable model
-being attached, what context was created, and when a cached runtime is reused.
+Runtime attachment does not take labels. Use `runtime.meta_tables` and
+`runtime.meta_table_models` after bootstrap when a specific returned MetaTable
+needs follow-up labeling or handling. Import DataNode classes from their owning
+package modules. The preflight uses the Main Sequence logger at `info` level to
+report each MetaTable model being attached, what context was created, and when a
+cached runtime is reused.
 
 For externally managed tables, create/migrate the tables through the admin
 migration flow and use the explicit startup/bootstrap path with

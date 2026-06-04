@@ -3,15 +3,13 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import DateTime, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_index_name,
     markets_table_args,
     new_markets_uid,
 )
@@ -33,20 +31,20 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "unique_identifier", unique=True),
+            None,
             "unique_identifier",
             unique=True,
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "account_name"),
+            None,
             "account_name",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "account_is_active"),
+            None,
             "account_is_active",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "account_group_uid"),
+            None,
             "account_group_uid",
         ),
     )
@@ -84,6 +82,16 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Whether the account is a paper or simulated account.",
         },
     )
+    #
+    # mock_att: Mapped[bool] = mapped_column(
+    #     default=True,
+    #     nullable=False,
+    #     info={
+    #         "label": "Is Paper",
+    #         "description": "Whether the account is a paper or simulated account.",
+    #     },
+    # )
+
     account_is_active: Mapped[bool] = mapped_column(
         default=False,
         nullable=False,
@@ -94,9 +102,8 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
     )
     account_group_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AccountGroupTable,
-            column="uid",
+        ForeignKey(
+            f"{AccountGroupTable.__table__.fullname}.uid",
             ondelete="SET NULL",
         ),
         nullable=True,
@@ -135,20 +142,20 @@ class AccountTargetPortfolioTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "unique_identifier", unique=True),
+            None,
             "unique_identifier",
             unique=True,
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "account_uid"),
+            None,
             "account_uid",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "account_model_portfolio_uid"),
+            None,
             "account_model_portfolio_uid",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "is_active"),
+            None,
             "is_active",
         ),
     )
@@ -172,9 +179,8 @@ class AccountTargetPortfolioTable(MarketsMetaTableMixin, MarketsBase):
     )
     account_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AccountTable,
-            column="uid",
+        ForeignKey(
+            f"{AccountTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -185,9 +191,8 @@ class AccountTargetPortfolioTable(MarketsMetaTableMixin, MarketsBase):
     )
     account_model_portfolio_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AccountModelPortfolioTable,
-            column="uid",
+        ForeignKey(
+            f"{AccountModelPortfolioTable.__table__.fullname}.uid",
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -243,20 +248,15 @@ class AccountHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "account_uid"),
+            None,
             "account_uid",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "time_index"),
+            None,
             "time_index",
         ),
         Index(
-            markets_index_name(
-                __metatable_identifier__,
-                "account_uid",
-                "time_index",
-                unique=True,
-            ),
+            None,
             "account_uid",
             "time_index",
             unique=True,
@@ -274,9 +274,8 @@ class AccountHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
     )
     account_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AccountTable,
-            column="uid",
+        ForeignKey(
+            f"{AccountTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -316,20 +315,15 @@ class PositionSetTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "account_target_portfolio_uid"),
+            None,
             "account_target_portfolio_uid",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "position_set_time"),
+            None,
             "position_set_time",
         ),
         Index(
-            markets_index_name(
-                __metatable_identifier__,
-                "account_target_portfolio_uid",
-                "position_set_time",
-                unique=True,
-            ),
+            None,
             "account_target_portfolio_uid",
             "position_set_time",
             unique=True,
@@ -347,9 +341,8 @@ class PositionSetTable(MarketsMetaTableMixin, MarketsBase):
     )
     account_target_portfolio_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AccountTargetPortfolioTable,
-            column="uid",
+        ForeignKey(
+            f"{AccountTargetPortfolioTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,

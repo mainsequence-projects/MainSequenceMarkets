@@ -7,6 +7,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from mainsequence.client.metatables import MetaTable
 from sqlalchemy import DateTime, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
@@ -14,8 +15,6 @@ from sqlalchemy.types import Uuid
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_index_name,
-    markets_meta_table_identifier,
     markets_table_args,
     new_markets_uid,
 )
@@ -26,23 +25,19 @@ class MarketsMetaTableCatalogTable(MarketsMetaTableMixin, MarketsBase):
 
     __metatable_identifier__ = "MarketsMetaTableCatalog"
     __metatable_description__ = (
-        "Internal maintenance catalog keyed by logical markets MetaTable identifier. "
+        "Internal maintenance catalog keyed by migration-managed SQLAlchemy table name. "
         "Tracks registered platform MetaTable UIDs, descriptions, model names, "
         "contract hashes, SDK version, and catalog timestamps for runtime bootstrap."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(
-                __metatable_identifier__,
-                "identifier",
-                unique=True,
-            ),
-            "identifier",
+            None,
+            "table_name",
             unique=True,
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "meta_table_uid", unique=True),
+            None,
             "meta_table_uid",
             unique=True,
         ),
@@ -62,15 +57,15 @@ class MarketsMetaTableCatalogTable(MarketsMetaTableMixin, MarketsBase):
         nullable=False,
         info={
             "label": "Namespace",
-            "description": "Markets namespace used to scope logical MetaTable identifiers.",
+            "description": "Markets namespace used to scope migration-managed MetaTables.",
         },
     )
-    identifier: Mapped[str] = mapped_column(
+    table_name: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
         info={
-            "label": "Identifier",
-            "description": "Globally unique markets MetaTable identifier stored in the maintenance catalog.",
+            "label": "Table Name",
+            "description": "SQLAlchemy table name used as the catalog identity for this MetaTable.",
         },
     )
     description: Mapped[str | None] = mapped_column(
@@ -94,7 +89,7 @@ class MarketsMetaTableCatalogTable(MarketsMetaTableMixin, MarketsBase):
         nullable=False,
         info={
             "label": "Meta Table UID",
-            "description": "Platform MetaTable UID bound to the logical markets table identifier.",
+            "description": "Platform MetaTable UID bound to the markets SQLAlchemy table name.",
         },
     )
     contract_hash: Mapped[str] = mapped_column(
@@ -139,7 +134,7 @@ class MarketsMetaTableCatalogRow:
     """Typed internal payload for catalog row writes."""
 
     namespace: str
-    identifier: str
+    table_name: str
     description: str | None
     model_name: str
     meta_table_uid: str
@@ -151,36 +146,48 @@ class MarketsMetaTableCatalogRow:
         cls,
         *,
         model: type[MarketsBase],
-        meta_table: Any,
+        meta_table: MetaTable,
         contract_hash: str | None = None,
         sdk_version: str | None = None,
     ) -> "MarketsMetaTableCatalogRow":
+        model_table_name = _required_text(model.__table__.name, "table_name")
+        meta_table_identifier = _required_text(meta_table.identifier, "identifier")
+        if meta_table_identifier != model_table_name:
+            raise ValueError(
+                "MetaTable identifier does not match the provider model table name. "
+                f"model={model_table_name!r} meta_table={meta_table_identifier!r}."
+            )
+        meta_table_physical_table_name = _required_text(
+            meta_table.physical_table_name,
+            "physical_table_name",
+        )
+        if meta_table_physical_table_name != model_table_name:
+            raise ValueError(
+                "MetaTable physical table does not match the provider model. "
+                f"model={model_table_name!r} meta_table={meta_table_physical_table_name!r}."
+            )
+
         return cls(
-            namespace=_required_text(
-                getattr(meta_table, "namespace", None)
-                or getattr(model, "__metatable_namespace__", None),
-                "namespace",
-            ),
-            identifier=_required_text(
-                getattr(meta_table, "identifier", None)
-                or getattr(model, "__metatable_identifier__", None),
-                "identifier",
-            ),
-            description=_optional_text(getattr(meta_table, "description", None)),
+            namespace=_required_text(model.__metatable_namespace__, "namespace"),
+            table_name=model_table_name,
+            description=_optional_text(model.__metatable_description__),
             model_name=model.__name__,
-            meta_table_uid=_required_text(getattr(meta_table, "uid", None), "meta_table_uid"),
+            meta_table_uid=_required_text(
+                meta_table.uid,
+                "meta_table_uid",
+            ),
             contract_hash=contract_hash or markets_meta_table_contract_hash(model),
             sdk_version=sdk_version,
         )
 
     @property
     def identity_key(self) -> str:
-        return self.identifier
+        return self.table_name
 
     def to_payload(self) -> dict[str, Any]:
         return {
             "namespace": self.namespace,
-            "identifier": self.identifier,
+            "table_name": self.table_name,
             "description": self.description,
             "model_name": self.model_name,
             "meta_table_uid": self.meta_table_uid,
@@ -200,7 +207,7 @@ def markets_meta_table_contract_payload(model: type[MarketsBase]) -> dict[str, A
     return {
         "model_name": model.__name__,
         "namespace": getattr(model, "__metatable_namespace__", None),
-        "identifier": getattr(model, "__metatable_identifier__", None),
+        "table_name": str(table.name),
         "schema": table.schema,
         "columns": [
             {
@@ -252,39 +259,11 @@ def _sort_contract_items(items: Any) -> list[dict[str, Any]]:
 
 
 def _foreign_key_target_identifier(element: Any) -> str:
-    target_model = _metatable_foreign_key_target_model(element)
-    if target_model is not None:
-        return markets_meta_table_identifier(target_model)
-    return markets_meta_table_identifier(element.column.table)
+    return str(element.column.table.name)
 
 
 def _foreign_key_target_column_name(element: Any) -> str:
-    metadata = _metatable_foreign_key_metadata(element)
-    if metadata is not None:
-        target_column = metadata.get("target_column")
-        if target_column not in (None, ""):
-            return str(target_column)
     return str(element.column.name)
-
-
-def _metatable_foreign_key_target_model(element: Any) -> type[MarketsBase] | None:
-    metadata = _metatable_foreign_key_metadata(element)
-    if metadata is None:
-        return None
-    target_model = metadata.get("target_model")
-    if isinstance(target_model, type):
-        return target_model
-    return None
-
-
-def _metatable_foreign_key_metadata(element: Any) -> dict[str, Any] | None:
-    info = getattr(element, "info", None)
-    if not isinstance(info, dict):
-        return None
-    metadata = info.get("mainsequence_metatable_foreign_key")
-    if isinstance(metadata, dict):
-        return metadata
-    return None
 
 
 def _required_text(value: Any, field_name: str) -> str:

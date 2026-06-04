@@ -12,8 +12,16 @@ import datetime
 import uuid
 from typing import Any, ClassVar
 
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Float, SmallInteger, String
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    SmallInteger,
+    String,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
@@ -38,7 +46,7 @@ def _execution_info(column_name: str) -> dict[str, str]:
 class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Timestamped asset display snapshots keyed by asset unique identifier."""
 
-    __markets_base_identifier__: ClassVar[str] = "AssetSnapshotsTS"
+    __metatable_identifier__ = "AssetSnapshotsTS"
     __metatable_description__ = (
         "Timestamped asset display-fact storage keyed by (time_index, "
         "asset_identifier). Used by the AssetSnapshot DataNode to publish "
@@ -58,9 +66,8 @@ class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     asset_identifier: Mapped[str] = mapped_column(
         String(255),
-        MetaTableForeignKey(
-            AssetTable,
-            column="unique_identifier",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -103,7 +110,7 @@ class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Account historical holdings keyed by account UID and held asset."""
 
-    __markets_base_identifier__: ClassVar[str] = "AccountHoldingsTS"
+    __metatable_identifier__ = "AccountHoldingsTS"
     __metatable_description__ = (
         "Timestamped account holdings storage keyed by (time_index, account_uid, "
         "asset_identifier). Each row is one asset position in an account holdings "
@@ -136,9 +143,8 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     account_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AccountTable,
-            column="uid",
+        ForeignKey(
+            f"{AccountTable.__table__.fullname}.uid",
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -152,9 +158,8 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     asset_identifier: Mapped[str] = mapped_column(
         String(255),
-        MetaTableForeignKey(
-            AssetTable,
-            column="unique_identifier",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -165,9 +170,8 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     holdings_set_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AccountHoldingsSetTable,
-            column="uid",
+        ForeignKey(
+            f"{AccountHoldingsSetTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -224,7 +228,7 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Reusable target position exposure rows keyed by position set UID."""
 
-    __markets_base_identifier__: ClassVar[str] = "TargetPositionsTS"
+    __metatable_identifier__ = "TargetPositionsTS"
     __metatable_description__ = (
         "Reusable target-position storage keyed by (time_index, position_set_uid, "
         "asset_identifier). Each row stores one target exposure instruction that "
@@ -250,9 +254,8 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     position_set_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            PositionSetTable,
-            column="uid",
+        ForeignKey(
+            f"{PositionSetTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -265,9 +268,8 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     asset_identifier: Mapped[str] = mapped_column(
         String,
-        MetaTableForeignKey(
-            AssetTable,
-            column="unique_identifier",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -305,7 +307,7 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class OrdersStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Timestamped execution order records keyed by order_time."""
 
-    __markets_base_identifier__: ClassVar[str] = "OrdersTS"
+    __metatable_identifier__ = "OrdersTS"
     __metatable_description__ = (
         "Timestamped execution-order storage keyed by order_time, "
         "order_identifier, account_identifier, and "
@@ -385,7 +387,7 @@ class OrdersStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class OrderEventsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Timestamped order status events keyed by event_time."""
 
-    __markets_base_identifier__: ClassVar[str] = "OrderEventsTS"
+    __metatable_identifier__ = "OrderEventsTS"
     __metatable_description__ = (
         "Timestamped order-event storage keyed by (event_time, "
         "order_identifier). Used by execution DataNodes to persist status "
@@ -414,7 +416,7 @@ class OrderEventsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 class TradesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Timestamped trade execution records keyed by trade_time."""
 
-    __markets_base_identifier__: ClassVar[str] = "TradesTS"
+    __metatable_identifier__ = "TradesTS"
     __metatable_description__ = (
         "Timestamped trade-execution storage keyed by trade_time, "
         "trade_identifier, account_identifier, and "

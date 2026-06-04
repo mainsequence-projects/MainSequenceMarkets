@@ -18,8 +18,8 @@ from examples.msm.platform.bootstrap import (
 os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
 import msm  # noqa: E402
-from mainsequence.meta_tables import MetaTableForeignKey  # noqa: E402
 from pydantic import AliasChoices, Field  # noqa: E402
+from sqlalchemy import ForeignKey  # noqa: E402
 from sqlalchemy.orm import Mapped, mapped_column  # noqa: E402
 from sqlalchemy.types import String, Uuid  # noqa: E402
 
@@ -40,7 +40,7 @@ class MyAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(AssetTable, column="uid", ondelete="CASCADE"),
+        ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
         info={"description": "Canonical AssetTable uid for this custom detail row."},

@@ -4,15 +4,13 @@ import datetime as dt
 import uuid
 from decimal import Decimal
 
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import DateTime, Index, Numeric, String
+from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_index_name,
     markets_table_args,
 )
 
@@ -32,28 +30,27 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "underlying_index_uid"),
+            None,
             "underlying_index_uid",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "settlement_asset"),
+            None,
             "settlement_asset",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "margin_asset"),
+            None,
             "margin_asset",
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "expires_at"),
+            None,
             "expires_at",
         ),
     )
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AssetTable,
-            column="uid",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         primary_key=True,
@@ -73,9 +70,8 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     )
     underlying_index_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            IndexTable,
-            column="uid",
+        ForeignKey(
+            f"{IndexTable.__table__.fullname}.uid",
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -94,9 +90,8 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     )
     settlement_asset: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AssetTable,
-            column="uid",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.uid",
             ondelete="RESTRICT",
         ),
         nullable=False,
@@ -107,9 +102,8 @@ class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     )
     margin_asset: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AssetTable,
-            column="uid",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.uid",
             ondelete="RESTRICT",
         ),
         nullable=False,

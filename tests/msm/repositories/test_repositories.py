@@ -127,7 +127,7 @@ def test_generic_upsert_operation_populates_python_defaults_for_backend_sql() ->
     context = MarketsRepositoryContext()
     row = MarketsMetaTableCatalogRow(
         namespace="ms-markets",
-        identifier="Asset",
+        table_name="ms_markets__asset",
         description=None,
         model_name="AssetTable",
         meta_table_uid=str(uuid.uuid4()),
@@ -139,7 +139,7 @@ def test_generic_upsert_operation_populates_python_defaults_for_backend_sql() ->
         context,
         model=MarketsMetaTableCatalogTable,
         values=row.to_payload(),
-        conflict_columns=["identifier"],
+        conflict_columns=["table_name"],
     )
 
     assert isinstance(operation.statement.parameters["uid"], uuid.UUID)

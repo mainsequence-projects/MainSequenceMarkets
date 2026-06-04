@@ -6,19 +6,24 @@ from typing import ClassVar
 
 import pytest
 from mainsequence.meta_tables import (
-    MetaTableForeignKey,
     PlatformManagedMetaTable,
     PlatformTimeIndexMetaData,
 )
 from pydantic import AliasChoices, Field
-from sqlalchemy import String
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 import msm.models.registration as meta_tables
 import msm.models as models
 from msm.api.base import MarketsMetaTableRow, MarketsRow
-from msm.base import MarketsBase, MarketsMetaTableMixin, markets_table_storage_name
+from msm.base import (
+    MARKETS_TABLE_APP,
+    MarketsBase,
+    MarketsMetaTableMixin,
+    markets_table_name,
+    markets_table_storage_name,
+)
 from msm.data_nodes.storage import AccountHoldingsStorage
 from msm.maintenance.models import MarketsMetaTableCatalogTable
 from msm.migrations.registry import metatable_provider_models
@@ -47,6 +52,7 @@ from msm.models import (
     markets_sqlalchemy_models,
 )
 from msm_pricing.meta_tables import pricing_sqlalchemy_models
+from msm.settings import MSM_AUTO_REGISTER_NAMESPACE_ENV
 
 
 class ExtensionAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
@@ -59,7 +65,7 @@ class ExtensionAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(AssetTable, column="uid", ondelete="CASCADE"),
+        ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
     )
@@ -90,15 +96,71 @@ def _install_fake_session_data_source(monkeypatch) -> None:
     )
 
 
-def test_markets_models_use_platform_managed_table_mixin() -> None:
+def test_markets_models_use_package_owned_table_names() -> None:
     table_names: dict[str, type] = {}
 
     for model in markets_sqlalchemy_models():
         assert issubclass(model, PlatformManagedMetaTable)
-        assert "__tablename__" not in model.__dict__
-        assert model.__table__.name == model.get_storage_hash()
+        table_identity = model.__metatable_identifier__.rsplit(".", 1)[-1]
+        assert model.__table__.name == markets_table_name(
+            MARKETS_TABLE_APP,
+            table_identity,
+        )
+        assert model.__table__.name.startswith("ms_markets__")
+        assert len(model.__table__.name) <= 63
         assert model.__table__.name not in table_names
         table_names[model.__table__.name] = model
+
+
+def test_time_index_models_use_package_owned_table_names() -> None:
+    assert AccountHoldingsStorage.__table__.name == markets_table_name(
+        MARKETS_TABLE_APP,
+        AccountHoldingsStorage.__metatable_identifier__.rsplit(".", 1)[-1],
+    )
+
+
+def test_markets_table_name_applies_optional_suffix() -> None:
+    assert (
+        markets_table_name(
+            MARKETS_TABLE_APP,
+            "Account",
+            suffix="mainsequence.examples",
+        )
+        == "ms_markets__account__mainsequence_examples"
+    )
+
+
+def test_markets_table_name_truncates_long_suffix_deterministically() -> None:
+    table_name = markets_table_name(
+        MARKETS_TABLE_APP,
+        "VeryLongMarketDataConceptIdentifierThatWouldNotFitCleanly",
+        suffix="mainsequence.examples.with.a.very.long.project.namespace",
+    )
+
+    assert table_name == markets_table_name(
+        MARKETS_TABLE_APP,
+        "VeryLongMarketDataConceptIdentifierThatWouldNotFitCleanly",
+        suffix="mainsequence.examples.with.a.very.long.project.namespace",
+    )
+    assert table_name.startswith("ms_markets__")
+    assert len(table_name) <= 63
+
+
+def test_markets_mixin_applies_environment_namespace_suffix(monkeypatch) -> None:
+    monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.examples")
+
+    class EnvironmentScopedTable(MarketsMetaTableMixin, MarketsBase):
+        __metatable_identifier__ = "EnvironmentScoped"
+        __metatable_description__ = (
+            "Environment scoped table used to verify package-owned physical table names."
+        )
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+
+    assert (
+        EnvironmentScopedTable.__table__.name
+        == "ms_markets__environmentscoped__mainsequence_examples"
+    )
 
 
 def test_markets_models_declare_metatable_descriptions() -> None:
@@ -154,7 +216,6 @@ def test_markets_metatable_row_keeps_legacy_alias() -> None:
 
 
 def test_default_namespace_keeps_bare_metatable_identifier() -> None:
-    assert AssetTable.__markets_base_identifier__ == "Asset"
     assert AssetTable.__metatable_identifier__ == "Asset"
     assert AssetTable.metatable_identifier() == "Asset"
 
@@ -165,7 +226,6 @@ def test_non_default_namespace_prefixes_metatable_identifier() -> None:
         __metatable_namespace__ = "mainsequence.examples"
         __metatable_identifier__ = "Asset"
 
-    assert ExampleNamespacedTable.__markets_base_identifier__ == "Asset"
     assert ExampleNamespacedTable.__metatable_identifier__ == "mainsequence.examples.Asset"
     assert ExampleNamespacedTable.metatable_identifier() == "mainsequence.examples.Asset"
 
@@ -282,7 +342,6 @@ def test_asset_unique_identifier_is_declared_unique() -> None:
 
 
 def test_asset_type_model_is_registry_table() -> None:
-    assert AssetTypeTable.__markets_base_identifier__ == "AssetType"
     assert AssetTypeTable.__metatable_identifier__ == "AssetType"
     assert "asset_type" in AssetTypeTable.__table__.c
     assert "display_name" in AssetTypeTable.__table__.c
@@ -302,8 +361,8 @@ def test_account_relationships_live_on_account_table() -> None:
     group_column = AccountTable.__table__.c["account_group_uid"]
 
     assert any(
-        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AccountGroupTable
-        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"] == "uid"
+        foreign_key.column is AccountGroupTable.__table__.c.uid
+        and foreign_key.ondelete == "SET NULL"
         for foreign_key in group_column.foreign_keys
     )
 
@@ -332,20 +391,17 @@ def test_account_target_portfolio_owns_position_sets() -> None:
     position_set_parent_column = PositionSetTable.__table__.c["account_target_portfolio_uid"]
 
     assert any(
-        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"] is AccountTable
-        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"] == "uid"
+        foreign_key.column is AccountTable.__table__.c.uid and foreign_key.ondelete == "CASCADE"
         for foreign_key in target_account_column.foreign_keys
     )
     assert any(
-        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"]
-        is AccountModelPortfolioTable
-        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"] == "uid"
+        foreign_key.column is AccountModelPortfolioTable.__table__.c.uid
+        and foreign_key.ondelete == "RESTRICT"
         for foreign_key in target_model_column.foreign_keys
     )
     assert any(
-        foreign_key.info["mainsequence_metatable_foreign_key"]["target_model"]
-        is AccountTargetPortfolioTable
-        and foreign_key.info["mainsequence_metatable_foreign_key"]["target_column"] == "uid"
+        foreign_key.column is AccountTargetPortfolioTable.__table__.c.uid
+        and foreign_key.ondelete == "CASCADE"
         for foreign_key in position_set_parent_column.foreign_keys
     )
 
@@ -354,7 +410,6 @@ def test_index_model_is_reference_table() -> None:
     table = IndexTable.__table__
     removed_constant_name_field = "legacy_" + "constant_name"
 
-    assert IndexTable.__markets_base_identifier__ == "Index"
     assert IndexTable.__metatable_identifier__ == "Index"
     assert "uid" in table.c
     assert "unique_identifier" in table.c
@@ -378,7 +433,6 @@ def test_index_model_is_reference_table() -> None:
 def test_index_type_model_is_registry_table() -> None:
     table = IndexTypeTable.__table__
 
-    assert IndexTypeTable.__markets_base_identifier__ == "IndexType"
     assert IndexTypeTable.__metatable_identifier__ == "IndexType"
     assert "uid" in table.c
     assert "index_type" in table.c
@@ -394,7 +448,6 @@ def test_index_type_model_is_registry_table() -> None:
 def test_issuer_model_is_reference_table() -> None:
     table = IssuerTable.__table__
 
-    assert IssuerTable.__markets_base_identifier__ == "Issuer"
     assert IssuerTable.__metatable_identifier__ == "Issuer"
     assert "uid" in table.c
     assert "unique_identifier" in table.c

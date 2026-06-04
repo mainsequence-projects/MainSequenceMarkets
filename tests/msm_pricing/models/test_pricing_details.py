@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from mainsequence.meta_tables import PlatformManagedMetaTable
 
+from msm.base import MARKETS_TABLE_APP, markets_table_name
 from msm.models import AssetTable, IndexTable
 from msm_pricing.models import (
     AssetCurrentPricingDetailsTable,
@@ -12,9 +13,9 @@ from msm_pricing.models import (
 
 def test_asset_current_pricing_details_is_platform_managed_table() -> None:
     assert issubclass(AssetCurrentPricingDetailsTable, PlatformManagedMetaTable)
-    assert "__tablename__" not in AssetCurrentPricingDetailsTable.__dict__
-    assert (
-        AssetCurrentPricingDetailsTable.__markets_base_identifier__ == "AssetCurrentPricingDetails"
+    assert AssetCurrentPricingDetailsTable.__table__.name == markets_table_name(
+        MARKETS_TABLE_APP,
+        AssetCurrentPricingDetailsTable.__metatable_identifier__,
     )
     assert AssetCurrentPricingDetailsTable.__metatable_identifier__ == "AssetCurrentPricingDetails"
 

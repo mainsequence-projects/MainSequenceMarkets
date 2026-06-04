@@ -166,6 +166,28 @@ The migration path does not contain:
 - project-owned migration ledger rows;
 - project-generated SQL render artifacts.
 
+## Foreign-Key Authoring
+
+Foreign keys are authored with normal SQLAlchemy `ForeignKey(...)` declarations,
+not SDK-specific foreign-key helper objects. The provider model graph still owns
+which MetaTables are migration-managed, but Alembic owns the physical FK DDL
+from SQLAlchemy metadata.
+
+Use package-owned SQLAlchemy table names as FK targets:
+
+```python
+asset_uid: Mapped[uuid.UUID] = mapped_column(
+    Uuid(as_uuid=True),
+    ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
+    primary_key=True,
+    nullable=False,
+)
+```
+
+The migration/provider integration must therefore derive dependency ordering,
+contract hashes, and catalog refresh data from SQLAlchemy table metadata, not
+from deprecated SDK foreign-key metadata.
+
 ## Provider Contract
 
 `ms-markets` defines one provider object at:
@@ -192,17 +214,21 @@ from mainsequence.meta_tables.migrations import (
     AlembicVersionMetaTable,
 )
 
-from msm.base import MARKETS_SCHEMA, MarketsBase
+from msm.base import MARKETS_SCHEMA, MARKETS_TABLE_APP, MarketsBase, markets_table_name
 from msm.maintenance.catalog import refresh_markets_catalog_from_registered_metatables
 from msm.migrations.registry import metatable_provider_models
-from msm.settings import markets_identifier, markets_namespace
+from msm.settings import markets_auto_register_namespace, markets_identifier, markets_namespace
 
 
 class MarketsAlembicVersion(AlembicVersionMetaTable):
     __metatable_namespace__ = markets_namespace()
     __metatable_identifier__ = markets_identifier("msm.alembic_version")
     __alembic_version_schema__ = MARKETS_SCHEMA
-    __alembic_version_table_name__ = "msm_alembic_version"
+    __alembic_version_table_name__ = markets_table_name(
+        MARKETS_TABLE_APP,
+        "alembic_version",
+        suffix=markets_auto_register_namespace(),
+    )
     __alembic_version_column_name__ = "version_num"
 
 
@@ -228,13 +254,13 @@ owns a migration engine. They must be renamed to provider-scope terms such as
 
 The provider's model scope must include the combined `msm`, `msm_portfolios`,
 and `msm_pricing` MetaTable graph. It must de-duplicate by model identity and
-logical MetaTable identifier so Alembic, SDK registration, and catalog refresh
-see each managed table once.
+SQLAlchemy table name so Alembic, SDK registration, and catalog refresh see each
+managed table once.
 
 The physical Alembic version table is package-specific:
 
 ```text
-public.msm_alembic_version
+public.ms_markets__alembic_version
 ```
 
 This avoids collisions with other independent providers in the same database.
@@ -402,7 +428,7 @@ The hook should:
 1. iterate `migration.metatable_models`;
 2. pair each model with the SDK-registered or refreshed MetaTable;
 3. compute the current contract hash through existing catalog helpers;
-4. upsert `MarketsMetaTableCatalogTable`;
+4. upsert `MarketsMetaTableCatalogTable` by `table_name`;
 5. fail if an expected provider model cannot be registered, resolved, or
    validated.
 
@@ -518,9 +544,9 @@ It should not add built-in `ms-markets` tables to project extension hooks.
   `after_register_metatables=refresh_markets_catalog_from_registered_metatables`.
 - There is no `msm migrations` wrapper for this catalog refresh.
 - The `ms-markets` provider uses the package-specific physical Alembic version
-  table `public.msm_alembic_version`.
+  table `public.ms_markets__alembic_version`.
 - Projects that inherit or use the `ms-markets` provider share
-  `public.msm_alembic_version` for the `ms-markets` revision graph.
+  `public.ms_markets__alembic_version` for the `ms-markets` revision graph.
 - `msm`, `msm_portfolios`, and `msm_pricing` are covered by one provider:
   `msm.migrations:migration`.
 - There is one Alembic script location and one revision graph for the repository:

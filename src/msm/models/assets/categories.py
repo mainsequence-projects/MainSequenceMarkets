@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import uuid
 
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import Index, String, Text
+from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_index_name,
     markets_table_args,
     new_markets_uid,
 )
@@ -29,12 +27,12 @@ class AssetCategoryTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(__metatable_identifier__, "unique_identifier", unique=True),
+            None,
             "unique_identifier",
             unique=True,
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "display_name"),
+            None,
             "display_name",
         ),
     )
@@ -94,18 +92,13 @@ class AssetCategoryMembershipTable(MarketsMetaTableMixin, MarketsBase):
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
-            markets_index_name(
-                __metatable_identifier__,
-                "category_uid",
-                "asset_uid",
-                unique=True,
-            ),
+            None,
             "category_uid",
             "asset_uid",
             unique=True,
         ),
         Index(
-            markets_index_name(__metatable_identifier__, "asset_uid"),
+            None,
             "asset_uid",
         ),
     )
@@ -121,9 +114,8 @@ class AssetCategoryMembershipTable(MarketsMetaTableMixin, MarketsBase):
     )
     category_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AssetCategoryTable,
-            column="uid",
+        ForeignKey(
+            f"{AssetCategoryTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -134,9 +126,8 @@ class AssetCategoryMembershipTable(MarketsMetaTableMixin, MarketsBase):
     )
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AssetTable,
-            column="uid",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,

@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import uuid
 
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import Index, String, Text
+from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
 from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
-    markets_index_name,
     markets_table_args,
 )
 
@@ -28,16 +26,15 @@ class OpenFigiAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
-        Index(markets_index_name(__metatable_identifier__, "figi"), "figi"),
-        Index(markets_index_name(__metatable_identifier__, "ticker"), "ticker"),
-        Index(markets_index_name(__metatable_identifier__, "isin"), "isin"),
+        Index(None, "figi"),
+        Index(None, "ticker"),
+        Index(None, "isin"),
     )
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(
-            AssetTable,
-            column="uid",
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         primary_key=True,

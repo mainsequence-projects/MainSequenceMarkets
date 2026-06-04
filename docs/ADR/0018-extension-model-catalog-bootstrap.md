@@ -84,24 +84,23 @@ Project-local extension models must follow the same authoring contract as
 built-in models:
 
 - subclass the appropriate markets SQLAlchemy base/mixin;
-- declare a globally unique `__metatable_identifier__` or
-  `__markets_base_identifier__`;
+- declare a stable `__metatable_identifier__`;
 - declare a meaningful `__metatable_description__`;
-- declare platform-managed foreign keys with
-  `MetaTableForeignKey(TargetModel, column=...)`;
-- avoid table-name strings, explicit FK names, manual MetaTable UID maps, and
+- declare platform-managed foreign keys with normal SQLAlchemy `ForeignKey(...)`;
+- avoid explicit FK names, manual MetaTable UID maps, and
   direct `MetaTable.register()` orchestration.
 
-The stable logical identifier remains the catalog key. The backend
-`MetaTable.uid` is resolved only by attach/register and is then bound to the
-model class for compiled operation scope.
+The package-owned SQLAlchemy table name derived from `__metatable_identifier__`
+is the catalog key. The backend `MetaTable.uid` is resolved only by migration
+finalization/catalog attach and is then bound to the model class for compiled
+operation scope.
 
 Example project-local asset detail model:
 
 ```python
 import uuid
 
-from mainsequence.meta_tables import MetaTableForeignKey
+from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Numeric, String, Uuid
 
@@ -119,7 +118,7 @@ class MyAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(AssetTable, column="uid", ondelete="CASCADE"),
+        ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
         info={"description": "Canonical AssetTable uid for this custom detail row."},
@@ -150,9 +149,9 @@ msm.start_engine(models=[MyAssetDetailsTable])
 That call registers or attaches `MyAssetDetailsTable` as a backend
 `MetaTable`, adds or refreshes its markets catalog row, validates any existing
 physical storage, and binds the resolved backend `MetaTable.uid` back to
-`MyAssetDetailsTable`. The `MetaTableForeignKey(AssetTable, ...)` declaration
-means bootstrap must include `AssetTable` first; the caller should not pass a
-table name or UID for the target.
+`MyAssetDetailsTable`. The `ForeignKey(...)` declaration means bootstrap must
+include `AssetTable` first; the caller should not pass a MetaTable UID for the
+target.
 
 ### Dependency Closure
 
@@ -164,22 +163,22 @@ If a user supplies only:
 msm.start_engine(models=[MyAssetDetailsTable])
 ```
 
-and `MyAssetDetailsTable` has a `MetaTableForeignKey(AssetTable, column="uid")`,
+and `MyAssetDetailsTable` has a SQLAlchemy `ForeignKey(...)` to `AssetTable`,
 bootstrap will include `AssetTable` before `MyAssetDetailsTable`. The same rule
 applies transitively for built-in and project-local targets.
 
 The ordering rule is:
 
 1. collect all requested models and row-class backing tables;
-2. inspect class-based `MetaTableForeignKey(...)` targets;
+2. inspect SQLAlchemy `ForeignKey(...)` targets;
 3. add every transitive target model to the registration set;
 4. topologically sort dependencies before dependents;
 5. preserve the built-in library ordering as the tie-breaker for built-ins;
 6. preserve caller order as the tie-breaker for unrelated extension models;
-7. fail early on dependency cycles or duplicate logical identifiers.
+7. fail early on dependency cycles or duplicate SQLAlchemy table names.
 
-This replaces any need for caller-maintained table-name maps. Dependency
-expansion is model-class based, not SQLAlchemy physical-table-name based.
+This replaces any need for caller-maintained MetaTable UID maps. Dependency
+expansion is SQLAlchemy metadata based.
 
 ### Catalog And Runtime Behavior
 
@@ -190,13 +189,13 @@ The existing catalog behavior applies equally to extension models:
 - import pre-catalog platform registrations into the catalog when found;
 - register models missing from both catalog and platform;
 - validate physical storage before exposing already-registered MetaTables;
-- write catalog rows keyed by logical identifier;
+- write catalog rows keyed by SQLAlchemy table name;
 - bind the resolved platform `MetaTable` back onto each SQLAlchemy model class;
 - expose the bound models through the active runtime and repository context.
 
 `rotate_catalogue(ModelOrRow)` will also accept project-local models and row
 classes. Rotation stays model-first: it resolves the backend MetaTable through
-the model declaration and never accepts user-provided UIDs or identifier maps.
+the model declaration and never accepts user-provided UIDs or table-name maps.
 
 ### Row API Extensions
 
@@ -250,8 +249,8 @@ documented in:
   `msm.start_engine(models=[MyAssetDetailsTable])`;
 - the ms-markets bootstrap/registration skill, so agents route extension work to
   `msm.start_engine(...)` and the catalog instead of direct registration;
-- the asset model extension skill, so asset detail extensions show
-  `MetaTableForeignKey(AssetTable, column="uid")` and startup through
+- the asset model extension skill, so asset detail extensions show SQLAlchemy
+  `ForeignKey(...)` and startup through
   `msm.start_engine(models=[CustomAssetDetailsTable])`;
 - any tutorial or example that demonstrates user-defined markets models.
 
@@ -276,13 +275,12 @@ separate registry, UID map, catalog writer, or table-name resolution layer.
   when it points at a `MarketsBase` subclass. This must work for
   `MarketsMetaTableRow` subclasses and for the temporary `MarketsRow`
   compatibility alias.
-- [x] 7. Build dependency closure from model-class
-  `MetaTableForeignKey(...)` targets.
+- [x] 7. Build dependency closure from SQLAlchemy `ForeignKey(...)` targets.
 - [x] 8. Topologically sort the combined model set, with dependencies before
   dependents.
 - [x] 9. Preserve built-in library ordering as the tie-breaker for built-ins and
   caller order as the tie-breaker for unrelated extension models.
-- [x] 10. Detect duplicate logical identifiers before catalog bootstrap.
+- [x] 10. Detect duplicate SQLAlchemy table names before catalog bootstrap.
 - [x] 11. Detect dependency cycles before registration and raise a clear error
   that names the cycle.
 - [x] 12. Route the resulting ordered model list through
@@ -290,7 +288,7 @@ separate registry, UID map, catalog writer, or table-name resolution layer.
 - [x] 13. Extend `rotate_catalogue(...)` so project-local SQLAlchemy models and
   row API wrappers resolve through the same model-normalization path.
 - [x] 14. Add focused tests for extension model selection, dependency closure,
-  catalog row creation/attachment, runtime UID binding, duplicate identifiers,
+  catalog row creation/attachment, runtime UID binding, duplicate table names,
   dependency cycles, and catalog rotation.
 - [x] 15. Update `docs/knowledge/msm/platform/meta_table_registration.md` with the
   project-local `MyAssetDetailsTable` flow.
@@ -310,7 +308,7 @@ The implementation must include focused tests proving:
 - dependency closure includes built-in FK targets such as `AssetTable`;
 - catalog bootstrap creates or attaches a catalog row for the extension model;
 - runtime row operations resolve the extension model's bound `MetaTable.uid`;
-- duplicate logical identifiers fail before registration;
+- duplicate SQLAlchemy table names fail before registration;
 - dependency cycles fail with a clear error;
 - `rotate_catalogue(MyAssetDetailsTable)` resolves the registered MetaTable
   through the model declaration;

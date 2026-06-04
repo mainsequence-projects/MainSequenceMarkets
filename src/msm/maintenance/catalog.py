@@ -8,12 +8,12 @@ from typing import Any
 
 from mainsequence.client.metatables import MetaTable
 from mainsequence.logconf import logger as _mainsequence_logger
+from mainsequence.meta_tables.migrations import AlembicMetaTableCatalogRefreshContext
 
 from msm.base import MarketsBase, markets_table_storage_name
 from msm.models.registration import (
     MarketsManagementMode,
     MarketsMetaTableRegistrationResult,
-    markets_meta_table_identifier,
 )
 from msm.repositories.base import MarketsRepositoryContext
 from msm.repositories.crud import search_model, upsert_model
@@ -55,7 +55,7 @@ class _CatalogBootstrapModelPlan:
     model: type[MarketsBase]
     storage_hash: str
     namespace: str
-    identifier: str
+    table_name: str
 
 
 def attach_markets_meta_tables_from_catalog(
@@ -77,28 +77,28 @@ def attach_markets_meta_tables_from_catalog(
             model=model,
             storage_hash=_catalog_model_storage_hash(model),
             namespace=_catalog_model_namespace(model),
-            identifier=markets_meta_table_identifier(model),
+            table_name=_catalog_model_table_name(model),
         )
         for model in resolved_models
     ]
-    catalog_rows_by_identifier = find_catalog_rows_by_identifier(
+    catalog_rows_by_table_name = find_catalog_rows_by_table_name(
         catalog_context,
-        identifiers=[plan.identifier for plan in model_plans],
+        table_names=[plan.table_name for plan in model_plans],
     )
-    missing_identifiers = [
-        plan.identifier for plan in model_plans if plan.identifier not in catalog_rows_by_identifier
+    missing_table_names = [
+        plan.table_name for plan in model_plans if plan.table_name not in catalog_rows_by_table_name
     ]
-    if missing_identifiers:
+    if missing_table_names:
         raise CatalogBootstrapError(
             "Markets MetaTable catalog is missing finalized rows for "
-            f"{missing_identifiers!r}. Run `{SDK_MIGRATION_UPGRADE_COMMAND}` before runtime startup."
+            f"{missing_table_names!r}. Run `{SDK_MIGRATION_UPGRADE_COMMAND}` before runtime startup."
         )
 
     for plan in model_plans:
-        validate_catalog_contract(catalog_rows_by_identifier[plan.identifier], model=plan.model)
+        validate_catalog_contract(catalog_rows_by_table_name[plan.table_name], model=plan.model)
 
     resolved_meta_tables = resolve_catalog_meta_tables(
-        catalog_rows_by_identifier,
+        catalog_rows_by_table_name,
         model_plans=model_plans,
         management_mode=management_mode,
         timeout=timeout,
@@ -107,16 +107,16 @@ def attach_markets_meta_tables_from_catalog(
     meta_tables: list[MetaTable] = []
     meta_table_by_identifier: dict[str, MetaTable] = {}
     for position, plan in enumerate(model_plans, start=1):
-        catalog_row = catalog_rows_by_identifier[plan.identifier]
-        meta_table = resolved_meta_tables[plan.identifier]
+        catalog_row = catalog_rows_by_table_name[plan.table_name]
+        meta_table = resolved_meta_tables[plan.table_name]
         _bind_model_meta_table(plan.model, meta_table)
         meta_tables.append(meta_table)
-        meta_table_by_identifier[plan.identifier] = meta_table
+        meta_table_by_identifier[plan.table_name] = meta_table
         logger.debug(
             "Attached markets MetaTable from finalized catalog",
             model=plan.model.__name__,
             namespace=catalog_row.get("namespace"),
-            identifier=catalog_row.get("identifier"),
+            table_name=catalog_row.get("table_name"),
             meta_table_uid=_meta_table_uid(meta_table),
             model_index=position,
             model_count=len(resolved_models),
@@ -157,49 +157,62 @@ def catalog_repository_context(
     *,
     catalog_meta_table: MetaTable,
     timeout: int | float | tuple[float, float] | None = None,
+    reserved_policy: str | None = None,
 ) -> MarketsRepositoryContext:
     _bind_model_meta_table(MarketsMetaTableCatalogTable, catalog_meta_table)
     return MarketsRepositoryContext(
         timeout=timeout,
-        namespace=getattr(catalog_meta_table, "namespace", None),
+        namespace=catalog_meta_table.namespace,
+        reserved_policy=reserved_policy,
+    )
+
+
+def finalized_catalog_repository_context(
+    *,
+    finalized_catalog_meta_table: ManagedMetaTableFinalizeTableResult,
+    reserved_policy: str | None = None,
+) -> MarketsRepositoryContext:
+    _bind_model_meta_table(MarketsMetaTableCatalogTable, finalized_catalog_meta_table)
+    return MarketsRepositoryContext(
+        reserved_policy=reserved_policy,
     )
 
 
 def refresh_markets_catalog_from_registered_metatables(
-    registered_metatables: Sequence[Any],
+    context: AlembicMetaTableCatalogRefreshContext,
 ) -> list[dict[str, Any]]:
     """Refresh the internal markets catalog after SDK provider registration."""
 
     from msm.migrations.registry import metatable_provider_models
 
     models = metatable_provider_models()
-    meta_tables = list(registered_metatables)
-    if len(meta_tables) != len(models):
+    finalized_meta_tables = list(context.registered_metatables)
+    if len(finalized_meta_tables) != len(models):
         raise CatalogBootstrapError(
             "SDK provider registered a different number of MetaTables than the "
-            f"markets migration model registry. Registered={len(meta_tables)}, "
+            f"markets migration model registry. Registered={len(finalized_meta_tables)}, "
             f"expected={len(models)}."
         )
 
-    registered_by_model = dict(zip(models, meta_tables, strict=True))
-    catalog_meta_table = registered_by_model.get(MarketsMetaTableCatalogTable)
-    if catalog_meta_table is None:
+    finalized_by_model = dict(zip(models, finalized_meta_tables, strict=True))
+    finalized_catalog_meta_table = finalized_by_model.get(MarketsMetaTableCatalogTable)
+    if finalized_catalog_meta_table is None:
         raise CatalogBootstrapError(
             "The markets migration provider must include MarketsMetaTableCatalogTable "
             "so catalog rows can be refreshed after registration."
         )
 
-    _bind_model_meta_table(MarketsMetaTableCatalogTable, catalog_meta_table)
-    catalog_context = catalog_repository_context(catalog_meta_table=catalog_meta_table)
+    catalog_context = finalized_catalog_repository_context(
+        finalized_catalog_meta_table=finalized_catalog_meta_table,
+        reserved_policy=context.reserved_policy,
+    )
     rows: list[dict[str, Any]] = []
-    for model, meta_table in registered_by_model.items():
-        _meta_table_uid(meta_table)
-        _bind_model_meta_table(model, meta_table)
+    for model, finalized_meta_table in finalized_by_model.items():
         rows.append(
-            upsert_catalog_row(
+            upsert_catalog_row_from_finalized_meta_table(
                 catalog_context,
                 model=model,
-                meta_table=meta_table,
+                finalized_meta_table=finalized_meta_table,
             )
         )
     return rows
@@ -210,50 +223,50 @@ def find_catalog_row(
     *,
     model: type[MarketsBase],
 ) -> dict[str, Any] | None:
-    identifier = markets_meta_table_identifier(model)
-    rows_by_identifier = find_catalog_rows_by_identifier(
+    table_name = _catalog_model_table_name(model)
+    rows_by_table_name = find_catalog_rows_by_table_name(
         context,
-        identifiers=[identifier],
+        table_names=[table_name],
     )
-    return rows_by_identifier.get(identifier)
+    return rows_by_table_name.get(table_name)
 
 
-def find_catalog_rows_by_identifier(
+def find_catalog_rows_by_table_name(
     context: MarketsRepositoryContext,
     *,
-    identifiers: Sequence[str],
+    table_names: Sequence[str],
 ) -> dict[str, dict[str, Any]]:
-    requested_identifiers = list(
-        dict.fromkeys(str(identifier) for identifier in identifiers if identifier)
+    requested_table_names = list(
+        dict.fromkeys(str(table_name) for table_name in table_names if table_name)
     )
-    if not requested_identifiers:
+    if not requested_table_names:
         return {}
 
     result = search_model(
         context,
         model=MarketsMetaTableCatalogTable,
         in_filters={
-            "identifier": sorted(requested_identifiers),
+            "table_name": sorted(requested_table_names),
         },
-        limit=len(requested_identifiers) * 2,
+        limit=len(requested_table_names) * 2,
     )
-    requested_identifier_set = set(requested_identifiers)
-    rows_by_identifier: dict[str, dict[str, Any]] = {}
+    requested_table_name_set = set(requested_table_names)
+    rows_by_table_name: dict[str, dict[str, Any]] = {}
     for row in _operation_result_rows(result):
-        row_identifier = str(row.get("identifier") or "")
-        if not row_identifier:
+        row_table_name = str(row.get("table_name") or "")
+        if not row_table_name:
             raise CatalogBootstrapError(
-                "Markets MetaTable catalog returned a row without identifier."
+                "Markets MetaTable catalog returned a row without table_name."
             )
-        if row_identifier not in requested_identifier_set:
+        if row_table_name not in requested_table_name_set:
             continue
-        if row_identifier in rows_by_identifier:
+        if row_table_name in rows_by_table_name:
             raise CatalogBootstrapError(
                 "Markets MetaTable catalog returned multiple rows for "
-                f"identifier {row_identifier!r}. The catalog uniqueness invariant is broken."
+                f"table_name {row_table_name!r}. The catalog uniqueness invariant is broken."
             )
-        rows_by_identifier[row_identifier] = row
-    return rows_by_identifier
+        rows_by_table_name[row_table_name] = row
+    return rows_by_table_name
 
 
 def meta_table_from_catalog_row(
@@ -266,10 +279,7 @@ def meta_table_from_catalog_row(
     return MetaTable(
         uid=str(catalog_row["meta_table_uid"]),
         namespace=str(catalog_row.get("namespace") or ""),
-        identifier=str(
-            catalog_row.get("identifier")
-            or getattr(model, "__metatable_identifier__", model.__name__)
-        ),
+        identifier=str(catalog_row["table_name"]),
         description=catalog_row.get("description"),
         storage_hash=storage_hash,
         physical_table_name=storage_hash,
@@ -278,39 +288,39 @@ def meta_table_from_catalog_row(
 
 
 def resolve_catalog_meta_tables(
-    catalog_rows_by_identifier: Mapping[str, Mapping[str, Any]],
+    catalog_rows_by_table_name: Mapping[str, Mapping[str, Any]],
     *,
     model_plans: Sequence[_CatalogBootstrapModelPlan],
     management_mode: MarketsManagementMode,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> dict[str, MetaTable]:
-    uid_by_identifier = {
-        plan.identifier: str(
-            catalog_rows_by_identifier[plan.identifier].get("meta_table_uid") or ""
+    uid_by_table_name = {
+        plan.table_name: str(
+            catalog_rows_by_table_name[plan.table_name].get("meta_table_uid") or ""
         )
         for plan in model_plans
     }
-    missing_catalog_uid_identifiers = [
-        identifier for identifier, uid in uid_by_identifier.items() if not uid
+    missing_catalog_uid_table_names = [
+        table_name for table_name, uid in uid_by_table_name.items() if not uid
     ]
-    if missing_catalog_uid_identifiers:
+    if missing_catalog_uid_table_names:
         raise CatalogBootstrapError(
             "Markets MetaTable catalog has rows without meta_table_uid for "
-            f"{missing_catalog_uid_identifiers!r}."
+            f"{missing_catalog_uid_table_names!r}."
         )
     duplicate_uids = sorted(
         {
             uid
-            for uid in uid_by_identifier.values()
-            if list(uid_by_identifier.values()).count(uid) > 1
+            for uid in uid_by_table_name.values()
+            if list(uid_by_table_name.values()).count(uid) > 1
         }
     )
     if duplicate_uids:
         raise CatalogBootstrapError(
-            "Markets MetaTable catalog maps multiple identifiers to the same "
+            "Markets MetaTable catalog maps multiple table names to the same "
             f"MetaTable UID(s) {duplicate_uids!r}."
         )
-    requested_uids = list(dict.fromkeys(uid_by_identifier.values()))
+    requested_uids = list(dict.fromkeys(uid_by_table_name.values()))
 
     if not requested_uids:
         return {}
@@ -343,7 +353,7 @@ def resolve_catalog_meta_tables(
 
     resolved: dict[str, MetaTable] = {}
     for plan in model_plans:
-        catalog_row = catalog_rows_by_identifier[plan.identifier]
+        catalog_row = catalog_rows_by_table_name[plan.table_name]
         uid = str(catalog_row["meta_table_uid"])
         meta_table = matches_by_uid[uid]
         _validate_catalog_meta_table_identity(
@@ -351,7 +361,7 @@ def resolve_catalog_meta_tables(
             meta_table=meta_table,
             model=plan.model,
         )
-        resolved[plan.identifier] = meta_table
+        resolved[plan.table_name] = meta_table
 
     logger.info(
         "Resolved cataloged markets MetaTables",
@@ -376,12 +386,12 @@ def _validate_catalog_meta_table_identity(
             f"{model.__name__}: catalog={expected_uid!r}, backend={actual_uid!r}."
         )
 
-    expected_identifier = str(catalog_row.get("identifier") or "")
+    expected_table_name = str(catalog_row.get("table_name") or "")
     actual_identifier = str(getattr(meta_table, "identifier", "") or "")
-    if actual_identifier and actual_identifier != expected_identifier:
+    if actual_identifier and actual_identifier != expected_table_name:
         raise CatalogBootstrapError(
-            "Markets MetaTable catalog identifier mismatch for "
-            f"{model.__name__}: catalog={expected_identifier!r}, "
+            "Markets MetaTable catalog table_name mismatch for "
+            f"{model.__name__}: catalog={expected_table_name!r}, "
             f"backend={actual_identifier!r}."
         )
 
@@ -427,6 +437,22 @@ def upsert_catalog_row(
     return _upsert_catalog_payload(context, row.to_payload())
 
 
+def upsert_catalog_row_from_finalized_meta_table(
+    context: MarketsRepositoryContext,
+    *,
+    model: type[MarketsBase],
+    finalized_meta_table: ManagedMetaTableFinalizeTableResult,
+    contract_hash: str | None = None,
+) -> dict[str, Any]:
+    row = MarketsMetaTableCatalogRow.from_finalized_meta_table(
+        model=model,
+        finalized_meta_table=finalized_meta_table,
+        contract_hash=contract_hash,
+        sdk_version=_sdk_version(),
+    )
+    return _upsert_catalog_payload(context, row.to_payload())
+
+
 def _upsert_catalog_payload(
     context: MarketsRepositoryContext,
     payload: Mapping[str, Any],
@@ -436,7 +462,7 @@ def _upsert_catalog_payload(
         model=MarketsMetaTableCatalogTable,
         values=dict(payload),
         conflict_columns=[
-            "identifier",
+            "table_name",
         ],
     )
 
@@ -477,7 +503,7 @@ def _registered_meta_table_filter_candidates(
     management_mode: MarketsManagementMode,
 ) -> list[dict[str, Any]]:
     base_filters: dict[str, Any] = {
-        "identifier": getattr(model, "__metatable_identifier__", model.__name__),
+        "identifier": _catalog_model_table_name(model),
         "management_mode": management_mode,
     }
     if management_mode == "external_registered" and data_source_uid:
@@ -500,6 +526,15 @@ def _catalog_model_storage_hash(
     return markets_table_storage_name(model)
 
 
+def _catalog_model_table_name(model: type[MarketsBase]) -> str:
+    table_name = str(model.__table__.name)
+    if not table_name:
+        raise CatalogBootstrapError(
+            f"Markets MetaTable model {model.__name__} does not expose catalog table_name."
+        )
+    return table_name
+
+
 def _catalog_model_namespace(model: type[MarketsBase]) -> str:
     namespace = str(getattr(model, "__metatable_namespace__", "") or "")
     if not namespace:
@@ -510,18 +545,11 @@ def _catalog_model_namespace(model: type[MarketsBase]) -> str:
 
 
 def _meta_table_uid(value: Any) -> str:
-    uid = getattr(value, "uid", value)
-    if uid in (None, ""):
-        raise ValueError("Registered MetaTable objects must expose a non-empty uid.")
-    return str(uid)
+    return str(value.uid)
 
 
-def _bind_model_meta_table(model: type[MarketsBase], meta_table: MetaTable) -> None:
-    if not isinstance(meta_table, MetaTable):
-        return
-    bind = getattr(model, "_bind_meta_table", None)
-    if callable(bind):
-        bind(meta_table)
+def _bind_model_meta_table(model: type[MarketsBase], meta_table: Any) -> None:
+    model._bind_meta_table(meta_table)
 
 
 def _operation_result_rows(result: Mapping[str, Any] | list[Any] | None) -> list[dict[str, Any]]:
@@ -567,11 +595,12 @@ __all__ = [
     "attach_markets_meta_tables_from_catalog",
     "catalog_repository_context",
     "find_catalog_row",
-    "find_catalog_rows_by_identifier",
+    "find_catalog_rows_by_table_name",
     "meta_table_from_catalog_row",
     "refresh_markets_catalog_from_registered_metatables",
     "resolve_catalog_table",
     "resolve_catalog_meta_tables",
     "upsert_catalog_row",
+    "upsert_catalog_row_from_finalized_meta_table",
     "validate_catalog_contract",
 ]

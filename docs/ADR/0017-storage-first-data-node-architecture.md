@@ -137,9 +137,9 @@ architecture moves that surface onto storage classes. Concrete gaps:
 5. **Foreign keys use the removed `SourceTableForeignKey`.** Helpers
    `asset_unique_identifier_foreign_key` / `asset_indexed_foreign_keys`
    (`assets/asset_indexed.py`) and `curve_unique_identifier_foreign_key` /
-   `curve_indexed_foreign_keys` (`data_nodes/curves.py`) must become SDK
-   `MetaTableForeignKey(TargetModel, column=...)` columns on the storage class
-   (ADR 0007 superseded; ADR 0019 defines the canonical FK helper).
+   `curve_indexed_foreign_keys` (`data_nodes/curves.py`) must become
+   SQLAlchemy `ForeignKey(...)` columns on the storage class (ADR 0007
+   superseded; ADR 0022 defines the current Alembic FK authoring rule).
 
 6. **Removed hash markers.** `test_node` (2 files), `update_only` (5 files), and
    `runtime_only` / `ignore_from_storage_hash` (3 files) are no longer supported.
@@ -211,10 +211,10 @@ by the registered `TimeIndexMetaData.uid`). Descriptive-only fields use
 
 ### 4. Foreign keys move to the storage class
 
-Asset/curve/account identity foreign keys become SDK `MetaTableForeignKey`
-columns on the storage class, pointed at the target MetaTable authoring model
-class. The SDK resolves registered target `MetaTable.uid` values during
-registration. The `SourceTableForeignKey` helper functions are removed.
+Asset/curve/account identity foreign keys become SQLAlchemy `ForeignKey(...)`
+columns on the storage class, pointed at package-owned SQLAlchemy table names.
+Alembic renders and applies the physical FK DDL. The `SourceTableForeignKey`
+helper functions are removed.
 
 ### 5. `hash_namespace` replaces `test_node`
 
@@ -273,8 +273,8 @@ backend use an explicit `hash_namespace(...)`.
 - [x] `PlatformTimeIndexMetaData` exposes `register`,
   `build_registration_request`, `get_meta_table`, `get_meta_table_uid`,
   `get_time_index_metadata`, `get_storage_hash`, `resolve_foreign_key_targets`;
-  `MetaTableForeignKey(TargetModel, column=...)` is the FK authoring API and
-  `register(...)` is the storage lifecycle entrypoint.
+  SQLAlchemy `ForeignKey(...)` is the FK authoring API and `register(...)` is
+  the storage lifecycle entrypoint.
 - [x] ~~Pin/record the target SDK version in `pyproject.toml` / `uv.lock`~~ —
   skipped by maintainer decision.
 - [x] ~~Throwaway smoke script mirroring `simple_data_nodes.py`~~ — skipped by
@@ -291,7 +291,7 @@ Verified against the project `.venv` (SDK `4.1.5`):
 | `PlatformManagedMetaTable`, `POSTGRES_IDENTIFIER_MAX_LENGTH`, `metatable_tablename`, `metatable_configured_tablename`, `slugify_identifier`, `compile_sqlalchemy_statement`, `register_external_sqlalchemy_model`, `external_registered_registration_request_from_sqlalchemy_model` | `mainsequence.tdag.meta_tables` | `mainsequence.meta_tables` |
 | `UniqueIdentifierRangeMap`, `UpdateStatistics`, `ColumnMetaData`, `TableMetaData`, `LOGICAL_COLUMN_DTYPES_ATTR` | `mainsequence.client.models_tdag` | `mainsequence.client.metatables` |
 | `Artifact` | `mainsequence.client.models_tdag` | `mainsequence.client` |
-| `SourceTableForeignKey` | `mainsequence.tdag.data_nodes` | **removed** — model FKs as SDK `MetaTableForeignKey(TargetModel, column=...)` on the storage class (Decision §4, ADR 0019) |
+| `SourceTableForeignKey` | `mainsequence.tdag.data_nodes` | **removed** — model FKs are SQLAlchemy `ForeignKey(...)` declarations on the storage class (Decision §4, superseded by ADR 0022) |
 | `DataNodeStorage` | `mainsequence.client.models_tdag` | **no exported drop-in** — runtime source-table provisioning is superseded by storage-class registration |
 
 ### Stage 1: Re-point already-correct models layer — DONE
@@ -567,8 +567,7 @@ domain MetaTables: the 13 msm storage classes are appended to
 `start_engine()` / `create_pricing_schemas()` register them in dependency order.
 Catalog rows keep identifier-keyed backend references. Runtime row operations
 read operation-scope UIDs from the bound model classes. FK declarations are
-model-keyed `MetaTableForeignKey(...)` columns, so the markets runtime no longer
-carries SQLAlchemy table-name target maps.
+SQLAlchemy `ForeignKey(...)` columns, so Alembic owns the physical FK DDL.
 
 - [x] Registered DataNode storage through the catalog: extended both model
   registries in FK order. Storage classes are imported **lazily inside** the
@@ -638,8 +637,7 @@ register/build helpers (`models/registration.py`) and the catalog
 (`maintenance/catalog.py`) are now kind-aware — they omit `introspect` /
 `open_for_everyone` for `PlatformTimeIndexMetaData` storage classes (which the
 SDK rejects for that base) via `_platform_registration_kwargs(...)`; and all six
-FK-bearing storage classes now use class-keyed `MetaTableForeignKey(...)`
-declarations instead of raw table-name foreign keys.
+FK-bearing storage classes now use SQLAlchemy `ForeignKey(...)` declarations.
 
 ### Stage 7: Cleanup and verification — DONE
 
@@ -692,10 +690,9 @@ working import surface before the bulk node migration.
 - **Hidden behavior in the base layer.** Asset-scope narrowing and
   update-statistics scoping in `AssetIndexedDataNode` are subtle; preserve them
   under test rather than rewriting from scratch.
-- **FK target resolution.** `MetaTableForeignKey` target models must be
-  available in the registration graph. Parent tables are still listed before
-  dependants so recursive SDK registration and catalog binding resolve stable
-  target `MetaTable.uid` values.
+- **FK target resolution.** SQLAlchemy FK target tables must be available in the
+  provider model graph. Parent tables are still listed before dependants so
+  migration registration and catalog binding resolve a stable dependency order.
 
 ## Non-Goals
 
