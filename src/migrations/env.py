@@ -5,7 +5,7 @@ from mainsequence.meta_tables.migrations import apply_mainsequence_migration_rol
 from sqlalchemy import engine_from_config, pool
 
 from msm.base import MARKETS_DEFAULT_SCHEMA, MARKETS_SCHEMA
-from msm.migrations import migration as default_migration
+from migrations import migration as default_migration
 
 
 def _migration_provider():

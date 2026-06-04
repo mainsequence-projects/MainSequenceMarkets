@@ -59,8 +59,8 @@ It does not create or evolve schema.
 Run admin migrations before application startup:
 
 ```bash
-mainsequence migrations current --provider msm.migrations:migration --json
-mainsequence migrations upgrade --provider msm.migrations:migration head
+mainsequence migrations current --provider migrations:migration --json
+mainsequence migrations upgrade --provider migrations:migration head
 ```
 
 See [Migrations](../knowledge/msm/migrations/index.md)
@@ -116,7 +116,7 @@ fields.
 Use this workflow when publishing and inspecting account positions:
 
 1. Before runtime, run the admin migration flow with
-   `mainsequence migrations upgrade --provider msm.migrations:migration head`
+   `mainsequence migrations upgrade --provider migrations:migration head`
    so the package schema and catalog are finalized.
 2. Attach `AssetType`, `Asset`, `AccountModelPortfolio`, `AccountGroup`,
    `Account`, `AccountTargetPortfolio`, `PositionSet`,
@@ -268,7 +268,8 @@ Use this workflow when adding or reviewing a market-domain relational table:
    `MSM_AUTO_REGISTER_NAMESPACE` suffix when configured before model import.
 5. Add the model to `markets_sqlalchemy_models()` in foreign-key dependency
    order.
-6. Generate or update a normal Alembic revision under `src/msm/migrations/`.
+6. Generate or update a normal Alembic revision under the active namespace
+   directory in `src/migrations/versions/`.
 7. Use the SDK migration upgrade flow for schema/catalog mutation, then
    `msm.start_engine(...)` for runtime attachment. Do not call model
    `.register()` methods or local registration helpers from application code.

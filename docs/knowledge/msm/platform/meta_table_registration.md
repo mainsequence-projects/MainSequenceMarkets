@@ -8,7 +8,7 @@ order; TS Manager owns governed execution.
 
 Use platform-managed models when TS Manager should own physical tables on the
 configured DynamicTable data source. Creating or evolving those tables is now
-handled by the SDK `mainsequence migrations ... --provider msm.migrations:migration`
+handled by the SDK `mainsequence migrations ... --provider migrations:migration`
 admin flow, not by runtime startup.
 
 Market models inherit `MarketsMetaTableMixin`, which itself inherits the SDK
@@ -49,7 +49,7 @@ application tables, apply migrations, or repair catalog drift.
 The schema mutation entrypoint is the admin CLI:
 
 ```bash
-mainsequence migrations upgrade --provider msm.migrations:migration head
+mainsequence migrations upgrade --provider migrations:migration head
 ```
 
 MetaTable registration is migration-owned. Normal applications, examples, and

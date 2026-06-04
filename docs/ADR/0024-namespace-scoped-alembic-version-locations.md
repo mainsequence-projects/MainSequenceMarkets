@@ -2,7 +2,12 @@
 
 ## Status
 
-Proposed
+Accepted
+
+Project-side package relocation is implemented. SDK support for provider-owned
+`version_locations` remains required before the SDK CLI can fully enforce one
+active namespace revision directory for `current`, `revision`, `render`,
+`upgrade`, and `downgrade`.
 
 ## Context
 
@@ -65,7 +70,7 @@ migration package, and make revision files namespace-scoped.
 The target package is:
 
 ```text
-src/msm_migrations/
+src/migrations/
   __init__.py
   env.py
   registry.py
@@ -73,23 +78,24 @@ src/msm_migrations/
   versions/
     default/
       __init__.py
-      0001_migration.py
     mainsequence_examples/
       __init__.py
       0001_migration.py
       0002_migration.py
+      0003_migration.py
+      0004_migration.py
 ```
 
 The existing revision files currently under `src/msm/migrations/versions/` are
 the `mainsequence.examples` namespace history. They must be moved into
-`src/msm_migrations/versions/mainsequence_examples/` during this migration of
+`src/migrations/versions/mainsequence_examples/` during this migration of
 the migration environment. They must not be treated as the default namespace
-baseline and must not be copied into `src/msm_migrations/versions/default/`.
+baseline and must not be copied into `src/migrations/versions/default/`.
 
 The provider import path becomes:
 
 ```text
-msm_migrations:migration
+migrations:migration
 ```
 
 `src/msm/migrations` should not remain the canonical provider package. During a
@@ -97,7 +103,7 @@ transition it may contain only a compatibility import with no `env.py`, no
 `script.py.mako`, and no revision files:
 
 ```python
-from msm_migrations import migration
+from migrations import migration
 ```
 
 The independent migration package owns the single provider for all package-owned
@@ -145,16 +151,16 @@ Good:
 
 ```text
 active namespace = mainsequence.examples
-version_locations = src/msm_migrations/versions/mainsequence_examples
+version_locations = src/migrations/versions/mainsequence_examples
 ```
 
 Bad:
 
 ```text
 version_locations =
-  src/msm_migrations/versions/default
-  src/msm_migrations/versions/mainsequence_examples
-  src/msm_migrations/versions/client_a
+  src/migrations/versions/default
+  src/migrations/versions/mainsequence_examples
+  src/migrations/versions/client_a
 ```
 
 Normal `current`, `revision`, `render`, `upgrade`, and `downgrade` commands must
@@ -193,7 +199,7 @@ read/write:
 
 ```text
 revision files:
-  src/msm_migrations/versions/mainsequence_examples/
+  src/migrations/versions/mainsequence_examples/
 
 database version table:
   ms_markets__alembic_version__mainsequence_examples
@@ -206,7 +212,7 @@ For the default package namespace, the command should read/write:
 
 ```text
 revision files:
-  src/msm_migrations/versions/default/
+  src/migrations/versions/default/
 
 database version table:
   ms_markets__alembic_version
@@ -223,8 +229,8 @@ location contract. Acceptable API shapes are:
 ```python
 AlembicMetaTableMigration(
     ...,
-    script_location="msm_migrations",
-    version_location="msm_migrations:versions/mainsequence_examples",
+    script_location="migrations:",
+    version_location="migrations:versions/mainsequence_examples",
 )
 ```
 
@@ -233,7 +239,7 @@ or:
 ```python
 AlembicMetaTableMigration(
     ...,
-    script_location="msm_migrations",
+    script_location="migrations:",
     version_location_factory=namespace_version_location,
 )
 ```
@@ -262,7 +268,7 @@ src/
   msm/
   msm_portfolios/
   msm_pricing/
-  msm_migrations/
+  migrations/
 ```
 
 This avoids implying that migrations are a sub-feature of core `msm`. The
@@ -276,7 +282,7 @@ from msm_portfolios.models import portfolio_sqlalchemy_models
 from msm_pricing.meta_tables import pricing_sqlalchemy_models
 ```
 
-No domain package should import `msm_migrations` during normal runtime startup.
+No domain package should import `migrations` during normal runtime startup.
 Only the SDK migration CLI imports the provider.
 
 ## Consequences
@@ -297,9 +303,9 @@ Only the SDK migration CLI imports the provider.
 - The SDK migration provider needs a version-location extension.
 - Existing revision files must be moved once into the namespace directory they
   were generated for. For the current repository state, that directory is
-  `src/msm_migrations/versions/mainsequence_examples/`.
+  `src/migrations/versions/mainsequence_examples/`.
 - The provider import path changes from `msm.migrations:migration` to
-  `msm_migrations:migration`.
+  `migrations:migration`.
 - Tooling must prevent accidental revision creation in the root `versions/`
   directory.
 
@@ -324,20 +330,20 @@ Only the SDK migration CLI imports the provider.
       same active version location.
 - [ ] Include the active namespace version location in SDK migration CLI status
       output.
-- [ ] Create `src/msm_migrations/` as the canonical provider package.
-- [ ] Move the provider, Alembic `env.py`, `script.py.mako`, and registry code
-      from `src/msm/migrations/` to `src/msm_migrations/`.
-- [ ] Add namespace slug helper tests for default, dotted namespace, dashed
+- [x] Create `src/migrations/` as the canonical provider package.
+- [x] Move the provider, Alembic `env.py`, `script.py.mako`, and registry code
+      from `src/msm/migrations/` to `src/migrations/`.
+- [x] Add namespace slug helper tests for default, dotted namespace, dashed
       namespace, and long namespace inputs.
-- [ ] Move the existing revision files from `src/msm/migrations/versions/` into
-      `src/msm_migrations/versions/mainsequence_examples/` because the current
+- [x] Move the existing revision files from `src/msm/migrations/versions/` into
+      `src/migrations/versions/mainsequence_examples/` because the current
       history belongs to `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`.
       Do not move or copy those files into the default namespace directory.
-- [ ] Leave `src/msm/migrations/__init__.py` as a temporary compatibility import
+- [x] Leave `src/msm/migrations/__init__.py` as a temporary compatibility import
       only if existing docs or deployed commands still reference
       `msm.migrations:migration`.
-- [ ] Update docs and examples to use `mainsequence migrations ... --provider
-      msm_migrations:migration`.
+- [x] Update docs and examples to use `mainsequence migrations ... --provider
+      migrations:migration`.
 - [ ] Add a validation test that changing `MSM_AUTO_REGISTER_NAMESPACE` changes
       the active version directory and Alembic version table together.
 - [ ] Add a validation test that revision generation never writes directly to
@@ -347,12 +353,12 @@ Only the SDK migration CLI imports the provider.
 
 This ADR is implemented only when:
 
-- `mainsequence migrations revision --provider msm_migrations:migration` writes
+- `mainsequence migrations revision --provider migrations:migration` writes
   into the active namespace directory;
-- `mainsequence migrations current --provider msm_migrations:migration` reports
+- `mainsequence migrations current --provider migrations:migration` reports
   the active version location and the namespace-specific version table;
-- `mainsequence migrations upgrade --provider msm_migrations:migration head`
+- `mainsequence migrations upgrade --provider migrations:migration head`
   reads only the active namespace graph;
 - creating a revision under one namespace does not change the heads reported for
   another namespace;
-- no revision files remain directly under `src/msm_migrations/versions/`.
+- no revision files remain directly under `src/migrations/versions/`.

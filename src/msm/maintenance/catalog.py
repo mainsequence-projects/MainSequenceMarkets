@@ -27,7 +27,7 @@ from .models import (
 
 logger = _mainsequence_logger.bind(sub_application="markets", component="maintenance")
 SDK_MIGRATION_UPGRADE_COMMAND = (
-    "mainsequence migrations upgrade --provider msm.migrations:migration head"
+    "mainsequence migrations upgrade --provider migrations:migration head"
 )
 
 
@@ -167,7 +167,7 @@ def refresh_markets_catalog_from_registered_metatables(
 ) -> list[dict[str, Any]]:
     """Refresh the internal markets catalog after SDK provider registration."""
 
-    from msm.migrations.registry import metatable_provider_models
+    from migrations.registry import metatable_provider_models
 
     models = metatable_provider_models()
     registered_meta_tables = list(context.registered_metatables)

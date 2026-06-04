@@ -33,15 +33,20 @@ from msm.base import (
 )
 from msm.maintenance.catalog import SDK_MIGRATION_UPGRADE_COMMAND
 from msm.maintenance.models import MarketsMetaTableCatalogTable
-from msm.migrations import MarketsAlembicVersion, migration
-from msm.migrations.registry import metatable_provider_models
+from migrations import (
+    MarketsAlembicVersion,
+    active_namespace_version_location,
+    migration,
+    namespace_version_slug,
+)
+from migrations.registry import metatable_provider_models
 from msm.settings import markets_identifier, markets_namespace
 
 
 def test_migration_provider_is_single_sdk_alembic_provider() -> None:
     assert isinstance(migration, AlembicMetaTableMigration)
     assert migration.package == "msm"
-    assert migration.script_location == "msm:migrations"
+    assert migration.script_location == "migrations:"
     assert migration.target_metadata is MarketsBase.metadata
     assert migration.alembic_registry is MarketsAlembicVersion
     assert MarketsAlembicVersion.__metatable_namespace__ == markets_namespace()
@@ -64,26 +69,57 @@ def test_migration_provider_is_single_sdk_alembic_provider() -> None:
 
 def test_migration_upgrade_command_uses_current_sdk_flags() -> None:
     assert SDK_MIGRATION_UPGRADE_COMMAND == (
-        "mainsequence migrations upgrade --provider msm.migrations:migration head"
+        "mainsequence migrations upgrade --provider migrations:migration head"
     )
     assert "--register-metatables" not in SDK_MIGRATION_UPGRADE_COMMAND
     assert "--apply" not in SDK_MIGRATION_UPGRADE_COMMAND
 
 
 def test_sdk_loader_resolves_msm_migration_provider() -> None:
-    loaded = load_alembic_metatable_migration_provider("msm.migrations:migration")
+    loaded = load_alembic_metatable_migration_provider("migrations:migration")
 
     assert loaded is migration
 
 
+def test_legacy_migrations_provider_import_is_compatibility_alias() -> None:
+    from msm.migrations import migration as legacy_migration
+
+    assert legacy_migration is migration
+
+
 def test_migration_script_template_is_packaged() -> None:
-    template = resources.files("msm.migrations").joinpath("script.py.mako")
+    template = resources.files("migrations").joinpath("script.py.mako")
 
     assert template.is_file()
     template_text = template.read_text(encoding="utf-8")
     assert "revision: str = ${repr(up_revision)}" in template_text
     assert "def upgrade() -> None:" in template_text
     assert "def downgrade() -> None:" in template_text
+
+
+def test_namespace_version_slug_is_deterministic() -> None:
+    assert namespace_version_slug(None) == "default"
+    assert namespace_version_slug("") == "default"
+    assert namespace_version_slug("mainsequence.examples") == "mainsequence_examples"
+    assert namespace_version_slug("client-a.production") == "client_a_production"
+    assert len(namespace_version_slug("x" * 100)) <= 48
+
+
+def test_active_namespace_version_location_uses_migrations_package() -> None:
+    assert active_namespace_version_location().startswith("migrations:versions/")
+
+
+def test_existing_revisions_live_under_mainsequence_examples_namespace() -> None:
+    versions_root = resources.files("migrations").joinpath("versions")
+    namespace_versions = versions_root.joinpath("mainsequence_examples")
+
+    assert not versions_root.joinpath("0001_migration.py").is_file()
+    assert versions_root.joinpath("default").is_dir()
+    assert namespace_versions.is_dir()
+    assert namespace_versions.joinpath("0001_migration.py").is_file()
+    assert namespace_versions.joinpath("0002_migration.py").is_file()
+    assert namespace_versions.joinpath("0003_migration.py").is_file()
+    assert namespace_versions.joinpath("0004_migration.py").is_file()
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:
@@ -183,7 +219,7 @@ def test_account_holdings_single_and_composite_indexes_have_distinct_names() -> 
 
 
 def test_alembic_env_normalizes_default_schema_reflection() -> None:
-    env_text = Path("src/msm/migrations/env.py").read_text(encoding="utf-8")
+    env_text = Path("src/migrations/env.py").read_text(encoding="utf-8")
 
     assert '"include_schemas": _uses_named_schemas()' in env_text
     assert "def _included_schema" in env_text

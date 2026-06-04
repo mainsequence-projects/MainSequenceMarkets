@@ -29,7 +29,7 @@ from msm.base import (
 )
 from msm.data_nodes.storage import AccountHoldingsStorage
 from msm.maintenance.models import MarketsMetaTableCatalogTable
-from msm.migrations.registry import metatable_provider_models
+from migrations.registry import metatable_provider_models
 from msm.models.registration import (
     build_markets_registration_requests,
     is_time_index_meta_table_model,

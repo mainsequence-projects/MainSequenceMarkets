@@ -67,7 +67,6 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         PRICING_CONCEPT_DISCOUNT_CURVES,
         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
         PRICING_CONTEXT_DEFAULT,
-        PRICING_CONTEXT_EOD,
     )
 
     valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
@@ -88,20 +87,21 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
             "PricingMarketDataBinding",
         ],
         seed_default_market_data_bindings=True,
+        replace_default_market_data_bindings=True,
     )
     _print_step("Attached pricing MetaTable runtime")
-    default_bindings = PricingMarketDataBinding.filter(
+    startup_bindings = PricingMarketDataBinding.filter(
         context_key=PRICING_CONTEXT_DEFAULT,
         limit=10,
     )
     _print_step(
-        "Seeded default pricing market-data bindings",
+        "Seeded startup pricing market-data bindings",
         bindings=[
             {
                 "concept_key": binding.concept_key,
                 "data_node_identifier": binding.data_node_identifier,
             }
-            for binding in default_bindings
+            for binding in startup_bindings
             if binding.concept_key
             in {
                 PRICING_CONCEPT_DISCOUNT_CURVES,
@@ -226,36 +226,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         node_identifier=fixing_node._default_identifier(),
     )
 
-    eod_curve_binding = PricingMarketDataBinding.upsert(
-        context_key=PRICING_CONTEXT_EOD,
-        concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-        data_node_identifier=curve_node._default_identifier(),
-        source="example",
-    )
-    eod_fixing_binding = PricingMarketDataBinding.upsert(
-        context_key=PRICING_CONTEXT_EOD,
-        concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-        data_node_identifier=fixing_node._default_identifier(),
-        source="example",
-    )
     _print_step(
-        "Upserted EOD pricing market-data context",
-        context_key=PRICING_CONTEXT_EOD,
-        bindings=[
-            {
-                "concept_key": eod_curve_binding.concept_key,
-                "data_node_identifier": eod_curve_binding.data_node_identifier,
-            },
-            {
-                "concept_key": eod_fixing_binding.concept_key,
-                "data_node_identifier": eod_fixing_binding.data_node_identifier,
-            },
-        ],
-    )
-
-    _print_step(
-        "Using default pricing market-data context",
-        context_key=PRICING_CONTEXT_DEFAULT,
+        "Using startup pricing market-data bindings",
         curve_data_node_identifier=curve_node._default_identifier(),
         fixing_data_node_identifier=fixing_node._default_identifier(),
     )

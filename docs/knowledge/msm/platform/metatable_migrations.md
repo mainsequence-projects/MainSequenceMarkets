@@ -6,10 +6,10 @@ migrations` CLI.
 
 ## Provider
 
-The provider is exported from `msm.migrations:migration` and contains:
+The provider is exported from `migrations:migration` and contains:
 
 - package: `msm`;
-- script location: `msm:migrations`;
+- script location: `migrations:`;
 - target metadata: `MarketsBase.metadata`;
 - Alembic version registry: `MarketsAlembicVersion`;
 - provider model scope: `metatable_provider_models()`;
@@ -33,14 +33,16 @@ revisions.
 Use the SDK CLI:
 
 ```bash
-mainsequence migrations current --provider msm.migrations:migration --json
-mainsequence migrations revision --provider msm.migrations:migration -m "describe change" --autogenerate
-mainsequence migrations upgrade --provider msm.migrations:migration head
-mainsequence migrations downgrade --provider msm.migrations:migration <revision>
+mainsequence migrations current --provider migrations:migration --json
+mainsequence migrations revision --provider migrations:migration -m "describe change" --autogenerate
+mainsequence migrations upgrade --provider migrations:migration head
+mainsequence migrations downgrade --provider migrations:migration <revision>
 ```
 
 `revision` is the authoring entrypoint. It creates normal Alembic revision files
-under `src/msm/migrations/versions/`.
+under the active namespace directory in `src/migrations/versions/`. The
+current built-in revision history belongs to
+`src/migrations/versions/mainsequence_examples/`.
 
 `upgrade` runs Alembic through the SDK provider and backend-scoped migration
 connection. After a successful apply, the SDK synchronizes the provider
@@ -90,5 +92,7 @@ history is the Alembic revision graph plus the provider's version table.
 The implementation requires a Main Sequence SDK version that exposes
 `AlembicMetaTableMigration`, `AlembicVersionMetaTable`, backend-scoped Alembic
 migration execution, and the current SDK migration command shape where
-`mainsequence migrations upgrade --provider msm.migrations:migration head`
-applies without `--apply`, `--to`, or `--register-metatables`.
+`mainsequence migrations upgrade --provider migrations:migration head`
+applies without `--apply`, `--to`, or `--register-metatables`. Namespace-scoped
+revision directories additionally require SDK support for configuring Alembic
+`version_locations` from the provider.
