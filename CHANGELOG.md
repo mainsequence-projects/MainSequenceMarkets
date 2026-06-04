@@ -7,6 +7,16 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the Alembic `after_register_metatables` catalog refresh hook to consume
+  SDK typed `MetaTable` objects from `registered_metatables` instead of raw
+  backend finalize DTOs.
+- Added schema-aware Alembic reflection and deterministic bounded table,
+  constraint, and index naming to prevent false FK/index drop-create churn.
+- Documented the required follow-up to batch post-upgrade catalog refresh writes
+  instead of issuing one compiled MetaTable operation per provider model.
+
 ### Changed
 
 - Renamed the internal MetaTable catalog identity column from `identifier` to

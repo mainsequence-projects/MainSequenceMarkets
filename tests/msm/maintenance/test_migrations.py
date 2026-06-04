@@ -4,8 +4,12 @@ from importlib import resources
 from pathlib import Path
 from types import SimpleNamespace
 
-from mainsequence.client.metatables import ManagedMetaTableFinalizeTableResult
-from mainsequence.meta_tables import PlatformManagedMetaTable, PlatformTimeIndexMetaData
+from mainsequence.client.metatables import MetaTable
+from mainsequence.meta_tables import (
+    POSTGRES_IDENTIFIER_MAX_LENGTH,
+    PlatformManagedMetaTable,
+    PlatformTimeIndexMetaData,
+)
 from mainsequence.meta_tables.migrations import (
     AlembicMetaTableCatalogRefreshContext,
     AlembicMetaTableMigration,
@@ -75,6 +79,57 @@ def test_migration_provider_filters_unrelated_tables() -> None:
     assert migration.include_name("unrelated_index", "index", {"schema_name": MARKETS_SCHEMA})
 
 
+def test_migration_metadata_uses_deterministic_bounded_names() -> None:
+    tables = list(migration.target_metadata.tables.values())
+    foreign_keys = [
+        constraint
+        for table in tables
+        for constraint in table.constraints
+        if constraint.__class__.__name__ == "ForeignKeyConstraint"
+    ]
+    primary_keys = [
+        constraint
+        for table in tables
+        for constraint in table.constraints
+        if constraint.__class__.__name__ == "PrimaryKeyConstraint"
+    ]
+    indexes = [index for table in tables for index in table.indexes]
+    schema_names = [
+        *(constraint.name for constraint in foreign_keys),
+        *(constraint.name for constraint in primary_keys),
+        *(index.name for index in indexes),
+    ]
+
+    assert foreign_keys
+    assert all(constraint.name is not None for constraint in foreign_keys)
+    assert all(constraint.name is not None for constraint in primary_keys)
+    assert all(index.name is not None for index in indexes)
+    assert all(len(name) <= POSTGRES_IDENTIFIER_MAX_LENGTH for name in schema_names)
+    assert len([index.name for index in indexes]) == len({index.name for index in indexes})
+
+
+def test_account_holdings_single_and_composite_indexes_have_distinct_names() -> None:
+    from msm.models.accounts.core import AccountHoldingsSetTable
+
+    indexes_by_columns = {
+        tuple(column.name for column in index.columns): index
+        for index in AccountHoldingsSetTable.__table__.indexes
+    }
+
+    assert (
+        indexes_by_columns[("account_uid",)].name
+        != indexes_by_columns[("account_uid", "time_index")].name
+    )
+
+
+def test_alembic_env_uses_schema_aware_reflection() -> None:
+    env_text = Path("src/msm/migrations/env.py").read_text(encoding="utf-8")
+
+    assert '"include_schemas": True' in env_text
+    assert "def _included_schema" in env_text
+    assert 'type_ == "schema"' in env_text
+
+
 def test_package_migration_registry_covers_all_markets_subpackages() -> None:
     model_names = {model.__name__ for model in metatable_provider_models()}
 
@@ -110,17 +165,15 @@ def test_refresh_catalog_hook_upserts_registered_metatables(monkeypatch) -> None
     assert refresh_hook is not None
     models = metatable_provider_models()
     metatables = [
-        ManagedMetaTableFinalizeTableResult(
-            meta_table_uid=f"meta-table-{index}",
+        MetaTable.model_construct(
+            uid=f"meta-table-{index}",
             identifier=model.__table__.name,
             storage_hash=f"storage_hash_{index}",
             physical_table_name=model.__table__.name,
-            previous_provisioning_status="reserved",
+            namespace=markets_namespace(),
+            description=model.__metatable_description__,
+            management_mode="platform_managed",
             provisioning_status="active",
-            table_kind="relational",
-            time_indexed=False,
-            finalized=True,
-            physical_table_exists=True,
         )
         for index, model in enumerate(models)
     ]
@@ -128,36 +181,36 @@ def test_refresh_catalog_hook_upserts_registered_metatables(monkeypatch) -> None
 
     monkeypatch.setitem(
         refresh_hook.__globals__,
-        "finalized_catalog_repository_context",
-        lambda *, finalized_catalog_meta_table, reserved_policy=None: SimpleNamespace(
-            finalized_catalog_meta_table=finalized_catalog_meta_table,
+        "catalog_repository_context",
+        lambda *, catalog_meta_table, reserved_policy=None: SimpleNamespace(
+            catalog_meta_table=catalog_meta_table,
             reserved_policy=reserved_policy,
         ),
     )
 
-    def fake_upsert_catalog_row_from_finalized_meta_table(
+    def fake_upsert_catalog_row(
         context,
         *,
         model,
-        finalized_meta_table,
+        meta_table,
         contract_hash=None,
     ):
         upsert = {
             "context": context,
             "model": model,
-            "finalized_meta_table": finalized_meta_table,
+            "meta_table": meta_table,
             "contract_hash": contract_hash,
         }
         upserts.append(upsert)
         return {
             "table_name": model.__table__.name,
-            "meta_table_uid": finalized_meta_table.meta_table_uid,
+            "meta_table_uid": meta_table.uid,
         }
 
     monkeypatch.setitem(
         refresh_hook.__globals__,
-        "upsert_catalog_row_from_finalized_meta_table",
-        fake_upsert_catalog_row_from_finalized_meta_table,
+        "upsert_catalog_row",
+        fake_upsert_catalog_row,
     )
 
     rows = refresh_hook(
@@ -171,6 +224,6 @@ def test_refresh_catalog_hook_upserts_registered_metatables(monkeypatch) -> None
 
     assert len(rows) == len(models)
     assert upserts[0]["model"] is MarketsMetaTableCatalogTable
-    assert upserts[0]["finalized_meta_table"] is metatables[0]
+    assert upserts[0]["meta_table"] is metatables[0]
     assert upserts[0]["context"].reserved_policy == "reconcile"
     assert rows[0]["table_name"] == MarketsMetaTableCatalogTable.__table__.name

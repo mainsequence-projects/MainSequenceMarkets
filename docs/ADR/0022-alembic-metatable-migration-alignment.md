@@ -432,6 +432,19 @@ The hook should:
 5. fail if an expected provider model cannot be registered, resolved, or
    validated.
 
+The catalog refresh must be batched. It must not call
+`MetaTable.execute_operation(...)` once per provider model, because
+`mainsequence migrations upgrade --provider msm.migrations:migration head`
+currently has a provider model scope of dozens of tables and a per-row upsert
+turns post-upgrade catalog refresh into an O(n) sequence of
+`POST /orm/api/ts_manager/meta_table/execute-operation/` calls. The intended
+implementation is to materialize all catalog row payloads in memory and execute
+one bulk upsert against `MarketsMetaTableCatalogTable` keyed by `table_name`.
+If the SDK gains a higher-level bulk compiled-operation API, the hook should use
+that; otherwise `ms-markets` should add a local bulk catalog upsert helper that
+compiles one SQLAlchemy PostgreSQL `INSERT .. ON CONFLICT DO UPDATE` statement
+with all rows.
+
 The catalog should not record Alembic revision history. Alembic's version table
 is the schema revision state.
 
@@ -530,6 +543,10 @@ It should not add built-in `ms-markets` tables to project extension hooks.
   runtime attachment only.
 - [x] Raise the project dependency floor to the first published SDK release that
   includes the direct Alembic scoped-connection migration CLI.
+- [ ] Replace per-row catalog refresh upserts in
+  `refresh_markets_catalog_from_registered_metatables(...)` with one batched
+  catalog upsert operation. Upgrade must not emit one `execute-operation` POST
+  per provider model during the post-upgrade catalog refresh.
 
 ### Operator Required After This Repository Change
 

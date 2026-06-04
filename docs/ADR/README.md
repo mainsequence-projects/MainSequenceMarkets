@@ -40,3 +40,4 @@ Current decisions:
 - [0020. SDK-Managed MetaTable Migrations](0020-sdk-managed-metatable-migrations.md)
 - [0021. Virtual Fund Allocation Holdings Contract](0021-virtual-fund-allocation-holdings-contract.md)
 - [0022. Thin Alembic MetaTable Migration Integration](0022-alembic-metatable-migration-alignment.md)
+- [0023. Deterministic Alembic Schema And Identifier Naming](0023-deterministic-alembic-naming.md)

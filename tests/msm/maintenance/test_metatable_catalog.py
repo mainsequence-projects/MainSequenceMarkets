@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-from mainsequence.client.metatables import ManagedMetaTableFinalizeTableResult
+from mainsequence.client.metatables import MetaTable
 
 import msm.models as domain_models
 from msm.maintenance.models import (
@@ -64,12 +62,14 @@ def test_catalog_table_indexes_logical_identity_only() -> None:
 
 
 def test_catalog_row_uses_platform_metatable_values() -> None:
-    meta_table = SimpleNamespace(
+    meta_table = MetaTable.model_construct(
         uid="meta-table-uid",
-        namespace="mainsequence.examples",
+        namespace="ignored-backend-namespace",
         identifier=AssetTable.__table__.name,
-        description="Asset catalog rows for examples.",
+        description="Ignored backend description.",
         storage_hash=AssetTable.__table__.name,
+        physical_table_name=AssetTable.__table__.name,
+        management_mode="platform_managed",
     )
 
     row = MarketsMetaTableCatalogRow.from_meta_table(
@@ -78,9 +78,9 @@ def test_catalog_row_uses_platform_metatable_values() -> None:
         sdk_version="0.0.test",
     )
 
-    assert row.namespace == "mainsequence.examples"
+    assert row.namespace == AssetTable.__metatable_namespace__
     assert row.table_name == AssetTable.__table__.name
-    assert row.description == "Asset catalog rows for examples."
+    assert row.description == AssetTable.__metatable_description__
     assert row.model_name == "AssetTable"
     assert row.meta_table_uid == "meta-table-uid"
     assert row.contract_hash == markets_meta_table_contract_hash(AssetTable)
@@ -89,12 +89,14 @@ def test_catalog_row_uses_platform_metatable_values() -> None:
 
 
 def test_catalog_row_payload_is_keyed_by_table_name() -> None:
-    meta_table = SimpleNamespace(
+    meta_table = MetaTable.model_construct(
         uid="meta-table-uid",
-        namespace="ms-markets",
+        namespace=None,
         identifier=AssetTable.__table__.name,
         description=None,
         storage_hash=AssetTable.__table__.name,
+        physical_table_name=AssetTable.__table__.name,
+        management_mode="platform_managed",
     )
 
     row = MarketsMetaTableCatalogRow.from_meta_table(
@@ -112,30 +114,28 @@ def test_catalog_row_payload_is_keyed_by_table_name() -> None:
     assert "data_source_uid" not in payload
 
 
-def test_catalog_row_uses_finalized_metatable_uid() -> None:
-    finalized_meta_table = ManagedMetaTableFinalizeTableResult(
-        meta_table_uid="finalized-meta-table-uid",
+def test_catalog_row_uses_registered_metatable_uid_and_physical_table_name() -> None:
+    meta_table = MetaTable.model_construct(
+        uid="registered-meta-table-uid",
         identifier=AssetTable.__table__.name,
         storage_hash="asset-storage-hash",
         physical_table_name=AssetTable.__table__.name,
-        previous_provisioning_status="reserved",
+        namespace=None,
+        description=None,
+        management_mode="platform_managed",
         provisioning_status="active",
-        table_kind="relational",
-        time_indexed=False,
-        finalized=True,
-        physical_table_exists=True,
     )
 
-    row = MarketsMetaTableCatalogRow.from_finalized_meta_table(
+    row = MarketsMetaTableCatalogRow.from_meta_table(
         model=AssetTable,
-        finalized_meta_table=finalized_meta_table,
+        meta_table=meta_table,
         sdk_version="0.0.test",
     )
 
     assert row.namespace == AssetTable.__metatable_namespace__
     assert row.table_name == AssetTable.__table__.name
     assert row.model_name == "AssetTable"
-    assert row.meta_table_uid == "finalized-meta-table-uid"
+    assert row.meta_table_uid == "registered-meta-table-uid"
     assert row.contract_hash == markets_meta_table_contract_hash(AssetTable)
     assert row.sdk_version == "0.0.test"
 

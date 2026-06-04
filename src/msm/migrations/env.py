@@ -4,6 +4,7 @@ from alembic import context
 from mainsequence.meta_tables.migrations import apply_mainsequence_migration_role
 from sqlalchemy import engine_from_config, pool
 
+from msm.base import MARKETS_SCHEMA
 from msm.migrations import migration as default_migration
 
 
@@ -11,11 +12,26 @@ def _migration_provider():
     return context.config.attributes.get("mainsequence_migration_provider") or default_migration
 
 
+def _included_schema(name: str | None) -> bool:
+    return name in (None, MARKETS_SCHEMA)
+
+
 def include_name(name, type_, parent_names):
+    if type_ == "schema":
+        return _included_schema(name)
+
+    schema_name = parent_names.get("schema_name") if parent_names else None
+    if not _included_schema(schema_name):
+        return False
+
     return _migration_provider().include_name(name, type_, parent_names)
 
 
 def include_object(object_, name, type_, reflected, compare_to):
+    object_schema = getattr(object_, "schema", None)
+    if not _included_schema(object_schema):
+        return False
+
     return _migration_provider().include_object(
         object_,
         name,
@@ -31,6 +47,7 @@ def _configure_kwargs():
         "target_metadata": migration.target_metadata,
         "version_table": migration.version_table,
         "version_table_schema": migration.version_table_schema,
+        "include_schemas": True,
         "include_name": include_name,
         "include_object": include_object,
         "compare_type": True,

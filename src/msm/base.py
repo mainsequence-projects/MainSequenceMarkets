@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import hashlib
 import uuid
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
 from mainsequence.meta_tables import (
-    POSTGRES_IDENTIFIER_MAX_LENGTH,
     PlatformManagedMetaTable,
     PlatformTimeIndexMetaData,
-    slugify_identifier,
 )
+from msm.schema_names import schema_table_name, sqlalchemy_naming_convention
 
 from msm.settings import (
     DEFAULT_MARKETS_NAMESPACE,
@@ -32,91 +30,7 @@ except ImportError as exc:  # pragma: no cover - exercised only in partial envs.
 MARKETS_NAMESPACE = DEFAULT_MARKETS_NAMESPACE
 MARKETS_SCHEMA = "public"
 MARKETS_TABLE_APP = "ms_markets"
-_TABLE_NAME_HASH_LENGTH = 10
-
-
-def markets_table_name(
-    app: str,
-    concept: str,
-    suffix: str | None = None,
-) -> str:
-    """Return a PostgreSQL-safe markets table name as ``app__concept``.
-
-    The optional suffix is appended as ``app__concept__suffix`` and is used for
-    environment-scoped namespaces such as ``MSM_AUTO_REGISTER_NAMESPACE``.
-    """
-
-    app_name = _required_table_name_part(app, field_name="app")
-    concept_name = _required_table_name_part(concept, field_name="concept")
-    suffix_name = None
-    if suffix is not None:
-        suffix_name = _required_table_name_part(suffix, field_name="suffix")
-
-    if suffix_name is None:
-        candidate = f"{app_name}__{concept_name}"
-    else:
-        candidate = f"{app_name}__{concept_name}__{suffix_name}"
-
-    if len(candidate) <= POSTGRES_IDENTIFIER_MAX_LENGTH:
-        return candidate
-    return _truncate_table_name(
-        app=app_name,
-        concept=concept_name,
-        suffix=suffix_name,
-        candidate=candidate,
-    )
-
-
-def _required_table_name_part(value: str, *, field_name: str) -> str:
-    raw_value = str(value).strip()
-    if not raw_value:
-        raise ValueError(f"Markets table name {field_name} is required.")
-    if not any(character.isalnum() for character in raw_value):
-        raise ValueError(f"Markets table name {field_name} must contain letters or digits.")
-    return slugify_identifier(raw_value)
-
-
-def _truncate_table_name(
-    *,
-    app: str,
-    concept: str,
-    suffix: str | None,
-    candidate: str,
-) -> str:
-    digest = hashlib.md5(candidate.encode()).hexdigest()[:_TABLE_NAME_HASH_LENGTH]
-    digest_marker = f"_{digest}"
-    app_prefix = f"{app}__"
-
-    if suffix is None:
-        concept_budget = POSTGRES_IDENTIFIER_MAX_LENGTH - len(app_prefix) - len(digest_marker)
-        if concept_budget < 1:
-            raise ValueError(f"Markets table name app is too long: {app!r}.")
-        concept_part = concept[:concept_budget].rstrip("_") or concept[:1]
-        return f"{app_prefix}{concept_part}{digest_marker}"
-
-    suffix_separator = "__"
-    remaining = (
-        POSTGRES_IDENTIFIER_MAX_LENGTH
-        - len(app_prefix)
-        - len(digest_marker)
-        - len(suffix_separator)
-    )
-    if remaining < 2:
-        raise ValueError(f"Markets table name app is too long: {app!r}.")
-
-    suffix_budget = min(len(suffix), max(1, remaining // 2))
-    concept_budget = remaining - suffix_budget
-
-    if concept_budget > len(concept):
-        suffix_budget = min(len(suffix), suffix_budget + concept_budget - len(concept))
-        concept_budget = len(concept)
-    if suffix_budget > len(suffix):
-        concept_budget = min(len(concept), concept_budget + suffix_budget - len(suffix))
-        suffix_budget = len(suffix)
-
-    concept_part = concept[:concept_budget].rstrip("_") or concept[:1]
-    suffix_part = suffix[-suffix_budget:].strip("_") or suffix[-1]
-    return f"{app_prefix}{concept_part}{digest_marker}{suffix_separator}{suffix_part}"
+markets_table_name = schema_table_name
 
 
 def markets_meta_table_identifier(model_or_table: Any) -> str:
@@ -190,7 +104,7 @@ def markets_table_args(
 
 
 class MarketsBase(DeclarativeBase):
-    metadata = MetaData()
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
 def _assign_markets_metatable_identifiers(cls: type) -> None:
