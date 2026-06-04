@@ -139,7 +139,10 @@ import datetime
 from sqlalchemy import DateTime, Float, MetaData
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from mainsequence.meta_tables import PlatformTimeIndexMetaData
+from mainsequence.meta_tables import PlatformTimeIndexMetaData, schema_table_name
+
+PROJECT_NAME = "<project_name>"
+PRICES_TABLE_NAME = schema_table_name(PROJECT_NAME, "prices")
 
 
 class Base(DeclarativeBase):
@@ -147,6 +150,7 @@ class Base(DeclarativeBase):
 
 
 class PricesTable(PlatformTimeIndexMetaData, Base):
+    __tablename__ = PRICES_TABLE_NAME
     __metatable_namespace__ = "<domain_namespace>"
     __metatable_identifier__ = "<project_name>.<table_identifier>"
     __metatable_extra_hash_components__ = {"storage_name": "<stable_storage_name>"}
@@ -378,23 +382,24 @@ changing it changes the dependency graph and update identity.
 
 Do not construct dependency graphs dynamically inside `update()`.
 
-### 8. Foreign Keys Belong To The Storage Contract
+### 8. Foreign Keys Belong To SQLAlchemy And Alembic
 
 For new code, model foreign keys on the `PlatformTimeIndexMetaData` storage
-class, or route the storage-contract work to the MetaTable skill. When a
-DataNode storage table needs a platform-managed FK, use
-`MetaTableForeignKey(TargetModel, column=...)` on the storage class. Do not use
-`ForeignKey(Target.__table__.c.uid)`, table fullnames, or explicit target UID
-maps in DataNode examples.
+class, or route the storage work to the MetaTable skill. When a DataNode storage
+table needs a platform-managed FK, use normal SQLAlchemy `ForeignKey(...)` /
+`ForeignKeyConstraint(...)` metadata on the storage class. Prefer
+project-prefixed SQLAlchemy table names for explicit FK string targets so
+projects sharing one schema do not collide. Generate those names with
+`schema_table_name(project_or_app, concept)` from `mainsequence.meta_tables`.
 
-Do not ask users to name these foreign keys. Platform-managed
-`MetaTableForeignKey(...)` contracts store logical relationships only. Alembic,
-SQLAlchemy, and the database own physical FK constraint names.
+Do not ask users to put FK target `MetaTable.uid` values into DataNode config or
+MetaTable registration contracts. Alembic, SQLAlchemy, and the database own FK
+DDL and physical FK constraint names.
 
 Registration of the storage class follows the MetaTable migration lifecycle.
-Migration tooling recursively resolves/registers unresolved FK target model
-classes, uses the local process registry keyed by `storage_hash`, and writes the
-target `MetaTable.uid` into the FK contract.
+The migration provider reserves the MetaTable rows, Alembic renders/applies FK
+DDL from SQLAlchemy metadata, and catalog finalization refreshes the MetaTable
+binding after upgrade.
 
 Do not add DataNode configuration fields just to mutate storage metadata.
 
@@ -404,7 +409,8 @@ Production-quality table identifiers, descriptions, labels, column docs, and
 foreign-key metadata belong to the storage class/MetaTable registration path.
 Prefix explicit table identifiers, explicit physical table names, and Alembic
 version table names with the project or package name rather than using bare
-names that can collide across projects.
+names that can collide across projects. Use `schema_table_name(...)` for
+authored SQLAlchemy table names, including DataNode storage tables.
 
 Do not put schema or published table metadata on the DataNode configuration.
 

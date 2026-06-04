@@ -44,11 +44,11 @@ grpcio==1.81.0
     # via opentelemetry-exporter-otlp-proto-grpc
 h11==0.16.0
     # via uvicorn
-idna==3.17
+idna==3.18
     # via
     #   anyio
     #   requests
-mainsequence==4.2.14
+mainsequence==4.2.37
     # via ms-markets
 mako==1.3.12
     # via alembic
@@ -125,7 +125,7 @@ pytz==2026.2
     # via
     #   mainsequence
     #   ms-markets
-pywin32==311 ; sys_platform == 'win32'
+pywin32==312 ; sys_platform == 'win32'
     # via portalocker
 pyyaml==6.0.3
     # via mainsequence
@@ -153,7 +153,7 @@ structlog==25.5.0
     # via mainsequence
 tqdm==4.67.3
     # via mainsequence
-typer==0.26.5
+typer==0.26.7
     # via mainsequence
 typing-extensions==4.15.0
     # via
@@ -181,5 +181,5 @@ urllib3==2.7.0
     # via
     #   mainsequence
     #   requests
-uvicorn==0.48.0
+uvicorn==0.49.0
     # via ms-markets
