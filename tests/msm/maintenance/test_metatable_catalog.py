@@ -6,12 +6,9 @@ import msm.models as domain_models
 from msm.maintenance.models import (
     MarketsMetaTableCatalogRow,
     MarketsMetaTableCatalogTable,
-    markets_meta_table_contract_hash,
 )
 from msm.models import (
     AssetTable,
-    AssetTypeTable,
-    OpenFigiAssetDetailsTable,
     markets_sqlalchemy_models,
 )
 
@@ -29,7 +26,6 @@ def test_catalog_table_stores_registered_metatable_identity() -> None:
         "description",
         "model_name",
         "meta_table_uid",
-        "contract_hash",
         "sdk_version",
         "created_at",
         "updated_at",
@@ -83,7 +79,6 @@ def test_catalog_row_uses_platform_metatable_values() -> None:
     assert row.description == AssetTable.__metatable_description__
     assert row.model_name == "AssetTable"
     assert row.meta_table_uid == "meta-table-uid"
-    assert row.contract_hash == markets_meta_table_contract_hash(AssetTable)
     assert row.sdk_version == "0.0.test"
     assert row.identity_key == AssetTable.__table__.name
 
@@ -108,7 +103,7 @@ def test_catalog_row_payload_is_keyed_by_table_name() -> None:
     assert row.identity_key == AssetTable.__table__.name
     assert payload["table_name"] == AssetTable.__table__.name
     assert "identifier" not in payload
-    assert payload["description"] is None
+    assert payload["description"] == AssetTable.__metatable_description__
     assert "storage_hash" not in payload
     assert "management_mode" not in payload
     assert "data_source_uid" not in payload
@@ -136,26 +131,4 @@ def test_catalog_row_uses_registered_metatable_uid_and_physical_table_name() -> 
     assert row.table_name == AssetTable.__table__.name
     assert row.model_name == "AssetTable"
     assert row.meta_table_uid == "registered-meta-table-uid"
-    assert row.contract_hash == markets_meta_table_contract_hash(AssetTable)
     assert row.sdk_version == "0.0.test"
-
-
-def test_metatable_contract_hash_is_deterministic_and_model_specific() -> None:
-    first = markets_meta_table_contract_hash(AssetTable)
-    second = markets_meta_table_contract_hash(AssetTable)
-    asset_type = markets_meta_table_contract_hash(AssetTypeTable)
-
-    assert len(first) == 64
-    assert first == second
-    assert first != asset_type
-
-
-def test_metatable_contract_hash_survives_sdk_physical_binding(monkeypatch) -> None:
-    before = markets_meta_table_contract_hash(OpenFigiAssetDetailsTable)
-
-    for model in (AssetTable, OpenFigiAssetDetailsTable):
-        table = model.__table__
-        monkeypatch.setitem(table.info, "mainsequence_storage_hash", table.name)
-        monkeypatch.setattr(model, "__metatable_storage_hash__", table.name)
-
-    assert markets_meta_table_contract_hash(OpenFigiAssetDetailsTable) == before

@@ -129,9 +129,10 @@ The catalog is finalized by the SDK migration upgrade flow. That command applies
 Alembic-rendered SQL through the backend migration endpoint, synchronizes the
 provider MetaTable catalog, and runs the `msm` provider hook that writes the
 catalog projection with the current platform UID, namespace, table name,
-description, model name, SDK version, and local contract hash. The catalog is
-intentionally MetaTable-specific; DataNode registration state belongs in a
-separate catalog if it is needed later.
+description, model name, and SDK version. The catalog is a runtime pointer
+projection, not the schema authority. The catalog is intentionally
+MetaTable-specific; DataNode registration state belongs in a separate catalog if
+it is needed later.
 
 When startup attaches already-cataloged platform-managed MetaTables, it uses a
 bulk backend lookup for the cataloged MetaTable UIDs and binds the returned
@@ -171,7 +172,6 @@ from msm.models.assets import AssetTable
 
 class MyAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "com.my_company.markets.MyAssetDetails"
-    __metatable_extra_hash_components__ = {"storage_name": "my_asset_details"}
     __metatable_description__ = (
         "Project-local asset details keyed one-to-one by AssetTable.uid for "
         "custom analytics and internal classification."
@@ -251,9 +251,9 @@ rotating table names or execution context.
 Runtime attachment emits structured Main Sequence `info` logs for namespace
 selection, model resolution, catalog attachment, repository context creation,
 final runtime creation, and cached-runtime reuse. Missing catalog
-rows, stale catalog hashes, or missing backend `MetaTable.uid` resources fail
-startup and must be corrected by the SDK migration upgrade flow or an explicit
-admin/platform repair.
+rows or missing backend `MetaTable.uid` resources fail startup and must be
+corrected by the SDK migration upgrade flow or an explicit admin/platform
+repair.
 
 `msm.start_engine(...)` does not accept labels because initialization should
 not broadcast the same labels to every platform resource. The returned runtime

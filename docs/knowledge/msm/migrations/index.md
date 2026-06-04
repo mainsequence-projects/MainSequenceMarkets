@@ -79,8 +79,8 @@ schema back to an earlier revision.
 6. Start runtime code with `msm.start_engine(...)`.
 
 `msm.start_engine(...)` is catalog-based and read-only. It attaches from the
-finalized catalog and fails if required catalog rows or physical table contracts
-are missing.
+finalized catalog and fails if required catalog rows are missing or point at
+missing platform `MetaTable.uid` resources.
 
 ## Registry
 

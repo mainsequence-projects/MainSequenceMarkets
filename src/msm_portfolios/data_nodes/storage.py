@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from sqlalchemy import (
     Boolean,
@@ -51,9 +51,6 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "portfolio_index_identifier, and asset_identifier. Stores "
         "executed asset allocation weights and supporting price/volume facts."
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "PortfolioWeightsTS",
-    }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
@@ -147,9 +144,6 @@ class SignalWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "asset_identifier). Stores raw signal allocation weights for signaled "
         "assets before portfolio execution."
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "SignalWeightsTS",
-    }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", "signal_uid", ASSET_IDENTIFIER_DIMENSION]
 
@@ -196,9 +190,6 @@ class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "portfolio_identifier). Stores close, return, calculated close, and close "
         "timestamp for canonical portfolio value series."
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "PortfoliosTS",
-    }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", PORTFOLIO_IDENTIFIER_DIMENSION]
 
@@ -256,9 +247,6 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "asset_identifier). Stores OHLCV bars, VWAP, trade count, and interpolation "
         "flags for asset price feeds used by portfolio workflows."
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "InterpolatedPricesTS",
-    }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", ASSET_IDENTIFIER_DIMENSION]
 
@@ -341,9 +329,6 @@ class VirtualFundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "quantity from a source account holdings set, with direction storing the "
         "long/short side."
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "VirtualFundHoldingsTS",
-    }
     __table_args__ = (
         CheckConstraint("direction IN (1, -1)", name="ck_virtual_fund_holdings_direction"),
     )

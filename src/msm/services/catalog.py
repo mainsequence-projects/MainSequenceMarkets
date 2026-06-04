@@ -194,7 +194,6 @@ def _build_catalog_list_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "description": _optional_string(row.get("description")),
         "model_name": _string_value(row.get("model_name")),
         "meta_table_uid": _string_value(row.get("meta_table_uid")),
-        "contract_hash": _string_value(row.get("contract_hash")),
         "sdk_version": _optional_string(row.get("sdk_version")),
         "created_at": _datetime_string(row.get("created_at")),
         "updated_at": _datetime_string(row.get("updated_at")),

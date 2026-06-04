@@ -9,10 +9,12 @@ from mainsequence.logconf import logger as _mainsequence_logger
 from mainsequence.meta_tables import (
     PlatformTimeIndexMetaData,
     external_registered_registration_request_from_sqlalchemy_model,
+    platform_managed_registration_request_from_sqlalchemy_model,
+    time_indexed_registration_request_from_sqlalchemy_model,
 )
 
 from msm.base import (
-    MARKETS_SCHEMA,
+    MARKETS_DEFAULT_SCHEMA,
     MarketsBase,
     markets_meta_table_identifier as _markets_meta_table_identifier,
 )
@@ -248,8 +250,8 @@ def is_time_index_meta_table_model(model: type[MarketsBase]) -> bool:
     """True for ADR 0017 DataNode output storage classes.
 
     `PlatformTimeIndexMetaData` subclasses derive their own time-index/storage
-    layout and register without the ``introspect`` / ``open_for_everyone``
-    arguments accepted by domain `PlatformManagedMetaTable` models.
+    layout and register without the ``introspect`` argument accepted by domain
+    `PlatformManagedMetaTable` models.
     """
 
     return isinstance(model, type) and issubclass(model, PlatformTimeIndexMetaData)
@@ -263,13 +265,16 @@ def _platform_registration_kwargs(
 ) -> dict[str, Any]:
     """Shape platform-managed register/build kwargs for one model.
 
-    DataNode storage classes (`PlatformTimeIndexMetaData`) reject ``introspect``
-    and ``open_for_everyone``; domain MetaTables require ``introspect``.
+    DataNode storage classes (`PlatformTimeIndexMetaData`) reject ``introspect``;
+    domain MetaTables require ``introspect``.
     """
 
+    request_kwargs = {
+        key: value for key, value in base_kwargs.items() if key != "open_for_everyone"
+    }
     if is_time_index_meta_table_model(model):
-        return {key: value for key, value in base_kwargs.items() if key != "open_for_everyone"}
-    return {**base_kwargs, "introspect": False if introspect is None else introspect}
+        return request_kwargs
+    return {**request_kwargs, "introspect": False if introspect is None else introspect}
 
 
 def build_markets_registration_requests(
@@ -280,7 +285,6 @@ def build_markets_registration_requests(
     open_for_everyone: bool = False,
     protect_from_deletion: bool = False,
     introspect: bool | None = None,
-    storage_hash_by_identifier: Mapping[str, str] | None = None,
     models: Sequence[MarketsModelSelector] | None = None,
 ) -> list[MetaTableRegistrationRequest]:
     """Build MetaTable registration requests for all markets SQLAlchemy models.
@@ -294,43 +298,45 @@ def build_markets_registration_requests(
     resolved_models = resolve_markets_meta_table_models(models)
     if management_mode == "external_registered" and not data_source_uid:
         raise ValueError("external_registered MetaTables require data_source_uid.")
-    storage_hash_mapping = _identifier_mapping(storage_hash_by_identifier)
     requests: list[MetaTableRegistrationRequest] = []
 
     for model in resolved_models:
-        target_meta_tables = _target_meta_tables_from_bound_models(resolved_models)
         platform_kwargs = {
             "labels": labels,
-            "open_for_everyone": open_for_everyone,
             "protect_from_deletion": protect_from_deletion,
         }
         external_kwargs = {
             **platform_kwargs,
             "data_source_uid": data_source_uid,
-            "schema": MARKETS_SCHEMA,
-            "target_meta_tables": target_meta_tables,
+            "schema": MARKETS_DEFAULT_SCHEMA,
         }
         if management_mode == "platform_managed":
+            registration_builder = (
+                time_indexed_registration_request_from_sqlalchemy_model
+                if is_time_index_meta_table_model(model)
+                else platform_managed_registration_request_from_sqlalchemy_model
+            )
             requests.append(
-                model.build_registration_request(
+                registration_builder(
+                    model,
                     **_platform_registration_kwargs(
                         model, base_kwargs=platform_kwargs, introspect=introspect
-                    )
+                    ),
+                    schema=MARKETS_DEFAULT_SCHEMA,
                 )
             )
             continue
         if management_mode == "external_registered":
             if is_time_index_meta_table_model(model):
                 requests.append(
-                    model.build_registration_request(
+                    time_indexed_registration_request_from_sqlalchemy_model(
+                        model,
                         **_platform_registration_kwargs(
                             model,
-                            base_kwargs={
-                                **platform_kwargs,
-                                "_target_meta_tables": target_meta_tables,
-                            },
+                            base_kwargs=platform_kwargs,
                             introspect=introspect,
-                        )
+                        ),
+                        schema=MARKETS_DEFAULT_SCHEMA,
                     )
                 )
                 continue
@@ -338,7 +344,6 @@ def build_markets_registration_requests(
                 external_registered_registration_request_from_sqlalchemy_model(
                     model,
                     introspect=True if introspect is None else introspect,
-                    storage_hash=storage_hash_mapping.get(markets_meta_table_identifier(model)),
                     **external_kwargs,
                 )
             )
@@ -447,16 +452,6 @@ def _registered_meta_table_bulk_filter(
 
 def _clean_filters(filters: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in filters.items() if value not in (None, "")}
-
-
-def _identifier_mapping(
-    mapping: Mapping[str, Any] | None,
-    *,
-    value_transform: Any = str,
-) -> dict[str, Any]:
-    if mapping is None:
-        return {}
-    return {str(key): value_transform(value) for key, value in mapping.items()}
 
 
 def _target_meta_tables_from_bound_models(

@@ -138,8 +138,7 @@ Minimal storage-first pattern:
 import datetime
 
 import pandas as pd
-from mainsequence.meta_tables import MetaTableForeignKey
-from sqlalchemy import DateTime, Float, String
+from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
@@ -151,7 +150,7 @@ from msm.models.assets.core import AssetTable
 
 
 class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
-    __markets_base_identifier__ = "example_asset_metrics"
+    __metatable_identifier__ = "ExampleAssetMetricsTS"
     __metatable_description__ = (
         "Timestamped asset metric observations keyed by asset identifier "
         "for market analytics and portfolio workflows."
@@ -166,11 +165,7 @@ class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     asset_identifier: Mapped[str] = mapped_column(
         String(255),
-        MetaTableForeignKey(
-            AssetTable,
-            column="unique_identifier",
-            ondelete="RESTRICT",
-        ),
+        ForeignKey(f"{AssetTable.__table__.fullname}.unique_identifier", ondelete="RESTRICT"),
         nullable=False,
         info={"label": "Asset", "description": "AssetTable.unique_identifier value."},
     )
@@ -376,7 +371,7 @@ representations of an asset.
 - Do not add `_required_column_dtypes_map()`, `_required_index_names()`, or
   `_required_time_index_name()` overrides to mirror storage state.
 - Do not add `__data_node_identifier__`; use the storage table's
-  `__markets_base_identifier__`.
+  `__metatable_identifier__`.
 
 ## Validation Checklist
 

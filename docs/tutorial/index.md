@@ -43,6 +43,9 @@ The command copies the packaged bundle into `.agents/skills/ms_markets/` and
 overwrites only matching skill folders under that namespace. It does not touch
 `.agents/skills/mainsequence`, project-state files, or `AGENTS.md`.
 
+Run it only from a separate host project. The CLI rejects the ms-markets source
+checkout to avoid deleting the package-owned skill bundle.
+
 Do not rely on `import msm` for this setup. Imports are side-effect free and do
 not copy skills into the current working tree.
 

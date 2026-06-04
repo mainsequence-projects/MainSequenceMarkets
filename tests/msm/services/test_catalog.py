@@ -14,7 +14,6 @@ def test_catalog_list_row_exposes_row_management_flags_without_resource_type() -
             "identifier": "Asset",
             "model_name": "AssetTable",
             "meta_table_uid": "asset-meta-table-uid",
-            "contract_hash": "contract-hash",
             "created_at": "2026-05-28T00:00:00+00:00",
             "updated_at": "2026-05-28T00:00:00+00:00",
         }

@@ -51,8 +51,9 @@ objects.
 ## Runtime Contract
 
 `msm.start_engine(...)` is runtime attachment only. It reads the finalized
-catalog, resolves platform `MetaTable` resources by UID, validates local
-contract hashes and physical table shape, and binds the runtime context.
+catalog, resolves platform `MetaTable` resources by UID, verifies catalog
+pointer identity, and binds the runtime context. The catalog is not the schema
+authority. Alembic/provider metadata owns schema correctness.
 
 Runtime startup must not call:
 
@@ -61,9 +62,9 @@ Runtime startup must not call:
 - normal model `register()` for application tables;
 - catalog reconciliation for application tables.
 
-Missing catalog rows, stale contract hashes, or missing platform `MetaTable.uid`
-resources are deployment errors. Fix them by running the SDK migration upgrade
-flow or by performing an explicit platform repair.
+Missing catalog rows or catalog rows pointing at missing platform
+`MetaTable.uid` resources are deployment errors. Fix them by running the SDK
+migration upgrade flow or by performing an explicit platform repair.
 
 ## Adding A Table Or Schema Change
 

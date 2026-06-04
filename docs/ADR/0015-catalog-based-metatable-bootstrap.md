@@ -71,7 +71,6 @@ The minimum row contract is:
 | `description` | Platform MetaTable description returned by registration or discovery. |
 | `model_name` | SQLAlchemy table declaration class name, for example `AssetTable`. |
 | `meta_table_uid` | Platform `MetaTable.uid` returned by registration or discovery. |
-| `contract_hash` | Local hash of the table contract used to detect drift. |
 | `sdk_version` | `ms-markets` version that wrote the catalog row. |
 | `created_at` | First catalog insertion timestamp. |
 | `updated_at` | Last catalog update timestamp. |
@@ -196,7 +195,8 @@ This ADR is implemented only when:
   and real storage hash returned by the backend.
 - [x] Keep the catalog MetaTable-specific and omit any DataNode-versus-MetaTable
   discriminator column.
-- [x] Store a local table-contract hash so bootstrap can detect schema drift.
+- [x] Keep schema drift detection in the SDK/Alembic migration flow, not in the
+  runtime catalog.
 
 ### Stage 2: Catalog Bootstrap Flow
 
@@ -248,17 +248,18 @@ This ADR is implemented only when:
 - [x] Add tests proving row operations do not register schemas.
 - [x] Add tests for idempotent same-config startup and rejected different-config
   startup.
-- [x] Add tests for clear catalog drift and duplicate-registration errors.
+- [x] Add tests for clear missing/stale catalog pointer and duplicate-registration
+  errors.
 
 Stage 5 evidence:
 
 - `tests/msm/maintenance/test_catalog_bootstrap.py` covers catalog attach,
   missing-row registration plus catalog write, pre-catalog platform table import,
-  catalog contract drift, duplicate-registration drift errors, catalog table
+  stale catalog pointer errors, duplicate-registration drift errors, catalog table
   attach, and stale physical index signatures.
 - `tests/msm/maintenance/test_metatable_catalog.py` covers the catalog table
   identity contract, uniqueness constraints, platform physical identity indexes,
-  platform-returned MetaTable values, and deterministic contract hashing.
+  and platform-returned MetaTable values.
 - `tests/msm/bootstrap/test_bootstrap.py` covers idempotent same-config startup,
   rejected different-config startup, active-runtime row lookup, missing table
   errors, and the fact that `resolve_runtime(...)` does not register or attach

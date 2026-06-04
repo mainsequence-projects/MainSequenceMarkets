@@ -221,13 +221,11 @@ def test_refresh_catalog_hook_upserts_registered_metatables(monkeypatch) -> None
         *,
         model,
         meta_table,
-        contract_hash=None,
     ):
         upsert = {
             "context": context,
             "model": model,
             "meta_table": meta_table,
-            "contract_hash": contract_hash,
         }
         upserts.append(upsert)
         return {

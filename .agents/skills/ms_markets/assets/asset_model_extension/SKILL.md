@@ -74,11 +74,10 @@ Recommended SQLAlchemy shape:
 ```python
 class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "FutureAssetDetails"
-    __metatable_extra_hash_components__ = {"storage_name": "future_asset_details"}
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        MetaTableForeignKey(AssetTable, column="uid", ondelete="CASCADE"),
+        ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
         info={"description": "Canonical AssetTable uid for this detail row."},

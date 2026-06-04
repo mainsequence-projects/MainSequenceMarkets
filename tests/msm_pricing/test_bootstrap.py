@@ -113,7 +113,6 @@ def test_create_pricing_schemas_signature_excludes_migration_setup_arguments() -
     assert "open_for_everyone" not in parameters
     assert "protect_from_deletion" not in parameters
     assert "introspect" not in parameters
-    assert "storage_hash_by_identifier" not in parameters
 
 
 def test_create_pricing_schemas_installs_market_data_configuration_override(
@@ -340,7 +339,6 @@ def test_resolve_pricing_runtime_uses_identifier_after_physical_binding(
     from msm_pricing.models import CurveTable
 
     identifier = pricing_meta_table_identifier(CurveTable)
-    storage_name = str(CurveTable.__table__.name)
     registration = SimpleNamespace(
         meta_tables=["curve-meta-table"],
         models=[CurveTable],
@@ -352,7 +350,6 @@ def test_resolve_pricing_runtime_uses_identifier_after_physical_binding(
     monkeypatch.setattr(pricing_bootstrap, "_PRICING_RUNTIME", runtime)
     monkeypatch.setitem(CurveTable.__table__.info, "identifier", identifier)
     monkeypatch.setattr(CurveTable, "__metatable_uid__", "curve-meta-table-uid", raising=False)
-    monkeypatch.setattr(CurveTable, "__metatable_storage_hash__", storage_name)
     monkeypatch.setattr(CurveTable.__table__, "name", "backend_physical_curve")
     monkeypatch.setattr(
         CurveTable.__table__,

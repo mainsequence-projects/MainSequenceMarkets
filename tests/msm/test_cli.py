@@ -70,6 +70,47 @@ def test_copy_msm_skills_dry_run_writes_nothing(tmp_path, capsys) -> None:
     assert sorted(item["name"] for item in payload["updated"]) == _bundled_bundle_names()
 
 
+def test_copy_msm_skills_blocks_ms_markets_source_checkout(capsys) -> None:
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
+    source_root = source_tree_msm_skills_root()
+    before = _bundled_skill_paths()
+
+    exit_code = main(["copy-msm-skills", "--path", str(repo_root)])
+
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "cannot run inside the ms-markets source checkout" in captured.err
+    assert source_root.is_dir()
+    assert _bundled_skill_paths() == before
+
+
+def test_copy_msm_skills_blocks_ms_markets_source_checkout_json(capsys) -> None:
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
+
+    exit_code = main(
+        [
+            "copy-msm-skills",
+            "--path",
+            str(repo_root),
+            "--dry-run",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["blocked"] is True
+    assert payload["dry_run"] is True
+    assert payload["project"] == str(repo_root)
+    assert payload["destination_root"] == str(source_tree_msm_skills_root())
+    assert payload["updated_count"] == 0
+    assert payload["updated"] == []
+    assert "cannot run inside the ms-markets source checkout" in payload["reason"]
+
+
 def test_copy_msm_skills_copies_only_ms_markets_namespace(tmp_path) -> None:
     mainsequence_skill = tmp_path / ".agents" / "skills" / "mainsequence" / "project_builder"
     mainsequence_skill.mkdir(parents=True)

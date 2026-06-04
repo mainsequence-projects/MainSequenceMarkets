@@ -3,12 +3,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from mainsequence.client.metatables import TimeIndexMetaData
 
 import msm.maintenance.catalog as catalog
-from msm.maintenance.models import (
-    MarketsMetaTableCatalogTable,
-    markets_meta_table_contract_hash,
-)
+from msm.data_nodes.storage import AccountHoldingsStorage
+from msm.maintenance.models import MarketsMetaTableCatalogTable
 from msm.models import AssetTable, AssetTypeTable
 
 
@@ -19,13 +18,35 @@ def _meta_table(
     identifier: str = "Asset",
     description: str | None = None,
     storage_hash: str = "asset-storage-hash",
+    data_source_uid: str = "test-data-source-uid",
 ):
     return SimpleNamespace(
         uid=uid,
         namespace=namespace,
         identifier=identifier,
         description=description,
-        data_source_uid=None,
+        data_source_uid=data_source_uid,
+        storage_hash=storage_hash,
+        physical_table_name=storage_hash,
+        management_mode="platform_managed",
+    )
+
+
+def _time_index_meta_table(
+    uid: str,
+    *,
+    namespace: str,
+    identifier: str,
+    storage_hash: str,
+    description: str | None = None,
+    data_source_uid: str = "test-data-source-uid",
+) -> TimeIndexMetaData:
+    return TimeIndexMetaData(
+        uid=uid,
+        namespace=namespace,
+        identifier=identifier,
+        description=description,
+        data_source_uid=data_source_uid,
         storage_hash=storage_hash,
         physical_table_name=storage_hash,
         management_mode="platform_managed",
@@ -58,7 +79,6 @@ def _catalog_row(model, *, meta_table_uid: str) -> dict[str, str]:
         "description": getattr(model, "__metatable_description__", None) or "",
         "model_name": model.__name__,
         "meta_table_uid": meta_table_uid,
-        "contract_hash": markets_meta_table_contract_hash(model),
         "sdk_version": "test",
     }
 
@@ -238,6 +258,84 @@ def test_catalog_attach_bulk_attaches_cataloged_tables(monkeypatch) -> None:
     }
 
 
+def test_catalog_attach_resolves_time_index_storage_with_time_index_metadata(
+    monkeypatch,
+) -> None:
+    search_in_filters: list[dict] = []
+    meta_table_filter_calls: list[dict] = []
+    time_index_filter_calls: list[dict] = []
+    catalog_meta_table = _meta_table(
+        "catalog-meta-table-uid",
+        identifier=MarketsMetaTableCatalogTable.__table__.name,
+        storage_hash=MarketsMetaTableCatalogTable.__table__.name,
+    )
+    catalog_rows = [
+        _catalog_row(AssetTable, meta_table_uid="asset-meta-table-uid"),
+        _catalog_row(
+            AccountHoldingsStorage,
+            meta_table_uid="account-holdings-storage-meta-table-uid",
+        ),
+    ]
+    asset_meta_table = _meta_table(
+        "asset-meta-table-uid",
+        **_meta_table_identity(AssetTable),
+        storage_hash=AssetTable.__table__.name,
+    )
+    account_holdings_meta_table = _time_index_meta_table(
+        "account-holdings-storage-meta-table-uid",
+        **_meta_table_identity(AccountHoldingsStorage),
+        storage_hash=AccountHoldingsStorage.__table__.name,
+    )
+
+    monkeypatch.setattr(catalog, "resolve_catalog_table", lambda **_kwargs: catalog_meta_table)
+
+    def fake_search_model(_context, **kwargs):
+        search_in_filters.append(dict(kwargs["in_filters"]))
+        return {"rows": catalog_rows}
+
+    monkeypatch.setattr(catalog, "search_model", fake_search_model)
+
+    def fake_meta_table_filter(**kwargs):
+        meta_table_filter_calls.append(dict(kwargs))
+        return [asset_meta_table]
+
+    def fake_time_index_filter(**kwargs):
+        time_index_filter_calls.append(dict(kwargs))
+        return [account_holdings_meta_table]
+
+    monkeypatch.setattr(catalog.MetaTable, "filter", staticmethod(fake_meta_table_filter))
+    monkeypatch.setattr(
+        catalog.TimeIndexMetaData,
+        "filter",
+        staticmethod(fake_time_index_filter),
+    )
+
+    result = catalog.attach_markets_meta_tables_from_catalog(
+        models=[AssetTable, AccountHoldingsStorage]
+    )
+
+    assert result.attached_count == 2
+    assert search_in_filters == [_catalog_search_filter(AssetTable, AccountHoldingsStorage)]
+    assert meta_table_filter_calls == [
+        {
+            "timeout": None,
+            "uid__in": ["asset-meta-table-uid"],
+            "management_mode": "platform_managed",
+        }
+    ]
+    assert time_index_filter_calls == [
+        {
+            "timeout": None,
+            "uid__in": ["account-holdings-storage-meta-table-uid"],
+        }
+    ]
+    assert (
+        result.registration.meta_table_by_identifier[AccountHoldingsStorage.__table__.name]
+        is account_holdings_meta_table
+    )
+    assert AccountHoldingsStorage.get_time_index_metadata() is account_holdings_meta_table
+
+
 def test_catalog_attach_rejects_missing_catalog_row(monkeypatch) -> None:
     catalog_meta_table = _meta_table(
         "catalog-meta-table-uid",
@@ -257,32 +355,39 @@ def test_catalog_attach_rejects_missing_catalog_row(monkeypatch) -> None:
         catalog.attach_markets_meta_tables_from_catalog(models=[AssetTable])
 
 
-def test_catalog_attach_rejects_catalog_contract_drift(monkeypatch) -> None:
+def test_catalog_attach_uses_pointer_catalog_only(monkeypatch) -> None:
     catalog_meta_table = _meta_table(
         "catalog-meta-table-uid",
         identifier=MarketsMetaTableCatalogTable.__table__.name,
         storage_hash=MarketsMetaTableCatalogTable.__table__.name,
     )
     catalog_row = _catalog_row(AssetTable, meta_table_uid="asset-meta-table-uid")
-    catalog_row["contract_hash"] = "stale-contract-hash"
+    asset_meta_table = _meta_table(
+        "asset-meta-table-uid",
+        **_meta_table_identity(AssetTable),
+        storage_hash=AssetTable.__table__.name,
+    )
 
     monkeypatch.setattr(catalog, "resolve_catalog_table", lambda **_kwargs: catalog_meta_table)
     monkeypatch.setattr(catalog, "search_model", lambda *_args, **_kwargs: {"rows": [catalog_row]})
     monkeypatch.setattr(
         catalog.MetaTable,
         "filter",
-        staticmethod(lambda **_kwargs: pytest.fail("filter should not run on drift")),
+        staticmethod(lambda **_kwargs: [asset_meta_table]),
     )
 
-    with pytest.raises(catalog.CatalogBootstrapError, match="contract drift"):
-        catalog.attach_markets_meta_tables_from_catalog(models=[AssetTable])
+    result = catalog.attach_markets_meta_tables_from_catalog(models=[AssetTable])
+
+    assert result.attached_count == 1
+    assert (
+        result.registration.meta_table_by_identifier[AssetTable.__table__.name] is asset_meta_table
+    )
 
 
 def test_resolve_catalog_meta_tables_rejects_stale_catalog_uid(monkeypatch) -> None:
     catalog_row = _catalog_row(AssetTable, meta_table_uid="dead-asset-meta-table-uid")
     plan = catalog._CatalogBootstrapModelPlan(
         model=AssetTable,
-        storage_hash=AssetTable.__table__.name,
         namespace=AssetTable.__metatable_namespace__,
         table_name=AssetTable.__table__.name,
     )

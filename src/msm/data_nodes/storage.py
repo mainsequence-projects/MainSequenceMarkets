@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from sqlalchemy import (
     BigInteger,
@@ -53,9 +53,6 @@ class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "historical asset names, tickers, exchange codes, and share-class grouping "
         "without widening AssetTable."
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "AssetSnapshotsTS",
-    }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", ASSET_IDENTIFIER_DIMENSION]
 
@@ -120,9 +117,6 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __table_args__ = (
         CheckConstraint("direction IN (1, -1)", name="ck_account_holdings_direction"),
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "AccountHoldingsTS",
-    }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
@@ -234,9 +228,6 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "asset_identifier). Each row stores one target exposure instruction that "
         "belongs to a PositionSetTable row for an account target portfolio."
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "TargetPositionsTS",
-    }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
@@ -314,9 +305,6 @@ class OrdersStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "asset_identifier. Used by execution DataNodes to persist broker or "
         "venue order state over time."
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "OrdersTS",
-    }
     __time_index_name__: ClassVar[str] = "order_time"
     __index_names__: ClassVar[list[str]] = [
         "order_time",
@@ -393,9 +381,6 @@ class OrderEventsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "order_identifier). Used by execution DataNodes to persist status "
         "transitions and event metadata for previously published orders."
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "OrderEventsTS",
-    }
     __time_index_name__: ClassVar[str] = "event_time"
     __index_names__: ClassVar[list[str]] = ["event_time", "order_identifier"]
 
@@ -423,9 +408,6 @@ class TradesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "asset_identifier. Used by execution DataNodes to persist fills, "
         "prices, commissions, and settlement facts."
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "TradesTS",
-    }
     __time_index_name__: ClassVar[str] = "trade_time"
     __index_names__: ClassVar[list[str]] = [
         "trade_time",

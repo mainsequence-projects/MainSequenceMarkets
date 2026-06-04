@@ -348,8 +348,8 @@ Verified against the project `.venv` (SDK `4.1.5`):
 - [x] Set `__index_names__`/`__time_index_name__` per class from the legacy
   `index_names`/`unique_constraint` (execution tables key on the domain time
   column — `order_time`/`event_time`/`trade_time`/`time_recorded`). Every class
-  sets `__metatable_extra_hash_components__={"storage_name": ...}` so the
-  shape-derived physical name does not collide. Verified declaration-only:
+  has an authored identifier that feeds the package table-name convention.
+  Verified declaration-only:
   building all 16 `.__table__`s yields 16 distinct tables with FK targets
   resolved, label/description projected, and the Stage 1 import surface intact.
 
@@ -696,8 +696,8 @@ working import surface before the bulk node migration.
 
 ## Non-Goals
 
-- Not a schema migration engine; contract drift is detected and reported per
-  ADR 0015, not auto-migrated.
+- Not a schema migration engine; missing/stale catalog pointers are reported
+  per ADR 0015, not auto-migrated.
 - Does not change the `*Table` vs `msm.api.*` split (ADR 0008).
 - Does not change portfolio/signal business semantics; only their DataNode
   storage and construction contract.

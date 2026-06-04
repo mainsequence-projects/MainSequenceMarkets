@@ -9,7 +9,7 @@ catalog registration follows in Stage 5.
 from __future__ import annotations
 
 import datetime
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB
@@ -41,9 +41,6 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "discount term structures for pricing workflows and link each curve identity "
         "back to the Curve MetaTable."
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "DiscountCurvesTS",
-    }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", CURVE_IDENTIFIER_DIMENSION]
 
@@ -89,9 +86,6 @@ class IndexFixingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "index_identifier). Stores observed index fixing rates used by pricing "
         "workflows for floating-rate bonds, swaps, and curve-linked analytics."
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "IndexFixingsTS",
-    }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", INDEX_IDENTIFIER_DIMENSION]
 
@@ -131,9 +125,6 @@ class AssetPricingDetailsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "asset_identifier). Stores serialized pricing instrument payloads for "
         "canonical assets before current-pricing rows are promoted."
     )
-    __metatable_extra_hash_components__: ClassVar[dict[str, Any]] = {
-        "storage_name": "AssetPricingDetailsTS",
-    }
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", ASSET_IDENTIFIER_DIMENSION]
 

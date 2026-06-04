@@ -55,13 +55,11 @@ def _asset_table() -> MarketsMetaTableHandle:
 
 def test_repository_context_resolves_identifier_after_physical_binding(monkeypatch) -> None:
     identifier = markets_meta_table_identifier(AssetTypeTable)
-    storage_name = str(AssetTypeTable.__table__.name)
     meta_table_uid = str(uuid.uuid4())
     context = MarketsRepositoryContext()
 
     monkeypatch.setitem(AssetTypeTable.__table__.info, "identifier", identifier)
     monkeypatch.setattr(AssetTypeTable, "__metatable_uid__", meta_table_uid, raising=False)
-    monkeypatch.setattr(AssetTypeTable, "__metatable_storage_hash__", storage_name)
     monkeypatch.setattr(AssetTypeTable.__table__, "name", "backend_physical_asset_type")
     monkeypatch.setattr(
         AssetTypeTable.__table__,
@@ -131,7 +129,6 @@ def test_generic_upsert_operation_populates_python_defaults_for_backend_sql() ->
         description=None,
         model_name="AssetTable",
         meta_table_uid=str(uuid.uuid4()),
-        contract_hash="contract-hash",
         sdk_version="0.0.test",
     )
 

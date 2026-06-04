@@ -110,7 +110,6 @@ from msm.models.assets import AssetTable
 
 class MyAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "com.my_company.markets.MyAssetDetails"
-    __metatable_extra_hash_components__ = {"storage_name": "my_asset_details"}
     __metatable_description__ = (
         "Project-local asset details keyed one-to-one by AssetTable.uid for "
         "custom analytics and internal asset classification."

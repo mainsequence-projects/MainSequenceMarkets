@@ -9,6 +9,9 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- Blocked `msm copy-msm-skills` from running inside the ms-markets source
+  checkout, including dry-run mode, so the command cannot delete the
+  package-owned `.agents/skills/ms_markets` source bundle.
 - Fixed the Alembic `after_register_metatables` catalog refresh hook to consume
   SDK typed `MetaTable` objects from `registered_metatables` instead of raw
   backend finalize DTOs.

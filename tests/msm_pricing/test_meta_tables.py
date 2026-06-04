@@ -71,10 +71,8 @@ def test_core_markets_models_do_not_include_pricing_extension_table() -> None:
 
 def test_pricing_meta_table_identifier_survives_sdk_physical_binding(monkeypatch) -> None:
     identifier = pricing_meta_table_identifier(CurveTable)
-    storage_name = str(CurveTable.__table__.name)
 
     monkeypatch.setitem(CurveTable.__table__.info, "identifier", identifier)
-    monkeypatch.setattr(CurveTable, "__metatable_storage_hash__", storage_name)
     monkeypatch.setattr(CurveTable.__table__, "name", "backend_physical_curve")
     monkeypatch.setattr(
         CurveTable.__table__,

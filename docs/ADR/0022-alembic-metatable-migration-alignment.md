@@ -74,9 +74,9 @@ that must be generated through the SDK CLI:
    `__pycache__/v0001_initial...pyc` file is not migration history.
 2. `msm.start_engine(...)` is attach-only, and the old
    creation/registration-era arguments `data_source_uid`,
-   `open_for_everyone`, `protect_from_deletion`, `introspect`, and
-   `storage_hash_by_identifier` have been removed from its public signature,
-   runtime cache key, logs, and package wrappers that forward into it.
+   `open_for_everyone`, `protect_from_deletion`, and `introspect` have been
+   removed from its public signature, runtime cache key, logs, and package
+   wrappers that forward into it.
 3. Row API helpers now expose `start_engine(...)` as the primary attach helper.
    Any remaining `create_schemas(...)` symbol is a deprecated compatibility
    alias.
@@ -161,7 +161,6 @@ The migration path does not contain:
 
 - custom SDK schema operations;
 - affected-table operation lists;
-- old/new contract hashes;
 - migration-row UIDs;
 - project-owned migration ledger rows;
 - project-generated SQL render artifacts.
@@ -184,9 +183,9 @@ asset_uid: Mapped[uuid.UUID] = mapped_column(
 )
 ```
 
-The migration/provider integration must therefore derive dependency ordering,
-contract hashes, and catalog refresh data from SQLAlchemy table metadata, not
-from deprecated SDK foreign-key metadata.
+The migration/provider integration must therefore derive dependency ordering and
+catalog refresh data from SQLAlchemy table metadata, not from deprecated SDK
+foreign-key metadata.
 
 ## Provider Contract
 
@@ -427,9 +426,8 @@ The hook should:
 
 1. iterate `migration.metatable_models`;
 2. pair each model with the SDK-registered or refreshed MetaTable;
-3. compute the current contract hash through existing catalog helpers;
-4. upsert `MarketsMetaTableCatalogTable` by `table_name`;
-5. fail if an expected provider model cannot be registered, resolved, or
+3. upsert `MarketsMetaTableCatalogTable` by `table_name`;
+4. fail if an expected provider model cannot be registered, resolved, or
    validated.
 
 The catalog refresh must be batched. It must not call
@@ -455,7 +453,8 @@ is the schema revision state.
 Runtime startup may validate:
 
 - expected catalog rows exist;
-- catalog contract hashes match the current models.
+- cataloged platform `MetaTable.uid` resources still exist and match the
+  cataloged table identity.
 
 Runtime startup must not:
 
@@ -476,7 +475,6 @@ data_source_uid
 open_for_everyone
 protect_from_deletion
 introspect
-storage_hash_by_identifier
 ```
 
 Wrappers such as `msm_portfolios.start_engine(...)` must not expose or forward
@@ -532,9 +530,9 @@ It should not add built-in `ms-markets` tables to project extension hooks.
   `metatable_provider_models()`.
 - [x] Remove stale `msm.start_engine(...)` arguments that are not consumed by
   runtime attachment: `data_source_uid`, `open_for_everyone`,
-  `protect_from_deletion`, `introspect`, and `storage_hash_by_identifier`.
-  Remove them from the public signature, runtime cache key, logs, and any
-  wrappers that forward into `msm.start_engine(...)`.
+  `protect_from_deletion`, and `introspect`. Remove them from the public
+  signature, runtime cache key, logs, and any wrappers that forward into
+  `msm.start_engine(...)`.
 - [x] Rename row API `create_schemas()` helpers because they now attach an
   already-migrated runtime instead of creating schemas. Any remaining
   `create_schemas()` symbol must be an explicitly deprecated compatibility
@@ -594,8 +592,7 @@ The project is aligned with the SDK migration machinery when:
   `register-version-table`, `render`, `--to head`, or `--dry-run`;
 - runtime bootstrap docs describe `msm.start_engine(...)` as attach-only;
 - `msm.start_engine(...)` no longer exposes `data_source_uid`,
-  `open_for_everyone`, `protect_from_deletion`, `introspect`, or
-  `storage_hash_by_identifier`;
+  `open_for_everyone`, `protect_from_deletion`, or `introspect`;
 - runtime cache keys and logs no longer include those stale creation or
   registration arguments;
 - row APIs no longer present schema creation as the normal runtime path;

@@ -22,7 +22,6 @@ from msm.settings import DEFAULT_MARKETS_NAMESPACE
 
 class BootstrapExtensionAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "test.BootstrapExtensionAssetDetails"
-    __metatable_extra_hash_components__ = {"storage_name": "bootstrap_extension_asset_details"}
     __metatable_description__ = (
         "Project-local asset details table used to verify bootstrap dependency "
         "closure for extension models."
@@ -144,7 +143,6 @@ def test_start_engine_signature_excludes_migration_setup_arguments() -> None:
     assert "open_for_everyone" not in parameters
     assert "protect_from_deletion" not in parameters
     assert "introspect" not in parameters
-    assert "storage_hash_by_identifier" not in parameters
 
 
 def test_start_engine_can_attach_selected_models(monkeypatch) -> None:
@@ -362,7 +360,6 @@ def test_resolve_runtime_uses_identifier_after_physical_binding(monkeypatch) -> 
     from msm.repositories.base import MarketsRepositoryContext
 
     identifier = markets_meta_table_identifier(AssetTypeTable)
-    storage_name = str(AssetTypeTable.__table__.name)
     registration = SimpleNamespace(
         meta_tables=["asset-type-meta-table"],
         models=[AssetTypeTable],
@@ -380,7 +377,6 @@ def test_resolve_runtime_uses_identifier_after_physical_binding(monkeypatch) -> 
         "asset-type-meta-table-uid",
         raising=False,
     )
-    monkeypatch.setattr(AssetTypeTable, "__metatable_storage_hash__", storage_name)
     monkeypatch.setattr(AssetTypeTable.__table__, "name", "backend_physical_asset_type")
     monkeypatch.setattr(
         AssetTypeTable.__table__,

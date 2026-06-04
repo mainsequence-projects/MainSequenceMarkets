@@ -6,7 +6,7 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from typing import Any
 
-from mainsequence.client.metatables import MetaTable
+from mainsequence.client.metatables import MetaTable, TimeIndexMetaData
 from mainsequence.logconf import logger as _mainsequence_logger
 from mainsequence.meta_tables.migrations import AlembicMetaTableCatalogRefreshContext
 
@@ -14,6 +14,7 @@ from msm.base import MarketsBase, markets_table_storage_name
 from msm.models.registration import (
     MarketsManagementMode,
     MarketsMetaTableRegistrationResult,
+    is_time_index_meta_table_model,
 )
 from msm.repositories.base import MarketsRepositoryContext
 from msm.repositories.crud import search_model, upsert_model
@@ -21,7 +22,6 @@ from msm.repositories.crud import search_model, upsert_model
 from .models import (
     MarketsMetaTableCatalogRow,
     MarketsMetaTableCatalogTable,
-    markets_meta_table_contract_hash,
 )
 
 
@@ -53,7 +53,6 @@ class CatalogBootstrapResult:
 @dataclass(frozen=True)
 class _CatalogBootstrapModelPlan:
     model: type[MarketsBase]
-    storage_hash: str
     namespace: str
     table_name: str
 
@@ -75,7 +74,6 @@ def attach_markets_meta_tables_from_catalog(
     model_plans = [
         _CatalogBootstrapModelPlan(
             model=model,
-            storage_hash=_catalog_model_storage_hash(model),
             namespace=_catalog_model_namespace(model),
             table_name=_catalog_model_table_name(model),
         )
@@ -93,9 +91,6 @@ def attach_markets_meta_tables_from_catalog(
             "Markets MetaTable catalog is missing finalized rows for "
             f"{missing_table_names!r}. Run `{SDK_MIGRATION_UPGRADE_COMMAND}` before runtime startup."
         )
-
-    for plan in model_plans:
-        validate_catalog_contract(catalog_rows_by_table_name[plan.table_name], model=plan.model)
 
     resolved_meta_tables = resolve_catalog_meta_tables(
         catalog_rows_by_table_name,
@@ -264,14 +259,14 @@ def meta_table_from_catalog_row(
     model: type[MarketsBase],
     management_mode: MarketsManagementMode,
 ) -> MetaTable:
-    storage_hash = markets_table_storage_name(model)
+    physical_table_name = markets_table_storage_name(model)
     return MetaTable(
         uid=str(catalog_row["meta_table_uid"]),
         namespace=str(catalog_row.get("namespace") or ""),
         identifier=str(catalog_row["table_name"]),
         description=catalog_row.get("description"),
-        storage_hash=storage_hash,
-        physical_table_name=storage_hash,
+        storage_hash=physical_table_name,
+        physical_table_name=physical_table_name,
         management_mode=management_mode,
     )
 
@@ -320,19 +315,28 @@ def resolve_catalog_meta_tables(
         model_count=len(model_plans),
         management_mode=management_mode,
     )
-    matches = MetaTable.filter(
-        timeout=timeout,
-        uid__in=requested_uids,
-        management_mode=management_mode,
+    meta_table_uids, time_index_meta_table_uids = _partition_catalog_uids_by_model_type(
+        uid_by_table_name,
+        model_plans=model_plans,
     )
     matches_by_uid: dict[str, MetaTable] = {}
-    for meta_table in matches:
-        uid = _meta_table_uid(meta_table)
-        if uid in matches_by_uid:
-            raise CatalogBootstrapError(
-                f"Multiple platform MetaTables matched catalog UID {uid!r}."
-            )
-        matches_by_uid[uid] = meta_table
+    if meta_table_uids:
+        _add_catalog_matches_by_uid(
+            matches_by_uid,
+            MetaTable.filter(
+                timeout=timeout,
+                uid__in=meta_table_uids,
+                management_mode=management_mode,
+            ),
+        )
+    if time_index_meta_table_uids:
+        _add_catalog_matches_by_uid(
+            matches_by_uid,
+            TimeIndexMetaData.filter(
+                timeout=timeout,
+                uid__in=time_index_meta_table_uids,
+            ),
+        )
 
     missing_uids = sorted(set(requested_uids) - set(matches_by_uid))
     if missing_uids:
@@ -349,6 +353,7 @@ def resolve_catalog_meta_tables(
             catalog_row,
             meta_table=meta_table,
             model=plan.model,
+            management_mode=management_mode,
         )
         resolved[plan.table_name] = meta_table
 
@@ -361,11 +366,41 @@ def resolve_catalog_meta_tables(
     return resolved
 
 
+def _partition_catalog_uids_by_model_type(
+    uid_by_table_name: Mapping[str, str],
+    *,
+    model_plans: Sequence[_CatalogBootstrapModelPlan],
+) -> tuple[list[str], list[str]]:
+    meta_table_uids: list[str] = []
+    time_index_meta_table_uids: list[str] = []
+    for plan in model_plans:
+        uid = uid_by_table_name[plan.table_name]
+        if is_time_index_meta_table_model(plan.model):
+            time_index_meta_table_uids.append(uid)
+        else:
+            meta_table_uids.append(uid)
+    return meta_table_uids, time_index_meta_table_uids
+
+
+def _add_catalog_matches_by_uid(
+    matches_by_uid: dict[str, MetaTable],
+    matches: Sequence[MetaTable],
+) -> None:
+    for meta_table in matches:
+        uid = _meta_table_uid(meta_table)
+        if uid in matches_by_uid:
+            raise CatalogBootstrapError(
+                f"Multiple platform MetaTables matched catalog UID {uid!r}."
+            )
+        matches_by_uid[uid] = meta_table
+
+
 def _validate_catalog_meta_table_identity(
     catalog_row: Mapping[str, Any],
     *,
     meta_table: MetaTable,
     model: type[MarketsBase],
+    management_mode: MarketsManagementMode,
 ) -> None:
     expected_uid = str(catalog_row.get("meta_table_uid") or "")
     actual_uid = _meta_table_uid(meta_table)
@@ -393,20 +428,12 @@ def _validate_catalog_meta_table_identity(
             f"backend={actual_namespace!r}."
         )
 
-
-def validate_catalog_contract(
-    catalog_row: Mapping[str, Any],
-    *,
-    model: type[MarketsBase],
-) -> None:
-    expected_contract_hash = markets_meta_table_contract_hash(model)
-    actual_contract_hash = str(catalog_row.get("contract_hash") or "")
-    if actual_contract_hash != expected_contract_hash:
+    actual_management_mode = str(getattr(meta_table, "management_mode", "") or "")
+    if actual_management_mode and actual_management_mode != management_mode:
         raise CatalogBootstrapError(
-            "Markets MetaTable catalog contract drift detected for "
-            f"{model.__name__}. Catalog hash {actual_contract_hash!r} does not match "
-            f"local hash {expected_contract_hash!r}. Add an explicit migration or repair "
-            "the catalog before startup."
+            "Markets MetaTable catalog management_mode mismatch for "
+            f"{model.__name__}: expected={management_mode!r}, "
+            f"backend={actual_management_mode!r}."
         )
 
 
@@ -415,12 +442,10 @@ def upsert_catalog_row(
     *,
     model: type[MarketsBase],
     meta_table: MetaTable,
-    contract_hash: str | None = None,
 ) -> dict[str, Any]:
     row = MarketsMetaTableCatalogRow.from_meta_table(
         model=model,
         meta_table=meta_table,
-        contract_hash=contract_hash,
         sdk_version=_sdk_version(),
     )
     return _upsert_catalog_payload(context, row.to_payload())
@@ -487,16 +512,6 @@ def _registered_meta_table_filter_candidates(
 
 def _clean_filters(filters: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in filters.items() if value not in (None, "")}
-
-
-def _catalog_model_storage_hash(
-    model: type[MarketsBase],
-    *,
-    storage_hash: str | None = None,
-) -> str:
-    if storage_hash not in (None, ""):
-        return str(storage_hash)
-    return markets_table_storage_name(model)
 
 
 def _catalog_model_table_name(model: type[MarketsBase]) -> str:
@@ -574,5 +589,4 @@ __all__ = [
     "resolve_catalog_table",
     "resolve_catalog_meta_tables",
     "upsert_catalog_row",
-    "validate_catalog_contract",
 ]

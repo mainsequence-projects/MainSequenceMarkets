@@ -36,6 +36,10 @@ This copies the packaged skill bundle into `.agents/skills/ms_markets/`.
 Importing `msm` does not write files, create `.agents/`, or auto-install
 skills.
 
+Run this command only from a separate host project. The CLI blocks
+`msm copy-msm-skills --path .` inside the ms-markets source checkout because
+the destination would overlap the package's own skill source.
+
 ## Documentation
 
 Serve the documentation locally:
@@ -98,8 +102,8 @@ asset_table = runtime.table("Asset")
 
 That startup preflight uses the internal maintenance catalog. Cataloged tables
 are attached by platform
-`MetaTable.uid`; missing or stale catalog rows fail startup and should be fixed
-through the SDK migration upgrade flow.
+`MetaTable.uid`; missing rows or rows pointing at missing platform MetaTables
+fail startup and should be fixed through the SDK migration upgrade flow.
 
 For development examples that should use an example namespace, set
 `MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`, then call

@@ -25,9 +25,9 @@ a direct database executor:
 - the client package stores migration rows in a registered
   `MigrationMetaTable`;
 - the migration apply request references a registry row;
-- TS Manager reads the registry row, validates checksums and contract hashes,
-  locks the migration stream, executes the migration plan, refreshes affected
-  MetaTables, and updates migration status.
+- TS Manager reads the registry row, validates migration artifacts, locks the
+  migration stream, executes the migration plan, refreshes affected MetaTables,
+  and updates migration status.
 
 The local SDK checkout verified for this ADR exposes:
 
@@ -100,8 +100,6 @@ The SDK migration row is the source of migration execution data. The fields
 - manifest payload and `manifest_sha256`;
 - structured operation payloads and `operations_sha256`;
 - affected table identifiers;
-- old and new contract hashes;
-- new contract payloads;
 - idempotency and lock keys;
 - status, started/finished timestamps, execution counts, introspection
   snapshots, and failure details.
@@ -222,8 +220,8 @@ source of truth.
 The generated SDK manifest payload must include the fields required by
 `metatable-migration-manifest.v1`, including upgrade revision metadata,
 `expected_current_revision`, structured operation payloads, affected logical
-table identifiers, old contract hashes, new contract hashes, and post-migration
-contract payloads. The Python migration module is the package source of truth.
+table identifiers, and post-migration metadata required by the SDK. The Python
+migration module is the package source of truth.
 
 ### Upgrade-Only Policy
 
@@ -239,10 +237,8 @@ If a released schema change must be corrected, the correction should be a new
 forward migration. Operational rollback belongs to platform/database restore
 procedures, not to an `msm` downgrade workflow.
 
-For future migrations, old contract hashes should be stored explicitly in the
-Python migration module when the old SQLAlchemy model declaration no longer
-exists in the current package. New contract payloads can be computed from current
-SQLAlchemy models where practical.
+For future migrations, schema compatibility is owned by the SDK/Alembic
+migration flow, not by the `ms-markets` runtime catalog.
 
 ### Migration Scope And Table Discovery
 
@@ -340,8 +336,8 @@ The admin migration sequence is:
 7. apply pending migrations with `apply_migration(...)`;
 8. validate SDK apply responses and affected-table introspection;
 9. reconcile `MarketsMetaTableCatalogTable` rows for affected identifiers;
-10. validate that catalog hashes and platform MetaTable UIDs match the applied
-    SDK migration result.
+10. validate that cataloged platform MetaTable UIDs match the applied SDK
+    migration result.
 
 If catalog reconciliation fails after SDK apply succeeds, the migration remains
 not finalized from the `ms-markets` perspective. Re-running
@@ -359,7 +355,8 @@ The runtime sequence is:
    or not finalized in the catalog;
 4. read `MarketsMetaTableCatalogTable` rows for requested identifiers;
 5. attach platform MetaTables by cataloged UID;
-6. validate catalog contract hashes against local SQLAlchemy models;
+6. validate that required catalog rows exist and point at registered platform
+   `MetaTable.uid` resources;
 7. build and return the repository/runtime context.
 
 `msm.start_engine(...)` should be renamed conceptually from "bootstrap" to
@@ -383,13 +380,11 @@ apply response, the `ms-markets` migration runner must update
 For every affected logical identifier, the runner should:
 
 1. resolve the current SQLAlchemy model;
-2. compare the SDK response `new_contract_hash` with the local authored contract
-   hash;
-3. resolve the refreshed platform `MetaTable` UID from the apply response or
+2. resolve the refreshed platform `MetaTable` UID from the apply response or
    platform lookup;
-4. upsert the `MarketsMetaTableCatalogTable` row with the new `contract_hash`,
-   `sdk_version`, `model_name`, `description`, and platform `meta_table_uid`;
-5. record the applied migration revision or finalization status in catalog
+3. upsert the `MarketsMetaTableCatalogTable` row with `sdk_version`,
+   `model_name`, `description`, and platform `meta_table_uid`;
+4. record the applied migration revision or finalization status in catalog
    metadata if the catalog table is extended with migration fields.
 
 The catalog is a projection of the applied schema state. It is not the migration
@@ -422,7 +417,6 @@ The docs and skills should cover:
 - how to add a new library-owned MetaTable through a packaged Python migration;
 - how to evolve an existing MetaTable through a packaged Python migration module
   with structured SDK operations;
-- how to use old/new contract hashes;
 - how the SDK `MigrationMetaTable` registry differs from
   `MarketsMetaTableCatalogTable`;
 - how `msm migrations current`, `sync`, `upgrade`, and `validate` fit into
@@ -482,8 +476,8 @@ migrations:
    platform lookup;
 2. build or sync an adoption registry row that records the existing revision and
    affected identifiers;
-3. validate physical contracts and contract hashes before accepting the
-   adoption;
+3. validate physical contracts through the SDK/Alembic migration flow before
+   accepting the adoption;
 4. update catalog rows with the accepted adoption revision if the catalog stores
    migration metadata;
 5. apply later migrations through the normal SDK registry workflow.
@@ -527,8 +521,8 @@ repair.
       `msm`; target data-source handling belongs to the SDK migration API and
       users do not pass it through the CLI.
 - [x] Validate SDK apply/finalization responses before catalog writes:
-      operation status, affected identifiers, refreshed platform MetaTable UID,
-      and SDK `new_contract_hash` must match the local SQLAlchemy contract.
+      operation status, affected identifiers, and refreshed platform MetaTable
+      UID.
 
 ### SDK Dependency Tasks
 
@@ -584,7 +578,7 @@ repair.
 - [ ] Test existing install adoption.
 - [ ] Test one additive column migration.
 - [ ] Test one index migration.
-- [x] Test catalog contract hash update after successful SDK apply.
+- [x] Test catalog pointer refresh after successful SDK apply.
 - [ ] Test applied SDK migration with failed catalog finalization blocks runtime
       until `msm migrations upgrade` finalizes the catalog.
 - [ ] Test already-applied SDK revisions with missing/stale catalog rows are

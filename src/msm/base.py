@@ -67,23 +67,9 @@ def markets_meta_table_identifier(model_or_table: Any) -> str:
 
 
 def markets_table_storage_name(model_or_table: Any) -> str:
-    """Return the stable storage/table identity for a markets table."""
-
-    storage_hash = getattr(model_or_table, "__metatable_storage_hash__", None)
-    if storage_hash not in (None, ""):
-        return str(storage_hash)
+    """Return the authored SQLAlchemy table name for a markets table."""
 
     table = _markets_table(model_or_table)
-    storage_hash = getattr(table, "_mainsequence_storage_hash", None)
-    if storage_hash not in (None, ""):
-        return str(storage_hash)
-
-    info = getattr(table, "info", None)
-    if isinstance(info, Mapping):
-        storage_hash = info.get("mainsequence_storage_hash")
-        if storage_hash not in (None, ""):
-            return str(storage_hash)
-
     table_name = getattr(table, "name", None)
     if table_name in (None, ""):
         raise ValueError("Markets SQLAlchemy table metadata must expose a non-empty table name.")

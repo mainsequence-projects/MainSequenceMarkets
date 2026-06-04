@@ -15,7 +15,6 @@ class CatalogListRow(BaseModel):
     description: str | None = None
     model_name: str
     meta_table_uid: str
-    contract_hash: str
     sdk_version: str | None = None
     created_at: str
     updated_at: str

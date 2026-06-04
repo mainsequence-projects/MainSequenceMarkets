@@ -33,7 +33,6 @@ def test_portfolio_start_engine_signature_excludes_migration_setup_arguments() -
     assert "open_for_everyone" not in parameters
     assert "protect_from_deletion" not in parameters
     assert "introspect" not in parameters
-    assert "storage_hash_by_identifier" not in parameters
 
 
 def test_portfolio_bootstrap_resolves_portfolio_names_and_passes_core_names(monkeypatch) -> None:

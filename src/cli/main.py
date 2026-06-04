@@ -39,8 +39,30 @@ def copy_msm_skills_command(
 
     project_dir = path.expanduser().resolve()
     destination_root = project_dir / ".agents" / "skills" / "ms_markets"
-    skill_sources = _iter_skill_roots(source_root)
     source_label = _source_root_label(source_root)
+    block_reason = _copy_msm_skills_block_reason(
+        project_dir=project_dir,
+        destination_root=destination_root,
+        source_root=source_root,
+    )
+    if block_reason is not None:
+        payload = {
+            "blocked": True,
+            "destination_root": str(destination_root),
+            "dry_run": dry_run,
+            "project": str(project_dir),
+            "reason": block_reason,
+            "source": source_label,
+            "updated": [],
+            "updated_count": 0,
+        }
+        if emit_json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(block_reason, file=sys.stderr)
+        return 2
+
+    skill_sources = _iter_skill_roots(source_root)
 
     copied = [
         {
@@ -92,6 +114,48 @@ def bundled_msm_skills_root() -> Path:
 
 def source_tree_msm_skills_root() -> Path:
     return Path(__file__).resolve().parents[2].joinpath(*SOURCE_MSM_SKILLS_PATH)
+
+
+def _ms_markets_source_checkout_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _copy_msm_skills_block_reason(
+    *,
+    project_dir: Path,
+    destination_root: Path,
+    source_root: Path,
+) -> str | None:
+    if _same_resolved_path(
+        project_dir, _ms_markets_source_checkout_root()
+    ) or _is_ms_markets_source_checkout(project_dir):
+        return (
+            "Blocked: msm copy-msm-skills cannot run inside the ms-markets source "
+            "checkout. Use this command only from a separate host project."
+        )
+
+    if _same_resolved_path(destination_root, source_root):
+        return (
+            "Blocked: destination .agents/skills/ms_markets is the packaged "
+            "ms-markets skill source. Copying here would delete source skills."
+        )
+
+    return None
+
+
+def _is_ms_markets_source_checkout(path: Path) -> bool:
+    pyproject = path / "pyproject.toml"
+    if not pyproject.is_file():
+        return False
+    try:
+        project_config = pyproject.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return (
+        'name = "ms-markets"' in project_config
+        and (path / "src" / "msm").is_dir()
+        and (path / ".agents" / "skills" / "ms_markets").is_dir()
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -158,6 +222,13 @@ def _traversable_exists(item: Traversable) -> bool:
         return item.exists()
     except FileNotFoundError:
         return False
+
+
+def _same_resolved_path(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except FileNotFoundError:
+        return left.expanduser().resolve(strict=False) == right.expanduser().resolve(strict=False)
 
 
 def _print_table(title: str, headers: list[str], rows: list[list[Any]]) -> None:
