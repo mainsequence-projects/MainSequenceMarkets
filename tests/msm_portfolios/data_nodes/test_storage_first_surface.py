@@ -20,7 +20,7 @@ def test_portfolio_asset_scope_uses_markets_asset_dimension() -> None:
     assert ASSET_IDENTIFIER == ASSET_IDENTIFIER_DIMENSION
 
 
-def test_portfolio_nodes_expose_storage_first_surface() -> None:
+def test_portfolio_nodes_expose_storage_first_surface(monkeypatch) -> None:
     registered = set(portfolio_sqlalchemy_models())
 
     for node_cls in (PortfolioWeights, PortfoliosDataNode, SignalWeights):
@@ -28,7 +28,13 @@ def test_portfolio_nodes_expose_storage_first_surface() -> None:
         assert "_default_identifier" not in node_cls.__dict__
         assert "_default_description" not in node_cls.__dict__
         storage_table = node_cls._required_storage_table()
-        assert node_cls._default_identifier() == storage_table.metatable_identifier()
+        registered_identifier = f"registered.{storage_table.metatable_identifier()}"
+        monkeypatch.setattr(
+            storage_table,
+            "get_identifier",
+            classmethod(lambda _cls, identifier=registered_identifier: identifier),
+        )
+        assert node_cls._default_identifier() == registered_identifier
         assert node_cls._default_description() == storage_table.__metatable_description__
         assert storage_table in registered
         assert not hasattr(node_cls, "_required_column_dtypes_map")

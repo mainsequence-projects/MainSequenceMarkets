@@ -7,13 +7,13 @@ from typing import Any
 def storage_data_node_identifier(storage_table: Any) -> str:
     """Return the DataNode identifier owned by a storage MetaTable class."""
 
-    metatable_identifier = getattr(storage_table, "metatable_identifier", None)
-    if callable(metatable_identifier):
-        identifier = metatable_identifier()
+    get_identifier = getattr(storage_table, "get_identifier", None)
+    if callable(get_identifier):
+        identifier = get_identifier()
         if identifier not in (None, ""):
             return str(identifier)
 
-    raise NotImplementedError(f"{storage_table!r} must define metatable_identifier().")
+    raise NotImplementedError(f"{storage_table!r} must define get_identifier().")
 
 
 def storage_data_node_description(storage_table: Any) -> str:

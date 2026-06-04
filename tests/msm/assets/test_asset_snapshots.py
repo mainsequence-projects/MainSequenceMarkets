@@ -44,10 +44,17 @@ def test_asset_snapshot_build_frame_validates_storage_index() -> None:
     assert str(frame.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
 
 
-def test_asset_snapshot_resolves_storage_first_surface() -> None:
+def test_asset_snapshot_resolves_storage_first_surface(monkeypatch) -> None:
+    registered_identifier = "registered.asset-snapshots"
+    monkeypatch.setattr(
+        AssetSnapshotsStorage,
+        "get_identifier",
+        classmethod(lambda _cls: registered_identifier),
+    )
+
     assert AssetSnapshot._required_storage_table() is AssetSnapshotsStorage
     assert "__data_node_identifier__" not in AssetSnapshot.__dict__
-    assert AssetSnapshot._default_identifier() == AssetSnapshotsStorage.metatable_identifier()
+    assert AssetSnapshot._default_identifier() == registered_identifier
     assert AssetSnapshot._default_description() == AssetSnapshotsStorage.__metatable_description__
     assert issubclass(AssetSnapshot.configuration_class, AssetSnapshotConfiguration)
     # Storage class is the single source of the snapshot column contract.

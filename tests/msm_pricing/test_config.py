@@ -15,9 +15,6 @@ from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
     PRICING_CONTEXT_DEFAULT,
-    PRICING_DEFAULT_DISCOUNT_CURVES_DATA_NODE_IDENTIFIER,
-    PRICING_DEFAULT_INDEX_FIXINGS_DATA_NODE_IDENTIFIER,
-    default_pricing_market_data_bindings,
 )
 
 
@@ -29,33 +26,11 @@ def reset_pricing_market_data(monkeypatch) -> None:
     reset_pricing_market_data_configuration()
 
 
-def test_pricing_market_data_configuration_defaults_to_canonical_identifiers() -> None:
+def test_pricing_market_data_configuration_defaults_to_empty_runtime_overrides() -> None:
     configuration = default_pricing_market_data_configuration()
 
     assert configuration.context_key == PRICING_CONTEXT_DEFAULT
     assert configuration.data_node_identifiers == {}
-    assert default_pricing_market_data_bindings() == {
-        PRICING_CONCEPT_DISCOUNT_CURVES: PRICING_DEFAULT_DISCOUNT_CURVES_DATA_NODE_IDENTIFIER,
-        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: (
-            PRICING_DEFAULT_INDEX_FIXINGS_DATA_NODE_IDENTIFIER
-        ),
-    }
-
-
-def test_pricing_market_data_configuration_defaults_follow_active_markets_namespace(
-    monkeypatch,
-) -> None:
-    monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.examples")
-
-    configuration = default_pricing_market_data_configuration()
-
-    assert configuration.context_key == PRICING_CONTEXT_DEFAULT
-    assert default_pricing_market_data_bindings() == {
-        PRICING_CONCEPT_DISCOUNT_CURVES: "mainsequence.examples.DiscountCurvesTS",
-        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: (
-            "mainsequence.examples.IndexFixingsTS"
-        ),
-    }
 
 
 def test_set_pricing_market_data_configuration_accepts_typed_override() -> None:

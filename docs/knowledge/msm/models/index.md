@@ -18,7 +18,7 @@ selected through `msm_pricing.meta_tables.pricing_sqlalchemy_models()`.
 Runtime initialization should use
 `msm_pricing.bootstrap.attach_pricing_schemas(...)`, which includes core
 dependencies such as `AssetTable`, `IndexTypeTable`, and `IndexTable` before
-pricing extension tables and resolves them through the maintenance catalog.
+pricing extension tables and resolves them through direct backend attachment.
 
 ## Scope
 
@@ -87,7 +87,7 @@ The physical name is `ms_markets__<lowercase-concept>` and gains an
 before model import.
 
 `__metatable_description__` is required on every concrete markets MetaTable,
-including `PlatformTimeIndexMetaData` storage classes used by DataNodes. The
+including `PlatformTimeIndexMetaTable` storage classes used by DataNodes. The
 description is table-level discovery text: it should identify the row grain,
 business intention, and expected use of the table. Column labels and column
 descriptions stay on SQLAlchemy column `info` metadata. Built-in markets and
@@ -114,8 +114,8 @@ When adding a built-in library model:
 Project-local extension models do not need to modify `markets_sqlalchemy_models()`.
 Pass the SQLAlchemy model class directly to
 `msm.start_engine(models=[MyExtensionTable])`; bootstrap expands SQLAlchemy
-`ForeignKey(...)` dependencies and attaches the model through the shared catalog
-path.
+`ForeignKey(...)` dependencies and attaches the model through the shared direct
+backend lookup path.
 
 ## Related Concepts
 

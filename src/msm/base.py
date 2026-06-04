@@ -6,7 +6,7 @@ from typing import Any, ClassVar
 
 from mainsequence.meta_tables import (
     PlatformManagedMetaTable,
-    PlatformTimeIndexMetaData,
+    PlatformTimeIndexMetaTable,
     schema_table_name,
     sqlalchemy_naming_convention,
 )
@@ -171,8 +171,19 @@ class MarketsMetaTableMixin(PlatformManagedMetaTable):
     def metatable_identifier(cls) -> str:
         return cls.__metatable_identifier__
 
+    @classmethod
+    def get_identifier(cls) -> str:
+        meta_table = cls.get_meta_table()
+        identifier = getattr(meta_table, "identifier", None)
+        if identifier in (None, ""):
+            raise RuntimeError(
+                f"{cls.__name__} is not attached to a backend MetaTable. Attach schemas "
+                "before requesting the registered identifier."
+            )
+        return str(identifier)
 
-class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaData):
+
+class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaTable):
     """Shared contract for markets storage-first time-indexed MetaTable models.
 
     Sibling of `MarketsMetaTableMixin` for time-index storage classes. Concrete
@@ -196,7 +207,7 @@ class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaData):
             table_kwargs.pop("schema", None)
         else:
             table_kwargs["schema"] = schema
-        return PlatformTimeIndexMetaData.__table_cls__.__func__(cls, *args, **table_kwargs)
+        return PlatformTimeIndexMetaTable.__table_cls__.__func__(cls, *args, **table_kwargs)
 
     def __init_subclass__(cls, **kwargs: Any):
         super().__init_subclass__(**kwargs)
@@ -209,6 +220,17 @@ class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaData):
     @classmethod
     def metatable_identifier(cls) -> str:
         return cls.__metatable_identifier__
+
+    @classmethod
+    def get_identifier(cls) -> str:
+        meta_table = cls.get_meta_table()
+        identifier = getattr(meta_table, "identifier", None)
+        if identifier in (None, ""):
+            raise RuntimeError(
+                f"{cls.__name__} is not attached to a backend TimeIndexMetaTable. "
+                "Attach schemas before requesting the registered identifier."
+            )
+        return str(identifier)
 
 
 def new_markets_uid() -> uuid.UUID:

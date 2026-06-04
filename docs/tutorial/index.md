@@ -51,9 +51,10 @@ not copy skills into the current working tree.
 
 ## Schema Migrations Before Runtime
 
-`msm.start_engine(...)` is runtime attachment. It reads finalized catalog rows,
-validates the selected table contracts, then binds platform MetaTables for row
-APIs. It does not create or evolve schema.
+`msm.start_engine(...)` is runtime attachment. It resolves finalized
+`MetaTable` and `TimeIndexMetaTable` resources directly by each selected
+model's SQLAlchemy table name, then binds those backend objects for row APIs.
+It does not create or evolve schema.
 
 Run admin migrations before application startup:
 
@@ -161,17 +162,16 @@ boundary example.
 When the pricing persistence tables are needed, attach them through
 `msm_pricing.bootstrap.attach_pricing_schemas(...)`. That startup flow includes
 the core asset and index tables first, then pricing extension tables, and uses
-the same maintenance catalog as `msm.start_engine(...)` so already-cataloged
-core tables are attached rather than registered again.
+the same direct backend attachment contract as `msm.start_engine(...)`.
 
 Pricing bootstrap also seeds default market-data bindings for the built-in
 pricing context:
 
 ```text
 (default, discount_curves)
-  -> DiscountCurvesTS
+  -> DiscountCurvesStorage.get_identifier()
 (default, interest_rate_index_fixings)
-  -> IndexFixingsTS
+  -> IndexFixingsStorage.get_identifier()
 ```
 
 The binding row maps `(context_key, concept_key)` to a DataNode identifier. Use
@@ -273,9 +273,9 @@ Use this workflow when adding or reviewing a market-domain relational table:
    `msm.start_engine(...)` for runtime attachment. Do not call model
    `.register()` methods or local registration helpers from application code.
 
-`msm.start_engine(...)` uses the internal maintenance catalog during startup. It
-attaches cataloged tables by platform
-`MetaTable.uid`; it does not import or register missing tables.
+`msm.start_engine(...)` does not read the internal maintenance catalog during
+runtime startup. It resolves selected tables by backend identifier using
+`model.__table__.name`; it does not import or register missing tables.
 
 Examples that use example-scoped platform-managed MetaTables must set
 `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` before importing
@@ -308,8 +308,8 @@ cataloged with the same migration/finalization path as built-in tables:
 
 The `models=[...]` selector is the public runtime attachment boundary. It
 expands foreign-key dependencies, verifies and attaches the selected SQLAlchemy
-model through the maintenance catalog, and binds the resolved backend
-`MetaTable.uid` back to that model. Do not build a project-local UID map or call
+model through direct backend lookup, and binds the resolved backend
+`MetaTable` object back to that model. Do not build a project-local UID map or call
 row `create_schemas()` helpers as the extension mechanism.
 
 For asset detail tables keyed by `AssetTable.uid`, expose `uid` as an alias of

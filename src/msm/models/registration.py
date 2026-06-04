@@ -4,10 +4,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from mainsequence.client.metatables import MetaTable, MetaTableRegistrationRequest
+from mainsequence.client.metatables import (
+    MetaTable,
+    MetaTableRegistrationRequest,
+    TimeIndexMetaTable,
+)
 from mainsequence.logconf import logger as _mainsequence_logger
 from mainsequence.meta_tables import (
-    PlatformTimeIndexMetaData,
+    PlatformTimeIndexMetaTable,
     external_registered_registration_request_from_sqlalchemy_model,
     platform_managed_registration_request_from_sqlalchemy_model,
     time_indexed_registration_request_from_sqlalchemy_model,
@@ -17,6 +21,7 @@ from msm.base import (
     MARKETS_DEFAULT_SCHEMA,
     MarketsBase,
     markets_meta_table_identifier as _markets_meta_table_identifier,
+    markets_table_storage_name,
 )
 from msm.models import markets_sqlalchemy_models
 
@@ -242,19 +247,19 @@ def markets_foreign_key_target_identifiers(model: type[MarketsBase]) -> list[str
                 element,
                 candidate_models=candidate_models,
             )
-            targets.add(markets_meta_table_identifier(target_model))
+            targets.add(markets_table_storage_name(target_model))
     return sorted(targets)
 
 
 def is_time_index_meta_table_model(model: type[MarketsBase]) -> bool:
     """True for ADR 0017 DataNode output storage classes.
 
-    `PlatformTimeIndexMetaData` subclasses derive their own time-index/storage
+    `PlatformTimeIndexMetaTable` subclasses derive their own time-index/storage
     layout and register without the ``introspect`` argument accepted by domain
     `PlatformManagedMetaTable` models.
     """
 
-    return isinstance(model, type) and issubclass(model, PlatformTimeIndexMetaData)
+    return isinstance(model, type) and issubclass(model, PlatformTimeIndexMetaTable)
 
 
 def _platform_registration_kwargs(
@@ -265,7 +270,7 @@ def _platform_registration_kwargs(
 ) -> dict[str, Any]:
     """Shape platform-managed register/build kwargs for one model.
 
-    DataNode storage classes (`PlatformTimeIndexMetaData`) reject ``introspect``;
+    DataNode storage classes (`PlatformTimeIndexMetaTable`) reject ``introspect``;
     domain MetaTables require ``introspect``.
     """
 
@@ -319,6 +324,7 @@ def build_markets_registration_requests(
             requests.append(
                 registration_builder(
                     model,
+                    identifier=markets_table_storage_name(model),
                     **_platform_registration_kwargs(
                         model, base_kwargs=platform_kwargs, introspect=introspect
                     ),
@@ -331,6 +337,7 @@ def build_markets_registration_requests(
                 requests.append(
                     time_indexed_registration_request_from_sqlalchemy_model(
                         model,
+                        identifier=markets_table_storage_name(model),
                         **_platform_registration_kwargs(
                             model,
                             base_kwargs=platform_kwargs,
@@ -343,6 +350,7 @@ def build_markets_registration_requests(
             requests.append(
                 external_registered_registration_request_from_sqlalchemy_model(
                     model,
+                    identifier=markets_table_storage_name(model),
                     introspect=True if introspect is None else introspect,
                     **external_kwargs,
                 )
@@ -365,47 +373,66 @@ def resolve_registered_markets_meta_tables(
 
     resolved_models = resolve_markets_meta_table_models(models)
     identifiers_by_model = {
-        model: markets_meta_table_identifier(model) for model in resolved_models
+        model: markets_table_storage_name(model) for model in resolved_models
     }
-    requested_identifiers = list(dict.fromkeys(identifiers_by_model.values()))
-    filters = _registered_meta_table_bulk_filter(
-        identifiers=requested_identifiers,
+    normal_models = [
+        model for model in resolved_models if not is_time_index_meta_table_model(model)
+    ]
+    time_index_models = [
+        model for model in resolved_models if is_time_index_meta_table_model(model)
+    ]
+    normal_identifiers = list(
+        dict.fromkeys(identifiers_by_model[model] for model in normal_models)
+    )
+    time_index_identifiers = list(
+        dict.fromkeys(identifiers_by_model[model] for model in time_index_models)
+    )
+    normal_filters = _registered_meta_table_bulk_filter(
+        identifiers=normal_identifiers,
         data_source_uid=data_source_uid,
         management_mode=management_mode,
+        namespace=namespace,
+    )
+    time_index_filters = _registered_time_index_meta_table_bulk_filter(
+        identifiers=time_index_identifiers,
         namespace=namespace,
     )
     logger.info(
         "Resolving registered markets MetaTable schemas",
         management_mode=management_mode,
-        namespace=filters.get("namespace"),
-        identifier_count=len(requested_identifiers),
+        namespace=normal_filters.get("namespace") or time_index_filters.get("namespace"),
+        meta_table_identifier_count=len(normal_identifiers),
+        time_index_identifier_count=len(time_index_identifiers),
         model_count=len(resolved_models),
         data_source_uid=data_source_uid,
     )
-    matches = MetaTable.filter(timeout=timeout, **filters) if requested_identifiers else []
     matches_by_identifier: dict[str, MetaTable] = {}
-    for meta_table in matches:
-        identifier = str(getattr(meta_table, "identifier", "") or "")
-        if identifier not in requested_identifiers:
-            continue
-        if identifier in matches_by_identifier:
-            raise LookupError(
-                "Multiple registered markets MetaTables matched "
-                f"identifier {identifier!r} with filters {filters!r}. Pass data_source_uid "
-                "or repair duplicate platform registrations."
-            )
-        matches_by_identifier[identifier] = meta_table
-
-    missing_identifiers = [
-        identifier
-        for identifier in requested_identifiers
-        if identifier not in matches_by_identifier
-    ]
-    if missing_identifiers:
-        raise LookupError(
-            "Could not resolve registered markets MetaTables for "
-            f"{missing_identifiers!r} with filters {filters!r}."
+    matches_by_identifier.update(
+        _unique_matches_by_identifier(
+            resource_name="MetaTable",
+            matches=MetaTable.filter(timeout=timeout, **normal_filters)
+            if normal_identifiers
+            else [],
+            requested_identifiers=normal_identifiers,
+            filters=normal_filters,
         )
+    )
+    matches_by_identifier.update(
+        _unique_matches_by_identifier(
+            resource_name="TimeIndexMetaTable",
+            matches=TimeIndexMetaTable.filter(timeout=timeout, **time_index_filters)
+            if time_index_identifiers
+            else [],
+            requested_identifiers=time_index_identifiers,
+            filters=time_index_filters,
+        )
+    )
+    _raise_for_missing_registered_identifiers(
+        identifiers=[*normal_identifiers, *time_index_identifiers],
+        matches_by_identifier=matches_by_identifier,
+        normal_filters=normal_filters,
+        time_index_filters=time_index_filters,
+    )
 
     meta_tables: list[MetaTable] = []
     meta_table_by_identifier: dict[str, MetaTable] = {}
@@ -448,6 +475,63 @@ def _registered_meta_table_bulk_filter(
         base_filters["data_source__uid"] = data_source_uid
 
     return _clean_filters(base_filters)
+
+
+def _registered_time_index_meta_table_bulk_filter(
+    *,
+    identifiers: Sequence[str],
+    namespace: str | None,
+) -> dict[str, Any]:
+    return _clean_filters(
+        {
+            "identifier__in": sorted(dict.fromkeys(identifiers)),
+            "namespace": namespace,
+        }
+    )
+
+
+def _unique_matches_by_identifier(
+    *,
+    resource_name: str,
+    matches: Sequence[MetaTable],
+    requested_identifiers: Sequence[str],
+    filters: Mapping[str, Any],
+) -> dict[str, MetaTable]:
+    requested = set(requested_identifiers)
+    matches_by_identifier: dict[str, MetaTable] = {}
+    for meta_table in matches:
+        identifier = str(getattr(meta_table, "identifier", "") or "")
+        if identifier not in requested:
+            raise LookupError(
+                f"Registered markets {resource_name} lookup returned unexpected "
+                f"identifier {identifier!r} for filters {filters!r}."
+            )
+        if identifier in matches_by_identifier:
+            raise LookupError(
+                f"Multiple registered markets {resource_name} rows matched "
+                f"identifier {identifier!r} with filters {filters!r}. Pass a narrower "
+                "runtime selection or repair duplicate platform registrations."
+            )
+        matches_by_identifier[identifier] = meta_table
+    return matches_by_identifier
+
+
+def _raise_for_missing_registered_identifiers(
+    *,
+    identifiers: Sequence[str],
+    matches_by_identifier: Mapping[str, MetaTable],
+    normal_filters: Mapping[str, Any],
+    time_index_filters: Mapping[str, Any],
+) -> None:
+    missing_identifiers = [
+        identifier for identifier in identifiers if identifier not in matches_by_identifier
+    ]
+    if missing_identifiers:
+        raise LookupError(
+            "Could not resolve registered markets MetaTables for "
+            f"{missing_identifiers!r}. MetaTable filters={normal_filters!r}; "
+            f"TimeIndexMetaTable filters={time_index_filters!r}."
+        )
 
 
 def _clean_filters(filters: Mapping[str, Any]) -> dict[str, Any]:

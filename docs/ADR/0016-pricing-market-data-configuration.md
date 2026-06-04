@@ -4,6 +4,10 @@
 
 Accepted
 
+The static-default portion of this ADR is superseded by
+[ADR 0025](0025-direct-metatable-runtime-binding.md). Pricing defaults are now
+seeded from attached storage classes, not from namespace-rebuilt strings.
+
 ## Context
 
 `msm_pricing` prices instruments by combining instrument payloads, canonical
@@ -54,11 +58,11 @@ pricing, the built-in datasets are package-level concepts:
 
 ```text
 DiscountCurvesNode
-  identifier: markets_data_node_identifier("DiscountCurvesTS")
+  identifier: DiscountCurvesStorage.get_identifier()
   rows:       (time_index, curve_identifier)
 
 FixingRatesNode
-  identifier: markets_data_node_identifier("IndexFixingsTS")
+  identifier: IndexFixingsStorage.get_identifier()
   rows:       (time_index, index_identifier)
 ```
 
@@ -145,10 +149,10 @@ The built-in default bindings are:
 
 ```text
 (default, discount_curves)
-  -> markets_data_node_identifier("DiscountCurvesTS")
+  -> DiscountCurvesStorage.get_identifier()
 
 (default, interest_rate_index_fixings)
-  -> markets_data_node_identifier("IndexFixingsTS")
+  -> IndexFixingsStorage.get_identifier()
 ```
 
 These defaults exist in two places:
@@ -276,8 +280,8 @@ The seeded rows are pricing-owned MetaTable rows, not core `msm` rows.
 ## Implementation Tasks
 
 - [x] Add `PricingMarketDataConfiguration` under `msm_pricing`.
-- [x] Add initial static defaults for discount curves and interest-rate-index
-  fixing reads.
+- [x] Add bootstrap-seeded defaults for discount curves and interest-rate-index
+  fixing reads from attached storage classes.
 - [x] Add a pricing bootstrap/configuration helper that installs an optional
   typed override and otherwise leaves the defaults active.
 - [x] Replace `MSDataInterface.set_instruments_configuration(...)` with a
@@ -287,7 +291,7 @@ The seeded rows are pricing-owned MetaTable rows, not core `msm` rows.
 - [x] Update `MSDataInterface.get_historical_fixings(...)` to resolve the
   fixing DataNode from pricing market-data configuration.
 - [x] Prefer `APIDataNode.build_from_identifier(...)` for configured DataNode
-  lookups and avoid platform table UIDs in static defaults.
+  lookups and avoid platform table UIDs or namespace-rebuilt identifiers.
 - [x] Add pricing settings constants:
   `PRICING_CONTEXT_DEFAULT`, `PRICING_CONTEXT_EOD`,
   `PRICING_CONTEXT_LIVE`, `PRICING_CONTEXT_RISK_MANAGER`,
@@ -310,15 +314,15 @@ The seeded rows are pricing-owned MetaTable rows, not core `msm` rows.
 - [x] Update `PricingMarketDataConfiguration` to carry `context_key` and
   optional direct per-concept identifier overrides.
 - [x] Update `MSDataInterface` to resolve `discount_curves` and
-  `interest_rate_index_fixings` through direct override, persisted binding, then
-  static default.
+  `interest_rate_index_fixings` through direct override, then persisted
+  binding.
 - [x] Add bootstrap seeding for default `PricingMarketDataBinding` rows after
-  pricing MetaTables are attached from the migration-maintained catalog.
+  pricing MetaTables are attached.
 - [x] Seed `(PRICING_CONTEXT_DEFAULT, PRICING_CONCEPT_DISCOUNT_CURVES)` to
-  `markets_data_node_identifier("DiscountCurvesTS")`.
+  `DiscountCurvesStorage.get_identifier()`.
 - [x] Seed
   `(PRICING_CONTEXT_DEFAULT, PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS)` to
-  `markets_data_node_identifier("IndexFixingsTS")`.
+  `IndexFixingsStorage.get_identifier()`.
 - [x] Make default binding seeding idempotent and avoid overwriting existing
   rows unless the bootstrap call explicitly requests replacement.
 - [x] Add bootstrap options equivalent to
@@ -352,7 +356,7 @@ The seeded rows are pricing-owned MetaTable rows, not core `msm` rows.
 
 ## Validation Tasks
 
-- [x] Test that static defaults resolve canonical DataNode identifiers.
+- [x] Test that default bindings resolve canonical attached DataNode identifiers.
 - [x] Test that default bootstrap seeding creates the two built-in binding rows.
 - [x] Test that seeding is idempotent and does not overwrite existing rows unless
   replacement is explicitly requested.

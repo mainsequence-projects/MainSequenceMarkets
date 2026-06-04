@@ -44,22 +44,28 @@ def test_curve_config_uses_curve_identity_not_asset_identity() -> None:
     assert "curve_const" not in CurveConfig.model_fields
 
 
-def test_discount_curves_node_resolves_storage_and_curve_identity() -> None:
+def test_discount_curves_node_resolves_storage_and_curve_identity(monkeypatch) -> None:
     storage_table = DiscountCurvesNode._required_storage_table()
+    registered_identifier = "registered.discount-curves"
+    monkeypatch.setattr(
+        storage_table,
+        "get_identifier",
+        classmethod(lambda _cls: registered_identifier),
+    )
 
     assert storage_table is DiscountCurvesStorage
     assert storage_table.metatable_identifier() == "DiscountCurvesTS"
     assert storage_table.__index_names__ == ["time_index", CURVE_IDENTIFIER]
     assert storage_table.__time_index_name__ == "time_index"
     assert "__data_node_identifier__" not in DiscountCurvesNode.__dict__
-    assert DiscountCurvesNode._default_identifier() == storage_table.metatable_identifier()
+    assert DiscountCurvesNode._default_identifier() == registered_identifier
     assert DiscountCurvesNode._default_description() == storage_table.__metatable_description__
     assert "curve_identifier" in DiscountCurvesNode._default_description()
     assert "Curve MetaTable" in DiscountCurvesNode._default_description()
 
 
 def test_discount_curves_storage_has_curve_foreign_key() -> None:
-    curve_identifier = CurveTable.__metatable_identifier__
+    curve_identifier = CurveTable.__table__.name
     fk_column = DiscountCurvesStorage.__table__.columns[CURVE_IDENTIFIER]
 
     assert markets_foreign_key_target_identifiers(DiscountCurvesStorage) == [curve_identifier]

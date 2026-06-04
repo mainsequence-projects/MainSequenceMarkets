@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 This ADR supersedes the runtime-control part of
 [ADR 0015](0015-catalog-based-metatable-bootstrap.md). ADR 0015 remains valid
@@ -27,7 +27,7 @@ DiscountCurvesStorage.__table__.name
   -> ms_markets__discountcurvests__mainsequence_examples
 ```
 
-The backend MetaTable and TimeIndexMetaData rows are registered under that same
+The backend MetaTable and TimeIndexMetaTable rows are registered under that same
 identifier. The SDK can resolve them directly by that identifier, so using a
 separate catalog row as runtime control duplicates state and creates drift risk.
 
@@ -60,7 +60,7 @@ The runtime binding flow becomes:
 ```text
 resolved model graph
   -> model.__table__.name
-  -> MetaTable / TimeIndexMetaData backend lookup
+  -> MetaTable / TimeIndexMetaTable backend lookup
   -> model._bind_meta_table(...)
   -> model.get_identifier()
 ```
@@ -75,7 +75,7 @@ SDK migration provider registers/refreshes tables
 
 The catalog must not decide whether application runtime can attach a model.
 Runtime binding must work from the model's table identity and the backend
-MetaTable/TimeIndexMetaData APIs.
+MetaTable/TimeIndexMetaTable APIs.
 
 ### Canonical Identifier
 
@@ -103,7 +103,7 @@ should use the attached backend identifier through `get_identifier()`.
 
 Runtime attachment must query the backend directly in bulk. It must not issue
 one lookup per model. The resolver partitions requested models into normal
-`MetaTable` models and `PlatformTimeIndexMetaData` storage models, then performs
+`MetaTable` models and `PlatformTimeIndexMetaTable` storage models, then performs
 one filter query per backend resource type.
 
 ```text
@@ -111,7 +111,7 @@ normal MetaTable models:
   MetaTable.filter(identifier__in=[model.__table__.name, ...], management_mode=...)
 
 time-index storage models:
-  TimeIndexMetaData.filter(identifier__in=[model.__table__.name, ...])
+  TimeIndexMetaTable.filter(identifier__in=[model.__table__.name, ...])
 ```
 
 The result set is then matched back to the requested models by canonical table
@@ -141,9 +141,9 @@ mainsequence.examples.DiscountCurvesTS
 mainsequence.examples.IndexFixingsTS
 ```
 
-Static pricing defaults such as `markets_data_node_identifier("DiscountCurvesTS")`
-are invalid for persisted market-data bindings because they rebuild a logical
-string instead of reading the backend identifier.
+Static pricing defaults that rebuild names from authored storage identifiers are
+invalid for persisted market-data bindings because they rebuild a logical string
+instead of reading the backend identifier.
 
 ### Catalog Role
 
@@ -164,12 +164,12 @@ It is not runtime control:
 ## Consequences
 
 This removes a duplicated runtime source of truth. Runtime startup depends on
-the SDK's registered MetaTable/TimeIndexMetaData lookup by canonical table
+the SDK's registered MetaTable/TimeIndexMetaTable lookup by canonical table
 identifier, not on a secondary catalog pointer.
 
 The catalog can become stale without breaking runtime. Stale catalog rows affect
 inventory views and maintenance diagnostics only. Runtime failures should point
-to missing backend MetaTables or TimeIndexMetaData rows for the table identifier
+to missing backend MetaTables or TimeIndexMetaTable rows for the table identifier
 the model declares.
 
 Pricing defaults become runtime-dependent. They can only be seeded after the
@@ -180,77 +180,77 @@ actual backend MetaTable identifier.
 
 ### Stage 1: Model Identifier API
 
-- [ ] Add `get_identifier()` to the markets MetaTable mixins.
-- [ ] Make `get_identifier()` return `get_meta_table().identifier`.
-- [ ] Make `get_identifier()` fail clearly when the model is not attached.
-- [ ] Add tests proving `get_identifier()` returns the same identifier as the
+- [x] Add `get_identifier()` to the markets MetaTable mixins.
+- [x] Make `get_identifier()` return `get_meta_table().identifier`.
+- [x] Make `get_identifier()` fail clearly when the model is not attached.
+- [x] Add tests proving `get_identifier()` returns the same identifier as the
       bound backend MetaTable object.
 
 ### Stage 2: Direct Runtime Attachment
 
-- [ ] Add a direct runtime resolver that partitions requested models into
-      normal MetaTable models and `PlatformTimeIndexMetaData` storage models.
-- [ ] Resolve normal MetaTables in one SDK `MetaTable.filter(identifier__in=...)`
+- [x] Add a direct runtime resolver that partitions requested models into
+      normal MetaTable models and `PlatformTimeIndexMetaTable` storage models.
+- [x] Resolve normal MetaTables in one SDK `MetaTable.filter(identifier__in=...)`
       call keyed by `model.__table__.name`.
-- [ ] Resolve time-index storage tables in one SDK
-      `TimeIndexMetaData.filter(identifier__in=...)` call keyed by
+- [x] Resolve time-index storage tables in one SDK
+      `TimeIndexMetaTable.filter(identifier__in=...)` call keyed by
       `model.__table__.name`.
-- [ ] Reject missing matches, duplicate matches, or backend objects whose
+- [x] Reject missing matches, duplicate matches, or backend objects whose
       returned identifier does not match the requested `model.__table__.name`.
-- [ ] Bind each resolved backend object to its model with `_bind_meta_table`.
-- [ ] Return `MarketsMetaTableRegistrationResult` keyed by canonical table
+- [x] Bind each resolved backend object to its model with `_bind_meta_table`.
+- [x] Return `MarketsMetaTableRegistrationResult` keyed by canonical table
       identifier.
-- [ ] Update `msm.start_engine(...)` to use direct runtime attachment instead
+- [x] Update `msm.start_engine(...)` to use direct runtime attachment instead
       of `attach_markets_meta_tables_from_catalog(...)`.
-- [ ] Update `msm.attach_schemas(...)` to use the same direct runtime
+- [x] Update `msm.attach_schemas(...)` to use the same direct runtime
       attachment.
-- [ ] Keep process-idempotence and missing-model runtime checks unchanged.
+- [x] Keep process-idempotence and missing-model runtime checks unchanged.
 
 ### Stage 3: Catalog Demotion
 
-- [ ] Keep `MarketsMetaTableCatalogTable` and post-migration catalog refresh.
-- [ ] Remove catalog reads from normal runtime startup.
-- [ ] Rename or document catalog attachment helpers as maintenance-only if they
+- [x] Keep `MarketsMetaTableCatalogTable` and post-migration catalog refresh.
+- [x] Remove catalog reads from normal runtime startup.
+- [x] Rename or document catalog attachment helpers as maintenance-only if they
       remain for diagnostics.
-- [ ] Update catalog docs to state that `model_name` is descriptive and not a
+- [x] Update catalog docs to state that `model_name` is descriptive and not a
       binding key.
-- [ ] Update ADR 0015 status text to say runtime control is superseded by this
+- [x] Update ADR 0015 status text to say runtime control is superseded by this
       ADR while catalog inventory remains.
 
 ### Stage 4: DataNode Identifier Resolution
 
-- [ ] Update `storage_data_node_identifier(storage_table)` to call
+- [x] Update `storage_data_node_identifier(storage_table)` to call
       `storage_table.get_identifier()`.
-- [ ] Remove fallback DataNode identifier construction from storage class
+- [x] Remove fallback DataNode identifier construction from storage class
       authored names.
-- [ ] Add tests proving DataNode default identifiers equal the attached backend
-      MetaTable/TimeIndexMetaData identifiers.
+- [x] Add tests proving DataNode default identifiers equal the attached backend
+      MetaTable/TimeIndexMetaTable identifiers.
 
 ### Stage 5: Pricing Binding Defaults
 
-- [ ] Remove static pricing binding defaults based on
-      `markets_data_node_identifier("DiscountCurvesTS")` and
-      `markets_data_node_identifier("IndexFixingsTS")`.
-- [ ] Seed default pricing market-data bindings from
+- [x] Remove static pricing binding defaults based on namespace-rebuilt
+      authored storage identifiers.
+- [x] Seed default pricing market-data bindings from
       `DiscountCurvesStorage.get_identifier()` and
       `IndexFixingsStorage.get_identifier()`.
-- [ ] Ensure pricing bootstrap attaches the required pricing storage models
+- [x] Ensure pricing bootstrap attaches the required pricing storage models
       before seeding default bindings.
-- [ ] Update the bond pricing example to store identifiers returned from the
+- [x] Update the bond pricing example to store identifiers returned from the
       attached storage classes.
-- [ ] Add regression tests proving no pricing binding persists
+- [x] Add regression tests proving no pricing binding persists
       `mainsequence.examples.DiscountCurvesTS` or
       `mainsequence.examples.IndexFixingsTS`.
-- [ ] Add a pricing resolver test proving `APIDataNode.build_from_identifier`
+- [x] Add a pricing resolver test proving `APIDataNode.build_from_identifier`
       receives the same identifier returned by `DiscountCurvesStorage.get_identifier()`.
 
 ### Stage 6: Documentation And Validation
 
-- [ ] Update bootstrap documentation to describe direct runtime attachment.
-- [ ] Update pricing documentation to explain that market-data bindings store
+- [x] Update bootstrap documentation to describe direct runtime attachment.
+- [x] Update pricing documentation to explain that market-data bindings store
       SDK-resolvable DataNode/MetaTable identifiers from attached storage
       classes.
-- [ ] Update catalog documentation to describe inventory-only semantics.
-- [ ] Run focused runtime attachment tests.
-- [ ] Run pricing bootstrap and bond example tests.
-- [ ] Run `mkdocs build --strict`.
+- [x] Update catalog documentation to describe inventory-only semantics.
+- [x] Run focused runtime attachment tests.
+- [x] Run pricing bootstrap tests.
+- [ ] Run the live bond pricing example against a configured platform session.
+- [x] Run `mkdocs build --strict`.

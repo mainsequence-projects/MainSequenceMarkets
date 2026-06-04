@@ -1,7 +1,7 @@
 """Derive DataNode frame-validation schema from storage-first metatables.
 
 These helpers read the column schema, index names, and time index directly
-from a ``PlatformTimeIndexMetaData`` storage class (the storage-first single
+from a ``PlatformTimeIndexMetaTable`` storage class (the storage-first single
 source of truth, ADR 0017) so DataNode validators never duplicate that schema.
 
 Dtype tokens are produced by the SDK's own ``sqlalchemy_type_to_token`` so the

@@ -1,4 +1,4 @@
-"""Storage-first ``PlatformTimeIndexMetaData`` declarations for msm core/execution.
+"""Storage-first ``PlatformTimeIndexMetaTable`` declarations for msm core/execution.
 
 ADR 0017. Each class is the single source of truth for the column schema,
 dtypes, descriptions, and identity foreign keys of one core/execution table.

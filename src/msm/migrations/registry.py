@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from mainsequence.meta_tables import PlatformManagedMetaTable, PlatformTimeIndexMetaData
+from mainsequence.meta_tables import PlatformManagedMetaTable, PlatformTimeIndexMetaTable
 
 from msm.base import MarketsBase
 
@@ -22,7 +22,7 @@ def _metatable_provider_model_sources() -> list[type[MarketsBase]]:
 
 
 def _is_metatable_provider_model(model: type[MarketsBase]) -> bool:
-    return issubclass(model, (PlatformManagedMetaTable, PlatformTimeIndexMetaData))
+    return issubclass(model, (PlatformManagedMetaTable, PlatformTimeIndexMetaTable))
 
 
 def _dedupe_metatable_provider_models(

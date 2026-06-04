@@ -11,9 +11,9 @@ and this project follows versioned releases.
 
 - Fixed `AccountHoldings` DataNode validation so storage-backed `direction`
   columns with SDK dtype `int16` are accepted and preserved as `int16`.
-- Fixed pricing runtime attachment so `msm_pricing` uses the migration-maintained
-  MetaTable catalog instead of deprecated direct registered-MetaTable lookup,
-  and updated pricing examples to use `attach_pricing_schemas(...)`.
+- Fixed markets and pricing runtime attachment to resolve registered
+  `MetaTable` and `TimeIndexMetaTable` resources directly by SQLAlchemy table
+  name instead of using the maintenance catalog as runtime control.
 - Blocked `msm copy-msm-skills` from running inside the ms-markets source
   checkout, including dry-run mode, so the command cannot delete the
   package-owned `.agents/skills/ms_markets` source bundle.
@@ -30,7 +30,7 @@ and this project follows versioned releases.
 - Added ADR 0024 for moving the package Alembic provider out of `msm` and
   scoping revision files by migration namespace.
 - Delegated `MarketsTimeIndexMetaTableMixin` table construction to the SDK
-  `PlatformTimeIndexMetaData` parent so time-index contract validation and
+  `PlatformTimeIndexMetaTable` parent so time-index contract validation and
   future SDK-owned storage behavior are not bypassed by ms-markets.
 - Renamed the internal MetaTable catalog identity column from `identifier` to
   `table_name`; runtime catalog resolution now searches and upserts by
@@ -100,7 +100,7 @@ and this project follows versioned releases.
   `msm_portfolios.configuration`, leaving `msm_portfolios.models` as the
   SQLAlchemy MetaTable model package.
 - Migrated the DataNode layer to the storage-first architecture (ADR 0017):
-  every DataNode output now has a `PlatformTimeIndexMetaData` storage class as its
+  every DataNode output now has a `PlatformTimeIndexMetaTable` storage class as its
   single source of schema, dtypes, and identity foreign keys; DataNodes bind their
   storage through `storage_table` / `_required_storage_table()`; column dtypes are
   derived from the MetaTable via the SDK `dtype_codec`; and DataNode storage

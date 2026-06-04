@@ -19,7 +19,6 @@ from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-    default_pricing_market_data_identifier,
 )
 
 
@@ -116,10 +115,6 @@ class MSDataInterface:
         )
         if persisted_identifier is not None:
             return persisted_identifier
-
-        static_identifier = default_pricing_market_data_identifier(concept_key)
-        if static_identifier is not None:
-            return static_identifier
 
         raise LookupError(
             "No pricing market-data binding found for "

@@ -32,10 +32,10 @@ def test_virtual_fund_holdings_storage_is_registered_by_portfolio_graph() -> Non
 
 def test_virtual_fund_holdings_storage_declares_allocation_foreign_keys() -> None:
     assert set(markets_foreign_key_target_identifiers(VirtualFundHoldingsStorage)) == {
-        VirtualFundTable.__metatable_identifier__,
-        AssetTable.__metatable_identifier__,
-        VirtualFundHoldingsSetTable.__metatable_identifier__,
-        AccountHoldingsSetTable.__metatable_identifier__,
+        VirtualFundTable.__table__.name,
+        AssetTable.__table__.name,
+        VirtualFundHoldingsSetTable.__table__.name,
+        AccountHoldingsSetTable.__table__.name,
     }
 
     asset_column = VirtualFundHoldingsStorage.__table__.columns["asset_identifier"]

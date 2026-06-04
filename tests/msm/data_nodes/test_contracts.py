@@ -49,9 +49,9 @@ def test_holdings_storage_classes_are_registered_metatables() -> None:
 
 def test_holdings_storage_declares_owner_and_asset_foreign_keys() -> None:
     assert set(markets_foreign_key_target_identifiers(AccountHoldingsStorage)) == {
-        AccountTable.__metatable_identifier__,
-        AssetTable.__metatable_identifier__,
-        AccountHoldingsSetTable.__metatable_identifier__,
+        AccountTable.__table__.name,
+        AssetTable.__table__.name,
+        AccountHoldingsSetTable.__table__.name,
     }
 
     account_asset_column = AccountHoldingsStorage.__table__.columns["asset_identifier"]
@@ -65,8 +65,8 @@ def test_holdings_storage_declares_owner_and_asset_foreign_keys() -> None:
 
 def test_target_positions_storage_declares_position_set_foreign_key() -> None:
     assert markets_foreign_key_target_identifiers(TargetPositionsStorage) == [
-        AssetTable.__metatable_identifier__,
-        PositionSetTable.__metatable_identifier__,
+        AssetTable.__table__.name,
+        PositionSetTable.__table__.name,
     ]
 
     position_set_column = TargetPositionsStorage.__table__.columns["position_set_uid"]

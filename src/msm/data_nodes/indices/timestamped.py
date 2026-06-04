@@ -15,7 +15,7 @@ class IndexDataNodeConfiguration(StampedDataNodeConfiguration):
 
     Storage-first: the column schema, index names, and the canonical
     ``Index.unique_identifier`` foreign key live on the ``storage_table``
-    (an ``IndexFixingsStorage``-style ``PlatformTimeIndexMetaData`` class),
+    (an ``IndexFixingsStorage``-style ``PlatformTimeIndexMetaTable`` class),
     not on this configuration.
     """
 

@@ -47,8 +47,7 @@ def reset_schema_runtime(monkeypatch) -> None:
 
 
 def install_fake_bootstrap_modules(monkeypatch):
-    catalog_attach_calls = []
-    legacy_attach_calls = []
+    resolve_calls = []
     registration = SimpleNamespace(
         meta_tables=["asset-meta-table"],
         models=["Asset"],
@@ -64,18 +63,8 @@ def install_fake_bootstrap_modules(monkeypatch):
             self.timeout = timeout
             self.namespace = namespace
 
-    def fake_attach_markets_meta_tables_from_catalog(**kwargs):
-        catalog_attach_calls.append(kwargs)
-        return SimpleNamespace(
-            registration=registration,
-            catalog_meta_table=SimpleNamespace(uid="catalog-meta-table-uid"),
-            attached_count=len(kwargs.get("models") or []),
-            imported_count=0,
-            registered_count=0,
-        )
-
     def fake_resolve_registered_markets_meta_tables(**kwargs):
-        legacy_attach_calls.append(kwargs)
+        resolve_calls.append(kwargs)
         return registration
 
     def fake_markets_meta_table_identifier(model):
@@ -101,15 +90,7 @@ def install_fake_bootstrap_modules(monkeypatch):
         "msm.repositories.base",
         SimpleNamespace(MarketsRepositoryContext=FakeMarketsRepositoryContext),
     )
-    monkeypatch.setitem(sys.modules, "msm.maintenance", SimpleNamespace())
-    monkeypatch.setitem(
-        sys.modules,
-        "msm.maintenance.catalog",
-        SimpleNamespace(
-            attach_markets_meta_tables_from_catalog=fake_attach_markets_meta_tables_from_catalog
-        ),
-    )
-    return catalog_attach_calls, legacy_attach_calls, registration
+    return resolve_calls, registration
 
 
 class SpyLogger:
@@ -123,7 +104,7 @@ class SpyLogger:
 def test_start_engine_attaches_metatables_and_returns_repository_context(
     monkeypatch,
 ) -> None:
-    calls, _legacy_attach_calls, registration = install_fake_bootstrap_modules(monkeypatch)
+    calls, registration = install_fake_bootstrap_modules(monkeypatch)
 
     runtime = bootstrap.start_engine()
 
@@ -146,7 +127,7 @@ def test_start_engine_signature_excludes_migration_setup_arguments() -> None:
 
 
 def test_start_engine_can_attach_selected_models(monkeypatch) -> None:
-    calls, _legacy_attach_calls, _registration = install_fake_bootstrap_modules(monkeypatch)
+    calls, _registration = install_fake_bootstrap_modules(monkeypatch)
     monkeypatch.setattr(bootstrap, "configure_metatable_namespace", lambda namespace: None)
 
     runtime = bootstrap.start_engine(
@@ -159,28 +140,22 @@ def test_start_engine_can_attach_selected_models(monkeypatch) -> None:
 
 
 def test_start_engine_expands_project_local_model_dependencies(monkeypatch) -> None:
-    import msm.maintenance.catalog as catalog
+    import msm.models.registration as registration_module
 
     captured_models = []
 
-    def fake_attach_markets_meta_tables_from_catalog(**kwargs):
+    def fake_resolve_registered_markets_meta_tables(**kwargs):
         captured_models.append(kwargs["models"])
         return SimpleNamespace(
-            registration=SimpleNamespace(
-                meta_tables=[],
-                models=kwargs["models"],
-                meta_table_by_identifier={},
-            ),
-            catalog_meta_table=SimpleNamespace(uid="catalog-meta-table-uid"),
-            attached_count=0,
-            imported_count=0,
-            registered_count=len(kwargs["models"]),
+            meta_tables=[],
+            models=kwargs["models"],
+            meta_table_by_identifier={},
         )
 
     monkeypatch.setattr(
-        catalog,
-        "attach_markets_meta_tables_from_catalog",
-        fake_attach_markets_meta_tables_from_catalog,
+        registration_module,
+        "resolve_registered_markets_meta_tables",
+        fake_resolve_registered_markets_meta_tables,
     )
     runtime = bootstrap.start_engine(models=[BootstrapExtensionAssetDetailsTable])
 
@@ -189,7 +164,7 @@ def test_start_engine_expands_project_local_model_dependencies(monkeypatch) -> N
 
 
 def test_start_engine_uses_auto_register_namespace_when_omitted(monkeypatch) -> None:
-    calls, _legacy_attach_calls, _registration = install_fake_bootstrap_modules(monkeypatch)
+    calls, _registration = install_fake_bootstrap_modules(monkeypatch)
     configured_namespaces = []
     monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
     monkeypatch.setattr(
@@ -220,7 +195,7 @@ def test_start_engine_logs_bootstrap_resources(monkeypatch) -> None:
         "Starting markets runtime attachment",
         "Configuring markets MetaTable namespace",
         "Resolved markets MetaTable models",
-        "Attached finalized markets MetaTables from catalog",
+        "Resolved registered markets MetaTables",
         "Created markets repository context",
         "Created markets runtime",
         "Reusing cached markets runtime; no schema mutation needed",
@@ -230,8 +205,6 @@ def test_start_engine_logs_bootstrap_resources(monkeypatch) -> None:
     assert resolved_event["models"] == ["Asset"]
     attached_event = spy_logger.events[3][1]
     assert attached_event["meta_table_count"] == 1
-    assert attached_event["attached_count"] == 1
-    assert attached_event["catalog_meta_table_uid"] == "catalog-meta-table-uid"
     runtime_event = spy_logger.events[5][1]
     assert "data_node_handles" not in runtime_event
 
@@ -239,7 +212,7 @@ def test_start_engine_logs_bootstrap_resources(monkeypatch) -> None:
 def test_start_engine_returns_existing_runtime_for_same_process_config(
     monkeypatch,
 ) -> None:
-    calls, _legacy_attach_calls, _registration = install_fake_bootstrap_modules(monkeypatch)
+    calls, _registration = install_fake_bootstrap_modules(monkeypatch)
     monkeypatch.setattr(bootstrap, "configure_metatable_namespace", lambda namespace: None)
 
     first_runtime = bootstrap.start_engine(namespace="mainsequence.examples")
@@ -290,76 +263,63 @@ def test_configure_metatable_namespace_allows_loaded_models_with_same_namespace(
 
 
 def test_attach_schemas_resolves_registered_metatables_without_registering(monkeypatch) -> None:
-    catalog_attach_calls, legacy_attach_calls, _registration = install_fake_bootstrap_modules(
-        monkeypatch
-    )
+    resolve_calls, _registration = install_fake_bootstrap_modules(monkeypatch)
 
     bootstrap.attach_schemas(namespace="mainsequence.markets", models=["Asset"])
 
-    assert catalog_attach_calls == [
+    assert resolve_calls == [
         {
             "management_mode": "platform_managed",
             "timeout": None,
             "models": ["Asset"],
         }
     ]
-    assert legacy_attach_calls == []
 
 
 def test_attach_schemas_uses_auto_register_namespace_when_omitted(monkeypatch) -> None:
-    catalog_attach_calls, legacy_attach_calls, _registration = install_fake_bootstrap_modules(
-        monkeypatch
-    )
+    resolve_calls, _registration = install_fake_bootstrap_modules(monkeypatch)
     monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
 
     runtime = bootstrap.attach_schemas(models=["Asset"])
 
     assert runtime.namespace == "mainsequence.examples"
     assert runtime.context.namespace == "mainsequence.examples"
-    assert catalog_attach_calls == [
+    assert resolve_calls == [
         {
             "management_mode": "platform_managed",
             "timeout": None,
             "models": ["Asset"],
         }
     ]
-    assert legacy_attach_calls == []
 
 
 def test_resolve_runtime_requires_initialized_runtime_even_with_auto_namespace(
     monkeypatch,
 ) -> None:
-    catalog_attach_calls, legacy_attach_calls, _registration = install_fake_bootstrap_modules(
-        monkeypatch
-    )
+    resolve_calls, _registration = install_fake_bootstrap_modules(monkeypatch)
     monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
 
     with pytest.raises(RuntimeError, match="initialized markets runtime"):
         bootstrap.resolve_runtime(models=["Asset"], row_model_name="Asset")
 
-    assert catalog_attach_calls == []
-    assert legacy_attach_calls == []
+    assert resolve_calls == []
 
 
 def test_resolve_runtime_returns_active_runtime_for_required_tables(monkeypatch) -> None:
-    catalog_attach_calls, legacy_attach_calls, _registration = install_fake_bootstrap_modules(
-        monkeypatch
-    )
+    resolve_calls, _registration = install_fake_bootstrap_modules(monkeypatch)
     monkeypatch.setattr(bootstrap, "configure_metatable_namespace", lambda namespace: None)
 
     runtime = bootstrap.start_engine(namespace="mainsequence.examples", models=["Asset"])
 
     assert bootstrap.resolve_runtime(models=["Asset"], row_model_name="Asset") is runtime
-    assert len(catalog_attach_calls) == 1
-    assert legacy_attach_calls == []
+    assert len(resolve_calls) == 1
 
 
 def test_resolve_runtime_uses_identifier_after_physical_binding(monkeypatch) -> None:
     from msm.models import AssetTypeTable
-    from msm.models.registration import markets_meta_table_identifier
     from msm.repositories.base import MarketsRepositoryContext
 
-    identifier = markets_meta_table_identifier(AssetTypeTable)
+    identifier = "backend_physical_asset_type"
     registration = SimpleNamespace(
         meta_tables=["asset-type-meta-table"],
         models=[AssetTypeTable],

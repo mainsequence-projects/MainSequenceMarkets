@@ -914,7 +914,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "4.2.37"
+version = "4.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -938,9 +938,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5a/a9/331bd6b42cbc69dda75aa2d63a717a387b4115259a368debdbfe136a2b6b/mainsequence-4.2.37.tar.gz", hash = "sha256:1e896efa850e27c588ab20dc7f8dea853963916c8dfda88850b47cb2422de41a", size = 476495, upload-time = "2026-06-04T10:54:08.988Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/11/39/de5a92395c8ca9641ceff4f4f753d5f7d5d6729083e2dcd0d972724b4b74/mainsequence-4.3.0.tar.gz", hash = "sha256:642dd5cbeb6635be369225262d30bd0d85a4ed2a8dbd096fcf148e0a1a14cd27", size = 479617, upload-time = "2026-06-04T17:03:02.563Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bc/00/2f9eb6e754a46c3d3740aa134ec7bc7889703601591bad28235c0e40e88c/mainsequence-4.2.37-py3-none-any.whl", hash = "sha256:3789348a91e2121eae174510a92205035525c6f4dc69a4b1037944ffaef937be", size = 409500, upload-time = "2026-06-04T10:54:07.577Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/d6/09351e8feec6eeb641b1224d35c6d42588eef28ae9a21d78a6aac6f8796f/mainsequence-4.3.0-py3-none-any.whl", hash = "sha256:c2c295ee0fa856cac07d06f7c96d85172453dc3d86a06cb55e0feeb49c4c4f37", size = 411217, upload-time = "2026-06-04T17:03:00.95Z" },
 ]
 
 [[package]]
@@ -1270,7 +1270,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.34"
+version = "0.0.35"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -1346,7 +1346,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.136.3" },
     { name = "fastapi", marker = "extra == 'public-api'", specifier = ">=0.136.3" },
     { name = "joblib", marker = "extra == 'portfolios'" },
-    { name = "mainsequence", specifier = ">=4.1.18" },
+    { name = "mainsequence", specifier = ">=4.3.0" },
     { name = "matplotlib", marker = "extra == 'pricing'" },
     { name = "matplotlib", marker = "extra == 'pricing-streamlit'" },
     { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6" },

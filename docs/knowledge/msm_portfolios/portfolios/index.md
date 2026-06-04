@@ -136,7 +136,7 @@ MetaTables:
 | PortfoliosDataNode          |------------------------------->| PortfoliosStorage           |
 | InterpolatedPrices          |------------------------------->| InterpolatedPricesStorage   |
 +-----------------------------+                                +-----------------------------+
-          DataNode update logic                                  PlatformTimeIndexMetaData
+          DataNode update logic                                  PlatformTimeIndexMetaTable
 ```
 
 Storage dimensions use explicit names instead of reusing bare

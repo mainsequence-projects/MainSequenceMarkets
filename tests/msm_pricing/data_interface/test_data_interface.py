@@ -106,7 +106,7 @@ def test_get_historical_fixings_reads_index_stamped_data(monkeypatch) -> None:
     ]
 
 
-def test_get_historical_fixings_defaults_to_pricing_market_data_configuration(
+def test_get_historical_fixings_uses_persisted_pricing_market_data_binding(
     monkeypatch,
 ) -> None:
     MSDataInterface.clear_caches()
@@ -131,8 +131,18 @@ def test_get_historical_fixings_defaults_to_pricing_market_data_configuration(
             ).set_index(["time_index", "index_identifier"])
 
     import mainsequence.meta_tables as meta_tables
+    from msm_pricing.api.market_data_bindings import PricingMarketDataBinding
 
     monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
+    monkeypatch.setattr(
+        PricingMarketDataBinding,
+        "resolve_data_node_identifier",
+        staticmethod(
+            lambda *, context_key, concept_key: "registered.index_fixings"
+            if concept_key == PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
+            else None
+        ),
+    )
 
     interface = MSDataInterface()
 
@@ -143,7 +153,7 @@ def test_get_historical_fixings_defaults_to_pricing_market_data_configuration(
     )
 
     assert fixings == {dt.date(2026, 5, 26): 0.0525}
-    assert calls[0] == ("identifier", "IndexFixingsTS")
+    assert calls[0] == ("identifier", "registered.index_fixings")
 
 
 def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> None:
@@ -205,7 +215,7 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
     ]
 
 
-def test_get_historical_discount_curve_defaults_to_pricing_market_data_configuration(
+def test_get_historical_discount_curve_uses_persisted_pricing_market_data_binding(
     monkeypatch,
 ) -> None:
     MSDataInterface.clear_caches()
@@ -232,8 +242,18 @@ def test_get_historical_discount_curve_defaults_to_pricing_market_data_configura
             ).set_index(["time_index", "curve_identifier"])
 
     import mainsequence.meta_tables as meta_tables
+    from msm_pricing.api.market_data_bindings import PricingMarketDataBinding
 
     monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
+    monkeypatch.setattr(
+        PricingMarketDataBinding,
+        "resolve_data_node_identifier",
+        staticmethod(
+            lambda *, context_key, concept_key: "registered.discount_curves"
+            if concept_key == PRICING_CONCEPT_DISCOUNT_CURVES
+            else None
+        ),
+    )
 
     interface = MSDataInterface()
 
@@ -243,7 +263,7 @@ def test_get_historical_discount_curve_defaults_to_pricing_market_data_configura
     )
 
     assert nodes == [{"days_to_maturity": 28, "zero": 0.11}]
-    assert calls[0] == ("identifier", "DiscountCurvesTS")
+    assert calls[0] == ("identifier", "registered.discount_curves")
 
 
 def test_ms_data_interface_exposes_pricing_named_configuration_path() -> None:

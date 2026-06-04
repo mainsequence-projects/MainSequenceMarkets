@@ -12,7 +12,7 @@ from mainsequence.client.metatables import UpdateStatistics
 from mainsequence.meta_tables import (
     DataNode,
     DataNodeConfiguration,
-    PlatformTimeIndexMetaData,
+    PlatformTimeIndexMetaTable,
 )
 from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
 from msm.data_nodes.utils.storage_metadata import (
@@ -25,7 +25,7 @@ from msm.settings import (
 )
 
 MarketAssetScopeItem = str | Mapping[str, Any] | Any
-StorageTable = type[PlatformTimeIndexMetaData]
+StorageTable = type[PlatformTimeIndexMetaTable]
 UniqueIdentifierRangeMap = dict[str, dict[str, Any]]
 
 

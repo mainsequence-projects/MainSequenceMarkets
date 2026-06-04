@@ -31,7 +31,7 @@ market asset.
 
 ```text
 +-----------------------------+           generic DataNode        +-----------------------------+
-| mainsequence.meta_tables.   |---------------------------------->| TimeIndexMetaData storage   |
+| mainsequence.meta_tables.   |---------------------------------->| TimeIndexMetaTable storage   |
 | DataNode                    |                                   | registered from storage cls |
 |-----------------------------|                                   |-----------------------------|
 | storage_hash                |                                   | published table             |
@@ -135,7 +135,7 @@ config field.
 ## Canonical Foreign Key
 
 Under ADR 0017 the schema contract lives on a storage class
-(`PlatformTimeIndexMetaData` / `MarketsTimeIndexMetaTableMixin`), not on the
+(`PlatformTimeIndexMetaTable` / `MarketsTimeIndexMetaTableMixin`), not on the
 DataNode configuration. The canonical asset foreign key is an SDK
 SQLAlchemy `ForeignKey(...)` declaration on the storage class
 `asset_identifier` column. The DataNode uses its storage class through
@@ -205,7 +205,7 @@ class ExampleAssetMetric(AssetTimestampedDataNode):
 Add the storage class to the markets migration model registry so the SDK
 migration provider registers it after the `Asset` MetaTable dependency. Runtime
 startup can then attach it with `msm.start_engine(models=[...])`. Do not call
-`PlatformTimeIndexMetaData.register(...)`, manually bind storage by UID, or
+`PlatformTimeIndexMetaTable.register(...)`, manually bind storage by UID, or
 reconstruct a generic `MetaTable` in application code.
 
 Use `__metatable_description__` for durable table discovery text. The description

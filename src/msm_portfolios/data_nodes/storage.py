@@ -1,4 +1,4 @@
-"""Storage-first ``PlatformTimeIndexMetaData`` declarations for msm portfolios.
+"""Storage-first ``PlatformTimeIndexMetaTable`` declarations for msm portfolios.
 
 ADR 0017. Each class is the single source of truth for the column schema,
 dtypes, descriptions, and index names of one canonical portfolio table or

@@ -26,7 +26,7 @@ class AssetDataNodeConfiguration(StampedDataNodeConfiguration, AssetIndexedDataN
 
     Storage-first: the column schema, index names, and the canonical
     ``Asset.unique_identifier`` foreign key live on the ``storage_table``
-    (an ``AssetSnapshotsStorage``-style ``PlatformTimeIndexMetaData`` class),
+    (an ``AssetSnapshotsStorage``-style ``PlatformTimeIndexMetaTable`` class),
     not on this configuration.
     """
 

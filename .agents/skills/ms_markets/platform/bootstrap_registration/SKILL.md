@@ -137,7 +137,7 @@ When adding a new built-in markets MetaTable model:
 8. Update docs and tests so examples call `msm.start_engine(...)` only after
    migrations are already handled.
 
-When adding DataNode storage, add the `PlatformTimeIndexMetaData` storage class
+When adding DataNode storage, add the `PlatformTimeIndexMetaTable` storage class
 to the model graph and ensure SDK migration provider coverage outside this
 skill. Do not rely on constructing a DataNode to register its storage.
 

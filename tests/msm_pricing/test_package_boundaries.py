@@ -41,5 +41,7 @@ def test_pricing_settings_module_contains_public_constants() -> None:
     assert settings.PRICING_CONCEPT_DISCOUNT_CURVES == "discount_curves"
     assert settings.PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS == "interest_rate_index_fixings"
     assert settings.PRICING_CONTEXT_DEFAULT == "default"
-    assert settings.PRICING_DEFAULT_DISCOUNT_CURVES_DATA_NODE_IDENTIFIER == "DiscountCurvesTS"
-    assert settings.PRICING_DEFAULT_INDEX_FIXINGS_DATA_NODE_IDENTIFIER == "IndexFixingsTS"
+    assert not hasattr(settings, "PRICING_DEFAULT_DISCOUNT_CURVES_DATA_NODE_IDENTIFIER")
+    assert not hasattr(settings, "PRICING_DEFAULT_INDEX_FIXINGS_DATA_NODE_IDENTIFIER")
+    assert not hasattr(settings, "default_pricing_market_data_bindings")
+    assert not hasattr(settings, "default_pricing_market_data_identifier")

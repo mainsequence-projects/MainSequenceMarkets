@@ -35,7 +35,7 @@ class CurveDataNodeConfiguration(StampedDataNodeConfiguration):
 
     Storage-first: the column schema, index names, and the canonical
     ``Curve.unique_identifier`` foreign key live on the ``storage_table``
-    (a ``DiscountCurvesStorage``-style ``PlatformTimeIndexMetaData`` class),
+    (a ``DiscountCurvesStorage``-style ``PlatformTimeIndexMetaTable`` class),
     not on this configuration.
     """
 

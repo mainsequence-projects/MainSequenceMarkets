@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from mainsequence.client.metatables import TimeIndexMetaData
+from mainsequence.client.metatables import TimeIndexMetaTable
 
 import msm.maintenance.catalog as catalog
 from msm.data_nodes.storage import AccountHoldingsStorage
@@ -40,8 +40,8 @@ def _time_index_meta_table(
     storage_hash: str,
     description: str | None = None,
     data_source_uid: str = "test-data-source-uid",
-) -> TimeIndexMetaData:
-    return TimeIndexMetaData(
+) -> TimeIndexMetaTable:
+    return TimeIndexMetaTable(
         uid=uid,
         namespace=namespace,
         identifier=identifier,
@@ -305,7 +305,7 @@ def test_catalog_attach_resolves_time_index_storage_with_time_index_metadata(
 
     monkeypatch.setattr(catalog.MetaTable, "filter", staticmethod(fake_meta_table_filter))
     monkeypatch.setattr(
-        catalog.TimeIndexMetaData,
+        catalog.TimeIndexMetaTable,
         "filter",
         staticmethod(fake_time_index_filter),
     )

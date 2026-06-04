@@ -148,7 +148,7 @@ An index-stamped table should use this shape:
 ```
 
 DataNode classes should inherit `IndexTimestampedDataNode` and use a registered
-`PlatformTimeIndexMetaData` storage class through `_required_storage_table()`.
+`PlatformTimeIndexMetaTable` storage class through `_required_storage_table()`.
 That storage class declares the output schema and the canonical
 `index_identifier -> IndexTable.unique_identifier` foreign key. The shared
 stamped base validates required columns against the storage contract, normalizes

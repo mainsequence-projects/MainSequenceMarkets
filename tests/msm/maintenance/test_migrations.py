@@ -13,7 +13,7 @@ from mainsequence.client.metatables import MetaTable
 from mainsequence.meta_tables import (
     POSTGRES_IDENTIFIER_MAX_LENGTH,
     PlatformManagedMetaTable,
-    PlatformTimeIndexMetaData,
+    PlatformTimeIndexMetaTable,
 )
 from mainsequence.meta_tables.migrations import (
     AlembicMetaTableCatalogRefreshContext,
@@ -112,7 +112,7 @@ def test_platform_managed_migration_metadata_uses_default_schema_not_explicit_pu
     row_tables = [
         model.__table__
         for model in metatable_provider_models()
-        if not issubclass(model, PlatformTimeIndexMetaData)
+        if not issubclass(model, PlatformTimeIndexMetaTable)
     ]
 
     assert row_tables
@@ -125,7 +125,7 @@ def test_markets_time_index_mixin_uses_sdk_table_contract_validation() -> None:
 
     with pytest.raises(
         ValueError,
-        match="PlatformTimeIndexMetaData index_names must all exist as table columns",
+        match="PlatformTimeIndexMetaTable index_names must all exist as table columns",
     ):
 
         class BrokenTimeIndexStorage(MarketsTimeIndexMetaTableMixin, TestBase):
@@ -217,7 +217,7 @@ def test_package_migration_registry_is_deduplicated_and_sdk_managed() -> None:
     assert len(identifiers) == len(set(identifiers))
     assert all(issubclass(model, MarketsBase) for model in models)
     assert all(
-        issubclass(model, (PlatformManagedMetaTable, PlatformTimeIndexMetaData)) for model in models
+        issubclass(model, (PlatformManagedMetaTable, PlatformTimeIndexMetaTable)) for model in models
     )
 
 

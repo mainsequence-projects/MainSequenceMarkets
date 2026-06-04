@@ -61,9 +61,10 @@ pricing-details relationship, not inside `InstrumentModel`; legacy
 
 Use `msm_pricing.bootstrap.attach_pricing_schemas(...)` to attach the pricing
 MetaTable graph. The graph includes core dependencies such as `AssetTable`,
-`IndexTypeTable`, and `IndexTable` before pricing extension tables, and startup
-uses the same maintenance catalog as `msm.start_engine(...)` so already-cataloged
-core tables are attached rather than registered again.
+`IndexTypeTable`, and `IndexTable` before pricing extension tables. Runtime
+startup resolves registered `MetaTable` and `TimeIndexMetaTable` objects
+directly by each model's SQLAlchemy table name; the maintenance catalog remains
+inventory only.
 
 Curves are pricing-owned reference data, not assets. `CurveTable` owns curve
 identity, and `DiscountCurvesNode` lives under `msm_pricing.data_nodes` as a
@@ -88,10 +89,13 @@ bindings for:
 
 ```text
 (default, discount_curves)
-  -> DiscountCurvesTS
+  -> DiscountCurvesStorage.get_identifier()
 (default, interest_rate_index_fixings)
-  -> IndexFixingsTS
+  -> IndexFixingsStorage.get_identifier()
 ```
+
+Those identifiers come from attached storage classes, not static namespace
+helpers.
 
 Applications can add named contexts such as `eod`, `live`, or `risk_manager`
 through `msm_pricing.api.PricingMarketDataBinding`. Each binding stores a
@@ -111,8 +115,8 @@ PricingMarketDataBinding.upsert(
 )
 ```
 
-The data interface resolves direct in-memory overrides first, persisted
-bindings second, and built-in static defaults last. The final lookup uses
+The data interface resolves direct in-memory overrides first and persisted
+bindings second. The final lookup uses
 `APIDataNode.build_from_identifier(...)`.
 
 User-facing persistence starts from instruments:

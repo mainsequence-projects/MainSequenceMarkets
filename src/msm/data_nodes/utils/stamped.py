@@ -7,7 +7,7 @@ import pandas as pd
 from mainsequence.meta_tables import (
     DataNode,
     DataNodeConfiguration,
-    PlatformTimeIndexMetaData,
+    PlatformTimeIndexMetaTable,
 )
 from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
 from msm.data_nodes.utils.storage_metadata import (
@@ -16,14 +16,14 @@ from msm.data_nodes.utils.storage_metadata import (
 )
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
 
-StorageTable = type[PlatformTimeIndexMetaData]
+StorageTable = type[PlatformTimeIndexMetaTable]
 
 
 class StampedDataNodeConfiguration(DataNodeConfiguration):
     """Configuration for timestamped reference-keyed markets DataNodes.
 
     Storage-first: the column schema, index names, and time index live on the
-    ``storage_table`` (a ``PlatformTimeIndexMetaData`` class), not on the
+    ``storage_table`` (a ``PlatformTimeIndexMetaTable`` class), not on the
     configuration. This configuration only carries update-scoped build fields;
     the identifier and descriptive metadata live on the ``storage_table``.
     """

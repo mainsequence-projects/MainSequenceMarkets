@@ -10,12 +10,12 @@ SDK baseline used for validation:
 
 ## Verdict
 
-The refactor is directionally aligned with the latest SDK architecture: it moves DataNode storage declarations into SDK-style `PlatformTimeIndexMetaData` SQLAlchemy classes, derives storage schema from SQLAlchemy metadata instead of hand-maintained contracts, and keeps the runtime DataNode classes using SDK `DataNode` / `APIDataNode` construction.
+The refactor is directionally aligned with the latest SDK architecture: it moves DataNode storage declarations into SDK-style `PlatformTimeIndexMetaTable` SQLAlchemy classes, derives storage schema from SQLAlchemy metadata instead of hand-maintained contracts, and keeps the runtime DataNode classes using SDK `DataNode` / `APIDataNode` construction.
 
 It is not ready to accept unchanged. There are three blocking alignment issues with the SDK contract:
 
-1. Catalog and existing-platform attach paths do not bind `PlatformTimeIndexMetaData` storage classes back to SDK metadata objects, so storage-backed DataNodes can fail after attach/import even though registration appears successful.
-2. New storage initialization helpers call a non-existent `initialize_source_table` method on SDK `TimeIndexMetaData`, which is not part of the latest SDK machinery.
+1. Catalog and existing-platform attach paths do not bind `PlatformTimeIndexMetaTable` storage classes back to SDK metadata objects, so storage-backed DataNodes can fail after attach/import even though registration appears successful.
+2. New storage initialization helpers call a non-existent `initialize_source_table` method on SDK `TimeIndexMetaTable`, which is not part of the latest SDK machinery.
 3. `external_registered` registration treats time-index DataNode storage classes as generic external SQLAlchemy meta tables, which bypasses SDK time-index registration semantics.
 
 There are also packaging/version drift issues and two stale tests relative to SDK 4.1.5 parameter serialization.
@@ -51,7 +51,7 @@ The two failures are in repository tests that still expect Python `datetime` obj
 
 ## Findings
 
-### P0: Storage catalog/platform paths bypass `PlatformTimeIndexMetaData.register(...)`
+### P0: Storage catalog/platform paths bypass `PlatformTimeIndexMetaTable.register(...)`
 
 Files:
 
@@ -60,11 +60,11 @@ Files:
 - SDK reference: `mainsequence/meta_tables/data_nodes/data_nodes.py`
 - SDK reference: `mainsequence/meta_tables/sqlalchemy_contracts.py`
 
-The refactor correctly uses SDK `PlatformTimeIndexMetaData.register(...)` in the fresh platform-registration path. That is the important SDK path because it builds the storage registration request from the SQLAlchemy class contract, sends it through the time-index registration endpoint, receives the canonical `TimeIndexMetaData`, and binds that returned object to the local class.
+The refactor correctly uses SDK `PlatformTimeIndexMetaTable.register(...)` in the fresh platform-registration path. That is the important SDK path because it builds the storage registration request from the SQLAlchemy class contract, sends it through the time-index registration endpoint, receives the canonical `TimeIndexMetaTable`, and binds that returned object to the local class.
 
 The problem is that catalog/import/existing-resource paths can bypass that single lifecycle by reconstructing generic `MetaTable` objects or resolving generic metadata instead of going back through the storage class registration path.
 
-For SDK DataNodes, the local class state after registration matters. The SDK checks that the `PlatformTimeIndexMetaData` subclass has been registered/bound before DataNode construction. That state should be produced by `register`, not by a downstream manual attach path.
+For SDK DataNodes, the local class state after registration matters. The SDK checks that the `PlatformTimeIndexMetaTable` subclass has been registered/bound before DataNode construction. That state should be produced by `register`, not by a downstream manual attach path.
 
 Impact:
 
@@ -74,7 +74,7 @@ Impact:
 
 Recommended fix:
 
-- Treat `PlatformTimeIndexMetaData.register(...)` as the only idempotent get-or-create path for time-index storage classes.
+- Treat `PlatformTimeIndexMetaTable.register(...)` as the only idempotent get-or-create path for time-index storage classes.
 - In catalog/import/existing-platform paths, if `is_time_index_meta_table_model(model)` is true, call `model.register(...)` with the same registration kwargs used in fresh registration.
 - Treat catalog rows as validation/cache information for storage classes, not as a replacement for the SDK storage registration path.
 - If `register` is not idempotent when the storage already exists, fix that in the SDK/backend registration behavior rather than adding a second bind/attach path in `ms-markets`.
@@ -91,7 +91,7 @@ Files:
 
 The refactor introduces storage readiness helpers that call `storage.initialize_source_table(...)` on the DataNode storage metadata object.
 
-That method is not part of SDK 4.1.5. The SDK test suite explicitly includes coverage that DataNode storage does not expose `initialize_source_table`. The latest SDK path for time-index storage registration is `PlatformTimeIndexMetaData.build_registration_request(...)` and `TimeIndexMetaData.register(...)`, with `time_index_name`, `index_names`, `table_contract`, and target foreign keys carried through the registration request/profile.
+That method is not part of SDK 4.1.5. The SDK test suite explicitly includes coverage that DataNode storage does not expose `initialize_source_table`. The latest SDK path for time-index storage registration is `PlatformTimeIndexMetaTable.build_registration_request(...)` and `TimeIndexMetaTable.register(...)`, with `time_index_name`, `index_names`, `table_contract`, and target foreign keys carried through the registration request/profile.
 
 Impact:
 
@@ -111,14 +111,14 @@ File:
 
 - `src/msm/models/registration.py`
 
-The model registry now contains both normal domain meta tables and time-index DataNode storage classes. The helper `is_time_index_meta_table_model(...)` detects SDK `PlatformTimeIndexMetaData` models, and the platform registration path uses that distinction.
+The model registry now contains both normal domain meta tables and time-index DataNode storage classes. The helper `is_time_index_meta_table_model(...)` detects SDK `PlatformTimeIndexMetaTable` models, and the platform registration path uses that distinction.
 
 The `external_registered` path does not. It sends every model through generic external SQLAlchemy registration helpers:
 
 - `external_registered_registration_request_from_sqlalchemy_model(...)`
 - `register_external_sqlalchemy_model(...)`
 
-That is valid for ordinary ORM meta tables, but not for `PlatformTimeIndexMetaData` storage classes. Time-index storage classes need SDK time-index metadata, time-index profile, index names, and DataNode storage binding semantics.
+That is valid for ordinary ORM meta tables, but not for `PlatformTimeIndexMetaTable` storage classes. Time-index storage classes need SDK time-index metadata, time-index profile, index names, and DataNode storage binding semantics.
 
 Impact:
 
@@ -148,7 +148,7 @@ The current environment imports `mainsequence==4.1.5` from the local SDK checkou
 Impact:
 
 - A clean install can use an SDK version older than the refactor expects.
-- The refactor uses APIs and import paths that are current SDK concepts, such as `PlatformTimeIndexMetaData` and `mainsequence.meta_tables.compiled_sql.v1`.
+- The refactor uses APIs and import paths that are current SDK concepts, such as `PlatformTimeIndexMetaTable` and `mainsequence.meta_tables.compiled_sql.v1`.
 - CI and developer environments can disagree depending on whether they use the local checkout, lockfile, or requirements file.
 
 Recommended fix:
@@ -193,7 +193,7 @@ Files:
 
 Several new `DataNodeConfiguration` classes repeat values that are already owned by the storage class, such as `time_index_name` and `index_names`. The classes then validate the configuration against storage-derived constants.
 
-This is safer than silently diverging, but it still leaves two sources of schema truth. The refactor's strongest direction is storage-first declaration. Configuration should ideally describe DataNode behavior/update scope/hash behavior, while storage schema should come from the `PlatformTimeIndexMetaData` class.
+This is safer than silently diverging, but it still leaves two sources of schema truth. The refactor's strongest direction is storage-first declaration. Configuration should ideally describe DataNode behavior/update scope/hash behavior, while storage schema should come from the `PlatformTimeIndexMetaTable` class.
 
 Impact:
 
@@ -233,7 +233,7 @@ Impact:
 
 Recommended fix:
 
-- Add a small shared helper that normalizes a frame against a `PlatformTimeIndexMetaData` storage class.
+- Add a small shared helper that normalizes a frame against a `PlatformTimeIndexMetaTable` storage class.
 - Keep domain-specific semantic checks in each DataNode class.
 - Avoid a large generic framework; a narrow helper for required columns, timestamp coercion, sort keys, and duplicate-key validation is enough.
 
@@ -241,7 +241,7 @@ Recommended fix:
 
 The refactor has several strong design choices:
 
-- Storage declarations are moving to SDK-native `PlatformTimeIndexMetaData` classes.
+- Storage declarations are moving to SDK-native `PlatformTimeIndexMetaTable` classes.
 - Storage schema is derived from SQLAlchemy columns through SDK type/token helpers instead of hand-maintained contract dictionaries.
 - DataNode classes still call SDK superclass constructors with `config` and `storage_table`; they are not replacing the SDK `DataNode` lifecycle.
 - The migration away from old `mainsequence.tdag` imports is consistent with the current SDK package layout.
@@ -252,7 +252,7 @@ The refactor has several strong design choices:
 
 Before accepting the refactor, I would require:
 
-1. Existing-platform/catalog attach paths bind time-index storage classes to SDK `TimeIndexMetaData` objects.
+1. Existing-platform/catalog attach paths bind time-index storage classes to SDK `TimeIndexMetaTable` objects.
 2. All `initialize_source_table` calls are removed or replaced with a real SDK API.
 3. `external_registered` mode is made explicit for storage models: supported with SDK time-index semantics or rejected clearly.
 4. SDK dependency metadata is made consistent across `pyproject.toml`, `uv.lock`, and `requirements.txt`.
@@ -274,7 +274,7 @@ The tasks below are intentionally ordered. The first three remove SDK contract v
 
 Priority: P0
 
-Goal: every supported bootstrap path should use `PlatformTimeIndexMetaData.register(...)` as the single idempotent lifecycle for time-index DataNode storage.
+Goal: every supported bootstrap path should use `PlatformTimeIndexMetaTable.register(...)` as the single idempotent lifecycle for time-index DataNode storage.
 
 Files to change:
 
@@ -300,14 +300,14 @@ Implementation steps:
 
 4. For ordinary non-time-index meta tables, keep the existing catalog/import logic unless it also bypasses an SDK-required registration invariant.
 
-5. Add regression coverage parameterized across representative `PlatformTimeIndexMetaData` subclasses. The test should prove that after the catalog/import path runs, a DataNode can be constructed using that storage class.
+5. Add regression coverage parameterized across representative `PlatformTimeIndexMetaTable` subclasses. The test should prove that after the catalog/import path runs, a DataNode can be constructed using that storage class.
 
 Acceptance criteria:
 
-- Time-index storage classes always become usable through `PlatformTimeIndexMetaData.register(...)`.
+- Time-index storage classes always become usable through `PlatformTimeIndexMetaTable.register(...)`.
 - No alternate downstream lifecycle is introduced for DataNode storage.
-- Generic `MetaTable` placeholders are not used as the lifecycle object for `PlatformTimeIndexMetaData` subclasses.
-- If the backend returns an already-existing storage resource, `register` still returns the canonical `TimeIndexMetaData` and the SDK class is ready for DataNode construction.
+- Generic `MetaTable` placeholders are not used as the lifecycle object for `PlatformTimeIndexMetaTable` subclasses.
+- If the backend returns an already-existing storage resource, `register` still returns the canonical `TimeIndexMetaTable` and the SDK class is ready for DataNode construction.
 
 ### Task 2: Remove `initialize_source_table` usage
 
@@ -361,8 +361,8 @@ Option A: reject storage classes in `external_registered` mode.
 
 Option B: implement SDK-aligned external time-index registration.
 
-- Use SDK APIs that produce or register `TimeIndexMetaData` with the same profile fields as platform registration.
-- Bind the returned `TimeIndexMetaData` back to the storage class.
+- Use SDK APIs that produce or register `TimeIndexMetaTable` with the same profile fields as platform registration.
+- Bind the returned `TimeIndexMetaTable` back to the storage class.
 - Do not use `external_registered_registration_request_from_sqlalchemy_model(...)` for storage classes.
 
 Recommended path:
@@ -374,7 +374,7 @@ Acceptance criteria:
 
 - External registration tests cover both ordinary domain meta tables and time-index storage classes.
 - Storage models are either rejected clearly or registered as real time-index metadata.
-- No `PlatformTimeIndexMetaData` subclass goes through generic external SQLAlchemy registration.
+- No `PlatformTimeIndexMetaTable` subclass goes through generic external SQLAlchemy registration.
 
 ### Task 4: Normalize SDK dependency declarations
 
@@ -405,7 +405,7 @@ Implementation steps:
 Acceptance criteria:
 
 - `pyproject.toml`, `uv.lock`, and `requirements.txt` agree on the SDK version strategy.
-- A clean environment imports an SDK version with `PlatformTimeIndexMetaData` and `mainsequence.meta_tables.compiled_sql.v1`.
+- A clean environment imports an SDK version with `PlatformTimeIndexMetaTable` and `mainsequence.meta_tables.compiled_sql.v1`.
 - The refactor no longer depends on an implicit local editable SDK checkout.
 
 ### Task 5: Update stale compiled-SQL temporal parameter tests
@@ -474,7 +474,7 @@ Acceptance criteria:
 
 Priority: P2
 
-Goal: keep `PlatformTimeIndexMetaData` classes as the single source of truth for storage schema.
+Goal: keep `PlatformTimeIndexMetaTable` classes as the single source of truth for storage schema.
 
 Files to change:
 
@@ -539,7 +539,7 @@ Acceptance criteria:
 
 ## Suggested Implementation Order
 
-1. Route time-index storage reuse through `PlatformTimeIndexMetaData.register(...)`.
+1. Route time-index storage reuse through `PlatformTimeIndexMetaTable.register(...)`.
 2. Remove `initialize_source_table` and route readiness through SDK registration metadata.
 3. Decide and enforce `external_registered` behavior for storage classes.
 4. Align dependency metadata and lockfiles to SDK 4.1.5.
@@ -552,9 +552,9 @@ This order keeps behavioral correctness ahead of cleanup. The DRY improvements a
 
 ## Storage Registration Path
 
-The correct alignment path is to keep `PlatformTimeIndexMetaData.register(...)` as the single storage lifecycle operation.
+The correct alignment path is to keep `PlatformTimeIndexMetaTable.register(...)` as the single storage lifecycle operation.
 
-For storage-backed DataNodes, the downstream library should not introduce a second public lifecycle. The UID of a `TimeIndexMetaData` is an output of registration/resolution. It should not be required as an input before the storage class can become usable.
+For storage-backed DataNodes, the downstream library should not introduce a second public lifecycle. The UID of a `TimeIndexMetaTable` is an output of registration/resolution. It should not be required as an input before the storage class can become usable.
 
 The expected SDK invariant is:
 
@@ -565,8 +565,8 @@ assert SomePlatformTimeIndexStorage.get_time_index_metadata() is registered
 assert SomePlatformTimeIndexStorage.get_meta_table_uid() == registered.uid
 ```
 
-Those assertions are useful only as verification that `register` performed the canonical SDK lifecycle: build request, register-or-resolve on the backend, return the canonical `TimeIndexMetaData`, and make the class ready for DataNode construction.
+Those assertions are useful only as verification that `register` performed the canonical SDK lifecycle: build request, register-or-resolve on the backend, return the canonical `TimeIndexMetaTable`, and make the class ready for DataNode construction.
 
-The refactor should therefore remove catalog/import behavior that replaces this lifecycle with generic `MetaTable` reconstruction for `PlatformTimeIndexMetaData` subclasses. Catalog rows can still be used to validate expected contract information, but storage classes should be made usable by calling `register`.
+The refactor should therefore remove catalog/import behavior that replaces this lifecycle with generic `MetaTable` reconstruction for `PlatformTimeIndexMetaTable` subclasses. Catalog rows can still be used to validate expected contract information, but storage classes should be made usable by calling `register`.
 
 If `register` is not idempotent when a storage resource already exists, the SDK/backend registration behavior should be fixed. `ms-markets` should not compensate by implementing a second storage-binding mechanism.

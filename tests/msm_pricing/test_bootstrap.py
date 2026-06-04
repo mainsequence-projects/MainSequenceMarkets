@@ -33,6 +33,40 @@ def reset_pricing_runtime(monkeypatch) -> None:
 def install_fake_pricing_bootstrap(monkeypatch):
     attach_calls = []
 
+    from msm_pricing.data_nodes.storage import (
+        DiscountCurvesStorage,
+        IndexFixingsStorage,
+    )
+
+    monkeypatch.setattr(
+        PricingMarketDataBindingTable,
+        "__metatable_uid__",
+        "pricing-market-data-binding-uid",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        DiscountCurvesStorage,
+        "__metatable_uid__",
+        "discount-curves-storage-uid",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        IndexFixingsStorage,
+        "__metatable_uid__",
+        "index-fixings-storage-uid",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        DiscountCurvesStorage,
+        "get_identifier",
+        classmethod(lambda _cls: "registered.discount_curves"),
+    )
+    monkeypatch.setattr(
+        IndexFixingsStorage,
+        "get_identifier",
+        classmethod(lambda _cls: "registered.index_fixings"),
+    )
+
     class FakeMarketsRepositoryContext:
         def __init__(
             self,
@@ -47,6 +81,10 @@ def install_fake_pricing_bootstrap(monkeypatch):
         for model in list(models or ["CurveTable"]):
             if model == "PricingMarketDataBindingTable":
                 resolved.append(PricingMarketDataBindingTable)
+            elif model == "DiscountCurvesStorage":
+                resolved.append(DiscountCurvesStorage)
+            elif model == "IndexFixingsStorage":
+                resolved.append(IndexFixingsStorage)
             else:
                 resolved.append(model)
         return resolved
@@ -59,13 +97,12 @@ def install_fake_pricing_bootstrap(monkeypatch):
             "PricingMarketDataBindingTable": "PricingMarketDataBinding",
         }.get(model_name, model_name)
 
-    def fake_attach_markets_meta_tables_from_catalog(**kwargs):
+    def fake_resolve_registered_markets_meta_tables(**kwargs):
         attach_calls.append(kwargs)
         return SimpleNamespace(
-            registration=SimpleNamespace(
-                meta_tables=["curve-meta-table"],
-                models=kwargs["models"],
-            )
+            meta_tables=["curve-meta-table"],
+            models=kwargs["models"],
+            meta_table_by_identifier={},
         )
 
     monkeypatch.setattr(
@@ -84,8 +121,8 @@ def install_fake_pricing_bootstrap(monkeypatch):
         fake_pricing_meta_table_identifier,
     )
     monkeypatch.setattr(
-        "msm.maintenance.catalog.attach_markets_meta_tables_from_catalog",
-        fake_attach_markets_meta_tables_from_catalog,
+        "msm.models.registration.resolve_registered_markets_meta_tables",
+        fake_resolve_registered_markets_meta_tables,
     )
     return attach_calls
 
@@ -96,10 +133,12 @@ def test_create_pricing_schemas_returns_cached_runtime_for_same_config(monkeypat
     first_runtime = pricing_bootstrap.create_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
+        seed_default_market_data_bindings=False,
     )
     second_runtime = pricing_bootstrap.create_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
+        seed_default_market_data_bindings=False,
     )
 
     assert second_runtime is first_runtime
@@ -125,6 +164,7 @@ def test_create_pricing_schemas_installs_market_data_configuration_override(
     pricing_bootstrap.create_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
+        seed_default_market_data_bindings=False,
         market_data_configuration={
             "context_key": "eod",
             "data_node_identifiers": {
@@ -153,6 +193,7 @@ def test_create_pricing_schemas_without_market_data_override_leaves_defaults(
     pricing_bootstrap.create_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
+        seed_default_market_data_bindings=False,
     )
 
     configuration = get_pricing_market_data_configuration()
@@ -167,12 +208,14 @@ def test_create_pricing_schemas_rejects_second_process_config_change(
     pricing_bootstrap.create_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
+        seed_default_market_data_bindings=False,
     )
 
     with pytest.raises(RuntimeError, match="already initialized"):
         pricing_bootstrap.create_pricing_schemas(
             namespace="mainsequence.other",
             models=["CurveTable"],
+            seed_default_market_data_bindings=False,
         )
 
 
@@ -184,12 +227,14 @@ def test_create_pricing_schemas_does_not_install_market_data_override_on_schema_
     pricing_bootstrap.create_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
+        seed_default_market_data_bindings=False,
     )
 
     with pytest.raises(RuntimeError, match="already initialized"):
         pricing_bootstrap.create_pricing_schemas(
             namespace="mainsequence.other",
             models=["CurveTable"],
+            seed_default_market_data_bindings=False,
             market_data_configuration={
                 "context_key": "eod",
                 "data_node_identifiers": {
@@ -229,14 +274,14 @@ def test_create_pricing_schemas_seeds_default_market_data_bindings(
         {
             "context_key": PRICING_CONTEXT_DEFAULT,
             "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
-            "data_node_identifier": "mainsequence.examples.DiscountCurvesTS",
+            "data_node_identifier": "registered.discount_curves",
             "source": "msm_pricing.bootstrap",
             "metadata_json": {"seeded_default": True},
         },
         {
             "context_key": PRICING_CONTEXT_DEFAULT,
             "concept_key": PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-            "data_node_identifier": "mainsequence.examples.IndexFixingsTS",
+            "data_node_identifier": "registered.index_fixings",
             "source": "msm_pricing.bootstrap",
             "metadata_json": {"seeded_default": True},
         },
@@ -294,7 +339,7 @@ def test_default_market_data_binding_seeding_replaces_when_requested(
         replace_default_market_data_bindings=True,
     )
 
-    assert runtime.meta_table_models == [PricingMarketDataBindingTable]
+    assert PricingMarketDataBindingTable in runtime.meta_table_models
     assert [call[2]["concept_key"] for call in calls] == [
         PRICING_CONCEPT_DISCOUNT_CURVES,
         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
@@ -321,6 +366,7 @@ def test_resolve_pricing_runtime_returns_active_runtime(monkeypatch) -> None:
     runtime = pricing_bootstrap.create_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
+        seed_default_market_data_bindings=False,
     )
 
     assert (
@@ -377,6 +423,7 @@ def test_resolve_pricing_runtime_missing_tables_error_names_declarations(
     pricing_bootstrap.create_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
+        seed_default_market_data_bindings=False,
     )
 
     with pytest.raises(RuntimeError, match="IndexConventionDetailsTable") as exc_info:

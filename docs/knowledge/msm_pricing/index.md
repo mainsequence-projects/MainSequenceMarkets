@@ -113,11 +113,15 @@ Fresh pricing bootstrap seeds the default bindings:
 
 ```text
 (default, discount_curves)
-  -> markets_data_node_identifier("DiscountCurvesTS")
+  -> DiscountCurvesStorage.get_identifier()
 
 (default, interest_rate_index_fixings)
-  -> markets_data_node_identifier("IndexFixingsTS")
+  -> IndexFixingsStorage.get_identifier()
 ```
+
+Those identifiers are read from the attached backend `TimeIndexMetaTable`
+objects. They are not rebuilt from authored names such as `DiscountCurvesTS` or
+from namespace helpers.
 
 Deployments can add or replace bindings for `eod`, `live`, `risk_manager`, or
 other application contexts:
@@ -159,8 +163,10 @@ PricingMarketDataBindingTable
 ```
 
 Use the pricing startup helper instead of manually passing table handles. It
-uses the same maintenance catalog attachment as `msm.start_engine(...)`, so core
-tables already present in the catalog are attached instead of registered again.
+uses direct backend lookup keyed by each SQLAlchemy table name, then binds the
+returned `MetaTable` or `TimeIndexMetaTable` to the model class. The maintenance
+catalog remains an inventory refreshed by migrations; pricing runtime startup
+does not read catalog rows to decide binding.
 Run the relevant `msm` migrations before pricing runtime startup:
 
 ```python

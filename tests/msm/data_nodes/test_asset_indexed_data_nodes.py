@@ -99,12 +99,19 @@ def test_root_asset_scope_module_is_removed() -> None:
 )
 def test_asset_indexed_nodes_expose_storage_first_surface(
     node_cls,
+    monkeypatch,
 ) -> None:
     assert "__data_node_identifier__" not in node_cls.__dict__
     assert "_default_identifier" not in node_cls.__dict__
     assert "_default_description" not in node_cls.__dict__
     storage_table = node_cls._required_storage_table()
-    assert node_cls._default_identifier() == storage_table.metatable_identifier()
+    registered_identifier = f"registered.{storage_table.metatable_identifier()}"
+    monkeypatch.setattr(
+        storage_table,
+        "get_identifier",
+        classmethod(lambda _cls: registered_identifier),
+    )
+    assert node_cls._default_identifier() == registered_identifier
     assert node_cls._default_description() == storage_table.__metatable_description__
 
     # msm storage registers through markets; pricing storage through pricing.
@@ -215,7 +222,7 @@ def test_timestamped_asset_nodes_validate_real_frames_as_datetime64_ns_utc(
 
 @pytest.mark.parametrize("storage_cls", [AssetSnapshotsStorage, AssetPricingDetailsStorage])
 def test_timestamped_asset_storage_has_asset_foreign_key(storage_cls) -> None:
-    asset_identifier = AssetTable.__metatable_identifier__
+    asset_identifier = AssetTable.__table__.name
     fk_column = storage_cls.__table__.columns[ASSET_IDENTIFIER_DIMENSION]
 
     assert markets_foreign_key_target_identifiers(storage_cls) == [asset_identifier]

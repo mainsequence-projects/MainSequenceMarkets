@@ -80,6 +80,12 @@ src/msm_migrations/
       0002_migration.py
 ```
 
+The existing revision files currently under `src/msm/migrations/versions/` are
+the `mainsequence.examples` namespace history. They must be moved into
+`src/msm_migrations/versions/mainsequence_examples/` during this migration of
+the migration environment. They must not be treated as the default namespace
+baseline and must not be copied into `src/msm_migrations/versions/default/`.
+
 The provider import path becomes:
 
 ```text
@@ -290,7 +296,8 @@ Only the SDK migration CLI imports the provider.
 
 - The SDK migration provider needs a version-location extension.
 - Existing revision files must be moved once into the namespace directory they
-  were generated for.
+  were generated for. For the current repository state, that directory is
+  `src/msm_migrations/versions/mainsequence_examples/`.
 - The provider import path changes from `msm.migrations:migration` to
   `msm_migrations:migration`.
 - Tooling must prevent accidental revision creation in the root `versions/`
@@ -322,9 +329,10 @@ Only the SDK migration CLI imports the provider.
       from `src/msm/migrations/` to `src/msm_migrations/`.
 - [ ] Add namespace slug helper tests for default, dotted namespace, dashed
       namespace, and long namespace inputs.
-- [ ] Move existing revision files from `src/msm/migrations/versions/` into the
-      correct namespace directory after confirming which namespace generated
-      them.
+- [ ] Move the existing revision files from `src/msm/migrations/versions/` into
+      `src/msm_migrations/versions/mainsequence_examples/` because the current
+      history belongs to `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`.
+      Do not move or copy those files into the default namespace directory.
 - [ ] Leave `src/msm/migrations/__init__.py` as a temporary compatibility import
       only if existing docs or deployed commands still reference
       `msm.migrations:migration`.

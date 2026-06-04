@@ -3,14 +3,16 @@ from __future__ import annotations
 import uuid
 from types import SimpleNamespace
 from typing import ClassVar
+import datetime as dt
 
 import pytest
+from mainsequence.client.metatables import TimeIndexMetaTable
 from mainsequence.meta_tables import (
     PlatformManagedMetaTable,
-    PlatformTimeIndexMetaData,
+    PlatformTimeIndexMetaTable,
 )
 from pydantic import AliasChoices, Field
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -21,6 +23,7 @@ from msm.base import (
     MARKETS_TABLE_APP,
     MarketsBase,
     MarketsMetaTableMixin,
+    MarketsTimeIndexMetaTableMixin,
     markets_table_name,
     markets_table_storage_name,
 )
@@ -240,6 +243,29 @@ def test_markets_metatable_identifier_uses_authored_identifier_metadata(monkeypa
     assert str(table.fullname) != identifier
     assert markets_meta_table_identifier(AssetTypeTable) == identifier
     assert markets_table_storage_name(AssetTypeTable) == "backend_physical_asset_type"
+
+
+def test_get_identifier_returns_bound_backend_identifier() -> None:
+    class IdentifierFakeTable(MarketsMetaTableMixin, MarketsBase):
+        __tablename__ = markets_table_name(MARKETS_TABLE_APP, "identifier_fake_model")
+        __metatable_namespace__ = "mainsequence.markets"
+        __metatable_identifier__ = "IdentifierFakeModel"
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+
+    meta_table = SimpleNamespace(
+        uid=str(uuid.uuid4()),
+        namespace="mainsequence.markets",
+        identifier=IdentifierFakeTable.__table__.name,
+        storage_hash=IdentifierFakeTable.__table__.name,
+        physical_table_name=IdentifierFakeTable.__table__.name,
+        data_source_uid=str(uuid.uuid4()),
+        management_mode="platform_managed",
+    )
+
+    IdentifierFakeTable._bind_meta_table(meta_table)
+
+    assert IdentifierFakeTable.get_identifier() == IdentifierFakeTable.__table__.name
 
 
 def test_resolve_models_accepts_project_local_model_with_fk_dependency() -> None:
@@ -691,7 +717,7 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
             models=[model],
         )
         request = next(
-            request for request in requests if request.identifier == model.__metatable_identifier__
+            request for request in requests if request.identifier == model.__table__.name
         )
         assert request.description == model.__metatable_description__
         pairs.append((model, request))
@@ -705,7 +731,7 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
     assert AssetTypeTable in markets_sqlalchemy_models()
     assert pairs
 
-    # ADR 0017: domain MetaTables and DataNode storage (PlatformTimeIndexMetaData)
+    # ADR 0017: domain MetaTables and DataNode storage (PlatformTimeIndexMetaTable)
     # build different registration-request types.
     domain_requests = [req for model, req in pairs if not is_time_index_meta_table_model(model)]
     storage_requests = [req for model, req in pairs if is_time_index_meta_table_model(model)]
@@ -721,7 +747,7 @@ def test_migration_registry_models_use_sdk_base_metatable_classes() -> None:
     assert registry
     assert AccountHoldingsStorage in registry
     assert all(issubclass(model, PlatformManagedMetaTable) for model in registry)
-    assert issubclass(AccountHoldingsStorage, PlatformTimeIndexMetaData)
+    assert issubclass(AccountHoldingsStorage, PlatformTimeIndexMetaTable)
 
 
 def test_markets_models_build_external_registration_requests_in_dependency_order(
@@ -737,7 +763,7 @@ def test_markets_models_build_external_registration_requests_in_dependency_order
             models=[model],
         )
         request = next(
-            request for request in requests if request.identifier == model.__metatable_identifier__
+            request for request in requests if request.identifier == model.__table__.name
         )
         assert request.description == model.__metatable_description__
         pairs.append((model, request))
@@ -765,7 +791,7 @@ def test_markets_models_do_not_expose_direct_registration_helper() -> None:
     assert not hasattr(meta_tables, "register_external_sqlalchemy_model")
 
 
-def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monkeypatch) -> None:
+def test_resolve_registered_markets_meta_tables_filters_by_table_identifier(monkeypatch) -> None:
     calls = []
 
     class ResolveFakeModel(MarketsMetaTableMixin, MarketsBase):
@@ -778,7 +804,7 @@ def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monk
     meta_table = SimpleNamespace(
         uid="fake-meta-table-uid",
         namespace="mainsequence.markets",
-        identifier="FakeModel",
+        identifier=ResolveFakeModel.__table__.name,
         storage_hash=ResolveFakeModel.__table__.name,
         physical_table_name=ResolveFakeModel.__table__.name,
         data_source_uid="data-source-uid",
@@ -795,15 +821,100 @@ def test_resolve_registered_markets_meta_tables_filters_by_logical_identity(monk
         models=[ResolveFakeModel],
     )
 
-    assert result.meta_table_by_identifier[markets_meta_table_identifier(ResolveFakeModel)] is (
-        meta_table
-    )
+    assert result.meta_table_by_identifier[ResolveFakeModel.__table__.name] is meta_table
     assert calls == [
         {
             "timeout": None,
-            "identifier__in": ["FakeModel"],
+            "identifier__in": [ResolveFakeModel.__table__.name],
             "management_mode": "platform_managed",
         }
+    ]
+
+
+def test_resolve_registered_markets_meta_tables_partitions_time_index_models(
+    monkeypatch,
+) -> None:
+    calls = []
+
+    class ResolvePartitionFakeModel(MarketsMetaTableMixin, MarketsBase):
+        __tablename__ = markets_table_name(MARKETS_TABLE_APP, "resolve_partition_fake_model")
+        __metatable_namespace__ = "mainsequence.markets"
+        __metatable_identifier__ = "ResolvePartitionFakeModel"
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+
+    class ResolveFakeStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+        __tablename__ = markets_table_name(MARKETS_TABLE_APP, "resolve_partition_fake_storage")
+        __metatable_namespace__ = "mainsequence.markets"
+        __metatable_identifier__ = "ResolvePartitionFakeStorage"
+        __time_index_name__ = "time_index"
+        __index_names__ = ["time_index", "asset_identifier"]
+
+        time_index: Mapped[dt.datetime] = mapped_column(
+            DateTime(timezone=True),
+            primary_key=True,
+        )
+        asset_identifier: Mapped[str] = mapped_column(String(255), primary_key=True)
+        value: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    meta_table = SimpleNamespace(
+        uid=str(uuid.uuid4()),
+        namespace="mainsequence.markets",
+        identifier=ResolvePartitionFakeModel.__table__.name,
+        storage_hash=ResolvePartitionFakeModel.__table__.name,
+        physical_table_name=ResolvePartitionFakeModel.__table__.name,
+        data_source_uid=str(uuid.uuid4()),
+        management_mode="platform_managed",
+    )
+    time_index_meta_table = TimeIndexMetaTable(
+        uid=str(uuid.uuid4()),
+        namespace="mainsequence.markets",
+        identifier=ResolveFakeStorage.__table__.name,
+        storage_hash=ResolveFakeStorage.__table__.name,
+        physical_table_name=ResolveFakeStorage.__table__.name,
+        data_source_uid=str(uuid.uuid4()),
+        management_mode="platform_managed",
+    )
+
+    def fake_meta_table_filter(**kwargs):
+        calls.append(("MetaTable", kwargs))
+        return [meta_table]
+
+    def fake_time_index_filter(**kwargs):
+        calls.append(("TimeIndexMetaTable", kwargs))
+        return [time_index_meta_table]
+
+    monkeypatch.setattr(meta_tables.MetaTable, "filter", staticmethod(fake_meta_table_filter))
+    monkeypatch.setattr(
+        meta_tables.TimeIndexMetaTable,
+        "filter",
+        staticmethod(fake_time_index_filter),
+    )
+
+    result = meta_tables.resolve_registered_markets_meta_tables(
+        models=[ResolvePartitionFakeModel, ResolveFakeStorage],
+    )
+
+    assert result.meta_table_by_identifier == {
+        ResolvePartitionFakeModel.__table__.name: meta_table,
+        ResolveFakeStorage.__table__.name: time_index_meta_table,
+    }
+    assert calls == [
+        (
+            "MetaTable",
+            {
+                "timeout": None,
+                "identifier__in": [ResolvePartitionFakeModel.__table__.name],
+                "management_mode": "platform_managed",
+            },
+        ),
+        (
+            "TimeIndexMetaTable",
+            {
+                "timeout": None,
+                "identifier__in": [ResolveFakeStorage.__table__.name],
+            },
+        ),
     ]
 
 

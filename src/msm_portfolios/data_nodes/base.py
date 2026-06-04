@@ -9,7 +9,7 @@ from mainsequence.client import dtype_codec as dc
 from mainsequence.meta_tables import (
     DataNode,
     DataNodeConfiguration,
-    PlatformTimeIndexMetaData,
+    PlatformTimeIndexMetaTable,
 )
 from msm.data_nodes.assets.asset_indexed import AssetIndexedDataNode
 from msm.data_nodes.utils.storage_metadata import (
@@ -27,7 +27,7 @@ from .constants import (
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
 )
 
-StorageTable = type[PlatformTimeIndexMetaData]
+StorageTable = type[PlatformTimeIndexMetaTable]
 
 
 class PortfolioCanonicalDataNodeConfiguration(DataNodeConfiguration):

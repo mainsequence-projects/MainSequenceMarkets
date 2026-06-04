@@ -6,7 +6,7 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from typing import Any
 
-from mainsequence.client.metatables import MetaTable, TimeIndexMetaData
+from mainsequence.client.metatables import MetaTable, TimeIndexMetaTable
 from mainsequence.logconf import logger as _mainsequence_logger
 from mainsequence.meta_tables.migrations import AlembicMetaTableCatalogRefreshContext
 
@@ -331,7 +331,7 @@ def resolve_catalog_meta_tables(
     if time_index_meta_table_uids:
         _add_catalog_matches_by_uid(
             matches_by_uid,
-            TimeIndexMetaData.filter(
+            TimeIndexMetaTable.filter(
                 timeout=timeout,
                 uid__in=time_index_meta_table_uids,
             ),

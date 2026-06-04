@@ -26,8 +26,9 @@ from .meta_tables import (
 )
 from .models.market_data_bindings import PricingMarketDataBindingTable
 from .settings import (
+    PRICING_CONCEPT_DISCOUNT_CURVES,
+    PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
     PRICING_CONTEXT_DEFAULT,
-    default_pricing_market_data_bindings,
 )
 
 _CREATE_PRICING_SCHEMAS_LOCK = Lock()
@@ -69,7 +70,10 @@ def create_pricing_schemas(
     for callers that also want pricing market-data configuration during startup.
     """
 
-    resolved_models = resolve_pricing_meta_table_models(models)
+    resolved_models = _pricing_startup_models(
+        models,
+        seed_default_market_data_bindings=seed_default_market_data_bindings,
+    )
     namespace = markets_namespace(namespace)
     schema_config = _schema_config(
         management_mode=management_mode,
@@ -106,7 +110,7 @@ def create_pricing_schemas(
                 "process startup before pricing row operations."
             )
 
-        registration = _attach_pricing_meta_tables_from_catalog(
+        registration = _resolve_registered_pricing_meta_tables(
             management_mode=management_mode,
             timeout=timeout,
             models=resolved_models,
@@ -144,7 +148,10 @@ def attach_pricing_schemas(
 ) -> PricingRuntime:
     """Attach to already-registered pricing MetaTables without creating schemas."""
 
-    resolved_models = resolve_pricing_meta_table_models(models)
+    resolved_models = _pricing_startup_models(
+        models,
+        seed_default_market_data_bindings=seed_default_market_data_bindings,
+    )
     namespace = markets_namespace(namespace)
     schema_config = _schema_config(
         action="attach",
@@ -165,7 +172,7 @@ def attach_pricing_schemas(
                 replace_default_market_data_bindings=replace_default_market_data_bindings,
             )
             return cached_runtime
-        registration = _attach_pricing_meta_tables_from_catalog(
+        registration = _resolve_registered_pricing_meta_tables(
             management_mode=management_mode,
             timeout=timeout,
             models=resolved_models,
@@ -228,9 +235,10 @@ def configure_pricing_market_data(
 ) -> PricingMarketDataConfiguration:
     """Install pricing market-data runtime configuration.
 
-    When ``configuration`` is omitted, the canonical package defaults remain
-    active. Passing a typed configuration or mapping installs an explicit
-    process-wide override.
+    When ``configuration`` is omitted, the default pricing context remains active
+    and market-data DataNodes are resolved through persisted pricing bindings.
+    Passing a typed configuration or mapping installs an explicit process-wide
+    override.
     """
 
     if configuration is None:
@@ -248,15 +256,15 @@ def seed_default_pricing_market_data_bindings(
 
     if runtime is None:
         runtime = resolve_pricing_runtime(
-            models=[PricingMarketDataBindingTable],
+            models=_pricing_default_market_data_binding_models(),
             row_model_name="PricingMarketDataBinding",
         )
     if PricingMarketDataBindingTable not in runtime.meta_table_models:
         return []
 
     rows: list[dict[str, Any]] = []
-    for concept_key, data_node_identifier in default_pricing_market_data_bindings(
-        namespace=runtime.namespace,
+    for concept_key, data_node_identifier in _default_pricing_market_data_bindings_from_runtime(
+        runtime
     ).items():
         values = {
             "context_key": context_key,
@@ -312,20 +320,75 @@ def _configure_pricing_runtime_market_data(
     return configuration
 
 
-def _attach_pricing_meta_tables_from_catalog(
+def _resolve_registered_pricing_meta_tables(
     *,
     management_mode: PricingManagementMode,
     timeout: int | float | tuple[float, float] | None,
     models: Sequence[type[MarketsBase]],
 ) -> PricingMetaTableRegistrationResult:
-    from msm.maintenance.catalog import attach_markets_meta_tables_from_catalog
+    from msm.models.registration import resolve_registered_markets_meta_tables
 
-    catalog_bootstrap = attach_markets_meta_tables_from_catalog(
+    return resolve_registered_markets_meta_tables(
         management_mode=management_mode,
         timeout=timeout,
         models=models,
     )
-    return catalog_bootstrap.registration
+
+
+def _pricing_startup_models(
+    models: Sequence[PricingModelSelector] | None,
+    *,
+    seed_default_market_data_bindings: bool,
+) -> list[type[MarketsBase]]:
+    resolved_models = resolve_pricing_meta_table_models(models)
+    if not seed_default_market_data_bindings:
+        return resolved_models
+    return resolve_pricing_meta_table_models(
+        [
+            *resolved_models,
+            *_pricing_default_market_data_binding_models(),
+        ]
+    )
+
+
+def _pricing_default_market_data_binding_models() -> list[type[MarketsBase]]:
+    from msm_pricing.data_nodes.storage import (
+        DiscountCurvesStorage,
+        IndexFixingsStorage,
+    )
+
+    return [
+        PricingMarketDataBindingTable,
+        DiscountCurvesStorage,
+        IndexFixingsStorage,
+    ]
+
+
+def _default_pricing_market_data_bindings_from_runtime(
+    runtime: PricingRuntime,
+) -> dict[str, str]:
+    from msm_pricing.data_nodes.storage import (
+        DiscountCurvesStorage,
+        IndexFixingsStorage,
+    )
+
+    required_models = _pricing_default_market_data_binding_models()
+    missing_models = [
+        model
+        for model in required_models
+        if model not in runtime.meta_table_models or _model_meta_table_uid(model) is None
+    ]
+    if missing_models:
+        missing_names = ", ".join(_model_name(model) for model in missing_models)
+        raise RuntimeError(
+            "Default pricing market-data binding seeding requires attached pricing "
+            f"storage tables: {missing_names}."
+        )
+
+    return {
+        PRICING_CONCEPT_DISCOUNT_CURVES: DiscountCurvesStorage.get_identifier(),
+        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: IndexFixingsStorage.get_identifier(),
+    }
 
 
 def _missing_models_from_runtime(

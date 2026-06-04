@@ -492,7 +492,7 @@ repair.
 
 - [x] Keep shared `ms-markets` MetaTable bases on the normal SDK authoring
       classes: `PlatformManagedMetaTable` for domain MetaTables and
-      `PlatformTimeIndexMetaData` for time-indexed storage.
+      `PlatformTimeIndexMetaTable` for time-indexed storage.
 - [x] Keep `MIGRATION_MODEL_REGISTRY` as the package-owned model graph, not as a
       filter over SDK migration-specific marker classes.
 - [x] Validate registry shape locally: entries must be `MarketsBase`
@@ -586,7 +586,7 @@ repair.
 - [ ] Test empty materialized migration revisions fail when the managed model
       registry is non-empty.
 - [x] Test registered models inherit SDK base authoring classes, including
-      `PlatformTimeIndexMetaData` for time-indexed storage.
+      `PlatformTimeIndexMetaTable` for time-indexed storage.
 - [x] Test packaged migrations use structured operations and
       `operations_sha256`, without `.sql` files or SQL path metadata.
 - [ ] Test runtime migration checks are scoped to the requested model graph and

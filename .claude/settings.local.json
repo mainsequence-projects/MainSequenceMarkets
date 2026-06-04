@@ -2,7 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(.venv/bin/python -c \"import mainsequence.meta_tables as m; print\\(m.__file__\\)\")",
-      "Bash(.venv/bin/python -c \"from mainsequence.meta_tables import PlatformTimeIndexMetaData as P; import inspect; print\\(inspect.getsourcefile\\(P\\)\\)\")",
+      "Bash(.venv/bin/python -c \"from mainsequence.meta_tables import PlatformTimeIndexMetaTable as P; import inspect; print\\(inspect.getsourcefile\\(P\\)\\)\")",
       "Read(//Users/jose/code/MainSequenceClientSide/mainsequence-sdk/mainsequence/meta_tables/**)",
       "Bash(.venv/bin/python -c \"import mainsequence.meta_tables as m, inspect; print\\(inspect.getfile\\(m\\)\\)\")",
       "Bash(python3 -c \"import mainsequence.meta_tables as m, inspect; print\\(inspect.getfile\\(m\\)\\)\")",
@@ -17,7 +17,7 @@
       "Bash(.venv/bin/python -c \"from mainsequence.meta_tables import RecordDefinition\")",
       "Bash(.venv/bin/ruff --version)",
       "Bash(.venv/bin/ruff check *)",
-      "Bash(.venv/bin/python -c \"import mainsequence.meta_tables as m; print\\(m.PlatformTimeIndexMetaData.__module__\\); import inspect; print\\(inspect.getfile\\(m.PlatformTimeIndexMetaData\\)\\)\")",
+      "Bash(.venv/bin/python -c \"import mainsequence.meta_tables as m; print\\(m.PlatformTimeIndexMetaTable.__module__\\); import inspect; print\\(inspect.getfile\\(m.PlatformTimeIndexMetaTable\\)\\)\")",
       "Bash(.venv/bin/python -c \"import mainsequence.client.dtype_codec as d, inspect; print\\(inspect.getfile\\(d\\)\\); print\\('--- public ---'\\); print\\([n for n in dir\\(d\\) if not n.startswith\\('_'\\)]\\)\")",
       "Bash(.venv/bin/python -m ruff check src/msm/portfolios src/msm/data_nodes/__init__.py src/msm/data_nodes/assets/snapshots.py src/msm/data_nodes/utils/stamped.py src/msm/data_nodes/utils/__init__.py)"
     ]

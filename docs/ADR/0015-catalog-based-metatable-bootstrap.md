@@ -7,6 +7,9 @@ Accepted
 This ADR supersedes the lazy and on-demand registration decision from
 [ADR 0009](0009-lazy-metatable-runtime-resolution.md). ADR 0008 still owns the
 `*Table` SQLAlchemy declaration and `msm.api.*` user-facing row model split.
+The runtime-control portion of this ADR is superseded by
+[ADR 0025](0025-direct-metatable-runtime-binding.md). The catalog remains a
+maintenance inventory refreshed by migrations, not the runtime binding source.
 
 ## Context
 

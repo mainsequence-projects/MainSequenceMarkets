@@ -57,7 +57,7 @@ def test_index_node_resolves_storage_table_and_index_contract() -> None:
 
 
 def test_index_node_storage_has_index_foreign_key() -> None:
-    index_identifier = IndexTable.__metatable_identifier__
+    index_identifier = IndexTable.__table__.name
     fk_column = IndexFixingsStorage.__table__.columns[INDEX_IDENTIFIER_DIMENSION]
 
     assert markets_foreign_key_target_identifiers(IndexFixingsStorage) == [index_identifier]
@@ -106,9 +106,16 @@ def test_index_node_validate_frame_rejects_duplicate_keys() -> None:
         )
 
 
-def test_fixing_rates_node_is_index_timestamped() -> None:
+def test_fixing_rates_node_is_index_timestamped(monkeypatch) -> None:
+    registered_identifier = "registered.index-fixings"
+    monkeypatch.setattr(
+        IndexFixingsStorage,
+        "get_identifier",
+        classmethod(lambda _cls: registered_identifier),
+    )
+
     assert issubclass(FixingRatesNode, IndexTimestampedDataNode)
     assert FixingRatesNode._required_storage_table() is IndexFixingsStorage
     assert "__data_node_identifier__" not in FixingRatesNode.__dict__
-    assert FixingRatesNode._default_identifier() == IndexFixingsStorage.metatable_identifier()
+    assert FixingRatesNode._default_identifier() == registered_identifier
     assert "fixing rates" in FixingRatesNode._default_description()

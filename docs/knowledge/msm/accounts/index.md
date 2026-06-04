@@ -4,7 +4,7 @@ Accounts are the owner identity layer for holdings, account groups, model
 portfolio tracking, target position sets, and execution routing.
 The account registry and target-portfolio relationships are stored in markets
 MetaTables. Account holdings history and target position rows are stored in
-DataNode tables backed by registered `PlatformTimeIndexMetaData` storage
+DataNode tables backed by registered `PlatformTimeIndexMetaTable` storage
 classes, because those rows are timestamped observations rather than static
 reference records.
 
@@ -16,7 +16,7 @@ MetaTable
   AccountTable, AccountGroupTable, AccountModelPortfolioTable,
   AccountTargetPortfolioTable, and PositionSetTable are MetaTables.
 
-PlatformTimeIndexMetaData
+PlatformTimeIndexMetaTable
   SQLAlchemy storage class registered through the SDK migration/catalog lifecycle. It
   describes the published table shape: time index, dimension indexes, column
   dtypes, foreign keys, and storage identity. AccountHoldings and
@@ -209,7 +209,7 @@ There is no top-level `msm.accounts` shim. Import account rows from
 +-------------------------------+
 | TargetPositionsStorage        |
 | DynamicTableMetaData /        |
-| PlatformTimeIndexMetaData     |
+| PlatformTimeIndexMetaTable     |
 |-------------------------------|
 | time_index                    |
 | position_set_uid              |
@@ -263,11 +263,11 @@ timestamped target rows in separate places.
 ## Holdings DataNodes
 
 Holdings are time-series-like observations. They are not MetaTables. A holdings
-DataNode writes to a table described by a registered `PlatformTimeIndexMetaData`
+DataNode writes to a table described by a registered `PlatformTimeIndexMetaTable`
 storage class with a fixed index and column contract.
 
 ```text
-                                    DataNode / PlatformTimeIndexMetaData
+                                    DataNode / PlatformTimeIndexMetaTable
                                     ------------------------------------
 
 +-------------------------------+       uses registered     +-----------------------------+
@@ -356,7 +356,7 @@ Virtual-fund allocation holdings belong to the
 4. Publish holdings
 
    AccountHoldings.run(...)
-     -> uses registered PlatformTimeIndexMetaData storage
+     -> uses registered PlatformTimeIndexMetaTable storage
      -> writes rows to the DataNode source table
 
 5. Read holdings
@@ -371,7 +371,7 @@ The registry and the historical observations stay separate:
 AccountTable MetaTable
   one row per account identity
 
-AccountHoldings PlatformTimeIndexMetaData-backed source table
+AccountHoldings PlatformTimeIndexMetaTable-backed source table
   many rows per account over time
 ```
 
@@ -406,7 +406,7 @@ The DataNode class itself does not need to be in the MetaTable model list. Its
 storage class does. Add holdings storage to the migration model registry, run
 the SDK migration flow, and attach runtime with `msm.start_engine(...)` before
 constructing or running the DataNode. Do not call
-`PlatformTimeIndexMetaData.register(...)`, manually bind by UID, or call
+`PlatformTimeIndexMetaTable.register(...)`, manually bind by UID, or call
 `initialize_source_table`.
 
 ## Extension Rules
@@ -416,7 +416,7 @@ through typed rows under `msm.api`.
 
 Add timestamped account or fund observations as DataNodes under
 `msm.data_nodes.accounts`. Define the table contract with a
-`PlatformTimeIndexMetaData` storage class in `msm.data_nodes.storage` and keep
+`PlatformTimeIndexMetaTable` storage class in `msm.data_nodes.storage` and keep
 the published row grain explicit.
 
 Do not put holdings rows into `AccountTable`. Do not add static account fields to

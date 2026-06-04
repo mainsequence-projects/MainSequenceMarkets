@@ -1,4 +1,4 @@
-"""Storage-first ``PlatformTimeIndexMetaData`` declarations for msm_pricing.
+"""Storage-first ``PlatformTimeIndexMetaTable`` declarations for msm_pricing.
 
 ADR 0017. Each class is the single source of truth for the column schema,
 dtypes, descriptions, and identity foreign keys of one pricing table. The

@@ -1,8 +1,9 @@
 # Migrations
 
 `msm` schema creation and schema evolution are admin workflows. Runtime code
-attaches to already-registered MetaTables through the markets catalog; it does
-not create tables, apply DDL, or repair catalog drift.
+attaches to already-registered `MetaTable` and `TimeIndexMetaTable` resources
+through direct backend lookups keyed by SQLAlchemy table name; it does not
+create tables, apply DDL, or repair catalog drift.
 
 The package exposes one SDK Alembic provider:
 
@@ -78,9 +79,9 @@ schema back to an earlier revision.
    ```
 6. Start runtime code with `msm.start_engine(...)`.
 
-`msm.start_engine(...)` is catalog-based and read-only. It attaches from the
-finalized catalog and fails if required catalog rows are missing or point at
-missing platform `MetaTable.uid` resources.
+`msm.start_engine(...)` is direct and read-only. It resolves selected backend
+tables by `model.__table__.name` and fails if required platform `MetaTable` or
+`TimeIndexMetaTable` resources are missing.
 
 ## Registry
 
@@ -97,7 +98,7 @@ The registry is derived from:
 
 Managed models must inherit normal SDK authoring bases. Plain MetaTables use
 `PlatformManagedMetaTable` through `MarketsMetaTableMixin`; time-indexed
-DataNode storage uses `PlatformTimeIndexMetaData` through
+DataNode storage uses `PlatformTimeIndexMetaTable` through
 `MarketsTimeIndexMetaTableMixin`.
 
 Time-index storage identifiers use the same `CamelCase` style as domain

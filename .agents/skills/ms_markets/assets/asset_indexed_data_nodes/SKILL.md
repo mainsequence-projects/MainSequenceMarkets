@@ -39,7 +39,7 @@ Use the asset model extension skill instead when the task is about `AssetTable`,
 - Requiring `ASSET_IDENTIFIER_DIMENSION` from `msm.settings`; do not
   hardcode competing asset identity column constants.
 - Keeping `asset_list` as updater scope, not published table meaning.
-- Declaring `PlatformTimeIndexMetaData` storage classes as the canonical output
+- Declaring `PlatformTimeIndexMetaTable` storage classes as the canonical output
   schema.
 - Declaring a SQLAlchemy `ForeignKey` from the storage table
   `asset_identifier` column to `AssetTable.unique_identifier`.
@@ -380,7 +380,7 @@ Before marking work complete:
 - Timestamped asset fact nodes subclass `AssetTimestampedDataNode`; lower-level
   custom nodes subclass `AssetIndexedDataNode` only when they genuinely need a
   non-stamped update path.
-- The storage table subclasses `PlatformTimeIndexMetaData` through
+- The storage table subclasses `PlatformTimeIndexMetaTable` through
   `MarketsTimeIndexMetaTableMixin`.
 - The storage table has an intention-rich `__metatable_description__`.
 - The config subclasses `AssetIndexedDataNodeConfiguration` or

@@ -8,7 +8,7 @@ storage classes are declared, the custom base layer is re-architected, column
 dtypes are single-sourced through the MetaTable, every concrete node uses its
 registered `storage_table`, DataNode storage is wired into the catalog bootstrap
 registries in FK order, the catalog path routes time-index storage through
-`PlatformTimeIndexMetaData.register(...)`, runtime source-table provisioning
+`PlatformTimeIndexMetaTable.register(...)`, runtime source-table provisioning
 fallbacks are retired, dependency metadata targets SDK `4.1.5`, and the
 test/example/doc surface is migrated to the storage-first contract. Offline
 verification passes against SDK `4.1.5`: `369 passed, 4 skipped`.
@@ -29,17 +29,17 @@ It does not change the `*Table` vs `msm.api.*` split owned by
 
 The Main Sequence SDK changed the DataNode contract. A DataNode is no longer the
 canonical storage definition. Storage is now a registered
-`PlatformTimeIndexMetaData` SQLAlchemy model that is declared first, registered
-through `PlatformTimeIndexMetaData.register(...)`, and then passed into the
+`PlatformTimeIndexMetaTable` SQLAlchemy model that is declared first, registered
+through `PlatformTimeIndexMetaTable.register(...)`, and then passed into the
 DataNode constructor as `storage_table`.
 
 The reference for the target architecture is
 `mainsequence-sdk/examples/data_nodes/simple_data_nodes.py`. The canonical flow
 is:
 
-1. declare a `PlatformTimeIndexMetaData` storage class (namespace, identifier,
+1. declare a `PlatformTimeIndexMetaTable` storage class (namespace, identifier,
    time index, identity index, columns, foreign keys);
-2. register that storage class through `PlatformTimeIndexMetaData.register(...)`;
+2. register that storage class through `PlatformTimeIndexMetaTable.register(...)`;
 3. construct the DataNode with `config=...` and
    `storage_table=StorageClass`;
 4. return a DataFrame from `update()` that matches the storage contract.
@@ -50,7 +50,7 @@ The DataNode constructor signature confirmed in the installed SDK is:
 DataNode.__init__(
     self,
     config: BaseConfiguration,
-    storage_table: type[PlatformTimeIndexMetaData],
+    storage_table: type[PlatformTimeIndexMetaTable],
     *,
     hash_namespace: str | None = None,
 )
@@ -75,7 +75,7 @@ Symbols that simply moved and must be re-pointed:
 - `DataNode`, `DataNodeConfiguration`, `APIDataNode`, `hash_namespace`,
   `DataNodeMetaData`, `RecordDefinition` → `mainsequence.meta_tables.data_nodes`
   (also re-exported from `mainsequence.meta_tables`).
-- `PlatformTimeIndexMetaData`, `PlatformManagedMetaTable`,
+- `PlatformTimeIndexMetaTable`, `PlatformManagedMetaTable`,
   `register_external_sqlalchemy_model`,
   `external_registered_registration_request_from_sqlalchemy_model`,
   `register_platform_managed_sqlalchemy_model`,
@@ -102,7 +102,7 @@ path re-pointed to `mainsequence.meta_tables`. The SQLAlchemy declaration style
 is correct and does not need to change.
 
 This is the model to follow for DataNode storage: DataNode output tables become
-`PlatformTimeIndexMetaData` declarations registered through the same catalog.
+`PlatformTimeIndexMetaTable` declarations registered through the same catalog.
 
 ## Gap Inventory
 
@@ -115,7 +115,7 @@ architecture moves that surface onto storage classes. Concrete gaps:
    the removed `mainsequence.tdag.meta_tables`.
 
 2. **No storage classes exist for DataNode outputs.** There is no
-   `PlatformTimeIndexMetaData` class for discount curves, index fixings, pricing
+   `PlatformTimeIndexMetaTable` class for discount curves, index fixings, pricing
    details, account/fund holdings, orders/trades/events, asset snapshots,
    portfolio/signal weights, or interpolated/external prices. Their schemas live
    today as `RecordDefinition` lists and as the dataclass
@@ -184,7 +184,7 @@ Adopt the storage-first DataNode architecture across `msm` and `msm_pricing`.
 
 ### 1. Storage classes are the schema contract
 
-For every DataNode output, declare a `PlatformTimeIndexMetaData` SQLAlchemy class
+For every DataNode output, declare a `PlatformTimeIndexMetaTable` SQLAlchemy class
 that owns `__metatable_namespace__`, `__metatable_identifier__`,
 `__time_index_name__`, `__index_names__`, mapped columns/dtypes, foreign keys,
 description, and labels. The DataFrame returned by `update()` must match this
@@ -203,8 +203,8 @@ constructing storage from config records.
 
 `DataNodeConfiguration` subclasses keep only fields that affect update identity,
 output values, dependency selection, or updater scope. Dependency storage-table
-references are carried as `type[PlatformTimeIndexMetaData]` config fields (hashed
-by the registered `TimeIndexMetaData.uid`). Descriptive-only fields use
+references are carried as `type[PlatformTimeIndexMetaTable]` config fields (hashed
+by the registered `TimeIndexMetaTable.uid`). Descriptive-only fields use
 `Field(..., json_schema_extra={"hash_excluded": True})`. The removed markers
 `update_only`, `runtime_only`, `ignore_from_storage_hash`, and
 `_ARGS_IGNORE_IN_STORAGE_HASH` are deleted.
@@ -229,7 +229,7 @@ dependency order after their FK target MetaTables, so DataNode tables are
 attach-or-create and process-idempotent like domain MetaTables. This closes the
 ADR 0015 non-goal.
 
-`PlatformTimeIndexMetaData.register(...)` is the only lifecycle path for
+`PlatformTimeIndexMetaTable.register(...)` is the only lifecycle path for
 storage-backed DataNodes. Downstream code must not add a second path that
 manually binds by UID, reconstructs generic `MetaTable` placeholders, or calls
 `initialize_source_table`.
@@ -247,7 +247,7 @@ backend use an explicit `hash_namespace(...)`.
   `import msm_portfolios.data_nodes` succeed under the installed SDK.
 - No repository module imports `mainsequence.tdag*` or
   `mainsequence.client.models_tdag`.
-- Every concrete DataNode has a registered `PlatformTimeIndexMetaData`
+- Every concrete DataNode has a registered `PlatformTimeIndexMetaTable`
   storage class and a constructor that requires `storage_table`.
 - No `RecordDefinition`/`DataNodeMetaData`/`DataNodeTableContract` schema surface,
   no `SourceTableForeignKey`, no `test_node`, no removed hash markers remain.
@@ -270,7 +270,7 @@ backend use an explicit `hash_namespace(...)`.
   `get_df_between_dates`, `get_last_observation`, `local_persist_manager`,
   `update_statistics`, `get_offset_start`, `_get_data_node_configuration`,
   `_set_update_statistics`.
-- [x] `PlatformTimeIndexMetaData` exposes `register`,
+- [x] `PlatformTimeIndexMetaTable` exposes `register`,
   `build_registration_request`, `get_meta_table`, `get_meta_table_uid`,
   `get_time_index_metadata`, `get_storage_hash`, `resolve_foreign_key_targets`;
   SQLAlchemy `ForeignKey(...)` is the FK authoring API and `register(...)` is
@@ -316,7 +316,7 @@ Verified against the project `.venv` (SDK `4.1.5`):
 
 ### Stage 2: Storage contracts for DataNode outputs — DONE
 
-- [x] Defined all 16 `PlatformTimeIndexMetaData` storage classes across three
+- [x] Defined all 16 `PlatformTimeIndexMetaTable` storage classes across three
   declaration-only modules (co-located with the Stage 4 nodes; no `__init__.py`
   touched): `src/msm_pricing/data_nodes/storage.py` (`DiscountCurvesStorage`,
   `IndexFixingsStorage`, `AssetPricingDetailsStorage`);
@@ -626,7 +626,7 @@ tests.
   registers the storage classes, so examples that bootstrap then construct nodes
   need no manual `storage_table` plumbing.
 - [x] Updated `docs/knowledge`: rewrote the `asset_indexed_data_nodes.md` FK code
-  example to a storage-first `PlatformTimeIndexMetaData` class +
+  example to a storage-first `PlatformTimeIndexMetaTable` class +
   `_required_storage_table()`, and corrected `indices/index.md` /
   `accounts/index.md` (`RecordDefinition` → storage class). The data_nodes
   `SKILL.md` is SDK-owned guidance (referenced, not edited).
@@ -636,7 +636,7 @@ Stage 6 verification also surfaced and fixed two registration-correctness gaps
 that only appear once requests build for the storage classes: the markets
 register/build helpers (`models/registration.py`) and the catalog
 (`maintenance/catalog.py`) are now kind-aware — they omit `introspect` /
-`open_for_everyone` for `PlatformTimeIndexMetaData` storage classes (which the
+`open_for_everyone` for `PlatformTimeIndexMetaTable` storage classes (which the
 SDK rejects for that base) via `_platform_registration_kwargs(...)`; and all six
 FK-bearing storage classes now use SQLAlchemy `ForeignKey(...)` declarations.
 

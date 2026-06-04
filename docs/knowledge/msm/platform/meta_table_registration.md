@@ -13,7 +13,7 @@ admin flow, not by runtime startup.
 
 Market models inherit `MarketsMetaTableMixin`, which itself inherits the SDK
 `PlatformManagedMetaTable` base. Time-indexed DataNode storage inherits
-`PlatformTimeIndexMetaData` through `MarketsTimeIndexMetaTableMixin`.
+`PlatformTimeIndexMetaTable` through `MarketsTimeIndexMetaTableMixin`.
 Do not set `__tablename__` on normal markets MetaTable models. The markets
 mixins assign package-owned physical names with the convention
 `ms_markets__<lowercase-concept>`. When `MSM_AUTO_REGISTER_NAMESPACE` is set
@@ -41,10 +41,10 @@ runtime = msm.start_engine(
 
 `msm.start_engine(...)` is the supported runtime attachment entrypoint for
 platform-managed markets tables. It resolves requested models in foreign-key
-dependency order, reads the finalized maintenance catalog, and binds registered
-platform `MetaTable` objects back
-onto their SQLAlchemy model classes. It must not create application tables,
-apply migrations, or repair catalog drift.
+dependency order, resolves registered backend `MetaTable` and
+`TimeIndexMetaTable` objects by each model's SQLAlchemy table name, and binds
+those backend objects onto their SQLAlchemy model classes. It must not create
+application tables, apply migrations, or repair catalog drift.
 
 The schema mutation entrypoint is the admin CLI:
 
@@ -64,8 +64,8 @@ example, `AccountTable` is cataloged as `ms_markets__account`, or as
 `ms_markets__account__mainsequence_examples` when
 `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` is set before model import.
 The registered platform `MetaTable.uid` is only known after migration
-finalization and catalog attach. Row operations read that UID from the bound
-model when compiling operation scope.
+finalization and runtime attachment. Row operations read that UID from the
+bound model when compiling operation scope.
 
 Foreign keys between platform-managed MetaTables are normal SQLAlchemy/Alembic
 foreign keys:
@@ -120,26 +120,27 @@ import msm
 msm.start_engine()
 ```
 
-`msm.start_engine(...)` is catalog-based and read-only. Startup attaches the existing
-`msm.maintenance.models.MarketsMetaTableCatalogTable` and reads catalog rows for
-requested table names. Tables missing from the catalog are treated as missing
-migration finalization, not as permission to register application tables.
+`msm.start_engine(...)` is direct and read-only. Startup queries backend
+`MetaTable` and `TimeIndexMetaTable` resources by requested table names. Missing
+backend rows are treated as missing migration finalization, not as permission to
+register application tables.
 
 The catalog is finalized by the SDK migration upgrade flow. That command applies
 Alembic-rendered SQL through the backend migration endpoint, synchronizes the
 provider MetaTable catalog, and runs the `msm` provider hook that writes the
 catalog projection with the current platform UID, namespace, table name,
-description, model name, and SDK version. The catalog is a runtime pointer
-projection, not the schema authority. The catalog is intentionally
-MetaTable-specific; DataNode registration state belongs in a separate catalog if
-it is needed later.
+description, model name, and SDK version. The catalog is an inventory
+projection, not the schema authority and not the runtime binding source. The
+catalog is intentionally MetaTable-specific; DataNode registration state belongs
+in a separate catalog if it is needed later.
 
-When startup attaches already-cataloged platform-managed MetaTables, it uses a
-bulk backend lookup for the cataloged MetaTable UIDs and binds the returned
-handles. Runtime attachment does not call `MetaTable.get_by_uid(...)` one table
-at a time and does not introspect physical storage. Physical schema validation
-belongs to the SDK migration flow and explicit diagnostics, not to normal
-application startup.
+When startup attaches platform-managed MetaTables, it partitions requested
+models into normal `MetaTable` models and `PlatformTimeIndexMetaTable` storage
+models, then performs one backend filter lookup per resource type keyed by
+`model.__table__.name`. Runtime attachment does not call `MetaTable.get_by_uid(...)`
+one table at a time and does not introspect physical storage. Physical schema
+validation belongs to the SDK migration flow and explicit diagnostics, not to
+normal application startup.
 
 The same rule applies to the internal maintenance catalog itself. Installations
 with an older catalog physical table that still contains removed fields such as
@@ -249,9 +250,9 @@ runtime; a second call with different arguments raises instead of silently
 rotating table names or execution context.
 
 Runtime attachment emits structured Main Sequence `info` logs for namespace
-selection, model resolution, catalog attachment, repository context creation,
-final runtime creation, and cached-runtime reuse. Missing catalog
-rows or missing backend `MetaTable.uid` resources fail startup and must be
+selection, model resolution, direct backend attachment, repository context
+creation, final runtime creation, and cached-runtime reuse. Missing backend
+`MetaTable` or `TimeIndexMetaTable` resources fail startup and must be
 corrected by the SDK migration upgrade flow or an explicit admin/platform
 repair.
 
@@ -285,8 +286,8 @@ Asset.upsert(unique_identifier="example-asset-btc", asset_type="crypto")
 ```
 
 With the environment variable set, `msm.start_engine(...)` uses the example
-namespace and attaches the finalized catalog rows for the
-selected tables.
+namespace and resolves the selected backend tables by their namespaced
+SQLAlchemy table identifiers.
 The namespace cannot be changed safely after `msm.models` or
 `msm.maintenance.models` is imported because the markets mixins assign the
 physical table name while SQLAlchemy maps each model class.
@@ -312,8 +313,8 @@ that plumbing and use the `msm.api` row API instead.
 ## External Registered
 
 Use external-registered mode when an admin workflow has already registered
-application-owned physical tables and finalized the markets catalog. Runtime
-startup still attaches from catalog only. It does not perform external table
+application-owned physical tables. Runtime startup still attaches by direct
+backend lookup. It does not perform external table
 registration.
 
 ```python

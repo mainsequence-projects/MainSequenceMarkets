@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from mainsequence.logconf import logger as _mainsequence_logger
 
-from msm.base import markets_meta_table_identifier
+from msm.base import markets_table_storage_name
 from msm.settings import (
     markets_auto_register_namespace,
     markets_namespace,
@@ -46,7 +46,7 @@ class MarketsRuntime:
     def table(self, model: "MarketsModelSelector") -> "MarketsMetaTableHandle":
         handle = self.context.table(model)
         meta_table = self.registration.meta_table_by_identifier.get(
-            markets_meta_table_identifier(handle.model)
+            markets_table_storage_name(handle.model)
         )
         if meta_table is None:
             return handle
@@ -144,8 +144,10 @@ def start_engine(
             logger.info("Configuring markets MetaTable namespace", namespace=namespace)
             configure_metatable_namespace(namespace)
 
-        from msm.maintenance.catalog import attach_markets_meta_tables_from_catalog
-        from msm.models.registration import resolve_markets_meta_table_models
+        from msm.models.registration import (
+            resolve_markets_meta_table_models,
+            resolve_registered_markets_meta_tables,
+        )
         from msm.repositories.base import MarketsRepositoryContext
 
         meta_table_models = resolve_markets_meta_table_models(models)
@@ -155,19 +157,16 @@ def start_engine(
             model_count=len(meta_table_models),
             models=[_model_name(model) for model in meta_table_models],
         )
-        catalog_bootstrap = attach_markets_meta_tables_from_catalog(
+        registration = resolve_registered_markets_meta_tables(
             management_mode=management_mode,
             timeout=timeout,
             models=meta_table_models,
         )
-        registration = catalog_bootstrap.registration
         logger.info(
-            "Attached finalized markets MetaTables from catalog",
+            "Resolved registered markets MetaTables",
             management_mode=management_mode,
             namespace=namespace,
             meta_table_count=len(registration.meta_tables),
-            attached_count=catalog_bootstrap.attached_count,
-            catalog_meta_table_uid=getattr(catalog_bootstrap.catalog_meta_table, "uid", None),
         )
         context = MarketsRepositoryContext(
             timeout=timeout,
@@ -223,17 +222,18 @@ def attach_schemas(
             )
             return cached_runtime
 
-        from msm.maintenance.catalog import attach_markets_meta_tables_from_catalog
-        from msm.models.registration import resolve_markets_meta_table_models
+        from msm.models.registration import (
+            resolve_markets_meta_table_models,
+            resolve_registered_markets_meta_tables,
+        )
         from msm.repositories.base import MarketsRepositoryContext
 
         meta_table_models = resolve_markets_meta_table_models(models)
-        catalog_attach = attach_markets_meta_tables_from_catalog(
+        registration = resolve_registered_markets_meta_tables(
             management_mode=management_mode,
             timeout=timeout,
             models=meta_table_models,
         )
-        registration = catalog_attach.registration
         context = MarketsRepositoryContext(
             timeout=timeout,
             namespace=namespace,
