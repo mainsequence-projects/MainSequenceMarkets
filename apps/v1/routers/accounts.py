@@ -6,12 +6,14 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query
 
 from apps.v1.schemas.accounts import (
+    AccountAddHoldingsRequest,
     AccountHoldingsSnapshotResponse,
     AccountListResponse,
     AccountTargetPositionsSnapshotResponse,
 )
 from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
 from apps.v1.services.accounts import (
+    add_account_holdings,
     get_account_holdings,
     get_account_summary,
     get_account_target_positions,
@@ -137,6 +139,46 @@ def get_account_holdings_by_uid(
         include_asset_detail=include_asset_detail,
         holdings_date=holdings_date,
     )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"Account {account_uid!r} was not found.")
+    return snapshot
+
+
+@router.post(
+    "/{account_uid}/add-holdings/",
+    response_model=AccountHoldingsSnapshotResponse,
+    summary="Add account holdings snapshot",
+    description=(
+        "Create or replace one account holdings snapshot and return it using the "
+        "same response contract as the holdings read endpoint."
+    ),
+    operation_id="addAccountHoldings",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "Invalid holdings payload.",
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested account uid was not found.",
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "A holdings snapshot already exists and overwrite is false.",
+        },
+    },
+)
+def add_account_holdings_by_uid(
+    account_uid: str,
+    payload: AccountAddHoldingsRequest,
+) -> AccountHoldingsSnapshotResponse:
+    try:
+        snapshot = add_account_holdings(account_uid=account_uid, payload=payload)
+    except ValueError as exc:
+        if exc.__class__.__name__ == "AccountHoldingsSnapshotExistsError":
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     if snapshot is None:
         raise HTTPException(status_code=404, detail=f"Account {account_uid!r} was not found.")
     return snapshot

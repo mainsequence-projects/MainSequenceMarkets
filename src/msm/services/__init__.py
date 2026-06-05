@@ -4,6 +4,8 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS = {
+    "AccountHoldingsSnapshotExistsError": ".accounts",
+    "add_account_holdings_snapshot_response": ".accounts",
     "append_asset_category_membership": ".asset_categories",
     "bulk_delete_asset_category_records": ".asset_master_lists",
     "build_account_holdings_frame": ".holdings",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 from typing import Any
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -71,6 +72,26 @@ class AccountHoldingsSnapshotResponse(BaseModel):
     target_trade_time: dt.datetime | None = None
     related_expected_asset_exposure_df: list[Any] = Field(default_factory=list)
     holdings: list[AccountHoldingRow] = Field(default_factory=list)
+
+
+class AccountAddHoldingsPositionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    unique_identifier: str = Field(min_length=1)
+    asset_uid: str | None = None
+    position_type: Literal["units"] = "units"
+    quantity: str = Field(min_length=1)
+    direction: Literal[-1, 1] = 1
+    target_trade_time: dt.datetime | None = None
+    extra_details: dict[str, Any] = Field(default_factory=dict)
+
+
+class AccountAddHoldingsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    holdings_date: dt.datetime
+    overwrite: bool = False
+    positions: list[AccountAddHoldingsPositionRequest] = Field(min_length=1)
 
 
 class AccountTargetPositionAssetReference(BaseModel):

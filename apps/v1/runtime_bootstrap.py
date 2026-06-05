@@ -12,6 +12,7 @@ V1_RUNTIME_MODELS = [
     "AssetCategoryMembership",
     "IndexType",
     "Index",
+    "AccountHoldingsSet",
     "AccountHoldingsStorage",
     "AccountTargetPortfolio",
     "PositionSet",

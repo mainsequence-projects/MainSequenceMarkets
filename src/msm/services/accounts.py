@@ -17,6 +17,10 @@ MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT = 500
 MAX_ACCOUNT_TARGET_POSITIONS_SCAN_LIMIT = 500
 
 
+class AccountHoldingsSnapshotExistsError(ValueError):
+    """Raised when a holdings snapshot exists and overwrite is disabled."""
+
+
 def create_account(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
     return account_repository.create_account(context, **kwargs)
 
@@ -197,6 +201,71 @@ def get_account_holdings_snapshot_response(
     )
 
 
+def add_account_holdings_snapshot_response(
+    context: MarketsRepositoryContext,
+    *,
+    account_uid: str,
+    holdings_date: dt.datetime | str,
+    positions: Sequence[Mapping[str, Any] | Any],
+    overwrite: bool = False,
+    include_asset_detail: bool = True,
+) -> dict[str, Any] | None:
+    account_row = _first_operation_row(get_account_by_uid(context, uid=account_uid))
+    if account_row is None:
+        return None
+
+    resolved_account_uid = str(account_row["uid"])
+    normalized_holdings_date = _required_datetime(holdings_date, field_name="holdings_date")
+    normalized_positions = _normalize_add_holdings_positions(
+        context,
+        positions=positions,
+        holdings_date=normalized_holdings_date,
+    )
+
+    existing_holdings_set = _get_account_holdings_set_row(
+        context,
+        account_uid=resolved_account_uid,
+        holdings_date=normalized_holdings_date,
+    )
+    if existing_holdings_set is not None:
+        if not overwrite:
+            raise AccountHoldingsSnapshotExistsError(
+                "Account holdings snapshot already exists for "
+                f"account_uid={resolved_account_uid!r} and holdings_date="
+                f"{normalized_holdings_date.isoformat()}."
+            )
+        _delete_account_holdings_set_row(
+            context,
+            uid=str(existing_holdings_set["uid"]),
+        )
+
+    holdings_set = _upsert_account_holdings_set_row(
+        context,
+        account_uid=resolved_account_uid,
+        holdings_date=normalized_holdings_date,
+    )
+    holdings_set_uid = _string_or_none(holdings_set.get("uid"))
+    if holdings_set_uid is None:
+        raise RuntimeError("Account holdings set write did not return a uid.")
+
+    holdings_frame = _build_account_holdings_frame(
+        holdings_date=normalized_holdings_date,
+        account_uid=resolved_account_uid,
+        holdings_set_uid=holdings_set_uid,
+        positions=normalized_positions,
+    )
+    _publish_account_holdings_frame(holdings_frame)
+
+    return get_account_holdings_snapshot_response(
+        context,
+        account_uid=resolved_account_uid,
+        order="desc",
+        limit=1,
+        include_asset_detail=include_asset_detail,
+        holdings_date=normalized_holdings_date,
+    )
+
+
 def get_account_target_positions_snapshot_response(
     context: MarketsRepositoryContext,
     *,
@@ -343,6 +412,13 @@ def _string_or_none(value: Any) -> str | None:
     return str(value)
 
 
+def _required_string(value: Any, field_name: str) -> str:
+    text = _string_or_none(value)
+    if text is None:
+        raise ValueError(f"{field_name} is required.")
+    return text
+
+
 def _mapping_or_none(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, Mapping):
         return None
@@ -375,6 +451,163 @@ def _search_account_holdings_rows(
         )
         if isinstance(row, Mapping)
     ]
+
+
+def _normalize_add_holdings_positions(
+    context: MarketsRepositoryContext,
+    *,
+    positions: Sequence[Mapping[str, Any] | Any],
+    holdings_date: dt.datetime,
+) -> list[dict[str, Any]]:
+    normalized_positions: list[dict[str, Any]] = []
+    for position in positions:
+        payload = _position_payload(position)
+        unique_identifier = _required_string(payload.get("unique_identifier"), "unique_identifier")
+        asset_row = _asset_row_by_unique_identifier(context, unique_identifier=unique_identifier)
+        if asset_row is None:
+            raise ValueError(f"Asset {unique_identifier!r} was not found.")
+
+        asset_uid = _string_or_none(payload.get("asset_uid"))
+        if asset_uid is not None and asset_uid != str(asset_row["uid"]):
+            raise ValueError(
+                f"asset_uid {asset_uid!r} does not match asset "
+                f"{unique_identifier!r} uid {asset_row['uid']!s}."
+            )
+
+        position_type = _string_or_none(payload.get("position_type")) or "units"
+        if position_type != "units":
+            raise ValueError("Only position_type='units' is supported for account holdings.")
+
+        target_trade_time = payload.get("target_trade_time")
+        normalized_target_trade_time = (
+            holdings_date
+            if target_trade_time in (None, "")
+            else _required_datetime(target_trade_time, field_name="target_trade_time")
+        )
+        if normalized_target_trade_time != holdings_date:
+            raise ValueError("target_trade_time must match holdings_date for add-holdings.")
+
+        normalized_positions.append(
+            {
+                "asset_identifier": unique_identifier,
+                "quantity": payload.get("quantity"),
+                "direction": payload.get("direction", 1),
+                "target_trade_time": normalized_target_trade_time,
+                "extra_details": _mapping_or_empty(payload.get("extra_details")),
+            }
+        )
+    return normalized_positions
+
+
+def _position_payload(position: Mapping[str, Any] | Any) -> dict[str, Any]:
+    if isinstance(position, Mapping):
+        return dict(position)
+    model_dump = getattr(position, "model_dump", None)
+    if callable(model_dump):
+        return dict(model_dump())
+    return {
+        key: getattr(position, key)
+        for key in (
+            "unique_identifier",
+            "asset_uid",
+            "position_type",
+            "quantity",
+            "direction",
+            "target_trade_time",
+            "extra_details",
+        )
+        if hasattr(position, key)
+    }
+
+
+def _asset_row_by_unique_identifier(
+    context: MarketsRepositoryContext,
+    *,
+    unique_identifier: str,
+) -> dict[str, Any] | None:
+    from msm.services.assets import get_asset_by_unique_identifier
+
+    return _first_operation_row(
+        get_asset_by_unique_identifier(
+            context,
+            unique_identifier=unique_identifier,
+        )
+    )
+
+
+def _get_account_holdings_set_row(
+    context: MarketsRepositoryContext,
+    *,
+    account_uid: str,
+    holdings_date: dt.datetime,
+) -> dict[str, Any] | None:
+    from msm.models import AccountHoldingsSetTable
+    from msm.repositories.crud import search_model
+
+    rows = operation_result_rows(
+        search_model(
+            context,
+            model=AccountHoldingsSetTable,
+            filters={
+                "account_uid": account_uid,
+                "time_index": holdings_date,
+            },
+            limit=1,
+        )
+    )
+    return rows[0] if rows else None
+
+
+def _delete_account_holdings_set_row(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+) -> None:
+    from msm.models import AccountHoldingsSetTable
+    from msm.repositories.crud import delete_model
+
+    delete_model(context, model=AccountHoldingsSetTable, uid=uid)
+
+
+def _upsert_account_holdings_set_row(
+    context: MarketsRepositoryContext,
+    *,
+    account_uid: str,
+    holdings_date: dt.datetime,
+) -> dict[str, Any]:
+    from msm.models import AccountHoldingsSetTable
+    from msm.repositories.crud import upsert_model
+
+    return _first_operation_row(
+        upsert_model(
+            context,
+            model=AccountHoldingsSetTable,
+            values={
+                "account_uid": account_uid,
+                "time_index": holdings_date,
+            },
+            conflict_columns=("account_uid", "time_index"),
+        )
+    ) or {}
+
+
+def _build_account_holdings_frame(**kwargs: Any):
+    from msm.services import build_account_holdings_frame
+
+    return build_account_holdings_frame(**kwargs)
+
+
+def _publish_account_holdings_frame(frame: Any) -> None:
+    from msm.data_nodes.accounts import AccountHoldings
+
+    holdings_node = AccountHoldings(config=AccountHoldings.default_config())
+    holdings_node.set_frame(frame)
+    error_on_last_update, _updated_frame = holdings_node.run(
+        debug_mode=True,
+        force_update=True,
+    )
+    if error_on_last_update:
+        raise RuntimeError(f"Account holdings update failed: {error_on_last_update}")
 
 
 def _select_account_holdings_snapshot_rows(
@@ -753,6 +986,16 @@ def _datetime_or_none(value: Any) -> dt.datetime | None:
     return timestamp.astimezone(dt.UTC)
 
 
+def _required_datetime(value: Any, *, field_name: str) -> dt.datetime:
+    try:
+        timestamp = _datetime_or_none(value)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be an ISO-8601 timestamp.") from exc
+    if timestamp is None:
+        raise ValueError(f"{field_name} is required.")
+    return timestamp
+
+
 def _number_string_or_none(value: Any) -> str | None:
     if value in (None, ""):
         return None
@@ -784,6 +1027,8 @@ def _mapping_or_empty(value: Any) -> dict[str, Any]:
 
 
 __all__ = [
+    "AccountHoldingsSnapshotExistsError",
+    "add_account_holdings_snapshot_response",
     "create_account",
     "create_account_target_portfolio",
     "create_position_set",

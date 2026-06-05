@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 
 from apps.v1.schemas.accounts import (
+    AccountAddHoldingsRequest,
     AccountHoldingsSnapshotResponse,
     AccountListResponse,
     AccountTargetPositionsSnapshotResponse,
@@ -56,6 +57,25 @@ def get_account_holdings(
     return AccountHoldingsSnapshotResponse.model_validate(snapshot)
 
 
+def add_account_holdings(
+    *,
+    account_uid: str,
+    payload: AccountAddHoldingsRequest,
+) -> AccountHoldingsSnapshotResponse | None:
+    runtime = _get_holdings_runtime()
+    snapshot = _add_account_holdings_snapshot_response(
+        runtime.context,
+        account_uid=account_uid,
+        holdings_date=payload.holdings_date,
+        overwrite=payload.overwrite,
+        positions=payload.positions,
+        include_asset_detail=True,
+    )
+    if snapshot is None:
+        return None
+    return AccountHoldingsSnapshotResponse.model_validate(snapshot)
+
+
 def get_account_target_positions(
     *,
     account_uid: str,
@@ -94,6 +114,7 @@ def _get_holdings_runtime():
         models=[
             "Account",
             "Asset",
+            "AccountHoldingsSet",
             "AccountHoldingsStorage",
             "AssetSnapshotsStorage",
         ],
@@ -133,6 +154,12 @@ def _get_account_holdings_snapshot_response(context, **kwargs):
     from msm.services import get_account_holdings_snapshot_response
 
     return get_account_holdings_snapshot_response(context, **kwargs)
+
+
+def _add_account_holdings_snapshot_response(context, **kwargs):
+    from msm.services import add_account_holdings_snapshot_response
+
+    return add_account_holdings_snapshot_response(context, **kwargs)
 
 
 def _get_account_target_positions_snapshot_response(context, **kwargs):
