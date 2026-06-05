@@ -75,6 +75,14 @@ Current local-dev behavior:
   - supports `categories__uid` for nested category asset tables
   - returns the library `msm.api.assets.Asset` contract:
     `uid`, `unique_identifier`, and `asset_type`
+- `GET /api/v1/asset/{uid}/`
+  - supports `response_format=frontend_detail`
+  - resolves the asset by `uid`
+  - returns `AssetDetailResponse` with top-level `uid`, `unique_identifier`,
+    `asset_type`, and `current_snapshot`
+  - `current_snapshot` is the latest `AssetSnapshotsStorage` row for the
+    asset `unique_identifier` / snapshot `asset_identifier`
+  - does not use numeric asset IDs for asset identity
 - `GET /api/v1/asset/{uid}/summary/`
   - returns a reusable `FrontEndDetailSummary` response for detail-page
     summary cards

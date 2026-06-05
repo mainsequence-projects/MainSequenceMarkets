@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -200,6 +201,25 @@ def list_asset_rows(
         ]
 
     return normalized_rows[offset : offset + limit]
+
+
+def get_asset_record(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+) -> dict[str, Any] | None:
+    asset_row = _first_operation_row(service_get_asset_by_uid(context, uid=uid))
+    if asset_row is None:
+        return None
+    unique_identifier = _string_or_empty(asset_row.get("unique_identifier"))
+    snapshot_row = _latest_asset_snapshot_by_unique_identifier(
+        context,
+        unique_identifier=unique_identifier,
+    )
+    return _build_asset_detail_record(
+        asset_row=asset_row,
+        snapshot_row=snapshot_row,
+    )
 
 
 def get_asset_frontend_detail_summary(
@@ -727,6 +747,90 @@ def _build_asset_record(asset_row: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _build_asset_detail_record(
+    *,
+    asset_row: Mapping[str, Any],
+    snapshot_row: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    asset_record = _build_asset_record(asset_row)
+    return {
+        **asset_record,
+        "current_snapshot": _build_asset_current_snapshot(
+            unique_identifier=asset_record["unique_identifier"],
+            snapshot_row=snapshot_row,
+        ),
+        "details": [],
+        "trading_view": None,
+        "order_form": None,
+    }
+
+
+def _build_asset_current_snapshot(
+    *,
+    unique_identifier: str,
+    snapshot_row: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "time_index": (
+            _datetime_or_none(snapshot_row.get("time_index"))
+            if snapshot_row is not None
+            else None
+        ),
+        "asset_identifier": (
+            _string_or_none(snapshot_row.get("asset_identifier"))
+            if snapshot_row is not None
+            else _string_or_none(unique_identifier)
+        ),
+        "name": _string_or_none(snapshot_row.get("name")) if snapshot_row is not None else None,
+        "ticker": (
+            _string_or_none(snapshot_row.get("ticker")) if snapshot_row is not None else None
+        ),
+        "exchange_code": (
+            _string_or_none(snapshot_row.get("exchange_code"))
+            if snapshot_row is not None
+            else None
+        ),
+        "asset_ticker_group_id": (
+            _string_or_none(snapshot_row.get("asset_ticker_group_id"))
+            if snapshot_row is not None
+            else None
+        ),
+    }
+
+
+def _latest_asset_snapshot_by_unique_identifier(
+    context: MarketsRepositoryContext,
+    *,
+    unique_identifier: str,
+) -> dict[str, Any] | None:
+    if not unique_identifier:
+        return None
+
+    from msm.data_nodes.storage import AssetSnapshotsStorage
+
+    rows = _operation_result_rows(
+        search_model(
+            context,
+            model=AssetSnapshotsStorage,
+            filters={"asset_identifier": unique_identifier},
+            limit=MAX_SCAN_LIMIT,
+        )
+    )
+    latest_row: dict[str, Any] | None = None
+    latest_time: dt.datetime | None = None
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        snapshot_time = _datetime_or_none(row.get("time_index"))
+        if snapshot_time is None:
+            continue
+        if latest_time is not None and snapshot_time <= latest_time:
+            continue
+        latest_row = dict(row)
+        latest_time = snapshot_time
+    return latest_row
+
+
 def _build_index_list_row(index_row: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "uid": str(index_row["uid"]),
@@ -1065,6 +1169,27 @@ def _string_or_empty(value: Any) -> str:
     return _string_or_none(value) or ""
 
 
+def _datetime_or_none(value: Any) -> dt.datetime | None:
+    if isinstance(value, dt.datetime):
+        parsed = value
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        if text.endswith("Z"):
+            text = f"{text[:-1]}+00:00"
+        try:
+            parsed = dt.datetime.fromisoformat(text)
+        except ValueError:
+            return None
+    else:
+        return None
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc)
+
+
 def _mapping_or_none(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, Mapping):
         return None
@@ -1084,6 +1209,7 @@ __all__ = [
     "get_asset_category_frontend_detail",
     "get_asset_category_row",
     "get_asset_category_record",
+    "get_asset_record",
     "get_index_record",
     "list_asset_catalog_rows",
     "list_asset_rows",

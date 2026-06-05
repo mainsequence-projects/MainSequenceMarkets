@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse
+from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
 from apps.v1.schemas.common import FrontEndDetailSummary
 
 
@@ -23,6 +23,14 @@ def list_assets(
         category_uid=category_uid,
     )
     return [Asset.model_validate(row) for row in rows]
+
+
+def get_asset(*, uid: str) -> AssetDetailResponse | None:
+    runtime = _get_runtime()
+    record = _get_asset_record(runtime.context, uid=uid)
+    if record is None:
+        return None
+    return AssetDetailResponse.model_validate(record)
 
 
 def get_asset_summary(*, uid: str) -> FrontEndDetailSummary | None:
@@ -50,6 +58,7 @@ def _get_runtime():
             "OpenFigiAssetDetails",
             "AssetCategory",
             "AssetCategoryMembership",
+            "AssetSnapshotsStorage",
         ],
         row_model_name="GET /api/v1/asset/",
     )
@@ -59,6 +68,12 @@ def _list_asset_rows(context, **kwargs):
     from msm.services import list_asset_rows
 
     return list_asset_rows(context, **kwargs)
+
+
+def _get_asset_record(context, **kwargs):
+    from msm.services import get_asset_record
+
+    return get_asset_record(context, **kwargs)
 
 
 def _get_asset_frontend_detail_summary(context, **kwargs):

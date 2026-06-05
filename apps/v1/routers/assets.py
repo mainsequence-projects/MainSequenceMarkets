@@ -4,9 +4,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse
+from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
 from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
-from apps.v1.services.assets import get_asset_pricing_details, get_asset_summary, list_assets
+from apps.v1.services.assets import (
+    get_asset,
+    get_asset_pricing_details,
+    get_asset_summary,
+    list_assets,
+)
 
 router = APIRouter(prefix="/asset", tags=["asset"])
 
@@ -73,6 +78,46 @@ def get_assets(
         offset=offset,
         category_uid=categories__uid,
     )
+
+
+@router.get(
+    "/{uid}/",
+    response_model=AssetDetailResponse,
+    summary="Get asset",
+    description=(
+        "Return one asset detail row by uid, including the latest "
+        "AssetSnapshotsStorage row as `current_snapshot` when available."
+    ),
+    operation_id="getAsset",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "Unsupported response format or invalid request boundary input.",
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested asset uid was not found.",
+        },
+    },
+)
+def get_asset_by_uid(
+    uid: str,
+    response_format: Annotated[
+        str,
+        Query(
+            description="Supported value for this endpoint is `frontend_detail`.",
+        ),
+    ] = "frontend_detail",
+) -> AssetDetailResponse:
+    if response_format != "frontend_detail":
+        raise HTTPException(
+            status_code=400,
+            detail="Only response_format=frontend_detail is implemented for GET /api/v1/asset/{uid}/.",
+        )
+    record = get_asset(uid=uid)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Asset {uid!r} was not found.")
+    return record
 
 
 @router.get(

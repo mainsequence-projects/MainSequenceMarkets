@@ -38,6 +38,7 @@ _EXPORTS = {
     "get_account_holdings_snapshot_response": ".accounts",
     "get_account_target_positions_snapshot_response": ".accounts",
     "get_asset_frontend_detail_summary": ".asset_master_lists",
+    "get_asset_record": ".asset_master_lists",
     "get_asset_by_uid": ".assets",
     "get_asset_by_unique_identifier": ".assets",
     "get_asset_category_by_uid": ".asset_categories",

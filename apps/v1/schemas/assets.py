@@ -4,15 +4,9 @@ import datetime as dt
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-from apps.v1.schemas.common import (
-    FrontEndDetailSummaryBadge,
-    FrontEndDetailSummaryField,
-    FrontEndDetailSummaryLabelManagement,
-    FrontEndDetailSummaryStat,
-)
 
 
 def _asset_contract():
@@ -25,21 +19,23 @@ def _asset_contract():
 Asset = _asset_contract()
 
 
-class AssetFrontEndDetailSummaryEntity(BaseModel):
-    uid: str
-    type: str
-    title: str
+class AssetCurrentSnapshotResponse(BaseModel):
+    time_index: dt.datetime | None = None
+    asset_identifier: str | None = None
+    name: str | None = None
+    ticker: str | None = None
+    exchange_code: str | None = None
+    asset_ticker_group_id: str | None = None
 
 
-class AssetFrontEndDetailSummary(BaseModel):
-    entity: AssetFrontEndDetailSummaryEntity
-    badges: list[FrontEndDetailSummaryBadge]
-    inline_fields: list[FrontEndDetailSummaryField]
-    highlight_fields: list[FrontEndDetailSummaryField]
-    stats: list[FrontEndDetailSummaryStat]
-    label_management: FrontEndDetailSummaryLabelManagement | None = None
-    summary_warning: str | None = None
-    extensions: dict[str, Any]
+class AssetDetailResponse(BaseModel):
+    uid: UUID
+    unique_identifier: str
+    asset_type: str | None = None
+    current_snapshot: AssetCurrentSnapshotResponse
+    details: list[dict[str, Any]] = Field(default_factory=list)
+    trading_view: dict[str, Any] | None = None
+    order_form: dict[str, Any] | None = None
 
 
 class AssetCurrentPricingDetailsResponse(BaseModel):
