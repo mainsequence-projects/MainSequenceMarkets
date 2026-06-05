@@ -71,6 +71,7 @@ nav:
       - Direct MetaTable Runtime Binding: ADR/0025-direct-metatable-runtime-binding.md
       - Explicit Pricing Market Data Sets: ADR/0026-explicit-pricing-market-data-sets.md
       - Account Target Position Portfolio Exposure: ADR/0027-account-target-position-portfolio-exposure.md
+      - Core Calendar Reference Data Model: ADR/0028-core-calendar-reference-data.md
   - Changelog: changelog.md
   - Reference:
       - API Reference: reference/index.md

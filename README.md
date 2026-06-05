@@ -119,6 +119,12 @@ Install pricing support only when needed:
 uv sync --extra pricing
 ```
 
+Install portfolio workflow support only when needed:
+
+```bash
+uv sync --extra portfolios
+```
+
 Install the project-level FastAPI surface only when needed:
 
 ```bash
@@ -202,13 +208,14 @@ The core stack starts with:
 - `mainsequence` for platform integration
 - `SQLAlchemy` for market-domain ORM models
 - `pydantic` for typed configuration and serialized row contracts
-- `pandas` and `numpy` for tabular market data and portfolio workflows
+- `pandas` and `numpy` for tabular market data
 
 Optional extras provide documentation, development, portfolio, public API,
-pricing, and Streamlit UI tooling. The `public_api` extra installs FastAPI and
-Uvicorn for the project-level `apps/v1` surface. The `pricing` and
-`pricing-streamlit` extras install QuantLib and the optional pricing runtime
-exposed as `msm_pricing`.
+pricing, and Streamlit UI tooling. The `portfolios` extra installs
+portfolio-only helpers such as `pandas-market-calendars`. The `public_api` extra
+installs FastAPI and Uvicorn for the project-level `apps/v1` surface. The
+`pricing` and `pricing-streamlit` extras install QuantLib and the optional
+pricing runtime exposed as `msm_pricing`.
 
 ## Package Metadata
 

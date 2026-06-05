@@ -27,6 +27,8 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Added a `pandas-market-calendars>=5.4.0` version floor to the `portfolios`
+  optional extra and documented it as an `msm_portfolios`-only helper.
 - Updated the account workflow example to include a short ETH holding and
   changed `Account.pretty_print_positions(...)` to report quantity positions as
   signed exposure using `quantity * direction`.

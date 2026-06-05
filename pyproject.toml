@@ -73,7 +73,7 @@ docs = [
 portfolios = [
   "docstring-parser",
   "joblib",
-  "pandas-market-calendars",
+  "pandas-market-calendars>=5.4.0",
   "scikit-learn",
   "tqdm",
 ]

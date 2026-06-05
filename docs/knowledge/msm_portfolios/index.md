@@ -8,6 +8,10 @@ portfolio DataNodes.
 The package may depend on core `msm` tables such as assets and accounts, but
 portfolio-specific tables, APIs, services, DataNodes, and examples belong here.
 
+Install portfolio workflows with the `ms-markets[portfolios]` extra. That extra
+owns portfolio-only runtime helpers such as `pandas-market-calendars`; the core
+`ms-markets` install does not require them.
+
 ## Areas
 
 - [Portfolios](portfolios/index.md): portfolio identity, asset linkage,
