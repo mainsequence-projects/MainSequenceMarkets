@@ -14,6 +14,11 @@ This API is intentionally thin:
 - MetaTable catalogue discovery and row management is backed by
   `src/msm/services/catalog.py`
 
+## Planned Route ADRs
+
+- [Calendar CRUD Route](ADR/0001-calendar-crud-route.md): proposed route group
+  for calendar identity CRUD and bounded date, session, and event maintenance.
+
 ## Runtime Bootstrap
 
 When `MSM_AUTO_REGISTER_NAMESPACE` is set for local development, `apps/v1`

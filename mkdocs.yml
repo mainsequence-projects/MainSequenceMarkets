@@ -29,6 +29,8 @@ nav:
       - Market Workflows: tutorial/market_workflows.md
   - FastAPI:
       - v1: fast_api/v1/index.md
+      - ADR:
+          - Calendar CRUD Route: fast_api/v1/ADR/0001-calendar-crud-route.md
   - Knowledge:
       - Overview: knowledge/index.md
       - msm:
