@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 from collections.abc import Callable, Mapping
+from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -523,10 +524,36 @@ def _position_type_and_value(position: Any) -> tuple[str, Any]:
         ("weight_notional_exposure", "weight_notional_exposure"),
     ):
         if column_name in position and not _is_missing(position.get(column_name)):
+            if column_name == "quantity":
+                return position_type, _signed_quantity_value(position)
             return position_type, position.get(column_name)
     raise ValueError(
         "Holdings positions require one of quantity, target_weight, or weight_notional_exposure."
     )
+
+
+def _signed_quantity_value(position: Any) -> Any:
+    value = position.get("quantity")
+    direction = _position_direction(position)
+    if isinstance(value, str):
+        try:
+            return float(Decimal(value) * Decimal(direction))
+        except InvalidOperation as exc:
+            raise ValueError(f"Invalid holdings quantity {value!r}.") from exc
+    return value * direction
+
+
+def _position_direction(position: Any) -> int:
+    value = position.get("direction", 1)
+    if _is_missing(value):
+        return 1
+    try:
+        direction = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid holdings direction {value!r}.") from exc
+    if direction not in {1, -1}:
+        raise ValueError("Holdings direction must be 1 for long or -1 for short.")
+    return direction
 
 
 def _is_missing(value: Any) -> bool:

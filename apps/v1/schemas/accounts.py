@@ -52,6 +52,7 @@ class AccountHoldingRow(BaseModel):
     position_type: str = "units"
     price: str | None = None
     quantity: str | None = None
+    direction: int = 1
     missing_price: bool = True
     target_trade_time: dt.datetime | None = None
     extra_details: dict[str, Any] = Field(default_factory=dict)

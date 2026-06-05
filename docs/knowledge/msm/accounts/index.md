@@ -121,9 +121,10 @@ positions = account.pretty_print_positions(updated_frame)
 
 The printed table has `asset_uid`, `ticker`, `position_type`, and
 `position_value`. The method resolves `asset_uid` from the canonical `Asset`
-row, reads `ticker` from row `extra_details` when present, and keeps holdings
-reads explicit by requiring the caller to pass the holdings frame. Do not pass
-the raw `AccountHoldings.run(...)` tuple; unpack it and pass the DataFrame.
+row, reads `ticker` from row `extra_details` when present, and reports quantity
+positions as signed exposure (`quantity * direction`). Holdings reads remain
+explicit by requiring the caller to pass the holdings frame. Do not pass the raw
+`AccountHoldings.run(...)` tuple; unpack it and pass the DataFrame.
 
 The full workflow example is `examples/msm/accounts/account_workflow.py`. It creates
 two crypto assets, publishes `AssetSnapshot` rows with canonical ticker and name

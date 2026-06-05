@@ -215,8 +215,8 @@ def run_account_workflow() -> dict[str, Any]:
     print("11. Building two-asset holdings rows for both accounts.")
     holdings_frames = []
     account_quantities = (
-        {"btc_quantity": 10.0, "eth_quantity": 25.0},
-        {"btc_quantity": 5.0, "eth_quantity": 12.5},
+        {"btc_quantity": 10.0, "eth_quantity": 25.0, "eth_direction": 1},
+        {"btc_quantity": 5.0, "eth_quantity": 12.5, "eth_direction": -1},
     )
     for account, quantities in zip(accounts, account_quantities, strict=True):
         holdings_set = AccountHoldingsSet.upsert(
@@ -237,7 +237,11 @@ def run_account_workflow() -> dict[str, Any]:
             f"{account.unique_identifier}: "
             f"holdings_set_uid={holdings_set.uid} "
             f"btc_quantity={quantities['btc_quantity']} "
-            f"eth_quantity={quantities['eth_quantity']} rows={len(holdings_frame)}"
+            f"eth_quantity={quantities['eth_quantity']} "
+            f"eth_direction={quantities['eth_direction']} "
+            f"eth_signed_quantity="
+            f"{quantities['eth_quantity'] * quantities['eth_direction']} "
+            f"rows={len(holdings_frame)}"
         )
         holdings_frames.append(holdings_frame)
 

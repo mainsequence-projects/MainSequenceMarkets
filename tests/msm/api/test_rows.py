@@ -122,6 +122,7 @@ def test_account_pretty_print_positions_formats_holdings(capsys) -> None:
                 "account_uid": account_uid,
                 "asset_identifier": "example-asset-btc",
                 "quantity": 10.0,
+                "direction": -1,
                 "extra_details": {"ticker": "BTC"},
             }
         ]
@@ -140,7 +141,7 @@ def test_account_pretty_print_positions_formats_holdings(capsys) -> None:
             "asset_uid": asset_uid,
             "ticker": "BTC",
             "position_type": "quantity",
-            "position_value": 10.0,
+            "position_value": -10.0,
         }
     ]
     assert "asset_uid" in capsys.readouterr().out

@@ -7,6 +7,12 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
+from apps.v1.schemas.common import (
+    FrontEndDetailSummaryBadge,
+    FrontEndDetailSummaryField,
+    FrontEndDetailSummaryLabelManagement,
+    FrontEndDetailSummaryStat,
+)
 
 
 def _asset_contract():
@@ -17,6 +23,23 @@ def _asset_contract():
 
 
 Asset = _asset_contract()
+
+
+class AssetFrontEndDetailSummaryEntity(BaseModel):
+    uid: str
+    type: str
+    title: str
+
+
+class AssetFrontEndDetailSummary(BaseModel):
+    entity: AssetFrontEndDetailSummaryEntity
+    badges: list[FrontEndDetailSummaryBadge]
+    inline_fields: list[FrontEndDetailSummaryField]
+    highlight_fields: list[FrontEndDetailSummaryField]
+    stats: list[FrontEndDetailSummaryStat]
+    label_management: FrontEndDetailSummaryLabelManagement | None = None
+    summary_warning: str | None = None
+    extensions: dict[str, Any]
 
 
 class AssetCurrentPricingDetailsResponse(BaseModel):

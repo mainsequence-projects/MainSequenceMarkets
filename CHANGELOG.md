@@ -27,6 +27,15 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Updated the account workflow example to include a short ETH holding and
+  changed `Account.pretty_print_positions(...)` to report quantity positions as
+  signed exposure using `quantity * direction`.
+- Added ADR 0027 for expanding account target-position exposure so rows can
+  target either direct assets or portfolios without creating portfolio assets,
+  portfolio-index identities, or a generic target table.
+- Improved the equal-weight portfolio example so it prints each workflow step,
+  created row UID, DataNode storage UID, frame row count, and the
+  `--no-run-data-nodes` local-only mode instead of dumping a raw result object.
 - Pruned obsolete ADRs that described superseded migration runners, lazy
   registration, route implementation plans, and deprecated DataNode foreign-key
   architecture; the ADR index and MkDocs navigation now list current

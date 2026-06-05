@@ -49,6 +49,9 @@ Current local-dev behavior:
   - supports `order`, `limit=1`, `include_asset_detail`, and exact
     `holdings_date`
   - returns one holdings snapshot backed by `AccountHoldingsStorage`
+  - each holding exposes `direction` (`1` long, `-1` short)
+  - `quantity` is rendered as the signed frontend quantity
+    (`AccountHoldingsStorage.quantity * direction`)
   - returns 200 with an empty `holdings` list when the account exists but no
     holdings snapshot matches
   - nullable compatibility fields such as `id`, `snapshot_uid`, `nav`, and

@@ -267,7 +267,8 @@ def test_get_account_holdings_returns_snapshot(monkeypatch) -> None:
                     },
                     "position_type": "units",
                     "price": None,
-                    "quantity": "12.0",
+                    "quantity": "-12.0",
+                    "direction": -1,
                     "missing_price": True,
                     "target_trade_time": None,
                     "extra_details": {"source": "test"},
@@ -293,6 +294,8 @@ def test_get_account_holdings_returns_snapshot(monkeypatch) -> None:
         "name": "Bitcoin spot",
         "ticker": "BTC",
     }
+    assert body["holdings"][0]["quantity"] == "-12.0"
+    assert body["holdings"][0]["direction"] == -1
 
 
 def test_get_account_holdings_passes_query_params(monkeypatch) -> None:
@@ -482,6 +485,7 @@ def test_account_holdings_service_maps_snapshot(monkeypatch) -> None:
                     "position_type": "units",
                     "price": None,
                     "quantity": "12.0",
+                    "direction": 1,
                     "missing_price": True,
                     "target_trade_time": None,
                     "extra_details": {},
@@ -583,7 +587,7 @@ def test_core_account_holdings_snapshot_selects_latest(monkeypatch) -> None:
                 "holdings_set_uid": "latest-set",
                 "is_trade_snapshot": False,
                 "quantity": 12.0,
-                "direction": 1,
+                "direction": -1,
                 "target_trade_time": None,
                 "extra_details": {"source": "test"},
             },
@@ -634,8 +638,8 @@ def test_core_account_holdings_snapshot_selects_latest(monkeypatch) -> None:
                 },
                 "position_type": "units",
                 "price": None,
-                "quantity": "12.0",
-                "direction": 1,
+                "quantity": "-12.0",
+                "direction": -1,
                 "missing_price": True,
                 "target_trade_time": None,
                 "extra_details": {"source": "test"},

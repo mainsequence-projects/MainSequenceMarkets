@@ -248,6 +248,8 @@ See `examples/msm_portfolios/portfolio_equal_weights_example.py` for the
 end-to-end workflow that creates the portfolio `Index`, prepares
 `SignalWeights`, `PortfolioWeights`, and `PortfoliosDataNode`, and upserts the
 `Portfolio` row with `portfolio_index_uid` plus the three DataNode storage UIDs.
+The example narrates each setup, publication, portfolio, and virtual-fund
+allocation step so terminal output explains what was created.
 
 ## Extension Notes
 

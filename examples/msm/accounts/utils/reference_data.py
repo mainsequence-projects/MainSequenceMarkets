@@ -57,6 +57,7 @@ def example_account_holdings_positions(
     target_trade_time: dt.datetime,
     btc_quantity: float,
     eth_quantity: float,
+    eth_direction: int = 1,
 ) -> list[dict[str, Any]]:
     return [
         {
@@ -69,7 +70,7 @@ def example_account_holdings_positions(
         {
             "asset_identifier": EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
             "quantity": eth_quantity,
-            "direction": 1,
+            "direction": eth_direction,
             "target_trade_time": target_trade_time,
             "extra_details": {"ticker": EXAMPLE_ETH_TICKER, "name": "Ethereum"},
         },

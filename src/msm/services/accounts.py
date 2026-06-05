@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import math
 from collections.abc import Iterable, Mapping, Sequence
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from msm.api.base import operation_result_rows
@@ -447,6 +448,7 @@ def _build_account_holding_row(
     asset_reference: dict[str, Any] | None,
     include_asset_detail: bool,
 ) -> dict[str, Any]:
+    direction = _int_or_default(row.get("direction"), default=1)
     return {
         "time_index": _datetime_or_none(row.get("time_index")),
         "unique_identifier": _string_or_empty(row.get("asset_identifier")),
@@ -454,8 +456,8 @@ def _build_account_holding_row(
         "asset": asset_reference if include_asset_detail else None,
         "position_type": "units",
         "price": None,
-        "quantity": _number_string_or_none(row.get("quantity")),
-        "direction": _int_or_default(row.get("direction"), default=1),
+        "quantity": _signed_number_string_or_none(row.get("quantity"), direction=direction),
+        "direction": direction,
         "missing_price": True,
         "target_trade_time": _datetime_or_none(row.get("target_trade_time")),
         "extra_details": _mapping_or_empty(row.get("extra_details")),
@@ -757,6 +759,16 @@ def _number_string_or_none(value: Any) -> str | None:
     if isinstance(value, float) and math.isnan(value):
         return None
     return str(value)
+
+
+def _signed_number_string_or_none(value: Any, *, direction: int) -> str | None:
+    raw_value = _number_string_or_none(value)
+    if raw_value is None:
+        return None
+    try:
+        return str(Decimal(raw_value) * Decimal(direction))
+    except (InvalidOperation, ValueError):
+        return raw_value
 
 
 def _int_or_default(value: Any, *, default: int) -> int:

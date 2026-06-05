@@ -301,7 +301,9 @@ virtual_fund = VirtualFund.upsert(
 See `examples/msm_portfolios/portfolio_equal_weights_example.py` for the portfolio
 workflow that creates the optional portfolio `Index`, prepares `SignalWeights`,
 `PortfolioWeights`, and `PortfoliosDataNode`, and stores their DataNode UIDs on
-the `Portfolio` row.
+the `Portfolio` row. The script prints the workflow steps, created row UIDs,
+DataNode storage UIDs, frame row counts, and the local-only mode used by
+`--no-run-data-nodes`.
 
 ```python
 from msm.api.accounts import AccountHoldingsSet, AccountTargetPortfolio, PositionSet
@@ -317,7 +319,7 @@ holdings = build_account_holdings_frame(
     holdings_set_uid=holdings_set.uid,
     positions=[
         {"asset_identifier": "BTC", "quantity": 1.0, "direction": 1},
-        {"asset_identifier": "ETH", "quantity": 10.0, "direction": 1},
+        {"asset_identifier": "ETH", "quantity": 10.0, "direction": -1},
     ],
 )
 
