@@ -60,9 +60,13 @@ from msm_portfolios.api.portfolios import Portfolio
 
 msm_portfolios.start_engine(models=["Calendar", "CalendarDate", "CalendarSession", "Portfolio"])
 
-calendar = Calendar.get_or_create_crypto_24_7(
-    start_date="2026-05-25",
-    end_date="2026-05-25",
+calendar = Calendar.create_from_pandas_calendar(
+    source_identifier="24/7",
+    unique_identifier="CRYPTO_24_7",
+    display_name="Crypto 24/7",
+    valid_from="2026-05-25",
+    valid_to="2026-05-25",
+    timezone="UTC",
 )
 
 portfolio = Portfolio.upsert(

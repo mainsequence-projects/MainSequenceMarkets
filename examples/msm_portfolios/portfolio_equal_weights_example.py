@@ -115,11 +115,14 @@ def register_assets() -> list[Asset]:
     return assets
 
 
-def get_or_create_crypto_calendar() -> Calendar:
-    portfolio_calendar = Calendar.get_or_create_crypto_24_7(
-        start_date=TIME_INDEX.date(),
-        end_date=TIME_INDEX.date(),
+def create_crypto_calendar_from_pandas() -> Calendar:
+    portfolio_calendar = Calendar.create_from_pandas_calendar(
+        source_identifier="24/7",
         unique_identifier=CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
+        display_name="Crypto 24/7",
+        valid_from=TIME_INDEX.date(),
+        valid_to=TIME_INDEX.date(),
+        timezone="UTC",
         metadata_json={"example": "portfolio_equal_weights_example"},
     )
     print_detail("calendar_uid", portfolio_calendar.uid)
@@ -357,7 +360,7 @@ def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, An
     assets = register_assets()
 
     print_step(3, "Creating or reusing the crypto 24/7 calendar.")
-    portfolio_calendar = get_or_create_crypto_calendar()
+    portfolio_calendar = create_crypto_calendar_from_pandas()
 
     print_step(4, "Registering the allocation account.")
     account = register_account()

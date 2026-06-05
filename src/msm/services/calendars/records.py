@@ -33,7 +33,13 @@ from msm.repositories.calendars import (
     bulk_upsert_calendar_events,
     bulk_upsert_calendar_sessions,
 )
-from msm.repositories.crud import create_model, delete_model, get_model_by_uid, search_model, update_model
+from msm.repositories.crud import (
+    create_model,
+    delete_model,
+    get_model_by_uid,
+    search_model,
+    update_model,
+)
 
 from .validation import coerce_local_date
 
@@ -130,9 +136,7 @@ def update_calendar_record(
     if not payload:
         return existing
 
-    row = _first_operation_row(
-        update_model(context, model=CalendarTable, uid=uid, values=payload)
-    )
+    row = _first_operation_row(update_model(context, model=CalendarTable, uid=uid, values=payload))
     return row or get_calendar_record(context, uid=uid)
 
 
@@ -281,7 +285,9 @@ def list_calendar_session_records(
     limit: int = 500,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
-    statement = select(CalendarSessionTable).where(CalendarSessionTable.calendar_uid == calendar_uid)
+    statement = select(CalendarSessionTable).where(
+        CalendarSessionTable.calendar_uid == calendar_uid
+    )
     statement = _apply_date_window(
         statement,
         model=CalendarSessionTable,

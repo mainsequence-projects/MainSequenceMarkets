@@ -74,21 +74,21 @@ class Calendar(MarketsMetaTableRow):
         return super().update(uid, validate_payload(CalendarUpdate, payload, kwargs))
 
     @classmethod
-    def get_or_create_from_pandas_market_calendar(
+    def create_from_pandas_calendar(
         cls,
         *,
         source_identifier: str,
-        start_date: dt.date | dt.datetime | str,
-        end_date: dt.date | dt.datetime | str,
-        unique_identifier: str | None = None,
-        display_name: str | None = None,
+        unique_identifier: str,
+        display_name: str,
+        valid_from: dt.date | dt.datetime | str,
+        valid_to: dt.date | dt.datetime | str,
         calendar_type: CalendarType | str = CalendarType.TRADING,
         timezone: str | None = None,
         session_label: str = "regular",
         metadata_json: dict[str, Any] | None = None,
         materialize: bool = True,
     ) -> Calendar:
-        """Upsert a calendar and optionally materialize rows from pandas-market-calendars."""
+        """Upsert a calendar and materialize rows from pandas-market-calendars."""
 
         from msm.bootstrap import resolve_runtime
         from msm.services.calendars import (
@@ -97,7 +97,7 @@ class Calendar(MarketsMetaTableRow):
             materialize_calendar_rows,
         )
 
-        start, end = ensure_date_range(start_date, end_date)
+        start, end = ensure_date_range(valid_from, valid_to)
         runtime = resolve_runtime(
             models=[CalendarTable, CalendarDateTable, CalendarSessionTable]
             if materialize
@@ -106,8 +106,8 @@ class Calendar(MarketsMetaTableRow):
         )
         resolved_timezone = timezone or _pandas_market_calendar_timezone(source_identifier)
         calendar = cls.upsert(
-            unique_identifier=unique_identifier or source_identifier,
-            display_name=display_name or source_identifier,
+            unique_identifier=unique_identifier,
+            display_name=display_name,
             calendar_type=calendar_type,
             timezone=resolved_timezone,
             source="pandas_market_calendars",
@@ -127,31 +127,6 @@ class Calendar(MarketsMetaTableRow):
             )
             materialize_calendar_rows(runtime.context, rows)
         return calendar
-
-    @classmethod
-    def get_or_create_crypto_24_7(
-        cls,
-        *,
-        start_date: dt.date | dt.datetime | str,
-        end_date: dt.date | dt.datetime | str,
-        unique_identifier: str = "CRYPTO_24_7",
-        display_name: str = "Crypto 24/7",
-        metadata_json: dict[str, Any] | None = None,
-        materialize: bool = True,
-    ) -> Calendar:
-        """Upsert and materialize the standard crypto 24/7 trading calendar."""
-
-        return cls.get_or_create_from_pandas_market_calendar(
-            source_identifier="24/7",
-            start_date=start_date,
-            end_date=end_date,
-            unique_identifier=unique_identifier,
-            display_name=display_name,
-            calendar_type=CalendarType.TRADING,
-            timezone="UTC",
-            metadata_json=metadata_json,
-            materialize=materialize,
-        )
 
 
 class CalendarCreate(BaseModel):

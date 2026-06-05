@@ -85,7 +85,7 @@ def test_calendar_event_upsert_requires_event_date_for_conflict_key() -> None:
     assert payload.target_identifier == ""
 
 
-def test_calendar_get_or_create_from_pandas_market_calendar_materializes(monkeypatch) -> None:
+def test_calendar_create_from_pandas_calendar_materializes(monkeypatch) -> None:
     runtime = SimpleNamespace(context=object())
     calls: dict[str, object] = {}
     calendar_uid = uuid.uuid4()
@@ -122,12 +122,12 @@ def test_calendar_get_or_create_from_pandas_market_calendar_materializes(monkeyp
     )
     monkeypatch.setattr("msm.services.calendars.materialize_calendar_rows", fake_materialize)
 
-    calendar = Calendar.get_or_create_from_pandas_market_calendar(
+    calendar = Calendar.create_from_pandas_calendar(
         source_identifier="NYSE",
         unique_identifier="XNYS",
         display_name="New York Stock Exchange",
-        start_date="2026-01-01",
-        end_date="2026-01-02",
+        valid_from="2026-01-01",
+        valid_to="2026-01-02",
     )
 
     assert calendar.unique_identifier == "XNYS"
@@ -155,27 +155,3 @@ def test_calendar_get_or_create_from_pandas_market_calendar_materializes(monkeyp
         "session_label": "regular",
     }
     assert calls["materialize"][0] is runtime.context
-
-
-def test_calendar_get_or_create_crypto_24_7_uses_pandas_24_7(monkeypatch) -> None:
-    calls = {}
-
-    def fake_get_or_create_from_pandas_market_calendar(cls, **kwargs):
-        calls.update(kwargs)
-        return SimpleNamespace(unique_identifier=kwargs["unique_identifier"])
-
-    monkeypatch.setattr(
-        Calendar,
-        "get_or_create_from_pandas_market_calendar",
-        classmethod(fake_get_or_create_from_pandas_market_calendar),
-    )
-
-    calendar = Calendar.get_or_create_crypto_24_7(
-        start_date=dt.date(2026, 1, 1),
-        end_date=dt.date(2026, 1, 2),
-    )
-
-    assert calendar.unique_identifier == "CRYPTO_24_7"
-    assert calls["source_identifier"] == "24/7"
-    assert calls["timezone"] == "UTC"
-    assert calls["calendar_type"] == CalendarType.TRADING

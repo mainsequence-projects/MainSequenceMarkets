@@ -124,24 +124,27 @@ For common generated calendars, the row API owns the entrypoint:
 ```python
 from msm.api.calendars import Calendar
 
-crypto_calendar = Calendar.get_or_create_crypto_24_7(
-    start_date="2026-05-25",
-    end_date="2026-05-25",
+crypto_calendar = Calendar.create_from_pandas_calendar(
+    source_identifier="24/7",
+    unique_identifier="CRYPTO_24_7",
+    display_name="Crypto 24/7",
+    valid_from="2026-05-25",
+    valid_to="2026-05-25",
+    timezone="UTC",
 )
 
-xnys_calendar = Calendar.get_or_create_from_pandas_market_calendar(
+xnys_calendar = Calendar.create_from_pandas_calendar(
     source_identifier="NYSE",
     unique_identifier="XNYS",
     display_name="New York Stock Exchange",
-    start_date="2026-01-01",
-    end_date="2026-12-31",
+    valid_from="2026-01-01",
+    valid_to="2026-12-31",
 )
 ```
 
-`get_or_create_from_pandas_market_calendar(...)` upserts the `Calendar` row and,
-by default, materializes bounded `CalendarDate` and `CalendarSession` rows in
-the active runtime. `get_or_create_crypto_24_7(...)` uses the
-`pandas_market_calendars` `24/7` calendar as the standard crypto helper.
+`create_from_pandas_calendar(...)` upserts the `Calendar` row and, by default,
+materializes bounded `CalendarDate` and `CalendarSession` rows in the active
+runtime. Use `source_identifier="24/7"` for a crypto always-open calendar.
 
 ## Materialization
 
@@ -163,9 +166,10 @@ rows = build_pandas_market_calendar_materialization(
 materialize_calendar_rows(runtime.context, rows)
 ```
 
-For 24/7 markets, prefer `Calendar.get_or_create_crypto_24_7(...)` in user
-workflows. Use `build_always_open_calendar_materialization(...)` only when you
-need lower-level service control.
+For 24/7 markets, prefer `Calendar.create_from_pandas_calendar(...)` with
+`source_identifier="24/7"` in user workflows. Use
+`build_always_open_calendar_materialization(...)` only when you need lower-level
+service control.
 
 The date range is intentionally bounded. Do not create infinite calendars.
 

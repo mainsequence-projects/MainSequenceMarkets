@@ -27,10 +27,10 @@ and this project follows versioned releases.
 
 ### Changed
 
-- Added `Calendar.get_or_create_from_pandas_market_calendar(...)` and
-  `Calendar.get_or_create_crypto_24_7(...)` as class-owned calendar generation
-  entrypoints, and updated the equal-weight portfolio example to reuse shared
-  crypto assets plus the generated `CRYPTO_24_7` calendar.
+- Added `Calendar.create_from_pandas_calendar(...)` as the generic class-owned
+  calendar generation entrypoint, and updated the equal-weight portfolio example
+  to reuse shared crypto assets plus a generated `CRYPTO_24_7` calendar from
+  the pandas `24/7` calendar.
 - Replaced the JSON-only core calendar row with normalized `Calendar`,
   `CalendarDate`, `CalendarSession`, and `CalendarEvent` MetaTables plus
   typed APIs, materialization helpers, docs, and an example workflow.

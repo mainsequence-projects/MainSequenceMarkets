@@ -120,9 +120,9 @@ custom calendar facts:
    `mainsequence migrations upgrade --provider migrations:migration head`.
 2. Attach `Calendar`, `CalendarDate`, `CalendarSession`, and `CalendarEvent`
    with `msm.start_engine(...)`.
-3. Use `Calendar.get_or_create_from_pandas_market_calendar(...)` for generated
-   market calendars, or `Calendar.get_or_create_crypto_24_7(...)` for the
-   standard crypto 24/7 calendar.
+3. Use `Calendar.create_from_pandas_calendar(...)` for generated market
+   calendars, including `source_identifier="24/7"` for the standard crypto
+   24/7 calendar.
 4. Use `msm.services.calendars` directly only when lower-level materialization
    control is required.
 
@@ -133,9 +133,13 @@ should read the persisted rows or reference `CalendarTable.uid`.
 ```python
 from msm.api.calendars import Calendar
 
-calendar = Calendar.get_or_create_crypto_24_7(
-    start_date="2026-05-25",
-    end_date="2026-05-25",
+calendar = Calendar.create_from_pandas_calendar(
+    source_identifier="24/7",
+    unique_identifier="CRYPTO_24_7",
+    display_name="Crypto 24/7",
+    valid_from="2026-05-25",
+    valid_to="2026-05-25",
+    timezone="UTC",
 )
 ```
 

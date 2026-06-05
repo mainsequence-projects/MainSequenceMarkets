@@ -288,12 +288,18 @@ account = Account.upsert(
     unique_identifier="acct-main",
     account_name="Main Account",
 )
+calendar = Calendar.create_from_pandas_calendar(
+    source_identifier="24/7",
+    unique_identifier="CRYPTO_24_7",
+    display_name="Crypto 24/7",
+    valid_from="2026-05-25",
+    valid_to="2026-05-25",
+    timezone="UTC",
+)
 portfolio = Portfolio.upsert(
     unique_identifier="btc-eth-target",
-    calendar_uid=Calendar.get_or_create_crypto_24_7(
-        start_date="2026-05-25",
-        end_date="2026-05-25",
-    ).uid,
+    calendar_uid=calendar.uid,
+    calendar_name=calendar.unique_identifier,
 )
 virtual_fund = VirtualFund.upsert(
     unique_identifier="vf-core",
