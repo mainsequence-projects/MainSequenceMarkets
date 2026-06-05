@@ -70,6 +70,7 @@ nav:
       - Namespace-Scoped Alembic Version Locations: ADR/0024-namespace-scoped-alembic-version-locations.md
       - Direct MetaTable Runtime Binding: ADR/0025-direct-metatable-runtime-binding.md
       - Explicit Pricing Market Data Sets: ADR/0026-explicit-pricing-market-data-sets.md
+      - Account Target Position Portfolio Exposure: ADR/0027-account-target-position-portfolio-exposure.md
   - Changelog: changelog.md
   - Reference:
       - API Reference: reference/index.md
