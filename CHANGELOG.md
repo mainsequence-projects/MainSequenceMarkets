@@ -42,6 +42,10 @@ and this project follows versioned releases.
 - Added ADR 0027 for expanding account target-position exposure so rows can
   target either direct assets or portfolios without creating portfolio assets,
   portfolio-index identities, or a generic target table.
+- Implemented ADR 0027 by moving portfolio-aware target-position storage into
+  `msm_portfolios`, replacing target `asset_identifier` rows with
+  `target_type`/`target_uid` plus `asset_uid` or `portfolio_uid`, and chaining
+  the account workflow example to the equal-weight portfolio example by default.
 - Improved the equal-weight portfolio example so it prints each workflow step,
   created row UID, DataNode storage UID, frame row count, and the
   `--no-run-data-nodes` local-only mode instead of dumping a raw result object.
