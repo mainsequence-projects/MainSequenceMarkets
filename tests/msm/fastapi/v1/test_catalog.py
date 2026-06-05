@@ -12,6 +12,7 @@ def test_get_catalogues_returns_catalogue_list(monkeypatch) -> None:
     monkeypatch.setattr(
         "apps.v1.routers.catalog.list_catalogs",
         lambda **kwargs: {
+            "count": 1,
             "results": [
                 {
                     "uid": str(catalog_uid),
@@ -42,6 +43,9 @@ def test_get_catalogues_returns_catalogue_list(monkeypatch) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload == {
+        "count": 1,
+        "next": None,
+        "previous": None,
         "results": [
             {
                 "uid": str(catalog_uid),
@@ -59,8 +63,6 @@ def test_get_catalogues_returns_catalogue_list(monkeypatch) -> None:
                 "delete_endpoint_template": f"/api/v1/catalog/{catalog_uid}/rows/{{uid}}/",
             }
         ],
-        "limit": 25,
-        "offset": 0,
     }
     assert "physical_schema" not in payload["results"][0]
     assert "physical_table_name" not in payload["results"][0]
@@ -86,6 +88,7 @@ def test_get_catalogue_rows_returns_generic_rows(monkeypatch) -> None:
                     "primary_key": True,
                 }
             ],
+            "count": 1,
             "results": [
                 {
                     "uid": str(row_uid),
@@ -122,6 +125,9 @@ def test_get_catalogue_rows_returns_generic_rows(monkeypatch) -> None:
                 "primary_key": True,
             }
         ],
+        "count": 1,
+        "next": None,
+        "previous": None,
         "results": [
             {
                 "uid": str(row_uid),
@@ -131,8 +137,6 @@ def test_get_catalogue_rows_returns_generic_rows(monkeypatch) -> None:
                 },
             }
         ],
-        "limit": 10,
-        "offset": 0,
     }
 
 

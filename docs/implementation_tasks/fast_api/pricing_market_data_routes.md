@@ -74,7 +74,8 @@ Pagination standard:
 
 - FastAPI list endpoints must use the reusable common envelope from
   `apps/v1/schemas/common.py`: `PaginatedResponse[T]`.
-- The response shape is `{count, limit, offset, results}`.
+- The response shape is the Django REST Framework-style limit-offset envelope:
+  `{count, next, previous, results}`.
 - `count` must represent the total rows matching the filters, not the current
   page length.
 - Do not create resource-specific list envelopes when `PaginatedResponse[T]`
@@ -166,8 +167,8 @@ Response:
 ```json
 {
   "count": 2,
-  "limit": 25,
-  "offset": 0,
+  "next": null,
+  "previous": null,
   "results": [
     {
       "uid": "7f958bbf-44cc-4cb9-ad19-b41b5aa28d60",
@@ -298,8 +299,8 @@ Response:
 ```json
 {
   "count": 2,
-  "limit": 25,
-  "offset": 0,
+  "next": null,
+  "previous": null,
   "results": [
     {
       "uid": "binding-uid",
@@ -623,7 +624,7 @@ Open decision:
 - [ ] Document delete availability only after source API delete support is
   implemented.
 - [ ] Document that pricing list endpoints use `PaginatedResponse[T]` with
-  `count`, `limit`, `offset`, and `results`.
+  `count`, `next`, `previous`, and `results`.
 
 ### Validation
 

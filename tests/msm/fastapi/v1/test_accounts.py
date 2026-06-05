@@ -37,6 +37,8 @@ def test_get_accounts_returns_count_and_results(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.json() == {
         "count": 1,
+        "next": None,
+        "previous": None,
         "results": [
             {
                 "uid": str(account_uid),
@@ -68,7 +70,12 @@ def test_get_accounts_passes_query_params(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {"count": 0, "results": []}
+    assert response.json() == {
+        "count": 0,
+        "next": None,
+        "previous": "http://testserver/api/v1/account/?search=some&limit=10&offset=0",
+        "results": [],
+    }
     assert captured == {"search": "some", "limit": 10, "offset": 5}
 
 
@@ -102,6 +109,8 @@ def test_account_service_maps_account_rows(monkeypatch) -> None:
 
     assert response.model_dump(mode="json") == {
         "count": 1,
+        "next": None,
+        "previous": None,
         "results": [
             {
                 "uid": str(account_uid),

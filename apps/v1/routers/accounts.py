@@ -62,7 +62,9 @@ def get_accounts(
         ),
     ] = 0,
 ) -> AccountListResponse:
-    response = list_accounts(search=search, limit=limit, offset=offset)
+    response = AccountListResponse.model_validate(
+        list_accounts(search=search, limit=limit, offset=offset)
+    )
     return AccountListResponse.model_validate(
         build_paginated_response(
             request_url=str(request.url),
@@ -70,7 +72,7 @@ def get_accounts(
             count=response.count,
             limit=limit,
             offset=offset,
-        )
+        ).model_dump()
     )
 
 

@@ -34,15 +34,20 @@ def test_get_asset_categories_returns_core_rows(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == [
-        {
-            "uid": str(category_uid),
-            "unique_identifier": "crypto_core",
-            "display_name": "Crypto Core",
-            "description": "Core digital assets",
-            "metadata_json": {"source": "test"},
-        }
-    ]
+    assert response.json() == {
+        "count": 1,
+        "next": None,
+        "previous": None,
+        "results": [
+            {
+                "uid": str(category_uid),
+                "unique_identifier": "crypto_core",
+                "display_name": "Crypto Core",
+                "description": "Core digital assets",
+                "metadata_json": {"source": "test"},
+            }
+        ],
+    }
 
 
 def test_get_asset_categories_rejects_unknown_response_format() -> None:

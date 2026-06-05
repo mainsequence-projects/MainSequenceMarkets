@@ -39,13 +39,18 @@ def test_get_assets_returns_core_asset_rows(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == [
-        {
-            "uid": str(asset_uid),
-            "unique_identifier": "BTC",
-            "asset_type": "crypto",
-        }
-    ]
+    assert response.json() == {
+        "count": 1,
+        "next": None,
+        "previous": None,
+        "results": [
+            {
+                "uid": str(asset_uid),
+                "unique_identifier": "BTC",
+                "asset_type": "crypto",
+            }
+        ],
+    }
 
 
 def test_get_assets_rejects_unknown_response_format() -> None:
@@ -80,10 +85,15 @@ def test_get_assets_passes_category_filter(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json() == {
+        "count": 5,
+        "next": None,
+        "previous": "http://testserver/api/v1/asset/?response_format=frontend_list&categories__uid=category-uid-1&limit=25&offset=0",
+        "results": [],
+    }
     assert captured == {
         "search": "",
-        "limit": 25,
+        "limit": 26,
         "offset": 5,
         "category_uid": "category-uid-1",
     }

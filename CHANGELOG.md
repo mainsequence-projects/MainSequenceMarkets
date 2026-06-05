@@ -30,9 +30,10 @@ and this project follows versioned releases.
 
 ### Changed
 
-- Added the reusable FastAPI v1 `PaginatedResponse[T]` envelope and true
-  offset-backed pricing market-data list methods for `PricingMarketDataSet`
-  and `PricingMarketDataSetBinding`.
+- Added the reusable FastAPI v1 `PaginatedResponse[T]` limit-offset envelope
+  with Django REST Framework-style `count`, `next`, `previous`, and `results`
+  fields, and added true offset-backed pricing market-data list methods for
+  `PricingMarketDataSet` and `PricingMarketDataSetBinding`.
 - Added public `delete(uid)` methods to `PricingMarketDataSet` and
   `PricingMarketDataSetBinding` so pricing market-data FastAPI routes can wrap
   the `msm_pricing.api` surface instead of calling repositories directly.

@@ -36,17 +36,22 @@ def test_get_indexes_returns_core_index_rows(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == [
-        {
-            "uid": str(index_uid),
-            "unique_identifier": "SPX",
-            "index_type": "equity",
-            "display_name": "S&P 500 Index",
-            "description": "Large-cap US equity index",
-            "provider": "example",
-            "metadata_json": {"currency": "USD"},
-        }
-    ]
+    assert response.json() == {
+        "count": 1,
+        "next": None,
+        "previous": None,
+        "results": [
+            {
+                "uid": str(index_uid),
+                "unique_identifier": "SPX",
+                "index_type": "equity",
+                "display_name": "S&P 500 Index",
+                "description": "Large-cap US equity index",
+                "provider": "example",
+                "metadata_json": {"currency": "USD"},
+            }
+        ],
+    }
 
 
 def test_get_indexes_rejects_unknown_response_format() -> None:

@@ -72,7 +72,7 @@ def get_catalogues(
             count=response.count,
             limit=limit,
             offset=offset,
-        )
+        ).model_dump()
     )
 
 

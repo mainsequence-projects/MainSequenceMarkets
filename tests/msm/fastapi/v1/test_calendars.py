@@ -47,9 +47,14 @@ def test_get_calendars_returns_core_rows(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == [_calendar_row(calendar_uid)]
+    assert response.json() == {
+        "count": 3,
+        "next": None,
+        "previous": "http://testserver/api/v1/calendar/?response_format=frontend_list&search=nyse&limit=10&offset=0&calendar_type=TRADING&source=pandas_market_calendars",
+        "results": [_calendar_row(calendar_uid)],
+    }
     assert captured["search"] == "nyse"
-    assert captured["limit"] == 10
+    assert captured["limit"] == 11
     assert captured["offset"] == 2
     assert captured["calendar_type"] == "TRADING"
     assert captured["source"] == "pandas_market_calendars"

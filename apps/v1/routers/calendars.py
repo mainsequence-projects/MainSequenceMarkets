@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Query, status
+from fastapi import APIRouter, Body, HTTPException, Query, Request, status
 
 from apps.v1.schemas.calendars import (
     BulkUpsertCalendarDatesRequest,
@@ -22,7 +22,12 @@ from apps.v1.schemas.calendars import (
     CalendarSessionUpdate,
     CalendarUpdate,
 )
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
+from apps.v1.schemas.common import (
+    ErrorResponse,
+    FrontEndDetailSummary,
+    PaginatedResponse,
+    build_paginated_response,
+)
 from apps.v1.services.calendars import (
     bulk_upsert_calendar_dates,
     bulk_upsert_calendar_events,
@@ -55,7 +60,7 @@ router = APIRouter(prefix="/calendar", tags=["calendar"])
 
 @router.get(
     "/",
-    response_model=list[Calendar],
+    response_model=PaginatedResponse[Calendar],
     summary="List calendars",
     description=(
         "Return core calendar identity rows. The `response_format` query parameter "
@@ -70,6 +75,7 @@ router = APIRouter(prefix="/calendar", tags=["calendar"])
     },
 )
 def get_calendars(
+    request: Request,
     response_format: Annotated[
         str,
         Query(description="Supported value for this endpoint is `frontend_list`."),
@@ -111,21 +117,27 @@ def get_calendars(
         str | None,
         Query(description="Optional exact source-specific calendar identifier filter."),
     ] = None,
-) -> list[Calendar]:
+) -> PaginatedResponse[Calendar]:
     _require_response_format(
         response_format,
         expected="frontend_list",
         route="GET /api/v1/calendar/",
     )
-    return list_calendars(
+    rows = list_calendars(
         search=search,
-        limit=limit,
+        limit=limit + 1,
         offset=offset,
         unique_identifier=unique_identifier,
         unique_identifier_contains=unique_identifier_contains,
         calendar_type=calendar_type,
         source=source,
         source_identifier=source_identifier,
+    )
+    return build_paginated_response(
+        request_url=str(request.url),
+        results=rows,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -257,12 +269,13 @@ def remove_calendar(uid: str) -> Calendar | None:
 
 @router.get(
     "/{calendar_uid}/dates/",
-    response_model=list[CalendarDate],
+    response_model=PaginatedResponse[CalendarDate],
     summary="List calendar dates",
     description="Return bounded local-date facts for one calendar.",
     operation_id="listCalendarDates",
 )
 def get_calendar_dates(
+    request: Request,
     calendar_uid: str,
     start_date: Annotated[
         dt.date | None,
@@ -296,8 +309,8 @@ def get_calendar_dates(
         int,
         Query(ge=0, description="Zero-based starting offset into the date row list."),
     ] = 0,
-) -> list[CalendarDate]:
-    return list_calendar_dates(
+) -> PaginatedResponse[CalendarDate]:
+    rows = list_calendar_dates(
         calendar_uid=calendar_uid,
         start_date=start_date,
         end_date=end_date,
@@ -305,6 +318,12 @@ def get_calendar_dates(
         is_holiday=is_holiday,
         is_weekend=is_weekend,
         is_early_close=is_early_close,
+        limit=limit + 1,
+        offset=offset,
+    )
+    return build_paginated_response(
+        request_url=str(request.url),
+        results=rows,
         limit=limit,
         offset=offset,
     )
@@ -433,12 +452,13 @@ def remove_calendar_date(calendar_uid: str, date_uid: str) -> CalendarDate | Non
 
 @router.get(
     "/{calendar_uid}/sessions/",
-    response_model=list[CalendarSession],
+    response_model=PaginatedResponse[CalendarSession],
     summary="List calendar sessions",
     description="Return session rows for one calendar, optionally bounded by local date.",
     operation_id="listCalendarSessions",
 )
 def get_calendar_sessions(
+    request: Request,
     calendar_uid: str,
     start_date: Annotated[
         dt.date | None,
@@ -464,13 +484,19 @@ def get_calendar_sessions(
         int,
         Query(ge=0, description="Zero-based starting offset into the session row list."),
     ] = 0,
-) -> list[CalendarSession]:
-    return list_calendar_sessions(
+) -> PaginatedResponse[CalendarSession]:
+    rows = list_calendar_sessions(
         calendar_uid=calendar_uid,
         start_date=start_date,
         end_date=end_date,
         session_label=session_label,
         is_primary=is_primary,
+        limit=limit + 1,
+        offset=offset,
+    )
+    return build_paginated_response(
+        request_url=str(request.url),
+        results=rows,
         limit=limit,
         offset=offset,
     )
@@ -605,12 +631,13 @@ def remove_calendar_session(calendar_uid: str, session_uid: str) -> CalendarSess
 
 @router.get(
     "/{calendar_uid}/events/",
-    response_model=list[CalendarEvent],
+    response_model=PaginatedResponse[CalendarEvent],
     summary="List calendar events",
     description="Return event rows for one calendar, optionally bounded by event date.",
     operation_id="listCalendarEvents",
 )
 def get_calendar_events(
+    request: Request,
     calendar_uid: str,
     start_date: Annotated[
         dt.date | None,
@@ -648,8 +675,8 @@ def get_calendar_events(
         int,
         Query(ge=0, description="Zero-based starting offset into the event row list."),
     ] = 0,
-) -> list[CalendarEvent]:
-    return list_calendar_events(
+) -> PaginatedResponse[CalendarEvent]:
+    rows = list_calendar_events(
         calendar_uid=calendar_uid,
         start_date=start_date,
         end_date=end_date,
@@ -658,6 +685,12 @@ def get_calendar_events(
         target_type=target_type,
         target_uid=target_uid,
         target_identifier=target_identifier,
+        limit=limit + 1,
+        offset=offset,
+    )
+    return build_paginated_response(
+        request_url=str(request.url),
+        results=rows,
         limit=limit,
         offset=offset,
     )

@@ -5,6 +5,30 @@ from fastapi.testclient import TestClient
 from apps.v1.main import app
 
 
+def _assert_paginated_schema(
+    payload: dict,
+    *,
+    schema_ref: str,
+    result_ref: str,
+) -> None:
+    schema_name = schema_ref.removeprefix("#/components/schemas/")
+    schema = payload["components"]["schemas"][schema_name]
+    assert schema["properties"]["count"]["type"] == "integer"
+    assert schema["properties"]["next"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
+    assert schema["properties"]["previous"]["anyOf"] == [
+        {"type": "string"},
+        {"type": "null"},
+    ]
+    assert schema["properties"]["results"]["items"] == {"$ref": result_ref}
+
+
+def _resolve_schema_ref(payload: dict, schema: dict) -> dict:
+    ref = schema.get("$ref")
+    if ref is None:
+        return schema
+    return payload["components"]["schemas"][ref.removeprefix("#/components/schemas/")]
+
+
 def test_openapi_json_exposes_core_api_metadata() -> None:
     client = TestClient(app)
     response = client.get("/openapi.json")
@@ -17,6 +41,47 @@ def test_openapi_json_exposes_core_api_metadata() -> None:
     assert payload["info"]["version"]
     assert payload["info"]["x-app-scope"] == "apps/v1"
     assert payload["servers"] == [{"url": "/", "description": "Current deployment"}]
+
+
+def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
+    client = TestClient(app)
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    checked_paths = []
+    for path, path_item in payload["paths"].items():
+        operation = path_item.get("get")
+        if operation is None:
+            continue
+        parameter_names = {
+            parameter["name"] for parameter in operation.get("parameters", [])
+        }
+        if not {"limit", "offset"}.issubset(parameter_names):
+            continue
+
+        schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
+        resolved_schema = _resolve_schema_ref(payload, schema)
+        assert {"count", "next", "previous", "results"}.issubset(
+            resolved_schema["properties"]
+        ), path
+        assert "limit" not in resolved_schema["properties"], path
+        assert "offset" not in resolved_schema["properties"], path
+        checked_paths.append(path)
+
+    assert set(checked_paths) == {
+        "/api/v1/account/",
+        "/api/v1/asset/",
+        "/api/v1/asset-category/",
+        "/api/v1/calendar/",
+        "/api/v1/calendar/{calendar_uid}/dates/",
+        "/api/v1/calendar/{calendar_uid}/events/",
+        "/api/v1/calendar/{calendar_uid}/sessions/",
+        "/api/v1/catalog/",
+        "/api/v1/catalog/{catalog_uid}/rows/",
+        "/api/v1/index/",
+    }
 
 
 def test_openapi_json_documents_asset_list_endpoint() -> None:
@@ -32,10 +97,13 @@ def test_openapi_json_documents_asset_list_endpoint() -> None:
     assert asset_list_operation["tags"] == ["asset"]
     assert asset_list_operation["parameters"][0]["name"] == "response_format"
     assert asset_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "items": {"$ref": "#/components/schemas/Asset"},
-        "type": "array",
-        "title": "Response Listassets",
+        "$ref": "#/components/schemas/PaginatedResponse_Asset_"
     }
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/PaginatedResponse_Asset_",
+        result_ref="#/components/schemas/Asset",
+    )
     assert asset_list_operation["responses"]["400"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/ErrorResponse"
     }
@@ -88,6 +156,11 @@ def test_openapi_json_documents_account_list_endpoint() -> None:
     assert account_list_schema["properties"]["results"]["items"] == {
         "$ref": "#/components/schemas/Account"
     }
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/AccountListResponse",
+        result_ref="#/components/schemas/Account",
+    )
 
     account_summary_operation = payload["paths"]["/api/v1/account/{uid}/summary/"]["get"]
     assert account_summary_operation["summary"] == "Get account summary"
@@ -134,10 +207,13 @@ def test_openapi_json_documents_asset_category_routes() -> None:
     assert asset_category_list_operation["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {
-        "items": {"$ref": "#/components/schemas/AssetCategory"},
-        "type": "array",
-        "title": "Response Listassetcategories",
+        "$ref": "#/components/schemas/PaginatedResponse_AssetCategory_"
     }
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/PaginatedResponse_AssetCategory_",
+        result_ref="#/components/schemas/AssetCategory",
+    )
 
     asset_category_detail_operation = payload["paths"]["/api/v1/asset-category/{uid}/"]["get"]
     assert asset_category_detail_operation["summary"] == "Get asset category detail"
@@ -168,10 +244,13 @@ def test_openapi_json_documents_index_routes() -> None:
     assert index_list_operation["operationId"] == "listIndexes"
     assert index_list_operation["tags"] == ["index"]
     assert index_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "items": {"$ref": "#/components/schemas/Index"},
-        "type": "array",
-        "title": "Response Listindexes",
+        "$ref": "#/components/schemas/PaginatedResponse_Index_"
     }
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/PaginatedResponse_Index_",
+        result_ref="#/components/schemas/Index",
+    )
 
     index_detail_operation = payload["paths"]["/api/v1/index/{uid}/"]["get"]
     assert index_detail_operation["summary"] == "Get index"
@@ -200,10 +279,49 @@ def test_openapi_json_documents_calendar_routes() -> None:
     assert calendar_list_operation["operationId"] == "listCalendars"
     assert calendar_list_operation["tags"] == ["calendar"]
     assert calendar_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "items": {"$ref": "#/components/schemas/Calendar"},
-        "type": "array",
-        "title": "Response Listcalendars",
+        "$ref": "#/components/schemas/PaginatedResponse_Calendar_"
     }
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/PaginatedResponse_Calendar_",
+        result_ref="#/components/schemas/Calendar",
+    )
+
+    calendar_dates_operation = payload["paths"]["/api/v1/calendar/{calendar_uid}/dates/"][
+        "get"
+    ]
+    assert calendar_dates_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PaginatedResponse_CalendarDate_"}
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/PaginatedResponse_CalendarDate_",
+        result_ref="#/components/schemas/CalendarDate",
+    )
+
+    calendar_sessions_operation = payload["paths"]["/api/v1/calendar/{calendar_uid}/sessions/"][
+        "get"
+    ]
+    assert calendar_sessions_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PaginatedResponse_CalendarSession_"}
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/PaginatedResponse_CalendarSession_",
+        result_ref="#/components/schemas/CalendarSession",
+    )
+
+    calendar_events_operation = payload["paths"]["/api/v1/calendar/{calendar_uid}/events/"][
+        "get"
+    ]
+    assert calendar_events_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PaginatedResponse_CalendarEvent_"}
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/PaginatedResponse_CalendarEvent_",
+        result_ref="#/components/schemas/CalendarEvent",
+    )
 
     calendar_summary_operation = payload["paths"]["/api/v1/calendar/{uid}/summary/"]["get"]
     assert calendar_summary_operation["summary"] == "Get calendar summary"
@@ -230,6 +348,11 @@ def test_openapi_json_documents_catalogue_routes() -> None:
     assert catalog_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/CatalogListResponse"
     }
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/CatalogListResponse",
+        result_ref="#/components/schemas/CatalogListRow",
+    )
 
     catalog_rows_operation = payload["paths"]["/api/v1/catalog/{catalog_uid}/rows/"]["get"]
     assert catalog_rows_operation["summary"] == "List catalogue rows"
@@ -237,6 +360,11 @@ def test_openapi_json_documents_catalogue_routes() -> None:
     assert catalog_rows_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/CatalogRowsResponse"
     }
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/CatalogRowsResponse",
+        result_ref="#/components/schemas/CatalogTableRow",
+    )
 
     catalog_delete_operation = payload["paths"]["/api/v1/catalog/{catalog_uid}/rows/{uid}/"][
         "delete"
