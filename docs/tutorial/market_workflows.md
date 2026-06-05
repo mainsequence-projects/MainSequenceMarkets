@@ -276,10 +276,13 @@ examples reuse shared identifiers and FIGI constants from
 import msm_portfolios
 
 from msm.api.accounts import Account
+from msm.api.calendars import Calendar
 from msm_portfolios.api.portfolios import Portfolio
 from msm_portfolios.api.virtual_funds import VirtualFund
 
-msm_portfolios.start_engine(models=["Account", "Portfolio", "VirtualFund"])
+msm_portfolios.start_engine(
+    models=["Account", "Calendar", "CalendarDate", "CalendarSession", "Portfolio", "VirtualFund"]
+)
 
 account = Account.upsert(
     unique_identifier="acct-main",
@@ -287,7 +290,10 @@ account = Account.upsert(
 )
 portfolio = Portfolio.upsert(
     unique_identifier="btc-eth-target",
-    calendar_name="24/7",
+    calendar_uid=Calendar.get_or_create_crypto_24_7(
+        start_date="2026-05-25",
+        end_date="2026-05-25",
+    ).uid,
 )
 virtual_fund = VirtualFund.upsert(
     unique_identifier="vf-core",
@@ -300,8 +306,9 @@ virtual_fund = VirtualFund.upsert(
 
 See `examples/msm_portfolios/portfolio_equal_weights_example.py` for the portfolio
 workflow that creates the optional portfolio `Index`, prepares `SignalWeights`,
-`PortfolioWeights`, and `PortfoliosDataNode`, and stores their DataNode UIDs on
-the `Portfolio` row. The script prints the workflow steps, created row UIDs,
+`PortfolioWeights`, and `PortfoliosDataNode`, creates or reuses the crypto
+`CRYPTO_24_7` calendar, and stores the calendar, index, and DataNode UIDs on the
+`Portfolio` row. The script prints the workflow steps, created row UIDs,
 DataNode storage UIDs, frame row counts, and the local-only mode used by
 `--no-run-data-nodes`.
 

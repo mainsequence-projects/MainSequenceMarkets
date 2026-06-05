@@ -9,7 +9,7 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from msm.api.base import MarketsMetaTableRow
-from msm.models import CalendarTable
+from msm.models import CalendarDateTable, CalendarSessionTable, CalendarTable
 
 from ._validation import normalize_upper_token, validate_payload
 
@@ -72,6 +72,86 @@ class Calendar(MarketsMetaTableRow):
         **kwargs: Any,
     ) -> Calendar:
         return super().update(uid, validate_payload(CalendarUpdate, payload, kwargs))
+
+    @classmethod
+    def get_or_create_from_pandas_market_calendar(
+        cls,
+        *,
+        source_identifier: str,
+        start_date: dt.date | dt.datetime | str,
+        end_date: dt.date | dt.datetime | str,
+        unique_identifier: str | None = None,
+        display_name: str | None = None,
+        calendar_type: CalendarType | str = CalendarType.TRADING,
+        timezone: str | None = None,
+        session_label: str = "regular",
+        metadata_json: dict[str, Any] | None = None,
+        materialize: bool = True,
+    ) -> Calendar:
+        """Upsert a calendar and optionally materialize rows from pandas-market-calendars."""
+
+        from msm.bootstrap import resolve_runtime
+        from msm.services.calendars import (
+            build_pandas_market_calendar_materialization,
+            ensure_date_range,
+            materialize_calendar_rows,
+        )
+
+        start, end = ensure_date_range(start_date, end_date)
+        runtime = resolve_runtime(
+            models=[CalendarTable, CalendarDateTable, CalendarSessionTable]
+            if materialize
+            else [CalendarTable],
+            row_model_name=cls.__name__,
+        )
+        resolved_timezone = timezone or _pandas_market_calendar_timezone(source_identifier)
+        calendar = cls.upsert(
+            unique_identifier=unique_identifier or source_identifier,
+            display_name=display_name or source_identifier,
+            calendar_type=calendar_type,
+            timezone=resolved_timezone,
+            source="pandas_market_calendars",
+            source_identifier=source_identifier,
+            valid_from=start,
+            valid_to=end,
+            metadata_json=metadata_json,
+        )
+        if materialize:
+            rows = build_pandas_market_calendar_materialization(
+                calendar_uid=calendar.uid,
+                source_identifier=source_identifier,
+                start_date=start,
+                end_date=end,
+                timezone=calendar.timezone,
+                session_label=session_label,
+            )
+            materialize_calendar_rows(runtime.context, rows)
+        return calendar
+
+    @classmethod
+    def get_or_create_crypto_24_7(
+        cls,
+        *,
+        start_date: dt.date | dt.datetime | str,
+        end_date: dt.date | dt.datetime | str,
+        unique_identifier: str = "CRYPTO_24_7",
+        display_name: str = "Crypto 24/7",
+        metadata_json: dict[str, Any] | None = None,
+        materialize: bool = True,
+    ) -> Calendar:
+        """Upsert and materialize the standard crypto 24/7 trading calendar."""
+
+        return cls.get_or_create_from_pandas_market_calendar(
+            source_identifier="24/7",
+            start_date=start_date,
+            end_date=end_date,
+            unique_identifier=unique_identifier,
+            display_name=display_name,
+            calendar_type=CalendarType.TRADING,
+            timezone="UTC",
+            metadata_json=metadata_json,
+            materialize=materialize,
+        )
 
 
 class CalendarCreate(BaseModel):
@@ -136,6 +216,13 @@ class CalendarUpdate(BaseModel):
             if self.valid_to < self.valid_from:
                 raise ValueError("valid_to must be greater than or equal to valid_from.")
         return self
+
+
+def _pandas_market_calendar_timezone(source_identifier: str) -> str:
+    import pandas_market_calendars as mcal
+
+    calendar = mcal.get_calendar(source_identifier)
+    return str(getattr(calendar, "tz", None) or "UTC")
 
 
 __all__ = [

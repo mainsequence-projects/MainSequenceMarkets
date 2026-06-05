@@ -19,10 +19,15 @@ from examples.msm.platform.bootstrap import (  # noqa: E402
 
 os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
+from examples.msm.assets.utils import (  # noqa: E402
+    EXAMPLE_CRYPTO_ASSETS,
+    EXAMPLE_CRYPTO_ASSET_TYPE,
+)
+
 import msm_portfolios  # noqa: E402
 from msm.api.accounts import Account, AccountGroup, AccountHoldingsSet  # noqa: E402
 from msm.api.assets import Asset, AssetType  # noqa: E402
-from msm.api.calendars import Calendar, CalendarType  # noqa: E402
+from msm.api.calendars import Calendar  # noqa: E402
 from msm.api.indices import Index, IndexType  # noqa: E402
 from msm.data_nodes.accounts import AccountHoldings  # noqa: E402
 from msm_portfolios.api.portfolios import Portfolio  # noqa: E402
@@ -57,12 +62,9 @@ INDEX_TYPE_PORTFOLIO = "portfolio"
 PORTFOLIO_UNIQUE_IDENTIFIER = "example-equal-weight-portfolio"
 PORTFOLIO_INDEX_UNIQUE_IDENTIFIER = "example-equal-weight-portfolio-index"
 PORTFOLIO_INDEX_DISPLAY_NAME = "Example Equal Weight Portfolio Index"
+CRYPTO_CALENDAR_UNIQUE_IDENTIFIER = "CRYPTO_24_7"
 TIME_INDEX = pd.Timestamp("2026-05-25T00:00:00Z")
-ASSET_UNIQUE_IDENTIFIERS = [
-    "BINANCE_SPOT_BTC_USDT",
-    "BINANCE_SPOT_ETH_USDT",
-    "BINANCE_SPOT_SOL_USDT",
-]
+ASSET_UNIQUE_IDENTIFIERS = [payload["unique_identifier"] for payload in EXAMPLE_CRYPTO_ASSETS]
 ACCOUNT_GROUP_NAME = "Example Portfolio Allocation Accounts"
 ACCOUNT_UNIQUE_IDENTIFIER = "example-portfolio-allocation-account"
 VIRTUAL_FUND_UNIQUE_IDENTIFIER = "example-equal-weight-virtual-fund"
@@ -90,6 +92,8 @@ def start_portfolio_example_runtime() -> None:
             "AccountHoldingsSet",
             "AccountHoldingsStorage",
             "Calendar",
+            "CalendarDate",
+            "CalendarSession",
             "Portfolio",
             "VirtualFund",
             "VirtualFundHoldingsSet",
@@ -104,18 +108,27 @@ def start_portfolio_example_runtime() -> None:
 
 
 def register_assets() -> list[Asset]:
-    asset_type = AssetType.upsert(
-        asset_type="crypto",
-        display_name="Crypto",
-        description="Crypto spot instruments used by portfolio examples.",
-    )
-    assets = [
-        Asset.upsert(unique_identifier=asset_identifier, asset_type="crypto")
-        for asset_identifier in ASSET_UNIQUE_IDENTIFIERS
-    ]
+    asset_type = AssetType.upsert(**EXAMPLE_CRYPTO_ASSET_TYPE)
+    assets = [Asset.upsert(**asset_payload) for asset_payload in EXAMPLE_CRYPTO_ASSETS]
     print_detail("asset_type", asset_type.asset_type)
     print_detail("assets", ", ".join(asset.unique_identifier for asset in assets))
     return assets
+
+
+def get_or_create_crypto_calendar() -> Calendar:
+    portfolio_calendar = Calendar.get_or_create_crypto_24_7(
+        start_date=TIME_INDEX.date(),
+        end_date=TIME_INDEX.date(),
+        unique_identifier=CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
+        metadata_json={"example": "portfolio_equal_weights_example"},
+    )
+    print_detail("calendar_uid", portfolio_calendar.uid)
+    print_detail("calendar_identifier", portfolio_calendar.unique_identifier)
+    print_detail(
+        "calendar_source",
+        f"{portfolio_calendar.source}:{portfolio_calendar.source_identifier}",
+    )
+    return portfolio_calendar
 
 
 def register_account() -> Account:
@@ -181,7 +194,11 @@ def build_fixed_weights_config() -> FixedWeightsConfig:
     )
 
 
-def build_portfolio_configuration(signal_weights: FixedWeights) -> PortfolioConfiguration:
+def build_portfolio_configuration(
+    signal_weights: FixedWeights,
+    *,
+    calendar: Calendar,
+) -> PortfolioConfiguration:
     return PortfolioConfiguration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
             assets_configuration=build_assets_configuration(),
@@ -189,7 +206,9 @@ def build_portfolio_configuration(signal_weights: FixedWeights) -> PortfolioConf
             execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.00018),
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal_weights,
-                rebalance_strategy_instance=ImmediateSignal(calendar_key="24/7"),
+                rebalance_strategy_instance=ImmediateSignal(
+                    calendar_key=calendar.unique_identifier
+                ),
             ),
         ),
         portfolio_markets_configuration=PortfolioMarketsConfig(
@@ -241,16 +260,17 @@ def build_signal_weights_frame() -> pd.DataFrame:
 
 def build_portfolio_weights_frame() -> pd.DataFrame:
     weight = 1.0 / len(ASSET_UNIQUE_IDENTIFIERS)
+    prices = [100.0 / (index + 1) for index in range(len(ASSET_UNIQUE_IDENTIFIERS))]
     return pd.DataFrame(
         {
             "time_index": [TIME_INDEX] * len(ASSET_UNIQUE_IDENTIFIERS),
             "asset_identifier": ASSET_UNIQUE_IDENTIFIERS,
             "weight": [weight] * len(ASSET_UNIQUE_IDENTIFIERS),
             "weight_before": [0.0] * len(ASSET_UNIQUE_IDENTIFIERS),
-            "price_current": [100.0, 50.0, 25.0],
-            "price_before": [100.0, 50.0, 25.0],
-            "volume_current": [1.0, 1.0, 1.0],
-            "volume_before": [0.0, 0.0, 0.0],
+            "price_current": prices,
+            "price_before": prices,
+            "volume_current": [1.0] * len(ASSET_UNIQUE_IDENTIFIERS),
+            "volume_before": [0.0] * len(ASSET_UNIQUE_IDENTIFIERS),
         }
     ).set_index(["time_index", "asset_identifier"])
 
@@ -278,20 +298,15 @@ def build_account_holdings_frame(
         holdings_set_uid=holdings_set.uid,
         positions=[
             {
-                "asset_identifier": ASSET_UNIQUE_IDENTIFIERS[0],
-                "quantity": 10.0,
+                "asset_identifier": asset_identifier,
+                "quantity": quantity,
                 "direction": 1,
-            },
-            {
-                "asset_identifier": ASSET_UNIQUE_IDENTIFIERS[1],
-                "quantity": 5.0,
-                "direction": 1,
-            },
-            {
-                "asset_identifier": ASSET_UNIQUE_IDENTIFIERS[2],
-                "quantity": 20.0,
-                "direction": 1,
-            },
+            }
+            for asset_identifier, quantity in zip(
+                ASSET_UNIQUE_IDENTIFIERS,
+                [10.0, 5.0],
+                strict=True,
+            )
         ],
     )
 
@@ -308,14 +323,17 @@ def run_storage_node(node: Any, *, enabled: bool, label: str) -> str | None:
 def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> None:
     portfolio = result["portfolio"]
     portfolio_index = result["portfolio_index"]
+    portfolio_calendar = result["portfolio_calendar"]
     account = result["account"]
     virtual_fund = result["virtual_fund"]
 
-    print_step(11, "Final portfolio workflow summary.")
+    print_step(12, "Final portfolio workflow summary.")
     print_detail("portfolio_uid", portfolio.uid)
     print_detail("portfolio_identifier", portfolio.unique_identifier)
     print_detail("portfolio_index_uid", portfolio_index.uid)
     print_detail("portfolio_index_identifier", portfolio_index.unique_identifier)
+    print_detail("portfolio_calendar_uid", portfolio_calendar.uid)
+    print_detail("portfolio_calendar_identifier", portfolio_calendar.unique_identifier)
     print_detail("account_uid", account.uid)
     print_detail("virtual_fund_uid", virtual_fund.uid)
     print_detail("virtual_fund_identifier", virtual_fund.unique_identifier)
@@ -338,15 +356,21 @@ def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, An
     print_step(2, "Registering the crypto asset universe.")
     assets = register_assets()
 
-    print_step(3, "Registering the allocation account.")
+    print_step(3, "Creating or reusing the crypto 24/7 calendar.")
+    portfolio_calendar = get_or_create_crypto_calendar()
+
+    print_step(4, "Registering the allocation account.")
     account = register_account()
 
-    print_step(4, "Registering the portfolio index row.")
+    print_step(5, "Registering the portfolio index row.")
     portfolio_index = register_portfolio_index()
 
-    print_step(5, "Preparing equal-weight signal and portfolio DataNodes.")
+    print_step(6, "Preparing equal-weight signal and portfolio DataNodes.")
     signal_weights_node = build_signal_weights_node()
-    portfolio_configuration = build_portfolio_configuration(signal_weights_node)
+    portfolio_configuration = build_portfolio_configuration(
+        signal_weights_node,
+        calendar=portfolio_calendar,
+    )
     portfolio_weights_node = build_portfolio_weights_node(portfolio_index)
     portfolio_values_node = build_portfolio_values_node(portfolio_index)
     print_detail("signal_uid", signal_weights_node.signal_uid)
@@ -358,7 +382,7 @@ def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, An
     print_detail("portfolio_weights_rows", len(build_portfolio_weights_frame()))
     print_detail("portfolio_values_rows", len(build_portfolio_values_frame()))
 
-    print_step(6, "Publishing portfolio DataNode storage outputs.")
+    print_step(7, "Publishing portfolio DataNode storage outputs.")
     signal_weights_node_uid = run_storage_node(
         signal_weights_node,
         enabled=run_data_nodes,
@@ -375,23 +399,11 @@ def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, An
         label="portfolio_values",
     )
 
-    print_step(7, "Upserting the portfolio Calendar and Portfolio rows with DataNode links.")
-    portfolio_calendar = Calendar.upsert(
-        unique_identifier="CRYPTO_24_7",
-        display_name="Crypto 24/7",
-        calendar_type=CalendarType.TRADING,
-        timezone="UTC",
-        source="user",
-        source_identifier="always_open",
-        valid_from=TIME_INDEX.date(),
-        valid_to=TIME_INDEX.date(),
-        metadata_json={"example": "portfolio_equal_weights_example"},
-    )
-    print_detail("calendar_uid", portfolio_calendar.uid)
+    print_step(8, "Upserting the Portfolio row with calendar and DataNode links.")
     portfolio = Portfolio.upsert(
         unique_identifier=PORTFOLIO_UNIQUE_IDENTIFIER,
         calendar_uid=portfolio_calendar.uid,
-        calendar_name="24/7",
+        calendar_name=portfolio_calendar.unique_identifier,
         portfolio_index_uid=portfolio_index.uid,
         signal_weights_data_node_uid=signal_weights_node_uid,
         portfolio_weights_data_node_uid=portfolio_weights_node_uid,
@@ -400,7 +412,7 @@ def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, An
     print_detail("portfolio_uid", portfolio.uid)
     print_detail("portfolio_identifier", portfolio.unique_identifier)
 
-    print_step(8, "Creating source account holdings for virtual-fund allocation.")
+    print_step(9, "Creating source account holdings for virtual-fund allocation.")
     holdings_set = AccountHoldingsSet.upsert(account_uid=account.uid, time_index=TIME_INDEX)
     account_holdings_node = AccountHoldings(config=AccountHoldings.default_config())
     account_holdings_frame = build_account_holdings_frame(
@@ -415,7 +427,7 @@ def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, An
         label="account_holdings",
     )
 
-    print_step(9, "Upserting the VirtualFund row that targets the portfolio.")
+    print_step(10, "Upserting the VirtualFund row that targets the portfolio.")
     virtual_fund = VirtualFund.upsert(
         unique_identifier=VIRTUAL_FUND_UNIQUE_IDENTIFIER,
         account_uid=account.uid,
@@ -424,7 +436,7 @@ def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, An
     print_detail("virtual_fund_uid", virtual_fund.uid)
     print_detail("virtual_fund_identifier", virtual_fund.unique_identifier)
 
-    print_step(10, "Allocating source account holdings into virtual-fund holdings.")
+    print_step(11, "Allocating source account holdings into virtual-fund holdings.")
     virtual_fund_node = VirtualFundHoldings()
     virtual_fund_allocations_frame = virtual_fund.allocate_from_account_holdings_set(
         source_account_holdings_set_uid=holdings_set.uid,
@@ -454,6 +466,7 @@ def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, An
         "account_holdings_node_uid": account_holdings_node_uid,
         "portfolio": portfolio,
         "portfolio_index": portfolio_index,
+        "portfolio_calendar": portfolio_calendar,
         "virtual_fund": virtual_fund,
         "portfolio_configuration_hash": compute_portfolio_configuration_hash(
             portfolio_configuration

@@ -55,13 +55,20 @@ Use the typed row API for registry records:
 ```python
 import msm_portfolios
 
+from msm.api.calendars import Calendar
 from msm_portfolios.api.portfolios import Portfolio
 
-msm_portfolios.start_engine(models=["Portfolio"])
+msm_portfolios.start_engine(models=["Calendar", "CalendarDate", "CalendarSession", "Portfolio"])
+
+calendar = Calendar.get_or_create_crypto_24_7(
+    start_date="2026-05-25",
+    end_date="2026-05-25",
+)
 
 portfolio = Portfolio.upsert(
     unique_identifier="btc-eth-target",
-    calendar_name="24/7",
+    calendar_uid=calendar.uid,
+    calendar_name=calendar.unique_identifier,
 )
 ```
 
@@ -260,11 +267,13 @@ columns still point to the corresponding MetaTable `unique_identifier` values
 where a source-table foreign key exists.
 
 See `examples/msm_portfolios/portfolio_equal_weights_example.py` for the
-end-to-end workflow that creates the portfolio `Index`, prepares
-`SignalWeights`, `PortfolioWeights`, and `PortfoliosDataNode`, and upserts the
-`Portfolio` row with `portfolio_index_uid` plus the three DataNode storage UIDs.
-The example narrates each setup, publication, portfolio, and virtual-fund
-allocation step so terminal output explains what was created.
+end-to-end workflow that reuses the shared crypto `Asset` example rows, creates
+or reuses a `CRYPTO_24_7` calendar from `pandas_market_calendars`, creates the
+portfolio `Index`, prepares `SignalWeights`, `PortfolioWeights`, and
+`PortfoliosDataNode`, and upserts the `Portfolio` row with `calendar_uid`,
+`portfolio_index_uid`, plus the three DataNode storage UIDs. The example
+narrates each setup, publication, portfolio, and virtual-fund allocation step so
+terminal output explains what was created.
 
 ## Extension Notes
 

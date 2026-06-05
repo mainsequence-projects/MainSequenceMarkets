@@ -119,6 +119,30 @@ from msm.api.calendars import CalendarDate, CalendarEvent, CalendarSession
 For bulk date/session writes, prefer `msm.services.calendars` materialization
 helpers rather than calling row upserts one row at a time.
 
+For common generated calendars, the row API owns the entrypoint:
+
+```python
+from msm.api.calendars import Calendar
+
+crypto_calendar = Calendar.get_or_create_crypto_24_7(
+    start_date="2026-05-25",
+    end_date="2026-05-25",
+)
+
+xnys_calendar = Calendar.get_or_create_from_pandas_market_calendar(
+    source_identifier="NYSE",
+    unique_identifier="XNYS",
+    display_name="New York Stock Exchange",
+    start_date="2026-01-01",
+    end_date="2026-12-31",
+)
+```
+
+`get_or_create_from_pandas_market_calendar(...)` upserts the `Calendar` row and,
+by default, materializes bounded `CalendarDate` and `CalendarSession` rows in
+the active runtime. `get_or_create_crypto_24_7(...)` uses the
+`pandas_market_calendars` `24/7` calendar as the standard crypto helper.
+
 ## Materialization
 
 `pandas_market_calendars` is an adapter:
@@ -139,7 +163,9 @@ rows = build_pandas_market_calendar_materialization(
 materialize_calendar_rows(runtime.context, rows)
 ```
 
-For 24/7 markets, use `build_always_open_calendar_materialization(...)`.
+For 24/7 markets, prefer `Calendar.get_or_create_crypto_24_7(...)` in user
+workflows. Use `build_always_open_calendar_materialization(...)` only when you
+need lower-level service control.
 
 The date range is intentionally bounded. Do not create infinite calendars.
 
@@ -155,7 +181,11 @@ core `msm`.
 
 ## Example
 
-See `examples/msm/calendars/calendar_materialization_workflow.py`.
+See `examples/msm/calendars/calendar_materialization_workflow.py` for the core
+calendar workflow and
+`examples/msm_portfolios/portfolio_equal_weights_example.py` for a portfolio
+that creates or reuses a `CRYPTO_24_7` calendar before writing the
+`Portfolio.calendar_uid` relationship.
 
 ## Related Concepts
 

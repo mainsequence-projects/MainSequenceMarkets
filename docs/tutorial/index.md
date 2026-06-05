@@ -120,28 +120,30 @@ custom calendar facts:
    `mainsequence migrations upgrade --provider migrations:migration head`.
 2. Attach `Calendar`, `CalendarDate`, `CalendarSession`, and `CalendarEvent`
    with `msm.start_engine(...)`.
-3. Upsert the calendar identity through `msm.api.calendars.Calendar`.
-4. Use `msm.services.calendars` to build bounded date/session rows from an
-   adapter such as `pandas_market_calendars` or from an always-open calendar.
-5. Persist the normalized rows with `materialize_calendar_rows(...)`.
+3. Use `Calendar.get_or_create_from_pandas_market_calendar(...)` for generated
+   market calendars, or `Calendar.get_or_create_crypto_24_7(...)` for the
+   standard crypto 24/7 calendar.
+4. Use `msm.services.calendars` directly only when lower-level materialization
+   control is required.
 
 `pandas_market_calendars` is not the durable source of truth. It is an adapter
 that writes into `CalendarDateTable` and `CalendarSessionTable`; consumers
 should read the persisted rows or reference `CalendarTable.uid`.
 
 ```python
-from datetime import date
+from msm.api.calendars import Calendar
 
-from msm.api.calendars import Calendar, CalendarType
-from msm.services.calendars import (
-    build_pandas_market_calendar_materialization,
-    materialize_calendar_rows,
+calendar = Calendar.get_or_create_crypto_24_7(
+    start_date="2026-05-25",
+    end_date="2026-05-25",
 )
 ```
 
 See `examples/msm/calendars/calendar_materialization_workflow.py` for the
 calendar workflow covering XNYS materialization from `pandas_market_calendars`
-and a `CRYPTO_24_7` always-open calendar.
+and a `CRYPTO_24_7` calendar. See
+`examples/msm_portfolios/portfolio_equal_weights_example.py` for the portfolio
+workflow using the generated crypto calendar as `Portfolio.calendar_uid`.
 
 ## Account Holdings Workflow
 
