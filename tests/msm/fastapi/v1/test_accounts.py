@@ -4,6 +4,7 @@ import datetime as dt
 import uuid
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from apps.v1.main import app
@@ -356,6 +357,138 @@ def test_get_account_holdings_returns_404_when_account_missing(monkeypatch) -> N
     assert "missing-account" in response.json()["detail"]
 
 
+def test_add_account_holdings_returns_snapshot(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+
+    def fake_add_account_holdings(*, account_uid, payload):
+        assert payload.holdings_date == dt.datetime(2026, 6, 5, 8, tzinfo=dt.UTC)
+        assert payload.overwrite is True
+        assert payload.positions[0].unique_identifier == "example-asset-btc"
+        assert payload.positions[0].asset_uid == str(asset_uid)
+        assert payload.positions[0].direction == -1
+        return {
+            "id": None,
+            "snapshot_uid": None,
+            "holdings_set_uid": "holdings-set-uid",
+            "holdings_date": "2026-06-05T08:00:00Z",
+            "nav": None,
+            "related_account_uid": account_uid,
+            "is_trade_snapshot": False,
+            "target_trade_time": "2026-06-05T08:00:00Z",
+            "related_expected_asset_exposure_df": [],
+            "holdings": [
+                {
+                    "time_index": "2026-06-05T08:00:00Z",
+                    "unique_identifier": "example-asset-btc",
+                    "asset_id": None,
+                    "asset": {
+                        "uid": str(asset_uid),
+                        "figi": None,
+                        "current_snapshot": {
+                            "name": "Bitcoin",
+                            "ticker": "BTC",
+                        },
+                    },
+                    "position_type": "units",
+                    "price": None,
+                    "quantity": "-10.0",
+                    "direction": -1,
+                    "missing_price": True,
+                    "target_trade_time": "2026-06-05T08:00:00Z",
+                    "extra_details": {},
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.add_account_holdings",
+        fake_add_account_holdings,
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        f"/api/v1/account/{account_uid}/add-holdings/",
+        json={
+            "holdings_date": "2026-06-05T08:00:00.000Z",
+            "overwrite": True,
+            "positions": [
+                {
+                    "unique_identifier": "example-asset-btc",
+                    "asset_uid": str(asset_uid),
+                    "position_type": "units",
+                    "quantity": "10",
+                    "direction": -1,
+                    "target_trade_time": "2026-06-05T08:00:00.000Z",
+                    "extra_details": {},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["related_account_uid"] == str(account_uid)
+    assert body["holdings_set_uid"] == "holdings-set-uid"
+    assert body["holdings"][0]["quantity"] == "-10.0"
+    assert body["holdings"][0]["direction"] == -1
+
+
+def test_add_account_holdings_returns_404_when_account_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.add_account_holdings",
+        lambda **kwargs: None,
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/account/missing-account/add-holdings/",
+        json={
+            "holdings_date": "2026-06-05T08:00:00.000Z",
+            "overwrite": True,
+            "positions": [
+                {
+                    "unique_identifier": "example-asset-btc",
+                    "quantity": "10",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 404
+    assert "missing-account" in response.json()["detail"]
+
+
+def test_add_account_holdings_returns_409_when_snapshot_exists(monkeypatch) -> None:
+    from msm.services import accounts as account_services
+
+    def fake_add_account_holdings(**kwargs):
+        raise account_services.AccountHoldingsSnapshotExistsError("snapshot exists")
+
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.add_account_holdings",
+        fake_add_account_holdings,
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/account/some-account/add-holdings/",
+        json={
+            "holdings_date": "2026-06-05T08:00:00.000Z",
+            "overwrite": False,
+            "positions": [
+                {
+                    "unique_identifier": "example-asset-btc",
+                    "quantity": "10",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 409
+    assert "snapshot exists" in response.json()["detail"]
+
+
 def test_get_account_target_positions_returns_snapshot(monkeypatch) -> None:
     account_uid = uuid.uuid4()
     asset_uid = uuid.uuid4()
@@ -510,6 +643,62 @@ def test_account_holdings_service_maps_snapshot(monkeypatch) -> None:
     assert payload["holdings"][0]["asset"] is None
 
 
+def test_add_account_holdings_service_maps_snapshot(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    runtime = SimpleNamespace(context=object())
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("apps.v1.services.accounts._get_holdings_runtime", lambda: runtime)
+
+    def fake_add_account_holdings_snapshot_response(context, **kwargs):
+        captured["context"] = context
+        captured.update(kwargs)
+        return {
+            "id": None,
+            "snapshot_uid": None,
+            "holdings_set_uid": "holdings-set-uid",
+            "holdings_date": "2026-06-05T08:00:00Z",
+            "nav": None,
+            "related_account_uid": str(account_uid),
+            "is_trade_snapshot": False,
+            "target_trade_time": "2026-06-05T08:00:00Z",
+            "related_expected_asset_exposure_df": [],
+            "holdings": [],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.services.accounts._add_account_holdings_snapshot_response",
+        fake_add_account_holdings_snapshot_response,
+    )
+
+    from apps.v1.schemas.accounts import AccountAddHoldingsRequest
+    from apps.v1.services.accounts import add_account_holdings
+
+    payload = AccountAddHoldingsRequest.model_validate(
+        {
+            "holdings_date": "2026-06-05T08:00:00Z",
+            "overwrite": True,
+            "positions": [
+                {
+                    "unique_identifier": "example-asset-btc",
+                    "quantity": "10",
+                    "direction": -1,
+                    "target_trade_time": "2026-06-05T08:00:00Z",
+                }
+            ],
+        }
+    )
+    response = add_account_holdings(account_uid=str(account_uid), payload=payload)
+
+    assert captured["context"] is runtime.context
+    assert captured["account_uid"] == str(account_uid)
+    assert captured["holdings_date"] == dt.datetime(2026, 6, 5, 8, tzinfo=dt.UTC)
+    assert captured["overwrite"] is True
+    assert captured["include_asset_detail"] is True
+    assert response is not None
+    assert response.model_dump(mode="json")["holdings_set_uid"] == "holdings-set-uid"
+
+
 def test_account_target_positions_service_maps_snapshot(monkeypatch) -> None:
     account_uid = uuid.uuid4()
     runtime = SimpleNamespace(context=object())
@@ -646,6 +835,331 @@ def test_core_account_holdings_snapshot_selects_latest(monkeypatch) -> None:
             }
         ],
     }
+
+
+def test_core_add_account_holdings_snapshot_writes_frame_and_returns_snapshot(
+    monkeypatch,
+) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    holdings_set_uid = uuid.uuid4()
+    holdings_date = dt.datetime(2026, 6, 5, 8, tzinfo=dt.UTC)
+    context = object()
+    captured: dict[str, object] = {}
+
+    from msm.services import accounts as account_services
+
+    monkeypatch.setattr(
+        account_services,
+        "get_account_by_uid",
+        lambda context, uid: {"row": {"uid": str(account_uid)}},
+    )
+    monkeypatch.setattr(
+        account_services,
+        "_asset_row_by_unique_identifier",
+        lambda context, unique_identifier: {
+            "uid": str(asset_uid),
+            "unique_identifier": unique_identifier,
+        },
+    )
+    monkeypatch.setattr(
+        account_services,
+        "uuid",
+        SimpleNamespace(uuid4=lambda: holdings_set_uid),
+    )
+
+    def fake_build_account_holdings_frame(**kwargs):
+        captured["frame_kwargs"] = kwargs
+        return SimpleNamespace(
+            reset_index=lambda: SimpleNamespace(
+                to_dict=lambda orient: [
+                    {
+                        "asset_identifier": "example-asset-btc",
+                        "quantity": 10.0,
+                        "direction": -1,
+                        "target_trade_time": holdings_date,
+                        "extra_details": {"source": "test"},
+                    }
+                ]
+            )
+        )
+
+    def fake_replace_account_holdings_snapshot(context, **kwargs):
+        captured["write_context"] = context
+        captured["write_kwargs"] = kwargs
+        return {
+            "rows": [
+                {
+                    "asset_identifier": "example-asset-btc",
+                    "quantity": 10.0,
+                    "direction": -1,
+                }
+            ]
+        }
+
+    def fake_get_account_holdings_snapshot_response(context, **kwargs):
+        captured["response_context"] = context
+        captured["response_kwargs"] = kwargs
+        return {
+            "id": None,
+            "snapshot_uid": None,
+            "holdings_set_uid": str(holdings_set_uid),
+            "holdings_date": holdings_date,
+            "nav": None,
+            "related_account_uid": str(account_uid),
+            "is_trade_snapshot": False,
+            "target_trade_time": holdings_date,
+            "related_expected_asset_exposure_df": [],
+            "holdings": [],
+        }
+
+    monkeypatch.setattr(
+        account_services,
+        "_build_account_holdings_frame",
+        fake_build_account_holdings_frame,
+    )
+    monkeypatch.setattr(
+        account_services.account_repository,
+        "replace_account_holdings_snapshot",
+        fake_replace_account_holdings_snapshot,
+    )
+    monkeypatch.setattr(
+        account_services,
+        "get_account_holdings_snapshot_response",
+        fake_get_account_holdings_snapshot_response,
+    )
+
+    snapshot = account_services.add_account_holdings_snapshot_response(
+        context,
+        account_uid=str(account_uid),
+        holdings_date=holdings_date,
+        overwrite=True,
+        positions=[
+            {
+                "unique_identifier": "example-asset-btc",
+                "asset_uid": str(asset_uid),
+                "position_type": "units",
+                "quantity": "10",
+                "direction": -1,
+                "target_trade_time": holdings_date,
+                "extra_details": {"source": "test"},
+            }
+        ],
+    )
+
+    assert captured["frame_kwargs"] == {
+        "holdings_date": holdings_date,
+        "account_uid": str(account_uid),
+        "holdings_set_uid": str(holdings_set_uid),
+        "positions": [
+            {
+                "asset_identifier": "example-asset-btc",
+                "quantity": "10",
+                "direction": -1,
+                "target_trade_time": holdings_date,
+                "extra_details": {"source": "test"},
+            }
+        ],
+    }
+    assert captured["write_context"] is context
+    assert captured["write_kwargs"] == {
+        "holdings_set_uid": str(holdings_set_uid),
+        "account_uid": str(account_uid),
+        "holdings_date": holdings_date,
+        "positions": [
+            {
+                "asset_identifier": "example-asset-btc",
+                "quantity": 10.0,
+                "direction": -1,
+                "target_trade_time": holdings_date,
+                "extra_details": {"source": "test"},
+            }
+        ],
+        "overwrite": True,
+    }
+    assert captured["response_context"] is context
+    assert captured["response_kwargs"] == {
+        "account_uid": str(account_uid),
+        "order": "desc",
+        "limit": 1,
+        "include_asset_detail": True,
+        "holdings_date": holdings_date,
+    }
+    assert snapshot is not None
+    assert snapshot["holdings_set_uid"] == str(holdings_set_uid)
+
+
+def test_core_add_account_holdings_snapshot_rejects_existing_without_overwrite(
+    monkeypatch,
+) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    holdings_date = dt.datetime(2026, 6, 5, 8, tzinfo=dt.UTC)
+    captured: dict[str, object] = {}
+
+    from msm.services import accounts as account_services
+
+    monkeypatch.setattr(
+        account_services,
+        "get_account_by_uid",
+        lambda context, uid: {"row": {"uid": str(account_uid)}},
+    )
+    monkeypatch.setattr(
+        account_services,
+        "_asset_row_by_unique_identifier",
+        lambda context, unique_identifier: {
+            "uid": str(asset_uid),
+            "unique_identifier": unique_identifier,
+        },
+    )
+
+    def fake_build_account_holdings_frame(**kwargs):
+        captured["frame_kwargs"] = kwargs
+        return SimpleNamespace(
+            reset_index=lambda: SimpleNamespace(
+                to_dict=lambda orient: [
+                    {
+                        "asset_identifier": "example-asset-btc",
+                        "quantity": 10.0,
+                        "direction": 1,
+                        "target_trade_time": holdings_date,
+                        "extra_details": {},
+                    }
+                ]
+            )
+        )
+
+    monkeypatch.setattr(
+        account_services,
+        "_build_account_holdings_frame",
+        fake_build_account_holdings_frame,
+    )
+    monkeypatch.setattr(
+        account_services.account_repository,
+        "replace_account_holdings_snapshot",
+        lambda context, **kwargs: {"rows": []},
+    )
+
+    with pytest.raises(account_services.AccountHoldingsSnapshotExistsError):
+        account_services.add_account_holdings_snapshot_response(
+            object(),
+            account_uid=str(account_uid),
+            holdings_date=holdings_date,
+            overwrite=False,
+            positions=[
+                {
+                    "unique_identifier": "example-asset-btc",
+                    "asset_uid": str(asset_uid),
+                    "quantity": "10",
+                }
+            ],
+        )
+    assert captured["frame_kwargs"]["account_uid"] == str(account_uid)
+
+
+def test_account_repository_builds_atomic_holdings_replacement_operation() -> None:
+    from mainsequence.client.metatables import MetaTableOperationScopeTable
+
+    from msm.data_nodes.storage import AccountHoldingsStorage
+    from msm.models import AccountHoldingsSetTable
+    from msm.repositories import accounts as account_repository
+
+    class FakeContext:
+        limits = None
+
+        def scope_table(self, model, *, access="read", alias=None):
+            return MetaTableOperationScopeTable(
+                meta_table_uid=f"{model.__name__}-uid",
+                access=access,
+                alias=alias,
+            )
+
+    holdings_set_uid = uuid.uuid4()
+    account_uid = uuid.uuid4()
+    holdings_date = dt.datetime(2026, 6, 5, 8, tzinfo=dt.UTC)
+
+    operation = account_repository.build_replace_account_holdings_snapshot_operation(
+        FakeContext(),
+        holdings_set_uid=holdings_set_uid,
+        account_uid=account_uid,
+        holdings_date=holdings_date,
+        overwrite=True,
+        positions=[
+            {
+                "asset_identifier": "example-asset-btc",
+                "quantity": "10",
+                "direction": -1,
+                "target_trade_time": holdings_date,
+                "extra_details": {"source": "test"},
+            }
+        ],
+    )
+
+    sql = operation.statement.sql
+    assert operation.operation == "upsert"
+    assert "WITH holdings_set AS" in sql
+    assert "ON CONFLICT (account_uid, time_index)" in sql
+    assert "WHERE %(overwrite)s" in sql
+    assert "DELETE FROM" in sql
+    assert "INSERT INTO" in sql
+    assert "CROSS JOIN holdings_set" in sql
+    assert "CAST(%(quantity_0)s AS double precision)" in sql
+    assert "CAST(%(direction_0)s AS smallint)" in sql
+    assert operation.statement.parameters["holdings_set_uid"] == str(holdings_set_uid)
+    assert operation.statement.parameters["account_uid"] == str(account_uid)
+    assert operation.statement.parameters["overwrite"] is True
+    assert operation.statement.parameters["asset_identifier_0"] == "example-asset-btc"
+    assert operation.statement.parameter_types == {
+        "holdings_date": "timestamp with time zone",
+        "target_trade_time_0": "timestamp with time zone",
+    }
+    assert [
+        (table.meta_table_uid, table.access)
+        for table in operation.scope.tables
+    ] == [
+        (f"{AccountHoldingsSetTable.__name__}-uid", "write"),
+        (f"{AccountHoldingsStorage.__name__}-uid", "write"),
+    ]
+
+
+def test_core_add_account_holdings_snapshot_rejects_asset_uid_mismatch(
+    monkeypatch,
+) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    wrong_asset_uid = uuid.uuid4()
+    holdings_date = dt.datetime(2026, 6, 5, 8, tzinfo=dt.UTC)
+
+    from msm.services import accounts as account_services
+
+    monkeypatch.setattr(
+        account_services,
+        "get_account_by_uid",
+        lambda context, uid: {"row": {"uid": str(account_uid)}},
+    )
+    monkeypatch.setattr(
+        account_services,
+        "_asset_row_by_unique_identifier",
+        lambda context, unique_identifier: {
+            "uid": str(asset_uid),
+            "unique_identifier": unique_identifier,
+        },
+    )
+
+    with pytest.raises(ValueError, match="does not match"):
+        account_services.add_account_holdings_snapshot_response(
+            object(),
+            account_uid=str(account_uid),
+            holdings_date=holdings_date,
+            overwrite=True,
+            positions=[
+                {
+                    "unique_identifier": "example-asset-btc",
+                    "asset_uid": str(wrong_asset_uid),
+                    "quantity": "10",
+                }
+            ],
+        )
 
 
 def test_core_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:

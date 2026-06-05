@@ -3,41 +3,36 @@ import logging
 from typing import Any
 
 import pandas as pd
-import pandas_market_calendars as mcal
-from pydantic import BaseModel, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, Field, PrivateAttr
+
+from msm_portfolios.services.calendars import resolve_rebalance_calendar
 
 logger = logging.getLogger("portfolios")
 
 
 class RebalanceStrategyBase(BaseModel):
     calendar_key: str = Field(
-        "24/7", description="Trading calendar should match pandas market calendar string"
+        "24/7",
+        min_length=1,
+        description=(
+            "Persisted Calendar.unique_identifier or source_identifier used to "
+            "resolve rebalance sessions."
+        ),
     )
 
-    # Optional cache for the heavy pmc calendar object; excluded from serialization/pickling
+    # Optional cache for the resolved calendar object; excluded from serialization/pickling.
     _calendar_obj: Any = PrivateAttr(default=None)
-
-    @field_validator("calendar_key")
-    @classmethod
-    def _validate_calendar_exists(cls, v: str) -> str:
-        # Validate the key early; we don't keep the object here
-        try:
-            mcal.get_calendar(v)
-        except Exception as e:
-            raise ValueError(f"Unknown calendar '{v}': {e}") from e
-        return v
 
     @property
     def calendar(self):
         """
-        Recreate (and cache) the pandas_market_calendars calendar object on access.
-        Not included in serialization; avoids pickling issues.
+        Recreate and cache the resolved calendar object on access.
         """
         if (
             self._calendar_obj is None
             or getattr(self._calendar_obj, "name", None) != self.calendar_key
         ):
-            self._calendar_obj = mcal.get_calendar(self.calendar_key)
+            self._calendar_obj = resolve_rebalance_calendar(self.calendar_key)
         return self._calendar_obj
 
     def get_explanation(self):

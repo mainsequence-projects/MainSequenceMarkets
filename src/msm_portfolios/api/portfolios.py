@@ -6,7 +6,7 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, ConfigDict, Field
 
 from msm.api.base import MarketsMetaTableRow
-from msm.models import IndexTable
+from msm.models import CalendarTable, IndexTable
 
 from msm_portfolios.models import (
     PortfolioMetadataTable,
@@ -19,6 +19,7 @@ class Portfolio(MarketsMetaTableRow):
 
     __table__: ClassVar[type[PortfolioTable]] = PortfolioTable
     __required_tables__: ClassVar[list[type[Any]]] = [
+        CalendarTable,
         IndexTable,
         PortfolioTable,
     ]
@@ -26,6 +27,7 @@ class Portfolio(MarketsMetaTableRow):
 
     unique_identifier: str
     calendar_name: str | None = None
+    calendar_uid: uuid.UUID | None = None
     portfolio_index_uid: uuid.UUID | None = None
     portfolio_weights_data_node_uid: uuid.UUID | None = None
     signal_weights_data_node_uid: uuid.UUID | None = None
@@ -38,6 +40,7 @@ class PortfolioCreate(BaseModel):
 
     unique_identifier: str = Field(min_length=1, max_length=255)
     calendar_name: str | None = Field(default=None, max_length=255)
+    calendar_uid: uuid.UUID | str | None = None
     portfolio_index_uid: uuid.UUID | str | None = None
     portfolio_weights_data_node_uid: uuid.UUID | str | None = None
     signal_weights_data_node_uid: uuid.UUID | str | None = None
@@ -53,6 +56,7 @@ class PortfolioUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     calendar_name: str | None = Field(default=None, max_length=255)
+    calendar_uid: uuid.UUID | str | None = None
     portfolio_index_uid: uuid.UUID | str | None = None
     portfolio_weights_data_node_uid: uuid.UUID | str | None = None
     signal_weights_data_node_uid: uuid.UUID | str | None = None

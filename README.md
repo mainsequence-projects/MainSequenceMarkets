@@ -48,6 +48,7 @@ Architecture and implementation decisions are tracked in
 Main package areas:
 
 - `msm.api.accounts`: account identity and account target assignment row APIs
+- `msm.api.calendars`: calendar identity, date, session, and event row APIs
 - `msm.api`: user-facing Pydantic row objects and typed class methods for
   markets MetaTable records
 - `msm.constants`: static built-in keys such as asset type constants used across
@@ -73,7 +74,7 @@ Repository areas:
 
 - `docs/`: MkDocs documentation, tutorials, knowledge guides, ADRs, and API
   reference scaffold
-- `examples/msm/`: core assets, accounts, platform, and row-workflow examples
+- `examples/msm/`: core assets, accounts, calendars, platform, and row-workflow examples
 - `examples/msm_portfolios/`: single portfolio construction example with
   index linkage and canonical portfolio DataNodes
 - `examples/msm_pricing/`: optional pricing and QuantLib-backed examples

@@ -6,6 +6,7 @@ from msm.models import (
     AccountTable,
     AssetTable,
     AssetTypeTable,
+    CalendarTable,
     IndexTable,
 )
 
@@ -34,6 +35,7 @@ def portfolio_sqlalchemy_models() -> list[type]:
         AccountGroupTable,
         AccountTable,
         AccountHoldingsSetTable,
+        CalendarTable,
         PortfolioTable,
         SignalMetadataTable,
         RebalanceStrategyMetadataTable,
@@ -54,6 +56,7 @@ __all__ = [
     "AccountTable",
     "AssetTable",
     "AssetTypeTable",
+    "CalendarTable",
     "IndexTable",
     "PortfolioMetadataTable",
     "PortfolioTable",

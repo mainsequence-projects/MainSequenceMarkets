@@ -39,6 +39,7 @@ nav:
               - Bond Assets: knowledge/msm/assets/bonds.md
               - Currency And Spot Assets: knowledge/msm/assets/currency.md
               - Asset-Indexed DataNodes: knowledge/msm/assets/asset_indexed_data_nodes.md
+          - Calendars: knowledge/msm/calendars/index.md
           - Client: knowledge/msm/client/index.md
           - Derivatives:
               - Overview: knowledge/msm/derivatives/index.md

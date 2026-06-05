@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import math
+import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -221,40 +222,29 @@ def add_account_holdings_snapshot_response(
         positions=positions,
         holdings_date=normalized_holdings_date,
     )
-
-    existing_holdings_set = _get_account_holdings_set_row(
+    candidate_holdings_set_uid = str(uuid.uuid4())
+    holdings_frame = _build_account_holdings_frame(
+        holdings_date=normalized_holdings_date,
+        account_uid=resolved_account_uid,
+        holdings_set_uid=candidate_holdings_set_uid,
+        positions=normalized_positions,
+    )
+    write_result = account_repository.replace_account_holdings_snapshot(
         context,
+        holdings_set_uid=candidate_holdings_set_uid,
         account_uid=resolved_account_uid,
         holdings_date=normalized_holdings_date,
+        positions=_account_holdings_frame_operation_rows(holdings_frame),
+        overwrite=overwrite,
     )
-    if existing_holdings_set is not None:
+    if not operation_result_rows(write_result):
         if not overwrite:
             raise AccountHoldingsSnapshotExistsError(
                 "Account holdings snapshot already exists for "
                 f"account_uid={resolved_account_uid!r} and holdings_date="
                 f"{normalized_holdings_date.isoformat()}."
             )
-        _delete_account_holdings_set_row(
-            context,
-            uid=str(existing_holdings_set["uid"]),
-        )
-
-    holdings_set = _upsert_account_holdings_set_row(
-        context,
-        account_uid=resolved_account_uid,
-        holdings_date=normalized_holdings_date,
-    )
-    holdings_set_uid = _string_or_none(holdings_set.get("uid"))
-    if holdings_set_uid is None:
-        raise RuntimeError("Account holdings set write did not return a uid.")
-
-    holdings_frame = _build_account_holdings_frame(
-        holdings_date=normalized_holdings_date,
-        account_uid=resolved_account_uid,
-        holdings_set_uid=holdings_set_uid,
-        positions=normalized_positions,
-    )
-    _publish_account_holdings_frame(holdings_frame)
+        raise RuntimeError("Account holdings replacement did not insert any rows.")
 
     return get_account_holdings_snapshot_response(
         context,
@@ -535,79 +525,31 @@ def _asset_row_by_unique_identifier(
     )
 
 
-def _get_account_holdings_set_row(
-    context: MarketsRepositoryContext,
-    *,
-    account_uid: str,
-    holdings_date: dt.datetime,
-) -> dict[str, Any] | None:
-    from msm.models import AccountHoldingsSetTable
-    from msm.repositories.crud import search_model
-
-    rows = operation_result_rows(
-        search_model(
-            context,
-            model=AccountHoldingsSetTable,
-            filters={
-                "account_uid": account_uid,
-                "time_index": holdings_date,
-            },
-            limit=1,
-        )
-    )
-    return rows[0] if rows else None
-
-
-def _delete_account_holdings_set_row(
-    context: MarketsRepositoryContext,
-    *,
-    uid: str,
-) -> None:
-    from msm.models import AccountHoldingsSetTable
-    from msm.repositories.crud import delete_model
-
-    delete_model(context, model=AccountHoldingsSetTable, uid=uid)
-
-
-def _upsert_account_holdings_set_row(
-    context: MarketsRepositoryContext,
-    *,
-    account_uid: str,
-    holdings_date: dt.datetime,
-) -> dict[str, Any]:
-    from msm.models import AccountHoldingsSetTable
-    from msm.repositories.crud import upsert_model
-
-    return _first_operation_row(
-        upsert_model(
-            context,
-            model=AccountHoldingsSetTable,
-            values={
-                "account_uid": account_uid,
-                "time_index": holdings_date,
-            },
-            conflict_columns=("account_uid", "time_index"),
-        )
-    ) or {}
-
-
 def _build_account_holdings_frame(**kwargs: Any):
     from msm.services import build_account_holdings_frame
 
     return build_account_holdings_frame(**kwargs)
 
 
-def _publish_account_holdings_frame(frame: Any) -> None:
-    from msm.data_nodes.accounts import AccountHoldings
-
-    holdings_node = AccountHoldings(config=AccountHoldings.default_config())
-    holdings_node.set_frame(frame)
-    error_on_last_update, _updated_frame = holdings_node.run(
-        debug_mode=True,
-        force_update=True,
-    )
-    if error_on_last_update:
-        raise RuntimeError(f"Account holdings update failed: {error_on_last_update}")
+def _account_holdings_frame_operation_rows(frame: Any) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in frame.reset_index().to_dict("records"):
+        rows.append(
+            {
+                "asset_identifier": _required_string(
+                    row.get("asset_identifier"),
+                    "asset_identifier",
+                ),
+                "quantity": row.get("quantity"),
+                "direction": _int_or_default(row.get("direction"), default=1),
+                "target_trade_time": _required_datetime(
+                    row.get("target_trade_time"),
+                    field_name="target_trade_time",
+                ),
+                "extra_details": _mapping_or_empty(row.get("extra_details")),
+            }
+        )
+    return rows
 
 
 def _select_account_holdings_snapshot_rows(

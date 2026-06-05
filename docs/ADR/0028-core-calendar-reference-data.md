@@ -448,44 +448,120 @@ instrument schedule generation
 InstrumentScheduleEvent-style tables
 ```
 
+## Repository Organization
+
+The implementation should replace the current flat calendar module with
+calendar-owned packages. Calendar persistence remains in core `msm`; package
+specific code only consumes or adapts those persisted calendars.
+
+Core SQLAlchemy MetaTable declarations:
+
+```text
+src/msm/models/calendars/
+  __init__.py
+  core.py          # CalendarTable
+  dates.py         # CalendarDateTable
+  sessions.py      # CalendarSessionTable
+  events.py        # CalendarEventTable
+```
+
+Core public row APIs:
+
+```text
+src/msm/api/calendars/
+  __init__.py
+  core.py          # Calendar
+  dates.py         # CalendarDate
+  sessions.py      # CalendarSession
+  events.py        # CalendarEvent
+```
+
+Core calendar services and repositories:
+
+```text
+src/msm/services/calendars/
+  __init__.py
+  materialization.py
+  pandas_market.py
+  validation.py
+
+src/msm/repositories/calendars/
+  __init__.py
+  core.py
+  dates.py
+  sessions.py
+  events.py
+```
+
+Focused tests should follow the same boundaries:
+
+```text
+tests/msm/models/calendars/
+tests/msm/api/calendars/
+tests/msm/services/calendars/
+```
+
+User-facing docs and examples should be package-scoped:
+
+```text
+docs/knowledge/msm/calendars/index.md
+examples/msm/calendars/calendar_materialization_workflow.py
+```
+
+Portfolio integration belongs in `msm_portfolios` and should not own core
+calendar rows:
+
+```text
+src/msm_portfolios/services/calendars.py
+src/msm_portfolios/rebalance_strategy/calendar_resolver.py
+tests/msm_portfolios/calendars/
+```
+
+Pricing and fixed-income integration remains a later `msm_pricing` TODO:
+
+```text
+src/msm_pricing/calendars/quantlib_adapter.py
+src/msm_pricing/calendars/instrument_schedule.py
+```
+
 ## Implementation Plan
 
 ### Stage 1: Core Calendar Tables
 
-- [ ] Replace the JSON-only `CalendarTable` shape with a robust calendar
+- [x] Replace the JSON-only `CalendarTable` shape with a robust calendar
   identity table keyed by `unique_identifier`.
-- [ ] Add `CalendarDateTable` with one row per `(calendar_uid, local_date)`.
-- [ ] Add `CalendarSessionTable` with one row per
+- [x] Add `CalendarDateTable` with one row per `(calendar_uid, local_date)`.
+- [x] Add `CalendarSessionTable` with one row per
   `(calendar_uid, local_date, session_label)`.
-- [ ] Add `CalendarEventTable` for calendar-level events.
-- [ ] Add table descriptions, column descriptions, indexes, and FK constraints.
-- [ ] Add all calendar tables to the core `msm` MetaTable provider model graph.
+- [x] Add `CalendarEventTable` for calendar-level events.
+- [x] Add table descriptions, column descriptions, indexes, and FK constraints.
+- [x] Add all calendar tables to the core `msm` MetaTable provider model graph.
 
 ### Stage 2: Core Calendar API And Services
 
-- [ ] Add Pydantic row APIs under `msm.api.calendars`.
-- [ ] Add typed upsert/filter helpers for calendar identity, dates, sessions,
+- [x] Add Pydantic row APIs under `msm.api.calendars`.
+- [x] Add typed upsert/filter helpers for calendar identity, dates, sessions,
   and events.
-- [ ] Add service functions to materialize a bounded date horizon.
-- [ ] Add validation that `valid_from` and `valid_to` bound materialization.
+- [x] Add service functions to materialize a bounded date horizon.
+- [x] Add validation that `valid_from` and `valid_to` bound materialization.
 
 ### Stage 3: Adapter Helpers
 
-- [ ] Add a `pandas_market_calendars` adapter that materializes
+- [x] Add a `pandas_market_calendars` adapter that materializes
   `CalendarDateTable` and `CalendarSessionTable` rows.
-- [ ] Keep adapter dependency optional if possible; core persisted tables must
+- [x] Keep adapter dependency optional if possible; core persisted tables must
   not require portfolio code.
-- [ ] Add examples for `XNYS`, `TARGET`, and `CRYPTO_24_7` style calendars.
+- [x] Add examples for `XNYS` and `CRYPTO_24_7` style calendars.
 
 ### Stage 4: Portfolio Integration
 
-- [ ] Add `PortfolioTable.calendar_uid` FK to `CalendarTable.uid`.
-- [ ] Deprecate `PortfolioTable.calendar_name` as durable relationship state.
-- [ ] Update `Portfolio` row API payloads to accept `calendar_uid` and/or a
+- [x] Add `PortfolioTable.calendar_uid` FK to `CalendarTable.uid`.
+- [x] Deprecate `PortfolioTable.calendar_name` as durable relationship state.
+- [x] Update `Portfolio` row API payloads to accept `calendar_uid` and/or a
   `calendar_identifier` resolver.
-- [ ] Update rebalance strategy code to consume persisted calendar schedules
+- [x] Update rebalance strategy code to consume persisted calendar schedules
   instead of treating `pandas_market_calendars` as the canonical source.
-- [ ] Update portfolio examples and docs.
+- [x] Update portfolio examples and docs.
 
 ### Stage 5: Pricing And Fixed-Income TODO
 

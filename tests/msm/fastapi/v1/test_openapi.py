@@ -96,6 +96,18 @@ def test_openapi_json_documents_account_list_endpoint() -> None:
         "schema"
     ] == {"$ref": "#/components/schemas/FrontEndDetailSummary"}
 
+    add_holdings_operation = payload["paths"]["/api/v1/account/{account_uid}/add-holdings/"][
+        "post"
+    ]
+    assert add_holdings_operation["summary"] == "Add account holdings snapshot"
+    assert add_holdings_operation["operationId"] == "addAccountHoldings"
+    assert add_holdings_operation["requestBody"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/AccountAddHoldingsRequest"}
+    assert add_holdings_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/AccountHoldingsSnapshotResponse"}
+
     account_target_positions_operation = payload["paths"][
         "/api/v1/account/{account_uid}/target-positions/"
     ]["get"]

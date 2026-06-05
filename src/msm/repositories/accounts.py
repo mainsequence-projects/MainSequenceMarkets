@@ -2,13 +2,33 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from collections.abc import Mapping, Sequence
 from typing import Any
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import (
+    DateTime,
+    Float,
+    SmallInteger,
+    String,
+    Uuid,
+    bindparam,
+    cast,
+    column,
+    delete,
+    false,
+    insert,
+    select,
+    true,
+    update,
+    values,
+)
+from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
 
 from mainsequence.client.metatables import MetaTableCompiledSQLOperation
+from msm.data_nodes.storage import AccountHoldingsStorage
 from msm.models import (
     AccountGroupTable,
+    AccountHoldingsSetTable,
     AccountTable,
     AccountTargetPortfolioTable,
     PositionSetTable,
@@ -417,6 +437,163 @@ def delete_position_set(
     )
 
 
+def build_replace_account_holdings_snapshot_operation(
+    context: MarketsRepositoryContext,
+    *,
+    holdings_set_uid: uuid.UUID | str,
+    account_uid: uuid.UUID | str,
+    holdings_date: dt.datetime | str,
+    positions: Sequence[Mapping[str, Any]],
+    overwrite: bool = False,
+) -> MetaTableCompiledSQLOperation:
+    if not positions:
+        raise ValueError("Account holdings snapshot replacement requires positions.")
+
+    normalized_holdings_date = _utc_timestamp(holdings_date, field_name="holdings_date")
+    parameters: dict[str, Any] = {
+        "holdings_set_uid": str(uuid.UUID(str(holdings_set_uid))),
+        "account_uid": str(uuid.UUID(str(account_uid))),
+        "holdings_date": normalized_holdings_date,
+        "overwrite": bool(overwrite),
+    }
+    parameter_types = {"holdings_date": TIMESTAMP_TZ}
+    values_sql: list[str] = []
+    for index, position in enumerate(positions):
+        target_trade_time = _utc_timestamp(
+            position.get("target_trade_time") or normalized_holdings_date,
+            field_name=f"positions[{index}].target_trade_time",
+        )
+        parameters.update(
+            {
+                f"asset_identifier_{index}": str(position["asset_identifier"]),
+                f"quantity_{index}": _python_scalar(position.get("quantity")),
+                f"direction_{index}": int(position.get("direction", 1)),
+                f"target_trade_time_{index}": target_trade_time,
+                f"extra_details_{index}": json.dumps(
+                    position.get("extra_details") or {},
+                    sort_keys=True,
+                ),
+            }
+        )
+        parameter_types[f"target_trade_time_{index}"] = TIMESTAMP_TZ
+        values_sql.append(
+            "("
+            f"%(asset_identifier_{index})s, "
+            f"CAST(%(quantity_{index})s AS double precision), "
+            f"CAST(%(direction_{index})s AS smallint), "
+            f"CAST(%(target_trade_time_{index})s AS timestamptz), "
+            f"CAST(%(extra_details_{index})s AS jsonb)"
+            ")"
+        )
+
+    holdings_set_table = _qualified_table_name(AccountHoldingsSetTable)
+    storage_table = _qualified_table_name(AccountHoldingsStorage)
+    sql = f"""
+WITH holdings_set AS (
+    INSERT INTO {holdings_set_table} (
+        uid,
+        account_uid,
+        time_index
+    )
+    VALUES (
+        CAST(%(holdings_set_uid)s AS uuid),
+        CAST(%(account_uid)s AS uuid),
+        CAST(%(holdings_date)s AS timestamptz)
+    )
+    ON CONFLICT (account_uid, time_index)
+    DO UPDATE SET time_index = EXCLUDED.time_index
+    WHERE %(overwrite)s
+    RETURNING uid
+),
+deleted AS (
+    DELETE FROM {storage_table} AS storage
+    USING holdings_set AS hs
+    WHERE %(overwrite)s
+        AND storage.holdings_set_uid = hs.uid
+    RETURNING 1
+),
+input_rows (
+    asset_identifier,
+    quantity,
+    direction,
+    target_trade_time,
+    extra_details
+) AS (
+    VALUES
+        {", ".join(values_sql)}
+),
+inserted AS (
+    INSERT INTO {storage_table} (
+        time_index,
+        account_uid,
+        asset_identifier,
+        holdings_set_uid,
+        is_trade_snapshot,
+        quantity,
+        direction,
+        target_trade_time,
+        extra_details
+    )
+    SELECT
+        CAST(%(holdings_date)s AS timestamptz),
+        CAST(%(account_uid)s AS uuid),
+        input_rows.asset_identifier,
+        holdings_set.uid,
+        FALSE,
+        input_rows.quantity,
+        input_rows.direction,
+        input_rows.target_trade_time,
+        input_rows.extra_details
+    FROM input_rows
+    CROSS JOIN holdings_set
+    RETURNING
+        time_index,
+        account_uid,
+        asset_identifier,
+        holdings_set_uid,
+        is_trade_snapshot,
+        quantity,
+        direction,
+        target_trade_time,
+        extra_details
+)
+SELECT
+    time_index,
+    account_uid,
+    asset_identifier,
+    holdings_set_uid,
+    is_trade_snapshot,
+    quantity,
+    direction,
+    target_trade_time,
+    extra_details
+FROM inserted
+"""
+    return build_operation(
+        operation="upsert",
+        sql=sql,
+        parameters=parameters,
+        parameter_types=parameter_types,
+        scope=MetaTableOperationScope(
+            tables=[
+                context.scope_table(AccountHoldingsSetTable, access="write"),
+                context.scope_table(AccountHoldingsStorage, access="write"),
+            ]
+        ),
+        limits=context.limits,
+    )
+
+
+def replace_account_holdings_snapshot(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_replace_account_holdings_snapshot_operation(context, **kwargs),
+        context=context,
+    )
+
+
 MappingOrDict = dict[str, Any]
 
 
@@ -431,7 +608,20 @@ def _utc_timestamp(value: dt.datetime | str, *, field_name: str) -> dt.datetime:
     return value.astimezone(dt.UTC)
 
 
+def _qualified_table_name(model: Any) -> str:
+    preparer = postgresql.dialect().identifier_preparer
+    return preparer.format_table(model.__table__)
+
+
+def _python_scalar(value: Any) -> Any:
+    item = getattr(value, "item", None)
+    if callable(item):
+        return item()
+    return value
+
+
 __all__ = [
+    "build_replace_account_holdings_snapshot_operation",
     "build_create_account_target_portfolio_operation",
     "build_create_account_operation",
     "build_create_position_set_operation",
@@ -452,6 +642,7 @@ __all__ = [
     "delete_position_set",
     "get_account_by_uid",
     "get_account_by_unique_identifier",
+    "replace_account_holdings_snapshot",
     "search_account_target_portfolios",
     "search_accounts",
     "search_position_sets",

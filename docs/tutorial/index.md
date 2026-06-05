@@ -111,6 +111,38 @@ from `index_identifier` to `IndexTable.unique_identifier`. Keep index identity
 on `uid` and `unique_identifier`; do not add legacy platform Constant-name
 fields.
 
+## Calendar Materialization
+
+Use this workflow when a project needs durable market, settlement, fixing, or
+custom calendar facts:
+
+1. Before runtime, run the admin migration flow with
+   `mainsequence migrations upgrade --provider migrations:migration head`.
+2. Attach `Calendar`, `CalendarDate`, `CalendarSession`, and `CalendarEvent`
+   with `msm.start_engine(...)`.
+3. Upsert the calendar identity through `msm.api.calendars.Calendar`.
+4. Use `msm.services.calendars` to build bounded date/session rows from an
+   adapter such as `pandas_market_calendars` or from an always-open calendar.
+5. Persist the normalized rows with `materialize_calendar_rows(...)`.
+
+`pandas_market_calendars` is not the durable source of truth. It is an adapter
+that writes into `CalendarDateTable` and `CalendarSessionTable`; consumers
+should read the persisted rows or reference `CalendarTable.uid`.
+
+```python
+from datetime import date
+
+from msm.api.calendars import Calendar, CalendarType
+from msm.services.calendars import (
+    build_pandas_market_calendar_materialization,
+    materialize_calendar_rows,
+)
+```
+
+See `examples/msm/calendars/calendar_materialization_workflow.py` for the
+calendar workflow covering XNYS materialization from `pandas_market_calendars`
+and a `CRYPTO_24_7` always-open calendar.
+
 ## Account Holdings Workflow
 
 Use this workflow when publishing and inspecting account positions:

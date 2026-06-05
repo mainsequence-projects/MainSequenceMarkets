@@ -15,6 +15,9 @@ integration live in `msm_pricing`.
 - [Assets](assets/index.md): asset identity, type registration, category
   membership, relational asset detail tables, OpenFIGI details, and
   asset-indexed DataNodes.
+- [Calendars](calendars/index.md): bounded calendar identities, daily facts,
+  sessions, and calendar-level events used by portfolios, execution, and
+  pricing adapters.
 - [Client](client/index.md): client-facing wrappers around platform objects.
 - [Derivatives](derivatives/index.md): futures and derivative details that
   extend canonical assets and may reference non-asset underlyings.

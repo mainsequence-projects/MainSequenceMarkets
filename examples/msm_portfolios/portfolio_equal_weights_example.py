@@ -22,6 +22,7 @@ os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 import msm_portfolios  # noqa: E402
 from msm.api.accounts import Account, AccountGroup, AccountHoldingsSet  # noqa: E402
 from msm.api.assets import Asset, AssetType  # noqa: E402
+from msm.api.calendars import Calendar, CalendarType  # noqa: E402
 from msm.api.indices import Index, IndexType  # noqa: E402
 from msm.data_nodes.accounts import AccountHoldings  # noqa: E402
 from msm_portfolios.api.portfolios import Portfolio  # noqa: E402
@@ -88,6 +89,7 @@ def start_portfolio_example_runtime() -> None:
             "Account",
             "AccountHoldingsSet",
             "AccountHoldingsStorage",
+            "Calendar",
             "Portfolio",
             "VirtualFund",
             "VirtualFundHoldingsSet",
@@ -373,9 +375,22 @@ def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, An
         label="portfolio_values",
     )
 
-    print_step(7, "Upserting the Portfolio row with DataNode links.")
+    print_step(7, "Upserting the portfolio Calendar and Portfolio rows with DataNode links.")
+    portfolio_calendar = Calendar.upsert(
+        unique_identifier="CRYPTO_24_7",
+        display_name="Crypto 24/7",
+        calendar_type=CalendarType.TRADING,
+        timezone="UTC",
+        source="user",
+        source_identifier="always_open",
+        valid_from=TIME_INDEX.date(),
+        valid_to=TIME_INDEX.date(),
+        metadata_json={"example": "portfolio_equal_weights_example"},
+    )
+    print_detail("calendar_uid", portfolio_calendar.uid)
     portfolio = Portfolio.upsert(
         unique_identifier=PORTFOLIO_UNIQUE_IDENTIFIER,
+        calendar_uid=portfolio_calendar.uid,
         calendar_name="24/7",
         portfolio_index_uid=portfolio_index.uid,
         signal_weights_data_node_uid=signal_weights_node_uid,

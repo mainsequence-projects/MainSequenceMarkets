@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from msm.models import markets_sqlalchemy_models
 from msm.models.indices import IndexTable
+from msm.models.calendars import CalendarTable
 from msm_portfolios.models import (
     PortfolioMetadataTable,
     PortfolioTable,
@@ -17,6 +18,7 @@ def test_portfolio_model_graph_owns_portfolio_tables() -> None:
     model_graph = portfolio_sqlalchemy_models()
 
     assert PortfolioTable in model_graph
+    assert CalendarTable in model_graph
     assert IndexTable in model_graph
     assert PortfolioMetadataTable in model_graph
     assert VirtualFundTable in model_graph

@@ -14,6 +14,7 @@ from msm.base import (
 )
 
 from msm.models.indices import IndexTable
+from msm.models.calendars import CalendarTable
 
 
 class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
@@ -22,8 +23,8 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "Portfolio"
     __metatable_description__ = (
         "Portfolio identity and configuration table keyed by unique_identifier. "
-        "Stores optional portfolio index linkage and DataNode pointers used to "
-        "publish portfolio weights, signals, and values."
+        "Stores optional calendar and portfolio index linkage plus DataNode "
+        "pointers used to publish portfolio weights, signals, and values."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
@@ -35,6 +36,10 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         Index(
             None,
             "calendar_name",
+        ),
+        Index(
+            None,
+            "calendar_uid",
         ),
         Index(
             None,
@@ -64,7 +69,19 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Calendar Name",
-            "description": "Calendar name used to resolve market sessions for this row.",
+            "description": "Deprecated compatibility calendar name; durable relationships should use calendar_uid.",
+        },
+    )
+    calendar_uid: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            f"{CalendarTable.__table__.fullname}.uid",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+        info={
+            "label": "Calendar UID",
+            "description": "CalendarTable.uid for the persisted calendar used to schedule this portfolio.",
         },
     )
     portfolio_index_uid: Mapped[uuid.UUID | None] = mapped_column(

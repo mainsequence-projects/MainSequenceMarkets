@@ -95,9 +95,13 @@ not an asset; optional index publication uses a core index row.
 `PortfolioTable`; it is human-facing metadata that can be managed without
 changing the portfolio identity row.
 
+Rebalance strategy calendar keys resolve persisted core `CalendarTable` rows
+first. Legacy pandas-market calendar keys remain a fallback path, but durable
+portfolio records should use `PortfolioTable.calendar_uid`.
+
 ## Table Relationships
 
-Portfolio identity and DataNode/index linkage:
+Portfolio identity, calendar linkage, and DataNode/index linkage:
 
 ```text
 +-----------------------------+        optional portfolio index  +-----------------------------+
@@ -105,12 +109,23 @@ Portfolio identity and DataNode/index linkage:
 |-----------------------------| portfolio_index_uid             |-----------------------------|
 | uid PK                      |                                  | uid PK                      |
 | unique_identifier unique    |                                  | unique_identifier unique    |
-| calendar_name               |                                  | index_type                  |
-| portfolio_weights_data_node_uid |--> PortfolioWeights           | display_name                |
-| signal_weights_data_node_uid    |--> SignalWeights              +-----------------------------+
+| calendar_uid FK ------------+----+                             | index_type                  |
+| calendar_name deprecated    |    |                             | display_name                |
+| portfolio_weights_data_node_uid |--> PortfolioWeights           +-----------------------------+
+| signal_weights_data_node_uid    |--> SignalWeights
 | portfolio_data_node_uid         |--> PortfoliosDataNode
 | backtest_table_price_column_name|
 +-----------------------------+
+                                  |
+                                  | durable calendar relationship
+                                  v
+                         +-----------------------------+
+                         | CalendarTable               |
+                         |-----------------------------|
+                         | uid PK                      |
+                         | unique_identifier unique    |
+                         | valid_from / valid_to       |
+                         +-----------------------------+
 ```
 
 Portfolio metadata is a separate descriptive table:

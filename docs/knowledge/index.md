@@ -45,7 +45,7 @@ new MetaTable-facing APIs unless a more specific ADR overrides it.
 ## Package Map
 
 - [msm](msm/index.md): core market reference data, assets, accounts,
-  execution, indexes, platform bootstrap, repositories, and services.
+  calendars, execution, indexes, platform bootstrap, repositories, and services.
 - [msm_portfolios](msm_portfolios/index.md): portfolio construction,
   portfolio DataNodes, virtual funds, and fund holdings.
 - [msm_pricing](msm_pricing/index.md): optional pricing package with priceable

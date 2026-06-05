@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from msm.api.base import MarketsMetaTableRow
-from msm.models import AssetTable, IndexTable
+from msm.models import AssetTable, CalendarTable, IndexTable
 from msm_portfolios.api.market_metadata import (
     RebalanceStrategyMetadata,
     SignalMetadata,
@@ -68,7 +68,7 @@ def test_portfolio_create_schemas_includes_domain_required_tables(monkeypatch) -
     assert Portfolio.start_engine(namespace="mainsequence.examples") is runtime
     assert calls == [
         {
-            "models": [IndexTable, PortfolioTable],
+            "models": [CalendarTable, IndexTable, PortfolioTable],
             "namespace": "mainsequence.examples",
         }
     ]
@@ -90,5 +90,5 @@ def test_missing_required_table_fails_before_operation(monkeypatch) -> None:
     monkeypatch.setattr("msm.bootstrap._RUNTIME", runtime)
     monkeypatch.setattr("msm.bootstrap.attach_schemas", fake_attach_schemas)
 
-    with pytest.raises(RuntimeError, match="IndexTable"):
+    with pytest.raises(RuntimeError, match="CalendarTable"):
         Portfolio.filter(unique_identifier_contains="demo")

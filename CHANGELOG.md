@@ -27,6 +27,9 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Replaced the JSON-only core calendar row with normalized `Calendar`,
+  `CalendarDate`, `CalendarSession`, and `CalendarEvent` MetaTables plus
+  typed APIs, materialization helpers, docs, and an example workflow.
 - Added a `pandas-market-calendars>=5.4.0` version floor to the `portfolios`
   optional extra and documented it as an `msm_portfolios`-only helper.
 - Updated the account workflow example to include a short ETH holding and

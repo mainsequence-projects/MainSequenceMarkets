@@ -19,6 +19,7 @@ def build_create_portfolio_operation(
     *,
     unique_identifier: str,
     calendar_name: str | None = None,
+    calendar_uid: uuid.UUID | str | None = None,
     portfolio_index_uid: uuid.UUID | str | None = None,
     portfolio_weights_data_node_uid: uuid.UUID | str | None = None,
     signal_weights_data_node_uid: uuid.UUID | str | None = None,
@@ -30,6 +31,7 @@ def build_create_portfolio_operation(
         .values(
             unique_identifier=unique_identifier,
             calendar_name=calendar_name,
+            calendar_uid=calendar_uid,
             portfolio_index_uid=portfolio_index_uid,
             portfolio_weights_data_node_uid=portfolio_weights_data_node_uid,
             signal_weights_data_node_uid=signal_weights_data_node_uid,
@@ -93,6 +95,7 @@ def build_search_portfolios_operation(
     *,
     unique_identifier_contains: str | None = None,
     calendar_name: str | None = None,
+    calendar_uid: uuid.UUID | str | None = None,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
     statement = select(PortfolioTable).limit(limit)
@@ -102,6 +105,8 @@ def build_search_portfolios_operation(
         )
     if calendar_name not in (None, ""):
         statement = statement.where(PortfolioTable.calendar_name == str(calendar_name))
+    if calendar_uid not in (None, ""):
+        statement = statement.where(PortfolioTable.calendar_uid == calendar_uid)
     return compile_markets_statement(
         statement,
         context=context,

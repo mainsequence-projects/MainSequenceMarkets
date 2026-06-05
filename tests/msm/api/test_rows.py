@@ -23,7 +23,7 @@ from msm.api.assets import (
     AssetType,
     OpenFigiDetails,
 )
-from msm.api.calendars import Calendar
+from msm.api.calendars import Calendar, CalendarDate, CalendarEvent, CalendarSession
 from msm.api.execution import OrderManager
 from msm.api.indices import Index, IndexType
 from msm.models import (
@@ -34,6 +34,9 @@ from msm.models import (
     AssetCategoryMembershipTable,
     AssetCategoryTable,
     AssetTypeTable,
+    CalendarDateTable,
+    CalendarEventTable,
+    CalendarSessionTable,
     CalendarTable,
     IndexTable,
     IndexTypeTable,
@@ -50,7 +53,25 @@ from msm.models import (
         (AssetCategory, AssetCategoryTable, ("unique_identifier",)),
         (AssetCategoryMembership, AssetCategoryMembershipTable, ("category_uid", "asset_uid")),
         (OpenFigiDetails, OpenFigiAssetDetailsTable, ("asset_uid",)),
-        (Calendar, CalendarTable, ("name",)),
+        (Calendar, CalendarTable, ("unique_identifier",)),
+        (CalendarDate, CalendarDateTable, ("calendar_uid", "local_date")),
+        (
+            CalendarSession,
+            CalendarSessionTable,
+            ("calendar_uid", "local_date", "session_label"),
+        ),
+        (
+            CalendarEvent,
+            CalendarEventTable,
+            (
+                "calendar_uid",
+                "event_date",
+                "event_type",
+                "event_label",
+                "target_type",
+                "target_identifier",
+            ),
+        ),
         (AccountModelPortfolio, AccountModelPortfolioTable, ("model_portfolio_name",)),
         (AccountGroup, AccountGroupTable, ("group_name",)),
         (Account, AccountTable, ("unique_identifier",)),

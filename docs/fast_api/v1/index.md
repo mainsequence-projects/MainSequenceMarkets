@@ -56,6 +56,18 @@ Current local-dev behavior:
     holdings snapshot matches
   - nullable compatibility fields such as `id`, `snapshot_uid`, `nav`, and
     `price` are not invented when the storage row does not provide them
+- `POST /api/v1/account/{account_uid}/add-holdings/`
+  - writes one account holdings snapshot and returns the same
+    `AccountHoldingsSnapshotResponse` contract as the holdings read endpoint
+  - request body contains `holdings_date`, `overwrite`, and `positions`
+  - each position uses `unique_identifier` as the stored `asset_identifier`
+  - `asset_uid`, when provided, is validation only and must match the asset row
+    for the supplied `unique_identifier`
+  - `quantity` is stored as a positive magnitude and `direction` stores side
+  - `target_trade_time`, when provided, must match `holdings_date`
+  - `overwrite=false` rejects an existing snapshot; `overwrite=true` replaces
+    rows for the holdings set through one scoped MetaTable operation so the
+    delete and replacement insert share the same backend transaction boundary
 - `GET /api/v1/account/{account_uid}/target-positions/`
   - supports `order`, `limit=1`, `include_asset_detail`, and exact
     `target_positions_date`

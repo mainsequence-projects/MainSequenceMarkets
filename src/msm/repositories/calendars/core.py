@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from typing import Any
 
 from mainsequence.client.metatables import MetaTableCompiledSQLOperation
 
 from msm.models import CalendarTable
-
-from .base import MarketsRepositoryContext, execute_markets_operation
-from .crud import (
+from msm.repositories.base import MarketsRepositoryContext, execute_markets_operation
+from msm.repositories.crud import (
     build_create_model_operation,
     build_delete_model_operation,
     build_get_model_by_uid_operation,
@@ -20,16 +20,28 @@ from .crud import (
 def build_create_calendar_operation(
     context: MarketsRepositoryContext,
     *,
-    name: str,
-    calendar_dates: dict | list | None = None,
+    unique_identifier: str,
+    display_name: str,
+    calendar_type: str,
+    valid_from: dt.date,
+    valid_to: dt.date,
+    timezone: str = "UTC",
+    source: str | None = None,
+    source_identifier: str | None = None,
     metadata_json: dict[str, Any] | None = None,
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
         model=CalendarTable,
         values={
-            "name": name,
-            "calendar_dates": calendar_dates,
+            "unique_identifier": unique_identifier,
+            "display_name": display_name,
+            "calendar_type": calendar_type,
+            "timezone": timezone,
+            "source": source,
+            "source_identifier": source_identifier,
+            "valid_from": valid_from,
+            "valid_to": valid_to,
             "metadata_json": metadata_json,
         },
     )
@@ -64,18 +76,27 @@ def get_calendar_by_uid(
 def build_search_calendars_operation(
     context: MarketsRepositoryContext,
     *,
-    name: str | None = None,
-    name_contains: str | None = None,
+    unique_identifier: str | None = None,
+    unique_identifier_contains: str | None = None,
+    calendar_type: str | None = None,
+    source: str | None = None,
+    source_identifier: str | None = None,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
     filters: dict[str, Any] = {}
-    if name not in (None, ""):
-        filters["name"] = name
+    if unique_identifier not in (None, ""):
+        filters["unique_identifier"] = unique_identifier
+    if calendar_type not in (None, ""):
+        filters["calendar_type"] = calendar_type
+    if source not in (None, ""):
+        filters["source"] = source
+    if source_identifier not in (None, ""):
+        filters["source_identifier"] = source_identifier
     return build_search_model_operation(
         context,
         model=CalendarTable,
         filters=filters,
-        contains_filters={"name": name_contains or ""},
+        contains_filters={"unique_identifier": unique_identifier_contains or ""},
         limit=limit,
     )
 
@@ -91,17 +112,13 @@ def build_update_calendar_operation(
     context: MarketsRepositoryContext,
     *,
     uid: uuid.UUID | str,
-    calendar_dates: dict | list | None = None,
-    metadata_json: dict[str, Any] | None = None,
+    **values: Any,
 ) -> MetaTableCompiledSQLOperation:
     return build_update_model_operation(
         context,
         model=CalendarTable,
         uid=uid,
-        values={
-            "calendar_dates": calendar_dates,
-            "metadata_json": metadata_json,
-        },
+        values=values,
     )
 
 

@@ -4,6 +4,9 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS = {
+    "AlwaysOpenCalendarSchedule": ".calendars",
+    "PandasMarketCalendarSchedule": ".calendars",
+    "PersistedCalendarSchedule": ".calendars",
     "create_portfolio": ".portfolios",
     "create_portfolio_metadata": ".market_metadata",
     "create_rebalance_strategy_metadata": ".market_metadata",
@@ -28,6 +31,7 @@ _EXPORTS = {
     "get_virtual_fund_by_unique_identifier": ".virtual_funds",
     "get_virtual_funds_by_account": ".virtual_funds",
     "get_virtual_funds_by_portfolio": ".virtual_funds",
+    "resolve_rebalance_calendar": ".calendars",
     "update_virtual_fund": ".virtual_funds",
     "validate_holdings_frame": ".holdings",
     "validate_virtual_fund_allocation_bounds": ".holdings",

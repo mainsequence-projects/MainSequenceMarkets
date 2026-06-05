@@ -17,7 +17,12 @@ from .assets import (
     CurrencySpotAssetDetailsTable,
     OpenFigiAssetDetailsTable,
 )
-from .calendars import CalendarTable
+from .calendars import (
+    CalendarDateTable,
+    CalendarEventTable,
+    CalendarSessionTable,
+    CalendarTable,
+)
 from .derivatives import FutureAssetDetailsTable
 from .execution import OrderManagerTable
 from .issuers import IssuerTable
@@ -42,6 +47,9 @@ def markets_sqlalchemy_models() -> list[type]:
         BondAssetDetailsTable,
         FutureAssetDetailsTable,
         CalendarTable,
+        CalendarDateTable,
+        CalendarSessionTable,
+        CalendarEventTable,
         AccountModelPortfolioTable,
         AccountGroupTable,
         AccountTable,
@@ -94,6 +102,9 @@ __all__ = [
     "AssetTable",
     "AssetTypeTable",
     "BondAssetDetailsTable",
+    "CalendarDateTable",
+    "CalendarEventTable",
+    "CalendarSessionTable",
     "CalendarTable",
     "CurrencySpotAssetDetailsTable",
     "FutureAssetDetailsTable",
