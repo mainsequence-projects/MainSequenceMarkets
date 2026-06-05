@@ -44,6 +44,7 @@ Available operations on `PricingMarketDataSet`:
 - `get_by_key(set_key)`
 - `filter(limit=500, **filters)`
 - `resolve_uid(market_data_set=None)`
+- `delete(uid)`
 
 Available operations on `PricingMarketDataSetBinding`:
 
@@ -54,39 +55,39 @@ Available operations on `PricingMarketDataSetBinding`:
 - `get_by_set_and_concept(market_data_set_uid, concept_key)`
 - `resolve_data_node_uid(market_data_set=None, concept_key=...)`
 - `filter(limit=500, **filters)`
+- `delete(uid)`
 
 ## Gaps To Resolve Before Full CRUD
 
-Full CRUD is not completely exposed by `msm_pricing.api` yet.
-
-Missing operations:
-
-- `PricingMarketDataSet.delete(uid)`
-- `PricingMarketDataSetBinding.delete(uid)`
+Full CRUD source methods are now exposed by `msm_pricing.api`. Source list
+methods now support reusable pagination through `list(limit, offset, **filters)`.
+Remaining source API decision is search support.
 
 List limitations:
 
-- `filter(...)` supports `limit` and exact filters, but does not expose
-  `offset`.
-- `filter(...)` returns `list[Model]`, not an envelope with total `count`.
+- `filter(...)` remains a capped-list helper for source API callers that do not
+  need pagination.
+- `list(...)` is the method FastAPI must use for paginated responses.
 - There is no search operation across display fields.
 
-Required decision:
+Pagination standard:
 
-- If the frontend needs true server-side pagination, add list helpers in
-  `msm_pricing.api` first, for example `list(limit, offset, **filters)` returning
-  `{count, results}` or a typed Pydantic list response.
-- If the initial UI can accept simple capped lists, wrap the existing
-  `filter(limit=...)` operation and return `count=len(results)` for the returned
-  page only. This is not a total table count.
+- FastAPI list endpoints must use the reusable common envelope from
+  `apps/v1/schemas/common.py`: `PaginatedResponse[T]`.
+- The response shape is `{count, limit, offset, results}`.
+- `count` must represent the total rows matching the filters, not the current
+  page length.
+- Do not create resource-specific list envelopes when `PaginatedResponse[T]`
+  can represent the contract.
 
-Required API extension for DELETE:
+DELETE source API status:
 
-- Add delete methods to `PricingMarketDataSet` and
-  `PricingMarketDataSetBinding` in `src/msm_pricing/api/market_data_bindings.py`.
-- Internally those methods may reuse the existing `msm.repositories.crud.delete_model`
-  helper, but the FastAPI route must call the `msm_pricing.api` delete methods,
-  not the repository directly.
+- `PricingMarketDataSet.delete(uid)` exists in
+  `src/msm_pricing/api/market_data_bindings.py`.
+- `PricingMarketDataSetBinding.delete(uid)` exists in
+  `src/msm_pricing/api/market_data_bindings.py`.
+- FastAPI routes must call these `msm_pricing.api` delete methods, not the
+  repository directly.
 
 ## Proposed Route Shape
 
@@ -151,21 +152,22 @@ GET /api/v1/pricing/market_data/sets/
 
 Wrapper:
 
-- `PricingMarketDataSet.filter(limit=limit, status=status, set_key=set_key)`
+- `PricingMarketDataSet.list(limit=limit, offset=offset, status=status, set_key=set_key)`
 
 Initial query parameters:
 
 - `limit`
+- `offset`
 - `status`
 - `set_key`
-
-Do not expose `offset` until `msm_pricing.api` supports it.
 
 Response:
 
 ```json
 {
   "count": 2,
+  "limit": 25,
+  "offset": 0,
   "results": [
     {
       "uid": "7f958bbf-44cc-4cb9-ad19-b41b5aa28d60",
@@ -262,9 +264,9 @@ Wrapper:
 
 Status:
 
-- Blocked until delete exists in `msm_pricing.api`.
+- Source API support exists; FastAPI can wrap `PricingMarketDataSet.delete(uid)`.
 
-Expected response after API support exists:
+Expected FastAPI response:
 
 ```json
 {
@@ -282,11 +284,12 @@ GET /api/v1/pricing/market_data/bindings/
 
 Wrapper:
 
-- `PricingMarketDataSetBinding.filter(limit=limit, market_data_set_uid=..., concept_key=...)`
+- `PricingMarketDataSetBinding.list(limit=limit, offset=offset, market_data_set_uid=..., concept_key=...)`
 
 Initial query parameters:
 
 - `limit`
+- `offset`
 - `market_data_set_uid`
 - `concept_key`
 
@@ -295,6 +298,8 @@ Response:
 ```json
 {
   "count": 2,
+  "limit": 25,
+  "offset": 0,
   "results": [
     {
       "uid": "binding-uid",
@@ -315,7 +320,7 @@ GET /api/v1/pricing/market_data/sets/{market_data_set_uid}/bindings/
 
 Wrapper:
 
-- `PricingMarketDataSetBinding.filter(limit=limit, market_data_set_uid=market_data_set_uid)`
+- `PricingMarketDataSetBinding.list(limit=limit, offset=offset, market_data_set_uid=market_data_set_uid)`
 
 Purpose:
 
@@ -420,9 +425,9 @@ Wrapper:
 
 Status:
 
-- Blocked until delete exists in `msm_pricing.api`.
+- Source API support exists; FastAPI can wrap `PricingMarketDataSetBinding.delete(uid)`.
 
-Expected response after API support exists:
+Expected FastAPI response:
 
 ```json
 {
@@ -460,37 +465,35 @@ Open decision:
 
 ### Source API TODOs
 
-- [ ] Add `PricingMarketDataSet.delete(uid)` to
+- [x] Add `PricingMarketDataSet.delete(uid)` to
   `src/msm_pricing/api/market_data_bindings.py`.
-- [ ] Add `PricingMarketDataSetBinding.delete(uid)` to
+- [x] Add `PricingMarketDataSetBinding.delete(uid)` to
   `src/msm_pricing/api/market_data_bindings.py`.
-- [ ] Add focused unit tests proving both delete methods call the pricing active
+- [x] Add focused unit tests proving both delete methods call the pricing active
   runtime and delete the correct backing table by UID.
-- [ ] Decide whether the frontend needs true total-count pagination for the first
+- [x] Decide whether the frontend needs true total-count pagination for the first
   release.
-- [ ] If true pagination is required, add `PricingMarketDataSet.list(limit, offset, **filters)`
+- [x] Add `PricingMarketDataSet.list(limit, offset, **filters)`
   in `src/msm_pricing/api/market_data_bindings.py`.
-- [ ] If true pagination is required, add
-  `PricingMarketDataSetBinding.list(limit, offset, **filters)` in
+- [x] Add `PricingMarketDataSetBinding.list(limit, offset, **filters)` in
   `src/msm_pricing/api/market_data_bindings.py`.
-- [ ] If true pagination is not implemented, document that FastAPI list
-  responses expose `count=len(results)` for the returned capped list only.
+- [x] Add repository support for filtered row counts and offset-backed searches.
 - [ ] Decide whether `search` is required for the first UI release.
 - [ ] If `search` is required, implement search support in `msm_pricing.api`
   before exposing a `search` query parameter from FastAPI.
 
 ### FastAPI Contracts
 
+- [x] Add reusable `PaginatedResponse[T]` to `apps/v1/schemas/common.py`.
 - [ ] Create `apps/v1/schemas/pricing_market_data.py`.
 - [ ] Add `PricingMarketDataResourceLink` for discoverability card resources.
 - [ ] Add `PricingMarketDataCardResponse` for
   `GET /api/v1/pricing/market_data/`.
-- [ ] Add `PricingMarketDataSetListResponse` with `count` and
-  `results: list[PricingMarketDataSet]`.
+- [ ] Use `PaginatedResponse[PricingMarketDataSet]` for dataset list responses.
 - [ ] Add `PricingMarketDataSetDeleteResponse` with `detail`, `uid`, and
   `deleted_count`.
-- [ ] Add `PricingMarketDataSetBindingListResponse` with `count` and
-  `results: list[PricingMarketDataSetBinding]`.
+- [ ] Use `PaginatedResponse[PricingMarketDataSetBinding]` for binding list
+  responses.
 - [ ] Add `PricingMarketDataSetBindingDeleteResponse` with `detail`, `uid`, and
   `deleted_count`.
 - [ ] Add `PricingMarketDataBindingResolveResponse` with `market_data_set`,
@@ -522,8 +525,8 @@ Open decision:
 
 - [ ] Create `apps/v1/services/pricing_market_data.py`.
 - [ ] Add `pricing_market_data_card()` returning the discoverability payload.
-- [ ] Add `list_pricing_market_data_sets(limit, status, set_key)` wrapping
-  `PricingMarketDataSet.filter(...)` or the new list helper if implemented.
+- [ ] Add `list_pricing_market_data_sets(limit, offset, status, set_key)` wrapping
+  `PricingMarketDataSet.list(...)`.
 - [ ] Add `get_pricing_market_data_set(uid)` wrapping
   `PricingMarketDataSet.get_by_uid(uid)`.
 - [ ] Add `get_pricing_market_data_set_by_key(set_key)` wrapping
@@ -535,12 +538,11 @@ Open decision:
 - [ ] Add `update_pricing_market_data_set(uid, payload)` wrapping
   `PricingMarketDataSet.update(uid, payload)`.
 - [ ] Add `delete_pricing_market_data_set(uid)` wrapping
-  `PricingMarketDataSet.delete(uid)` after the source API TODO is complete.
-- [ ] Add `list_pricing_market_data_bindings(limit, market_data_set_uid, concept_key)`
-  wrapping `PricingMarketDataSetBinding.filter(...)` or the new list helper if
-  implemented.
-- [ ] Add `list_pricing_market_data_set_bindings(market_data_set_uid, limit)`
-  wrapping `PricingMarketDataSetBinding.filter(...)`.
+  `PricingMarketDataSet.delete(uid)`.
+- [ ] Add `list_pricing_market_data_bindings(limit, offset, market_data_set_uid, concept_key)`
+  wrapping `PricingMarketDataSetBinding.list(...)`.
+- [ ] Add `list_pricing_market_data_set_bindings(market_data_set_uid, limit, offset)`
+  wrapping `PricingMarketDataSetBinding.list(...)`.
 - [ ] Add `get_pricing_market_data_binding(uid)` wrapping
   `PricingMarketDataSetBinding.get_by_uid(uid)`.
 - [ ] Add `resolve_pricing_market_data_binding(market_data_set, concept_key)`
@@ -552,8 +554,7 @@ Open decision:
 - [ ] Add `update_pricing_market_data_binding(uid, payload)` wrapping
   `PricingMarketDataSetBinding.update(uid, payload)`.
 - [ ] Add `delete_pricing_market_data_binding(uid)` wrapping
-  `PricingMarketDataSetBinding.delete(uid)` after the source API TODO is
-  complete.
+  `PricingMarketDataSetBinding.delete(uid)`.
 
 ### Router
 
@@ -566,8 +567,7 @@ Open decision:
 - [ ] Add `POST /api/v1/pricing/market_data/sets/`.
 - [ ] Add `POST /api/v1/pricing/market_data/sets/upsert/`.
 - [ ] Add `PATCH /api/v1/pricing/market_data/sets/{uid}/`.
-- [ ] Add `DELETE /api/v1/pricing/market_data/sets/{uid}/` after
-  `PricingMarketDataSet.delete(uid)` exists.
+- [ ] Add `DELETE /api/v1/pricing/market_data/sets/{uid}/`.
 - [ ] Add `GET /api/v1/pricing/market_data/bindings/`.
 - [ ] Add `GET /api/v1/pricing/market_data/sets/{market_data_set_uid}/bindings/`.
 - [ ] Add `GET /api/v1/pricing/market_data/bindings/{uid}/`.
@@ -575,8 +575,7 @@ Open decision:
 - [ ] Add `POST /api/v1/pricing/market_data/bindings/`.
 - [ ] Add `POST /api/v1/pricing/market_data/bindings/upsert/`.
 - [ ] Add `PATCH /api/v1/pricing/market_data/bindings/{uid}/`.
-- [ ] Add `DELETE /api/v1/pricing/market_data/bindings/{uid}/` after
-  `PricingMarketDataSetBinding.delete(uid)` exists.
+- [ ] Add `DELETE /api/v1/pricing/market_data/bindings/{uid}/`.
 - [ ] Every route must declare `response_model`.
 - [ ] Every route must declare `summary`.
 - [ ] Every route must have an explicit `operation_id`.
@@ -623,8 +622,8 @@ Open decision:
   list/detail/resolve.
 - [ ] Document delete availability only after source API delete support is
   implemented.
-- [ ] If pagination remains capped-list only, document that `count` is not a
-  total table count.
+- [ ] Document that pricing list endpoints use `PaginatedResponse[T]` with
+  `count`, `limit`, `offset`, and `results`.
 
 ### Validation
 

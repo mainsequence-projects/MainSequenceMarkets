@@ -250,7 +250,7 @@ virtual-fund allocation rows.
 | PlatformTimeIndexMeta   |   | PlatformTimeIndexMeta   |   | PlatformTimeIndexMeta   |
 +------------+------------+   +------------+------------+   +------------+------------+
              |                             |                             |
-             | storage UID                 | storage UID                 | storage UID
+             | DataNodeUpdate UID          | DataNodeUpdate UID          | DataNodeUpdate UID
              +-----------------------------+-----------------------------+
                                            |
                                            v
@@ -324,7 +324,7 @@ end-to-end workflow that reuses the shared crypto `Asset` example rows, creates
 or reuses a `CRYPTO_24_7` calendar from `pandas_market_calendars`, creates the
 portfolio `Index`, prepares `SignalWeights`, `PortfolioWeights`, and
 `PortfoliosDataNode`, and upserts the `Portfolio` row with `calendar_uid`,
-`portfolio_index_uid`, plus the three DataNode storage UIDs. The example
+`portfolio_index_uid`, plus the three DataNode update UIDs. The example
 narrates each setup, publication, portfolio, and virtual-fund allocation step so
 terminal output explains what was created.
 

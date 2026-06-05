@@ -213,6 +213,229 @@ def test_pricing_market_data_binding_upsert_uses_set_uid_concept_key(
     ]
 
 
+def test_pricing_market_data_set_delete_uses_active_context(monkeypatch) -> None:
+    market_data_set_uid = uuid.uuid4()
+    context = object()
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.resolve_pricing_runtime",
+        lambda **kwargs: calls.append(("runtime", kwargs)) or SimpleNamespace(context=context),
+    )
+
+    def fake_delete_model(active_context, *, model, uid):
+        calls.append(("delete", active_context, model, uid))
+        return {"deleted_count": 1}
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.delete_model",
+        fake_delete_model,
+    )
+
+    assert PricingMarketDataSet.delete(market_data_set_uid) == {"deleted_count": 1}
+    assert calls == [
+        (
+            "runtime",
+            {
+                "models": [PricingMarketDataSetTable],
+                "row_model_name": "PricingMarketDataSet",
+            },
+        ),
+        ("delete", context, PricingMarketDataSetTable, market_data_set_uid),
+    ]
+
+
+def test_pricing_market_data_set_list_uses_true_pagination(monkeypatch) -> None:
+    market_data_set_uid = uuid.uuid4()
+    context = object()
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.resolve_pricing_runtime",
+        lambda **kwargs: calls.append(("runtime", kwargs)) or SimpleNamespace(context=context),
+    )
+
+    def fake_count_model(active_context, *, model, filters):
+        calls.append(("count", active_context, model, filters))
+        return {"rows": [{"count": 3}]}
+
+    def fake_search_model(active_context, *, model, filters, limit, offset=0):
+        calls.append(("search", active_context, model, filters, limit, offset))
+        return {
+            "rows": [
+                {
+                    "uid": market_data_set_uid,
+                    "set_key": "default",
+                    "display_name": "Default",
+                    "status": "ACTIVE",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.count_model",
+        fake_count_model,
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.search_model",
+        fake_search_model,
+    )
+
+    response = PricingMarketDataSet.list(limit=1, offset=2, status="ACTIVE")
+
+    assert response == {
+        "count": 3,
+        "limit": 1,
+        "offset": 2,
+        "results": [
+            PricingMarketDataSet(
+                uid=market_data_set_uid,
+                set_key="default",
+                display_name="Default",
+                status="ACTIVE",
+            )
+        ],
+    }
+    assert calls == [
+        (
+            "runtime",
+            {
+                "models": [PricingMarketDataSetTable],
+                "row_model_name": "PricingMarketDataSet",
+            },
+        ),
+        ("count", context, PricingMarketDataSetTable, {"status": "ACTIVE"}),
+        ("search", context, PricingMarketDataSetTable, {"status": "ACTIVE"}, 1, 2),
+    ]
+
+
+def test_pricing_market_data_binding_delete_uses_active_context(monkeypatch) -> None:
+    binding_uid = uuid.uuid4()
+    context = object()
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.resolve_pricing_runtime",
+        lambda **kwargs: calls.append(("runtime", kwargs)) or SimpleNamespace(context=context),
+    )
+
+    def fake_delete_model(active_context, *, model, uid):
+        calls.append(("delete", active_context, model, uid))
+        return {"deleted_count": 1}
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.delete_model",
+        fake_delete_model,
+    )
+
+    assert PricingMarketDataSetBinding.delete(binding_uid) == {"deleted_count": 1}
+    assert calls == [
+        (
+            "runtime",
+            {
+                "models": [
+                    PricingMarketDataSetTable,
+                    PricingMarketDataSetBindingTable,
+                ],
+                "row_model_name": "PricingMarketDataSetBinding",
+            },
+        ),
+        ("delete", context, PricingMarketDataSetBindingTable, binding_uid),
+    ]
+
+
+def test_pricing_market_data_binding_list_uses_true_pagination(monkeypatch) -> None:
+    market_data_set_uid = uuid.uuid4()
+    binding_uid = uuid.uuid4()
+    data_node_uid = uuid.uuid4()
+    context = object()
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.resolve_pricing_runtime",
+        lambda **kwargs: calls.append(("runtime", kwargs)) or SimpleNamespace(context=context),
+    )
+
+    def fake_count_model(active_context, *, model, filters):
+        calls.append(("count", active_context, model, filters))
+        return {"rows": [{"count": 4}]}
+
+    def fake_search_model(active_context, *, model, filters, limit, offset=0):
+        calls.append(("search", active_context, model, filters, limit, offset))
+        return {
+            "rows": [
+                {
+                    "uid": binding_uid,
+                    "market_data_set_uid": market_data_set_uid,
+                    "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
+                    "data_node_uid": data_node_uid,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.count_model",
+        fake_count_model,
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.search_model",
+        fake_search_model,
+    )
+
+    response = PricingMarketDataSetBinding.list(
+        limit=1,
+        offset=3,
+        market_data_set_uid=market_data_set_uid,
+        concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
+    )
+
+    assert response == {
+        "count": 4,
+        "limit": 1,
+        "offset": 3,
+        "results": [
+            PricingMarketDataSetBinding(
+                uid=binding_uid,
+                market_data_set_uid=market_data_set_uid,
+                concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
+                data_node_uid=data_node_uid,
+            )
+        ],
+    }
+    assert calls == [
+        (
+            "runtime",
+            {
+                "models": [
+                    PricingMarketDataSetTable,
+                    PricingMarketDataSetBindingTable,
+                ],
+                "row_model_name": "PricingMarketDataSetBinding",
+            },
+        ),
+        (
+            "count",
+            context,
+            PricingMarketDataSetBindingTable,
+            {
+                "market_data_set_uid": market_data_set_uid,
+                "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
+            },
+        ),
+        (
+            "search",
+            context,
+            PricingMarketDataSetBindingTable,
+            {
+                "market_data_set_uid": market_data_set_uid,
+                "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
+            },
+            1,
+            3,
+        ),
+    ]
+
+
 def test_pricing_market_data_binding_resolves_data_node_uid(monkeypatch) -> None:
     market_data_set_uid = uuid.uuid4()
     binding_uid = uuid.uuid4()

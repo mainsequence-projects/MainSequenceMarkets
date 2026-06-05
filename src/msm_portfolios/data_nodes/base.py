@@ -16,6 +16,12 @@ from msm.data_nodes.utils.storage_metadata import (
     storage_data_node_description,
     storage_data_node_identifier,
 )
+from msm.data_nodes.utils.data_node_updates import (
+    coerce_required_uid as _coerce_required_uid,
+    data_node_update_storage as _data_node_update_storage,
+    get_mapping_or_attr as _get_mapping_or_attr,
+    storage_source_config as _storage_source_config,
+)
 from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.data_nodes.utils.storage_schema import storage_index_names, storage_time_index_name
@@ -158,28 +164,42 @@ class PortfolioCanonicalDataNode(DataNode):
         return self.canonical_data_source_uid()
 
     def ensure_storage_ready(self, *, force_update: bool = False) -> str:
-        storage = None if force_update else self._ready_storage_or_none()
-        if storage is None:
+        """Validate storage readiness and return the DataNodeUpdate uid."""
+
+        if force_update or self._requires_data_node_update_creation():
             self.run(debug_mode=True, update_tree=False, force_update=True)
-            storage = self._ready_storage_or_none()
 
-        if storage is None:
-            raise RuntimeError(
-                f"{self.__class__.__name__} did not create a ready canonical Portfolios data node."
-            )
-        return _coerce_required_uid(storage, field_name="data_node_storage")
+        data_node_update = self._require_ready_data_node_update()
+        return _coerce_required_uid(data_node_update, field_name="data_node_update")
 
-    def _ready_storage_or_none(self):
-        storage = self.data_node_storage
-        if _coerce_optional_uid(storage, field_name="data_node_storage") is None:
-            return None
+    def _requires_data_node_update_creation(self) -> bool:
+        data_node_update = self.data_node_update
+        if data_node_update is None:
+            return True
+        _coerce_required_uid(data_node_update, field_name="data_node_update")
+        return False
+
+    def _require_ready_data_node_update(self):
+        data_node_update = self.data_node_update
+        _coerce_required_uid(data_node_update, field_name="data_node_update")
+
+        storage = _data_node_update_storage(data_node_update)
+        _coerce_required_uid(
+            storage,
+            field_name="data_node_update.data_node_storage",
+        )
 
         source_config = _storage_source_config(storage)
         if source_config is None:
-            return None
+            source_config = _storage_source_config(self.storage_metadata)
+        if source_config is None:
+            raise RuntimeError(
+                f"{self.__class__.__name__} DataNodeUpdate storage does not expose "
+                "source-table configuration for strict portfolio workflow creation."
+            )
 
         self._validate_storage_contract(source_config)
-        return storage
+        return data_node_update
 
     def _validate_storage_contract(self, source_config: Any) -> None:
         errors: list[str] = []
@@ -418,35 +438,3 @@ def _normalize_float64(values: Any, *, column_name: str) -> pd.Series:
 
 def _normalize_string(values: Any) -> pd.Series:
     return values.map(lambda value: "" if pd.isna(value) else str(value)).astype("string")
-
-
-def _storage_source_config(storage: Any) -> Any | None:
-    return (
-        _get_mapping_or_attr(storage, "sourcetableconfiguration")
-        or _get_mapping_or_attr(storage, "source_table_configuration")
-        or _get_mapping_or_attr(storage, "source_table_config")
-    )
-
-
-def _get_mapping_or_attr(value: Any, field_name: str) -> Any:
-    if isinstance(value, dict):
-        return value.get(field_name)
-    return getattr(value, field_name, None)
-
-
-def _coerce_required_uid(value: Any, *, field_name: str) -> str:
-    value_uid = _coerce_optional_uid(value, field_name=field_name)
-    if value_uid is None:
-        raise ValueError(f"{field_name} must expose a public uid.")
-    return value_uid
-
-
-def _coerce_optional_uid(value: Any, *, field_name: str) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value or None
-    value_uid = value.get("uid") if isinstance(value, dict) else getattr(value, "uid", None)
-    if value_uid in (None, ""):
-        return None
-    return str(value_uid)

@@ -101,7 +101,7 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Portfolio Weights Data Node UID",
-            "description": "Platform DataNode storage UID for portfolio weights history.",
+            "description": "Platform DataNodeUpdate.uid for the portfolio weights producer.",
         },
     )
     signal_weights_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(
@@ -109,7 +109,7 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Signal Weights Data Node UID",
-            "description": "Platform DataNode storage UID for signal weights history.",
+            "description": "Platform DataNodeUpdate.uid for the signal weights producer.",
         },
     )
     portfolio_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(
@@ -117,7 +117,7 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Portfolio Data Node UID",
-            "description": "Platform DataNode storage UID for portfolio-level historical data.",
+            "description": "Platform DataNodeUpdate.uid for the portfolio-level data producer.",
         },
     )
     backtest_table_price_column_name: Mapped[str] = mapped_column(

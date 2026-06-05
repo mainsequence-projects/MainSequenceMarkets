@@ -8,7 +8,9 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from msm.api.base import _warn_deprecated_create_schemas, operation_result_rows
 from msm.repositories.crud import (
+    count_model,
     create_model,
+    delete_model,
     get_model_by_uid,
     search_model,
     update_model,
@@ -117,6 +119,10 @@ class PricingMarketDataSet(BaseModel):
         return cls._from_operation_result(result)
 
     @classmethod
+    def delete(cls, uid: uuid.UUID | str) -> dict[str, Any]:
+        return delete_model(cls._active_context(), model=cls.__table__, uid=uid)
+
+    @classmethod
     def get_by_uid(cls, uid: uuid.UUID | str) -> PricingMarketDataSet | None:
         result = get_model_by_uid(cls._active_context(), model=cls.__table__, uid=uid)
         return cls._from_operation_result(result, required=False)
@@ -140,6 +146,32 @@ class PricingMarketDataSet(BaseModel):
             limit=limit,
         )
         return [cls.model_validate(row) for row in operation_result_rows(result)]
+
+    @classmethod
+    def list(
+        cls,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        **filters: Any,
+    ) -> dict[str, Any]:
+        limit, offset = _validate_pagination(limit=limit, offset=offset)
+        exact_filters = {key: value for key, value in filters.items() if value is not None}
+        context = cls._active_context()
+        count_result = count_model(context, model=cls.__table__, filters=exact_filters)
+        result = search_model(
+            context,
+            model=cls.__table__,
+            filters=exact_filters,
+            limit=limit,
+            offset=offset,
+        )
+        return {
+            "count": _count_from_operation_result(count_result),
+            "limit": limit,
+            "offset": offset,
+            "results": [cls.model_validate(row) for row in operation_result_rows(result)],
+        }
 
     @classmethod
     def resolve_uid(cls, market_data_set: PricingMarketDataSetSelector = None) -> uuid.UUID:
@@ -259,6 +291,10 @@ class PricingMarketDataSetBinding(BaseModel):
         return cls._from_operation_result(result)
 
     @classmethod
+    def delete(cls, uid: uuid.UUID | str) -> dict[str, Any]:
+        return delete_model(cls._active_context(), model=cls.__table__, uid=uid)
+
+    @classmethod
     def get_by_uid(cls, uid: uuid.UUID | str) -> PricingMarketDataSetBinding | None:
         result = get_model_by_uid(cls._active_context(), model=cls.__table__, uid=uid)
         return cls._from_operation_result(result, required=False)
@@ -309,6 +345,32 @@ class PricingMarketDataSetBinding(BaseModel):
             limit=limit,
         )
         return [cls.model_validate(row) for row in operation_result_rows(result)]
+
+    @classmethod
+    def list(
+        cls,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        **filters: Any,
+    ) -> dict[str, Any]:
+        limit, offset = _validate_pagination(limit=limit, offset=offset)
+        exact_filters = {key: value for key, value in filters.items() if value is not None}
+        context = cls._active_context()
+        count_result = count_model(context, model=cls.__table__, filters=exact_filters)
+        result = search_model(
+            context,
+            model=cls.__table__,
+            filters=exact_filters,
+            limit=limit,
+            offset=offset,
+        )
+        return {
+            "count": _count_from_operation_result(count_result),
+            "limit": limit,
+            "offset": offset,
+            "results": [cls.model_validate(row) for row in operation_result_rows(result)],
+        }
 
     @classmethod
     def _active_context(cls):
@@ -402,6 +464,21 @@ def _normalize_concept_key(value: str) -> str:
     if not normalized:
         raise ValueError("concept_key cannot be empty.")
     return normalized
+
+
+def _validate_pagination(*, limit: int, offset: int) -> tuple[int, int]:
+    if limit < 0:
+        raise ValueError("limit must be greater than or equal to 0.")
+    if offset < 0:
+        raise ValueError("offset must be greater than or equal to 0.")
+    return limit, offset
+
+
+def _count_from_operation_result(result: Mapping[str, Any] | list[Any] | None) -> int:
+    rows = operation_result_rows(result)
+    if not rows:
+        return 0
+    return int(rows[0].get("count") or 0)
 
 
 def _coerce_uuid(value: uuid.UUID | str | Any) -> uuid.UUID:

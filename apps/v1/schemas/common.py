@@ -1,12 +1,43 @@
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Sequence
+from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+
+ResultT = TypeVar("ResultT")
 
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class PaginatedResponse(BaseModel, Generic[ResultT]):
+    """Reusable FastAPI v1 pagination envelope for list endpoints."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    count: int = Field(ge=0, description="Total number of rows matching the request filters.")
+    limit: int = Field(ge=0, description="Maximum number of rows requested for this page.")
+    offset: int = Field(ge=0, description="Zero-based offset into the filtered row set.")
+    results: list[ResultT]
+
+
+def build_paginated_response(
+    *,
+    results: Sequence[ResultT],
+    count: int,
+    limit: int,
+    offset: int,
+) -> PaginatedResponse[ResultT]:
+    """Build the shared FastAPI v1 pagination envelope."""
+
+    return PaginatedResponse[ResultT](
+        count=count,
+        limit=limit,
+        offset=offset,
+        results=list(results),
+    )
 
 
 class FrontEndDetailSummaryEntity(BaseModel):

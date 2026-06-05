@@ -15,11 +15,12 @@ from mainsequence.meta_tables.data_nodes.utils import (
     string_freq_to_time_delta,
     string_frequency_to_minutes,
 )
-from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
 )
+from msm.data_nodes.utils.data_node_updates import data_node_update_storage
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.asset_scope import (
     asset_calendar,
     asset_field,
@@ -660,7 +661,8 @@ class InterpolatedPrices(AssetIndexedDataNode):
         return required
 
     def run_post_update_routines(self, error_on_last_update):
-        if not self.local_persist_manager.data_node_storage.protect_from_deletion:
+        storage = data_node_update_storage(self.data_node_update)
+        if storage is not None and not storage.protect_from_deletion:
             self.local_persist_manager.protect_from_deletion()
 
     def _transform_raw_data_to_upsampled_df(

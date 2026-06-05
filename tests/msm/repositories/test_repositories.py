@@ -27,6 +27,7 @@ from msm.repositories.assets import (
 )
 from msm.repositories.crud import (
     build_bulk_upsert_model_operation,
+    build_count_model_operation,
     build_get_model_by_uid_operation,
     build_search_model_operation,
     build_upsert_model_operation,
@@ -77,7 +78,7 @@ def test_generic_search_operation_compiles_for_every_market_model() -> None:
     context = _repository_context()
 
     for model in markets_sqlalchemy_models():
-        operation = build_search_model_operation(context, model=model, limit=10)
+        operation = build_search_model_operation(context, model=model, limit=10, offset=5)
 
         assert operation.operation == "select"
         assert operation.limits is not None
@@ -85,6 +86,26 @@ def test_generic_search_operation_compiles_for_every_market_model() -> None:
         assert operation.scope.tables[0].access == "read"
         assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(model)
         assert model.__table__.name in operation.statement.sql
+        assert "LIMIT" in operation.statement.sql
+        assert "OFFSET" in operation.statement.sql
+
+
+def test_generic_count_operation_compiles_for_filtered_model() -> None:
+    context = _repository_context()
+
+    operation = build_count_model_operation(
+        context,
+        model=AccountTable,
+        filters={"account_is_active": True},
+    )
+
+    assert operation.operation == "select"
+    assert operation.scope.tables[0].access == "read"
+    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
+        AccountTable
+    )
+    assert "count" in operation.statement.sql.lower()
+    assert AccountTable.__table__.name in operation.statement.sql
 
 
 def test_asset_create_operation_uses_write_scope() -> None:

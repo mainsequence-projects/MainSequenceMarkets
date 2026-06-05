@@ -3,6 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from mainsequence.client.metatables import TimeIndexMetaTable as DataNodeStorage
+from msm.data_nodes.utils.data_node_updates import (
+    coerce_optional_uid as _coerce_optional_uid,
+    coerce_required_uid as _coerce_required_uid,
+    data_node_update_storage as _data_node_update_storage,
+)
 
 from .base import PortfolioCanonicalDataNode, _storage_source_config
 
@@ -32,11 +37,8 @@ def initialize_portfolio_storage_source_tables(
         storage = storages[payload_key]
         source_config = _storage_source_config(storage)
         if source_config is None:
-            refreshed_storage = _refresh_storage(storage, timeout=timeout)
-            if refreshed_storage is not None:
-                _set_node_storage(node, refreshed_storage)
-                storage = refreshed_storage
-                source_config = _storage_source_config(storage)
+            storage = _refresh_storage(storage, timeout=timeout)
+            source_config = _storage_source_config(storage)
 
         if source_config is None:
             raise RuntimeError(
@@ -94,52 +96,21 @@ def _ensure_storage_metadata(
     *,
     timeout: int | None,
 ) -> Any:
-    storage = getattr(node, "data_node_storage", None)
+    storage = _data_node_update_storage(getattr(node, "data_node_update", None))
     if _coerce_optional_uid(storage) is None:
         node.verify_and_build_remote_objects()
-        storage = getattr(node, "data_node_storage", None)
-    if _coerce_optional_uid(storage) is None:
-        raise RuntimeError(
-            f"{node.__class__.__name__} must have a DataNodeStorage uid before "
-            "the portfolio storage source tables can be initialized."
-        )
+        storage = _data_node_update_storage(getattr(node, "data_node_update", None))
+    _coerce_required_uid(
+        storage,
+        field_name=f"{node.__class__.__name__}.data_node_update.data_node_storage",
+    )
     return storage
 
 
-def _refresh_storage(storage: Any, *, timeout: int | None) -> Any | None:
-    storage_uid = _coerce_optional_uid(storage)
-    if storage_uid is None:
-        return None
+def _refresh_storage(storage: Any, *, timeout: int | None) -> Any:
+    storage_uid = _coerce_required_uid(storage, field_name="DataNodeStorage")
     return DataNodeStorage.get(
         uid=storage_uid,
         include_relations_detail=True,
         timeout=timeout,
     )
-
-
-def _set_node_storage(node: PortfolioCanonicalDataNode, storage: Any) -> None:
-    try:
-        node.local_persist_manager.data_node_storage = storage
-    except Exception:
-        pass
-
-
-def _coerce_required_uid(value: Any) -> str:
-    uid = _coerce_optional_uid(value)
-    if uid is None:
-        raise ValueError("DataNodeStorage must expose a public uid.")
-    return uid
-
-
-def _coerce_optional_uid(value: Any) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value or None
-    if isinstance(value, dict):
-        uid = value.get("uid")
-    else:
-        uid = getattr(value, "uid", None)
-    if uid in (None, ""):
-        return None
-    return str(uid)

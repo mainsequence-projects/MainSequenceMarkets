@@ -30,6 +30,12 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Added the reusable FastAPI v1 `PaginatedResponse[T]` envelope and true
+  offset-backed pricing market-data list methods for `PricingMarketDataSet`
+  and `PricingMarketDataSetBinding`.
+- Added public `delete(uid)` methods to `PricingMarketDataSet` and
+  `PricingMarketDataSetBinding` so pricing market-data FastAPI routes can wrap
+  the `msm_pricing.api` surface instead of calling repositories directly.
 - Removed dead legacy helpers from `msm_portfolios.utils`, including the
   CoinGecko symbol mapping and provider-specific/query/notebook helpers, and
   moved rolling-regression helpers into

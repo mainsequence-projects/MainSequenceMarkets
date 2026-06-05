@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -151,13 +152,14 @@ def compile_markets_statement(
     models: Sequence[type[MarketsBase]],
     access: str,
 ) -> MetaTableCompiledSQLOperation:
-    return compile_sqlalchemy_statement(
-        statement,
-        operation=operation,
-        data_source_uid=getattr(context, "data_source_uid", None),
-        scope_tables=[context.scope_table(model, access=access) for model in models],
-        limits=context.limits,
-    )
+    kwargs: dict[str, Any] = {
+        "operation": operation,
+        "scope_tables": [context.scope_table(model, access=access) for model in models],
+        "limits": context.limits,
+    }
+    if "data_source_uid" in inspect.signature(compile_sqlalchemy_statement).parameters:
+        kwargs["data_source_uid"] = getattr(context, "data_source_uid", None)
+    return compile_sqlalchemy_statement(statement, **kwargs)
 
 
 def execute_markets_operation(

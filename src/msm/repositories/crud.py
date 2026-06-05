@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from sqlalchemy import delete, insert, inspect, select, update
+from sqlalchemy import delete, func, insert, inspect, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
 from mainsequence.client.metatables import MetaTableCompiledSQLOperation
@@ -278,22 +278,17 @@ def build_search_model_operation(
     in_filters: Mapping[str, Sequence[Any]] | None = None,
     contains_filters: Mapping[str, str] | None = None,
     limit: int = 500,
+    offset: int = 0,
 ) -> MetaTableCompiledSQLOperation:
-    statement = select(model)
-
-    for field_name, value in (filters or {}).items():
-        if value is not None:
-            statement = statement.where(_model_attribute(model, field_name) == value)
-
-    for field_name, values in (in_filters or {}).items():
-        if values:
-            statement = statement.where(_model_attribute(model, field_name).in_(list(values)))
-
-    for field_name, value in (contains_filters or {}).items():
-        if value not in (None, ""):
-            statement = statement.where(_model_attribute(model, field_name).contains(str(value)))
-
+    statement = _filtered_model_select(
+        model,
+        filters=filters,
+        in_filters=in_filters,
+        contains_filters=contains_filters,
+    )
     statement = statement.limit(limit)
+    if offset:
+        statement = statement.offset(offset)
     return compile_markets_statement(
         statement,
         context=context,
@@ -311,6 +306,7 @@ def search_model(
     in_filters: Mapping[str, Sequence[Any]] | None = None,
     contains_filters: Mapping[str, str] | None = None,
     limit: int = 500,
+    offset: int = 0,
 ) -> dict[str, Any]:
     return execute_markets_operation(
         build_search_model_operation(
@@ -320,6 +316,51 @@ def search_model(
             in_filters=in_filters,
             contains_filters=contains_filters,
             limit=limit,
+            offset=offset,
+        ),
+        context=context,
+    )
+
+
+def build_count_model_operation(
+    context: MarketsOperationContext,
+    *,
+    model: type[MarketsBase],
+    filters: Mapping[str, Any] | None = None,
+    in_filters: Mapping[str, Sequence[Any]] | None = None,
+    contains_filters: Mapping[str, str] | None = None,
+) -> MetaTableCompiledSQLOperation:
+    filtered = _filtered_model_select(
+        model,
+        filters=filters,
+        in_filters=in_filters,
+        contains_filters=contains_filters,
+    ).subquery()
+    statement = select(func.count().label("count")).select_from(filtered)
+    return compile_markets_statement(
+        statement,
+        context=context,
+        operation="select",
+        models=[model],
+        access="read",
+    )
+
+
+def count_model(
+    context: MarketsOperationContext,
+    *,
+    model: type[MarketsBase],
+    filters: Mapping[str, Any] | None = None,
+    in_filters: Mapping[str, Sequence[Any]] | None = None,
+    contains_filters: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_count_model_operation(
+            context,
+            model=model,
+            filters=filters,
+            in_filters=in_filters,
+            contains_filters=contains_filters,
         ),
         context=context,
     )
@@ -416,6 +457,30 @@ def _model_value_mapping(
     }
 
 
+def _filtered_model_select(
+    model: type[MarketsBase],
+    *,
+    filters: Mapping[str, Any] | None = None,
+    in_filters: Mapping[str, Sequence[Any]] | None = None,
+    contains_filters: Mapping[str, str] | None = None,
+):
+    statement = select(model)
+
+    for field_name, value in (filters or {}).items():
+        if value is not None:
+            statement = statement.where(_model_attribute(model, field_name) == value)
+
+    for field_name, values in (in_filters or {}).items():
+        if values:
+            statement = statement.where(_model_attribute(model, field_name).in_(list(values)))
+
+    for field_name, value in (contains_filters or {}).items():
+        if value not in (None, ""):
+            statement = statement.where(_model_attribute(model, field_name).contains(str(value)))
+
+    return statement
+
+
 def _model_insert_payload(
     model: type[MarketsBase],
     values: Mapping[str, Any],
@@ -504,6 +569,7 @@ def _model_attribute(model: type[MarketsBase], field_name: str) -> Any:
 
 __all__ = [
     "build_bulk_upsert_model_operation",
+    "build_count_model_operation",
     "build_create_model_operation",
     "build_delete_model_operation",
     "build_get_model_by_uid_operation",
@@ -512,6 +578,7 @@ __all__ = [
     "build_upsert_model_operation",
     "build_update_model_operation",
     "bulk_upsert_model",
+    "count_model",
     "create_model",
     "delete_model",
     "get_model_by_uid",
