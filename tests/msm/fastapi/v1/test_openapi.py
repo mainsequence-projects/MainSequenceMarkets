@@ -188,6 +188,34 @@ def test_openapi_json_documents_index_routes() -> None:
     }
 
 
+def test_openapi_json_documents_calendar_routes() -> None:
+    client = TestClient(app)
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    calendar_list_operation = payload["paths"]["/api/v1/calendar/"]["get"]
+    assert calendar_list_operation["summary"] == "List calendars"
+    assert calendar_list_operation["operationId"] == "listCalendars"
+    assert calendar_list_operation["tags"] == ["calendar"]
+    assert calendar_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "items": {"$ref": "#/components/schemas/Calendar"},
+        "type": "array",
+        "title": "Response Listcalendars",
+    }
+
+    calendar_summary_operation = payload["paths"]["/api/v1/calendar/{uid}/summary/"]["get"]
+    assert calendar_summary_operation["summary"] == "Get calendar summary"
+    assert calendar_summary_operation["operationId"] == "getCalendarSummary"
+    assert calendar_summary_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/FrontEndDetailSummary"}
+    assert calendar_summary_operation["responses"]["404"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ErrorResponse"}
+
+
 def test_openapi_json_documents_catalogue_routes() -> None:
     client = TestClient(app)
     response = client.get("/openapi.json")

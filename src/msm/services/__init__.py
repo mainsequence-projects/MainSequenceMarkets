@@ -65,6 +65,7 @@ _EXPORTS = {
     "get_calendar_by_uid": ".reference_data",
     "get_calendar_date_record": ".calendars",
     "get_calendar_event_record": ".calendars",
+    "get_calendar_frontend_detail_summary": ".calendars",
     "get_calendar_record": ".calendars",
     "get_calendar_session_record": ".calendars",
     "get_openfigi_details_by_uid": ".provider_details",

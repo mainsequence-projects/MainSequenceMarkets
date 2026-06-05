@@ -16,8 +16,9 @@ This API is intentionally thin:
 
 ## Route ADRs
 
-- [Calendar CRUD Route](ADR/0001-calendar-crud-route.md): route group for
-  calendar identity CRUD and bounded date, session, and event maintenance.
+- [Calendar CRUD And Summary Route](ADR/0001-calendar-crud-route.md): route
+  group for calendar identity CRUD, summary, and bounded date, session, and
+  event maintenance.
 
 ## Runtime Bootstrap
 
@@ -165,6 +166,12 @@ Current local-dev behavior:
 - `GET /api/v1/calendar/{uid}/`
   - supports `response_format=frontend_detail`
   - returns one library `Calendar` row by uid
+- `GET /api/v1/calendar/{uid}/summary/`
+  - returns the reusable `FrontEndDetailSummary` response for calendar detail
+    pages
+  - resolves the calendar by `uid`
+  - includes calendar identity, type/timezone badges, validity horizon, label
+    management placeholders, and related date/session/event route links
 - `PATCH /api/v1/calendar/{uid}/`
   - updates mutable calendar identity fields
   - request body uses the library `CalendarUpdate` contract

@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from apps.v1.schemas.calendars import Calendar, CalendarDate, CalendarEvent, CalendarSession
+from apps.v1.schemas.common import FrontEndDetailSummary
 
 
 def list_calendars(
@@ -39,6 +40,14 @@ def get_calendar(*, uid: str) -> Calendar | None:
     if row is None:
         return None
     return Calendar.model_validate(row)
+
+
+def get_calendar_summary(*, uid: str) -> FrontEndDetailSummary | None:
+    runtime = _get_runtime()
+    summary = _get_calendar_frontend_detail_summary(runtime.context, uid=uid)
+    if summary is None:
+        return None
+    return FrontEndDetailSummary.model_validate(summary)
 
 
 def create_calendar(*, payload: Mapping[str, Any]) -> Calendar:
@@ -329,6 +338,12 @@ def _get_calendar_record(context, **kwargs):
     from msm.services import get_calendar_record
 
     return get_calendar_record(context, **kwargs)
+
+
+def _get_calendar_frontend_detail_summary(context, **kwargs):
+    from msm.services import get_calendar_frontend_detail_summary
+
+    return get_calendar_frontend_detail_summary(context, **kwargs)
 
 
 def _create_calendar_record(context, **kwargs):

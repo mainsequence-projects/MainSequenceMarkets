@@ -1,4 +1,4 @@
-# 0001. Calendar CRUD Route For FastAPI v1
+# 0001. Calendar CRUD And Summary Route For FastAPI v1
 
 ## Status
 
@@ -44,10 +44,10 @@ Add a new FastAPI v1 route group at:
 /api/v1/calendar/
 ```
 
-The route group will expose calendar identity list, detail, and CRUD operations,
-plus bounded maintenance operations for related date, session, and event rows.
-The route is singular to match existing `apps/v1` route style such as
-`/asset/`, `/index/`, and `/account/`.
+The route group will expose calendar identity list, detail, summary, and CRUD
+operations, plus bounded maintenance operations for related date, session, and
+event rows. The route is singular to match existing `apps/v1` route style such
+as `/asset/`, `/index/`, and `/account/`.
 
 The FastAPI layer will call `src/msm` calendar APIs and services. It will not
 compile SQL directly, materialize calendars inline, or duplicate calendar row
@@ -59,6 +59,8 @@ The route plan is successful when a future implementation provides:
 
 - documented OpenAPI contracts for calendar list, detail, create, update, and
   delete operations
+- a calendar summary endpoint that returns the shared `FrontEndDetailSummary`
+  contract used by existing account and asset detail pages
 - documented OpenAPI contracts for date, session, and event maintenance under a
   specific calendar
 - response models based on the core `msm.api.calendars` row models whenever the
@@ -78,6 +80,7 @@ The route plan is successful when a future implementation provides:
 GET    /api/v1/calendar/
 POST   /api/v1/calendar/
 GET    /api/v1/calendar/{uid}/
+GET    /api/v1/calendar/{uid}/summary/
 PATCH  /api/v1/calendar/{uid}/
 DELETE /api/v1/calendar/{uid}/
 ```
@@ -111,6 +114,12 @@ maintenance detail view is needed later, add explicit include flags:
 
 Those flags must return a declared composed response model, not an ad hoc
 dictionary.
+
+`GET /api/v1/calendar/{uid}/summary/` should return `FrontEndDetailSummary`.
+The summary should resolve the calendar by `uid`, include calendar identity,
+type and timezone badges, validity-horizon fields, label-management
+placeholders, and extensions for the related date, session, and event
+maintenance URLs.
 
 `PATCH /api/v1/calendar/{uid}/` should accept the core `CalendarUpdate` payload
 and return `Calendar`.
@@ -220,6 +229,8 @@ Future implementation should add:
 - `apps/v1/routers/calendars.py`
 - `apps/v1/schemas/calendars.py`
 - `apps/v1/services/calendars.py`
+- a reusable `src/msm/services/calendars` summary helper for the shared
+  `FrontEndDetailSummary` contract
 - router registration and a `calendar` OpenAPI tag in `apps/v1/main.py`
 - calendar model names in `apps/v1/runtime_bootstrap.py`
 - tests in `tests/msm/fastapi/v1/test_calendars.py`

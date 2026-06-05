@@ -22,7 +22,7 @@ from apps.v1.schemas.calendars import (
     CalendarSessionUpdate,
     CalendarUpdate,
 )
-from apps.v1.schemas.common import ErrorResponse
+from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
 from apps.v1.services.calendars import (
     bulk_upsert_calendar_dates,
     bulk_upsert_calendar_events,
@@ -39,6 +39,7 @@ from apps.v1.services.calendars import (
     get_calendar_date,
     get_calendar_event,
     get_calendar_session,
+    get_calendar_summary,
     list_calendar_dates,
     list_calendar_events,
     list_calendar_sessions,
@@ -177,6 +178,28 @@ def get_calendar_by_uid(
     if record is None:
         raise HTTPException(status_code=404, detail=f"Calendar {uid!r} was not found.")
     return record
+
+
+@router.get(
+    "/{uid}/summary/",
+    response_model=FrontEndDetailSummary,
+    summary="Get calendar summary",
+    description=(
+        "Return the reusable frontend detail summary payload for one calendar identity row."
+    ),
+    operation_id="getCalendarSummary",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested calendar uid was not found.",
+        }
+    },
+)
+def get_calendar_summary_by_uid(uid: str) -> FrontEndDetailSummary:
+    summary = get_calendar_summary(uid=uid)
+    if summary is None:
+        raise HTTPException(status_code=404, detail=f"Calendar {uid!r} was not found.")
+    return summary
 
 
 @router.patch(

@@ -108,6 +108,105 @@ def test_get_calendar_returns_404_when_missing(monkeypatch) -> None:
     assert "missing-calendar" in response.json()["detail"]
 
 
+def test_get_calendar_summary_returns_frontend_detail_summary(monkeypatch) -> None:
+    calendar_uid = uuid.uuid4()
+    monkeypatch.setattr(
+        "apps.v1.routers.calendars.get_calendar_summary",
+        lambda uid: {
+            "entity": {
+                "id": str(calendar_uid),
+                "type": "calendar",
+                "title": "New York Stock Exchange",
+            },
+            "badges": [
+                {
+                    "key": "calendar_type",
+                    "label": "TRADING",
+                    "tone": "success",
+                },
+                {
+                    "key": "timezone",
+                    "label": "America/New_York",
+                    "tone": "neutral",
+                },
+            ],
+            "inline_fields": [
+                {
+                    "key": "uid",
+                    "label": "UID",
+                    "value": str(calendar_uid),
+                    "kind": "code",
+                }
+            ],
+            "highlight_fields": [
+                {
+                    "key": "display_name",
+                    "label": "Display name",
+                    "value": "New York Stock Exchange",
+                    "kind": "text",
+                    "icon": "calendar",
+                }
+            ],
+            "stats": [
+                {
+                    "key": "horizon_days",
+                    "label": "Horizon days",
+                    "display": "365",
+                    "value": 365,
+                    "kind": "number",
+                }
+            ],
+            "label_management": {
+                "labels": [],
+                "add_label_url": None,
+                "remove_label_url": None,
+            },
+            "summary_warning": None,
+            "extensions": {
+                "relationships": {
+                    "dates_url": f"/api/v1/calendar/{calendar_uid}/dates/",
+                    "sessions_url": f"/api/v1/calendar/{calendar_uid}/sessions/",
+                    "events_url": f"/api/v1/calendar/{calendar_uid}/events/",
+                }
+            },
+        },
+    )
+
+    client = TestClient(app)
+    response = client.get(f"/api/v1/calendar/{calendar_uid}/summary/")
+
+    assert response.status_code == 200
+    assert response.json()["entity"] == {
+        "id": str(calendar_uid),
+        "type": "calendar",
+        "title": "New York Stock Exchange",
+    }
+    assert response.json()["badges"][0] == {
+        "key": "calendar_type",
+        "label": "TRADING",
+        "tone": "success",
+    }
+    assert response.json()["stats"] == [
+        {
+            "key": "horizon_days",
+            "label": "Horizon days",
+            "display": "365",
+            "value": 365,
+            "kind": "number",
+        }
+    ]
+
+
+def test_get_calendar_summary_returns_404_when_missing(monkeypatch) -> None:
+    monkeypatch.setattr("apps.v1.routers.calendars.get_calendar_summary", lambda uid: None)
+
+    client = TestClient(app)
+    response = client.get("/api/v1/calendar/missing-calendar/summary/")
+
+    assert response.status_code == 404
+    assert "missing-calendar" in response.json()["detail"]
+
+
 def test_patch_calendar_returns_record(monkeypatch) -> None:
     calendar_uid = uuid.uuid4()
     captured: dict[str, object] = {}
