@@ -9,6 +9,7 @@ portfolio metadata, and portfolio value time series.
 Portfolios answer these questions:
 
 - Which assets are eligible for a portfolio?
+- Which price source provides bars for those assets?
 - Which signals produce target weights?
 - Which rebalance strategy converts signals into portfolio weights?
 - Which DataNodes store canonical portfolio values, signal weights, and
@@ -158,14 +159,126 @@ classes are registered through the same catalog bootstrap, after their FK target
 MetaTables:
 
 ```text
-+-----------------------------+             writes             +-----------------------------+
-| PortfolioWeights            |------------------------------->| PortfolioWeightsStorage     |
-| SignalWeights               |------------------------------->| SignalWeightsStorage        |
-| PortfoliosDataNode          |------------------------------->| PortfoliosStorage           |
-| InterpolatedPrices          |------------------------------->| InterpolatedPricesStorage   |
-+-----------------------------+                                +-----------------------------+
++-----------------------------+             writes             +--------------------------------------+
+| PortfolioWeights            |------------------------------->| PortfolioWeightsStorage              |
+| SignalWeights               |------------------------------->| SignalWeightsStorage                 |
+| PortfoliosDataNode          |------------------------------->| PortfoliosStorage                    |
+| External price DataNodes    |------------------------------->| ExternalPricesStorage                |
+| InterpolatedPrices          |------------------------------->| configured InterpolatedPricesStorage |
++-----------------------------+                                +--------------------------------------+
           DataNode update logic                                  PlatformTimeIndexMetaTable
 ```
+
+Portfolio construction depends on a real price source, but portfolio logic does
+not own price ingestion. Example workflows publish normalized OHLCV bars to
+`ExternalPricesStorage` only so the example is self-contained. Production users
+can point portfolio configurations at any registered compatible price storage
+table, including one produced by another library, vendor connector, or project
+DataNode.
+
+## Price Source Resolution
+
+Portfolio prices are not stored on `PortfolioTable`. They are provided by the
+portfolio build configuration and consumed through DataNode dependencies.
+
+The price path is:
+
+```text
++--------------------------------------+       resolves UID       +--------------------------+
+| PricesConfiguration                  |------------------------->| APIDataNode              |
+|--------------------------------------|                          |--------------------------|
+| source_time_index_meta_table_uid     |                          | build_from_table_uid(...)|
+| upsample_frequency_id                |                                       |
+| interpolation rule                   |                                       | reads
++------------------+-------------------+                                       v
+                   |                                            +--------------------------+
+                   |                                            | registered source bars   |
+                   |                                            | storage contract         |
+                   |                                            | time_indexed_profile     |
+                   |                                            | cadence                  |
+                   |                                            | time_index               |
+                   |                                            | asset_identifier         |
+                   |                                            | open/high/low/close/...  |
+                   |                                            +-------------+------------+
+                   |                                                          ^
+                   |                                                          | writes
+                   v                                                          |
++--------------------------------------+                         +-------------+------------+
+| InterpolatedPrices                   |                         | source price DataNode    |
+| owner: msm_portfolios                |                         | outside portfolio config |
++------------------+-------------------+                         +--------------------------+
+                   |
+                   | writes
+                   v
++--------------------------------------+
+| Configured InterpolatedPricesStorage |
+| table name = configured storage hash |
+| row grain: time_index, asset_identifier |
+| open/high/low/close/...              |
++------------------+-------------------+
+                   |
+                   | consumed by
+                   v
++--------------------------------------+
+| PortfoliosDataNode                   |
+| computes portfolio value             |
++--------------------------------------+
+```
+
+`PricesConfiguration` stores the source bars storage UID, not the producer
+DataNode instance and not a DataNodeUpdate UID. The source must be a registered
+`PlatformTimeIndexMetaTable` that exposes normalized OHLCV bars keyed by
+`(time_index, asset_identifier)` and declares its raw bar cadence through
+`time_indexed_profile.cadence`. `InterpolatedPrices` resolves that UID through
+`APIDataNode.build_from_table_uid(...)`, validates that the source profile has a
+cadence, and uses that cadence as the source bar frequency. The portfolio can
+recover the source across processes and does not require the original producer
+class to be present.
+
+This producer boundary is intentional. Price collection, normalization, vendor
+mapping, and connector-specific scheduling are separate concerns from portfolio
+construction. Portfolio extensions should focus on universe selection, signals,
+rebalancing, execution assumptions, and portfolio output storage. They should
+consume a registered price storage contract instead of importing or constructing
+the price producer that wrote it.
+
+The interpolation policy is storage identity, not row metadata. `InterpolatedPrices`
+builds a configured storage class whose `__metatable_extra_hash_components__`
+include the source storage hash, the source table cadence,
+`upsample_frequency_id`, and `intraday_bar_interpolation_rule`; the configured
+storage hash becomes the physical table name. The rows keep the normal price-bar grain
+`(time_index, asset_identifier)`. The policy values are not repeated on every
+price row.
+
+`AssetsConfiguration.price_type` chooses which column from the interpolated
+price table drives portfolio returns. For example, `PriceTypeNames.CLOSE` uses
+the `close` column. The source table cadence, `upsample_frequency_id`, and
+`intraday_bar_interpolation_rule` control how `InterpolatedPrices` shapes the
+source bars before `PortfoliosDataNode` calculates returns. Users do not pass a
+separate source bar frequency in `PricesConfiguration`.
+
+In code, the important wiring is:
+
+```python
+source_bars_node = ExampleDailyBars(asset_identifiers=["asset-btc", "asset-eth"])
+source_bars_node.run(debug_mode=True, update_tree=False, force_update=True)
+
+assets_configuration = AssetsConfiguration(
+    asset_list=["asset-btc", "asset-eth"],
+    price_type=PriceTypeNames.CLOSE,
+    prices_configuration=PricesConfiguration(
+        upsample_frequency_id="1d",
+        intraday_bar_interpolation_rule="ffill",
+        source_time_index_meta_table_uid=runtime.table(
+            ExternalPricesStorage
+        ).meta_table_uid,
+    ),
+)
+```
+
+`PortfoliosDataNode` creates its `InterpolatedPrices` dependency from that
+`AssetsConfiguration`; users should not manually attach portfolio value frames
+for normal construction workflows.
 
 ## Account Target-Position Exposure To Portfolios
 
@@ -322,11 +435,12 @@ where a source-table foreign key exists.
 See `examples/msm_portfolios/portfolio_equal_weights_example.py` for the
 end-to-end workflow that reuses the shared crypto `Asset` example rows, creates
 or reuses a `CRYPTO_24_7` calendar from `pandas_market_calendars`, creates the
-portfolio `Index`, prepares `SignalWeights`, `PortfolioWeights`, and
+portfolio `Index`, publishes example OHLCV bars to `ExternalPricesStorage`,
+interpolates those prices, runs `SignalWeights`, `PortfolioWeights`, and
 `PortfoliosDataNode`, and upserts the `Portfolio` row with `calendar_uid`,
-`portfolio_index_uid`, plus the three DataNode update UIDs. The example
-narrates each setup, publication, portfolio, and virtual-fund allocation step so
-terminal output explains what was created.
+`portfolio_index_uid`, plus the published DataNode update UIDs. The example
+narrates each setup, source-price publication, portfolio, and virtual-fund
+allocation step so terminal output explains what was created.
 
 ## Extension Notes
 

@@ -18,7 +18,7 @@ from msm.data_nodes.utils.storage_metadata import (
 )
 from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
-from msm.data_nodes.utils.storage_schema import storage_index_names
+from msm.data_nodes.utils.storage_schema import storage_index_names, storage_time_index_name
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
 from msm.settings import markets_namespace
 
@@ -66,9 +66,18 @@ class PortfolioCanonicalDataNode(DataNode):
         it is intentionally not forwarded as a separate config field.
         """
         resolved_config = self._validate_config(config or self.default_config())
+        if args:
+            raise TypeError(
+                f"{self.__class__.__name__} accepts keyword-only DataNode arguments after config."
+            )
         if kwargs.get("hash_namespace") in (None, ""):
             kwargs["hash_namespace"] = markets_namespace(namespace)
-        super().__init__(resolved_config, *args, **kwargs)
+        storage_table = kwargs.pop("storage_table", None) or self._required_storage_table()
+        super().__init__(
+            config=resolved_config,
+            storage_table=storage_table,
+            **kwargs,
+        )
 
     def dependencies(self) -> dict[str, DataNode]:
         return {}

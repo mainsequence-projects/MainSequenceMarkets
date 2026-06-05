@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Annotated, Any
 
 import mainsequence.meta_tables.data_nodes.build_operations as build_operations
@@ -95,24 +96,17 @@ class PricesConfiguration(PortfolioConfigBaseModel):
     `SignalWeights.maximum_forward_fill()`.
 
     Attributes:
-        bar_frequency_id: Source bars frequency (e.g., "1d", "5m").
         upsample_frequency_id: Target frequency after interpolation (e.g., "1d", "15m").
         intraday_bar_interpolation_rule: Interpolation rule for gaps ("ffill" or "None").
         is_live: Whether the feed should be treated as live (may be ignored by some nodes).
-        markets_time_series: Explicit normalized bars source used for price reads.
+        source_time_index_meta_table_uid:
+            Registered TimeIndexMetaTable UID that stores normalized source bars.
+            The source bar frequency is read from the registered table's
+            time_indexed_profile.cadence.
         forward_fill_to_now: If True, extend interpolated prices up to `datetime.now(UTC)` by forward-fill.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
-
-    bar_frequency_id: str = Field(
-        default="1d",
-        description=(
-            "Frequency identifier for the *raw* bars coming from the upstream price source. "
-            "Examples: '1d', '5m', '15m'. Must contain 'd' (daily) or 'm' (minutes) for current implementations."
-        ),
-        examples=["1d", "5m", "15m"],
-    )
 
     upsample_frequency_id: str = Field(
         default="1d",
@@ -141,22 +135,15 @@ class PricesConfiguration(PortfolioConfigBaseModel):
         examples=[False, True],
     )
 
-    markets_time_series: MarketsTimeSeries | None = Field(
-        default=None,
+    source_time_index_meta_table_uid: uuid.UUID | str = Field(
+        ...,
         description=(
-            "Explicit MarketsTimeSeries source for bars. The source must already emit prices in the "
-            "market asset namespace expected by Portfolios."
+            "UID of the registered TimeIndexMetaTable that stores normalized source bars. "
+            "Portfolios resolves this UID through APIDataNode.build_from_table_uid(...) "
+            "so price sources are recoverable across processes without passing a live DataNode instance. "
+            "The source bar frequency is read from the table's time_indexed_profile.cadence."
         ),
-        examples=[{"unique_identifier": "alpaca_1d_bars"}],
-    )
-
-    source_bars_data_node: Any | None = Field(
-        default=None,
-        description=(
-            "Optional direct source bars DataNode/APIDataNode. Use this for programmatic portfolio "
-            "builds that inject an already-normalized price source."
-        ),
-        json_schema_extra={"hash_excluded": True},
+        examples=["00000000-0000-0000-0000-000000000000"],
     )
 
     forward_fill_to_now: bool = Field(
@@ -217,10 +204,9 @@ class AssetsConfiguration(PortfolioConfigBaseModel):
         ),
         examples=[
             {
-                "bar_frequency_id": "1d",
                 "upsample_frequency_id": "1d",
                 "intraday_bar_interpolation_rule": "ffill",
-                "markets_time_series": {"unique_identifier": "alpaca_1d_bars"},
+                "source_time_index_meta_table_uid": "00000000-0000-0000-0000-000000000000",
                 "forward_fill_to_now": False,
             }
         ],
@@ -429,10 +415,9 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
                 "assets_category_unique_id": "crypto",
                 "price_type": "close",
                 "prices_configuration": {
-                    "bar_frequency_id": "1d",
                     "upsample_frequency_id": "1d",
                     "intraday_bar_interpolation_rule": "ffill",
-                    "markets_time_series": {"unique_identifier": "alpaca_1d_bars"},
+                    "source_time_index_meta_table_uid": "00000000-0000-0000-0000-000000000000",
                     "forward_fill_to_now": False,
                 },
             }

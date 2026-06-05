@@ -7,7 +7,6 @@ from typing import ClassVar, Protocol
 import pandas as pd
 from pydantic import Field, field_validator
 
-from mainsequence.client.utils import DataFrequency
 from msm.data_nodes.indices import (
     IndexDataNodeConfiguration,
     IndexTimestampedDataNode,
@@ -27,20 +26,9 @@ class IndexFixingBuilder(Protocol):
     ) -> pd.DataFrame: ...
 
 
-def _supported_frequency_ids() -> set[str]:
-    return {frequency.value for frequency in DataFrequency}
-
-
 class IndexFixingConfiguration(IndexDataNodeConfiguration):
     """Configuration for index fixing observations consumed by pricing."""
 
-    frequency: str = Field(
-        default=DataFrequency.one_d.value,
-        description=(
-            "Hashable observation frequency for the fixing dataset. Different "
-            "frequencies represent different DataNode identities."
-        ),
-    )
     index_unique_identifiers: list[str] | None = Field(
         default=None,
         description=(
@@ -48,16 +36,6 @@ class IndexFixingConfiguration(IndexDataNodeConfiguration):
             "the node publishes every supplied fixing builder."
         ),
     )
-
-    @field_validator("frequency")
-    @classmethod
-    def _validate_frequency(cls, value: str) -> str:
-        if value not in _supported_frequency_ids():
-            supported = ", ".join(sorted(_supported_frequency_ids()))
-            raise ValueError(
-                f"Unsupported index fixing frequency {value!r}. Use one of: {supported}."
-            )
-        return value
 
     @field_validator("index_unique_identifiers")
     @classmethod

@@ -311,12 +311,24 @@ virtual_fund = VirtualFund.upsert(
 ## Holdings And Target Positions
 
 See `examples/msm_portfolios/portfolio_equal_weights_example.py` for the portfolio
-workflow that creates the optional portfolio `Index`, prepares `SignalWeights`,
-`PortfolioWeights`, and `PortfoliosDataNode`, creates or reuses the crypto
-`CRYPTO_24_7` calendar, and stores the calendar, index, and DataNode UIDs on the
-`Portfolio` row. The script prints the workflow steps, created row UIDs,
-DataNode storage UIDs, frame row counts, and the local-only mode used by
-`--no-run-data-nodes`.
+workflow that creates the optional portfolio `Index`, publishes example OHLCV
+source bars to `ExternalPricesStorage`, interpolates prices, runs
+`SignalWeights`, `PortfolioWeights`, and `PortfoliosDataNode`, creates or reuses
+the crypto `CRYPTO_24_7` calendar, and stores the calendar, index, and DataNode
+UIDs on the `Portfolio` row. The price configuration stores the
+`ExternalPricesStorage` TimeIndexMetaTable UID as
+`source_time_index_meta_table_uid`, so interpolation can recover the price source
+through the SDK APIDataNode lookup path. The source price DataNode is not part of
+the portfolio configuration; the example publishes it first only to keep the
+workflow runnable. Real portfolio extensions can point at any compatible
+registered price storage table and focus on portfolio logic. The source bar
+frequency is read from the registered source table's
+`time_indexed_profile.cadence`, then used with `__metatable_extra_hash_components__`
+to select a configured output storage table, so different source cadence,
+upsample frequency, and interpolation rule combinations do not collide inside
+one price table. The script prints the
+workflow steps, created row UIDs, source price row counts, and published DataNode
+storage UIDs.
 
 ```python
 from msm.api.accounts import AccountHoldingsSet, AccountTargetPortfolio, PositionSet

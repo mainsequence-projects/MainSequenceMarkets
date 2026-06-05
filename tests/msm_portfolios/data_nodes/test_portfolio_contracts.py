@@ -5,7 +5,11 @@ from types import SimpleNamespace
 import pytest
 
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
-from msm_portfolios.data_nodes.base import PortfolioCanonicalDataNodeConfiguration
+from msm_portfolios.data_nodes.base import (
+    AssetScopedPortfolioCanonicalDataNode,
+    PortfolioCanonicalDataNode,
+    PortfolioCanonicalDataNodeConfiguration,
+)
 from msm_portfolios.data_nodes.portfolio_weights import PortfolioWeights
 from msm_portfolios.data_nodes.portfolios import PortfoliosDataNode
 from msm_portfolios.data_nodes.signal_weights import SignalWeights, SignalWeightsConfiguration
@@ -42,6 +46,13 @@ def test_portfolio_nodes_source_column_dtypes_from_storage_classes(
 def test_portfolio_configurations_do_not_carry_storage_schema() -> None:
     assert "index_names" not in PortfolioCanonicalDataNodeConfiguration.model_fields
     assert "index_names" not in SignalWeightsConfiguration.model_fields
+
+
+def test_portfolio_value_node_is_not_asset_scoped() -> None:
+    assert issubclass(PortfoliosDataNode, PortfolioCanonicalDataNode)
+    assert not issubclass(PortfoliosDataNode, AssetScopedPortfolioCanonicalDataNode)
+    assert issubclass(PortfolioWeights, AssetScopedPortfolioCanonicalDataNode)
+    assert issubclass(SignalWeights, AssetScopedPortfolioCanonicalDataNode)
 
 
 def test_portfolio_bound_dtype_map_uses_instance_storage_table() -> None:

@@ -57,6 +57,7 @@ def test_discount_curves_node_resolves_storage_and_curve_identity(monkeypatch) -
     assert storage_table.metatable_identifier() == "DiscountCurvesTS"
     assert storage_table.__index_names__ == ["time_index", CURVE_IDENTIFIER]
     assert storage_table.__time_index_name__ == "time_index"
+    assert storage_table.__cadence__ == "1d"
     assert "__data_node_identifier__" not in DiscountCurvesNode.__dict__
     assert DiscountCurvesNode._default_identifier() == registered_identifier
     assert DiscountCurvesNode._default_description() == storage_table.__metatable_description__

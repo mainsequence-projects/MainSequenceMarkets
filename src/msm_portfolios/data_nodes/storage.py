@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from functools import lru_cache
 from typing import ClassVar
 
 from sqlalchemy import (
@@ -27,11 +28,14 @@ from sqlalchemy import (
     Index,
     SmallInteger,
     String,
+    Table,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
+from mainsequence.meta_tables import schema_index_name
+from mainsequence.meta_tables.sqlalchemy_contracts import _configured_storage_hash_for_model
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.accounts import AccountHoldingsSetTable, PositionSetTable
 from msm.models.assets.core import AssetTable
@@ -42,6 +46,10 @@ from msm_portfolios.models.virtual_funds import VirtualFundHoldingsSetTable, Vir
 
 PORTFOLIO_IDENTIFIER_DIMENSION = "portfolio_identifier"
 PORTFOLIO_INDEX_IDENTIFIER_DIMENSION = "portfolio_index_identifier"
+INTERPOLATED_PRICES_SOURCE_STORAGE_HASH_COMPONENT = "source_storage_hash"
+INTERPOLATED_PRICES_SOURCE_CADENCE_COMPONENT = "source_cadence"
+INTERPOLATED_PRICES_UPSAMPLE_FREQUENCY_COMPONENT = "upsample_frequency_id"
+INTERPOLATED_PRICES_INTERPOLATION_RULE_COMPONENT = "intraday_bar_interpolation_rule"
 
 
 class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
@@ -321,6 +329,194 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
+def interpolated_prices_storage_hash_components(
+    *,
+    source_storage_hash: str,
+    source_cadence: str,
+    upsample_frequency_id: str | None,
+    intraday_bar_interpolation_rule: str,
+) -> dict[str, str]:
+    """Return storage-identity components for one interpolated price table."""
+
+    return {
+        INTERPOLATED_PRICES_SOURCE_STORAGE_HASH_COMPONENT: str(source_storage_hash),
+        INTERPOLATED_PRICES_SOURCE_CADENCE_COMPONENT: str(source_cadence),
+        INTERPOLATED_PRICES_UPSAMPLE_FREQUENCY_COMPONENT: str(
+            upsample_frequency_id or source_cadence
+        ),
+        INTERPOLATED_PRICES_INTERPOLATION_RULE_COMPONENT: str(
+            intraday_bar_interpolation_rule
+        ),
+    }
+
+
+def interpolated_prices_storage_table_name(
+    *,
+    source_storage_hash: str,
+    source_cadence: str,
+    upsample_frequency_id: str | None,
+    intraday_bar_interpolation_rule: str,
+) -> str:
+    """Return the configured physical table name for interpolated prices."""
+
+    return _configured_storage_hash_for_model(
+        InterpolatedPricesStorage,
+        extra_hash_components=interpolated_prices_storage_hash_components(
+            source_storage_hash=source_storage_hash,
+            source_cadence=source_cadence,
+            upsample_frequency_id=upsample_frequency_id,
+            intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
+        ),
+    )
+
+
+@lru_cache(maxsize=256)
+def configured_interpolated_prices_storage(
+    *,
+    source_storage_hash: str,
+    source_cadence: str,
+    upsample_frequency_id: str | None,
+    intraday_bar_interpolation_rule: str,
+) -> type[MarketsBase]:
+    """Build the storage class for one interpolated-price storage identity."""
+
+    components = interpolated_prices_storage_hash_components(
+        source_storage_hash=source_storage_hash,
+        source_cadence=source_cadence,
+        upsample_frequency_id=upsample_frequency_id,
+        intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
+    )
+    table_name = interpolated_prices_storage_table_name(
+        source_storage_hash=source_storage_hash,
+        source_cadence=source_cadence,
+        upsample_frequency_id=upsample_frequency_id,
+        intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
+    )
+    table = _copy_interpolated_prices_table(table_name)
+    class_name = f"InterpolatedPricesStorage_{table_name.rsplit('_', 1)[-1]}"
+    return type(
+        class_name,
+        (MarketsTimeIndexMetaTableMixin, MarketsBase),
+        {
+            "__module__": __name__,
+            "__table__": table,
+            "__metatable_identifier__": "InterpolatedPricesTS",
+            "__metatable_description__": InterpolatedPricesStorage.__metatable_description__,
+            "__metatable_extra_hash_components__": components,
+            "__time_index_name__": InterpolatedPricesStorage.__time_index_name__,
+            "__cadence__": components[INTERPOLATED_PRICES_UPSAMPLE_FREQUENCY_COMPONENT],
+            "__index_names__": list(InterpolatedPricesStorage.__index_names__),
+        },
+    )
+
+
+def _copy_interpolated_prices_table(table_name: str) -> Table:
+    existing = MarketsBase.metadata.tables.get(table_name)
+    if isinstance(existing, Table):
+        return existing
+
+    columns = [column._copy() for column in InterpolatedPricesStorage.__table__.columns]
+    table = Table(
+        table_name,
+        MarketsBase.metadata,
+        *columns,
+        schema=InterpolatedPricesStorage.__table__.schema,
+        info=dict(InterpolatedPricesStorage.__table__.info or {}),
+    )
+    Index(
+        schema_index_name(
+            table_name,
+            InterpolatedPricesStorage.__index_names__,
+            unique=True,
+        ),
+        *(table.c[column_name] for column_name in InterpolatedPricesStorage.__index_names__),
+        unique=True,
+    )
+    return table
+
+
+class ExternalPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+    """Externally supplied OHLCV price bars keyed by asset unique identifier."""
+
+    __metatable_identifier__ = "ExternalPricesTS"
+    __metatable_description__ = (
+        "Timestamped externally supplied price bars keyed by (time_index, "
+        "asset_identifier). Stores normalized OHLCV bars used as source price "
+        "inputs for portfolio interpolation and construction workflows."
+    )
+    __time_index_name__: ClassVar[str] = "time_index"
+    __cadence__: ClassVar[str] = "1d"
+    __index_names__: ClassVar[list[str]] = ["time_index", ASSET_IDENTIFIER_DIMENSION]
+
+    time_index: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        info={
+            "label": "Time Index",
+            "description": "UTC timestamp for the externally supplied price bar.",
+        },
+    )
+    asset_identifier: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        info={
+            "label": "Asset Identifier",
+            "description": "Asset unique identifier for the priced instrument.",
+        },
+    )
+    open_time: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        info={
+            "label": "Open Time",
+            "description": "UTC timestamp marking the start of the external price bar.",
+        },
+    )
+    open: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={"label": "Open", "description": "Opening price for the bar."},
+    )
+    high: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={"label": "High", "description": "Highest price during the bar."},
+    )
+    low: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={"label": "Low", "description": "Lowest price during the bar."},
+    )
+    close: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={"label": "Close", "description": "Closing price for the bar."},
+    )
+    volume: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={"label": "Volume", "description": "Traded volume during the bar."},
+    )
+    trade_count: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={"label": "Trade Count", "description": "Number of trades observed during the bar."},
+    )
+    vwap: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={"label": "VWAP", "description": "Volume-weighted average price for the bar."},
+    )
+    interpolated: Mapped[bool | None] = mapped_column(
+        Boolean,
+        nullable=True,
+        info={
+            "label": "Interpolated",
+            "description": "Whether this external bar was already interpolated before ingestion.",
+        },
+    )
+
+
 class VirtualFundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Virtual-fund allocations keyed by virtual fund UID and held asset."""
 
@@ -595,6 +791,11 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 
 
 __all__ = [
+    "ExternalPricesStorage",
+    "INTERPOLATED_PRICES_INTERPOLATION_RULE_COMPONENT",
+    "INTERPOLATED_PRICES_SOURCE_CADENCE_COMPONENT",
+    "INTERPOLATED_PRICES_SOURCE_STORAGE_HASH_COMPONENT",
+    "INTERPOLATED_PRICES_UPSAMPLE_FREQUENCY_COMPONENT",
     "InterpolatedPricesStorage",
     "PORTFOLIO_IDENTIFIER_DIMENSION",
     "PORTFOLIO_INDEX_IDENTIFIER_DIMENSION",
@@ -603,4 +804,7 @@ __all__ = [
     "SignalWeightsStorage",
     "TargetPositionsStorage",
     "VirtualFundHoldingsStorage",
+    "configured_interpolated_prices_storage",
+    "interpolated_prices_storage_hash_components",
+    "interpolated_prices_storage_table_name",
 ]

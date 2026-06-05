@@ -1,5 +1,6 @@
 import pandas as pd
 
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.enums import PriceTypeNames
 from msm_portfolios.rebalance_strategy.base import (
     RebalanceStrategyBase,
@@ -21,10 +22,10 @@ class ImmediateSignal(RebalanceStrategyBase):
         **kwargs,
     ) -> pd.DataFrame:
         volume_df = prices_df.reset_index().pivot(
-            index="time_index", columns=["unique_identifier"], values="volume"
+            index="time_index", columns=[ASSET_IDENTIFIER_DIMENSION], values="volume"
         )
         prices_df = prices_df.reset_index().pivot(
-            index="time_index", columns=["unique_identifier"], values=price_type.value
+            index="time_index", columns=[ASSET_IDENTIFIER_DIMENSION], values=price_type.value
         )
 
         if last_rebalance_weights is not None:

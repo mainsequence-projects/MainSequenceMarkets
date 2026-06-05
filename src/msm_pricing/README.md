@@ -70,14 +70,15 @@ Curves are pricing-owned reference data, not assets. `CurveTable` owns curve
 identity, and `DiscountCurvesNode` lives under `msm_pricing.data_nodes` as a
 stamped DataNode keyed by `(time_index, curve_identifier)`. Curve
 DataNode configurations use the actual `CurveTable.unique_identifier`; they do
-not resolve Main Sequence Constants into curve identity.
+not resolve Main Sequence Constants into curve identity. EOD curve observations
+declare daily cadence on `DiscountCurvesStorage.__cadence__`.
 
 Fixings are index facts, not assets and not a separate rate model.
 `FixingRatesNode` lives under `msm_pricing.data_nodes` as an
 `IndexTimestampedDataNode` helper keyed by `(time_index, index_identifier)`,
 where `index_identifier` references `IndexTable.unique_identifier`. Its
-configuration includes a hashable `frequency` field, so the observation
-frequency is part of the DataNode identity.
+daily EOD cadence is declared on `IndexFixingsStorage.__cadence__`, so the
+observation interval is first-class `PlatformTimeIndexMetaTable` metadata.
 Fixing configurations likewise use actual `IndexTable.unique_identifier` values
 and do not resolve Main Sequence Constants into index identity.
 Runtime builder callables are attached after DataNode construction with

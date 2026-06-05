@@ -9,6 +9,8 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- Declared daily `__cadence__` metadata on EOD pricing curve and fixing storage
+  tables and removed fixing frequency from DataNode configuration.
 - Removed unused `docstring-parser` portfolio dependency and deleted the dead
   docstring/schema utility helpers that forced `msm_portfolios` imports to fail
   when the optional package was absent.
@@ -27,6 +29,25 @@ and this project follows versioned releases.
   constraint, and index naming to prevent false FK/index drop-create churn.
 - Batched post-upgrade catalog refresh writes into one compiled bulk upsert
   instead of issuing one MetaTable operation per provider model.
+- Fixed the equal-weight portfolio example to run a real DataNode dependency
+  graph: example source bars publish to `ExternalPricesStorage`, prices are
+  interpolated through `InterpolatedPrices`, and the portfolio run produces
+  `SignalWeights`, `PortfolioWeights`, and `PortfoliosDataNode` outputs through
+  SDK update-tree execution.
+- Clarified the portfolio knowledge documentation so price acquisition is
+  explicit: `PricesConfiguration` stores the source
+  `TimeIndexMetaTable` UID, `InterpolatedPrices` resolves that storage through
+  `APIDataNode.build_from_table_uid(...)`, and `PortfoliosDataNode` consumes
+  the interpolated result.
+- Fixed interpolated portfolio price storage identity so source storage,
+  source cadence, upsample frequency, and interpolation rule are encoded as
+  `__metatable_extra_hash_components__` on a configured storage class. The
+  configured storage hash becomes the table name while rows keep the normal
+  `(time_index, asset_identifier)` grain.
+- Removed `bar_frequency_id` from portfolio price configuration. Interpolated
+  prices now read the raw source cadence from the registered source table's
+  `time_indexed_profile.cadence`, validate it during source reconstruction, and
+  use that cadence in the configured output storage hash.
 
 ### Changed
 
@@ -61,8 +82,8 @@ and this project follows versioned releases.
   `target_type`/`target_uid` plus `asset_uid` or `portfolio_uid`, and chaining
   the account workflow example to the equal-weight portfolio example by default.
 - Improved the equal-weight portfolio example so it prints each workflow step,
-  created row UID, DataNode storage UID, frame row count, and the
-  `--no-run-data-nodes` local-only mode instead of dumping a raw result object.
+  created row UID, source price row count, and published DataNode storage UID
+  instead of dumping a raw result object.
 - Pruned obsolete ADRs that described superseded migration runners, lazy
   registration, route implementation plans, and deprecated DataNode foreign-key
   architecture; the ADR index and MkDocs navigation now list current
@@ -126,9 +147,12 @@ and this project follows versioned releases.
   orders, order events, trades, and execution errors. Execution facts are now
   storage-first through explicit time-index storage contracts, while
   order-manager intent remains as domain MetaTables.
-- Removed the unused `ExternalPrices` contrib DataNode and
-  `ExternalPricesStorage` / `ExternalPricesTS` storage table from
-  `msm_portfolios`; portfolio price workflows use `InterpolatedPrices`.
+- Removed the unused `ExternalPrices` contrib DataNode wrapper. Source price
+  publication uses storage-first DataNodes bound to `ExternalPricesStorage`, and
+  portfolio price workflows consume that storage through
+  `source_time_index_meta_table_uid` before writing interpolated bars to a
+  configured `InterpolatedPricesStorage` table whose physical name is derived
+  from the interpolation policy hash.
 - Split portfolio and virtual-fund functionality into the new `msm_portfolios`
   package boundary. Core `msm.start_engine(...)` no longer registers portfolio
   MetaTables, virtual-fund tables, portfolio DataNode storage, or portfolio

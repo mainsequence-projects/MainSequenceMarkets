@@ -30,13 +30,17 @@ from msm.api.accounts import Account, AccountGroup, AccountHoldingsSet  # noqa: 
 from msm.api.assets import Asset, AssetType  # noqa: E402
 from msm.api.calendars import Calendar  # noqa: E402
 from msm.api.indices import Index, IndexType  # noqa: E402
+from msm.data_nodes.assets.asset_indexed import (  # noqa: E402
+    AssetIndexedDataNode,
+    AssetIndexedDataNodeConfiguration,
+)
+from msm.data_nodes.utils.time import normalize_datetime64_ns_utc  # noqa: E402
 from msm.data_nodes.accounts import AccountHoldings  # noqa: E402
 from msm_portfolios.api.portfolios import Portfolio  # noqa: E402
 from msm_portfolios.api.virtual_funds import VirtualFund  # noqa: E402
 from msm_portfolios.configuration import (  # noqa: E402
     AssetsConfiguration,
     BacktestingWeightsConfig,
-    MarketsTimeSeries,
     PortfolioBuildConfiguration,
     PortfolioConfiguration,
     PortfolioExecutionConfiguration,
@@ -48,12 +52,14 @@ from msm_portfolios.contrib.signals.fixed_weights import (  # noqa: E402
     FixedWeights,
     FixedWeightsConfig,
 )
+from msm_portfolios.data_nodes.storage import (  # noqa: E402
+    ExternalPricesStorage,
+    configured_interpolated_prices_storage,
+)
 from msm_portfolios.data_nodes import (  # noqa: E402
     PortfoliosDataNode,
-    PortfolioWeights,
     VirtualFundHoldings,
     compute_portfolio_configuration_hash,
-    normalize_signal_weights_frame,
 )
 from msm_portfolios.enums import PriceTypeNames  # noqa: E402
 from msm_portfolios.rebalance_strategy import ImmediateSignal  # noqa: E402
@@ -69,6 +75,15 @@ ASSET_UNIQUE_IDENTIFIERS = [payload["unique_identifier"] for payload in EXAMPLE_
 ACCOUNT_GROUP_NAME = "Example Portfolio Allocation Accounts"
 ACCOUNT_UNIQUE_IDENTIFIER = "example-portfolio-allocation-account"
 VIRTUAL_FUND_UNIQUE_IDENTIFIER = "example-equal-weight-virtual-fund"
+SOURCE_PRICE_CADENCE = ExternalPricesStorage.__cadence__
+PRICE_UPSAMPLE_FREQUENCY_ID = "1d"
+PRICE_INTERPOLATION_RULE = "ffill"
+EXAMPLE_INTERPOLATED_PRICES_STORAGE = configured_interpolated_prices_storage(
+    source_storage_hash=ExternalPricesStorage.__table__.name,
+    source_cadence=SOURCE_PRICE_CADENCE,
+    upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,
+    intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
+)
 PORTFOLIO_EXAMPLE_RUNTIME_MODELS = [
     "IndexType",
     "Index",
@@ -87,10 +102,60 @@ PORTFOLIO_EXAMPLE_RUNTIME_MODELS = [
     "VirtualFundHoldingsStorage",
     "SignalMetadata",
     "RebalanceStrategyMetadata",
+    "ExternalPricesStorage",
+    EXAMPLE_INTERPOLATED_PRICES_STORAGE,
     "PortfolioWeightsStorage",
     "SignalWeightsStorage",
     "PortfoliosStorage",
 ]
+
+
+class ExamplePortfolioResolver:
+    """Bind one example portfolio configuration to its Portfolio and Index rows."""
+
+    def __init__(self, *, portfolio: Portfolio, portfolio_index: Index) -> None:
+        self.portfolio = portfolio
+        self.portfolio_index = portfolio_index
+
+    def get_or_create_from_configuration_hash(
+        self,
+        *,
+        portfolio_configuration_hash: str,
+        portfolio_configuration: dict[str, Any],
+        timeout: int | float | tuple[float, float] | None = None,
+    ) -> tuple[Portfolio, Index]:
+        del portfolio_configuration_hash, portfolio_configuration, timeout
+        return self.portfolio, self.portfolio_index
+
+
+class ExampleDailyBars(AssetIndexedDataNode):
+    """Example daily OHLCV bars used as the real portfolio price dependency."""
+
+    OFFSET_START = (TIME_INDEX - pd.Timedelta(days=90)).to_pydatetime()
+
+    def __init__(
+        self,
+        *,
+        asset_identifiers: Sequence[str],
+        namespace: str | None = None,
+    ) -> None:
+        self._asset_identifiers = list(asset_identifiers)
+        super().__init__(
+            config=AssetIndexedDataNodeConfiguration(asset_list=self._asset_identifiers),
+            storage_table=ExternalPricesStorage,
+            hash_namespace=namespace or NAMESPACE,
+        )
+
+    @classmethod
+    def _required_storage_table(cls) -> type[ExternalPricesStorage]:
+        return ExternalPricesStorage
+
+    def get_asset_list(self) -> list[str]:
+        return list(self._asset_identifiers)
+
+    def update(self) -> pd.DataFrame:
+        frame = build_example_daily_bars_frame(self._asset_identifiers)
+        return self.update_statistics.filter_df_by_latest_value(frame)
 
 
 def print_step(step: int, message: str) -> None:
@@ -103,11 +168,11 @@ def print_detail(label: str, value: object) -> None:
 
 def start_portfolio_example_runtime(
     *,
-    models: Sequence[str] | None = None,
-) -> None:
+    models: Sequence[str | type[Any]] | None = None,
+) -> Any:
     """Register the tables/storage used by this portfolio example."""
 
-    msm_portfolios.start_engine(
+    return msm_portfolios.start_engine(
         models=list(models or PORTFOLIO_EXAMPLE_RUNTIME_MODELS),
     )
 
@@ -178,23 +243,27 @@ def register_portfolio_index() -> Index:
     return portfolio_index
 
 
-def build_assets_configuration() -> AssetsConfiguration:
+def build_assets_configuration(
+    source_time_index_meta_table_uid: str,
+) -> AssetsConfiguration:
     return AssetsConfiguration(
         assets_category_unique_id=None,
         price_type=PriceTypeNames.CLOSE,
+        asset_list=list(ASSET_UNIQUE_IDENTIFIERS),
         prices_configuration=PricesConfiguration(
-            bar_frequency_id="1d",
-            upsample_frequency_id="1d",
-            intraday_bar_interpolation_rule="ffill",
-            markets_time_series=MarketsTimeSeries(unique_identifier="example_1d_bars"),
+            upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,
+            intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
+            source_time_index_meta_table_uid=source_time_index_meta_table_uid,
         ),
     )
 
 
-def build_fixed_weights_config() -> FixedWeightsConfig:
+def build_fixed_weights_config(
+    source_time_index_meta_table_uid: str,
+) -> FixedWeightsConfig:
     weight = 1.0 / len(ASSET_UNIQUE_IDENTIFIERS)
     return FixedWeightsConfig(
-        signal_assets_configuration=build_assets_configuration(),
+        signal_assets_configuration=build_assets_configuration(source_time_index_meta_table_uid),
         asset_unique_identifier_weights=[
             AUIDWeight(unique_identifier=asset_uid, weight=weight)
             for asset_uid in ASSET_UNIQUE_IDENTIFIERS
@@ -206,10 +275,11 @@ def build_portfolio_configuration(
     signal_weights: FixedWeights,
     *,
     calendar: Calendar,
+    source_time_index_meta_table_uid: str,
 ) -> PortfolioConfiguration:
     return PortfolioConfiguration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
-            assets_configuration=build_assets_configuration(),
+            assets_configuration=build_assets_configuration(source_time_index_meta_table_uid),
             portfolio_prices_frequency="1d",
             execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.00018),
             backtesting_weights_configuration=BacktestingWeightsConfig(
@@ -225,74 +295,70 @@ def build_portfolio_configuration(
     )
 
 
-def build_signal_weights_node() -> FixedWeights:
-    signal_configuration = build_fixed_weights_config()
-    signal_weights = FixedWeights.from_signal_configuration(
+def build_signal_weights_node(
+    source_time_index_meta_table_uid: str,
+) -> FixedWeights:
+    signal_configuration = build_fixed_weights_config(source_time_index_meta_table_uid)
+    return FixedWeights.from_signal_configuration(
         signal_configuration,
         namespace=NAMESPACE,
     )
-    signal_weights.set_signal_weights_frame(
-        build_signal_weights_frame(),
-        signal_configuration=signal_configuration,
-        signal_description="Equal-weight target signal for the portfolio example.",
-    )
-    return signal_weights
 
 
-def build_portfolio_weights_node(portfolio_index: Index) -> PortfolioWeights:
-    return PortfolioWeights(namespace=NAMESPACE).set_weights_frame(
-        build_portfolio_weights_frame(),
-        portfolio_index=portfolio_index,
-        portfolio_description="Executed equal-weight portfolio allocations.",
-    )
-
-
-def build_portfolio_values_node(portfolio_index: Index) -> PortfoliosDataNode:
-    return PortfoliosDataNode(namespace=NAMESPACE).set_portfolio_values_frame(
-        build_portfolio_values_frame(),
-        unique_identifier=portfolio_index.unique_identifier,
+def build_portfolio_values_node(
+    portfolio_configuration: PortfolioConfiguration,
+    *,
+    portfolio_resolver: ExamplePortfolioResolver,
+) -> PortfoliosDataNode:
+    return PortfoliosDataNode(namespace=NAMESPACE).set_portfolio_configuration(
+        portfolio_configuration,
+        portfolio_resolver=portfolio_resolver,
         portfolio_description="Published portfolio value series.",
     )
 
 
-def build_signal_weights_frame() -> pd.DataFrame:
-    weight = 1.0 / len(ASSET_UNIQUE_IDENTIFIERS)
-    return pd.DataFrame(
-        {
-            "time_index": [TIME_INDEX] * len(ASSET_UNIQUE_IDENTIFIERS),
-            "asset_identifier": ASSET_UNIQUE_IDENTIFIERS,
-            "signal_weight": [weight] * len(ASSET_UNIQUE_IDENTIFIERS),
-        }
-    ).set_index(["time_index", "asset_identifier"])
+def build_source_bars_node() -> ExampleDailyBars:
+    return ExampleDailyBars(
+        asset_identifiers=ASSET_UNIQUE_IDENTIFIERS,
+        namespace=NAMESPACE,
+    )
 
 
-def build_portfolio_weights_frame() -> pd.DataFrame:
-    weight = 1.0 / len(ASSET_UNIQUE_IDENTIFIERS)
-    prices = [100.0 / (index + 1) for index in range(len(ASSET_UNIQUE_IDENTIFIERS))]
-    return pd.DataFrame(
-        {
-            "time_index": [TIME_INDEX] * len(ASSET_UNIQUE_IDENTIFIERS),
-            "asset_identifier": ASSET_UNIQUE_IDENTIFIERS,
-            "weight": [weight] * len(ASSET_UNIQUE_IDENTIFIERS),
-            "weight_before": [0.0] * len(ASSET_UNIQUE_IDENTIFIERS),
-            "price_current": prices,
-            "price_before": prices,
-            "volume_current": [1.0] * len(ASSET_UNIQUE_IDENTIFIERS),
-            "volume_before": [0.0] * len(ASSET_UNIQUE_IDENTIFIERS),
-        }
-    ).set_index(["time_index", "asset_identifier"])
+def resolve_source_prices_storage_uid(runtime: Any) -> str:
+    """Return the registered storage UID used by portfolio price interpolation."""
+
+    return runtime.table(ExternalPricesStorage).meta_table_uid
 
 
-def build_portfolio_values_frame() -> pd.DataFrame:
-    return pd.DataFrame(
-        {
-            "time_index": [TIME_INDEX],
-            "close": [100.0],
-            "return": [0.0],
-            "calculated_close": [100.0],
-            "close_time": [TIME_INDEX],
-        }
-    ).set_index("time_index")
+def build_example_daily_bars_frame(asset_identifiers: Sequence[str]) -> pd.DataFrame:
+    base_open = TIME_INDEX - pd.Timedelta(days=3)
+    rows: list[dict[str, object]] = []
+    for asset_position, asset_identifier in enumerate(asset_identifiers):
+        base_price = 100.0 * (asset_position + 1)
+        for day_offset, return_step in enumerate((0.00, 0.02, 0.05, 0.04)):
+            open_time = base_open + pd.Timedelta(days=day_offset)
+            close_time = open_time + pd.Timedelta(days=1)
+            close = base_price * (1.0 + return_step)
+            open_price = base_price * (1.0 + max(return_step - 0.01, 0.0))
+            rows.append(
+                {
+                    "time_index": close_time,
+                    "asset_identifier": asset_identifier,
+                    "open_time": open_time,
+                    "open": open_price,
+                    "high": max(open_price, close) * 1.01,
+                    "low": min(open_price, close) * 0.99,
+                    "close": close,
+                    "volume": 1000.0 * (asset_position + 1),
+                    "trade_count": 100.0 + day_offset,
+                    "vwap": (open_price + close) / 2.0,
+                    "interpolated": False,
+                }
+            )
+    frame = pd.DataFrame(rows)
+    frame["time_index"] = normalize_datetime64_ns_utc(frame["time_index"])
+    frame["open_time"] = normalize_datetime64_ns_utc(frame["open_time"])
+    return frame.set_index(["time_index", "asset_identifier"]).sort_index()
 
 
 def build_account_holdings_frame(
@@ -337,9 +403,20 @@ def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> Non
     print_detail("virtual_fund_uid", virtual_fund.uid)
     print_detail("virtual_fund_identifier", virtual_fund.unique_identifier)
     print_detail("portfolio_configuration_hash", result["portfolio_configuration_hash"])
-    print_detail("signal_weights_rows", len(result["signal_weights_frame"]))
-    print_detail("portfolio_weights_rows", len(result["portfolio_weights_frame"]))
-    print_detail("portfolio_values_rows", len(result["portfolio_values_frame"]))
+    print_detail("source_prices_storage_uid", result["source_prices_storage_uid"])
+    print_detail("source_prices_cadence", result["source_prices_cadence"])
+    print_detail(
+        "interpolated_prices_storage_table",
+        result["interpolated_prices_storage_table"],
+    )
+    print_detail(
+        "interpolated_prices_storage_cadence",
+        result["interpolated_prices_storage_cadence"],
+    )
+    print_detail("source_prices_data_node_uid", result["source_prices_node_uid"])
+    print_detail("signal_weights_data_node_uid", result["signal_weights_node_uid"])
+    print_detail("portfolio_weights_data_node_uid", result["portfolio_weights_node_uid"])
+    print_detail("portfolio_values_data_node_uid", result["portfolio_values_node_uid"])
     print_detail("account_holdings_rows", len(result["account_holdings_frame"]))
     print_detail("virtual_fund_allocation_rows", len(result["virtual_fund_allocations_frame"]))
     if not run_data_nodes:
@@ -349,12 +426,12 @@ def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> Non
 def build_equal_weight_portfolio(
     *,
     run_data_nodes: bool = True,
-    runtime_models: Sequence[str] | None = None,
+    runtime_models: Sequence[str | type[Any]] | None = None,
 ) -> dict[str, Any]:
     """Create the portfolio index, run portfolio DataNodes, and upsert Portfolio."""
 
     print_step(1, "Starting the portfolio example runtime.")
-    start_portfolio_example_runtime(models=runtime_models)
+    runtime = start_portfolio_example_runtime(models=runtime_models)
 
     print_step(2, "Registering the crypto asset universe.")
     assets = register_assets()
@@ -369,44 +446,75 @@ def build_equal_weight_portfolio(
     portfolio_index = register_portfolio_index()
 
     print_step(6, "Preparing equal-weight signal and portfolio DataNodes.")
-    signal_weights_node = build_signal_weights_node()
+    source_prices_storage_uid = resolve_source_prices_storage_uid(runtime)
+    source_bars_node = build_source_bars_node()
+    signal_weights_node = build_signal_weights_node(source_prices_storage_uid)
     portfolio_configuration = build_portfolio_configuration(
         signal_weights_node,
         calendar=portfolio_calendar,
+        source_time_index_meta_table_uid=source_prices_storage_uid,
     )
-    portfolio_weights_node = build_portfolio_weights_node(portfolio_index)
-    portfolio_values_node = build_portfolio_values_node(portfolio_index)
+    portfolio = Portfolio.upsert(
+        unique_identifier=PORTFOLIO_UNIQUE_IDENTIFIER,
+        calendar_uid=portfolio_calendar.uid,
+        calendar_name=portfolio_calendar.unique_identifier,
+        portfolio_index_uid=portfolio_index.uid,
+    )
+    portfolio_resolver = ExamplePortfolioResolver(
+        portfolio=portfolio,
+        portfolio_index=portfolio_index,
+    )
+    portfolio_values_node = build_portfolio_values_node(
+        portfolio_configuration,
+        portfolio_resolver=portfolio_resolver,
+    )
+    print_detail("portfolio_uid", portfolio.uid)
+    print_detail("portfolio_identifier", portfolio.unique_identifier)
     print_detail("signal_uid", signal_weights_node.signal_uid)
+    print_detail("source_prices_storage_uid", source_prices_storage_uid)
+    print_detail("source_prices_cadence", SOURCE_PRICE_CADENCE)
+    print_detail(
+        "interpolated_prices_storage_table",
+        EXAMPLE_INTERPOLATED_PRICES_STORAGE.__table__.name,
+    )
+    print_detail(
+        "interpolated_prices_storage_cadence",
+        EXAMPLE_INTERPOLATED_PRICES_STORAGE.__cadence__,
+    )
     print_detail(
         "portfolio_configuration_hash",
         compute_portfolio_configuration_hash(portfolio_configuration),
     )
-    print_detail("signal_weights_rows", len(build_signal_weights_frame()))
-    print_detail("portfolio_weights_rows", len(build_portfolio_weights_frame()))
-    print_detail("portfolio_values_rows", len(build_portfolio_values_frame()))
+    print_detail("source_prices_rows", len(build_example_daily_bars_frame(ASSET_UNIQUE_IDENTIFIERS)))
 
     print_step(7, "Publishing portfolio DataNode storage outputs.")
     if run_data_nodes:
-        signal_weights_node.run(debug_mode=True, update_tree=False, force_update=True)
+        source_bars_node.run(debug_mode=True, update_tree=False, force_update=True)
+        source_prices_node_uid = str(source_bars_node.data_node_update.uid)
+        print_detail("source_prices_data_node_uid", source_prices_node_uid)
+
+        portfolio_values_node.run(debug_mode=True, update_tree=True, force_update=True)
+
         signal_weights_node_uid = str(signal_weights_node.data_node_update.uid)
         print_detail("signal_weights_data_node_uid", signal_weights_node_uid)
 
-        portfolio_weights_node.run(debug_mode=True, update_tree=False, force_update=True)
+        portfolio_weights_node = portfolio_values_node._canonical_portfolio_weights_node()
         portfolio_weights_node_uid = str(portfolio_weights_node.data_node_update.uid)
         print_detail("portfolio_weights_data_node_uid", portfolio_weights_node_uid)
 
-        portfolio_values_node.run(debug_mode=True, update_tree=False, force_update=True)
         portfolio_values_node_uid = str(portfolio_values_node.data_node_update.uid)
         print_detail("portfolio_values_data_node_uid", portfolio_values_node_uid)
     else:
+        print_detail("source_prices_data_node_uid", "skipped (--no-run-data-nodes)")
         print_detail("signal_weights_data_node_uid", "skipped (--no-run-data-nodes)")
         print_detail("portfolio_weights_data_node_uid", "skipped (--no-run-data-nodes)")
         print_detail("portfolio_values_data_node_uid", "skipped (--no-run-data-nodes)")
+        source_prices_node_uid = None
         signal_weights_node_uid = None
         portfolio_weights_node_uid = None
         portfolio_values_node_uid = None
 
-    print_step(8, "Upserting the Portfolio row with calendar and DataNode links.")
+    print_step(8, "Updating the Portfolio row with DataNode links.")
     portfolio = Portfolio.upsert(
         unique_identifier=PORTFOLIO_UNIQUE_IDENTIFIER,
         calendar_uid=portfolio_calendar.uid,
@@ -480,21 +588,14 @@ def build_equal_weight_portfolio(
         "portfolio_configuration_hash": compute_portfolio_configuration_hash(
             portfolio_configuration
         ),
+        "source_prices_storage_uid": source_prices_storage_uid,
+        "source_prices_cadence": SOURCE_PRICE_CADENCE,
+        "interpolated_prices_storage_table": EXAMPLE_INTERPOLATED_PRICES_STORAGE.__table__.name,
+        "interpolated_prices_storage_cadence": EXAMPLE_INTERPOLATED_PRICES_STORAGE.__cadence__,
+        "source_prices_node_uid": source_prices_node_uid,
         "signal_weights_node_uid": signal_weights_node_uid,
         "portfolio_weights_node_uid": portfolio_weights_node_uid,
         "portfolio_values_node_uid": portfolio_values_node_uid,
-        "signal_weights_frame": normalize_signal_weights_frame(
-            build_signal_weights_frame(),
-            signal_uid=signal_weights_node.signal_uid,
-        ),
-        "portfolio_weights_frame": PortfolioWeights.normalize_weights_frame(
-            build_portfolio_weights_frame(),
-            portfolio_index_identifier=portfolio_index.unique_identifier,
-        ),
-        "portfolio_values_frame": PortfoliosDataNode.normalize_values_frame(
-            build_portfolio_values_frame(),
-            unique_identifier=portfolio_index.unique_identifier,
-        ),
         "account_holdings_frame": account_holdings_frame,
         "virtual_fund_allocations_frame": virtual_fund_allocations_frame,
     }
@@ -507,7 +608,7 @@ def main() -> None:
     parser.add_argument(
         "--no-run-data-nodes",
         action="store_true",
-        help="Build rows and frames without publishing DataNode storage.",
+        help="Skip DataNode publication; by default the full dependency tree is published.",
     )
     args = parser.parse_args()
     build_equal_weight_portfolio(run_data_nodes=not args.no_run_data_nodes)

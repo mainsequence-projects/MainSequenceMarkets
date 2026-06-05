@@ -1,5 +1,6 @@
 import copy
 import datetime
+import uuid
 from functools import lru_cache
 
 import numpy as np
@@ -10,7 +11,7 @@ from pydantic import ConfigDict, Field
 from tqdm import tqdm
 
 from mainsequence.client.metatables import UpdateStatistics
-from mainsequence.meta_tables import APIDataNode, DataNode
+from mainsequence.meta_tables import APIDataNode
 from mainsequence.meta_tables.data_nodes.utils import (
     string_freq_to_time_delta,
     string_frequency_to_minutes,
@@ -27,6 +28,7 @@ from msm_portfolios.asset_scope import (
 )
 from msm_portfolios.data_nodes.storage import (
     InterpolatedPricesStorage,
+    configured_interpolated_prices_storage,
 )
 from msm_portfolios.configuration import AssetsConfiguration
 from msm_portfolios.utils import TIMEDELTA
@@ -37,16 +39,38 @@ FULL_CALENDAR = "24/7"
 class InterpolatedPricesConfig(AssetIndexedDataNodeConfiguration):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
-    bar_frequency_id: str
     intraday_bar_interpolation_rule: str
+    source_time_index_meta_table_uid: uuid.UUID | str
     asset_category_unique_id: str | None = Field(
         default=None,
     )
     upsample_frequency_id: str | None = None
-    source_bars_data_node: DataNode | APIDataNode | None = Field(
-        default=None,
-        json_schema_extra={"hash_excluded": True},
-    )
+
+
+def _source_time_indexed_profile_cadence(
+    source_prices_ts: APIDataNode,
+    *,
+    source_time_index_meta_table_uid: str,
+) -> str:
+    storage_table = getattr(source_prices_ts, "storage_table", None)
+    profile = getattr(storage_table, "time_indexed_profile", None)
+    cadence = getattr(profile, "cadence", None)
+    if cadence in (None, ""):
+        raise RuntimeError(
+            "InterpolatedPrices requires the source TimeIndexMetaTable to declare "
+            "time_indexed_profile.cadence. Register or migrate the source storage "
+            f"{source_time_index_meta_table_uid} with __cadence__ before using it "
+            "as a portfolio price source."
+        )
+
+    cadence = str(cadence).strip().lower()
+    if not (cadence.endswith("d") or cadence.endswith("m")):
+        raise ValueError(
+            "InterpolatedPrices currently supports daily or minute source cadences. "
+            f"Source TimeIndexMetaTable {source_time_index_meta_table_uid} declares "
+            f"cadence={cadence!r}."
+        )
+    return cadence
 
 
 @lru_cache(maxsize=256)
@@ -99,19 +123,10 @@ def get_interpolated_prices_timeseries(
         assert asset_list is not None, "asset_list and assets_configuration both cant be None"
     if assets_configuration is not None:
         prices_configuration = copy.deepcopy(assets_configuration).prices_configuration
-        source_bars_data_node = prices_configuration.source_bars_data_node
-        markets_time_series = prices_configuration.markets_time_series
-        if source_bars_data_node is None and markets_time_series is not None:
-            source_bars_data_node = APIDataNode.build_from_identifier(
-                identifier=markets_time_series.unique_identifier
-            )
-
         prices_configuration_kwargs = prices_configuration.model_dump(
             exclude={
                 "forward_fill_to_now",
                 "is_live",
-                "markets_time_series",
-                "source_bars_data_node",
             }
         )
 
@@ -123,7 +138,6 @@ def get_interpolated_prices_timeseries(
             return InterpolatedPrices(
                 interpolation_config=InterpolatedPricesConfig(
                     asset_category_unique_id=assets_configuration.assets_category_unique_id,
-                    source_bars_data_node=source_bars_data_node,
                     **prices_configuration_kwargs,
                 )
             )
@@ -131,7 +145,6 @@ def get_interpolated_prices_timeseries(
             return InterpolatedPrices(
                 interpolation_config=InterpolatedPricesConfig(
                     asset_list=resolved_asset_list,
-                    source_bars_data_node=source_bars_data_node,
                     **prices_configuration_kwargs,
                 )
             )
@@ -161,7 +174,7 @@ class UpsampleAndInterpolation:
         ) / string_frequency_to_minutes(self.bar_frequency_id)
         assert rows.is_integer()
 
-        if "d" in self.bar_frequency_id:
+        if self.bar_frequency_id.endswith("d"):
             assert (
                 bar_frequency_id == self.upsample_frequency_id
             )  # Upsampling for daily bars not implemented
@@ -285,14 +298,14 @@ class UpsampleAndInterpolation:
             except Exception as e:
                 raise e
 
-        if "d" in self.bar_frequency_id:
+        if self.bar_frequency_id.endswith("d"):
             tmp_df = interpolate_daily_bars(
                 bars_df=tmp_df.copy(),
                 interpolation_rule=self.intraday_bar_interpolation_rule,
                 calendar=calendar,
                 last_observation=last_observation,
             )
-        elif "m" in self.bar_frequency_id:
+        elif self.bar_frequency_id.endswith("m"):
             bars_frequency_min = string_frequency_to_minutes(self.bar_frequency_id)
 
             # Interpolation to fill gaps
@@ -310,7 +323,7 @@ class UpsampleAndInterpolation:
         assert tmp_df.isnull().sum()[["close", "open"]].sum() == 0
 
         # Upsample to the correct frequency
-        if "d" in self.bar_frequency_id:
+        if self.bar_frequency_id.endswith("d"):
             all_columns = self.TIMESTAMP_COLS
             upsampled_df = tmp_df
         else:
@@ -599,44 +612,58 @@ class InterpolatedPrices(AssetIndexedDataNode):
         Initializes the InterpolatedPrices object.
         """
         self.interpolation_config = interpolation_config
-        bar_frequency_id = interpolation_config.bar_frequency_id
         intraday_bar_interpolation_rule = interpolation_config.intraday_bar_interpolation_rule
         asset_category_unique_id = interpolation_config.asset_category_unique_id
-        upsample_frequency_id = interpolation_config.upsample_frequency_id
         asset_list = interpolation_config.asset_list
-        source_bars_data_node = interpolation_config.source_bars_data_node
-
-        assert "d" in bar_frequency_id or "m" in bar_frequency_id, (
-            f"bar_frequency_id={bar_frequency_id} should be 'd for days' or 'm for min'"
+        source_time_index_meta_table_uid = str(
+            interpolation_config.source_time_index_meta_table_uid
         )
-        if source_bars_data_node is None:
-            raise ValueError(
-                "InterpolatedPrices requires an explicit source_bars_data_node. "
-                "Provide PricesConfiguration.markets_time_series for an upstream "
-                "MarketsTimeSeries identifier, or inject a normalized source bars DataNode."
+        if "storage_table" in kwargs:
+            raise TypeError(
+                "InterpolatedPrices storage_table is derived from interpolation_config "
+                "through __metatable_extra_hash_components__; pass the source storage "
+                "configuration instead."
             )
+
         if asset_category_unique_id is None:
             assert asset_list is not None, (
                 f"asset_category_unique_id={asset_category_unique_id} should not be None or asset_list should be defined"
             )
+        source_prices_ts = APIDataNode.build_from_table_uid(source_time_index_meta_table_uid)
+        source_cadence = _source_time_indexed_profile_cadence(
+            source_prices_ts,
+            source_time_index_meta_table_uid=source_time_index_meta_table_uid,
+        )
+        upsample_frequency_id = interpolation_config.upsample_frequency_id or source_cadence
+        storage_table = configured_interpolated_prices_storage(
+            source_storage_hash=source_prices_ts.storage_hash,
+            source_cadence=source_cadence,
+            upsample_frequency_id=upsample_frequency_id,
+            intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
+        )
 
         self.asset_category_unique_id = asset_category_unique_id
         self.interpolator = UpsampleAndInterpolation(
-            bar_frequency_id=bar_frequency_id,
+            bar_frequency_id=source_cadence,
             upsample_frequency_id=upsample_frequency_id,
             intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
         )
         self.constructor_asset_list = asset_list
-        bars_frequency_min = string_frequency_to_minutes(bar_frequency_id)
+        bars_frequency_min = string_frequency_to_minutes(source_cadence)
         self.maximum_forward_fill = datetime.timedelta(minutes=bars_frequency_min) - TIMEDELTA
 
         self.intraday_bar_interpolation_rule = intraday_bar_interpolation_rule
-        self.bar_frequency_id = bar_frequency_id
+        self.bar_frequency_id = source_cadence
         self.upsample_frequency_id = upsample_frequency_id
-        self.source_bars_data_node = source_bars_data_node
-        self.bars_ts = source_bars_data_node
+        self.source_time_index_meta_table_uid = source_time_index_meta_table_uid
+        self.bars_ts = source_prices_ts
 
-        super().__init__(config=interpolation_config, *args, **kwargs)
+        super().__init__(
+            config=interpolation_config,
+            storage_table=storage_table,
+            *args,
+            **kwargs,
+        )
 
     def dependencies(self):
         return {"bars_ts": self.bars_ts}

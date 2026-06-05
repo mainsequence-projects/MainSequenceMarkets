@@ -15,7 +15,7 @@ from mainsequence.meta_tables import APIDataNode, DataNode
 from msm_portfolios.asset_scope import dedupe_asset_scope
 
 from .base import (
-    AssetScopedPortfolioCanonicalDataNode,
+    PortfolioCanonicalDataNode,
     PortfolioCanonicalDataNodeConfiguration,
     StorageTable,
     _class_import_path,
@@ -56,7 +56,7 @@ def translate_to_pandas_freq(custom_freq: str) -> str:
     return f"{number}{freq_mapping[unit]}"
 
 
-class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
+class PortfoliosDataNode(PortfolioCanonicalDataNode):
     """Canonical portfolio values DataNode and portfolio workflow orchestrator."""
 
     OFFSET_START = datetime(2018, 1, 1, tzinfo=pytz.utc)
@@ -80,7 +80,6 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
         for runtime_key in (
             "portfolio_configuration",
             "portfolio_resolver",
-            "asset",
             "portfolio_description",
             "metadata_updater",
         ):
@@ -156,7 +155,6 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
         *,
         unique_identifier: str | None = None,
         portfolio_configuration: Any | None = None,
-        asset: Any | None = None,
         portfolio_resolver: Any | None = None,
         portfolio_description: str | None = None,
         metadata_updater: Any | None = None,
@@ -165,7 +163,6 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
         self._portfolio_values_frame = portfolio_values_frame
         self._unique_identifier = unique_identifier
         self._portfolio_configuration = portfolio_configuration
-        self._asset = asset
         self._portfolio_resolver = portfolio_resolver
         self._portfolio_description = portfolio_description
         self._portfolio_metadata_updater = metadata_updater
@@ -646,29 +643,6 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
     def portfolio_frequency_to_pandas(self):
         return translate_to_pandas_freq(self.portfolio_prices_frequency)
 
-    def get_asset_list(self):
-        asset = getattr(self, "_asset", None)
-        if asset is not None:
-            return self.validate_asset_list([asset])
-
-        cached_portfolio_index = getattr(self, "portfolio_index", None)
-        if getattr(self, "target_portfolio", None) is not None and getattr(
-            cached_portfolio_index,
-            "unique_identifier",
-            None,
-        ):
-            return self.validate_asset_list([cached_portfolio_index])
-
-        has_portfolio_configuration = (
-            getattr(self, "portfolio_configuration", None) is not None
-            or getattr(self, "_portfolio_configuration", None) is not None
-        )
-        if not has_portfolio_configuration:
-            return None
-
-        _portfolio, portfolio_index = self._resolve_portfolio_identity()
-        return self.validate_asset_list([portfolio_index])
-
     def get_portfolio_about_text(self):
         portfolio_about = """Portfolio created with Main Sequence Portfolios engine with the following signal and
 rebalance details:"""
@@ -686,11 +660,6 @@ rebalance details:"""
         if explicit_identifier:
             return str(explicit_identifier)
 
-        asset = getattr(self, "_asset", None)
-        asset_unique_identifier = getattr(asset, "unique_identifier", None)
-        if asset_unique_identifier:
-            return str(asset_unique_identifier)
-
         portfolio_configuration = getattr(self, "_portfolio_configuration", None)
         if portfolio_configuration is not None:
             _portfolio, resolved_index = get_or_create_portfolio_index(
@@ -703,8 +672,8 @@ rebalance details:"""
 
         raise ValueError(
             "PortfoliosDataNode requires a unique_identifier, "
-            "an asset, or a portfolio_configuration that can resolve "
-            "one before canonical rows can be written."
+            "or a portfolio_configuration that can resolve one before "
+            "canonical rows can be written."
         )
 
     def _upsert_portfolio_metadata_if_available(self, frame: pd.DataFrame) -> None:

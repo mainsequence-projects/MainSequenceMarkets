@@ -466,6 +466,7 @@ The curve DataNode contract is:
 ```text
 DiscountCurvesNode
   index:   (time_index, curve_identifier)
+  cadence: 1d
   columns: curve
   FK:      curve_identifier -> CurveTable.unique_identifier
 ```
@@ -501,13 +502,15 @@ The fixing DataNode contract is:
 ```text
 FixingRatesNode
   index:   (time_index, index_identifier)
+  cadence: 1d
   columns: rate
   FK:      index_identifier -> IndexTable.unique_identifier
 ```
 
-The DataNode configuration carries a hashable `frequency` field so daily,
-intraday, weekly, or other supported fixing datasets produce distinct DataNode
-identities.
+The EOD pricing storage tables declare `__cadence__ = "1d"` on the
+`PlatformTimeIndexMetaTable` storage class. Cadence is first-class
+time-indexed table metadata and participates in SDK storage identity, so it
+does not belong on `IndexFixingConfiguration`.
 
 ## Runtime Resolution
 

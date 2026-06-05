@@ -55,6 +55,7 @@ ACCOUNT_WORKFLOW_RUNTIME_MODELS = [
     "VirtualFundHoldingsStorage",
     "SignalMetadata",
     "RebalanceStrategyMetadata",
+    "ExternalPricesStorage",
     "PortfolioWeightsStorage",
     "SignalWeightsStorage",
     "PortfoliosStorage",
@@ -76,12 +77,13 @@ def run_account_workflow(
             "reference its Portfolio row."
         )
         from examples.msm_portfolios.portfolio_equal_weights_example import (
+            EXAMPLE_INTERPOLATED_PRICES_STORAGE,
             build_equal_weight_portfolio,
         )
 
         portfolio_example_result = build_equal_weight_portfolio(
             run_data_nodes=run_portfolio_data_nodes,
-            runtime_models=ACCOUNT_WORKFLOW_RUNTIME_MODELS,
+            runtime_models=[*ACCOUNT_WORKFLOW_RUNTIME_MODELS, EXAMPLE_INTERPOLATED_PRICES_STORAGE],
         )
         print(
             "   Portfolio example ready: "
@@ -368,8 +370,8 @@ def main() -> None:
         "--no-run-portfolio-data-nodes",
         action="store_true",
         help=(
-            "When chaining the portfolio example, build its rows without publishing "
-            "its DataNode storage."
+            "When chaining the portfolio example, skip its DataNode publication; "
+            "by default the full dependency tree is published."
         ),
     )
     args = parser.parse_args()

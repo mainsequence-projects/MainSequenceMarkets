@@ -118,7 +118,7 @@ class ETFReplicator(SignalWeights):
         return info
 
     def maximum_forward_fill(self):
-        freq = self.assets_configuration.prices_configuration.bar_frequency_id
+        freq = self.bars_ts.bar_frequency_id
         return pd.Timedelta(freq) - TIMEDELTA
 
     def get_tracking_weights(self, prices: pd.DataFrame) -> pd.DataFrame:

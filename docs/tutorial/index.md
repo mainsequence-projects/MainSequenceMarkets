@@ -295,7 +295,8 @@ For a full floating-rate bond workflow, use
    then register the canonical index through `msm.api.indices.Index`.
 3. Upsert `IndexConventionDetails` and `Curve` rows under `msm_pricing.api`.
 4. Publish one month of mock fixings through a `FixingRatesNode` subclass and a
-   sampled flat-forward curve through a `DiscountCurvesNode` subclass.
+   sampled flat-forward curve through a `DiscountCurvesNode` subclass. The
+   pricing storage classes declare their EOD cadence as `__cadence__ = "1d"`.
 5. Attach pricing storage tables, then upsert the `default` market-data set and
    its concept bindings with `PricingMarketDataSet` and
    `PricingMarketDataSetBinding`.

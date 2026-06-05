@@ -5,14 +5,13 @@ import os
 
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 
 # Prevent SDK import-time project resolution from reading the local .env.
 os.environ["MAIN_SEQUENCE_PROJECT_UID"] = " "
 os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
-
-from mainsequence.client.utils import DataFrequency
 
 from msm.data_nodes.indices import IndexDataNodeConfiguration, IndexTimestampedDataNode
 from msm.models import IndexTable
@@ -26,21 +25,21 @@ from msm_pricing.data_nodes.storage import IndexFixingsStorage
 from msm_pricing.meta_tables import pricing_sqlalchemy_models
 
 
-def test_index_fixing_configuration_is_index_stamped_with_hashable_frequency() -> None:
-    config = IndexFixingConfiguration(frequency=DataFrequency.one_d.value)
+def test_index_fixing_configuration_is_index_stamped_update_scope_only() -> None:
+    config = IndexFixingConfiguration(index_unique_identifiers=["SOFR"])
 
     assert isinstance(config, IndexDataNodeConfiguration)
-    assert config.frequency == "1d"
-    assert IndexFixingConfiguration.model_fields["frequency"].json_schema_extra is None
+    assert config.index_unique_identifiers == ["SOFR"]
+    assert "frequency" not in IndexFixingConfiguration.model_fields
     # Storage-first: schema/identity/FK fields no longer live on the config.
     assert "records" not in IndexFixingConfiguration.model_fields
     assert "node_metadata" not in IndexFixingConfiguration.model_fields
     assert "foreign_keys" not in IndexFixingConfiguration.model_fields
 
 
-def test_index_fixing_configuration_rejects_unsupported_frequency() -> None:
-    with pytest.raises(ValueError, match="Unsupported index fixing frequency"):
-        IndexFixingConfiguration(frequency="2d")
+def test_index_fixing_configuration_rejects_frequency_config_field() -> None:
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        IndexFixingConfiguration(frequency="1d")
 
 
 def test_fixing_rates_node_resolves_index_storage_first_surface(monkeypatch) -> None:
@@ -56,6 +55,7 @@ def test_fixing_rates_node_resolves_index_storage_first_surface(monkeypatch) -> 
     assert storage_table is IndexFixingsStorage
     assert storage_table.metatable_identifier() == "IndexFixingsTS"
     assert storage_table.__index_names__ == ["time_index", INDEX_IDENTIFIER_DIMENSION]
+    assert storage_table.__cadence__ == "1d"
     assert "__data_node_identifier__" not in FixingRatesNode.__dict__
     assert FixingRatesNode._default_identifier() == registered_identifier
     assert FixingRatesNode._default_description() == storage_table.__metatable_description__
