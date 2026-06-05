@@ -33,7 +33,9 @@ Portfolios answer these questions:
   `RebalanceStrategyMetadata`.
 - `msm_portfolios.services.portfolios`: service helpers for portfolio rows.
 - `msm_portfolios.contrib`: contributed price and signal DataNodes.
-- `msm_portfolios.utils`: shared portfolio utility functions.
+- `msm_portfolios.utils`: small shared logging and time constants only.
+- `msm_portfolios.contrib.signals.regression_utils`: regression helpers used by
+  contributed replicator-style signals.
 
 ## Key Contracts
 

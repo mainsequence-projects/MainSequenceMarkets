@@ -9,6 +9,9 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- Removed unused `docstring-parser` portfolio dependency and deleted the dead
+  docstring/schema utility helpers that forced `msm_portfolios` imports to fail
+  when the optional package was absent.
 - Fixed `AccountHoldings` DataNode validation so storage-backed `direction`
   columns with SDK dtype `int16` are accepted and preserved as `int16`.
 - Fixed markets and pricing runtime attachment to resolve registered
@@ -27,6 +30,10 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Removed dead legacy helpers from `msm_portfolios.utils`, including the
+  CoinGecko symbol mapping and provider-specific/query/notebook helpers, and
+  moved rolling-regression helpers into
+  `msm_portfolios.contrib.signals.regression_utils`.
 - Added `Calendar.create_from_pandas_calendar(...)` as the generic class-owned
   calendar generation entrypoint, and updated the equal-weight portfolio example
   to reuse shared crypto assets plus a generated `CRYPTO_24_7` calendar from

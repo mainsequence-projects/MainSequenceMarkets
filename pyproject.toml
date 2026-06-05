@@ -71,7 +71,6 @@ docs = [
   "pymdown-extensions>=10.0",
 ]
 portfolios = [
-  "docstring-parser",
   "joblib",
   "pandas-market-calendars>=5.4.0",
   "scikit-learn",

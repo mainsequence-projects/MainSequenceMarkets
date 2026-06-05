@@ -6,12 +6,14 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import ElasticNet, Lasso, LinearRegression
-from tqdm import tqdm
 
 from msm_portfolios.asset_scope import asset_field, asset_unique_identifier
 from msm_portfolios.contrib.prices.data_nodes import (
     get_interpolated_prices_timeseries,
+)
+from msm_portfolios.contrib.signals.regression_utils import (
+    rolling_elastic_net,
+    rolling_lasso_regression,
 )
 from msm_portfolios.data_nodes import ASSET_IDENTIFIER, SignalWeights
 from msm_portfolios.configuration import AssetsConfiguration, PortfolioConfigBaseModel
@@ -37,127 +39,6 @@ class ETFReplicatorConfig(PortfolioConfigBaseModel):
     etf_asset: Any | None = None
     in_window: int = 60
     tracking_strategy: TrackingStrategy = TrackingStrategy.LASSO
-
-
-def rolling_pca_betas(X, window, n_components=5, *args, **kwargs):
-    """
-    Perform rolling PCA and return the betas (normalized principal component weights).
-
-    Parameters:
-        X (pd.DataFrame): DataFrame of stock returns or feature data (rows are time, columns are assets).
-        window (int): The size of the rolling window.
-        n_components (int, optional): The number of principal components to extract. Defaults to 5.
-
-    Returns:
-        np.ndarray: An array of normalized PCA weights for each rolling window.
-    """
-    from sklearn.decomposition import PCA
-
-    betas = []
-
-    # Loop over each rolling window
-    for i in tqdm(range(window, len(X)), desc="Performing rolling PCA"):
-        X_window = X.iloc[i - window : i]
-
-        # Perform PCA on the windowed data
-        pca = PCA(n_components=n_components)
-        try:
-            pca.fit(X_window)
-        except Exception as e:
-            raise e
-
-        # Get the eigenvectors (principal components)
-        eigenvectors = pca.components_  # Shape: (n_components, n_assets)
-
-        # Transpose to align weights with assets
-        eigenvectors_transposed = eigenvectors.T  # Shape: (n_assets, n_components)
-
-        # Normalize the eigenvectors so that sum of absolute values = 1 for each component
-        weights_normalized = eigenvectors_transposed / np.sum(
-            np.abs(eigenvectors_transposed), axis=0
-        )
-
-        # Append the normalized weights (betas) for this window
-        betas.append(weights_normalized)
-
-    return np.array(betas)  # Shape: (num_windows, n_assets, n_components)
-
-
-def rolling_lasso_regression(y, X, window, alpha=1.0, *args, **kwargs):
-    """
-    Perform rolling Lasso regression and return the coefficients.
-
-    Parameters:
-        y (pd.Series): Target variable.
-        X (pd.DataFrame): Feature variables.
-        window (int): Size of the rolling window.
-        alpha (float, optional): Regularization strength. Defaults to 1.0.
-
-    Returns:
-        list: List of DataFrames containing the coefficients for each rolling window.
-    """
-    betas = []
-    if alpha == 0:
-        lasso = LinearRegression(fit_intercept=False, positive=True)
-    else:
-        lasso = Lasso(alpha=alpha, fit_intercept=False, positive=True)
-
-    for i in tqdm(range(window, len(y)), desc="Building Lasso regression"):
-        null_xs = X.isnull().sum()
-        null_xs = null_xs[null_xs > 0]
-        symbols_to_zero = None
-        X_window = X.iloc[i - window : i]
-        if null_xs.shape[0] > 0:
-            symbols_to_zero = null_xs.index.to_list()
-            X_window = X_window[[c for c in X_window.columns if c not in symbols_to_zero]]
-        y_window = y.iloc[i - window : i]
-
-        # Fit the Lasso model
-        try:
-            lasso.fit(X_window, y_window)
-        except Exception as e:
-            raise e
-
-        round_betas = pd.DataFrame(
-            lasso.coef_.reshape(1, -1),
-            columns=X_window.columns,
-            index=[X_window.index[-1]],
-        )
-        if symbols_to_zero is not None:
-            round_betas.loc[:, symbols_to_zero] = 0.0
-        # Append the coefficients
-        betas.append(round_betas)
-    return betas
-
-
-def rolling_elastic_net(y, X, window, alpha=1.0, l1_ratio=0.5):
-    """
-    Perform rolling Elastic Net regression and return the coefficients.
-
-    Parameters:
-        y (pd.Series): Target variable.
-        X (pd.DataFrame): Feature variables.
-        window (int): Size of the rolling window.
-        alpha (float, optional): Regularization strength. Defaults to 1.0.
-        l1_ratio (float, optional): The ElasticNet mixing parameter. Defaults to 0.5.
-
-    Returns:
-        np.ndarray: Array of coefficients for each rolling window.
-    """
-    betas = []
-    enet = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, fit_intercept=False)
-
-    for i in tqdm(range(window, len(y)), desc="Building rolling regression"):
-        X_window = X.iloc[i - window : i]
-        y_window = y.iloc[i - window : i]
-
-        # Fit the ElasticNet model
-        enet.fit(X_window, y_window)
-
-        # Save coefficients
-        betas.append(enet.coef_)
-
-    return np.array(betas)
 
 
 class ETFReplicator(SignalWeights):

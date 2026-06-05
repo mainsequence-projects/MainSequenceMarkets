@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal
 import pytz
-from joblib import Parallel, delayed
 from pydantic import ConfigDict, Field
 from tqdm import tqdm
 
@@ -724,6 +723,8 @@ class InterpolatedPrices(AssetIndexedDataNode):
                     df[ASSET_IDENTIFIER_DIMENSION] = asset_identifier
                     upsampled_df.append(df)
         else:
+            from joblib import Parallel, delayed
+
             upsampled_df = Parallel(n_jobs=required_cores)(
                 delayed(multiproc_upsample)(
                     calendar=self.asset_calendar_map[asset_identifier],
