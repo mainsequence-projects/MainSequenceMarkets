@@ -393,14 +393,15 @@ def configured_interpolated_prices_storage(
         intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
     )
     table = _copy_interpolated_prices_table(table_name)
-    class_name = f"InterpolatedPricesStorage_{table_name.rsplit('_', 1)[-1]}"
+    table_suffix = table_name.rsplit("_", 1)[-1]
+    class_name = f"InterpolatedPricesStorage_{table_suffix}"
     return type(
         class_name,
         (MarketsTimeIndexMetaTableMixin, MarketsBase),
         {
             "__module__": __name__,
             "__table__": table,
-            "__metatable_identifier__": "InterpolatedPricesTS",
+            "__metatable_identifier__": f"InterpolatedPricesTS.{table_suffix}",
             "__metatable_description__": InterpolatedPricesStorage.__metatable_description__,
             "__metatable_extra_hash_components__": components,
             "__time_index_name__": InterpolatedPricesStorage.__time_index_name__,

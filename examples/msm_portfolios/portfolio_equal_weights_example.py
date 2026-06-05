@@ -24,8 +24,30 @@ from examples.msm.assets.utils import (  # noqa: E402
     EXAMPLE_CRYPTO_ASSETS,
     EXAMPLE_CRYPTO_ASSET_TYPE,
 )
+from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
+    ACCOUNT_GROUP_NAME,
+    ACCOUNT_UNIQUE_IDENTIFIER,
+    ASSET_UNIQUE_IDENTIFIERS,
+    CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
+    DYNAMIC_MIGRATION_PROVIDER,
+    INDEX_TYPE_PORTFOLIO,
+    NAMESPACE,
+    PORTFOLIO_EXAMPLE_RUNTIME_MODELS,
+    PORTFOLIO_INDEX_DISPLAY_NAME,
+    PORTFOLIO_INDEX_UNIQUE_IDENTIFIER,
+    PORTFOLIO_UNIQUE_IDENTIFIER,
+    PRICE_INTERPOLATION_RULE,
+    PRICE_UPSAMPLE_FREQUENCY_ID,
+    SOURCE_PRICE_CADENCE,
+    TIME_INDEX,
+    VIRTUAL_FUND_UNIQUE_IDENTIFIER,
+    configured_equal_weight_interpolated_prices_storage,
+    source_cadence_from_meta_table,
+    source_storage_hash_from_meta_table,
+)
 
 import msm_portfolios  # noqa: E402
+from mainsequence.client.metatables import TimeIndexMetaTable  # noqa: E402
 from msm.api.accounts import Account, AccountGroup, AccountHoldingsSet  # noqa: E402
 from msm.api.assets import Asset, AssetType  # noqa: E402
 from msm.api.calendars import Calendar  # noqa: E402
@@ -54,7 +76,6 @@ from msm_portfolios.contrib.signals.fixed_weights import (  # noqa: E402
 )
 from msm_portfolios.data_nodes.storage import (  # noqa: E402
     ExternalPricesStorage,
-    configured_interpolated_prices_storage,
 )
 from msm_portfolios.data_nodes import (  # noqa: E402
     PortfoliosDataNode,
@@ -63,51 +84,6 @@ from msm_portfolios.data_nodes import (  # noqa: E402
 )
 from msm_portfolios.enums import PriceTypeNames  # noqa: E402
 from msm_portfolios.rebalance_strategy import ImmediateSignal  # noqa: E402
-
-NAMESPACE = "mainsequence.examples.portfolios"
-INDEX_TYPE_PORTFOLIO = "portfolio"
-PORTFOLIO_UNIQUE_IDENTIFIER = "example-equal-weight-portfolio"
-PORTFOLIO_INDEX_UNIQUE_IDENTIFIER = "example-equal-weight-portfolio-index"
-PORTFOLIO_INDEX_DISPLAY_NAME = "Example Equal Weight Portfolio Index"
-CRYPTO_CALENDAR_UNIQUE_IDENTIFIER = "CRYPTO_24_7"
-TIME_INDEX = pd.Timestamp("2026-05-25T00:00:00Z")
-ASSET_UNIQUE_IDENTIFIERS = [payload["unique_identifier"] for payload in EXAMPLE_CRYPTO_ASSETS]
-ACCOUNT_GROUP_NAME = "Example Portfolio Allocation Accounts"
-ACCOUNT_UNIQUE_IDENTIFIER = "example-portfolio-allocation-account"
-VIRTUAL_FUND_UNIQUE_IDENTIFIER = "example-equal-weight-virtual-fund"
-SOURCE_PRICE_CADENCE = ExternalPricesStorage.__cadence__
-PRICE_UPSAMPLE_FREQUENCY_ID = "1d"
-PRICE_INTERPOLATION_RULE = "ffill"
-EXAMPLE_INTERPOLATED_PRICES_STORAGE = configured_interpolated_prices_storage(
-    source_storage_hash=ExternalPricesStorage.__table__.name,
-    source_cadence=SOURCE_PRICE_CADENCE,
-    upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,
-    intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
-)
-PORTFOLIO_EXAMPLE_RUNTIME_MODELS = [
-    "IndexType",
-    "Index",
-    "AssetType",
-    "Asset",
-    "AccountGroup",
-    "Account",
-    "AccountHoldingsSet",
-    "AccountHoldingsStorage",
-    "Calendar",
-    "CalendarDate",
-    "CalendarSession",
-    "Portfolio",
-    "VirtualFund",
-    "VirtualFundHoldingsSet",
-    "VirtualFundHoldingsStorage",
-    "SignalMetadata",
-    "RebalanceStrategyMetadata",
-    "ExternalPricesStorage",
-    EXAMPLE_INTERPOLATED_PRICES_STORAGE,
-    "PortfolioWeightsStorage",
-    "SignalWeightsStorage",
-    "PortfoliosStorage",
-]
 
 
 class ExamplePortfolioResolver:
@@ -153,6 +129,9 @@ class ExampleDailyBars(AssetIndexedDataNode):
     def get_asset_list(self) -> list[str]:
         return list(self._asset_identifiers)
 
+    def dependencies(self) -> dict[str, Any]:
+        return {}
+
     def update(self) -> pd.DataFrame:
         frame = build_example_daily_bars_frame(self._asset_identifiers)
         return self.update_statistics.filter_df_by_latest_value(frame)
@@ -170,7 +149,7 @@ def start_portfolio_example_runtime(
     *,
     models: Sequence[str | type[Any]] | None = None,
 ) -> Any:
-    """Register the tables/storage used by this portfolio example."""
+    """Attach the already-registered tables/storage used by this portfolio example."""
 
     return msm_portfolios.start_engine(
         models=list(models or PORTFOLIO_EXAMPLE_RUNTIME_MODELS),
@@ -324,10 +303,52 @@ def build_source_bars_node() -> ExampleDailyBars:
     )
 
 
-def resolve_source_prices_storage_uid(runtime: Any) -> str:
-    """Return the registered storage UID used by portfolio price interpolation."""
+def resolve_source_prices_storage(runtime: Any) -> tuple[str, Any]:
+    """Return the registered source storage UID and backend metadata."""
 
-    return runtime.table(ExternalPricesStorage).meta_table_uid
+    handle = runtime.table(ExternalPricesStorage)
+    if handle.meta_table is None:
+        raise RuntimeError(
+            "ExternalPricesStorage is not attached to a registered TimeIndexMetaTable."
+        )
+    return str(handle.meta_table_uid), handle.meta_table
+
+
+def build_example_interpolated_prices_storage(source_meta_table: Any) -> type[Any]:
+    """Derive this example's configured interpolation storage from source metadata."""
+
+    return configured_equal_weight_interpolated_prices_storage(
+        source_storage_hash=source_storage_hash_from_meta_table(source_meta_table),
+        source_cadence=source_cadence_from_meta_table(
+            source_meta_table,
+            fallback=SOURCE_PRICE_CADENCE,
+        ),
+    )
+
+
+def assert_interpolated_prices_storage_registered(storage_table: type[Any]) -> Any:
+    """Fail clearly when the dynamic interpolation table was not migrated first."""
+
+    table_name = storage_table.__table__.name
+    matches = TimeIndexMetaTable.filter_by_body(
+        physical_table_name__in=[table_name],
+        limit=1,
+        offset=0,
+    )
+    if not matches:
+        raise RuntimeError(
+            "Configured interpolated price storage is missing: "
+            f"{table_name}. Run "
+            "`python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` "
+            "before running the portfolio workflow. The dynamic migration provider is "
+            f"{DYNAMIC_MIGRATION_PROVIDER}."
+        )
+
+    meta_table = matches[0]
+    bind = getattr(storage_table, "_bind_meta_table", None)
+    if callable(bind):
+        bind(meta_table)
+    return meta_table
 
 
 def build_example_daily_bars_frame(asset_identifiers: Sequence[str]) -> pd.DataFrame:
@@ -404,7 +425,9 @@ def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> Non
     print_detail("virtual_fund_identifier", virtual_fund.unique_identifier)
     print_detail("portfolio_configuration_hash", result["portfolio_configuration_hash"])
     print_detail("source_prices_storage_uid", result["source_prices_storage_uid"])
+    print_detail("source_prices_storage_hash", result["source_prices_storage_hash"])
     print_detail("source_prices_cadence", result["source_prices_cadence"])
+    print_detail("interpolated_prices_storage_uid", result["interpolated_prices_storage_uid"])
     print_detail(
         "interpolated_prices_storage_table",
         result["interpolated_prices_storage_table"],
@@ -446,7 +469,19 @@ def build_equal_weight_portfolio(
     portfolio_index = register_portfolio_index()
 
     print_step(6, "Preparing equal-weight signal and portfolio DataNodes.")
-    source_prices_storage_uid = resolve_source_prices_storage_uid(runtime)
+    source_prices_storage_uid, source_prices_storage_meta_table = resolve_source_prices_storage(
+        runtime
+    )
+    source_prices_cadence = source_cadence_from_meta_table(
+        source_prices_storage_meta_table,
+        fallback=SOURCE_PRICE_CADENCE,
+    )
+    interpolated_prices_storage = build_example_interpolated_prices_storage(
+        source_prices_storage_meta_table
+    )
+    interpolated_prices_meta_table = assert_interpolated_prices_storage_registered(
+        interpolated_prices_storage
+    )
     source_bars_node = build_source_bars_node()
     signal_weights_node = build_signal_weights_node(source_prices_storage_uid)
     portfolio_configuration = build_portfolio_configuration(
@@ -472,14 +507,19 @@ def build_equal_weight_portfolio(
     print_detail("portfolio_identifier", portfolio.unique_identifier)
     print_detail("signal_uid", signal_weights_node.signal_uid)
     print_detail("source_prices_storage_uid", source_prices_storage_uid)
-    print_detail("source_prices_cadence", SOURCE_PRICE_CADENCE)
+    print_detail("source_prices_cadence", source_prices_cadence)
+    print_detail("source_prices_storage_hash", source_prices_storage_meta_table.storage_hash)
     print_detail(
         "interpolated_prices_storage_table",
-        EXAMPLE_INTERPOLATED_PRICES_STORAGE.__table__.name,
+        interpolated_prices_storage.__table__.name,
+    )
+    print_detail(
+        "interpolated_prices_storage_uid",
+        getattr(interpolated_prices_meta_table, "uid", None),
     )
     print_detail(
         "interpolated_prices_storage_cadence",
-        EXAMPLE_INTERPOLATED_PRICES_STORAGE.__cadence__,
+        interpolated_prices_storage.__cadence__,
     )
     print_detail(
         "portfolio_configuration_hash",
@@ -589,9 +629,11 @@ def build_equal_weight_portfolio(
             portfolio_configuration
         ),
         "source_prices_storage_uid": source_prices_storage_uid,
-        "source_prices_cadence": SOURCE_PRICE_CADENCE,
-        "interpolated_prices_storage_table": EXAMPLE_INTERPOLATED_PRICES_STORAGE.__table__.name,
-        "interpolated_prices_storage_cadence": EXAMPLE_INTERPOLATED_PRICES_STORAGE.__cadence__,
+        "source_prices_storage_hash": source_prices_storage_meta_table.storage_hash,
+        "source_prices_cadence": source_prices_cadence,
+        "interpolated_prices_storage_uid": getattr(interpolated_prices_meta_table, "uid", None),
+        "interpolated_prices_storage_table": interpolated_prices_storage.__table__.name,
+        "interpolated_prices_storage_cadence": interpolated_prices_storage.__cadence__,
         "source_prices_node_uid": source_prices_node_uid,
         "signal_weights_node_uid": signal_weights_node_uid,
         "portfolio_weights_node_uid": portfolio_weights_node_uid,

@@ -132,6 +132,15 @@ storage metadata from the markets catalog. Do not manually bind a UID,
 reconstruct a generic `MetaTable`, call storage `.register()` from runtime
 startup, or use manual bind helpers as an authoring step.
 
+Project-local storage classes may set `__markets_storage_app__` to use a
+project-owned SQLAlchemy table-name app segment instead of the library default
+`ms_markets`. This is useful for extension storage such as provider bars or
+account facts. It only changes physical table naming; the globally unique
+`__metatable_identifier__` remains the logical catalog/runtime identity.
+Changing the storage app after migration/catalog finalization is a physical
+table-name rotation and must go through the normal SDK migration and
+registration path.
+
 Minimal storage-first pattern:
 
 ```python
@@ -150,6 +159,7 @@ from msm.models.assets.core import AssetTable
 
 
 class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+    __markets_storage_app__ = "my_project_markets"
     __metatable_identifier__ = "ExampleAssetMetricsTS"
     __metatable_description__ = (
         "Timestamped asset metric observations keyed by asset identifier "

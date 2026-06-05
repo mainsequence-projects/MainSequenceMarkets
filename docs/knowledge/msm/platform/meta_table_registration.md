@@ -15,10 +15,15 @@ Market models inherit `MarketsMetaTableMixin`, which itself inherits the SDK
 `PlatformManagedMetaTable` base. Time-indexed DataNode storage inherits
 `PlatformTimeIndexMetaTable` through `MarketsTimeIndexMetaTableMixin`.
 Do not set `__tablename__` on normal markets MetaTable models. The markets
-mixins assign package-owned physical names with the convention
-`ms_markets__<lowercase-concept>`. When `MSM_AUTO_REGISTER_NAMESPACE` is set
-before model import, the namespace is appended as a suffix, for example
-`ms_markets__account__mainsequence_examples`.
+mixins assign physical SQLAlchemy table names from the storage app segment, the
+authored MetaTable identifier, and the optional namespace suffix. Built-in
+library tables use the package-owned default app segment `ms_markets`, producing
+names such as `ms_markets__account`. Project-local extension tables may set
+`__markets_storage_app__` to a project-owned app segment, producing names such
+as `binance_spot__binancespotaccountdetails`. When
+`MSM_AUTO_REGISTER_NAMESPACE` is set before model import, the namespace is
+appended as a suffix, for example
+`binance_spot__binancespotaccountdetails__mainsequence_examples`.
 
 Every concrete markets MetaTable model must declare `__metatable_description__`.
 That description is the durable platform-level discovery text copied into the
@@ -172,6 +177,7 @@ from msm.models.assets import AssetTable
 
 
 class MyAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
+    __markets_storage_app__ = "my_project_markets"
     __metatable_identifier__ = "com.my_company.markets.MyAssetDetails"
     __metatable_description__ = (
         "Project-local asset details keyed one-to-one by AssetTable.uid for "
@@ -198,6 +204,29 @@ msm.start_engine(models=[MyAssetDetailsTable])
 Startup expands SQLAlchemy `ForeignKey(...)` dependencies, so `AssetTable` is
 verified and attached before `MyAssetDetailsTable`. The caller does not pass a
 MetaTable UID.
+
+`__markets_storage_app__` is only the SQLAlchemy physical table-name app
+segment. It does not replace `__metatable_identifier__`, does not participate in
+row API selection, and does not create a project-local UID map. Set it in the
+class body before SQLAlchemy maps the table. Changing it after a table has been
+migrated/cataloged points the model at a different physical table name and must
+go through the normal SDK migration and registration path.
+
+Projects with several extension tables can define an abstract local mixin once:
+
+```python
+class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
+    __abstract__ = True
+    __markets_storage_app__ = "my_project_markets"
+
+
+class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
+    __metatable_identifier__ = "com.my_company.markets.MyAssetDetails"
+    __metatable_description__ = (
+        "Project-local asset details keyed one-to-one by AssetTable.uid for "
+        "custom analytics and internal classification."
+    )
+```
 
 If a project wants a typed row API for that table, subclass
 `MarketsMetaTableRow` and keep it as a Pydantic row-operation wrapper:

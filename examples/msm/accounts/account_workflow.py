@@ -77,13 +77,12 @@ def run_account_workflow(
             "reference its Portfolio row."
         )
         from examples.msm_portfolios.portfolio_equal_weights_example import (
-            EXAMPLE_INTERPOLATED_PRICES_STORAGE,
             build_equal_weight_portfolio,
         )
 
         portfolio_example_result = build_equal_weight_portfolio(
             run_data_nodes=run_portfolio_data_nodes,
-            runtime_models=[*ACCOUNT_WORKFLOW_RUNTIME_MODELS, EXAMPLE_INTERPOLATED_PRICES_STORAGE],
+            runtime_models=ACCOUNT_WORKFLOW_RUNTIME_MODELS,
         )
         print(
             "   Portfolio example ready: "

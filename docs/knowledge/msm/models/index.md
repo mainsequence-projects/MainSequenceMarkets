@@ -86,6 +86,29 @@ The physical name is `ms_markets__<lowercase-concept>` and gains an
 `MSM_AUTO_REGISTER_NAMESPACE` suffix when that environment variable is set
 before model import.
 
+Project-local extension models can keep the markets mixins while using a
+project-owned physical table-name app segment. Set `__markets_storage_app__` in
+the SQLAlchemy model class, or in an abstract project-local mixin, before the
+model is imported and mapped:
+
+```python
+class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
+    __abstract__ = True
+    __markets_storage_app__ = "my_project_markets"
+
+
+class BinanceSpotAccountDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
+    __metatable_identifier__ = "com.my_project.BinanceSpotAccountDetails"
+    __metatable_description__ = (
+        "Project-local Binance spot account details keyed by AssetTable.uid."
+    )
+```
+
+That changes only the SQLAlchemy physical table name, for example
+`my_project_markets__com_my_project_binancespotaccountdetails`. It does not
+replace `__metatable_identifier__`, which remains the logical catalog and row
+runtime identity.
+
 `__metatable_description__` is required on every concrete markets MetaTable,
 including `PlatformTimeIndexMetaTable` storage classes used by DataNodes. The
 description is table-level discovery text: it should identify the row grain,

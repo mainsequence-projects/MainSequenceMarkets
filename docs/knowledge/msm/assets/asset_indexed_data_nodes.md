@@ -142,6 +142,13 @@ SQLAlchemy `ForeignKey(...)` declaration on the storage class
 `asset_identifier` column. The DataNode uses its storage class through
 `_required_storage_table()`.
 
+Project-local storage classes may set `__markets_storage_app__` to use a
+project-owned SQLAlchemy table-name app segment instead of the library default
+`ms_markets`. Set it in the class body before model import/mapping. This only
+changes the physical table name, for example
+`my_project_markets__example_asset_metrics`; the logical
+`__metatable_identifier__` still owns catalog and runtime identity.
+
 ```python
 import datetime
 
@@ -155,6 +162,7 @@ from msm.models.assets.core import AssetTable
 
 
 class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+    __markets_storage_app__ = "my_project_markets"
     __metatable_identifier__ = "example_asset_metrics"
     __metatable_description__ = (
         "Timestamped asset metric observations keyed by asset identifier "

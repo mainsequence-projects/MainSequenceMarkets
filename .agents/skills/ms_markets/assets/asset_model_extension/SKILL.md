@@ -88,6 +88,26 @@ Add only fields that belong to that specific extension. Use indexed columns for
 lookup keys and JSON/text columns for provider payloads when the payload is not
 part of the canonical asset identity.
 
+For project-local extension tables, set `__markets_storage_app__` in the
+SQLAlchemy model class, or in an abstract project-local mixin, when the table
+should use a project-owned physical table-name app segment instead of the
+library default `ms_markets`. This does not replace
+`__metatable_identifier__`; the identifier remains the globally unique logical
+MetaTable identity used by catalog/runtime attachment. Changing
+`__markets_storage_app__` after the table has been migrated/cataloged is a
+physical table-name rotation and must go through the SDK migration and
+registration path.
+
+```python
+class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
+    __abstract__ = True
+    __markets_storage_app__ = "my_project_markets"
+
+
+class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
+    __metatable_identifier__ = "com.my_project.MyAssetDetails"
+```
+
 ## Public API Pattern
 
 After the SDK migration provider has migrated and cataloged the SQLAlchemy

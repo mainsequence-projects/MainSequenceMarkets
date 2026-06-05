@@ -25,6 +25,7 @@ from msm.base import (
     MarketsMetaTableMixin,
     MarketsTimeIndexMetaTableMixin,
     markets_table_name,
+    markets_table_storage_app,
     markets_table_storage_name,
 )
 from msm.data_nodes.storage import AccountHoldingsStorage
@@ -163,6 +164,85 @@ def test_markets_mixin_applies_environment_namespace_suffix(monkeypatch) -> None
         EnvironmentScopedTable.__table__.name
         == "ms_markets__environmentscoped__mainsequence_examples"
     )
+
+
+def test_extension_metatable_can_override_storage_app() -> None:
+    class BinanceMarketsMetaTableMixin(MarketsMetaTableMixin):
+        __abstract__ = True
+        __markets_storage_app__ = "binance_spot"
+
+    class BinanceSpotAccountDetailsTable(BinanceMarketsMetaTableMixin, MarketsBase):
+        __metatable_identifier__ = "test.BinanceSpotAccountDetails"
+        __metatable_description__ = (
+            "Project-local Binance spot account details keyed by AssetTable uid "
+            "for extension storage app tests."
+        )
+
+        asset_uid: Mapped[uuid.UUID] = mapped_column(
+            Uuid(as_uuid=True),
+            ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
+            primary_key=True,
+            nullable=False,
+        )
+
+    assert markets_table_storage_app(BinanceSpotAccountDetailsTable) == "binance_spot"
+    assert markets_table_storage_app(BinanceSpotAccountDetailsTable.__table__) == "binance_spot"
+    assert BinanceSpotAccountDetailsTable.__metatable_identifier__ == (
+        "test.BinanceSpotAccountDetails"
+    )
+    assert BinanceSpotAccountDetailsTable.__table__.name == markets_table_name(
+        "binance_spot",
+        "test.BinanceSpotAccountDetails",
+    )
+
+
+def test_extension_time_index_storage_can_override_storage_app() -> None:
+    class BinanceSpotBarsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+        __markets_storage_app__ = "binance_spot"
+        __metatable_identifier__ = "test.BinanceSpotBarsTS"
+        __metatable_description__ = (
+            "Project-local Binance spot bars keyed by time and asset identifier "
+            "for extension storage app tests."
+        )
+        __time_index_name__: ClassVar[str] = "time_index"
+        __index_names__: ClassVar[list[str]] = ["time_index", "asset_identifier"]
+
+        time_index: Mapped[dt.datetime] = mapped_column(
+            DateTime(timezone=True),
+            nullable=False,
+        )
+        asset_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    assert markets_table_storage_app(BinanceSpotBarsStorage) == "binance_spot"
+    assert markets_table_storage_app(BinanceSpotBarsStorage.__table__) == "binance_spot"
+    assert BinanceSpotBarsStorage.__metatable_identifier__ == "test.BinanceSpotBarsTS"
+    assert BinanceSpotBarsStorage.__table__.name == markets_table_name(
+        "binance_spot",
+        "test.BinanceSpotBarsTS",
+    )
+
+
+def test_extension_storage_app_keeps_environment_namespace_suffix(monkeypatch) -> None:
+    monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.examples")
+
+    class NamespacedBinanceSpotTable(MarketsMetaTableMixin, MarketsBase):
+        __markets_storage_app__ = "binance_spot"
+        __metatable_identifier__ = "NamespacedBinanceSpot"
+        __metatable_description__ = (
+            "Environment scoped extension table used to verify custom app "
+            "physical table names with namespace suffixes."
+        )
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+
+    assert NamespacedBinanceSpotTable.__table__.name == (
+        "binance_spot__namespacedbinancespot__mainsequence_examples"
+    )
+
+
+def test_extension_storage_app_must_not_be_blank() -> None:
+    with pytest.raises(ValueError, match="storage app"):
+        markets_table_storage_app(SimpleNamespace(__markets_storage_app__=" "))
 
 
 def test_markets_models_declare_metatable_descriptions() -> None:

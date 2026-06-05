@@ -146,7 +146,8 @@ calendar = Calendar.create_from_pandas_calendar(
 See `examples/msm/calendars/calendar_materialization_workflow.py` for the
 calendar workflow covering XNYS materialization from `pandas_market_calendars`
 and a `CRYPTO_24_7` calendar. See
-`examples/msm_portfolios/portfolio_equal_weights_example.py` for the portfolio
+`examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` and
+`examples/msm_portfolios/portfolio_equal_weights_run.py` for the portfolio
 workflow using the generated crypto calendar as `Portfolio.calendar_uid`.
 
 ## Account Holdings Workflow
@@ -174,13 +175,17 @@ Use this workflow when publishing and inspecting account positions:
    `error_on_last_update, holdings_frame = holdings_node.run(...)`.
 8. Pass only `holdings_frame` to `Account.pretty_print_positions(...)`.
 
-See `examples/msm/accounts/account_workflow.py` for the full account path. By
-default it chains `examples/msm_portfolios/portfolio_equal_weights_example.py`
-to create a reusable portfolio sleeve, then creates the account group, two
-accounts, canonical asset snapshots with ticker/name metadata, one shared
-account model portfolio, account-owned target portfolio relationships, direct
-asset plus portfolio `PositionSet` target-row publication, holdings
-publication, and pretty-printed account positions.
+See `examples/msm/accounts/account_workflow.py` for the full account path. When
+using the default portfolio sleeve chain, first run
+`python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` so
+the configured interpolated price storage exists, then run the account example.
+The account workflow chains
+`examples/msm_portfolios/portfolio_equal_weights_example.py` to create a
+reusable portfolio sleeve, then creates the account group, two accounts,
+canonical asset snapshots with ticker/name metadata, one shared account model
+portfolio, account-owned target portfolio relationships, direct asset plus
+portfolio `PositionSet` target-row publication, holdings publication, and
+pretty-printed account positions.
 
 ## Pricing Instrument Identity
 
@@ -318,9 +323,14 @@ Use this workflow when adding or reviewing a market-domain relational table:
    `MarketsMetaTableMixin` and `MarketsBase`.
 2. Set `__metatable_identifier__` to the stable table identity.
 3. Put schema, table info, indexes, and constraints in `__table_args__`.
-4. Do not set `__tablename__`; the markets mixin assigns the package-owned
-   physical table name as `ms_markets__<lowercase-identity>`, with an
-   `MSM_AUTO_REGISTER_NAMESPACE` suffix when configured before model import.
+4. Do not set `__tablename__`; the markets mixin assigns the physical table
+   name from the storage app segment and logical identity. Built-in tables use
+   `ms_markets`, producing `ms_markets__<lowercase-identity>`. Project-local
+   extension tables may set `__markets_storage_app__`, for example
+   `binance_spot`, to produce project-owned names such as
+   `binance_spot__binancespotaccountdetails`. The
+   `MSM_AUTO_REGISTER_NAMESPACE` suffix still applies when configured before
+   model import.
 5. Add the model to `markets_sqlalchemy_models()` in foreign-key dependency
    order.
 6. Generate or update a normal Alembic revision under the active namespace
@@ -357,10 +367,13 @@ cataloged with the same migration/finalization path as built-in tables:
 1. Define the SQLAlchemy model with `MarketsMetaTableMixin` and `MarketsBase`.
 2. Give it one stable `__metatable_identifier__`.
 3. Declare relationships with normal SQLAlchemy `ForeignKey(...)` targets.
-4. Add or sync the package/project migration that creates or refreshes the
+4. Optionally set `__markets_storage_app__` to a project-owned app segment when
+   the extension table should not use the library default `ms_markets` physical
+   table-name prefix.
+5. Add or sync the package/project migration that creates or refreshes the
    table and finalizes the catalog.
-5. Attach at runtime with `msm.start_engine(models=[MyModelTable])`.
-6. Put row operations in an optional `MarketsMetaTableRow` wrapper.
+6. Attach at runtime with `msm.start_engine(models=[MyModelTable])`.
+7. Put row operations in an optional `MarketsMetaTableRow` wrapper.
 
 The `models=[...]` selector is the public runtime attachment boundary. It
 expands foreign-key dependencies, verifies and attaches the selected SQLAlchemy

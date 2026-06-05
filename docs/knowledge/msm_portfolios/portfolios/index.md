@@ -250,6 +250,24 @@ storage hash becomes the physical table name. The rows keep the normal price-bar
 `(time_index, asset_identifier)`. The policy values are not repeated on every
 price row.
 
+Configured interpolation storage is a dynamic schema artifact. It is derived
+from a real registered source price storage table and a concrete interpolation
+policy, so it is not part of the package-wide static `start_engine(...)` model
+list. Prepare it before the normal portfolio run:
+
+```bash
+python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
+python examples/msm_portfolios/portfolio_equal_weights_run.py
+```
+
+The preparation step attaches the static schema, reads the registered
+`ExternalPricesStorage` `storage_hash` and `time_indexed_profile.cadence`,
+builds the configured `InterpolatedPricesStorage` class, checks whether the
+corresponding `TimeIndexMetaTable` already exists, applies an existing dynamic
+revision if one is pending, and generates plus applies a new Alembic revision
+only when the configured table is still missing. Runtime portfolio code then
+uses the registered table; it does not create or migrate dynamic storage.
+
 `AssetsConfiguration.price_type` chooses which column from the interpolated
 price table drives portfolio returns. For example, `PriceTypeNames.CLOSE` uses
 the `close` column. The source table cadence, `upsample_frequency_id`, and
@@ -432,15 +450,19 @@ Storage dimensions use explicit names instead of reusing bare
 columns still point to the corresponding MetaTable `unique_identifier` values
 where a source-table foreign key exists.
 
-See `examples/msm_portfolios/portfolio_equal_weights_example.py` for the
-end-to-end workflow that reuses the shared crypto `Asset` example rows, creates
-or reuses a `CRYPTO_24_7` calendar from `pandas_market_calendars`, creates the
-portfolio `Index`, publishes example OHLCV bars to `ExternalPricesStorage`,
-interpolates those prices, runs `SignalWeights`, `PortfolioWeights`, and
-`PortfoliosDataNode`, and upserts the `Portfolio` row with `calendar_uid`,
-`portfolio_index_uid`, plus the published DataNode update UIDs. The example
-narrates each setup, source-price publication, portfolio, and virtual-fund
-allocation step so terminal output explains what was created.
+See `examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` for the
+schema-preparation stage and
+`examples/msm_portfolios/portfolio_equal_weights_run.py` for the normal
+portfolio run. The reusable implementation lives in
+`examples/msm_portfolios/portfolio_equal_weights_example.py`; it reuses the
+shared crypto `Asset` example rows, creates or reuses a `CRYPTO_24_7` calendar
+from `pandas_market_calendars`, creates the portfolio `Index`, publishes
+example OHLCV bars to `ExternalPricesStorage`, interpolates those prices, runs
+`SignalWeights`, `PortfolioWeights`, and `PortfoliosDataNode`, and upserts the
+`Portfolio` row with `calendar_uid`, `portfolio_index_uid`, plus the published
+DataNode update UIDs. The example narrates each setup, source-price
+publication, portfolio, and virtual-fund allocation step so terminal output
+explains what was created.
 
 ## Extension Notes
 

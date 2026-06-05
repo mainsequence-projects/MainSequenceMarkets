@@ -145,12 +145,14 @@ reference `portfolio_uid`. When an account example needs display fields, publish
 only putting display data in holdings `extra_details`.
 
 The full account example is intentionally chainable. By default,
-`examples/msm/accounts/account_workflow.py` runs
-`examples/msm_portfolios/portfolio_equal_weights_example.py`, reuses the
-resulting `Portfolio` row, and assigns that portfolio UID as one of the account
-target positions. Use `run_account_workflow(use_portfolio_example=False)` or
-the example CLI flag `--standalone-target-portfolio` only when testing the
-account path without the portfolio example.
+`examples/msm/accounts/account_workflow.py` chains the equal-weight portfolio
+workflow, reuses the resulting `Portfolio` row, and assigns that portfolio UID
+as one of the account target positions. Run
+`python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py`
+before that default chain so the configured portfolio interpolation storage is
+migrated. Use `run_account_workflow(use_portfolio_example=False)` or the
+example CLI flag `--standalone-target-portfolio` only when testing the account
+path without the portfolio example.
 
 ## Full Workflow Pattern
 

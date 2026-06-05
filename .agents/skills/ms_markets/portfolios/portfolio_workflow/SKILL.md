@@ -85,6 +85,20 @@ Example workflows should stay chainable. The reusable portfolio example exposes
 other examples can pass a superset model list and avoid starting a second
 incompatible runtime.
 
+Configured interpolation storage is dynamic and must stay out of static runtime
+model lists. For the equal-weight portfolio example, run:
+
+```bash
+python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
+python examples/msm_portfolios/portfolio_equal_weights_run.py
+```
+
+The preparation step derives the configured interpolation table from the
+registered source price storage hash and cadence, creates/applies the dynamic
+Alembic revision if needed, and verifies the `TimeIndexMetaTable`. Normal
+runtime code then attaches only static models and fails clearly if the dynamic
+table has not been prepared.
+
 ## Write Pattern
 
 ```python

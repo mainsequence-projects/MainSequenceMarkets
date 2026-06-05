@@ -89,6 +89,9 @@ def test_interpolated_price_policy_changes_configured_storage_table_name() -> No
         intraday_bar_interpolation_rule="ffill",
     )
     assert daily_storage.__table__.name != minute_storage.__table__.name
+    assert daily_storage.metatable_identifier() != minute_storage.metatable_identifier()
+    assert "InterpolatedPricesTS" in daily_storage.metatable_identifier()
+    assert "InterpolatedPricesTS" in minute_storage.metatable_identifier()
     assert daily_storage.__metatable_extra_hash_components__["source_cadence"] == "1d"
     assert minute_storage.__metatable_extra_hash_components__["source_cadence"] == "5m"
     assert daily_storage.__cadence__ == "1d"

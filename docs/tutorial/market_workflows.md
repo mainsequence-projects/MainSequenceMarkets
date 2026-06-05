@@ -310,12 +310,20 @@ virtual_fund = VirtualFund.upsert(
 
 ## Holdings And Target Positions
 
-See `examples/msm_portfolios/portfolio_equal_weights_example.py` for the portfolio
-workflow that creates the optional portfolio `Index`, publishes example OHLCV
-source bars to `ExternalPricesStorage`, interpolates prices, runs
-`SignalWeights`, `PortfolioWeights`, and `PortfoliosDataNode`, creates or reuses
-the crypto `CRYPTO_24_7` calendar, and stores the calendar, index, and DataNode
-UIDs on the `Portfolio` row. The price configuration stores the
+Run the portfolio workflow in two stages:
+
+```bash
+python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
+python examples/msm_portfolios/portfolio_equal_weights_run.py
+```
+
+The preparation script derives and migrates the configured interpolated price
+storage from the registered `ExternalPricesStorage` table and the example
+interpolation policy. The run script creates the optional portfolio `Index`,
+publishes example OHLCV source bars to `ExternalPricesStorage`, interpolates
+prices, runs `SignalWeights`, `PortfolioWeights`, and `PortfoliosDataNode`,
+creates or reuses the crypto `CRYPTO_24_7` calendar, and stores the calendar,
+index, and DataNode UIDs on the `Portfolio` row. The price configuration stores the
 `ExternalPricesStorage` TimeIndexMetaTable UID as
 `source_time_index_meta_table_uid`, so interpolation can recover the price source
 through the SDK APIDataNode lookup path. The source price DataNode is not part of

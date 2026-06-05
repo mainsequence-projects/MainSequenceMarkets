@@ -41,6 +41,10 @@ and this project follows versioned releases.
   interpolated through `InterpolatedPrices`, and the portfolio run produces
   `SignalWeights`, `PortfolioWeights`, and `PortfoliosDataNode` outputs through
   SDK update-tree execution.
+- Split the equal-weight portfolio example into explicit schema-preparation and
+  runtime stages so configured interpolation storage is derived from the
+  registered source storage metadata and migrated before normal
+  `msm_portfolios.start_engine(...)` attachment.
 - Clarified the portfolio knowledge documentation so price acquisition is
   explicit: `PricesConfiguration` stores the source
   `TimeIndexMetaTable` UID, `InterpolatedPrices` resolves that storage through
@@ -58,6 +62,10 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Added `__markets_storage_app__` as an opt-in authoring hook for
+  project-local markets MetaTable and TimeIndexMetaTable extensions that need a
+  project-owned SQLAlchemy table-name app segment instead of the built-in
+  `ms_markets` prefix.
 - Added the reusable FastAPI v1 `PaginatedResponse[T]` limit-offset envelope
   with Django REST Framework-style `count`, `next`, `previous`, and `results`
   fields, and added true offset-backed pricing market-data list methods for

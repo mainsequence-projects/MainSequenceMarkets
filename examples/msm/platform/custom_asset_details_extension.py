@@ -31,6 +31,7 @@ from msm.models import AssetTable  # noqa: E402
 class MyAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
     """Project-local one-to-one asset detail table."""
 
+    __markets_storage_app__ = "my_project_markets"
     __metatable_identifier__ = "MyAssetDetails"
     __metatable_extra_hash_components__ = {"storage_name": "my_asset_details"}
     __metatable_description__ = (

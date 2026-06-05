@@ -76,6 +76,27 @@ def markets_table_storage_name(model_or_table: Any) -> str:
     return str(table_name)
 
 
+def markets_table_storage_app(model_or_table: Any) -> str:
+    """Return the SQLAlchemy table-name app segment for a markets model."""
+
+    storage_app = getattr(model_or_table, "__markets_storage_app__", None)
+    if storage_app in (None, ""):
+        table = getattr(model_or_table, "__table__", None)
+        if table is None and not isinstance(model_or_table, type):
+            table = model_or_table
+        info = getattr(table, "info", None)
+        if isinstance(info, Mapping):
+            storage_app = info.get("markets_storage_app")
+
+    if storage_app in (None, ""):
+        storage_app = MARKETS_TABLE_APP
+
+    storage_app = str(storage_app).strip()
+    if not storage_app:
+        raise ValueError("Markets table storage app must be a non-empty string.")
+    return storage_app
+
+
 def _markets_table(model_or_table: Any) -> Any:
     table = getattr(model_or_table, "__table__", model_or_table)
     if table is None:
@@ -111,6 +132,9 @@ class MarketsBase(DeclarativeBase):
 def _assign_markets_metatable_identifiers(cls: type) -> None:
     """Assign the SDK MetaTable identifier from the authored table identity."""
 
+    if "__metatable_identifier__" not in cls.__dict__ and cls.__dict__.get("__abstract__") is True:
+        return
+
     authored_identifier = _authored_metatable_identifier_for_model(cls)
     cls.__metatable_identifier__ = markets_identifier(
         authored_identifier,
@@ -120,14 +144,17 @@ def _assign_markets_metatable_identifiers(cls: type) -> None:
 
 def _markets_table_name_for_model(cls: type) -> str:
     return markets_table_name(
-        MARKETS_TABLE_APP,
+        markets_table_storage_app(cls),
         _authored_metatable_identifier_for_model(cls),
         suffix=markets_auto_register_namespace(),
     )
 
 
 def _authored_metatable_identifier_for_model(cls: type) -> str:
-    return str(cls.__dict__["__metatable_identifier__"]).strip(".")
+    identifier = cls.__dict__.get("__metatable_identifier__")
+    if identifier in (None, ""):
+        raise ValueError(f"{cls.__name__} must declare __metatable_identifier__.")
+    return str(identifier).strip(".")
 
 
 def _build_markets_table(cls: type, *args: Any, **kwargs: Any) -> Any:
@@ -144,6 +171,10 @@ def _build_markets_table(cls: type, *args: Any, **kwargs: Any) -> Any:
     else:
         table_kwargs["schema"] = schema
 
+    table_info = dict(table_kwargs.get("info") or {})
+    table_info.setdefault("markets_storage_app", markets_table_storage_app(cls))
+    table_kwargs["info"] = table_info
+
     return Table(str(name), metadata, *table_items, **table_kwargs)
 
 
@@ -153,6 +184,7 @@ class MarketsMetaTableMixin(PlatformManagedMetaTable):
     __abstract__ = True
     __metatable_namespace__: ClassVar[str] = markets_namespace()
     __metatable_schema__: ClassVar[str | None] = MARKETS_SCHEMA
+    __markets_storage_app__: ClassVar[str] = MARKETS_TABLE_APP
     __metatable_identifier__: ClassVar[str]
 
     @classmethod
@@ -188,13 +220,14 @@ class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaTable):
 
     Sibling of `MarketsMetaTableMixin` for time-index storage classes. Concrete
     subclasses set `__metatable_identifier__`, `__time_index_name__`, and
-    `__index_names__`. The authored MetaTable identifier seeds the package-owned
-    SQLAlchemy table name and default DataNode identifier.
+    `__index_names__`. The authored MetaTable identifier seeds the SQLAlchemy
+    table name and default DataNode identifier.
     """
 
     __abstract__ = True
     __metatable_namespace__: ClassVar[str] = markets_namespace()
     __metatable_schema__: ClassVar[str | None] = MARKETS_SCHEMA
+    __markets_storage_app__: ClassVar[str] = MARKETS_TABLE_APP
     __metatable_identifier__: ClassVar[str]
 
     @classmethod
@@ -207,6 +240,11 @@ class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaTable):
             table_kwargs.pop("schema", None)
         else:
             table_kwargs["schema"] = schema
+
+        table_info = dict(table_kwargs.get("info") or {})
+        table_info.setdefault("markets_storage_app", markets_table_storage_app(cls))
+        table_kwargs["info"] = table_info
+
         return PlatformTimeIndexMetaTable.__table_cls__.__func__(cls, *args, **table_kwargs)
 
     def __init_subclass__(cls, **kwargs: Any):
@@ -250,6 +288,7 @@ __all__ = [
     "markets_meta_table_identifier",
     "markets_table_args",
     "markets_table_name",
+    "markets_table_storage_app",
     "markets_table_storage_name",
     "markets_namespace",
     "new_markets_uid",
