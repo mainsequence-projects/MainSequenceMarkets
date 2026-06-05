@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 from numpy.linalg import LinAlgError
 from numpy.typing import NDArray
-from sklearn.linear_model import ElasticNet, Lasso, LinearRegression
 from tqdm import tqdm
 
 
@@ -32,6 +31,8 @@ def rolling_lasso_regression(
     **_: object,
 ) -> list[pd.DataFrame]:
     """Perform rolling Lasso regression and return coefficient frames."""
+
+    from sklearn.linear_model import Lasso, LinearRegression
 
     betas = []
     if alpha == 0:
@@ -73,6 +74,8 @@ def rolling_elastic_net(
     l1_ratio: float = 0.5,
 ) -> np.ndarray:
     """Perform rolling Elastic Net regression and return coefficients."""
+
+    from sklearn.linear_model import ElasticNet
 
     betas = []
     enet = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, fit_intercept=False)

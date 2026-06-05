@@ -1,6 +1,6 @@
 import pandas as pd
 
-from mainsequence.logconf import logger as _mainsequence_logger
+from mainsequence import logger as _mainsequence_logger
 
 
 def get_vfb_logger():
