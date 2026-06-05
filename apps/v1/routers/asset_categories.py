@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Query, status
+from fastapi import APIRouter, Body, HTTPException, Query, Request, status
 
 from apps.v1.schemas.asset_categories import (
     AssetCategory,
@@ -11,7 +11,7 @@ from apps.v1.schemas.asset_categories import (
     CreateAssetCategoryRequest,
     PatchAssetCategoryRequest,
 )
-from apps.v1.schemas.common import ErrorResponse
+from apps.v1.schemas.common import ErrorResponse, PaginatedResponse, build_paginated_response
 from apps.v1.services.asset_categories import (
     bulk_delete_asset_categories,
     create_asset_category,
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/asset-category", tags=["asset-category"])
 
 @router.get(
     "/",
-    response_model=list[AssetCategory],
+    response_model=PaginatedResponse[AssetCategory],
     summary="List asset categories",
     description=(
         "Return core library asset category rows. The `response_format` query "
@@ -42,6 +42,7 @@ router = APIRouter(prefix="/asset-category", tags=["asset-category"])
     },
 )
 def get_asset_categories(
+    request: Request,
     response_format: Annotated[
         str,
         Query(
@@ -69,13 +70,19 @@ def get_asset_categories(
             description="Zero-based starting offset into the filtered category list.",
         ),
     ] = 0,
-) -> list[AssetCategory]:
+) -> PaginatedResponse[AssetCategory]:
     if response_format != "frontend_list":
         raise HTTPException(
             status_code=400,
             detail="Only response_format=frontend_list is implemented for GET /api/v1/asset-category/.",
         )
-    return list_asset_categories(search=search, limit=limit, offset=offset)
+    rows = list_asset_categories(search=search, limit=limit + 1, offset=offset)
+    return build_paginated_response(
+        request_url=str(request.url),
+        results=rows,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post(

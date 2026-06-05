@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
+from apps.v1.schemas.common import PaginatedResponse
 
 
 def _account_contract():
@@ -19,11 +20,8 @@ def _account_contract():
 Account = _account_contract()
 
 
-class AccountListResponse(BaseModel):
+class AccountListResponse(PaginatedResponse[Account]):
     model_config = ConfigDict(extra="ignore")
-
-    count: int
-    results: list[Account]
 
 
 class AccountHoldingAssetCurrentSnapshot(BaseModel):

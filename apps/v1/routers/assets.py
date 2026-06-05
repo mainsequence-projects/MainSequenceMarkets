@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
+from apps.v1.schemas.common import (
+    ErrorResponse,
+    FrontEndDetailSummary,
+    PaginatedResponse,
+    build_paginated_response,
+)
 from apps.v1.services.assets import (
     get_asset,
     get_asset_pricing_details,
@@ -18,7 +23,7 @@ router = APIRouter(prefix="/asset", tags=["asset"])
 
 @router.get(
     "/",
-    response_model=list[Asset],
+    response_model=PaginatedResponse[Asset],
     summary="List assets",
     description=(
         "Return core library asset rows. The `response_format` query parameter is "
@@ -33,6 +38,7 @@ router = APIRouter(prefix="/asset", tags=["asset"])
     },
 )
 def get_assets(
+    request: Request,
     response_format: Annotated[
         str,
         Query(
@@ -66,17 +72,23 @@ def get_assets(
             description="Optional asset category uid filter used by nested category asset tables.",
         ),
     ] = None,
-) -> list[Asset]:
+) -> PaginatedResponse[Asset]:
     if response_format != "frontend_list":
         raise HTTPException(
             status_code=400,
             detail="Only response_format=frontend_list is implemented for GET /api/v1/asset/.",
         )
-    return list_assets(
+    rows = list_assets(
         search=search,
-        limit=limit,
+        limit=limit + 1,
         offset=offset,
         category_uid=categories__uid,
+    )
+    return build_paginated_response(
+        request_url=str(request.url),
+        results=rows,
+        limit=limit,
+        offset=offset,
     )
 
 

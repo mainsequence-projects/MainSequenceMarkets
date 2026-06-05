@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any, Generic, TypeVar
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,30 +14,68 @@ class ErrorResponse(BaseModel):
 
 
 class PaginatedResponse(BaseModel, Generic[ResultT]):
-    """Reusable FastAPI v1 pagination envelope for list endpoints."""
+    """Reusable FastAPI v1 limit-offset pagination envelope."""
 
     model_config = ConfigDict(extra="ignore")
 
     count: int = Field(ge=0, description="Total number of rows matching the request filters.")
-    limit: int = Field(ge=0, description="Maximum number of rows requested for this page.")
-    offset: int = Field(ge=0, description="Zero-based offset into the filtered row set.")
+    next: str | None = Field(default=None, description="URL for the next page, if one exists.")
+    previous: str | None = Field(
+        default=None,
+        description="URL for the previous page, if one exists.",
+    )
     results: list[ResultT]
 
 
 def build_paginated_response(
     *,
+    request_url: str,
     results: Sequence[ResultT],
-    count: int,
     limit: int,
     offset: int,
+    count: int | None = None,
 ) -> PaginatedResponse[ResultT]:
-    """Build the shared FastAPI v1 pagination envelope."""
+    """Build a Django REST Framework-style limit-offset response."""
 
+    page_results = list(results[:limit])
+    resolved_count = count
+    if resolved_count is None:
+        resolved_count = offset + len(page_results)
+        if len(results) > limit:
+            resolved_count += 1
     return PaginatedResponse[ResultT](
-        count=count,
-        limit=limit,
-        offset=offset,
-        results=list(results),
+        count=resolved_count,
+        next=_pagination_url(
+            request_url=request_url,
+            limit=limit,
+            offset=offset + limit,
+        )
+        if offset + limit < resolved_count
+        else None,
+        previous=_pagination_url(
+            request_url=request_url,
+            limit=limit,
+            offset=max(offset - limit, 0),
+        )
+        if offset > 0
+        else None,
+        results=page_results,
+    )
+
+
+def _pagination_url(*, request_url: str, limit: int, offset: int) -> str:
+    split = urlsplit(request_url)
+    params = dict(parse_qsl(split.query, keep_blank_values=True))
+    params["limit"] = str(limit)
+    params["offset"] = str(offset)
+    return urlunsplit(
+        (
+            split.scheme,
+            split.netloc,
+            split.path,
+            urlencode(params),
+            split.fragment,
+        )
     )
 
 

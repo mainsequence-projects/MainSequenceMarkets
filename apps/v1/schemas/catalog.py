@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from apps.v1.schemas.common import PaginatedResponse
+
 
 class CatalogListRow(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -24,12 +26,8 @@ class CatalogListRow(BaseModel):
     delete_endpoint_template: str | None = None
 
 
-class CatalogListResponse(BaseModel):
+class CatalogListResponse(PaginatedResponse[CatalogListRow]):
     model_config = ConfigDict(extra="ignore")
-
-    results: list[CatalogListRow]
-    limit: int
-    offset: int
 
 
 class CatalogReference(BaseModel):
@@ -57,14 +55,11 @@ class CatalogTableRow(BaseModel):
     values: dict[str, Any]
 
 
-class CatalogRowsResponse(BaseModel):
+class CatalogRowsResponse(PaginatedResponse[CatalogTableRow]):
     model_config = ConfigDict(extra="ignore")
 
     catalog: CatalogReference
     columns: list[CatalogColumn]
-    results: list[CatalogTableRow]
-    limit: int
-    offset: int
 
 
 class CatalogDeleteResponse(BaseModel):

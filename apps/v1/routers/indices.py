@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
-from apps.v1.schemas.common import ErrorResponse
+from apps.v1.schemas.common import ErrorResponse, PaginatedResponse, build_paginated_response
 from apps.v1.schemas.indices import Index
 from apps.v1.services.indices import delete_index, get_index, list_indices
 
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/index", tags=["index"])
 
 @router.get(
     "/",
-    response_model=list[Index],
+    response_model=PaginatedResponse[Index],
     summary="List indexes",
     description=(
         "Return core library index rows. The `response_format` query parameter is "
@@ -28,6 +28,7 @@ router = APIRouter(prefix="/index", tags=["index"])
     },
 )
 def get_indexes(
+    request: Request,
     response_format: Annotated[
         str,
         Query(
@@ -55,13 +56,19 @@ def get_indexes(
             description="Zero-based starting offset into the filtered index list.",
         ),
     ] = 0,
-) -> list[Index]:
+) -> PaginatedResponse[Index]:
     if response_format != "frontend_list":
         raise HTTPException(
             status_code=400,
             detail="Only response_format=frontend_list is implemented for GET /api/v1/index/.",
         )
-    return list_indices(search=search, limit=limit, offset=offset)
+    rows = list_indices(search=search, limit=limit + 1, offset=offset)
+    return build_paginated_response(
+        request_url=str(request.url),
+        results=rows,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get(

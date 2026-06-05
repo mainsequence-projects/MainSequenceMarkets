@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from apps.v1.schemas.catalog import (
     CatalogDeleteResponse,
     CatalogListResponse,
     CatalogRowsResponse,
 )
-from apps.v1.schemas.common import ErrorResponse
+from apps.v1.schemas.common import ErrorResponse, build_paginated_response
 from apps.v1.services.catalog import (
     CatalogNotFoundError,
     CatalogUnsupportedError,
@@ -39,6 +39,7 @@ router = APIRouter(prefix="/catalog", tags=["catalog"])
     },
 )
 def get_catalogues(
+    request: Request,
     search: Annotated[
         str,
         Query(
@@ -61,7 +62,18 @@ def get_catalogues(
         ),
     ] = 0,
 ) -> CatalogListResponse:
-    return list_catalogs(search=search, limit=limit, offset=offset)
+    response = CatalogListResponse.model_validate(
+        list_catalogs(search=search, limit=limit, offset=offset)
+    )
+    return CatalogListResponse.model_validate(
+        build_paginated_response(
+            request_url=str(request.url),
+            results=response.results,
+            count=response.count,
+            limit=limit,
+            offset=offset,
+        )
+    )
 
 
 @router.get(
@@ -85,6 +97,7 @@ def get_catalogues(
     },
 )
 def get_catalogue_rows(
+    request: Request,
     catalog_uid: str,
     search: Annotated[
         str,
@@ -109,11 +122,27 @@ def get_catalogue_rows(
     ] = 0,
 ) -> CatalogRowsResponse:
     try:
-        return list_catalog_rows(
-            catalog_uid=catalog_uid,
-            search=search,
+        response = CatalogRowsResponse.model_validate(
+            list_catalog_rows(
+                catalog_uid=catalog_uid,
+                search=search,
+                limit=limit,
+                offset=offset,
+            )
+        )
+        page = build_paginated_response(
+            request_url=str(request.url),
+            results=response.results,
+            count=response.count,
             limit=limit,
             offset=offset,
+        )
+        return CatalogRowsResponse.model_validate(
+            {
+                "catalog": response.catalog,
+                "columns": response.columns,
+                **page.model_dump(),
+            }
         )
     except CatalogNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -79,6 +79,7 @@ def list_catalog_tables(
         ]
 
     return {
+        "count": len(normalized_rows),
         "results": normalized_rows[offset : offset + limit],
         "limit": limit,
         "offset": offset,
@@ -123,6 +124,7 @@ def list_catalog_table_rows(
     return {
         "catalog": _build_catalog_reference(catalog_row),
         "columns": _build_catalog_columns(model),
+        "count": len(rows),
         "results": rows[offset : offset + limit],
         "limit": limit,
         "offset": offset,

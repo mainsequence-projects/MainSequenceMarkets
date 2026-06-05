@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from apps.v1.schemas.accounts import (
     AccountAddHoldingsRequest,
@@ -11,7 +11,7 @@ from apps.v1.schemas.accounts import (
     AccountListResponse,
     AccountTargetPositionsSnapshotResponse,
 )
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
+from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary, build_paginated_response
 from apps.v1.services.accounts import (
     add_account_holdings,
     get_account_holdings,
@@ -39,6 +39,7 @@ router = APIRouter(prefix="/account", tags=["account"])
     },
 )
 def get_accounts(
+    request: Request,
     search: Annotated[
         str,
         Query(
@@ -61,7 +62,16 @@ def get_accounts(
         ),
     ] = 0,
 ) -> AccountListResponse:
-    return list_accounts(search=search, limit=limit, offset=offset)
+    response = list_accounts(search=search, limit=limit, offset=offset)
+    return AccountListResponse.model_validate(
+        build_paginated_response(
+            request_url=str(request.url),
+            results=response.results,
+            count=response.count,
+            limit=limit,
+            offset=offset,
+        )
+    )
 
 
 @router.get(
