@@ -16,6 +16,7 @@ from sqlalchemy import (
     column,
     delete,
     false,
+    func,
     insert,
     select,
     true,
@@ -450,137 +451,160 @@ def build_replace_account_holdings_snapshot_operation(
         raise ValueError("Account holdings snapshot replacement requires positions.")
 
     normalized_holdings_date = _utc_timestamp(holdings_date, field_name="holdings_date")
-    parameters: dict[str, Any] = {
-        "holdings_set_uid": str(uuid.UUID(str(holdings_set_uid))),
-        "account_uid": str(uuid.UUID(str(account_uid))),
-        "holdings_date": normalized_holdings_date,
-        "overwrite": bool(overwrite),
-    }
-    parameter_types = {"holdings_date": TIMESTAMP_TZ}
-    values_sql: list[str] = []
+    holdings_set_uid_param = bindparam(
+        "holdings_set_uid",
+        value=uuid.UUID(str(holdings_set_uid)),
+        type_=Uuid(as_uuid=True),
+    )
+    account_uid_param = bindparam(
+        "account_uid",
+        value=uuid.UUID(str(account_uid)),
+        type_=Uuid(as_uuid=True),
+    )
+    holdings_date_param = bindparam(
+        "holdings_date",
+        value=normalized_holdings_date,
+        type_=DateTime(timezone=True),
+    )
+    overwrite_param = bindparam("overwrite", value=bool(overwrite))
+
+    holdings_set = (
+        postgresql_insert(AccountHoldingsSetTable)
+        .values(
+            uid=cast(holdings_set_uid_param, Uuid(as_uuid=True)),
+            account_uid=cast(account_uid_param, Uuid(as_uuid=True)),
+            time_index=cast(holdings_date_param, DateTime(timezone=True)),
+        )
+        .on_conflict_do_update(
+            index_elements=[
+                AccountHoldingsSetTable.account_uid,
+                AccountHoldingsSetTable.time_index,
+            ],
+            set_={
+                "time_index": cast(
+                    bindparam(
+                        "holdings_date",
+                        value=normalized_holdings_date,
+                        type_=DateTime(timezone=True),
+                    ),
+                    DateTime(timezone=True),
+                )
+            },
+            where=overwrite_param,
+        )
+        .returning(AccountHoldingsSetTable.uid)
+        .cte("holdings_set")
+    )
+
+    input_row_values = []
     for index, position in enumerate(positions):
         target_trade_time = _utc_timestamp(
             position.get("target_trade_time") or normalized_holdings_date,
             field_name=f"positions[{index}].target_trade_time",
         )
-        parameters.update(
-            {
-                f"asset_identifier_{index}": str(position["asset_identifier"]),
-                f"quantity_{index}": _python_scalar(position.get("quantity")),
-                f"direction_{index}": int(position.get("direction", 1)),
-                f"target_trade_time_{index}": target_trade_time,
-                f"extra_details_{index}": json.dumps(
-                    position.get("extra_details") or {},
-                    sort_keys=True,
+        input_row_values.append(
+            (
+                bindparam(
+                    f"asset_identifier_{index}",
+                    value=str(position["asset_identifier"]),
+                    type_=String(),
                 ),
-            }
-        )
-        parameter_types[f"target_trade_time_{index}"] = TIMESTAMP_TZ
-        values_sql.append(
-            "("
-            f"%(asset_identifier_{index})s, "
-            f"CAST(%(quantity_{index})s AS double precision), "
-            f"CAST(%(direction_{index})s AS smallint), "
-            f"CAST(%(target_trade_time_{index})s AS timestamptz), "
-            f"CAST(%(extra_details_{index})s AS jsonb)"
-            ")"
+                cast(
+                    bindparam(
+                        f"quantity_{index}",
+                        value=_python_scalar(position.get("quantity")),
+                        type_=Float(),
+                    ),
+                    Float(),
+                ),
+                cast(
+                    bindparam(
+                        f"direction_{index}",
+                        value=int(position.get("direction", 1)),
+                        type_=SmallInteger(),
+                    ),
+                    SmallInteger(),
+                ),
+                cast(
+                    bindparam(
+                        f"target_trade_time_{index}",
+                        value=target_trade_time,
+                        type_=DateTime(timezone=True),
+                    ),
+                    DateTime(timezone=True),
+                ),
+                cast(
+                    bindparam(
+                        f"extra_details_{index}",
+                        value=position.get("extra_details") or {},
+                        type_=JSONB(),
+                    ),
+                    JSONB(),
+                ),
+            )
         )
 
-    holdings_set_table = _qualified_table_name(AccountHoldingsSetTable)
-    storage_table = _qualified_table_name(AccountHoldingsStorage)
-    sql = f"""
-WITH holdings_set AS (
-    INSERT INTO {holdings_set_table} (
-        uid,
-        account_uid,
-        time_index
+    input_rows = (
+        values(
+            column("asset_identifier", String()),
+            column("quantity", Float()),
+            column("direction", SmallInteger()),
+            column("target_trade_time", DateTime(timezone=True)),
+            column("extra_details", JSONB()),
+            name="input_rows",
+        )
+        .data(input_row_values)
+        .cte("input_rows")
     )
-    VALUES (
-        CAST(%(holdings_set_uid)s AS uuid),
-        CAST(%(account_uid)s AS uuid),
-        CAST(%(holdings_date)s AS timestamptz)
+    deleted = (
+        delete(AccountHoldingsStorage)
+        .where(overwrite_param)
+        .where(AccountHoldingsStorage.holdings_set_uid == holdings_set.c.uid)
+        .returning(true())
+        .cte("deleted")
     )
-    ON CONFLICT (account_uid, time_index)
-    DO UPDATE SET time_index = EXCLUDED.time_index
-    WHERE %(overwrite)s
-    RETURNING uid
-),
-deleted AS (
-    DELETE FROM {storage_table} AS storage
-    USING holdings_set AS hs
-    WHERE %(overwrite)s
-        AND storage.holdings_set_uid = hs.uid
-    RETURNING 1
-),
-input_rows (
-    asset_identifier,
-    quantity,
-    direction,
-    target_trade_time,
-    extra_details
-) AS (
-    VALUES
-        {", ".join(values_sql)}
-),
-inserted AS (
-    INSERT INTO {storage_table} (
-        time_index,
-        account_uid,
-        asset_identifier,
-        holdings_set_uid,
-        is_trade_snapshot,
-        quantity,
-        direction,
-        target_trade_time,
-        extra_details
+    deleted_gate = (
+        select(func.count().label("deleted_count"))
+        .select_from(deleted)
+        .cte("deleted_gate")
     )
-    SELECT
-        CAST(%(holdings_date)s AS timestamptz),
-        CAST(%(account_uid)s AS uuid),
-        input_rows.asset_identifier,
-        holdings_set.uid,
-        FALSE,
-        input_rows.quantity,
-        input_rows.direction,
-        input_rows.target_trade_time,
-        input_rows.extra_details
-    FROM input_rows
-    CROSS JOIN holdings_set
-    RETURNING
-        time_index,
-        account_uid,
-        asset_identifier,
-        holdings_set_uid,
-        is_trade_snapshot,
-        quantity,
-        direction,
-        target_trade_time,
-        extra_details
-)
-SELECT
-    time_index,
-    account_uid,
-    asset_identifier,
-    holdings_set_uid,
-    is_trade_snapshot,
-    quantity,
-    direction,
-    target_trade_time,
-    extra_details
-FROM inserted
-"""
-    return build_operation(
+    statement = (
+        insert(AccountHoldingsStorage)
+        .from_select(
+            [
+                "time_index",
+                "account_uid",
+                "asset_identifier",
+                "holdings_set_uid",
+                "is_trade_snapshot",
+                "quantity",
+                "direction",
+                "target_trade_time",
+                "extra_details",
+            ],
+            select(
+                cast(holdings_date_param, DateTime(timezone=True)),
+                cast(account_uid_param, Uuid(as_uuid=True)),
+                input_rows.c.asset_identifier,
+                holdings_set.c.uid,
+                false(),
+                input_rows.c.quantity,
+                input_rows.c.direction,
+                input_rows.c.target_trade_time,
+                input_rows.c.extra_details,
+            ).select_from(input_rows.join(holdings_set, true()).join(deleted_gate, true())),
+        )
+        .returning(AccountHoldingsStorage)
+        .add_cte(holdings_set)
+        .add_cte(deleted)
+        .add_cte(deleted_gate)
+    )
+    return compile_markets_statement(
+        statement,
+        context=context,
         operation="upsert",
-        sql=sql,
-        parameters=parameters,
-        parameter_types=parameter_types,
-        scope=MetaTableOperationScope(
-            tables=[
-                context.scope_table(AccountHoldingsSetTable, access="write"),
-                context.scope_table(AccountHoldingsStorage, access="write"),
-            ]
-        ),
-        limits=context.limits,
+        models=[AccountHoldingsSetTable, AccountHoldingsStorage],
+        access="write",
     )
 
 
@@ -606,11 +630,6 @@ def _utc_timestamp(value: dt.datetime | str, *, field_name: str) -> dt.datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError(f"{field_name} must be a timezone-aware UTC timestamp.")
     return value.astimezone(dt.UTC)
-
-
-def _qualified_table_name(model: Any) -> str:
-    preparer = postgresql.dialect().identifier_preparer
-    return preparer.format_table(model.__table__)
 
 
 def _python_scalar(value: Any) -> Any:

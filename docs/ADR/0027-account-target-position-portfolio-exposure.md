@@ -219,6 +219,36 @@ expand to asset-level exposure for execution, risk, or reporting
 The target-position table stores mandate intent. It does not store expanded
 portfolio constituents.
 
+## Documentation Update Requirements
+
+Implementing this architecture must update the documentation at the same time
+as the schema, service, and example changes. The implementation is incomplete if
+the docs still describe target positions as asset-only or still show
+`asset_identifier` as the target-position storage identity.
+
+Required documentation updates:
+
+- `docs/knowledge/msm/accounts/index.md` must explain that core account rows own
+  account identity, account groups, model mandates, account target portfolios,
+  and position sets, while portfolio-aware target exposure storage lives in
+  `msm_portfolios`.
+- `docs/knowledge/msm/accounts/index.md` must replace the asset-only target
+  position diagrams with diagrams showing `target_type`, `target_uid`,
+  `asset_uid`, and `portfolio_uid`.
+- `docs/knowledge/msm_portfolios/portfolios/index.md` must explain how
+  `PortfolioTable.uid` can be referenced by account target-position exposure
+  rows and how portfolio target rows are expanded into asset-level exposure only
+  when downstream workflows request it.
+- The account workflow documentation and tutorial pages under `docs/tutorial/`
+  must show an example target set containing one direct asset target and one
+  portfolio target.
+- The relevant packaged agent skills must be updated so future coding agents do
+  not recreate the old `asset_identifier` target-position contract:
+  `.agents/skills/ms_markets/accounts/account_workflow/SKILL.md` and the
+  portfolio workflow skill under `.agents/skills/ms_markets/`.
+- Examples must be updated with the documentation, not after it. The example
+  should be the executable form of the documented relationship diagram.
+
 ## Non-Goals
 
 - Do not create `AssetTable` rows for portfolios.
@@ -254,7 +284,9 @@ portfolio constituents.
       for asset-level exposure.
 - [ ] Update account and portfolio examples to publish target rows containing
       both a direct asset target and a portfolio target.
-- [ ] Update docs and diagrams in the account and portfolio knowledge pages.
+- [ ] Update account docs, portfolio docs, tutorial docs, examples, packaged
+      skills, and ASCII diagrams according to the Documentation Update
+      Requirements section.
 - [ ] Generate the Alembic migration under the active namespace version graph.
 - [ ] Add tests for asset target rows, portfolio target rows, invalid mixed
       target rows, storage index names, service payload validation, and
@@ -272,4 +304,7 @@ This ADR is complete only when:
 - core `msm` does not import `msm_portfolios`;
 - examples demonstrate one direct asset target and one portfolio target;
 - docs make clear that portfolio target rows are mandate exposure, not custody
-  holdings and not portfolio indices.
+  holdings and not portfolio indices;
+- account docs, portfolio docs, tutorial docs, examples, packaged skills, and
+  diagrams no longer describe target positions as asset-only or based on
+  `asset_identifier`.

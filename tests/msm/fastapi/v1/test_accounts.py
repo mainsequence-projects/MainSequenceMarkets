@@ -1101,12 +1101,16 @@ def test_account_repository_builds_atomic_holdings_replacement_operation() -> No
     assert "ON CONFLICT (account_uid, time_index)" in sql
     assert "WHERE %(overwrite)s" in sql
     assert "DELETE FROM" in sql
+    assert "deleted_gate AS" in sql
     assert "INSERT INTO" in sql
-    assert "CROSS JOIN holdings_set" in sql
-    assert "CAST(%(quantity_0)s AS double precision)" in sql
-    assert "CAST(%(direction_0)s AS smallint)" in sql
-    assert operation.statement.parameters["holdings_set_uid"] == str(holdings_set_uid)
-    assert operation.statement.parameters["account_uid"] == str(account_uid)
+    assert "WITH inserted AS" not in sql
+    assert "FROM inserted" not in sql
+    assert "JOIN holdings_set ON true" in sql
+    assert "JOIN deleted_gate ON true" in sql
+    assert "CAST(%(quantity_0)s AS FLOAT)" in sql
+    assert "CAST(%(direction_0)s AS SMALLINT)" in sql
+    assert operation.statement.parameters["holdings_set_uid"] == holdings_set_uid
+    assert operation.statement.parameters["account_uid"] == account_uid
     assert operation.statement.parameters["overwrite"] is True
     assert operation.statement.parameters["asset_identifier_0"] == "example-asset-btc"
     assert operation.statement.parameter_types == {
