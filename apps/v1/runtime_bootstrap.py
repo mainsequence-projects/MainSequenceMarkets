@@ -38,8 +38,15 @@ V1_PORTFOLIO_RUNTIME_MODELS = [
     "TargetPositionsStorage",
     "AssetSnapshotsStorage",
 ]
+V1_PRICING_RUNTIME_MODELS = [
+    "Asset",
+    "AssetCurrentPricingDetails",
+    "PricingMarketDataSet",
+    "PricingMarketDataSetBinding",
+]
 _BOOTSTRAP_COMPLETE = False
 _PORTFOLIO_BOOTSTRAP_COMPLETE = False
+_PRICING_BOOTSTRAP_COMPLETE = False
 
 
 def prepare_apps_v1_import_namespace() -> None:
@@ -92,6 +99,28 @@ def ensure_apps_v1_portfolio_runtime() -> Any | None:
     return runtime
 
 
+def ensure_apps_v1_pricing_runtime() -> Any | None:
+    global _PRICING_BOOTSTRAP_COMPLETE
+
+    if _PRICING_BOOTSTRAP_COMPLETE:
+        return None
+
+    namespace = os.getenv("MSM_AUTO_REGISTER_NAMESPACE")
+    if not namespace:
+        return None
+
+    from msm_pricing.bootstrap import attach_pricing_schemas
+
+    runtime = attach_pricing_schemas(
+        namespace=namespace,
+        models=V1_PRICING_RUNTIME_MODELS,
+        seed_default_market_data_bindings=False,
+        replace_default_market_data_bindings=False,
+    )
+    _PRICING_BOOTSTRAP_COMPLETE = True
+    return runtime
+
+
 def resolve_apps_v1_runtime(
     *,
     models: Sequence[Any],
@@ -125,8 +154,10 @@ def resolve_apps_v1_portfolio_runtime(
 
 __all__ = [
     "V1_PORTFOLIO_RUNTIME_MODELS",
+    "V1_PRICING_RUNTIME_MODELS",
     "V1_RUNTIME_MODELS",
     "ensure_apps_v1_portfolio_runtime",
+    "ensure_apps_v1_pricing_runtime",
     "ensure_apps_v1_runtime",
     "prepare_apps_v1_import_namespace",
     "resolve_apps_v1_portfolio_runtime",

@@ -16,15 +16,9 @@ from msm.data_nodes.utils.storage_metadata import (
     storage_data_node_description,
     storage_data_node_identifier,
 )
-from msm.data_nodes.utils.data_node_updates import (
-    coerce_required_uid as _coerce_required_uid,
-    data_node_update_storage as _data_node_update_storage,
-    get_mapping_or_attr as _get_mapping_or_attr,
-    storage_source_config as _storage_source_config,
-)
 from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
-from msm.data_nodes.utils.storage_schema import storage_index_names, storage_time_index_name
+from msm.data_nodes.utils.storage_schema import storage_index_names
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
 from msm.settings import markets_namespace
 
@@ -156,79 +150,6 @@ class PortfolioCanonicalDataNode(DataNode):
             data_frame,
             storage_table=storage_table,
         )
-
-    def canonical_data_source_uid(self) -> str:
-        return self.ensure_storage_ready()
-
-    def canonical_data_source_id(self) -> str:
-        return self.canonical_data_source_uid()
-
-    def ensure_storage_ready(self, *, force_update: bool = False) -> str:
-        """Validate storage readiness and return the DataNodeUpdate uid."""
-
-        if force_update or self._requires_data_node_update_creation():
-            self.run(debug_mode=True, update_tree=False, force_update=True)
-
-        data_node_update = self._require_ready_data_node_update()
-        return _coerce_required_uid(data_node_update, field_name="data_node_update")
-
-    def _requires_data_node_update_creation(self) -> bool:
-        data_node_update = self.data_node_update
-        if data_node_update is None:
-            return True
-        _coerce_required_uid(data_node_update, field_name="data_node_update")
-        return False
-
-    def _require_ready_data_node_update(self):
-        data_node_update = self.data_node_update
-        _coerce_required_uid(data_node_update, field_name="data_node_update")
-
-        storage = _data_node_update_storage(data_node_update)
-        _coerce_required_uid(
-            storage,
-            field_name="data_node_update.data_node_storage",
-        )
-
-        source_config = _storage_source_config(storage)
-        if source_config is None:
-            source_config = _storage_source_config(self.storage_metadata)
-        if source_config is None:
-            raise RuntimeError(
-                f"{self.__class__.__name__} DataNodeUpdate storage does not expose "
-                "source-table configuration for strict portfolio workflow creation."
-            )
-
-        self._validate_storage_contract(source_config)
-        return data_node_update
-
-    def _validate_storage_contract(self, source_config: Any) -> None:
-        errors: list[str] = []
-
-        time_index_name = _get_mapping_or_attr(source_config, "time_index_name")
-        expected_time_index_name = storage_time_index_name(self.storage_table)
-        if time_index_name != expected_time_index_name:
-            errors.append(
-                f"time_index_name {time_index_name!r} does not match {expected_time_index_name!r}"
-            )
-
-        index_names = list(_get_mapping_or_attr(source_config, "index_names") or [])
-        expected_index_names = storage_index_names(self.storage_table)
-        if index_names != expected_index_names:
-            errors.append(f"index_names {index_names!r} do not match {expected_index_names!r}")
-
-        column_dtypes_map = dict(_get_mapping_or_attr(source_config, "column_dtypes_map") or {})
-        for column_name, expected_dtype in self._bound_column_dtypes_map().items():
-            actual_dtype = column_dtypes_map.get(column_name)
-            if actual_dtype != expected_dtype:
-                errors.append(
-                    f"{column_name!r} dtype {actual_dtype!r} does not match {expected_dtype!r}"
-                )
-
-        if errors:
-            raise ValueError(
-                f"{self.__class__.__name__} is bound to an incompatible "
-                "canonical Portfolios data node: " + "; ".join(errors)
-            )
 
 
 class AssetScopedPortfolioCanonicalDataNode(PortfolioCanonicalDataNode, AssetIndexedDataNode):

@@ -28,7 +28,6 @@ _EXPORTS = {
     "compute_signal_uid": ".data_nodes",
     "get_or_create_portfolio_index": ".data_nodes",
     "get_runtime": ".bootstrap",
-    "initialize_portfolio_storage_source_tables": ".data_nodes",
     "normalize_portfolio_values_frame": ".data_nodes",
     "normalize_portfolio_weights_frame": ".data_nodes",
     "normalize_signal_weights_frame": ".data_nodes",

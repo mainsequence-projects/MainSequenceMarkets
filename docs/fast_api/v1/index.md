@@ -13,12 +13,16 @@ This API is intentionally thin:
   `src/msm/services/asset_master_lists.py`
 - MetaTable catalogue discovery and row management is backed by
   `src/msm/services/catalog.py`
+- pricing market-data set and binding workflows are backed by
+  `msm_pricing.api`
 
 ## Route ADRs
 
 - [Calendar CRUD And Summary Route](ADR/0001-calendar-crud-route.md): route
   group for calendar identity CRUD, summary, and bounded date, session, and
   event maintenance.
+- [Pricing Market Data Routes](pricing_market_data.md): route group for
+  pricing market-data set and concept binding management.
 
 ## Runtime Bootstrap
 
@@ -30,6 +34,9 @@ Current local-dev behavior:
 
 - the app calls `msm.start_engine(...)` during startup for the `apps/v1`
   table set
+- the app calls `msm_pricing.bootstrap.attach_pricing_schemas(...)` during
+  startup for the pricing rows used by asset pricing details and pricing
+  market-data management
 - schema and catalog mutation must already have been handled by
   `mainsequence migrations upgrade --provider migrations:migration head`
 - the app uses the real project/session data source already configured for the
@@ -231,6 +238,56 @@ Current local-dev behavior:
   - deletes one row from the selected catalogue-backed MetaTable
   - resolves the backend table through the catalogue entry
   - relies on backend foreign-key cascade behavior for related rows
+
+### Pricing Market Data
+
+- `GET /api/v1/pricing/market_data/`
+  - returns the discoverability card for pricing market-data set and binding
+    operations
+- `GET /api/v1/pricing/market_data/sets/`
+  - supports `limit`, `offset`, `status`, and `set_key`
+  - returns `PaginatedResponse[PricingMarketDataSet]`
+  - uses the Django REST Framework-style `{ count, next, previous, results }`
+    envelope
+- `GET /api/v1/pricing/market_data/sets/{uid}/`
+  - returns one `PricingMarketDataSet` by uid
+- `GET /api/v1/pricing/market_data/sets/by-key/{set_key}/`
+  - returns one `PricingMarketDataSet` by set key
+- `POST /api/v1/pricing/market_data/sets/`
+  - creates one set with `PricingMarketDataSetCreate`
+  - returns `PricingMarketDataSet`
+- `POST /api/v1/pricing/market_data/sets/upsert/`
+  - upserts one set with `PricingMarketDataSetUpsert`
+  - returns `PricingMarketDataSet`
+- `PATCH /api/v1/pricing/market_data/sets/{uid}/`
+  - updates one set with `PricingMarketDataSetUpdate`
+  - returns `PricingMarketDataSet`
+- `DELETE /api/v1/pricing/market_data/sets/{uid}/`
+  - deletes one set through `PricingMarketDataSet.delete(uid)`
+  - returns `{ detail, uid, deleted_count }`
+- `GET /api/v1/pricing/market_data/bindings/`
+  - supports `limit`, `offset`, `market_data_set_uid`, and `concept_key`
+  - returns `PaginatedResponse[PricingMarketDataSetBinding]`
+- `GET /api/v1/pricing/market_data/sets/{market_data_set_uid}/bindings/`
+  - lists bindings owned by one pricing market-data set
+  - returns `PaginatedResponse[PricingMarketDataSetBinding]`
+- `GET /api/v1/pricing/market_data/bindings/{uid}/`
+  - returns one `PricingMarketDataSetBinding` by uid
+- `GET /api/v1/pricing/market_data/bindings/resolve/`
+  - supports `market_data_set` and required `concept_key`
+  - returns `{ market_data_set, concept_key, data_node_uid }`
+- `POST /api/v1/pricing/market_data/bindings/`
+  - creates one binding with `PricingMarketDataSetBindingCreate`
+  - returns `PricingMarketDataSetBinding`
+- `POST /api/v1/pricing/market_data/bindings/upsert/`
+  - upserts one binding with `PricingMarketDataSetBindingUpsert`
+  - returns `PricingMarketDataSetBinding`
+- `PATCH /api/v1/pricing/market_data/bindings/{uid}/`
+  - updates one binding with `PricingMarketDataSetBindingUpdate`
+  - returns `PricingMarketDataSetBinding`
+- `DELETE /api/v1/pricing/market_data/bindings/{uid}/`
+  - deletes one binding through `PricingMarketDataSetBinding.delete(uid)`
+  - returns `{ detail, uid, deleted_count }`
 
 ## Compatibility Notes
 

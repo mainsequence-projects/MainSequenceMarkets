@@ -81,6 +81,9 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
         "/api/v1/catalog/",
         "/api/v1/catalog/{catalog_uid}/rows/",
         "/api/v1/index/",
+        "/api/v1/pricing/market_data/bindings/",
+        "/api/v1/pricing/market_data/sets/",
+        "/api/v1/pricing/market_data/sets/{market_data_set_uid}/bindings/",
     }
 
 
@@ -374,3 +377,127 @@ def test_openapi_json_documents_catalogue_routes() -> None:
     assert catalog_delete_operation["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/CatalogDeleteResponse"}
+
+
+def test_openapi_json_documents_pricing_market_data_routes() -> None:
+    client = TestClient(app)
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    card_operation = payload["paths"]["/api/v1/pricing/market_data/"]["get"]
+    assert card_operation["summary"] == "Get pricing market-data API card"
+    assert card_operation["operationId"] == "getPricingMarketDataCard"
+    assert card_operation["tags"] == ["pricing-market-data"]
+    assert card_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PricingMarketDataCardResponse"}
+
+    set_list_operation = payload["paths"]["/api/v1/pricing/market_data/sets/"]["get"]
+    assert set_list_operation["summary"] == "List pricing market-data sets"
+    assert set_list_operation["operationId"] == "listPricingMarketDataSets"
+    assert set_list_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PricingMarketDataSetListResponse"}
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/PricingMarketDataSetListResponse",
+        result_ref="#/components/schemas/PricingMarketDataSet",
+    )
+
+    set_detail_operation = payload["paths"]["/api/v1/pricing/market_data/sets/{uid}/"][
+        "get"
+    ]
+    assert set_detail_operation["summary"] == "Get pricing market-data set"
+    assert set_detail_operation["operationId"] == "getPricingMarketDataSet"
+    assert set_detail_operation["responses"]["404"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ErrorResponse"}
+
+    set_key_operation = payload["paths"][
+        "/api/v1/pricing/market_data/sets/by-key/{set_key}/"
+    ]["get"]
+    assert set_key_operation["summary"] == "Get pricing market-data set by key"
+    assert set_key_operation["operationId"] == "getPricingMarketDataSetByKey"
+
+    assert payload["paths"]["/api/v1/pricing/market_data/sets/"]["post"][
+        "operationId"
+    ] == "createPricingMarketDataSet"
+    assert payload["paths"]["/api/v1/pricing/market_data/sets/upsert/"]["post"][
+        "operationId"
+    ] == "upsertPricingMarketDataSet"
+    assert payload["paths"]["/api/v1/pricing/market_data/sets/{uid}/"]["patch"][
+        "operationId"
+    ] == "updatePricingMarketDataSet"
+    assert payload["paths"]["/api/v1/pricing/market_data/sets/{uid}/"]["delete"][
+        "operationId"
+    ] == "deletePricingMarketDataSet"
+    assert payload["paths"]["/api/v1/pricing/market_data/sets/{uid}/"]["delete"][
+        "responses"
+    ]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PricingMarketDataSetDeleteResponse"
+    }
+
+    binding_list_operation = payload["paths"]["/api/v1/pricing/market_data/bindings/"][
+        "get"
+    ]
+    assert binding_list_operation["summary"] == "List pricing market-data bindings"
+    assert binding_list_operation["operationId"] == "listPricingMarketDataBindings"
+    assert binding_list_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PricingMarketDataSetBindingListResponse"}
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/PricingMarketDataSetBindingListResponse",
+        result_ref="#/components/schemas/PricingMarketDataSetBinding",
+    )
+
+    nested_binding_list_operation = payload["paths"][
+        "/api/v1/pricing/market_data/sets/{market_data_set_uid}/bindings/"
+    ]["get"]
+    assert nested_binding_list_operation["summary"] == (
+        "List pricing market-data set bindings"
+    )
+    assert nested_binding_list_operation["operationId"] == (
+        "listPricingMarketDataSetBindings"
+    )
+    assert nested_binding_list_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PricingMarketDataSetBindingListResponse"}
+
+    resolve_operation = payload["paths"][
+        "/api/v1/pricing/market_data/bindings/resolve/"
+    ]["get"]
+    assert resolve_operation["summary"] == "Resolve pricing market-data binding"
+    assert resolve_operation["operationId"] == "resolvePricingMarketDataBinding"
+    assert resolve_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PricingMarketDataBindingResolveResponse"}
+
+    binding_detail_operation = payload["paths"][
+        "/api/v1/pricing/market_data/bindings/{uid}/"
+    ]["get"]
+    assert binding_detail_operation["summary"] == "Get pricing market-data binding"
+    assert binding_detail_operation["operationId"] == "getPricingMarketDataBinding"
+    assert binding_detail_operation["responses"]["404"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ErrorResponse"}
+
+    assert payload["paths"]["/api/v1/pricing/market_data/bindings/"]["post"][
+        "operationId"
+    ] == "createPricingMarketDataBinding"
+    assert payload["paths"]["/api/v1/pricing/market_data/bindings/upsert/"]["post"][
+        "operationId"
+    ] == "upsertPricingMarketDataBinding"
+    assert payload["paths"]["/api/v1/pricing/market_data/bindings/{uid}/"]["patch"][
+        "operationId"
+    ] == "updatePricingMarketDataBinding"
+    assert payload["paths"]["/api/v1/pricing/market_data/bindings/{uid}/"]["delete"][
+        "operationId"
+    ] == "deletePricingMarketDataBinding"
+    assert payload["paths"]["/api/v1/pricing/market_data/bindings/{uid}/"]["delete"][
+        "responses"
+    ]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PricingMarketDataSetBindingDeleteResponse"
+    }

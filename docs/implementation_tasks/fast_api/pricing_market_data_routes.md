@@ -69,6 +69,8 @@ List limitations:
   need pagination.
 - `list(...)` is the method FastAPI must use for paginated responses.
 - There is no search operation across display fields.
+- Search is not required for the first UI release; FastAPI does not expose a
+  `search` query parameter for this route group yet.
 
 Pagination standard:
 
@@ -479,27 +481,27 @@ Open decision:
 - [x] Add `PricingMarketDataSetBinding.list(limit, offset, **filters)` in
   `src/msm_pricing/api/market_data_bindings.py`.
 - [x] Add repository support for filtered row counts and offset-backed searches.
-- [ ] Decide whether `search` is required for the first UI release.
-- [ ] If `search` is required, implement search support in `msm_pricing.api`
-  before exposing a `search` query parameter from FastAPI.
+- [x] Decide whether `search` is required for the first UI release.
+- [x] Search is not required for the first UI release, so do not expose a
+  `search` query parameter from FastAPI yet.
 
 ### FastAPI Contracts
 
 - [x] Add reusable `PaginatedResponse[T]` to `apps/v1/schemas/common.py`.
-- [ ] Create `apps/v1/schemas/pricing_market_data.py`.
-- [ ] Add `PricingMarketDataResourceLink` for discoverability card resources.
-- [ ] Add `PricingMarketDataCardResponse` for
+- [x] Create `apps/v1/schemas/pricing_market_data.py`.
+- [x] Add `PricingMarketDataResourceLink` for discoverability card resources.
+- [x] Add `PricingMarketDataCardResponse` for
   `GET /api/v1/pricing/market_data/`.
-- [ ] Use `PaginatedResponse[PricingMarketDataSet]` for dataset list responses.
-- [ ] Add `PricingMarketDataSetDeleteResponse` with `detail`, `uid`, and
+- [x] Use `PaginatedResponse[PricingMarketDataSet]` for dataset list responses.
+- [x] Add `PricingMarketDataSetDeleteResponse` with `detail`, `uid`, and
   `deleted_count`.
-- [ ] Use `PaginatedResponse[PricingMarketDataSetBinding]` for binding list
+- [x] Use `PaginatedResponse[PricingMarketDataSetBinding]` for binding list
   responses.
-- [ ] Add `PricingMarketDataSetBindingDeleteResponse` with `detail`, `uid`, and
+- [x] Add `PricingMarketDataSetBindingDeleteResponse` with `detail`, `uid`, and
   `deleted_count`.
-- [ ] Add `PricingMarketDataBindingResolveResponse` with `market_data_set`,
+- [x] Add `PricingMarketDataBindingResolveResponse` with `market_data_set`,
   `concept_key`, and `data_node_uid`.
-- [ ] Do not duplicate `PricingMarketDataSet`, `PricingMarketDataSetCreate`,
+- [x] Do not duplicate `PricingMarketDataSet`, `PricingMarketDataSetCreate`,
   `PricingMarketDataSetUpsert`, `PricingMarketDataSetUpdate`,
   `PricingMarketDataSetBinding`, `PricingMarketDataSetBindingCreate`,
   `PricingMarketDataSetBindingUpsert`, or `PricingMarketDataSetBindingUpdate`
@@ -507,131 +509,131 @@ Open decision:
 
 ### Runtime Attachment
 
-- [ ] Add a pricing runtime helper in `apps/v1/runtime_bootstrap.py` or a new
+- [x] Add a pricing runtime helper in `apps/v1/runtime_bootstrap.py` or a new
   adjacent module.
-- [ ] The helper must call `msm_pricing.bootstrap.attach_pricing_schemas(...)`,
+- [x] The helper must call `msm_pricing.bootstrap.attach_pricing_schemas(...)`,
   not `create_pricing_schemas(...)`.
-- [ ] The helper must respect `MSM_AUTO_REGISTER_NAMESPACE`, matching the
+- [x] The helper must respect `MSM_AUTO_REGISTER_NAMESPACE`, matching the
   existing v1 app behavior.
-- [ ] The helper must attach at least `PricingMarketDataSet` and
+- [x] The helper must attach at least `PricingMarketDataSet` and
   `PricingMarketDataSetBinding`.
-- [ ] Decide whether to attach pricing runtime in app lifespan or lazily from the
+- [x] Decide whether to attach pricing runtime in app lifespan or lazily from the
   pricing service adapter.
-- [ ] Prefer app lifespan attachment if missing pricing MetaTables should fail
+- [x] Prefer app lifespan attachment if missing pricing MetaTables should fail
   startup clearly.
-- [ ] Do not seed default market-data bindings from route handlers.
-- [ ] Do not replace default market-data bindings from route handlers.
+- [x] Do not seed default market-data bindings from route handlers.
+- [x] Do not replace default market-data bindings from route handlers.
 
 ### Service Adapter
 
-- [ ] Create `apps/v1/services/pricing_market_data.py`.
-- [ ] Add `pricing_market_data_card()` returning the discoverability payload.
-- [ ] Add `list_pricing_market_data_sets(limit, offset, status, set_key)` wrapping
+- [x] Create `apps/v1/services/pricing_market_data.py`.
+- [x] Add `pricing_market_data_card()` returning the discoverability payload.
+- [x] Add `list_pricing_market_data_sets(limit, offset, status, set_key)` wrapping
   `PricingMarketDataSet.list(...)`.
-- [ ] Add `get_pricing_market_data_set(uid)` wrapping
+- [x] Add `get_pricing_market_data_set(uid)` wrapping
   `PricingMarketDataSet.get_by_uid(uid)`.
-- [ ] Add `get_pricing_market_data_set_by_key(set_key)` wrapping
+- [x] Add `get_pricing_market_data_set_by_key(set_key)` wrapping
   `PricingMarketDataSet.get_by_key(set_key)`.
-- [ ] Add `create_pricing_market_data_set(payload)` wrapping
+- [x] Add `create_pricing_market_data_set(payload)` wrapping
   `PricingMarketDataSet.create(payload)`.
-- [ ] Add `upsert_pricing_market_data_set(payload)` wrapping
+- [x] Add `upsert_pricing_market_data_set(payload)` wrapping
   `PricingMarketDataSet.upsert(payload)`.
-- [ ] Add `update_pricing_market_data_set(uid, payload)` wrapping
+- [x] Add `update_pricing_market_data_set(uid, payload)` wrapping
   `PricingMarketDataSet.update(uid, payload)`.
-- [ ] Add `delete_pricing_market_data_set(uid)` wrapping
+- [x] Add `delete_pricing_market_data_set(uid)` wrapping
   `PricingMarketDataSet.delete(uid)`.
-- [ ] Add `list_pricing_market_data_bindings(limit, offset, market_data_set_uid, concept_key)`
+- [x] Add `list_pricing_market_data_bindings(limit, offset, market_data_set_uid, concept_key)`
   wrapping `PricingMarketDataSetBinding.list(...)`.
-- [ ] Add `list_pricing_market_data_set_bindings(market_data_set_uid, limit, offset)`
+- [x] Add `list_pricing_market_data_set_bindings(market_data_set_uid, limit, offset)`
   wrapping `PricingMarketDataSetBinding.list(...)`.
-- [ ] Add `get_pricing_market_data_binding(uid)` wrapping
+- [x] Add `get_pricing_market_data_binding(uid)` wrapping
   `PricingMarketDataSetBinding.get_by_uid(uid)`.
-- [ ] Add `resolve_pricing_market_data_binding(market_data_set, concept_key)`
+- [x] Add `resolve_pricing_market_data_binding(market_data_set, concept_key)`
   wrapping `PricingMarketDataSetBinding.resolve_data_node_uid(...)`.
-- [ ] Add `create_pricing_market_data_binding(payload)` wrapping
+- [x] Add `create_pricing_market_data_binding(payload)` wrapping
   `PricingMarketDataSetBinding.create(payload)`.
-- [ ] Add `upsert_pricing_market_data_binding(payload)` wrapping
+- [x] Add `upsert_pricing_market_data_binding(payload)` wrapping
   `PricingMarketDataSetBinding.upsert(payload)`.
-- [ ] Add `update_pricing_market_data_binding(uid, payload)` wrapping
+- [x] Add `update_pricing_market_data_binding(uid, payload)` wrapping
   `PricingMarketDataSetBinding.update(uid, payload)`.
-- [ ] Add `delete_pricing_market_data_binding(uid)` wrapping
+- [x] Add `delete_pricing_market_data_binding(uid)` wrapping
   `PricingMarketDataSetBinding.delete(uid)`.
 
 ### Router
 
-- [ ] Create `apps/v1/routers/pricing_market_data.py`.
-- [ ] Add router prefix `/pricing/market_data` and tag `pricing-market-data`.
-- [ ] Add `GET /api/v1/pricing/market_data/`.
-- [ ] Add `GET /api/v1/pricing/market_data/sets/`.
-- [ ] Add `GET /api/v1/pricing/market_data/sets/{uid}/`.
-- [ ] Add `GET /api/v1/pricing/market_data/sets/by-key/{set_key}/`.
-- [ ] Add `POST /api/v1/pricing/market_data/sets/`.
-- [ ] Add `POST /api/v1/pricing/market_data/sets/upsert/`.
-- [ ] Add `PATCH /api/v1/pricing/market_data/sets/{uid}/`.
-- [ ] Add `DELETE /api/v1/pricing/market_data/sets/{uid}/`.
-- [ ] Add `GET /api/v1/pricing/market_data/bindings/`.
-- [ ] Add `GET /api/v1/pricing/market_data/sets/{market_data_set_uid}/bindings/`.
-- [ ] Add `GET /api/v1/pricing/market_data/bindings/{uid}/`.
-- [ ] Add `GET /api/v1/pricing/market_data/bindings/resolve/`.
-- [ ] Add `POST /api/v1/pricing/market_data/bindings/`.
-- [ ] Add `POST /api/v1/pricing/market_data/bindings/upsert/`.
-- [ ] Add `PATCH /api/v1/pricing/market_data/bindings/{uid}/`.
-- [ ] Add `DELETE /api/v1/pricing/market_data/bindings/{uid}/`.
-- [ ] Every route must declare `response_model`.
-- [ ] Every route must declare `summary`.
-- [ ] Every route must have an explicit `operation_id`.
-- [ ] Every route must document 404 behavior where row lookup can return `None`.
-- [ ] Every route must document 400 behavior for invalid payloads or unsupported
+- [x] Create `apps/v1/routers/pricing_market_data.py`.
+- [x] Add router prefix `/pricing/market_data` and tag `pricing-market-data`.
+- [x] Add `GET /api/v1/pricing/market_data/`.
+- [x] Add `GET /api/v1/pricing/market_data/sets/`.
+- [x] Add `GET /api/v1/pricing/market_data/sets/{uid}/`.
+- [x] Add `GET /api/v1/pricing/market_data/sets/by-key/{set_key}/`.
+- [x] Add `POST /api/v1/pricing/market_data/sets/`.
+- [x] Add `POST /api/v1/pricing/market_data/sets/upsert/`.
+- [x] Add `PATCH /api/v1/pricing/market_data/sets/{uid}/`.
+- [x] Add `DELETE /api/v1/pricing/market_data/sets/{uid}/`.
+- [x] Add `GET /api/v1/pricing/market_data/bindings/`.
+- [x] Add `GET /api/v1/pricing/market_data/sets/{market_data_set_uid}/bindings/`.
+- [x] Add `GET /api/v1/pricing/market_data/bindings/{uid}/`.
+- [x] Add `GET /api/v1/pricing/market_data/bindings/resolve/`.
+- [x] Add `POST /api/v1/pricing/market_data/bindings/`.
+- [x] Add `POST /api/v1/pricing/market_data/bindings/upsert/`.
+- [x] Add `PATCH /api/v1/pricing/market_data/bindings/{uid}/`.
+- [x] Add `DELETE /api/v1/pricing/market_data/bindings/{uid}/`.
+- [x] Every route must declare `response_model`.
+- [x] Every route must declare `summary`.
+- [x] Every route must have an explicit `operation_id`.
+- [x] Every route must document 404 behavior where row lookup can return `None`.
+- [x] Every route must document 400 behavior for invalid payloads or unsupported
   source API state.
 
 ### App Registration
 
-- [ ] Import the pricing market-data router in `apps/v1/main.py`.
-- [ ] Add an `API_TAGS` entry for `pricing-market-data`.
-- [ ] Include the router with prefix `/api/v1`.
-- [ ] Verify `/openapi.json` includes all pricing market-data paths.
+- [x] Import the pricing market-data router in `apps/v1/main.py`.
+- [x] Add an `API_TAGS` entry for `pricing-market-data`.
+- [x] Include the router with prefix `/api/v1`.
+- [x] Verify `/openapi.json` includes all pricing market-data paths.
 
 ### Tests
 
-- [ ] Create `tests/msm/fastapi/v1/test_pricing_market_data.py`.
-- [ ] Test the discoverability endpoint response.
-- [ ] Test dataset list wraps `PricingMarketDataSet.filter(...)`.
-- [ ] Test dataset detail returns the row from `get_by_uid(...)`.
-- [ ] Test dataset detail returns 404 when `get_by_uid(...)` returns `None`.
-- [ ] Test dataset lookup by key wraps `get_by_key(...)`.
-- [ ] Test dataset create wraps `PricingMarketDataSet.create(...)`.
-- [ ] Test dataset upsert wraps `PricingMarketDataSet.upsert(...)`.
-- [ ] Test dataset update wraps `PricingMarketDataSet.update(...)`.
-- [ ] Test dataset delete after source API delete exists.
-- [ ] Test binding global list wraps `PricingMarketDataSetBinding.filter(...)`.
-- [ ] Test binding nested list filters by `market_data_set_uid`.
-- [ ] Test binding detail returns the row from `get_by_uid(...)`.
-- [ ] Test binding detail returns 404 when `get_by_uid(...)` returns `None`.
-- [ ] Test binding resolve wraps `resolve_data_node_uid(...)`.
-- [ ] Test binding create wraps `PricingMarketDataSetBinding.create(...)`.
-- [ ] Test binding upsert wraps `PricingMarketDataSetBinding.upsert(...)`.
-- [ ] Test binding update wraps `PricingMarketDataSetBinding.update(...)`.
-- [ ] Test binding delete after source API delete exists.
-- [ ] Extend `tests/msm/fastapi/v1/test_openapi.py` for pricing market-data
+- [x] Create `tests/msm/fastapi/v1/test_pricing_market_data.py`.
+- [x] Test the discoverability endpoint response.
+- [x] Test dataset list wraps `PricingMarketDataSet.list(...)`.
+- [x] Test dataset detail returns the row from `get_by_uid(...)`.
+- [x] Test dataset detail returns 404 when `get_by_uid(...)` returns `None`.
+- [x] Test dataset lookup by key wraps `get_by_key(...)`.
+- [x] Test dataset create wraps `PricingMarketDataSet.create(...)`.
+- [x] Test dataset upsert wraps `PricingMarketDataSet.upsert(...)`.
+- [x] Test dataset update wraps `PricingMarketDataSet.update(...)`.
+- [x] Test dataset delete after source API delete exists.
+- [x] Test binding global list wraps `PricingMarketDataSetBinding.list(...)`.
+- [x] Test binding nested list filters by `market_data_set_uid`.
+- [x] Test binding detail returns the row from `get_by_uid(...)`.
+- [x] Test binding detail returns 404 when `get_by_uid(...)` returns `None`.
+- [x] Test binding resolve wraps `resolve_data_node_uid(...)`.
+- [x] Test binding create wraps `PricingMarketDataSetBinding.create(...)`.
+- [x] Test binding upsert wraps `PricingMarketDataSetBinding.upsert(...)`.
+- [x] Test binding update wraps `PricingMarketDataSetBinding.update(...)`.
+- [x] Test binding delete after source API delete exists.
+- [x] Extend `tests/msm/fastapi/v1/test_openapi.py` for pricing market-data
   paths, operation IDs, tags, and response schemas.
 
 ### Documentation
 
-- [ ] After implementation, update `docs/fast_api/v1/` with the pricing
+- [x] After implementation, update `docs/fast_api/v1/` with the pricing
   market-data route contracts.
-- [ ] Include response JSON examples for dataset list/detail and binding
+- [x] Include response JSON examples for dataset list/detail and binding
   list/detail/resolve.
-- [ ] Document delete availability only after source API delete support is
+- [x] Document delete availability only after source API delete support is
   implemented.
-- [ ] Document that pricing list endpoints use `PaginatedResponse[T]` with
+- [x] Document that pricing list endpoints use `PaginatedResponse[T]` with
   `count`, `next`, `previous`, and `results`.
 
 ### Validation
 
-- [ ] Run `uv run --extra dev python -m pytest tests/msm/fastapi/v1/test_pricing_market_data.py tests/msm/fastapi/v1/test_openapi.py`.
-- [ ] Run `uv run --extra dev python -m ruff check apps/v1 src/msm_pricing/api tests/msm/fastapi/v1`.
-- [ ] Run `git diff --check`.
-- [ ] If `docs/fast_api/v1/` or MkDocs navigation changes, run
+- [x] Run `uv run --extra dev python -m pytest tests/msm/fastapi/v1/test_pricing_market_data.py tests/msm/fastapi/v1/test_openapi.py`.
+- [x] Run `uv run --extra dev python -m ruff check apps/v1 src/msm_pricing/api tests/msm/fastapi/v1`.
+- [x] Run `git diff --check`.
+- [x] If `docs/fast_api/v1/` or MkDocs navigation changes, run
   `uv run --extra dev mkdocs build --strict --site-dir /private/tmp/msmarkets-docs-site`.
 
 ## Test Plan

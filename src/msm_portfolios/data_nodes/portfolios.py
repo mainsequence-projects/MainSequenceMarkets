@@ -200,7 +200,6 @@ class PortfoliosDataNode(AssetScopedPortfolioCanonicalDataNode):
         portfolio_index_unique_identifier = str(portfolio_index.unique_identifier)
         self._resolved_unique_identifier = portfolio_index_unique_identifier
         portfolio_weights_node = self._canonical_portfolio_weights_node()
-        portfolio_weights_node.ensure_storage_ready()
 
         portfolio_values_result = super().run(
             debug_mode=debug_mode,

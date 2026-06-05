@@ -319,15 +319,6 @@ def build_account_holdings_frame(
     )
 
 
-def run_storage_node(node: Any, *, enabled: bool, label: str) -> str | None:
-    if not enabled:
-        print_detail(f"{label}_data_node_uid", "skipped (--no-run-data-nodes)")
-        return None
-    node_uid = node.ensure_storage_ready(force_update=True)
-    print_detail(f"{label}_data_node_uid", node_uid)
-    return node_uid
-
-
 def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> None:
     portfolio = result["portfolio"]
     portfolio_index = result["portfolio_index"]
@@ -395,21 +386,25 @@ def build_equal_weight_portfolio(
     print_detail("portfolio_values_rows", len(build_portfolio_values_frame()))
 
     print_step(7, "Publishing portfolio DataNode storage outputs.")
-    signal_weights_node_uid = run_storage_node(
-        signal_weights_node,
-        enabled=run_data_nodes,
-        label="signal_weights",
-    )
-    portfolio_weights_node_uid = run_storage_node(
-        portfolio_weights_node,
-        enabled=run_data_nodes,
-        label="portfolio_weights",
-    )
-    portfolio_values_node_uid = run_storage_node(
-        portfolio_values_node,
-        enabled=run_data_nodes,
-        label="portfolio_values",
-    )
+    if run_data_nodes:
+        signal_weights_node.run(debug_mode=True, update_tree=False, force_update=True)
+        signal_weights_node_uid = str(signal_weights_node.data_node_update.uid)
+        print_detail("signal_weights_data_node_uid", signal_weights_node_uid)
+
+        portfolio_weights_node.run(debug_mode=True, update_tree=False, force_update=True)
+        portfolio_weights_node_uid = str(portfolio_weights_node.data_node_update.uid)
+        print_detail("portfolio_weights_data_node_uid", portfolio_weights_node_uid)
+
+        portfolio_values_node.run(debug_mode=True, update_tree=False, force_update=True)
+        portfolio_values_node_uid = str(portfolio_values_node.data_node_update.uid)
+        print_detail("portfolio_values_data_node_uid", portfolio_values_node_uid)
+    else:
+        print_detail("signal_weights_data_node_uid", "skipped (--no-run-data-nodes)")
+        print_detail("portfolio_weights_data_node_uid", "skipped (--no-run-data-nodes)")
+        print_detail("portfolio_values_data_node_uid", "skipped (--no-run-data-nodes)")
+        signal_weights_node_uid = None
+        portfolio_weights_node_uid = None
+        portfolio_values_node_uid = None
 
     print_step(8, "Upserting the Portfolio row with calendar and DataNode links.")
     portfolio = Portfolio.upsert(
@@ -433,11 +428,13 @@ def build_equal_weight_portfolio(
     account_holdings_node.set_frame(account_holdings_frame)
     print_detail("account_holdings_set_uid", holdings_set.uid)
     print_detail("account_holdings_rows", len(account_holdings_frame))
-    account_holdings_node_uid = run_storage_node(
-        account_holdings_node,
-        enabled=run_data_nodes,
-        label="account_holdings",
-    )
+    if run_data_nodes:
+        account_holdings_node.run(debug_mode=True, update_tree=False, force_update=True)
+        account_holdings_node_uid = str(account_holdings_node.data_node_update.uid)
+        print_detail("account_holdings_data_node_uid", account_holdings_node_uid)
+    else:
+        print_detail("account_holdings_data_node_uid", "skipped (--no-run-data-nodes)")
+        account_holdings_node_uid = None
 
     print_step(10, "Upserting the VirtualFund row that targets the portfolio.")
     virtual_fund = VirtualFund.upsert(

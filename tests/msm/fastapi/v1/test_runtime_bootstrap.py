@@ -54,3 +54,30 @@ def test_ensure_apps_v1_runtime_propagates_start_engine_failures(monkeypatch) ->
         assert str(exc) == "boom"
     else:
         raise AssertionError("ensure_apps_v1_runtime should propagate start_engine errors")
+
+
+def test_ensure_apps_v1_pricing_runtime_attaches_pricing_models(monkeypatch) -> None:
+    monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
+    monkeypatch.setattr(runtime_bootstrap, "_PRICING_BOOTSTRAP_COMPLETE", False)
+
+    attach_calls: list[dict[str, object]] = []
+    runtime = object()
+
+    import msm_pricing.bootstrap as pricing_bootstrap
+
+    monkeypatch.setattr(
+        pricing_bootstrap,
+        "attach_pricing_schemas",
+        lambda **kwargs: attach_calls.append(kwargs) or runtime,
+    )
+
+    assert runtime_bootstrap.ensure_apps_v1_pricing_runtime() is runtime
+    assert attach_calls == [
+        {
+            "namespace": "mainsequence.examples",
+            "models": runtime_bootstrap.V1_PRICING_RUNTIME_MODELS,
+            "seed_default_market_data_bindings": False,
+            "replace_default_market_data_bindings": False,
+        }
+    ]
+    assert runtime_bootstrap._PRICING_BOOTSTRAP_COMPLETE is True

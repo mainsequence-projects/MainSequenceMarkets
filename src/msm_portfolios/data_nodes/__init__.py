@@ -36,7 +36,6 @@ from .signal_weights import (
     compute_signal_uid,
     normalize_signal_weights_frame,
 )
-from .storage_initialization import initialize_portfolio_storage_source_tables
 from .target_positions import TargetPositions, TargetPositionsDataNodeConfiguration
 from .virtual_funds import VirtualFundHoldings
 
@@ -71,7 +70,6 @@ __all__ = [
     "compute_portfolio_configuration_hash",
     "compute_signal_uid",
     "get_or_create_portfolio_index",
-    "initialize_portfolio_storage_source_tables",
     "normalize_portfolio_weights_frame",
     "normalize_portfolio_values_frame",
     "normalize_signal_weights_frame",

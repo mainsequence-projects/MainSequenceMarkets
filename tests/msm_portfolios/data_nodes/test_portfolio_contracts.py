@@ -5,7 +5,6 @@ from types import SimpleNamespace
 import pytest
 
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
-from msm_portfolios.data_nodes import storage_initialization
 from msm_portfolios.data_nodes.base import PortfolioCanonicalDataNodeConfiguration
 from msm_portfolios.data_nodes.portfolio_weights import PortfolioWeights
 from msm_portfolios.data_nodes.portfolios import PortfoliosDataNode
@@ -56,10 +55,3 @@ def test_portfolio_bound_dtype_map_uses_instance_storage_table() -> None:
 @pytest.mark.parametrize(("_node_cls", "storage_cls"), PORTFOLIO_NODE_STORAGE)
 def test_portfolio_storage_classes_are_registered_metatables(_node_cls, storage_cls) -> None:
     assert storage_cls in set(portfolio_sqlalchemy_models())
-
-
-@pytest.mark.skip(reason="requires platform backend (Stage 5 registration)")
-def test_portfolio_storage_initialization_full_flow() -> None:
-    """End-to-end source-table provisioning needs storage uids from the backend."""
-
-    storage_initialization.initialize_portfolio_storage_source_tables()

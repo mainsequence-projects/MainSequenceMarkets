@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
@@ -83,29 +82,9 @@ def _get_asset_frontend_detail_summary(context, **kwargs):
 
 
 def _ensure_pricing_runtime() -> None:
-    from apps.v1.runtime_bootstrap import ensure_apps_v1_runtime
+    from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime
 
-    ensure_apps_v1_runtime()
-    namespace = os.getenv("MSM_AUTO_REGISTER_NAMESPACE")
-    if not namespace:
-        return
-
-    from msm_pricing.bootstrap import create_pricing_schemas, resolve_pricing_runtime
-
-    models = ["Asset", "AssetCurrentPricingDetails"]
-    try:
-        resolve_pricing_runtime(
-            models=models,
-            row_model_name="GET /api/v1/asset/{uid}/get_pricing_details/",
-        )
-    except RuntimeError as exc:
-        if "requires an initialized pricing runtime" not in str(exc):
-            raise
-        create_pricing_schemas(
-            namespace=namespace,
-            models=models,
-            seed_default_market_data_bindings=False,
-        )
+    ensure_apps_v1_pricing_runtime()
 
 
 def _get_asset_current_pricing_details(asset_uid: str):
