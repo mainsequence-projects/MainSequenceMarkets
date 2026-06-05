@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import datetime as dt
 import sys
 from pathlib import Path
@@ -15,6 +16,7 @@ from examples.msm.accounts.utils import (
     EXAMPLE_ACCOUNT_GROUP,
     EXAMPLE_ACCOUNT_MODEL_PORTFOLIO,
     EXAMPLE_ACCOUNT_TARGET_PORTFOLIO,
+    EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO,
     EXAMPLE_ACCOUNT_WORKFLOW_SOURCE,
     EXAMPLE_ACCOUNTS,
     example_account_holdings_positions,
@@ -29,29 +31,68 @@ from examples.msm.assets.utils import (
     EXAMPLE_ETH_TICKER,
 )
 
-import msm
+import msm_portfolios
+
+ACCOUNT_WORKFLOW_RUNTIME_MODELS = [
+    "IndexType",
+    "Index",
+    "AssetType",
+    "Asset",
+    "Calendar",
+    "CalendarDate",
+    "CalendarSession",
+    "AssetSnapshotsStorage",
+    "AccountModelPortfolio",
+    "AccountGroup",
+    "Account",
+    "AccountHoldingsSet",
+    "AccountTargetPortfolio",
+    "PositionSet",
+    "AccountHoldingsStorage",
+    "Portfolio",
+    "VirtualFund",
+    "VirtualFundHoldingsSet",
+    "VirtualFundHoldingsStorage",
+    "SignalMetadata",
+    "RebalanceStrategyMetadata",
+    "PortfolioWeightsStorage",
+    "SignalWeightsStorage",
+    "PortfoliosStorage",
+    "TargetPositionsStorage",
+]
 
 
-def run_account_workflow() -> dict[str, Any]:
+def run_account_workflow(
+    *,
+    use_portfolio_example: bool = True,
+    run_portfolio_data_nodes: bool = True,
+) -> dict[str, Any]:
     """Create the account registry rows and publish account holdings."""
 
-    print("0. Starting the markets engine with the account workflow schema.")
-    msm.start_engine(
-        models=[
-            "AssetType",
-            "Asset",
-            "AssetSnapshotsStorage",
-            "AccountModelPortfolio",
-            "AccountGroup",
-            "Account",
-            "AccountHoldingsSet",
-            "AccountTargetPortfolio",
-            "PositionSet",
-            "AccountHoldingsStorage",
-            "TargetPositionsStorage",
-        ],
-    )
-    print("   Markets engine ready.")
+    portfolio_example_result: dict[str, Any] | None = None
+    if use_portfolio_example:
+        print(
+            "0. Building the reusable portfolio example so account targets can "
+            "reference its Portfolio row."
+        )
+        from examples.msm_portfolios.portfolio_equal_weights_example import (
+            build_equal_weight_portfolio,
+        )
+
+        portfolio_example_result = build_equal_weight_portfolio(
+            run_data_nodes=run_portfolio_data_nodes,
+            runtime_models=ACCOUNT_WORKFLOW_RUNTIME_MODELS,
+        )
+        print(
+            "   Portfolio example ready: "
+            f"portfolio_uid={portfolio_example_result['portfolio'].uid} "
+            f"portfolio_identifier="
+            f"{portfolio_example_result['portfolio'].unique_identifier}"
+        )
+    else:
+        print("0. Starting the markets engine with the standalone account schema.")
+        msm_portfolios.start_engine(models=ACCOUNT_WORKFLOW_RUNTIME_MODELS)
+        print("   Markets engine ready.")
 
     from msm.api.accounts import (
         Account,
@@ -62,16 +103,27 @@ def run_account_workflow() -> dict[str, Any]:
         PositionSet,
     )
     from msm.api.assets import Asset, AssetType
-    from msm.data_nodes.accounts import AccountHoldings, TargetPositions
+    from msm.data_nodes.accounts import AccountHoldings
     from msm.data_nodes.assets import AssetSnapshot
-    from msm.services import build_account_holdings_frame, build_target_positions_frame
+    from msm.services import build_account_holdings_frame
+    from msm_portfolios.api.portfolios import Portfolio
+    from msm_portfolios.data_nodes import TargetPositions
+    from msm_portfolios.services import build_target_positions_frame
 
-    print("1. Registering the crypto AssetType used by the example.")
+    if portfolio_example_result is None:
+        print("1. Registering the crypto AssetType used by the account example.")
+    else:
+        print("1. Reusing the crypto AssetType and assets from the portfolio example.")
     asset_type = AssetType.upsert(**EXAMPLE_CRYPTO_ASSET_TYPE)
     print(f"   AssetType uid={asset_type.uid} asset_type={asset_type.asset_type}")
 
-    print("2. Registering the BTC and ETH Assets that holdings and targets reference.")
-    assets = [Asset.upsert(**asset_payload) for asset_payload in EXAMPLE_CRYPTO_ASSETS]
+    if portfolio_example_result is None:
+        print("2. Registering the BTC and ETH Assets that holdings and targets reference.")
+        assets = [Asset.upsert(**asset_payload) for asset_payload in EXAMPLE_CRYPTO_ASSETS]
+    else:
+        print("2. Using the BTC and ETH Assets created by the portfolio example.")
+        assets = list(portfolio_example_result["assets"])
+    assets_by_identifier = {asset.unique_identifier: asset for asset in assets}
     for asset in assets:
         print(f"   Asset uid={asset.uid} unique_identifier={asset.unique_identifier}")
 
@@ -133,12 +185,26 @@ def run_account_workflow() -> dict[str, Any]:
             f"group_uid={account.account_group_uid}"
         )
 
-    print("8. Creating the AccountHoldings DataNode instance.")
+    if portfolio_example_result is None:
+        print("8. Creating a portfolio sleeve that account targets can reference.")
+        target_sleeve_portfolio = Portfolio.upsert(
+            **EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO
+        )
+    else:
+        print("8. Reusing the portfolio created by the portfolio example as a target sleeve.")
+        target_sleeve_portfolio = portfolio_example_result["portfolio"]
+    print(
+        "   Portfolio "
+        f"uid={target_sleeve_portfolio.uid} "
+        f"unique_identifier={target_sleeve_portfolio.unique_identifier}"
+    )
+
+    print("9. Creating the AccountHoldings DataNode instance.")
     holdings_node = AccountHoldings(config=AccountHoldings.default_config())
     print(f"   AccountHoldings identifier={holdings_node._default_identifier()}")
 
     print(
-        "9. Creating account-owned target portfolio relationships that both "
+        "10. Creating account-owned target portfolio relationships that both "
         "point to the same AccountModelPortfolio."
     )
     target_records: list[dict[str, Any]] = []
@@ -178,7 +244,10 @@ def run_account_workflow() -> dict[str, Any]:
         target_positions_frame = build_target_positions_frame(
             target_positions_date=workflow_time,
             position_set_uid=position_set.uid,
-            positions=example_account_target_positions(),
+            positions=example_account_target_positions(
+                asset_uid=assets_by_identifier[EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER].uid,
+                portfolio_uid=target_sleeve_portfolio.uid,
+            ),
         )
         print(
             "   TargetPositionsStorage rows built for "
@@ -197,7 +266,7 @@ def run_account_workflow() -> dict[str, Any]:
     combined_target_positions_frame = pd.concat(target_position_frames).sort_index()
     print(f"   Combined target-position rows ready: rows={len(combined_target_positions_frame)}")
 
-    print("10. Running the TargetPositions DataNode update.")
+    print("11. Running the TargetPositions DataNode update.")
     target_positions_node = TargetPositions(config=TargetPositions.default_config())
     target_positions_node.set_frame(combined_target_positions_frame)
     target_positions_error, persisted_target_positions_frame = target_positions_node.run(
@@ -212,7 +281,7 @@ def run_account_workflow() -> dict[str, Any]:
         f"{target_positions_node._default_identifier()}"
     )
 
-    print("11. Building two-asset holdings rows for both accounts.")
+    print("12. Building two-asset holdings rows for both accounts.")
     holdings_frames = []
     account_quantities = (
         {"btc_quantity": 10.0, "eth_quantity": 25.0, "eth_direction": 1},
@@ -249,13 +318,13 @@ def run_account_workflow() -> dict[str, Any]:
     holdings_node.set_frame(combined_holdings_frame)
     print(f"   Combined holdings rows attached: rows={len(combined_holdings_frame)}")
 
-    print("12. Running the AccountHoldings DataNode update.")
+    print("13. Running the AccountHoldings DataNode update.")
     error_on_last_update, holdings_frame = holdings_node.run(debug_mode=True, force_update=True)
     if error_on_last_update:
         raise RuntimeError("Account holdings update failed; inspect the DataNode run logs.")
     print(f"    Persisted holdings rows={len(holdings_frame)}")
 
-    print("13. Pretty-printing resolved positions for each account.")
+    print("14. Pretty-printing resolved positions for each account.")
     pretty_positions_by_account = {}
     for account in accounts:
         print(f"    Positions for {account.unique_identifier}:")
@@ -264,11 +333,14 @@ def run_account_workflow() -> dict[str, Any]:
         )
 
     return {
+        "use_portfolio_example": use_portfolio_example,
+        "portfolio_example_result": portfolio_example_result,
         "asset_type": asset_type,
         "assets": assets,
         "asset_snapshot_node_identifier": asset_snapshot_node._default_identifier(),
         "asset_snapshot_frame": asset_snapshot_frame,
         "model_portfolio": model_portfolio,
+        "target_sleeve_portfolio": target_sleeve_portfolio,
         "account_group": account_group,
         "accounts": accounts,
         "target_records": target_records,
@@ -283,10 +355,34 @@ def run_account_workflow() -> dict[str, Any]:
 
 
 def main() -> None:
-    result = run_account_workflow()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--standalone-target-portfolio",
+        action="store_true",
+        help=(
+            "Create a standalone Portfolio row instead of reusing the portfolio "
+            "example output."
+        ),
+    )
+    parser.add_argument(
+        "--no-run-portfolio-data-nodes",
+        action="store_true",
+        help=(
+            "When chaining the portfolio example, build its rows without publishing "
+            "its DataNode storage."
+        ),
+    )
+    args = parser.parse_args()
+
+    result = run_account_workflow(
+        use_portfolio_example=not args.standalone_target_portfolio,
+        run_portfolio_data_nodes=not args.no_run_portfolio_data_nodes,
+    )
     print("Workflow complete.")
+    print("Used portfolio example:", result["use_portfolio_example"])
     print("Account group UID:", result["account_group"].uid)
     print("Shared account model portfolio UID:", result["model_portfolio"].uid)
+    print("Referenced target sleeve Portfolio UID:", result["target_sleeve_portfolio"].uid)
     for target_record in result["target_records"]:
         account = target_record["account"]
         target_portfolio = target_record["target_portfolio"]

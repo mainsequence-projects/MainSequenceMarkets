@@ -24,6 +24,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     SmallInteger,
     String,
 )
@@ -32,10 +33,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
-from msm.models.accounts import AccountHoldingsSetTable
+from msm.models.accounts import AccountHoldingsSetTable, PositionSetTable
 from msm.models.assets.core import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
+from msm_portfolios.models.portfolios import PortfolioTable
 from msm_portfolios.models.virtual_funds import VirtualFundHoldingsSetTable, VirtualFundTable
 
 PORTFOLIO_IDENTIFIER_DIMENSION = "portfolio_identifier"
@@ -438,6 +440,160 @@ class VirtualFundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
+class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+    """Account target exposure rows keyed by position set and target object."""
+
+    __metatable_identifier__ = "TargetPositionsTS"
+    __metatable_description__ = (
+        "Timestamped account target-position exposure storage keyed by "
+        "(time_index, position_set_uid, target_type, target_uid). Each row is "
+        "one target exposure in a PositionSetTable snapshot and references "
+        "exactly one concrete target: either a direct AssetTable row or a "
+        "PortfolioTable row owned by msm_portfolios."
+    )
+    __table_args__ = (
+        CheckConstraint(
+            "target_type IN ('asset', 'portfolio')",
+            name="ck_target_positions_target_type",
+        ),
+        CheckConstraint(
+            "("
+            "target_type = 'asset' AND asset_uid IS NOT NULL "
+            "AND portfolio_uid IS NULL AND target_uid = asset_uid"
+            ") OR ("
+            "target_type = 'portfolio' AND portfolio_uid IS NOT NULL "
+            "AND asset_uid IS NULL AND target_uid = portfolio_uid"
+            ")",
+            name="ck_target_positions_target_reference",
+        ),
+        CheckConstraint(
+            "("
+            "CASE WHEN weight_notional_exposure IS NOT NULL THEN 1 ELSE 0 END"
+            ") + ("
+            "CASE WHEN constant_notional_exposure IS NOT NULL THEN 1 ELSE 0 END"
+            ") + ("
+            "CASE WHEN single_asset_quantity IS NOT NULL THEN 1 ELSE 0 END"
+            ") = 1",
+            name="ck_target_positions_single_exposure",
+        ),
+        Index(None, "asset_uid"),
+        Index(None, "portfolio_uid"),
+        Index(None, "position_set_uid", "target_type", "target_uid"),
+    )
+    __time_index_name__: ClassVar[str] = "time_index"
+    __index_names__: ClassVar[list[str]] = [
+        "time_index",
+        "position_set_uid",
+        "target_type",
+        "target_uid",
+    ]
+
+    time_index: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        info={
+            "label": "Time Index",
+            "description": "UTC timestamp for the target-position exposure snapshot.",
+        },
+    )
+    position_set_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            f"{PositionSetTable.__table__.fullname}.uid",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+        info={
+            "label": "Position Set UID",
+            "description": (
+                "PositionSetTable.uid for the account target-position snapshot "
+                "that owns this exposure row."
+            ),
+        },
+    )
+    target_type: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        info={
+            "label": "Target Type",
+            "description": "Target object kind for this exposure row: asset or portfolio.",
+        },
+    )
+    target_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=False,
+        info={
+            "label": "Target UID",
+            "description": (
+                "Canonical non-null target identity. Matches asset_uid for asset "
+                "rows and portfolio_uid for portfolio rows."
+            ),
+        },
+    )
+    asset_uid: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.uid",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        info={
+            "label": "Asset UID",
+            "description": (
+                "AssetTable.uid when target_type is asset. Null for portfolio "
+                "target rows."
+            ),
+        },
+    )
+    portfolio_uid: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            f"{PortfolioTable.__table__.fullname}.uid",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        info={
+            "label": "Portfolio UID",
+            "description": (
+                "PortfolioTable.uid when target_type is portfolio. Null for "
+                "direct asset target rows."
+            ),
+        },
+    )
+    weight_notional_exposure: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={
+            "label": "Weight Notional Exposure",
+            "description": "Target exposure as a notional portfolio weight when this exposure mode is used.",
+        },
+    )
+    constant_notional_exposure: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={
+            "label": "Constant Notional Exposure",
+            "description": "Target exposure as an absolute notional amount when this exposure mode is used.",
+        },
+    )
+    single_asset_quantity: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={
+            "label": "Single Asset Quantity",
+            "description": "Target exposure as a direct quantity when this exposure mode is used.",
+        },
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        info={
+            "label": "Metadata",
+            "description": "JSONB payload for target-position source, notes, or downstream routing hints.",
+        },
+    )
+
+
 __all__ = [
     "InterpolatedPricesStorage",
     "PORTFOLIO_IDENTIFIER_DIMENSION",
@@ -445,5 +601,6 @@ __all__ = [
     "PortfolioWeightsStorage",
     "PortfoliosStorage",
     "SignalWeightsStorage",
+    "TargetPositionsStorage",
     "VirtualFundHoldingsStorage",
 ]

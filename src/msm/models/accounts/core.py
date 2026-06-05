@@ -309,8 +309,8 @@ class PositionSetTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_description__ = (
         "Target position-set registry keyed by account_target_portfolio_uid and "
         "position_set_time. Each row names one concrete target-position snapshot; "
-        "actual asset exposure rows live in TargetPositionsStorage and reference "
-        "this uid through position_set_uid."
+        "portfolio-aware target exposure rows live in msm_portfolios "
+        "TargetPositionsStorage and reference this uid through position_set_uid."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
@@ -376,8 +376,8 @@ class PositionSetTable(MarketsMetaTableMixin, MarketsBase):
         info={
             "label": "Metadata",
             "description": (
-                "JSON metadata for the target snapshot. Asset exposure values are "
-                "stored in TargetPositionsStorage, not on this registry row."
+                "JSON metadata for the target snapshot. Exposure values are stored "
+                "in portfolio-aware TargetPositionsStorage, not on this registry row."
             ),
         },
     )

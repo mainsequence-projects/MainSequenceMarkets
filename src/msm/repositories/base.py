@@ -154,6 +154,7 @@ def compile_markets_statement(
     return compile_sqlalchemy_statement(
         statement,
         operation=operation,
+        data_source_uid=getattr(context, "data_source_uid", None),
         scope_tables=[context.scope_table(model, access=access) for model in models],
         limits=context.limits,
     )

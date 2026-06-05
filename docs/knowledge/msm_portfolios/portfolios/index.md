@@ -165,6 +165,53 @@ MetaTables:
           DataNode update logic                                  PlatformTimeIndexMetaTable
 ```
 
+## Account Target-Position Exposure To Portfolios
+
+Account model-portfolio registry rows remain core `msm` account concepts:
+`AccountModelPortfolioTable`, `AccountTargetPortfolioTable`, and
+`PositionSetTable`. The timestamped target exposure rows that can reference a
+constructed portfolio live in `msm_portfolios` because they need a real
+`portfolio_uid -> PortfolioTable.uid` foreign key.
+
+```text
++-----------------------------+       position_set_uid       +-----------------------------+
+| PositionSetTable            |<-----------------------------| TargetPositionsStorage      |
+| owner: msm                  |                              | owner: msm_portfolios       |
+|-----------------------------|                              |-----------------------------|
+| uid PK                      |                              | time_index                  |
+| account_target_portfolio_uid|                              | target_type                 |
+| position_set_time UTC       |                              | target_uid                  |
++-----------------------------+                              | asset_uid nullable FK       |
+                                                               | portfolio_uid nullable FK   |
+                                                               | exposure columns            |
+                                                               +-------------+---------------+
+                                                                             |
+                                                                             | portfolio_uid
+                                                                             v
+                                                               +-----------------------------+
+                                                               | PortfolioTable              |
+                                                               | uid PK                      |
+                                                               | unique_identifier unique    |
+                                                               +-----------------------------+
+```
+
+A target row has exactly one target:
+
+```text
+target_type = asset
+  target_uid = asset_uid
+  asset_uid -> AssetTable.uid
+
+target_type = portfolio
+  target_uid = portfolio_uid
+  portfolio_uid -> PortfolioTable.uid
+```
+
+Portfolio target rows are mandate exposure, not custody holdings and not
+portfolio indices. They are expanded into asset-level exposure only when a
+downstream workflow explicitly calls the portfolio expansion service and
+provides a resolver for current portfolio weights.
+
 ## Portfolio Construction And Virtual Fund Allocation Relationships
 
 Portfolio construction produces portfolio artifacts. It does not own

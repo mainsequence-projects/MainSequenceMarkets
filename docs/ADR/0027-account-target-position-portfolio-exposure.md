@@ -2,11 +2,10 @@
 
 ## Status
 
-Accepted - planned
+Accepted - implemented
 
 This ADR defines the target architecture for account target-position rows that
-can reference either direct assets or constructed portfolios. It is not yet
-implemented.
+can reference either direct assets or constructed portfolios.
 
 ## Context
 
@@ -248,6 +247,9 @@ Required documentation updates:
   portfolio workflow skill under `.agents/skills/ms_markets/`.
 - Examples must be updated with the documentation, not after it. The example
   should be the executable form of the documented relationship diagram.
+- Account and portfolio examples should be chainable. The account workflow
+  should default to reusing the portfolio example output, then assign the
+  created `Portfolio.uid` as a portfolio target position.
 
 ## Non-Goals
 
@@ -262,33 +264,35 @@ Required documentation updates:
 
 ## Implementation Tasks
 
-- [ ] Move portfolio-aware target-position storage ownership to
+- [x] Move portfolio-aware target-position storage ownership to
       `msm_portfolios` while keeping account registry MetaTables in core `msm`.
-- [ ] Replace `TargetPositionsStorage.asset_identifier` with `target_type`,
+- [x] Replace `TargetPositionsStorage.asset_identifier` with `target_type`,
       `target_uid`, `asset_uid`, and `portfolio_uid`.
-- [ ] Change `TargetPositionsStorage.__index_names__` to
+- [x] Change `TargetPositionsStorage.__index_names__` to
       `["time_index", "position_set_uid", "target_type", "target_uid"]`.
-- [ ] Add SQL checks enforcing exactly one concrete target FK and consistency
+- [x] Add SQL checks enforcing exactly one concrete target FK and consistency
       between `target_type`, `target_uid`, `asset_uid`, and `portfolio_uid`.
-- [ ] Add indexes for `asset_uid`, `portfolio_uid`, and
+- [x] Add indexes for `asset_uid`, `portfolio_uid`, and
       `(position_set_uid, target_type, target_uid)`.
-- [ ] Update target-position frame builders to accept exactly one of
+- [x] Update target-position frame builders to accept exactly one of
       `asset_uid` or `portfolio_uid` and to populate `target_type` and
       `target_uid`.
-- [ ] Update target-position validation to reject `asset_identifier` payloads
+- [x] Update target-position validation to reject `asset_identifier` payloads
       and any row with both or neither target FK.
-- [ ] Update account target-position snapshot services to return target
+- [x] Update account target-position snapshot services to return target
       metadata for both asset and portfolio rows.
-- [ ] Add a portfolio-target expansion service that resolves `portfolio_uid` to
+- [x] Add a portfolio-target expansion service that resolves `portfolio_uid` to
       current portfolio weights only when a downstream workflow explicitly asks
       for asset-level exposure.
-- [ ] Update account and portfolio examples to publish target rows containing
+- [x] Update account and portfolio examples to publish target rows containing
       both a direct asset target and a portfolio target.
-- [ ] Update account docs, portfolio docs, tutorial docs, examples, packaged
+- [x] Make the account example chain the reusable portfolio example by default
+      and use the resulting `Portfolio.uid` as the portfolio target.
+- [x] Update account docs, portfolio docs, tutorial docs, examples, packaged
       skills, and ASCII diagrams according to the Documentation Update
       Requirements section.
-- [ ] Generate the Alembic migration under the active namespace version graph.
-- [ ] Add tests for asset target rows, portfolio target rows, invalid mixed
+- [x] Generate the Alembic migration under the active namespace version graph.
+- [x] Add tests for asset target rows, portfolio target rows, invalid mixed
       target rows, storage index names, service payload validation, and
       portfolio expansion behavior.
 

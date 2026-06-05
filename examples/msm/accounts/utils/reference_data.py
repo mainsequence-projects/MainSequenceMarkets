@@ -51,6 +51,10 @@ EXAMPLE_ACCOUNT_TARGET_PORTFOLIO = {
     "metadata_json": {"source": EXAMPLE_ACCOUNT_WORKFLOW_SOURCE},
 }
 
+EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO = {
+    "unique_identifier": "example-account-target-sleeve",
+}
+
 
 def example_account_holdings_positions(
     *,
@@ -77,15 +81,20 @@ def example_account_holdings_positions(
     ]
 
 
-def example_account_target_positions() -> list[dict[str, Any]]:
+def example_account_target_positions(
+    *,
+    asset_uid: Any,
+    portfolio_uid: Any,
+) -> list[dict[str, Any]]:
     return [
         {
-            "asset_identifier": EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
+            "asset_uid": asset_uid,
             "weight_notional_exposure": 0.6,
         },
         {
-            "asset_identifier": EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
+            "portfolio_uid": portfolio_uid,
             "weight_notional_exposure": 0.4,
+            "metadata_json": {"portfolio_role": "satellite_sleeve"},
         },
     ]
 
@@ -96,6 +105,7 @@ __all__ = [
     "EXAMPLE_ACCOUNT_WORKFLOW_SOURCE",
     "EXAMPLE_ACCOUNT_MODEL_PORTFOLIO",
     "EXAMPLE_ACCOUNT_TARGET_PORTFOLIO",
+    "EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO",
     "example_account_holdings_positions",
     "example_account_target_positions",
 ]

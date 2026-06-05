@@ -37,6 +37,7 @@ from .signal_weights import (
     normalize_signal_weights_frame,
 )
 from .storage_initialization import initialize_portfolio_storage_source_tables
+from .target_positions import TargetPositions, TargetPositionsDataNodeConfiguration
 from .virtual_funds import VirtualFundHoldings
 
 __all__ = [
@@ -58,6 +59,8 @@ __all__ = [
     "PortfolioWeights",
     "SignalWeights",
     "SignalWeightsConfiguration",
+    "TargetPositions",
+    "TargetPositionsDataNodeConfiguration",
     "VirtualFundHoldings",
     "PORTFOLIO_CANONICAL_TIME_INDEX_NAME",
     "PortfolioCanonicalDataNode",

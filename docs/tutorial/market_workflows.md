@@ -320,7 +320,10 @@ DataNode storage UIDs, frame row counts, and the local-only mode used by
 
 ```python
 from msm.api.accounts import AccountHoldingsSet, AccountTargetPortfolio, PositionSet
-from msm.services import build_account_holdings_frame, build_target_positions_frame
+from msm.api.assets import Asset
+from msm.services import build_account_holdings_frame
+from msm_portfolios.api.portfolios import Portfolio
+from msm_portfolios.services import build_target_positions_frame
 
 holdings_set = AccountHoldingsSet.upsert(
     account_uid=account.uid,
@@ -345,13 +348,15 @@ position_set = PositionSet.upsert(
     account_target_portfolio_uid=account_target_portfolio.uid,
     position_set_time="2026-05-25T00:00:00Z",
 )
+btc_asset = Asset.upsert(unique_identifier="BTC", asset_type="crypto")
+portfolio_sleeve = Portfolio.upsert(unique_identifier="account-main-sleeve")
 
 targets = build_target_positions_frame(
     target_positions_date="2026-05-25T00:00:00Z",
     position_set_uid=position_set.uid,
     positions=[
-        {"asset_identifier": "BTC", "weight_notional_exposure": 0.6},
-        {"asset_identifier": "ETH", "weight_notional_exposure": 0.4},
+        {"asset_uid": btc_asset.uid, "weight_notional_exposure": 0.6},
+        {"portfolio_uid": portfolio_sleeve.uid, "weight_notional_exposure": 0.4},
     ],
 )
 ```

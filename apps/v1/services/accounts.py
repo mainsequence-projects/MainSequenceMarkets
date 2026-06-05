@@ -123,13 +123,14 @@ def _get_holdings_runtime():
 
 
 def _get_target_positions_runtime():
-    from apps.v1.runtime_bootstrap import resolve_apps_v1_runtime
+    from apps.v1.runtime_bootstrap import resolve_apps_v1_portfolio_runtime
 
-    return resolve_apps_v1_runtime(
+    return resolve_apps_v1_portfolio_runtime(
         models=[
             "Account",
             "AccountTargetPortfolio",
             "PositionSet",
+            "Portfolio",
             "TargetPositionsStorage",
             "Asset",
             "AssetSnapshotsStorage",
@@ -163,6 +164,6 @@ def _add_account_holdings_snapshot_response(context, **kwargs):
 
 
 def _get_account_target_positions_snapshot_response(context, **kwargs):
-    from msm.services import get_account_target_positions_snapshot_response
+    from msm_portfolios.services import get_account_target_positions_snapshot_response
 
     return get_account_target_positions_snapshot_response(context, **kwargs)

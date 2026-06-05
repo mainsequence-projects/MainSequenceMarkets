@@ -19,6 +19,8 @@ _EXPORTS = {
     "PortfoliosDataNode": ".data_nodes",
     "SignalWeights": ".data_nodes",
     "SignalWeightsConfiguration": ".data_nodes",
+    "TargetPositions": ".data_nodes",
+    "TargetPositionsDataNodeConfiguration": ".data_nodes",
     "attach_schemas": ".bootstrap",
     "canonical_portfolio_configuration": ".data_nodes",
     "canonical_signal_configuration": ".data_nodes",
@@ -30,6 +32,10 @@ _EXPORTS = {
     "normalize_portfolio_values_frame": ".data_nodes",
     "normalize_portfolio_weights_frame": ".data_nodes",
     "normalize_signal_weights_frame": ".data_nodes",
+    "build_target_positions_frame": ".services",
+    "expand_portfolio_target_positions": ".services",
+    "validate_target_position_payload": ".services",
+    "validate_target_positions_frame": ".services",
     "start_engine": ".bootstrap",
 }
 

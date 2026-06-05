@@ -12,7 +12,6 @@ _EXPORTS = {
     "build_account_holdings_frame": ".holdings",
     "build_pandas_market_calendar_materialization": ".calendars",
     "build_holdings_frame": ".holdings",
-    "build_target_positions_frame": ".target_positions",
     "bulk_upsert_calendar_date_records": ".calendars",
     "bulk_upsert_calendar_event_records": ".calendars",
     "bulk_upsert_calendar_session_records": ".calendars",
@@ -51,7 +50,6 @@ _EXPORTS = {
     "get_account_by_uid": ".accounts",
     "get_account_frontend_detail_summary": ".accounts",
     "get_account_holdings_snapshot_response": ".accounts",
-    "get_account_target_positions_snapshot_response": ".accounts",
     "get_asset_frontend_detail_summary": ".asset_master_lists",
     "get_asset_record": ".asset_master_lists",
     "get_asset_by_uid": ".assets",
@@ -112,8 +110,6 @@ _EXPORTS = {
     "update_order_manager": ".execution",
     "upsert_asset": ".assets",
     "validate_holdings_frame": ".holdings",
-    "validate_target_position_payload": ".target_positions",
-    "validate_target_positions_frame": ".target_positions",
 }
 
 

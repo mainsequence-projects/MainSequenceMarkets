@@ -79,11 +79,16 @@ Current local-dev behavior:
     `target_positions_date`
   - resolves active account target portfolios, selects one `PositionSetTable`
     snapshot, and returns its `TargetPositionsStorage` exposure rows
+  - each position carries `target_type`, `target_uid`, and exactly one concrete
+    target reference: `asset_uid` or `portfolio_uid`
   - returns 200 with an empty `positions` list when the account exists but no
     target-position snapshot matches
   - asset details include `uid`, `unique_identifier`, and latest
     `AssetSnapshotsStorage` `name` / `ticker`; no OpenFIGI or numeric asset id
     fields are returned
+  - portfolio details include `uid`, `unique_identifier`, and optional
+    `portfolio_index_uid`; portfolio targets are mandate exposure, not custody
+    holdings
 
 ### Assets
 

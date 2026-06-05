@@ -492,6 +492,7 @@ def test_add_account_holdings_returns_409_when_snapshot_exists(monkeypatch) -> N
 def test_get_account_target_positions_returns_snapshot(monkeypatch) -> None:
     account_uid = uuid.uuid4()
     asset_uid = uuid.uuid4()
+    portfolio_uid = uuid.uuid4()
 
     monkeypatch.setattr(
         "apps.v1.routers.accounts.get_account_target_positions",
@@ -501,6 +502,10 @@ def test_get_account_target_positions_returns_snapshot(monkeypatch) -> None:
             "position_set_uid": "position-set-uid",
             "positions": [
                 {
+                    "target_type": "asset",
+                    "target_uid": str(asset_uid),
+                    "asset_uid": str(asset_uid),
+                    "portfolio_uid": None,
                     "unique_identifier": "btc_spot",
                     "weight_notional_exposure": "0.55",
                     "constant_notional_exposure": None,
@@ -512,6 +517,23 @@ def test_get_account_target_positions_returns_snapshot(monkeypatch) -> None:
                             "name": "Bitcoin spot",
                             "ticker": "BTC",
                         },
+                    },
+                    "portfolio": None,
+                },
+                {
+                    "target_type": "portfolio",
+                    "target_uid": str(portfolio_uid),
+                    "asset_uid": None,
+                    "portfolio_uid": str(portfolio_uid),
+                    "unique_identifier": "example-sleeve",
+                    "weight_notional_exposure": "0.45",
+                    "constant_notional_exposure": None,
+                    "single_asset_quantity": None,
+                    "asset": None,
+                    "portfolio": {
+                        "uid": str(portfolio_uid),
+                        "unique_identifier": "example-sleeve",
+                        "portfolio_index_uid": None,
                     },
                 }
             ],
@@ -535,6 +557,11 @@ def test_get_account_target_positions_returns_snapshot(monkeypatch) -> None:
             "name": "Bitcoin spot",
             "ticker": "BTC",
         },
+    }
+    assert body["positions"][1]["portfolio"] == {
+        "uid": str(portfolio_uid),
+        "unique_identifier": "example-sleeve",
+        "portfolio_index_uid": None,
     }
     assert "figi" not in body["positions"][0]["asset"]
     assert "id" not in body["positions"][0]["asset"]
@@ -715,11 +742,16 @@ def test_account_target_positions_service_maps_snapshot(monkeypatch) -> None:
             "position_set_uid": "position-set-uid",
             "positions": [
                 {
+                    "target_type": "asset",
+                    "target_uid": "asset-target-uid",
+                    "asset_uid": "asset-target-uid",
+                    "portfolio_uid": None,
                     "unique_identifier": "btc_spot",
                     "weight_notional_exposure": "0.55",
                     "constant_notional_exposure": None,
                     "single_asset_quantity": None,
                     "asset": None,
+                    "portfolio": None,
                 }
             ],
         },
@@ -1065,6 +1097,7 @@ def test_account_repository_builds_atomic_holdings_replacement_operation() -> No
     from msm.repositories import accounts as account_repository
 
     class FakeContext:
+        data_source_uid = "test-data-source"
         limits = None
 
         def scope_table(self, model, *, access="read", alias=None):
@@ -1166,29 +1199,30 @@ def test_core_add_account_holdings_snapshot_rejects_asset_uid_mismatch(
         )
 
 
-def test_core_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
+def test_portfolio_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
     account_uid = uuid.uuid4()
     target_portfolio_uid = uuid.uuid4()
     older_position_set_uid = uuid.uuid4()
     latest_position_set_uid = uuid.uuid4()
     asset_uid = uuid.uuid4()
+    portfolio_uid = uuid.uuid4()
     older_time = dt.datetime(2026, 6, 1, 10, 30, tzinfo=dt.UTC)
     latest_time = dt.datetime(2026, 6, 2, 10, 30, tzinfo=dt.UTC)
 
-    from msm.services import accounts as account_services
+    from msm_portfolios.services import target_positions as target_position_services
 
     monkeypatch.setattr(
-        account_services,
+        target_position_services,
         "get_account_by_uid",
         lambda context, uid: {"row": {"uid": str(account_uid)}},
     )
     monkeypatch.setattr(
-        account_services,
+        target_position_services,
         "_search_active_account_target_portfolio_rows",
         lambda context, account_uid: [{"uid": str(target_portfolio_uid)}],
     )
     monkeypatch.setattr(
-        account_services,
+        target_position_services,
         "_search_position_set_rows_for_target_portfolios",
         lambda context, target_portfolio_uids, position_set_time: [
             {
@@ -1204,24 +1238,40 @@ def test_core_account_target_positions_snapshot_selects_latest(monkeypatch) -> N
         ],
     )
     monkeypatch.setattr(
-        account_services,
+        target_position_services,
         "_search_target_position_rows",
         lambda context, position_set_uid, target_positions_date, limit: [
             {
                 "time_index": latest_time,
                 "position_set_uid": position_set_uid,
-                "asset_identifier": "btc_spot",
+                "target_type": "asset",
+                "target_uid": str(asset_uid),
+                "asset_uid": str(asset_uid),
+                "portfolio_uid": None,
                 "weight_notional_exposure": 0.55,
                 "constant_notional_exposure": None,
                 "single_asset_quantity": None,
+                "metadata_json": {},
+            },
+            {
+                "time_index": latest_time,
+                "position_set_uid": position_set_uid,
+                "target_type": "portfolio",
+                "target_uid": str(portfolio_uid),
+                "asset_uid": None,
+                "portfolio_uid": str(portfolio_uid),
+                "weight_notional_exposure": 0.45,
+                "constant_notional_exposure": None,
+                "single_asset_quantity": None,
+                "metadata_json": {},
             }
         ],
     )
     monkeypatch.setattr(
-        account_services,
-        "_asset_snapshot_references_by_unique_identifier",
+        target_position_services,
+        "_asset_references_by_uid",
         lambda context, rows: {
-            "btc_spot": {
+            str(asset_uid): {
                 "uid": str(asset_uid),
                 "unique_identifier": "btc_spot",
                 "current_snapshot": {
@@ -1231,8 +1281,19 @@ def test_core_account_target_positions_snapshot_selects_latest(monkeypatch) -> N
             }
         },
     )
+    monkeypatch.setattr(
+        target_position_services,
+        "_portfolio_references_by_uid",
+        lambda context, rows: {
+            str(portfolio_uid): {
+                "uid": str(portfolio_uid),
+                "unique_identifier": "example-sleeve",
+                "portfolio_index_uid": None,
+            }
+        },
+    )
 
-    snapshot = account_services.get_account_target_positions_snapshot_response(
+    snapshot = target_position_services.get_account_target_positions_snapshot_response(
         object(),
         account_uid=str(account_uid),
     )
@@ -1243,6 +1304,10 @@ def test_core_account_target_positions_snapshot_selects_latest(monkeypatch) -> N
         "position_set_uid": str(latest_position_set_uid),
         "positions": [
             {
+                "target_type": "asset",
+                "target_uid": str(asset_uid),
+                "asset_uid": str(asset_uid),
+                "portfolio_uid": None,
                 "unique_identifier": "btc_spot",
                 "weight_notional_exposure": "0.55",
                 "constant_notional_exposure": None,
@@ -1254,6 +1319,23 @@ def test_core_account_target_positions_snapshot_selects_latest(monkeypatch) -> N
                         "name": "Bitcoin spot",
                         "ticker": "BTC",
                     },
+                },
+                "portfolio": None,
+            },
+            {
+                "target_type": "portfolio",
+                "target_uid": str(portfolio_uid),
+                "asset_uid": None,
+                "portfolio_uid": str(portfolio_uid),
+                "unique_identifier": "example-sleeve",
+                "weight_notional_exposure": "0.45",
+                "constant_notional_exposure": None,
+                "single_asset_quantity": None,
+                "asset": None,
+                "portfolio": {
+                    "uid": str(portfolio_uid),
+                    "unique_identifier": "example-sleeve",
+                    "portfolio_index_uid": None,
                 },
             }
         ],
@@ -1295,23 +1377,23 @@ def test_core_account_holdings_snapshot_returns_empty_for_no_data(monkeypatch) -
     }
 
 
-def test_core_account_target_positions_snapshot_returns_empty_for_no_data(monkeypatch) -> None:
+def test_portfolio_account_target_positions_snapshot_returns_empty_for_no_data(monkeypatch) -> None:
     account_uid = uuid.uuid4()
 
-    from msm.services import accounts as account_services
+    from msm_portfolios.services import target_positions as target_position_services
 
     monkeypatch.setattr(
-        account_services,
+        target_position_services,
         "get_account_by_uid",
         lambda context, uid: {"row": {"uid": str(account_uid)}},
     )
     monkeypatch.setattr(
-        account_services,
+        target_position_services,
         "_search_active_account_target_portfolio_rows",
         lambda context, account_uid: [],
     )
 
-    snapshot = account_services.get_account_target_positions_snapshot_response(
+    snapshot = target_position_services.get_account_target_positions_snapshot_response(
         object(),
         account_uid=str(account_uid),
     )

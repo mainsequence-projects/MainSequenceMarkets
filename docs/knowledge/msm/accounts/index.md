@@ -19,9 +19,9 @@ MetaTable
 PlatformTimeIndexMetaTable
   SQLAlchemy storage class registered through the SDK migration/catalog lifecycle. It
   describes the published table shape: time index, dimension indexes, column
-  dtypes, foreign keys, and storage identity. AccountHoldings and
-  TargetPositionsStorage use registered storage classes; they do not create
-  storage through `initialize_source_table`.
+  dtypes, foreign keys, and storage identity. AccountHoldings use registered
+  core `msm` storage classes. Portfolio-aware target-position exposure storage
+  is owned by `msm_portfolios` because those rows can reference `PortfolioTable`.
 ```
 
 Do not confuse these layers. `Account.upsert(...)` writes one account registry
@@ -42,7 +42,9 @@ from msm.api.accounts import (
     AccountTargetPortfolio,
     PositionSet,
 )
-from msm.services import build_target_positions_frame
+from msm.api.assets import Asset
+from msm_portfolios.api.portfolios import Portfolio
+from msm_portfolios.services import build_target_positions_frame
 
 model_portfolio = AccountModelPortfolio.upsert(
     model_portfolio_name="balanced-model",
@@ -62,6 +64,8 @@ account = Account.upsert(
     account_group_uid=account_group.uid,
 )
 
+btc_asset = Asset.upsert(unique_identifier="BTC-USD", asset_type="crypto")
+
 target_portfolio = AccountTargetPortfolio.upsert(
     unique_identifier="acct-main-balanced-target",
     account_uid=account.uid,
@@ -74,11 +78,14 @@ position_set = PositionSet.upsert(
     position_set_time=dt.datetime(2026, 5, 25, tzinfo=dt.UTC),
 )
 
+portfolio_sleeve = Portfolio.upsert(unique_identifier="btc-eth-sleeve")
+
 target_positions = build_target_positions_frame(
     target_positions_date=position_set.position_set_time,
     position_set_uid=position_set.uid,
     positions=[
-        {"asset_identifier": "BTC-USD", "weight_notional_exposure": 1.0},
+        {"asset_uid": btc_asset.uid, "weight_notional_exposure": 0.6},
+        {"portfolio_uid": portfolio_sleeve.uid, "weight_notional_exposure": 0.4},
     ],
 )
 ```
@@ -89,9 +96,7 @@ Use the DataNode package for holdings:
 from msm.data_nodes.accounts import AccountHoldings
 
 holdings_node = AccountHoldings(
-    config=AccountHoldings.default_config(
-        identifier="my_project.account_holdings",
-    ),
+    config=AccountHoldings.default_config(),
 )
 holdings_node.set_account_holdings_frame(
     holdings_date="2026-05-28T00:00:00Z",
@@ -126,15 +131,18 @@ positions as signed exposure (`quantity * direction`). Holdings reads remain
 explicit by requiring the caller to pass the holdings frame. Do not pass the raw
 `AccountHoldings.run(...)` tuple; unpack it and pass the DataFrame.
 
-The full workflow example is `examples/msm/accounts/account_workflow.py`. It creates
-two crypto assets, publishes `AssetSnapshot` rows with canonical ticker and name
-metadata, creates two accounts, assigns both to one account group, points both
-account-specific target portfolio relationships at the same reusable
-`AccountModelPortfolio`, publishes two-asset target position rows for each
-`PositionSet`, publishes two-asset account holdings, and pretty-prints positions
-for each account. It reuses the shared asset example payloads from
-`examples/msm/assets/utils` and account-specific payloads from
-`examples/msm/accounts/utils`.
+The full workflow example is `examples/msm/accounts/account_workflow.py`. By
+default it first runs
+`examples/msm_portfolios/portfolio_equal_weights_example.py`, reuses the
+resulting `Portfolio` row as a target sleeve, publishes `AssetSnapshot` rows
+with canonical ticker and name metadata, creates two accounts, assigns both to
+one account group, points both account-specific target portfolio relationships
+at the same reusable `AccountModelPortfolio`, publishes target-position rows
+containing one direct asset target and one portfolio target for each
+`PositionSet`, publishes two-asset account holdings, and pretty-prints
+positions for each account. Pass `--standalone-target-portfolio` or call
+`run_account_workflow(use_portfolio_example=False)` only when testing the
+account path without chaining the portfolio example.
 
 There is no top-level `msm.accounts` shim. Import account rows from
 `msm.api.accounts` and account holdings DataNodes from
@@ -211,19 +219,22 @@ There is no top-level `msm.accounts` shim. Import account rows from
 | TargetPositionsStorage        |
 | DynamicTableMetaData /        |
 | PlatformTimeIndexMetaTable     |
+| owner: msm_portfolios         |
 |-------------------------------|
 | time_index                    |
 | position_set_uid              |
-| asset_identifier FK           |
-|  -> Asset.unique_identifier   |
+| target_type asset/portfolio   |
+| target_uid                    |
+| asset_uid nullable FK         |
+| portfolio_uid nullable FK     |
 | weight_notional_exposure      |
 | constant_notional_exposure    |
 | single_asset_quantity         |
 | exactly one exposure required |
-+-------------------------------+
-                |
-                | asset_identifier FK
-                v
++------------+------------------+
+             |                  |
+             | asset_uid FK     | portfolio_uid FK
+             v                  v
 +-------------------------------+
 | AssetTable                    |
 | MetaTable: Asset              |
@@ -231,6 +242,14 @@ There is no top-level `msm.accounts` shim. Import account rows from
 | uid PK                        |
 | unique_identifier unique      |
 +-------------------------------+
+                                +-------------------------------+
+                                | PortfolioTable                |
+                                | MetaTable: Portfolio          |
+                                | owner: msm_portfolios         |
+                                |-------------------------------|
+                                | uid PK                        |
+                                | unique_identifier unique      |
+                                +-------------------------------+
 ```
 
 `AccountTable.uid` is the canonical account identity used by other MetaTables and
@@ -254,9 +273,11 @@ are versioned through `AccountTargetPortfolioTable` and `PositionSetTable`:
    model portfolio.
 2. `PositionSetTable` names one concrete target snapshot for that account target
    portfolio at a UTC `position_set_time`.
-3. `TargetPositionsStorage` stores the actual asset exposure rows, points back
-   to `PositionSetTable.uid` with `position_set_uid`, and points to
-   `AssetTable.unique_identifier` with `asset_identifier`.
+3. `TargetPositionsStorage` stores actual target exposure rows in
+   `msm_portfolios`, points back to `PositionSetTable.uid` with
+   `position_set_uid`, and references exactly one concrete target:
+   `asset_uid -> AssetTable.uid` for direct asset exposure or
+   `portfolio_uid -> PortfolioTable.uid` for portfolio-sleeve exposure.
 
 This keeps account identity, account grouping, model-portfolio intent, and
 timestamped target rows in separate places.
@@ -387,17 +408,22 @@ import msm
 msm.start_engine(models=["Asset", "AccountModelPortfolio", "AccountGroup", "Account"])
 ```
 
-For target portfolios and target position sets, include the child tables and
-the target-position storage contract:
+For target portfolios and target position sets without portfolio exposure,
+core account registry rows can be attached through `msm.start_engine(...)`.
+For portfolio-aware target-position storage, use `msm_portfolios.start_engine(...)`
+so the runtime can attach both `PortfolioTable` and `TargetPositionsStorage`:
 
 ```python
-msm.start_engine(
+import msm_portfolios
+
+msm_portfolios.start_engine(
     models=[
         "AccountModelPortfolio",
         "AccountGroup",
         "Account",
         "AccountTargetPortfolio",
         "PositionSet",
+        "Portfolio",
         "TargetPositionsStorage",
     ]
 )
@@ -419,6 +445,11 @@ Add timestamped account or fund observations as DataNodes under
 `msm.data_nodes.accounts`. Define the table contract with a
 `PlatformTimeIndexMetaTable` storage class in `msm.data_nodes.storage` and keep
 the published row grain explicit.
+
+Add account target-position exposure rows that can point at portfolios under
+`msm_portfolios`. Core `msm` owns the account registry and `PositionSetTable`;
+`msm_portfolios` owns `TargetPositionsStorage` because it has the
+`portfolio_uid -> PortfolioTable.uid` foreign key.
 
 Do not put holdings rows into `AccountTable`. Do not add static account fields to
 `AccountHoldings`. The split is what keeps account identity stable while

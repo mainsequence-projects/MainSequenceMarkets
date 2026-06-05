@@ -156,16 +156,17 @@ Use this workflow when publishing and inspecting account positions:
 1. Before runtime, run the admin migration flow with
    `mainsequence migrations upgrade --provider migrations:migration head`
    so the package schema and catalog are finalized.
-2. Attach `AssetType`, `Asset`, `AccountModelPortfolio`, `AccountGroup`,
-   `Account`, `AccountTargetPortfolio`, `PositionSet`,
-   `AccountHoldingsStorage`, and `TargetPositionsStorage` through
-   `msm.start_engine(...)`.
+2. Attach account holdings through `msm.start_engine(...)`. When target
+   positions can reference portfolios, attach `Portfolio` and
+   `TargetPositionsStorage` through `msm_portfolios.start_engine(...)`.
 3. Create or upsert the account model portfolio and account group, then create
    the account with `account_group_uid`.
 4. Create the `AccountTargetPortfolio` relation for the account and model
    portfolio, then create a UTC `PositionSet` snapshot under that relation.
-5. Build target-position rows with `build_target_positions_frame(...)` using
-   `position_set.uid` as `position_set_uid`.
+5. Build target-position rows with
+   `msm_portfolios.services.build_target_positions_frame(...)` using
+   `position_set.uid` as `position_set_uid`, and use `asset_uid` for direct
+   asset targets or `portfolio_uid` for portfolio sleeve targets.
 6. Build holdings rows with `build_account_holdings_frame(...)` and attach the
    real combined frame to `AccountHoldings` with `set_frame(...)`. For a single
    account, `set_account_holdings_frame(...)` is the convenience path.
@@ -173,12 +174,13 @@ Use this workflow when publishing and inspecting account positions:
    `error_on_last_update, holdings_frame = holdings_node.run(...)`.
 8. Pass only `holdings_frame` to `Account.pretty_print_positions(...)`.
 
-See `examples/msm/accounts/account_workflow.py` for the full account path: account
-group creation, two account registrations, two asset registrations, canonical
-asset snapshot publication with ticker/name metadata, one shared account model
-portfolio, account-owned target portfolio relationships, two-asset `PositionSet`
-target-row publication, holdings publication, and pretty-printed account
-positions.
+See `examples/msm/accounts/account_workflow.py` for the full account path. By
+default it chains `examples/msm_portfolios/portfolio_equal_weights_example.py`
+to create a reusable portfolio sleeve, then creates the account group, two
+accounts, canonical asset snapshots with ticker/name metadata, one shared
+account model portfolio, account-owned target portfolio relationships, direct
+asset plus portfolio `PositionSet` target-row publication, holdings
+publication, and pretty-printed account positions.
 
 ## Pricing Instrument Identity
 

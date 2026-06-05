@@ -24,8 +24,11 @@ Services answer these questions:
 - `msm_portfolios.services.virtual_funds`: fund creation and lookup workflows over repository
   operations.
 - `msm_portfolios.services.portfolios`: portfolio workflows over repository operations.
-- `msm.services.holdings` and `msm.services.target_positions`: DataNode frame
-  builders and validators for holdings and target position tables.
+- `msm.services.holdings`: DataNode frame builders and validators for account
+  holdings tables.
+- `msm_portfolios.services.target_positions`: portfolio-aware target-position
+  frame builders, validators, snapshot readers, and explicit portfolio
+  expansion helpers.
 - `msm.services.__init__`: service import surface.
 
 ## Key Contracts

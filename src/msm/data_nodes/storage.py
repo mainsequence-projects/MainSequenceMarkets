@@ -27,7 +27,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
-from msm.models.accounts import AccountHoldingsSetTable, AccountTable, PositionSetTable
+from msm.models.accounts import AccountHoldingsSetTable, AccountTable
 from msm.models.assets.core import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
@@ -219,82 +219,6 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
-class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
-    """Reusable target position exposure rows keyed by position set UID."""
-
-    __metatable_identifier__ = "TargetPositionsTS"
-    __metatable_description__ = (
-        "Reusable target-position storage keyed by (time_index, position_set_uid, "
-        "asset_identifier). Each row stores one target exposure instruction that "
-        "belongs to a PositionSetTable row for an account target portfolio."
-    )
-    __time_index_name__: ClassVar[str] = "time_index"
-    __index_names__: ClassVar[list[str]] = [
-        "time_index",
-        "position_set_uid",
-        ASSET_IDENTIFIER_DIMENSION,
-    ]
-
-    time_index: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        info={
-            "label": "Time Index",
-            "description": "Stamped time index for the reusable target position row set.",
-        },
-    )
-    position_set_uid: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True),
-        ForeignKey(
-            f"{PositionSetTable.__table__.fullname}.uid",
-            ondelete="CASCADE",
-        ),
-        nullable=False,
-        info={
-            "label": "Position Set UID",
-            "description": (
-                "PositionSetTable.uid shared by rows in one concrete target-position set."
-            ),
-        },
-    )
-    asset_identifier: Mapped[str] = mapped_column(
-        String,
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.unique_identifier",
-            ondelete="RESTRICT",
-        ),
-        nullable=False,
-        info={
-            "label": "Asset Identifier",
-            "description": "AssetTable.unique_identifier for the target exposure row.",
-        },
-    )
-    weight_notional_exposure: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "Weight Notional Exposure",
-            "description": "Desired exposure expressed as an account weight.",
-        },
-    )
-    constant_notional_exposure: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "Constant Notional Exposure",
-            "description": "Desired constant notional exposure in account currency.",
-        },
-    )
-    single_asset_quantity: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "Single Asset Quantity",
-            "description": "Desired direct single-asset quantity exposure.",
-        },
-    )
-
-
 class OrdersStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Timestamped execution order records keyed by order_time."""
 
@@ -466,6 +390,5 @@ __all__ = [
     "AssetSnapshotsStorage",
     "OrderEventsStorage",
     "OrdersStorage",
-    "TargetPositionsStorage",
     "TradesStorage",
 ]

@@ -33,7 +33,6 @@ from msm.data_nodes.storage import (
     AssetSnapshotsStorage,
     OrderEventsStorage,
     OrdersStorage,
-    TargetPositionsStorage,
     TradesStorage,
 )
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
@@ -158,7 +157,6 @@ def test_execution_error_data_node_is_removed() -> None:
 def test_timestamped_storage_identifiers_use_camel_case_ts_suffix() -> None:
     assert AssetSnapshotsStorage.metatable_identifier() == "AssetSnapshotsTS"
     assert AccountHoldingsStorage.metatable_identifier() == "AccountHoldingsTS"
-    assert TargetPositionsStorage.metatable_identifier() == "TargetPositionsTS"
     assert OrdersStorage.metatable_identifier() == "OrdersTS"
     assert OrderEventsStorage.metatable_identifier() == "OrderEventsTS"
     assert TradesStorage.metatable_identifier() == "TradesTS"

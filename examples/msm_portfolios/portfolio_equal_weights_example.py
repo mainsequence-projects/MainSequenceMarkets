@@ -4,6 +4,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any
 
 import pandas as pd
@@ -68,6 +69,28 @@ ASSET_UNIQUE_IDENTIFIERS = [payload["unique_identifier"] for payload in EXAMPLE_
 ACCOUNT_GROUP_NAME = "Example Portfolio Allocation Accounts"
 ACCOUNT_UNIQUE_IDENTIFIER = "example-portfolio-allocation-account"
 VIRTUAL_FUND_UNIQUE_IDENTIFIER = "example-equal-weight-virtual-fund"
+PORTFOLIO_EXAMPLE_RUNTIME_MODELS = [
+    "IndexType",
+    "Index",
+    "AssetType",
+    "Asset",
+    "AccountGroup",
+    "Account",
+    "AccountHoldingsSet",
+    "AccountHoldingsStorage",
+    "Calendar",
+    "CalendarDate",
+    "CalendarSession",
+    "Portfolio",
+    "VirtualFund",
+    "VirtualFundHoldingsSet",
+    "VirtualFundHoldingsStorage",
+    "SignalMetadata",
+    "RebalanceStrategyMetadata",
+    "PortfolioWeightsStorage",
+    "SignalWeightsStorage",
+    "PortfoliosStorage",
+]
 
 
 def print_step(step: int, message: str) -> None:
@@ -78,32 +101,14 @@ def print_detail(label: str, value: object) -> None:
     print(f"   {label}: {value}")
 
 
-def start_portfolio_example_runtime() -> None:
+def start_portfolio_example_runtime(
+    *,
+    models: Sequence[str] | None = None,
+) -> None:
     """Register the tables/storage used by this portfolio example."""
 
     msm_portfolios.start_engine(
-        models=[
-            "IndexType",
-            "Index",
-            "AssetType",
-            "Asset",
-            "AccountGroup",
-            "Account",
-            "AccountHoldingsSet",
-            "AccountHoldingsStorage",
-            "Calendar",
-            "CalendarDate",
-            "CalendarSession",
-            "Portfolio",
-            "VirtualFund",
-            "VirtualFundHoldingsSet",
-            "VirtualFundHoldingsStorage",
-            "SignalMetadata",
-            "RebalanceStrategyMetadata",
-            "PortfolioWeightsStorage",
-            "SignalWeightsStorage",
-            "PortfoliosStorage",
-        ],
+        models=list(models or PORTFOLIO_EXAMPLE_RUNTIME_MODELS),
     )
 
 
@@ -350,11 +355,15 @@ def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> Non
         print_detail("data_node_mode", "frames built locally; storage publication skipped")
 
 
-def build_equal_weight_portfolio(*, run_data_nodes: bool = True) -> dict[str, Any]:
+def build_equal_weight_portfolio(
+    *,
+    run_data_nodes: bool = True,
+    runtime_models: Sequence[str] | None = None,
+) -> dict[str, Any]:
     """Create the portfolio index, run portfolio DataNodes, and upsert Portfolio."""
 
     print_step(1, "Starting the portfolio example runtime.")
-    start_portfolio_example_runtime()
+    start_portfolio_example_runtime(models=runtime_models)
 
     print_step(2, "Registering the crypto asset universe.")
     assets = register_assets()

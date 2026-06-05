@@ -77,14 +77,12 @@ def _markets_data_node_storage_models() -> list[type]:
         AssetSnapshotsStorage,
         OrderEventsStorage,
         OrdersStorage,
-        TargetPositionsStorage,
         TradesStorage,
     )
 
     return [
         AssetSnapshotsStorage,
         AccountHoldingsStorage,
-        TargetPositionsStorage,
         OrdersStorage,
         OrderEventsStorage,
         TradesStorage,

@@ -98,20 +98,33 @@ class AccountTargetPositionAssetReference(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     uid: str | None = None
-    unique_identifier: str
+    unique_identifier: str | None = None
     current_snapshot: AccountHoldingAssetCurrentSnapshot = Field(
         default_factory=AccountHoldingAssetCurrentSnapshot,
     )
 
 
+class AccountTargetPositionPortfolioReference(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    uid: str | None = None
+    unique_identifier: str | None = None
+    portfolio_index_uid: str | None = None
+
+
 class AccountTargetPositionRow(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
+    target_type: Literal["asset", "portfolio"]
+    target_uid: str
+    asset_uid: str | None = None
+    portfolio_uid: str | None = None
     unique_identifier: str
     weight_notional_exposure: str | None = None
     constant_notional_exposure: str | None = None
     single_asset_quantity: str | None = None
     asset: AccountTargetPositionAssetReference | None = None
+    portfolio: AccountTargetPositionPortfolioReference | None = None
 
 
 class AccountTargetPositionsSnapshotResponse(BaseModel):

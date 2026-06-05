@@ -11,8 +11,10 @@ from msm_portfolios.data_nodes.storage import (
     PortfolioWeightsStorage,
     PortfoliosStorage,
     SignalWeightsStorage,
+    TargetPositionsStorage,
     VirtualFundHoldingsStorage,
 )
+from msm_portfolios.data_nodes.target_positions import TargetPositions
 from msm_portfolios.models import portfolio_sqlalchemy_models
 
 
@@ -23,7 +25,7 @@ def test_portfolio_asset_scope_uses_markets_asset_dimension() -> None:
 def test_portfolio_nodes_expose_storage_first_surface(monkeypatch) -> None:
     registered = set(portfolio_sqlalchemy_models())
 
-    for node_cls in (PortfolioWeights, PortfoliosDataNode, SignalWeights):
+    for node_cls in (PortfolioWeights, PortfoliosDataNode, SignalWeights, TargetPositions):
         assert "__data_node_identifier__" not in node_cls.__dict__
         assert "_default_identifier" not in node_cls.__dict__
         assert "_default_description" not in node_cls.__dict__
@@ -53,4 +55,5 @@ def test_portfolio_storage_identifiers_use_camel_case_ts_suffix() -> None:
     assert SignalWeightsStorage.metatable_identifier() == "SignalWeightsTS"
     assert PortfoliosStorage.metatable_identifier() == "PortfoliosTS"
     assert InterpolatedPricesStorage.metatable_identifier() == "InterpolatedPricesTS"
+    assert TargetPositionsStorage.metatable_identifier() == "TargetPositionsTS"
     assert VirtualFundHoldingsStorage.metatable_identifier() == "VirtualFundHoldingsTS"

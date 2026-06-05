@@ -14,13 +14,16 @@ from msm_portfolios.data_nodes.storage import (
     PortfolioWeightsStorage,
     PortfoliosStorage,
     SignalWeightsStorage,
+    TargetPositionsStorage,
 )
+from msm_portfolios.data_nodes.target_positions import TargetPositions
 from msm_portfolios.models import portfolio_sqlalchemy_models
 
 PORTFOLIO_NODE_STORAGE = (
     (PortfolioWeights, PortfolioWeightsStorage),
     (SignalWeights, SignalWeightsStorage),
     (PortfoliosDataNode, PortfoliosStorage),
+    (TargetPositions, TargetPositionsStorage),
 )
 
 
