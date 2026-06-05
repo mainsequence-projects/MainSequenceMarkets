@@ -111,6 +111,119 @@ def get_calendar_record(
     return _first_operation_row(get_model_by_uid(context, model=CalendarTable, uid=uid))
 
 
+def get_calendar_frontend_detail_summary(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+) -> dict[str, Any] | None:
+    calendar_row = get_calendar_record(context, uid=uid)
+    if calendar_row is None:
+        return None
+
+    calendar_uid = str(calendar_row["uid"])
+    unique_identifier = _string_or_empty(calendar_row.get("unique_identifier"))
+    display_name = _string_or_empty(calendar_row.get("display_name"))
+    calendar_type = _string_or_empty(calendar_row.get("calendar_type"))
+    timezone = _string_or_empty(calendar_row.get("timezone")) or "UTC"
+    source = _string_or_none(calendar_row.get("source"))
+    source_identifier = _string_or_none(calendar_row.get("source_identifier"))
+    valid_from = _date_or_none(calendar_row.get("valid_from"))
+    valid_to = _date_or_none(calendar_row.get("valid_to"))
+    horizon_days = _horizon_days(valid_from=valid_from, valid_to=valid_to)
+
+    return {
+        "entity": {
+            "id": calendar_uid,
+            "type": "calendar",
+            "title": display_name or unique_identifier or calendar_uid,
+        },
+        "badges": [
+            {
+                "key": "calendar_type",
+                "label": calendar_type or "Calendar",
+                "tone": _calendar_type_tone(calendar_type),
+            },
+            {
+                "key": "timezone",
+                "label": timezone,
+                "tone": "neutral",
+            },
+        ],
+        "inline_fields": [
+            {
+                "key": "uid",
+                "label": "UID",
+                "value": calendar_uid,
+                "kind": "code",
+            },
+            {
+                "key": "unique_identifier",
+                "label": "Identifier",
+                "value": unique_identifier,
+                "kind": "code",
+            },
+            {
+                "key": "source_identifier",
+                "label": "Source identifier",
+                "value": source_identifier,
+                "kind": "code",
+            },
+            {
+                "key": "source",
+                "label": "Source",
+                "value": source,
+                "kind": "text",
+            },
+        ],
+        "highlight_fields": [
+            {
+                "key": "display_name",
+                "label": "Display name",
+                "value": display_name,
+                "kind": "text",
+                "icon": "calendar",
+            },
+            {
+                "key": "valid_from",
+                "label": "Valid from",
+                "value": _date_display(valid_from),
+                "kind": "date",
+                "icon": "calendar-days",
+            },
+            {
+                "key": "valid_to",
+                "label": "Valid to",
+                "value": _date_display(valid_to),
+                "kind": "date",
+                "icon": "calendar-days",
+            },
+        ],
+        "stats": [
+            {
+                "key": "horizon_days",
+                "label": "Horizon days",
+                "display": str(horizon_days) if horizon_days is not None else "",
+                "value": horizon_days,
+                "kind": "number",
+            }
+        ],
+        "label_management": {
+            "labels": [],
+            "add_label_url": None,
+            "remove_label_url": None,
+        },
+        "summary_warning": None,
+        "extensions": {
+            "metadata_json": _mapping_or_none(calendar_row.get("metadata_json")),
+            "relationships": {
+                "dates_url": f"/api/v1/calendar/{calendar_uid}/dates/",
+                "sessions_url": f"/api/v1/calendar/{calendar_uid}/sessions/",
+                "events_url": f"/api/v1/calendar/{calendar_uid}/events/",
+            },
+        },
+    }
+
+
 def create_calendar_record(
     context: MarketsRepositoryContext,
     **values: Any,
@@ -586,6 +699,65 @@ def _scan_limit(*, offset: int, limit: int) -> int:
     return max(limit, offset + limit)
 
 
+def _string_or_empty(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _string_or_none(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
+def _mapping_or_none(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return None
+
+
+def _date_or_none(value: Any) -> dt.date | None:
+    if value is None:
+        return None
+    if isinstance(value, dt.datetime):
+        return value.date()
+    if isinstance(value, dt.date):
+        return value
+    if isinstance(value, str):
+        try:
+            return dt.date.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _date_display(value: dt.date | None) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat()
+
+
+def _horizon_days(
+    *,
+    valid_from: dt.date | None,
+    valid_to: dt.date | None,
+) -> int | None:
+    if valid_from is None or valid_to is None:
+        return None
+    return (valid_to - valid_from).days + 1
+
+
+def _calendar_type_tone(calendar_type: str) -> str:
+    if calendar_type in {"TRADING", "BUSINESS", "SETTLEMENT"}:
+        return "success"
+    if calendar_type in {"FIXING", "EVENT"}:
+        return "info"
+    if calendar_type == "HOLIDAY":
+        return "warning"
+    return "neutral"
+
+
 def _matches_search(
     *,
     values: Sequence[Any],
@@ -620,6 +792,7 @@ __all__ = [
     "delete_calendar_session_record",
     "get_calendar_date_record",
     "get_calendar_event_record",
+    "get_calendar_frontend_detail_summary",
     "get_calendar_record",
     "get_calendar_session_record",
     "list_calendar_date_records",
