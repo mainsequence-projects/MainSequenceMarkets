@@ -18,7 +18,6 @@ from mainsequence.meta_tables import (
 )
 
 from msm.base import (
-    MARKETS_DEFAULT_SCHEMA,
     MarketsBase,
     markets_meta_table_identifier as _markets_meta_table_identifier,
     markets_table_storage_name,
@@ -313,7 +312,6 @@ def build_markets_registration_requests(
         external_kwargs = {
             **platform_kwargs,
             "data_source_uid": data_source_uid,
-            "schema": MARKETS_DEFAULT_SCHEMA,
         }
         if management_mode == "platform_managed":
             registration_builder = (
@@ -328,7 +326,6 @@ def build_markets_registration_requests(
                     **_platform_registration_kwargs(
                         model, base_kwargs=platform_kwargs, introspect=introspect
                     ),
-                    schema=MARKETS_DEFAULT_SCHEMA,
                 )
             )
             continue
@@ -343,7 +340,6 @@ def build_markets_registration_requests(
                             base_kwargs=platform_kwargs,
                             introspect=introspect,
                         ),
-                        schema=MARKETS_DEFAULT_SCHEMA,
                     )
                 )
                 continue
@@ -372,7 +368,7 @@ def resolve_registered_markets_meta_tables(
     """Resolve already-registered markets MetaTables without creating schemas."""
 
     resolved_models = resolve_markets_meta_table_models(models)
-    identifiers_by_model = {
+    table_names_by_model = {
         model: markets_table_storage_name(model) for model in resolved_models
     }
     normal_models = [
@@ -381,55 +377,55 @@ def resolve_registered_markets_meta_tables(
     time_index_models = [
         model for model in resolved_models if is_time_index_meta_table_model(model)
     ]
-    normal_identifiers = list(
-        dict.fromkeys(identifiers_by_model[model] for model in normal_models)
+    normal_table_names = list(
+        dict.fromkeys(table_names_by_model[model] for model in normal_models)
     )
-    time_index_identifiers = list(
-        dict.fromkeys(identifiers_by_model[model] for model in time_index_models)
+    time_index_table_names = list(
+        dict.fromkeys(table_names_by_model[model] for model in time_index_models)
     )
-    normal_filters = _registered_meta_table_bulk_filter(
-        identifiers=normal_identifiers,
+    normal_filters = _registered_meta_table_bulk_body_filter(
+        table_names=normal_table_names,
         data_source_uid=data_source_uid,
         management_mode=management_mode,
         namespace=namespace,
     )
-    time_index_filters = _registered_time_index_meta_table_bulk_filter(
-        identifiers=time_index_identifiers,
+    time_index_filters = _registered_time_index_meta_table_bulk_body_filter(
+        table_names=time_index_table_names,
         namespace=namespace,
     )
     logger.info(
         "Resolving registered markets MetaTable schemas",
         management_mode=management_mode,
         namespace=normal_filters.get("namespace") or time_index_filters.get("namespace"),
-        meta_table_identifier_count=len(normal_identifiers),
-        time_index_identifier_count=len(time_index_identifiers),
+        meta_table_table_name_count=len(normal_table_names),
+        time_index_table_name_count=len(time_index_table_names),
         model_count=len(resolved_models),
         data_source_uid=data_source_uid,
     )
-    matches_by_identifier: dict[str, MetaTable] = {}
-    matches_by_identifier.update(
-        _unique_matches_by_identifier(
+    matches_by_table_name: dict[str, MetaTable] = {}
+    matches_by_table_name.update(
+        _unique_matches_by_physical_table_name(
             resource_name="MetaTable",
-            matches=MetaTable.filter(timeout=timeout, **normal_filters)
-            if normal_identifiers
+            matches=MetaTable.filter_by_body(timeout=timeout, **normal_filters)
+            if normal_table_names
             else [],
-            requested_identifiers=normal_identifiers,
+            requested_table_names=normal_table_names,
             filters=normal_filters,
         )
     )
-    matches_by_identifier.update(
-        _unique_matches_by_identifier(
+    matches_by_table_name.update(
+        _unique_matches_by_physical_table_name(
             resource_name="TimeIndexMetaTable",
-            matches=TimeIndexMetaTable.filter(timeout=timeout, **time_index_filters)
-            if time_index_identifiers
+            matches=TimeIndexMetaTable.filter_by_body(timeout=timeout, **time_index_filters)
+            if time_index_table_names
             else [],
-            requested_identifiers=time_index_identifiers,
+            requested_table_names=time_index_table_names,
             filters=time_index_filters,
         )
     )
-    _raise_for_missing_registered_identifiers(
-        identifiers=[*normal_identifiers, *time_index_identifiers],
-        matches_by_identifier=matches_by_identifier,
+    _raise_for_missing_registered_table_names(
+        table_names=[*normal_table_names, *time_index_table_names],
+        matches_by_table_name=matches_by_table_name,
         normal_filters=normal_filters,
         time_index_filters=time_index_filters,
     )
@@ -437,8 +433,8 @@ def resolve_registered_markets_meta_tables(
     meta_tables: list[MetaTable] = []
     meta_table_by_identifier: dict[str, MetaTable] = {}
     for model in resolved_models:
-        identifier = identifiers_by_model[model]
-        meta_table = matches_by_identifier[identifier]
+        identifier = table_names_by_model[model]
+        meta_table = matches_by_table_name[identifier]
         _bind_model_meta_table(model, meta_table)
         meta_tables.append(meta_table)
         meta_table_by_identifier[identifier] = meta_table
@@ -458,16 +454,19 @@ def resolve_registered_markets_meta_tables(
     )
 
 
-def _registered_meta_table_bulk_filter(
+def _registered_meta_table_bulk_body_filter(
     *,
-    identifiers: Sequence[str],
+    table_names: Sequence[str],
     data_source_uid: str | None,
     management_mode: MarketsManagementMode,
     namespace: str | None,
 ) -> dict[str, Any]:
+    unique_table_names = sorted(dict.fromkeys(table_names))
     base_filters: dict[str, Any] = {
-        "identifier__in": sorted(dict.fromkeys(identifiers)),
+        "physical_table_name__in": unique_table_names,
         "management_mode": management_mode,
+        "limit": max(5000, len(unique_table_names)),
+        "offset": 0,
     }
     if namespace:
         base_filters["namespace"] = namespace
@@ -477,59 +476,67 @@ def _registered_meta_table_bulk_filter(
     return _clean_filters(base_filters)
 
 
-def _registered_time_index_meta_table_bulk_filter(
+def _registered_time_index_meta_table_bulk_body_filter(
     *,
-    identifiers: Sequence[str],
+    table_names: Sequence[str],
     namespace: str | None,
 ) -> dict[str, Any]:
+    unique_table_names = sorted(dict.fromkeys(table_names))
     return _clean_filters(
         {
-            "identifier__in": sorted(dict.fromkeys(identifiers)),
+            "physical_table_name__in": unique_table_names,
             "namespace": namespace,
+            "limit": max(5000, len(unique_table_names)),
+            "offset": 0,
         }
     )
 
 
-def _unique_matches_by_identifier(
+def _unique_matches_by_physical_table_name(
     *,
     resource_name: str,
     matches: Sequence[MetaTable],
-    requested_identifiers: Sequence[str],
+    requested_table_names: Sequence[str],
     filters: Mapping[str, Any],
 ) -> dict[str, MetaTable]:
-    requested = set(requested_identifiers)
-    matches_by_identifier: dict[str, MetaTable] = {}
+    requested = set(requested_table_names)
+    matches_by_table_name: dict[str, MetaTable] = {}
     for meta_table in matches:
-        identifier = str(getattr(meta_table, "identifier", "") or "")
-        if identifier not in requested:
+        table_name = str(
+            getattr(meta_table, "physical_table_name", None)
+            or getattr(meta_table, "storage_hash", "")
+            or ""
+        )
+        if table_name not in requested:
             raise LookupError(
                 f"Registered markets {resource_name} lookup returned unexpected "
-                f"identifier {identifier!r} for filters {filters!r}."
+                f"physical_table_name {table_name!r} for filters {filters!r}."
             )
-        if identifier in matches_by_identifier:
+        if table_name in matches_by_table_name:
             raise LookupError(
                 f"Multiple registered markets {resource_name} rows matched "
-                f"identifier {identifier!r} with filters {filters!r}. Pass a narrower "
-                "runtime selection or repair duplicate platform registrations."
+                f"physical_table_name {table_name!r} with filters {filters!r}. "
+                "Pass a narrower runtime selection or repair duplicate platform "
+                "registrations."
             )
-        matches_by_identifier[identifier] = meta_table
-    return matches_by_identifier
+        matches_by_table_name[table_name] = meta_table
+    return matches_by_table_name
 
 
-def _raise_for_missing_registered_identifiers(
+def _raise_for_missing_registered_table_names(
     *,
-    identifiers: Sequence[str],
-    matches_by_identifier: Mapping[str, MetaTable],
+    table_names: Sequence[str],
+    matches_by_table_name: Mapping[str, MetaTable],
     normal_filters: Mapping[str, Any],
     time_index_filters: Mapping[str, Any],
 ) -> None:
-    missing_identifiers = [
-        identifier for identifier in identifiers if identifier not in matches_by_identifier
+    missing_table_names = [
+        table_name for table_name in table_names if table_name not in matches_by_table_name
     ]
-    if missing_identifiers:
+    if missing_table_names:
         raise LookupError(
             "Could not resolve registered markets MetaTables for "
-            f"{missing_identifiers!r}. MetaTable filters={normal_filters!r}; "
+            f"{missing_table_names!r}. MetaTable filters={normal_filters!r}; "
             f"TimeIndexMetaTable filters={time_index_filters!r}."
         )
 

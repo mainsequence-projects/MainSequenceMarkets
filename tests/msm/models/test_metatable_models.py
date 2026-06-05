@@ -742,6 +742,47 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
     assert all(request.table_contract for request in storage_requests)
 
 
+def test_markets_registration_builders_do_not_force_default_schema(monkeypatch) -> None:
+    calls = []
+
+    def fake_registration_builder(model, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            identifier=kwargs["identifier"],
+            description=getattr(model, "__metatable_description__", None),
+            management_mode="platform_managed",
+            table_contract=SimpleNamespace(
+                physical=SimpleNamespace(table_name=model.__table__.name),
+            ),
+        )
+
+    def fake_time_index_builder(model, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            identifier=kwargs["identifier"],
+            description=getattr(model, "__metatable_description__", None),
+            table_contract={"physical": {"table_name": model.__table__.name}},
+        )
+
+    monkeypatch.setattr(
+        meta_tables,
+        "platform_managed_registration_request_from_sqlalchemy_model",
+        fake_registration_builder,
+    )
+    monkeypatch.setattr(
+        meta_tables,
+        "time_indexed_registration_request_from_sqlalchemy_model",
+        fake_time_index_builder,
+    )
+
+    build_markets_registration_requests(
+        models=[AssetTypeTable, AccountHoldingsStorage],
+    )
+
+    assert calls
+    assert all("schema" not in kwargs for kwargs in calls)
+
+
 def test_migration_registry_models_use_sdk_base_metatable_classes() -> None:
     registry = metatable_provider_models()
     assert registry
@@ -786,12 +827,57 @@ def test_markets_models_build_external_registration_requests_in_dependency_order
     )
 
 
+def test_external_registration_builders_do_not_force_default_schema(monkeypatch) -> None:
+    calls = []
+
+    def fake_external_builder(model, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            identifier=kwargs["identifier"],
+            description=getattr(model, "__metatable_description__", None),
+            management_mode="external_registered",
+            table_contract=SimpleNamespace(
+                physical=SimpleNamespace(table_name=model.__table__.name),
+            ),
+        )
+
+    def fake_time_index_builder(model, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            identifier=kwargs["identifier"],
+            description=getattr(model, "__metatable_description__", None),
+            table_contract={"physical": {"table_name": model.__table__.name}},
+        )
+
+    monkeypatch.setattr(
+        meta_tables,
+        "external_registered_registration_request_from_sqlalchemy_model",
+        fake_external_builder,
+    )
+    monkeypatch.setattr(
+        meta_tables,
+        "time_indexed_registration_request_from_sqlalchemy_model",
+        fake_time_index_builder,
+    )
+
+    build_markets_registration_requests(
+        data_source_uid=str(uuid.uuid4()),
+        management_mode="external_registered",
+        models=[AssetTypeTable, AccountHoldingsStorage],
+    )
+
+    assert calls
+    assert all("schema" not in kwargs for kwargs in calls)
+
+
 def test_markets_models_do_not_expose_direct_registration_helper() -> None:
     assert not hasattr(meta_tables, "register_markets_meta_tables")
     assert not hasattr(meta_tables, "register_external_sqlalchemy_model")
 
 
-def test_resolve_registered_markets_meta_tables_filters_by_table_identifier(monkeypatch) -> None:
+def test_resolve_registered_markets_meta_tables_filters_by_physical_table_name(
+    monkeypatch,
+) -> None:
     calls = []
 
     class ResolveFakeModel(MarketsMetaTableMixin, MarketsBase):
@@ -810,11 +896,15 @@ def test_resolve_registered_markets_meta_tables_filters_by_table_identifier(monk
         data_source_uid="data-source-uid",
     )
 
-    def fake_filter(**kwargs):
+    def fake_filter_by_body(**kwargs):
         calls.append(kwargs)
         return [meta_table]
 
-    monkeypatch.setattr(meta_tables.MetaTable, "filter", staticmethod(fake_filter))
+    monkeypatch.setattr(
+        meta_tables.MetaTable,
+        "filter_by_body",
+        staticmethod(fake_filter_by_body),
+    )
 
     result = meta_tables.resolve_registered_markets_meta_tables(
         data_source_uid="data-source-uid",
@@ -825,8 +915,10 @@ def test_resolve_registered_markets_meta_tables_filters_by_table_identifier(monk
     assert calls == [
         {
             "timeout": None,
-            "identifier__in": [ResolveFakeModel.__table__.name],
+            "physical_table_name__in": [ResolveFakeModel.__table__.name],
             "management_mode": "platform_managed",
+            "limit": 5000,
+            "offset": 0,
         }
     ]
 
@@ -876,19 +968,23 @@ def test_resolve_registered_markets_meta_tables_partitions_time_index_models(
         management_mode="platform_managed",
     )
 
-    def fake_meta_table_filter(**kwargs):
+    def fake_meta_table_filter_by_body(**kwargs):
         calls.append(("MetaTable", kwargs))
         return [meta_table]
 
-    def fake_time_index_filter(**kwargs):
+    def fake_time_index_filter_by_body(**kwargs):
         calls.append(("TimeIndexMetaTable", kwargs))
         return [time_index_meta_table]
 
-    monkeypatch.setattr(meta_tables.MetaTable, "filter", staticmethod(fake_meta_table_filter))
+    monkeypatch.setattr(
+        meta_tables.MetaTable,
+        "filter_by_body",
+        staticmethod(fake_meta_table_filter_by_body),
+    )
     monkeypatch.setattr(
         meta_tables.TimeIndexMetaTable,
-        "filter",
-        staticmethod(fake_time_index_filter),
+        "filter_by_body",
+        staticmethod(fake_time_index_filter_by_body),
     )
 
     result = meta_tables.resolve_registered_markets_meta_tables(
@@ -904,15 +1000,19 @@ def test_resolve_registered_markets_meta_tables_partitions_time_index_models(
             "MetaTable",
             {
                 "timeout": None,
-                "identifier__in": [ResolvePartitionFakeModel.__table__.name],
+                "physical_table_name__in": [ResolvePartitionFakeModel.__table__.name],
                 "management_mode": "platform_managed",
+                "limit": 5000,
+                "offset": 0,
             },
         ),
         (
             "TimeIndexMetaTable",
             {
                 "timeout": None,
-                "identifier__in": [ResolveFakeStorage.__table__.name],
+                "physical_table_name__in": [ResolveFakeStorage.__table__.name],
+                "limit": 5000,
+                "offset": 0,
             },
         ),
     ]
@@ -926,7 +1026,11 @@ def test_resolve_registered_markets_meta_tables_rejects_missing_table(monkeypatc
 
         uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
 
-    monkeypatch.setattr(meta_tables.MetaTable, "filter", staticmethod(lambda **_kwargs: []))
+    monkeypatch.setattr(
+        meta_tables.MetaTable,
+        "filter_by_body",
+        staticmethod(lambda **_kwargs: []),
+    )
 
     with pytest.raises(LookupError, match="Could not resolve registered"):
         meta_tables.resolve_registered_markets_meta_tables(models=[MissingFakeModel])

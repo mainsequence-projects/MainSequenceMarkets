@@ -108,25 +108,30 @@ should use the attached backend identifier through `get_identifier()`.
 Runtime attachment must query the backend directly in bulk. It must not issue
 one lookup per model. The resolver partitions requested models into normal
 `MetaTable` models and `PlatformTimeIndexMetaTable` storage models, then performs
-one filter query per backend resource type.
+one body-filter query per backend resource type.
 
 ```text
 normal MetaTable models:
-  MetaTable.filter(identifier__in=[model.__table__.name, ...], management_mode=...)
+  MetaTable.filter_by_body(
+    physical_table_name__in=[model.__table__.name, ...],
+    management_mode=...
+  )
 
 time-index storage models:
-  TimeIndexMetaTable.filter(identifier__in=[model.__table__.name, ...])
+  TimeIndexMetaTable.filter_by_body(
+    physical_table_name__in=[model.__table__.name, ...]
+  )
 ```
 
 The result set is then matched back to the requested models by canonical table
-identifier:
+name:
 
 ```text
-model.__table__.name -> backend object
+model.__table__.name -> backend physical_table_name -> backend object
 ```
 
-Missing matches, duplicate matches, or mismatched backend identifiers must fail
-startup before any row API is exposed.
+Missing matches, duplicate matches, or mismatched backend physical table names
+must fail startup before any row API is exposed.
 
 ### Pricing DataNode Identifiers
 
@@ -194,13 +199,15 @@ actual backend MetaTable identifier.
 
 - [x] Add a direct runtime resolver that partitions requested models into
       normal MetaTable models and `PlatformTimeIndexMetaTable` storage models.
-- [x] Resolve normal MetaTables in one SDK `MetaTable.filter(identifier__in=...)`
-      call keyed by `model.__table__.name`.
-- [x] Resolve time-index storage tables in one SDK
-      `TimeIndexMetaTable.filter(identifier__in=...)` call keyed by
+- [x] Resolve normal MetaTables in one SDK
+      `MetaTable.filter_by_body(physical_table_name__in=...)` call keyed by
       `model.__table__.name`.
+- [x] Resolve time-index storage tables in one SDK
+      `TimeIndexMetaTable.filter_by_body(physical_table_name__in=...)` call
+      keyed by `model.__table__.name`.
 - [x] Reject missing matches, duplicate matches, or backend objects whose
-      returned identifier does not match the requested `model.__table__.name`.
+      returned physical table name does not match the requested
+      `model.__table__.name`.
 - [x] Bind each resolved backend object to its model with `_bind_meta_table`.
 - [x] Return `MarketsMetaTableRegistrationResult` keyed by canonical table
       identifier.

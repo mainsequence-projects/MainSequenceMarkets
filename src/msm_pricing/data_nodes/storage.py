@@ -42,6 +42,7 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "back to the Curve MetaTable."
     )
     __time_index_name__: ClassVar[str] = "time_index"
+    __cadence__: ClassVar[str] = "1d"
     __index_names__: ClassVar[list[str]] = ["time_index", CURVE_IDENTIFIER_DIMENSION]
 
     time_index: Mapped[datetime.datetime] = mapped_column(
@@ -87,6 +88,7 @@ class IndexFixingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "workflows for floating-rate bonds, swaps, and curve-linked analytics."
     )
     __time_index_name__: ClassVar[str] = "time_index"
+    __cadence__: ClassVar[str] = "1d"
     __index_names__: ClassVar[list[str]] = ["time_index", INDEX_IDENTIFIER_DIMENSION]
 
     time_index: Mapped[datetime.datetime] = mapped_column(

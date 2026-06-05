@@ -13,6 +13,9 @@ os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
+from mainsequence.meta_tables.sqlalchemy_contracts import (
+    time_indexed_registration_request_from_sqlalchemy_model,
+)
 from msm.data_nodes.indices import IndexDataNodeConfiguration, IndexTimestampedDataNode
 from msm.models import IndexTable
 from msm.models.registration import markets_foreign_key_target_identifiers
@@ -77,6 +80,18 @@ def test_index_fixings_storage_has_index_foreign_key() -> None:
         for foreign_key in fk_column.foreign_keys
     )
     assert IndexFixingsStorage in set(pricing_sqlalchemy_models())
+
+
+def test_index_fixings_storage_registration_request_declares_daily_cadence() -> None:
+    request = time_indexed_registration_request_from_sqlalchemy_model(
+        IndexFixingsStorage,
+        identifier=IndexFixingsStorage.__table__.name,
+        data_source_uid="00000000-0000-0000-0000-000000000000",
+    )
+    payload = request.model_dump(mode="json")
+
+    assert payload["cadence"] == "1d"
+    assert payload["table_contract"]["authoring"]["time_indexed"]["cadence"] == "1d"
 
 
 def test_fixing_rates_node_does_not_expose_bootstrap_frame_api() -> None:

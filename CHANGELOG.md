@@ -9,8 +9,12 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- Stopped ms-markets registration request construction from explicitly passing
+  the default PostgreSQL schema (`public`) into MetaTable and TimeIndexMetaTable
+  SDK builders.
 - Declared daily `__cadence__` metadata on EOD pricing curve and fixing storage
-  tables and removed fixing frequency from DataNode configuration.
+  tables, removed fixing frequency from DataNode configuration, and raised the
+  SDK floor to `mainsequence>=4.3.6`.
 - Removed unused `docstring-parser` portfolio dependency and deleted the dead
   docstring/schema utility helpers that forced `msm_portfolios` imports to fail
   when the optional package was absent.
@@ -19,6 +23,9 @@ and this project follows versioned releases.
 - Fixed markets and pricing runtime attachment to resolve registered
   `MetaTable` and `TimeIndexMetaTable` resources directly by SQLAlchemy table
   name instead of using the maintenance catalog as runtime control.
+- Fixed runtime MetaTable attachment to use POST body filters on
+  `physical_table_name__in` instead of GET query-string `identifier__in`
+  lookups.
 - Blocked `msm copy-msm-skills` from running inside the ms-markets source
   checkout, including dry-run mode, so the command cannot delete the
   package-owned `.agents/skills/ms_markets` source bundle.
