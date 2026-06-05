@@ -68,14 +68,14 @@ inventory only.
 
 Curves are pricing-owned reference data, not assets. `CurveTable` owns curve
 identity, and `DiscountCurvesNode` lives under `msm_pricing.data_nodes` as a
-stamped DataNode keyed by `(time_index, curve_unique_identifier)`. Curve
+stamped DataNode keyed by `(time_index, curve_identifier)`. Curve
 DataNode configurations use the actual `CurveTable.unique_identifier`; they do
 not resolve Main Sequence Constants into curve identity.
 
 Fixings are index facts, not assets and not a separate rate model.
 `FixingRatesNode` lives under `msm_pricing.data_nodes` as an
-`IndexTimestampedDataNode` helper keyed by `(time_index, unique_identifier)`,
-where `unique_identifier` references `IndexTable.unique_identifier`. Its
+`IndexTimestampedDataNode` helper keyed by `(time_index, index_identifier)`,
+where `index_identifier` references `IndexTable.unique_identifier`. Its
 configuration includes a hashable `frequency` field, so the observation
 frequency is part of the DataNode identity.
 Fixing configurations likewise use actual `IndexTable.unique_identifier` values
@@ -88,36 +88,53 @@ Pricing market-data source selection is concept based. Bootstrap seeds default
 bindings for:
 
 ```text
-(default, discount_curves)
-  -> DiscountCurvesStorage.get_identifier()
-(default, interest_rate_index_fixings)
-  -> IndexFixingsStorage.get_identifier()
+PricingMarketDataSet(set_key="default")
+  -> PricingMarketDataSetBinding(concept_key="discount_curves")
+       data_node_uid = DiscountCurvesStorage.get_meta_table_uid()
+  -> PricingMarketDataSetBinding(concept_key="interest_rate_index_fixings")
+       data_node_uid = IndexFixingsStorage.get_meta_table_uid()
 ```
 
-Those identifiers come from attached storage classes, not static namespace
-helpers.
+Those UIDs come from attached storage classes, not static namespace helpers.
+`storage_table_identifier` is stored only as diagnostic metadata.
 
-Applications can add named contexts such as `eod`, `live`, or `risk_manager`
-through `msm_pricing.api.PricingMarketDataBinding`. Each binding stores a
-DataNode identifier, not a platform table UID:
+Applications can add named market-data sets such as `eod`, `live`, or
+`risk_manager` through `msm_pricing.api.PricingMarketDataSet` and
+`PricingMarketDataSetBinding`. Each binding stores the backend DataNode storage
+table UID used by `APIDataNode.build_from_table_uid(...)`:
 
 ```python
-from msm_pricing.api import PricingMarketDataBinding
+from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
+from msm_pricing.data_nodes.storage import DiscountCurvesStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
-    PRICING_CONTEXT_EOD,
+    PRICING_MARKET_DATA_SET_EOD,
 )
 
-PricingMarketDataBinding.upsert(
-    context_key=PRICING_CONTEXT_EOD,
+market_data_set = PricingMarketDataSet.upsert(
+    set_key=PRICING_MARKET_DATA_SET_EOD,
+    display_name="EOD pricing market data",
+)
+PricingMarketDataSetBinding.upsert(
+    market_data_set_uid=market_data_set.uid,
     concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-    data_node_identifier="vendor.eod.discount_curves",
+    data_node_uid=DiscountCurvesStorage.get_meta_table_uid(),
+    storage_table_identifier=DiscountCurvesStorage.get_identifier(),
 )
 ```
 
 The data interface resolves direct in-memory overrides first and persisted
-bindings second. The final lookup uses
-`APIDataNode.build_from_identifier(...)`.
+market-data set bindings second. The final lookup uses
+`APIDataNode.build_from_table_uid(...)`.
+
+At pricing time, callers select the source set by key:
+
+```python
+bond.price(market_data_set="eod")
+bond.price(market_data_set="live")
+```
+
+When the argument is omitted, the process default market-data set is used.
 
 User-facing persistence starts from instruments:
 

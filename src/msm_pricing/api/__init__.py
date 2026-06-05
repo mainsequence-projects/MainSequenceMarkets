@@ -10,10 +10,14 @@ from .index_convention_details import (
 )
 from .instruments import load_instrument_from_asset, persist_current_pricing_details
 from .market_data_bindings import (
-    PricingMarketDataBinding,
-    PricingMarketDataBindingCreate,
-    PricingMarketDataBindingUpdate,
-    PricingMarketDataBindingUpsert,
+    PricingMarketDataSet,
+    PricingMarketDataSetBinding,
+    PricingMarketDataSetBindingCreate,
+    PricingMarketDataSetBindingUpdate,
+    PricingMarketDataSetBindingUpsert,
+    PricingMarketDataSetCreate,
+    PricingMarketDataSetUpdate,
+    PricingMarketDataSetUpsert,
 )
 from .pricing_details import (
     AssetCurrentPricingDetails,
@@ -36,10 +40,14 @@ __all__ = [
     "IndexConventionDetailsCreate",
     "IndexConventionDetailsUpdate",
     "IndexConventionDetailsUpsert",
-    "PricingMarketDataBinding",
-    "PricingMarketDataBindingCreate",
-    "PricingMarketDataBindingUpdate",
-    "PricingMarketDataBindingUpsert",
+    "PricingMarketDataSet",
+    "PricingMarketDataSetBinding",
+    "PricingMarketDataSetBindingCreate",
+    "PricingMarketDataSetBindingUpdate",
+    "PricingMarketDataSetBindingUpsert",
+    "PricingMarketDataSetCreate",
+    "PricingMarketDataSetUpdate",
+    "PricingMarketDataSetUpsert",
     "load_instrument_from_asset",
     "persist_current_pricing_details",
 ]

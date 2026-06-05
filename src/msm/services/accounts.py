@@ -184,7 +184,7 @@ def get_account_holdings_snapshot_response(
         return _empty_account_holdings_snapshot(account_uid=resolved_account_uid)
 
     asset_references = (
-        _asset_references_by_unique_identifier(context, rows=snapshot_rows)
+        _asset_snapshot_references_by_unique_identifier(context, rows=snapshot_rows)
         if include_asset_detail
         else {}
     )
@@ -724,70 +724,6 @@ def _build_asset_snapshot_reference(
             "ticker": (
                 _string_or_none(snapshot_row.get("ticker")) if snapshot_row is not None else None
             ),
-        },
-    }
-
-
-def _asset_references_by_unique_identifier(
-    context: MarketsRepositoryContext,
-    *,
-    rows: Sequence[Mapping[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    identifiers = {
-        str(row["asset_identifier"])
-        for row in rows
-        if row.get("asset_identifier") not in (None, "")
-    }
-    if not identifiers:
-        return {}
-
-    from msm.services.assets import search_assets as service_search_assets
-    from msm.services.provider_details import search_openfigi_details as service_search_openfigi
-
-    asset_rows = operation_result_rows(
-        service_search_assets(context, limit=MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT)
-    )
-    detail_rows = operation_result_rows(
-        service_search_openfigi(context, limit=MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT)
-    )
-    details_by_asset_uid = {
-        str(row["asset_uid"]): row
-        for row in detail_rows
-        if isinstance(row, Mapping) and row.get("asset_uid") not in (None, "")
-    }
-
-    references: dict[str, dict[str, Any]] = {}
-    for asset_row in asset_rows:
-        if not isinstance(asset_row, Mapping):
-            continue
-        unique_identifier = _string_or_none(asset_row.get("unique_identifier"))
-        if unique_identifier not in identifiers:
-            continue
-        detail_row = details_by_asset_uid.get(str(asset_row.get("uid")))
-        references[unique_identifier] = _build_asset_reference(
-            asset_row=asset_row,
-            detail_row=detail_row,
-        )
-
-    for unique_identifier in identifiers.difference(references):
-        references[unique_identifier] = _build_asset_reference(
-            asset_row=None,
-            detail_row=None,
-        )
-    return references
-
-
-def _build_asset_reference(
-    *,
-    asset_row: Mapping[str, Any] | None,
-    detail_row: Mapping[str, Any] | None,
-) -> dict[str, Any]:
-    return {
-        "uid": _string_or_none(asset_row.get("uid")) if asset_row is not None else None,
-        "figi": _string_or_none(detail_row.get("figi")) if detail_row is not None else None,
-        "current_snapshot": {
-            "name": _string_or_none(detail_row.get("name")) if detail_row is not None else None,
-            "ticker": _string_or_none(detail_row.get("ticker")) if detail_row is not None else None,
         },
     }
 

@@ -591,11 +591,11 @@ def test_core_account_holdings_snapshot_selects_latest(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         account_services,
-        "_asset_references_by_unique_identifier",
+        "_asset_snapshot_references_by_unique_identifier",
         lambda context, rows: {
             "btc_spot": {
                 "uid": str(asset_uid),
-                "figi": "BBG000BTC",
+                "unique_identifier": "btc_spot",
                 "current_snapshot": {
                     "name": "Bitcoin spot",
                     "ticker": "BTC",
@@ -626,7 +626,7 @@ def test_core_account_holdings_snapshot_selects_latest(monkeypatch) -> None:
                 "asset_id": None,
                 "asset": {
                     "uid": str(asset_uid),
-                    "figi": "BBG000BTC",
+                    "unique_identifier": "btc_spot",
                     "current_snapshot": {
                         "name": "Bitcoin spot",
                         "ticker": "BTC",

@@ -8,7 +8,8 @@ def test_models_package_is_metatable_only() -> None:
         "AssetCurrentPricingDetailsTable",
         "CurveTable",
         "IndexConventionDetailsTable",
-        "PricingMarketDataBindingTable",
+        "PricingMarketDataSetBindingTable",
+        "PricingMarketDataSetTable",
     ]
     assert not hasattr(models, "get_index")
     assert not hasattr(models, "register_index_spec")
@@ -40,8 +41,12 @@ def test_pricing_settings_module_contains_public_constants() -> None:
 
     assert settings.PRICING_CONCEPT_DISCOUNT_CURVES == "discount_curves"
     assert settings.PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS == "interest_rate_index_fixings"
-    assert settings.PRICING_CONTEXT_DEFAULT == "default"
+    assert settings.PRICING_MARKET_DATA_SET_DEFAULT == "default"
+    assert settings.PRICING_MARKET_DATA_SET_EOD == "eod"
+    assert settings.PRICING_MARKET_DATA_SET_LIVE == "live"
+    assert settings.PRICING_MARKET_DATA_SET_RISK_MANAGER == "risk_manager"
     assert not hasattr(settings, "PRICING_DEFAULT_DISCOUNT_CURVES_DATA_NODE_IDENTIFIER")
     assert not hasattr(settings, "PRICING_DEFAULT_INDEX_FIXINGS_DATA_NODE_IDENTIFIER")
+    assert not hasattr(settings, "PRICING_CONTEXT_DEFAULT")
     assert not hasattr(settings, "default_pricing_market_data_bindings")
     assert not hasattr(settings, "default_pricing_market_data_identifier")

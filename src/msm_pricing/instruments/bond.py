@@ -11,6 +11,7 @@ from typing import Any, ClassVar
 import QuantLib as ql
 from pydantic import Field, PrivateAttr
 
+from msm_pricing.api.market_data_bindings import PricingMarketDataSet, PricingMarketDataSetSelector
 from msm_pricing.pricing_engine.bond_pricer import (
     create_floating_rate_bond_with_curve,
 )
@@ -177,6 +178,7 @@ class Bond(InstrumentModel):
     _engine: ql.PricingEngine | None = PrivateAttr(default=None)
     _last_discount_curve_handle: ql.YieldTermStructureHandle | None = PrivateAttr(default=None)
     _curve_observer: ql.Observer | None = PrivateAttr(default=None)
+    _market_data_set_uid: uuid.UUID | None = PrivateAttr(default=None)
 
     def get_bond(self):
         return self._bond
@@ -206,6 +208,20 @@ class Bond(InstrumentModel):
             except Exception:
                 pass
         self._curve_observer = None
+
+    def _on_market_data_set_changed(self) -> None:
+        self._invalidate_pricer()
+
+    def _apply_market_data_set(self, market_data_set: PricingMarketDataSetSelector = None) -> None:
+        if market_data_set is None:
+            return
+        resolved_uid = PricingMarketDataSet.resolve_uid(market_data_set)
+        if self._market_data_set_uid != resolved_uid:
+            self._market_data_set_uid = resolved_uid
+            self._on_market_data_set_changed()
+
+    def _market_data_set_cache_key(self) -> str:
+        return f"mds:{self._market_data_set_uid or 'unresolved'}"
 
     def _price_cache_key_suffix(self) -> str:
         """
@@ -270,6 +286,7 @@ class Bond(InstrumentModel):
         return resolve_quantlib_index(
             index_uid,
             valuation_date=self.valuation_date,
+            market_data_set=self._market_data_set_uid,
             forwarding_curve=forwarding_curve,
             hydrate_fixings=hydrate_fixings,
         )
@@ -332,7 +349,10 @@ class Bond(InstrumentModel):
         yts_key = self._curve_key_for_observer(handle)
         yts_ver = _YTS_VERSION.get(yts_key, 0)
         fixv = self._fixings_version()
-        return f"{base}|v:{yts_ver}|fixv:{fixv}|val:{self._val_ordinal()}"
+        return (
+            f"{base}|v:{yts_ver}|fixv:{fixv}|val:{self._val_ordinal()}|"
+            f"{self._market_data_set_cache_key()}"
+        )
 
     def _normalize_currency(self, x: float) -> float:
         """Stabilize currency inputs for cache keys."""
@@ -355,7 +375,10 @@ class Bond(InstrumentModel):
             # include dc/comp/freq implicitly defined in _resolve_discount_curve for flat curves
             comp_i = int(flat_compounding)
             freq_i = int(flat_frequency)
-            key = f"flat|y:{wy}|comp:{comp_i}|freq:{freq_i}|val:{val_ord}"
+            key = (
+                f"flat|y:{wy}|comp:{comp_i}|freq:{freq_i}|val:{val_ord}|"
+                f"{self._market_data_set_cache_key()}"
+            )
             suf = self._price_cache_key_suffix()
             return f"{key}|{suf}" if suf else key
         handle = self._get_default_discount_curve()
@@ -373,7 +396,7 @@ class Bond(InstrumentModel):
         yts_ver = _YTS_VERSION.get(yts_key, 0)
         # fixings version tick (default 0 for non-floaters; overridden in FloatingRateBond)
         fixv = self._fixings_version()
-        key = f"{base}|v:{yts_ver}|fixv:{fixv}|val:{val_ord}"
+        key = f"{base}|v:{yts_ver}|fixv:{fixv}|val:{val_ord}|{self._market_data_set_cache_key()}"
         suf = self._price_cache_key_suffix()
         return f"{key}|{suf}" if suf else key
 
@@ -528,11 +551,13 @@ class Bond(InstrumentModel):
         self,
         with_yield: float | None = None,
         *,
+        market_data_set: PricingMarketDataSetSelector = None,
         flat_compounding: int = ql.Compounded,
         flat_frequency: int = ql.Annual,
     ) -> float:
         if self.valuation_date is None:
             raise ValueError("Set valuation_date before pricing: set_valuation_date(dt).")
+        self._apply_market_data_set(market_data_set)
 
         inst_key = self._instrument_cache_key()
         price_key = self._price_context_key(
@@ -570,6 +595,7 @@ class Bond(InstrumentModel):
         self,
         target_dirty_ccy: float,
         *,
+        market_data_set: PricingMarketDataSetSelector = None,
         discount_curve: ql.YieldTermStructureHandle | ql.YieldTermStructure | None = None,
         use_quantlib: bool = True,
         tol: float = 1e-12,
@@ -581,6 +607,7 @@ class Bond(InstrumentModel):
         or (by default) the instrument's index/benchmark/default curve.
         Cached per instrument + curve context + target price, like price().
         """
+        self._apply_market_data_set(market_data_set)
         # Ensure we at least have the instrument built (no engine required)
         self._ensure_instrument()
 
@@ -858,9 +885,11 @@ class Bond(InstrumentModel):
         self,
         with_yield: float | None = None,
         *,
+        market_data_set: PricingMarketDataSetSelector = None,
         flat_compounding: int = ql.Compounded,
         flat_frequency: int = ql.Annual,
     ) -> dict:
+        self._apply_market_data_set(market_data_set)
         self._setup_pricer(
             with_yield=with_yield,
             flat_compounding=flat_compounding,
@@ -873,12 +902,17 @@ class Bond(InstrumentModel):
             "accrued_amount": self._bond.accruedAmount(),
         }
 
-    def get_cashflows(self) -> dict[str, list[dict[str, Any]]]:
+    def get_cashflows(
+        self,
+        *,
+        market_data_set: PricingMarketDataSetSelector = None,
+    ) -> dict[str, list[dict[str, Any]]]:
         """
         Generic cashflow extractor.
         For fixed bonds, you'll see "fixed" + "redemption".
         For floaters, you'll see "floating" + "redemption".
         """
+        self._apply_market_data_set(market_data_set)
         self._setup_pricer()
         ql.Settings.instance().evaluationDate = to_ql_date(self.valuation_date)
 
@@ -1051,6 +1085,7 @@ class Bond(InstrumentModel):
         self,
         with_yield: float | None = None,
         *,
+        market_data_set: PricingMarketDataSetSelector = None,
         duration_type=ql.Duration.Modified,
         flat_compounding: int = ql.Compounded,
         flat_frequency: int = ql.Annual,
@@ -1073,6 +1108,7 @@ class Bond(InstrumentModel):
             raise ValueError(
                 "Set valuation_date before computing duration: set_valuation_date(dt)."
             )
+        self._apply_market_data_set(market_data_set)
 
         # ---------- build cache keys ----------
         inst_key = self._instrument_cache_key()
@@ -1580,32 +1616,41 @@ class CallableFixedRateBond(_FixedRateBondCommon):
         self,
         with_yield: float | None = None,
         *,
+        market_data_set: PricingMarketDataSetSelector = None,
         flat_compounding: int = ql.Compounded,
         flat_frequency: int = ql.Annual,
         discount_parameters: DiscountParameters | dict[str, Any] | None = None,
     ) -> float:
         self._apply_pricing_parameters(discount_parameters)
         return super().price(
-            with_yield=with_yield, flat_compounding=flat_compounding, flat_frequency=flat_frequency
+            with_yield=with_yield,
+            market_data_set=market_data_set,
+            flat_compounding=flat_compounding,
+            flat_frequency=flat_frequency,
         )
 
     def analytics(
         self,
         with_yield: float | None = None,
         *,
+        market_data_set: PricingMarketDataSetSelector = None,
         flat_compounding: int = ql.Compounded,
         flat_frequency: int = ql.Annual,
         discount_parameters: DiscountParameters | dict[str, Any] | None = None,
     ) -> dict:
         self._apply_pricing_parameters(discount_parameters)
         return super().analytics(
-            with_yield=with_yield, flat_compounding=flat_compounding, flat_frequency=flat_frequency
+            with_yield=with_yield,
+            market_data_set=market_data_set,
+            flat_compounding=flat_compounding,
+            flat_frequency=flat_frequency,
         )
 
     def duration(
         self,
         with_yield: float | None = None,
         *,
+        market_data_set: PricingMarketDataSetSelector = None,
         discount_parameters: DiscountParameters | dict[str, Any] | None = None,
         duration_type=ql.Duration.Modified,
         flat_compounding: int = ql.Compounded,
@@ -1614,6 +1659,7 @@ class CallableFixedRateBond(_FixedRateBondCommon):
         self._apply_pricing_parameters(discount_parameters)
         return super().duration(
             with_yield=with_yield,
+            market_data_set=market_data_set,
             duration_type=duration_type,
             flat_compounding=flat_compounding,
             flat_frequency=flat_frequency,
@@ -1937,6 +1983,9 @@ class _FloatingRateBondCommon(Bond):
         self._curve_observer = None
         self._index_observer = None
 
+    def _on_market_data_set_changed(self) -> None:
+        self._on_valuation_date_set()
+
     def reset_curve(self, curve: ql.YieldTermStructureHandle) -> None:
         if self.valuation_date is None:
             raise ValueError("Set valuation_date before reset_curve().")
@@ -2028,10 +2077,15 @@ class FloatingRateBond(_FloatingRateBondCommon):
             ex_coupon_end_of_month=self.ex_coupon_end_of_month,
         )
 
-    def get_cashflows(self) -> dict[str, list[dict[str, Any]]]:
+    def get_cashflows(
+        self,
+        *,
+        market_data_set: PricingMarketDataSetSelector = None,
+    ) -> dict[str, list[dict[str, Any]]]:
         """
         Keep the original floater-specific structure (floating + redemption).
         """
+        self._apply_market_data_set(market_data_set)
         self._setup_pricer()
         ql.Settings.instance().evaluationDate = to_ql_date(self.valuation_date)
 

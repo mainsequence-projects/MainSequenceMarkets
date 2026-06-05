@@ -1,5 +1,6 @@
 import datetime
 import os
+import uuid
 from operator import attrgetter
 from threading import RLock
 from typing import Any, Callable, TypedDict
@@ -94,57 +95,59 @@ class MSDataInterface:
             return PricingMarketDataConfiguration.model_validate(configuration)
         return PricingMarketDataConfiguration.model_validate(
             {
-                "context_key": getattr(configuration, "context_key"),
-                "data_node_identifiers": getattr(
+                "market_data_set": getattr(configuration, "market_data_set"),
+                "data_node_uids": getattr(
                     configuration,
-                    "data_node_identifiers",
+                    "data_node_uids",
                     {},
                 ),
             }
         )
 
-    def _data_node_identifier_for_concept(self, concept_key: str) -> str:
+    def _data_node_uid_for_concept(
+        self,
+        concept_key: str,
+        *,
+        market_data_set: Any | None = None,
+    ) -> uuid.UUID:
         configuration = self._get_market_data_configuration()
-        direct_identifier = configuration.direct_identifier_for(concept_key)
-        if direct_identifier is not None:
-            return direct_identifier
+        if market_data_set is None:
+            direct_uid = configuration.direct_data_node_uid_for(concept_key)
+            if direct_uid is not None:
+                return direct_uid
+            market_data_set = configuration.market_data_set
 
-        persisted_identifier = self._persisted_data_node_identifier_for_concept(
-            context_key=configuration.context_key,
+        return self._persisted_data_node_uid_for_concept(
+            market_data_set=market_data_set,
             concept_key=concept_key,
-        )
-        if persisted_identifier is not None:
-            return persisted_identifier
-
-        raise LookupError(
-            "No pricing market-data binding found for "
-            f"context_key={configuration.context_key!r}, concept_key={concept_key!r}."
         )
 
     @staticmethod
-    def _persisted_data_node_identifier_for_concept(
+    def _persisted_data_node_uid_for_concept(
         *,
-        context_key: str,
+        market_data_set: Any,
         concept_key: str,
-    ) -> str | None:
-        try:
-            from msm_pricing.api.market_data_bindings import PricingMarketDataBinding
+    ) -> uuid.UUID:
+        from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
 
-            return PricingMarketDataBinding.resolve_data_node_identifier(
-                context_key=context_key,
-                concept_key=concept_key,
-            )
-        except RuntimeError:
-            return None
+        return PricingMarketDataSetBinding.resolve_data_node_uid(
+            market_data_set=market_data_set,
+            concept_key=concept_key,
+        )
 
     # NOTE: caching is applied at the method boundary; body is unchanged.
     @cachedmethod(cache=attrgetter("_curve_cache"), lock=attrgetter("_curve_cache_lock"))
-    def get_historical_discount_curve(self, curve_name, target_date):
+    def get_historical_discount_curve(self, curve_name, target_date, *, market_data_set=None):
         from mainsequence.logconf import logger
         from mainsequence.meta_tables import APIDataNode
 
-        data_node = APIDataNode.build_from_identifier(
-            identifier=self._data_node_identifier_for_concept(PRICING_CONCEPT_DISCOUNT_CURVES)
+        data_node = APIDataNode.build_from_table_uid(
+            str(
+                self._data_node_uid_for_concept(
+                    PRICING_CONCEPT_DISCOUNT_CURVES,
+                    market_data_set=market_data_set,
+                )
+            )
         )
 
         # for test purposes only get lats observations
@@ -190,7 +193,12 @@ class MSDataInterface:
 
     @cachedmethod(cache=attrgetter("_fixings_cache"), lock=attrgetter("_fixings_cache_lock"))
     def get_historical_fixings(
-        self, reference_rate_uid: str, start_date: datetime.datetime, end_date: datetime.datetime
+        self,
+        reference_rate_uid: str,
+        start_date: datetime.datetime,
+        end_date: datetime.datetime,
+        *,
+        market_data_set=None,
     ):
         """
 
@@ -204,9 +212,12 @@ class MSDataInterface:
         from mainsequence.logconf import logger
         from mainsequence.meta_tables import APIDataNode
 
-        data_node = APIDataNode.build_from_identifier(
-            identifier=self._data_node_identifier_for_concept(
-                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
+        data_node = APIDataNode.build_from_table_uid(
+            str(
+                self._data_node_uid_for_concept(
+                    PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+                    market_data_set=market_data_set,
+                )
             )
         )
 

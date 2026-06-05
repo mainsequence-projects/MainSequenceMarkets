@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import uuid
 
 import pandas as pd
 import pytest
@@ -55,11 +56,12 @@ def test_dimension_range_for_identity_builds_generic_dimension_range_map() -> No
 def test_get_historical_fixings_reads_index_stamped_data(monkeypatch) -> None:
     MSDataInterface.clear_caches()
     calls = []
+    fixings_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000101")
 
     class FakeAPIDataNode:
         @classmethod
-        def build_from_identifier(cls, identifier):
-            assert identifier == "fixings-node"
+        def build_from_table_uid(cls, table_uid):
+            assert table_uid == str(fixings_data_node_uid)
             return cls()
 
         def get_df_between_dates(self, *, dimension_range_map):
@@ -80,8 +82,8 @@ def test_get_historical_fixings_reads_index_stamped_data(monkeypatch) -> None:
 
     interface = MSDataInterface(
         market_data_configuration={
-            "data_node_identifiers": {
-                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: "fixings-node",
+            "data_node_uids": {
+                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_data_node_uid,
             },
         }
     )
@@ -111,11 +113,12 @@ def test_get_historical_fixings_uses_persisted_pricing_market_data_binding(
 ) -> None:
     MSDataInterface.clear_caches()
     calls = []
+    data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000102")
 
     class FakeAPIDataNode:
         @classmethod
-        def build_from_identifier(cls, identifier):
-            calls.append(("identifier", identifier))
+        def build_from_table_uid(cls, table_uid):
+            calls.append(("table_uid", table_uid))
             return cls()
 
         def get_df_between_dates(self, *, dimension_range_map):
@@ -131,14 +134,14 @@ def test_get_historical_fixings_uses_persisted_pricing_market_data_binding(
             ).set_index(["time_index", "index_identifier"])
 
     import mainsequence.meta_tables as meta_tables
-    from msm_pricing.api.market_data_bindings import PricingMarketDataBinding
+    from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
 
     monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
     monkeypatch.setattr(
-        PricingMarketDataBinding,
-        "resolve_data_node_identifier",
+        PricingMarketDataSetBinding,
+        "resolve_data_node_uid",
         staticmethod(
-            lambda *, context_key, concept_key: "registered.index_fixings"
+            lambda *, market_data_set, concept_key: data_node_uid
             if concept_key == PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
             else None
         ),
@@ -153,17 +156,18 @@ def test_get_historical_fixings_uses_persisted_pricing_market_data_binding(
     )
 
     assert fixings == {dt.date(2026, 5, 26): 0.0525}
-    assert calls[0] == ("identifier", "registered.index_fixings")
+    assert calls[0] == ("table_uid", str(data_node_uid))
 
 
 def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> None:
     MSDataInterface.clear_caches()
     calls = []
+    curves_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000201")
 
     class FakeAPIDataNode:
         @classmethod
-        def build_from_identifier(cls, identifier):
-            assert identifier == "curves-node"
+        def build_from_table_uid(cls, table_uid):
+            assert table_uid == str(curves_data_node_uid)
             return cls()
 
         def get_df_between_dates(self, *, dimension_range_map):
@@ -186,8 +190,8 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
 
     interface = MSDataInterface(
         market_data_configuration={
-            "data_node_identifiers": {
-                PRICING_CONCEPT_DISCOUNT_CURVES: "curves-node",
+            "data_node_uids": {
+                PRICING_CONCEPT_DISCOUNT_CURVES: curves_data_node_uid,
             },
         }
     )
@@ -220,11 +224,12 @@ def test_get_historical_discount_curve_uses_persisted_pricing_market_data_bindin
 ) -> None:
     MSDataInterface.clear_caches()
     calls = []
+    data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000202")
 
     class FakeAPIDataNode:
         @classmethod
-        def build_from_identifier(cls, identifier):
-            calls.append(("identifier", identifier))
+        def build_from_table_uid(cls, table_uid):
+            calls.append(("table_uid", table_uid))
             return cls()
 
         def get_df_between_dates(self, *, dimension_range_map):
@@ -242,14 +247,14 @@ def test_get_historical_discount_curve_uses_persisted_pricing_market_data_bindin
             ).set_index(["time_index", "curve_identifier"])
 
     import mainsequence.meta_tables as meta_tables
-    from msm_pricing.api.market_data_bindings import PricingMarketDataBinding
+    from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
 
     monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
     monkeypatch.setattr(
-        PricingMarketDataBinding,
-        "resolve_data_node_identifier",
+        PricingMarketDataSetBinding,
+        "resolve_data_node_uid",
         staticmethod(
-            lambda *, context_key, concept_key: "registered.discount_curves"
+            lambda *, market_data_set, concept_key: data_node_uid
             if concept_key == PRICING_CONCEPT_DISCOUNT_CURVES
             else None
         ),
@@ -263,27 +268,29 @@ def test_get_historical_discount_curve_uses_persisted_pricing_market_data_bindin
     )
 
     assert nodes == [{"days_to_maturity": 28, "zero": 0.11}]
-    assert calls[0] == ("identifier", "registered.discount_curves")
+    assert calls[0] == ("table_uid", str(data_node_uid))
 
 
 def test_ms_data_interface_exposes_pricing_named_configuration_path() -> None:
     interface = MSDataInterface()
+    curves_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000301")
+    fixings_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000302")
 
     interface.set_market_data_configuration(
         {
-            "context_key": "eod",
-            "data_node_identifiers": {
-                PRICING_CONCEPT_DISCOUNT_CURVES: "curves-node",
-                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: "fixings-node",
+            "market_data_set": "eod",
+            "data_node_uids": {
+                PRICING_CONCEPT_DISCOUNT_CURVES: curves_data_node_uid,
+                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_data_node_uid,
             },
         }
     )
 
     configuration = interface._get_market_data_configuration()
-    assert configuration.context_key == "eod"
-    assert configuration.data_node_identifiers == {
-        PRICING_CONCEPT_DISCOUNT_CURVES: "curves-node",
-        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: "fixings-node",
+    assert configuration.market_data_set == "eod"
+    assert configuration.data_node_uids == {
+        PRICING_CONCEPT_DISCOUNT_CURVES: curves_data_node_uid,
+        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_data_node_uid,
     }
 
 
@@ -292,11 +299,13 @@ def test_get_historical_fixings_uses_persisted_binding_before_static_default(
 ) -> None:
     MSDataInterface.clear_caches()
     calls = []
+    persisted_uid = uuid.UUID("00000000-0000-0000-0000-000000000401")
+    direct_uid = uuid.UUID("00000000-0000-0000-0000-000000000402")
 
     class FakeAPIDataNode:
         @classmethod
-        def build_from_identifier(cls, identifier):
-            calls.append(("identifier", identifier))
+        def build_from_table_uid(cls, table_uid):
+            calls.append(("table_uid", table_uid))
             return cls()
 
         def get_df_between_dates(self, *, dimension_range_map):
@@ -315,20 +324,31 @@ def test_get_historical_fixings_uses_persisted_binding_before_static_default(
 
     monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
     monkeypatch.setattr(
-        "msm_pricing.api.market_data_bindings.PricingMarketDataBinding.resolve_data_node_identifier",
-        lambda *, context_key, concept_key: (
-            "persisted.fixings"
-            if (context_key, concept_key) == ("eod", PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS)
+        "msm_pricing.api.market_data_bindings.PricingMarketDataSetBinding.resolve_data_node_uid",
+        lambda *, market_data_set, concept_key: (
+            persisted_uid
+            if (
+                market_data_set == "eod"
+                and concept_key == PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
+            )
             else None
         ),
     )
 
-    interface = MSDataInterface(market_data_configuration={"context_key": "eod"})
+    interface = MSDataInterface(
+        market_data_configuration={
+            "market_data_set": "default",
+            "data_node_uids": {
+                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: direct_uid,
+            },
+        }
+    )
 
     interface.get_historical_fixings(
         "SOFR",
         dt.datetime(2026, 5, 1, tzinfo=dt.UTC),
         dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+        market_data_set="eod",
     )
 
-    assert calls[0] == ("identifier", "persisted.fixings")
+    assert calls[0] == ("table_uid", str(persisted_uid))

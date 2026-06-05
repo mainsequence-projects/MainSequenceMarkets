@@ -94,8 +94,8 @@ def _get_holdings_runtime():
         models=[
             "Account",
             "Asset",
-            "OpenFigiAssetDetails",
             "AccountHoldingsStorage",
+            "AssetSnapshotsStorage",
         ],
         row_model_name="GET /api/v1/account/{account_uid}/holdings/",
     )

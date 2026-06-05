@@ -16,8 +16,13 @@ from msm.repositories.crud import (
 )
 
 from msm_pricing.bootstrap import attach_pricing_schemas, resolve_pricing_runtime
-from msm_pricing.models.market_data_bindings import PricingMarketDataBindingTable
-from msm_pricing.settings import PRICING_CONTEXT_DEFAULT
+from msm_pricing.models.market_data_bindings import (
+    PricingMarketDataSetBindingTable,
+    PricingMarketDataSetTable,
+)
+from msm_pricing.settings import PRICING_MARKET_DATA_SET_DEFAULT
+
+PricingMarketDataSetSelector = Any
 
 
 def _validate_payload(
@@ -38,20 +43,20 @@ def _validate_payload(
     raise TypeError("Payload must be a Pydantic model, mapping, or None.")
 
 
-class PricingMarketDataBinding(BaseModel):
-    """Pricing market-data DataNode binding for one context and concept."""
+class PricingMarketDataSet(BaseModel):
+    """Named market-data source set used by pricing workflows."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
 
-    __table__: ClassVar[type[PricingMarketDataBindingTable]] = PricingMarketDataBindingTable
-    __required_tables__: ClassVar[list[type[Any]]] = [PricingMarketDataBindingTable]
-    __upsert_keys__: ClassVar[tuple[str, ...]] = ("context_key", "concept_key")
+    __table__: ClassVar[type[PricingMarketDataSetTable]] = PricingMarketDataSetTable
+    __required_tables__: ClassVar[list[type[Any]]] = [PricingMarketDataSetTable]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("set_key",)
 
     uid: uuid.UUID
-    context_key: str
-    concept_key: str
-    data_node_identifier: str
-    source: str | None = None
+    set_key: str
+    display_name: str
+    description: str | None = None
+    status: str = "ACTIVE"
     metadata_json: dict[str, Any] | None = Field(
         default=None,
         validation_alias=AliasChoices("metadata_json", "metadata"),
@@ -59,36 +64,32 @@ class PricingMarketDataBinding(BaseModel):
 
     @classmethod
     def start_engine(cls, **kwargs: Any):
-        """Attach the pricing runtime tables required by this row API."""
-
         requested_models = kwargs.pop("models", None)
         models = [*cls.__required_tables__, *(requested_models or [])]
         return attach_pricing_schemas(models=models, **kwargs)
 
     @classmethod
     def create_schemas(cls, **kwargs: Any):
-        """Deprecated compatibility alias for :meth:`start_engine`."""
-
         _warn_deprecated_create_schemas(cls.__name__)
         return cls.start_engine(**kwargs)
 
     @classmethod
     def create(
         cls,
-        payload: PricingMarketDataBindingCreate | Mapping[str, Any] | None = None,
+        payload: PricingMarketDataSetCreate | Mapping[str, Any] | None = None,
         **kwargs: Any,
-    ) -> PricingMarketDataBinding:
-        values = _validate_payload(PricingMarketDataBindingCreate, payload, kwargs).model_dump()
+    ) -> PricingMarketDataSet:
+        values = _validate_payload(PricingMarketDataSetCreate, payload, kwargs).model_dump()
         result = create_model(cls._active_context(), model=cls.__table__, values=values)
         return cls._from_operation_result(result)
 
     @classmethod
     def upsert(
         cls,
-        payload: PricingMarketDataBindingUpsert | Mapping[str, Any] | None = None,
+        payload: PricingMarketDataSetUpsert | Mapping[str, Any] | None = None,
         **kwargs: Any,
-    ) -> PricingMarketDataBinding:
-        values = _validate_payload(PricingMarketDataBindingUpsert, payload, kwargs).model_dump()
+    ) -> PricingMarketDataSet:
+        values = _validate_payload(PricingMarketDataSetUpsert, payload, kwargs).model_dump()
         result = upsert_model(
             cls._active_context(),
             model=cls.__table__,
@@ -101,10 +102,10 @@ class PricingMarketDataBinding(BaseModel):
     def update(
         cls,
         uid: uuid.UUID | str,
-        payload: PricingMarketDataBindingUpdate | Mapping[str, Any] | None = None,
+        payload: PricingMarketDataSetUpdate | Mapping[str, Any] | None = None,
         **kwargs: Any,
-    ) -> PricingMarketDataBinding:
-        values = _validate_payload(PricingMarketDataBindingUpdate, payload, kwargs).model_dump(
+    ) -> PricingMarketDataSet:
+        values = _validate_payload(PricingMarketDataSetUpdate, payload, kwargs).model_dump(
             exclude_unset=True,
         )
         result = update_model(
@@ -116,42 +117,191 @@ class PricingMarketDataBinding(BaseModel):
         return cls._from_operation_result(result)
 
     @classmethod
-    def get_by_uid(cls, uid: uuid.UUID | str) -> PricingMarketDataBinding | None:
+    def get_by_uid(cls, uid: uuid.UUID | str) -> PricingMarketDataSet | None:
         result = get_model_by_uid(cls._active_context(), model=cls.__table__, uid=uid)
         return cls._from_operation_result(result, required=False)
 
     @classmethod
-    def get_by_context_and_concept(
-        cls,
-        *,
-        context_key: str,
-        concept_key: str,
-    ) -> PricingMarketDataBinding | None:
+    def get_by_key(cls, set_key: str) -> PricingMarketDataSet | None:
         result = search_model(
             cls._active_context(),
             model=cls.__table__,
-            filters={"context_key": context_key, "concept_key": concept_key},
+            filters={"set_key": _normalize_set_key(set_key)},
             limit=1,
         )
         return cls._from_operation_result(result, required=False)
 
     @classmethod
-    def resolve_data_node_identifier(
+    def filter(cls, *, limit: int = 500, **filters: Any) -> list[PricingMarketDataSet]:
+        result = search_model(
+            cls._active_context(),
+            model=cls.__table__,
+            filters={key: value for key, value in filters.items() if value is not None},
+            limit=limit,
+        )
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
+
+    @classmethod
+    def resolve_uid(cls, market_data_set: PricingMarketDataSetSelector = None) -> uuid.UUID:
+        if market_data_set is None:
+            market_data_set = PRICING_MARKET_DATA_SET_DEFAULT
+        if isinstance(market_data_set, PricingMarketDataSet):
+            return market_data_set.uid
+        try:
+            return _coerce_uuid(market_data_set)
+        except (TypeError, ValueError):
+            set_key = _normalize_set_key(str(market_data_set))
+            row = cls.get_by_key(set_key)
+            if row is None:
+                raise LookupError(f"No pricing market-data set found for set_key={set_key!r}.")
+            return row.uid
+
+    @classmethod
+    def _active_context(cls):
+        runtime = resolve_pricing_runtime(
+            models=cls.__required_tables__,
+            row_model_name=cls.__name__,
+        )
+        return runtime.context
+
+    @classmethod
+    def _from_operation_result(
+        cls,
+        result: Mapping[str, Any],
+        *,
+        required: bool = True,
+    ) -> PricingMarketDataSet | None:
+        rows = operation_result_rows(result)
+        if rows:
+            return cls.model_validate(rows[0])
+        if required:
+            raise LookupError("MetaTable operation result did not include a PricingMarketDataSet row.")
+        return None
+
+
+class PricingMarketDataSetBinding(BaseModel):
+    """Binding from a pricing market-data set and concept to a storage table UID."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    __table__: ClassVar[type[PricingMarketDataSetBindingTable]] = (
+        PricingMarketDataSetBindingTable
+    )
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        PricingMarketDataSetTable,
+        PricingMarketDataSetBindingTable,
+    ]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("market_data_set_uid", "concept_key")
+
+    uid: uuid.UUID
+    market_data_set_uid: uuid.UUID
+    concept_key: str
+    data_node_uid: uuid.UUID
+    storage_table_identifier: str | None = None
+    source: str | None = None
+    metadata_json: dict[str, Any] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("metadata_json", "metadata"),
+    )
+
+    @classmethod
+    def start_engine(cls, **kwargs: Any):
+        requested_models = kwargs.pop("models", None)
+        models = [*cls.__required_tables__, *(requested_models or [])]
+        return attach_pricing_schemas(models=models, **kwargs)
+
+    @classmethod
+    def create_schemas(cls, **kwargs: Any):
+        _warn_deprecated_create_schemas(cls.__name__)
+        return cls.start_engine(**kwargs)
+
+    @classmethod
+    def create(
+        cls,
+        payload: PricingMarketDataSetBindingCreate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> PricingMarketDataSetBinding:
+        values = _validate_payload(PricingMarketDataSetBindingCreate, payload, kwargs).model_dump()
+        result = create_model(cls._active_context(), model=cls.__table__, values=values)
+        return cls._from_operation_result(result)
+
+    @classmethod
+    def upsert(
+        cls,
+        payload: PricingMarketDataSetBindingUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> PricingMarketDataSetBinding:
+        values = _validate_payload(PricingMarketDataSetBindingUpsert, payload, kwargs).model_dump()
+        result = upsert_model(
+            cls._active_context(),
+            model=cls.__table__,
+            values=values,
+            conflict_columns=cls.__upsert_keys__,
+        )
+        return cls._from_operation_result(result)
+
+    @classmethod
+    def update(
+        cls,
+        uid: uuid.UUID | str,
+        payload: PricingMarketDataSetBindingUpdate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> PricingMarketDataSetBinding:
+        values = _validate_payload(PricingMarketDataSetBindingUpdate, payload, kwargs).model_dump(
+            exclude_unset=True,
+        )
+        result = update_model(
+            cls._active_context(),
+            model=cls.__table__,
+            uid=uid,
+            values=values,
+        )
+        return cls._from_operation_result(result)
+
+    @classmethod
+    def get_by_uid(cls, uid: uuid.UUID | str) -> PricingMarketDataSetBinding | None:
+        result = get_model_by_uid(cls._active_context(), model=cls.__table__, uid=uid)
+        return cls._from_operation_result(result, required=False)
+
+    @classmethod
+    def get_by_set_and_concept(
         cls,
         *,
-        context_key: str,
+        market_data_set_uid: uuid.UUID | str,
         concept_key: str,
-    ) -> str | None:
-        binding = cls.get_by_context_and_concept(
-            context_key=context_key,
+    ) -> PricingMarketDataSetBinding | None:
+        result = search_model(
+            cls._active_context(),
+            model=cls.__table__,
+            filters={
+                "market_data_set_uid": _coerce_uuid(market_data_set_uid),
+                "concept_key": _normalize_concept_key(concept_key),
+            },
+            limit=1,
+        )
+        return cls._from_operation_result(result, required=False)
+
+    @classmethod
+    def resolve_data_node_uid(
+        cls,
+        *,
+        market_data_set: PricingMarketDataSetSelector = None,
+        concept_key: str,
+    ) -> uuid.UUID:
+        market_data_set_uid = PricingMarketDataSet.resolve_uid(market_data_set)
+        binding = cls.get_by_set_and_concept(
+            market_data_set_uid=market_data_set_uid,
             concept_key=concept_key,
         )
         if binding is None:
-            return None
-        return binding.data_node_identifier
+            raise LookupError(
+                "No pricing market-data binding found for "
+                f"market_data_set_uid={market_data_set_uid}, concept_key={concept_key!r}."
+            )
+        return binding.data_node_uid
 
     @classmethod
-    def filter(cls, *, limit: int = 500, **filters: Any) -> list[PricingMarketDataBinding]:
+    def filter(cls, *, limit: int = 500, **filters: Any) -> list[PricingMarketDataSetBinding]:
         result = search_model(
             cls._active_context(),
             model=cls.__table__,
@@ -174,50 +324,102 @@ class PricingMarketDataBinding(BaseModel):
         result: Mapping[str, Any],
         *,
         required: bool = True,
-    ) -> PricingMarketDataBinding | None:
+    ) -> PricingMarketDataSetBinding | None:
         rows = operation_result_rows(result)
         if rows:
             return cls.model_validate(rows[0])
         if required:
             raise LookupError(
-                "MetaTable operation result did not include a PricingMarketDataBinding row."
+                "MetaTable operation result did not include a PricingMarketDataSetBinding row."
             )
         return None
 
 
-class PricingMarketDataBindingCreate(BaseModel):
-    """Payload for creating one pricing market-data binding."""
+class PricingMarketDataSetCreate(BaseModel):
+    """Payload for creating one pricing market-data set."""
 
     model_config = ConfigDict(extra="forbid")
 
-    context_key: str = Field(
-        default=PRICING_CONTEXT_DEFAULT,
-        min_length=1,
-        max_length=64,
-    )
+    set_key: str = Field(min_length=1, max_length=64)
+    display_name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    status: str = Field(default="ACTIVE", min_length=1, max_length=32)
+    metadata_json: dict[str, Any] | None = None
+
+
+class PricingMarketDataSetUpsert(PricingMarketDataSetCreate):
+    """Payload for inserting or replacing a market-data set by set_key."""
+
+
+class PricingMarketDataSetUpdate(BaseModel):
+    """Payload for updating mutable market-data set fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    status: str | None = Field(default=None, min_length=1, max_length=32)
+    metadata_json: dict[str, Any] | None = None
+
+
+class PricingMarketDataSetBindingCreate(BaseModel):
+    """Payload for creating one pricing market-data set binding."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    market_data_set_uid: uuid.UUID
     concept_key: str = Field(min_length=1, max_length=128)
-    data_node_identifier: str = Field(min_length=1, max_length=255)
+    data_node_uid: uuid.UUID
+    storage_table_identifier: str | None = Field(default=None, max_length=255)
     source: str | None = Field(default=None, max_length=255)
     metadata_json: dict[str, Any] | None = None
 
 
-class PricingMarketDataBindingUpsert(PricingMarketDataBindingCreate):
-    """Payload for inserting or replacing a binding by context and concept."""
+class PricingMarketDataSetBindingUpsert(PricingMarketDataSetBindingCreate):
+    """Payload for inserting or replacing a binding by market-data set and concept."""
 
 
-class PricingMarketDataBindingUpdate(BaseModel):
-    """Payload for updating mutable binding fields."""
+class PricingMarketDataSetBindingUpdate(BaseModel):
+    """Payload for updating mutable market-data set binding fields."""
 
     model_config = ConfigDict(extra="forbid")
 
-    data_node_identifier: str | None = Field(default=None, min_length=1, max_length=255)
+    data_node_uid: uuid.UUID | None = None
+    storage_table_identifier: str | None = Field(default=None, max_length=255)
     source: str | None = Field(default=None, max_length=255)
     metadata_json: dict[str, Any] | None = None
+
+
+def _normalize_set_key(value: str) -> str:
+    normalized = str(value).strip()
+    if not normalized:
+        raise ValueError("market-data set key cannot be empty.")
+    return normalized
+
+
+def _normalize_concept_key(value: str) -> str:
+    normalized = str(value).strip()
+    if not normalized:
+        raise ValueError("concept_key cannot be empty.")
+    return normalized
+
+
+def _coerce_uuid(value: uuid.UUID | str | Any) -> uuid.UUID:
+    if isinstance(value, uuid.UUID):
+        return value
+    if value in (None, ""):
+        raise ValueError("UUID value cannot be empty.")
+    return uuid.UUID(str(value))
 
 
 __all__ = [
-    "PricingMarketDataBinding",
-    "PricingMarketDataBindingCreate",
-    "PricingMarketDataBindingUpdate",
-    "PricingMarketDataBindingUpsert",
+    "PricingMarketDataSet",
+    "PricingMarketDataSetBinding",
+    "PricingMarketDataSetBindingCreate",
+    "PricingMarketDataSetBindingUpdate",
+    "PricingMarketDataSetBindingUpsert",
+    "PricingMarketDataSetCreate",
+    "PricingMarketDataSetSelector",
+    "PricingMarketDataSetUpdate",
+    "PricingMarketDataSetUpsert",
 ]

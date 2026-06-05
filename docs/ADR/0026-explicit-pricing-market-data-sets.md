@@ -2,10 +2,11 @@
 
 ## Status
 
-Proposed
+Accepted - implemented
 
-This ADR is not implemented. It records the intended replacement for the current
-pricing market-data binding shape.
+Implemented in the ADR 0026 market-data set changes. Pricing runtime now uses
+first-class market-data set rows and concept bindings keyed by backend DataNode
+storage table UID.
 
 ## Context
 
@@ -60,8 +61,9 @@ PricingMarketDataSetBindingTable
   uid
   market_data_set_uid -> PricingMarketDataSetTable.uid
   concept_key
-  storage_table_uid
+  data_node_uid
   storage_table_identifier
+  source
   metadata_json
 ```
 
@@ -74,8 +76,10 @@ intraday
 stress_2026_06
 ```
 
-`PricingMarketDataSetBindingTable.storage_table_uid` is the authoritative
-resource pointer. `storage_table_identifier` is optional diagnostic cache only;
+`PricingMarketDataSetBindingTable.data_node_uid` is the authoritative resource
+pointer. It stores the backend MetaTable/TimeIndexMetaTable UID consumed by
+`APIDataNode.build_from_table_uid(...)`. `storage_table_identifier` is optional
+diagnostic cache only;
 runtime resolution must not depend on it when a UID is available.
 
 The binding uniqueness rule is:
@@ -101,17 +105,14 @@ Pricing should resolve market data from a named set:
 market_data_set_key
   -> PricingMarketDataSetTable
   -> PricingMarketDataSetBindingTable rows
-  -> storage_table_uid
+  -> data_node_uid
   -> APIDataNode.build_from_table_uid(...)
 ```
 
-If the SDK does not expose `APIDataNode.build_from_table_uid(...)` or an
-equivalent UID-based DataNode resolver, this ADR requires an SDK addition before
-implementation can be completed.
-
-Identifier-string resolution through `APIDataNode.build_from_identifier(...)`
-is allowed only as a transitional compatibility path when migrating existing
-binding rows that do not yet have a storage table UID.
+The SDK exposes `APIDataNode.build_from_table_uid(...)`, and pricing uses that
+resolver for configured market-data bindings. Identifier-string resolution
+through `APIDataNode.build_from_identifier(...)` is not part of the pricing
+market-data binding path.
 
 ## Bootstrap
 
@@ -123,8 +124,8 @@ The target flow is:
 ```text
 msm_pricing.start_engine(...)
   -> attach pricing storage MetaTables
-  -> read DiscountCurvesStorage.get_meta_table().uid
-  -> read IndexFixingsStorage.get_meta_table().uid
+  -> read DiscountCurvesStorage.get_meta_table_uid()
+  -> read IndexFixingsStorage.get_meta_table_uid()
   -> upsert PricingMarketDataSetTable(set_key="default")
   -> upsert required PricingMarketDataSetBindingTable rows
 ```
@@ -143,14 +144,11 @@ The implementation requires a normal Alembic revision that:
 1. creates `PricingMarketDataSetTable`;
 2. creates `PricingMarketDataSetBindingTable`;
 3. adds foreign keys and uniqueness constraints;
-4. optionally migrates existing `PricingMarketDataBindingTable` rows when the
-   stored identifier can be resolved to a registered storage table UID;
-5. keeps or removes the old binding table according to the final compatibility
-   decision made during implementation.
+4. removes `PricingMarketDataBindingTable`.
 
-Because the current binding rows store identifiers, existing rows cannot be
-blindly converted without resolving those identifiers through the platform.
-That adoption step must be explicit and testable.
+Existing binding-row migration is intentionally not implemented because the
+assumed data set is clean and backward compatibility is not part of this
+decision.
 
 ## Non-Goals
 
@@ -163,20 +161,20 @@ That adoption step must be explicit and testable.
 
 ## Implementation Tasks
 
-- [ ] Add `PricingMarketDataSetTable`.
-- [ ] Add `PricingMarketDataSetBindingTable`.
-- [ ] Add public row APIs for market-data sets and set bindings.
-- [ ] Add or verify SDK support for UID-based DataNode resolution.
-- [ ] Update pricing data-interface resolution to load a set, validate required
+- [x] Add `PricingMarketDataSetTable`.
+- [x] Add `PricingMarketDataSetBindingTable`.
+- [x] Add public row APIs for market-data sets and set bindings.
+- [x] Add or verify SDK support for UID-based DataNode resolution.
+- [x] Update pricing data-interface resolution to load a set, validate required
       concept bindings, and resolve DataNodes by storage table UID.
-- [ ] Update pricing bootstrap to seed the default set from attached storage
+- [x] Update pricing bootstrap to seed the default set from attached storage
       MetaTable UIDs.
-- [ ] Generate and review the Alembic revision under the active namespace
+- [x] Generate and review the Alembic revision under the active namespace
       version directory.
-- [ ] Decide and implement the compatibility path for existing
-      `PricingMarketDataBindingTable` rows.
-- [ ] Update pricing docs, tutorial, and examples.
-- [ ] Add tests for set creation, binding uniqueness, bootstrap seeding,
+- [x] Remove `PricingMarketDataBindingTable` instead of adding a compatibility
+      path for clean data.
+- [x] Update pricing docs, tutorial, skills, and examples.
+- [x] Add tests for set creation, binding uniqueness, bootstrap seeding,
       missing-concept errors, and UID-based resolver calls.
 
 ## Success Criteria

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import uuid
 from types import SimpleNamespace
 
 import pytest
@@ -11,11 +12,14 @@ from msm_pricing.config import (
     get_pricing_market_data_configuration,
     reset_pricing_market_data_configuration,
 )
-from msm_pricing.models import PricingMarketDataBindingTable
+from msm_pricing.models import (
+    PricingMarketDataSetBindingTable,
+    PricingMarketDataSetTable,
+)
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-    PRICING_CONTEXT_DEFAULT,
+    PRICING_MARKET_DATA_SET_DEFAULT,
 )
 
 
@@ -39,9 +43,15 @@ def install_fake_pricing_bootstrap(monkeypatch):
     )
 
     monkeypatch.setattr(
-        PricingMarketDataBindingTable,
+        PricingMarketDataSetTable,
         "__metatable_uid__",
-        "pricing-market-data-binding-uid",
+        "pricing-market-data-set-uid",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        PricingMarketDataSetBindingTable,
+        "__metatable_uid__",
+        "pricing-market-data-set-binding-uid",
         raising=False,
     )
     monkeypatch.setattr(
@@ -79,8 +89,10 @@ def install_fake_pricing_bootstrap(monkeypatch):
     def fake_resolve_pricing_meta_table_models(models=None):
         resolved = []
         for model in list(models or ["CurveTable"]):
-            if model == "PricingMarketDataBindingTable":
-                resolved.append(PricingMarketDataBindingTable)
+            if model == "PricingMarketDataSetTable":
+                resolved.append(PricingMarketDataSetTable)
+            elif model == "PricingMarketDataSetBindingTable":
+                resolved.append(PricingMarketDataSetBindingTable)
             elif model == "DiscountCurvesStorage":
                 resolved.append(DiscountCurvesStorage)
             elif model == "IndexFixingsStorage":
@@ -94,7 +106,8 @@ def install_fake_pricing_bootstrap(monkeypatch):
         return {
             "CurveTable": "Curve",
             "IndexConventionDetailsTable": "IndexConventionDetails",
-            "PricingMarketDataBindingTable": "PricingMarketDataBinding",
+            "PricingMarketDataSetTable": "PricingMarketDataSet",
+            "PricingMarketDataSetBindingTable": "PricingMarketDataSetBinding",
         }.get(model_name, model_name)
 
     def fake_resolve_registered_markets_meta_tables(**kwargs):
@@ -166,20 +179,24 @@ def test_create_pricing_schemas_installs_market_data_configuration_override(
         models=["CurveTable"],
         seed_default_market_data_bindings=False,
         market_data_configuration={
-            "context_key": "eod",
-            "data_node_identifiers": {
-                PRICING_CONCEPT_DISCOUNT_CURVES: "vendor.discount_curves",
-                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: ("vendor.interest_rate_index_fixings"),
+            "market_data_set": "eod",
+            "data_node_uids": {
+                PRICING_CONCEPT_DISCOUNT_CURVES: "00000000-0000-0000-0000-000000000101",
+                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: (
+                    "00000000-0000-0000-0000-000000000102"
+                ),
             },
         },
     )
 
     configuration = get_pricing_market_data_configuration()
     assert configuration == PricingMarketDataConfiguration(
-        context_key="eod",
-        data_node_identifiers={
-            PRICING_CONCEPT_DISCOUNT_CURVES: "vendor.discount_curves",
-            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: ("vendor.interest_rate_index_fixings"),
+        market_data_set="eod",
+        data_node_uids={
+            PRICING_CONCEPT_DISCOUNT_CURVES: "00000000-0000-0000-0000-000000000101",
+            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: (
+                "00000000-0000-0000-0000-000000000102"
+            ),
         },
     )
 
@@ -236,9 +253,11 @@ def test_create_pricing_schemas_does_not_install_market_data_override_on_schema_
             models=["CurveTable"],
             seed_default_market_data_bindings=False,
             market_data_configuration={
-                "context_key": "eod",
-                "data_node_identifiers": {
-                    PRICING_CONCEPT_DISCOUNT_CURVES: "vendor.discount_curves",
+                "market_data_set": "eod",
+                "data_node_uids": {
+                    PRICING_CONCEPT_DISCOUNT_CURVES: (
+                        "00000000-0000-0000-0000-000000000201"
+                    ),
                 },
             },
         )
@@ -252,36 +271,51 @@ def test_create_pricing_schemas_seeds_default_market_data_bindings(
 ) -> None:
     install_fake_pricing_bootstrap(monkeypatch)
     calls = []
+    market_data_set_uid = uuid.UUID("00000000-0000-0000-0000-000000000301")
 
     def fake_search_model(context, *, model, filters, limit):
         calls.append(("search", context, model, filters, limit))
         return {"rows": []}
+
+    def fake_upsert_model(context, *, model, values, conflict_columns):
+        calls.append(("upsert", context, model, values, conflict_columns))
+        assert model is PricingMarketDataSetTable
+        assert conflict_columns == ("set_key",)
+        return {
+            "row": {
+                "uid": market_data_set_uid,
+                **values,
+            }
+        }
 
     def fake_create_model(context, *, model, values):
         calls.append(("create", context, model, values))
         return {"row": {"uid": "binding-uid", **values}}
 
     monkeypatch.setattr(pricing_bootstrap, "search_model", fake_search_model)
+    monkeypatch.setattr(pricing_bootstrap, "upsert_model", fake_upsert_model)
     monkeypatch.setattr(pricing_bootstrap, "create_model", fake_create_model)
 
     pricing_bootstrap.create_pricing_schemas(
         namespace="mainsequence.examples",
-        models=["PricingMarketDataBindingTable"],
+        models=["PricingMarketDataSetBindingTable"],
     )
 
     create_values = [call[3] for call in calls if call[0] == "create"]
     assert create_values == [
         {
-            "context_key": PRICING_CONTEXT_DEFAULT,
+            "market_data_set_uid": market_data_set_uid,
             "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
-            "data_node_identifier": "registered.discount_curves",
+            "data_node_uid": "discount-curves-storage-uid",
+            "storage_table_identifier": "registered.discount_curves",
             "source": "msm_pricing.bootstrap",
             "metadata_json": {"seeded_default": True},
         },
         {
-            "context_key": PRICING_CONTEXT_DEFAULT,
+            "market_data_set_uid": market_data_set_uid,
             "concept_key": PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-            "data_node_identifier": "registered.index_fixings",
+            "data_node_uid": "index-fixings-storage-uid",
+            "storage_table_identifier": "registered.index_fixings",
             "source": "msm_pricing.bootstrap",
             "metadata_json": {"seeded_default": True},
         },
@@ -293,6 +327,8 @@ def test_default_market_data_binding_seeding_does_not_overwrite_existing_rows(
 ) -> None:
     install_fake_pricing_bootstrap(monkeypatch)
     calls = []
+    market_data_set_uid = uuid.UUID("00000000-0000-0000-0000-000000000401")
+    existing_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000402")
 
     def fake_search_model(context, *, model, filters, limit):
         calls.append(("search", context, model, filters, limit))
@@ -301,25 +337,32 @@ def test_default_market_data_binding_seeding_does_not_overwrite_existing_rows(
                 {
                     "uid": "existing-binding-uid",
                     **filters,
-                    "data_node_identifier": "existing.identifier",
+                    "data_node_uid": existing_data_node_uid,
                 }
             ]
         }
+
+    def fake_upsert_model(context, *, model, values, conflict_columns):
+        calls.append(("upsert", context, model, values, conflict_columns))
+        assert model is PricingMarketDataSetTable
+        return {"row": {"uid": market_data_set_uid, **values}}
 
     def fake_create_model(*_args, **_kwargs):
         raise AssertionError("create_model should not overwrite existing bindings")
 
     monkeypatch.setattr(pricing_bootstrap, "search_model", fake_search_model)
+    monkeypatch.setattr(pricing_bootstrap, "upsert_model", fake_upsert_model)
     monkeypatch.setattr(pricing_bootstrap, "create_model", fake_create_model)
 
     runtime = pricing_bootstrap.create_pricing_schemas(
-        models=["PricingMarketDataBindingTable"],
+        models=["PricingMarketDataSetBindingTable"],
     )
 
     rows = pricing_bootstrap.seed_default_pricing_market_data_bindings(runtime)
 
-    assert len(rows) == 2
-    assert all(row["data_node_identifier"] == "existing.identifier" for row in rows)
+    assert len(rows) == 3
+    assert rows[0]["set_key"] == PRICING_MARKET_DATA_SET_DEFAULT
+    assert all(row["data_node_uid"] == existing_data_node_uid for row in rows[1:])
 
 
 def test_default_market_data_binding_seeding_replaces_when_requested(
@@ -327,24 +370,37 @@ def test_default_market_data_binding_seeding_replaces_when_requested(
 ) -> None:
     install_fake_pricing_bootstrap(monkeypatch)
     calls = []
+    market_data_set_uid = uuid.UUID("00000000-0000-0000-0000-000000000501")
 
     def fake_upsert_model(context, *, model, values, conflict_columns):
         calls.append((context, model, values, conflict_columns))
-        return {"row": {"uid": "binding-uid", **values}}
+        row_uid = market_data_set_uid if model is PricingMarketDataSetTable else uuid.uuid4()
+        return {"row": {"uid": row_uid, **values}}
 
     monkeypatch.setattr(pricing_bootstrap, "upsert_model", fake_upsert_model)
 
     runtime = pricing_bootstrap.create_pricing_schemas(
-        models=["PricingMarketDataBindingTable"],
+        models=["PricingMarketDataSetBindingTable"],
         replace_default_market_data_bindings=True,
     )
 
-    assert PricingMarketDataBindingTable in runtime.meta_table_models
-    assert [call[2]["concept_key"] for call in calls] == [
+    assert PricingMarketDataSetTable in runtime.meta_table_models
+    assert PricingMarketDataSetBindingTable in runtime.meta_table_models
+    binding_concepts = [
+        call[2]["concept_key"]
+        for call in calls
+        if call[1] is PricingMarketDataSetBindingTable
+    ]
+    assert binding_concepts == [
         PRICING_CONCEPT_DISCOUNT_CURVES,
         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
     ]
-    assert {call[3] for call in calls} == {("context_key", "concept_key")}
+    assert calls[0][3] == ("set_key",)
+    assert {
+        call[3]
+        for call in calls
+        if call[1] is PricingMarketDataSetBindingTable
+    } == {("market_data_set_uid", "concept_key")}
 
 
 def test_resolve_pricing_runtime_requires_initialized_runtime(monkeypatch) -> None:

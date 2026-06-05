@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from threading import Lock
@@ -24,11 +25,14 @@ from .meta_tables import (
     pricing_meta_table_identifier,
     resolve_pricing_meta_table_models,
 )
-from .models.market_data_bindings import PricingMarketDataBindingTable
+from .models.market_data_bindings import (
+    PricingMarketDataSetBindingTable,
+    PricingMarketDataSetTable,
+)
 from .settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-    PRICING_CONTEXT_DEFAULT,
+    PRICING_MARKET_DATA_SET_DEFAULT,
 )
 
 _CREATE_PRICING_SCHEMAS_LOCK = Lock()
@@ -249,7 +253,7 @@ def configure_pricing_market_data(
 def seed_default_pricing_market_data_bindings(
     runtime: PricingRuntime | None = None,
     *,
-    context_key: str = PRICING_CONTEXT_DEFAULT,
+    market_data_set: str | uuid.UUID = PRICING_MARKET_DATA_SET_DEFAULT,
     replace: bool = False,
 ) -> list[dict[str, Any]]:
     """Seed built-in pricing market-data bindings for a runtime context."""
@@ -257,35 +261,44 @@ def seed_default_pricing_market_data_bindings(
     if runtime is None:
         runtime = resolve_pricing_runtime(
             models=_pricing_default_market_data_binding_models(),
-            row_model_name="PricingMarketDataBinding",
+            row_model_name="PricingMarketDataSetBinding",
         )
-    if PricingMarketDataBindingTable not in runtime.meta_table_models:
+    if (
+        PricingMarketDataSetTable not in runtime.meta_table_models
+        or PricingMarketDataSetBindingTable not in runtime.meta_table_models
+    ):
         return []
 
-    rows: list[dict[str, Any]] = []
-    for concept_key, data_node_identifier in _default_pricing_market_data_bindings_from_runtime(
-        runtime
-    ).items():
+    set_row = _upsert_pricing_market_data_set(
+        runtime,
+        market_data_set=market_data_set,
+        replace=replace,
+    )
+    market_data_set_uid = uuid.UUID(str(set_row["uid"]))
+
+    rows: list[dict[str, Any]] = [set_row]
+    for concept_key, storage in _default_pricing_market_data_bindings_from_runtime(runtime).items():
         values = {
-            "context_key": context_key,
+            "market_data_set_uid": market_data_set_uid,
             "concept_key": concept_key,
-            "data_node_identifier": data_node_identifier,
+            "data_node_uid": storage["data_node_uid"],
+            "storage_table_identifier": storage["storage_table_identifier"],
             "source": "msm_pricing.bootstrap",
             "metadata_json": {"seeded_default": True},
         }
         if replace:
             result = upsert_model(
                 runtime.context,
-                model=PricingMarketDataBindingTable,
+                model=PricingMarketDataSetBindingTable,
                 values=values,
-                conflict_columns=("context_key", "concept_key"),
+                conflict_columns=("market_data_set_uid", "concept_key"),
             )
         else:
             existing = search_model(
                 runtime.context,
-                model=PricingMarketDataBindingTable,
+                model=PricingMarketDataSetBindingTable,
                 filters={
-                    "context_key": context_key,
+                    "market_data_set_uid": market_data_set_uid,
                     "concept_key": concept_key,
                 },
                 limit=1,
@@ -296,7 +309,7 @@ def seed_default_pricing_market_data_bindings(
                 continue
             result = create_model(
                 runtime.context,
-                model=PricingMarketDataBindingTable,
+                model=PricingMarketDataSetBindingTable,
                 values=values,
             )
         rows.extend(operation_result_rows(result))
@@ -314,7 +327,7 @@ def _configure_pricing_runtime_market_data(
     if seed_default_market_data_bindings:
         seed_default_pricing_market_data_bindings(
             runtime,
-            context_key=configuration.context_key,
+            market_data_set=configuration.market_data_set,
             replace=replace_default_market_data_bindings,
         )
     return configuration
@@ -358,7 +371,8 @@ def _pricing_default_market_data_binding_models() -> list[type[MarketsBase]]:
     )
 
     return [
-        PricingMarketDataBindingTable,
+        PricingMarketDataSetTable,
+        PricingMarketDataSetBindingTable,
         DiscountCurvesStorage,
         IndexFixingsStorage,
     ]
@@ -366,7 +380,7 @@ def _pricing_default_market_data_binding_models() -> list[type[MarketsBase]]:
 
 def _default_pricing_market_data_bindings_from_runtime(
     runtime: PricingRuntime,
-) -> dict[str, str]:
+) -> dict[str, dict[str, str]]:
     from msm_pricing.data_nodes.storage import (
         DiscountCurvesStorage,
         IndexFixingsStorage,
@@ -386,9 +400,80 @@ def _default_pricing_market_data_bindings_from_runtime(
         )
 
     return {
-        PRICING_CONCEPT_DISCOUNT_CURVES: DiscountCurvesStorage.get_identifier(),
-        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: IndexFixingsStorage.get_identifier(),
+        PRICING_CONCEPT_DISCOUNT_CURVES: {
+            "data_node_uid": _required_model_meta_table_uid(DiscountCurvesStorage),
+            "storage_table_identifier": DiscountCurvesStorage.get_identifier(),
+        },
+        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: {
+            "data_node_uid": _required_model_meta_table_uid(IndexFixingsStorage),
+            "storage_table_identifier": IndexFixingsStorage.get_identifier(),
+        },
     }
+
+
+def _upsert_pricing_market_data_set(
+    runtime: PricingRuntime,
+    *,
+    market_data_set: str | uuid.UUID,
+    replace: bool,
+) -> dict[str, Any]:
+    try:
+        set_uid = uuid.UUID(str(market_data_set))
+    except (TypeError, ValueError):
+        set_key = str(market_data_set).strip()
+        if not set_key:
+            raise ValueError("market_data_set cannot be empty.")
+        values = {
+            "set_key": set_key,
+            "display_name": _display_name_from_set_key(set_key),
+            "description": "Built-in pricing market-data set seeded during pricing bootstrap.",
+            "status": "ACTIVE",
+            "metadata_json": {"seeded_default": True},
+        }
+        result = upsert_model(
+            runtime.context,
+            model=PricingMarketDataSetTable,
+            values=values,
+            conflict_columns=("set_key",),
+        )
+        rows = operation_result_rows(result)
+        if not rows:
+            raise LookupError("Pricing market-data set upsert did not return a row.")
+        return rows[0]
+
+    existing = search_model(
+        runtime.context,
+        model=PricingMarketDataSetTable,
+        filters={"uid": set_uid},
+        limit=1,
+    )
+    rows = operation_result_rows(existing)
+    if rows:
+        return rows[0]
+    if not replace:
+        raise LookupError(f"No pricing market-data set found for uid={set_uid}.")
+    values = {
+        "uid": set_uid,
+        "set_key": str(set_uid),
+        "display_name": f"Pricing market-data set {set_uid}",
+        "description": "Pricing market-data set seeded by UID during pricing bootstrap.",
+        "status": "ACTIVE",
+        "metadata_json": {"seeded_default": True},
+    }
+    result = upsert_model(
+        runtime.context,
+        model=PricingMarketDataSetTable,
+        values=values,
+        conflict_columns=("set_key",),
+    )
+    rows = operation_result_rows(result)
+    if not rows:
+        raise LookupError("Pricing market-data set upsert did not return a row.")
+    return rows[0]
+
+
+def _display_name_from_set_key(set_key: str) -> str:
+    return set_key.replace("_", " ").replace("-", " ").title()
 
 
 def _missing_models_from_runtime(
@@ -445,6 +530,13 @@ def _model_meta_table_uid(model: Any) -> str | None:
     if uid in (None, ""):
         return None
     return str(uid)
+
+
+def _required_model_meta_table_uid(model: Any) -> str:
+    uid = _model_meta_table_uid(model)
+    if uid is None:
+        raise RuntimeError(f"{_model_name(model)} is not attached to a backend storage table.")
+    return uid
 
 
 def _model_name(model: Any) -> str:

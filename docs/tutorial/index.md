@@ -165,37 +165,50 @@ the core asset and index tables first, then pricing extension tables, and uses
 the same direct backend attachment contract as `msm.start_engine(...)`.
 
 Pricing bootstrap also seeds default market-data bindings for the built-in
-pricing context:
+pricing market-data set:
 
 ```text
-(default, discount_curves)
-  -> DiscountCurvesStorage.get_identifier()
-(default, interest_rate_index_fixings)
-  -> IndexFixingsStorage.get_identifier()
+PricingMarketDataSet(set_key="default")
+  -> PricingMarketDataSetBinding(concept_key="discount_curves")
+       data_node_uid = DiscountCurvesStorage.get_meta_table_uid()
+  -> PricingMarketDataSetBinding(concept_key="interest_rate_index_fixings")
+       data_node_uid = IndexFixingsStorage.get_meta_table_uid()
 ```
 
-The binding row maps `(context_key, concept_key)` to a DataNode identifier. Use
-`msm_pricing.api.PricingMarketDataBinding` when an application needs an `eod`,
-`live`, or `risk_manager` context:
+The binding row maps `(market_data_set_uid, concept_key)` to a backend DataNode
+storage table UID. Use `msm_pricing.api.PricingMarketDataSet` and
+`PricingMarketDataSetBinding` when an application needs an `eod`, `live`, or
+`risk_manager` source set:
 
 ```python
-from msm_pricing.api import PricingMarketDataBinding
+from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
+from msm_pricing.data_nodes.storage import DiscountCurvesStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
-    PRICING_CONTEXT_EOD,
+    PRICING_MARKET_DATA_SET_EOD,
 )
 
-PricingMarketDataBinding.upsert(
-    context_key=PRICING_CONTEXT_EOD,
+market_data_set = PricingMarketDataSet.upsert(
+    set_key=PRICING_MARKET_DATA_SET_EOD,
+    display_name="EOD pricing market data",
+)
+PricingMarketDataSetBinding.upsert(
+    market_data_set_uid=market_data_set.uid,
     concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-    data_node_identifier="vendor.eod.discount_curves",
+    data_node_uid=DiscountCurvesStorage.get_meta_table_uid(),
+    storage_table_identifier=DiscountCurvesStorage.get_identifier(),
 )
 ```
 
-Pricing resolution looks up the active context and concept, then reads the
-resulting DataNode with `APIDataNode.build_from_identifier(...)`. Static
-defaults remain available for built-in concepts, but public workflows should use
-identifiers and bindings, not platform table UIDs.
+Pricing resolution looks up the active market-data set and concept, then reads
+the resulting DataNode with `APIDataNode.build_from_table_uid(...)`. Public
+workflows should bind storage table UIDs; identifiers are diagnostic only.
+Callers select a non-default source set at valuation time:
+
+```python
+bond.price(market_data_set="eod")
+bond.price(market_data_set="live")
+```
 
 The user-facing write and read path belongs to instrument classes:
 
@@ -243,13 +256,14 @@ For a full floating-rate bond workflow, use
 3. Upsert `IndexConventionDetails` and `Curve` rows under `msm_pricing.api`.
 4. Publish one month of mock fixings through a `FixingRatesNode` subclass and a
    sampled flat-forward curve through a `DiscountCurvesNode` subclass.
-5. Use the seeded `default` market-data context, or upsert a named context such
-   as `eod` with `PricingMarketDataBinding`.
+5. Attach pricing storage tables, then upsert the `default` market-data set and
+   its concept bindings with `PricingMarketDataSet` and
+   `PricingMarketDataSetBinding`.
 6. Create a `FloatingRateBond` with `floating_rate_index_uid=index.uid`.
 7. Attach the instrument with `instrument.attach_to_asset(asset, ...)`.
 8. Reload it generically with `Instrument.load_from_asset(asset)`, set the
-   valuation date, then call `price()`, `analytics()`, `get_cashflows()`, and
-   `carry_roll_down(...)`.
+   valuation date, then call `price(market_data_set="default")`,
+   `analytics()`, `get_cashflows()`, and `carry_roll_down(...)`.
 
 The reusable mock market-data components live in `examples/msm_pricing/utils/` so
 the same curve and fixing DataNode extension pattern can be reused by swap

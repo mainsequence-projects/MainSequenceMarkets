@@ -40,7 +40,7 @@ from migrations import (
     namespace_version_slug,
 )
 from migrations.registry import metatable_provider_models
-from msm.settings import markets_identifier, markets_namespace
+from msm.settings import markets_auto_register_namespace, markets_identifier, markets_namespace
 
 
 def test_migration_provider_is_single_sdk_alembic_provider() -> None:
@@ -53,12 +53,15 @@ def test_migration_provider_is_single_sdk_alembic_provider() -> None:
     assert MarketsAlembicVersion.__metatable_identifier__ == markets_identifier(
         "msm.alembic_version"
     )
-    assert migration.version_table == markets_table_name(MARKETS_TABLE_APP, "alembic_version")
+    expected_version_table = markets_table_name(
+        MARKETS_TABLE_APP,
+        "alembic_version",
+        suffix=markets_auto_register_namespace(),
+    )
+    assert migration.version_table == expected_version_table
     assert MARKETS_SCHEMA is None
     assert migration.version_table_schema is None
-    assert migration.alembic_version_table == markets_table_name(
-        MARKETS_TABLE_APP, "alembic_version"
-    )
+    assert migration.alembic_version_table == expected_version_table
     assert migration.after_register_metatables is not None
     assert (
         migration.after_register_metatables.__name__
@@ -107,6 +110,11 @@ def test_namespace_version_slug_is_deterministic() -> None:
 
 def test_active_namespace_version_location_uses_migrations_package() -> None:
     assert active_namespace_version_location().startswith("migrations:versions/")
+
+
+def test_migration_provider_uses_active_namespace_version_location() -> None:
+    assert migration.version_locations == [active_namespace_version_location()]
+    assert migration.version_path == active_namespace_version_location()
 
 
 def test_existing_revisions_live_under_mainsequence_examples_namespace() -> None:

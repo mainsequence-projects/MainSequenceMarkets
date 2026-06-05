@@ -134,11 +134,17 @@ from msm.constants import (
     INDEX_TYPE_INTEREST_RATE,
     INDEX_TYPE_INTEREST_RATE_DEFINITION,
 )
-from msm_pricing.api import Curve, IndexConventionDetails, PricingMarketDataBinding
+from msm_pricing.api import (
+    Curve,
+    IndexConventionDetails,
+    PricingMarketDataSet,
+    PricingMarketDataSetBinding,
+)
+from msm_pricing.data_nodes.storage import DiscountCurvesStorage, IndexFixingsStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-    PRICING_CONTEXT_DEFAULT,
+    PRICING_MARKET_DATA_SET_DEFAULT,
 )
 
 IndexType.upsert(**INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload())
@@ -175,15 +181,21 @@ curve = Curve.upsert(
     source="example",
 )
 
-PricingMarketDataBinding.upsert(
-    context_key=PRICING_CONTEXT_DEFAULT,
-    concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-    data_node_identifier="discount_curves",
+market_data_set = PricingMarketDataSet.upsert(
+    set_key=PRICING_MARKET_DATA_SET_DEFAULT,
+    display_name="Default pricing market data",
 )
-PricingMarketDataBinding.upsert(
-    context_key=PRICING_CONTEXT_DEFAULT,
+PricingMarketDataSetBinding.upsert(
+    market_data_set_uid=market_data_set.uid,
+    concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
+    data_node_uid=DiscountCurvesStorage.get_meta_table_uid(),
+    storage_table_identifier=DiscountCurvesStorage.get_identifier(),
+)
+PricingMarketDataSetBinding.upsert(
+    market_data_set_uid=market_data_set.uid,
     concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-    data_node_identifier="interest_rate_index_fixings",
+    data_node_uid=IndexFixingsStorage.get_meta_table_uid(),
+    storage_table_identifier=IndexFixingsStorage.get_identifier(),
 )
 ```
 
@@ -315,11 +327,15 @@ Resolver expectations:
 - `IndexConventionDetails` exists for the index UID.
 - Exactly one matching `Curve` exists, or the caller passes `source` or
   `curve_unique_identifier`.
-- `PricingMarketDataBinding` resolves the active `(context_key, concept_key)`
-  to the DataNode identifier for the published curve and fixing DataNodes.
+- `PricingMarketDataSetBinding` resolves the active
+  `(market_data_set_uid, concept_key)` to the backend DataNode storage table UID
+  for the published curve and fixing DataNodes.
 - Use `PRICING_CONCEPT_DISCOUNT_CURVES` and
   `PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS` instead of hard-coded DataNode
   field names.
+- When multiple market-data source sets exist in one process, select them at
+  pricing time with `bond.price(market_data_set="eod")` or
+  `swap.price(market_data_set="live")`.
 
 For instrument payloads:
 
@@ -341,8 +357,8 @@ An example should print or otherwise expose each step:
 3. Upsert `Curve`.
 4. Publish fixings.
 5. Publish discount curves.
-6. Use the seeded default pricing context or upsert named
-   `PricingMarketDataBinding` rows.
+6. Attach pricing storage tables and upsert the pricing market-data set plus
+   `PricingMarketDataSetBinding` rows explicitly.
 7. Attach/load the instrument by asset.
 8. Price and show analytics/cashflows.
 

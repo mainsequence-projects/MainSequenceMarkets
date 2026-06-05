@@ -13,9 +13,11 @@ This page is the operational view for pricing persistence: which objects exist,
 how they point to each other, and what a user or source publisher must create
 before pricing works.
 
-[ADR 0026](../../ADR/0026-explicit-pricing-market-data-sets.md) tracks the
-proposed future replacement for pricing market-data bindings. It is not yet
-implemented; this page describes the current implemented behavior.
+[ADR 0026](../../ADR/0026-explicit-pricing-market-data-sets.md) defines the
+implemented pricing market-data set architecture. Pricing no longer stores
+runtime source selection as loose `context_key` plus DataNode identifier
+strings. It stores first-class market-data set rows and concept bindings keyed
+by backend DataNode storage table UID.
 
 ## What Pricing Owns
 
@@ -79,16 +81,65 @@ IndexTable.unique_identifier
   -> QuantLib index hydration
 ```
 
-The DataNode locations used by the pricing engine are pricing market-data
-bindings, not instrument metadata and not core `msm` MetaTables. Bindings are
-vertical rows keyed by `(context_key, concept_key)` so new pricing concepts can
-be added without schema migrations:
+The complete fixed-income pricing path is:
 
 ```text
-PricingMarketDataBinding
-  context_key          = default | eod | live | risk_manager
-  concept_key          = discount_curves | interest_rate_index_fixings | equity_vol_curves
-  data_node_identifier = <Main Sequence DataNode identifier>
+User query
+  -> Asset row
+  -> Instrument.load_from_asset(asset)
+  -> FloatingRateBond(floating_rate_index_uid=<IndexTable.uid>)
+  -> bond.price(market_data_set="default" | "eod" | "live" | ...)
+
+Pricing resolver
+  -> IndexTable.uid
+  -> IndexConventionDetailsTable.index_uid
+  -> CurveTable(index_uid, curve_type="discount")
+  -> PricingMarketDataSet(set_key=<selected set>)
+  -> PricingMarketDataSetBinding(concept_key="discount_curves")
+  -> data_node_uid
+  -> APIDataNode.build_from_table_uid(data_node_uid)
+  -> DiscountCurvesStorage rows keyed by (time_index, curve_identifier)
+```
+
+Index fixings use the same market-data set:
+
+```text
+Floating coupon hydration
+  -> IndexTable.unique_identifier
+  -> PricingMarketDataSet(set_key=<selected set>)
+  -> PricingMarketDataSetBinding(concept_key="interest_rate_index_fixings")
+  -> data_node_uid
+  -> APIDataNode.build_from_table_uid(data_node_uid)
+  -> IndexFixingsStorage rows keyed by (time_index, index_identifier)
+```
+
+The DataNode locations used by the pricing engine are pricing market-data
+bindings, not instrument metadata and not core `msm` MetaTables. Bindings are
+vertical rows under first-class market-data sets so new pricing concepts can be
+added without adding one column per future market-data source:
+
+```text
+PricingMarketDataSet
+  set_key      = default | eod | live | risk_manager
+  display_name
+  status
+
+PricingMarketDataSetBinding
+  market_data_set_uid -> PricingMarketDataSet.uid
+  concept_key         = discount_curves | interest_rate_index_fixings | equity_vol_curves
+  data_node_uid       = backend DataNode storage table UID
+  storage_table_identifier = optional diagnostic copy
+```
+
+The important boundary is:
+
+```text
+data_node_uid
+  authoritative pointer used by pricing runtime
+
+storage_table_identifier
+  optional diagnostic value for humans and logs
+  not used to resolve pricing market data
 ```
 
 The built-in pricing constants live in `msm_pricing.settings`:
@@ -98,10 +149,10 @@ from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_EQUITY_VOL_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-    PRICING_CONTEXT_DEFAULT,
-    PRICING_CONTEXT_EOD,
-    PRICING_CONTEXT_LIVE,
-    PRICING_CONTEXT_RISK_MANAGER,
+    PRICING_MARKET_DATA_SET_DEFAULT,
+    PRICING_MARKET_DATA_SET_EOD,
+    PRICING_MARKET_DATA_SET_LIVE,
+    PRICING_MARKET_DATA_SET_RISK_MANAGER,
 )
 ```
 
@@ -113,42 +164,58 @@ inflation observations, or volatility inputs should use their own concept keys.
 Fresh pricing bootstrap seeds the default bindings:
 
 ```text
-(default, discount_curves)
-  -> DiscountCurvesStorage.get_identifier()
+PricingMarketDataSet(set_key="default")
+  -> PricingMarketDataSetBinding(concept_key="discount_curves")
+       data_node_uid = DiscountCurvesStorage.get_meta_table_uid()
 
-(default, interest_rate_index_fixings)
-  -> IndexFixingsStorage.get_identifier()
+  -> PricingMarketDataSetBinding(concept_key="interest_rate_index_fixings")
+       data_node_uid = IndexFixingsStorage.get_meta_table_uid()
 ```
 
-Those identifiers are read from the attached backend `TimeIndexMetaTable`
-objects. They are not rebuilt from authored names such as `DiscountCurvesTS` or
-from namespace helpers.
+Those UIDs are read from the attached backend `TimeIndexMetaTable` objects. They
+are not rebuilt from authored names such as `DiscountCurvesTS` or from namespace
+helpers. The optional `storage_table_identifier` is diagnostic metadata only.
 
-Deployments can add or replace bindings for `eod`, `live`, `risk_manager`, or
-other application contexts:
+Deployments can add or replace market-data sets for `eod`, `live`,
+`risk_manager`, or other application workflows:
 
 ```python
 from msm_pricing.bootstrap import attach_pricing_schemas
-from msm_pricing.api import PricingMarketDataBinding
+from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
+from msm_pricing.data_nodes.storage import DiscountCurvesStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
-    PRICING_CONTEXT_EOD,
+    PRICING_MARKET_DATA_SET_EOD,
 )
 
 attach_pricing_schemas(seed_default_market_data_bindings=True)
 
-PricingMarketDataBinding.upsert(
-    context_key=PRICING_CONTEXT_EOD,
+market_data_set = PricingMarketDataSet.upsert(
+    set_key=PRICING_MARKET_DATA_SET_EOD,
+    display_name="EOD pricing market data",
+)
+PricingMarketDataSetBinding.upsert(
+    market_data_set_uid=market_data_set.uid,
     concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-    data_node_identifier="vendor.eod.discount_curves",
+    data_node_uid=DiscountCurvesStorage.get_meta_table_uid(),
+    storage_table_identifier=DiscountCurvesStorage.get_identifier(),
 )
 ```
 
-Runtime resolution checks direct in-memory overrides first, then the persisted
-binding row for `(context_key, concept_key)`, then the static package default
-for built-in concepts. The final read always uses
-`APIDataNode.build_from_identifier(...)`; table UIDs are not public pricing
-configuration.
+Runtime resolution checks direct in-memory UID overrides first, then the
+persisted binding row for `(market_data_set_uid, concept_key)`. The final read
+always uses `APIDataNode.build_from_table_uid(...)`.
+
+Instrument pricing chooses the set explicitly when the caller needs more than
+one source set in the same process:
+
+```python
+bond.price(market_data_set="eod")
+bond.price(market_data_set="live")
+```
+
+When `market_data_set` is omitted, pricing uses the process-wide default
+configuration, whose default selector is `default`.
 
 Registration order matters because pricing MetaTables reference core tables:
 
@@ -160,7 +227,8 @@ IndexTable
 IndexConventionDetailsTable
 CurveTable
 AssetCurrentPricingDetailsTable
-PricingMarketDataBindingTable
+PricingMarketDataSetTable
+PricingMarketDataSetBindingTable
 ```
 
 Use the pricing startup helper instead of manually passing table handles. It
@@ -168,6 +236,7 @@ uses direct backend lookup keyed by each SQLAlchemy table name, then binds the
 returned `MetaTable` or `TimeIndexMetaTable` to the model class. The maintenance
 catalog remains an inventory refreshed by migrations; pricing runtime startup
 does not read catalog rows to decide binding.
+
 Run the relevant `msm` migrations before pricing runtime startup:
 
 ```python
@@ -175,6 +244,13 @@ from msm_pricing.bootstrap import attach_pricing_schemas
 
 attach_pricing_schemas(seed_default_market_data_bindings=True)
 ```
+
+For an end-to-end example that shows the explicit architecture, inspect
+`examples/msm_pricing/bond_pricing_example/main.py`. It attaches the pricing
+storage tables, disables automatic default seeding, creates
+`PricingMarketDataSet(set_key="default")`, binds discount curves and
+interest-rate fixings by storage table UID, and then calls
+`loaded_instrument.price(market_data_set=market_data_set.set_key)`.
 
 ## Asset To Instrument
 

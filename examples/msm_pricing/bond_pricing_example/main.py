@@ -58,7 +58,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         AssetCurrentPricingDetails,
         Curve,
         IndexConventionDetails,
-        PricingMarketDataBinding,
+        PricingMarketDataSet,
+        PricingMarketDataSetBinding,
     )
     from msm_pricing.bootstrap import attach_pricing_schemas
     from msm_pricing.data_nodes import CurveConfig, IndexFixingConfiguration
@@ -67,7 +68,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     from msm_pricing.settings import (
         PRICING_CONCEPT_DISCOUNT_CURVES,
         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-        PRICING_CONTEXT_DEFAULT,
+        PRICING_MARKET_DATA_SET_DEFAULT,
     )
 
     valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
@@ -85,39 +86,60 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
             "IndexConventionDetails",
             "Curve",
             "AssetCurrentPricingDetails",
-            "PricingMarketDataBinding",
+            "PricingMarketDataSet",
+            "PricingMarketDataSetBinding",
+            "DiscountCurvesStorage",
+            "IndexFixingsStorage",
         ],
-        seed_default_market_data_bindings=True,
-        replace_default_market_data_bindings=True,
+        seed_default_market_data_bindings=False,
     )
     _print_step("Attached pricing MetaTable runtime")
 
-    curve_data_node_identifier = DiscountCurvesStorage.get_identifier()
-    fixing_data_node_identifier = IndexFixingsStorage.get_identifier()
-    curve_binding = PricingMarketDataBinding.upsert(
-        context_key=PRICING_CONTEXT_DEFAULT,
+    market_data_set = PricingMarketDataSet.upsert(
+        set_key=PRICING_MARKET_DATA_SET_DEFAULT,
+        display_name="Default pricing market-data set",
+        description="Default market-data set used by the floating bond pricing example.",
+        metadata_json={"workflow": "floating-rate-bond-pricing-example"},
+    )
+    _print_step(
+        "Upserted pricing market-data set",
+        set_key=market_data_set.set_key,
+        market_data_set_uid=market_data_set.uid,
+    )
+    curve_data_node_uid = DiscountCurvesStorage.get_meta_table_uid()
+    fixing_data_node_uid = IndexFixingsStorage.get_meta_table_uid()
+    if curve_data_node_uid is None or fixing_data_node_uid is None:
+        raise RuntimeError("Pricing storage tables must be attached before binding market data.")
+    curve_storage_table_identifier = DiscountCurvesStorage.get_identifier()
+    fixing_storage_table_identifier = IndexFixingsStorage.get_identifier()
+    curve_binding = PricingMarketDataSetBinding.upsert(
+        market_data_set_uid=market_data_set.uid,
         concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-        data_node_identifier=curve_data_node_identifier,
+        data_node_uid=curve_data_node_uid,
+        storage_table_identifier=curve_storage_table_identifier,
         source="examples/msm_pricing/bond_pricing_example",
         metadata_json={"workflow": "floating-rate-bond-pricing-example"},
     )
-    fixing_binding = PricingMarketDataBinding.upsert(
-        context_key=PRICING_CONTEXT_DEFAULT,
+    fixing_binding = PricingMarketDataSetBinding.upsert(
+        market_data_set_uid=market_data_set.uid,
         concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-        data_node_identifier=fixing_data_node_identifier,
+        data_node_uid=fixing_data_node_uid,
+        storage_table_identifier=fixing_storage_table_identifier,
         source="examples/msm_pricing/bond_pricing_example",
         metadata_json={"workflow": "floating-rate-bond-pricing-example"},
     )
     _print_step(
-        "Upserted startup pricing market-data bindings",
+        "Upserted pricing market-data set bindings",
         bindings=[
             {
                 "concept_key": curve_binding.concept_key,
-                "data_node_identifier": curve_binding.data_node_identifier,
+                "data_node_uid": curve_binding.data_node_uid,
+                "storage_table_identifier": curve_binding.storage_table_identifier,
             },
             {
                 "concept_key": fixing_binding.concept_key,
-                "data_node_identifier": fixing_binding.data_node_identifier,
+                "data_node_uid": fixing_binding.data_node_uid,
+                "storage_table_identifier": fixing_binding.storage_table_identifier,
             }
         ],
     )
@@ -223,7 +245,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     _print_step(
         "Published mock discount curve rows",
         rows=len(curve_frame),
-        node_identifier=curve_data_node_identifier,
+        data_node_uid=curve_data_node_uid,
+        storage_table_identifier=curve_storage_table_identifier,
     )
 
     fixing_node = MockIndexFixingsNode(
@@ -235,13 +258,16 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     _print_step(
         "Published mock index fixing rows",
         rows=len(fixing_frame),
-        node_identifier=fixing_data_node_identifier,
+        data_node_uid=fixing_data_node_uid,
+        storage_table_identifier=fixing_storage_table_identifier,
     )
 
     _print_step(
-        "Using startup pricing market-data bindings",
-        curve_data_node_identifier=curve_data_node_identifier,
-        fixing_data_node_identifier=fixing_data_node_identifier,
+        "Using explicit pricing market-data bindings",
+        curve_data_node_uid=curve_data_node_uid,
+        fixing_data_node_uid=fixing_data_node_uid,
+        curve_storage_table_identifier=curve_storage_table_identifier,
+        fixing_storage_table_identifier=fixing_storage_table_identifier,
     )
 
     instrument = FloatingRateBond(
@@ -295,7 +321,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         valuation_date=valuation_date.isoformat(),
     )
 
-    price = loaded_instrument.price()
+    price = loaded_instrument.price(market_data_set=market_data_set.set_key)
     _print_step("Computed bond price", price=price)
     analytics = loaded_instrument.analytics()
     _print_step("Computed bond analytics", fields=len(analytics))
@@ -317,8 +343,10 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         "index": index,
         "index_convention_details": convention_details,
         "curve": curve,
-        "curve_node_identifier": curve_data_node_identifier,
-        "fixing_node_identifier": fixing_data_node_identifier,
+        "curve_data_node_uid": curve_data_node_uid,
+        "fixing_data_node_uid": fixing_data_node_uid,
+        "curve_storage_table_identifier": curve_storage_table_identifier,
+        "fixing_storage_table_identifier": fixing_storage_table_identifier,
         "curve_rows": len(curve_frame),
         "fixing_rows": len(fixing_frame),
         "stored_pricing_details": stored_pricing_details,

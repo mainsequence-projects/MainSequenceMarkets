@@ -14,7 +14,7 @@ from msm_pricing.config import (
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-    PRICING_CONTEXT_DEFAULT,
+    PRICING_MARKET_DATA_SET_DEFAULT,
 )
 
 
@@ -29,16 +29,18 @@ def reset_pricing_market_data(monkeypatch) -> None:
 def test_pricing_market_data_configuration_defaults_to_empty_runtime_overrides() -> None:
     configuration = default_pricing_market_data_configuration()
 
-    assert configuration.context_key == PRICING_CONTEXT_DEFAULT
-    assert configuration.data_node_identifiers == {}
+    assert configuration.market_data_set == PRICING_MARKET_DATA_SET_DEFAULT
+    assert configuration.data_node_uids == {}
 
 
 def test_set_pricing_market_data_configuration_accepts_typed_override() -> None:
+    discount_curves_uid = "00000000-0000-0000-0000-000000000101"
+    fixings_uid = "00000000-0000-0000-0000-000000000102"
     override = PricingMarketDataConfiguration(
-        context_key="eod",
-        data_node_identifiers={
-            PRICING_CONCEPT_DISCOUNT_CURVES: "vendor.discount_curves",
-            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: ("vendor.interest_rate_index_fixings"),
+        market_data_set="eod",
+        data_node_uids={
+            PRICING_CONCEPT_DISCOUNT_CURVES: discount_curves_uid,
+            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_uid,
         },
     )
 
@@ -49,21 +51,23 @@ def test_set_pricing_market_data_configuration_accepts_typed_override() -> None:
 
 
 def test_set_pricing_market_data_configuration_accepts_mapping_override() -> None:
+    discount_curves_uid = "00000000-0000-0000-0000-000000000201"
+    fixings_uid = "00000000-0000-0000-0000-000000000202"
     configured = set_pricing_market_data_configuration(
         {
-            "context_key": "risk_manager",
-            "data_node_identifiers": {
-                PRICING_CONCEPT_DISCOUNT_CURVES: "vendor.discount_curves",
-                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: ("vendor.interest_rate_index_fixings"),
+            "market_data_set": "risk_manager",
+            "data_node_uids": {
+                PRICING_CONCEPT_DISCOUNT_CURVES: discount_curves_uid,
+                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_uid,
             },
         }
     )
 
     assert configured == PricingMarketDataConfiguration(
-        context_key="risk_manager",
-        data_node_identifiers={
-            PRICING_CONCEPT_DISCOUNT_CURVES: "vendor.discount_curves",
-            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: ("vendor.interest_rate_index_fixings"),
+        market_data_set="risk_manager",
+        data_node_uids={
+            PRICING_CONCEPT_DISCOUNT_CURVES: discount_curves_uid,
+            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_uid,
         },
     )
     assert get_pricing_market_data_configuration() == configured
@@ -81,9 +85,9 @@ def test_set_pricing_market_data_configuration_rejects_unknown_fields() -> None:
 def test_reset_pricing_market_data_configuration_restores_defaults() -> None:
     set_pricing_market_data_configuration(
         {
-            "context_key": "eod",
-            "data_node_identifiers": {
-                PRICING_CONCEPT_DISCOUNT_CURVES: "vendor.discount_curves",
+            "market_data_set": "eod",
+            "data_node_uids": {
+                PRICING_CONCEPT_DISCOUNT_CURVES: "00000000-0000-0000-0000-000000000301",
             },
         }
     )

@@ -86,6 +86,7 @@ def resolve_pricing_curve(
     *,
     index_uid: uuid.UUID | str,
     valuation_date: datetime.date | datetime.datetime | ql.Date,
+    market_data_set: Any | None = None,
     curve_type: str = "discount",
     source: str | None = None,
     curve_unique_identifier: str | None = None,
@@ -104,6 +105,7 @@ def resolve_pricing_curve(
         curve=curve,
         convention=convention,
         valuation_date=valuation_date,
+        market_data_set=market_data_set,
     )
 
 
@@ -112,6 +114,7 @@ def build_curve_from_curve_row(
     curve: Curve,
     convention: IndexConventionDetails,
     valuation_date: datetime.date | datetime.datetime | ql.Date,
+    market_data_set: Any | None = None,
 ) -> ql.YieldTermStructureHandle:
     """Build a QuantLib discount curve from a curve row and convention payload."""
 
@@ -119,6 +122,7 @@ def build_curve_from_curve_row(
     nodes, effective_curve_date = data_interface.get_historical_discount_curve(
         curve.unique_identifier,
         target_date,
+        market_data_set=market_data_set,
     )
 
     base_dt = _ensure_datetime(effective_curve_date)
@@ -154,6 +158,7 @@ def resolve_quantlib_index(
     index_uid: uuid.UUID | str,
     *,
     valuation_date: datetime.date | datetime.datetime | ql.Date,
+    market_data_set: Any | None = None,
     forwarding_curve: ql.YieldTermStructureHandle | ql.YieldTermStructure | None = None,
     hydrate_fixings: bool = True,
     settlement_days: int | None = None,
@@ -175,6 +180,7 @@ def resolve_quantlib_index(
         curve = resolve_pricing_curve(
             index_uid=index_uid,
             valuation_date=valuation_date,
+            market_data_set=market_data_set,
             curve_type=curve_type,
             source=source,
             curve_unique_identifier=curve_unique_identifier,
@@ -203,6 +209,7 @@ def resolve_quantlib_index(
             to_ql_date(target_date),
             ql_index,
             reference_rate_uid=fixings_identifier,
+            market_data_set=market_data_set,
         )
 
     return ql_index
@@ -212,6 +219,8 @@ def add_historical_fixings(
     target_date: ql.Date | datetime.date | datetime.datetime,
     ibor_index: ql.IborIndex,
     reference_rate_uid: str,
+    *,
+    market_data_set: Any | None = None,
 ) -> None:
     """Hydrate a QuantLib index from the configured pricing fixings DataNode."""
 
@@ -221,6 +230,7 @@ def add_historical_fixings(
         reference_rate_uid,
         start_date,
         end_date,
+        market_data_set=market_data_set,
     )
 
     ql_dates = ql.DateVector()

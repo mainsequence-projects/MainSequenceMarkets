@@ -5,9 +5,9 @@
 Accepted
 
 Project-side package relocation is implemented. SDK support for provider-owned
-`version_locations` remains required before the SDK CLI can fully enforce one
-active namespace revision directory for `current`, `revision`, `upgrade`, and
-`downgrade`.
+`version_locations` and `version_path` has been implemented in
+`mainsequence-sdk`, and the `ms-markets` provider now passes the active namespace
+version location to the SDK.
 
 ## Context
 
@@ -318,17 +318,19 @@ Only the SDK migration CLI imports the provider.
 
 ## Implementation Tasks
 
-- [ ] Add SDK support for an active provider `version_location` or
+- [x] Add SDK support for an active provider `version_location` or
       `version_location_factory`.
-- [ ] Update the SDK Alembic config builder to set `version_locations` to only
+- [x] Update the SDK Alembic config builder to set `version_locations` to only
       the active namespace directory.
-- [ ] Update SDK revision generation to pass Alembic `version_path`.
-- [ ] Update SDK sequential revision ID scanning to scan only the active
+- [x] Update SDK revision generation to pass Alembic `version_path`.
+- [x] Update SDK sequential revision ID scanning to scan only the active
       namespace directory.
-- [ ] Update SDK `current`, `upgrade`, and `downgrade` paths to use the same
-      active version location.
-- [ ] Include the active namespace version location in SDK migration CLI status
+- [x] Verify SDK `current`, `upgrade`, and `downgrade` use the shared Alembic
+      config builder, so they inherit the active version location.
+- [x] Include the active namespace version location in SDK migration CLI status
       output.
+- [x] Wire the `ms-markets` provider to pass `version_locations` and
+      `version_path` from the active namespace version location.
 - [x] Create `src/migrations/` as the canonical provider package.
 - [x] Move the provider, Alembic `env.py`, `script.py.mako`, and registry code
       from `src/msm/migrations/` to `src/migrations/`.

@@ -9,7 +9,8 @@ _EXPORTS = {
     "AssetCurrentPricingDetailsTable": ".pricing_details",
     "CurveTable": ".curves",
     "IndexConventionDetailsTable": ".index_convention_details",
-    "PricingMarketDataBindingTable": ".market_data_bindings",
+    "PricingMarketDataSetBindingTable": ".market_data_bindings",
+    "PricingMarketDataSetTable": ".market_data_bindings",
 }
 
 
@@ -30,5 +31,6 @@ __all__ = [
     "AssetCurrentPricingDetailsTable",
     "CurveTable",
     "IndexConventionDetailsTable",
-    "PricingMarketDataBindingTable",
+    "PricingMarketDataSetBindingTable",
+    "PricingMarketDataSetTable",
 ]

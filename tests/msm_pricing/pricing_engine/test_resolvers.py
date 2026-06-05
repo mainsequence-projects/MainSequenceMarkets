@@ -95,16 +95,16 @@ def test_resolve_quantlib_index_uses_backend_index_uid_and_curve_identity(monkey
     monkeypatch.setattr(
         resolvers.data_interface,
         "get_historical_discount_curve",
-        lambda curve_unique_identifier, target_date: (
-            calls.append(("curve_data", curve_unique_identifier, target_date))
+        lambda curve_unique_identifier, target_date, *, market_data_set=None: (
+            calls.append(("curve_data", curve_unique_identifier, target_date, market_data_set))
             or ([{"days_to_maturity": 1, "zero": 0.05}], target_date)
         ),
     )
     monkeypatch.setattr(
         resolvers,
         "add_historical_fixings",
-        lambda target_date, ibor_index, *, reference_rate_uid: calls.append(
-            ("fixings", target_date, reference_rate_uid)
+        lambda target_date, ibor_index, *, reference_rate_uid, market_data_set=None: calls.append(
+            ("fixings", target_date, reference_rate_uid, market_data_set)
         ),
     )
 
@@ -113,6 +113,7 @@ def test_resolve_quantlib_index_uses_backend_index_uid_and_curve_identity(monkey
         index_uid,
         valuation_date=valuation_date,
         hydrate_fixings=True,
+        market_data_set="eod",
     )
 
     assert isinstance(index, ql.IborIndex)
@@ -128,6 +129,6 @@ def test_resolve_quantlib_index_uses_backend_index_uid_and_curve_identity(monkey
                 "curve_type": "discount",
             },
         ),
-        ("curve_data", "USD-SOFR-DISCOUNT", valuation_date),
-        ("fixings", ql.Date(27, 5, 2026), "USD-SOFR"),
+        ("curve_data", "USD-SOFR-DISCOUNT", valuation_date, "eod"),
+        ("fixings", ql.Date(27, 5, 2026), "USD-SOFR", "eod"),
     ]

@@ -8,6 +8,7 @@ import pandas as pd
 import QuantLib as ql
 from pydantic import Field, PrivateAttr
 
+from msm_pricing.api.market_data_bindings import PricingMarketDataSet, PricingMarketDataSetSelector
 from msm_pricing.pricing_engine.resolvers import resolve_quantlib_index
 from msm_pricing.pricing_engine.swap_pricer import (
     get_swap_cashflows,
@@ -60,6 +61,7 @@ class InterestRateSwap(InstrumentModel):
     # runtime-only
     _swap: ql.VanillaSwap | None = PrivateAttr(default=None)
     _float_leg_index: ql.IborIndex | None = PrivateAttr(default=None)
+    _market_data_set_uid: uuid.UUID | None = PrivateAttr(default=None)
 
     # ---------- convenience access to runtime index (NOT serialized) ----------
     @property
@@ -75,6 +77,7 @@ class InterestRateSwap(InstrumentModel):
         self._float_leg_index = resolve_quantlib_index(
             self.float_leg_index_uid,
             valuation_date=self.valuation_date,
+            market_data_set=self._market_data_set_uid,
             hydrate_fixings=True,
         )
 
@@ -92,10 +95,20 @@ class InterestRateSwap(InstrumentModel):
         self._float_leg_index = resolve_quantlib_index(
             self.float_leg_index_uid,
             valuation_date=self.valuation_date,
+            market_data_set=self._market_data_set_uid,
             forwarding_curve=ql.YieldTermStructureHandle(curve),
             hydrate_fixings=True,
         )
         self._swap = None
+
+    def _apply_market_data_set(self, market_data_set: PricingMarketDataSetSelector = None) -> None:
+        if market_data_set is None:
+            return
+        resolved_uid = PricingMarketDataSet.resolve_uid(market_data_set)
+        if self._market_data_set_uid != resolved_uid:
+            self._market_data_set_uid = resolved_uid
+            self._float_leg_index = None
+            self._reset_runtime()
 
     # ---------- pricing ----------
     def _setup_pricer(self) -> None:
@@ -109,7 +122,8 @@ class InterestRateSwap(InstrumentModel):
         # Call the common swap construction logic.
         self._build_swap(default_curve)
 
-    def price(self) -> float:
+    def price(self, *, market_data_set: PricingMarketDataSetSelector = None) -> float:
+        self._apply_market_data_set(market_data_set)
         self._setup_pricer()
         return float(self._swap.NPV())
 
