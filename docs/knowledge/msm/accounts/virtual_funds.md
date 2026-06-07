@@ -1,4 +1,4 @@
-# Virtual Funds
+# Account Virtual Funds
 
 Virtual funds are core `msm` account-allocation views over real account
 holdings. They are not assets, not custody accounts, and not portfolio
@@ -190,4 +190,3 @@ publishes it through the DataNode.
 `VirtualFund.allocate_from_account_holdings_set(...)` remains a low-level
 explicit publisher. Use it only when the allocation quantities are already
 known and policy-approved. It is not the allocation policy engine.
-

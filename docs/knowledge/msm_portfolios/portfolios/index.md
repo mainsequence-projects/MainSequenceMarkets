@@ -367,7 +367,7 @@ Portfolio construction produces portfolio artifacts. It does not own
 virtual-fund identity, and it does not write virtual-fund allocation rows.
 Virtual funds are account-owned allocation views that target a portfolio after
 that portfolio exists. Their canonical docs live in core
-[`msm` virtual funds](../../msm/virtualfunds/index.md).
+[`msm` account virtual funds](../../msm/accounts/virtual_funds.md).
 
 ```text
 Virtual Fund Builder / portfolio construction produces portfolio artifacts.
@@ -497,6 +497,6 @@ portfolio metadata persistence through `msm_portfolios.models` and
 ## Related Concepts
 
 - [Assets](../../msm/assets/index.md)
-- [Virtual Funds](../../msm/virtualfunds/index.md)
+- [Virtual Funds](../../msm/accounts/virtual_funds.md)
 - [Execution](../../msm/execution/index.md)
 - [Pricing](../../msm_pricing/index.md)

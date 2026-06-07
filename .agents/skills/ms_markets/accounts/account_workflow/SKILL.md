@@ -42,7 +42,7 @@ Before changing account code, inspect:
 7. `src/msm/services/target_positions.py`
 8. `examples/msm/accounts/account_portfolio_full_workflow.py`
 9. `docs/knowledge/msm/accounts/index.md`
-10. `docs/knowledge/msm/virtualfunds/index.md`
+10. `docs/knowledge/msm/accounts/virtual_funds.md`
 11. `docs/ADR/0029-account-holdings-virtual-fund-allocation-policy.md`
 
 ## Core Relationships

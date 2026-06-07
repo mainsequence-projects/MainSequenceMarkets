@@ -17,7 +17,7 @@ Read with:
 
 1. `.agents/skills/ms_markets/accounts/account_workflow/SKILL.md`
 2. `docs/ADR/0029-account-holdings-virtual-fund-allocation-policy.md`
-3. `docs/knowledge/msm/virtualfunds/index.md`
+3. `docs/knowledge/msm/accounts/virtual_funds.md`
 4. `src/msm/services/accounts/account_virtual_allocations.py`
 
 ## Protocol
@@ -117,4 +117,3 @@ AllocationValuation(
     valuation_asset_uid=usd_asset.uid,
 )
 ```
-

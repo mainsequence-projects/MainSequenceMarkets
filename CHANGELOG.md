@@ -25,6 +25,8 @@ and this project follows versioned releases.
 - Added the account holdings to virtual-fund allocation planner with
   `proportional_attribution` and `strict_feasible` policies, plus an apply step
   that converts feasible plans into `VirtualFundHoldingsStorage` frames.
+- Moved virtual-fund knowledge documentation under the Accounts section as a
+  standalone account allocation document.
 - Reorganized DataNode storage contracts by concept: account storage now lives
   under `msm.data_nodes.accounts`, asset storage under
   `msm.data_nodes.assets`, execution storage under `msm.data_nodes.execution`,

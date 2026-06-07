@@ -37,8 +37,9 @@ nav:
       - Overview: knowledge/index.md
       - msm:
           - Overview: knowledge/msm/index.md
-          - Accounts: knowledge/msm/accounts/index.md
-          - Virtual Funds: knowledge/msm/virtualfunds/index.md
+          - Accounts:
+              - Overview: knowledge/msm/accounts/index.md
+              - Virtual Funds: knowledge/msm/accounts/virtual_funds.md
           - Assets:
               - Overview: knowledge/msm/assets/index.md
               - Bond Assets: knowledge/msm/assets/bonds.md

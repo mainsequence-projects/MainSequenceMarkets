@@ -1095,7 +1095,7 @@ the same source holdings.
 The implementation is incomplete unless the following documents are updated:
 
 - `docs/ADR/0019-msm-portfolios-package-boundary.md`
-- `docs/knowledge/msm/virtualfunds/index.md`
+- `docs/knowledge/msm/accounts/virtual_funds.md`
 - `docs/knowledge/msm_portfolios/portfolios/index.md`
 - `docs/knowledge/msm/accounts/index.md`
 - account and virtual-fund examples under `examples/msm/` and

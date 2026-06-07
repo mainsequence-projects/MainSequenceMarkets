@@ -12,7 +12,7 @@ integration live in `msm_pricing`.
 
 - [Accounts](accounts/index.md): account identity, holdings, groups, and target
   position assignments.
-- [Virtual Funds](virtualfunds/index.md): account-owned allocation views over
+- [Virtual Funds](accounts/virtual_funds.md): account-owned allocation views over
   real account holdings.
 - [Assets](assets/index.md): asset identity, type registration, category
   membership, relational asset detail tables, OpenFIGI details, and

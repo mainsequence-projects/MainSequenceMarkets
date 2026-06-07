@@ -8,6 +8,14 @@ DataNode tables backed by registered `PlatformTimeIndexMetaTable` storage
 classes, because those rows are timestamped observations rather than static
 reference records.
 
+## Account Documentation
+
+- This page covers account registry rows, holdings, target allocations,
+  target-position storage, and the normal account workflow.
+- [Account Virtual Funds](virtual_funds.md) covers derived virtual-fund
+  allocation views over real account holdings, including the planner, valuation
+  resolver boundary, and apply flow.
+
 ## What Is Stored Where
 
 ```text
@@ -364,7 +372,7 @@ valuation output through a valuation resolver, and returns a dry-run
 allocation plan. Only a separate apply step writes `VirtualFundTable`,
 `VirtualFundHoldingsSetTable`, and `VirtualFundHoldingsStorage` rows.
 
-See [Virtual Funds](../virtualfunds/index.md) for the allocation policy,
+See [Virtual Funds](virtual_funds.md) for the allocation policy,
 valuation resolver contract, and apply flow.
 
 ## End-To-End Flow
