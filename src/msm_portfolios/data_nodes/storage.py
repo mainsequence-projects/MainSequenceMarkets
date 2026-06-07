@@ -3,7 +3,7 @@
 ADR 0017. Each class is the single source of truth for the column schema,
 dtypes, descriptions, and index names of one canonical portfolio table or
 interpolated/external price node output. The DataNode validators derive their
-column dtype maps from these declarations; catalog registration follows in
+column dtype maps from these declarations; SDK migration registration follows in
 Stage 5.
 
 Portfolio output tables use explicit storage identifier dimensions. Virtual-fund

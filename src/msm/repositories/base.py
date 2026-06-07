@@ -24,6 +24,7 @@ class MarketsMetaTableHandle:
     model: type[MarketsBase]
     meta_table: MetaTable | None = None
     limits: MetaTableOperationLimits | Mapping[str, Any] | None = None
+    data_source_uid: str | None = None
     timeout: int | float | tuple[float, float] | None = None
     namespace: str | None = None
     reserved_policy: Literal["reject", "reconcile"] | None = None
@@ -63,6 +64,7 @@ class MarketsRepositoryContext:
     """
 
     limits: MetaTableOperationLimits | Mapping[str, Any] | None = None
+    data_source_uid: str | None = None
     timeout: int | float | tuple[float, float] | None = None
     namespace: str | None = None
     reserved_policy: Literal["reject", "reconcile"] | None = None
@@ -70,11 +72,13 @@ class MarketsRepositoryContext:
     def __init__(
         self,
         limits: MetaTableOperationLimits | Mapping[str, Any] | None = None,
+        data_source_uid: str | None = None,
         timeout: int | float | tuple[float, float] | None = None,
         namespace: str | None = None,
         reserved_policy: Literal["reject", "reconcile"] | None = None,
     ) -> None:
         object.__setattr__(self, "limits", limits)
+        object.__setattr__(self, "data_source_uid", data_source_uid)
         object.__setattr__(self, "timeout", timeout)
         object.__setattr__(self, "namespace", namespace)
         object.__setattr__(self, "reserved_policy", reserved_policy)
@@ -90,6 +94,7 @@ class MarketsRepositoryContext:
             model=resolved_model,
             meta_table=_bound_meta_table(resolved_model),
             limits=self.limits,
+            data_source_uid=self.data_source_uid,
             timeout=self.timeout,
             namespace=self.namespace,
             reserved_policy=self.reserved_policy,

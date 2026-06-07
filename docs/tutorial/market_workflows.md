@@ -317,11 +317,13 @@ python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
 python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
-The preparation script derives and migrates the configured interpolated price
-storage from the registered `ExternalPricesStorage` table and the example
-interpolation policy. If an older registered `ExternalPricesStorage` table is
-missing cadence metadata, the preparation step repairs that source metadata
-before deriving the dynamic interpolation table. The run script creates the
+The preparation script derives the configured interpolated price storage from
+the registered `ExternalPricesStorage` table and the example interpolation
+policy, finds or generates the real dynamic Alembic revision under the active
+migration namespace, and runs the dynamic provider upgrade before portfolio
+DataNodes write. If an older registered `ExternalPricesStorage` table is missing
+cadence metadata, the preparation step repairs that source metadata before
+deriving the dynamic interpolation table. The run script creates the
 optional portfolio `Index`, publishes example OHLCV source bars to
 `ExternalPricesStorage`, interpolates prices, runs `SignalWeights`,
 `PortfolioWeights`, and `PortfoliosDataNode`, creates or reuses the crypto

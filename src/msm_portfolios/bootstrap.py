@@ -20,7 +20,7 @@ def start_engine(
     models: Sequence[MarketsModelSelector] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRuntime:
-    """Bootstrap the portfolio runtime through the shared markets catalog."""
+    """Bootstrap the portfolio runtime through the shared markets runtime."""
 
     return _start_engine(
         management_mode=management_mode,  # type: ignore[arg-type]

@@ -4,9 +4,9 @@
 
 Accepted
 
-This ADR replaces the earlier catalog-driven runtime binding design. The catalog
-remains useful for inventory and post-migration refresh evidence, but it is not
-the source of truth for runtime attachment.
+This ADR replaces the earlier secondary-registry runtime binding design. The
+internal markets MetaTable registry was removed entirely; runtime attachment
+uses direct backend lookup by SQLAlchemy table name.
 
 [ADR 0026](0026-explicit-pricing-market-data-sets.md) proposes a future
 replacement for pricing market-data bindings. That proposal is not implemented;
@@ -15,9 +15,9 @@ the current implementation still stores attached storage identifiers in
 
 ## Context
 
-`ms-markets` currently starts runtime by reading
-`MarketsMetaTableCatalogTable`, resolving catalog rows to backend MetaTables by
-UID, and binding each SQLAlchemy model from those rows.
+`ms-markets` previously started runtime by reading an internal markets registry
+table, resolving registry rows to backend MetaTables by UID, and binding each
+SQLAlchemy model from those rows.
 
 That was useful before the SDK/runtime had a stable client-side table identity.
 The current model graph already has a canonical table identifier through the
@@ -32,8 +32,8 @@ DiscountCurvesStorage.__table__.name
 ```
 
 The backend MetaTable and TimeIndexMetaTable rows are registered under that same
-identifier. The SDK can resolve them directly by that identifier, so using a
-separate catalog row as runtime control duplicates state and creates drift risk.
+identifier. The SDK can resolve them directly by that identifier, so keeping a
+separate internal registry row duplicated state and created drift risk.
 
 The pricing failure exposed the issue:
 
@@ -49,10 +49,10 @@ That string came from rebuilding an identifier from
 `DiscountCurvesTS` instead of asking the attached storage MetaTable for the
 identifier that the SDK can resolve.
 
-`model_name` in the catalog is not a safe runtime key. Python class names are
-not globally unique, and a local extension can reuse the same class name as a
-built-in or another package. If the catalog remains, its stable key is the
-canonical table identifier, not `model_name`.
+Python class names are not globally unique, and a local extension can reuse the
+same class name as a built-in or another package. Runtime identity must come
+from the SQLAlchemy table name and the backend registered table object, not from
+a secondary inventory row.
 
 ## Decision
 
@@ -69,17 +69,8 @@ resolved model graph
   -> model.get_identifier()
 ```
 
-The catalog is retained only as a maintenance and inspection table:
-
-```text
-SDK migration provider registers/refreshes tables
-  -> refresh catalog rows for inventory
-  -> user/services can list app-owned tables
-```
-
-The catalog must not decide whether application runtime can attach a model.
-Runtime binding must work from the model's table identity and the backend
-MetaTable/TimeIndexMetaTable APIs.
+No internal registry table is retained. Runtime binding works from the model's
+table identity and the backend MetaTable/TimeIndexMetaTable APIs.
 
 ### Canonical Identifier
 
@@ -154,32 +145,13 @@ Static pricing defaults that rebuild names from authored storage identifiers are
 invalid for persisted market-data bindings because they rebuild a logical string
 instead of reading the backend identifier.
 
-### Catalog Role
-
-The catalog remains useful as an inventory:
-
-- list app-owned registered tables;
-- record table descriptions, model names, SDK version, and backend UID;
-- support user-facing catalog services;
-- provide migration refresh evidence after SDK registration.
-
-It is not runtime control:
-
-- `start_engine(...)` does not require catalog rows;
-- `attach_schemas(...)` does not require catalog rows;
-- row APIs do not require catalog rows;
-- pricing does not use catalog rows to discover DataNode storage.
-
 ## Consequences
 
 This removes a duplicated runtime source of truth. Runtime startup depends on
 the SDK's registered MetaTable/TimeIndexMetaTable lookup by canonical table
-identifier, not on a secondary catalog pointer.
-
-The catalog can become stale without breaking runtime. Stale catalog rows affect
-inventory views and maintenance diagnostics only. Runtime failures should point
-to missing backend MetaTables or TimeIndexMetaTable rows for the table identifier
-the model declares.
+identifier, not on a secondary pointer. Runtime failures should point to missing
+backend MetaTables or TimeIndexMetaTable rows for the table identifier the model
+declares.
 
 Pricing defaults become runtime-dependent. They can only be seeded after the
 pricing storage tables are attached, because `get_identifier()` must read the
@@ -212,21 +184,19 @@ actual backend MetaTable identifier.
 - [x] Return `MarketsMetaTableRegistrationResult` keyed by canonical table
       identifier.
 - [x] Update `msm.start_engine(...)` to use direct runtime attachment instead
-      of `attach_markets_meta_tables_from_catalog(...)`.
+      of the previous secondary-registry attach path.
 - [x] Update `msm.attach_schemas(...)` to use the same direct runtime
       attachment.
 - [x] Keep process-idempotence and missing-model runtime checks unchanged.
 
-### Stage 3: Catalog Demotion
+### Stage 3: Secondary Registry Removal
 
-- [x] Keep `MarketsMetaTableCatalogTable` and post-migration catalog refresh.
-- [x] Remove catalog reads from normal runtime startup.
-- [x] Rename or document catalog attachment helpers as maintenance-only if they
-      remain for diagnostics.
-- [x] Update catalog docs to state that `model_name` is descriptive and not a
-      binding key.
-- [x] Update documentation so catalog rows are described as inventory and
-      maintenance evidence, not runtime binding state.
+- [x] Remove the internal markets MetaTable registry model.
+- [x] Remove secondary-registry refresh hooks from migration providers.
+- [x] Remove secondary-registry reads from normal runtime startup.
+- [x] Remove generic registry API routes and services.
+- [x] Update documentation so direct backend lookup is the only runtime binding
+      mechanism.
 
 ### Stage 4: DataNode Identifier Resolution
 
@@ -260,7 +230,7 @@ actual backend MetaTable identifier.
 - [x] Update pricing documentation to explain that market-data bindings store
       SDK-resolvable DataNode/MetaTable identifiers from attached storage
       classes.
-- [x] Update catalog documentation to describe inventory-only semantics.
+- [x] Remove obsolete secondary-registry documentation.
 - [x] Run focused runtime attachment tests.
 - [x] Run pricing bootstrap tests.
 - [ ] Run the live bond pricing example against a configured platform session.

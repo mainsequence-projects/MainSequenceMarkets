@@ -78,8 +78,6 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
         "/api/v1/calendar/{calendar_uid}/dates/",
         "/api/v1/calendar/{calendar_uid}/events/",
         "/api/v1/calendar/{calendar_uid}/sessions/",
-        "/api/v1/catalog/",
-        "/api/v1/catalog/{catalog_uid}/rows/",
         "/api/v1/index/",
         "/api/v1/pricing/market_data/bindings/",
         "/api/v1/pricing/market_data/sets/",
@@ -335,48 +333,6 @@ def test_openapi_json_documents_calendar_routes() -> None:
     assert calendar_summary_operation["responses"]["404"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/ErrorResponse"}
-
-
-def test_openapi_json_documents_catalogue_routes() -> None:
-    client = TestClient(app)
-    response = client.get("/openapi.json")
-
-    assert response.status_code == 200
-    payload = response.json()
-
-    catalog_list_operation = payload["paths"]["/api/v1/catalog/"]["get"]
-    assert catalog_list_operation["summary"] == "List catalogues"
-    assert catalog_list_operation["operationId"] == "listCatalogues"
-    assert catalog_list_operation["tags"] == ["catalog"]
-    assert catalog_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/CatalogListResponse"
-    }
-    _assert_paginated_schema(
-        payload,
-        schema_ref="#/components/schemas/CatalogListResponse",
-        result_ref="#/components/schemas/CatalogListRow",
-    )
-
-    catalog_rows_operation = payload["paths"]["/api/v1/catalog/{catalog_uid}/rows/"]["get"]
-    assert catalog_rows_operation["summary"] == "List catalogue rows"
-    assert catalog_rows_operation["operationId"] == "listCatalogueRows"
-    assert catalog_rows_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/CatalogRowsResponse"
-    }
-    _assert_paginated_schema(
-        payload,
-        schema_ref="#/components/schemas/CatalogRowsResponse",
-        result_ref="#/components/schemas/CatalogTableRow",
-    )
-
-    catalog_delete_operation = payload["paths"]["/api/v1/catalog/{catalog_uid}/rows/{uid}/"][
-        "delete"
-    ]
-    assert catalog_delete_operation["summary"] == "Delete catalogue row"
-    assert catalog_delete_operation["operationId"] == "deleteCatalogueRow"
-    assert catalog_delete_operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/CatalogDeleteResponse"}
 
 
 def test_openapi_json_documents_pricing_market_data_routes() -> None:

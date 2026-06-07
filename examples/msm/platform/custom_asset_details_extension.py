@@ -68,7 +68,7 @@ class MyAssetDetails(MarketsMetaTableRow):
 
 
 def bootstrap_custom_asset_details():
-    """Register or attach the extension model through the shared catalog."""
+    """Attach the migrated extension model through the shared runtime path."""
 
     return msm.start_engine(models=[MyAssetDetailsTable])
 

@@ -3,20 +3,17 @@ from __future__ import annotations
 import datetime as dt
 from importlib import resources
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import DateTime, MetaData
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from mainsequence.client.metatables import MetaTable
 from mainsequence.meta_tables import (
     POSTGRES_IDENTIFIER_MAX_LENGTH,
     PlatformManagedMetaTable,
     PlatformTimeIndexMetaTable,
 )
 from mainsequence.meta_tables.migrations import (
-    AlembicMetaTableCatalogRefreshContext,
     AlembicMetaTableMigration,
     load_alembic_metatable_migration_provider,
 )
@@ -31,8 +28,6 @@ from msm.base import (
     markets_table_name,
     normalize_metatable_schema,
 )
-from msm.maintenance.catalog import SDK_MIGRATION_UPGRADE_COMMAND
-from msm.maintenance.models import MarketsMetaTableCatalogTable
 from migrations import (
     MarketsAlembicVersion,
     active_namespace_version_location,
@@ -40,6 +35,7 @@ from migrations import (
     namespace_version_slug,
 )
 from migrations.registry import metatable_provider_models
+from msm.models import AssetTable
 from msm.settings import markets_auto_register_namespace, markets_identifier, markets_namespace
 
 
@@ -62,20 +58,15 @@ def test_migration_provider_is_single_sdk_alembic_provider() -> None:
     assert MARKETS_SCHEMA is None
     assert migration.version_table_schema is None
     assert migration.alembic_version_table == expected_version_table
-    assert migration.after_register_metatables is not None
-    assert (
-        migration.after_register_metatables.__name__
-        == "refresh_markets_catalog_from_registered_metatables"
-    )
+    assert migration.after_register_metatables is None
     assert list(migration.metatable_models) == metatable_provider_models()
 
 
 def test_migration_upgrade_command_uses_current_sdk_flags() -> None:
-    assert SDK_MIGRATION_UPGRADE_COMMAND == (
-        "mainsequence migrations upgrade --provider migrations:migration head"
-    )
-    assert "--register-metatables" not in SDK_MIGRATION_UPGRADE_COMMAND
-    assert "--apply" not in SDK_MIGRATION_UPGRADE_COMMAND
+    upgrade_command = "mainsequence migrations upgrade --provider migrations:migration head"
+
+    assert "--register-metatables" not in upgrade_command
+    assert "--apply" not in upgrade_command
 
 
 def test_sdk_loader_resolves_msm_migration_provider() -> None:
@@ -131,11 +122,11 @@ def test_existing_revisions_live_under_mainsequence_examples_namespace() -> None
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:
-    catalog_table_name = MarketsMetaTableCatalogTable.__table__.name
+    asset_table_name = AssetTable.__table__.name
 
-    assert migration.include_name(catalog_table_name, "table", {"schema_name": None})
+    assert migration.include_name(asset_table_name, "table", {"schema_name": None})
     assert migration.include_name(
-        catalog_table_name,
+        asset_table_name,
         "table",
         {"schema_name": MARKETS_DEFAULT_SCHEMA},
     )
@@ -238,7 +229,6 @@ def test_alembic_env_normalizes_default_schema_reflection() -> None:
 def test_package_migration_registry_covers_all_markets_subpackages() -> None:
     model_names = {model.__name__ for model in metatable_provider_models()}
 
-    assert "MarketsMetaTableCatalogTable" in model_names
     assert "AssetTable" in model_names
     assert "PortfolioTable" in model_names
     assert "CurveTable" in model_names
@@ -263,91 +253,3 @@ def test_package_migration_registry_is_deduplicated_and_sdk_managed() -> None:
     assert all(
         issubclass(model, (PlatformManagedMetaTable, PlatformTimeIndexMetaTable)) for model in models
     )
-
-
-def test_refresh_catalog_hook_bulk_upserts_registered_metatables(monkeypatch) -> None:
-    refresh_hook = migration.after_register_metatables
-    assert refresh_hook is not None
-    models = metatable_provider_models()
-    metatables = [
-        MetaTable.model_construct(
-            uid=f"meta-table-{index}",
-            identifier=model.__table__.name,
-            storage_hash=f"storage_hash_{index}",
-            physical_table_name=model.__table__.name,
-            namespace=markets_namespace(),
-            description=model.__metatable_description__,
-            management_mode="platform_managed",
-            provisioning_status="active",
-        )
-        for index, model in enumerate(models)
-    ]
-    bulk_upserts: list[dict[str, object]] = []
-
-    monkeypatch.setitem(
-        refresh_hook.__globals__,
-        "catalog_repository_context",
-        lambda *, catalog_meta_table, reserved_policy=None: SimpleNamespace(
-            catalog_meta_table=catalog_meta_table,
-            reserved_policy=reserved_policy,
-        ),
-    )
-
-    def fake_upsert_catalog_row(*_args, **_kwargs):
-        raise AssertionError("Catalog refresh must bulk upsert rows, not upsert row by row.")
-
-    def fake_bulk_upsert_model(
-        context,
-        *,
-        model,
-        values,
-        conflict_columns,
-    ):
-        bulk_upsert = {
-            "context": context,
-            "model": model,
-            "values": values,
-            "conflict_columns": conflict_columns,
-        }
-        bulk_upserts.append(bulk_upsert)
-        return {
-            "rows": [
-                {
-                    "table_name": row["table_name"],
-                    "meta_table_uid": row["meta_table_uid"],
-                }
-                for row in values
-            ]
-        }
-
-    monkeypatch.setitem(
-        refresh_hook.__globals__,
-        "upsert_catalog_row",
-        fake_upsert_catalog_row,
-    )
-    monkeypatch.setitem(
-        refresh_hook.__globals__,
-        "bulk_upsert_model",
-        fake_bulk_upsert_model,
-    )
-
-    rows = refresh_hook(
-        AlembicMetaTableCatalogRefreshContext(
-            package="msm",
-            migration_namespace=markets_namespace(),
-            registered_metatables=metatables,
-            reserved_policy="reconcile",
-        )
-    )
-
-    assert len(rows) == len(models)
-    assert len(bulk_upserts) == 1
-    bulk_upsert = bulk_upserts[0]
-    assert bulk_upsert["model"] is MarketsMetaTableCatalogTable
-    assert bulk_upsert["conflict_columns"] == ["table_name"]
-    assert bulk_upsert["context"].reserved_policy == "reconcile"
-    values = bulk_upsert["values"]
-    assert len(values) == len(models)
-    assert values[0]["table_name"] == MarketsMetaTableCatalogTable.__table__.name
-    assert values[0]["meta_table_uid"] == metatables[0].uid
-    assert rows[0]["table_name"] == MarketsMetaTableCatalogTable.__table__.name

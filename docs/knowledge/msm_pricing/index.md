@@ -233,9 +233,7 @@ PricingMarketDataSetBindingTable
 
 Use the pricing startup helper instead of manually passing table handles. It
 uses direct backend lookup keyed by each SQLAlchemy table name, then binds the
-returned `MetaTable` or `TimeIndexMetaTable` to the model class. The maintenance
-catalog remains an inventory refreshed by migrations; pricing runtime startup
-does not read catalog rows to decide binding.
+returned `MetaTable` or `TimeIndexMetaTable` to the model class.
 
 Run the relevant `msm` migrations before pricing runtime startup:
 

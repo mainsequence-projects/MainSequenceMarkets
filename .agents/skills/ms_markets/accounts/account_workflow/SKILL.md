@@ -39,7 +39,7 @@ Before changing account code, inspect:
 6. `src/msm/services/holdings.py`
 7. `src/msm_portfolios/data_nodes/target_positions.py`
 8. `src/msm_portfolios/services/target_positions.py`
-9. `examples/msm/accounts/account_workflow.py`
+9. `examples/msm/accounts/account_portfolio_full_workflow.py`
 10. `docs/knowledge/msm/accounts/index.md`
 
 ## Core Relationships
@@ -101,7 +101,7 @@ Rules:
 ## Runtime Attachment
 
 Examples and scripts must run after the SDK migration provider has registered
-and cataloged the required MetaTables. Application startup then attaches the
+the required MetaTables. Application startup then attaches the
 markets runtime before row operations or DataNode writes:
 
 ```python
@@ -145,14 +145,14 @@ reference `portfolio_uid`. When an account example needs display fields, publish
 only putting display data in holdings `extra_details`.
 
 The full account example is intentionally chainable. By default,
-`examples/msm/accounts/account_workflow.py` chains the equal-weight portfolio
+`examples/msm/accounts/account_portfolio_full_workflow.py` prepares the
+equal-weight portfolio interpolation schema, chains the reusable portfolio
 workflow, reuses the resulting `Portfolio` row, and assigns that portfolio UID
-as one of the account target positions. Run
-`python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py`
-before that default chain so the configured portfolio interpolation storage is
-migrated. Use `run_account_workflow(use_portfolio_example=False)` or the
+as one of the account target positions. Use
+`run_account_portfolio_full_workflow(use_portfolio_example=False)` or the
 example CLI flag `--standalone-target-portfolio` only when testing the account
-path without the portfolio example.
+path without the portfolio example. Use `--skip-schema-prep` only when the
+configured portfolio interpolation table has already been migrated.
 
 ## Full Workflow Pattern
 

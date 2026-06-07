@@ -19,9 +19,6 @@ from examples.msm.platform.bootstrap import (  # noqa: E402
     EXAMPLE_NAMESPACE_ENV,
 )
 from migrations import MarketsAlembicVersion, active_namespace_version_location  # noqa: E402
-from msm.maintenance.catalog import (  # noqa: E402
-    refresh_markets_catalog_from_registered_metatables,
-)
 from msm.settings import markets_namespace  # noqa: E402
 
 os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
@@ -37,7 +34,6 @@ migration = AlembicMetaTableMigration(
     target_metadata=metadata_for_storage_model(DYNAMIC_INTERPOLATED_PRICES_STORAGE),
     alembic_registry=MarketsAlembicVersion,
     metatable_models=[DYNAMIC_INTERPOLATED_PRICES_STORAGE],
-    after_register_metatables=refresh_markets_catalog_from_registered_metatables,
 )
 
 __all__ = ["DYNAMIC_INTERPOLATED_PRICES_STORAGE", "migration"]

@@ -131,21 +131,21 @@ positions as signed exposure (`quantity * direction`). Holdings reads remain
 explicit by requiring the caller to pass the holdings frame. Do not pass the raw
 `AccountHoldings.run(...)` tuple; unpack it and pass the DataFrame.
 
-The full workflow example is `examples/msm/accounts/account_workflow.py`. By
-default it first chains the reusable portfolio workflow. Run
-`python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py`
-before the account example when using that default chain, because the portfolio
-workflow needs a configured interpolated price storage table prepared through
-migrations. The account example then reuses the resulting `Portfolio` row as a
-target sleeve, publishes `AssetSnapshot` rows with canonical ticker and name
-metadata, creates two accounts, assigns both to one account group, points both
-account-specific target portfolio relationships at the same reusable
-`AccountModelPortfolio`, publishes target-position rows containing one direct
-asset target and one portfolio target for each `PositionSet`, publishes
-two-asset account holdings, and pretty-prints positions for each account. Pass
+The full workflow example is
+`examples/msm/accounts/account_portfolio_full_workflow.py`. By default it first
+prepares the reusable portfolio interpolation schema, then chains the reusable
+equal-weight portfolio workflow. The account example reuses the resulting
+`Portfolio` row as a target sleeve, publishes `AssetSnapshot` rows with
+canonical ticker and name metadata, creates two accounts, assigns both to one
+account group, points both account-specific target portfolio relationships at
+the same reusable `AccountModelPortfolio`, publishes target-position rows
+containing one direct asset target and one portfolio target for each
+`PositionSet`, publishes two-asset account holdings, and pretty-prints positions
+for each account. Pass `--skip-schema-prep` only when the configured portfolio
+interpolation table has already been migrated. Pass
 `--standalone-target-portfolio` or call
-`run_account_workflow(use_portfolio_example=False)` only when testing the
-account path without chaining the portfolio example.
+`run_account_portfolio_full_workflow(use_portfolio_example=False)` only when
+testing the account path without chaining the portfolio example.
 
 There is no top-level `msm.accounts` shim. Import account rows from
 `msm.api.accounts` and account holdings DataNodes from

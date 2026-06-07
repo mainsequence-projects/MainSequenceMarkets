@@ -19,8 +19,6 @@ Platform utilities answer these questions:
 - `msm.base`: shared SQLAlchemy base, market schema settings, and model mixins.
 - `msm.models.registration`: MetaTable registration helpers for market-domain models.
 - `migrations`: the SDK Alembic provider and package-owned model registry.
-- `msm.maintenance.catalog`: catalog attachment, validation, and provider
-  post-registration refresh helpers.
 - `msm.settings`: shared markets constants such as the canonical asset identity
   dimension.
 - `msm.data_nodes.accounts`: account holdings DataNodes.

@@ -7,11 +7,30 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Renamed the one-pass account and portfolio example to
+  `examples/msm/accounts/account_portfolio_full_workflow.py` and moved the
+  PyCharm run configuration under Accounts because the workflow prepares the
+  reusable portfolio sleeve and then publishes account target positions and
+  holdings.
+
 ### Fixed
 
 - Normalized `InterpolatedPrices.update()` output time indexes and timestamp
   columns back to `datetime64[ns, UTC]` so backend-read microsecond timestamps
   do not fail SDK DataNode update validation.
+- Fixed the equal-weight portfolio schema-preparation workflow so it derives the
+  dynamic revision from the active migration namespace and runs the dynamic
+  provider upgrade before `--run-after`, even when a stale metadata row already
+  exists for the configured interpolation table.
+
+### Removed
+
+- Removed the internal markets MetaTable catalog table, generic `/api/v1/catalog`
+  routes, catalog service layer, and migration catalog refresh hooks. Runtime
+  attachment now stays on direct backend `MetaTable`/`TimeIndexMetaTable`
+  lookup by SQLAlchemy table name.
 
 ## [0.0.39] - 2026-06-06
 

@@ -10,7 +10,7 @@ from examples.msm.assets.utils import (
     EXAMPLE_ETH_TICKER,
 )
 
-EXAMPLE_ACCOUNT_WORKFLOW_SOURCE = "examples/msm/accounts/account_workflow.py"
+EXAMPLE_ACCOUNT_WORKFLOW_SOURCE = "examples/msm/accounts/account_portfolio_full_workflow.py"
 
 EXAMPLE_ACCOUNT_MODEL_PORTFOLIO = {
     "model_portfolio_name": "Example Balanced Account Model",

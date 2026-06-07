@@ -33,8 +33,8 @@ def markets_sqlalchemy_models() -> list[type]:
     """Return markets SQLAlchemy models in MetaTable dependency order.
 
     Includes the ADR 0017 DataNode output storage MetaTables after their FK
-    target domain MetaTables, so the catalog bootstrap registers DataNode storage
-    in dependency order alongside the domain tables.
+    target domain MetaTables, so the SDK migration provider registers DataNode
+    storage in dependency order alongside the domain tables.
     """
 
     return [

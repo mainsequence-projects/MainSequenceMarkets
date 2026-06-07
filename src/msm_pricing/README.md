@@ -63,8 +63,7 @@ Use `msm_pricing.bootstrap.attach_pricing_schemas(...)` to attach the pricing
 MetaTable graph. The graph includes core dependencies such as `AssetTable`,
 `IndexTypeTable`, and `IndexTable` before pricing extension tables. Runtime
 startup resolves registered `MetaTable` and `TimeIndexMetaTable` objects
-directly by each model's SQLAlchemy table name; the maintenance catalog remains
-inventory only.
+directly by each model's SQLAlchemy table name.
 
 Curves are pricing-owned reference data, not assets. `CurveTable` owns curve
 identity, and `DiscountCurvesNode` lives under `msm_pricing.data_nodes` as a

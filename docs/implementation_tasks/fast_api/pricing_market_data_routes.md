@@ -456,7 +456,8 @@ Required runtime work:
    - `PricingMarketDataSetBinding`
 4. Do not create schemas at route runtime.
 5. Do not seed or replace default bindings automatically from route handlers.
-6. Startup should fail clearly if pricing MetaTables are not migrated/cataloged.
+6. Startup should fail clearly if pricing MetaTables are not migrated and
+   registered.
 
 Open decision:
 

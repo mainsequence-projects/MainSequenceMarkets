@@ -314,7 +314,7 @@ Only the SDK migration CLI imports the provider.
 - Do not keep revision files directly under `versions/`.
 - Do not generate YAML or JSON migration manifests.
 - Do not change SQLAlchemy model declarations for this decision.
-- Do not change the runtime catalog attach lifecycle.
+- Do not change the direct runtime attach lifecycle.
 
 ## Implementation Tasks
 

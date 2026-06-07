@@ -79,8 +79,6 @@ def _loaded_metatable_modules() -> list[str]:
         for module_name in sys.modules
         if module_name == "msm.models"
         or module_name.startswith("msm.models.")
-        or module_name == "msm.maintenance"
-        or module_name.startswith("msm.maintenance.")
     )
 
 

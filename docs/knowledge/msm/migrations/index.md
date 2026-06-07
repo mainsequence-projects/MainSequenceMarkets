@@ -3,7 +3,7 @@
 `msm` schema creation and schema evolution are admin workflows. Runtime code
 attaches to already-registered `MetaTable` and `TimeIndexMetaTable` resources
 through direct backend lookups keyed by SQLAlchemy table name; it does not
-create tables, apply DDL, or repair catalog drift.
+create tables, apply DDL, or repair schema drift.
 
 The package exposes one SDK Alembic provider:
 
@@ -26,7 +26,7 @@ mainsequence migrations downgrade --provider migrations:migration <revision>
 ```
 
 There is no `msm migrations ...` command group. The `msm` package integration is
-the provider object plus its catalog refresh hook.
+the provider object.
 
 `revision` creates normal Alembic revision files under the active namespace
 directory in `src/migrations/versions/`. Existing repository revisions live
@@ -58,9 +58,8 @@ generated revision; the model or migration environment is wrong.
 Use explicit schema metadata only for real non-default schemas.
 
 `upgrade` runs the SDK provider flow, applies the Alembic migration through the
-backend-scoped migration connection, synchronizes the provider MetaTable
-catalog, and then runs the provider hook that refreshes
-`MarketsMetaTableCatalogTable`.
+backend-scoped migration connection, and registers or updates provider
+MetaTable resources.
 
 `downgrade` uses the same provider and Alembic revision graph to move the
 schema back to an earlier revision.
@@ -93,7 +92,6 @@ not migration history.
 
 The registry is derived from:
 
-- `msm.maintenance.models.MarketsMetaTableCatalogTable`;
 - `msm.models.markets_sqlalchemy_models()`;
 - `msm_portfolios.models.portfolio_sqlalchemy_models()`;
 - `msm_pricing.meta_tables.pricing_sqlalchemy_models()`.
@@ -106,5 +104,5 @@ DataNode storage uses `PlatformTimeIndexMetaTable` through
 Time-index storage identifiers use the same `CamelCase` style as domain
 MetaTables plus a `TS` suffix, for example `OrdersTS` and `AssetSnapshotsTS`.
 
-See the platform-focused migration reference for provider and catalog details:
+See the platform-focused migration reference for provider details:
 [MetaTable Migrations](../platform/metatable_migrations.md).

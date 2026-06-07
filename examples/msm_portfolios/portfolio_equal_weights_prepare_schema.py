@@ -4,6 +4,8 @@ import argparse
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +30,7 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
 from examples.msm_portfolios.portfolio_equal_weights_example import (  # noqa: E402
     start_portfolio_example_runtime,
 )
+from migrations import active_namespace_version_location  # noqa: E402
 from msm_portfolios.data_nodes.storage import ExternalPricesStorage  # noqa: E402
 
 
@@ -45,11 +48,14 @@ def prepare_equal_weight_portfolio_schema(
     repair_source_cadence: bool = True,
     revision_message: str | None = None,
     run_after: bool = False,
+    runtime_models: Sequence[str | type[Any]] | None = None,
 ) -> dict[str, Any]:
     """Prepare the configured interpolated price storage used by the example."""
 
     print_step(1, "Attaching the static portfolio example schema.")
-    runtime = start_portfolio_example_runtime(models=PORTFOLIO_EXAMPLE_RUNTIME_MODELS)
+    runtime = start_portfolio_example_runtime(
+        models=list(runtime_models or PORTFOLIO_EXAMPLE_RUNTIME_MODELS)
+    )
 
     source_handle = runtime.table(ExternalPricesStorage)
     if source_handle.meta_table is None:
@@ -85,60 +91,78 @@ def prepare_equal_weight_portfolio_schema(
     print_detail("configured_storage_table", storage_table.__table__.name)
     print_detail("configured_storage_identifier", storage_table.metatable_identifier())
 
-    print_step(2, "Checking whether the configured interpolation table already exists.")
+    print_step(2, "Checking the configured interpolation migration revision.")
+    revision_file = _find_dynamic_revision_file(storage_table.__table__.name)
     existing = _find_time_index_meta_table(storage_table.__table__.name)
-    if existing is None and check_only:
-        raise RuntimeError(
-            "Configured interpolated price storage is missing and --check-only was set: "
-            f"{storage_table.__table__.name}"
-        )
+    if check_only:
+        if revision_file is None:
+            raise RuntimeError(
+                "Configured interpolated price storage revision is missing and "
+                f"--check-only was set: {storage_table.__table__.name}"
+            )
+        if existing is None:
+            raise RuntimeError(
+                "Configured interpolated price storage metadata is missing and "
+                f"--check-only was set: {storage_table.__table__.name}"
+            )
+        print_detail("dynamic_revision_file", revision_file)
+        print_detail("time_index_meta_table_uid", existing.uid)
+        return {
+            "source_storage_uid": getattr(source_meta_table, "uid", None),
+            "source_storage_hash": source_storage_hash,
+            "source_cadence": source_cadence,
+            "source_cadence_repaired": source_cadence_repaired,
+            "configured_storage_table": storage_table.__table__.name,
+            "configured_storage_identifier": storage_table.metatable_identifier(),
+            "configured_storage_uid": existing.uid,
+            "created_revision": False,
+        }
 
     created_revision = False
-    if existing is None:
+    if revision_file is None:
         print_step(3, "Finding or generating the dynamic Alembic revision first.")
-        revision_file = _find_dynamic_revision_file(storage_table.__table__.name)
-        if revision_file is None:
-            created_revision = True
-            message = _dynamic_revision_message(
-                storage_table.__table__.name,
-                revision_message=revision_message,
-            )
-            before_revision_files = _migration_revision_files()
-            _run_mainsequence(
-                [
-                    "migrations",
-                    "revision",
-                    "--provider",
-                    DYNAMIC_MIGRATION_PROVIDER,
-                    "--autogenerate",
-                    "-m",
-                    message,
-                ],
-                env=provider_env,
-            )
-            revision_file = _find_dynamic_revision_file(storage_table.__table__.name)
-            if revision_file is None:
-                new_files = sorted(_migration_revision_files() - before_revision_files)
-                raise RuntimeError(
-                    "Dynamic Alembic revision was generated, but no generated file "
-                    "contains the configured table CREATE TABLE operation for "
-                    f"{storage_table.__table__.name}. New revision files: "
-                    f"{[str(path) for path in new_files]}"
-                )
-        print_detail("dynamic_revision_file", revision_file)
-
-        print_step(4, "Applying the dynamic migration revision.")
+        created_revision = True
+        message = _dynamic_revision_message(
+            storage_table.__table__.name,
+            revision_message=revision_message,
+        )
+        before_revision_files = _migration_revision_files()
         _run_mainsequence(
             [
                 "migrations",
-                "upgrade",
+                "revision",
                 "--provider",
                 DYNAMIC_MIGRATION_PROVIDER,
-                "head",
+                "--autogenerate",
+                "-m",
+                message,
             ],
             env=provider_env,
         )
-        existing = _find_time_index_meta_table(storage_table.__table__.name)
+        revision_file = _find_dynamic_revision_file(storage_table.__table__.name)
+        if revision_file is None:
+            new_files = sorted(_migration_revision_files() - before_revision_files)
+            raise RuntimeError(
+                "Dynamic Alembic revision was generated, but no generated file "
+                "contains the configured table CREATE TABLE operation for "
+                f"{storage_table.__table__.name}. New revision files: "
+                f"{[str(path) for path in new_files]}"
+            )
+
+    print_detail("dynamic_revision_file", revision_file)
+
+    print_step(4, "Applying the dynamic migration revision.")
+    _run_mainsequence(
+        [
+            "migrations",
+            "upgrade",
+            "--provider",
+            DYNAMIC_MIGRATION_PROVIDER,
+            "head",
+        ],
+        env=provider_env,
+    )
+    existing = _find_time_index_meta_table(storage_table.__table__.name)
 
     if existing is None:
         raise RuntimeError(
@@ -169,7 +193,9 @@ def prepare_equal_weight_portfolio_schema(
             build_equal_weight_portfolio,
         )
 
-        result["portfolio_result"] = build_equal_weight_portfolio()
+        result["portfolio_result"] = build_equal_weight_portfolio(
+            runtime_models=runtime_models
+        )
 
     return result
 
@@ -203,12 +229,28 @@ def _find_dynamic_revision_file(table_name: str) -> Path | None:
 
 
 def _migration_revision_files() -> set[Path]:
-    versions_root = _PROJECT_ROOT / "src" / "migrations" / "versions"
+    versions_root = _active_version_directory()
     return {
         path
         for path in versions_root.glob("**/*.py")
         if path.name != "__init__.py"
     }
+
+
+def _active_version_directory() -> Path:
+    version_location = active_namespace_version_location()
+    package_name, separator, resource_path = version_location.partition(":")
+    if not separator or not package_name or not resource_path:
+        raise RuntimeError(
+            "Dynamic migration provider returned an invalid version location: "
+            f"{version_location!r}"
+        )
+
+    traversable = resources.files(package_name)
+    for part in resource_path.strip("/").split("/"):
+        if part:
+            traversable = traversable.joinpath(part)
+    return Path(str(traversable))
 
 
 def _run_mainsequence(

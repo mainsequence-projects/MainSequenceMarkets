@@ -83,7 +83,7 @@ The following stay in core `msm`:
 - shared DataNode bases and utilities such as `AssetIndexedDataNode`,
   `StampedDataNode`, namespace helpers, datetime normalization, and storage
   schema helpers;
-- bootstrap, maintenance catalog, model registration, repository context, and
+- bootstrap, model registration, repository context, and
   generic CRUD helpers.
 
 `AccountModelPortfolioTable`, `AccountTargetPortfolioTable`, and
@@ -335,7 +335,7 @@ explicit compatibility decision requires it.
 
 - [x] Add `src/msm_portfolios`.
 - [x] Add `msm_portfolios.start_engine(...)` and runtime helpers.
-- [x] Reuse `msm.maintenance.catalog` and core repository context machinery.
+- [x] Reuse core `msm` runtime attachment and repository context machinery.
 - [x] Add `msm_portfolios.models.portfolio_sqlalchemy_models()` model graph
   resolver in dependency order.
 - [x] Add package-boundary tests proving core `msm` does not import

@@ -93,8 +93,8 @@ SQLAlchemy model class, or in an abstract project-local mixin, when the table
 should use a project-owned physical table-name app segment instead of the
 library default `ms_markets`. This does not replace
 `__metatable_identifier__`; the identifier remains the globally unique logical
-MetaTable identity used by catalog/runtime attachment. Changing
-`__markets_storage_app__` after the table has been migrated/cataloged is a
+MetaTable identity used by runtime attachment. Changing
+`__markets_storage_app__` after the table has been migrated and registered is a
 physical table-name rotation and must go through the SDK migration and
 registration path.
 
@@ -110,7 +110,7 @@ class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
 
 ## Public API Pattern
 
-After the SDK migration provider has migrated and cataloged the SQLAlchemy
+After the SDK migration provider has migrated and registered the SQLAlchemy
 detail model, application code should attach it through `msm.start_engine(...)`
 and then work through the Pydantic row API:
 
@@ -140,7 +140,7 @@ msm.start_engine(models=[FutureAssetDetailsTable])
 
 `MarketsMetaTableRow` is the Pydantic row-operation wrapper. It is not
 registered as a backend MetaTable. The SQLAlchemy detail model class is the
-registered/cataloged artifact. If generic row helpers expect `uid`, expose `uid`
+registered backend artifact. If generic row helpers expect `uid`, expose `uid`
 as an alias of `asset_uid` in the Pydantic row model. Do not change the SQL table
 shape just to satisfy generic helpers.
 

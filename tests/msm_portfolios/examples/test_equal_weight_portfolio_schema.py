@@ -11,6 +11,13 @@ from examples.msm_portfolios import portfolio_equal_weights_example as example
 from examples.msm_portfolios import portfolio_equal_weights_prepare_schema as prep
 
 
+def _configured_dynamic_table_name() -> str:
+    return config.configured_equal_weight_interpolated_prices_storage(
+        source_storage_hash="registered-external-prices-hash",
+        source_cadence="1d",
+    ).__table__.name
+
+
 def test_static_runtime_models_exclude_configured_interpolation_storage() -> None:
     assert "ExternalPricesStorage" in config.PORTFOLIO_EXAMPLE_RUNTIME_MODELS
     assert all(isinstance(model, str) for model in config.PORTFOLIO_EXAMPLE_RUNTIME_MODELS)
@@ -160,11 +167,12 @@ def test_dynamic_migration_provider_imports_with_source_env(monkeypatch) -> None
 
 
 def test_dynamic_revision_message_uses_configured_table_suffix() -> None:
-    table_name = "mt_mainsequence_examples_2418c22d8df4a6ff3c7cf0778f11ed49"
+    table_name = _configured_dynamic_table_name()
+    table_suffix = table_name.rsplit("_", 1)[-1]
 
     assert prep._dynamic_revision_message(table_name, revision_message=None) == (
         "portfolio_equal_weights_dynamic_interpolated_prices_"
-        "2418c22d8df4a6ff3c7cf0778f11ed49"
+        f"{table_suffix}"
     )
     assert prep._dynamic_revision_message(
         table_name,
@@ -176,9 +184,9 @@ def test_find_dynamic_revision_file_detects_existing_create_table(
     monkeypatch,
     tmp_path,
 ) -> None:
-    revisions_root = tmp_path / "src" / "migrations" / "versions" / "mainsequence_examples"
+    revisions_root = tmp_path / "versions" / "mainsequence_examples"
     revisions_root.mkdir(parents=True)
-    table_name = "mt_mainsequence_examples_2418c22d8df4a6ff3c7cf0778f11ed49"
+    table_name = _configured_dynamic_table_name()
     revision_file = revisions_root / "0009_dynamic.py"
     revision_file.write_text(
         "from alembic import op\n"
@@ -192,7 +200,63 @@ def test_find_dynamic_revision_file_detects_existing_create_table(
         "    op.create_table('other_table')\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(prep, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(prep, "_active_version_directory", lambda: revisions_root)
 
     assert prep._find_dynamic_revision_file(table_name) == revision_file
     assert prep._find_dynamic_revision_file("missing_table") is None
+
+
+def test_prepare_schema_runs_upgrade_when_metadata_already_exists(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    source_meta_table = SimpleNamespace(
+        uid="source-storage-uid",
+        storage_hash="registered-external-prices-hash",
+        time_indexed_profile=SimpleNamespace(cadence="1d"),
+    )
+    existing_dynamic_table = SimpleNamespace(uid="dynamic-storage-uid")
+    runtime = SimpleNamespace(
+        table=lambda _model: SimpleNamespace(meta_table=source_meta_table)
+    )
+    table_name = _configured_dynamic_table_name()
+    revision_file = tmp_path / "0009_dynamic.py"
+    commands = []
+
+    monkeypatch.setattr(
+        prep,
+        "start_portfolio_example_runtime",
+        lambda models: runtime,
+    )
+    monkeypatch.setattr(
+        prep,
+        "_find_dynamic_revision_file",
+        lambda requested_table_name: revision_file
+        if requested_table_name == table_name
+        else None,
+    )
+    monkeypatch.setattr(
+        prep,
+        "_find_time_index_meta_table",
+        lambda requested_table_name: existing_dynamic_table
+        if requested_table_name == table_name
+        else None,
+    )
+    monkeypatch.setattr(
+        prep,
+        "_run_mainsequence",
+        lambda args, *, env, allow_failure=False: commands.append((args, env)),
+    )
+
+    result = prep.prepare_equal_weight_portfolio_schema()
+
+    assert result["configured_storage_table"] == table_name
+    assert result["configured_storage_uid"] == existing_dynamic_table.uid
+    assert len(commands) == 1
+    assert commands[0][0] == [
+        "migrations",
+        "upgrade",
+        "--provider",
+        config.DYNAMIC_MIGRATION_PROVIDER,
+        "head",
+    ]

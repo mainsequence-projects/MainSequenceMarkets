@@ -262,14 +262,16 @@ python examples/msm_portfolios/portfolio_equal_weights_run.py
 
 The preparation step attaches the static schema, reads the registered
 `ExternalPricesStorage` `storage_hash` and cadence metadata, builds the
-configured `InterpolatedPricesStorage` class, checks whether the corresponding
-`TimeIndexMetaTable` already exists, applies an existing dynamic revision if one
-is pending, and generates plus applies a new Alembic revision only when the
-configured table is still missing. If an older registered `ExternalPricesStorage`
-row is missing cadence metadata, the preparation script patches that metadata to
-the model-declared cadence before deriving the dynamic table. Runtime portfolio
-code then uses the registered table; it does not create or migrate dynamic
-storage.
+configured `InterpolatedPricesStorage` class, and uses the active migration
+namespace from the SDK migration provider to find or generate the real dynamic
+Alembic revision. It then runs the dynamic provider upgrade before any portfolio
+DataNode writes, even when a stale `TimeIndexMetaTable` metadata row already
+exists. Metadata alone is not considered schema preparation; the physical table
+must be created by the migration flow. If an older registered
+`ExternalPricesStorage` row is missing cadence metadata, the preparation script
+patches that metadata to the model-declared cadence before deriving the dynamic
+table. Runtime portfolio code then uses the registered table; it does not
+create or migrate dynamic storage.
 
 `AssetsConfiguration.price_type` chooses which column from the interpolated
 price table drives portfolio returns. For example, `PriceTypeNames.CLOSE` uses

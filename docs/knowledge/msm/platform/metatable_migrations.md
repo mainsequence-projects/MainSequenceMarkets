@@ -12,9 +12,7 @@ The provider is exported from `migrations:migration` and contains:
 - script location: `migrations:`;
 - target metadata: `MarketsBase.metadata`;
 - Alembic version registry: `MarketsAlembicVersion`;
-- provider model scope: `metatable_provider_models()`;
-- post-registration hook:
-  `refresh_markets_catalog_from_registered_metatables`.
+- provider model scope: `metatable_provider_models()`.
 
 `MarketsAlembicVersion` stores Alembic state in
 `public.ms_markets__alembic_version`. This package-specific version table avoids
@@ -45,30 +43,26 @@ current built-in revision history belongs to
 `src/migrations/versions/mainsequence_examples/`.
 
 `upgrade` runs Alembic through the SDK provider and backend-scoped migration
-connection. After a successful apply, the SDK synchronizes the provider
-MetaTable catalog and calls the provider hook. The hook refreshes
-`MarketsMetaTableCatalogTable` using the registered platform `MetaTable`
-objects.
+connection. After a successful apply, the SDK registers or updates the provider
+`MetaTable` and `TimeIndexMetaTable` resources.
 
 ## Runtime Contract
 
 `msm.start_engine(...)` is runtime attachment only. It reads the finalized
 backend `MetaTable` and `TimeIndexMetaTable` resources by each model's
-SQLAlchemy table name and binds the runtime context. The catalog is inventory,
-not the schema authority or the runtime binding source. Alembic/provider
-metadata owns schema correctness.
+SQLAlchemy table name and binds the runtime context. Alembic/provider metadata
+owns schema correctness.
 
 Runtime startup must not call:
 
 - Alembic revision generation;
 - migration execution;
 - normal model `register()` for application tables;
-- catalog reconciliation for application tables.
+- schema reconciliation for application tables.
 
 Missing backend `MetaTable` or `TimeIndexMetaTable` resources are deployment
 errors. Fix them by running the SDK migration upgrade flow or by performing an
-explicit platform repair. Stale catalog rows affect inventory diagnostics, not
-normal runtime attachment.
+explicit platform repair.
 
 ## Adding A Table Or Schema Change
 
@@ -82,7 +76,7 @@ normal runtime attachment.
    unchanged foreign keys because one side is `schema=None` and the other is
    `schema="public"`.
 6. Upgrade through the SDK CLI.
-7. Let the SDK `upgrade` command refresh the markets catalog automatically.
+7. Start application code through `msm.start_engine(...)` after the upgrade.
 
 There is no hand-authored YAML, JSON, or SDK operation manifest. Migration
 history is the Alembic revision graph plus the provider's version table.

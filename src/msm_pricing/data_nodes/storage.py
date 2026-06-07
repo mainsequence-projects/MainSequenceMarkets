@@ -3,7 +3,7 @@
 ADR 0017. Each class is the single source of truth for the column schema,
 dtypes, descriptions, and identity foreign keys of one pricing table. The
 DataNode validators derive their column dtype maps from these declarations;
-catalog registration follows in Stage 5.
+SDK migration registration follows in Stage 5.
 """
 
 from __future__ import annotations

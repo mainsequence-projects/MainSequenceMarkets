@@ -42,8 +42,6 @@ def reset_schema_runtime(monkeypatch) -> None:
     monkeypatch.setattr(bootstrap, "_START_ENGINE_CONFIG", None)
     monkeypatch.setattr(bootstrap, "_RUNTIME_BY_CONFIG", {})
     monkeypatch.delenv("MSM_AUTO_REGISTER_NAMESPACE", raising=False)
-    sys.modules.pop("msm.maintenance.catalog", None)
-    sys.modules.pop("msm.maintenance", None)
 
 
 def install_fake_bootstrap_modules(monkeypatch):

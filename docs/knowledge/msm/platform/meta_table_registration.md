@@ -27,12 +27,12 @@ appended as a suffix, for example
 
 Every concrete markets MetaTable model must declare `__metatable_description__`.
 That description is the durable platform-level discovery text copied into the
-registered MetaTable and the internal markets catalog. It should state the row
-grain and business use of the table; it should not be a generic column list.
+registered MetaTable. It should state the row grain and business use of the
+table; it should not be a generic column list.
 DataNode output storage classes follow the same rule, and their default DataNode
 descriptions are sourced from the storage table's `__metatable_description__`.
 Every physical column must also carry non-empty SQLAlchemy `info["description"]`
-metadata so catalog consumers and generated UIs can explain fields without
+metadata so generated UIs can explain fields without
 guessing from column names.
 
 ```python
@@ -60,12 +60,12 @@ mainsequence migrations upgrade --provider migrations:migration head
 MetaTable registration is migration-owned. Normal applications, examples, and
 runtime bootstrap code should not call model `.register()` methods or local
 registration helpers. The SDK migration provider resolves the package model
-registry, applies Alembic migrations, registers the MetaTables, and refreshes
-the markets catalog as part of the admin migration flow.
+registry, applies Alembic migrations, and registers the MetaTables as part of
+the admin migration flow.
 
-Catalog bookkeeping is keyed by the `table_name` column because the SDK
-migration flow uses the SQLAlchemy table name as the stable MetaTable identity. For
-example, `AccountTable` is cataloged as `ms_markets__account`, or as
+Runtime lookup is keyed by the SQLAlchemy table name because the SDK migration
+flow uses that name as the stable MetaTable identity. For example,
+`AccountTable` resolves as `ms_markets__account`, or as
 `ms_markets__account__mainsequence_examples` when
 `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` is set before model import.
 The registered platform `MetaTable.uid` is only known after migration
@@ -147,11 +147,6 @@ one table at a time and does not introspect physical storage. Physical schema
 validation belongs to the SDK migration flow and explicit diagnostics, not to
 normal application startup.
 
-The same rule applies to the internal maintenance catalog itself. Installations
-with an older catalog physical table that still contains removed fields such as
-`storage_hash` must repair or recreate that catalog resource before normal
-startup.
-
 For narrow explicit startup, pass `models=[...]` to attach only the tables the
 process needs:
 
@@ -209,8 +204,8 @@ MetaTable UID.
 segment. It does not replace `__metatable_identifier__`, does not participate in
 row API selection, and does not create a project-local UID map. Set it in the
 class body before SQLAlchemy maps the table. Changing it after a table has been
-migrated/cataloged points the model at a different physical table name and must
-go through the normal SDK migration and registration path.
+migrated and registered points the model at a different physical table name and
+must go through the normal SDK migration and registration path.
 
 Projects with several extension tables can define an abstract local mixin once:
 
@@ -318,8 +313,8 @@ With the environment variable set, `msm.start_engine(...)` uses the example
 namespace and resolves the selected backend tables by their namespaced
 SQLAlchemy table identifiers.
 The namespace cannot be changed safely after `msm.models` or
-`msm.maintenance.models` is imported because the markets mixins assign the
-physical table name while SQLAlchemy maps each model class.
+another MetaTable-backed package is imported because the markets mixins assign
+the physical table name while SQLAlchemy maps each model class.
 
 Examples can still use explicit startup when the workflow is specifically
 demonstrating runtime attachment. When `namespace` is omitted,

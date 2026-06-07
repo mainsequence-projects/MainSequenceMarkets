@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 
 import pytest
+from sqlalchemy import DateTime, Index, String
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import Uuid
 
-from msm.maintenance.models import MarketsMetaTableCatalogRow, MarketsMetaTableCatalogTable
+from msm.base import MarketsBase, MarketsMetaTableMixin, markets_table_args, new_markets_uid
 from msm.models.registration import markets_meta_table_identifier
 from msm.models import (
     AccountGroupTable,
@@ -39,14 +43,46 @@ from msm.repositories.accounts import (
 )
 
 
+class RepositoryDefaultTable(MarketsMetaTableMixin, MarketsBase):
+    __metatable_identifier__ = "test.RepositoryDefault"
+    __metatable_description__ = (
+        "Repository test table with Python defaults used to verify generic "
+        "compiled SQL insert and upsert behavior."
+    )
+    __table_args__ = markets_table_args(
+        __metatable_identifier__,
+        Index(None, "unique_identifier", unique=True),
+    )
+
+    uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=new_markets_uid,
+    )
+    unique_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: dt.datetime.now(dt.UTC),
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: dt.datetime.now(dt.UTC),
+        onupdate=lambda: dt.datetime.now(dt.UTC),
+    )
+
+
 @pytest.fixture(autouse=True)
 def bind_test_meta_table_uids(monkeypatch) -> None:
-    for model in [MarketsMetaTableCatalogTable, *markets_sqlalchemy_models()]:
+    for model in [RepositoryDefaultTable, *markets_sqlalchemy_models()]:
         monkeypatch.setattr(model, "__metatable_uid__", str(uuid.uuid4()), raising=False)
 
 
 def _repository_context() -> MarketsRepositoryContext:
     return MarketsRepositoryContext(
+        data_source_uid=str(uuid.UUID("00000000-0000-0000-0000-000000000001")),
         limits={"max_rows": 100, "statement_timeout_ms": 5000},
     )
 
@@ -58,7 +94,7 @@ def _asset_table() -> MarketsMetaTableHandle:
 def test_repository_context_resolves_identifier_after_physical_binding(monkeypatch) -> None:
     identifier = markets_meta_table_identifier(AssetTypeTable)
     meta_table_uid = str(uuid.uuid4())
-    context = MarketsRepositoryContext()
+    context = _repository_context()
 
     monkeypatch.setitem(AssetTypeTable.__table__.info, "identifier", identifier)
     monkeypatch.setattr(AssetTypeTable, "__metatable_uid__", meta_table_uid, raising=False)
@@ -144,21 +180,16 @@ def test_asset_upsert_operation_uses_compiled_upsert_protocol() -> None:
 
 
 def test_generic_upsert_operation_populates_python_defaults_for_backend_sql() -> None:
-    context = MarketsRepositoryContext()
-    row = MarketsMetaTableCatalogRow(
-        namespace="ms-markets",
-        table_name="ms_markets__asset",
-        description=None,
-        model_name="AssetTable",
-        meta_table_uid=str(uuid.uuid4()),
-        sdk_version="0.0.test",
-    )
+    context = _repository_context()
 
     operation = build_upsert_model_operation(
         context,
-        model=MarketsMetaTableCatalogTable,
-        values=row.to_payload(),
-        conflict_columns=["table_name"],
+        model=RepositoryDefaultTable,
+        values={
+            "unique_identifier": "test-defaults",
+            "display_name": "Test Defaults",
+        },
+        conflict_columns=["unique_identifier"],
     )
 
     assert isinstance(operation.statement.parameters["uid"], uuid.UUID)
@@ -170,39 +201,25 @@ def test_generic_upsert_operation_populates_python_defaults_for_backend_sql() ->
 
 
 def test_generic_bulk_upsert_operation_compiles_one_statement_for_many_rows() -> None:
-    context = MarketsRepositoryContext()
+    context = _repository_context()
     rows = [
-        MarketsMetaTableCatalogRow(
-            namespace="ms-markets",
-            table_name="ms_markets__asset",
-            description=None,
-            model_name="AssetTable",
-            meta_table_uid=str(uuid.uuid4()),
-            sdk_version="0.0.test",
-        ),
-        MarketsMetaTableCatalogRow(
-            namespace="ms-markets",
-            table_name="ms_markets__account",
-            description=None,
-            model_name="AccountTable",
-            meta_table_uid=str(uuid.uuid4()),
-            sdk_version="0.0.test",
-        ),
+        {"unique_identifier": "test-bulk-1", "display_name": "Test Bulk 1"},
+        {"unique_identifier": "test-bulk-2", "display_name": "Test Bulk 2"},
     ]
 
     operation = build_bulk_upsert_model_operation(
         context,
-        model=MarketsMetaTableCatalogTable,
-        values=[row.to_payload() for row in rows],
-        conflict_columns=["table_name"],
+        model=RepositoryDefaultTable,
+        values=rows,
+        conflict_columns=["unique_identifier"],
     )
 
     assert operation.operation == "upsert"
     assert operation.scope.tables[0].access == "write"
     assert "ON CONFLICT" in operation.statement.sql
-    assert operation.statement.sql.count("meta_table_uid") >= 2
+    assert operation.statement.sql.count("display_name") >= 2
     assert operation.statement.sql.count("VALUES") == 1
-    assert {rows[0].meta_table_uid, rows[1].meta_table_uid}.issubset(
+    assert {rows[0]["unique_identifier"], rows[1]["unique_identifier"]}.issubset(
         set(operation.statement.parameters.values())
     )
 

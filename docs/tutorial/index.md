@@ -64,7 +64,7 @@ mainsequence migrations upgrade --provider migrations:migration head
 ```
 
 See [Migrations](../knowledge/msm/migrations/index.md)
-for the package registry, SDK Alembic provider, upgrade flow, catalog
+for the package registry, SDK Alembic provider, upgrade flow, schema
 finalization, and runtime attachment lifecycle.
 
 ## Asset Identity And Provider Rows
@@ -156,7 +156,7 @@ Use this workflow when publishing and inspecting account positions:
 
 1. Before runtime, run the admin migration flow with
    `mainsequence migrations upgrade --provider migrations:migration head`
-   so the package schema and catalog are finalized.
+   so the package schema is finalized.
 2. Attach account holdings through `msm.start_engine(...)`. When target
    positions can reference portfolios, attach `Portfolio` and
    `TargetPositionsStorage` through `msm_portfolios.start_engine(...)`.
@@ -175,17 +175,16 @@ Use this workflow when publishing and inspecting account positions:
    `error_on_last_update, holdings_frame = holdings_node.run(...)`.
 8. Pass only `holdings_frame` to `Account.pretty_print_positions(...)`.
 
-See `examples/msm/accounts/account_workflow.py` for the full account path. When
-using the default portfolio sleeve chain, first run
-`python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` so
-the configured interpolated price storage exists, then run the account example.
-The account workflow chains
+See `examples/msm/accounts/account_portfolio_full_workflow.py` for the full
+account plus portfolio path. The default runner prepares the configured
+interpolated price storage revision, upgrades it, chains
 `examples/msm_portfolios/portfolio_equal_weights_example.py` to create a
 reusable portfolio sleeve, then creates the account group, two accounts,
 canonical asset snapshots with ticker/name metadata, one shared account model
 portfolio, account-owned target portfolio relationships, direct asset plus
 portfolio `PositionSet` target-row publication, holdings publication, and
-pretty-printed account positions.
+pretty-printed account positions. Use `--skip-schema-prep` only when the
+configured portfolio interpolation table has already been migrated.
 
 ## Pricing Instrument Identity
 
@@ -335,20 +334,20 @@ Use this workflow when adding or reviewing a market-domain relational table:
    order.
 6. Generate or update a normal Alembic revision under the active namespace
    directory in `src/migrations/versions/`.
-7. Use the SDK migration upgrade flow for schema/catalog mutation, then
+7. Use the SDK migration upgrade flow for schema mutation, then
    `msm.start_engine(...)` for runtime attachment. Do not call model
    `.register()` methods or local registration helpers from application code.
 
-`msm.start_engine(...)` does not read the internal maintenance catalog during
-runtime startup. It resolves selected tables by backend identifier using
-`model.__table__.name`; it does not import or register missing tables.
+`msm.start_engine(...)` resolves selected tables by backend identifier using
+`model.__table__.name`; it does not import, register, or migrate missing
+tables.
 
 Examples that use example-scoped platform-managed MetaTables must set
 `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` before importing
-MetaTable-backed `msm.api`, `msm.models`, or `msm.maintenance.models` modules,
-then run explicit startup attachment. Row operations never register or attach
-MetaTables on first use. A different namespace or registration configuration is
-rejected for the already-initialized process.
+MetaTable-backed `msm.api` or `msm.models` modules, then run explicit startup
+attachment. Row operations never register or attach MetaTables on first use. A
+different namespace or registration configuration is rejected for the
+already-initialized process.
 
 Pass `models=[...]` to explicit preflight when a workflow only needs a subset of
 tables, for example `msm.start_engine(models=["Asset"])`. Normal examples and
@@ -362,7 +361,7 @@ inspection example that prints the SDK-derived table names.
 ## Project-Local MetaTable Extensions
 
 Use this workflow when an application owns a custom markets table that should be
-cataloged with the same migration/finalization path as built-in tables:
+migrated and registered with the same path as built-in tables:
 
 1. Define the SQLAlchemy model with `MarketsMetaTableMixin` and `MarketsBase`.
 2. Give it one stable `__metatable_identifier__`.
@@ -371,7 +370,7 @@ cataloged with the same migration/finalization path as built-in tables:
    the extension table should not use the library default `ms_markets` physical
    table-name prefix.
 5. Add or sync the package/project migration that creates or refreshes the
-   table and finalizes the catalog.
+   table and finalizes the schema.
 6. Attach at runtime with `msm.start_engine(models=[MyModelTable])`.
 7. Put row operations in an optional `MarketsMetaTableRow` wrapper.
 

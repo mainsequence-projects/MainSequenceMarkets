@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="portfolio_equal_weights_full_workflow" type="PythonConfigurationType" factoryName="Python" folderName="Portfolios">
+  <configuration default="false" name="account_portfolio_full_workflow" type="PythonConfigurationType" factoryName="Python" folderName="Accounts">
     <module name="MainSequenceMarkets" />
     <option name="ENV_FILES" value="$PROJECT_DIR$/.env" />
     <option name="INTERPRETER_OPTIONS" value="" />
@@ -14,8 +14,8 @@
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py" />
-    <option name="PARAMETERS" value="--run-after" />
+    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/examples/msm/accounts/account_portfolio_full_workflow.py" />
+    <option name="PARAMETERS" value="" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

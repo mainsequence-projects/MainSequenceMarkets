@@ -116,8 +116,8 @@ from msm_pricing.bootstrap import create_pricing_schemas
 create_pricing_schemas()
 ```
 
-`create_pricing_schemas(...)` uses the same maintenance catalog bootstrap as
-`msm.start_engine(...)`: already-cataloged tables are attached, and dependency
+`create_pricing_schemas(...)` uses the same direct runtime attachment path as
+`msm.start_engine(...)`: already-registered tables are attached, and dependency
 order is resolved before runtime binding. The dependency order includes
 `AssetTable`, `IndexTypeTable`, `IndexTable`, `IndexConventionDetailsTable`,
 `CurveTable`, then pricing details and pricing DataNode storage tables. Missing

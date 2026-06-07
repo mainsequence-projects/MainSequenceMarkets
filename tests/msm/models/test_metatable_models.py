@@ -29,7 +29,6 @@ from msm.base import (
     markets_table_storage_name,
 )
 from msm.data_nodes.storage import AccountHoldingsStorage
-from msm.maintenance.models import MarketsMetaTableCatalogTable
 from migrations.registry import metatable_provider_models
 from msm.models.registration import (
     build_markets_registration_requests,
@@ -246,7 +245,7 @@ def test_extension_storage_app_must_not_be_blank() -> None:
 
 
 def test_markets_models_declare_metatable_descriptions() -> None:
-    for model in [MarketsMetaTableCatalogTable, *markets_sqlalchemy_models()]:
+    for model in markets_sqlalchemy_models():
         description = getattr(model, "__metatable_description__", None)
 
         assert isinstance(description, str), model.__name__
@@ -260,7 +259,6 @@ def test_built_in_metatables_declare_column_descriptions() -> None:
     seen: set[type] = set()
     models = []
     for model in [
-        MarketsMetaTableCatalogTable,
         *markets_sqlalchemy_models(),
         *pricing_sqlalchemy_models(),
     ]:

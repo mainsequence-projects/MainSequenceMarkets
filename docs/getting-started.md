@@ -100,10 +100,10 @@ context = runtime.context
 asset_table = runtime.table("Asset")
 ```
 
-That startup preflight uses the internal maintenance catalog. Cataloged tables
-are attached by platform
-`MetaTable.uid`; missing rows or rows pointing at missing platform MetaTables
-fail startup and should be fixed through the SDK migration upgrade flow.
+That startup preflight resolves already-registered backend `MetaTable` and
+`TimeIndexMetaTable` resources by each selected model's SQLAlchemy table name.
+Missing backend tables fail startup and should be fixed through the SDK
+migration upgrade flow.
 
 For development examples that should use an example namespace, set
 `MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`, then call

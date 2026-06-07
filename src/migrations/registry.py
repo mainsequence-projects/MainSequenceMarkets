@@ -8,13 +8,11 @@ from msm.base import MarketsBase
 
 
 def _metatable_provider_model_sources() -> list[type[MarketsBase]]:
-    from msm.maintenance.models import MarketsMetaTableCatalogTable
     from msm.models import markets_sqlalchemy_models
     from msm_portfolios.models import portfolio_sqlalchemy_models
     from msm_pricing.meta_tables import pricing_sqlalchemy_models
 
     return [
-        MarketsMetaTableCatalogTable,
         *markets_sqlalchemy_models(),
         *portfolio_sqlalchemy_models(),
         *pricing_sqlalchemy_models(),

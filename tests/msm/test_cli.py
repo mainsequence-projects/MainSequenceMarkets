@@ -144,22 +144,11 @@ def test_msm_cli_does_not_expose_schema_admin_commands() -> None:
     help_text = cli_main._build_parser().format_help()
 
     assert "migrations" not in help_text
-    assert "catalog" not in help_text
 
 
 def test_migrations_command_is_rejected(capsys) -> None:
     with pytest.raises(SystemExit) as exc_info:
         main(["migrations"])
-
-    assert exc_info.value.code == 2
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    assert "invalid choice" in captured.err
-
-
-def test_catalog_command_is_rejected(capsys) -> None:
-    with pytest.raises(SystemExit) as exc_info:
-        main(["catalog"])
 
     assert exc_info.value.code == 2
     captured = capsys.readouterr()

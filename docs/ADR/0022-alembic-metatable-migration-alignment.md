@@ -95,7 +95,6 @@ from mainsequence.meta_tables.migrations import (
 
 from migrations.registry import metatable_provider_models
 from msm.base import MARKETS_SCHEMA, MARKETS_TABLE_APP, MarketsBase, markets_table_name
-from msm.maintenance.catalog import refresh_markets_catalog_from_registered_metatables
 from msm.settings import markets_auto_register_namespace, markets_identifier, markets_namespace
 
 
@@ -118,7 +117,6 @@ migration = AlembicMetaTableMigration(
     target_metadata=MarketsBase.metadata,
     alembic_registry=MarketsAlembicVersion,
     metatable_models=metatable_provider_models(),
-    after_register_metatables=refresh_markets_catalog_from_registered_metatables,
 )
 ```
 
@@ -156,24 +154,6 @@ They must contain normal Alembic operations such as `op.create_table(...)`,
 `op.add_column(...)`, and `op.create_index(...)`. They must not contain custom
 SDK operation dictionaries or package-authored SQL manifests.
 
-## Catalog Integration
-
-The SDK refreshes provider-scoped MetaTables after a successful upgrade and then
-calls:
-
-```python
-after_register_metatables=refresh_markets_catalog_from_registered_metatables
-```
-
-The hook keeps `MarketsMetaTableCatalogTable` aligned as an inventory and
-maintenance table. The catalog does not record Alembic revision history and does
-not control runtime attachment.
-
-Catalog refresh is batched. It must not issue one
-`MetaTable.execute_operation(...)` call per provider model. The implemented hook
-materializes catalog row payloads and performs a bulk upsert keyed by
-`table_name`.
-
 ## Runtime Boundary
 
 `msm.start_engine(...)` remains attach-only. Runtime startup must not:
@@ -199,9 +179,7 @@ Runtime code attaches to already-registered backend `MetaTable` and
 - [x] Use the provider reference `migrations:migration`.
 - [x] Add standard Alembic `env.py` and `script.py.mako`.
 - [x] Delete the legacy custom migration command group.
-- [x] Wire catalog refresh through
-      `after_register_metatables=refresh_markets_catalog_from_registered_metatables`.
-- [x] Batch catalog refresh upserts instead of issuing one operation per table.
+- [x] Keep migration provider registration free of project-local inventory hooks.
 - [x] Document that runtime startup is attach-only and does not migrate schema.
 
 ## Success Criteria
@@ -217,8 +195,6 @@ The repository is aligned with the SDK migration machinery when:
   creates normal Alembic revision files under the active namespace location;
 - `mainsequence migrations upgrade --provider migrations:migration head`
   executes through SDK-scoped migration credentials;
-- `MarketsMetaTableCatalogTable` is refreshed by the provider hook after the SDK
-  refreshes provider MetaTables;
 - `msm migrations ...` is not available;
 - runtime bootstrap docs describe `msm.start_engine(...)` as attach-only;
 - no runtime code depends on the removed custom migration runner.

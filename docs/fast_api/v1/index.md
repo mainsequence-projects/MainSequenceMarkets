@@ -8,11 +8,9 @@ surface for this repository.
 This API is intentionally thin:
 
 - route declarations, validation, and OpenAPI metadata live under `apps/v1`
-- reusable catalog and category workflows live under `src/msm/services`
+- reusable asset category workflows live under `src/msm/services`
 - asset, category, and index frontend route composition is backed by
   `src/msm/services/asset_master_lists.py`
-- MetaTable catalogue discovery and row management is backed by
-  `src/msm/services/catalog.py`
 - pricing market-data set and binding workflows are backed by
   `msm_pricing.api`
 
@@ -37,7 +35,7 @@ Current local-dev behavior:
 - the app calls `msm_pricing.bootstrap.attach_pricing_schemas(...)` during
   startup for the pricing rows used by asset pricing details and pricing
   market-data management
-- schema and catalog mutation must already have been handled by
+- schema mutation must already have been handled by
   `mainsequence migrations upgrade --provider migrations:migration head`
 - the app uses the real project/session data source already configured for the
   Main Sequence client session
@@ -222,22 +220,6 @@ Current local-dev behavior:
   - bulk upserts event rows under the path calendar uid
 - `GET`, `PATCH`, and `DELETE /api/v1/calendar/{calendar_uid}/events/{event_uid}/`
   - manage one event row and require it to belong to the path calendar uid
-
-### Catalogues
-
-- `GET /api/v1/catalog/`
-  - lists catalogue entries from the markets MetaTable catalogue
-  - supports `search`, `limit`, and `offset`
-  - returns catalogue identity fields, backend `meta_table_uid`, support flags,
-    and row-management endpoint templates
-  - does not expose physical schema or physical table name fields
-- `GET /api/v1/catalog/{catalog_uid}/rows/`
-  - lists rows for one catalogue entry selected by catalogue row `uid`
-  - returns a generic row contract with `columns` and row `values`
-- `DELETE /api/v1/catalog/{catalog_uid}/rows/{uid}/`
-  - deletes one row from the selected catalogue-backed MetaTable
-  - resolves the backend table through the catalogue entry
-  - relies on backend foreign-key cascade behavior for related rows
 
 ### Pricing Market Data
 

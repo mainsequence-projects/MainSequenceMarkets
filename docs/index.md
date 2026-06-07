@@ -46,9 +46,10 @@ Row objects expose class methods such as `upsert(...)`, `filter(...)`, and
 lifecycle helpers where the domain needs them. Mutation and lookup methods use
 the active runtime created during process initialization; they do not attach to
 MetaTables or register schemas on first row use. `start_engine()` is the
-explicit runtime attachment entrypoint and uses the internal maintenance catalog
-after SDK-managed migrations are current. Schema and catalog mutation belongs to
-the SDK migration command with `--provider migrations:migration`.
+explicit runtime attachment entrypoint and resolves already-registered backend
+tables by each model's SQLAlchemy table name after SDK-managed migrations are
+current. Schema mutation belongs to the SDK migration command with
+`--provider migrations:migration`.
 `MSM_AUTO_REGISTER_NAMESPACE` is only a namespace default for examples or local
 development; it does not make row operations register schemas. Lower-level
 repository helpers remain available when a workflow needs direct access to
