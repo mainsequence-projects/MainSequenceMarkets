@@ -79,6 +79,7 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
         "/api/v1/calendar/{calendar_uid}/events/",
         "/api/v1/calendar/{calendar_uid}/sessions/",
         "/api/v1/index/",
+        "/api/v1/portfolio/",
         "/api/v1/pricing/market_data/bindings/",
         "/api/v1/pricing/market_data/sets/",
         "/api/v1/pricing/market_data/sets/{market_data_set_uid}/bindings/",
@@ -266,6 +267,70 @@ def test_openapi_json_documents_index_routes() -> None:
     assert index_delete_operation["responses"]["404"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/ErrorResponse"
     }
+
+
+def test_openapi_json_documents_portfolio_routes() -> None:
+    client = TestClient(app)
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    portfolio_list_operation = payload["paths"]["/api/v1/portfolio/"]["get"]
+    assert portfolio_list_operation["summary"] == "List portfolios"
+    assert portfolio_list_operation["operationId"] == "listPortfolios"
+    assert portfolio_list_operation["tags"] == ["portfolio"]
+    assert portfolio_list_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PaginatedResponse_Portfolio_"}
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/PaginatedResponse_Portfolio_",
+        result_ref="#/components/schemas/Portfolio",
+    )
+
+    portfolio_detail_operation = payload["paths"]["/api/v1/portfolio/{uid}/"]["get"]
+    assert portfolio_detail_operation["summary"] == "Get portfolio detail"
+    assert portfolio_detail_operation["operationId"] == "getPortfolio"
+    assert portfolio_detail_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PortfolioDetailResponse"}
+
+    portfolio_summary_operation = payload["paths"]["/api/v1/portfolio/{uid}/summary/"]["get"]
+    assert portfolio_summary_operation["summary"] == "Get portfolio summary"
+    assert portfolio_summary_operation["operationId"] == "getPortfolioSummary"
+    assert portfolio_summary_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/FrontEndDetailSummary"}
+
+    portfolio_weights_operation = payload["paths"]["/api/v1/portfolio/{uid}/weights/"]["get"]
+    assert portfolio_weights_operation["summary"] == "Get portfolio weights snapshot"
+    assert portfolio_weights_operation["operationId"] == "getPortfolioWeights"
+    assert portfolio_weights_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PortfolioWeightsSnapshotResponse"}
+
+    portfolio_delete_operation = payload["paths"]["/api/v1/portfolio/{uid}/"]["delete"]
+    assert portfolio_delete_operation["summary"] == "Delete portfolio"
+    assert portfolio_delete_operation["operationId"] == "deletePortfolio"
+    assert portfolio_delete_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PortfolioDeleteResponse"}
+    assert portfolio_delete_operation["responses"]["409"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ErrorResponse"}
+
+    portfolio_bulk_delete_operation = payload["paths"]["/api/v1/portfolio/bulk-delete/"][
+        "post"
+    ]
+    assert portfolio_bulk_delete_operation["summary"] == "Bulk delete portfolios"
+    assert portfolio_bulk_delete_operation["operationId"] == "bulkDeletePortfolios"
+    assert portfolio_bulk_delete_operation["requestBody"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PortfolioDeleteRequest"}
+    assert portfolio_bulk_delete_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PortfolioBulkDeleteResponse"}
 
 
 def test_openapi_json_documents_calendar_routes() -> None:

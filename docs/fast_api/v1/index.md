@@ -13,6 +13,8 @@ This API is intentionally thin:
   `src/msm/services/asset_master_lists.py`
 - pricing market-data set and binding workflows are backed by
   `msm_pricing.api`
+- portfolio detail and latest-weight workflows are backed by
+  `src/msm_portfolios/services`
 
 ## Route ADRs
 
@@ -21,6 +23,8 @@ This API is intentionally thin:
   event maintenance.
 - [Pricing Market Data Routes](pricing_market_data.md): route group for
   pricing market-data set and concept binding management.
+- [Portfolio Routes](portfolio.md): route group for portfolio identity,
+  detail-page composition, latest weights, and delete operations.
 
 ## Runtime Bootstrap
 
@@ -36,6 +40,9 @@ Current local-dev behavior:
 - the startup table set includes portfolio-backed target-position tables, so
   target-position routes resolve against the existing shared markets runtime
   instead of starting a second portfolio runtime on first request
+- the startup table set includes `PortfolioMetadata` and
+  `PortfolioWeightsStorage` so portfolio detail and latest-weights routes use
+  the same shared markets runtime
 - the app calls `msm_pricing.bootstrap.attach_pricing_schemas(...)` during
   startup for the pricing rows used by asset pricing details and pricing
   market-data management
@@ -163,6 +170,39 @@ Current local-dev behavior:
 - `DELETE /api/v1/index/{uid}/`
   - deletes one index registry record
   - returns `null` on success
+
+### Portfolios
+
+- `GET /api/v1/portfolio/`
+  - supports `response_format=frontend_list`
+  - supports `search`, `calendar_uid`, `calendar_name`, `limit`, and `offset`
+  - returns `PaginatedResponse[Portfolio]` using the library
+    `msm.api.portfolios.Portfolio` contract
+- `GET /api/v1/portfolio/{uid}/`
+  - returns a composed portfolio detail payload containing the core portfolio
+    row, optional `PortfolioMetadata`, latest-weights tab link, and route links
+  - missing metadata does not make the route return 404
+- `GET /api/v1/portfolio/{uid}/summary/`
+  - returns the reusable `FrontEndDetailSummary` response for portfolio detail
+    pages
+  - uses the portfolio `uid` string as `entity.id`
+- `GET /api/v1/portfolio/{uid}/weights/`
+  - supports `order`, `limit=1`, `include_asset_detail`, and exact
+    `weights_date`
+  - resolves weights through
+    `Portfolio.portfolio_index_uid -> Index.unique_identifier`
+  - returns one snapshot backed by `PortfolioWeightsStorage`
+  - returns 200 with an empty `weights` list when the portfolio exists but no
+    matching weights snapshot exists
+  - asset labels use latest `AssetSnapshotsStorage` rows; OpenFIGI is not used
+- `DELETE /api/v1/portfolio/{uid}/`
+  - deletes one portfolio identity row
+  - returns 409 when protected rows, such as account target-position history,
+    still reference the portfolio
+  - does not delete historical portfolio weights or values
+- `POST /api/v1/portfolio/bulk-delete/`
+  - deletes multiple portfolio identity rows by explicit `uids`
+  - reports protected or missing rows in `failed`
 
 ### Calendars
 

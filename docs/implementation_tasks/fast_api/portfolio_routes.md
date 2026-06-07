@@ -352,7 +352,7 @@ Suggested fields:
 - title: `Portfolio.unique_identifier`
 - inline fields: `uid`, `unique_identifier`, `calendar_uid`,
   `portfolio_index_uid`
-- highlight fields: `calendar_name`, `backtest_table_price_column_name`
+- highlight fields: `calendar_name`
 - stats: latest weights count when cheap to resolve, otherwise omit or return
   no stats rather than issuing an expensive read
 - extensions: detail and latest-weights endpoint links
@@ -589,120 +589,120 @@ If some rows are protected:
 
 ### Source Layer
 
-- [ ] Add or reuse a source-level pagination helper that returns `count` and
+- [x] Add or reuse a source-level pagination helper that returns `count` and
   page rows for row APIs backed by `MarketsMetaTableRow`.
-- [ ] Extend portfolio search/list support to accept `limit`, `offset`,
+- [x] Extend portfolio search/list support to accept `limit`, `offset`,
   `search`, `calendar_uid`, and `calendar_name`.
-- [ ] Ensure portfolio list count uses the same filters as portfolio list rows.
-- [ ] Add a reusable source helper that resolves one portfolio detail by `uid`
+- [x] Ensure portfolio list count uses the same filters as portfolio list rows.
+- [x] Add a reusable source helper that resolves one portfolio detail by `uid`
   and joins optional metadata by `unique_identifier`.
-- [ ] Add a reusable source helper that resolves
+- [x] Add a reusable source helper that resolves
   `Portfolio.portfolio_index_uid -> Index.unique_identifier`.
-- [ ] Add a reusable source helper that reads one latest
+- [x] Add a reusable source helper that reads one latest
   `PortfolioWeightsStorage` snapshot by `portfolio_index_identifier`.
-- [ ] Add exact-date latest weights support using `weights_date`.
-- [ ] Add latest weights asset-detail enrichment from `AssetTable` and latest
+- [x] Add exact-date latest weights support using `weights_date`.
+- [x] Add latest weights asset-detail enrichment from `AssetTable` and latest
   `AssetSnapshotsStorage`, not OpenFIGI.
-- [ ] Add reusable single portfolio delete helper that maps protected-row
+- [x] Add reusable single portfolio delete helper that maps protected-row
   failures to an explicit domain error the FastAPI route can translate to 409.
-- [ ] Add reusable bulk portfolio delete helper that reports deleted and failed
+- [x] Add reusable bulk portfolio delete helper that reports deleted and failed
   rows without pretending partial failures succeeded.
 
 ### FastAPI Schemas
 
-- [ ] Add `apps/v1/schemas/portfolios.py`.
-- [ ] Reuse `msm.api.portfolios.Portfolio` for list row contracts.
-- [ ] Reuse `msm_portfolios.api.portfolios.PortfolioMetadata` for metadata
+- [x] Add `apps/v1/schemas/portfolios.py`.
+- [x] Reuse `msm.api.portfolios.Portfolio` for list row contracts.
+- [x] Reuse `msm_portfolios.api.portfolios.PortfolioMetadata` for metadata
   where it is embedded in detail responses.
-- [ ] Add local `PortfolioDetailResponse` for composed detail, tabs, and links.
-- [ ] Add local `PortfolioWeightsSnapshotResponse`.
-- [ ] Add local `PortfolioWeightRow`.
-- [ ] Add local `PortfolioWeightAssetReference` matching the account target
+- [x] Add local `PortfolioDetailResponse` for composed detail, tabs, and links.
+- [x] Add local `PortfolioWeightsSnapshotResponse`.
+- [x] Add local `PortfolioWeightRow`.
+- [x] Add local `PortfolioWeightAssetReference` matching the account target
   position asset detail pattern.
-- [ ] Add or reuse `DeleteResponse` and `BulkDeleteResponse` instead of raw
+- [x] Add or reuse `DeleteResponse` and `BulkDeleteResponse` instead of raw
   untyped success dictionaries.
 
 ### FastAPI Services
 
-- [ ] Add `apps/v1/services/portfolios.py`.
-- [ ] Keep the service as a thin adapter around `src` helpers.
-- [ ] Do not issue direct SQLAlchemy or MetaTable operations from
+- [x] Add `apps/v1/services/portfolios.py`.
+- [x] Keep the service as a thin adapter around `src` helpers.
+- [x] Do not issue direct SQLAlchemy or MetaTable operations from
   `apps/v1/services/portfolios.py`.
-- [ ] Validate that missing portfolio rows return `None` so routers can raise
+- [x] Validate that missing portfolio rows return `None` so routers can raise
   404 consistently.
-- [ ] Validate that missing weights return an empty snapshot, not 404.
+- [x] Validate that missing weights return an empty snapshot, not 404.
 
 ### FastAPI Router
 
-- [ ] Add `apps/v1/routers/portfolios.py`.
-- [ ] Register the router in `apps/v1/main.py`.
-- [ ] Implement `GET /api/v1/portfolio/`.
-- [ ] Implement `GET /api/v1/portfolio/{uid}/`.
-- [ ] Implement `GET /api/v1/portfolio/{uid}/summary/`.
-- [ ] Implement `GET /api/v1/portfolio/{uid}/weights/`.
-- [ ] Implement `DELETE /api/v1/portfolio/{uid}/`.
-- [ ] Implement `POST /api/v1/portfolio/bulk-delete/`.
-- [ ] Do not implement `POST /api/v1/portfolio/`.
-- [ ] Do not implement `PATCH /api/v1/portfolio/{uid}/`.
-- [ ] Add `summary`, description, query parameter descriptions, response models,
+- [x] Add `apps/v1/routers/portfolios.py`.
+- [x] Register the router in `apps/v1/main.py`.
+- [x] Implement `GET /api/v1/portfolio/`.
+- [x] Implement `GET /api/v1/portfolio/{uid}/`.
+- [x] Implement `GET /api/v1/portfolio/{uid}/summary/`.
+- [x] Implement `GET /api/v1/portfolio/{uid}/weights/`.
+- [x] Implement `DELETE /api/v1/portfolio/{uid}/`.
+- [x] Implement `POST /api/v1/portfolio/bulk-delete/`.
+- [x] Do not implement `POST /api/v1/portfolio/`.
+- [x] Do not implement `PATCH /api/v1/portfolio/{uid}/`.
+- [x] Add `summary`, description, query parameter descriptions, response models,
   and operation IDs for every route.
 
 ### Runtime Bootstrap
 
-- [ ] Update `apps/v1/runtime_bootstrap.py` so the startup model set includes
+- [x] Update `apps/v1/runtime_bootstrap.py` so the startup model set includes
   portfolio metadata and portfolio weights storage.
-- [ ] Use the supported `msm_portfolios.start_engine(...)` resolution path when
+- [x] Use the supported `msm_portfolios.start_engine(...)` resolution path when
   portfolio-specific models are in the v1 startup set.
-- [ ] Ensure startup still happens once and target-position routes do not start
+- [x] Ensure startup still happens once and target-position routes do not start
   a second runtime.
-- [ ] Add regression tests proving startup does not call incompatible
+- [x] Add regression tests proving startup does not call incompatible
   `msm.start_engine(...)` and `msm_portfolios.start_engine(...)` sequences.
 
 ### Tests
 
-- [ ] Add focused tests in `tests/msm/fastapi/v1/test_portfolios.py`.
-- [ ] Test portfolio list returns `PaginatedResponse[Portfolio]`.
-- [ ] Test portfolio list passes `search`, `limit`, and `offset` to the source
+- [x] Add focused tests in `tests/msm/fastapi/v1/test_portfolios.py`.
+- [x] Test portfolio list returns `PaginatedResponse[Portfolio]`.
+- [x] Test portfolio list passes `search`, `limit`, and `offset` to the source
   helper.
-- [ ] Test portfolio detail returns portfolio, metadata, tabs, and links.
-- [ ] Test portfolio detail returns 404 for missing portfolio.
-- [ ] Test portfolio summary uses `FrontEndDetailSummary` and string `uid` as
+- [x] Test portfolio detail returns portfolio, metadata, tabs, and links.
+- [x] Test portfolio detail returns 404 for missing portfolio.
+- [x] Test portfolio summary uses `FrontEndDetailSummary` and string `uid` as
   `entity.id`.
-- [ ] Test latest weights returns one populated snapshot.
-- [ ] Test exact-date weights returns the requested `weights_date` snapshot.
-- [ ] Test latest weights returns empty snapshot when no rows exist.
-- [ ] Test exact-date weights returns empty snapshot when no rows exist for the
+- [x] Test latest weights returns one populated snapshot.
+- [x] Test exact-date weights returns the requested `weights_date` snapshot.
+- [x] Test latest weights returns empty snapshot when no rows exist.
+- [x] Test exact-date weights returns empty snapshot when no rows exist for the
   requested timestamp.
-- [ ] Test latest weights returns empty snapshot with warning when portfolio
+- [x] Test latest weights returns empty snapshot with warning when portfolio
   index cannot be resolved.
-- [ ] Test latest weights asset details use `AssetSnapshotsStorage` name and
+- [x] Test latest weights asset details use `AssetSnapshotsStorage` name and
   ticker.
-- [ ] Test single delete returns success.
-- [ ] Test single delete returns 404 for missing portfolio.
-- [ ] Test single delete returns 409 for protected portfolio references.
-- [ ] Test bulk delete reports deleted and failed UIDs.
-- [ ] Extend `tests/msm/fastapi/v1/test_openapi.py` for portfolio route paths,
+- [x] Test single delete returns success.
+- [x] Test single delete returns 404 for missing portfolio.
+- [x] Test single delete returns 409 for protected portfolio references.
+- [x] Test bulk delete reports deleted and failed UIDs.
+- [x] Extend `tests/msm/fastapi/v1/test_openapi.py` for portfolio route paths,
   operation IDs, tags, and response schemas.
 
 ### Documentation
 
-- [ ] Add portfolio route documentation under `docs/fast_api/v1/`.
-- [ ] Update `docs/fast_api/v1/index.md` route inventory.
-- [ ] Document that portfolio routes do not create portfolios.
-- [ ] Document latest weights resolution through `portfolio_index_uid`.
-- [ ] Document exact-date portfolio weights requests with `weights_date`.
-- [ ] Document that missing latest weights return 200 with an empty `weights`
+- [x] Add portfolio route documentation under `docs/fast_api/v1/`.
+- [x] Update `docs/fast_api/v1/index.md` route inventory.
+- [x] Document that portfolio routes do not create portfolios.
+- [x] Document latest weights resolution through `portfolio_index_uid`.
+- [x] Document exact-date portfolio weights requests with `weights_date`.
+- [x] Document that missing latest weights return 200 with an empty `weights`
   array.
-- [ ] Document delete conflict behavior for portfolios referenced by account
+- [x] Document delete conflict behavior for portfolios referenced by account
   target positions.
 
 ### Validation
 
-- [ ] Run `uv run --extra dev python -m pytest tests/msm/fastapi/v1/test_portfolios.py tests/msm/fastapi/v1/test_openapi.py`.
-- [ ] Run `uv run --extra dev python -m pytest tests/msm/fastapi/v1/test_runtime_bootstrap.py`.
-- [ ] Run `uv run --extra dev python -m ruff check apps/v1 src/msm src/msm_portfolios tests/msm/fastapi/v1`.
-- [ ] Run `git diff --check`.
-- [ ] If `docs/fast_api/v1/` changes, run
+- [x] Run `uv run --extra dev python -m pytest tests/msm/fastapi/v1/test_portfolios.py tests/msm/fastapi/v1/test_openapi.py`.
+- [x] Run `uv run --extra dev python -m pytest tests/msm/fastapi/v1/test_runtime_bootstrap.py`.
+- [x] Run `uv run --extra dev python -m ruff check apps/v1 src/msm src/msm_portfolios tests/msm/fastapi/v1`.
+- [x] Run `git diff --check`.
+- [x] If `docs/fast_api/v1/` changes, run
   `uv run --extra dev mkdocs build --strict --site-dir /private/tmp/msmarkets-docs-site`.
 
 ## Open Questions For Implementation

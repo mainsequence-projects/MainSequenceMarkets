@@ -24,6 +24,8 @@ V1_RUNTIME_MODELS = [
     "AccountTargetAllocation",
     "PositionSet",
     "Portfolio",
+    "PortfolioMetadata",
+    "PortfolioWeightsStorage",
     "TargetPositionsStorage",
     "AssetSnapshotsStorage",
 ]
@@ -40,6 +42,8 @@ V1_PORTFOLIO_RUNTIME_MODELS = [
     "AccountTargetAllocation",
     "PositionSet",
     "Portfolio",
+    "PortfolioMetadata",
+    "PortfolioWeightsStorage",
     "TargetPositionsStorage",
     "AssetSnapshotsStorage",
 ]
@@ -74,9 +78,9 @@ def ensure_apps_v1_runtime() -> Any | None:
     if not namespace:
         return None
 
-    import msm
+    import msm_portfolios
 
-    runtime = msm.start_engine(
+    runtime = msm_portfolios.start_engine(
         namespace=namespace,
         models=V1_RUNTIME_MODELS,
     )
@@ -142,10 +146,11 @@ def resolve_apps_v1_portfolio_runtime(
 ):
     ensure_apps_v1_portfolio_runtime()
 
+    from msm_portfolios.bootstrap import resolve_portfolio_models
     from msm.bootstrap import resolve_runtime
 
     return resolve_runtime(
-        models=models,
+        models=resolve_portfolio_models(models),
         row_model_name=row_model_name,
     )
 

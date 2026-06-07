@@ -11,6 +11,7 @@ from apps.v1.routers.asset_categories import router as asset_categories_router
 from apps.v1.routers.assets import router as assets_router
 from apps.v1.routers.calendars import router as calendars_router
 from apps.v1.routers.indices import router as indices_router
+from apps.v1.routers.portfolios import router as portfolios_router
 from apps.v1.routers.pricing_market_data import router as pricing_market_data_router
 from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime, ensure_apps_v1_runtime
 
@@ -46,6 +47,10 @@ API_TAGS = [
         "name": "pricing-market-data",
         "description": "Pricing market-data set and concept binding management endpoints.",
     },
+    {
+        "name": "portfolio",
+        "description": "Portfolio identity, detail, latest weights, and delete endpoints.",
+    },
 ]
 
 
@@ -78,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(assets_router, prefix="/api/v1")
     app.include_router(asset_categories_router, prefix="/api/v1")
     app.include_router(indices_router, prefix="/api/v1")
+    app.include_router(portfolios_router, prefix="/api/v1")
     app.include_router(calendars_router, prefix="/api/v1")
     app.include_router(pricing_market_data_router, prefix="/api/v1")
 

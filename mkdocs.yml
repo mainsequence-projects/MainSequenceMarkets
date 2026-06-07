@@ -29,6 +29,7 @@ nav:
       - Market Workflows: tutorial/market_workflows.md
   - FastAPI:
       - v1: fast_api/v1/index.md
+      - Portfolio: fast_api/v1/portfolio.md
       - Pricing Market Data: fast_api/v1/pricing_market_data.md
       - ADR:
           - Calendar CRUD Route: fast_api/v1/ADR/0001-calendar-crud-route.md
@@ -76,6 +77,7 @@ nav:
       - Explicit Pricing Market Data Sets: ADR/0026-explicit-pricing-market-data-sets.md
       - Account Target Position Portfolio Exposure: ADR/0027-account-target-position-portfolio-exposure.md
       - Core Calendar Reference Data Model: ADR/0028-core-calendar-reference-data.md
+      - Account Holdings To Virtual Fund Allocation Policy: ADR/0029-account-holdings-virtual-fund-allocation-policy.md
   - Changelog: changelog.md
   - Reference:
       - API Reference: reference/index.md

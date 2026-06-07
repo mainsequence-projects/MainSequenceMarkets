@@ -18,10 +18,10 @@ def test_ensure_apps_v1_runtime_calls_start_engine_for_v1_model_set(monkeypatch)
     start_engine_calls: list[dict[str, object]] = []
     runtime = object()
 
-    import msm
+    import msm_portfolios
 
     monkeypatch.setattr(
-        msm,
+        msm_portfolios,
         "start_engine",
         lambda **kwargs: start_engine_calls.append(kwargs) or runtime,
     )
@@ -38,6 +38,8 @@ def test_ensure_apps_v1_runtime_calls_start_engine_for_v1_model_set(monkeypatch)
 
 def test_ensure_apps_v1_runtime_includes_target_position_models() -> None:
     assert "Portfolio" in runtime_bootstrap.V1_RUNTIME_MODELS
+    assert "PortfolioMetadata" in runtime_bootstrap.V1_RUNTIME_MODELS
+    assert "PortfolioWeightsStorage" in runtime_bootstrap.V1_RUNTIME_MODELS
     assert "TargetPositionsStorage" in runtime_bootstrap.V1_RUNTIME_MODELS
     assert "AccountTargetAllocation" in runtime_bootstrap.V1_RUNTIME_MODELS
     assert "PositionSet" in runtime_bootstrap.V1_RUNTIME_MODELS
@@ -47,10 +49,10 @@ def test_ensure_apps_v1_runtime_propagates_start_engine_failures(monkeypatch) ->
     monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
     monkeypatch.setattr(runtime_bootstrap, "_BOOTSTRAP_COMPLETE", False)
 
-    import msm
+    import msm_portfolios
 
     monkeypatch.setattr(
-        msm,
+        msm_portfolios,
         "start_engine",
         lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
@@ -71,10 +73,10 @@ def test_ensure_apps_v1_portfolio_runtime_reuses_shared_runtime(monkeypatch) -> 
     start_engine_calls: list[dict[str, object]] = []
     runtime = object()
 
-    import msm
+    import msm_portfolios
 
     monkeypatch.setattr(
-        msm,
+        msm_portfolios,
         "start_engine",
         lambda **kwargs: start_engine_calls.append(kwargs) or runtime,
     )
@@ -97,10 +99,10 @@ def test_ensure_apps_v1_portfolio_runtime_does_not_restart_after_shared_start(
     monkeypatch.setattr(runtime_bootstrap, "_BOOTSTRAP_COMPLETE", True)
     monkeypatch.setattr(runtime_bootstrap, "_PORTFOLIO_BOOTSTRAP_COMPLETE", False)
 
-    import msm
+    import msm_portfolios
 
     monkeypatch.setattr(
-        msm,
+        msm_portfolios,
         "start_engine",
         lambda **kwargs: (_ for _ in ()).throw(
             AssertionError("portfolio runtime must not start a second markets runtime")
