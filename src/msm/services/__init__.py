@@ -130,11 +130,11 @@ _EXPORTS = {
     "AllocationValuation": ".accounts",
     "HoldingValuationInput": ".accounts",
     "HoldingsSelectionPolicy": ".accounts",
-    "PortfolioTargetExpander": ".accounts",
     "TargetNotionalDemand": ".accounts",
     "TargetQuantityDemand": ".accounts",
     "ValuationPolicy": ".accounts",
     "ValuationResolver": ".accounts",
+    "virtual_fund_unique_identifier_for_target": ".accounts",
 }
 
 

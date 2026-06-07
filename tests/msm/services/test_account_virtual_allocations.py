@@ -5,6 +5,7 @@ import uuid
 
 import pytest
 
+import msm.services.accounts.account_virtual_allocations as account_allocations
 from msm.services.accounts.account_virtual_allocations import (
     ALLOCATION_MODE_STRICT_FEASIBLE,
     CLAIM_TYPE_DIRECT_ACCOUNT_RESIDUAL,
@@ -12,16 +13,29 @@ from msm.services.accounts.account_virtual_allocations import (
     PLAN_STATUS_ATTRIBUTED_WITH_TARGET_GAP,
     PLAN_STATUS_FEASIBLE,
     PLAN_STATUS_INFEASIBLE,
+    AccountVirtualFundAllocationInputs,
     AllocationPolicy,
+    AllocationValuation,
     HoldingValuationInput,
+    HoldingsSelectionPolicy,
+    TargetNotionalDemand,
     TargetQuantityDemand,
-    plan_account_virtual_fund_allocations,
+    ValuationMetricResult,
+    ValuationMetricValue,
+    _plan_account_virtual_fund_allocations_from_resolved_inputs,
+    build_account_virtual_fund_allocation_inputs,
+    virtual_fund_unique_identifier_for_target,
 )
 
 
 BTC_UID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+ETH_UID = uuid.UUID("00000000-0000-0000-0000-000000000002")
 PORTFOLIO_UID = uuid.UUID("00000000-0000-0000-0000-000000000201")
 USD_UID = uuid.UUID("00000000-0000-0000-0000-000000000840")
+ACCOUNT_UID = uuid.UUID("00000000-0000-0000-0000-000000000301")
+TARGET_ALLOCATION_UID = uuid.UUID("00000000-0000-0000-0000-000000000302")
+POSITION_SET_UID = uuid.UUID("00000000-0000-0000-0000-000000000303")
+HOLDINGS_SET_UID = uuid.UUID("00000000-0000-0000-0000-000000000304")
 VALUATION_TIME = dt.datetime(2026, 6, 7, tzinfo=dt.UTC)
 
 
@@ -103,6 +117,207 @@ def test_short_virtual_target_balances_against_direct_residual() -> None:
     assert direct_line.allocated_signed_quantity == pytest.approx(15)
 
 
+def test_deterministic_virtual_fund_unique_identifier_is_stable() -> None:
+    first = virtual_fund_unique_identifier_for_target(
+        account_uid=ACCOUNT_UID,
+        target_portfolio_uid=PORTFOLIO_UID,
+        account_target_allocation_uid=TARGET_ALLOCATION_UID,
+    )
+    second = virtual_fund_unique_identifier_for_target(
+        account_uid=ACCOUNT_UID,
+        target_portfolio_uid=PORTFOLIO_UID,
+        account_target_allocation_uid=TARGET_ALLOCATION_UID,
+    )
+    different_target_allocation = virtual_fund_unique_identifier_for_target(
+        account_uid=ACCOUNT_UID,
+        target_portfolio_uid=PORTFOLIO_UID,
+        account_target_allocation_uid=POSITION_SET_UID,
+    )
+
+    assert first == second
+    assert first.startswith("account-virtual-fund-")
+    assert first != different_target_allocation
+
+
+def test_build_inputs_expands_portfolio_targets_and_valuation_converts_notional() -> None:
+    inputs = build_account_virtual_fund_allocation_inputs(
+        account_uid=ACCOUNT_UID,
+        account_target_allocation_uid=TARGET_ALLOCATION_UID,
+        position_set_uid=POSITION_SET_UID,
+        source_account_holdings_set_uid=HOLDINGS_SET_UID,
+        account_holdings=[
+            {
+                "asset_identifier": "example-asset-btc",
+                "quantity": 10,
+                "direction": 1,
+            },
+            {
+                "asset_identifier": "example-asset-eth",
+                "quantity": 20,
+                "direction": 1,
+            },
+        ],
+        target_positions=[
+            {
+                "time_index": VALUATION_TIME,
+                "target_type": "asset",
+                "target_uid": BTC_UID,
+                "asset_uid": BTC_UID,
+                "single_asset_quantity": 7,
+            },
+            {
+                "time_index": VALUATION_TIME,
+                "target_type": "portfolio",
+                "target_uid": PORTFOLIO_UID,
+                "portfolio_uid": PORTFOLIO_UID,
+                "weight_notional_exposure": 0.10,
+            },
+        ],
+        valuation_time=VALUATION_TIME,
+        account_nav=640_000,
+        asset_uid_by_identifier={
+            "example-asset-btc": BTC_UID,
+            "example-asset-eth": ETH_UID,
+        },
+        asset_identifier_by_uid={
+            BTC_UID: "example-asset-btc",
+            ETH_UID: "example-asset-eth",
+        },
+        portfolio_target_expander=lambda rows: [
+            {
+                **rows[0],
+                "asset_uid": BTC_UID,
+                "weight_notional_exposure": rows[0]["weight_notional_exposure"] * 0.40,
+            },
+            {
+                **rows[0],
+                "asset_uid": ETH_UID,
+                "weight_notional_exposure": rows[0]["weight_notional_exposure"] * 0.60,
+            },
+        ],
+    )
+
+    assert inputs.account_uid == ACCOUNT_UID
+    assert len(inputs.direct_target_demands) == 1
+    assert len(inputs.virtual_fund_demands) == 0
+    assert len(inputs.target_notional_demands) == 2
+
+    plan = _plan_account_virtual_fund_allocations_from_resolved_inputs(
+        position_set_uid=POSITION_SET_UID,
+        valuation_time=VALUATION_TIME,
+        valuation_asset_uid=USD_UID,
+        valuation_resolver=_spot_valuation_resolver,
+        account_uid=inputs.account_uid,
+        source_account_holdings_set_uid=inputs.source_account_holdings_set_uid,
+        account_nav=inputs.account_nav,
+        source_holdings=inputs.source_holdings,
+        direct_target_demands=inputs.direct_target_demands,
+        virtual_fund_demands=inputs.virtual_fund_demands,
+        target_notional_demands=inputs.target_notional_demands,
+    )
+
+    assert plan.account_nav == pytest.approx(640_000)
+    assert plan.status == PLAN_STATUS_FEASIBLE
+    assert _line(
+        plan,
+        CLAIM_TYPE_VIRTUAL_FUND_TARGET,
+        str(PORTFOLIO_UID),
+    ).requested_signed_quantity == pytest.approx(25_600 / 60_000)
+
+
+def test_public_planner_uses_required_service_inputs(monkeypatch) -> None:
+    inputs = AccountVirtualFundAllocationInputs(
+        account_uid=ACCOUNT_UID,
+        source_account_holdings_set_uid=HOLDINGS_SET_UID,
+        account_nav=600_000,
+        source_holdings=(
+            HoldingValuationInput(
+                asset_uid=BTC_UID,
+                asset_identifier="example-asset-btc",
+                quantity=10,
+                direction=1,
+            ),
+        ),
+        target_notional_demands=(
+            TargetNotionalDemand(
+                target_row_key="portfolio-btc",
+                asset_uid=BTC_UID,
+                asset_identifier="example-asset-btc",
+                notional_value=300_000,
+                direction=1,
+                claim_type=CLAIM_TYPE_VIRTUAL_FUND_TARGET,
+                claim_uid=str(PORTFOLIO_UID),
+                target_portfolio_uid=PORTFOLIO_UID,
+                virtual_fund_unique_identifier="example-vf",
+            ),
+        ),
+    )
+
+    def fake_resolve_account_virtual_fund_allocation_inputs(**kwargs):
+        assert kwargs == {
+            "position_set_uid": POSITION_SET_UID,
+            "valuation_time": VALUATION_TIME,
+            "valuation_asset_uid": USD_UID,
+            "valuation_resolver": _spot_valuation_resolver,
+            "holdings_selection_policy": HoldingsSelectionPolicy(),
+            "allocation_policy": AllocationPolicy(),
+        }
+        return inputs
+
+    monkeypatch.setattr(
+        account_allocations,
+        "resolve_account_virtual_fund_allocation_inputs",
+        fake_resolve_account_virtual_fund_allocation_inputs,
+    )
+
+    plan = account_allocations.plan_account_virtual_fund_allocations(
+        position_set_uid=POSITION_SET_UID,
+        valuation_time=VALUATION_TIME,
+        valuation_asset_uid=USD_UID,
+        holdings_selection_policy=HoldingsSelectionPolicy(),
+        valuation_resolver=_spot_valuation_resolver,
+        allocation_policy=AllocationPolicy(),
+    )
+
+    assert plan.account_uid == str(ACCOUNT_UID)
+    assert plan.source_account_holdings_set_uid == str(HOLDINGS_SET_UID)
+    assert _line(
+        plan,
+        CLAIM_TYPE_VIRTUAL_FUND_TARGET,
+        str(PORTFOLIO_UID),
+    ).requested_signed_quantity == pytest.approx(5)
+
+
+def test_portfolio_target_requires_expander() -> None:
+    with pytest.raises(ValueError, match="portfolio_target_expander"):
+        build_account_virtual_fund_allocation_inputs(
+            account_uid=ACCOUNT_UID,
+            account_target_allocation_uid=TARGET_ALLOCATION_UID,
+            position_set_uid=POSITION_SET_UID,
+            source_account_holdings_set_uid=HOLDINGS_SET_UID,
+            account_holdings=[
+                {
+                    "asset_identifier": "example-asset-btc",
+                    "quantity": 10,
+                    "direction": 1,
+                }
+            ],
+            target_positions=[
+                {
+                    "time_index": VALUATION_TIME,
+                    "target_type": "portfolio",
+                    "target_uid": PORTFOLIO_UID,
+                    "portfolio_uid": PORTFOLIO_UID,
+                    "weight_notional_exposure": 0.10,
+                }
+            ],
+            valuation_time=VALUATION_TIME,
+            account_nav=600_000,
+            asset_uid_by_identifier={"example-asset-btc": BTC_UID},
+            asset_identifier_by_uid={BTC_UID: "example-asset-btc"},
+        )
+
+
 def _plan(
     *,
     holdings_quantity: float,
@@ -110,7 +325,7 @@ def _plan(
     virtual_targets: list[tuple[str, float]],
     allocation_policy: AllocationPolicy | None = None,
 ):
-    return plan_account_virtual_fund_allocations(
+    return _plan_account_virtual_fund_allocations_from_resolved_inputs(
         account_uid=uuid.uuid4(),
         source_account_holdings_set_uid=uuid.uuid4(),
         position_set_uid=uuid.uuid4(),
@@ -155,6 +370,60 @@ def _plan(
             )
             for claim_uid, target in virtual_targets
         ],
+    )
+
+
+def _spot_valuation_resolver(
+    requested_metrics,
+    source_holdings,
+    target_notional_demands,
+    *,
+    valuation_time,
+    valuation_asset_uid,
+    valuation_policy,
+):
+    assert tuple(requested_metrics) == ("nav",)
+    del valuation_policy
+    prices = {
+        str(BTC_UID): 60_000,
+        str(ETH_UID): 2_000,
+    }
+    nav = sum(
+        holding.quantity * holding.direction * prices[str(holding.asset_uid)]
+        for holding in source_holdings
+    )
+    quantity_demands = tuple(
+        TargetQuantityDemand(
+            target_row_key=demand.target_row_key,
+            asset_uid=demand.asset_uid,
+            asset_identifier=demand.asset_identifier,
+            requested_signed_quantity=demand.notional_value / prices[str(demand.asset_uid)],
+            direction=demand.direction,
+            requested_notional=demand.notional_value,
+            claim_type=demand.claim_type,
+            claim_uid=demand.claim_uid,
+            source_target_uid=demand.source_target_uid,
+            target_type=demand.target_type,
+            target_portfolio_uid=demand.target_portfolio_uid,
+            virtual_fund_unique_identifier=demand.virtual_fund_unique_identifier,
+            source_row=demand.source_row,
+        )
+        for demand in target_notional_demands
+    )
+    return AllocationValuation(
+        metrics={
+            "nav": ValuationMetricResult(
+                metric="nav",
+                total=ValuationMetricValue(
+                    value=nav,
+                    valuation_asset_uid=valuation_asset_uid,
+                    as_of=valuation_time,
+                    source="test_spot_prices",
+                ),
+            )
+        },
+        valuation_asset_uid=valuation_asset_uid,
+        target_quantity_demands=quantity_demands,
     )
 
 

@@ -20,7 +20,6 @@ _EXPORTS = {
     "AllocationValuation": ".account_virtual_allocations",
     "HoldingValuationInput": ".account_virtual_allocations",
     "HoldingsSelectionPolicy": ".account_virtual_allocations",
-    "PortfolioTargetExpander": ".account_virtual_allocations",
     "TargetNotionalDemand": ".account_virtual_allocations",
     "TargetQuantityDemand": ".account_virtual_allocations",
     "ValuationDiagnostic": ".account_virtual_allocations",
@@ -58,6 +57,7 @@ _EXPORTS = {
     "update_virtual_fund": ".virtual_funds",
     "validate_holdings_frame": ".virtual_fund_holdings",
     "validate_virtual_fund_allocation_bounds": ".virtual_fund_holdings",
+    "virtual_fund_unique_identifier_for_target": ".account_virtual_allocations",
 }
 
 

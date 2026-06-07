@@ -25,11 +25,11 @@ Read with:
 The resolver receives named metric requests:
 
 ```python
-requested_metrics = [{"name": "nav"}]
+requested_metrics = ("nav",)
 ```
 
-Do not use a tuple of bare strings. The dict shape leaves room for metric
-parameters without changing the call signature.
+Use a sequence of metric-name strings. Do not pass mapping-style metric
+descriptors into this resolver protocol.
 
 The call boundary is:
 
@@ -70,6 +70,12 @@ Output meanings:
 
 For account virtual-fund allocation, `nav` is required unless the caller
 provides `account_nav` directly.
+
+When `target_notional_demands` is non-empty, the resolver must return matching
+`target_quantity_demands`. Preserve each demand's `target_row_key`,
+`claim_type`, `claim_uid`, `target_portfolio_uid`, and
+`virtual_fund_unique_identifier` so the planner can trace the converted signed
+quantity back to the original account target row.
 
 ## Rules
 

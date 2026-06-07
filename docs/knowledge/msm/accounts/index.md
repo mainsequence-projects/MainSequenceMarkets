@@ -161,8 +161,11 @@ account-owned target relationship points at the same reusable
 direct asset target row with `target_type="asset"` plus one portfolio target row
 with `target_type="portfolio"`. The example then publishes two-asset account
 holdings and pretty-prints positions for each standalone account. Pass
-`--skip-schema-prep` only when the configured portfolio interpolation table has
-already been migrated. Pass
+`--with-virtual-fund-allocation` to extend the same workflow with a dry-run
+virtual-fund allocation plan. Pass `--apply-virtual-fund-allocation` only when
+the workflow should publish the resulting `VirtualFundHoldings` rows after
+printing the plan. Pass `--skip-schema-prep` only when the configured portfolio
+interpolation table has already been migrated. Pass
 `--standalone-target-sleeve` or call
 `run_account_portfolio_full_workflow(use_portfolio_example=False)` only when
 testing the account path without chaining the portfolio example.

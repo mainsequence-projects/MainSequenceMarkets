@@ -67,47 +67,43 @@ ADR 0029 defines the account holdings to virtual-fund allocation planner. The
 planner is a dry-run service: it computes a deterministic plan and performs no
 writes.
 
+Use the canonical account target snapshot path. Do not pass a raw account UID,
+raw holdings-set UID, raw source holdings, or raw target demand rows into the
+public planner.
+
 ```python
 from msm.services.accounts import (
     AllocationPolicy,
-    HoldingValuationInput,
-    TargetQuantityDemand,
+    HoldingsSelectionPolicy,
     plan_account_virtual_fund_allocations,
 )
 
 plan = plan_account_virtual_fund_allocations(
     position_set_uid=position_set.uid,
-    source_account_holdings_set_uid=holdings_set.uid,
-    account_uid=account.uid,
     valuation_time=workflow_time,
     valuation_asset_uid=usd_asset.uid,
-    account_nav=640_000.0,
-    source_holdings=[
-        HoldingValuationInput(
-            asset_uid=btc_asset.uid,
-            asset_identifier=btc_asset.unique_identifier,
-            quantity=10.0,
-            direction=1,
-        ),
-    ],
-    virtual_fund_demands=[
-        TargetQuantityDemand(
-            target_row_key="target-portfolio-btc",
-            asset_uid=btc_asset.uid,
-            asset_identifier=btc_asset.unique_identifier,
-            requested_signed_quantity=5.0,
-            direction=1,
-            claim_uid="acct-main-model-vf",
-            target_portfolio_uid=portfolio.uid,
-        ),
-    ],
+    holdings_selection_policy=HoldingsSelectionPolicy(),
+    valuation_resolver=valuation_resolver,
     allocation_policy=AllocationPolicy(),
 )
 ```
 
-The production workflow resolves `source_holdings` and
-`virtual_fund_demands` from `PositionSetTable`, `TargetPositionsStorage`,
-portfolio weights, and valuation output before calling the pure planner.
+The resolver follows one deterministic path:
+
+```text
+PositionSetTable.uid
+  -> AccountTargetAllocationTable.uid
+  -> AccountHoldingsSetTable(account_uid, valuation_time)
+  -> AccountHoldingsStorage rows
+  -> TargetPositionsStorage rows
+  -> AssetTable identity rows
+  -> portfolio-target expansion
+  -> valuation resolver
+```
+
+Core `msm` owns the account and virtual-fund allocation logic. Portfolio
+weights still come from an explicit portfolio-target expander at the workflow
+boundary, so `msm` does not import `msm_portfolios`.
 
 ## Allocation Policy
 
@@ -151,7 +147,7 @@ quantity demand when the workflow starts from notional targets.
 The resolver is called with:
 
 ```text
-requested_metrics = [{"name": "nav"}]
+requested_metrics = ("nav",)
 source_holdings
 target_notional_demands
 valuation_time
@@ -164,6 +160,10 @@ currency mapping or provider-specific logic belongs inside the resolver.
 
 The resolver returns totals and optional lines per asset, source row, or target
 row. For account virtual-fund allocation, `nav` is the required metric.
+
+For notional target rows, the resolver must also return
+`target_quantity_demands`. The planner uses those quantity demands for the
+vector allocation step and keeps the notional values for diagnostics.
 
 ## Apply Flow
 
@@ -184,6 +184,15 @@ frame = apply_account_virtual_fund_allocation_plan(
 The apply step may create or reuse `VirtualFundTable` rows, creates the
 holdings-set row, builds the `VirtualFundHoldingsStorage` frame, and optionally
 publishes it through the DataNode.
+
+See
+`examples/msm/accounts/account_portfolio_full_workflow.py` for the complete
+end-to-end account workflow. Run it with `--with-virtual-fund-allocation` to
+extend the account-plus-portfolio workflow with a dry-run allocation plan, or
+with `--apply-virtual-fund-allocation` to publish the resulting
+`VirtualFundHoldings` rows after the dry-run plan is printed. The focused
+`examples/msm/accounts/account_virtual_fund_allocation_example.py` script is a
+thin wrapper around that same full workflow extension.
 
 ## Low-Level Publisher
 

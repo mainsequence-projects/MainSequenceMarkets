@@ -7,9 +7,10 @@ Accepted - first implementation landed
 This ADR defines the business logic and implementation plan for allocating real
 account holdings into virtual-fund holdings. The first implementation moves
 virtual-fund identity and storage into core `msm`, adds a pure vector planner,
-and adds an apply step for feasible plans. Repository-backed resolution from a
-`PositionSet` and first-class allocation-run traceability remain follow-up
-work.
+adds deterministic input resolution from `PositionSetTable.uid`, and adds an
+apply step for feasible plans. The remaining schema follow-up is adding
+`VirtualFundTable.account_target_allocation_uid` so virtual-fund identity is
+relational, not only encoded in the deterministic business key.
 
 ## Context
 
@@ -382,7 +383,7 @@ Default account NAV is provided by the valuation resolver at `valuation_time`
 in `valuation_asset_uid`:
 
 ```text
-valuation_result = valuation_resolver(requested_metrics=["nav"], ...)
+valuation_result = valuation_resolver(requested_metrics=("nav",), ...)
 account_nav      = valuation_result.metrics["nav"].total.value
 ```
 
@@ -828,39 +829,35 @@ each competing virtual fund receives its proportional share of the constrained
 gross source capacity, and each fund line carries its own target gap. The direct
 account sleeve is the balancing residual after those virtual-fund allocations.
 
-## Traceability Gap
+## VirtualFund Identity Gap
 
-The current virtual-fund storage shape records:
+The current virtual-fund table records:
 
 ```text
-VirtualFundHoldingsSetTable
-  virtual_fund_uid
-  source_account_holdings_set_uid
-  time_index
-
-VirtualFundHoldingsStorage
-  virtual_fund_uid
-  source_account_holdings_set_uid
-  virtual_fund_holdings_set_uid
+VirtualFundTable
+  unique_identifier
+  account_uid
+  target_portfolio_uid
 ```
 
-That is not enough to fully audit an allocation generated from an account target
-allocation. The allocation decision also needs to reference:
+That is enough to publish holdings, but it does not make the account allocation
+mandate explicit. The canonical virtual-fund creation path should create or
+reuse one virtual fund per:
 
 ```text
 account_target_allocation_uid
-position_set_uid
-allocation_policy
-valuation_time
-valuation_asset_uid
-valuation_source / valuation policy
-resolved portfolio_index_identifier and portfolio weight timestamp/source
+target_portfolio_uid
 ```
 
-The implementation plan must decide whether these become first-class columns on
-`VirtualFundHoldingsSetTable`, metadata on the holdings set, or a new
-allocation-run table. A first-class allocation-run table is likely cleaner if
-we need to preserve diagnostics, residuals, deficits, and policy inputs.
+So the follow-up schema migration should add:
+
+```text
+VirtualFundTable.account_target_allocation_uid
+  -> AccountTargetAllocationTable.uid
+```
+
+and enforce uniqueness on `(account_target_allocation_uid, target_portfolio_uid)`.
+No allocation-run table is required.
 
 ## Package Boundary
 
@@ -924,7 +921,7 @@ virtual funds should be treated as core account allocation state.
 
 ## Service Shape
 
-The service should be split into a pure planner and an apply step.
+The service is split into a canonical planner and an apply step.
 
 Planner:
 
@@ -934,24 +931,33 @@ plan_account_virtual_fund_allocations(
     position_set_uid,
     valuation_time,
     valuation_asset_uid,
-    requested_metrics=("nav",),
-    holdings_selection_policy=None,
-    valuation_resolver=None,
-    allocation_policy=None,
-    source_holdings=None,
-    direct_target_demands=None,
-    virtual_fund_demands=None,
-    account_uid=None,
-    source_account_holdings_set_uid=None,
-    account_nav=None,
+    holdings_selection_policy,
+    valuation_resolver,
+    allocation_policy,
 ) -> AccountVirtualFundAllocationPlan
 ```
 
-The implemented pure planner requires resolved `source_holdings` and
-`virtual_fund_demands`. A repository-backed resolver that starts only from
-`position_set_uid` is intentionally separate follow-up work because it must
-resolve source holdings, target positions, portfolio weights, and valuations
-through explicit workflow policies.
+These are the service inputs. Raw holdings, raw target demands, account UID,
+holdings-set UID, account NAV, repository context, scan limits, and custom
+input resolvers are not public planner inputs. The service resolves them from
+`position_set_uid`.
+
+The service resolves:
+
+```text
+PositionSetTable.uid
+  -> AccountTargetAllocationTable.uid
+  -> AccountHoldingsSetTable(account_uid, valuation_time)
+  -> AccountHoldingsStorage rows
+  -> TargetPositionsStorage rows
+  -> AssetTable identity rows
+  -> portfolio-target expansion boundary
+  -> valuation resolver
+```
+
+The public planner resolves the account/target/asset relationship graph from
+the required inputs. Portfolio target rows are expanded internally through the
+registered portfolio index and `PortfolioWeightsStorage` at `valuation_time`.
 
 The planner performs no writes. It returns:
 
@@ -986,7 +992,7 @@ apply_account_virtual_fund_allocation_plan(
 The apply step may:
 
 1. Create or reuse `VirtualFundTable` rows.
-2. Create allocation-run / holdings-set records.
+2. Create holdings-set records.
 3. Build a `VirtualFundHoldingsStorage` frame.
 4. Attach and optionally publish through `VirtualFundHoldings`.
 
@@ -1107,15 +1113,15 @@ not from arbitrary hardcoded example payloads.
 
 ## Implementation Plan
 
-- [ ] Define the pure allocation-plan data models:
 - [x] Define the pure allocation-plan data models:
       source holdings, target demand, expanded portfolio demand,
       account-virtual holding lines, residuals, target gaps, deficits, and
       diagnostics.
 - [x] Define the allocation policy model with `proportional_attribution` as the
       default and `strict_feasible` as a validation mode.
-- [ ] Add resolvers for account holdings, target position sets, portfolio
-      weights, and valuation.
+- [x] Add implementation support for account holdings, target position sets,
+      deterministic portfolio expansion, and valuation behind the canonical
+      planner inputs.
 - [x] Move virtual-fund identity and holdings storage into core `msm` account
       modules:
       `src/msm/models/accounts/virtual_funds.py` and
@@ -1126,10 +1132,12 @@ not from arbitrary hardcoded example payloads.
       portfolio-target expansion boundary instead of making core `msm` import
       portfolio construction modules.
 - [x] Implement `plan_account_virtual_fund_allocations(...)` with no writes.
-- [ ] Add deterministic virtual-fund identity rules for
-      account/portfolio/target-allocation combinations.
-- [ ] Resolve the traceability gap by adding either an allocation-run table or
-      first-class traceability fields on `VirtualFundHoldingsSetTable`.
+- [x] Add deterministic virtual-fund identity rules for
+      account/portfolio/target-allocation combinations through
+      `virtual_fund_unique_identifier_for_target(...)`.
+- [ ] Add `VirtualFundTable.account_target_allocation_uid` and uniqueness on
+      `(account_target_allocation_uid, target_portfolio_uid)` in the next schema
+      migration. No allocation-run table is required.
 - [x] Implement the apply step that converts a feasible plan into
       `VirtualFundHoldingsStorage` rows.
 - [x] Keep `VirtualFund.allocate_from_account_holdings_set(...)` as a low-level
@@ -1137,12 +1145,13 @@ not from arbitrary hardcoded example payloads.
 - [x] Add focused planner tests for exact fit, excess/direct residual,
       insufficient holdings, multiple funds competing for the same asset,
       opposite-signed direct targets, and short virtual-fund targets.
-- [ ] Add resolver-level tests for missing valuations, missing portfolio
-      weights, non-target residuals, and leverage rejection after the
-      repository-backed resolver exists.
-- [ ] Add a virtual-fund allocation example that starts with account holdings
+- [x] Add resolver-level tests for deterministic virtual-fund identity,
+      portfolio target expansion, notional-to-quantity valuation conversion,
+      missing portfolio expansion, and planner execution through an input
+      resolver.
+- [x] Add a virtual-fund allocation example that starts with account holdings
       and account target allocation, runs the planner, displays the plan, and
-      only then applies it.
+      only then applies it as an extension of the full account workflow.
 - [x] Update account, portfolio, and virtual-fund documentation with the
       documented planner flow and edge-case behavior.
 

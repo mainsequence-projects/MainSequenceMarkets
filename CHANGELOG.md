@@ -25,6 +25,11 @@ and this project follows versioned releases.
 - Added the account holdings to virtual-fund allocation planner with
   `proportional_attribution` and `strict_feasible` policies, plus an apply step
   that converts feasible plans into `VirtualFundHoldingsStorage` frames.
+- Extended the account virtual-fund planner with deterministic
+  `position_set_uid` input resolution, notional target conversion through the
+  valuation resolver, deterministic virtual-fund identity helpers, and
+  resolver-level tests plus a dry-run-first account virtual-fund allocation
+  example.
 - Moved virtual-fund knowledge documentation under the Accounts section as a
   standalone account allocation document.
 - Reorganized DataNode storage contracts by concept: account storage now lives
@@ -35,7 +40,8 @@ and this project follows versioned releases.
   `examples/msm/accounts/account_portfolio_full_workflow.py` and moved the
   PyCharm run configuration under Accounts because the workflow prepares the
   reusable portfolio sleeve and then publishes account target positions and
-  holdings.
+  holdings. The same full workflow now exposes the virtual-fund allocation
+  extension through dry-run and apply flags.
 
 ### Fixed
 

@@ -175,6 +175,16 @@ Use this workflow when publishing and inspecting account positions:
    `error_on_last_update, holdings_frame = holdings_node.run(...)`.
 8. Pass only `holdings_frame` to `Account.pretty_print_positions(...)`.
 
+Virtual-fund allocation is a separate policy workflow. Start from the
+`PositionSet.uid`, pass `valuation_time`, `valuation_asset_uid`,
+`holdings_selection_policy`, `valuation_resolver`, and `allocation_policy`,
+inspect the dry-run `AccountVirtualFundAllocationPlan`, and only then call
+`apply_account_virtual_fund_allocation_plan(...)`. The full account workflow
+supports this as an extension: run
+`examples/msm/accounts/account_portfolio_full_workflow.py --with-virtual-fund-allocation`
+for dry-run planning, or add `--apply-virtual-fund-allocation` to publish the
+virtual-fund holdings after the plan is printed.
+
 See `examples/msm/accounts/account_portfolio_full_workflow.py` for the full
 account plus portfolio path. The default runner prepares the configured
 interpolated price storage revision, upgrades it, chains

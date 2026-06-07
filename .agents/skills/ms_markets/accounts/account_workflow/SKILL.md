@@ -41,9 +41,10 @@ Before changing account code, inspect:
 6. `src/msm/services/holdings.py`
 7. `src/msm/services/target_positions.py`
 8. `examples/msm/accounts/account_portfolio_full_workflow.py`
-9. `docs/knowledge/msm/accounts/index.md`
-10. `docs/knowledge/msm/accounts/virtual_funds.md`
-11. `docs/ADR/0029-account-holdings-virtual-fund-allocation-policy.md`
+9. `examples/msm/accounts/account_virtual_fund_allocation_example.py`
+10. `docs/knowledge/msm/accounts/index.md`
+11. `docs/knowledge/msm/accounts/virtual_funds.md`
+12. `docs/ADR/0029-account-holdings-virtual-fund-allocation-policy.md`
 
 ## Core Relationships
 
@@ -159,9 +160,11 @@ The full account example is intentionally chainable. By default,
 `examples/msm/accounts/account_portfolio_full_workflow.py` prepares the
 equal-weight portfolio interpolation schema, chains the reusable portfolio
 workflow, reuses the resulting `Portfolio` row, and assigns that portfolio UID
-as one of the account target positions. The account example does not create
-virtual funds or virtual-fund holdings; those require an explicit allocation
-policy and belong in the account virtual-fund workflow. Use
+as one of the account target positions. The same full workflow can be extended
+with a dry-run account virtual-fund allocation plan using
+`--with-virtual-fund-allocation`; use `--apply-virtual-fund-allocation` only
+when the example should publish `VirtualFundHoldings` rows after printing the
+plan. Use
 `run_account_portfolio_full_workflow(use_portfolio_example=False)` or the
 example CLI flag `--standalone-target-sleeve` only when testing the account
 path without the portfolio example. Use `--skip-schema-prep` only when the
@@ -170,9 +173,14 @@ configured portfolio interpolation table has already been migrated.
 ## Virtual-Fund Allocation Pattern
 
 Use `plan_account_virtual_fund_allocations(...)` to compute allocation before
-writing. The planner expects resolved source holdings and virtual-fund demands,
-or an explicit repository-backed resolver at the workflow boundary. It must not
-invent quantities from example constants.
+writing. The canonical workflow takes exactly the service inputs from ADR 0029:
+`position_set_uid`, `valuation_time`, `valuation_asset_uid`,
+`holdings_selection_policy`, `valuation_resolver`, and `allocation_policy`.
+Do not expose repository context, raw account UID, raw holdings-set UID, raw
+source holdings, raw target demands, scan limits, or input-resolver callbacks
+as public planner arguments. Internal vector helpers may use already-resolved
+frames for tests, but examples and user workflows must use the canonical
+planner inputs.
 
 The default policy is `proportional_attribution`: virtual-fund claims consume
 the asset-level gross source capacity first, and the direct account sleeve is
@@ -181,9 +189,14 @@ virtual-fund demand exceeds source capacity.
 
 Valuation is supplied through a valuation resolver protocol. The resolver uses
 `valuation_asset_uid` as an `AssetTable.uid`, receives
-`requested_metrics=[{"name": "nav"}]`, and returns totals plus optional
-per-line valuation output. Do not pass ISO codes, tickers, or hidden global
-pricing state into the planner.
+`requested_metrics=("nav",)`, and returns totals plus optional
+per-line valuation output. For notional target rows, it must also return
+`target_quantity_demands` so the planner can allocate by signed quantities. Do
+not pass ISO codes, tickers, or hidden global pricing state into the planner.
+
+Use `virtual_fund_unique_identifier_for_target(...)` for deterministic
+VirtualFund business keys. The key must be based on account, target portfolio,
+and account target allocation identity.
 
 ## Full Workflow Pattern
 

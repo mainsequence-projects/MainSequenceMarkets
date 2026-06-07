@@ -50,6 +50,9 @@ ACCOUNT_WORKFLOW_RUNTIME_MODELS = [
     "PositionSet",
     "AccountHoldingsStorage",
     "Portfolio",
+    "VirtualFund",
+    "VirtualFundHoldingsSet",
+    "VirtualFundHoldingsStorage",
     "SignalMetadata",
     "RebalanceStrategyMetadata",
     "ExternalPricesStorage",
@@ -59,12 +62,24 @@ ACCOUNT_WORKFLOW_RUNTIME_MODELS = [
     "TargetPositionsStorage",
 ]
 
+USD_ASSET_UID = "00000000-0000-0000-0000-000000000840"
+EXAMPLE_SPOT_PRICES = {
+    EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER: 60_000.0,
+    EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER: 2_000.0,
+}
+EXAMPLE_PORTFOLIO_WEIGHTS = {
+    EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER: 0.50,
+    EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER: 0.50,
+}
+
 
 def run_account_portfolio_full_workflow(
     *,
     prepare_portfolio_schema: bool = True,
     use_portfolio_example: bool = True,
     run_portfolio_data_nodes: bool = True,
+    run_virtual_fund_allocation: bool = False,
+    apply_virtual_fund_allocation: bool = False,
     revision_message: str | None = None,
 ) -> dict[str, Any]:
     """Create the account registry rows and publish account holdings."""
@@ -360,7 +375,7 @@ def run_account_portfolio_full_workflow(
             holdings_frame
         )
 
-    return {
+    result = {
         "schema_preparation_result": schema_preparation_result,
         "use_portfolio_example": use_portfolio_example,
         "portfolio_example_result": portfolio_example_result,
@@ -381,6 +396,125 @@ def run_account_portfolio_full_workflow(
         "holdings_date": workflow_time,
         "pretty_positions_by_account": pretty_positions_by_account,
         "updated_frame": holdings_frame,
+        "virtual_fund_allocation_result": None,
+    }
+    if run_virtual_fund_allocation or apply_virtual_fund_allocation:
+        print("15. Planning account virtual-fund allocation from the full workflow outputs.")
+        result["virtual_fund_allocation_result"] = _run_virtual_fund_allocation_extension(
+            result,
+            apply_plan=apply_virtual_fund_allocation,
+        )
+    return result
+
+
+def _run_virtual_fund_allocation_extension(
+    workflow_result: dict[str, Any],
+    *,
+    apply_plan: bool,
+) -> dict[str, Any]:
+    from msm.services.accounts import (
+        AllocationPolicy,
+        AllocationValuation,
+        HoldingsSelectionPolicy,
+        TargetQuantityDemand,
+        ValuationMetricResult,
+        ValuationMetricValue,
+        apply_account_virtual_fund_allocation_plan,
+        plan_account_virtual_fund_allocations,
+    )
+
+    account = workflow_result["accounts"][0]
+    target_record = workflow_result["target_records"][0]
+    position_set = target_record["position_set"]
+    valuation_time = workflow_result["holdings_date"]
+
+    def spot_valuation_resolver(
+        requested_metrics,
+        source_holdings,
+        target_notional_demands,
+        *,
+        valuation_time: dt.datetime,
+        valuation_asset_uid: Any,
+        valuation_policy,
+    ) -> AllocationValuation:
+        del requested_metrics, valuation_policy
+        nav = sum(
+            holding.quantity * holding.direction * EXAMPLE_SPOT_PRICES[holding.asset_identifier]
+            for holding in source_holdings
+        )
+        target_quantity_demands = []
+        for demand in target_notional_demands:
+            asset_identifier = demand.asset_identifier
+            price = EXAMPLE_SPOT_PRICES[asset_identifier]
+            target_quantity_demands.append(
+                TargetQuantityDemand(
+                    target_row_key=demand.target_row_key,
+                    asset_uid=demand.asset_uid,
+                    asset_identifier=asset_identifier,
+                    requested_signed_quantity=demand.notional_value / price,
+                    direction=demand.direction,
+                    requested_notional=demand.notional_value,
+                    claim_type=demand.claim_type,
+                    claim_uid=demand.claim_uid,
+                    source_target_uid=demand.source_target_uid,
+                    target_type=demand.target_type,
+                    target_portfolio_uid=demand.target_portfolio_uid,
+                    virtual_fund_unique_identifier=demand.virtual_fund_unique_identifier,
+                    source_row=demand.source_row,
+                )
+            )
+        return AllocationValuation(
+            metrics={
+                "nav": ValuationMetricResult(
+                    metric="nav",
+                    total=ValuationMetricValue(
+                        value=nav,
+                        valuation_asset_uid=valuation_asset_uid,
+                        as_of=valuation_time,
+                        source="examples/msm/accounts/account_portfolio_full_workflow.py",
+                    ),
+                )
+            },
+            valuation_asset_uid=valuation_asset_uid,
+            target_quantity_demands=tuple(target_quantity_demands),
+        )
+
+    plan = plan_account_virtual_fund_allocations(
+        position_set_uid=position_set.uid,
+        valuation_time=valuation_time,
+        valuation_asset_uid=USD_ASSET_UID,
+        holdings_selection_policy=HoldingsSelectionPolicy(),
+        valuation_resolver=spot_valuation_resolver,
+        allocation_policy=AllocationPolicy(),
+    )
+
+    print("    Account virtual-fund allocation dry-run")
+    print("      account_uid:", account.uid)
+    print("      position_set_uid:", position_set.uid)
+    print("      account_nav:", plan.account_nav)
+    print("      status:", plan.status)
+    for name, frame in plan.to_frames().items():
+        print(f"\n{name}")
+        print(frame.to_string(index=False) if not frame.empty else "<empty>")
+
+    applied_frame = None
+    if apply_plan:
+        from msm.data_nodes.accounts import VirtualFundHoldings
+
+        print("16. Applying account virtual-fund allocation through VirtualFundHoldings.")
+        applied_frame = apply_account_virtual_fund_allocation_plan(
+            plan,
+            data_node=VirtualFundHoldings(config=VirtualFundHoldings.default_config()),
+            run=True,
+        )
+        print("    Applied virtual-fund holdings rows:")
+        print(applied_frame.reset_index().to_string(index=False))
+
+    return {
+        "account": account,
+        "position_set": position_set,
+        "plan": plan,
+        "applied_frame": applied_frame,
     }
 
 
@@ -412,12 +546,27 @@ def main() -> None:
         default=None,
         help="Optional Alembic revision message for the dynamic portfolio schema step.",
     )
+    parser.add_argument(
+        "--with-virtual-fund-allocation",
+        action="store_true",
+        help="Extend the full workflow with a dry-run account virtual-fund allocation plan.",
+    )
+    parser.add_argument(
+        "--apply-virtual-fund-allocation",
+        action="store_true",
+        help=(
+            "Extend the workflow with virtual-fund allocation and publish the "
+            "resulting VirtualFundHoldings rows."
+        ),
+    )
     args = parser.parse_args()
 
     result = run_account_portfolio_full_workflow(
         prepare_portfolio_schema=not args.skip_schema_prep,
         use_portfolio_example=not args.standalone_target_sleeve,
         run_portfolio_data_nodes=not args.no_run_portfolio_data_nodes,
+        run_virtual_fund_allocation=args.with_virtual_fund_allocation,
+        apply_virtual_fund_allocation=args.apply_virtual_fund_allocation,
         revision_message=args.revision_message,
     )
     print("Workflow complete.")
@@ -446,6 +595,11 @@ def main() -> None:
     print("TargetPositions DataNode identifier:", result["target_positions_data_node_identifier"])
     print("Holdings DataNode identifier:", result["holdings_data_node_identifier"])
     print("Holdings date:", result["holdings_date"].isoformat())
+    if result["virtual_fund_allocation_result"] is not None:
+        allocation_result = result["virtual_fund_allocation_result"]
+        print("Virtual-fund allocation status:", allocation_result["plan"].status)
+        if allocation_result["applied_frame"] is not None:
+            print("Virtual-fund holdings rows:", len(allocation_result["applied_frame"]))
 
 
 if __name__ == "__main__":
