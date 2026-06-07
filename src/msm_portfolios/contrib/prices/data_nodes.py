@@ -20,10 +20,11 @@ from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
 )
+from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.asset_scope import (
     asset_calendar,
-    asset_field,
+    asset_unique_identifier,
     require_asset_category_scope,
 )
 from msm_portfolios.data_nodes.storage import (
@@ -56,6 +57,16 @@ def _source_time_indexed_profile_cadence(
     profile = getattr(storage_table, "time_indexed_profile", None)
     cadence = getattr(profile, "cadence", None)
     if cadence in (None, ""):
+        cadence = getattr(storage_table, "cadence", None)
+    if cadence in (None, ""):
+        contract = getattr(storage_table, "table_contract", None)
+        if isinstance(contract, dict):
+            authoring = contract.get("authoring")
+            if isinstance(authoring, dict):
+                time_indexed = authoring.get("time_indexed")
+                if isinstance(time_indexed, dict):
+                    cadence = time_indexed.get("cadence")
+    if cadence in (None, ""):
         raise RuntimeError(
             "InterpolatedPrices requires the source TimeIndexMetaTable to declare "
             "time_indexed_profile.cadence. Register or migrate the source storage "
@@ -71,6 +82,44 @@ def _source_time_indexed_profile_cadence(
             f"cadence={cadence!r}."
         )
     return cadence
+
+
+def _source_time_indexed_storage_hash(
+    source_prices_ts: APIDataNode,
+    *,
+    source_time_index_meta_table_uid: str,
+) -> str:
+    storage_table = getattr(source_prices_ts, "storage_table", None)
+    storage_hash = getattr(storage_table, "storage_hash", None)
+    if storage_hash in (None, ""):
+        raise RuntimeError(
+            "InterpolatedPrices requires the source TimeIndexMetaTable to expose "
+            "storage_hash. Register or migrate the source storage "
+            f"{source_time_index_meta_table_uid} before using it as a portfolio "
+            "price source."
+        )
+    return str(storage_hash)
+
+
+def _asset_calendar_map(asset_list):
+    return {asset_unique_identifier(asset): asset_calendar(asset) for asset in asset_list}
+
+
+def _normalize_time_indexed_frame_ns_utc(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+
+    index_names = list(frame.index.names)
+    if "time_index" not in index_names:
+        return frame
+
+    normalized = frame.reset_index()
+    normalized["time_index"] = normalize_datetime64_ns_utc(normalized["time_index"])
+    for column_name in ("open_time", "first_trade_time", "last_trade_time"):
+        if column_name in normalized.columns:
+            normalized[column_name] = normalize_datetime64_ns_utc(normalized[column_name])
+
+    return normalized.set_index(index_names).sort_index()
 
 
 @lru_cache(maxsize=256)
@@ -634,9 +683,13 @@ class InterpolatedPrices(AssetIndexedDataNode):
             source_prices_ts,
             source_time_index_meta_table_uid=source_time_index_meta_table_uid,
         )
+        source_storage_hash = _source_time_indexed_storage_hash(
+            source_prices_ts,
+            source_time_index_meta_table_uid=source_time_index_meta_table_uid,
+        )
         upsample_frequency_id = interpolation_config.upsample_frequency_id or source_cadence
         storage_table = configured_interpolated_prices_storage(
-            source_storage_hash=source_prices_ts.storage_hash,
+            source_storage_hash=source_storage_hash,
             source_cadence=source_cadence,
             upsample_frequency_id=upsample_frequency_id,
             intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
@@ -841,10 +894,7 @@ class InterpolatedPrices(AssetIndexedDataNode):
         """
         us: UpdateStatistics = self.update_statistics
 
-        self.asset_calendar_map = {
-            asset_field(a, "unique_identifier"): asset_calendar(a)
-            for a in self.get_update_asset_list() or []
-        }
+        self.asset_calendar_map = _asset_calendar_map(self.get_update_asset_list() or [])
         prices = self.get_upsampled_data()
         if prices.shape[0] == 0:
             return pd.DataFrame()
@@ -884,4 +934,4 @@ class InterpolatedPrices(AssetIndexedDataNode):
                 "interpolated",
             ]
         ]
-        return prices
+        return _normalize_time_indexed_frame_ns_utc(prices)

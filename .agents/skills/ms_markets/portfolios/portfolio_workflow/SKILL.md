@@ -95,9 +95,11 @@ python examples/msm_portfolios/portfolio_equal_weights_run.py
 
 The preparation step derives the configured interpolation table from the
 registered source price storage hash and cadence, creates/applies the dynamic
-Alembic revision if needed, and verifies the `TimeIndexMetaTable`. Normal
-runtime code then attaches only static models and fails clearly if the dynamic
-table has not been prepared.
+Alembic revision if needed, and verifies the `TimeIndexMetaTable`. If an older
+registered source storage row is missing cadence metadata, the preparation step
+may patch only that source metadata to the model-declared cadence before
+deriving the dynamic table. Normal runtime code then attaches only static models
+and fails clearly if the dynamic table has not been prepared.
 
 ## Write Pattern
 

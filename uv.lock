@@ -905,7 +905,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "4.3.6"
+version = "4.3.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -929,9 +929,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/eb/ae/cc609037c6d6c97eddf12f0c14864391e17ddad999770c6623ae5e75a71b/mainsequence-4.3.6.tar.gz", hash = "sha256:a791ba9cbc6cc342afbba6e2b165dbd4d8ef89e7176983079e55dd1c417ecbb1", size = 483021, upload-time = "2026-06-05T14:38:00.894Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/b3/ec6ba74f8fbf9da2eef1b09a334408a4cec35b1d1827a1aa763326911b2a/mainsequence-4.3.9.tar.gz", hash = "sha256:98397c2caecbd6fd63e956b01923cc71d3353cfaf5e64a4de1f91f473c1fbddb", size = 483652, upload-time = "2026-06-05T16:22:55.545Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1d/59/e8640533df1b8be6959c11e130e34c85489c30a1f6a708be4779ec35da63/mainsequence-4.3.6-py3-none-any.whl", hash = "sha256:80d6fb1ad2649f068e40da3638aef44378a420277a235e969b59b46baae805b5", size = 413313, upload-time = "2026-06-05T14:37:59.253Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/b8/0700c3bcd84a0941aa1c8eb19e9e10867147ab4fbfbb58afe423e0385e84/mainsequence-4.3.9-py3-none-any.whl", hash = "sha256:03093533e59033eef2bdd04a07f17e6c59d93b2981ec8b923a89f93e9f7153dc", size = 413765, upload-time = "2026-06-05T16:22:53.71Z" },
 ]
 
 [[package]]
@@ -1335,7 +1335,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.136.3" },
     { name = "fastapi", marker = "extra == 'public-api'", specifier = ">=0.136.3" },
     { name = "joblib", marker = "extra == 'portfolios'" },
-    { name = "mainsequence", specifier = ">=4.3.6" },
+    { name = "mainsequence", specifier = ">=4.3.8" },
     { name = "matplotlib", marker = "extra == 'pricing'" },
     { name = "matplotlib", marker = "extra == 'pricing-streamlit'" },
     { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6" },

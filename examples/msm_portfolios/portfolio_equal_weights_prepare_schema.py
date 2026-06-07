@@ -21,6 +21,7 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
     SOURCE_PRICE_CADENCE,
     configured_equal_weight_interpolated_prices_storage,
     dynamic_provider_env,
+    repair_source_cadence_metadata,
     source_cadence_from_meta_table,
     source_storage_hash_from_meta_table,
 )
@@ -41,6 +42,7 @@ def print_detail(label: str, value: object) -> None:
 def prepare_equal_weight_portfolio_schema(
     *,
     check_only: bool = False,
+    repair_source_cadence: bool = True,
     revision_message: str | None = None,
     run_after: bool = False,
 ) -> dict[str, Any]:
@@ -53,11 +55,19 @@ def prepare_equal_weight_portfolio_schema(
     if source_handle.meta_table is None:
         raise RuntimeError("ExternalPricesStorage is not attached to a TimeIndexMetaTable.")
 
-    source_storage_hash = source_storage_hash_from_meta_table(source_handle.meta_table)
-    source_cadence = source_cadence_from_meta_table(
-        source_handle.meta_table,
-        fallback=SOURCE_PRICE_CADENCE,
-    )
+    source_meta_table = source_handle.meta_table
+    source_cadence_repaired = False
+    if repair_source_cadence:
+        source_meta_table, source_cadence, source_cadence_repaired = (
+            repair_source_cadence_metadata(
+                source_meta_table,
+                expected_cadence=SOURCE_PRICE_CADENCE,
+            )
+        )
+    else:
+        source_cadence = source_cadence_from_meta_table(source_meta_table)
+
+    source_storage_hash = source_storage_hash_from_meta_table(source_meta_table)
     storage_table = configured_equal_weight_interpolated_prices_storage(
         source_storage_hash=source_storage_hash,
         source_cadence=source_cadence,
@@ -67,9 +77,10 @@ def prepare_equal_weight_portfolio_schema(
         source_cadence=source_cadence,
     )
 
-    print_detail("source_storage_uid", source_handle.meta_table_uid)
+    print_detail("source_storage_uid", getattr(source_meta_table, "uid", None))
     print_detail("source_storage_hash", source_storage_hash)
     print_detail("source_cadence", source_cadence)
+    print_detail("source_cadence_repaired", source_cadence_repaired)
     print_detail("dynamic_provider", DYNAMIC_MIGRATION_PROVIDER)
     print_detail("configured_storage_table", storage_table.__table__.name)
     print_detail("configured_storage_identifier", storage_table.metatable_identifier())
@@ -142,9 +153,10 @@ def prepare_equal_weight_portfolio_schema(
     print_detail("created_revision", created_revision)
 
     result = {
-        "source_storage_uid": source_handle.meta_table_uid,
+        "source_storage_uid": getattr(source_meta_table, "uid", None),
         "source_storage_hash": source_storage_hash,
         "source_cadence": source_cadence,
+        "source_cadence_repaired": source_cadence_repaired,
         "configured_storage_table": storage_table.__table__.name,
         "configured_storage_identifier": storage_table.metatable_identifier(),
         "configured_storage_uid": existing.uid,
@@ -239,6 +251,14 @@ def main() -> None:
         help="Only verify that the configured dynamic table exists.",
     )
     parser.add_argument(
+        "--no-repair-source-cadence",
+        action="store_true",
+        help=(
+            "Fail if the registered source price TimeIndexMetaTable is missing "
+            "cadence metadata instead of patching it to the model-declared cadence."
+        ),
+    )
+    parser.add_argument(
         "--revision-message",
         help="Custom Alembic revision message when a new dynamic revision is needed.",
     )
@@ -250,6 +270,7 @@ def main() -> None:
     args = parser.parse_args()
     prepare_equal_weight_portfolio_schema(
         check_only=args.check_only,
+        repair_source_cadence=not args.no_repair_source_cadence,
         revision_message=args.revision_message,
         run_after=args.run_after,
     )

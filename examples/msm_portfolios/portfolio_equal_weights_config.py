@@ -106,10 +106,8 @@ def source_storage_hash_from_meta_table(source_meta_table: Any) -> str:
 
 def source_cadence_from_meta_table(
     source_meta_table: Any,
-    *,
-    fallback: str | None = None,
 ) -> str:
-    """Return `time_indexed_profile.cadence` from a registered source storage table."""
+    """Return declared cadence from registered source storage metadata."""
 
     profile = getattr(source_meta_table, "time_indexed_profile", None)
     cadence: Any = None
@@ -119,13 +117,53 @@ def source_cadence_from_meta_table(
         cadence = getattr(profile, "cadence", None)
 
     if cadence not in (None, ""):
-        return str(cadence)
-    if fallback not in (None, ""):
-        return str(fallback)
+        return str(cadence).strip().lower()
+
+    cadence = getattr(source_meta_table, "cadence", None)
+    if cadence not in (None, ""):
+        return str(cadence).strip().lower()
+
+    contract = getattr(source_meta_table, "table_contract", None)
+    if isinstance(contract, Mapping):
+        authoring = contract.get("authoring")
+        if isinstance(authoring, Mapping):
+            time_indexed = authoring.get("time_indexed")
+            if isinstance(time_indexed, Mapping):
+                cadence = time_indexed.get("cadence")
+                if cadence not in (None, ""):
+                    return str(cadence).strip().lower()
+
     raise RuntimeError(
-        "Registered source price storage is missing time_indexed_profile.cadence; "
-        "cannot derive the configured interpolated price storage table."
+        "Registered source price storage is missing backend cadence metadata; "
+        "cannot derive the configured interpolated price storage table. "
+        f"meta_table_uid={getattr(source_meta_table, 'uid', None)}, "
+        f"physical_table_name={getattr(source_meta_table, 'physical_table_name', None)}, "
+        f"storage_hash={getattr(source_meta_table, 'storage_hash', None)}."
     )
+
+
+def repair_source_cadence_metadata(
+    source_meta_table: Any,
+    *,
+    expected_cadence: str,
+) -> tuple[Any, str, bool]:
+    """Ensure the registered source TimeIndexMetaTable declares cadence metadata."""
+
+    try:
+        return source_meta_table, source_cadence_from_meta_table(source_meta_table), False
+    except RuntimeError as missing_error:
+        patch = getattr(source_meta_table, "patch", None)
+        if not callable(patch):
+            raise missing_error
+
+    patched = patch(cadence=expected_cadence)
+    try:
+        return patched, source_cadence_from_meta_table(patched), True
+    except RuntimeError as patched_error:
+        raise RuntimeError(
+            "Registered source price storage cadence repair was attempted, but "
+            "the backend response still does not expose cadence metadata."
+        ) from patched_error
 
 
 def dynamic_provider_env(
@@ -204,6 +242,7 @@ __all__ = [
     "dynamic_provider_env",
     "dynamic_storage_from_env",
     "metadata_for_storage_model",
+    "repair_source_cadence_metadata",
     "source_cadence_from_meta_table",
     "source_storage_hash_from_meta_table",
 ]

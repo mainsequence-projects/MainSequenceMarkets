@@ -38,7 +38,6 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
     PORTFOLIO_UNIQUE_IDENTIFIER,
     PRICE_INTERPOLATION_RULE,
     PRICE_UPSAMPLE_FREQUENCY_ID,
-    SOURCE_PRICE_CADENCE,
     TIME_INDEX,
     VIRTUAL_FUND_UNIQUE_IDENTIFIER,
     configured_equal_weight_interpolated_prices_storage,
@@ -311,7 +310,8 @@ def resolve_source_prices_storage(runtime: Any) -> tuple[str, Any]:
         raise RuntimeError(
             "ExternalPricesStorage is not attached to a registered TimeIndexMetaTable."
         )
-    return str(handle.meta_table_uid), handle.meta_table
+    source_storage_uid = str(handle.meta_table_uid)
+    return source_storage_uid, TimeIndexMetaTable.get(uid=source_storage_uid)
 
 
 def build_example_interpolated_prices_storage(source_meta_table: Any) -> type[Any]:
@@ -319,10 +319,7 @@ def build_example_interpolated_prices_storage(source_meta_table: Any) -> type[An
 
     return configured_equal_weight_interpolated_prices_storage(
         source_storage_hash=source_storage_hash_from_meta_table(source_meta_table),
-        source_cadence=source_cadence_from_meta_table(
-            source_meta_table,
-            fallback=SOURCE_PRICE_CADENCE,
-        ),
+        source_cadence=source_cadence_from_meta_table(source_meta_table),
     )
 
 
@@ -472,10 +469,7 @@ def build_equal_weight_portfolio(
     source_prices_storage_uid, source_prices_storage_meta_table = resolve_source_prices_storage(
         runtime
     )
-    source_prices_cadence = source_cadence_from_meta_table(
-        source_prices_storage_meta_table,
-        fallback=SOURCE_PRICE_CADENCE,
-    )
+    source_prices_cadence = source_cadence_from_meta_table(source_prices_storage_meta_table)
     interpolated_prices_storage = build_example_interpolated_prices_storage(
         source_prices_storage_meta_table
     )

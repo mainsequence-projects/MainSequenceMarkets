@@ -41,11 +41,59 @@ def test_runtime_derives_configured_storage_from_registered_source_metadata() ->
     assert storage.__metatable_extra_hash_components__["source_cadence"] == "5m"
 
 
-def test_example_daily_bars_declares_no_dependencies() -> None:
-    node = example.ExampleDailyBars(
-        asset_identifiers=config.ASSET_UNIQUE_IDENTIFIERS,
-        namespace=config.NAMESPACE,
+def test_source_cadence_reads_top_level_registered_metadata() -> None:
+    source_meta_table = SimpleNamespace(
+        storage_hash="registered-external-prices-hash",
+        time_indexed_profile=None,
+        cadence="1D",
     )
+
+    assert config.source_cadence_from_meta_table(source_meta_table) == "1d"
+
+
+def test_source_cadence_does_not_fallback_to_model_constant() -> None:
+    source_meta_table = SimpleNamespace(
+        uid="source-uid",
+        storage_hash="registered-external-prices-hash",
+        physical_table_name="ms_markets__externalpricests__mainsequence_examples",
+        time_indexed_profile=None,
+        cadence=None,
+    )
+
+    with pytest.raises(RuntimeError, match="missing backend cadence metadata"):
+        config.source_cadence_from_meta_table(source_meta_table)
+
+
+def test_repair_source_cadence_metadata_patches_stale_table() -> None:
+    class StaleSource:
+        uid = "source-uid"
+        storage_hash = "registered-external-prices-hash"
+        physical_table_name = "ms_markets__externalpricests__mainsequence_examples"
+        time_indexed_profile = None
+        cadence = None
+
+        def patch(self, **kwargs):
+            assert kwargs == {"cadence": "1d"}
+            return SimpleNamespace(
+                uid=self.uid,
+                storage_hash=self.storage_hash,
+                physical_table_name=self.physical_table_name,
+                time_indexed_profile=None,
+                cadence="1d",
+            )
+
+    repaired, cadence, changed = config.repair_source_cadence_metadata(
+        StaleSource(),
+        expected_cadence="1d",
+    )
+
+    assert cadence == "1d"
+    assert changed is True
+    assert repaired.cadence == "1d"
+
+
+def test_example_daily_bars_declares_no_dependencies() -> None:
+    node = object.__new__(example.ExampleDailyBars)
 
     assert node.dependencies() == {}
 

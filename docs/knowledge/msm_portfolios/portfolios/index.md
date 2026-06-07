@@ -229,11 +229,11 @@ The price path is:
 DataNode instance and not a DataNodeUpdate UID. The source must be a registered
 `PlatformTimeIndexMetaTable` that exposes normalized OHLCV bars keyed by
 `(time_index, asset_identifier)` and declares its raw bar cadence through
-`time_indexed_profile.cadence`. `InterpolatedPrices` resolves that UID through
-`APIDataNode.build_from_table_uid(...)`, validates that the source profile has a
-cadence, and uses that cadence as the source bar frequency. The portfolio can
-recover the source across processes and does not require the original producer
-class to be present.
+backend TimeIndexMetaTable cadence metadata. `InterpolatedPrices` resolves that
+UID through `APIDataNode.build_from_table_uid(...)`, validates that the
+registered source exposes cadence, and uses that cadence as the source bar
+frequency. The portfolio can recover the source across processes and does not
+require the original producer class to be present.
 
 This producer boundary is intentional. Price collection, normalization, vendor
 mapping, and connector-specific scheduling are separate concerns from portfolio
@@ -261,12 +261,15 @@ python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
 The preparation step attaches the static schema, reads the registered
-`ExternalPricesStorage` `storage_hash` and `time_indexed_profile.cadence`,
-builds the configured `InterpolatedPricesStorage` class, checks whether the
-corresponding `TimeIndexMetaTable` already exists, applies an existing dynamic
-revision if one is pending, and generates plus applies a new Alembic revision
-only when the configured table is still missing. Runtime portfolio code then
-uses the registered table; it does not create or migrate dynamic storage.
+`ExternalPricesStorage` `storage_hash` and cadence metadata, builds the
+configured `InterpolatedPricesStorage` class, checks whether the corresponding
+`TimeIndexMetaTable` already exists, applies an existing dynamic revision if one
+is pending, and generates plus applies a new Alembic revision only when the
+configured table is still missing. If an older registered `ExternalPricesStorage`
+row is missing cadence metadata, the preparation script patches that metadata to
+the model-declared cadence before deriving the dynamic table. Runtime portfolio
+code then uses the registered table; it does not create or migrate dynamic
+storage.
 
 `AssetsConfiguration.price_type` chooses which column from the interpolated
 price table drives portfolio returns. For example, `PriceTypeNames.CLOSE` uses
