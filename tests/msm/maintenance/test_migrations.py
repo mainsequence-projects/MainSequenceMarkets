@@ -16,27 +16,25 @@ from mainsequence.meta_tables import (
 from mainsequence.meta_tables.migrations import (
     AlembicMetaTableMigration,
     load_alembic_metatable_migration_provider,
+    namespace_version_location,
+    namespace_version_slug,
 )
 
 from msm.base import (
     MARKETS_DEFAULT_SCHEMA,
     MARKETS_SCHEMA,
-    MARKETS_TABLE_APP,
     MarketsBase,
     MarketsTimeIndexMetaTableMixin,
     markets_table_args,
-    markets_table_name,
     normalize_metatable_schema,
 )
 from migrations import (
     MarketsAlembicVersion,
-    active_namespace_version_location,
     migration,
-    namespace_version_slug,
 )
 from migrations.registry import metatable_provider_models
 from msm.models import AssetTable
-from msm.settings import markets_auto_register_namespace, markets_identifier, markets_namespace
+from msm.settings import markets_identifier
 
 
 def test_migration_provider_is_single_sdk_alembic_provider() -> None:
@@ -45,15 +43,12 @@ def test_migration_provider_is_single_sdk_alembic_provider() -> None:
     assert migration.script_location == "migrations:"
     assert migration.target_metadata is MarketsBase.metadata
     assert migration.alembic_registry is MarketsAlembicVersion
-    assert MarketsAlembicVersion.__metatable_namespace__ == markets_namespace()
+    assert MarketsAlembicVersion.__metatable_namespace__ == migration.migration_namespace
     assert MarketsAlembicVersion.__metatable_identifier__ == markets_identifier(
-        "msm.alembic_version"
+        "msm.alembic_version",
+        namespace=migration.migration_namespace,
     )
-    expected_version_table = markets_table_name(
-        MARKETS_TABLE_APP,
-        "alembic_version",
-        suffix=markets_auto_register_namespace(),
-    )
+    expected_version_table = MarketsAlembicVersion.__alembic_version_table_name__
     assert migration.version_table == expected_version_table
     assert MARKETS_SCHEMA is None
     assert migration.version_table_schema is None
@@ -99,26 +94,20 @@ def test_namespace_version_slug_is_deterministic() -> None:
     assert len(namespace_version_slug("x" * 100)) <= 48
 
 
-def test_active_namespace_version_location_uses_migrations_package() -> None:
-    assert active_namespace_version_location().startswith("migrations:versions/")
+def test_migration_provider_uses_sdk_namespace_version_location() -> None:
+    expected_location = namespace_version_location(migration.migration_namespace)
+
+    assert migration.version_locations == [expected_location]
+    assert migration.version_path == expected_location
 
 
-def test_migration_provider_uses_active_namespace_version_location() -> None:
-    assert migration.version_locations == [active_namespace_version_location()]
-    assert migration.version_path == active_namespace_version_location()
-
-
-def test_existing_revisions_live_under_mainsequence_examples_namespace() -> None:
+def test_migration_version_packages_do_not_assume_generated_history() -> None:
     versions_root = resources.files("migrations").joinpath("versions")
-    namespace_versions = versions_root.joinpath("mainsequence_examples")
 
     assert not versions_root.joinpath("0001_migration.py").is_file()
     assert versions_root.joinpath("default").is_dir()
-    assert namespace_versions.is_dir()
-    assert namespace_versions.joinpath("0001_migration.py").is_file()
-    assert namespace_versions.joinpath("0002_migration.py").is_file()
-    assert namespace_versions.joinpath("0003_migration.py").is_file()
-    assert namespace_versions.joinpath("0004_migration.py").is_file()
+    assert versions_root.joinpath("mainsequence_markets").is_dir()
+    assert versions_root.joinpath("mainsequence_examples").is_dir()
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:
@@ -220,10 +209,10 @@ def test_account_holdings_single_and_composite_indexes_have_distinct_names() -> 
 def test_alembic_env_normalizes_default_schema_reflection() -> None:
     env_text = Path("src/migrations/env.py").read_text(encoding="utf-8")
 
-    assert '"include_schemas": _uses_named_schemas()' in env_text
+    assert "run_mainsequence_alembic_env" in env_text
     assert "def _included_schema" in env_text
-    assert "def _uses_named_schemas" in env_text
-    assert 'type_ == "schema"' in env_text
+    assert "engine_from_config" not in env_text
+    assert "run_migrations_online" not in env_text
 
 
 def test_package_migration_registry_covers_all_markets_subpackages() -> None:
@@ -251,5 +240,6 @@ def test_package_migration_registry_is_deduplicated_and_sdk_managed() -> None:
     assert len(identifiers) == len(set(identifiers))
     assert all(issubclass(model, MarketsBase) for model in models)
     assert all(
-        issubclass(model, (PlatformManagedMetaTable, PlatformTimeIndexMetaTable)) for model in models
+        issubclass(model, (PlatformManagedMetaTable, PlatformTimeIndexMetaTable))
+        for model in models
     )

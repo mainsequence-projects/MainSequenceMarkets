@@ -140,7 +140,8 @@ from msm_pricing.api import (
     PricingMarketDataSet,
     PricingMarketDataSetBinding,
 )
-from msm_pricing.data_nodes.storage import DiscountCurvesStorage, IndexFixingsStorage
+from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,

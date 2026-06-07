@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from typing import Any
 
 V1_RUNTIME_MODELS = [
-    "Account",
+    "AssetType",
     "Asset",
     "OpenFigiAssetDetails",
     "AssetCategory",
@@ -16,10 +16,15 @@ V1_RUNTIME_MODELS = [
     "CalendarEvent",
     "IndexType",
     "Index",
+    "AccountAllocationModel",
+    "AccountGroup",
+    "Account",
     "AccountHoldingsSet",
     "AccountHoldingsStorage",
-    "AccountTargetPortfolio",
+    "AccountTargetAllocation",
     "PositionSet",
+    "Portfolio",
+    "TargetPositionsStorage",
     "AssetSnapshotsStorage",
 ]
 V1_PORTFOLIO_RUNTIME_MODELS = [
@@ -28,11 +33,11 @@ V1_PORTFOLIO_RUNTIME_MODELS = [
     "Calendar",
     "IndexType",
     "Index",
-    "AccountModelPortfolio",
+    "AccountAllocationModel",
     "AccountGroup",
     "Account",
     "AccountHoldingsSet",
-    "AccountTargetPortfolio",
+    "AccountTargetAllocation",
     "PositionSet",
     "Portfolio",
     "TargetPositionsStorage",
@@ -85,16 +90,10 @@ def ensure_apps_v1_portfolio_runtime() -> Any | None:
     if _PORTFOLIO_BOOTSTRAP_COMPLETE:
         return None
 
-    namespace = os.getenv("MSM_AUTO_REGISTER_NAMESPACE")
-    if not namespace:
+    runtime = ensure_apps_v1_runtime()
+    if runtime is None and not _BOOTSTRAP_COMPLETE:
         return None
 
-    import msm_portfolios
-
-    runtime = msm_portfolios.start_engine(
-        namespace=namespace,
-        models=V1_PORTFOLIO_RUNTIME_MODELS,
-    )
     _PORTFOLIO_BOOTSTRAP_COMPLETE = True
     return runtime
 
@@ -143,11 +142,10 @@ def resolve_apps_v1_portfolio_runtime(
 ):
     ensure_apps_v1_portfolio_runtime()
 
-    from msm_portfolios.bootstrap import resolve_portfolio_models
     from msm.bootstrap import resolve_runtime
 
     return resolve_runtime(
-        models=resolve_portfolio_models(models),
+        models=models,
         row_model_name=row_model_name,
     )
 

@@ -11,7 +11,12 @@ import pandas as pd
 
 from mainsequence.client import dtype_codec as dc
 from msm.api.base import operation_result_rows
-from msm.data_nodes.storage import AssetSnapshotsStorage
+from msm.data_nodes.accounts.constants import (
+    TARGET_TYPE_ASSET,
+    TARGET_TYPE_PORTFOLIO,
+)
+from msm.data_nodes.accounts.storage import TargetPositionsStorage
+from msm.data_nodes.assets.storage import AssetSnapshotsStorage
 from msm.data_nodes.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,
@@ -20,17 +25,12 @@ from msm.repositories import MarketsRepositoryContext
 from msm.repositories.crud import search_model
 from msm.services.accounts import (
     get_account_by_uid,
-    search_account_target_portfolios,
+    search_account_target_allocations,
     search_position_sets,
 )
 from msm.services.assets import search_assets
+from msm.services.portfolios import search_portfolios
 
-from msm_portfolios.data_nodes.storage import TargetPositionsStorage
-from msm_portfolios.services.portfolios import search_portfolios
-
-TARGET_TYPE_ASSET = "asset"
-TARGET_TYPE_PORTFOLIO = "portfolio"
-TARGET_POSITION_TARGET_TYPES = (TARGET_TYPE_ASSET, TARGET_TYPE_PORTFOLIO)
 TARGET_POSITION_EXPOSURE_FIELDS = (
     "weight_notional_exposure",
     "constant_notional_exposure",
@@ -61,7 +61,9 @@ def validate_target_position_payload(position: Mapping[str, Any]) -> dict[str, A
     asset_uid = _optional_uuid_string(payload.get("asset_uid"), field_name="asset_uid")
     portfolio_uid = _optional_uuid_string(payload.get("portfolio_uid"), field_name="portfolio_uid")
     if (asset_uid is None) == (portfolio_uid is None):
-        raise ValueError("Each target position must provide exactly one of asset_uid or portfolio_uid.")
+        raise ValueError(
+            "Each target position must provide exactly one of asset_uid or portfolio_uid."
+        )
 
     target_type = TARGET_TYPE_ASSET if asset_uid is not None else TARGET_TYPE_PORTFOLIO
     target_uid = asset_uid or portfolio_uid
@@ -234,17 +236,17 @@ def get_account_target_positions_snapshot_response(
         return None
 
     resolved_account_uid = str(account_row["uid"])
-    target_portfolio_rows = _search_active_account_target_portfolio_rows(
+    target_allocation_rows = _search_active_account_target_allocation_rows(
         context,
         account_uid=resolved_account_uid,
     )
-    if not target_portfolio_rows:
+    if not target_allocation_rows:
         return _empty_account_target_positions_snapshot(account_uid=resolved_account_uid)
 
-    position_set_rows = _search_position_set_rows_for_target_portfolios(
+    position_set_rows = _search_position_set_rows_for_target_allocations(
         context,
-        target_portfolio_uids=[
-            str(row["uid"]) for row in target_portfolio_rows if row.get("uid") not in (None, "")
+        target_allocation_uids=[
+            str(row["uid"]) for row in target_allocation_rows if row.get("uid") not in (None, "")
         ],
         position_set_time=target_positions_date,
     )
@@ -290,12 +292,16 @@ def _target_positions_to_frame(
     return pd.DataFrame([dict(row) for row in target_positions])
 
 
-def _portfolio_weight_rows(value: Sequence[Mapping[str, Any]] | pd.DataFrame) -> list[dict[str, Any]]:
+def _portfolio_weight_rows(
+    value: Sequence[Mapping[str, Any]] | pd.DataFrame,
+) -> list[dict[str, Any]]:
     frame = value.reset_index() if isinstance(value, pd.DataFrame) else pd.DataFrame(value)
     required = {"asset_uid", "weight"}
     missing = [column for column in sorted(required) if column not in frame.columns]
     if missing:
-        raise ValueError("Portfolio weight rows are missing required columns: " + ", ".join(missing))
+        raise ValueError(
+            "Portfolio weight rows are missing required columns: " + ", ".join(missing)
+        )
     return [dict(row) for row in frame.to_dict("records")]
 
 
@@ -314,7 +320,9 @@ def _expanded_exposure_columns(
     portfolio_weight = float(weight_row.get("weight") or 0.0)
     exposure = _exposure_columns(target_row)
     if exposure["weight_notional_exposure"] is not None:
-        exposure["weight_notional_exposure"] = float(exposure["weight_notional_exposure"]) * portfolio_weight
+        exposure["weight_notional_exposure"] = (
+            float(exposure["weight_notional_exposure"]) * portfolio_weight
+        )
     if exposure["constant_notional_exposure"] is not None:
         exposure["constant_notional_exposure"] = (
             float(exposure["constant_notional_exposure"]) * portfolio_weight
@@ -322,7 +330,7 @@ def _expanded_exposure_columns(
     return exposure
 
 
-def _search_active_account_target_portfolio_rows(
+def _search_active_account_target_allocation_rows(
     context: MarketsRepositoryContext,
     *,
     account_uid: str,
@@ -330,7 +338,7 @@ def _search_active_account_target_portfolio_rows(
     return [
         row
         for row in operation_result_rows(
-            search_account_target_portfolios(
+            search_account_target_allocations(
                 context,
                 account_uid=account_uid,
                 is_active=True,
@@ -341,20 +349,20 @@ def _search_active_account_target_portfolio_rows(
     ]
 
 
-def _search_position_set_rows_for_target_portfolios(
+def _search_position_set_rows_for_target_allocations(
     context: MarketsRepositoryContext,
     *,
-    target_portfolio_uids: Sequence[str],
+    target_allocation_uids: Sequence[str],
     position_set_time: dt.datetime | str | None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for target_portfolio_uid in target_portfolio_uids:
+    for target_allocation_uid in target_allocation_uids:
         rows.extend(
             row
             for row in operation_result_rows(
                 search_position_sets(
                     context,
-                    account_target_portfolio_uid=target_portfolio_uid,
+                    account_target_allocation_uid=target_allocation_uid,
                     position_set_time=position_set_time,
                     limit=DEFAULT_TARGET_POSITION_SCAN_LIMIT,
                 )
@@ -512,13 +520,13 @@ def _asset_references_by_uid(
     *,
     rows: Sequence[Mapping[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    asset_uids = {
-        str(row["asset_uid"]) for row in rows if row.get("asset_uid") not in (None, "")
-    }
+    asset_uids = {str(row["asset_uid"]) for row in rows if row.get("asset_uid") not in (None, "")}
     if not asset_uids:
         return {}
 
-    asset_rows = operation_result_rows(search_assets(context, limit=DEFAULT_TARGET_POSITION_SCAN_LIMIT))
+    asset_rows = operation_result_rows(
+        search_assets(context, limit=DEFAULT_TARGET_POSITION_SCAN_LIMIT)
+    )
     asset_rows_by_uid = {
         str(row["uid"]): row
         for row in asset_rows
@@ -626,9 +634,11 @@ def _build_asset_snapshot_reference(
 
 def _normalize_uuid_column(values: pd.Series, *, nullable: bool, field_name: str) -> pd.Series:
     return values.map(
-        lambda value: _optional_uuid_string(value, field_name=field_name)
-        if nullable
-        else _required_uuid_string(value, field_name=field_name)
+        lambda value: (
+            _optional_uuid_string(value, field_name=field_name)
+            if nullable
+            else _required_uuid_string(value, field_name=field_name)
+        )
     )
 
 
@@ -733,9 +743,6 @@ def _is_missing(value: Any) -> bool:
 
 __all__ = [
     "TARGET_POSITION_EXPOSURE_FIELDS",
-    "TARGET_POSITION_TARGET_TYPES",
-    "TARGET_TYPE_ASSET",
-    "TARGET_TYPE_PORTFOLIO",
     "build_target_positions_frame",
     "expand_portfolio_target_positions",
     "get_account_target_positions_snapshot_response",

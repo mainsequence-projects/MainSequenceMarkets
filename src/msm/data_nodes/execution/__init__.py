@@ -9,7 +9,7 @@ from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
 )
-from msm.data_nodes.storage import (
+from msm.data_nodes.execution.storage import (
     OrderEventsStorage,
     OrdersStorage,
     TradesStorage,

@@ -15,7 +15,7 @@ from msm.data_nodes.accounts import (
     AccountHoldings,
     HoldingsDataNodeConfiguration,
 )
-from msm.data_nodes.storage import AccountHoldingsStorage
+from msm.data_nodes.accounts.storage import AccountHoldingsStorage
 from msm.data_nodes.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,

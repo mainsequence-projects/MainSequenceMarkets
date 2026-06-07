@@ -5,19 +5,18 @@ from types import SimpleNamespace
 import pytest
 
 from msm.api.base import MarketsMetaTableRow
-from msm.models import AssetTable, CalendarTable, IndexTable
+from msm.api.portfolios import Portfolio
+from msm.models import AssetTable, CalendarTable, IndexTable, PortfolioTable
 from msm_portfolios.api.market_metadata import (
     RebalanceStrategyMetadata,
     SignalMetadata,
 )
 from msm_portfolios.api.portfolios import (
-    Portfolio,
     PortfolioMetadata,
 )
 from msm_portfolios.api.virtual_funds import VirtualFund, VirtualFundHoldingsSet
 from msm_portfolios.models import (
     PortfolioMetadataTable,
-    PortfolioTable,
     RebalanceStrategyMetadataTable,
     SignalMetadataTable,
     VirtualFundHoldingsSetTable,

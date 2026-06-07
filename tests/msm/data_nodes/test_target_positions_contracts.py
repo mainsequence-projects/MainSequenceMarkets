@@ -6,24 +6,23 @@ from types import SimpleNamespace
 
 import pytest
 
+from msm.data_nodes.accounts import TargetPositions, TargetPositionsDataNodeConfiguration
+from msm.data_nodes.accounts.constants import TARGET_TYPE_ASSET, TARGET_TYPE_PORTFOLIO
+from msm.data_nodes.accounts.storage import TargetPositionsStorage
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
-from msm.models import AssetTable, PositionSetTable, markets_sqlalchemy_models
+from msm.models import AssetTable, PortfolioTable, PositionSetTable, markets_sqlalchemy_models
 from msm.models.registration import markets_foreign_key_target_identifiers
-from msm_portfolios.data_nodes import TargetPositions, TargetPositionsDataNodeConfiguration
-from msm_portfolios.data_nodes.storage import TargetPositionsStorage
-from msm_portfolios.models import PortfolioTable, portfolio_sqlalchemy_models
-from msm_portfolios.services.target_positions import (
-    TARGET_TYPE_ASSET,
-    TARGET_TYPE_PORTFOLIO,
+from msm.services.target_positions import (
     build_target_positions_frame,
     expand_portfolio_target_positions,
     validate_target_position_payload,
 )
+from msm_portfolios.models import portfolio_sqlalchemy_models
 
 
-def test_target_positions_storage_belongs_to_portfolio_model_graph() -> None:
+def test_target_positions_storage_belongs_to_core_account_model_graph() -> None:
+    assert TargetPositionsStorage in set(markets_sqlalchemy_models())
     assert TargetPositionsStorage in set(portfolio_sqlalchemy_models())
-    assert TargetPositionsStorage not in set(markets_sqlalchemy_models())
 
 
 def test_target_positions_storage_declares_target_foreign_keys() -> None:
@@ -57,6 +56,14 @@ def test_target_positions_storage_declares_target_index_names() -> None:
         "target_type",
         "target_uid",
     ]
+
+
+def test_target_positions_storage_validates_target_type() -> None:
+    storage = TargetPositionsStorage(target_type=TARGET_TYPE_ASSET)
+
+    assert storage.target_type == TARGET_TYPE_ASSET
+    with pytest.raises(ValueError, match="target_type must be one of: asset, portfolio"):
+        storage.target_type = "fund"
 
 
 def test_target_positions_node_uses_target_position_configuration() -> None:
@@ -157,9 +164,7 @@ def test_portfolio_target_expansion_is_explicit() -> None:
 
     expanded = expand_portfolio_target_positions(
         frame,
-        portfolio_weight_resolver=lambda _portfolio_uid: [
-            {"asset_uid": asset_uid, "weight": 0.25}
-        ],
+        portfolio_weight_resolver=lambda _portfolio_uid: [{"asset_uid": asset_uid, "weight": 0.25}],
     )
 
     row = expanded.iloc[0]

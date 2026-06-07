@@ -11,7 +11,7 @@ from msm.repositories.base import (
     compile_markets_statement,
     execute_markets_operation,
 )
-from msm_portfolios.models import PortfolioTable
+from msm.models import PortfolioTable
 
 
 def build_create_portfolio_operation(

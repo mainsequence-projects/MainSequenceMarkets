@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from msm.models import AssetTable, IndexTable, IndexTypeTable, markets_sqlalchemy_models
 import msm_pricing.meta_tables as pricing_meta_tables
-from msm_pricing.data_nodes.storage import (
-    AssetPricingDetailsStorage,
-    DiscountCurvesStorage,
-    IndexFixingsStorage,
-)
+from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
 from msm_pricing.meta_tables import (
     pricing_meta_table_identifier,
     pricing_sqlalchemy_models,

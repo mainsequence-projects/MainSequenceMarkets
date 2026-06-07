@@ -40,9 +40,11 @@ def test_legacy_data_node_module_paths_are_removed(module_name: str) -> None:
         "msm.data_nodes.utils.namespaces",
         "msm.data_nodes.utils.stamped",
         "msm.data_nodes.utils.storage_schema",
-        "msm.data_nodes.storage",
         "msm.data_nodes.accounts",
+        "msm.data_nodes.accounts.storage",
+        "msm.data_nodes.assets.storage",
         "msm.data_nodes.execution",
+        "msm.data_nodes.execution.storage",
     ],
 )
 def test_data_node_package_structure_imports(module_name: str) -> None:

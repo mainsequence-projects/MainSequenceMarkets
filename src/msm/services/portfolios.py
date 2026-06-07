@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from msm.repositories import MarketsRepositoryContext
-from msm_portfolios.repositories import portfolios as portfolio_repository
+from msm.repositories import portfolios as portfolio_repository
 
 
 def create_portfolio(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:

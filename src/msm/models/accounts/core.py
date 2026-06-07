@@ -14,7 +14,8 @@ from msm.base import (
     new_markets_uid,
 )
 
-from .groups import AccountGroupTable, AccountModelPortfolioTable
+from .allocation_models import AccountAllocationModelTable
+from .groups import AccountGroupTable
 
 
 class AccountTable(MarketsMetaTableMixin, MarketsBase):
@@ -25,8 +26,8 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
         "Canonical account registry keyed by uid and unique_identifier. Stores "
         "client or execution-account identity, status flags, holdings DataNode "
         "linkage, optional account group membership, and account metadata used "
-        "by holdings and execution workflows. Model-portfolio tracking belongs "
-        "to AccountTargetPortfolioTable."
+        "by holdings and execution workflows. Allocation-model tracking belongs "
+        "to AccountTargetAllocationTable."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
@@ -130,14 +131,14 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
     )
 
 
-class AccountTargetPortfolioTable(MarketsMetaTableMixin, MarketsBase):
-    """Account-level target portfolio mandate tracked through position sets."""
+class AccountTargetAllocationTable(MarketsMetaTableMixin, MarketsBase):
+    """Account-level target allocation mandate tracked through position sets."""
 
-    __metatable_identifier__ = "AccountTargetPortfolio"
+    __metatable_identifier__ = "AccountTargetAllocation"
     __metatable_description__ = (
-        "Account target-portfolio registry keyed by unique_identifier. Each row "
-        "connects one account to the account model portfolio it is intended to "
-        "track, and acts as the parent for concrete target PositionSet rows."
+        "Account target-allocation registry keyed by unique_identifier. Each row "
+        "connects one account to the account allocation model it is intended to "
+        "track and acts as the parent for concrete PositionSet rows."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
@@ -152,7 +153,7 @@ class AccountTargetPortfolioTable(MarketsMetaTableMixin, MarketsBase):
         ),
         Index(
             None,
-            "account_model_portfolio_uid",
+            "account_allocation_model_uid",
         ),
         Index(
             None,
@@ -166,7 +167,7 @@ class AccountTargetPortfolioTable(MarketsMetaTableMixin, MarketsBase):
         default=new_markets_uid,
         info={
             "label": "UID",
-            "description": "Stable account target-portfolio identity referenced by PositionSetTable.",
+            "description": "Stable account target-allocation identity referenced by PositionSetTable.",
         },
     )
     unique_identifier: Mapped[str] = mapped_column(
@@ -174,7 +175,7 @@ class AccountTargetPortfolioTable(MarketsMetaTableMixin, MarketsBase):
         nullable=False,
         info={
             "label": "Unique Identifier",
-            "description": "Stable external business key for the account target-portfolio relation.",
+            "description": "Stable external business key for the account target-allocation relation.",
         },
     )
     account_uid: Mapped[uuid.UUID] = mapped_column(
@@ -186,19 +187,19 @@ class AccountTargetPortfolioTable(MarketsMetaTableMixin, MarketsBase):
         nullable=False,
         info={
             "label": "Account UID",
-            "description": "AccountTable.uid for the account that owns this target portfolio.",
+            "description": "AccountTable.uid for the account that owns this target allocation.",
         },
     )
-    account_model_portfolio_uid: Mapped[uuid.UUID] = mapped_column(
+    account_allocation_model_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{AccountModelPortfolioTable.__table__.fullname}.uid",
+            f"{AccountAllocationModelTable.__table__.fullname}.uid",
             ondelete="RESTRICT",
         ),
         nullable=False,
         info={
-            "label": "Account Model Portfolio UID",
-            "description": "AccountModelPortfolioTable.uid for the reusable model being tracked.",
+            "label": "Account Allocation Model UID",
+            "description": "AccountAllocationModelTable.uid for the reusable allocation model being tracked.",
         },
     )
     display_name: Mapped[str | None] = mapped_column(
@@ -206,7 +207,7 @@ class AccountTargetPortfolioTable(MarketsMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Display Name",
-            "description": "Optional display label for the account target-portfolio mandate.",
+            "description": "Optional display label for the account target-allocation mandate.",
         },
     )
     is_active: Mapped[bool] = mapped_column(
@@ -214,7 +215,7 @@ class AccountTargetPortfolioTable(MarketsMetaTableMixin, MarketsBase):
         nullable=False,
         info={
             "label": "Is Active",
-            "description": "Whether this account target-portfolio relation is currently active.",
+            "description": "Whether this account target-allocation relation is currently active.",
         },
     )
     source: Mapped[str | None] = mapped_column(
@@ -230,7 +231,7 @@ class AccountTargetPortfolioTable(MarketsMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Metadata",
-            "description": "JSON metadata for target-portfolio policy, provenance, or labels.",
+            "description": "JSON metadata for target-allocation policy, provenance, or labels.",
         },
     )
 
@@ -303,20 +304,20 @@ class AccountHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
 
 
 class PositionSetTable(MarketsMetaTableMixin, MarketsBase):
-    """Concrete target-position snapshot for an account target portfolio."""
+    """Concrete target-position snapshot for an account target allocation."""
 
     __metatable_identifier__ = "PositionSet"
     __metatable_description__ = (
-        "Target position-set registry keyed by account_target_portfolio_uid and "
+        "Target position-set registry keyed by account_target_allocation_uid and "
         "position_set_time. Each row names one concrete target-position snapshot; "
-        "portfolio-aware target exposure rows live in msm_portfolios "
+        "portfolio-aware target exposure rows live in core msm "
         "TargetPositionsStorage and reference this uid through position_set_uid."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
             None,
-            "account_target_portfolio_uid",
+            "account_target_allocation_uid",
         ),
         Index(
             None,
@@ -324,7 +325,7 @@ class PositionSetTable(MarketsMetaTableMixin, MarketsBase):
         ),
         Index(
             None,
-            "account_target_portfolio_uid",
+            "account_target_allocation_uid",
             "position_set_time",
             unique=True,
         ),
@@ -339,17 +340,17 @@ class PositionSetTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Stable position-set identity referenced by target-position exposure rows.",
         },
     )
-    account_target_portfolio_uid: Mapped[uuid.UUID] = mapped_column(
+    account_target_allocation_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{AccountTargetPortfolioTable.__table__.fullname}.uid",
+            f"{AccountTargetAllocationTable.__table__.fullname}.uid",
             ondelete="CASCADE",
         ),
         nullable=False,
         info={
-            "label": "Account Target Portfolio UID",
+            "label": "Account Target Allocation UID",
             "description": (
-                "AccountTargetPortfolioTable.uid for the account/model mandate this "
+                "AccountTargetAllocationTable.uid for the account allocation mandate this "
                 "position set belongs to."
             ),
         },
@@ -386,6 +387,6 @@ class PositionSetTable(MarketsMetaTableMixin, MarketsBase):
 __all__ = [
     "AccountHoldingsSetTable",
     "AccountTable",
-    "AccountTargetPortfolioTable",
+    "AccountTargetAllocationTable",
     "PositionSetTable",
 ]

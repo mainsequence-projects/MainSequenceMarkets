@@ -50,11 +50,9 @@ def _pricing_data_node_storage_models() -> list[type[MarketsBase]]:
     domain/pricing MetaTables for its FK targets.
     """
 
-    from msm_pricing.data_nodes.storage import (
-        AssetPricingDetailsStorage,
-        DiscountCurvesStorage,
-        IndexFixingsStorage,
-    )
+    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+    from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
 
     return [
         DiscountCurvesStorage,

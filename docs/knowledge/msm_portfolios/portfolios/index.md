@@ -23,16 +23,18 @@ Portfolios answer these questions:
   weights, signal weights, storage initialization, and identity helpers.
 - `msm_portfolios.rebalance_strategy`: rebalance strategy base classes and
   built-in strategies.
+- `msm.models.portfolios`: core SQLAlchemy MetaTable declaration for portfolio
+  identity/reference data.
 - `msm_portfolios.models.portfolios`: SQLAlchemy MetaTable declarations for
-  portfolio identity and portfolio descriptive metadata.
+  portfolio descriptive metadata.
 - `msm_portfolios.models.rebalancing` and `msm_portfolios.models.signals`:
   SQLAlchemy MetaTable declarations for rebalance strategy metadata and signal
   metadata.
-- `msm_portfolios.api.portfolios`: typed row APIs for `Portfolio` and
-  `PortfolioMetadata`.
+- `msm.api.portfolios`: typed row API for core `Portfolio` identity rows.
+- `msm_portfolios.api.portfolios`: typed row API for `PortfolioMetadata`.
 - `msm_portfolios.api.market_metadata`: typed row APIs for `SignalMetadata` and
   `RebalanceStrategyMetadata`.
-- `msm_portfolios.services.portfolios`: service helpers for portfolio rows.
+- `msm.services.portfolios`: service helpers for portfolio identity rows.
 - `msm_portfolios.contrib`: contributed price and signal DataNodes.
 - `msm_portfolios.utils`: small shared logging and time constants only.
 - `msm_portfolios.contrib.signals.regression_utils`: regression helpers used by
@@ -56,12 +58,12 @@ frequency should be explicit in configuration rather than inferred from data.
 Use the typed row API for registry records:
 
 ```python
-import msm_portfolios
+import msm
 
 from msm.api.calendars import Calendar
-from msm_portfolios.api.portfolios import Portfolio
+from msm.api.portfolios import Portfolio
 
-msm_portfolios.start_engine(models=["Calendar", "CalendarDate", "CalendarSession", "Portfolio"])
+msm.start_engine(models=["Calendar", "CalendarDate", "CalendarSession", "Portfolio"])
 
 calendar = Calendar.create_from_pandas_calendar(
     source_identifier="24/7",
@@ -90,19 +92,26 @@ portfolio identity and relationships; they do not store historical portfolio
 values. Historical values, weights, and signal outputs live in DataNode storage
 tables.
 
-Current portfolio SQLAlchemy declarations live under:
+Portfolio identity is core reference data and lives under:
 
 ```text
-src/msm_portfolios/models/portfolios/
+src/msm/models/portfolios/
 ├── __init__.py
-├── core.py       PortfolioTable
-└── metadata.py   PortfolioMetadataTable
+└── core.py       PortfolioTable
 ```
 
 `PortfolioTable` is the canonical portfolio identity row. It is keyed by
 `unique_identifier` and stores optional `portfolio_index_uid` linkage to
 `IndexTable`, plus DataNode UIDs for canonical portfolio outputs. A portfolio is
 not an asset; optional index publication uses a core index row.
+
+Portfolio descriptive metadata remains in `msm_portfolios`:
+
+```text
+src/msm_portfolios/models/portfolios/
+├── __init__.py
+└── metadata.py   PortfolioMetadataTable
+```
 
 `PortfolioMetadataTable` is descriptive metadata keyed by portfolio
 `unique_identifier`. It is intentionally not a foreign-key extension of
@@ -305,19 +314,20 @@ for normal construction workflows.
 
 ## Account Target-Position Exposure To Portfolios
 
-Account model-portfolio registry rows remain core `msm` account concepts:
-`AccountModelPortfolioTable`, `AccountTargetPortfolioTable`, and
+Account allocation registry rows remain core `msm` account concepts:
+`AccountAllocationModelTable`, `AccountTargetAllocationTable`, and
 `PositionSetTable`. The timestamped target exposure rows that can reference a
-constructed portfolio live in `msm_portfolios` because they need a real
-`portfolio_uid -> PortfolioTable.uid` foreign key.
+constructed portfolio are also core account allocation storage. They live in
+`msm.data_nodes.accounts.storage.TargetPositionsStorage`; portfolio workflows may read or
+expand them, but they do not own the table.
 
 ```text
 +-----------------------------+       position_set_uid       +-----------------------------+
 | PositionSetTable            |<-----------------------------| TargetPositionsStorage      |
-| owner: msm                  |                              | owner: msm_portfolios       |
+| owner: msm                  |                              | owner: msm                  |
 |-----------------------------|                              |-----------------------------|
 | uid PK                      |                              | time_index                  |
-| account_target_portfolio_uid|                              | target_type                 |
+| account_target_allocation_uid|                              | target_type                 |
 | position_set_time UTC       |                              | target_uid                  |
 +-----------------------------+                              | asset_uid nullable FK       |
                                                                | portfolio_uid nullable FK   |
@@ -328,6 +338,7 @@ constructed portfolio live in `msm_portfolios` because they need a real
                                                                              v
                                                                +-----------------------------+
                                                                | PortfolioTable              |
+                                                               | owner: msm                  |
                                                                | uid PK                      |
                                                                | unique_identifier unique    |
                                                                +-----------------------------+
@@ -474,9 +485,10 @@ explains what was created.
 Add new portfolio construction configuration in `msm_portfolios.configuration`.
 Add reusable DataNodes under `msm_portfolios.data_nodes` or
 `msm_portfolios.contrib`. Add rebalance logic under
-`msm_portfolios.rebalance_strategy`. Add portfolio metadata persistence through
-`msm_portfolios.models`, `msm_portfolios.repositories`, and
-`msm_portfolios.services`.
+`msm_portfolios.rebalance_strategy`. Add portfolio identity persistence through
+core `msm.models`, `msm.repositories`, `msm.services`, and `msm.api`. Add
+portfolio metadata persistence through `msm_portfolios.models` and
+`msm_portfolios.api`.
 
 ## Related Concepts
 

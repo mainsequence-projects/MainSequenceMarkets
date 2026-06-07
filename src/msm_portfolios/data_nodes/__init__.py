@@ -28,15 +28,14 @@ from .portfolio_identity import (
     compute_portfolio_configuration_hash,
     get_or_create_portfolio_index,
 )
-from .portfolio_weights import PortfolioWeights, normalize_portfolio_weights_frame
+from .portfolios.weights import PortfolioWeights, normalize_portfolio_weights_frame
 from .portfolios import PortfoliosDataNode, normalize_portfolio_values_frame
-from .signal_weights import (
+from .signals import (
     SignalWeights,
     canonical_signal_configuration,
     compute_signal_uid,
     normalize_signal_weights_frame,
 )
-from .target_positions import TargetPositions, TargetPositionsDataNodeConfiguration
 from .virtual_funds import VirtualFundHoldings
 
 __all__ = [
@@ -58,8 +57,6 @@ __all__ = [
     "PortfolioWeights",
     "SignalWeights",
     "SignalWeightsConfiguration",
-    "TargetPositions",
-    "TargetPositionsDataNodeConfiguration",
     "VirtualFundHoldings",
     "PORTFOLIO_CANONICAL_TIME_INDEX_NAME",
     "PortfolioCanonicalDataNode",

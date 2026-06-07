@@ -4,7 +4,7 @@ import datetime as dt
 
 import pandas as pd
 
-from msm_portfolios.data_nodes.portfolio_weights import PortfolioWeights
+from msm_portfolios.data_nodes.portfolios.weights import PortfolioWeights
 
 MICROSECOND_TIME = dt.datetime(2026, 5, 26, 18, 50, 19, 240235, tzinfo=dt.UTC)
 EXPECTED_DTYPE = "datetime64[ns, UTC]"

@@ -1101,7 +1101,7 @@ def test_core_add_account_holdings_snapshot_rejects_existing_without_overwrite(
 def test_account_repository_builds_atomic_holdings_replacement_operation() -> None:
     from mainsequence.client.metatables import MetaTableOperationScopeTable
 
-    from msm.data_nodes.storage import AccountHoldingsStorage
+    from msm.data_nodes.accounts.storage import AccountHoldingsStorage
     from msm.models import AccountHoldingsSetTable
     from msm.repositories import accounts as account_repository
 
@@ -1208,9 +1208,9 @@ def test_core_add_account_holdings_snapshot_rejects_asset_uid_mismatch(
         )
 
 
-def test_portfolio_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
+def test_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
     account_uid = uuid.uuid4()
-    target_portfolio_uid = uuid.uuid4()
+    target_allocation_uid = uuid.uuid4()
     older_position_set_uid = uuid.uuid4()
     latest_position_set_uid = uuid.uuid4()
     asset_uid = uuid.uuid4()
@@ -1218,7 +1218,7 @@ def test_portfolio_account_target_positions_snapshot_selects_latest(monkeypatch)
     older_time = dt.datetime(2026, 6, 1, 10, 30, tzinfo=dt.UTC)
     latest_time = dt.datetime(2026, 6, 2, 10, 30, tzinfo=dt.UTC)
 
-    from msm_portfolios.services import target_positions as target_position_services
+    from msm.services import target_positions as target_position_services
 
     monkeypatch.setattr(
         target_position_services,
@@ -1227,21 +1227,21 @@ def test_portfolio_account_target_positions_snapshot_selects_latest(monkeypatch)
     )
     monkeypatch.setattr(
         target_position_services,
-        "_search_active_account_target_portfolio_rows",
-        lambda context, account_uid: [{"uid": str(target_portfolio_uid)}],
+        "_search_active_account_target_allocation_rows",
+        lambda context, account_uid: [{"uid": str(target_allocation_uid)}],
     )
     monkeypatch.setattr(
         target_position_services,
-        "_search_position_set_rows_for_target_portfolios",
-        lambda context, target_portfolio_uids, position_set_time: [
+        "_search_position_set_rows_for_target_allocations",
+        lambda context, target_allocation_uids, position_set_time: [
             {
                 "uid": str(older_position_set_uid),
-                "account_target_portfolio_uid": str(target_portfolio_uid),
+                "account_target_allocation_uid": str(target_allocation_uid),
                 "position_set_time": older_time,
             },
             {
                 "uid": str(latest_position_set_uid),
-                "account_target_portfolio_uid": str(target_portfolio_uid),
+                "account_target_allocation_uid": str(target_allocation_uid),
                 "position_set_time": latest_time,
             },
         ],
@@ -1386,10 +1386,10 @@ def test_core_account_holdings_snapshot_returns_empty_for_no_data(monkeypatch) -
     }
 
 
-def test_portfolio_account_target_positions_snapshot_returns_empty_for_no_data(monkeypatch) -> None:
+def test_account_target_positions_snapshot_returns_empty_for_no_data(monkeypatch) -> None:
     account_uid = uuid.uuid4()
 
-    from msm_portfolios.services import target_positions as target_position_services
+    from msm.services import target_positions as target_position_services
 
     monkeypatch.setattr(
         target_position_services,
@@ -1398,7 +1398,7 @@ def test_portfolio_account_target_positions_snapshot_returns_empty_for_no_data(m
     )
     monkeypatch.setattr(
         target_position_services,
-        "_search_active_account_target_portfolio_rows",
+        "_search_active_account_target_allocation_rows",
         lambda context, account_uid: [],
     )
 

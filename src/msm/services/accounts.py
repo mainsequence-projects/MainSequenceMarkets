@@ -9,6 +9,7 @@ from typing import Any
 
 from msm.api.base import operation_result_rows
 from msm.repositories import MarketsRepositoryContext
+from msm.repositories import account_allocation_models as allocation_model_repository
 from msm.repositories import accounts as account_repository
 
 DEFAULT_ACCOUNT_PAGE_SIZE = 25
@@ -264,25 +265,39 @@ def delete_account(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str
     return account_repository.delete_account(context, **kwargs)
 
 
-def create_account_target_portfolio(
+def create_account_allocation_model(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return account_repository.create_account_target_portfolio(context, **kwargs)
+    return allocation_model_repository.create_account_allocation_model(context, **kwargs)
 
 
-def search_account_target_portfolios(
+def search_account_allocation_models(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return account_repository.search_account_target_portfolios(context, **kwargs)
+    return allocation_model_repository.search_account_allocation_models(context, **kwargs)
 
 
-def delete_account_target_portfolio(
+def create_account_target_allocation(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return account_repository.delete_account_target_portfolio(context, **kwargs)
+    return account_repository.create_account_target_allocation(context, **kwargs)
+
+
+def search_account_target_allocations(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return account_repository.search_account_target_allocations(context, **kwargs)
+
+
+def delete_account_target_allocation(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return account_repository.delete_account_target_allocation(context, **kwargs)
 
 
 def create_position_set(
@@ -364,7 +379,7 @@ def _search_account_holdings_rows(
     account_uid: str,
     limit: int,
 ) -> list[dict[str, Any]]:
-    from msm.data_nodes.storage import AccountHoldingsStorage
+    from msm.data_nodes.accounts.storage import AccountHoldingsStorage
     from msm.repositories.crud import search_model
 
     return [
@@ -635,7 +650,7 @@ def _latest_asset_snapshots_by_unique_identifier(
     *,
     identifiers: set[str],
 ) -> dict[str, dict[str, Any]]:
-    from msm.data_nodes.storage import AssetSnapshotsStorage
+    from msm.data_nodes.assets.storage import AssetSnapshotsStorage
     from msm.repositories.crud import search_model
 
     rows = operation_result_rows(
@@ -755,17 +770,17 @@ __all__ = [
     "AccountHoldingsSnapshotExistsError",
     "add_account_holdings_snapshot_response",
     "create_account",
-    "create_account_target_portfolio",
+    "create_account_target_allocation",
     "create_position_set",
     "delete_account",
-    "delete_account_target_portfolio",
+    "delete_account_target_allocation",
     "delete_position_set",
     "get_account_by_uid",
     "get_account_frontend_detail_summary",
     "get_account_holdings_snapshot_response",
     "get_account_by_unique_identifier",
     "list_account_rows_response",
-    "search_account_target_portfolios",
+    "search_account_target_allocations",
     "search_accounts",
     "search_position_sets",
     "update_account",

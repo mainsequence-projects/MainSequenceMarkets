@@ -22,7 +22,7 @@ from msm.models import IndexTable
 from msm.models.registration import markets_foreign_key_target_identifiers
 from msm.settings import INDEX_IDENTIFIER_DIMENSION
 from msm_pricing.data_nodes.index_fixings import FixingRatesNode
-from msm_pricing.data_nodes.storage import IndexFixingsStorage
+from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 from msm_pricing.meta_tables import pricing_sqlalchemy_models
 
 

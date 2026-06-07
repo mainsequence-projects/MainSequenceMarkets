@@ -3,33 +3,33 @@ from __future__ import annotations
 from msm.models import (
     AccountGroupTable,
     AccountHoldingsSetTable,
-    AccountModelPortfolioTable,
+    AccountAllocationModelTable,
     AccountTable,
-    AccountTargetPortfolioTable,
+    AccountTargetAllocationTable,
     AssetTable,
     AssetTypeTable,
     CalendarTable,
     IndexTable,
     IndexTypeTable,
     PositionSetTable,
-)
-
-from .portfolios import (
-    PortfolioMetadataTable,
     PortfolioTable,
 )
+
+from .portfolios import PortfolioMetadataTable
 from .rebalancing import RebalanceStrategyMetadataTable
 from .signals import SignalMetadataTable
 from .virtual_funds import VirtualFundHoldingsSetTable, VirtualFundTable
 
 
 def portfolio_sqlalchemy_models() -> list[type]:
-    from msm_portfolios.data_nodes.storage import (
-        ExternalPricesStorage,
+    from msm.data_nodes.accounts.storage import TargetPositionsStorage
+    from msm_portfolios.data_nodes.portfolios.storage import (
         PortfoliosStorage,
         PortfolioWeightsStorage,
-        SignalWeightsStorage,
-        TargetPositionsStorage,
+    )
+    from msm_portfolios.data_nodes.prices.storage import ExternalPricesStorage
+    from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
+    from msm_portfolios.data_nodes.virtual_funds.storage import (
         VirtualFundHoldingsStorage,
     )
 
@@ -39,9 +39,9 @@ def portfolio_sqlalchemy_models() -> list[type]:
         IndexTypeTable,
         IndexTable,
         AccountGroupTable,
-        AccountModelPortfolioTable,
+        AccountAllocationModelTable,
         AccountTable,
-        AccountTargetPortfolioTable,
+        AccountTargetAllocationTable,
         AccountHoldingsSetTable,
         PositionSetTable,
         CalendarTable,
@@ -63,9 +63,9 @@ def portfolio_sqlalchemy_models() -> list[type]:
 __all__ = [
     "AccountGroupTable",
     "AccountHoldingsSetTable",
-    "AccountModelPortfolioTable",
+    "AccountAllocationModelTable",
     "AccountTable",
-    "AccountTargetPortfolioTable",
+    "AccountTargetAllocationTable",
     "AssetTable",
     "AssetTypeTable",
     "CalendarTable",
@@ -73,7 +73,6 @@ __all__ = [
     "IndexTypeTable",
     "PositionSetTable",
     "PortfolioMetadataTable",
-    "PortfolioTable",
     "RebalanceStrategyMetadataTable",
     "SignalMetadataTable",
     "VirtualFundHoldingsSetTable",

@@ -23,7 +23,7 @@ from msm_pricing.data_nodes.curves import (
     CurveDataNodeConfiguration,
     DiscountCurvesNode,
 )
-from msm_pricing.data_nodes.storage import DiscountCurvesStorage
+from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from msm_pricing.meta_tables import pricing_sqlalchemy_models
 from msm_pricing.models import CurveTable
 

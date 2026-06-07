@@ -14,59 +14,6 @@ from msm.base import (
 )
 
 
-class AccountModelPortfolioTable(MarketsMetaTableMixin, MarketsBase):
-    """Named model portfolio that can be tracked by many accounts."""
-
-    __metatable_identifier__ = "AccountModelPortfolio"
-    __metatable_description__ = (
-        "Account model-portfolio registry keyed by model_portfolio_name. Stores "
-        "named portfolio policy metadata that many accounts can track through "
-        "AccountTargetPortfolioTable rows."
-    )
-    __table_args__ = markets_table_args(
-        __metatable_identifier__,
-        Index(
-            None,
-            "model_portfolio_name",
-            unique=True,
-        ),
-    )
-
-    uid: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True),
-        primary_key=True,
-        default=new_markets_uid,
-        info={
-            "label": "UID",
-            "description": "Stable account model-portfolio identity used by account target portfolios.",
-        },
-    )
-    model_portfolio_name: Mapped[str] = mapped_column(
-        String(100),
-        nullable=False,
-        info={
-            "label": "Model Portfolio Name",
-            "description": "Human-readable unique name for the reusable account model portfolio.",
-        },
-    )
-    model_portfolio_description: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-        info={
-            "label": "Model Portfolio Description",
-            "description": "Free-form description of the account model-portfolio policy.",
-        },
-    )
-    metadata_json: Mapped[dict | None] = mapped_column(
-        JSON,
-        nullable=True,
-        info={
-            "label": "Metadata",
-            "description": "JSON metadata for model-portfolio governance, provenance, or labels.",
-        },
-    )
-
-
 class AccountGroupTable(MarketsMetaTableMixin, MarketsBase):
     """Account grouping metadata used by market workflows."""
 
@@ -122,5 +69,4 @@ class AccountGroupTable(MarketsMetaTableMixin, MarketsBase):
 
 __all__ = [
     "AccountGroupTable",
-    "AccountModelPortfolioTable",
 ]

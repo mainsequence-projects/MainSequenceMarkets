@@ -14,7 +14,7 @@ from mainsequence.client.metatables import UpdateStatistics
 from mainsequence.meta_tables import APIDataNode, DataNode
 from msm_portfolios.asset_scope import dedupe_asset_scope
 
-from .base import (
+from ..base import (
     PortfolioCanonicalDataNode,
     PortfolioCanonicalDataNodeConfiguration,
     StorageTable,
@@ -25,15 +25,15 @@ from .base import (
     _require_columns,
     _reset_frame_index,
 )
-from .constants import (
+from ..constants import (
     ASSET_IDENTIFIER,
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
     PORTFOLIO_IDENTIFIER,
     PORTFOLIO_INDEX_IDENTIFIER,
 )
-from .metadata import emit_portfolio_metadata, extract_portfolio_description
-from .portfolio_identity import get_or_create_portfolio_index
-from .portfolio_weights import PortfolioWeights
+from ..metadata import emit_portfolio_metadata, extract_portfolio_description
+from ..portfolio_identity import get_or_create_portfolio_index
+from .weights import PortfolioWeights
 from .storage import PortfoliosStorage
 
 
@@ -109,8 +109,8 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return self
 
     def _initialize_from_portfolio_configuration(self, portfolio_configuration: Any) -> None:
-        from ..contrib.prices.data_nodes import get_interpolated_prices_timeseries
-        from .signal_weights import SignalWeights
+        from ...contrib.prices.data_nodes import get_interpolated_prices_timeseries
+        from ..signals import SignalWeights
 
         self.portfolio_configuration = portfolio_configuration
         self._portfolio_configuration = portfolio_configuration
@@ -191,7 +191,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                 update_only_tree=update_only_tree,
                 remote_scheduler=remote_scheduler,
                 override_update_stats=override_update_stats,
-        )
+            )
 
         _portfolio, portfolio_index = self._resolve_portfolio_identity()
         portfolio_index_unique_identifier = str(portfolio_index.unique_identifier)

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted - amended
 
 ## Context
 
@@ -23,7 +23,7 @@ current coupling points are concrete:
   runtime: `PortfolioWeights`, `PortfoliosDataNode`, `SignalWeights`, and
   `VirtualFundHoldings`.
 - `src/msm/api/portfolios.py` mixes portfolio row APIs and virtual-fund row APIs.
-- `src/msm/data_nodes/storage.py` contains `FundHoldingsStorage`, although that
+- Previously, `src/msm/data_nodes/storage.py` contained `FundHoldingsStorage`, although that
   storage table is owned by virtual-fund workflows.
 - `src/msm/models/execution.py` has hard MetaTable foreign keys to `FundTable`,
   which currently forces execution to know about the fund registry.
@@ -66,10 +66,10 @@ The dependency direction is one-way:
 
 Core `msm` must not import `msm_portfolios`.
 
-Portfolio and virtual-fund code should be moved to `msm_portfolios` without
-compatibility shims unless backward compatibility is explicitly requested in a
-separate decision. The migration should update imports directly in examples,
-docs, and tests.
+Portfolio calculation and virtual-fund workflow code should be moved to
+`msm_portfolios` without compatibility shims unless backward compatibility is
+explicitly requested in a separate decision. The migration should update imports
+directly in examples, docs, and tests.
 
 ### Core `msm` Ownership
 
@@ -77,8 +77,9 @@ The following stay in core `msm`:
 
 - assets, asset types, asset details, asset categories, and asset snapshots;
 - indices and index snapshots;
-- issuers, calendars, accounts, account groups, account model portfolios,
-  account target portfolios, and position sets;
+- issuers, calendars, accounts, account groups, account allocation models,
+  account target allocations, position sets, portfolio identity/reference rows,
+  and account target-position storage;
 - execution models and execution DataNodes;
 - shared DataNode bases and utilities such as `AssetIndexedDataNode`,
   `StampedDataNode`, namespace helpers, datetime normalization, and storage
@@ -86,28 +87,25 @@ The following stay in core `msm`:
 - bootstrap, model registration, repository context, and
   generic CRUD helpers.
 
-`AccountModelPortfolioTable`, `AccountTargetPortfolioTable`, and
-`PositionSetTable` remain core account models. Despite their names, they model
-account mandates and target positions, not the portfolio construction engine.
+`PortfolioTable`, `AccountAllocationModelTable`,
+`AccountTargetAllocationTable`, `PositionSetTable`, and
+`TargetPositionsStorage` remain core models. They model portfolio identity,
+account allocation mandates, and target positions, not the portfolio
+construction engine.
 
 ### `msm_portfolios` Ownership
 
 The new package owns:
 
-- portfolio registry MetaTables:
-  - `PortfolioTable`
-  - `PortfolioMetadataTable`
-  - optional portfolio-index linkage through core `IndexTable`, not
-    `AssetTable`;
+- portfolio metadata and workflow tables that are not portfolio identity;
 - virtual-fund registry MetaTables:
   - `FundTable` initially, with a future naming decision on whether the public
     row API should become `VirtualFund`;
 - portfolio construction metadata:
   - `SignalMetadataTable`
   - `RebalanceStrategyMetadataTable`
-- portfolio and virtual-fund public row APIs:
-  - `Portfolio`
-  - `PortfolioMetadata`
+- portfolio and virtual-fund public row APIs for workflow-owned rows:
+  - `PortfolioMetadata` if/when a separate workflow metadata row is introduced;
   - portfolio-index creation/linking helpers that produce `Index` rows when a
     portfolio needs index-like publication;
   - `Fund` or `VirtualFund`
@@ -302,7 +300,8 @@ src/msm_portfolios/
 Preferred user imports after migration:
 
 ```python
-from msm_portfolios.api.portfolios import Portfolio
+from msm.api.portfolios import Portfolio
+from msm_portfolios.api.portfolios import PortfolioMetadata
 from msm_portfolios.api.virtual_funds import Fund
 from msm_portfolios.data_nodes import PortfolioWeights, PortfoliosDataNode
 from msm_portfolios.contrib.signals.fixed_weights import FixedWeights

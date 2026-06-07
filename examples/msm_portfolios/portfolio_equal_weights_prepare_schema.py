@@ -16,6 +16,7 @@ else:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 from mainsequence.client.metatables import TimeIndexMetaTable  # noqa: E402
+from mainsequence.meta_tables.migrations import namespace_version_location  # noqa: E402
 
 from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
     DYNAMIC_MIGRATION_PROVIDER,
@@ -30,8 +31,8 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
 from examples.msm_portfolios.portfolio_equal_weights_example import (  # noqa: E402
     start_portfolio_example_runtime,
 )
-from migrations import active_namespace_version_location  # noqa: E402
-from msm_portfolios.data_nodes.storage import ExternalPricesStorage  # noqa: E402
+from examples.msm.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE  # noqa: E402
+from msm_portfolios.data_nodes.prices.storage import ExternalPricesStorage  # noqa: E402
 
 
 def print_step(step: int, message: str) -> None:
@@ -64,11 +65,9 @@ def prepare_equal_weight_portfolio_schema(
     source_meta_table = source_handle.meta_table
     source_cadence_repaired = False
     if repair_source_cadence:
-        source_meta_table, source_cadence, source_cadence_repaired = (
-            repair_source_cadence_metadata(
-                source_meta_table,
-                expected_cadence=SOURCE_PRICE_CADENCE,
-            )
+        source_meta_table, source_cadence, source_cadence_repaired = repair_source_cadence_metadata(
+            source_meta_table,
+            expected_cadence=SOURCE_PRICE_CADENCE,
         )
     else:
         source_cadence = source_cadence_from_meta_table(source_meta_table)
@@ -193,9 +192,7 @@ def prepare_equal_weight_portfolio_schema(
             build_equal_weight_portfolio,
         )
 
-        result["portfolio_result"] = build_equal_weight_portfolio(
-            runtime_models=runtime_models
-        )
+        result["portfolio_result"] = build_equal_weight_portfolio(runtime_models=runtime_models)
 
     return result
 
@@ -230,20 +227,15 @@ def _find_dynamic_revision_file(table_name: str) -> Path | None:
 
 def _migration_revision_files() -> set[Path]:
     versions_root = _active_version_directory()
-    return {
-        path
-        for path in versions_root.glob("**/*.py")
-        if path.name != "__init__.py"
-    }
+    return {path for path in versions_root.glob("**/*.py") if path.name != "__init__.py"}
 
 
 def _active_version_directory() -> Path:
-    version_location = active_namespace_version_location()
+    version_location = namespace_version_location(EXAMPLE_METATABLE_NAMESPACE)
     package_name, separator, resource_path = version_location.partition(":")
     if not separator or not package_name or not resource_path:
         raise RuntimeError(
-            "Dynamic migration provider returned an invalid version location: "
-            f"{version_location!r}"
+            f"Dynamic migration provider returned an invalid version location: {version_location!r}"
         )
 
     traversable = resources.files(package_name)

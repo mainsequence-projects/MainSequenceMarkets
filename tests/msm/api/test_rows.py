@@ -12,8 +12,8 @@ from msm.api.base import MarketsMetaTableRow, MarketsRow
 from msm.api.accounts import (
     Account,
     AccountGroup,
-    AccountModelPortfolio,
-    AccountTargetPortfolio,
+    AccountAllocationModel,
+    AccountTargetAllocation,
     PositionSet,
     PositionSetUpsert,
 )
@@ -28,9 +28,9 @@ from msm.api.execution import OrderManager
 from msm.api.indices import Index, IndexType
 from msm.models import (
     AccountGroupTable,
-    AccountModelPortfolioTable,
+    AccountAllocationModelTable,
     AccountTable,
-    AccountTargetPortfolioTable,
+    AccountTargetAllocationTable,
     AssetCategoryMembershipTable,
     AssetCategoryTable,
     AssetTypeTable,
@@ -72,14 +72,14 @@ from msm.models import (
                 "target_identifier",
             ),
         ),
-        (AccountModelPortfolio, AccountModelPortfolioTable, ("model_portfolio_name",)),
+        (AccountAllocationModel, AccountAllocationModelTable, ("allocation_model_name",)),
         (AccountGroup, AccountGroupTable, ("group_name",)),
         (Account, AccountTable, ("unique_identifier",)),
-        (AccountTargetPortfolio, AccountTargetPortfolioTable, ("unique_identifier",)),
+        (AccountTargetAllocation, AccountTargetAllocationTable, ("unique_identifier",)),
         (
             PositionSet,
             PositionSetTable,
-            ("account_target_portfolio_uid", "position_set_time"),
+            ("account_target_allocation_uid", "position_set_time"),
         ),
         (IndexType, IndexTypeTable, ("index_type",)),
         (Index, IndexTable, ("unique_identifier",)),
@@ -102,22 +102,22 @@ def test_legacy_markets_row_name_is_compatibility_alias() -> None:
 
 
 def test_position_set_requires_utc_timestamp() -> None:
-    account_target_portfolio_uid = uuid.uuid4()
+    account_target_allocation_uid = uuid.uuid4()
 
     with pytest.raises(ValidationError):
         PositionSetUpsert(
-            account_target_portfolio_uid=account_target_portfolio_uid,
+            account_target_allocation_uid=account_target_allocation_uid,
             position_set_time="eod",
         )
 
     with pytest.raises(ValidationError):
         PositionSetUpsert(
-            account_target_portfolio_uid=account_target_portfolio_uid,
+            account_target_allocation_uid=account_target_allocation_uid,
             position_set_time=dt.datetime(2026, 5, 25),
         )
 
     payload = PositionSetUpsert(
-        account_target_portfolio_uid=account_target_portfolio_uid,
+        account_target_allocation_uid=account_target_allocation_uid,
         position_set_time="2026-05-25T00:00:00Z",
     )
 
@@ -194,8 +194,8 @@ def test_account_pretty_print_positions_rejects_datanode_run_tuple() -> None:
 def test_account_owns_group_relationship_only() -> None:
     assert AccountGroup.__required_tables__ == [AccountGroupTable]
     assert AccountGroupTable in AccountGroup.__required_tables__
-    assert AccountModelPortfolioTable not in Account.__required_tables__
+    assert AccountAllocationModelTable not in Account.__required_tables__
     assert AccountGroupTable in Account.__required_tables__
     assert "account_group_uid" in AccountTable.__table__.c
-    assert "account_model_portfolio_uid" not in AccountTable.__table__.c
-    assert "account_model_portfolio_uid" not in AccountGroupTable.__table__.c
+    assert "account_allocation_model_uid" not in AccountTable.__table__.c
+    assert "account_allocation_model_uid" not in AccountGroupTable.__table__.c

@@ -13,21 +13,25 @@ from msm_portfolios.contrib.prices.data_nodes import (
     _source_time_indexed_profile_cadence,
     _source_time_indexed_storage_hash,
 )
-from msm_portfolios.data_nodes.portfolio_weights import PortfolioWeights
+from msm_portfolios.data_nodes.portfolios.weights import PortfolioWeights
 from msm_portfolios.data_nodes.portfolios import PortfoliosDataNode
-from msm_portfolios.data_nodes.signal_weights import SignalWeights
-from msm_portfolios.data_nodes.storage import (
-    ExternalPricesStorage,
-    InterpolatedPricesStorage,
+from msm_portfolios.data_nodes.portfolios.storage import (
     PortfolioWeightsStorage,
     PortfoliosStorage,
-    SignalWeightsStorage,
-    TargetPositionsStorage,
-    VirtualFundHoldingsStorage,
+)
+from msm_portfolios.data_nodes.prices.storage import (
+    ExternalPricesStorage,
+    InterpolatedPricesStorage,
     configured_interpolated_prices_storage,
     interpolated_prices_storage_table_name,
 )
-from msm_portfolios.data_nodes.target_positions import TargetPositions
+from msm_portfolios.data_nodes.signals import SignalWeights
+from msm_portfolios.data_nodes.signals.storage import (
+    SignalWeightsStorage,
+)
+from msm_portfolios.data_nodes.virtual_funds.storage import (
+    VirtualFundHoldingsStorage,
+)
 from msm_portfolios.models import portfolio_sqlalchemy_models
 
 
@@ -38,7 +42,7 @@ def test_portfolio_asset_scope_uses_markets_asset_dimension() -> None:
 def test_portfolio_nodes_expose_storage_first_surface(monkeypatch) -> None:
     registered = set(portfolio_sqlalchemy_models())
 
-    for node_cls in (PortfolioWeights, PortfoliosDataNode, SignalWeights, TargetPositions):
+    for node_cls in (PortfolioWeights, PortfoliosDataNode, SignalWeights):
         assert "__data_node_identifier__" not in node_cls.__dict__
         assert "_default_identifier" not in node_cls.__dict__
         assert "_default_description" not in node_cls.__dict__
@@ -69,7 +73,6 @@ def test_portfolio_storage_identifiers_use_camel_case_ts_suffix() -> None:
     assert PortfoliosStorage.metatable_identifier().endswith("PortfoliosTS")
     assert ExternalPricesStorage.metatable_identifier().endswith("ExternalPricesTS")
     assert InterpolatedPricesStorage.metatable_identifier().endswith("InterpolatedPricesTS")
-    assert TargetPositionsStorage.metatable_identifier().endswith("TargetPositionsTS")
     assert VirtualFundHoldingsStorage.metatable_identifier().endswith("VirtualFundHoldingsTS")
 
 

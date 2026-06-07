@@ -18,10 +18,12 @@ Repositories answer these questions:
 - `msm.repositories.base`: repository context, statement compilation, and
   operation execution helpers.
 - `msm.repositories.crud`: generic CRUD builders and execution helpers.
+- `msm.repositories.account_allocation_models`: reusable account allocation
+  model operations.
 - `msm.repositories.accounts`: account-specific repository operations.
-- `msm_portfolios.repositories.virtual_funds`: fund operations and fund lookup by account or
-  portfolio.
-- `msm_portfolios.repositories.portfolios`: portfolio operations.
+- `msm.repositories.portfolios`: core portfolio identity operations.
+- `msm_portfolios.repositories.virtual_funds`: virtual-fund operations and fund lookup by
+  account or portfolio.
 
 ## Key Contracts
 

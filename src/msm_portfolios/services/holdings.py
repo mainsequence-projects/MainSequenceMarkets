@@ -10,13 +10,13 @@ import pandas as pd
 from mainsequence.logconf import logger as _mainsequence_logger
 
 from msm.api.base import operation_result_rows
-from msm.data_nodes.storage import AccountHoldingsStorage
+from msm.data_nodes.accounts.storage import AccountHoldingsStorage
 from msm.repositories.base import MarketsRepositoryContext
 from msm.repositories.crud import search_model
 from msm.services.holdings import validate_holdings_frame
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
-from msm_portfolios.data_nodes.storage import VirtualFundHoldingsStorage
+from msm_portfolios.data_nodes.virtual_funds.storage import VirtualFundHoldingsStorage
 
 logger = _mainsequence_logger.bind(sub_application="markets", component="virtual_funds")
 

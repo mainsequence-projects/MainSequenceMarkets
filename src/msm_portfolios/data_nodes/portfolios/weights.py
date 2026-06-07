@@ -4,19 +4,19 @@ from typing import Any
 
 import pandas as pd
 
-from .base import (
+from ..base import (
     AssetScopedPortfolioCanonicalDataNode,
     StorageTable,
     _empty_flat_frame,
     _require_columns,
     _reset_frame_index,
 )
-from .constants import (
+from ..constants import (
     PORTFOLIO_INDEX_IDENTIFIER,
     PORTFOLIO_WEIGHT_SOURCE_COLUMN_ALIASES,
 )
-from .metadata import emit_portfolio_metadata, extract_portfolio_description
-from .portfolio_identity import (
+from ..metadata import emit_portfolio_metadata, extract_portfolio_description
+from ..portfolio_identity import (
     canonical_portfolio_configuration,
     compute_portfolio_configuration_hash,
     get_or_create_portfolio_index,

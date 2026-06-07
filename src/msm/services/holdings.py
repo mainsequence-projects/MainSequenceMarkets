@@ -9,7 +9,7 @@ from uuid import UUID
 import pandas as pd
 
 from mainsequence.client import dtype_codec as dc
-from msm.data_nodes.storage import AccountHoldingsStorage
+from msm.data_nodes.accounts.storage import AccountHoldingsStorage
 from msm.data_nodes.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,

@@ -141,9 +141,11 @@ def test_get_historical_fixings_uses_persisted_pricing_market_data_binding(
         PricingMarketDataSetBinding,
         "resolve_data_node_uid",
         staticmethod(
-            lambda *, market_data_set, concept_key: data_node_uid
-            if concept_key == PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
-            else None
+            lambda *, market_data_set, concept_key: (
+                data_node_uid
+                if concept_key == PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
+                else None
+            )
         ),
     )
 
@@ -254,9 +256,9 @@ def test_get_historical_discount_curve_uses_persisted_pricing_market_data_bindin
         PricingMarketDataSetBinding,
         "resolve_data_node_uid",
         staticmethod(
-            lambda *, market_data_set, concept_key: data_node_uid
-            if concept_key == PRICING_CONCEPT_DISCOUNT_CURVES
-            else None
+            lambda *, market_data_set, concept_key: (
+                data_node_uid if concept_key == PRICING_CONCEPT_DISCOUNT_CURVES else None
+            )
         ),
     )
 

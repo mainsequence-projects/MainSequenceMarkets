@@ -12,71 +12,71 @@ from msm.api.base import MarketsMetaTableRow
 from msm.models import (
     AccountGroupTable,
     AccountHoldingsSetTable,
-    AccountModelPortfolioTable,
+    AccountAllocationModelTable,
     AccountTable,
-    AccountTargetPortfolioTable,
+    AccountTargetAllocationTable,
     PositionSetTable,
 )
 
 
-class AccountModelPortfolio(MarketsMetaTableRow):
-    """Typed account model-portfolio row."""
+class AccountAllocationModel(MarketsMetaTableRow):
+    """Typed reusable account allocation-model row."""
 
-    __table__: ClassVar[type[AccountModelPortfolioTable]] = AccountModelPortfolioTable
-    __required_tables__: ClassVar[list[type[AccountModelPortfolioTable]]] = [
-        AccountModelPortfolioTable
+    __table__: ClassVar[type[AccountAllocationModelTable]] = AccountAllocationModelTable
+    __required_tables__: ClassVar[list[type[AccountAllocationModelTable]]] = [
+        AccountAllocationModelTable
     ]
-    __upsert_keys__: ClassVar[tuple[str, ...]] = ("model_portfolio_name",)
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("allocation_model_name",)
 
-    model_portfolio_name: str
-    model_portfolio_description: str | None = None
+    allocation_model_name: str
+    allocation_model_description: str | None = None
     metadata_json: dict[str, Any] | None = None
 
     @classmethod
     def create(
         cls,
-        payload: AccountModelPortfolioCreate | Mapping[str, Any] | None = None,
+        payload: AccountAllocationModelCreate | Mapping[str, Any] | None = None,
         **kwargs: Any,
-    ) -> AccountModelPortfolio:
-        values = _validated_payload_values(AccountModelPortfolioCreate, payload, kwargs)
+    ) -> AccountAllocationModel:
+        values = _validated_payload_values(AccountAllocationModelCreate, payload, kwargs)
         return super().create(values)
 
     @classmethod
     def upsert(
         cls,
-        payload: AccountModelPortfolioUpsert | Mapping[str, Any] | None = None,
+        payload: AccountAllocationModelUpsert | Mapping[str, Any] | None = None,
         **kwargs: Any,
-    ) -> AccountModelPortfolio:
-        values = _validated_payload_values(AccountModelPortfolioUpsert, payload, kwargs)
+    ) -> AccountAllocationModel:
+        values = _validated_payload_values(AccountAllocationModelUpsert, payload, kwargs)
         return super().upsert(values)
 
     @classmethod
     def update(
         cls,
         uid: uuid.UUID | str,
-        payload: AccountModelPortfolioUpdate | Mapping[str, Any] | None = None,
+        payload: AccountAllocationModelUpdate | Mapping[str, Any] | None = None,
         **kwargs: Any,
-    ) -> AccountModelPortfolio:
-        values = _validated_payload_values(AccountModelPortfolioUpdate, payload, kwargs)
+    ) -> AccountAllocationModel:
+        values = _validated_payload_values(AccountAllocationModelUpdate, payload, kwargs)
         return super().update(uid, values)
 
 
-class AccountModelPortfolioCreate(BaseModel):
+class AccountAllocationModelCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    model_portfolio_name: str = Field(min_length=1, max_length=100)
-    model_portfolio_description: str | None = None
+    allocation_model_name: str = Field(min_length=1, max_length=100)
+    allocation_model_description: str | None = None
     metadata_json: dict[str, Any] | None = None
 
 
-class AccountModelPortfolioUpsert(AccountModelPortfolioCreate):
-    """Payload for inserting or updating an account model portfolio."""
+class AccountAllocationModelUpsert(AccountAllocationModelCreate):
+    """Payload for inserting or updating an account allocation model."""
 
 
-class AccountModelPortfolioUpdate(BaseModel):
+class AccountAllocationModelUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    model_portfolio_description: str | None = None
+    allocation_model_description: str | None = None
     metadata_json: dict[str, Any] | None = None
 
 
@@ -320,21 +320,21 @@ class AccountHoldingsSetUpdate(BaseModel):
     source_data_node_uid: uuid.UUID | str | None = None
 
 
-class AccountTargetPortfolio(MarketsMetaTableRow):
-    """Typed account target portfolio row."""
+class AccountTargetAllocation(MarketsMetaTableRow):
+    """Typed account target-allocation row."""
 
-    __table__: ClassVar[type[AccountTargetPortfolioTable]] = AccountTargetPortfolioTable
+    __table__: ClassVar[type[AccountTargetAllocationTable]] = AccountTargetAllocationTable
     __required_tables__: ClassVar[list[type[Any]]] = [
-        AccountModelPortfolioTable,
+        AccountAllocationModelTable,
         AccountGroupTable,
         AccountTable,
-        AccountTargetPortfolioTable,
+        AccountTargetAllocationTable,
     ]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
 
     unique_identifier: str
     account_uid: uuid.UUID
-    account_model_portfolio_uid: uuid.UUID
+    account_allocation_model_uid: uuid.UUID
     display_name: str | None = None
     is_active: bool = True
     source: str | None = None
@@ -343,52 +343,52 @@ class AccountTargetPortfolio(MarketsMetaTableRow):
     @classmethod
     def create(
         cls,
-        payload: AccountTargetPortfolioCreate | Mapping[str, Any] | None = None,
+        payload: AccountTargetAllocationCreate | Mapping[str, Any] | None = None,
         **kwargs: Any,
-    ) -> AccountTargetPortfolio:
-        values = _validated_payload_values(AccountTargetPortfolioCreate, payload, kwargs)
+    ) -> AccountTargetAllocation:
+        values = _validated_payload_values(AccountTargetAllocationCreate, payload, kwargs)
         return super().create(values)
 
     @classmethod
     def upsert(
         cls,
-        payload: AccountTargetPortfolioUpsert | Mapping[str, Any] | None = None,
+        payload: AccountTargetAllocationUpsert | Mapping[str, Any] | None = None,
         **kwargs: Any,
-    ) -> AccountTargetPortfolio:
-        values = _validated_payload_values(AccountTargetPortfolioUpsert, payload, kwargs)
+    ) -> AccountTargetAllocation:
+        values = _validated_payload_values(AccountTargetAllocationUpsert, payload, kwargs)
         return super().upsert(values)
 
     @classmethod
     def update(
         cls,
         uid: uuid.UUID | str,
-        payload: AccountTargetPortfolioUpdate | Mapping[str, Any] | None = None,
+        payload: AccountTargetAllocationUpdate | Mapping[str, Any] | None = None,
         **kwargs: Any,
-    ) -> AccountTargetPortfolio:
-        values = _validated_payload_values(AccountTargetPortfolioUpdate, payload, kwargs)
+    ) -> AccountTargetAllocation:
+        values = _validated_payload_values(AccountTargetAllocationUpdate, payload, kwargs)
         return super().update(uid, values)
 
 
-class AccountTargetPortfolioCreate(BaseModel):
+class AccountTargetAllocationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     unique_identifier: str = Field(min_length=1, max_length=255)
     account_uid: uuid.UUID | str
-    account_model_portfolio_uid: uuid.UUID | str
+    account_allocation_model_uid: uuid.UUID | str
     display_name: str | None = Field(default=None, max_length=255)
     is_active: bool = True
     source: str | None = Field(default=None, max_length=255)
     metadata_json: dict[str, Any] | None = None
 
 
-class AccountTargetPortfolioUpsert(AccountTargetPortfolioCreate):
-    """Payload for inserting or updating an account target portfolio."""
+class AccountTargetAllocationUpsert(AccountTargetAllocationCreate):
+    """Payload for inserting or updating an account target allocation."""
 
 
-class AccountTargetPortfolioUpdate(BaseModel):
+class AccountTargetAllocationUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    account_model_portfolio_uid: uuid.UUID | str | None = None
+    account_allocation_model_uid: uuid.UUID | str | None = None
     display_name: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
     source: str | None = Field(default=None, max_length=255)
@@ -400,18 +400,18 @@ class PositionSet(MarketsMetaTableRow):
 
     __table__: ClassVar[type[PositionSetTable]] = PositionSetTable
     __required_tables__: ClassVar[list[type[Any]]] = [
-        AccountModelPortfolioTable,
+        AccountAllocationModelTable,
         AccountGroupTable,
         AccountTable,
-        AccountTargetPortfolioTable,
+        AccountTargetAllocationTable,
         PositionSetTable,
     ]
     __upsert_keys__: ClassVar[tuple[str, ...]] = (
-        "account_target_portfolio_uid",
+        "account_target_allocation_uid",
         "position_set_time",
     )
 
-    account_target_portfolio_uid: uuid.UUID
+    account_target_allocation_uid: uuid.UUID
     position_set_time: dt.datetime
     source: str | None = None
     metadata_json: dict[str, Any] | None = None
@@ -448,7 +448,7 @@ class PositionSet(MarketsMetaTableRow):
 class PositionSetCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    account_target_portfolio_uid: uuid.UUID | str
+    account_target_allocation_uid: uuid.UUID | str
     position_set_time: dt.datetime
     source: str | None = Field(default=None, max_length=255)
     metadata_json: dict[str, Any] | None = None
@@ -577,14 +577,14 @@ __all__ = [
     "AccountHoldingsSetCreate",
     "AccountHoldingsSetUpdate",
     "AccountHoldingsSetUpsert",
-    "AccountModelPortfolio",
-    "AccountModelPortfolioCreate",
-    "AccountModelPortfolioUpdate",
-    "AccountModelPortfolioUpsert",
-    "AccountTargetPortfolio",
-    "AccountTargetPortfolioCreate",
-    "AccountTargetPortfolioUpdate",
-    "AccountTargetPortfolioUpsert",
+    "AccountAllocationModel",
+    "AccountAllocationModelCreate",
+    "AccountAllocationModelUpdate",
+    "AccountAllocationModelUpsert",
+    "AccountTargetAllocation",
+    "AccountTargetAllocationCreate",
+    "AccountTargetAllocationUpdate",
+    "AccountTargetAllocationUpsert",
     "AccountUpdate",
     "AccountUpsert",
     "PositionSet",

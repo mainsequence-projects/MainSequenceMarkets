@@ -12,7 +12,7 @@ from msm.base import MarketsBase, MarketsMetaTableMixin, markets_table_args, new
 from msm.models.registration import markets_meta_table_identifier
 from msm.models import (
     AccountGroupTable,
-    AccountTargetPortfolioTable,
+    AccountTargetAllocationTable,
     AccountTable,
     AssetTypeTable,
     AssetTable,
@@ -38,7 +38,7 @@ from msm.repositories.crud import (
 )
 from msm.repositories.accounts import (
     build_create_account_operation,
-    build_create_account_target_portfolio_operation,
+    build_create_account_target_allocation_operation,
     build_create_position_set_operation,
 )
 
@@ -248,18 +248,18 @@ def test_generic_upsert_operation_uses_physical_name_for_aliased_columns() -> No
 
 def test_position_set_operation_requires_utc_timestamp() -> None:
     context = _repository_context()
-    account_target_portfolio_uid = uuid.uuid4()
+    account_target_allocation_uid = uuid.uuid4()
 
     with pytest.raises(ValueError):
         build_create_position_set_operation(
             context,
-            account_target_portfolio_uid=account_target_portfolio_uid,
+            account_target_allocation_uid=account_target_allocation_uid,
             position_set_time="eod",
         )
 
     operation = build_create_position_set_operation(
         context,
-        account_target_portfolio_uid=account_target_portfolio_uid,
+        account_target_allocation_uid=account_target_allocation_uid,
         position_set_time="2026-05-25T00:00:00Z",
     )
 
@@ -270,25 +270,25 @@ def test_position_set_operation_requires_utc_timestamp() -> None:
     assert operation.statement.parameters["position_set_time"] == "2026-05-25T00:00:00Z"
 
 
-def test_account_target_portfolio_operation_uses_account_and_model_portfolio_links() -> None:
+def test_account_target_allocation_operation_uses_account_and_allocation_model_links() -> None:
     context = _repository_context()
     account_uid = uuid.uuid4()
-    model_portfolio_uid = uuid.uuid4()
+    allocation_model_uid = uuid.uuid4()
 
-    operation = build_create_account_target_portfolio_operation(
+    operation = build_create_account_target_allocation_operation(
         context,
         unique_identifier="acct-main-target",
         account_uid=account_uid,
-        account_model_portfolio_uid=model_portfolio_uid,
+        account_allocation_model_uid=allocation_model_uid,
         display_name="Main Account Target",
     )
 
     assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
-        AccountTargetPortfolioTable,
+        AccountTargetAllocationTable,
     )
     assert operation.statement.parameters["unique_identifier"] == "acct-main-target"
     assert operation.statement.parameters["account_uid"] == account_uid
-    assert operation.statement.parameters["account_model_portfolio_uid"] == model_portfolio_uid
+    assert operation.statement.parameters["account_allocation_model_uid"] == allocation_model_uid
 
 
 def test_account_create_operation_accepts_group_link_only() -> None:
@@ -309,7 +309,7 @@ def test_account_create_operation_accepts_group_link_only() -> None:
         AccountTable,
     )
     assert operation.statement.parameters["account_group_uid"] == account_group_uid
-    assert "account_model_portfolio_uid" not in operation.statement.parameters
+    assert "account_allocation_model_uid" not in operation.statement.parameters
 
 
 def test_generic_get_by_uid_uses_single_primary_key_when_uid_column_is_absent() -> None:

@@ -63,7 +63,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     )
     from msm_pricing.bootstrap import attach_pricing_schemas
     from msm_pricing.data_nodes import CurveConfig, IndexFixingConfiguration
-    from msm_pricing.data_nodes.storage import DiscountCurvesStorage, IndexFixingsStorage
+    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
     from msm_pricing.instruments import FloatingRateBond, Instrument
     from msm_pricing.settings import (
         PRICING_CONCEPT_DISCOUNT_CURVES,
@@ -140,7 +141,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
                 "concept_key": fixing_binding.concept_key,
                 "data_node_uid": fixing_binding.data_node_uid,
                 "storage_table_identifier": fixing_binding.storage_table_identifier,
-            }
+            },
         ],
     )
 

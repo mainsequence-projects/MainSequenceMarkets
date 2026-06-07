@@ -157,15 +157,15 @@ Use this workflow when publishing and inspecting account positions:
 1. Before runtime, run the admin migration flow with
    `mainsequence migrations upgrade --provider migrations:migration head`
    so the package schema is finalized.
-2. Attach account holdings through `msm.start_engine(...)`. When target
-   positions can reference portfolios, attach `Portfolio` and
-   `TargetPositionsStorage` through `msm_portfolios.start_engine(...)`.
-3. Create or upsert the account model portfolio and account group, then create
+2. Attach account holdings and target positions through `msm.start_engine(...)`.
+   When target positions can reference portfolios, include `Portfolio` and
+   `TargetPositionsStorage` in the core `msm` model list.
+3. Create or upsert the account allocation model and account group, then create
    the account with `account_group_uid`.
-4. Create the `AccountTargetPortfolio` relation for the account and model
-   portfolio, then create a UTC `PositionSet` snapshot under that relation.
+4. Create the `AccountTargetAllocation` relation for the account and allocation
+   model, then create a UTC `PositionSet` snapshot under that relation.
 5. Build target-position rows with
-   `msm_portfolios.services.build_target_positions_frame(...)` using
+   `msm.services.build_target_positions_frame(...)` using
    `position_set.uid` as `position_set_uid`, and use `asset_uid` for direct
    asset targets or `portfolio_uid` for portfolio sleeve targets.
 6. Build holdings rows with `build_account_holdings_frame(...)` and attach the
@@ -180,8 +180,8 @@ account plus portfolio path. The default runner prepares the configured
 interpolated price storage revision, upgrades it, chains
 `examples/msm_portfolios/portfolio_equal_weights_example.py` to create a
 reusable portfolio sleeve, then creates the account group, two accounts,
-canonical asset snapshots with ticker/name metadata, one shared account model
-portfolio, account-owned target portfolio relationships, direct asset plus
+canonical asset snapshots with ticker/name metadata, one shared account
+allocation model, account-owned target allocation relationships, direct asset plus
 portfolio `PositionSet` target-row publication, holdings publication, and
 pretty-printed account positions. Use `--skip-schema-prep` only when the
 configured portfolio interpolation table has already been migrated.
@@ -226,7 +226,7 @@ storage table UID. Use `msm_pricing.api.PricingMarketDataSet` and
 
 ```python
 from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
-from msm_pricing.data_nodes.storage import DiscountCurvesStorage
+from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_MARKET_DATA_SET_EOD,

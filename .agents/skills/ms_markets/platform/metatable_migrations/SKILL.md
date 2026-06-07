@@ -10,6 +10,11 @@ MetaTable migrations are handled by `mainsequence-sdk`.
 Use the SDK migration system for schema changes and MetaTable registration:
 
 - `mainsequence.meta_tables.migrations.AlembicMetaTableMigration`
+- `mainsequence.meta_tables.migrations.build_alembic_version_metatable`
+- `mainsequence.meta_tables.migrations.build_metatable_migration_provider`
+- `mainsequence.meta_tables.migrations.build_metatable_model_registry`
+- `mainsequence.meta_tables.migrations.metadata_for_models`
+- `mainsequence.meta_tables.migrations.run_mainsequence_alembic_env`
 - the SDK MetaTable migration CLI
 - the SDK migration tutorial and knowledge docs
 - the project-local SDK migration provider, when the project defines one
@@ -18,6 +23,10 @@ This skill does not own schema migration commands, migration engines, registry
 rows, DDL apply behavior, or built-in ms-markets table registration.
 
 ## Core Rule
+
+The default path is the SDK helper/scaffold path. Do not hand-roll namespace
+slugging, Alembic version-table subclasses, provider model dedupe, Alembic
+`env.py` online/offline boilerplate, or revision templates in ms-markets.
 
 The only ms-markets-specific extension point here is
 `after_register_metatables`.
@@ -44,9 +53,21 @@ Before changing project extension migration wiring, inspect:
 The project SDK provider owns the migrated model list:
 
 ```python
-from mainsequence.meta_tables.migrations import AlembicMetaTableMigration
+from mainsequence.meta_tables.migrations import (
+    build_alembic_version_metatable,
+    build_metatable_migration_provider,
+)
 
-migration = AlembicMetaTableMigration(
+
+ProjectAlembicVersion = build_alembic_version_metatable(
+    class_name="ProjectAlembicVersion",
+    namespace="my-project",
+    identifier="my_project.alembic_version",
+    schema=None,
+    table_name="my_project__alembic_version",
+)
+
+migration = build_metatable_migration_provider(
     package="my_project",
     migration_namespace="my-project",
     script_location="my_project:migrations",
@@ -68,6 +89,8 @@ or mutate schema. The SDK provider already owns schema work.
 ## Review Checklist
 
 - The provider is an SDK `AlembicMetaTableMigration`.
+- Provider construction uses SDK helpers unless a documented SDK helper gap
+  requires a direct constructor.
 - Project tables are listed in the project provider.
 - Default PostgreSQL `public` tables are authored as `schema=None`, not
   `schema="public"`.

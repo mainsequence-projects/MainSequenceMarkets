@@ -9,6 +9,22 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Refactored the `migrations:migration` provider, Alembic environment, model
+  registry, and dynamic portfolio example provider onto the SDK-owned
+  MetaTable migration helpers, with revision directories treated as generated
+  Alembic output rather than pre-existing documentation state.
+- Renamed account allocation APIs and schemas around their actual domain:
+  `AccountModelPortfolio` became `AccountAllocationModel`,
+  `AccountTargetPortfolio` became `AccountTargetAllocation`, and the related
+  fields now use `account_allocation_model_uid` and
+  `account_target_allocation_uid`.
+- Moved `PortfolioTable` identity and account target-position storage into core
+  `msm`; `msm_portfolios` now owns portfolio calculation workflows and
+  virtual-fund allocation workflows that consume core portfolio identity.
+- Reorganized DataNode storage contracts by concept: account storage now lives
+  under `msm.data_nodes.accounts`, asset storage under
+  `msm.data_nodes.assets`, execution storage under `msm.data_nodes.execution`,
+  and portfolio/pricing storage under their matching concept packages.
 - Renamed the one-pass account and portfolio example to
   `examples/msm/accounts/account_portfolio_full_workflow.py` and moved the
   PyCharm run configuration under Accounts because the workflow prepares the
@@ -72,8 +88,8 @@ and this project follows versioned releases.
   SQLAlchemy `ForeignKey(...)` declarations.
 - Added inline SQLAlchemy column labels and descriptions across built-in
   MetaTables and storage tables.
-- Reworked accounts around `Account`, `AccountGroup`, `AccountModelPortfolio`,
-  `AccountTargetPortfolio`, `PositionSet`, and storage-backed holdings and
+- Reworked accounts around `Account`, `AccountGroup`, `AccountAllocationModel`,
+  `AccountTargetAllocation`, `PositionSet`, and storage-backed holdings and
   target positions.
 - Reworked virtual funds as account-owned allocation views instead of synthetic
   asset rows.

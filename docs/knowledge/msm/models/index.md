@@ -34,12 +34,13 @@ Models answer these questions:
 - `msm.models.__init__`: aggregate model exports and `markets_sqlalchemy_models`.
 - `msm.models.registration`: registration and resolution helpers for turning
   SQLAlchemy table declarations into Main Sequence MetaTables.
-- `msm.models.accounts`: account registry, account target portfolios, position
-  sets, account groups, and account model portfolios.
-- `msm.models.accounts.core`: core account registry, account target portfolio,
+- `msm.models.accounts`: account registry, account target allocations, position
+  sets, account groups, and account allocation models.
+- `msm.models.accounts.allocation_models`: reusable account allocation-model
+  registry rows.
+- `msm.models.accounts.core`: core account registry, account target allocation,
   and position-set tables.
-- `msm.models.accounts.groups`: account group and account model-portfolio
-  tables.
+- `msm.models.accounts.groups`: account group tables.
 - `msm.models.assets`: asset-related models, including the core asset registry,
   registered asset types, categories, memberships, and provider details.
 - `msm.models.assets.core`: core asset registry.
@@ -51,7 +52,7 @@ Models answer these questions:
 - `msm_portfolios.models.virtual_funds`: funds.
 - `msm.models.indices`: index type registry and canonical index reference rows.
 - `msm.models.issuers`: issuer reference data used by bond assets.
-- `msm_portfolios.models.portfolios`: portfolios and portfolio metadata.
+- `msm.models.portfolios`: core portfolio identity/reference tables.
 - `msm.models.assets.provider_details`: provider-specific asset metadata.
 - `msm_portfolios.models.rebalancing`: rebalance strategy metadata.
 - `msm_portfolios.models.signals`: signal metadata.

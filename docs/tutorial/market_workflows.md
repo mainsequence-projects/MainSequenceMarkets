@@ -277,7 +277,7 @@ import msm_portfolios
 
 from msm.api.accounts import Account
 from msm.api.calendars import Calendar
-from msm_portfolios.api.portfolios import Portfolio
+from msm.api.portfolios import Portfolio
 from msm_portfolios.api.virtual_funds import VirtualFund
 
 msm_portfolios.start_engine(
@@ -343,11 +343,16 @@ workflow steps, created row UIDs, source price row counts, and published DataNod
 storage UIDs.
 
 ```python
-from msm.api.accounts import AccountHoldingsSet, AccountTargetPortfolio, PositionSet
+from msm.api.accounts import (
+    AccountAllocationModel,
+    AccountHoldingsSet,
+    AccountTargetAllocation,
+    PositionSet,
+)
 from msm.api.assets import Asset
+from msm.api.portfolios import Portfolio
 from msm.services import build_account_holdings_frame
-from msm_portfolios.api.portfolios import Portfolio
-from msm_portfolios.services import build_target_positions_frame
+from msm.services import build_target_positions_frame
 
 holdings_set = AccountHoldingsSet.upsert(
     account_uid=account.uid,
@@ -363,13 +368,16 @@ holdings = build_account_holdings_frame(
     ],
 )
 
-account_target_portfolio = AccountTargetPortfolio.upsert(
+allocation_model = AccountAllocationModel.upsert(
+    allocation_model_name="balanced-allocation-model"
+)
+account_target_allocation = AccountTargetAllocation.upsert(
     unique_identifier="account-main-balanced-target",
     account_uid=account.uid,
-    account_model_portfolio_uid=model_portfolio.uid,
+    account_allocation_model_uid=allocation_model.uid,
 )
 position_set = PositionSet.upsert(
-    account_target_portfolio_uid=account_target_portfolio.uid,
+    account_target_allocation_uid=account_target_allocation.uid,
     position_set_time="2026-05-25T00:00:00Z",
 )
 btc_asset = Asset.upsert(unique_identifier="BTC", asset_type="crypto")

@@ -26,12 +26,12 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
 
 from mainsequence.client.metatables import MetaTableCompiledSQLOperation
-from msm.data_nodes.storage import AccountHoldingsStorage
+from msm.data_nodes.accounts.storage import AccountHoldingsStorage
 from msm.models import (
     AccountGroupTable,
     AccountHoldingsSetTable,
     AccountTable,
-    AccountTargetPortfolioTable,
+    AccountTargetAllocationTable,
     PositionSetTable,
 )
 
@@ -251,12 +251,12 @@ def delete_account(
     )
 
 
-def build_create_account_target_portfolio_operation(
+def build_create_account_target_allocation_operation(
     context: MarketsRepositoryContext,
     *,
     unique_identifier: str,
     account_uid: uuid.UUID | str,
-    account_model_portfolio_uid: uuid.UUID | str,
+    account_allocation_model_uid: uuid.UUID | str,
     display_name: str | None = None,
     is_active: bool = True,
     source: str | None = None,
@@ -264,11 +264,11 @@ def build_create_account_target_portfolio_operation(
 ) -> MetaTableCompiledSQLOperation:
     return build_create_model_operation(
         context,
-        model=AccountTargetPortfolioTable,
+        model=AccountTargetAllocationTable,
         values={
             "unique_identifier": unique_identifier,
             "account_uid": account_uid,
-            "account_model_portfolio_uid": account_model_portfolio_uid,
+            "account_allocation_model_uid": account_allocation_model_uid,
             "display_name": display_name,
             "is_active": is_active,
             "source": source,
@@ -277,22 +277,22 @@ def build_create_account_target_portfolio_operation(
     )
 
 
-def create_account_target_portfolio(
+def create_account_target_allocation(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
     return execute_markets_operation(
-        build_create_account_target_portfolio_operation(context, **kwargs),
+        build_create_account_target_allocation_operation(context, **kwargs),
         context=context,
     )
 
 
-def build_search_account_target_portfolios_operation(
+def build_search_account_target_allocations_operation(
     context: MarketsRepositoryContext,
     *,
     unique_identifier: str | None = None,
     account_uid: uuid.UUID | str | None = None,
-    account_model_portfolio_uid: uuid.UUID | str | None = None,
+    account_allocation_model_uid: uuid.UUID | str | None = None,
     is_active: bool | None = None,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
@@ -300,48 +300,48 @@ def build_search_account_target_portfolios_operation(
     for key, value in {
         "unique_identifier": unique_identifier,
         "account_uid": account_uid,
-        "account_model_portfolio_uid": account_model_portfolio_uid,
+        "account_allocation_model_uid": account_allocation_model_uid,
         "is_active": is_active,
     }.items():
         if value is not None and value != "":
             filters[key] = value
     return build_search_model_operation(
         context,
-        model=AccountTargetPortfolioTable,
+        model=AccountTargetAllocationTable,
         filters=filters,
         limit=limit,
     )
 
 
-def search_account_target_portfolios(
+def search_account_target_allocations(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
     return execute_markets_operation(
-        build_search_account_target_portfolios_operation(context, **kwargs),
+        build_search_account_target_allocations_operation(context, **kwargs),
         context=context,
     )
 
 
-def build_delete_account_target_portfolio_operation(
+def build_delete_account_target_allocation_operation(
     context: MarketsRepositoryContext,
     *,
     uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
     return build_delete_model_operation(
         context,
-        model=AccountTargetPortfolioTable,
+        model=AccountTargetAllocationTable,
         uid=uid,
     )
 
 
-def delete_account_target_portfolio(
+def delete_account_target_allocation(
     context: MarketsRepositoryContext,
     *,
     uid: uuid.UUID | str,
 ) -> dict[str, Any]:
     return execute_markets_operation(
-        build_delete_account_target_portfolio_operation(context, uid=uid),
+        build_delete_account_target_allocation_operation(context, uid=uid),
         context=context,
     )
 
@@ -349,7 +349,7 @@ def delete_account_target_portfolio(
 def build_create_position_set_operation(
     context: MarketsRepositoryContext,
     *,
-    account_target_portfolio_uid: uuid.UUID | str,
+    account_target_allocation_uid: uuid.UUID | str,
     position_set_time: dt.datetime | str,
     source: str | None = None,
     metadata_json: MappingOrDict | None = None,
@@ -358,7 +358,7 @@ def build_create_position_set_operation(
         context,
         model=PositionSetTable,
         values={
-            "account_target_portfolio_uid": account_target_portfolio_uid,
+            "account_target_allocation_uid": account_target_allocation_uid,
             "position_set_time": _utc_timestamp(
                 position_set_time,
                 field_name="position_set_time",
@@ -382,13 +382,13 @@ def create_position_set(
 def build_search_position_sets_operation(
     context: MarketsRepositoryContext,
     *,
-    account_target_portfolio_uid: uuid.UUID | str | None = None,
+    account_target_allocation_uid: uuid.UUID | str | None = None,
     position_set_time: dt.datetime | str | None = None,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
     filters: dict[str, Any] = {}
     for key, value in {
-        "account_target_portfolio_uid": account_target_portfolio_uid,
+        "account_target_allocation_uid": account_target_allocation_uid,
         "position_set_time": (
             _utc_timestamp(position_set_time, field_name="position_set_time")
             if position_set_time is not None
@@ -641,28 +641,28 @@ def _python_scalar(value: Any) -> Any:
 
 __all__ = [
     "build_replace_account_holdings_snapshot_operation",
-    "build_create_account_target_portfolio_operation",
+    "build_create_account_target_allocation_operation",
     "build_create_account_operation",
     "build_create_position_set_operation",
-    "build_delete_account_target_portfolio_operation",
+    "build_delete_account_target_allocation_operation",
     "build_delete_account_operation",
     "build_delete_position_set_operation",
     "build_get_account_by_uid_operation",
     "build_get_account_by_unique_identifier_operation",
     "build_search_accounts_operation",
-    "build_search_account_target_portfolios_operation",
+    "build_search_account_target_allocations_operation",
     "build_search_position_sets_operation",
     "build_update_account_operation",
-    "create_account_target_portfolio",
+    "create_account_target_allocation",
     "create_account",
     "create_position_set",
-    "delete_account_target_portfolio",
+    "delete_account_target_allocation",
     "delete_account",
     "delete_position_set",
     "get_account_by_uid",
     "get_account_by_unique_identifier",
     "replace_account_holdings_snapshot",
-    "search_account_target_portfolios",
+    "search_account_target_allocations",
     "search_accounts",
     "search_position_sets",
     "update_account",

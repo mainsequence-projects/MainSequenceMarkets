@@ -9,10 +9,18 @@ migrations` CLI.
 The provider is exported from `migrations:migration` and contains:
 
 - package: `msm`;
+- migration namespace: the active markets namespace;
 - script location: `migrations:`;
 - target metadata: `MarketsBase.metadata`;
 - Alembic version registry: `MarketsAlembicVersion`;
 - provider model scope: `metatable_provider_models()`.
+
+The provider is constructed with the SDK migration helpers:
+
+- `build_alembic_version_metatable(...)`;
+- `build_metatable_migration_provider(...)`;
+- `build_metatable_model_registry(...)`;
+- `run_mainsequence_alembic_env(...)`.
 
 `MarketsAlembicVersion` stores Alembic state in
 `public.ms_markets__alembic_version`. This package-specific version table avoids
@@ -38,9 +46,9 @@ mainsequence migrations downgrade --provider migrations:migration <revision>
 ```
 
 `revision` is the authoring entrypoint. It creates normal Alembic revision files
-under the active namespace directory in `src/migrations/versions/`. The
-current built-in revision history belongs to
-`src/migrations/versions/mainsequence_examples/`.
+at the SDK-derived version location for the provider namespace. Documentation
+must not assume that revision files have already been generated or that any
+revision has already been applied in a checkout.
 
 `upgrade` runs Alembic through the SDK provider and backend-scoped migration
 connection. After a successful apply, the SDK registers or updates the provider

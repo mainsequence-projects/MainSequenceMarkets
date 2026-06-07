@@ -58,10 +58,10 @@ explicitly changes platform logical identity.
 Initial rename inventory:
 
 ```text
-AccountModelPortfolio         -> AccountModelPortfolioTable
+AccountAllocationModel         -> AccountAllocationModelTable
 AccountGroup                  -> AccountGroupTable
 Account                       -> AccountTable
-AccountTargetPortfolio        -> AccountTargetPortfolioTable
+AccountTargetAllocation        -> AccountTargetAllocationTable
 PositionSet                   -> PositionSetTable
 Asset                         -> AssetTable
 AssetCategory                 -> AssetCategoryTable
@@ -330,15 +330,15 @@ This stage covers the operational identity tables needed before funds,
 portfolios, and execution workflows can expose typed APIs.
 
 - [x] Add Pydantic row and mutation contracts for:
-  `Calendar`, `AccountModelPortfolio`, `AccountGroup`, `Account`, and
-  `AccountTargetPortfolio` / `PositionSet`.
+  `Calendar`, `AccountAllocationModel`, `AccountGroup`, `Account`, and
+  `AccountTargetAllocation` / `PositionSet`.
 - [x] Add `Calendar.create_schemas(...)`, `Calendar.upsert(...)`, and
   lookup/filter helpers.
 - [x] Add `Account.create_schemas(...)`, `Account.upsert(...)`, and
   lookup/filter helpers.
-- [x] Add account-group helpers after account-model-portfolio contracts are in
+- [x] Add account-group helpers after account allocation-model contracts are in
   place.
-- [x] Keep account target portfolios and position sets as explicit relationship
+- [x] Keep account target allocations and position sets as explicit relationship
   APIs; do not hide them inside `Account.upsert(...)` unless a workflow clearly
   owns that mutation.
 

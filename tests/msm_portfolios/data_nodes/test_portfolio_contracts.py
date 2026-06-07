@@ -10,23 +10,21 @@ from msm_portfolios.data_nodes.base import (
     PortfolioCanonicalDataNode,
     PortfolioCanonicalDataNodeConfiguration,
 )
-from msm_portfolios.data_nodes.portfolio_weights import PortfolioWeights
+from msm_portfolios.data_nodes.portfolios.weights import PortfolioWeights
 from msm_portfolios.data_nodes.portfolios import PortfoliosDataNode
-from msm_portfolios.data_nodes.signal_weights import SignalWeights, SignalWeightsConfiguration
-from msm_portfolios.data_nodes.storage import (
+from msm_portfolios.data_nodes.portfolios.storage import (
     PortfolioWeightsStorage,
     PortfoliosStorage,
-    SignalWeightsStorage,
-    TargetPositionsStorage,
 )
-from msm_portfolios.data_nodes.target_positions import TargetPositions
+from msm_portfolios.data_nodes.signals import SignalWeights
+from msm_portfolios.data_nodes import SignalWeightsConfiguration
+from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
 from msm_portfolios.models import portfolio_sqlalchemy_models
 
 PORTFOLIO_NODE_STORAGE = (
     (PortfolioWeights, PortfolioWeightsStorage),
     (SignalWeights, SignalWeightsStorage),
     (PortfoliosDataNode, PortfoliosStorage),
-    (TargetPositions, TargetPositionsStorage),
 )
 
 

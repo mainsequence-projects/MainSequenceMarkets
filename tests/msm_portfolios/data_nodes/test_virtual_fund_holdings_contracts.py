@@ -6,14 +6,14 @@ from types import SimpleNamespace
 import pytest
 from mainsequence.client import dtype_codec as dc
 
-from msm.data_nodes.storage import AccountHoldingsStorage
+from msm.data_nodes.accounts.storage import AccountHoldingsStorage
 from msm.data_nodes.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,
 )
 from msm.models import AccountHoldingsSetTable, AssetTable
 from msm.models.registration import markets_foreign_key_target_identifiers
-from msm_portfolios.data_nodes.storage import VirtualFundHoldingsStorage
+from msm_portfolios.data_nodes.virtual_funds.storage import VirtualFundHoldingsStorage
 from msm_portfolios.data_nodes.virtual_funds import VirtualFundHoldings
 from msm_portfolios.models import (
     VirtualFundHoldingsSetTable,

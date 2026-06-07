@@ -25,6 +25,8 @@ _EXPORTS = {
     "StampedDataNode": ".utils",
     "StampedDataNodeConfiguration": ".utils",
     "StampedFrameMixin": ".utils",
+    "TargetPositions": ".accounts",
+    "TargetPositionsDataNodeConfiguration": ".accounts",
     "Trades": ".execution",
 }
 

@@ -24,7 +24,7 @@ from msm_pricing.data_nodes.index_fixings import (
     FixingRatesNode,
     IndexFixingConfiguration,
 )
-from msm_pricing.data_nodes.storage import IndexFixingsStorage
+from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 from msm_pricing.meta_tables import pricing_sqlalchemy_models
 
 

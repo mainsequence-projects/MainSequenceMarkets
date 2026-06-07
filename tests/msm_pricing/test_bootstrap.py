@@ -37,10 +37,8 @@ def reset_pricing_runtime(monkeypatch) -> None:
 def install_fake_pricing_bootstrap(monkeypatch):
     attach_calls = []
 
-    from msm_pricing.data_nodes.storage import (
-        DiscountCurvesStorage,
-        IndexFixingsStorage,
-    )
+    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 
     monkeypatch.setattr(
         PricingMarketDataSetTable,
@@ -194,9 +192,7 @@ def test_create_pricing_schemas_installs_market_data_configuration_override(
         market_data_set="eod",
         data_node_uids={
             PRICING_CONCEPT_DISCOUNT_CURVES: "00000000-0000-0000-0000-000000000101",
-            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: (
-                "00000000-0000-0000-0000-000000000102"
-            ),
+            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: ("00000000-0000-0000-0000-000000000102"),
         },
     )
 
@@ -255,9 +251,7 @@ def test_create_pricing_schemas_does_not_install_market_data_override_on_schema_
             market_data_configuration={
                 "market_data_set": "eod",
                 "data_node_uids": {
-                    PRICING_CONCEPT_DISCOUNT_CURVES: (
-                        "00000000-0000-0000-0000-000000000201"
-                    ),
+                    PRICING_CONCEPT_DISCOUNT_CURVES: ("00000000-0000-0000-0000-000000000201"),
                 },
             },
         )
@@ -387,20 +381,16 @@ def test_default_market_data_binding_seeding_replaces_when_requested(
     assert PricingMarketDataSetTable in runtime.meta_table_models
     assert PricingMarketDataSetBindingTable in runtime.meta_table_models
     binding_concepts = [
-        call[2]["concept_key"]
-        for call in calls
-        if call[1] is PricingMarketDataSetBindingTable
+        call[2]["concept_key"] for call in calls if call[1] is PricingMarketDataSetBindingTable
     ]
     assert binding_concepts == [
         PRICING_CONCEPT_DISCOUNT_CURVES,
         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
     ]
     assert calls[0][3] == ("set_key",)
-    assert {
-        call[3]
-        for call in calls
-        if call[1] is PricingMarketDataSetBindingTable
-    } == {("market_data_set_uid", "concept_key")}
+    assert {call[3] for call in calls if call[1] is PricingMarketDataSetBindingTable} == {
+        ("market_data_set_uid", "concept_key")
+    }
 
 
 def test_resolve_pricing_runtime_requires_initialized_runtime(monkeypatch) -> None:

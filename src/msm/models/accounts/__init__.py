@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+from .allocation_models import AccountAllocationModelTable
 from .core import (
     AccountHoldingsSetTable,
     AccountTable,
-    AccountTargetPortfolioTable,
+    AccountTargetAllocationTable,
     PositionSetTable,
 )
-from .groups import AccountGroupTable, AccountModelPortfolioTable
+from .groups import AccountGroupTable
 
 __all__ = [
     "AccountGroupTable",
     "AccountHoldingsSetTable",
-    "AccountModelPortfolioTable",
+    "AccountAllocationModelTable",
     "AccountTable",
-    "AccountTargetPortfolioTable",
+    "AccountTargetAllocationTable",
     "PositionSetTable",
 ]

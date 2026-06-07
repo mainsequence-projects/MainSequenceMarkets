@@ -28,9 +28,9 @@ from msm.data_nodes.execution import (
     Orders,
     Trades,
 )
-from msm.data_nodes.storage import (
-    AccountHoldingsStorage,
-    AssetSnapshotsStorage,
+from msm.data_nodes.accounts.storage import AccountHoldingsStorage
+from msm.data_nodes.assets.storage import AssetSnapshotsStorage
+from msm.data_nodes.execution.storage import (
     OrderEventsStorage,
     OrdersStorage,
     TradesStorage,
@@ -42,7 +42,7 @@ from msm.settings import (
     ASSET_IDENTIFIER_DIMENSION as SETTINGS_ASSET_DIMENSION,
 )
 from msm_pricing.data_nodes import AssetPricingDetail
-from msm_pricing.data_nodes.storage import AssetPricingDetailsStorage
+from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
 from msm_pricing.meta_tables import pricing_sqlalchemy_models
 
 

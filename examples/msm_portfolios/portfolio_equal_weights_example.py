@@ -57,7 +57,7 @@ from msm.data_nodes.assets.asset_indexed import (  # noqa: E402
 )
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc  # noqa: E402
 from msm.data_nodes.accounts import AccountHoldings  # noqa: E402
-from msm_portfolios.api.portfolios import Portfolio  # noqa: E402
+from msm.api.portfolios import Portfolio  # noqa: E402
 from msm_portfolios.api.virtual_funds import VirtualFund  # noqa: E402
 from msm_portfolios.configuration import (  # noqa: E402
     AssetsConfiguration,
@@ -73,7 +73,7 @@ from msm_portfolios.contrib.signals.fixed_weights import (  # noqa: E402
     FixedWeights,
     FixedWeightsConfig,
 )
-from msm_portfolios.data_nodes.storage import (  # noqa: E402
+from msm_portfolios.data_nodes.prices.storage import (  # noqa: E402
     ExternalPricesStorage,
 )
 from msm_portfolios.data_nodes import (  # noqa: E402
@@ -519,7 +519,9 @@ def build_equal_weight_portfolio(
         "portfolio_configuration_hash",
         compute_portfolio_configuration_hash(portfolio_configuration),
     )
-    print_detail("source_prices_rows", len(build_example_daily_bars_frame(ASSET_UNIQUE_IDENTIFIERS)))
+    print_detail(
+        "source_prices_rows", len(build_example_daily_bars_frame(ASSET_UNIQUE_IDENTIFIERS))
+    )
 
     print_step(7, "Publishing portfolio DataNode storage outputs.")
     if run_data_nodes:

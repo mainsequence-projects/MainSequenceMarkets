@@ -3,9 +3,9 @@ from __future__ import annotations
 from .accounts import (
     AccountGroupTable,
     AccountHoldingsSetTable,
-    AccountModelPortfolioTable,
+    AccountAllocationModelTable,
     AccountTable,
-    AccountTargetPortfolioTable,
+    AccountTargetAllocationTable,
     PositionSetTable,
 )
 from .assets import (
@@ -27,6 +27,7 @@ from .derivatives import FutureAssetDetailsTable
 from .execution import OrderManagerTable
 from .issuers import IssuerTable
 from .indices import IndexTable, IndexTypeTable
+from .portfolios import PortfolioTable
 
 
 def markets_sqlalchemy_models() -> list[type]:
@@ -50,14 +51,15 @@ def markets_sqlalchemy_models() -> list[type]:
         CalendarDateTable,
         CalendarSessionTable,
         CalendarEventTable,
-        AccountModelPortfolioTable,
+        PortfolioTable,
+        AccountAllocationModelTable,
         AccountGroupTable,
         AccountTable,
         AccountHoldingsSetTable,
         AssetCategoryTable,
         AssetCategoryMembershipTable,
         OpenFigiAssetDetailsTable,
-        AccountTargetPortfolioTable,
+        AccountTargetAllocationTable,
         PositionSetTable,
         OrderManagerTable,
         *_markets_data_node_storage_models(),
@@ -72,9 +74,9 @@ def _markets_data_node_storage_models() -> list[type]:
     ``msm.models`` domain tables for their FK targets).
     """
 
-    from msm.data_nodes.storage import (
-        AccountHoldingsStorage,
-        AssetSnapshotsStorage,
+    from msm.data_nodes.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
+    from msm.data_nodes.assets.storage import AssetSnapshotsStorage
+    from msm.data_nodes.execution.storage import (
         OrderEventsStorage,
         OrdersStorage,
         TradesStorage,
@@ -83,6 +85,7 @@ def _markets_data_node_storage_models() -> list[type]:
     return [
         AssetSnapshotsStorage,
         AccountHoldingsStorage,
+        TargetPositionsStorage,
         OrdersStorage,
         OrderEventsStorage,
         TradesStorage,
@@ -92,9 +95,9 @@ def _markets_data_node_storage_models() -> list[type]:
 __all__ = [
     "AccountGroupTable",
     "AccountHoldingsSetTable",
-    "AccountModelPortfolioTable",
+    "AccountAllocationModelTable",
     "AccountTable",
-    "AccountTargetPortfolioTable",
+    "AccountTargetAllocationTable",
     "AssetCategoryMembershipTable",
     "AssetCategoryTable",
     "AssetTable",
@@ -112,5 +115,6 @@ __all__ = [
     "OpenFigiAssetDetailsTable",
     "OrderManagerTable",
     "PositionSetTable",
+    "PortfolioTable",
     "markets_sqlalchemy_models",
 ]

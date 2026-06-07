@@ -1,8 +1,8 @@
 # Accounts
 
-Accounts are the owner identity layer for holdings, account groups, model
-portfolio tracking, target position sets, and execution routing.
-The account registry and target-portfolio relationships are stored in markets
+Accounts are the owner identity layer for holdings, account groups, allocation
+model tracking, target position sets, and execution routing.
+The account registry and target-allocation relationships are stored in markets
 MetaTables. Account holdings history and target position rows are stored in
 DataNode tables backed by registered `PlatformTimeIndexMetaTable` storage
 classes, because those rows are timestamped observations rather than static
@@ -13,15 +13,15 @@ reference records.
 ```text
 MetaTable
   Row-oriented reference or configuration table registered from SQLAlchemy.
-  AccountTable, AccountGroupTable, AccountModelPortfolioTable,
-  AccountTargetPortfolioTable, and PositionSetTable are MetaTables.
+  AccountTable, AccountGroupTable, AccountAllocationModelTable,
+  AccountTargetAllocationTable, and PositionSetTable are MetaTables.
 
 PlatformTimeIndexMetaTable
   SQLAlchemy storage class registered through the SDK migration/catalog lifecycle. It
   describes the published table shape: time index, dimension indexes, column
   dtypes, foreign keys, and storage identity. AccountHoldings use registered
-  core `msm` storage classes. Portfolio-aware target-position exposure storage
-  is owned by `msm_portfolios` because those rows can reference `PortfolioTable`.
+  core `msm` storage classes. Account target-allocation exposure rows also use
+  a core `msm` storage class, even when one target references a portfolio sleeve.
 ```
 
 Do not confuse these layers. `Account.upsert(...)` writes one account registry
@@ -38,17 +38,17 @@ import datetime as dt
 from msm.api.accounts import (
     Account,
     AccountGroup,
-    AccountModelPortfolio,
-    AccountTargetPortfolio,
+    AccountAllocationModel,
+    AccountTargetAllocation,
     PositionSet,
 )
 from msm.api.assets import Asset
-from msm_portfolios.api.portfolios import Portfolio
-from msm_portfolios.services import build_target_positions_frame
+from msm.api.portfolios import Portfolio
+from msm.services import build_target_positions_frame
 
-model_portfolio = AccountModelPortfolio.upsert(
-    model_portfolio_name="balanced-model",
-    model_portfolio_description="Balanced model tracked by several accounts.",
+allocation_model = AccountAllocationModel.upsert(
+    allocation_model_name="balanced-model",
+    allocation_model_description="Balanced model tracked by several accounts.",
 )
 
 account_group = AccountGroup.upsert(
@@ -66,15 +66,15 @@ account = Account.upsert(
 
 btc_asset = Asset.upsert(unique_identifier="BTC-USD", asset_type="crypto")
 
-target_portfolio = AccountTargetPortfolio.upsert(
+target_allocation = AccountTargetAllocation.upsert(
     unique_identifier="acct-main-balanced-target",
     account_uid=account.uid,
-    account_model_portfolio_uid=model_portfolio.uid,
+    account_allocation_model_uid=allocation_model.uid,
     display_name="Main account balanced target",
 )
 
 position_set = PositionSet.upsert(
-    account_target_portfolio_uid=target_portfolio.uid,
+    account_target_allocation_uid=target_allocation.uid,
     position_set_time=dt.datetime(2026, 5, 25, tzinfo=dt.UTC),
 )
 
@@ -84,8 +84,18 @@ target_positions = build_target_positions_frame(
     target_positions_date=position_set.position_set_time,
     position_set_uid=position_set.uid,
     positions=[
-        {"asset_uid": btc_asset.uid, "weight_notional_exposure": 0.6},
-        {"portfolio_uid": portfolio_sleeve.uid, "weight_notional_exposure": 0.4},
+        {
+            "target_type": "asset",
+            "target_uid": btc_asset.uid,
+            "asset_uid": btc_asset.uid,
+            "weight_notional_exposure": 0.6,
+        },
+        {
+            "target_type": "portfolio",
+            "target_uid": portfolio_sleeve.uid,
+            "portfolio_uid": portfolio_sleeve.uid,
+            "weight_notional_exposure": 0.4,
+        },
     ],
 )
 ```
@@ -137,13 +147,15 @@ prepares the reusable portfolio interpolation schema, then chains the reusable
 equal-weight portfolio workflow. The account example reuses the resulting
 `Portfolio` row as a target sleeve, publishes `AssetSnapshot` rows with
 canonical ticker and name metadata, creates two accounts, assigns both to one
-account group, points both account-specific target portfolio relationships at
-the same reusable `AccountModelPortfolio`, publishes target-position rows
-containing one direct asset target and one portfolio target for each
-`PositionSet`, publishes two-asset account holdings, and pretty-prints positions
-for each account. Pass `--skip-schema-prep` only when the configured portfolio
-interpolation table has already been migrated. Pass
-`--standalone-target-portfolio` or call
+account group, and adds target allocations for those accounts plus the portfolio
+example's allocation account. Each account-owned target relationship points at
+the same reusable `AccountAllocationModel`, and each `PositionSet` publishes one
+direct asset target row with `target_type="asset"` plus one portfolio target row
+with `target_type="portfolio"`. The example then publishes two-asset account
+holdings and pretty-prints positions for each standalone account. Pass
+`--skip-schema-prep` only when the configured portfolio interpolation table has
+already been migrated. Pass
+`--standalone-target-sleeve` or call
 `run_account_portfolio_full_workflow(use_portfolio_example=False)` only when
 testing the account path without chaining the portfolio example.
 
@@ -158,12 +170,13 @@ There is no top-level `msm.accounts` shim. Import account rows from
                          ---------------------------
 
 +-------------------------------+          +-------------------------------+
-| AccountGroupTable             |          | AccountModelPortfolioTable    |
-| MetaTable: AccountGroup       |          | MetaTable: AccountModelPortf. |
+| AccountGroupTable             |          | AccountAllocationModelTable    |
+| MetaTable: AccountGroup       |          | MetaTable: AccountAllocation  |
+|                               |          | Model                         |
 |-------------------------------|          |-------------------------------|
 | uid PK                        |          | uid PK                        |
-| group_name unique             |          | model_portfolio_name unique   |
-| group_description             |          | model_portfolio_description   |
+| group_name unique             |          | allocation_model_name unique   |
+| group_description             |          | allocation_model_description   |
 | metadata_json                 |          | metadata_json                 |
 +---------------+---------------+          +---------------+---------------+
                 ^
@@ -185,34 +198,35 @@ There is no top-level `msm.accounts` shim. Import account rows from
                                 |
                                 | account_uid FK, on delete cascade
                                 v
-+-------------------------------+      account_model_portfolio_uid FK
-| AccountTargetPortfolioTable   |<----------------------------------+
-| MetaTable: AccountTargetPortf.|
++-------------------------------+      account_allocation_model_uid FK
+| AccountTargetAllocationTable   |<----------------------------------+
+| MetaTable: AccountTarget      |
+| Allocation                    |
 |-------------------------------|
 | uid PK                        |
 | unique_identifier unique      |
 | account_uid FK -> Account.uid |
-| account_model_portfolio_uid   |
+| account_allocation_model_uid   |
 | display_name                  |
 | is_active                     |
 | source                        |
 | metadata_json                 |
 +---------------+---------------+
                 |
-                | account_target_portfolio_uid FK, on delete cascade
+                | account_target_allocation_uid FK, on delete cascade
                 v
 +-------------------------------+
 | PositionSetTable              |
 | MetaTable: PositionSet        |
 |-------------------------------|
 | uid PK                        |
-| account_target_portfolio_uid  |
+| account_target_allocation_uid  |
 | position_set_time UTC         |
 | names one target snapshot;    |
 | exposure rows are below       |
 | source                        |
 | metadata_json                 |
-| unique(account_target_portf., |
+| unique(account_target_alloc., |
 |        position_set_time)     |
 +---------------+---------------+
                 |
@@ -222,7 +236,7 @@ There is no top-level `msm.accounts` shim. Import account rows from
 | TargetPositionsStorage        |
 | DynamicTableMetaData /        |
 | PlatformTimeIndexMetaTable     |
-| owner: msm_portfolios         |
+| owner: msm                    |
 |-------------------------------|
 | time_index                    |
 | position_set_uid              |
@@ -238,51 +252,44 @@ There is no top-level `msm.accounts` shim. Import account rows from
              |                  |
              | asset_uid FK     | portfolio_uid FK
              v                  v
-+-------------------------------+
-| AssetTable                    |
-| MetaTable: Asset              |
-|-------------------------------|
-| uid PK                        |
-| unique_identifier unique      |
-+-------------------------------+
-                                +-------------------------------+
-                                | PortfolioTable                |
-                                | MetaTable: Portfolio          |
-                                | owner: msm_portfolios         |
-                                |-------------------------------|
-                                | uid PK                        |
-                                | unique_identifier unique      |
-                                +-------------------------------+
++-------------------------------+        +-------------------------------+
+| AssetTable                    |        | PortfolioTable                |
+| MetaTable: Asset              |        | MetaTable: Portfolio          |
+| owner: msm                    |        | owner: msm                    |
+|-------------------------------|        |-------------------------------|
+| uid PK                        |        | uid PK                        |
+| unique_identifier unique      |        | unique_identifier unique      |
++-------------------------------+        +-------------------------------+
 ```
 
 `AccountTable.uid` is the canonical account identity used by other MetaTables and
 DataNode rows. `unique_identifier` is the stable external business key used for
 lookup and idempotent upserts. `account_group_uid` is optional membership in one
 account group. `holdings_data_node_uid` is optional metadata for an account's
-associated holdings storage; it is not the account identity. Account model
-portfolio tracking does not live on `AccountTable`; it lives on
-`AccountTargetPortfolioTable`.
+associated holdings storage; it is not the account identity. Account allocation
+model tracking does not live on `AccountTable`; it lives on
+`AccountTargetAllocationTable`.
 
-`AccountGroupTable` and `AccountModelPortfolioTable` are independent registries.
-An account group does not point to an account model portfolio. Group membership
-lives on `AccountTable`; model-portfolio tracking lives on
-`AccountTargetPortfolioTable`.
+`AccountGroupTable` and `AccountAllocationModelTable` are independent registries.
+An account group does not point to an account allocation model. Group membership
+lives on `AccountTable`; allocation-model tracking lives on
+`AccountTargetAllocationTable`.
 
-`AccountModelPortfolioTable` is the reusable reference model an account can
+`AccountAllocationModelTable` is the reusable reference model an account can
 track. It does not itself store timestamped positions. Concrete target positions
-are versioned through `AccountTargetPortfolioTable` and `PositionSetTable`:
+are versioned through `AccountTargetAllocationTable` and `PositionSetTable`:
 
-1. `AccountTargetPortfolioTable` says which account is tracking which account
-   model portfolio.
+1. `AccountTargetAllocationTable` says which account is tracking which account
+   allocation model.
 2. `PositionSetTable` names one concrete target snapshot for that account target
-   portfolio at a UTC `position_set_time`.
+   allocation at a UTC `position_set_time`.
 3. `TargetPositionsStorage` stores actual target exposure rows in
-   `msm_portfolios`, points back to `PositionSetTable.uid` with
+   core `msm`, points back to `PositionSetTable.uid` with
    `position_set_uid`, and references exactly one concrete target:
    `asset_uid -> AssetTable.uid` for direct asset exposure or
    `portfolio_uid -> PortfolioTable.uid` for portfolio-sleeve exposure.
 
-This keeps account identity, account grouping, model-portfolio intent, and
+This keeps account identity, account grouping, allocation-model intent, and
 timestamped target rows in separate places.
 
 ## Holdings DataNodes
@@ -354,9 +361,9 @@ Virtual-fund allocation holdings belong to the
 ```text
 1. Register account reference data
 
-   AccountModelPortfolio.upsert(...)
-     -> AccountModelPortfolio API row
-     -> AccountModelPortfolioTable MetaTable
+   AccountAllocationModel.upsert(...)
+     -> AccountAllocationModel API row
+     -> AccountAllocationModelTable MetaTable
 
    AccountGroup.upsert(...)
      -> AccountGroup API row
@@ -408,23 +415,22 @@ uses:
 ```python
 import msm
 
-msm.start_engine(models=["Asset", "AccountModelPortfolio", "AccountGroup", "Account"])
+msm.start_engine(models=["Asset", "AccountAllocationModel", "AccountGroup", "Account"])
 ```
 
-For target portfolios and target position sets without portfolio exposure,
-core account registry rows can be attached through `msm.start_engine(...)`.
-For portfolio-aware target-position storage, use `msm_portfolios.start_engine(...)`
-so the runtime can attach both `PortfolioTable` and `TargetPositionsStorage`:
+Target portfolios and target position storage attach through core
+`msm.start_engine(...)` because `PortfolioTable` is core portfolio identity and
+`TargetPositionsStorage` is account target-allocation storage:
 
 ```python
-import msm_portfolios
+import msm
 
-msm_portfolios.start_engine(
+msm.start_engine(
     models=[
-        "AccountModelPortfolio",
+        "AccountAllocationModel",
         "AccountGroup",
         "Account",
-        "AccountTargetPortfolio",
+        "AccountTargetAllocation",
         "PositionSet",
         "Portfolio",
         "TargetPositionsStorage",
@@ -446,13 +452,15 @@ through typed rows under `msm.api`.
 
 Add timestamped account or fund observations as DataNodes under
 `msm.data_nodes.accounts`. Define the table contract with a
-`PlatformTimeIndexMetaTable` storage class in `msm.data_nodes.storage` and keep
+`PlatformTimeIndexMetaTable` storage class in a concept-owned `msm.data_nodes.*.storage`
+module and keep
 the published row grain explicit.
 
 Add account target-position exposure rows that can point at portfolios under
-`msm_portfolios`. Core `msm` owns the account registry and `PositionSetTable`;
-`msm_portfolios` owns `TargetPositionsStorage` because it has the
-`portfolio_uid -> PortfolioTable.uid` foreign key.
+core `msm`. Core `msm` owns the account registry, `PositionSetTable`,
+`PortfolioTable`, `TargetPositionsStorage`, and the target-position frame
+builders. Portfolio workflows can consume these rows, but they do not own the
+account allocation table.
 
 Do not put holdings rows into `AccountTable`. Do not add static account fields to
 `AccountHoldings`. The split is what keeps account identity stable while

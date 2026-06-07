@@ -1,0 +1,15 @@
+"""Account DataNode storage constants."""
+
+from __future__ import annotations
+
+TARGET_TYPE_ASSET = "asset"
+TARGET_TYPE_PORTFOLIO = "portfolio"
+TARGET_POSITION_TARGET_TYPES = (TARGET_TYPE_ASSET, TARGET_TYPE_PORTFOLIO)
+TARGET_POSITION_TARGET_TYPE_SQL = ", ".join(repr(value) for value in TARGET_POSITION_TARGET_TYPES)
+
+__all__ = [
+    "TARGET_POSITION_TARGET_TYPES",
+    "TARGET_POSITION_TARGET_TYPE_SQL",
+    "TARGET_TYPE_ASSET",
+    "TARGET_TYPE_PORTFOLIO",
+]

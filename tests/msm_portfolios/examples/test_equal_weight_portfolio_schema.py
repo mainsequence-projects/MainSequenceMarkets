@@ -5,6 +5,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+from mainsequence.meta_tables.migrations import metadata_for_models
 
 from examples.msm_portfolios import portfolio_equal_weights_config as config
 from examples.msm_portfolios import portfolio_equal_weights_example as example
@@ -138,7 +139,7 @@ def test_dynamic_migration_metadata_contains_only_configured_table(monkeypatch) 
         monkeypatch.setenv(key, value)
 
     storage = config.dynamic_storage_from_env()
-    metadata = config.metadata_for_storage_model(storage)
+    metadata = metadata_for_models([storage])
 
     assert list(metadata.tables) == [storage.__table__.name]
 
@@ -161,9 +162,7 @@ def test_dynamic_migration_provider_imports_with_source_env(monkeypatch) -> None
             source_cadence="1d",
         ).__table__.name
     )
-    assert module.migration.metatable_models == [
-        module.DYNAMIC_INTERPOLATED_PRICES_STORAGE
-    ]
+    assert module.migration.metatable_models == [module.DYNAMIC_INTERPOLATED_PRICES_STORAGE]
 
 
 def test_dynamic_revision_message_uses_configured_table_suffix() -> None:
@@ -171,13 +170,15 @@ def test_dynamic_revision_message_uses_configured_table_suffix() -> None:
     table_suffix = table_name.rsplit("_", 1)[-1]
 
     assert prep._dynamic_revision_message(table_name, revision_message=None) == (
-        "portfolio_equal_weights_dynamic_interpolated_prices_"
-        f"{table_suffix}"
+        f"portfolio_equal_weights_dynamic_interpolated_prices_{table_suffix}"
     )
-    assert prep._dynamic_revision_message(
-        table_name,
-        revision_message="custom revision",
-    ) == "custom revision"
+    assert (
+        prep._dynamic_revision_message(
+            table_name,
+            revision_message="custom revision",
+        )
+        == "custom revision"
+    )
 
 
 def test_find_dynamic_revision_file_detects_existing_create_table(
@@ -189,15 +190,11 @@ def test_find_dynamic_revision_file_detects_existing_create_table(
     table_name = _configured_dynamic_table_name()
     revision_file = revisions_root / "0009_dynamic.py"
     revision_file.write_text(
-        "from alembic import op\n"
-        "def upgrade():\n"
-        f"    op.create_table('{table_name}')\n",
+        f"from alembic import op\ndef upgrade():\n    op.create_table('{table_name}')\n",
         encoding="utf-8",
     )
     (revisions_root / "0010_other.py").write_text(
-        "from alembic import op\n"
-        "def upgrade():\n"
-        "    op.create_table('other_table')\n",
+        "from alembic import op\ndef upgrade():\n    op.create_table('other_table')\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(prep, "_active_version_directory", lambda: revisions_root)
@@ -216,9 +213,7 @@ def test_prepare_schema_runs_upgrade_when_metadata_already_exists(
         time_indexed_profile=SimpleNamespace(cadence="1d"),
     )
     existing_dynamic_table = SimpleNamespace(uid="dynamic-storage-uid")
-    runtime = SimpleNamespace(
-        table=lambda _model: SimpleNamespace(meta_table=source_meta_table)
-    )
+    runtime = SimpleNamespace(table=lambda _model: SimpleNamespace(meta_table=source_meta_table))
     table_name = _configured_dynamic_table_name()
     revision_file = tmp_path / "0009_dynamic.py"
     commands = []
@@ -231,16 +226,14 @@ def test_prepare_schema_runs_upgrade_when_metadata_already_exists(
     monkeypatch.setattr(
         prep,
         "_find_dynamic_revision_file",
-        lambda requested_table_name: revision_file
-        if requested_table_name == table_name
-        else None,
+        lambda requested_table_name: revision_file if requested_table_name == table_name else None,
     )
     monkeypatch.setattr(
         prep,
         "_find_time_index_meta_table",
-        lambda requested_table_name: existing_dynamic_table
-        if requested_table_name == table_name
-        else None,
+        lambda requested_table_name: (
+            existing_dynamic_table if requested_table_name == table_name else None
+        ),
     )
     monkeypatch.setattr(
         prep,

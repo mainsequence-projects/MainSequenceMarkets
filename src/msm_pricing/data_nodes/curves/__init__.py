@@ -12,7 +12,7 @@ from msm.data_nodes.utils.stamped import (
     StampedDataNodeConfiguration,
 )
 
-from .curve_codec import compress_curve_to_string
+from ..curve_codec import compress_curve_to_string
 from .storage import CURVE_IDENTIFIER_DIMENSION, DiscountCurvesStorage
 
 CURVE_IDENTIFIER = CURVE_IDENTIFIER_DIMENSION

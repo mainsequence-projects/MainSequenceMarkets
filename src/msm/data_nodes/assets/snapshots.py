@@ -10,7 +10,7 @@ from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
 )
-from msm.data_nodes.storage import AssetSnapshotsStorage
+from msm.data_nodes.assets.storage import AssetSnapshotsStorage
 from msm.data_nodes.utils.stamped import (
     StampedDataNodeConfiguration,
     StampedFrameMixin,
@@ -219,8 +219,7 @@ def _backend_frame_contains_asset_snapshot_key(
     flat["time_index"] = normalize_datetime64_ns_utc(flat["time_index"])
     flat[ASSET_IDENTIFIER_DIMENSION] = flat[ASSET_IDENTIFIER_DIMENSION].astype(str)
     return (
-        (flat["time_index"] == time_index)
-        & (flat[ASSET_IDENTIFIER_DIMENSION] == unique_identifier)
+        (flat["time_index"] == time_index) & (flat[ASSET_IDENTIFIER_DIMENSION] == unique_identifier)
     ).any()
 
 

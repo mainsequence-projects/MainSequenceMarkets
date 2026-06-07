@@ -28,7 +28,7 @@ from msm.base import (
     markets_table_storage_app,
     markets_table_storage_name,
 )
-from msm.data_nodes.storage import AccountHoldingsStorage
+from msm.data_nodes.accounts.storage import AccountHoldingsStorage
 from migrations.registry import metatable_provider_models
 from msm.models.registration import (
     build_markets_registration_requests,
@@ -39,9 +39,9 @@ from msm.models.registration import (
 )
 from msm.models import (
     AccountGroupTable,
-    AccountModelPortfolioTable,
+    AccountAllocationModelTable,
     AccountTable,
-    AccountTargetPortfolioTable,
+    AccountTargetAllocationTable,
     AssetTypeTable,
     AssetTable,
     BondAssetDetailsTable,
@@ -452,8 +452,8 @@ def test_asset_type_model_is_registry_table() -> None:
 
 def test_account_relationships_live_on_account_table() -> None:
     assert "account_group_uid" in AccountTable.__table__.c
-    assert "account_model_portfolio_uid" not in AccountTable.__table__.c
-    assert "account_model_portfolio_uid" not in AccountGroupTable.__table__.c
+    assert "account_allocation_model_uid" not in AccountTable.__table__.c
+    assert "account_allocation_model_uid" not in AccountGroupTable.__table__.c
 
     group_column = AccountTable.__table__.c["account_group_uid"]
 
@@ -466,10 +466,10 @@ def test_account_relationships_live_on_account_table() -> None:
 
 def test_account_metatable_columns_are_described() -> None:
     for model in [
-        AccountModelPortfolioTable,
+        AccountAllocationModelTable,
         AccountGroupTable,
         AccountTable,
-        AccountTargetPortfolioTable,
+        AccountTargetAllocationTable,
         PositionSetTable,
     ]:
         for column in model.__table__.columns:
@@ -477,27 +477,27 @@ def test_account_metatable_columns_are_described() -> None:
             assert column.info.get("description"), f"{model.__name__}.{column.name}"
 
 
-def test_account_target_portfolio_owns_position_sets() -> None:
-    assert "account_uid" in AccountTargetPortfolioTable.__table__.c
-    assert "account_model_portfolio_uid" in AccountTargetPortfolioTable.__table__.c
-    assert "account_target_portfolio_uid" in PositionSetTable.__table__.c
+def test_account_target_allocation_owns_position_sets() -> None:
+    assert "account_uid" in AccountTargetAllocationTable.__table__.c
+    assert "account_allocation_model_uid" in AccountTargetAllocationTable.__table__.c
+    assert "account_target_allocation_uid" in PositionSetTable.__table__.c
     assert "position_set_time" in PositionSetTable.__table__.c
 
-    target_account_column = AccountTargetPortfolioTable.__table__.c["account_uid"]
-    target_model_column = AccountTargetPortfolioTable.__table__.c["account_model_portfolio_uid"]
-    position_set_parent_column = PositionSetTable.__table__.c["account_target_portfolio_uid"]
+    target_account_column = AccountTargetAllocationTable.__table__.c["account_uid"]
+    target_model_column = AccountTargetAllocationTable.__table__.c["account_allocation_model_uid"]
+    position_set_parent_column = PositionSetTable.__table__.c["account_target_allocation_uid"]
 
     assert any(
         foreign_key.column is AccountTable.__table__.c.uid and foreign_key.ondelete == "CASCADE"
         for foreign_key in target_account_column.foreign_keys
     )
     assert any(
-        foreign_key.column is AccountModelPortfolioTable.__table__.c.uid
+        foreign_key.column is AccountAllocationModelTable.__table__.c.uid
         and foreign_key.ondelete == "RESTRICT"
         for foreign_key in target_model_column.foreign_keys
     )
     assert any(
-        foreign_key.column is AccountTargetPortfolioTable.__table__.c.uid
+        foreign_key.column is AccountTargetAllocationTable.__table__.c.uid
         and foreign_key.ondelete == "CASCADE"
         for foreign_key in position_set_parent_column.foreign_keys
     )

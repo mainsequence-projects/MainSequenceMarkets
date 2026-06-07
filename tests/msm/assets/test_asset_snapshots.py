@@ -16,10 +16,10 @@ from msm.data_nodes.assets import (
     AssetSnapshot,
     AssetSnapshotConfiguration,
 )
-from msm.data_nodes.storage import AssetSnapshotsStorage
+from msm.data_nodes.assets.storage import AssetSnapshotsStorage
 from msm.services.assets.openfigi import build_asset_snapshot_frame_from_openfigi_result
 from msm_pricing.data_nodes import AssetPricingDetail, AssetPricingDetailConfiguration
-from msm_pricing.data_nodes.storage import AssetPricingDetailsStorage
+from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
 
 
 def test_asset_snapshot_build_frame_validates_storage_index() -> None:

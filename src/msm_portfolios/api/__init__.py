@@ -11,14 +11,10 @@ from .market_metadata import (
     SignalMetadataUpsert,
 )
 from .portfolios import (
-    Portfolio,
-    PortfolioCreate,
     PortfolioMetadata,
     PortfolioMetadataCreate,
     PortfolioMetadataUpdate,
     PortfolioMetadataUpsert,
-    PortfolioUpdate,
-    PortfolioUpsert,
 )
 from .virtual_funds import (
     VirtualFund,
@@ -32,14 +28,10 @@ from .virtual_funds import (
 )
 
 __all__ = [
-    "Portfolio",
-    "PortfolioCreate",
     "PortfolioMetadata",
     "PortfolioMetadataCreate",
     "PortfolioMetadataUpdate",
     "PortfolioMetadataUpsert",
-    "PortfolioUpdate",
-    "PortfolioUpsert",
     "RebalanceStrategyMetadata",
     "RebalanceStrategyMetadataCreate",
     "RebalanceStrategyMetadataUpdate",

@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import MetaData
 
 if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -20,10 +19,8 @@ from examples.msm.platform.bootstrap import (  # noqa: E402
 
 os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
-from mainsequence.meta_tables import sqlalchemy_naming_convention  # noqa: E402
-
 from examples.msm.assets.utils import EXAMPLE_CRYPTO_ASSETS  # noqa: E402
-from msm_portfolios.data_nodes.storage import (  # noqa: E402
+from msm_portfolios.data_nodes.prices.storage import (  # noqa: E402
     ExternalPricesStorage,
     configured_interpolated_prices_storage,
 )
@@ -209,14 +206,6 @@ def dynamic_storage_from_env() -> type[Any]:
     )
 
 
-def metadata_for_storage_model(storage_model: type[Any]) -> MetaData:
-    """Return isolated SQLAlchemy metadata containing only the configured table."""
-
-    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
-    storage_model.__table__.to_metadata(metadata)
-    return metadata
-
-
 __all__ = [
     "ACCOUNT_GROUP_NAME",
     "ACCOUNT_UNIQUE_IDENTIFIER",
@@ -241,7 +230,6 @@ __all__ = [
     "configured_equal_weight_interpolated_prices_storage",
     "dynamic_provider_env",
     "dynamic_storage_from_env",
-    "metadata_for_storage_model",
     "repair_source_cadence_metadata",
     "source_cadence_from_meta_table",
     "source_storage_hash_from_meta_table",

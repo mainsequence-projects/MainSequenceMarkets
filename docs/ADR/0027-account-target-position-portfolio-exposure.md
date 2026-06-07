@@ -2,25 +2,25 @@
 
 ## Status
 
-Accepted - implemented
+Accepted - implemented and amended
 
 This ADR defines the target architecture for account target-position rows that
 can reference either direct assets or constructed portfolios.
 
 ## Context
 
-`AccountModelPortfolioTable`, `AccountTargetPortfolioTable`, and
+`AccountAllocationModelTable`, `AccountTargetAllocationTable`, and
 `PositionSetTable` are core account concepts. They define:
 
 ```text
-AccountModelPortfolioTable
-  reusable model mandate
+AccountAllocationModelTable
+  reusable allocation model
 
-AccountTargetPortfolioTable
-  account -> account model mandate
+AccountTargetAllocationTable
+  account -> account allocation-model mandate
 
 PositionSetTable
-  concrete UTC-stamped target snapshot for one account target portfolio
+  concrete UTC-stamped target snapshot for one account target allocation
 ```
 
 The actual target exposure rows currently live in `TargetPositionsStorage` and
@@ -49,9 +49,9 @@ portfolio is not a traded/custodied asset. Using the optional portfolio
 `IndexTable` linkage is also wrong because an index is a publication or
 benchmark representation, not the target exposure object.
 
-ADR 0019 keeps portfolio construction models in `msm_portfolios`.
-`PortfolioTable` is owned by `msm_portfolios`, while core account registry rows
-remain in `msm`.
+ADR 0019 keeps portfolio construction workflows in `msm_portfolios`.
+`PortfolioTable` is core `msm` portfolio identity/reference data, while
+`msm_portfolios` owns portfolio calculation DataNodes and strategies.
 
 ## Decision
 
@@ -112,22 +112,24 @@ target_type = "portfolio"
 
 ## Package Boundary
 
-The expanded storage table references `PortfolioTable`, which lives in
-`msm_portfolios`. Core `msm` must not import `msm_portfolios`.
+The expanded storage table references `PortfolioTable`. Portfolio identity is a
+core reference concept because account target allocations, virtual funds, and
+portfolio calculation workflows all need to reference the same portfolio row.
+Core `msm` still must not import `msm_portfolios`.
 
 Therefore:
 
-- `AccountTable`, `AccountGroupTable`, `AccountModelPortfolioTable`,
-  `AccountTargetPortfolioTable`, `AccountHoldingsSetTable`, and
+- `AccountTable`, `AccountGroupTable`, `AccountAllocationModelTable`,
+  `AccountTargetAllocationTable`, `AccountHoldingsSetTable`, and
   `PositionSetTable` remain in core `msm`.
+- `PortfolioTable` remains in core `msm` as portfolio identity/reference data.
 - The expanded portfolio-aware target-position storage and its DataNode belong
-  to `msm_portfolios`.
-- Core `msm` should not own a storage table that has a foreign key to
-  `PortfolioTable`.
+  to core `msm`, because account target allocation is an account concept.
+- `msm_portfolios` owns portfolio calculation DataNodes, strategies, signal
+  metadata, and virtual-fund workflows that consume or produce portfolio data.
 
 This amends ADR 0019 by clarifying that account target-position registry rows
-remain core, but portfolio-aware target-position exposure storage is a
-portfolio-package integration.
+and account target-position exposure storage remain core.
 
 ## Relationship Diagram
 
@@ -135,25 +137,27 @@ portfolio-package integration.
                          Account Mandate Registry
 
 +-------------------------------+
-| AccountModelPortfolioTable    |
-| MetaTable: AccountModelPortf. |
+| AccountAllocationModelTable    |
+| MetaTable: AccountAllocation  |
+| Model                         |
 |-------------------------------|
 | uid PK                        |
-| model_portfolio_name unique   |
+| allocation_model_name unique   |
 +---------------+---------------+
                 |
-                | account_model_portfolio_uid
+                | account_allocation_model_uid
                 v
 +-------------------------------+        +-------------------------------+
-| AccountTargetPortfolioTable   |        | AccountTable                  |
-| MetaTable: AccountTargetPortf.|        | MetaTable: Account            |
+| AccountTargetAllocationTable   |        | AccountTable                  |
+| MetaTable: AccountTarget      |        | MetaTable: Account            |
+| Allocation                    |        |                               |
 |-------------------------------|        |-------------------------------|
 | uid PK                        |        | uid PK                        |
 | account_uid FK ---------------+------->| account identity              |
-| account_model_portfolio_uid   |        +-------------------------------+
+| account_allocation_model_uid   |        +-------------------------------+
 +---------------+---------------+
                 |
-                | account_target_portfolio_uid
+                | account_target_allocation_uid
                 v
 +-------------------------------+
 | PositionSetTable              |
@@ -168,7 +172,7 @@ portfolio-package integration.
 +-------------------------------+
 | TargetPositionsStorage        |
 | PlatformTimeIndexMetaTable    |
-| owner: msm_portfolios         |
+| owner: msm                    |
 |-------------------------------|
 | time_index                    |
 | position_set_uid FK           |
@@ -186,7 +190,7 @@ portfolio-package integration.
 | MetaTable: Asset  |    | MetaTable:        |
 | owner: msm        |    | Portfolio         |
 +-------------------+    | owner:            |
-                         | msm_portfolios    |
+                         | msm               |
                          +-------------------+
 ```
 
@@ -228,9 +232,8 @@ the docs still describe target positions as asset-only or still show
 Required documentation updates:
 
 - `docs/knowledge/msm/accounts/index.md` must explain that core account rows own
-  account identity, account groups, model mandates, account target portfolios,
-  and position sets, while portfolio-aware target exposure storage lives in
-  `msm_portfolios`.
+  account identity, account groups, allocation models, account target
+  allocations, position sets, and portfolio-aware target exposure storage.
 - `docs/knowledge/msm/accounts/index.md` must replace the asset-only target
   position diagrams with diagrams showing `target_type`, `target_uid`,
   `asset_uid`, and `portfolio_uid`.
@@ -265,7 +268,7 @@ Required documentation updates:
 ## Implementation Tasks
 
 - [x] Move portfolio-aware target-position storage ownership to
-      `msm_portfolios` while keeping account registry MetaTables in core `msm`.
+      core `msm` together with account target-allocation registry rows.
 - [x] Replace `TargetPositionsStorage.asset_identifier` with `target_type`,
       `target_uid`, `asset_uid`, and `portfolio_uid`.
 - [x] Change `TargetPositionsStorage.__index_names__` to

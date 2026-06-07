@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 import mainsequence.meta_tables.data_nodes.build_operations as build_operations
 
-from .base import (
+from ..base import (
     AssetScopedPortfolioCanonicalDataNode,
     PortfolioCanonicalDataNodeConfiguration,
     SignalWeightsConfiguration,
@@ -23,12 +23,12 @@ from .base import (
     _require_columns,
     _reset_frame_index,
 )
-from .constants import (
+from ..constants import (
     ASSET_IDENTIFIER,
     SIGNAL_UID,
     SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS,
 )
-from .metadata import emit_signal_metadata, extract_signal_description
+from ..metadata import emit_signal_metadata, extract_signal_description
 from .storage import SignalWeightsStorage
 
 

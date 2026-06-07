@@ -105,7 +105,7 @@ table UID used by `APIDataNode.build_from_table_uid(...)`:
 
 ```python
 from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
-from msm_pricing.data_nodes.storage import DiscountCurvesStorage
+from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_MARKET_DATA_SET_EOD,

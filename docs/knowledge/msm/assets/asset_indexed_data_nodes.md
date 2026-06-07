@@ -244,7 +244,7 @@ provider or observation date.
 +-----------------------------+
 ```
 
-`AssetSnapshotsStorage` (in `msm.data_nodes.storage`) declares the persisted
+`AssetSnapshotsStorage` (in `msm.data_nodes.assets.storage`) declares the persisted
 schema as SQLAlchemy mapped columns and owns the canonical
 `asset_identifier -> AssetTable.unique_identifier` foreign key. `AssetSnapshot`
 uses it through `_required_storage_table()`.
@@ -360,7 +360,7 @@ parallel runs that must not collide on a shared backend.
 
 - `src/msm/data_nodes/assets/asset_indexed.py`: base class, asset scope validation,
   namespace behavior, `asset_identifier` filters, and per-asset update range helpers.
-- `src/msm/data_nodes/storage.py`: storage classes (including
+- `src/msm/data_nodes/assets/storage.py`: asset storage classes (including
   `AssetSnapshotsStorage`) that own the schema, dtypes, and canonical `AssetTable`
   foreign keys.
 - `src/msm/data_nodes/utils/stamped.py`: shared timestamped frame behavior

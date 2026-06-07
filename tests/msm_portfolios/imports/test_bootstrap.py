@@ -4,9 +4,8 @@ import inspect
 from types import SimpleNamespace
 
 import msm_portfolios.bootstrap as bootstrap
-from msm.models import AccountTable, AssetTable, IndexTable
+from msm.models import AccountTable, AssetTable, IndexTable, PortfolioTable
 from msm_portfolios.models import (
-    PortfolioTable,
     VirtualFundTable,
     portfolio_sqlalchemy_models,
 )

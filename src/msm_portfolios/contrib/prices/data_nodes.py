@@ -27,7 +27,7 @@ from msm_portfolios.asset_scope import (
     asset_unique_identifier,
     require_asset_category_scope,
 )
-from msm_portfolios.data_nodes.storage import (
+from msm_portfolios.data_nodes.prices.storage import (
     InterpolatedPricesStorage,
     configured_interpolated_prices_storage,
 )

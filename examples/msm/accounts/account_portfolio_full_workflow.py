@@ -14,8 +14,8 @@ if __package__ in {None, ""}:
 
 from examples.msm.accounts.utils import (
     EXAMPLE_ACCOUNT_GROUP,
-    EXAMPLE_ACCOUNT_MODEL_PORTFOLIO,
-    EXAMPLE_ACCOUNT_TARGET_PORTFOLIO,
+    EXAMPLE_ACCOUNT_ALLOCATION_MODEL,
+    EXAMPLE_ACCOUNT_TARGET_ALLOCATION,
     EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO,
     EXAMPLE_ACCOUNT_WORKFLOW_SOURCE,
     EXAMPLE_ACCOUNTS,
@@ -42,11 +42,11 @@ ACCOUNT_WORKFLOW_RUNTIME_MODELS = [
     "CalendarDate",
     "CalendarSession",
     "AssetSnapshotsStorage",
-    "AccountModelPortfolio",
+    "AccountAllocationModel",
     "AccountGroup",
     "Account",
     "AccountHoldingsSet",
-    "AccountTargetPortfolio",
+    "AccountTargetAllocation",
     "PositionSet",
     "AccountHoldingsStorage",
     "Portfolio",
@@ -124,17 +124,15 @@ def run_account_portfolio_full_workflow(
         Account,
         AccountGroup,
         AccountHoldingsSet,
-        AccountModelPortfolio,
-        AccountTargetPortfolio,
+        AccountAllocationModel,
+        AccountTargetAllocation,
         PositionSet,
     )
     from msm.api.assets import Asset, AssetType
-    from msm.data_nodes.accounts import AccountHoldings
+    from msm.api.portfolios import Portfolio
+    from msm.data_nodes.accounts import AccountHoldings, TargetPositions
     from msm.data_nodes.assets import AssetSnapshot
-    from msm.services import build_account_holdings_frame
-    from msm_portfolios.api.portfolios import Portfolio
-    from msm_portfolios.data_nodes import TargetPositions
-    from msm_portfolios.services import build_target_positions_frame
+    from msm.services import build_account_holdings_frame, build_target_positions_frame
 
     if portfolio_example_result is None:
         print("1. Registering the crypto AssetType used by the account example.")
@@ -188,11 +186,11 @@ def run_account_portfolio_full_workflow(
         f"rows={len(asset_snapshot_frame)} identifier={asset_snapshot_node._default_identifier()}"
     )
 
-    print("5. Registering one reusable AccountModelPortfolio.")
-    model_portfolio = AccountModelPortfolio.upsert(**EXAMPLE_ACCOUNT_MODEL_PORTFOLIO)
+    print("5. Registering one reusable AccountAllocationModel.")
+    allocation_model = AccountAllocationModel.upsert(**EXAMPLE_ACCOUNT_ALLOCATION_MODEL)
     print(
-        "   AccountModelPortfolio "
-        f"uid={model_portfolio.uid} name={model_portfolio.model_portfolio_name}"
+        "   AccountAllocationModel "
+        f"uid={allocation_model.uid} name={allocation_model.allocation_model_name}"
     )
 
     print("6. Registering the AccountGroup that groups both accounts.")
@@ -209,6 +207,17 @@ def run_account_portfolio_full_workflow(
             "   Account "
             f"uid={account.uid} unique_identifier={account.unique_identifier} "
             f"group_uid={account.account_group_uid}"
+        )
+
+    portfolio_allocation_account = None
+    target_accounts = list(accounts)
+    if portfolio_example_result is not None:
+        portfolio_allocation_account = portfolio_example_result["account"]
+        target_accounts.append(portfolio_allocation_account)
+        print(
+            "   Portfolio allocation account will also receive target allocation: "
+            f"uid={portfolio_allocation_account.uid} "
+            f"unique_identifier={portfolio_allocation_account.unique_identifier}"
         )
 
     if portfolio_example_result is None:
@@ -230,41 +239,41 @@ def run_account_portfolio_full_workflow(
     print(f"   AccountHoldings identifier={holdings_node._default_identifier()}")
 
     print(
-        "10. Creating account-owned target portfolio relationships that both "
-        "point to the same AccountModelPortfolio."
+        "10. Creating account-owned target allocation relationships for every "
+        "target account and pointing them to the same AccountAllocationModel."
     )
     target_records: list[dict[str, Any]] = []
     target_position_frames: list[pd.DataFrame] = []
-    for account in accounts:
-        target_portfolio = AccountTargetPortfolio.upsert(
+    for account in target_accounts:
+        target_allocation = AccountTargetAllocation.upsert(
             {
-                **EXAMPLE_ACCOUNT_TARGET_PORTFOLIO,
+                **EXAMPLE_ACCOUNT_TARGET_ALLOCATION,
                 "unique_identifier": f"{account.unique_identifier}-target",
                 "display_name": f"{account.account_name} Target",
                 "account_uid": account.uid,
-                "account_model_portfolio_uid": model_portfolio.uid,
+                "account_allocation_model_uid": allocation_model.uid,
                 "metadata_json": {
-                    **(EXAMPLE_ACCOUNT_TARGET_PORTFOLIO.get("metadata_json") or {}),
+                    **(EXAMPLE_ACCOUNT_TARGET_ALLOCATION.get("metadata_json") or {}),
                     "account_identifier": account.unique_identifier,
                 },
             }
         )
         print(
-            "   AccountTargetPortfolio "
-            f"uid={target_portfolio.uid} account_uid={target_portfolio.account_uid} "
-            f"model_portfolio_uid={target_portfolio.account_model_portfolio_uid}"
+            "   AccountTargetAllocation "
+            f"uid={target_allocation.uid} account_uid={target_allocation.account_uid} "
+            f"allocation_model_uid={target_allocation.account_allocation_model_uid}"
         )
 
         position_set = PositionSet.upsert(
-            account_target_portfolio_uid=target_portfolio.uid,
+            account_target_allocation_uid=target_allocation.uid,
             position_set_time=workflow_time,
             source=EXAMPLE_ACCOUNT_WORKFLOW_SOURCE,
             metadata_json={"account_identifier": account.unique_identifier},
         )
         print(
             "   PositionSet "
-            f"uid={position_set.uid} target_portfolio_uid="
-            f"{position_set.account_target_portfolio_uid}"
+            f"uid={position_set.uid} target_allocation_uid="
+            f"{position_set.account_target_allocation_uid}"
         )
 
         target_positions_frame = build_target_positions_frame(
@@ -275,15 +284,19 @@ def run_account_portfolio_full_workflow(
                 portfolio_uid=target_sleeve_portfolio.uid,
             ),
         )
+        target_type_counts = (
+            target_positions_frame.reset_index()["target_type"].value_counts().to_dict()
+        )
         print(
             "   TargetPositionsStorage rows built for "
-            f"{account.unique_identifier}: rows={len(target_positions_frame)}"
+            f"{account.unique_identifier}: rows={len(target_positions_frame)} "
+            f"target_type_counts={target_type_counts}"
         )
 
         target_records.append(
             {
                 "account": account,
-                "target_portfolio": target_portfolio,
+                "target_allocation": target_allocation,
                 "position_set": position_set,
             }
         )
@@ -306,6 +319,10 @@ def run_account_portfolio_full_workflow(
         f"{len(persisted_target_positions_frame)} identifier="
         f"{target_positions_node._default_identifier()}"
     )
+    persisted_target_type_counts = (
+        persisted_target_positions_frame.reset_index()["target_type"].value_counts().to_dict()
+    )
+    print(f"    Persisted target-position target types={persisted_target_type_counts}")
 
     print("12. Building two-asset holdings rows for both accounts.")
     holdings_frames = []
@@ -339,6 +356,11 @@ def run_account_portfolio_full_workflow(
             f"rows={len(holdings_frame)}"
         )
         holdings_frames.append(holdings_frame)
+    if portfolio_allocation_account is not None:
+        print(
+            "   Portfolio allocation account holdings were created by the "
+            "portfolio example; this account workflow only adds its target allocation."
+        )
 
     combined_holdings_frame = pd.concat(holdings_frames).sort_index()
     holdings_node.set_frame(combined_holdings_frame)
@@ -366,10 +388,12 @@ def run_account_portfolio_full_workflow(
         "assets": assets,
         "asset_snapshot_node_identifier": asset_snapshot_node._default_identifier(),
         "asset_snapshot_frame": asset_snapshot_frame,
-        "model_portfolio": model_portfolio,
+        "allocation_model": allocation_model,
         "target_sleeve_portfolio": target_sleeve_portfolio,
         "account_group": account_group,
         "accounts": accounts,
+        "portfolio_allocation_account": portfolio_allocation_account,
+        "target_accounts": target_accounts,
         "target_records": target_records,
         "target_positions_frame": combined_target_positions_frame,
         "target_positions_data_node_identifier": target_positions_node._default_identifier(),
@@ -392,7 +416,7 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--standalone-target-portfolio",
+        "--standalone-target-sleeve",
         action="store_true",
         help=(
             "Create a standalone Portfolio row instead of reusing the portfolio "
@@ -416,25 +440,25 @@ def main() -> None:
 
     result = run_account_portfolio_full_workflow(
         prepare_portfolio_schema=not args.skip_schema_prep,
-        use_portfolio_example=not args.standalone_target_portfolio,
+        use_portfolio_example=not args.standalone_target_sleeve,
         run_portfolio_data_nodes=not args.no_run_portfolio_data_nodes,
         revision_message=args.revision_message,
     )
     print("Workflow complete.")
     print("Used portfolio example:", result["use_portfolio_example"])
     print("Account group UID:", result["account_group"].uid)
-    print("Shared account model portfolio UID:", result["model_portfolio"].uid)
+    print("Shared account allocation model UID:", result["allocation_model"].uid)
     print("Referenced target sleeve Portfolio UID:", result["target_sleeve_portfolio"].uid)
     for target_record in result["target_records"]:
         account = target_record["account"]
-        target_portfolio = target_record["target_portfolio"]
+        target_allocation = target_record["target_allocation"]
         position_set = target_record["position_set"]
         print(
             "Account workflow row:",
             {
                 "account_uid": account.uid,
                 "account_identifier": account.unique_identifier,
-                "target_portfolio_uid": target_portfolio.uid,
+                "target_allocation_uid": target_allocation.uid,
                 "position_set_uid": position_set.uid,
             },
         )

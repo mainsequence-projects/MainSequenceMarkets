@@ -30,8 +30,12 @@ request to hit a row operation.
 
 Current local-dev behavior:
 
-- the app calls `msm.start_engine(...)` during startup for the `apps/v1`
-  table set
+- the app calls `msm_portfolios.start_engine(...)` during startup for the
+  `apps/v1` table set because this surface includes portfolio-backed account
+  target-position routes
+- the startup table set includes portfolio-backed target-position tables, so
+  target-position routes resolve against the existing shared markets runtime
+  instead of starting a second portfolio runtime on first request
 - the app calls `msm_pricing.bootstrap.attach_pricing_schemas(...)` during
   startup for the pricing rows used by asset pricing details and pricing
   market-data management
@@ -82,7 +86,7 @@ Current local-dev behavior:
 - `GET /api/v1/account/{account_uid}/target-positions/`
   - supports `order`, `limit=1`, `include_asset_detail`, and exact
     `target_positions_date`
-  - resolves active account target portfolios, selects one `PositionSetTable`
+  - resolves active account target allocations, selects one `PositionSetTable`
     snapshot, and returns its `TargetPositionsStorage` exposure rows
   - each position carries `target_type`, `target_uid`, and exactly one concrete
     target reference: `asset_uid` or `portfolio_uid`

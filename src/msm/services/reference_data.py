@@ -5,10 +5,8 @@ from typing import Any
 from msm.repositories import MarketsRepositoryContext
 from msm.repositories.account_groups import (
     create_account_group as repository_create_account_group,
-    create_account_model_portfolio as repository_create_account_model_portfolio,
     delete_account_group as repository_delete_account_group,
     search_account_groups as repository_search_account_groups,
-    search_account_model_portfolios as repository_search_account_model_portfolios,
     update_account_group as repository_update_account_group,
 )
 from msm.repositories.calendars import (
@@ -40,20 +38,6 @@ def delete_calendar(context: MarketsRepositoryContext, **kwargs: Any) -> dict[st
     return repository_delete_calendar(context, **kwargs)
 
 
-def create_account_model_portfolio(
-    context: MarketsRepositoryContext,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    return repository_create_account_model_portfolio(context, **kwargs)
-
-
-def search_account_model_portfolios(
-    context: MarketsRepositoryContext,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    return repository_search_account_model_portfolios(context, **kwargs)
-
-
 def create_account_group(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
     return repository_create_account_group(context, **kwargs)
 
@@ -72,13 +56,11 @@ def delete_account_group(context: MarketsRepositoryContext, **kwargs: Any) -> di
 
 __all__ = [
     "create_account_group",
-    "create_account_model_portfolio",
     "create_calendar",
     "delete_account_group",
     "delete_calendar",
     "get_calendar_by_uid",
     "search_account_groups",
-    "search_account_model_portfolios",
     "search_calendars",
     "update_account_group",
     "update_calendar",

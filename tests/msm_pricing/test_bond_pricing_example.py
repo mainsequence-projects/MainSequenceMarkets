@@ -5,9 +5,7 @@ from pathlib import Path
 
 
 def test_bond_pricing_example_creates_market_data_bindings_explicitly() -> None:
-    example_path = (
-        Path(__file__).parents[2] / "examples/msm_pricing/bond_pricing_example/main.py"
-    )
+    example_path = Path(__file__).parents[2] / "examples/msm_pricing/bond_pricing_example/main.py"
     source = example_path.read_text()
     tree = ast.parse(source)
 
@@ -18,8 +16,7 @@ def test_bond_pricing_example_creates_market_data_bindings_explicitly() -> None:
     ]
 
     assert any(
-        _has_false_keyword(call, "seed_default_market_data_bindings")
-        for call in attach_calls
+        _has_false_keyword(call, "seed_default_market_data_bindings") for call in attach_calls
     )
     assert '"DiscountCurvesStorage"' in source
     assert '"IndexFixingsStorage"' in source
@@ -29,9 +26,7 @@ def test_bond_pricing_example_creates_market_data_bindings_explicitly() -> None:
 
 
 def test_bond_pricing_example_uses_storage_uids_for_bindings() -> None:
-    example_path = (
-        Path(__file__).parents[2] / "examples/msm_pricing/bond_pricing_example/main.py"
-    )
+    example_path = Path(__file__).parents[2] / "examples/msm_pricing/bond_pricing_example/main.py"
     source = example_path.read_text()
 
     assert "DiscountCurvesStorage.get_meta_table_uid()" in source

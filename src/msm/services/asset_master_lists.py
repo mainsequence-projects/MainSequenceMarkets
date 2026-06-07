@@ -806,7 +806,7 @@ def _latest_asset_snapshot_by_unique_identifier(
     if not unique_identifier:
         return None
 
-    from msm.data_nodes.storage import AssetSnapshotsStorage
+    from msm.data_nodes.assets.storage import AssetSnapshotsStorage
 
     rows = _operation_result_rows(
         search_model(

@@ -8,12 +8,17 @@ from uuid import UUID
 import pandas as pd
 
 from mainsequence.client import dtype_codec as dc
-from mainsequence.meta_tables import DataNode
+from mainsequence.meta_tables import DataNode, DataNodeConfiguration
 from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
 )
-from msm.data_nodes.storage import AccountHoldingsStorage
+from msm.data_nodes.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
+from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
+from msm.data_nodes.utils.storage_metadata import (
+    storage_data_node_description,
+    storage_data_node_identifier,
+)
 from msm.data_nodes.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,
@@ -21,9 +26,7 @@ from msm.data_nodes.utils.storage_schema import (
     storage_time_index_name,
 )
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
-from msm.services.holdings import (
-    build_account_holdings_frame as build_account_holdings_service_frame,
-)
+from msm.settings import markets_namespace
 
 
 class HoldingsDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
@@ -155,7 +158,9 @@ class AccountHoldings(HoldingsDataNode):
         is_trade_snapshot: bool = False,
         target_trade_time: dt.datetime | str | None = None,
     ) -> pd.DataFrame:
-        return build_account_holdings_service_frame(
+        from msm.services.holdings import build_account_holdings_frame
+
+        return build_account_holdings_frame(
             holdings_date=holdings_date,
             account_uid=account_uid,
             positions=positions,
@@ -182,6 +187,127 @@ class AccountHoldings(HoldingsDataNode):
                 holdings_set_uid=holdings_set_uid,
                 is_trade_snapshot=is_trade_snapshot,
                 target_trade_time=target_trade_time,
+            )
+        )
+
+
+class TargetPositionsDataNodeConfiguration(DataNodeConfiguration):
+    """Update-scoped configuration for account target-allocation exposure rows."""
+
+
+class TargetPositions(DataNode):
+    """DataNode users can subclass to import account target-allocation exposures."""
+
+    _HASH_NAMESPACE_ALIASES = ("namespace",)
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.__init__ = wrap_default_markets_hash_namespace(cls, cls.__init__)
+
+    def __init__(
+        self,
+        config: TargetPositionsDataNodeConfiguration | None = None,
+        *args,
+        namespace: str | None = None,
+        **kwargs,
+    ):
+        resolved_config = self._validate_config(config or self.default_config())
+        if args:
+            raise TypeError(
+                f"{self.__class__.__name__} accepts keyword-only DataNode arguments after config."
+            )
+        if kwargs.get("hash_namespace") in (None, ""):
+            kwargs["hash_namespace"] = markets_namespace(namespace)
+        storage_table = kwargs.pop("storage_table", None) or self._required_storage_table()
+        super().__init__(
+            config=resolved_config,
+            storage_table=storage_table,
+            **kwargs,
+        )
+
+    def dependencies(self) -> dict[str, DataNode]:
+        return {}
+
+    @classmethod
+    def default_config(cls) -> TargetPositionsDataNodeConfiguration:
+        return cls._validate_config(TargetPositionsDataNodeConfiguration())
+
+    @classmethod
+    def _validate_config(
+        cls,
+        config: TargetPositionsDataNodeConfiguration,
+    ) -> TargetPositionsDataNodeConfiguration:
+        if not isinstance(config, TargetPositionsDataNodeConfiguration):
+            raise TypeError(f"{cls.__name__} requires a TargetPositionsDataNodeConfiguration.")
+        return config
+
+    @classmethod
+    def _default_identifier(cls) -> str:
+        return storage_data_node_identifier(cls._required_storage_table())
+
+    @classmethod
+    def _default_description(cls) -> str:
+        return storage_data_node_description(cls._required_storage_table())
+
+    @classmethod
+    def _required_storage_table(cls) -> type[TargetPositionsStorage]:
+        return TargetPositionsStorage
+
+    @classmethod
+    def _column_dtypes_map_for_storage(
+        cls,
+        storage_table: type[TargetPositionsStorage] | None = None,
+    ) -> dict[str, str]:
+        return storage_column_dtypes_map(storage_table or cls._required_storage_table())
+
+    def _bound_column_dtypes_map(self) -> dict[str, str]:
+        return storage_column_dtypes_map(self.storage_table)
+
+    def update(self) -> pd.DataFrame:
+        from msm.services.target_positions import validate_target_positions_frame
+
+        return validate_target_positions_frame(self.get_target_positions_frame())
+
+    def set_frame(self, frame: pd.DataFrame) -> TargetPositions:
+        self._target_positions_frame = frame
+        return self
+
+    def get_target_positions_frame(self) -> pd.DataFrame:
+        frame = getattr(self, "_target_positions_frame", None)
+        if frame is None:
+            raise ValueError(
+                f"{self.__class__.__name__} requires a real target-position frame. "
+                "Call set_frame() or set_target_positions_frame() before update()."
+            )
+        return frame
+
+    def build_target_positions_frame(
+        self,
+        *,
+        target_positions_date: dt.datetime | str,
+        position_set_uid: UUID | str,
+        positions: list[dict[str, Any] | Any],
+    ) -> pd.DataFrame:
+        from msm.services.target_positions import build_target_positions_frame
+
+        return build_target_positions_frame(
+            target_positions_date=target_positions_date,
+            position_set_uid=position_set_uid,
+            positions=positions,
+        )
+
+    def set_target_positions_frame(
+        self,
+        *,
+        target_positions_date: dt.datetime | str,
+        position_set_uid: UUID | str,
+        positions: list[dict[str, Any] | Any],
+    ) -> TargetPositions:
+        return self.set_frame(
+            self.build_target_positions_frame(
+                target_positions_date=target_positions_date,
+                position_set_uid=position_set_uid,
+                positions=positions,
             )
         )
 
@@ -363,4 +489,6 @@ __all__ = [
     "AccountHoldings",
     "HoldingsDataNode",
     "HoldingsDataNodeConfiguration",
+    "TargetPositions",
+    "TargetPositionsDataNodeConfiguration",
 ]

@@ -75,7 +75,7 @@ Before changing code, inspect the current local implementation:
 
 1. `src/msm/data_nodes/assets/asset_indexed.py`
 2. `src/msm/data_nodes/assets/snapshots.py`
-3. `src/msm/data_nodes/storage.py`
+3. `src/msm/data_nodes/assets/storage.py`
 4. `src/msm/data_nodes/utils/stamped.py`
 5. `src/msm/data_nodes/indices/timestamped.py`
 6. `src/msm/settings.py`

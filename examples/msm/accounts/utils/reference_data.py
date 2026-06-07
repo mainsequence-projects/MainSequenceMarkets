@@ -9,13 +9,17 @@ from examples.msm.assets.utils import (
     EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
     EXAMPLE_ETH_TICKER,
 )
+from msm.data_nodes.accounts.constants import (
+    TARGET_TYPE_ASSET,
+    TARGET_TYPE_PORTFOLIO,
+)
 
 EXAMPLE_ACCOUNT_WORKFLOW_SOURCE = "examples/msm/accounts/account_portfolio_full_workflow.py"
 
-EXAMPLE_ACCOUNT_MODEL_PORTFOLIO = {
-    "model_portfolio_name": "Example Balanced Account Model",
-    "model_portfolio_description": (
-        "Example reusable account-level model portfolio tracked by multiple accounts."
+EXAMPLE_ACCOUNT_ALLOCATION_MODEL = {
+    "allocation_model_name": "Example Balanced Account Model",
+    "allocation_model_description": (
+        "Example reusable account-level allocation model tracked by multiple accounts."
     ),
     "metadata_json": {"source": EXAMPLE_ACCOUNT_WORKFLOW_SOURCE},
 }
@@ -43,7 +47,7 @@ EXAMPLE_ACCOUNTS = [
     },
 ]
 
-EXAMPLE_ACCOUNT_TARGET_PORTFOLIO = {
+EXAMPLE_ACCOUNT_TARGET_ALLOCATION = {
     "unique_identifier": "example-account-target",
     "display_name": "Example Account Target",
     "is_active": True,
@@ -88,10 +92,14 @@ def example_account_target_positions(
 ) -> list[dict[str, Any]]:
     return [
         {
+            "target_type": TARGET_TYPE_ASSET,
+            "target_uid": asset_uid,
             "asset_uid": asset_uid,
             "weight_notional_exposure": 0.6,
         },
         {
+            "target_type": TARGET_TYPE_PORTFOLIO,
+            "target_uid": portfolio_uid,
             "portfolio_uid": portfolio_uid,
             "weight_notional_exposure": 0.4,
             "metadata_json": {"portfolio_role": "satellite_sleeve"},
@@ -103,8 +111,8 @@ __all__ = [
     "EXAMPLE_ACCOUNTS",
     "EXAMPLE_ACCOUNT_GROUP",
     "EXAMPLE_ACCOUNT_WORKFLOW_SOURCE",
-    "EXAMPLE_ACCOUNT_MODEL_PORTFOLIO",
-    "EXAMPLE_ACCOUNT_TARGET_PORTFOLIO",
+    "EXAMPLE_ACCOUNT_ALLOCATION_MODEL",
+    "EXAMPLE_ACCOUNT_TARGET_ALLOCATION",
     "EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO",
     "example_account_holdings_positions",
     "example_account_target_positions",

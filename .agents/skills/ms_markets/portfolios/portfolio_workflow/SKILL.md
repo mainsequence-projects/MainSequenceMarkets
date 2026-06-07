@@ -1,22 +1,23 @@
 ---
 name: mainsequence-markets-portfolio-workflow
-description: Use this skill when creating, extending, reviewing, or documenting msm_portfolios workflows, including PortfolioTable, portfolio DataNodes, and account target-position exposure rows that reference portfolios.
+description: Use this skill when creating, extending, reviewing, or documenting msm_portfolios workflows, including portfolio DataNodes, portfolio metadata, virtual-fund allocation, and portfolio calculations that depend on core PortfolioTable identity.
 ---
 
 # Main Sequence Markets Portfolio Workflow
 
-Use this skill for `msm_portfolios` concepts: portfolio identity, portfolio
-DataNode storage, virtual-fund allocation, and account target-position exposure
-to portfolio sleeves.
+Use this skill for `msm_portfolios` concepts: portfolio calculation DataNodes,
+portfolio metadata, rebalance/signal workflows, contributed portfolio price
+sources, and virtual-fund allocation. Core `msm` owns `PortfolioTable` identity
+and account target-position exposure rows.
 
 ## Read First
 
-Before changing portfolio/account target exposure code, inspect:
+Before changing portfolio workflow code, inspect:
 
-1. `src/msm_portfolios/models/portfolios/core.py`
-2. `src/msm_portfolios/data_nodes/storage.py`
-3. `src/msm_portfolios/data_nodes/target_positions.py`
-4. `src/msm_portfolios/services/target_positions.py`
+1. `src/msm/models/portfolios/core.py`
+2. `src/msm_portfolios/models/portfolios/metadata.py`
+3. `src/msm_portfolios/data_nodes/portfolios/storage.py`
+4. `src/msm_portfolios/data_nodes/portfolios/__init__.py`
 5. `docs/knowledge/msm_portfolios/portfolios/index.md`
 6. `docs/knowledge/msm/accounts/index.md`
 
@@ -25,12 +26,12 @@ Before changing portfolio/account target exposure code, inspect:
 Core `msm` owns account registry rows:
 
 ```text
-AccountModelPortfolioTable
-AccountTargetPortfolioTable
+AccountAllocationModelTable
+AccountTargetAllocationTable
 PositionSetTable
 ```
 
-`msm_portfolios` owns portfolio-aware target exposure storage:
+Core `msm` owns account target exposure storage:
 
 ```text
 TargetPositionsStorage
@@ -57,22 +58,24 @@ Rules:
 
 ## Runtime Pattern
 
-Use `msm_portfolios.start_engine(...)` when target positions reference
-portfolios:
+Use `msm.start_engine(...)` for account target positions that reference
+portfolios. Use `msm_portfolios.start_engine(...)` only when attaching
+portfolio calculation, portfolio metadata, virtual-fund, or portfolio storage
+tables.
 
 ```python
-import msm_portfolios
+import msm
 
-msm_portfolios.start_engine(
+msm.start_engine(
     models=[
         "AssetType",
         "Asset",
         "IndexType",
         "Index",
-        "AccountModelPortfolio",
+        "AccountAllocationModel",
         "AccountGroup",
         "Account",
-        "AccountTargetPortfolio",
+        "AccountTargetAllocation",
         "PositionSet",
         "Portfolio",
         "TargetPositionsStorage",
@@ -104,9 +107,9 @@ and fails clearly if the dynamic table has not been prepared.
 ## Write Pattern
 
 ```python
-from msm_portfolios.api.portfolios import Portfolio
-from msm_portfolios.data_nodes import TargetPositions
-from msm_portfolios.services import build_target_positions_frame
+from msm.api.portfolios import Portfolio
+from msm.data_nodes.accounts import TargetPositions
+from msm.services import build_target_positions_frame
 
 portfolio_sleeve = Portfolio.upsert(unique_identifier="example-sleeve")
 
@@ -135,7 +138,7 @@ Use `expand_portfolio_target_positions(...)` only when a downstream workflow
 explicitly needs asset-level exposure:
 
 ```python
-from msm_portfolios.services import expand_portfolio_target_positions
+from msm.services import expand_portfolio_target_positions
 
 expanded = expand_portfolio_target_positions(
     frame,
@@ -155,6 +158,6 @@ the account target-position table.
 For portfolio target-position changes, run:
 
 ```bash
-uv run --extra dev ruff check src/msm_portfolios/data_nodes/target_positions.py src/msm_portfolios/services/target_positions.py tests/msm_portfolios/data_nodes/test_target_positions_contracts.py
-uv run --extra dev pytest tests/msm_portfolios/data_nodes/test_target_positions_contracts.py tests/msm_portfolios/models/test_model_graph.py
+uv run --extra dev ruff check src/msm/data_nodes/accounts src/msm/services/target_positions.py tests/msm/data_nodes/test_target_positions_contracts.py
+uv run --extra dev pytest tests/msm/data_nodes/test_target_positions_contracts.py tests/msm_portfolios/models/test_model_graph.py
 ```

@@ -21,14 +21,15 @@ Services answer these questions:
   mapping, API-key resolution from the `OPEN_FIGI_API_KEY` Main Sequence
   secret, normalization, MetaTable row construction, and asset snapshot frame
   construction.
-- `msm_portfolios.services.virtual_funds`: fund creation and lookup workflows over repository
-  operations.
-- `msm_portfolios.services.portfolios`: portfolio workflows over repository operations.
+- `msm_portfolios.services.virtual_funds`: virtual-fund creation and lookup workflows
+  over repository operations.
+- `msm.services.accounts`: account registry, account allocation-model, target
+  allocation, position-set, and account-facing snapshot workflows.
+- `msm.services.portfolios`: core portfolio identity workflows over repository operations.
 - `msm.services.holdings`: DataNode frame builders and validators for account
   holdings tables.
-- `msm_portfolios.services.target_positions`: portfolio-aware target-position
-  frame builders, validators, snapshot readers, and explicit portfolio
-  expansion helpers.
+- `msm.services.target_positions`: account target-position frame builders,
+  validators, snapshot readers, and explicit portfolio expansion helpers.
 - `msm.services.__init__`: service import surface.
 
 ## Key Contracts
@@ -48,7 +49,7 @@ provider query helpers.
 
 Typed row operations that should return FastAPI-ready Pydantic objects belong in
 `msm.api`, for example `msm.api.assets.Asset.upsert(...)`,
-`msm_portfolios.api.portfolios.Portfolio.upsert(...)`, or
+`msm.api.portfolios.Portfolio.upsert(...)`, or
 `msm.api.execution.OrderManager.create_batch(...)`. Services remain the place
 for workflows that compose providers, repositories, and DataNodes.
 

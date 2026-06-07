@@ -16,7 +16,7 @@ from msm.base import (
 
 from msm.models.accounts import AccountHoldingsSetTable, AccountTable
 
-from msm_portfolios.models.portfolios import PortfolioTable
+from msm.models import PortfolioTable
 
 
 class VirtualFundTable(MarketsMetaTableMixin, MarketsBase):
