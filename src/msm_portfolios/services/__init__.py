@@ -26,17 +26,8 @@ _EXPORTS = {
     "update_portfolio_metadata": ".market_metadata",
     "update_rebalance_strategy_metadata": ".market_metadata",
     "update_signal_metadata": ".market_metadata",
-    "build_virtual_fund_holdings_frame": ".holdings",
-    "create_virtual_fund": ".virtual_funds",
-    "delete_virtual_fund": ".virtual_funds",
-    "get_virtual_fund_by_unique_identifier": ".virtual_funds",
-    "get_virtual_funds_by_account": ".virtual_funds",
-    "get_virtual_funds_by_portfolio": ".virtual_funds",
     "list_portfolio_rows_response": ".public_api",
     "resolve_rebalance_calendar": ".calendars",
-    "update_virtual_fund": ".virtual_funds",
-    "validate_holdings_frame": ".holdings",
-    "validate_virtual_fund_allocation_bounds": ".holdings",
 }
 
 

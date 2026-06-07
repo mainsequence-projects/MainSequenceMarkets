@@ -5,10 +5,7 @@ from types import SimpleNamespace
 
 import msm_portfolios.bootstrap as bootstrap
 from msm.models import AccountTable, AssetTable, IndexTable, PortfolioTable
-from msm_portfolios.models import (
-    VirtualFundTable,
-    portfolio_sqlalchemy_models,
-)
+from msm_portfolios.models import portfolio_sqlalchemy_models
 
 
 def test_portfolio_bootstrap_defaults_to_portfolio_model_graph(monkeypatch) -> None:
@@ -34,7 +31,9 @@ def test_portfolio_start_engine_signature_excludes_migration_setup_arguments() -
     assert "introspect" not in parameters
 
 
-def test_portfolio_bootstrap_resolves_portfolio_names_and_passes_core_names(monkeypatch) -> None:
+def test_portfolio_bootstrap_resolves_portfolio_names_and_passes_unknown_core_names(
+    monkeypatch,
+) -> None:
     calls = []
     runtime = SimpleNamespace()
 
@@ -61,5 +60,5 @@ def test_portfolio_bootstrap_resolves_portfolio_names_and_passes_core_names(monk
         AccountTable,
         IndexTable,
         PortfolioTable,
-        VirtualFundTable,
+        "VirtualFund",
     ]

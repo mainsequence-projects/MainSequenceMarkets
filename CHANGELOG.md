@@ -19,8 +19,12 @@ and this project follows versioned releases.
   fields now use `account_allocation_model_uid` and
   `account_target_allocation_uid`.
 - Moved `PortfolioTable` identity and account target-position storage into core
-  `msm`; `msm_portfolios` now owns portfolio calculation workflows and
-  virtual-fund allocation workflows that consume core portfolio identity.
+  `msm`; `msm_portfolios` now owns portfolio calculation workflows, while core
+  `msm` owns virtual-fund identity, virtual-fund holdings storage, and account
+  allocation planning.
+- Added the account holdings to virtual-fund allocation planner with
+  `proportional_attribution` and `strict_feasible` policies, plus an apply step
+  that converts feasible plans into `VirtualFundHoldingsStorage` frames.
 - Reorganized DataNode storage contracts by concept: account storage now lives
   under `msm.data_nodes.accounts`, asset storage under
   `msm.data_nodes.assets`, execution storage under `msm.data_nodes.execution`,

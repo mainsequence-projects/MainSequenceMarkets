@@ -32,9 +32,9 @@ Platform utilities answer these questions:
 - `msm.data_nodes.utils`: shared DataNode utilities that are not tied to one
   model concept, including source-table contracts, timestamp normalization,
   stamped-frame behavior, and namespace defaulting.
-- `msm_portfolios.data_nodes`: portfolio and virtual-fund DataNodes that build
-  on the shared markets DataNode machinery without entering the core `msm`
-  registration graph.
+- `msm_portfolios.data_nodes`: portfolio construction DataNodes that build on
+  the shared markets DataNode machinery. Core account virtual-fund storage
+  lives under `msm.data_nodes.accounts`.
 - `cli`: explicit command-line helpers, including
   `msm copy-msm-skills` for installing packaged ms-markets agent skills into a
   host project.

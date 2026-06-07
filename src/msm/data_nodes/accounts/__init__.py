@@ -485,10 +485,30 @@ def _normalize_time_index(values: Any) -> pd.Series:
     return normalize_datetime64_ns_utc(values)
 
 
+def __getattr__(name: str) -> Any:
+    if name == "VirtualFundHoldings":
+        from msm.data_nodes.accounts.virtual_funds import VirtualFundHoldings
+
+        globals()[name] = VirtualFundHoldings
+        return VirtualFundHoldings
+    if name == "VirtualFundHoldingsStorage":
+        from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+
+        globals()[name] = VirtualFundHoldingsStorage
+        return VirtualFundHoldingsStorage
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))
+
+
 __all__ = [
     "AccountHoldings",
     "HoldingsDataNode",
     "HoldingsDataNodeConfiguration",
     "TargetPositions",
     "TargetPositionsDataNodeConfiguration",
+    "VirtualFundHoldings",
+    "VirtualFundHoldingsStorage",
 ]

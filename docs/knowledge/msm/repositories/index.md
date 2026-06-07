@@ -22,7 +22,7 @@ Repositories answer these questions:
   model operations.
 - `msm.repositories.accounts`: account-specific repository operations.
 - `msm.repositories.portfolios`: core portfolio identity operations.
-- `msm_portfolios.repositories.virtual_funds`: virtual-fund operations and fund lookup by
+- `msm.repositories.virtual_funds`: virtual-fund operations and fund lookup by
   account or portfolio.
 
 ## Key Contracts

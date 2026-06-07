@@ -3,22 +3,22 @@ from __future__ import annotations
 from typing import Any
 
 from msm.repositories import MarketsRepositoryContext
-from msm_portfolios.repositories import (
+from msm.repositories.virtual_funds import (
     create_virtual_fund as repository_create_virtual_fund,
 )
-from msm_portfolios.repositories import (
+from msm.repositories.virtual_funds import (
     delete_virtual_fund as repository_delete_virtual_fund,
 )
-from msm_portfolios.repositories import (
+from msm.repositories.virtual_funds import (
     get_virtual_fund_by_unique_identifier as repository_get_virtual_fund_by_unique_identifier,
 )
-from msm_portfolios.repositories import (
+from msm.repositories.virtual_funds import (
     get_virtual_funds_by_account as repository_get_virtual_funds_by_account,
 )
-from msm_portfolios.repositories import (
+from msm.repositories.virtual_funds import (
     get_virtual_funds_by_portfolio as repository_get_virtual_funds_by_portfolio,
 )
-from msm_portfolios.repositories import (
+from msm.repositories.virtual_funds import (
     update_virtual_fund as repository_update_virtual_fund,
 )
 

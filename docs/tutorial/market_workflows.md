@@ -273,14 +273,14 @@ examples reuse shared identifiers and FIGI constants from
 ## Accounts, Virtual Funds, And Portfolios
 
 ```python
-import msm_portfolios
+import msm
 
 from msm.api.accounts import Account
 from msm.api.calendars import Calendar
 from msm.api.portfolios import Portfolio
-from msm_portfolios.api.virtual_funds import VirtualFund
+from msm.api.virtual_funds import VirtualFund
 
-msm_portfolios.start_engine(
+msm.start_engine(
     models=["Account", "Calendar", "CalendarDate", "CalendarSession", "Portfolio", "VirtualFund"]
 )
 

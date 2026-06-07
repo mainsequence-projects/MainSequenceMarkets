@@ -38,6 +38,7 @@ nav:
       - msm:
           - Overview: knowledge/msm/index.md
           - Accounts: knowledge/msm/accounts/index.md
+          - Virtual Funds: knowledge/msm/virtualfunds/index.md
           - Assets:
               - Overview: knowledge/msm/assets/index.md
               - Bond Assets: knowledge/msm/assets/bonds.md
@@ -61,7 +62,6 @@ nav:
       - msm_portfolios:
           - Overview: knowledge/msm_portfolios/index.md
           - Portfolios: knowledge/msm_portfolios/portfolios/index.md
-          - Virtual Funds: knowledge/msm_portfolios/virtualfunds/index.md
       - msm_pricing:
           - Overview: knowledge/msm_pricing/index.md
   - Architecture:

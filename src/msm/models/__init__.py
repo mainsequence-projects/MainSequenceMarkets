@@ -7,6 +7,8 @@ from .accounts import (
     AccountTable,
     AccountTargetAllocationTable,
     PositionSetTable,
+    VirtualFundHoldingsSetTable,
+    VirtualFundTable,
 )
 from .assets import (
     AssetCategoryMembershipTable,
@@ -56,6 +58,8 @@ def markets_sqlalchemy_models() -> list[type]:
         AccountGroupTable,
         AccountTable,
         AccountHoldingsSetTable,
+        VirtualFundTable,
+        VirtualFundHoldingsSetTable,
         AssetCategoryTable,
         AssetCategoryMembershipTable,
         OpenFigiAssetDetailsTable,
@@ -75,6 +79,7 @@ def _markets_data_node_storage_models() -> list[type]:
     """
 
     from msm.data_nodes.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
+    from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
     from msm.data_nodes.assets.storage import AssetSnapshotsStorage
     from msm.data_nodes.execution.storage import (
         OrderEventsStorage,
@@ -85,6 +90,7 @@ def _markets_data_node_storage_models() -> list[type]:
     return [
         AssetSnapshotsStorage,
         AccountHoldingsStorage,
+        VirtualFundHoldingsStorage,
         TargetPositionsStorage,
         OrdersStorage,
         OrderEventsStorage,
@@ -116,5 +122,7 @@ __all__ = [
     "OrderManagerTable",
     "PositionSetTable",
     "PortfolioTable",
+    "VirtualFundHoldingsSetTable",
+    "VirtualFundTable",
     "markets_sqlalchemy_models",
 ]

@@ -12,12 +12,12 @@ from msm.api.base import MarketsMetaTableRow
 from msm.data_nodes.accounts.storage import AccountHoldingsStorage
 from msm.models import AccountGroupTable, AccountHoldingsSetTable, AccountTable, PortfolioTable
 
-from msm_portfolios.data_nodes.virtual_funds.storage import VirtualFundHoldingsStorage
-from msm_portfolios.models import (
+from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+from msm.models import (
     VirtualFundHoldingsSetTable,
     VirtualFundTable,
 )
-from msm_portfolios.services.holdings import (
+from msm.services.accounts.virtual_fund_holdings import (
     build_virtual_fund_holdings_frame,
     validate_virtual_fund_allocation_bounds,
 )

@@ -28,6 +28,7 @@ _EXPORTS = {
     "TargetPositions": ".accounts",
     "TargetPositionsDataNodeConfiguration": ".accounts",
     "Trades": ".execution",
+    "VirtualFundHoldings": ".accounts",
 }
 
 

@@ -4,6 +4,12 @@
 
 Accepted - amended
 
+Amendment: ADR 0029 supersedes this ADR for virtual-fund ownership.
+`msm_portfolios` remains the portfolio construction engine, but
+`VirtualFundTable`, `VirtualFundHoldingsSetTable`,
+`VirtualFundHoldingsStorage`, and the account holdings to virtual-fund
+allocation planner are core `msm` account-allocation concepts.
+
 ## Context
 
 `msm_portfolios` has grown beyond a small core submodule. It is effectively a
@@ -66,10 +72,11 @@ The dependency direction is one-way:
 
 Core `msm` must not import `msm_portfolios`.
 
-Portfolio calculation and virtual-fund workflow code should be moved to
-`msm_portfolios` without compatibility shims unless backward compatibility is
-explicitly requested in a separate decision. The migration should update imports
-directly in examples, docs, and tests.
+Portfolio calculation code should be moved to `msm_portfolios` without
+compatibility shims unless backward compatibility is explicitly requested in a
+separate decision. ADR 0029 moved virtual-fund workflow state back to core
+`msm` because it allocates canonical account holdings. The migration should
+update imports directly in examples, docs, and tests.
 
 ### Core `msm` Ownership
 
@@ -364,6 +371,8 @@ explicit compatibility decision requires it.
 
 ### Stage 4: Move Row APIs, Repositories, And Services
 
+Virtual-fund items in this stage are superseded by ADR 0029.
+
 - [x] Move portfolio row APIs to `msm_portfolios.api.portfolios`.
 - [x] Move virtual-fund row APIs to `msm_portfolios.api.virtual_funds`.
 - [x] Move signal/rebalance metadata row APIs to
@@ -373,6 +382,8 @@ explicit compatibility decision requires it.
 - [x] Update public API tests under `tests/msm_portfolios/api`.
 
 ### Stage 5: Move DataNodes And Storage
+
+Virtual-fund items in this stage are superseded by ADR 0029.
 
 - [x] Move portfolio DataNode storage classes into `msm_portfolios`.
 - [x] Move portfolio DataNode logic into `msm_portfolios`.

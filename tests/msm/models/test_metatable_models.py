@@ -39,6 +39,7 @@ from msm.models.registration import (
 )
 from msm.models import (
     AccountGroupTable,
+    AccountHoldingsSetTable,
     AccountAllocationModelTable,
     AccountTable,
     AccountTargetAllocationTable,
@@ -52,6 +53,9 @@ from msm.models import (
     IssuerTable,
     OpenFigiAssetDetailsTable,
     PositionSetTable,
+    PortfolioTable,
+    VirtualFundHoldingsSetTable,
+    VirtualFundTable,
     markets_sqlalchemy_models,
 )
 from msm_pricing.meta_tables import pricing_sqlalchemy_models
@@ -471,6 +475,8 @@ def test_account_metatable_columns_are_described() -> None:
         AccountTable,
         AccountTargetAllocationTable,
         PositionSetTable,
+        VirtualFundTable,
+        VirtualFundHoldingsSetTable,
     ]:
         for column in model.__table__.columns:
             assert column.info.get("label"), f"{model.__name__}.{column.name}"
@@ -500,6 +506,38 @@ def test_account_target_allocation_owns_position_sets() -> None:
         foreign_key.column is AccountTargetAllocationTable.__table__.c.uid
         and foreign_key.ondelete == "CASCADE"
         for foreign_key in position_set_parent_column.foreign_keys
+    )
+
+
+def test_virtual_fund_relationships_live_on_core_account_tables() -> None:
+    assert "account_uid" in VirtualFundTable.__table__.c
+    assert "target_portfolio_uid" in VirtualFundTable.__table__.c
+    assert "virtual_fund_uid" in VirtualFundHoldingsSetTable.__table__.c
+    assert "source_account_holdings_set_uid" in VirtualFundHoldingsSetTable.__table__.c
+
+    virtual_account_column = VirtualFundTable.__table__.c["account_uid"]
+    virtual_portfolio_column = VirtualFundTable.__table__.c["target_portfolio_uid"]
+    holdings_set_virtual_column = VirtualFundHoldingsSetTable.__table__.c["virtual_fund_uid"]
+    holdings_set_source_column = VirtualFundHoldingsSetTable.__table__.c[
+        "source_account_holdings_set_uid"
+    ]
+
+    assert any(
+        foreign_key.column is AccountTable.__table__.c.uid and foreign_key.ondelete == "CASCADE"
+        for foreign_key in virtual_account_column.foreign_keys
+    )
+    assert any(
+        foreign_key.column is PortfolioTable.__table__.c.uid and foreign_key.ondelete == "CASCADE"
+        for foreign_key in virtual_portfolio_column.foreign_keys
+    )
+    assert any(
+        foreign_key.column is VirtualFundTable.__table__.c.uid and foreign_key.ondelete == "CASCADE"
+        for foreign_key in holdings_set_virtual_column.foreign_keys
+    )
+    assert any(
+        foreign_key.column is AccountHoldingsSetTable.__table__.c.uid
+        and foreign_key.ondelete == "RESTRICT"
+        for foreign_key in holdings_set_source_column.foreign_keys
     )
 
 

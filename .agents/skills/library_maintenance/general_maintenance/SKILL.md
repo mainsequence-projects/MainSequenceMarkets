@@ -109,7 +109,8 @@ For implementation changes, add or update an example under the owning package
 namespace:
 
 - `examples/msm/` for core markets workflows
-- `examples/msm_portfolios/` for portfolio and virtual-fund workflows
+- `examples/msm/` for account virtual-fund allocation workflows
+- `examples/msm_portfolios/` for portfolio construction workflows
 - `examples/msm_pricing/` for pricing workflows
 
 Examples should:

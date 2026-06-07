@@ -12,13 +12,13 @@ what it should not own, and which package should be extended for common changes.
 The library should feel like a typed market-domain API to users, not like a
 collection of SQLAlchemy internals. For row-oriented MetaTable data:
 
-- user-facing code imports core Pydantic row objects from `msm.api.*` and
-  portfolio Pydantic row objects from `msm_portfolios.api.*`;
+- user-facing code imports core Pydantic row objects from `msm.api.*`;
+  portfolio construction-specific row objects import from `msm_portfolios.api.*`;
 - schema/bootstrap code imports SQLAlchemy declarations from `msm.models.*Table`;
 - row classes declare their backing table through `__table__` and required
   schema set through `__required_tables__`;
 - `msm.start_engine(...)` is the preferred core schema/bootstrap surface, while
-  `msm_portfolios.start_engine(...)` is the portfolio and virtual-fund package
+  `msm_portfolios.start_engine(...)` is the portfolio construction package
   surface;
 - row class methods such as `upsert(...)`, `filter(...)`, and lookups are the
   preferred ergonomic row-operation surface;
@@ -35,8 +35,9 @@ This split is enforced across the markets MetaTables. `msm.models` exports
 core `*Table` declarations only; row names such as `Asset`, `Account`, and
 `OrderManager` live in `msm.api.*`. Timestamped execution facts such as orders,
 order events, and trades live in DataNode storage, not duplicate row tables.
-Portfolio row names such as `Portfolio` and `VirtualFund` live in
-`msm_portfolios.api.*`.
+Core row APIs such as `Portfolio` and `VirtualFund` live in `msm.api.*`.
+Portfolio construction helpers and portfolio calculation DataNodes live in
+`msm_portfolios.*`.
 
 This pattern is recorded in
 [ADR 0008](../ADR/0008-metatable-table-and-api-model-split.md) and should guide
@@ -45,9 +46,10 @@ new MetaTable-facing APIs unless a more specific ADR overrides it.
 ## Package Map
 
 - [msm](msm/index.md): core market reference data, assets, accounts,
-  calendars, execution, indexes, platform bootstrap, repositories, and services.
-- [msm_portfolios](msm_portfolios/index.md): portfolio construction,
-  portfolio DataNodes, virtual funds, and fund holdings.
+  account allocation, virtual funds, calendars, execution, indexes, platform
+  bootstrap, repositories, and services.
+- [msm_portfolios](msm_portfolios/index.md): portfolio construction and
+  portfolio DataNodes.
 - [msm_pricing](msm_pricing/index.md): optional pricing package with priceable
   instruments, QuantLib helpers, curves, fixings, market-data context bindings,
   and pricing data interfaces.

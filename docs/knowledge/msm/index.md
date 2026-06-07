@@ -1,17 +1,19 @@
 # msm Knowledge
 
 `msm` is the core package. It owns market reference data, asset extensions,
-execution records, account records, platform bootstrap, repository helpers, and
-shared DataNode conventions.
+execution records, account records, account allocation and virtual-fund state,
+platform bootstrap, repository helpers, and shared DataNode conventions.
 
-It does not own portfolio construction or pricing engines. Portfolio and
-virtual-fund workflows live in `msm_portfolios`; optional pricing and QuantLib
+It does not own portfolio construction or pricing engines. Portfolio
+construction workflows live in `msm_portfolios`; optional pricing and QuantLib
 integration live in `msm_pricing`.
 
 ## Core Areas
 
 - [Accounts](accounts/index.md): account identity, holdings, groups, and target
   position assignments.
+- [Virtual Funds](virtualfunds/index.md): account-owned allocation views over
+  real account holdings.
 - [Assets](assets/index.md): asset identity, type registration, category
   membership, relational asset detail tables, OpenFIGI details, and
   asset-indexed DataNodes.
@@ -41,7 +43,8 @@ integration live in `msm_pricing`.
 Core row APIs should import from `msm.api.*` and core table declarations should
 import from `msm.models.*Table`.
 
-When a workflow needs portfolio construction, fund holdings, or virtual funds,
-switch to [`msm_portfolios`](../msm_portfolios/index.md). When it needs pricing
-models, curves, fixings, or QuantLib-backed valuation, switch to
+When a workflow needs portfolio construction, switch to
+[`msm_portfolios`](../msm_portfolios/index.md). Virtual-fund identity and
+holdings allocation remain in core `msm`. When a workflow needs pricing models,
+curves, fixings, or QuantLib-backed valuation, switch to
 [`msm_pricing`](../msm_pricing/index.md).

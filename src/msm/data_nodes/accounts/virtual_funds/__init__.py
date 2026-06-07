@@ -8,8 +8,8 @@ import pandas as pd
 
 from msm.data_nodes.accounts import HoldingsDataNode
 
-from msm_portfolios.data_nodes.virtual_funds.storage import VirtualFundHoldingsStorage
-from msm_portfolios.services.holdings import (
+from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+from msm.services.accounts.virtual_fund_holdings import (
     build_virtual_fund_holdings_frame as build_virtual_fund_holdings_service_frame,
 )
 

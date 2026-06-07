@@ -361,12 +361,13 @@ portfolio indices. They are expanded into asset-level exposure only when a
 downstream workflow explicitly calls the portfolio expansion service and
 provides a resolver for current portfolio weights.
 
-## Portfolio Construction And Virtual Fund Allocation Relationships
+## Portfolio Construction And Account Virtual-Fund Allocation Boundary
 
 Portfolio construction produces portfolio artifacts. It does not own
 virtual-fund identity, and it does not write virtual-fund allocation rows.
 Virtual funds are account-owned allocation views that target a portfolio after
-that portfolio exists.
+that portfolio exists. Their canonical docs live in core
+[`msm` virtual funds](../../msm/virtualfunds/index.md).
 
 ```text
 Virtual Fund Builder / portfolio construction produces portfolio artifacts.
@@ -448,7 +449,8 @@ The boundary is intentional:
 
 - `PortfolioTable` identifies the portfolio and points at portfolio output
   storage.
-- `VirtualFundTable` binds an account to a target portfolio.
+- `VirtualFundTable` is core `msm` account-allocation state that binds an
+  account to a target portfolio.
 - `AccountHoldingsSetTable` is the source account snapshot.
 - `VirtualFundHoldingsSetTable` records one allocation view from one source
   holdings set.
@@ -479,7 +481,8 @@ example OHLCV bars to `ExternalPricesStorage`, interpolates those prices, runs
 DataNode update UIDs. The example narrates each setup, source-price
 publication, and portfolio step so terminal output explains what was created.
 It does not create virtual funds or virtual-fund allocation rows; those require
-an explicit account funding policy and belong in the virtual-funds workflow.
+an explicit account funding policy and belong in the core account
+virtual-funds workflow.
 
 ## Extension Notes
 
@@ -494,5 +497,6 @@ portfolio metadata persistence through `msm_portfolios.models` and
 ## Related Concepts
 
 - [Assets](../../msm/assets/index.md)
+- [Virtual Funds](../../msm/virtualfunds/index.md)
 - [Execution](../../msm/execution/index.md)
 - [Pricing](../../msm_pricing/index.md)

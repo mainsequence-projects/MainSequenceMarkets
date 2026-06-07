@@ -36,7 +36,6 @@ from .signals import (
     compute_signal_uid,
     normalize_signal_weights_frame,
 )
-from .virtual_funds import VirtualFundHoldings
 
 __all__ = [
     "ASSET_IDENTIFIER",
@@ -57,7 +56,6 @@ __all__ = [
     "PortfolioWeights",
     "SignalWeights",
     "SignalWeightsConfiguration",
-    "VirtualFundHoldings",
     "PORTFOLIO_CANONICAL_TIME_INDEX_NAME",
     "PortfolioCanonicalDataNode",
     "AssetScopedPortfolioCanonicalDataNode",

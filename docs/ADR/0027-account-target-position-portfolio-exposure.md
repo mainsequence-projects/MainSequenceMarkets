@@ -125,8 +125,9 @@ Therefore:
 - `PortfolioTable` remains in core `msm` as portfolio identity/reference data.
 - The expanded portfolio-aware target-position storage and its DataNode belong
   to core `msm`, because account target allocation is an account concept.
-- `msm_portfolios` owns portfolio calculation DataNodes, strategies, signal
-  metadata, and virtual-fund workflows that consume or produce portfolio data.
+- `msm_portfolios` owns portfolio calculation DataNodes, strategies, and signal
+  metadata. ADR 0029 moves virtual-fund allocation state into core `msm`
+  account allocation.
 
 This amends ADR 0019 by clarifying that account target-position registry rows
 and account target-position exposure storage remain core.

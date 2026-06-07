@@ -11,23 +11,22 @@ from msm.data_nodes.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,
 )
-from msm.models import AccountHoldingsSetTable, AssetTable
+from msm.models import AccountHoldingsSetTable, AssetTable, markets_sqlalchemy_models
 from msm.models.registration import markets_foreign_key_target_identifiers
-from msm_portfolios.data_nodes.virtual_funds.storage import VirtualFundHoldingsStorage
-from msm_portfolios.data_nodes.virtual_funds import VirtualFundHoldings
-from msm_portfolios.models import (
+from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+from msm.data_nodes.accounts.virtual_funds import VirtualFundHoldings
+from msm.models import (
     VirtualFundHoldingsSetTable,
     VirtualFundTable,
-    portfolio_sqlalchemy_models,
 )
-from msm_portfolios.services.holdings import (
+from msm.services.accounts.virtual_fund_holdings import (
     build_virtual_fund_holdings_frame,
     validate_virtual_fund_allocation_bounds,
 )
 
 
-def test_virtual_fund_holdings_storage_is_registered_by_portfolio_graph() -> None:
-    assert VirtualFundHoldingsStorage in set(portfolio_sqlalchemy_models())
+def test_virtual_fund_holdings_storage_is_registered_by_core_markets_graph() -> None:
+    assert VirtualFundHoldingsStorage in set(markets_sqlalchemy_models())
 
 
 def test_virtual_fund_holdings_storage_declares_allocation_foreign_keys() -> None:
@@ -157,7 +156,9 @@ def test_virtual_fund_allocation_bound_allows_remaining_source_quantity(monkeypa
             }
         raise AssertionError(model)
 
-    monkeypatch.setattr("msm_portfolios.services.holdings.search_model", fake_search_model)
+    monkeypatch.setattr(
+        "msm.services.accounts.virtual_fund_holdings.search_model", fake_search_model
+    )
     frame = build_virtual_fund_holdings_frame(
         allocation_time="2026-05-25T10:00:00+00:00",
         virtual_fund_uid=uuid.uuid4(),
@@ -198,7 +199,9 @@ def test_virtual_fund_allocation_bound_rejects_overallocation(monkeypatch) -> No
             }
         raise AssertionError(model)
 
-    monkeypatch.setattr("msm_portfolios.services.holdings.search_model", fake_search_model)
+    monkeypatch.setattr(
+        "msm.services.accounts.virtual_fund_holdings.search_model", fake_search_model
+    )
     frame = build_virtual_fund_holdings_frame(
         allocation_time="2026-05-25T10:00:00+00:00",
         virtual_fund_uid=uuid.uuid4(),
@@ -230,7 +233,9 @@ def test_short_source_holdings_do_not_fund_long_allocations(monkeypatch) -> None
             return {"rows": []}
         raise AssertionError(model)
 
-    monkeypatch.setattr("msm_portfolios.services.holdings.search_model", fake_search_model)
+    monkeypatch.setattr(
+        "msm.services.accounts.virtual_fund_holdings.search_model", fake_search_model
+    )
     frame = build_virtual_fund_holdings_frame(
         allocation_time="2026-05-25T10:00:00+00:00",
         virtual_fund_uid=uuid.uuid4(),

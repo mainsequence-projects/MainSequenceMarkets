@@ -18,7 +18,6 @@ from msm.models import (
 from .portfolios import PortfolioMetadataTable
 from .rebalancing import RebalanceStrategyMetadataTable
 from .signals import SignalMetadataTable
-from .virtual_funds import VirtualFundHoldingsSetTable, VirtualFundTable
 
 
 def portfolio_sqlalchemy_models() -> list[type]:
@@ -29,9 +28,6 @@ def portfolio_sqlalchemy_models() -> list[type]:
     )
     from msm_portfolios.data_nodes.prices.storage import ExternalPricesStorage
     from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
-    from msm_portfolios.data_nodes.virtual_funds.storage import (
-        VirtualFundHoldingsStorage,
-    )
 
     return [
         AssetTypeTable,
@@ -49,14 +45,11 @@ def portfolio_sqlalchemy_models() -> list[type]:
         SignalMetadataTable,
         RebalanceStrategyMetadataTable,
         PortfolioMetadataTable,
-        VirtualFundTable,
-        VirtualFundHoldingsSetTable,
         PortfolioWeightsStorage,
         SignalWeightsStorage,
         PortfoliosStorage,
         ExternalPricesStorage,
         TargetPositionsStorage,
-        VirtualFundHoldingsStorage,
     ]
 
 
@@ -75,7 +68,5 @@ __all__ = [
     "PortfolioMetadataTable",
     "RebalanceStrategyMetadataTable",
     "SignalMetadataTable",
-    "VirtualFundHoldingsSetTable",
-    "VirtualFundTable",
     "portfolio_sqlalchemy_models",
 ]

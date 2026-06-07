@@ -2,10 +2,14 @@
 
 ## Status
 
-Proposed - planning only
+Accepted - first implementation landed
 
 This ADR defines the business logic and implementation plan for allocating real
-account holdings into virtual-fund holdings. It does not implement the service.
+account holdings into virtual-fund holdings. The first implementation moves
+virtual-fund identity and storage into core `msm`, adds a pure vector planner,
+and adds an apply step for feasible plans. Repository-backed resolution from a
+`PositionSet` and first-class allocation-run traceability remain follow-up
+work.
 
 ## Context
 
@@ -54,7 +58,7 @@ VirtualFundHoldingsStorage
   direction
 ```
 
-The missing service is the business logic that turns:
+The allocation service is the business logic that turns:
 
 ```text
 real account holdings
@@ -931,11 +935,23 @@ plan_account_virtual_fund_allocations(
     valuation_time,
     valuation_asset_uid,
     requested_metrics=("nav",),
-    holdings_selection_policy,
-    valuation_resolver,
-    allocation_policy,
+    holdings_selection_policy=None,
+    valuation_resolver=None,
+    allocation_policy=None,
+    source_holdings=None,
+    direct_target_demands=None,
+    virtual_fund_demands=None,
+    account_uid=None,
+    source_account_holdings_set_uid=None,
+    account_nav=None,
 ) -> AccountVirtualFundAllocationPlan
 ```
+
+The implemented pure planner requires resolved `source_holdings` and
+`virtual_fund_demands`. A repository-backed resolver that starts only from
+`position_set_uid` is intentionally separate follow-up work because it must
+resolve source holdings, target positions, portfolio weights, and valuations
+through explicit workflow policies.
 
 The planner performs no writes. It returns:
 
@@ -1092,39 +1108,42 @@ not from arbitrary hardcoded example payloads.
 ## Implementation Plan
 
 - [ ] Define the pure allocation-plan data models:
+- [x] Define the pure allocation-plan data models:
       source holdings, target demand, expanded portfolio demand,
       account-virtual holding lines, residuals, target gaps, deficits, and
       diagnostics.
-- [ ] Define the allocation policy model with `proportional_attribution` as the
+- [x] Define the allocation policy model with `proportional_attribution` as the
       default and `strict_feasible` as a validation mode.
 - [ ] Add resolvers for account holdings, target position sets, portfolio
       weights, and valuation.
-- [ ] Move virtual-fund identity and holdings storage into core `msm` account
+- [x] Move virtual-fund identity and holdings storage into core `msm` account
       modules:
       `src/msm/models/accounts/virtual_funds.py` and
       `src/msm/data_nodes/accounts/virtual_funds/storage.py`.
-- [ ] Convert `src/msm/services/accounts.py` into a package and place the
+- [x] Convert `src/msm/services/accounts.py` into a package and place the
       planner in `src/msm/services/accounts/account_virtual_allocations.py`.
-- [ ] Keep `msm_portfolios` as the portfolio construction engine and expose a
+- [x] Keep `msm_portfolios` as the portfolio construction engine and expose a
       portfolio-target expansion boundary instead of making core `msm` import
       portfolio construction modules.
-- [ ] Implement `plan_account_virtual_fund_allocations(...)` with no writes.
+- [x] Implement `plan_account_virtual_fund_allocations(...)` with no writes.
 - [ ] Add deterministic virtual-fund identity rules for
       account/portfolio/target-allocation combinations.
 - [ ] Resolve the traceability gap by adding either an allocation-run table or
       first-class traceability fields on `VirtualFundHoldingsSetTable`.
-- [ ] Implement the apply step that converts a feasible plan into
+- [x] Implement the apply step that converts a feasible plan into
       `VirtualFundHoldingsStorage` rows.
-- [ ] Keep `VirtualFund.allocate_from_account_holdings_set(...)` as a low-level
+- [x] Keep `VirtualFund.allocate_from_account_holdings_set(...)` as a low-level
       explicit allocation publisher, not the policy engine.
-- [ ] Add tests for exact fit, excess holdings, insufficient holdings,
-      non-target residuals, multiple funds competing for the same asset,
-      missing valuations, missing portfolio weights, short targets, and leverage
-      rejection.
+- [x] Add focused planner tests for exact fit, excess/direct residual,
+      insufficient holdings, multiple funds competing for the same asset,
+      opposite-signed direct targets, and short virtual-fund targets.
+- [ ] Add resolver-level tests for missing valuations, missing portfolio
+      weights, non-target residuals, and leverage rejection after the
+      repository-backed resolver exists.
 - [ ] Add a virtual-fund allocation example that starts with account holdings
       and account target allocation, runs the planner, displays the plan, and
       only then applies it.
-- [ ] Update account, portfolio, and virtual-fund documentation with the
+- [x] Update account, portfolio, and virtual-fund documentation with the
       documented planner flow and edge-case behavior.
 
 ## Non-Goals

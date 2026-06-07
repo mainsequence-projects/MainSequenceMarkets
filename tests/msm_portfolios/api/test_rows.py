@@ -6,7 +6,7 @@ import pytest
 
 from msm.api.base import MarketsMetaTableRow
 from msm.api.portfolios import Portfolio
-from msm.models import AssetTable, CalendarTable, IndexTable, PortfolioTable
+from msm.models import CalendarTable, IndexTable, PortfolioTable
 from msm_portfolios.api.market_metadata import (
     RebalanceStrategyMetadata,
     SignalMetadata,
@@ -14,13 +14,10 @@ from msm_portfolios.api.market_metadata import (
 from msm_portfolios.api.portfolios import (
     PortfolioMetadata,
 )
-from msm_portfolios.api.virtual_funds import VirtualFund, VirtualFundHoldingsSet
 from msm_portfolios.models import (
     PortfolioMetadataTable,
     RebalanceStrategyMetadataTable,
     SignalMetadataTable,
-    VirtualFundHoldingsSetTable,
-    VirtualFundTable,
 )
 
 
@@ -29,12 +26,6 @@ from msm_portfolios.models import (
     [
         (Portfolio, PortfolioTable, ("unique_identifier",)),
         (PortfolioMetadata, PortfolioMetadataTable, ("unique_identifier",)),
-        (VirtualFund, VirtualFundTable, ("unique_identifier",)),
-        (
-            VirtualFundHoldingsSet,
-            VirtualFundHoldingsSetTable,
-            ("virtual_fund_uid", "source_account_holdings_set_uid"),
-        ),
         (SignalMetadata, SignalMetadataTable, ("signal_uid",)),
         (
             RebalanceStrategyMetadata,
@@ -71,10 +62,6 @@ def test_portfolio_create_schemas_includes_domain_required_tables(monkeypatch) -
             "namespace": "mainsequence.examples",
         }
     ]
-
-
-def test_virtual_fund_api_does_not_require_asset_proxy_table() -> None:
-    assert AssetTable not in VirtualFund.__required_tables__
 
 
 def test_missing_required_table_fails_before_operation(monkeypatch) -> None:

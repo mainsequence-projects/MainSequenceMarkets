@@ -353,8 +353,19 @@ The holdings DataNode configuration does not carry `time_index_name`,
 `index_names`, nullable columns, or dtype declarations. Those are storage
 MetaTable fields on `AccountHoldingsStorage`.
 
-Virtual-fund allocation holdings belong to the
-[Virtual Funds](../../msm_portfolios/virtualfunds/index.md) knowledge page.
+## Account Virtual-Fund Allocation
+
+Virtual-fund allocation holdings are derived views over real account holdings.
+They are not canonical custody and are not produced by portfolio construction.
+
+The account allocation planner starts from a `PositionSet`, resolves the source
+`AccountHoldingsSet`, expands portfolio targets to asset-level demand, obtains
+valuation output through a valuation resolver, and returns a dry-run
+allocation plan. Only a separate apply step writes `VirtualFundTable`,
+`VirtualFundHoldingsSetTable`, and `VirtualFundHoldingsStorage` rows.
+
+See [Virtual Funds](../virtualfunds/index.md) for the allocation policy,
+valuation resolver contract, and apply flow.
 
 ## End-To-End Flow
 

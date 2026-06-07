@@ -1,14 +1,14 @@
 ---
 name: mainsequence-markets-portfolio-workflow
-description: Use this skill when creating, extending, reviewing, or documenting msm_portfolios workflows, including portfolio DataNodes, portfolio metadata, virtual-fund allocation, and portfolio calculations that depend on core PortfolioTable identity.
+description: Use this skill when creating, extending, reviewing, or documenting msm_portfolios workflows, including portfolio DataNodes, portfolio metadata, portfolio construction examples, contributed price/signal nodes, and portfolio calculations that depend on core PortfolioTable identity.
 ---
 
 # Main Sequence Markets Portfolio Workflow
 
 Use this skill for `msm_portfolios` concepts: portfolio calculation DataNodes,
-portfolio metadata, rebalance/signal workflows, contributed portfolio price
-sources, and virtual-fund allocation. Core `msm` owns `PortfolioTable` identity
-and account target-position exposure rows.
+portfolio metadata, rebalance/signal workflows, and contributed portfolio price
+sources. Core `msm` owns `PortfolioTable` identity, account target-position
+exposure rows, and virtual-fund allocation state.
 
 ## Read First
 
@@ -60,8 +60,7 @@ Rules:
 
 Use `msm.start_engine(...)` for account target positions that reference
 portfolios. Use `msm_portfolios.start_engine(...)` only when attaching
-portfolio calculation, portfolio metadata, virtual-fund, or portfolio storage
-tables.
+portfolio calculation, portfolio metadata, or portfolio storage tables.
 
 ```python
 import msm

@@ -1,6 +1,6 @@
 ---
 name: mainsequence-markets-account-workflow
-description: Use this skill when creating, extending, reviewing, or documenting ms-markets account workflows, including Account, AccountGroup, AccountAllocationModel, AccountTargetAllocation, PositionSet, AccountHoldings, portfolio-aware TargetPositionsStorage, account holdings examples, and account position pretty-printing.
+description: Use this skill when creating, extending, reviewing, or documenting ms-markets account workflows, including Account, AccountGroup, AccountAllocationModel, AccountTargetAllocation, PositionSet, AccountHoldings, portfolio-aware TargetPositionsStorage, VirtualFund, VirtualFundHoldings, account holdings examples, and account position pretty-printing.
 ---
 
 # Main Sequence Markets Account Workflow
@@ -9,6 +9,8 @@ Use this skill for account machinery in `msm`: account registry rows, account
 groups, allocation-model tracking, account-owned target allocation links,
 PositionSet snapshots, account holdings publication, and account target
 allocation exposure rows that can reference either assets or portfolios.
+Virtual funds are also core account-allocation state because they allocate real
+account holdings into account-owned virtual portfolio views.
 
 ## Route First
 
@@ -40,6 +42,8 @@ Before changing account code, inspect:
 7. `src/msm/services/target_positions.py`
 8. `examples/msm/accounts/account_portfolio_full_workflow.py`
 9. `docs/knowledge/msm/accounts/index.md`
+10. `docs/knowledge/msm/virtualfunds/index.md`
+11. `docs/ADR/0029-account-holdings-virtual-fund-allocation-policy.md`
 
 ## Core Relationships
 
@@ -94,6 +98,14 @@ Rules:
 - `AccountHoldingsStorage.holdings_set_uid` must reference a real
   `AccountHoldingsSet` row. Do not invent anonymous holdings set UUIDs inside
   examples.
+- `VirtualFundTable`, `VirtualFundHoldingsSetTable`, and
+  `VirtualFundHoldingsStorage` are core `msm` account-allocation state, not
+  `msm_portfolios` state.
+- The account holdings to virtual-fund allocation planner is dry-run first. It
+  produces an `AccountVirtualFundAllocationPlan`; only a separate apply step
+  writes virtual-fund holdings rows.
+- `VirtualFund.allocate_from_account_holdings_set(...)` is a low-level explicit
+  publisher. It is not the allocation policy engine.
 - DataNodes do not fabricate bootstrap rows. Attach a real frame or implement a
   real source-specific `update()`.
 
@@ -124,6 +136,9 @@ msm.start_engine(
         "PositionSet",
         "AccountHoldingsStorage",
         "Portfolio",
+        "VirtualFund",
+        "VirtualFundHoldingsSet",
+        "VirtualFundHoldingsStorage",
         "SignalMetadata",
         "RebalanceStrategyMetadata",
         "PortfolioWeightsStorage",
@@ -146,11 +161,29 @@ equal-weight portfolio interpolation schema, chains the reusable portfolio
 workflow, reuses the resulting `Portfolio` row, and assigns that portfolio UID
 as one of the account target positions. The account example does not create
 virtual funds or virtual-fund holdings; those require an explicit allocation
-policy and belong in the virtual-fund workflow. Use
+policy and belong in the account virtual-fund workflow. Use
 `run_account_portfolio_full_workflow(use_portfolio_example=False)` or the
 example CLI flag `--standalone-target-sleeve` only when testing the account
 path without the portfolio example. Use `--skip-schema-prep` only when the
 configured portfolio interpolation table has already been migrated.
+
+## Virtual-Fund Allocation Pattern
+
+Use `plan_account_virtual_fund_allocations(...)` to compute allocation before
+writing. The planner expects resolved source holdings and virtual-fund demands,
+or an explicit repository-backed resolver at the workflow boundary. It must not
+invent quantities from example constants.
+
+The default policy is `proportional_attribution`: virtual-fund claims consume
+the asset-level gross source capacity first, and the direct account sleeve is
+the residual. `strict_feasible` is a validation mode that fails when
+virtual-fund demand exceeds source capacity.
+
+Valuation is supplied through a valuation resolver protocol. The resolver uses
+`valuation_asset_uid` as an `AssetTable.uid`, receives
+`requested_metrics=[{"name": "nav"}]`, and returns totals plus optional
+per-line valuation output. Do not pass ISO codes, tickers, or hidden global
+pricing state into the planner.
 
 ## Full Workflow Pattern
 

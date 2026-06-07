@@ -21,10 +21,13 @@ Services answer these questions:
   mapping, API-key resolution from the `OPEN_FIGI_API_KEY` Main Sequence
   secret, normalization, MetaTable row construction, and asset snapshot frame
   construction.
-- `msm_portfolios.services.virtual_funds`: virtual-fund creation and lookup workflows
-  over repository operations.
 - `msm.services.accounts`: account registry, account allocation-model, target
-  allocation, position-set, and account-facing snapshot workflows.
+  allocation, position-set, virtual-fund allocation, and account-facing
+  snapshot workflows.
+- `msm.services.accounts.virtual_funds`: virtual-fund creation and lookup
+  workflows over repository operations.
+- `msm.services.accounts.account_virtual_allocations`: account holdings to
+  virtual-fund allocation planner and apply step.
 - `msm.services.portfolios`: core portfolio identity workflows over repository operations.
 - `msm.services.holdings`: DataNode frame builders and validators for account
   holdings tables.

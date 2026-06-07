@@ -11,7 +11,7 @@ from msm.repositories.base import (
     compile_markets_statement,
     execute_markets_operation,
 )
-from msm_portfolios.models import VirtualFundTable
+from msm.models import VirtualFundTable
 
 
 def build_create_virtual_fund_operation(

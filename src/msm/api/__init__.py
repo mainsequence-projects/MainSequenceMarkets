@@ -100,6 +100,16 @@ from .indices import (
 )
 from .issuers import Issuer, IssuerCreate, IssuerUpdate, IssuerUpsert
 from .portfolios import Portfolio, PortfolioCreate, PortfolioUpdate, PortfolioUpsert
+from .virtual_funds import (
+    VirtualFund,
+    VirtualFundAllocation,
+    VirtualFundCreate,
+    VirtualFundHoldingsSet,
+    VirtualFundHoldingsSetCreate,
+    VirtualFundHoldingsSetUpsert,
+    VirtualFundUpdate,
+    VirtualFundUpsert,
+)
 
 __all__ = [
     "Account",
@@ -197,4 +207,12 @@ __all__ = [
     "PortfolioCreate",
     "PortfolioUpdate",
     "PortfolioUpsert",
+    "VirtualFund",
+    "VirtualFundAllocation",
+    "VirtualFundCreate",
+    "VirtualFundHoldingsSet",
+    "VirtualFundHoldingsSetCreate",
+    "VirtualFundHoldingsSetUpsert",
+    "VirtualFundUpdate",
+    "VirtualFundUpsert",
 ]

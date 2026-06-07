@@ -15,7 +15,7 @@ from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.accounts import AccountHoldingsSetTable
 from msm.models.assets.core import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
-from msm_portfolios.models.virtual_funds import VirtualFundHoldingsSetTable, VirtualFundTable
+from msm.models.accounts.virtual_funds import VirtualFundHoldingsSetTable, VirtualFundTable
 
 
 class VirtualFundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):

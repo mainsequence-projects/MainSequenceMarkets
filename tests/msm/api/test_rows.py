@@ -26,6 +26,7 @@ from msm.api.assets import (
 from msm.api.calendars import Calendar, CalendarDate, CalendarEvent, CalendarSession
 from msm.api.execution import OrderManager
 from msm.api.indices import Index, IndexType
+from msm.api.virtual_funds import VirtualFund, VirtualFundHoldingsSet
 from msm.models import (
     AccountGroupTable,
     AccountAllocationModelTable,
@@ -43,6 +44,8 @@ from msm.models import (
     OpenFigiAssetDetailsTable,
     OrderManagerTable,
     PositionSetTable,
+    VirtualFundHoldingsSetTable,
+    VirtualFundTable,
 )
 
 
@@ -81,6 +84,12 @@ from msm.models import (
             PositionSetTable,
             ("account_target_allocation_uid", "position_set_time"),
         ),
+        (VirtualFund, VirtualFundTable, ("unique_identifier",)),
+        (
+            VirtualFundHoldingsSet,
+            VirtualFundHoldingsSetTable,
+            ("virtual_fund_uid", "source_account_holdings_set_uid"),
+        ),
         (IndexType, IndexTypeTable, ("index_type",)),
         (Index, IndexTable, ("unique_identifier",)),
         (OrderManager, OrderManagerTable, ("unique_identifier",)),
@@ -99,6 +108,12 @@ def test_api_rows_declare_table_and_upsert_contracts(
 
 def test_legacy_markets_row_name_is_compatibility_alias() -> None:
     assert MarketsRow is MarketsMetaTableRow
+
+
+def test_virtual_fund_api_does_not_require_asset_proxy_table() -> None:
+    from msm.models import AssetTable
+
+    assert AssetTable not in VirtualFund.__required_tables__
 
 
 def test_position_set_requires_utc_timestamp() -> None:

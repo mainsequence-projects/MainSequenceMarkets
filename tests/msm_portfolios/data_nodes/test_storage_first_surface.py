@@ -29,9 +29,6 @@ from msm_portfolios.data_nodes.signals import SignalWeights
 from msm_portfolios.data_nodes.signals.storage import (
     SignalWeightsStorage,
 )
-from msm_portfolios.data_nodes.virtual_funds.storage import (
-    VirtualFundHoldingsStorage,
-)
 from msm_portfolios.models import portfolio_sqlalchemy_models
 
 
@@ -73,7 +70,6 @@ def test_portfolio_storage_identifiers_use_camel_case_ts_suffix() -> None:
     assert PortfoliosStorage.metatable_identifier().endswith("PortfoliosTS")
     assert ExternalPricesStorage.metatable_identifier().endswith("ExternalPricesTS")
     assert InterpolatedPricesStorage.metatable_identifier().endswith("InterpolatedPricesTS")
-    assert VirtualFundHoldingsStorage.metatable_identifier().endswith("VirtualFundHoldingsTS")
 
 
 def test_external_price_storage_is_registered_by_portfolio_provider() -> None:

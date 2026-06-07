@@ -62,17 +62,18 @@ Models answer these questions:
 ## Key Contracts
 
 `markets_sqlalchemy_models()` returns core `msm` models in dependency order.
-`msm_portfolios.models.portfolio_sqlalchemy_models()` returns portfolio and
-virtual-fund models. Keep the owning package list updated when adding persistent
-market objects so schema registration stays deterministic.
+`msm_portfolios.models.portfolio_sqlalchemy_models()` returns portfolio
+construction models. Keep the owning package list updated when adding
+persistent market objects so schema registration stays deterministic.
 
 Models should represent durable schema. Runtime-only behavior belongs in
 DataNodes, services, pricing classes, or `msm.api` row helpers depending on the
 use case.
 
 The core `markets_sqlalchemy_models()` list intentionally does not include
-portfolio-package or optional pricing-package tables. Use `msm_portfolios` for
-portfolio/virtual-fund workflows and the pricing helper when a workflow needs
+portfolio-package or optional pricing-package tables. It does include core
+account allocation and virtual-fund state. Use `msm_portfolios` for portfolio
+construction workflows and the pricing helper when a workflow needs
 pricing-owned current instrument payloads, index conventions, or curve identity
 rows.
 

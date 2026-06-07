@@ -8,6 +8,7 @@ from .core import (
     PositionSetTable,
 )
 from .groups import AccountGroupTable
+from .virtual_funds import VirtualFundHoldingsSetTable, VirtualFundTable
 
 __all__ = [
     "AccountGroupTable",
@@ -16,4 +17,6 @@ __all__ = [
     "AccountTable",
     "AccountTargetAllocationTable",
     "PositionSetTable",
+    "VirtualFundHoldingsSetTable",
+    "VirtualFundTable",
 ]
