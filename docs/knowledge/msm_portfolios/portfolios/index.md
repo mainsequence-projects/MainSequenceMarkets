@@ -477,8 +477,9 @@ example OHLCV bars to `ExternalPricesStorage`, interpolates those prices, runs
 `SignalWeights`, `PortfolioWeights`, and `PortfoliosDataNode`, and upserts the
 `Portfolio` row with `calendar_uid`, `portfolio_index_uid`, plus the published
 DataNode update UIDs. The example narrates each setup, source-price
-publication, portfolio, and virtual-fund allocation step so terminal output
-explains what was created.
+publication, and portfolio step so terminal output explains what was created.
+It does not create virtual funds or virtual-fund allocation rows; those require
+an explicit account funding policy and belong in the virtual-funds workflow.
 
 ## Extension Notes
 

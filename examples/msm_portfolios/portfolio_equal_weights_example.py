@@ -25,8 +25,6 @@ from examples.msm.assets.utils import (  # noqa: E402
     EXAMPLE_CRYPTO_ASSET_TYPE,
 )
 from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
-    ACCOUNT_GROUP_NAME,
-    ACCOUNT_UNIQUE_IDENTIFIER,
     ASSET_UNIQUE_IDENTIFIERS,
     CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
     DYNAMIC_MIGRATION_PROVIDER,
@@ -39,7 +37,6 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
     PRICE_INTERPOLATION_RULE,
     PRICE_UPSAMPLE_FREQUENCY_ID,
     TIME_INDEX,
-    VIRTUAL_FUND_UNIQUE_IDENTIFIER,
     configured_equal_weight_interpolated_prices_storage,
     source_cadence_from_meta_table,
     source_storage_hash_from_meta_table,
@@ -47,7 +44,6 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
 
 import msm_portfolios  # noqa: E402
 from mainsequence.client.metatables import TimeIndexMetaTable  # noqa: E402
-from msm.api.accounts import Account, AccountGroup, AccountHoldingsSet  # noqa: E402
 from msm.api.assets import Asset, AssetType  # noqa: E402
 from msm.api.calendars import Calendar  # noqa: E402
 from msm.api.indices import Index, IndexType  # noqa: E402
@@ -56,9 +52,7 @@ from msm.data_nodes.assets.asset_indexed import (  # noqa: E402
     AssetIndexedDataNodeConfiguration,
 )
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc  # noqa: E402
-from msm.data_nodes.accounts import AccountHoldings  # noqa: E402
 from msm.api.portfolios import Portfolio  # noqa: E402
-from msm_portfolios.api.virtual_funds import VirtualFund  # noqa: E402
 from msm_portfolios.configuration import (  # noqa: E402
     AssetsConfiguration,
     BacktestingWeightsConfig,
@@ -78,7 +72,6 @@ from msm_portfolios.data_nodes.prices.storage import (  # noqa: E402
 )
 from msm_portfolios.data_nodes import (  # noqa: E402
     PortfoliosDataNode,
-    VirtualFundHoldings,
     compute_portfolio_configuration_hash,
 )
 from msm_portfolios.enums import PriceTypeNames  # noqa: E402
@@ -180,24 +173,6 @@ def create_crypto_calendar_from_pandas() -> Calendar:
         f"{portfolio_calendar.source}:{portfolio_calendar.source_identifier}",
     )
     return portfolio_calendar
-
-
-def register_account() -> Account:
-    account_group = AccountGroup.upsert(
-        group_name=ACCOUNT_GROUP_NAME,
-        group_description="Example group for portfolio virtual-fund allocation.",
-    )
-    account = Account.upsert(
-        unique_identifier=ACCOUNT_UNIQUE_IDENTIFIER,
-        account_name="Example Portfolio Allocation Account",
-        is_paper=True,
-        account_is_active=True,
-        account_group_uid=account_group.uid,
-    )
-    print_detail("account_group_uid", account_group.uid)
-    print_detail("account_uid", account.uid)
-    print_detail("account_identifier", account.unique_identifier)
-    return account
 
 
 def register_portfolio_index() -> Index:
@@ -379,47 +354,18 @@ def build_example_daily_bars_frame(asset_identifiers: Sequence[str]) -> pd.DataF
     return frame.set_index(["time_index", "asset_identifier"]).sort_index()
 
 
-def build_account_holdings_frame(
-    node: AccountHoldings,
-    account: Account,
-    holdings_set: AccountHoldingsSet,
-) -> pd.DataFrame:
-    return node.build_account_holdings_frame(
-        holdings_date=TIME_INDEX,
-        account_uid=account.uid,
-        holdings_set_uid=holdings_set.uid,
-        positions=[
-            {
-                "asset_identifier": asset_identifier,
-                "quantity": quantity,
-                "direction": 1,
-            }
-            for asset_identifier, quantity in zip(
-                ASSET_UNIQUE_IDENTIFIERS,
-                [10.0, 5.0],
-                strict=True,
-            )
-        ],
-    )
-
-
 def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> None:
     portfolio = result["portfolio"]
     portfolio_index = result["portfolio_index"]
     portfolio_calendar = result["portfolio_calendar"]
-    account = result["account"]
-    virtual_fund = result["virtual_fund"]
 
-    print_step(12, "Final portfolio workflow summary.")
+    print_step(9, "Final portfolio workflow summary.")
     print_detail("portfolio_uid", portfolio.uid)
     print_detail("portfolio_identifier", portfolio.unique_identifier)
     print_detail("portfolio_index_uid", portfolio_index.uid)
     print_detail("portfolio_index_identifier", portfolio_index.unique_identifier)
     print_detail("portfolio_calendar_uid", portfolio_calendar.uid)
     print_detail("portfolio_calendar_identifier", portfolio_calendar.unique_identifier)
-    print_detail("account_uid", account.uid)
-    print_detail("virtual_fund_uid", virtual_fund.uid)
-    print_detail("virtual_fund_identifier", virtual_fund.unique_identifier)
     print_detail("portfolio_configuration_hash", result["portfolio_configuration_hash"])
     print_detail("source_prices_storage_uid", result["source_prices_storage_uid"])
     print_detail("source_prices_storage_hash", result["source_prices_storage_hash"])
@@ -437,8 +383,6 @@ def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> Non
     print_detail("signal_weights_data_node_uid", result["signal_weights_node_uid"])
     print_detail("portfolio_weights_data_node_uid", result["portfolio_weights_node_uid"])
     print_detail("portfolio_values_data_node_uid", result["portfolio_values_node_uid"])
-    print_detail("account_holdings_rows", len(result["account_holdings_frame"]))
-    print_detail("virtual_fund_allocation_rows", len(result["virtual_fund_allocations_frame"]))
     if not run_data_nodes:
         print_detail("data_node_mode", "frames built locally; storage publication skipped")
 
@@ -459,13 +403,10 @@ def build_equal_weight_portfolio(
     print_step(3, "Creating or reusing the crypto 24/7 calendar.")
     portfolio_calendar = create_crypto_calendar_from_pandas()
 
-    print_step(4, "Registering the allocation account.")
-    account = register_account()
-
-    print_step(5, "Registering the portfolio index row.")
+    print_step(4, "Registering the portfolio index row.")
     portfolio_index = register_portfolio_index()
 
-    print_step(6, "Preparing equal-weight signal and portfolio DataNodes.")
+    print_step(5, "Preparing equal-weight signal and portfolio DataNodes.")
     source_prices_storage_uid, source_prices_storage_meta_table = resolve_source_prices_storage(
         runtime
     )
@@ -523,7 +464,7 @@ def build_equal_weight_portfolio(
         "source_prices_rows", len(build_example_daily_bars_frame(ASSET_UNIQUE_IDENTIFIERS))
     )
 
-    print_step(7, "Publishing portfolio DataNode storage outputs.")
+    print_step(6, "Publishing portfolio DataNode storage outputs.")
     if run_data_nodes:
         source_bars_node.run(debug_mode=True, update_tree=False, force_update=True)
         source_prices_node_uid = str(source_bars_node.data_node_update.uid)
@@ -550,7 +491,7 @@ def build_equal_weight_portfolio(
         portfolio_weights_node_uid = None
         portfolio_values_node_uid = None
 
-    print_step(8, "Updating the Portfolio row with DataNode links.")
+    print_step(7, "Updating the Portfolio row with DataNode links.")
     portfolio = Portfolio.upsert(
         unique_identifier=PORTFOLIO_UNIQUE_IDENTIFIER,
         calendar_uid=portfolio_calendar.uid,
@@ -563,64 +504,11 @@ def build_equal_weight_portfolio(
     print_detail("portfolio_uid", portfolio.uid)
     print_detail("portfolio_identifier", portfolio.unique_identifier)
 
-    print_step(9, "Creating source account holdings for virtual-fund allocation.")
-    holdings_set = AccountHoldingsSet.upsert(account_uid=account.uid, time_index=TIME_INDEX)
-    account_holdings_node = AccountHoldings(config=AccountHoldings.default_config())
-    account_holdings_frame = build_account_holdings_frame(
-        account_holdings_node, account, holdings_set
-    )
-    account_holdings_node.set_frame(account_holdings_frame)
-    print_detail("account_holdings_set_uid", holdings_set.uid)
-    print_detail("account_holdings_rows", len(account_holdings_frame))
-    if run_data_nodes:
-        account_holdings_node.run(debug_mode=True, update_tree=False, force_update=True)
-        account_holdings_node_uid = str(account_holdings_node.data_node_update.uid)
-        print_detail("account_holdings_data_node_uid", account_holdings_node_uid)
-    else:
-        print_detail("account_holdings_data_node_uid", "skipped (--no-run-data-nodes)")
-        account_holdings_node_uid = None
-
-    print_step(10, "Upserting the VirtualFund row that targets the portfolio.")
-    virtual_fund = VirtualFund.upsert(
-        unique_identifier=VIRTUAL_FUND_UNIQUE_IDENTIFIER,
-        account_uid=account.uid,
-        target_portfolio_uid=portfolio.uid,
-    )
-    print_detail("virtual_fund_uid", virtual_fund.uid)
-    print_detail("virtual_fund_identifier", virtual_fund.unique_identifier)
-
-    print_step(11, "Allocating source account holdings into virtual-fund holdings.")
-    virtual_fund_node = VirtualFundHoldings()
-    virtual_fund_allocations_frame = virtual_fund.allocate_from_account_holdings_set(
-        source_account_holdings_set_uid=holdings_set.uid,
-        allocation_time=TIME_INDEX,
-        allocations=[
-            {
-                "asset_identifier": ASSET_UNIQUE_IDENTIFIERS[0],
-                "allocated_quantity": 4.0,
-                "direction": 1,
-            },
-            {
-                "asset_identifier": ASSET_UNIQUE_IDENTIFIERS[1],
-                "allocated_quantity": 2.0,
-                "direction": 1,
-            },
-        ],
-        data_node=virtual_fund_node if run_data_nodes else None,
-        run=run_data_nodes,
-        validate_bounds=run_data_nodes,
-    )
-    print_detail("virtual_fund_allocation_rows", len(virtual_fund_allocations_frame))
-
     result = {
         "assets": assets,
-        "account": account,
-        "account_holdings_set": holdings_set,
-        "account_holdings_node_uid": account_holdings_node_uid,
         "portfolio": portfolio,
         "portfolio_index": portfolio_index,
         "portfolio_calendar": portfolio_calendar,
-        "virtual_fund": virtual_fund,
         "portfolio_configuration_hash": compute_portfolio_configuration_hash(
             portfolio_configuration
         ),
@@ -634,8 +522,6 @@ def build_equal_weight_portfolio(
         "signal_weights_node_uid": signal_weights_node_uid,
         "portfolio_weights_node_uid": portfolio_weights_node_uid,
         "portfolio_values_node_uid": portfolio_values_node_uid,
-        "account_holdings_frame": account_holdings_frame,
-        "virtual_fund_allocations_frame": virtual_fund_allocations_frame,
     }
     print_result_summary(result, run_data_nodes=run_data_nodes)
     return result

@@ -34,7 +34,7 @@ Before changing account code, inspect:
 1. `src/msm/models/accounts/core.py`
 2. `src/msm/models/accounts/groups.py`
 3. `src/msm/api/accounts.py`
-4. `src/msm/data_nodes/accounts.py`
+4. `src/msm/data_nodes/accounts/__init__.py`
 5. `src/msm/data_nodes/accounts/storage.py`
 6. `src/msm/services/holdings.py`
 7. `src/msm/services/target_positions.py`
@@ -124,9 +124,6 @@ msm.start_engine(
         "PositionSet",
         "AccountHoldingsStorage",
         "Portfolio",
-        "VirtualFund",
-        "VirtualFundHoldingsSet",
-        "VirtualFundHoldingsStorage",
         "SignalMetadata",
         "RebalanceStrategyMetadata",
         "PortfolioWeightsStorage",
@@ -147,7 +144,9 @@ The full account example is intentionally chainable. By default,
 `examples/msm/accounts/account_portfolio_full_workflow.py` prepares the
 equal-weight portfolio interpolation schema, chains the reusable portfolio
 workflow, reuses the resulting `Portfolio` row, and assigns that portfolio UID
-as one of the account target positions. Use
+as one of the account target positions. The account example does not create
+virtual funds or virtual-fund holdings; those require an explicit allocation
+policy and belong in the virtual-fund workflow. Use
 `run_account_portfolio_full_workflow(use_portfolio_example=False)` or the
 example CLI flag `--standalone-target-sleeve` only when testing the account
 path without the portfolio example. Use `--skip-schema-prep` only when the

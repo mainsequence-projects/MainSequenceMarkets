@@ -147,9 +147,9 @@ prepares the reusable portfolio interpolation schema, then chains the reusable
 equal-weight portfolio workflow. The account example reuses the resulting
 `Portfolio` row as a target sleeve, publishes `AssetSnapshot` rows with
 canonical ticker and name metadata, creates two accounts, assigns both to one
-account group, and adds target allocations for those accounts plus the portfolio
-example's allocation account. Each account-owned target relationship points at
-the same reusable `AccountAllocationModel`, and each `PositionSet` publishes one
+account group, and adds target allocations for those accounts. Each
+account-owned target relationship points at the same reusable
+`AccountAllocationModel`, and each `PositionSet` publishes one
 direct asset target row with `target_type="asset"` plus one portfolio target row
 with `target_type="portfolio"`. The example then publishes two-asset account
 holdings and pretty-prints positions for each standalone account. Pass

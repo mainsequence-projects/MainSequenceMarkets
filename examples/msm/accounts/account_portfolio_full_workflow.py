@@ -50,9 +50,6 @@ ACCOUNT_WORKFLOW_RUNTIME_MODELS = [
     "PositionSet",
     "AccountHoldingsStorage",
     "Portfolio",
-    "VirtualFund",
-    "VirtualFundHoldingsSet",
-    "VirtualFundHoldingsStorage",
     "SignalMetadata",
     "RebalanceStrategyMetadata",
     "ExternalPricesStorage",
@@ -209,22 +206,11 @@ def run_account_portfolio_full_workflow(
             f"group_uid={account.account_group_uid}"
         )
 
-    portfolio_allocation_account = None
     target_accounts = list(accounts)
-    if portfolio_example_result is not None:
-        portfolio_allocation_account = portfolio_example_result["account"]
-        target_accounts.append(portfolio_allocation_account)
-        print(
-            "   Portfolio allocation account will also receive target allocation: "
-            f"uid={portfolio_allocation_account.uid} "
-            f"unique_identifier={portfolio_allocation_account.unique_identifier}"
-        )
 
     if portfolio_example_result is None:
         print("8. Creating a portfolio sleeve that account targets can reference.")
-        target_sleeve_portfolio = Portfolio.upsert(
-            **EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO
-        )
+        target_sleeve_portfolio = Portfolio.upsert(**EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO)
     else:
         print("8. Reusing the portfolio created by the portfolio example as a target sleeve.")
         target_sleeve_portfolio = portfolio_example_result["portfolio"]
@@ -356,12 +342,6 @@ def run_account_portfolio_full_workflow(
             f"rows={len(holdings_frame)}"
         )
         holdings_frames.append(holdings_frame)
-    if portfolio_allocation_account is not None:
-        print(
-            "   Portfolio allocation account holdings were created by the "
-            "portfolio example; this account workflow only adds its target allocation."
-        )
-
     combined_holdings_frame = pd.concat(holdings_frames).sort_index()
     holdings_node.set_frame(combined_holdings_frame)
     print(f"   Combined holdings rows attached: rows={len(combined_holdings_frame)}")
@@ -392,7 +372,6 @@ def run_account_portfolio_full_workflow(
         "target_sleeve_portfolio": target_sleeve_portfolio,
         "account_group": account_group,
         "accounts": accounts,
-        "portfolio_allocation_account": portfolio_allocation_account,
         "target_accounts": target_accounts,
         "target_records": target_records,
         "target_positions_frame": combined_target_positions_frame,
@@ -418,10 +397,7 @@ def main() -> None:
     parser.add_argument(
         "--standalone-target-sleeve",
         action="store_true",
-        help=(
-            "Create a standalone Portfolio row instead of reusing the portfolio "
-            "example output."
-        ),
+        help=("Create a standalone Portfolio row instead of reusing the portfolio example output."),
     )
     parser.add_argument(
         "--no-run-portfolio-data-nodes",

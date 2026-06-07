@@ -33,9 +33,6 @@ PORTFOLIO_INDEX_DISPLAY_NAME = "Example Equal Weight Portfolio Index"
 CRYPTO_CALENDAR_UNIQUE_IDENTIFIER = "CRYPTO_24_7"
 TIME_INDEX = pd.Timestamp("2026-05-25T00:00:00Z")
 ASSET_UNIQUE_IDENTIFIERS = [payload["unique_identifier"] for payload in EXAMPLE_CRYPTO_ASSETS]
-ACCOUNT_GROUP_NAME = "Example Portfolio Allocation Accounts"
-ACCOUNT_UNIQUE_IDENTIFIER = "example-portfolio-allocation-account"
-VIRTUAL_FUND_UNIQUE_IDENTIFIER = "example-equal-weight-virtual-fund"
 SOURCE_PRICE_CADENCE = ExternalPricesStorage.__cadence__
 PRICE_UPSAMPLE_FREQUENCY_ID = "1d"
 PRICE_INTERPOLATION_RULE = "ffill"
@@ -53,17 +50,10 @@ PORTFOLIO_EXAMPLE_RUNTIME_MODELS = [
     "Index",
     "AssetType",
     "Asset",
-    "AccountGroup",
-    "Account",
-    "AccountHoldingsSet",
-    "AccountHoldingsStorage",
     "Calendar",
     "CalendarDate",
     "CalendarSession",
     "Portfolio",
-    "VirtualFund",
-    "VirtualFundHoldingsSet",
-    "VirtualFundHoldingsStorage",
     "SignalMetadata",
     "RebalanceStrategyMetadata",
     "ExternalPricesStorage",
@@ -207,8 +197,6 @@ def dynamic_storage_from_env() -> type[Any]:
 
 
 __all__ = [
-    "ACCOUNT_GROUP_NAME",
-    "ACCOUNT_UNIQUE_IDENTIFIER",
     "ASSET_UNIQUE_IDENTIFIERS",
     "CRYPTO_CALENDAR_UNIQUE_IDENTIFIER",
     "DYNAMIC_INTERPOLATION_RULE_ENV",
@@ -226,7 +214,6 @@ __all__ = [
     "PRICE_UPSAMPLE_FREQUENCY_ID",
     "SOURCE_PRICE_CADENCE",
     "TIME_INDEX",
-    "VIRTUAL_FUND_UNIQUE_IDENTIFIER",
     "configured_equal_weight_interpolated_prices_storage",
     "dynamic_provider_env",
     "dynamic_storage_from_env",
