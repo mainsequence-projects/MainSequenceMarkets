@@ -58,8 +58,14 @@ time_index
 (time_index, virtual_fund_uid, asset_identifier)
 ```
 
-The row stores a positive `allocated_quantity` and a signed `direction`.
-Short exposure is represented with `direction = -1`, not a negative quantity.
+The row stores a positive `allocated_quantity`, a first-class
+`allocation_strategy`, and a signed `direction`. Short exposure is represented
+with `direction = -1`, not a negative quantity.
+
+`allocation_strategy` records the strategy used to create the row. Low-level
+explicit publications use `explicit`; rows published from
+`apply_account_virtual_fund_allocation_plan(...)` use the allocation policy
+mode, such as `proportional_attribution` or `strict_feasible`.
 
 ## Planner Flow
 

@@ -75,6 +75,7 @@ class VirtualFund(MarketsMetaTableRow):
         allocations: Sequence[VirtualFundAllocation | Mapping[str, Any] | Any],
         virtual_fund_holdings_set_uid: uuid.UUID | str | None = None,
         target_trade_time: dt.datetime | str | None = None,
+        allocation_strategy: str = "explicit",
         data_node: Any | None = None,
         run: bool = False,
         validate_bounds: bool = True,
@@ -87,6 +88,7 @@ class VirtualFund(MarketsMetaTableRow):
             virtual_fund_holdings_set_uid=resolved_holdings_set_uid,
             allocations=allocations,
             target_trade_time=target_trade_time,
+            allocation_strategy=allocation_strategy,
         )
         if validate_bounds:
             validate_virtual_fund_allocation_bounds(_allocation_context(), frame)
@@ -187,6 +189,7 @@ class VirtualFundAllocation(BaseModel):
 
     asset_identifier: str = Field(min_length=1, max_length=255)
     allocated_quantity: float = Field(gt=0)
+    allocation_strategy: str | None = Field(default=None, min_length=1, max_length=64)
     direction: int = Field(default=1)
     target_trade_time: dt.datetime | None = None
     extra_details: dict[str, Any] | None = None

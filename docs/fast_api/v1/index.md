@@ -110,8 +110,9 @@ Current local-dev behavior:
     `virtual_fund_unique_identifier`, `target_portfolio_uid`,
     `holdings_set_uid`, and grouped holdings rows
   - grouped holding rows expose the storage `asset_identifier`, positive
-    allocated `quantity`, `direction`, computed `signed_quantity`, and
-    `allocation` metadata parsed from `extra_details`
+    allocated `quantity`, first-class `allocation_strategy`, `direction`,
+    computed `signed_quantity`, and `allocation` metadata parsed from
+    `extra_details`
   - `allocation` contains `target_gap_signed_quantity`, `scale`,
     `target_row_key`, and `position_set_uid` when those fields were persisted
     by the virtual-fund allocation apply step
@@ -292,7 +293,8 @@ Current local-dev behavior:
   - returns 200 with an empty `holdings` list when the virtual fund exists but
     no matching holdings snapshot exists
   - holdings rows expose the storage `asset_identifier`, positive `quantity`,
-    `direction`, and computed `signed_quantity`
+    first-class `allocation_strategy`, `direction`, and computed
+    `signed_quantity`
   - asset labels use latest `AssetSnapshotsStorage` rows; OpenFIGI is not used
 
 ### Calendars

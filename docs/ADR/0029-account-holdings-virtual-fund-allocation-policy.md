@@ -713,6 +713,9 @@ scale
 For `claim_type = virtual_fund_target`, `allocated_abs_quantity` is the quantity
 published into `VirtualFundHoldingsStorage`, and `requested_direction`
 determines the storage `direction`.
+`VirtualFundHoldingsStorage.allocation_strategy` records the allocation policy
+mode used to create the row as first-class storage state, not as nested
+`extra_details` metadata.
 `target_gap_signed_quantity` remains diagnostic tracking error for that virtual
 fund target. For `claim_type = direct_account_residual`, no virtual-fund row is
 published; the line records the account's balancing direct sleeve and target

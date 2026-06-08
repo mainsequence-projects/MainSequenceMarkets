@@ -18,6 +18,7 @@ from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
 
 logger = _mainsequence_logger.bind(sub_application="markets", component="virtual_funds")
+ALLOCATION_STRATEGY_EXPLICIT = "explicit"
 
 
 def build_virtual_fund_holdings_frame(
@@ -28,6 +29,7 @@ def build_virtual_fund_holdings_frame(
     virtual_fund_holdings_set_uid: UUID | str,
     allocations: Sequence[Mapping[str, Any] | Any],
     target_trade_time: dt.datetime | str | None = None,
+    allocation_strategy: str = ALLOCATION_STRATEGY_EXPLICIT,
 ) -> pd.DataFrame:
     if not allocations:
         raise ValueError("At least one virtual-fund allocation is required.")
@@ -50,6 +52,7 @@ def build_virtual_fund_holdings_frame(
                 "virtual_fund_holdings_set_uid": virtual_fund_holdings_set_uid,
                 "source_account_holdings_set_uid": source_account_holdings_set_uid,
                 "allocated_quantity": allocation.get("allocated_quantity"),
+                "allocation_strategy": allocation.get("allocation_strategy") or allocation_strategy,
                 "direction": allocation.get("direction", 1),
                 "target_trade_time": allocation.get("target_trade_time", target_trade_time),
                 "extra_details": allocation.get("extra_details") or {},
@@ -225,6 +228,7 @@ def _allocation_payload(allocation: Mapping[str, Any] | Any) -> dict[str, Any]:
         for key in (
             ASSET_IDENTIFIER_DIMENSION,
             "allocated_quantity",
+            "allocation_strategy",
             "direction",
             "target_trade_time",
             "extra_details",
@@ -241,6 +245,7 @@ def _required_allocation_string(allocation: Mapping[str, Any], field_name: str) 
 
 
 __all__ = [
+    "ALLOCATION_STRATEGY_EXPLICIT",
     "build_virtual_fund_holdings_frame",
     "validate_holdings_frame",
     "validate_virtual_fund_allocation_bounds",

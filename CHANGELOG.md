@@ -50,6 +50,10 @@ and this project follows versioned releases.
   through one scoped MetaTable upsert operation.
 - Tightened account target-position validation so portfolio target rows cannot
   use `single_asset_quantity`.
+- Promoted virtual-fund allocation strategy to the first-class
+  `VirtualFundHoldingsStorage.allocation_strategy` column; low-level explicit
+  publications write `explicit`, and planner-applied rows write the allocation
+  policy mode.
 
 ### Fixed
 

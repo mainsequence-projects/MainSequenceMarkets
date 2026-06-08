@@ -169,6 +169,7 @@ def test_get_virtualfund_holdings_returns_snapshot(monkeypatch) -> None:
                     "virtual_fund_holdings_set_uid": str(uuid.uuid4()),
                     "source_account_holdings_set_uid": str(uuid.uuid4()),
                     "quantity": "5.0",
+                    "allocation_strategy": "proportional_attribution",
                     "direction": -1,
                     "signed_quantity": "-5.0",
                     "target_trade_time": None,
@@ -203,6 +204,7 @@ def test_get_virtualfund_holdings_returns_snapshot(monkeypatch) -> None:
     body = response.json()
     assert body["virtual_fund_uid"] == virtual_fund["uid"]
     assert body["holdings"][0]["signed_quantity"] == "-5.0"
+    assert body["holdings"][0]["allocation_strategy"] == "proportional_attribution"
     assert body["holdings"][0]["asset"] == {
         "uid": str(asset_uid),
         "asset_identifier": "example-asset-btc",

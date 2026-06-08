@@ -743,6 +743,7 @@ def _build_account_holdings_by_fund_holding_row(
         "asset_identifier": _string_or_empty(row.get("asset_identifier")),
         "asset": asset_reference if include_asset_detail else None,
         "quantity": _number_string_or_none(allocated_quantity),
+        "allocation_strategy": _string_or_none(row.get("allocation_strategy")),
         "direction": direction,
         "signed_quantity": _number_string_or_none(signed_quantity),
         "target_trade_time": _datetime_or_none(row.get("target_trade_time")),
@@ -849,6 +850,7 @@ def _build_virtual_fund_holding_row(
             row.get("source_account_holdings_set_uid")
         ),
         "quantity": _number_string_or_none(row.get("allocated_quantity")),
+        "allocation_strategy": _string_or_none(row.get("allocation_strategy")),
         "direction": direction,
         "signed_quantity": _number_string_or_none(signed_quantity),
         "target_trade_time": _datetime_or_none(row.get("target_trade_time")),

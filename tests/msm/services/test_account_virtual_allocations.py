@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from types import SimpleNamespace
 
+import pandas as pd
 import pytest
 
 import msm.services.accounts.account_virtual_allocations as account_allocations
@@ -287,6 +289,50 @@ def test_public_planner_uses_required_service_inputs(monkeypatch) -> None:
         CLAIM_TYPE_VIRTUAL_FUND_TARGET,
         str(PORTFOLIO_UID),
     ).requested_signed_quantity == pytest.approx(5)
+
+
+def test_apply_virtual_fund_allocation_plan_writes_allocation_strategy(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    virtual_fund_uid = uuid.uuid4()
+    plan = _plan(
+        holdings_quantity=10,
+        direct_target=0,
+        virtual_targets=[("fund-a", 5)],
+    )
+
+    class FakeVirtualFund:
+        uid = virtual_fund_uid
+
+        def allocate_from_account_holdings_set(self, **kwargs):
+            captured.update(kwargs)
+            return pd.DataFrame(
+                [
+                    {
+                        "asset_identifier": "example-asset-btc",
+                        "allocated_quantity": 5.0,
+                    }
+                ]
+            )
+
+    def fake_upsert(payload):
+        captured["virtual_fund_payload"] = payload
+        return FakeVirtualFund()
+
+    import msm.api.virtual_funds as virtual_funds_api
+
+    monkeypatch.setattr(
+        virtual_funds_api,
+        "VirtualFund",
+        SimpleNamespace(upsert=fake_upsert),
+    )
+
+    account_allocations.apply_account_virtual_fund_allocation_plan(plan)
+
+    assert captured["virtual_fund_payload"]["unique_identifier"] == "fund-a"
+    assert captured["allocations"][0]["allocation_strategy"] == ("proportional_attribution")
+    assert "allocation_strategy" not in captured["allocations"][0]["extra_details"]
 
 
 def test_portfolio_target_requires_expander() -> None:

@@ -555,6 +555,7 @@ def test_get_account_holdings_by_fund_returns_grouped_snapshot(monkeypatch) -> N
                                 },
                             },
                             "quantity": "10.0",
+                            "allocation_strategy": "proportional_attribution",
                             "direction": 1,
                             "signed_quantity": "10.0",
                             "target_trade_time": None,
@@ -608,6 +609,7 @@ def test_get_account_holdings_by_fund_returns_grouped_snapshot(monkeypatch) -> N
     assert body["source_account_holdings_set_uid"] == "source-holdings-set-uid"
     assert body["funds"][0]["virtual_fund_uid"] == str(virtual_fund_uid)
     assert body["funds"][0]["holdings"][0]["asset"]["uid"] == str(asset_uid)
+    assert body["funds"][0]["holdings"][0]["allocation_strategy"] == ("proportional_attribution")
     assert body["funds"][0]["holdings"][0]["signed_quantity"] == "10.0"
     assert body["funds"][0]["holdings"][0]["allocation"] == {
         "target_gap_signed_quantity": "0.0",
@@ -1580,6 +1582,7 @@ def test_core_account_holdings_by_fund_groups_allocations_and_residuals(
                         "virtual_fund_holdings_set_uid": "virtual-fund-holdings-set-uid",
                         "source_account_holdings_set_uid": str(source_holdings_set_uid),
                         "allocated_quantity": 6.0,
+                        "allocation_strategy": "proportional_attribution",
                         "direction": 1,
                         "target_trade_time": None,
                         "extra_details": {
@@ -1596,6 +1599,7 @@ def test_core_account_holdings_by_fund_groups_allocations_and_residuals(
                         "virtual_fund_holdings_set_uid": "virtual-fund-holdings-set-uid",
                         "source_account_holdings_set_uid": str(source_holdings_set_uid),
                         "allocated_quantity": 20.0,
+                        "allocation_strategy": "proportional_attribution",
                         "direction": 1,
                         "target_trade_time": None,
                         "extra_details": {
@@ -1666,6 +1670,7 @@ def test_core_account_holdings_by_fund_groups_allocations_and_residuals(
                         },
                     },
                     "quantity": "6.0",
+                    "allocation_strategy": "proportional_attribution",
                     "direction": 1,
                     "signed_quantity": "6.0",
                     "target_trade_time": None,
@@ -1694,6 +1699,7 @@ def test_core_account_holdings_by_fund_groups_allocations_and_residuals(
                         },
                     },
                     "quantity": "20.0",
+                    "allocation_strategy": "proportional_attribution",
                     "direction": 1,
                     "signed_quantity": "20.0",
                     "target_trade_time": None,

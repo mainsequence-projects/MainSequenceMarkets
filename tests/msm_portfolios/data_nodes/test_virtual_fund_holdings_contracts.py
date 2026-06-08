@@ -59,6 +59,7 @@ def test_virtual_fund_holdings_nullability_is_sourced_from_storage_class() -> No
     nullable = storage_column_nullable_map(VirtualFundHoldingsStorage)
 
     assert nullable["allocated_quantity"] is False
+    assert nullable["allocation_strategy"] is False
     assert nullable["direction"] is False
     assert nullable["virtual_fund_uid"] is False
     assert nullable["virtual_fund_holdings_set_uid"] is False
@@ -70,6 +71,7 @@ def test_virtual_fund_holdings_dtype_tokens_match_storage_columns() -> None:
     dtype_map = VirtualFundHoldings._column_dtypes_map_for_storage(VirtualFundHoldingsStorage)
 
     assert dtype_map["allocated_quantity"] == dc.FLOAT64
+    assert dtype_map["allocation_strategy"] == dc.STRING
     assert dtype_map["direction"] == dc.INT16
     assert dtype_map["target_trade_time"] == dc.TIMESTAMP_TZ
     assert dtype_map["asset_identifier"] == dc.STRING
@@ -122,6 +124,7 @@ def test_virtual_fund_holdings_frame_builder_uses_allocation_contract() -> None:
     assert row["source_account_holdings_set_uid"] == str(source_set_uid)
     assert row["virtual_fund_holdings_set_uid"] == str(virtual_fund_set_uid)
     assert row["allocated_quantity"] == 3.0
+    assert row["allocation_strategy"] == "explicit"
     assert row["direction"] == -1
     assert str(frame.reset_index()["allocated_quantity"].dtype) == "float64"
     assert str(frame.reset_index()["direction"].dtype) == "int16"

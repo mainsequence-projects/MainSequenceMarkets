@@ -55,6 +55,7 @@ class AccountHoldingsByFundAllocation(BaseModel):
 class AccountHoldingsByFundHoldingRow(BaseHoldingRow):
     model_config = ConfigDict(extra="ignore")
 
+    allocation_strategy: str | None = None
     allocation: AccountHoldingsByFundAllocation = Field(
         default_factory=AccountHoldingsByFundAllocation,
     )

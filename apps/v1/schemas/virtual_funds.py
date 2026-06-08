@@ -51,6 +51,7 @@ class VirtualFundHoldingRow(BaseHoldingRow):
 
     virtual_fund_holdings_set_uid: str | None = None
     source_account_holdings_set_uid: str | None = None
+    allocation_strategy: str | None = None
 
 
 class VirtualFundHoldingsSnapshotResponse(BaseHoldingsSnapshotResponse[VirtualFundHoldingRow]):

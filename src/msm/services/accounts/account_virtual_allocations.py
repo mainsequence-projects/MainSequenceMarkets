@@ -442,6 +442,7 @@ def apply_account_virtual_fund_allocation_plan(
             {
                 ASSET_IDENTIFIER_DIMENSION: line.asset_identifier,
                 "allocated_quantity": line.allocated_abs_quantity,
+                "allocation_strategy": plan.allocation_policy.mode,
                 "direction": line.requested_direction,
                 "extra_details": {
                     "source": "account_virtual_allocation_plan",

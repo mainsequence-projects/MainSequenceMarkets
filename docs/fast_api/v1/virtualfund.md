@@ -108,6 +108,7 @@ Returns one `VirtualFundHoldingsSnapshotResponse`:
       "virtual_fund_holdings_set_uid": "virtual-fund-holdings-set-uid",
       "source_account_holdings_set_uid": "account-holdings-set-uid",
       "quantity": "5.0",
+      "allocation_strategy": "proportional_attribution",
       "direction": -1,
       "signed_quantity": "-5.0",
       "target_trade_time": null,
@@ -154,3 +155,9 @@ response is 200 with an empty `holdings` list:
 The first virtual-fund API route does not create, update, or apply allocation
 plans. Virtual-fund creation and holdings publication remain owned by the
 account virtual-fund allocation workflow.
+
+`allocation_strategy` is a first-class `VirtualFundHoldingsStorage` column. It
+is not read from `extra_details`. Low-level explicit publications use
+`explicit`; rows created by `apply_account_virtual_fund_allocation_plan(...)`
+use the allocation policy mode, such as `proportional_attribution` or
+`strict_feasible`.

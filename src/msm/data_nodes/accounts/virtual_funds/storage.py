@@ -108,6 +108,20 @@ class VirtualFundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             "description": "Positive source-account holdings magnitude allocated to this virtual fund.",
         },
     )
+    allocation_strategy: Mapped[str] = mapped_column(
+        String(64),
+        default="explicit",
+        nullable=False,
+        info={
+            "label": "Allocation Strategy",
+            "description": (
+                "First-class strategy used to produce this virtual-fund allocation row. "
+                "Low-level explicit publications use 'explicit'; planner-applied rows "
+                "use the allocation policy mode, such as 'proportional_attribution' "
+                "or 'strict_feasible'."
+            ),
+        },
+    )
     direction: Mapped[int] = mapped_column(
         SmallInteger,
         default=1,
