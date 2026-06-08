@@ -1279,18 +1279,11 @@ def _expand_portfolio_target_rows(
         portfolio_uid: index_identifier_by_uid[str(portfolio_row["portfolio_index_uid"])]
         for portfolio_uid, portfolio_row in portfolio_by_uid.items()
     }
-    weight_records = operation_result_rows(
-        search_model(
-            context,
-            model=PortfolioWeightsStorage,
-            filters={"time_index": valuation_time},
-            in_filters={
-                "portfolio_index_identifier": sorted(
-                    set(portfolio_index_identifier_by_uid.values())
-                )
-            },
-            limit=DEFAULT_ALLOCATION_SCAN_LIMIT,
-        )
+    weight_records = _latest_portfolio_weight_records(
+        context,
+        portfolio_weights_storage=PortfolioWeightsStorage,
+        portfolio_index_identifiers=sorted(set(portfolio_index_identifier_by_uid.values())),
+        valuation_time=valuation_time,
     )
     weights_by_index_identifier: dict[str, list[dict[str, Any]]] = {}
     for row in weight_records:
@@ -1307,7 +1300,7 @@ def _expand_portfolio_target_rows(
             raise ValueError(
                 "No PortfolioWeightsStorage rows found for "
                 f"portfolio_uid={portfolio_uid}, portfolio_index_identifier={index_identifier!r}, "
-                f"valuation_time={valuation_time.isoformat()}."
+                f"at or before valuation_time={valuation_time.isoformat()}."
             )
         for weight_row in portfolio_weights:
             expanded = dict(row)
@@ -1328,6 +1321,66 @@ def _expand_portfolio_target_rows(
                 )
             expanded_rows.append(expanded)
     return expanded_rows
+
+
+def _latest_portfolio_weight_records(
+    context: Any,
+    *,
+    portfolio_weights_storage: Any,
+    portfolio_index_identifiers: Sequence[str],
+    valuation_time: dt.datetime,
+) -> list[dict[str, Any]]:
+    if not portfolio_index_identifiers:
+        return []
+
+    from sqlalchemy import and_, func, select
+
+    from msm.api.base import operation_result_rows
+    from msm.repositories.base import compile_markets_statement, execute_markets_operation
+
+    latest_times = (
+        select(
+            portfolio_weights_storage.portfolio_index_identifier.label(
+                "portfolio_index_identifier"
+            ),
+            func.max(portfolio_weights_storage.time_index).label("time_index"),
+        )
+        .where(
+            portfolio_weights_storage.portfolio_index_identifier.in_(
+                list(portfolio_index_identifiers)
+            )
+        )
+        .where(portfolio_weights_storage.time_index <= valuation_time)
+        .group_by(portfolio_weights_storage.portfolio_index_identifier)
+        .subquery()
+    )
+    statement = (
+        select(portfolio_weights_storage)
+        .join(
+            latest_times,
+            and_(
+                portfolio_weights_storage.portfolio_index_identifier
+                == latest_times.c.portfolio_index_identifier,
+                portfolio_weights_storage.time_index == latest_times.c.time_index,
+            ),
+        )
+        .order_by(
+            portfolio_weights_storage.portfolio_index_identifier,
+            portfolio_weights_storage.asset_identifier,
+        )
+    )
+    return operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                statement,
+                context=context,
+                operation="select",
+                models=[portfolio_weights_storage],
+                access="read",
+            ),
+            context=context,
+        )
+    )
 
 
 def _rows_from_records(value: Sequence[Mapping[str, Any]] | pd.DataFrame) -> list[dict[str, Any]]:

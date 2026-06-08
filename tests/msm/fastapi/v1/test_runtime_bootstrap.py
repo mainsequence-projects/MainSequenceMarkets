@@ -43,6 +43,9 @@ def test_ensure_apps_v1_runtime_includes_target_position_models() -> None:
     assert "TargetPositionsStorage" in runtime_bootstrap.V1_RUNTIME_MODELS
     assert "AccountTargetAllocation" in runtime_bootstrap.V1_RUNTIME_MODELS
     assert "PositionSet" in runtime_bootstrap.V1_RUNTIME_MODELS
+    assert "VirtualFund" in runtime_bootstrap.V1_RUNTIME_MODELS
+    assert "VirtualFundHoldingsSet" in runtime_bootstrap.V1_RUNTIME_MODELS
+    assert "VirtualFundHoldingsStorage" in runtime_bootstrap.V1_RUNTIME_MODELS
 
 
 def test_ensure_apps_v1_runtime_propagates_start_engine_failures(monkeypatch) -> None:

@@ -405,16 +405,16 @@ def _normalize_add_holdings_positions(
     normalized_positions: list[dict[str, Any]] = []
     for position in positions:
         payload = _position_payload(position)
-        unique_identifier = _required_string(payload.get("unique_identifier"), "unique_identifier")
-        asset_row = _asset_row_by_unique_identifier(context, unique_identifier=unique_identifier)
+        asset_identifier = _required_string(payload.get("asset_identifier"), "asset_identifier")
+        asset_row = _asset_row_by_unique_identifier(context, unique_identifier=asset_identifier)
         if asset_row is None:
-            raise ValueError(f"Asset {unique_identifier!r} was not found.")
+            raise ValueError(f"Asset {asset_identifier!r} was not found.")
 
         asset_uid = _string_or_none(payload.get("asset_uid"))
         if asset_uid is not None and asset_uid != str(asset_row["uid"]):
             raise ValueError(
                 f"asset_uid {asset_uid!r} does not match asset "
-                f"{unique_identifier!r} uid {asset_row['uid']!s}."
+                f"{asset_identifier!r} uid {asset_row['uid']!s}."
             )
 
         position_type = _string_or_none(payload.get("position_type")) or "units"
@@ -432,7 +432,7 @@ def _normalize_add_holdings_positions(
 
         normalized_positions.append(
             {
-                "asset_identifier": unique_identifier,
+                "asset_identifier": asset_identifier,
                 "quantity": payload.get("quantity"),
                 "direction": payload.get("direction", 1),
                 "target_trade_time": normalized_target_trade_time,
@@ -451,7 +451,7 @@ def _position_payload(position: Mapping[str, Any] | Any) -> dict[str, Any]:
     return {
         key: getattr(position, key)
         for key in (
-            "unique_identifier",
+            "asset_identifier",
             "asset_uid",
             "position_type",
             "quantity",
@@ -547,7 +547,6 @@ def _build_account_holdings_snapshot(
 ) -> dict[str, Any]:
     first_row = rows[0]
     holdings_date = _datetime_or_none(first_row.get("time_index"))
-    target_trade_time = _first_non_null_datetime(row.get("target_trade_time") for row in rows)
     holdings = [
         _build_account_holding_row(
             row=row,
@@ -557,15 +556,8 @@ def _build_account_holdings_snapshot(
         for row in sorted(rows, key=lambda row: str(row.get("asset_identifier", "")).lower())
     ]
     return {
-        "id": None,
-        "snapshot_uid": None,
         "holdings_set_uid": _string_or_none(first_row.get("holdings_set_uid")),
         "holdings_date": holdings_date,
-        "nav": None,
-        "related_account_uid": account_uid,
-        "is_trade_snapshot": bool(first_row.get("is_trade_snapshot", False)),
-        "target_trade_time": target_trade_time,
-        "related_expected_asset_exposure_df": [],
         "holdings": holdings,
     }
 
@@ -579,13 +571,13 @@ def _build_account_holding_row(
     direction = _int_or_default(row.get("direction"), default=1)
     return {
         "time_index": _datetime_or_none(row.get("time_index")),
-        "unique_identifier": _string_or_empty(row.get("asset_identifier")),
-        "asset_id": None,
+        "asset_identifier": _string_or_empty(row.get("asset_identifier")),
         "asset": asset_reference if include_asset_detail else None,
         "position_type": "units",
         "price": None,
-        "quantity": _signed_number_string_or_none(row.get("quantity"), direction=direction),
+        "quantity": _number_string_or_none(row.get("quantity")),
         "direction": direction,
+        "signed_quantity": _signed_number_string_or_none(row.get("quantity"), direction=direction),
         "missing_price": True,
         "target_trade_time": _datetime_or_none(row.get("target_trade_time")),
         "extra_details": _mapping_or_empty(row.get("extra_details")),
@@ -594,15 +586,8 @@ def _build_account_holding_row(
 
 def _empty_account_holdings_snapshot(*, account_uid: str | None) -> dict[str, Any]:
     return {
-        "id": None,
-        "snapshot_uid": None,
         "holdings_set_uid": None,
         "holdings_date": None,
-        "nav": None,
-        "related_account_uid": account_uid,
-        "is_trade_snapshot": False,
-        "target_trade_time": None,
-        "related_expected_asset_exposure_df": [],
         "holdings": [],
     }
 
@@ -686,7 +671,7 @@ def _build_asset_snapshot_reference(
 ) -> dict[str, Any]:
     return {
         "uid": _string_or_none(asset_row.get("uid")) if asset_row is not None else None,
-        "unique_identifier": (
+        "asset_identifier": (
             _string_or_none(asset_row.get("unique_identifier"))
             if asset_row is not None
             else unique_identifier

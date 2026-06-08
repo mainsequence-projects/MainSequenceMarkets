@@ -31,6 +31,7 @@ from msm.services.accounts.account_virtual_allocations import (
 BTC_UID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 ETH_UID = uuid.UUID("00000000-0000-0000-0000-000000000002")
 PORTFOLIO_UID = uuid.UUID("00000000-0000-0000-0000-000000000201")
+PORTFOLIO_INDEX_UID = uuid.UUID("00000000-0000-0000-0000-000000000202")
 USD_UID = uuid.UUID("00000000-0000-0000-0000-000000000840")
 ACCOUNT_UID = uuid.UUID("00000000-0000-0000-0000-000000000301")
 TARGET_ALLOCATION_UID = uuid.UUID("00000000-0000-0000-0000-000000000302")
@@ -316,6 +317,92 @@ def test_portfolio_target_requires_expander() -> None:
             asset_uid_by_identifier={"example-asset-btc": BTC_UID},
             asset_identifier_by_uid={BTC_UID: "example-asset-btc"},
         )
+
+
+def test_portfolio_expansion_uses_latest_weights_at_or_before_valuation_time(monkeypatch) -> None:
+    context = object()
+
+    def fake_resolve_runtime(**kwargs):
+        assert kwargs["row_model_name"] == "Account virtual-fund allocation portfolio expansion"
+        return type("Runtime", (), {"context": context})()
+
+    def fake_search_model(search_context, *, model, **kwargs):
+        assert search_context is context
+        if model.__name__ == "PortfolioTable":
+            assert kwargs["in_filters"] == {"uid": [str(PORTFOLIO_UID)]}
+            return {
+                "rows": [
+                    {
+                        "uid": str(PORTFOLIO_UID),
+                        "portfolio_index_uid": str(PORTFOLIO_INDEX_UID),
+                    }
+                ]
+            }
+        if model.__name__ == "IndexTable":
+            assert kwargs["in_filters"] == {"uid": [str(PORTFOLIO_INDEX_UID)]}
+            return {
+                "rows": [
+                    {
+                        "uid": str(PORTFOLIO_INDEX_UID),
+                        "unique_identifier": "example-equal-weight-portfolio-index",
+                    }
+                ]
+            }
+        raise AssertionError(f"Unexpected model lookup: {model.__name__}")
+
+    def fake_latest_portfolio_weight_records(
+        latest_context,
+        *,
+        portfolio_weights_storage,
+        portfolio_index_identifiers,
+        valuation_time,
+    ):
+        assert latest_context is context
+        assert portfolio_weights_storage.__name__ == "PortfolioWeightsStorage"
+        assert portfolio_index_identifiers == ["example-equal-weight-portfolio-index"]
+        assert valuation_time == VALUATION_TIME
+        return [
+            {
+                "time_index": VALUATION_TIME - dt.timedelta(minutes=5),
+                "portfolio_index_identifier": "example-equal-weight-portfolio-index",
+                "asset_identifier": "example-asset-btc",
+                "weight": 0.40,
+            },
+            {
+                "time_index": VALUATION_TIME - dt.timedelta(minutes=5),
+                "portfolio_index_identifier": "example-equal-weight-portfolio-index",
+                "asset_identifier": "example-asset-eth",
+                "weight": 0.60,
+            },
+        ]
+
+    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    monkeypatch.setattr("msm.repositories.crud.search_model", fake_search_model)
+    monkeypatch.setattr(
+        account_allocations,
+        "_latest_portfolio_weight_records",
+        fake_latest_portfolio_weight_records,
+    )
+
+    expanded = account_allocations._expand_portfolio_target_rows(
+        [
+            {
+                "time_index": VALUATION_TIME,
+                "target_type": "portfolio",
+                "target_uid": str(PORTFOLIO_UID),
+                "portfolio_uid": str(PORTFOLIO_UID),
+                "weight_notional_exposure": 0.25,
+            }
+        ],
+        valuation_time=VALUATION_TIME,
+    )
+
+    assert [row["asset_identifier"] for row in expanded] == [
+        "example-asset-btc",
+        "example-asset-eth",
+    ]
+    assert [row["weight_notional_exposure"] for row in expanded] == pytest.approx([0.10, 0.15])
+    assert {row["target_portfolio_uid"] for row in expanded} == {str(PORTFOLIO_UID)}
 
 
 def _plan(

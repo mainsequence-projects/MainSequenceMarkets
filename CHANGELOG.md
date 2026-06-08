@@ -42,9 +42,23 @@ and this project follows versioned releases.
   reusable portfolio sleeve and then publishes account target positions and
   holdings. The same full workflow now exposes the virtual-fund allocation
   extension through dry-run and apply flags.
+- Added the `apps/v1` target-allocation candidate search endpoint for account
+  target-position assignment, returning one paginated asset and portfolio
+  candidate list backed by a compiled MetaTable read.
+- Added the `apps/v1` account target-position write endpoint, deriving parent
+  allocation rows from the account uid and replacing target-position snapshots
+  through one scoped MetaTable upsert operation.
+- Tightened account target-position validation so portfolio target rows cannot
+  use `single_asset_quantity`.
 
 ### Fixed
 
+- Clarified account and portfolio example console output with section titles,
+  corrected portfolio workflow step numbering, and cleaner virtual-fund
+  allocation frame rendering.
+- Fixed account virtual-fund planning for portfolio targets so portfolio
+  sleeves expand from the latest `PortfolioWeightsStorage` snapshot at or
+  before valuation time instead of requiring exact timestamp equality.
 - Normalized `InterpolatedPrices.update()` output time indexes and timestamp
   columns back to `datetime64[ns, UTC]` so backend-read microsecond timestamps
   do not fail SDK DataNode update validation.

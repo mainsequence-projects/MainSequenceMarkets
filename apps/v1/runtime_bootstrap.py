@@ -27,6 +27,9 @@ V1_RUNTIME_MODELS = [
     "PortfolioMetadata",
     "PortfolioWeightsStorage",
     "TargetPositionsStorage",
+    "VirtualFund",
+    "VirtualFundHoldingsSet",
+    "VirtualFundHoldingsStorage",
     "AssetSnapshotsStorage",
 ]
 V1_PORTFOLIO_RUNTIME_MODELS = [
@@ -45,6 +48,9 @@ V1_PORTFOLIO_RUNTIME_MODELS = [
     "PortfolioMetadata",
     "PortfolioWeightsStorage",
     "TargetPositionsStorage",
+    "VirtualFund",
+    "VirtualFundHoldingsSet",
+    "VirtualFundHoldingsStorage",
     "AssetSnapshotsStorage",
 ]
 V1_PRICING_RUNTIME_MODELS = [

@@ -133,6 +133,10 @@ def print_step(step: int, message: str) -> None:
     print(f"{step}. {message}")
 
 
+def print_section(title: str) -> None:
+    print(f"\n=== {title} ===")
+
+
 def print_detail(label: str, value: object) -> None:
     print(f"   {label}: {value}")
 
@@ -359,7 +363,7 @@ def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> Non
     portfolio_index = result["portfolio_index"]
     portfolio_calendar = result["portfolio_calendar"]
 
-    print_step(9, "Final portfolio workflow summary.")
+    print_step(8, "Final portfolio workflow summary.")
     print_detail("portfolio_uid", portfolio.uid)
     print_detail("portfolio_identifier", portfolio.unique_identifier)
     print_detail("portfolio_index_uid", portfolio_index.uid)
@@ -393,6 +397,8 @@ def build_equal_weight_portfolio(
     runtime_models: Sequence[str | type[Any]] | None = None,
 ) -> dict[str, Any]:
     """Create the portfolio index, run portfolio DataNodes, and upsert Portfolio."""
+
+    print_section("Equal-Weight Portfolio Workflow")
 
     print_step(1, "Starting the portfolio example runtime.")
     runtime = start_portfolio_example_runtime(models=runtime_models)

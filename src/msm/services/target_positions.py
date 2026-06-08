@@ -5,7 +5,7 @@ import math
 from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pandas as pd
 
@@ -41,6 +41,10 @@ DEFAULT_TARGET_POSITION_SCAN_LIMIT = 500
 PortfolioWeightResolver = Callable[[str], Sequence[Mapping[str, Any]] | pd.DataFrame]
 
 
+class AccountTargetPositionsSnapshotExistsError(ValueError):
+    """Raised when a target-position snapshot exists and overwrite is disabled."""
+
+
 def validate_target_position_payload(position: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(position)
     if "asset_identifier" in payload:
@@ -66,6 +70,11 @@ def validate_target_position_payload(position: Mapping[str, Any]) -> dict[str, A
         )
 
     target_type = TARGET_TYPE_ASSET if asset_uid is not None else TARGET_TYPE_PORTFOLIO
+    if target_type == TARGET_TYPE_PORTFOLIO and not _is_missing(
+        payload.get("single_asset_quantity")
+    ):
+        raise ValueError("Portfolio target positions cannot use single_asset_quantity.")
+
     target_uid = asset_uid or portfolio_uid
     declared_target_type = payload.get("target_type")
     if declared_target_type not in (None, "") and str(declared_target_type) != target_type:
@@ -282,6 +291,109 @@ def get_account_target_positions_snapshot_response(
         portfolio_references=portfolio_references,
         include_asset_detail=include_asset_detail,
     )
+
+
+def add_account_target_positions_snapshot_response(
+    context: MarketsRepositoryContext,
+    *,
+    account_uid: str,
+    target_positions_date: dt.datetime | str,
+    positions: Sequence[Mapping[str, Any] | Any],
+    overwrite: bool = False,
+    include_asset_detail: bool = True,
+) -> dict[str, Any] | None:
+    account_row = _first_operation_row(get_account_by_uid(context, uid=account_uid))
+    if account_row is None:
+        return None
+
+    resolved_account_uid = _required_uuid_string(account_row["uid"], field_name="account_uid")
+    account_name = _string_or_empty(account_row.get("account_name")) or resolved_account_uid
+    normalized_target_positions_date = _required_datetime(
+        target_positions_date,
+        field_name="target_positions_date",
+    )
+    position_payloads = [_position_payload(position) for position in positions]
+    candidate_position_set_uid = str(uuid4())
+    target_positions_frame = build_target_positions_frame(
+        target_positions_date=normalized_target_positions_date,
+        position_set_uid=candidate_position_set_uid,
+        positions=position_payloads,
+    )
+
+    from msm.repositories.accounts import replace_account_target_positions_snapshot
+
+    write_result = replace_account_target_positions_snapshot(
+        context,
+        account_allocation_model_uid=str(uuid4()),
+        account_target_allocation_uid=str(uuid4()),
+        position_set_uid=candidate_position_set_uid,
+        account_uid=resolved_account_uid,
+        account_name=account_name,
+        target_positions_date=normalized_target_positions_date,
+        positions=_target_positions_frame_operation_rows(target_positions_frame),
+        overwrite=overwrite,
+    )
+    if not operation_result_rows(write_result):
+        if not overwrite:
+            raise AccountTargetPositionsSnapshotExistsError(
+                "Account target-position snapshot already exists for "
+                f"account_uid={resolved_account_uid!r} and target_positions_date="
+                f"{normalized_target_positions_date.isoformat()}."
+            )
+        raise RuntimeError("Account target-position replacement did not insert any rows.")
+
+    return get_account_target_positions_snapshot_response(
+        context,
+        account_uid=resolved_account_uid,
+        order="desc",
+        limit=1,
+        include_asset_detail=include_asset_detail,
+        target_positions_date=normalized_target_positions_date,
+    )
+
+
+def search_account_target_allocation_candidates(
+    context: MarketsRepositoryContext,
+    *,
+    search: str = "",
+    target_type: str = "all",
+    limit: int = 25,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Return asset and portfolio rows that can be assigned as target positions."""
+
+    normalized_target_type = target_type.strip().lower()
+    if normalized_target_type not in {"all", TARGET_TYPE_ASSET, TARGET_TYPE_PORTFOLIO}:
+        raise ValueError("target_type must be one of: all, asset, portfolio.")
+    if limit < 1:
+        raise ValueError("limit must be greater than or equal to 1.")
+    if offset < 0:
+        raise ValueError("offset must be greater than or equal to 0.")
+
+    from msm.repositories.accounts import (
+        search_account_target_allocation_candidates as repository_search_candidates,
+    )
+
+    operation_rows = operation_result_rows(
+        repository_search_candidates(
+            context,
+            search=search,
+            target_type=normalized_target_type,
+            limit=limit,
+            offset=offset,
+        )
+    )
+    count = 0
+    candidates: list[dict[str, Any]] = []
+    for row in operation_rows:
+        if not isinstance(row, Mapping):
+            continue
+        if row.get("row_kind") == "__count__":
+            count = _int_or_zero(row.get("total_count"))
+            continue
+        if row.get("row_kind") == "data":
+            candidates.append(_build_account_target_allocation_candidate(row))
+    return {"count": count, "results": candidates}
 
 
 def _target_positions_to_frame(
@@ -632,6 +744,76 @@ def _build_asset_snapshot_reference(
     }
 
 
+def _build_account_target_allocation_candidate(row: Mapping[str, Any]) -> dict[str, Any]:
+    target_type = _required_string(row.get("target_type"))
+    metadata = (
+        {"asset_type": _string_or_none(row.get("asset_type"))}
+        if target_type == TARGET_TYPE_ASSET
+        else {"portfolio_index_uid": _string_or_none(row.get("portfolio_index_uid"))}
+    )
+    current_snapshot = None
+    if target_type == TARGET_TYPE_ASSET:
+        current_snapshot = {
+            "name": _string_or_none(row.get("snapshot_name")),
+            "ticker": _string_or_none(row.get("snapshot_ticker")),
+        }
+    return {
+        "target_type": target_type,
+        "target_uid": _string_or_empty(row.get("target_uid")),
+        "asset_uid": _string_or_none(row.get("asset_uid")),
+        "portfolio_uid": _string_or_none(row.get("portfolio_uid")),
+        "identifier": _string_or_empty(row.get("identifier")),
+        "display_label": _string_or_empty(row.get("display_label"))
+        or _string_or_empty(row.get("identifier")),
+        "secondary_label": _string_or_none(row.get("secondary_label")),
+        "current_snapshot": current_snapshot,
+        "metadata": metadata,
+    }
+
+
+def _position_payload(position: Mapping[str, Any] | Any) -> dict[str, Any]:
+    if isinstance(position, Mapping):
+        return dict(position)
+    model_dump = getattr(position, "model_dump", None)
+    if callable(model_dump):
+        return dict(model_dump())
+    return {
+        key: getattr(position, key)
+        for key in (
+            "target_type",
+            "target_uid",
+            "asset_uid",
+            "portfolio_uid",
+            "weight_notional_exposure",
+            "constant_notional_exposure",
+            "single_asset_quantity",
+            "metadata_json",
+        )
+        if hasattr(position, key)
+    }
+
+
+def _target_positions_frame_operation_rows(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    return [
+        {
+            "target_type": _required_string(row.get("target_type")),
+            "target_uid": _required_uuid_string(row.get("target_uid"), field_name="target_uid"),
+            "asset_uid": _optional_uuid_string(row.get("asset_uid"), field_name="asset_uid"),
+            "portfolio_uid": _optional_uuid_string(
+                row.get("portfolio_uid"),
+                field_name="portfolio_uid",
+            ),
+            "weight_notional_exposure": _none_if_missing(row.get("weight_notional_exposure")),
+            "constant_notional_exposure": _none_if_missing(
+                row.get("constant_notional_exposure")
+            ),
+            "single_asset_quantity": _none_if_missing(row.get("single_asset_quantity")),
+            "metadata_json": _mapping_or_empty(row.get("metadata_json")),
+        }
+        for row in frame.reset_index().to_dict("records")
+    ]
+
+
 def _normalize_uuid_column(values: pd.Series, *, nullable: bool, field_name: str) -> pd.Series:
     return values.map(
         lambda value: (
@@ -709,6 +891,22 @@ def _required_string(value: Any) -> str:
     return text
 
 
+def _required_datetime(value: Any, *, field_name: str) -> dt.datetime:
+    if isinstance(value, dt.datetime):
+        timestamp = value
+    else:
+        raw_value = str(value)
+        if raw_value.endswith("Z"):
+            raw_value = f"{raw_value[:-1]}+00:00"
+        try:
+            timestamp = dt.datetime.fromisoformat(raw_value)
+        except ValueError as exc:
+            raise ValueError(f"{field_name} must be an ISO-8601 UTC timestamp.") from exc
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        raise ValueError(f"{field_name} must be a timezone-aware UTC timestamp.")
+    return timestamp.astimezone(dt.UTC)
+
+
 def _datetime_or_none(value: Any) -> dt.datetime | None:
     if value in (None, ""):
         return None
@@ -732,6 +930,16 @@ def _number_string_or_none(value: Any) -> str | None:
     return str(value)
 
 
+def _int_or_zero(value: Any) -> int:
+    if value in (None, ""):
+        return 0
+    return int(value)
+
+
+def _none_if_missing(value: Any) -> Any:
+    return None if _is_missing(value) else value
+
+
 def _is_missing(value: Any) -> bool:
     if value is None:
         return True
@@ -742,10 +950,13 @@ def _is_missing(value: Any) -> bool:
 
 
 __all__ = [
+    "AccountTargetPositionsSnapshotExistsError",
     "TARGET_POSITION_EXPOSURE_FIELDS",
+    "add_account_target_positions_snapshot_response",
     "build_target_positions_frame",
     "expand_portfolio_target_positions",
     "get_account_target_positions_snapshot_response",
+    "search_account_target_allocation_candidates",
     "validate_target_position_payload",
     "validate_target_positions_frame",
 ]

@@ -39,6 +39,10 @@ def print_step(step: int, message: str) -> None:
     print(f"{step}. {message}")
 
 
+def print_section(title: str) -> None:
+    print(f"\n=== {title} ===")
+
+
 def print_detail(label: str, value: object) -> None:
     print(f"   {label}: {value}")
 
@@ -52,6 +56,8 @@ def prepare_equal_weight_portfolio_schema(
     runtime_models: Sequence[str | type[Any]] | None = None,
 ) -> dict[str, Any]:
     """Prepare the configured interpolated price storage used by the example."""
+
+    print_section("Portfolio Schema Preparation")
 
     print_step(1, "Attaching the static portfolio example schema.")
     runtime = start_portfolio_example_runtime(

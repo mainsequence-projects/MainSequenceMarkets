@@ -55,23 +55,22 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
         operation = path_item.get("get")
         if operation is None:
             continue
-        parameter_names = {
-            parameter["name"] for parameter in operation.get("parameters", [])
-        }
+        parameter_names = {parameter["name"] for parameter in operation.get("parameters", [])}
         if not {"limit", "offset"}.issubset(parameter_names):
             continue
 
         schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
         resolved_schema = _resolve_schema_ref(payload, schema)
-        assert {"count", "next", "previous", "results"}.issubset(
-            resolved_schema["properties"]
-        ), path
+        assert {"count", "next", "previous", "results"}.issubset(resolved_schema["properties"]), (
+            path
+        )
         assert "limit" not in resolved_schema["properties"], path
         assert "offset" not in resolved_schema["properties"], path
         checked_paths.append(path)
 
     assert set(checked_paths) == {
         "/api/v1/account/",
+        "/api/v1/account/target-allocation/targets/",
         "/api/v1/asset/",
         "/api/v1/asset-category/",
         "/api/v1/calendar/",
@@ -83,6 +82,7 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
         "/api/v1/pricing/market_data/bindings/",
         "/api/v1/pricing/market_data/sets/",
         "/api/v1/pricing/market_data/sets/{market_data_set_uid}/bindings/",
+        "/api/v1/virtualfund/",
     }
 
 
@@ -113,9 +113,9 @@ def test_openapi_json_documents_asset_list_endpoint() -> None:
     asset_detail_operation = payload["paths"]["/api/v1/asset/{uid}/"]["get"]
     assert asset_detail_operation["summary"] == "Get asset"
     assert asset_detail_operation["operationId"] == "getAsset"
-    assert asset_detail_operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/AssetDetailResponse"}
+    assert asset_detail_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AssetDetailResponse"
+    }
     assert asset_detail_operation["responses"]["400"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/ErrorResponse"
     }
@@ -171,17 +171,50 @@ def test_openapi_json_documents_account_list_endpoint() -> None:
         "schema"
     ] == {"$ref": "#/components/schemas/FrontEndDetailSummary"}
 
-    add_holdings_operation = payload["paths"]["/api/v1/account/{account_uid}/add-holdings/"][
-        "post"
+    target_candidates_operation = payload["paths"]["/api/v1/account/target-allocation/targets/"][
+        "get"
     ]
+    assert target_candidates_operation["summary"] == ("Search account target-allocation targets")
+    assert target_candidates_operation["operationId"] == "searchAccountTargetAllocationTargets"
+    assert target_candidates_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/AccountTargetAllocationCandidateResponse"}
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/AccountTargetAllocationCandidateResponse",
+        result_ref="#/components/schemas/AccountTargetAllocationCandidate",
+    )
+
+    add_holdings_operation = payload["paths"]["/api/v1/account/{account_uid}/add-holdings/"]["post"]
     assert add_holdings_operation["summary"] == "Add account holdings snapshot"
     assert add_holdings_operation["operationId"] == "addAccountHoldings"
-    assert add_holdings_operation["requestBody"]["content"]["application/json"][
+    assert add_holdings_operation["requestBody"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AccountAddHoldingsRequest"
+    }
+    assert add_holdings_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AccountHoldingsSnapshotResponse"
+    }
+
+    holdings_by_fund_operation = payload["paths"][
+        "/api/v1/account/{account_uid}/holdings/by-fund/"
+    ]["get"]
+    assert holdings_by_fund_operation["summary"] == ("Get account holdings grouped by virtual fund")
+    assert holdings_by_fund_operation["operationId"] == "getAccountHoldingsByFund"
+    assert holdings_by_fund_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/AccountAddHoldingsRequest"}
-    assert add_holdings_operation["responses"]["200"]["content"]["application/json"][
+    ] == {"$ref": "#/components/schemas/AccountHoldingsByFundResponse"}
+
+    add_target_positions_operation = payload["paths"][
+        "/api/v1/account/{account_uid}/add-target-positions/"
+    ]["post"]
+    assert add_target_positions_operation["summary"] == ("Add account target positions snapshot")
+    assert add_target_positions_operation["operationId"] == "addAccountTargetPositions"
+    assert add_target_positions_operation["requestBody"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/AccountHoldingsSnapshotResponse"}
+    ] == {"$ref": "#/components/schemas/AccountAddTargetPositionsRequest"}
+    assert add_target_positions_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/AccountTargetPositionsSnapshotResponse"}
 
     account_target_positions_operation = payload["paths"][
         "/api/v1/account/{account_uid}/target-positions/"
@@ -193,6 +226,41 @@ def test_openapi_json_documents_account_list_endpoint() -> None:
     assert account_target_positions_operation["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/AccountTargetPositionsSnapshotResponse"}
+
+
+def test_openapi_json_documents_virtualfund_routes() -> None:
+    client = TestClient(app)
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    virtualfund_list_operation = payload["paths"]["/api/v1/virtualfund/"]["get"]
+    assert virtualfund_list_operation["summary"] == "List virtual funds"
+    assert virtualfund_list_operation["operationId"] == "listVirtualFunds"
+    assert virtualfund_list_operation["tags"] == ["virtualfund"]
+    assert virtualfund_list_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/VirtualFundListResponse"}
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/VirtualFundListResponse",
+        result_ref="#/components/schemas/VirtualFund",
+    )
+
+    virtualfund_detail_operation = payload["paths"]["/api/v1/virtualfund/{uid}/"]["get"]
+    assert virtualfund_detail_operation["summary"] == "Get virtual fund"
+    assert virtualfund_detail_operation["operationId"] == "getVirtualFund"
+    assert virtualfund_detail_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/VirtualFundDetailResponse"}
+
+    virtualfund_holdings_operation = payload["paths"]["/api/v1/virtualfund/{uid}/holdings/"]["get"]
+    assert virtualfund_holdings_operation["summary"] == "Get virtual fund holdings snapshot"
+    assert virtualfund_holdings_operation["operationId"] == "getVirtualFundHoldings"
+    assert virtualfund_holdings_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/VirtualFundHoldingsSnapshotResponse"}
 
 
 def test_openapi_json_documents_asset_category_routes() -> None:
@@ -208,9 +276,7 @@ def test_openapi_json_documents_asset_category_routes() -> None:
     assert asset_category_list_operation["tags"] == ["asset-category"]
     assert asset_category_list_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {
-        "$ref": "#/components/schemas/PaginatedResponse_AssetCategory_"
-    }
+    ] == {"$ref": "#/components/schemas/PaginatedResponse_AssetCategory_"}
     _assert_paginated_schema(
         payload,
         schema_ref="#/components/schemas/PaginatedResponse_AssetCategory_",
@@ -320,9 +386,7 @@ def test_openapi_json_documents_portfolio_routes() -> None:
         "schema"
     ] == {"$ref": "#/components/schemas/ErrorResponse"}
 
-    portfolio_bulk_delete_operation = payload["paths"]["/api/v1/portfolio/bulk-delete/"][
-        "post"
-    ]
+    portfolio_bulk_delete_operation = payload["paths"]["/api/v1/portfolio/bulk-delete/"]["post"]
     assert portfolio_bulk_delete_operation["summary"] == "Bulk delete portfolios"
     assert portfolio_bulk_delete_operation["operationId"] == "bulkDeletePortfolios"
     assert portfolio_bulk_delete_operation["requestBody"]["content"]["application/json"][
@@ -353,9 +417,7 @@ def test_openapi_json_documents_calendar_routes() -> None:
         result_ref="#/components/schemas/Calendar",
     )
 
-    calendar_dates_operation = payload["paths"]["/api/v1/calendar/{calendar_uid}/dates/"][
-        "get"
-    ]
+    calendar_dates_operation = payload["paths"]["/api/v1/calendar/{calendar_uid}/dates/"]["get"]
     assert calendar_dates_operation["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/PaginatedResponse_CalendarDate_"}
@@ -377,9 +439,7 @@ def test_openapi_json_documents_calendar_routes() -> None:
         result_ref="#/components/schemas/CalendarSession",
     )
 
-    calendar_events_operation = payload["paths"]["/api/v1/calendar/{calendar_uid}/events/"][
-        "get"
-    ]
+    calendar_events_operation = payload["paths"]["/api/v1/calendar/{calendar_uid}/events/"]["get"]
     assert calendar_events_operation["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/PaginatedResponse_CalendarEvent_"}
@@ -411,63 +471,63 @@ def test_openapi_json_documents_pricing_market_data_routes() -> None:
     assert card_operation["summary"] == "Get pricing market-data API card"
     assert card_operation["operationId"] == "getPricingMarketDataCard"
     assert card_operation["tags"] == ["pricing-market-data"]
-    assert card_operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/PricingMarketDataCardResponse"}
+    assert card_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PricingMarketDataCardResponse"
+    }
 
     set_list_operation = payload["paths"]["/api/v1/pricing/market_data/sets/"]["get"]
     assert set_list_operation["summary"] == "List pricing market-data sets"
     assert set_list_operation["operationId"] == "listPricingMarketDataSets"
-    assert set_list_operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/PricingMarketDataSetListResponse"}
+    assert set_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PricingMarketDataSetListResponse"
+    }
     _assert_paginated_schema(
         payload,
         schema_ref="#/components/schemas/PricingMarketDataSetListResponse",
         result_ref="#/components/schemas/PricingMarketDataSet",
     )
 
-    set_detail_operation = payload["paths"]["/api/v1/pricing/market_data/sets/{uid}/"][
-        "get"
-    ]
+    set_detail_operation = payload["paths"]["/api/v1/pricing/market_data/sets/{uid}/"]["get"]
     assert set_detail_operation["summary"] == "Get pricing market-data set"
     assert set_detail_operation["operationId"] == "getPricingMarketDataSet"
-    assert set_detail_operation["responses"]["404"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/ErrorResponse"}
+    assert set_detail_operation["responses"]["404"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorResponse"
+    }
 
-    set_key_operation = payload["paths"][
-        "/api/v1/pricing/market_data/sets/by-key/{set_key}/"
-    ]["get"]
+    set_key_operation = payload["paths"]["/api/v1/pricing/market_data/sets/by-key/{set_key}/"][
+        "get"
+    ]
     assert set_key_operation["summary"] == "Get pricing market-data set by key"
     assert set_key_operation["operationId"] == "getPricingMarketDataSetByKey"
 
-    assert payload["paths"]["/api/v1/pricing/market_data/sets/"]["post"][
-        "operationId"
-    ] == "createPricingMarketDataSet"
-    assert payload["paths"]["/api/v1/pricing/market_data/sets/upsert/"]["post"][
-        "operationId"
-    ] == "upsertPricingMarketDataSet"
-    assert payload["paths"]["/api/v1/pricing/market_data/sets/{uid}/"]["patch"][
-        "operationId"
-    ] == "updatePricingMarketDataSet"
-    assert payload["paths"]["/api/v1/pricing/market_data/sets/{uid}/"]["delete"][
-        "operationId"
-    ] == "deletePricingMarketDataSet"
-    assert payload["paths"]["/api/v1/pricing/market_data/sets/{uid}/"]["delete"][
-        "responses"
-    ]["200"]["content"]["application/json"]["schema"] == {
+    assert (
+        payload["paths"]["/api/v1/pricing/market_data/sets/"]["post"]["operationId"]
+        == "createPricingMarketDataSet"
+    )
+    assert (
+        payload["paths"]["/api/v1/pricing/market_data/sets/upsert/"]["post"]["operationId"]
+        == "upsertPricingMarketDataSet"
+    )
+    assert (
+        payload["paths"]["/api/v1/pricing/market_data/sets/{uid}/"]["patch"]["operationId"]
+        == "updatePricingMarketDataSet"
+    )
+    assert (
+        payload["paths"]["/api/v1/pricing/market_data/sets/{uid}/"]["delete"]["operationId"]
+        == "deletePricingMarketDataSet"
+    )
+    assert payload["paths"]["/api/v1/pricing/market_data/sets/{uid}/"]["delete"]["responses"][
+        "200"
+    ]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/PricingMarketDataSetDeleteResponse"
     }
 
-    binding_list_operation = payload["paths"]["/api/v1/pricing/market_data/bindings/"][
-        "get"
-    ]
+    binding_list_operation = payload["paths"]["/api/v1/pricing/market_data/bindings/"]["get"]
     assert binding_list_operation["summary"] == "List pricing market-data bindings"
     assert binding_list_operation["operationId"] == "listPricingMarketDataBindings"
-    assert binding_list_operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/PricingMarketDataSetBindingListResponse"}
+    assert binding_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PricingMarketDataSetBindingListResponse"
+    }
     _assert_paginated_schema(
         payload,
         schema_ref="#/components/schemas/PricingMarketDataSetBindingListResponse",
@@ -477,48 +537,46 @@ def test_openapi_json_documents_pricing_market_data_routes() -> None:
     nested_binding_list_operation = payload["paths"][
         "/api/v1/pricing/market_data/sets/{market_data_set_uid}/bindings/"
     ]["get"]
-    assert nested_binding_list_operation["summary"] == (
-        "List pricing market-data set bindings"
-    )
-    assert nested_binding_list_operation["operationId"] == (
-        "listPricingMarketDataSetBindings"
-    )
+    assert nested_binding_list_operation["summary"] == ("List pricing market-data set bindings")
+    assert nested_binding_list_operation["operationId"] == ("listPricingMarketDataSetBindings")
     assert nested_binding_list_operation["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/PricingMarketDataSetBindingListResponse"}
 
-    resolve_operation = payload["paths"][
-        "/api/v1/pricing/market_data/bindings/resolve/"
-    ]["get"]
+    resolve_operation = payload["paths"]["/api/v1/pricing/market_data/bindings/resolve/"]["get"]
     assert resolve_operation["summary"] == "Resolve pricing market-data binding"
     assert resolve_operation["operationId"] == "resolvePricingMarketDataBinding"
-    assert resolve_operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/PricingMarketDataBindingResolveResponse"}
+    assert resolve_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PricingMarketDataBindingResolveResponse"
+    }
 
-    binding_detail_operation = payload["paths"][
-        "/api/v1/pricing/market_data/bindings/{uid}/"
-    ]["get"]
+    binding_detail_operation = payload["paths"]["/api/v1/pricing/market_data/bindings/{uid}/"][
+        "get"
+    ]
     assert binding_detail_operation["summary"] == "Get pricing market-data binding"
     assert binding_detail_operation["operationId"] == "getPricingMarketDataBinding"
     assert binding_detail_operation["responses"]["404"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/ErrorResponse"}
 
-    assert payload["paths"]["/api/v1/pricing/market_data/bindings/"]["post"][
-        "operationId"
-    ] == "createPricingMarketDataBinding"
-    assert payload["paths"]["/api/v1/pricing/market_data/bindings/upsert/"]["post"][
-        "operationId"
-    ] == "upsertPricingMarketDataBinding"
-    assert payload["paths"]["/api/v1/pricing/market_data/bindings/{uid}/"]["patch"][
-        "operationId"
-    ] == "updatePricingMarketDataBinding"
-    assert payload["paths"]["/api/v1/pricing/market_data/bindings/{uid}/"]["delete"][
-        "operationId"
-    ] == "deletePricingMarketDataBinding"
-    assert payload["paths"]["/api/v1/pricing/market_data/bindings/{uid}/"]["delete"][
-        "responses"
-    ]["200"]["content"]["application/json"]["schema"] == {
+    assert (
+        payload["paths"]["/api/v1/pricing/market_data/bindings/"]["post"]["operationId"]
+        == "createPricingMarketDataBinding"
+    )
+    assert (
+        payload["paths"]["/api/v1/pricing/market_data/bindings/upsert/"]["post"]["operationId"]
+        == "upsertPricingMarketDataBinding"
+    )
+    assert (
+        payload["paths"]["/api/v1/pricing/market_data/bindings/{uid}/"]["patch"]["operationId"]
+        == "updatePricingMarketDataBinding"
+    )
+    assert (
+        payload["paths"]["/api/v1/pricing/market_data/bindings/{uid}/"]["delete"]["operationId"]
+        == "deletePricingMarketDataBinding"
+    )
+    assert payload["paths"]["/api/v1/pricing/market_data/bindings/{uid}/"]["delete"]["responses"][
+        "200"
+    ]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/PricingMarketDataSetBindingDeleteResponse"
     }

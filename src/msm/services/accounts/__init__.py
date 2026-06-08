@@ -3,6 +3,54 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any
 
+from . import core as _core
+
+_CORE_ADD_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE = _core.add_account_holdings_snapshot_response
+_CORE_GET_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE = _core.get_account_holdings_snapshot_response
+
+account_repository = _core.account_repository
+uuid = _core.uuid
+_asset_row_by_unique_identifier = _core._asset_row_by_unique_identifier
+_asset_snapshot_references_by_unique_identifier = (
+    _core._asset_snapshot_references_by_unique_identifier
+)
+_build_account_holdings_frame = _core._build_account_holdings_frame
+_search_account_holdings_rows = _core._search_account_holdings_rows
+
+
+def get_account_holdings_snapshot_response(*args: Any, **kwargs: Any) -> Any:
+    _sync_core_account_hooks()
+    return _CORE_GET_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE(*args, **kwargs)
+
+
+def add_account_holdings_snapshot_response(*args: Any, **kwargs: Any) -> Any:
+    _sync_core_account_hooks()
+    return _CORE_ADD_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE(*args, **kwargs)
+
+
+_PACKAGE_GET_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE = get_account_holdings_snapshot_response
+
+
+def _sync_core_account_hooks() -> None:
+    for name in (
+        "account_repository",
+        "uuid",
+        "get_account_by_uid",
+        "_asset_row_by_unique_identifier",
+        "_asset_snapshot_references_by_unique_identifier",
+        "_build_account_holdings_frame",
+        "_search_account_holdings_rows",
+    ):
+        if name in globals():
+            setattr(_core, name, globals()[name])
+    core_get_snapshot = globals().get("get_account_holdings_snapshot_response")
+    _core.get_account_holdings_snapshot_response = (
+        _CORE_GET_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE
+        if core_get_snapshot is _PACKAGE_GET_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE
+        else core_get_snapshot
+    )
+
+
 _EXPORTS = {
     "ALLOCATION_MODE_PROPORTIONAL_ATTRIBUTION": ".account_virtual_allocations",
     "ALLOCATION_MODE_STRICT_FEASIBLE": ".account_virtual_allocations",
@@ -43,10 +91,15 @@ _EXPORTS = {
     "get_account_by_uid": ".core",
     "get_account_by_unique_identifier": ".core",
     "get_account_frontend_detail_summary": ".core",
+    "get_account_holdings_by_fund_response": ".virtual_funds_public_api",
     "get_account_holdings_snapshot_response": ".core",
     "get_virtual_fund_by_unique_identifier": ".virtual_funds",
+    "get_virtual_fund_detail_response": ".virtual_funds_public_api",
+    "get_virtual_fund_frontend_detail_summary": ".virtual_funds_public_api",
+    "get_virtual_fund_holdings_snapshot_response": ".virtual_funds_public_api",
     "get_virtual_funds_by_account": ".virtual_funds",
     "get_virtual_funds_by_portfolio": ".virtual_funds",
+    "list_virtual_fund_rows_response": ".virtual_funds_public_api",
     "list_account_rows_response": ".core",
     "plan_account_virtual_fund_allocations": ".account_virtual_allocations",
     "search_account_allocation_models": ".core",

@@ -15,7 +15,7 @@
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/examples/msm/accounts/account_portfolio_full_workflow.py" />
-    <option name="PARAMETERS" value="" />
+    <option name="PARAMETERS" value="--revision-message account_portfolio_virtual_fund_full_workflow_dynamic_schema --apply-virtual-fund-allocation" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

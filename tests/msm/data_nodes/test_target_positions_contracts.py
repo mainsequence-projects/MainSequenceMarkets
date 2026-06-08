@@ -149,6 +149,16 @@ def test_target_positions_require_exactly_one_exposure_shape() -> None:
         )
 
 
+def test_portfolio_target_positions_reject_single_asset_quantity() -> None:
+    with pytest.raises(ValueError, match="cannot use single_asset_quantity"):
+        validate_target_position_payload(
+            {
+                "portfolio_uid": uuid.uuid4(),
+                "single_asset_quantity": "1",
+            }
+        )
+
+
 def test_portfolio_target_expansion_is_explicit() -> None:
     position_set_uid = uuid.uuid4()
     portfolio_uid = uuid.uuid4()

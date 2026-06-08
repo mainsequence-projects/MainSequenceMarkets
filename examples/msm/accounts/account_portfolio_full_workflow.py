@@ -73,6 +73,34 @@ EXAMPLE_PORTFOLIO_WEIGHTS = {
 }
 
 
+def print_section(title: str) -> None:
+    print(f"\n=== {title} ===")
+
+
+def print_frame(name: str, frame: pd.DataFrame) -> None:
+    print(f"\n{name}")
+    print(frame.to_string(index=False) if not frame.empty else "No rows.")
+
+
+def print_virtual_fund_allocation_frames(frames: dict[str, pd.DataFrame]) -> None:
+    for name in (
+        "account_virtual_holding_lines",
+        "virtual_fund_allocations",
+        "residuals",
+    ):
+        print_frame(name, frames[name])
+
+    if not frames["deficits"].empty:
+        print_frame("deficits", frames["deficits"])
+
+    print("\ndiagnostics")
+    print(
+        frames["diagnostics"].to_string(index=False)
+        if not frames["diagnostics"].empty
+        else "No diagnostics."
+    )
+
+
 def run_account_portfolio_full_workflow(
     *,
     prepare_portfolio_schema: bool = True,
@@ -84,10 +112,12 @@ def run_account_portfolio_full_workflow(
 ) -> dict[str, Any]:
     """Create the account registry rows and publish account holdings."""
 
+    print_section("Account Portfolio Full Workflow")
+
     schema_preparation_result: dict[str, Any] | None = None
     if prepare_portfolio_schema and use_portfolio_example:
         print(
-            "0. Preparing the reusable portfolio example schema before account "
+            "Preparing the reusable portfolio example schema before account "
             "target and holdings publication."
         )
         from examples.msm_portfolios.portfolio_equal_weights_prepare_schema import (
@@ -110,7 +140,7 @@ def run_account_portfolio_full_workflow(
     portfolio_example_result: dict[str, Any] | None = None
     if use_portfolio_example:
         print(
-            "0. Building the reusable portfolio example so account targets can "
+            "Building the reusable portfolio example so account targets can "
             "reference its Portfolio row."
         )
         from examples.msm_portfolios.portfolio_equal_weights_example import (
@@ -128,7 +158,8 @@ def run_account_portfolio_full_workflow(
             f"{portfolio_example_result['portfolio'].unique_identifier}"
         )
     else:
-        print("0. Starting the markets engine with the standalone account schema.")
+        print_section("Standalone Account Schema")
+        print("Starting the markets engine with the standalone account schema.")
         msm_portfolios.start_engine(models=ACCOUNT_WORKFLOW_RUNTIME_MODELS)
         print("   Markets engine ready.")
 
@@ -145,6 +176,8 @@ def run_account_portfolio_full_workflow(
     from msm.data_nodes.accounts import AccountHoldings, TargetPositions
     from msm.data_nodes.assets import AssetSnapshot
     from msm.services import build_account_holdings_frame, build_target_positions_frame
+
+    print_section("Account Workflow")
 
     if portfolio_example_result is None:
         print("1. Registering the crypto AssetType used by the account example.")
@@ -399,7 +432,8 @@ def run_account_portfolio_full_workflow(
         "virtual_fund_allocation_result": None,
     }
     if run_virtual_fund_allocation or apply_virtual_fund_allocation:
-        print("15. Planning account virtual-fund allocation from the full workflow outputs.")
+        print_section("Virtual-Fund Allocation")
+        print("1. Planning account virtual-fund allocation from the full workflow outputs.")
         result["virtual_fund_allocation_result"] = _run_virtual_fund_allocation_extension(
             result,
             apply_plan=apply_virtual_fund_allocation,
@@ -493,15 +527,13 @@ def _run_virtual_fund_allocation_extension(
     print("      position_set_uid:", position_set.uid)
     print("      account_nav:", plan.account_nav)
     print("      status:", plan.status)
-    for name, frame in plan.to_frames().items():
-        print(f"\n{name}")
-        print(frame.to_string(index=False) if not frame.empty else "<empty>")
+    print_virtual_fund_allocation_frames(plan.to_frames())
 
     applied_frame = None
     if apply_plan:
         from msm.data_nodes.accounts import VirtualFundHoldings
 
-        print("16. Applying account virtual-fund allocation through VirtualFundHoldings.")
+        print("2. Applying account virtual-fund allocation through VirtualFundHoldings.")
         applied_frame = apply_account_virtual_fund_allocation_plan(
             plan,
             data_node=VirtualFundHoldings(config=VirtualFundHoldings.default_config()),
