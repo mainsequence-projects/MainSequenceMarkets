@@ -157,18 +157,21 @@ reference `portfolio_uid`. When an account example needs display fields, publish
 only putting display data in holdings `extra_details`.
 
 The full account example is intentionally chainable. By default,
-`examples/msm/accounts/account_portfolio_full_workflow.py` prepares the
-equal-weight portfolio interpolation schema, chains the reusable portfolio
-workflow, reuses the resulting `Portfolio` row, and assigns that portfolio UID
-as one of the account target positions. The same full workflow can be extended
-with a dry-run account virtual-fund allocation plan using
+`examples/msm/accounts/account_portfolio_full_workflow.py` prepares only the
+contributed interpolation output storage needed by the reusable equal-weight
+portfolio example, chains that portfolio workflow, reuses the resulting
+`Portfolio` row, and assigns that portfolio UID as one of the account target
+positions. This preparation is not portfolio core registration:
+`PortfoliosDataNode` must still consume an explicit
+`PortfolioBuildConfiguration.price_source_instance`. The same full workflow can
+be extended with a dry-run account virtual-fund allocation plan using
 `--with-virtual-fund-allocation`; use `--apply-virtual-fund-allocation` only
 when the example should publish `VirtualFundHoldings` rows after printing the
 plan. Use
 `run_account_portfolio_full_workflow(use_portfolio_example=False)` or the
 example CLI flag `--standalone-target-sleeve` only when testing the account
-path without the portfolio example. Use `--skip-schema-prep` only when the
-configured portfolio interpolation table has already been migrated.
+path without the portfolio example. Use `--skip-schema-prep` only when that
+contributed interpolation output table has already been migrated.
 
 ## Virtual-Fund Allocation Pattern
 
