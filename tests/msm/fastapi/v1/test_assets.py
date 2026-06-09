@@ -99,6 +99,32 @@ def test_get_assets_passes_category_filter(monkeypatch) -> None:
     }
 
 
+def test_list_asset_rows_pushes_search_to_unique_identifier_contains(monkeypatch) -> None:
+    captured_calls: list[dict[str, object]] = []
+
+    def fake_search_assets(context, **kwargs):
+        captured_calls.append(dict(kwargs))
+        if kwargs.get("unique_identifier_contains") == "BONO":
+            return {
+                "rows": [
+                    {
+                        "uid": str(uuid.uuid4()),
+                        "unique_identifier": "MXN-BONO-2031",
+                        "asset_type": "fixed_income",
+                    }
+                ]
+            }
+        return {"rows": []}
+
+    monkeypatch.setattr(asset_master_service, "service_search_assets", fake_search_assets)
+
+    rows = asset_master_service.list_asset_rows(object(), search="BONO", limit=25, offset=0)
+
+    assert len(rows) == 1
+    assert rows[0]["unique_identifier"] == "MXN-BONO-2031"
+    assert any(call.get("unique_identifier_contains") == "BONO" for call in captured_calls)
+
+
 def test_get_asset_returns_detail_with_current_snapshot(monkeypatch) -> None:
     asset_uid = uuid.uuid4()
     monkeypatch.setattr(
@@ -170,6 +196,32 @@ def test_get_asset_returns_404_when_missing(monkeypatch) -> None:
     assert "missing-asset" in response.json()["detail"]
 
 
+def test_delete_asset_returns_null(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.assets.delete_asset",
+        lambda uid: True,
+    )
+
+    client = TestClient(app)
+    response = client.delete(f"/api/v1/asset/{uuid.uuid4()}/")
+
+    assert response.status_code == 200
+    assert response.json() is None
+
+
+def test_delete_asset_returns_404_when_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.assets.delete_asset",
+        lambda uid: False,
+    )
+
+    client = TestClient(app)
+    response = client.delete("/api/v1/asset/missing-asset/")
+
+    assert response.status_code == 404
+    assert "missing-asset" in response.json()["detail"]
+
+
 def test_get_asset_service_uses_uid_lookup(monkeypatch) -> None:
     asset_uid = uuid.uuid4()
     runtime = SimpleNamespace(context=object())
@@ -210,6 +262,27 @@ def test_get_asset_service_uses_uid_lookup(monkeypatch) -> None:
     assert response.unique_identifier == "BTC"
     assert response.asset_type == "crypto"
     assert response.current_snapshot.asset_identifier == "BTC"
+
+
+def test_delete_asset_service_uses_uid_lookup(monkeypatch) -> None:
+    asset_uid = uuid.uuid4()
+    runtime = SimpleNamespace(context=object())
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(asset_service, "_get_runtime", lambda: runtime)
+
+    def fake_delete_asset_record(context, **kwargs):
+        captured["context"] = context
+        captured.update(kwargs)
+        return True
+
+    monkeypatch.setattr(asset_service, "_delete_asset_record", fake_delete_asset_record)
+
+    assert asset_service.delete_asset(uid=str(asset_uid)) is True
+    assert captured == {
+        "context": runtime.context,
+        "uid": str(asset_uid),
+    }
 
 
 def test_core_get_asset_record_includes_latest_asset_snapshot(monkeypatch) -> None:
@@ -271,6 +344,54 @@ def test_core_get_asset_record_includes_latest_asset_snapshot(monkeypatch) -> No
         "trading_view": None,
         "order_form": None,
     }
+
+
+def test_core_delete_asset_record_deletes_existing_asset(monkeypatch) -> None:
+    asset_uid = uuid.uuid4()
+    context = object()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        asset_master_service,
+        "service_get_asset_by_uid",
+        lambda context, uid: {
+            "row": {
+                "uid": str(asset_uid),
+                "unique_identifier": "example-asset-btc",
+                "asset_type": "crypto",
+            }
+        },
+    )
+
+    def fake_delete_asset(context, uid):
+        captured["context"] = context
+        captured["uid"] = uid
+        return {}
+
+    monkeypatch.setattr(asset_master_service, "service_delete_asset", fake_delete_asset)
+
+    assert asset_master_service.delete_asset_record(context, uid=str(asset_uid)) is True
+    assert captured == {
+        "context": context,
+        "uid": str(asset_uid),
+    }
+
+
+def test_core_delete_asset_record_returns_false_when_missing(monkeypatch) -> None:
+    context = object()
+
+    monkeypatch.setattr(
+        asset_master_service,
+        "service_get_asset_by_uid",
+        lambda context, uid: {"rows": []},
+    )
+
+    def fail_delete_asset(context, uid):
+        raise AssertionError("delete should not be called for a missing asset")
+
+    monkeypatch.setattr(asset_master_service, "service_delete_asset", fail_delete_asset)
+
+    assert asset_master_service.delete_asset_record(context, uid="missing-asset") is False
 
 
 def test_get_asset_summary_returns_frontend_detail_summary(monkeypatch) -> None:

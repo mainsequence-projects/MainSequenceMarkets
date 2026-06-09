@@ -14,6 +14,7 @@ from apps.v1.routers.indices import router as indices_router
 from apps.v1.routers.portfolios import router as portfolios_router
 from apps.v1.routers.pricing_curves import router as pricing_curves_router
 from apps.v1.routers.pricing_market_data import router as pricing_market_data_router
+from apps.v1.routers.settings import router as settings_router
 from apps.v1.routers.virtual_funds import router as virtual_funds_router
 from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime, ensure_apps_v1_runtime
 
@@ -61,6 +62,10 @@ API_TAGS = [
         "name": "virtualfund",
         "description": "Virtual-fund identity, detail, and holdings endpoints.",
     },
+    {
+        "name": "settings",
+        "description": "Read-only app settings and runtime assumption endpoints.",
+    },
 ]
 
 
@@ -98,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(calendars_router, prefix="/api/v1")
     app.include_router(pricing_curves_router, prefix="/api/v1")
     app.include_router(pricing_market_data_router, prefix="/api/v1")
+    app.include_router(settings_router, prefix="/api/v1")
 
     def custom_openapi():
         if app.openapi_schema is not None:

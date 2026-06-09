@@ -124,6 +124,13 @@ def test_openapi_json_documents_asset_list_endpoint() -> None:
         "$ref": "#/components/schemas/ErrorResponse"
     }
 
+    asset_delete_operation = payload["paths"]["/api/v1/asset/{uid}/"]["delete"]
+    assert asset_delete_operation["summary"] == "Delete asset"
+    assert asset_delete_operation["operationId"] == "deleteAsset"
+    assert asset_delete_operation["responses"]["404"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorResponse"
+    }
+
     asset_summary_operation = payload["paths"]["/api/v1/asset/{uid}/summary/"]["get"]
     assert asset_summary_operation["summary"] == "Get asset summary"
     assert asset_summary_operation["operationId"] == "getAssetSummary"
@@ -457,6 +464,49 @@ def test_openapi_json_documents_calendar_routes() -> None:
         "schema"
     ] == {"$ref": "#/components/schemas/FrontEndDetailSummary"}
     assert calendar_summary_operation["responses"]["404"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ErrorResponse"}
+
+
+def test_openapi_json_documents_pricing_curve_routes() -> None:
+    client = TestClient(app)
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    curve_list_operation = payload["paths"]["/api/v1/pricing/curves/"]["get"]
+    assert curve_list_operation["summary"] == "List pricing curves"
+    assert curve_list_operation["operationId"] == "listPricingCurves"
+    assert curve_list_operation["tags"] == ["pricing-curve"]
+    assert curve_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/CurveListResponse"
+    }
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/CurveListResponse",
+        result_ref="#/components/schemas/Curve",
+    )
+
+    curve_summary_operation = payload["paths"]["/api/v1/pricing/curves/{uid}/summary/"]["get"]
+    assert curve_summary_operation["summary"] == "Get pricing curve summary"
+    assert curve_summary_operation["operationId"] == "getPricingCurveSummary"
+    assert curve_summary_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/FrontEndDetailSummary"
+    }
+    assert curve_summary_operation["responses"]["404"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorResponse"
+    }
+
+    discount_curve_operation = payload["paths"]["/api/v1/pricing/curves/{uid}/discount-curve/"][
+        "get"
+    ]
+    assert discount_curve_operation["summary"] == "Get pricing discount curve"
+    assert discount_curve_operation["operationId"] == "getPricingDiscountCurve"
+    assert discount_curve_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/DiscountCurveResponse"}
+    assert discount_curve_operation["responses"]["404"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/ErrorResponse"}
 

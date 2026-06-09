@@ -22,6 +22,7 @@ from msm.services.asset_categories import (
     update_asset_category as service_update_asset_category,
 )
 from msm.services.assets import (
+    delete_asset as service_delete_asset,
     get_asset_by_uid as service_get_asset_by_uid,
     search_assets as service_search_assets,
 )
@@ -157,7 +158,18 @@ def list_asset_rows(
     category_uid: str | None = None,
 ) -> list[dict[str, Any]]:
     scan_limit = _scan_limit(offset=offset, limit=limit)
+    normalized_search = search.strip().lower()
     asset_rows = _operation_result_rows(service_search_assets(context, limit=scan_limit))
+    if normalized_search:
+        asset_rows.extend(
+            _operation_result_rows(
+                service_search_assets(
+                    context,
+                    unique_identifier_contains=search.strip(),
+                    limit=scan_limit,
+                )
+            )
+        )
 
     if category_uid not in (None, ""):
         membership_rows = _operation_result_rows(
@@ -180,12 +192,10 @@ def list_asset_rows(
 
     normalized_rows = [
         _build_asset_record(asset_row)
-        for asset_row in asset_rows
-        if isinstance(asset_row, Mapping) and asset_row.get("uid") not in (None, "")
+        for asset_row in _deduplicate_rows_by_uid(asset_rows)
     ]
     normalized_rows.sort(key=lambda row: (str(row["unique_identifier"]).lower(), str(row["uid"])))
 
-    normalized_search = search.strip().lower()
     if normalized_search:
         normalized_rows = [
             row
@@ -620,6 +630,19 @@ def delete_asset_category_record(
     return True
 
 
+def delete_asset_record(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+) -> bool:
+    existing_row = _first_operation_row(service_get_asset_by_uid(context, uid=uid))
+    if existing_row is None:
+        return False
+
+    service_delete_asset(context, uid=uid)
+    return True
+
+
 def delete_index_record(
     context: MarketsRepositoryContext,
     *,
@@ -772,9 +795,7 @@ def _build_asset_current_snapshot(
 ) -> dict[str, Any]:
     return {
         "time_index": (
-            _datetime_or_none(snapshot_row.get("time_index"))
-            if snapshot_row is not None
-            else None
+            _datetime_or_none(snapshot_row.get("time_index")) if snapshot_row is not None else None
         ),
         "asset_identifier": (
             _string_or_none(snapshot_row.get("asset_identifier"))
@@ -786,9 +807,7 @@ def _build_asset_current_snapshot(
             _string_or_none(snapshot_row.get("ticker")) if snapshot_row is not None else None
         ),
         "exchange_code": (
-            _string_or_none(snapshot_row.get("exchange_code"))
-            if snapshot_row is not None
-            else None
+            _string_or_none(snapshot_row.get("exchange_code")) if snapshot_row is not None else None
         ),
         "asset_ticker_group_id": (
             _string_or_none(snapshot_row.get("asset_ticker_group_id"))
@@ -1121,6 +1140,20 @@ def _first_operation_row(result: Mapping[str, Any] | list[Any] | None) -> dict[s
     return rows[0] if rows else None
 
 
+def _deduplicate_rows_by_uid(rows: Sequence[Any]) -> list[Mapping[str, Any]]:
+    deduplicated_rows: list[Mapping[str, Any]] = []
+    seen_uids: set[str] = set()
+    for row in rows:
+        if not isinstance(row, Mapping) or row.get("uid") in (None, ""):
+            continue
+        uid = str(row["uid"])
+        if uid in seen_uids:
+            continue
+        seen_uids.add(uid)
+        deduplicated_rows.append(row)
+    return deduplicated_rows
+
+
 def _matches_search(*, values: Sequence[Any], normalized_search: str) -> bool:
     return any(
         normalized_search in str(value).lower() for value in values if value not in (None, "")
@@ -1203,6 +1236,7 @@ def _scan_limit(*, offset: int, limit: int) -> int:
 __all__ = [
     "bulk_delete_asset_category_records",
     "create_asset_category_record",
+    "delete_asset_record",
     "delete_asset_category_record",
     "get_asset_frontend_detail_summary",
     "delete_index_record",

@@ -186,15 +186,16 @@ for dry-run planning, or add `--apply-virtual-fund-allocation` to publish the
 virtual-fund holdings after the plan is printed.
 
 See `examples/msm/accounts/account_portfolio_full_workflow.py` for the full
-account plus portfolio path. The default runner prepares the configured
-interpolated price storage revision, upgrades it, chains
+account plus portfolio path. The default runner prepares only the contributed
+interpolated-price output storage revision needed by the portfolio example,
+upgrades it, chains
 `examples/msm_portfolios/portfolio_equal_weights_example.py` to create a
 reusable portfolio sleeve, then creates the account group, two accounts,
 canonical asset snapshots with ticker/name metadata, one shared account
 allocation model, account-owned target allocation relationships, direct asset plus
 portfolio `PositionSet` target-row publication, holdings publication, and
-pretty-printed account positions. Use `--skip-schema-prep` only when the
-configured portfolio interpolation table has already been migrated.
+pretty-printed account positions. Use `--skip-schema-prep` only when that
+contributed interpolated-price output table has already been migrated.
 
 ## Pricing Instrument Identity
 

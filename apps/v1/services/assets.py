@@ -48,6 +48,11 @@ def get_asset_pricing_details(*, uid: str) -> AssetCurrentPricingDetailsResponse
     return AssetCurrentPricingDetailsResponse.model_validate(_model_dump(details))
 
 
+def delete_asset(*, uid: str) -> bool:
+    runtime = _get_runtime()
+    return bool(_delete_asset_record(runtime.context, uid=uid))
+
+
 def _get_runtime():
     from apps.v1.runtime_bootstrap import resolve_apps_v1_runtime
 
@@ -79,6 +84,12 @@ def _get_asset_frontend_detail_summary(context, **kwargs):
     from msm.services import get_asset_frontend_detail_summary
 
     return get_asset_frontend_detail_summary(context, **kwargs)
+
+
+def _delete_asset_record(context, **kwargs):
+    from msm.services import delete_asset_record
+
+    return delete_asset_record(context, **kwargs)
 
 
 def _ensure_pricing_runtime() -> None:

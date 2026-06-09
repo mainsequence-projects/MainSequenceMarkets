@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import datetime as dt
+
 from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime
-from apps.v1.schemas.pricing_curves import Curve
+from apps.v1.schemas.common import FrontEndDetailSummary
+from apps.v1.schemas.pricing_curves import Curve, DiscountCurveResponse
 
 
 def list_pricing_curves(
@@ -22,3 +25,36 @@ def list_pricing_curves(
         index_uid=index_uid,
         source=source,
     )
+
+
+def get_pricing_curve_summary(*, uid: str) -> FrontEndDetailSummary | None:
+    ensure_apps_v1_pricing_runtime()
+    summary = _get_curve_frontend_detail_summary(uid)
+    if summary is None:
+        return None
+    return FrontEndDetailSummary.model_validate(summary)
+
+
+def get_pricing_curve_discount_curve(
+    *,
+    uid: str,
+    market_data_set: str,
+    valuation_date: dt.datetime | None = None,
+) -> DiscountCurveResponse | None:
+    ensure_apps_v1_pricing_runtime()
+    response = _get_curve_discount_curve_nodes(
+        uid=uid,
+        market_data_set=market_data_set,
+        valuation_date=valuation_date,
+    )
+    if response is None:
+        return None
+    return DiscountCurveResponse.model_validate(response)
+
+
+def _get_curve_frontend_detail_summary(uid: str):
+    return Curve.get_frontend_detail_summary(uid)
+
+
+def _get_curve_discount_curve_nodes(**kwargs):
+    return Curve.get_discount_curve_nodes(**kwargs)

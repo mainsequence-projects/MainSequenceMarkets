@@ -135,19 +135,26 @@ class MSDataInterface:
             concept_key=concept_key,
         )
 
+    def _data_node_for_concept(self, concept_key: str, *, market_data_set=None):
+        from mainsequence.meta_tables import APIDataNode
+
+        return APIDataNode.build_from_table_uid(
+            str(
+                self._data_node_uid_for_concept(
+                    concept_key,
+                    market_data_set=market_data_set,
+                )
+            )
+        )
+
     # NOTE: caching is applied at the method boundary; body is unchanged.
     @cachedmethod(cache=attrgetter("_curve_cache"), lock=attrgetter("_curve_cache_lock"))
     def get_historical_discount_curve(self, curve_name, target_date, *, market_data_set=None):
         from mainsequence.logconf import logger
-        from mainsequence.meta_tables import APIDataNode
 
-        data_node = APIDataNode.build_from_table_uid(
-            str(
-                self._data_node_uid_for_concept(
-                    PRICING_CONCEPT_DISCOUNT_CURVES,
-                    market_data_set=market_data_set,
-                )
-            )
+        data_node = self._data_node_for_concept(
+            PRICING_CONCEPT_DISCOUNT_CURVES,
+            market_data_set=market_data_set,
         )
 
         # for test purposes only get lats observations
@@ -160,6 +167,36 @@ class MSDataInterface:
             target_date = update_statistics.get_last_update_for_identity(curve_name)
             logger.warning("Curve is using last observation")
 
+        nodes = self._read_discount_curve_nodes(
+            data_node=data_node,
+            curve_name=curve_name,
+            target_date=target_date,
+        )
+
+        if use_last_observation:
+            target_date = original_request_date
+
+        return nodes, target_date
+
+    def get_latest_discount_curve(self, curve_name, *, market_data_set=None):
+        data_node = self._data_node_for_concept(
+            PRICING_CONCEPT_DISCOUNT_CURVES,
+            market_data_set=market_data_set,
+        )
+        update_statistics = data_node.get_update_statistics()
+        target_date = update_statistics.get_last_update_for_identity(curve_name)
+        if target_date is None:
+            raise LookupError(f"No latest discount curve observation found for {curve_name!r}.")
+
+        nodes = self._read_discount_curve_nodes(
+            data_node=data_node,
+            curve_name=curve_name,
+            target_date=target_date,
+        )
+        return nodes, target_date
+
+    @staticmethod
+    def _read_discount_curve_nodes(*, data_node, curve_name, target_date):
         limit = target_date + datetime.timedelta(days=1)
 
         curve = data_node.get_df_between_dates(
@@ -186,10 +223,7 @@ class MSDataInterface:
 
         nodes = [{"days_to_maturity": d, "zero": z} for d, z in zeros.to_dict().items() if d > 0]
 
-        if use_last_observation:
-            target_date = original_request_date
-
-        return nodes, target_date
+        return nodes
 
     @cachedmethod(cache=attrgetter("_fixings_cache"), lock=attrgetter("_fixings_cache_lock"))
     def get_historical_fixings(
@@ -210,15 +244,10 @@ class MSDataInterface:
         import pytz  # patch
 
         from mainsequence.logconf import logger
-        from mainsequence.meta_tables import APIDataNode
 
-        data_node = APIDataNode.build_from_table_uid(
-            str(
-                self._data_node_uid_for_concept(
-                    PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-                    market_data_set=market_data_set,
-                )
-            )
+        data_node = self._data_node_for_concept(
+            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+            market_data_set=market_data_set,
         )
 
         fixings_df = data_node.get_df_between_dates(

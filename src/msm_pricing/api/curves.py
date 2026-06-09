@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from collections.abc import Mapping
 from typing import Any, ClassVar
@@ -21,6 +22,7 @@ from msm.repositories.crud import (
 from msm_pricing.bootstrap import attach_pricing_schemas, resolve_pricing_runtime
 from msm_pricing.models.curves import CurveTable
 from msm_pricing.models.index_convention_details import IndexConventionDetailsTable
+from msm_pricing.settings import PRICING_CONCEPT_DISCOUNT_CURVES
 
 
 def _validate_payload(
@@ -141,6 +143,174 @@ class Curve(BaseModel):
         return cls._from_operation_result(result, required=False)
 
     @classmethod
+    def get_frontend_detail_summary(cls, uid: uuid.UUID | str) -> dict[str, Any] | None:
+        row = cls.get_by_uid(uid)
+        if row is None:
+            return None
+
+        row_payload = row.model_dump(mode="json")
+        row_uid = str(row.uid)
+        title = row.display_name or row.unique_identifier or row_uid
+
+        badges: list[dict[str, Any]] = [
+            {
+                "key": "curve_type",
+                "label": row.curve_type,
+                "tone": "info",
+            }
+        ]
+        if row.source not in (None, ""):
+            badges.append(
+                {
+                    "key": "source",
+                    "label": str(row.source),
+                    "tone": "neutral",
+                }
+            )
+
+        highlight_fields: list[dict[str, Any]] = [
+            {
+                "key": "display_name",
+                "label": "Display Name",
+                "value": row.display_name,
+                "kind": "text",
+                "icon": "database",
+            },
+            {
+                "key": "curve_type",
+                "label": "Curve Type",
+                "value": row.curve_type,
+                "kind": "code",
+                "icon": "line-chart",
+            },
+        ]
+        if row.interpolation_method not in (None, ""):
+            highlight_fields.append(
+                {
+                    "key": "interpolation_method",
+                    "label": "Interpolation",
+                    "value": row.interpolation_method,
+                    "kind": "code",
+                    "icon": "activity",
+                }
+            )
+        if row.compounding not in (None, ""):
+            highlight_fields.append(
+                {
+                    "key": "compounding",
+                    "label": "Compounding",
+                    "value": row.compounding,
+                    "kind": "code",
+                    "icon": "activity",
+                }
+            )
+
+        return {
+            "entity": {
+                "id": row_uid,
+                "type": "pricing_curve",
+                "title": title,
+            },
+            "badges": badges,
+            "inline_fields": [
+                {
+                    "key": "uid",
+                    "label": "UID",
+                    "value": row_uid,
+                    "kind": "code",
+                },
+                {
+                    "key": "unique_identifier",
+                    "label": "Identifier",
+                    "value": row.unique_identifier,
+                    "kind": "code",
+                },
+                {
+                    "key": "index_uid",
+                    "label": "Index UID",
+                    "value": str(row.index_uid),
+                    "kind": "code",
+                },
+            ],
+            "highlight_fields": highlight_fields,
+            "stats": [],
+            "label_management": None,
+            "summary_warning": None,
+            "extensions": {
+                "curve": row_payload,
+                "metadata_json": row.metadata_json,
+            },
+        }
+
+    @classmethod
+    def get_discount_curve_nodes(
+        cls,
+        *,
+        uid: uuid.UUID | str,
+        market_data_set: Any,
+        valuation_date: dt.datetime | None = None,
+    ) -> dict[str, Any] | None:
+        curve = cls.get_by_uid(uid)
+        if curve is None:
+            return None
+
+        from msm_pricing.api.market_data_bindings import (
+            PricingMarketDataSet,
+            PricingMarketDataSetBinding,
+        )
+        from msm_pricing.data_interface import MSDataInterface
+
+        market_data_set_uid = PricingMarketDataSet.resolve_uid(market_data_set)
+        market_data_set_row = PricingMarketDataSet.get_by_uid(market_data_set_uid)
+        if market_data_set_row is None:
+            raise LookupError(f"No pricing market-data set found for uid={market_data_set_uid}.")
+
+        binding = PricingMarketDataSetBinding.get_by_set_and_concept(
+            market_data_set_uid=market_data_set_uid,
+            concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
+        )
+        if binding is None:
+            raise LookupError(
+                "No pricing market-data binding found for "
+                f"market_data_set_uid={market_data_set_uid}, "
+                f"concept_key={PRICING_CONCEPT_DISCOUNT_CURVES!r}."
+            )
+
+        interface = MSDataInterface(
+            market_data_configuration={
+                "data_node_uids": {
+                    PRICING_CONCEPT_DISCOUNT_CURVES: binding.data_node_uid,
+                }
+            }
+        )
+        nodes, effective_date = _read_discount_curve_nodes(
+            interface=interface,
+            curve_identifier=curve.unique_identifier,
+            valuation_date=valuation_date,
+        )
+
+        return {
+            "curve_uid": curve.uid,
+            "curve_identifier": curve.unique_identifier,
+            "curve": curve.model_dump(mode="json"),
+            "market_data_set": {
+                "uid": market_data_set_row.uid,
+                "set_key": market_data_set_row.set_key,
+                "display_name": market_data_set_row.display_name,
+            },
+            "binding": {
+                "uid": binding.uid,
+                "concept_key": binding.concept_key,
+                "data_node_uid": binding.data_node_uid,
+                "storage_table_identifier": binding.storage_table_identifier,
+            },
+            "valuation_date": valuation_date,
+            "effective_date": effective_date,
+            "request_mode": "historical" if valuation_date is not None else "latest",
+            "nodes": _normalize_discount_curve_nodes(nodes),
+        }
+
+    @classmethod
     def filter(cls, *, limit: int = 500, **filters: Any) -> list[Curve]:
         result = search_model(
             cls._active_context(),
@@ -222,6 +392,35 @@ def _count_from_operation_result(result: Mapping[str, Any] | list[Any] | None) -
     if not rows:
         return 0
     return int(rows[0].get("count") or 0)
+
+
+def _read_discount_curve_nodes(
+    *,
+    interface: Any,
+    curve_identifier: str,
+    valuation_date: dt.datetime | None,
+) -> tuple[list[dict[str, Any]], dt.datetime]:
+    try:
+        if valuation_date is None:
+            return interface.get_latest_discount_curve(curve_identifier)
+        return interface.get_historical_discount_curve(curve_identifier, valuation_date)
+    except LookupError:
+        raise
+    except Exception as exc:
+        message = str(exc)
+        if " is empty" in message or "No latest discount curve observation" in message:
+            raise LookupError(message) from exc
+        raise
+
+
+def _normalize_discount_curve_nodes(nodes: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "days_to_maturity": int(node["days_to_maturity"]),
+            "zero": float(node["zero"]),
+        }
+        for node in nodes
+    ]
 
 
 class CurveCreate(BaseModel):

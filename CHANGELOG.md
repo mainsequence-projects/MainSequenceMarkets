@@ -9,6 +9,9 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Added `MSDataInterface.get_latest_discount_curve(...)` for explicit latest
+  discount-curve lookup by curve identity without using the global
+  `USE_LAST_OBSERVATION_MS_INSTRUMENT` fallback.
 - Refactored the `migrations:migration` provider, Alembic environment, model
   registry, and dynamic portfolio example provider onto the SDK-owned
   MetaTable migration helpers, with revision directories treated as generated
@@ -64,6 +67,9 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- Clarified that `AssetCurrentPricingDetailsTable` and the timestamped
+  `AssetPricingDetail` DataNode are independent storage paths, not views or
+  automatic mirrors of each other.
 - Clarified account and portfolio example console output with section titles,
   corrected portfolio workflow step numbering, and cleaner virtual-fund
   allocation frame rendering.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from types import SimpleNamespace
 
@@ -175,6 +176,318 @@ def test_curve_get_by_unique_identifier_uses_curve_lookup(monkeypatch) -> None:
     assert row is not None
     assert row.uid == curve_uid
     assert calls == [(context, CurveTable, "USD-SOFR-DISCOUNT")]
+
+
+def test_curve_frontend_detail_summary_uses_curve_row(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    index_uid = uuid.uuid4()
+
+    monkeypatch.setattr(
+        Curve,
+        "get_by_uid",
+        classmethod(
+            lambda cls, uid: Curve(
+                uid=curve_uid,
+                unique_identifier="USD-SOFR-DISCOUNT",
+                display_name="USD SOFR Discount Curve",
+                curve_type="discount",
+                index_uid=index_uid,
+                interpolation_method="log_linear_discount",
+                compounding="compounded_annual",
+                source="unit-test",
+                metadata_json={"provider": "test"},
+            )
+        ),
+    )
+
+    summary = Curve.get_frontend_detail_summary(curve_uid)
+
+    assert summary == {
+        "entity": {
+            "id": str(curve_uid),
+            "type": "pricing_curve",
+            "title": "USD SOFR Discount Curve",
+        },
+        "badges": [
+            {
+                "key": "curve_type",
+                "label": "discount",
+                "tone": "info",
+            },
+            {
+                "key": "source",
+                "label": "unit-test",
+                "tone": "neutral",
+            },
+        ],
+        "inline_fields": [
+            {
+                "key": "uid",
+                "label": "UID",
+                "value": str(curve_uid),
+                "kind": "code",
+            },
+            {
+                "key": "unique_identifier",
+                "label": "Identifier",
+                "value": "USD-SOFR-DISCOUNT",
+                "kind": "code",
+            },
+            {
+                "key": "index_uid",
+                "label": "Index UID",
+                "value": str(index_uid),
+                "kind": "code",
+            },
+        ],
+        "highlight_fields": [
+            {
+                "key": "display_name",
+                "label": "Display Name",
+                "value": "USD SOFR Discount Curve",
+                "kind": "text",
+                "icon": "database",
+            },
+            {
+                "key": "curve_type",
+                "label": "Curve Type",
+                "value": "discount",
+                "kind": "code",
+                "icon": "line-chart",
+            },
+            {
+                "key": "interpolation_method",
+                "label": "Interpolation",
+                "value": "log_linear_discount",
+                "kind": "code",
+                "icon": "activity",
+            },
+            {
+                "key": "compounding",
+                "label": "Compounding",
+                "value": "compounded_annual",
+                "kind": "code",
+                "icon": "activity",
+            },
+        ],
+        "stats": [],
+        "label_management": None,
+        "summary_warning": None,
+        "extensions": {
+            "curve": {
+                "uid": str(curve_uid),
+                "unique_identifier": "USD-SOFR-DISCOUNT",
+                "display_name": "USD SOFR Discount Curve",
+                "curve_type": "discount",
+                "index_uid": str(index_uid),
+                "interpolation_method": "log_linear_discount",
+                "compounding": "compounded_annual",
+                "source": "unit-test",
+                "metadata_json": {"provider": "test"},
+            },
+            "metadata_json": {"provider": "test"},
+        },
+    }
+
+
+def test_curve_frontend_detail_summary_returns_none_when_missing(monkeypatch) -> None:
+    monkeypatch.setattr(Curve, "get_by_uid", classmethod(lambda cls, uid: None))
+
+    assert Curve.get_frontend_detail_summary(uuid.uuid4()) is None
+
+
+def test_curve_discount_curve_nodes_use_market_data_binding(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    index_uid = uuid.uuid4()
+    market_data_set_uid = uuid.uuid4()
+    binding_uid = uuid.uuid4()
+    data_node_uid = uuid.uuid4()
+    valuation_date = dt.datetime(2026, 6, 1, tzinfo=dt.UTC)
+    calls: list[object] = []
+
+    monkeypatch.setattr(
+        Curve,
+        "get_by_uid",
+        classmethod(
+            lambda cls, uid: Curve(
+                uid=curve_uid,
+                unique_identifier="USD-SOFR-DISCOUNT",
+                display_name="USD SOFR Discount Curve",
+                curve_type="discount",
+                index_uid=index_uid,
+            )
+        ),
+    )
+
+    from msm_pricing.api.market_data_bindings import (
+        PricingMarketDataSet,
+        PricingMarketDataSetBinding,
+    )
+
+    monkeypatch.setattr(
+        PricingMarketDataSet,
+        "resolve_uid",
+        classmethod(lambda cls, market_data_set: market_data_set_uid),
+    )
+    monkeypatch.setattr(
+        PricingMarketDataSet,
+        "get_by_uid",
+        classmethod(
+            lambda cls, uid: PricingMarketDataSet(
+                uid=market_data_set_uid,
+                set_key="eod",
+                display_name="End of day",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        PricingMarketDataSetBinding,
+        "get_by_set_and_concept",
+        classmethod(
+            lambda cls, market_data_set_uid, concept_key: PricingMarketDataSetBinding(
+                uid=binding_uid,
+                market_data_set_uid=market_data_set_uid,
+                concept_key=concept_key,
+                data_node_uid=data_node_uid,
+                storage_table_identifier="DiscountCurvesStorage",
+            )
+        ),
+    )
+
+    class FakeMSDataInterface:
+        def __init__(self, market_data_configuration):
+            calls.append(("configuration", market_data_configuration))
+
+        def get_historical_discount_curve(self, curve_identifier, target_date):
+            calls.append(("historical", curve_identifier, target_date))
+            return [{"days_to_maturity": 28, "zero": 0.11}], target_date
+
+    monkeypatch.setattr("msm_pricing.data_interface.MSDataInterface", FakeMSDataInterface)
+
+    response = Curve.get_discount_curve_nodes(
+        uid=curve_uid,
+        market_data_set="eod",
+        valuation_date=valuation_date,
+    )
+
+    assert response == {
+        "curve_uid": curve_uid,
+        "curve_identifier": "USD-SOFR-DISCOUNT",
+        "curve": {
+            "uid": str(curve_uid),
+            "unique_identifier": "USD-SOFR-DISCOUNT",
+            "display_name": "USD SOFR Discount Curve",
+            "curve_type": "discount",
+            "index_uid": str(index_uid),
+            "interpolation_method": None,
+            "compounding": None,
+            "source": None,
+            "metadata_json": None,
+        },
+        "market_data_set": {
+            "uid": market_data_set_uid,
+            "set_key": "eod",
+            "display_name": "End of day",
+        },
+        "binding": {
+            "uid": binding_uid,
+            "concept_key": "discount_curves",
+            "data_node_uid": data_node_uid,
+            "storage_table_identifier": "DiscountCurvesStorage",
+        },
+        "valuation_date": valuation_date,
+        "effective_date": valuation_date,
+        "request_mode": "historical",
+        "nodes": [{"days_to_maturity": 28, "zero": 0.11}],
+    }
+    assert calls == [
+        (
+            "configuration",
+            {"data_node_uids": {"discount_curves": data_node_uid}},
+        ),
+        ("historical", "USD-SOFR-DISCOUNT", valuation_date),
+    ]
+
+
+def test_curve_discount_curve_nodes_use_latest_when_valuation_date_missing(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    index_uid = uuid.uuid4()
+    market_data_set_uid = uuid.uuid4()
+    binding_uid = uuid.uuid4()
+    data_node_uid = uuid.uuid4()
+    latest_date = dt.datetime(2026, 6, 2, tzinfo=dt.UTC)
+
+    monkeypatch.setattr(
+        Curve,
+        "get_by_uid",
+        classmethod(
+            lambda cls, uid: Curve(
+                uid=curve_uid,
+                unique_identifier="USD-SOFR-DISCOUNT",
+                display_name="USD SOFR Discount Curve",
+                curve_type="discount",
+                index_uid=index_uid,
+            )
+        ),
+    )
+
+    from msm_pricing.api.market_data_bindings import (
+        PricingMarketDataSet,
+        PricingMarketDataSetBinding,
+    )
+
+    monkeypatch.setattr(
+        PricingMarketDataSet,
+        "resolve_uid",
+        classmethod(lambda cls, market_data_set: market_data_set_uid),
+    )
+    monkeypatch.setattr(
+        PricingMarketDataSet,
+        "get_by_uid",
+        classmethod(
+            lambda cls, uid: PricingMarketDataSet(
+                uid=market_data_set_uid,
+                set_key="live",
+                display_name="Live",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        PricingMarketDataSetBinding,
+        "get_by_set_and_concept",
+        classmethod(
+            lambda cls, market_data_set_uid, concept_key: PricingMarketDataSetBinding(
+                uid=binding_uid,
+                market_data_set_uid=market_data_set_uid,
+                concept_key=concept_key,
+                data_node_uid=data_node_uid,
+            )
+        ),
+    )
+
+    class FakeMSDataInterface:
+        def __init__(self, market_data_configuration):
+            pass
+
+        def get_latest_discount_curve(self, curve_identifier):
+            assert curve_identifier == "USD-SOFR-DISCOUNT"
+            return [{"days_to_maturity": 91, "zero": 0.105}], latest_date
+
+    monkeypatch.setattr("msm_pricing.data_interface.MSDataInterface", FakeMSDataInterface)
+
+    response = Curve.get_discount_curve_nodes(uid=curve_uid, market_data_set="live")
+
+    assert response is not None
+    assert response["valuation_date"] is None
+    assert response["effective_date"] == latest_date
+    assert response["request_mode"] == "latest"
+    assert response["nodes"] == [{"days_to_maturity": 91, "zero": 0.105}]
+
+
+def test_curve_discount_curve_nodes_return_none_when_curve_missing(monkeypatch) -> None:
+    monkeypatch.setattr(Curve, "get_by_uid", classmethod(lambda cls, uid: None))
+
+    assert Curve.get_discount_curve_nodes(uid=uuid.uuid4(), market_data_set="eod") is None
 
 
 def test_curve_filter_uses_pricing_runtime_filters(monkeypatch) -> None:

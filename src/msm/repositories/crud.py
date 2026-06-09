@@ -476,7 +476,9 @@ def _filtered_model_select(
 
     for field_name, value in (contains_filters or {}).items():
         if value not in (None, ""):
-            statement = statement.where(_model_attribute(model, field_name).contains(str(value)))
+            statement = statement.where(
+                func.lower(_model_attribute(model, field_name)).contains(str(value).lower())
+            )
 
     return statement
 

@@ -29,6 +29,7 @@ nav:
       - Market Workflows: tutorial/market_workflows.md
   - FastAPI:
       - v1: fast_api/v1/index.md
+      - Settings: fast_api/v1/settings.md
       - Portfolio: fast_api/v1/portfolio.md
       - Virtual Funds: fast_api/v1/virtualfund.md
       - Pricing Curves: fast_api/v1/pricing_curves.md

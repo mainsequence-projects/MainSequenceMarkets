@@ -65,13 +65,16 @@ Before changing code, inspect the local implementation relevant to the task:
 1. `src/msm/api/indices.py`
 2. `src/msm_pricing/api/index_convention_details.py`
 3. `src/msm_pricing/api/curves.py`
-4. `src/msm_pricing/data_nodes/index_fixings.py`
-5. `src/msm_pricing/data_nodes/curves.py`
-6. `src/msm_pricing/pricing_engine/resolvers.py`
-7. `src/msm_pricing/meta_tables.py`
-8. `examples/msm_pricing/bond_pricing_example/main.py`
-9. `examples/msm_pricing/utils/mock_market_data.py`
-10. `docs/ADR/0013-current-asset-pricing-details.md`
+4. `src/msm_pricing/data_nodes/index_fixings/__init__.py`
+5. `src/msm_pricing/data_nodes/index_fixings/storage.py`
+6. `src/msm_pricing/data_nodes/curves/__init__.py`
+7. `src/msm_pricing/data_nodes/curves/storage.py`
+8. `src/msm_pricing/pricing_engine/resolvers.py`
+9. `src/msm_pricing/meta_tables.py`
+10. `examples/msm_pricing/bond_pricing_example/main.py`
+11. `examples/msm_pricing/utils/mock_market_data.py`
+12. `docs/knowledge/msm_pricing/index.md`
+13. `docs/ADR/0026-explicit-pricing-market-data-sets.md`
 
 For generic SDK semantics, verify against the latest Main Sequence docs instead
 of relying on memory.
@@ -209,6 +212,10 @@ Rules:
 - Use `curve_identifier` for curve DataNode rows. It stores
   `Curve.unique_identifier`.
 - Do not use Main Sequence Constant names as curve or index identity.
+- Use `MSDataInterface.get_latest_discount_curve(curve.unique_identifier, ...)`
+  when a caller wants the latest available curve snapshot for one curve
+  identity. Do not use `USE_LAST_OBSERVATION_MS_INSTRUMENT` as normal
+  application control flow.
 
 ## Fixings Pattern
 

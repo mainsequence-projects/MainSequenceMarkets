@@ -373,8 +373,8 @@ parallel runs that must not collide on a shared backend.
   `AssetDataNodeConfiguration`, and timestamped asset frame validation.
 - `src/msm/data_nodes/indices/timestamped.py`: `IndexTimestampedDataNode` and
   `IndexDataNodeConfiguration` for timestamped facts keyed to `IndexTable`.
-- `src/msm_pricing/data_nodes/pricing_details.py`: `AssetPricingDetail` and
-  its pricing-specific configuration.
+- `src/msm_pricing/data_nodes/pricing_details/__init__.py`:
+  `AssetPricingDetail` and its pricing-specific configuration.
 - `examples/msm/assets/asset_crud_workflow.py`: asset workflow that includes
   `AssetSnapshot` frame construction and DataNode execution.
 - `docs/knowledge/msm/migrations/index.md`: current storage registration and

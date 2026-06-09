@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
 from apps.v1.schemas.common import (
@@ -12,6 +12,7 @@ from apps.v1.schemas.common import (
     build_paginated_response,
 )
 from apps.v1.services.assets import (
+    delete_asset,
     get_asset,
     get_asset_pricing_details,
     get_asset_summary,
@@ -179,3 +180,27 @@ def get_asset_pricing_details_by_uid(uid: str) -> AssetCurrentPricingDetailsResp
             detail=f"Pricing details for asset {uid!r} were not found.",
         )
     return details
+
+
+@router.delete(
+    "/{uid}/",
+    response_model=Asset | None,
+    summary="Delete asset",
+    description=(
+        "Delete one asset identity row by uid. This route returns `null` on success. "
+        "Related rows are governed by the backend table constraints."
+    ),
+    operation_id="deleteAsset",
+    status_code=status.HTTP_200_OK,
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested asset uid was not found.",
+        }
+    },
+)
+def remove_asset(uid: str) -> Asset | None:
+    deleted = delete_asset(uid=uid)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Asset {uid!r} was not found.")
+    return None

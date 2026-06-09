@@ -6,17 +6,25 @@ import datetime
 from functools import lru_cache
 from typing import ClassVar
 
-from sqlalchemy import Boolean, DateTime, Float, Index, String, Table
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    String,
+    Table,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mainsequence.meta_tables import schema_index_name
 from mainsequence.meta_tables.sqlalchemy_contracts import _configured_storage_hash_for_model
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.models.assets.core import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
-INTERPOLATED_PRICES_SOURCE_TIME_INDEX_META_TABLE_UID_COMPONENT = (
-    "source_time_index_meta_table_uid"
-)
+INTERPOLATED_PRICES_SOURCE_TIME_INDEX_META_TABLE_UID_COMPONENT = "source_time_index_meta_table_uid"
 INTERPOLATED_PRICES_SOURCE_CADENCE_COMPONENT = "source_cadence"
 INTERPOLATED_PRICES_UPSAMPLE_FREQUENCY_COMPONENT = "upsample_frequency_id"
 INTERPOLATED_PRICES_INTERPOLATION_RULE_COMPONENT = "intraday_bar_interpolation_rule"
@@ -43,7 +51,11 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         },
     )
     asset_identifier: Mapped[str] = mapped_column(
-        String,
+        String(255),
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
         nullable=False,
         info={
             "label": "Asset Identifier",
@@ -195,6 +207,11 @@ def _copy_interpolated_prices_table(table_name: str) -> Table:
         table_name,
         MarketsBase.metadata,
         *columns,
+        ForeignKeyConstraint(
+            [ASSET_IDENTIFIER_DIMENSION],
+            [f"{AssetTable.__table__.fullname}.unique_identifier"],
+            ondelete="RESTRICT",
+        ),
         schema=InterpolatedPricesStorage.__table__.schema,
         info=dict(InterpolatedPricesStorage.__table__.info or {}),
     )
@@ -232,7 +249,11 @@ class ExternalPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         },
     )
     asset_identifier: Mapped[str] = mapped_column(
-        String,
+        String(255),
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
         nullable=False,
         info={
             "label": "Asset Identifier",

@@ -30,6 +30,7 @@ from msm_pricing.settings import (
 def reset_pricing_market_data(monkeypatch) -> None:
     reset_pricing_market_data_configuration()
     monkeypatch.delenv("MSM_AUTO_REGISTER_NAMESPACE", raising=False)
+    monkeypatch.delenv("USE_LAST_OBSERVATION_MS_INSTRUMENT", raising=False)
     yield
     reset_pricing_market_data_configuration()
 
@@ -271,6 +272,113 @@ def test_get_historical_discount_curve_uses_persisted_pricing_market_data_bindin
 
     assert nodes == [{"days_to_maturity": 28, "zero": 0.11}]
     assert calls[0] == ("table_uid", str(data_node_uid))
+
+
+def test_get_latest_discount_curve_uses_last_update_for_curve_identity(monkeypatch) -> None:
+    MSDataInterface.clear_caches()
+    calls = []
+    curves_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000203")
+    latest_date = dt.datetime(2026, 5, 28, tzinfo=dt.UTC)
+
+    class FakeUpdateStatistics:
+        def get_last_update_for_identity(self, identity):
+            calls.append(("latest", identity))
+            return latest_date
+
+    class FakeAPIDataNode:
+        @classmethod
+        def build_from_table_uid(cls, table_uid):
+            calls.append(("table_uid", table_uid))
+            return cls()
+
+        def get_update_statistics(self):
+            calls.append(("stats",))
+            return FakeUpdateStatistics()
+
+        def get_df_between_dates(self, *, dimension_range_map):
+            calls.append(("range", dimension_range_map))
+            from msm_pricing.data_nodes.curve_codec import compress_curve_to_string
+
+            return pd.DataFrame(
+                [
+                    {
+                        "time_index": latest_date,
+                        "curve_identifier": "mxn_tiie_discount",
+                        "curve": compress_curve_to_string({28: 0.11, 91: 0.105}),
+                    }
+                ]
+            ).set_index(["time_index", "curve_identifier"])
+
+    import mainsequence.meta_tables as meta_tables
+
+    monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
+
+    interface = MSDataInterface(
+        market_data_configuration={
+            "data_node_uids": {
+                PRICING_CONCEPT_DISCOUNT_CURVES: curves_data_node_uid,
+            },
+        }
+    )
+
+    nodes, effective_date = interface.get_latest_discount_curve("mxn_tiie_discount")
+
+    assert effective_date == latest_date
+    assert nodes == [
+        {"days_to_maturity": 28, "zero": 0.11},
+        {"days_to_maturity": 91, "zero": 0.105},
+    ]
+    assert calls == [
+        ("table_uid", str(curves_data_node_uid)),
+        ("stats",),
+        ("latest", "mxn_tiie_discount"),
+        (
+            "range",
+            [
+                {
+                    "coordinate": {CURVE_IDENTIFIER: "mxn_tiie_discount"},
+                    "start_date": latest_date,
+                    "start_date_operand": ">=",
+                    "end_date": latest_date + dt.timedelta(days=1),
+                    "end_date_operand": "<",
+                }
+            ],
+        ),
+    ]
+
+
+def test_get_latest_discount_curve_requires_latest_curve_observation(monkeypatch) -> None:
+    MSDataInterface.clear_caches()
+    curves_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000204")
+
+    class FakeUpdateStatistics:
+        def get_last_update_for_identity(self, identity):
+            assert identity == "missing_curve"
+            return None
+
+    class FakeAPIDataNode:
+        @classmethod
+        def build_from_table_uid(cls, table_uid):
+            assert table_uid == str(curves_data_node_uid)
+            return cls()
+
+        def get_update_statistics(self):
+            return FakeUpdateStatistics()
+
+    import mainsequence.meta_tables as meta_tables
+
+    monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
+
+    interface = MSDataInterface(
+        market_data_configuration={
+            "data_node_uids": {
+                PRICING_CONCEPT_DISCOUNT_CURVES: curves_data_node_uid,
+            },
+        }
+    )
+
+    with pytest.raises(LookupError, match="No latest discount curve observation"):
+        interface.get_latest_discount_curve("missing_curve")
 
 
 def test_ms_data_interface_exposes_pricing_named_configuration_path() -> None:

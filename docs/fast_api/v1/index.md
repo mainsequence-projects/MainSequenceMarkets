@@ -20,6 +20,8 @@ This API is intentionally thin:
 
 ## Route ADRs
 
+- [Settings Route](settings.md): read-only app settings and runtime
+  assumptions for frontend clients.
 - [Calendar CRUD And Summary Route](ADR/0001-calendar-crud-route.md): route
   group for calendar identity CRUD, summary, and bounded date, session, and
   event maintenance.
@@ -63,6 +65,15 @@ Current local-dev behavior:
   should fail instead of redirecting writes into an ad hoc local store
 
 ## Implemented Routes
+
+### Settings
+
+- `GET /api/v1/settings/`
+  - returns read-only public settings and runtime assumptions for frontend
+    clients
+  - includes app metadata, runtime namespace, docs URLs, and assumption rows
+  - does not expose request identity, access tokens, refresh tokens, or other
+    secrets
 
 ### Accounts
 
@@ -199,7 +210,14 @@ Current local-dev behavior:
 - `GET /api/v1/asset/{uid}/get_pricing_details/`
   - returns the current pricing details row for one asset
   - response mirrors `msm_pricing.api.AssetCurrentPricingDetails`
+  - reads `AssetCurrentPricingDetailsTable`, not the timestamped
+    `AssetPricingDetail` DataNode
   - returns 404 when no current pricing details row exists for the asset
+- `DELETE /api/v1/asset/{uid}/`
+  - deletes one asset identity row by `uid`
+  - returns 200 with `null` on success
+  - returns 404 when the asset `uid` does not exist
+  - related rows are governed by backend table constraints
 
 ### Asset Categories
 
@@ -368,6 +386,23 @@ Current local-dev behavior:
     `source`
   - returns `PaginatedResponse[Curve]`
   - does not return timestamped `DiscountCurvesStorage` observations
+- `GET /api/v1/pricing/curves/{uid}/summary/`
+  - returns the reusable `FrontEndDetailSummary` payload for one pricing curve
+    registry row
+  - resolves the curve by `uid`
+  - includes curve identity, type, index uid, interpolation method, compounding,
+    source, and metadata extensions
+  - does not return timestamped `DiscountCurvesStorage` observations
+- `GET /api/v1/pricing/curves/{uid}/discount-curve/`
+  - reads discount-curve observations for one curve using
+    `MSDataInterface`
+  - requires `market_data_set`, accepting either a pricing market-data set uid
+    or set key
+  - accepts optional `valuation_date`; when omitted, returns the latest
+    available observation
+  - resolves the `discount_curves` binding for the selected market-data set and
+    passes its `data_node_uid` into `MSDataInterface`
+  - returns curve nodes, effective date, selected set, and binding metadata
 
 - `GET /api/v1/pricing/market_data/`
   - returns the discoverability card for pricing market-data set and binding

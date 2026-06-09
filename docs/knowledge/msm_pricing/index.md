@@ -206,6 +206,20 @@ Runtime resolution checks direct in-memory UID overrides first, then the
 persisted binding row for `(market_data_set_uid, concept_key)`. The final read
 always uses `APIDataNode.build_from_table_uid(...)`.
 
+Curve consumers that need the latest available curve snapshot for one curve
+identity should use `MSDataInterface.get_latest_discount_curve(...)` instead of
+setting a process-wide fallback environment variable:
+
+```python
+from msm_pricing.data_interface import MSDataInterface
+
+interface = MSDataInterface()
+nodes, effective_date = interface.get_latest_discount_curve(
+    curve.unique_identifier,
+    market_data_set="eod",
+)
+```
+
 Instrument pricing chooses the set explicitly when the caller needs more than
 one source set in the same process:
 
@@ -281,6 +295,14 @@ Important rules:
   `InstrumentModel`.
 - The table stores current terms. Historical pricing-detail observations belong
   to the `AssetPricingDetail` DataNode.
+- `AssetCurrentPricingDetailsTable` is not a view of
+  `AssetPricingDetailsStorage`, and `AssetPricingDetailsStorage` is not the
+  history table automatically maintained by current-detail upserts.
+  `Instrument.attach_to_asset(asset)` writes the current table directly through
+  `AssetCurrentPricingDetails.upsert(...)`; it does not publish an
+  `AssetPricingDetail` DataNode row. Therefore a valid environment can have
+  current pricing details for assets while the `AssetPricingDetail` DataNode is
+  empty.
 
 The related DataNode stays separate:
 

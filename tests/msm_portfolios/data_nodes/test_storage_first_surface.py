@@ -6,6 +6,7 @@ import pandas as pd
 
 from mainsequence.meta_tables import APIDataNode
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
+from msm.models.assets.core import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.asset_scope import ASSET_IDENTIFIER
 from msm_portfolios.contrib.prices.data_nodes import (
@@ -75,6 +76,15 @@ def test_portfolio_storage_identifiers_use_camel_case_ts_suffix() -> None:
 def test_external_price_storage_is_registered_by_portfolio_provider() -> None:
     assert ExternalPricesStorage in set(portfolio_sqlalchemy_models())
     assert ExternalPricesStorage.__cadence__ == "1d"
+
+
+def test_portfolio_price_storage_has_asset_identifier_foreign_key() -> None:
+    expected_target = f"{AssetTable.__table__.fullname}.unique_identifier"
+
+    for storage_table in (ExternalPricesStorage, InterpolatedPricesStorage):
+        foreign_keys = storage_table.__table__.c.asset_identifier.foreign_keys
+        assert len(foreign_keys) == 1
+        assert next(iter(foreign_keys)).target_fullname == expected_target
 
 
 def test_interpolated_prices_accepts_registered_top_level_source_cadence() -> None:
@@ -164,6 +174,11 @@ def test_interpolated_price_policy_changes_configured_storage_table_name() -> No
     assert daily_storage.__cadence__ == "1d"
     assert minute_storage.__cadence__ == "1d"
     assert daily_storage.__index_names__ == ["time_index", ASSET_IDENTIFIER_DIMENSION]
+    foreign_keys = daily_storage.__table__.c.asset_identifier.foreign_keys
+    assert len(foreign_keys) == 1
+    assert next(iter(foreign_keys)).target_fullname == (
+        f"{AssetTable.__table__.fullname}.unique_identifier"
+    )
     assert "source_cadence" not in daily_storage.__table__.c
     assert "upsample_frequency_id" not in daily_storage.__table__.c
     assert "intraday_bar_interpolation_rule" not in daily_storage.__table__.c

@@ -292,7 +292,10 @@ Serialized priceable instrument terms belong to `msm_pricing`, not
 `msm_pricing.models.AssetCurrentPricingDetailsTable`, historical pricing-detail
 observations live in `msm_pricing.data_nodes.pricing_details`, and users attach
 or load them through `Instrument.attach_to_asset(asset)` and
-`Instrument.load_from_asset(asset)`. Price histories and display snapshots
+`Instrument.load_from_asset(asset)`. The current table and the timestamped
+DataNode are independent storage paths, not views or automatic mirrors of one
+another, so `AssetCurrentPricingDetailsTable` may contain rows while the
+`AssetPricingDetail` DataNode is empty. Price histories and display snapshots
 remain market-data workflows.
 
 ## Creating, Querying, And Deleting Assets
