@@ -87,21 +87,26 @@ Example workflows should stay chainable. The reusable portfolio example exposes
 other examples can pass a superset model list and avoid starting a second
 incompatible runtime.
 
-Configured interpolation storage is dynamic and must stay out of static runtime
-model lists. For the equal-weight portfolio example, run:
+The equal-weight example uses contributed `InterpolatedPrices`, whose output
+storage is a dynamic `PlatformTimeIndexMetaTable` keyed from the source
+`TimeIndexMetaTable` UID and cadence. That schema preparation belongs to
+`msm_portfolios.contrib.prices`; it is not portfolio core registration and it
+does not mean `PortfoliosDataNode` may construct prices internally. For the
+example, prepare that interpolation storage before the normal run:
 
 ```bash
 python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
 python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
-The preparation step derives the configured interpolation table from the
-registered source `TimeIndexMetaTable` UID and cadence, creates/applies the dynamic
-Alembic revision if needed, and verifies the `TimeIndexMetaTable`. If an older
-registered source storage row is missing cadence metadata, the preparation step
-may patch only that source metadata to the model-declared cadence before
-deriving the dynamic table. Normal runtime code then attaches only static models
-and fails clearly if the dynamic table has not been prepared.
+The preparation step derives only the contributed interpolation output table,
+creates/applies its dynamic Alembic revision if needed, and verifies the
+`TimeIndexMetaTable`. Normal runtime code still builds the graph explicitly as
+source price node -> interpolation node -> signal node -> portfolio node. If
+the backend dependency tree was created by an older graph, run the top-level
+portfolio node once with `refresh_dependency_tree=True`, or call
+`set_relation_tree(force_rebuild=True)` during setup, so stale backend edges are
+cleared before dependency execution.
 
 Portfolio construction must consume prices through an explicit dependency:
 
