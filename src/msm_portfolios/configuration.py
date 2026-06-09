@@ -34,40 +34,14 @@ def canonical_price_source_configuration(
 ) -> dict[str, Any]:
     """Return the canonical hash payload for a portfolio price dependency."""
 
-    storage_table = getattr(price_source, "storage_table", None)
-    storage_table_payload: dict[str, Any] = {}
-    if storage_table is not None:
-        if isinstance(storage_table, type):
-            storage_table_payload["storage_table_class_import_path"] = _class_import_path(
-                storage_table
-            )
-        metatable_identifier = getattr(storage_table, "metatable_identifier", None)
-        if callable(metatable_identifier):
-            storage_table_payload["metatable_identifier"] = metatable_identifier()
-        table = getattr(storage_table, "__table__", None)
-        table_name = getattr(table, "name", None)
-        if table_name not in (None, ""):
-            storage_table_payload["physical_table_name"] = str(table_name)
+    if price_source.is_api:
+        if not isinstance(price_source, APIDataNode):
+            raise TypeError("API portfolio price sources must be APIDataNode instances.")
+    else:
+        if not isinstance(price_source, DataNode):
+            raise TypeError("Portfolio price sources must be DataNode or APIDataNode instances.")
 
-    price_source_storage_hash = getattr(price_source, "storage_hash", None)
-    payload = {
-        "price_source_class_import_path": _class_import_path(price_source.__class__),
-        "price_source_storage_hash": None
-        if price_source_storage_hash in (None, "")
-        else str(price_source_storage_hash),
-        "price_source_storage_table": storage_table_payload,
-    }
-    return payload
-
-
-@build_operations.serialize_argument.register(DataNode)
-def _serialize_data_node_price_source(value: DataNode) -> dict[str, Any]:
-    return canonical_price_source_configuration(value)
-
-
-@build_operations.serialize_argument.register(APIDataNode)
-def _serialize_api_data_node_price_source(value: APIDataNode) -> dict[str, Any]:
-    return canonical_price_source_configuration(value)
+    return build_operations.serialize_argument(price_source)
 
 
 def canonical_rebalance_strategy_configuration(

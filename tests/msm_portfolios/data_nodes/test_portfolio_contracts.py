@@ -5,11 +5,12 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from mainsequence.meta_tables import DataNode
+from mainsequence.meta_tables import APIDataNode, DataNode
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm_portfolios.configuration import (
     PortfolioBuildConfiguration,
     PriceAlignmentPolicy,
+    canonical_price_source_configuration,
 )
 from msm_portfolios.contrib.signals.external_weights import ExternalWeightsConfig
 from msm_portfolios.contrib.signals.fixed_weights import FixedWeightsConfig
@@ -53,8 +54,43 @@ class ExplicitPriceSource(DataNode):
         return {}
 
 
-def explicit_price_source() -> ExplicitPriceSource:
-    return object.__new__(ExplicitPriceSource)
+def explicit_price_source(
+    *,
+    update_hash: str = "test-price-source",
+    data_source_uid: str = "test-data-source",
+    source_cls: type[ExplicitPriceSource] = ExplicitPriceSource,
+) -> ExplicitPriceSource:
+    price_source = object.__new__(source_cls)
+    price_source.update_hash = update_hash
+    price_source._storage_table = SimpleNamespace(
+        get_data_source_uid=lambda: data_source_uid,
+    )
+    return price_source
+
+
+class ExamplePriceSource(ExplicitPriceSource):
+    def get_df_between_dates(self, **_kwargs):
+        frame = pd.DataFrame(
+            [
+                {
+                    "time_index": "2026-01-01T00:00:00Z",
+                    ASSET_IDENTIFIER: "btc",
+                    "close": 100.0,
+                },
+                {
+                    "time_index": "2026-01-01T00:00:00Z",
+                    ASSET_IDENTIFIER: "eth",
+                    "close": 200.0,
+                },
+                {
+                    "time_index": "2026-01-01T00:00:00Z",
+                    ASSET_IDENTIFIER: "sol",
+                    "close": 300.0,
+                },
+            ]
+        )
+        frame["time_index"] = pd.to_datetime(frame["time_index"], utc=True)
+        return frame.set_index(["time_index", ASSET_IDENTIFIER])
 
 
 @pytest.mark.parametrize(("node_cls", "storage_cls"), PORTFOLIO_NODE_STORAGE)
@@ -80,6 +116,23 @@ def test_portfolio_build_configuration_uses_explicit_price_source_contract() -> 
     assert "price_column" in PortfolioBuildConfiguration.model_fields
     assert "price_alignment_policy" in PortfolioBuildConfiguration.model_fields
     assert "assets_configuration" not in PortfolioBuildConfiguration.model_fields
+
+
+def test_price_source_configuration_uses_sdk_data_node_identity() -> None:
+    price_source = explicit_price_source(update_hash="prices-node", data_source_uid="source")
+
+    assert canonical_price_source_configuration(price_source) == {
+        "is_time_serie_instance": True,
+        "update_hash": "prices-node",
+        "data_source_uid": "source",
+    }
+
+    api_price_source = APIDataNode(data_source_uid="source", storage_hash="registered_prices")
+    assert canonical_price_source_configuration(api_price_source) == {
+        "is_api_time_serie_instance": True,
+        "update_hash": "API_registered_prices",
+        "data_source_uid": "source",
+    }
 
 
 def test_fixed_weights_configuration_does_not_require_asset_configuration() -> None:
@@ -170,37 +223,11 @@ def test_portfolio_price_alignment_ignores_extra_price_source_assets() -> None:
     node.price_alignment_policy = PriceAlignmentPolicy()
     node.portfolio_prices_frequency = "1d"
 
-    class PriceSource:
-        storage_hash = "example-prices"
-
-        def get_df_between_dates(self, **_kwargs):
-            frame = pd.DataFrame(
-                [
-                    {
-                        "time_index": "2026-01-01T00:00:00Z",
-                        ASSET_IDENTIFIER: "btc",
-                        "close": 100.0,
-                    },
-                    {
-                        "time_index": "2026-01-01T00:00:00Z",
-                        ASSET_IDENTIFIER: "eth",
-                        "close": 200.0,
-                    },
-                    {
-                        "time_index": "2026-01-01T00:00:00Z",
-                        ASSET_IDENTIFIER: "sol",
-                        "close": 300.0,
-                    },
-                ]
-            )
-            frame["time_index"] = pd.to_datetime(frame["time_index"], utc=True)
-            return frame.set_index(["time_index", ASSET_IDENTIFIER])
-
     _raw_prices, aligned_prices = node._interpolate_bars_index(
         new_index=pd.DatetimeIndex([pd.Timestamp("2026-01-01T00:00:00Z")]),
         unique_identifiers=["btc", "eth"],
         index_freq="1D",
-        price_source=PriceSource(),
+        price_source=explicit_price_source(source_cls=ExamplePriceSource),
     )
 
     assert set(aligned_prices.index.get_level_values(ASSET_IDENTIFIER)) == {"btc", "eth"}
@@ -251,7 +278,7 @@ def test_missing_required_prices_continue_by_default() -> None:
     node._diagnose_price_source_coverage(
         raw_prices,
         requested_asset_identifiers=["btc", "eth"],
-        price_source=SimpleNamespace(storage_hash="prices"),
+        price_source=explicit_price_source(update_hash="prices"),
         start_date=pd.Timestamp("2026-01-01T00:00:00Z"),
         end_date=pd.Timestamp("2026-01-02T00:00:00Z"),
     )
@@ -279,7 +306,7 @@ def test_missing_required_prices_fail_under_strict_policy() -> None:
         node._diagnose_price_source_coverage(
             raw_prices,
             requested_asset_identifiers=["btc", "eth"],
-            price_source=SimpleNamespace(storage_hash="prices"),
+            price_source=explicit_price_source(update_hash="prices"),
             start_date=pd.Timestamp("2026-01-01T00:00:00Z"),
             end_date=pd.Timestamp("2026-01-02T00:00:00Z"),
         )

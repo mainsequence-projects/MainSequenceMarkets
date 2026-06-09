@@ -758,13 +758,15 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             )
 
     def _price_source_identifier(self, price_source: DataNode | APIDataNode) -> str:
-        storage_hash = getattr(price_source, "storage_hash", None)
-        if storage_hash not in (None, ""):
-            return str(storage_hash)
-        update_hash = getattr(price_source, "update_hash", None)
-        if update_hash not in (None, ""):
-            return str(update_hash)
-        return price_source.__class__.__name__
+        if price_source.is_api:
+            if not isinstance(price_source, APIDataNode):
+                raise TypeError("API portfolio price sources must be APIDataNode instances.")
+        else:
+            if not isinstance(price_source, DataNode):
+                raise TypeError(
+                    "Portfolio price sources must be DataNode or APIDataNode instances."
+                )
+        return str(price_source.update_hash)
 
     def _price_source_maximum_forward_fill(self) -> pd.Timedelta:
         maximum_forward_fill = getattr(self.price_source, "maximum_forward_fill", None)

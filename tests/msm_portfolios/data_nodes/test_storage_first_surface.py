@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
+from mainsequence.meta_tables import APIDataNode
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.asset_scope import ASSET_IDENTIFIER
@@ -11,7 +12,6 @@ from msm_portfolios.contrib.prices.data_nodes import (
     _asset_calendar_map,
     _normalize_time_indexed_frame_ns_utc,
     _source_time_indexed_profile_cadence,
-    _source_time_indexed_storage_hash,
 )
 from msm_portfolios.data_nodes.portfolios.weights import PortfolioWeights
 from msm_portfolios.data_nodes.portfolios import PortfoliosDataNode
@@ -79,33 +79,22 @@ def test_external_price_storage_is_registered_by_portfolio_provider() -> None:
 
 def test_interpolated_prices_accepts_registered_top_level_source_cadence() -> None:
     source_prices_ts = SimpleNamespace(
-        storage_table=SimpleNamespace(
-            time_indexed_profile=None,
-            cadence="1D",
-        )
+        uid="source-uid",
+        time_indexed_profile=None,
+        cadence="1D",
+    )
+    source_price = APIDataNode(
+        data_source_uid="source-data-source",
+        storage_hash="source-prices",
+        storage_table=source_prices_ts,
     )
 
     assert (
         _source_time_indexed_profile_cadence(
-            source_prices_ts,
+            source_price,
             source_time_index_meta_table_uid="source-uid",
         )
         == "1d"
-    )
-
-
-def test_interpolated_prices_uses_registered_source_storage_hash() -> None:
-    source_prices_ts = SimpleNamespace(
-        storage_hash="api-data-node-hash",
-        storage_table=SimpleNamespace(storage_hash="registered-time-index-storage-hash"),
-    )
-
-    assert (
-        _source_time_indexed_storage_hash(
-            source_prices_ts,
-            source_time_index_meta_table_uid="source-uid",
-        )
-        == "registered-time-index-storage-hash"
     )
 
 
@@ -148,20 +137,20 @@ def test_interpolated_prices_normalizes_time_index_output_to_ns_utc() -> None:
 
 def test_interpolated_price_policy_changes_configured_storage_table_name() -> None:
     daily_storage = configured_interpolated_prices_storage(
-        source_storage_hash=ExternalPricesStorage.__table__.name,
+        source_time_index_meta_table_uid="source-uid",
         source_cadence="1d",
         upsample_frequency_id="1d",
         intraday_bar_interpolation_rule="ffill",
     )
     minute_storage = configured_interpolated_prices_storage(
-        source_storage_hash=ExternalPricesStorage.__table__.name,
+        source_time_index_meta_table_uid="source-uid",
         source_cadence="5m",
         upsample_frequency_id="1d",
         intraday_bar_interpolation_rule="ffill",
     )
 
     assert daily_storage.__table__.name == interpolated_prices_storage_table_name(
-        source_storage_hash=ExternalPricesStorage.__table__.name,
+        source_time_index_meta_table_uid="source-uid",
         source_cadence="1d",
         upsample_frequency_id="1d",
         intraday_bar_interpolation_rule="ffill",

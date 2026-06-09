@@ -215,6 +215,9 @@ Price/interpolation DataNode owns:
   - persistent interpolation, if the user wants it
   - dynamic interpolation storage, if needed
   - source cadence and interpolation policy
+  - explicit upstream source dependency resolution from either a live
+    `DataNode`/`APIDataNode` instance or a registered source
+    `TimeIndexMetaTable` UID
 
 SignalWeights owns:
   - investment intent
@@ -313,6 +316,18 @@ The price source may be:
 source storage UID plus interpolation policy. If a user wants persistent
 interpolation, they build that interpolation node before building the
 portfolio.
+
+`InterpolatedPrices` itself may be built from either:
+
+- `source_price_instance`, when the raw/source price `DataNode` or
+  `APIDataNode` already exists in the current graph,
+- `source_time_index_meta_table_uid`, when the source is an already registered
+  compatible storage table and should be attached through
+  `APIDataNode.build_from_table_uid(...)`.
+
+In both cases, `InterpolatedPrices.dependencies()` exposes the resolved source
+object. The UID path is an attachment convenience; it must not hide the source
+dependency once the node is constructed.
 
 ## Portfolio Configuration Boundary
 

@@ -39,11 +39,12 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
     TIME_INDEX,
     configured_equal_weight_interpolated_prices_storage,
     source_cadence_from_meta_table,
-    source_storage_hash_from_meta_table,
+    source_time_index_meta_table_uid,
 )
 
 import msm_portfolios  # noqa: E402
 from mainsequence.client.metatables import TimeIndexMetaTable  # noqa: E402
+from mainsequence.meta_tables import APIDataNode, DataNode  # noqa: E402
 from msm.api.assets import Asset, AssetType  # noqa: E402
 from msm.api.calendars import Calendar  # noqa: E402
 from msm.api.indices import Index, IndexType  # noqa: E402
@@ -246,16 +247,16 @@ def build_signal_weights_node() -> FixedWeights:
 
 
 def build_interpolated_prices_node(
-    source_time_index_meta_table_uid: str,
+    source_price_instance: DataNode | APIDataNode,
 ) -> InterpolatedPrices:
     return InterpolatedPrices(
         interpolation_config=InterpolatedPricesConfig(
             asset_list=list(ASSET_UNIQUE_IDENTIFIERS),
             intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
-            source_time_index_meta_table_uid=source_time_index_meta_table_uid,
+            source_price_instance=source_price_instance,
             upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,
         ),
-        namespace=NAMESPACE,
+        hash_namespace=NAMESPACE,
     )
 
 
@@ -294,7 +295,9 @@ def build_example_interpolated_prices_storage(source_meta_table: Any) -> type[An
     """Derive this example's configured interpolation storage from source metadata."""
 
     return configured_equal_weight_interpolated_prices_storage(
-        source_storage_hash=source_storage_hash_from_meta_table(source_meta_table),
+        source_time_index_meta_table_uid=source_time_index_meta_table_uid(
+            source_meta_table
+        ),
         source_cadence=source_cadence_from_meta_table(source_meta_table),
     )
 
@@ -369,7 +372,10 @@ def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> Non
     print_detail("portfolio_calendar_identifier", portfolio_calendar.unique_identifier)
     print_detail("portfolio_configuration_hash", result["portfolio_configuration_hash"])
     print_detail("source_prices_storage_uid", result["source_prices_storage_uid"])
-    print_detail("source_prices_storage_hash", result["source_prices_storage_hash"])
+    print_detail(
+        "source_time_index_meta_table_uid",
+        result["source_time_index_meta_table_uid"],
+    )
     print_detail("source_prices_cadence", result["source_prices_cadence"])
     print_detail("interpolated_prices_storage_uid", result["interpolated_prices_storage_uid"])
     print_detail(
@@ -422,7 +428,7 @@ def build_equal_weight_portfolio(
         interpolated_prices_storage
     )
     source_bars_node = build_source_bars_node()
-    interpolated_prices_node = build_interpolated_prices_node(source_prices_storage_uid)
+    interpolated_prices_node = build_interpolated_prices_node(source_bars_node)
     signal_weights_node = build_signal_weights_node()
     portfolio_configuration = build_portfolio_configuration(
         signal_weights_node,
@@ -448,8 +454,11 @@ def build_equal_weight_portfolio(
     print_detail("signal_uid", signal_weights_node.signal_uid)
     print_detail("source_prices_storage_uid", source_prices_storage_uid)
     print_detail("source_prices_cadence", source_prices_cadence)
-    print_detail("source_prices_storage_hash", source_prices_storage_meta_table.storage_hash)
-    print_detail("price_source_dependency", interpolated_prices_node.storage_hash)
+    print_detail(
+        "source_time_index_meta_table_uid",
+        source_time_index_meta_table_uid(source_prices_storage_meta_table),
+    )
+    print_detail("price_source_update_hash", interpolated_prices_node.update_hash)
     print_detail(
         "interpolated_prices_storage_table",
         interpolated_prices_storage.__table__.name,
@@ -524,7 +533,9 @@ def build_equal_weight_portfolio(
             portfolio_configuration
         ),
         "source_prices_storage_uid": source_prices_storage_uid,
-        "source_prices_storage_hash": source_prices_storage_meta_table.storage_hash,
+        "source_time_index_meta_table_uid": source_time_index_meta_table_uid(
+            source_prices_storage_meta_table
+        ),
         "source_prices_cadence": source_prices_cadence,
         "interpolated_prices_storage_uid": getattr(interpolated_prices_meta_table, "uid", None),
         "interpolated_prices_storage_table": interpolated_prices_storage.__table__.name,

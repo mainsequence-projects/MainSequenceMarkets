@@ -26,7 +26,7 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
     dynamic_provider_env,
     repair_source_cadence_metadata,
     source_cadence_from_meta_table,
-    source_storage_hash_from_meta_table,
+    source_time_index_meta_table_uid,
 )
 from examples.msm_portfolios.portfolio_equal_weights_example import (  # noqa: E402
     start_portfolio_example_runtime,
@@ -78,18 +78,17 @@ def prepare_equal_weight_portfolio_schema(
     else:
         source_cadence = source_cadence_from_meta_table(source_meta_table)
 
-    source_storage_hash = source_storage_hash_from_meta_table(source_meta_table)
+    source_uid = source_time_index_meta_table_uid(source_meta_table)
     storage_table = configured_equal_weight_interpolated_prices_storage(
-        source_storage_hash=source_storage_hash,
+        source_time_index_meta_table_uid=source_uid,
         source_cadence=source_cadence,
     )
     provider_env = dynamic_provider_env(
-        source_storage_hash=source_storage_hash,
+        source_time_index_meta_table_uid=source_uid,
         source_cadence=source_cadence,
     )
 
-    print_detail("source_storage_uid", getattr(source_meta_table, "uid", None))
-    print_detail("source_storage_hash", source_storage_hash)
+    print_detail("source_time_index_meta_table_uid", source_uid)
     print_detail("source_cadence", source_cadence)
     print_detail("source_cadence_repaired", source_cadence_repaired)
     print_detail("dynamic_provider", DYNAMIC_MIGRATION_PROVIDER)
@@ -113,8 +112,7 @@ def prepare_equal_weight_portfolio_schema(
         print_detail("dynamic_revision_file", revision_file)
         print_detail("time_index_meta_table_uid", existing.uid)
         return {
-            "source_storage_uid": getattr(source_meta_table, "uid", None),
-            "source_storage_hash": source_storage_hash,
+            "source_time_index_meta_table_uid": source_uid,
             "source_cadence": source_cadence,
             "source_cadence_repaired": source_cadence_repaired,
             "configured_storage_table": storage_table.__table__.name,
@@ -178,12 +176,10 @@ def prepare_equal_weight_portfolio_schema(
     print_step(5, "Configured interpolation table is registered.")
     print_detail("time_index_meta_table_uid", existing.uid)
     print_detail("physical_table_name", getattr(existing, "physical_table_name", None))
-    print_detail("storage_hash", getattr(existing, "storage_hash", None))
     print_detail("created_revision", created_revision)
 
     result = {
-        "source_storage_uid": getattr(source_meta_table, "uid", None),
-        "source_storage_hash": source_storage_hash,
+        "source_time_index_meta_table_uid": source_uid,
         "source_cadence": source_cadence,
         "source_cadence_repaired": source_cadence_repaired,
         "configured_storage_table": storage_table.__table__.name,

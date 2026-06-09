@@ -14,7 +14,9 @@ from mainsequence.meta_tables.sqlalchemy_contracts import _configured_storage_ha
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
-INTERPOLATED_PRICES_SOURCE_STORAGE_HASH_COMPONENT = "source_storage_hash"
+INTERPOLATED_PRICES_SOURCE_TIME_INDEX_META_TABLE_UID_COMPONENT = (
+    "source_time_index_meta_table_uid"
+)
 INTERPOLATED_PRICES_SOURCE_CADENCE_COMPONENT = "source_cadence"
 INTERPOLATED_PRICES_UPSAMPLE_FREQUENCY_COMPONENT = "upsample_frequency_id"
 INTERPOLATED_PRICES_INTERPOLATION_RULE_COMPONENT = "intraday_bar_interpolation_rule"
@@ -103,7 +105,7 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 
 def interpolated_prices_storage_hash_components(
     *,
-    source_storage_hash: str,
+    source_time_index_meta_table_uid: str,
     source_cadence: str,
     upsample_frequency_id: str | None,
     intraday_bar_interpolation_rule: str,
@@ -111,7 +113,9 @@ def interpolated_prices_storage_hash_components(
     """Return storage-identity components for one interpolated price table."""
 
     return {
-        INTERPOLATED_PRICES_SOURCE_STORAGE_HASH_COMPONENT: str(source_storage_hash),
+        INTERPOLATED_PRICES_SOURCE_TIME_INDEX_META_TABLE_UID_COMPONENT: str(
+            source_time_index_meta_table_uid
+        ),
         INTERPOLATED_PRICES_SOURCE_CADENCE_COMPONENT: str(source_cadence),
         INTERPOLATED_PRICES_UPSAMPLE_FREQUENCY_COMPONENT: str(
             upsample_frequency_id or source_cadence
@@ -122,7 +126,7 @@ def interpolated_prices_storage_hash_components(
 
 def interpolated_prices_storage_table_name(
     *,
-    source_storage_hash: str,
+    source_time_index_meta_table_uid: str,
     source_cadence: str,
     upsample_frequency_id: str | None,
     intraday_bar_interpolation_rule: str,
@@ -132,7 +136,7 @@ def interpolated_prices_storage_table_name(
     return _configured_storage_hash_for_model(
         InterpolatedPricesStorage,
         extra_hash_components=interpolated_prices_storage_hash_components(
-            source_storage_hash=source_storage_hash,
+            source_time_index_meta_table_uid=source_time_index_meta_table_uid,
             source_cadence=source_cadence,
             upsample_frequency_id=upsample_frequency_id,
             intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
@@ -143,7 +147,7 @@ def interpolated_prices_storage_table_name(
 @lru_cache(maxsize=256)
 def configured_interpolated_prices_storage(
     *,
-    source_storage_hash: str,
+    source_time_index_meta_table_uid: str,
     source_cadence: str,
     upsample_frequency_id: str | None,
     intraday_bar_interpolation_rule: str,
@@ -151,13 +155,13 @@ def configured_interpolated_prices_storage(
     """Build the storage class for one interpolated-price storage identity."""
 
     components = interpolated_prices_storage_hash_components(
-        source_storage_hash=source_storage_hash,
+        source_time_index_meta_table_uid=source_time_index_meta_table_uid,
         source_cadence=source_cadence,
         upsample_frequency_id=upsample_frequency_id,
         intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
     )
     table_name = interpolated_prices_storage_table_name(
-        source_storage_hash=source_storage_hash,
+        source_time_index_meta_table_uid=source_time_index_meta_table_uid,
         source_cadence=source_cadence,
         upsample_frequency_id=upsample_frequency_id,
         intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
@@ -292,7 +296,7 @@ __all__ = [
     "ExternalPricesStorage",
     "INTERPOLATED_PRICES_INTERPOLATION_RULE_COMPONENT",
     "INTERPOLATED_PRICES_SOURCE_CADENCE_COMPONENT",
-    "INTERPOLATED_PRICES_SOURCE_STORAGE_HASH_COMPONENT",
+    "INTERPOLATED_PRICES_SOURCE_TIME_INDEX_META_TABLE_UID_COMPONENT",
     "INTERPOLATED_PRICES_UPSAMPLE_FREQUENCY_COMPONENT",
     "InterpolatedPricesStorage",
     "configured_interpolated_prices_storage",

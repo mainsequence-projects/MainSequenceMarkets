@@ -14,7 +14,7 @@ from examples.msm_portfolios import portfolio_equal_weights_prepare_schema as pr
 
 def _configured_dynamic_table_name() -> str:
     return config.configured_equal_weight_interpolated_prices_storage(
-        source_storage_hash="registered-external-prices-hash",
+        source_time_index_meta_table_uid="source-storage-uid",
         source_cadence="1d",
     ).__table__.name
 
@@ -31,27 +31,28 @@ def test_static_runtime_models_exclude_configured_interpolation_storage() -> Non
 
 def test_runtime_derives_configured_storage_from_registered_source_metadata() -> None:
     source_meta_table = SimpleNamespace(
-        storage_hash="registered-external-prices-hash",
+        uid="source-storage-uid",
         time_indexed_profile=SimpleNamespace(cadence="5m"),
     )
 
     storage = example.build_example_interpolated_prices_storage(source_meta_table)
     expected = config.configured_equal_weight_interpolated_prices_storage(
-        source_storage_hash="registered-external-prices-hash",
+        source_time_index_meta_table_uid="source-storage-uid",
         source_cadence="5m",
     )
 
     assert storage is expected
     assert storage.__table__.name == expected.__table__.name
-    assert storage.__metatable_extra_hash_components__["source_storage_hash"] == (
-        "registered-external-prices-hash"
+    assert storage.__metatable_extra_hash_components__[
+        "source_time_index_meta_table_uid"
+    ] == (
+        "source-storage-uid"
     )
     assert storage.__metatable_extra_hash_components__["source_cadence"] == "5m"
 
 
 def test_source_cadence_reads_top_level_registered_metadata() -> None:
     source_meta_table = SimpleNamespace(
-        storage_hash="registered-external-prices-hash",
         time_indexed_profile=None,
         cadence="1D",
     )
@@ -62,7 +63,6 @@ def test_source_cadence_reads_top_level_registered_metadata() -> None:
 def test_source_cadence_does_not_fallback_to_model_constant() -> None:
     source_meta_table = SimpleNamespace(
         uid="source-uid",
-        storage_hash="registered-external-prices-hash",
         physical_table_name="ms_markets__externalpricests__mainsequence_examples",
         time_indexed_profile=None,
         cadence=None,
@@ -75,7 +75,6 @@ def test_source_cadence_does_not_fallback_to_model_constant() -> None:
 def test_repair_source_cadence_metadata_patches_stale_table() -> None:
     class StaleSource:
         uid = "source-uid"
-        storage_hash = "registered-external-prices-hash"
         physical_table_name = "ms_markets__externalpricests__mainsequence_examples"
         time_indexed_profile = None
         cadence = None
@@ -84,7 +83,6 @@ def test_repair_source_cadence_metadata_patches_stale_table() -> None:
             assert kwargs == {"cadence": "1d"}
             return SimpleNamespace(
                 uid=self.uid,
-                storage_hash=self.storage_hash,
                 physical_table_name=self.physical_table_name,
                 time_indexed_profile=None,
                 cadence="1d",
@@ -107,14 +105,17 @@ def test_example_daily_bars_declares_no_dependencies() -> None:
 
 
 def test_dynamic_provider_storage_requires_explicit_source_env(monkeypatch) -> None:
-    monkeypatch.delenv(config.DYNAMIC_SOURCE_STORAGE_HASH_ENV, raising=False)
+    monkeypatch.delenv(
+        config.DYNAMIC_SOURCE_TIME_INDEX_META_TABLE_UID_ENV,
+        raising=False,
+    )
     monkeypatch.delenv(config.DYNAMIC_SOURCE_CADENCE_ENV, raising=False)
 
     with pytest.raises(RuntimeError, match="requires"):
         config.dynamic_storage_from_env()
 
     env = config.dynamic_provider_env(
-        source_storage_hash="registered-external-prices-hash",
+        source_time_index_meta_table_uid="source-storage-uid",
         source_cadence="1d",
     )
     for key, value in env.items():
@@ -124,7 +125,7 @@ def test_dynamic_provider_storage_requires_explicit_source_env(monkeypatch) -> N
 
     assert storage.__table__.name == (
         config.configured_equal_weight_interpolated_prices_storage(
-            source_storage_hash="registered-external-prices-hash",
+            source_time_index_meta_table_uid="source-storage-uid",
             source_cadence="1d",
         ).__table__.name
     )
@@ -132,7 +133,7 @@ def test_dynamic_provider_storage_requires_explicit_source_env(monkeypatch) -> N
 
 def test_dynamic_migration_metadata_contains_only_configured_table(monkeypatch) -> None:
     env = config.dynamic_provider_env(
-        source_storage_hash="registered-external-prices-hash",
+        source_time_index_meta_table_uid="source-storage-uid",
         source_cadence="1d",
     )
     for key, value in env.items():
@@ -146,7 +147,7 @@ def test_dynamic_migration_metadata_contains_only_configured_table(monkeypatch) 
 
 def test_dynamic_migration_provider_imports_with_source_env(monkeypatch) -> None:
     env = config.dynamic_provider_env(
-        source_storage_hash="registered-external-prices-hash",
+        source_time_index_meta_table_uid="source-storage-uid",
         source_cadence="1d",
     )
     for key, value in env.items():
@@ -158,7 +159,7 @@ def test_dynamic_migration_provider_imports_with_source_env(monkeypatch) -> None
 
     assert module.DYNAMIC_INTERPOLATED_PRICES_STORAGE.__table__.name == (
         config.configured_equal_weight_interpolated_prices_storage(
-            source_storage_hash="registered-external-prices-hash",
+            source_time_index_meta_table_uid="source-storage-uid",
             source_cadence="1d",
         ).__table__.name
     )
@@ -209,7 +210,6 @@ def test_prepare_schema_runs_upgrade_when_metadata_already_exists(
 ) -> None:
     source_meta_table = SimpleNamespace(
         uid="source-storage-uid",
-        storage_hash="registered-external-prices-hash",
         time_indexed_profile=SimpleNamespace(cadence="1d"),
     )
     existing_dynamic_table = SimpleNamespace(uid="dynamic-storage-uid")

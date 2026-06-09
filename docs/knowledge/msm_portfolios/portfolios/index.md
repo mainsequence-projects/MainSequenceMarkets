@@ -230,18 +230,21 @@ the price producer that wrote it.
 
 If persistent interpolation is needed, `InterpolatedPrices` is built before the
 portfolio and then passed into `PortfolioBuildConfiguration` like any other
-dependency. `InterpolatedPricesConfig.source_time_index_meta_table_uid` stores
-the source bars storage UID, not the producer DataNode instance and not a
-DataNodeUpdate UID. `InterpolatedPrices` resolves that UID through
-`APIDataNode.build_from_table_uid(...)`, validates the registered source
-cadence, and writes the configured interpolation output.
+dependency. `InterpolatedPricesConfig` accepts either `source_price_instance`
+or `source_time_index_meta_table_uid`. Use `source_price_instance` when the
+source price `DataNode` or `APIDataNode` is already part of the graph. Use
+`source_time_index_meta_table_uid` when attaching an already registered
+compatible source table through `APIDataNode.build_from_table_uid(...)`.
+`InterpolatedPrices` validates the registered source cadence, exposes the
+resolved source from `dependencies()`, and writes the configured interpolation
+output.
 
 The interpolation policy is storage identity, not row metadata.
 `InterpolatedPrices` builds a configured storage class whose
-`__metatable_extra_hash_components__` include the source storage hash, the
-source table cadence, `upsample_frequency_id`, and
-`intraday_bar_interpolation_rule`; the configured storage hash becomes the
-physical table name. The rows keep the normal price-bar grain
+`__metatable_extra_hash_components__` include the source `TimeIndexMetaTable`
+UID, the source table cadence, `upsample_frequency_id`, and
+`intraday_bar_interpolation_rule`; those components determine the configured
+physical table identity. The rows keep the normal price-bar grain
 `(time_index, asset_identifier)`. The policy values are not repeated on every
 price row.
 
@@ -256,7 +259,7 @@ python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
 The preparation step attaches the static schema, reads the registered
-`ExternalPricesStorage` `storage_hash` and cadence metadata, builds the
+`ExternalPricesStorage` UID and cadence metadata, builds the
 configured `InterpolatedPricesStorage` class, and uses the active migration
 namespace from the SDK migration provider to find or generate the real dynamic
 Alembic revision. It then runs the dynamic provider upgrade before any portfolio
@@ -285,7 +288,7 @@ price_source = InterpolatedPrices(
     interpolation_config=InterpolatedPricesConfig(
         asset_list=["asset-btc", "asset-eth"],
         intraday_bar_interpolation_rule="ffill",
-        source_time_index_meta_table_uid=runtime.table(ExternalPricesStorage).meta_table_uid,
+        source_price_instance=source_bars_node,
         upsample_frequency_id="1d",
     )
 )
