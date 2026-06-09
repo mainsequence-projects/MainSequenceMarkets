@@ -1,4 +1,3 @@
-import copy
 from datetime import datetime
 
 import numpy as np
@@ -6,19 +5,17 @@ import pandas as pd
 import pandas_market_calendars as mcal
 import pytz
 
-from msm_portfolios.contrib.prices.data_nodes import (
-    get_interpolated_prices_timeseries,
-)
 from msm_portfolios.data_nodes import SignalWeights
 from msm_portfolios.configuration import (
-    AssetsConfiguration,
     PortfolioConfigBaseModel,
 )
 from msm_portfolios.utils import TIMEDELTA
+from mainsequence.meta_tables import APIDataNode, DataNode
 
 
 class IntradayTrendConfig(PortfolioConfigBaseModel):
-    signal_assets_configuration: AssetsConfiguration
+    price_source_instance: DataNode | APIDataNode
+    asset_symbols_by_exchange: dict[str, list[str]]
     calendar: str
     source_frequency: str = "1d"
 
@@ -31,10 +28,6 @@ class IntradayTrend(SignalWeights):
         return self.signal_configuration
 
     @property
-    def assets_configuration(self) -> AssetsConfiguration:
-        return self.intraday_trend_config.signal_assets_configuration
-
-    @property
     def source_frequency(self) -> str:
         return self.intraday_trend_config.source_frequency
 
@@ -43,20 +36,18 @@ class IntradayTrend(SignalWeights):
         return self.intraday_trend_config.calendar
 
     @property
-    def bars_ts(self):
-        bars_ts = getattr(self, "_bars_ts", None)
-        if bars_ts is None:
-            bars_ts, asset_symbols = get_interpolated_prices_timeseries(
-                copy.deepcopy(self.assets_configuration)
-            )
-            self._bars_ts = bars_ts
-            self._asset_symbols = asset_symbols
-        return self._bars_ts
+    def price_source(self):
+        return self.intraday_trend_config.price_source_instance
 
     @property
     def asset_symbols(self):
-        self.bars_ts
-        return self._asset_symbols
+        return self.intraday_trend_config.asset_symbols_by_exchange
+
+    def dependencies(self) -> dict[str, DataNode | APIDataNode]:
+        return {"price_source": self.price_source}
+
+    def get_asset_list(self) -> None | list:
+        return [asset for assets in self.asset_symbols.values() for asset in assets]
 
     def _calculate_signal_weights(self) -> pd.DataFrame:
         """
@@ -68,7 +59,7 @@ class IntradayTrend(SignalWeights):
 
         max_assets_time = [
             ts.get_last_observation(asset_symbols=self.asset_symbols[exchange])
-            for exchange, ts in self.bars_ts.related_time_series.items()
+            for exchange, ts in self.price_source.related_time_series.items()
         ]
 
         top_date_limit = min(
@@ -85,7 +76,7 @@ class IntradayTrend(SignalWeights):
 
         # get last few days for past intraday returns
         prices_start_date = latest_value - pd.Timedelta(days=1)
-        prices = self.bars_ts.pandas_df_concat_on_rows_by_key_between_dates(
+        prices = self.price_source.pandas_df_concat_on_rows_by_key_between_dates(
             start_date=prices_start_date,
             end_date=top_date_limit,
             great_or_equal=True,

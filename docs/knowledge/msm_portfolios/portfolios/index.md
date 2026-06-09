@@ -190,59 +190,36 @@ DataNode.
 Portfolio prices are not stored on `PortfolioTable`. They are provided by the
 portfolio build configuration and consumed through DataNode dependencies.
 
-The price path is:
+The current portfolio path is explicit:
 
 ```text
-+--------------------------------------+       resolves UID       +--------------------------+
-| PricesConfiguration                  |------------------------->| APIDataNode              |
-|--------------------------------------|                          |--------------------------|
-| source_time_index_meta_table_uid     |                          | build_from_table_uid(...)|
-| upsample_frequency_id                |                                       |
-| interpolation rule                   |                                       | reads
-+------------------+-------------------+                                       v
-                   |                                            +--------------------------+
-                   |                                            | registered source bars   |
-                   |                                            | storage contract         |
-                   |                                            | time_indexed_profile     |
-                   |                                            | cadence                  |
-                   |                                            | time_index               |
-                   |                                            | asset_identifier         |
-                   |                                            | open/high/low/close/...  |
-                   |                                            +-------------+------------+
-                   |                                                          ^
-                   |                                                          | writes
-                   v                                                          |
-+--------------------------------------+                         +-------------+------------+
-| InterpolatedPrices                   |                         | source price DataNode    |
-| owner: msm_portfolios                |                         | outside portfolio config |
-+------------------+-------------------+                         +--------------------------+
-                   |
-                   | writes
-                   v
-+--------------------------------------+
-| Configured InterpolatedPricesStorage |
-| table name = configured storage hash |
-| row grain: time_index, asset_identifier |
-| open/high/low/close/...              |
-+------------------+-------------------+
-                   |
-                   | consumed by
-                   v
-+--------------------------------------+
-| PortfoliosDataNode                   |
-| computes portfolio value             |
-+--------------------------------------+
++-----------------------------+       writes        +-----------------------------+
+| source price DataNode       |-------------------->| source price storage        |
+| e.g. ExampleDailyBars       |                     | ExternalPricesStorage       |
++--------------+--------------+                     +--------------+--------------+
+               |                                                   |
+               | explicit upstream dependency                      | APIDataNode lookup
+               v                                                   v
++-----------------------------+       writes        +-----------------------------+
+| InterpolatedPrices          |-------------------->| configured price storage    |
+| optional price workflow     |                     | InterpolatedPricesStorage   |
++--------------+--------------+                     +--------------+--------------+
+               |                                                   |
+               | explicit portfolio dependency                     | reads
+               +--------------------------+------------------------+
+                                          v
+                             +-----------------------------+
+                             | PortfoliosDataNode          |
+                             | portfolio calculation       |
+                             +-----------------------------+
 ```
 
-`PricesConfiguration` stores the source bars storage UID, not the producer
-DataNode instance and not a DataNodeUpdate UID. The source must be a registered
-`PlatformTimeIndexMetaTable` that exposes normalized OHLCV bars keyed by
-`(time_index, asset_identifier)` and declares its raw bar cadence through
-backend TimeIndexMetaTable cadence metadata. `InterpolatedPrices` resolves that
-UID through `APIDataNode.build_from_table_uid(...)`, validates that the
-registered source exposes cadence, and uses that cadence as the source bar
-frequency. The portfolio can recover the source across processes and does not
-require the original producer class to be present.
+`PortfolioBuildConfiguration.price_source_instance` receives the price source
+that portfolio construction consumes. The price source may be an
+`InterpolatedPrices` instance, another DataNode, or an `APIDataNode` pointing at
+compatible registered storage. The price source must expose rows keyed by
+`(time_index, asset_identifier)` and include the configured price column, for
+example `close`.
 
 This producer boundary is intentional. Price collection, normalization, vendor
 mapping, and connector-specific scheduling are separate concerns from portfolio
@@ -251,11 +228,20 @@ rebalancing, execution assumptions, and portfolio output storage. They should
 consume a registered price storage contract instead of importing or constructing
 the price producer that wrote it.
 
-The interpolation policy is storage identity, not row metadata. `InterpolatedPrices`
-builds a configured storage class whose `__metatable_extra_hash_components__`
-include the source storage hash, the source table cadence,
-`upsample_frequency_id`, and `intraday_bar_interpolation_rule`; the configured
-storage hash becomes the physical table name. The rows keep the normal price-bar grain
+If persistent interpolation is needed, `InterpolatedPrices` is built before the
+portfolio and then passed into `PortfolioBuildConfiguration` like any other
+dependency. `InterpolatedPricesConfig.source_time_index_meta_table_uid` stores
+the source bars storage UID, not the producer DataNode instance and not a
+DataNodeUpdate UID. `InterpolatedPrices` resolves that UID through
+`APIDataNode.build_from_table_uid(...)`, validates the registered source
+cadence, and writes the configured interpolation output.
+
+The interpolation policy is storage identity, not row metadata.
+`InterpolatedPrices` builds a configured storage class whose
+`__metatable_extra_hash_components__` include the source storage hash, the
+source table cadence, `upsample_frequency_id`, and
+`intraday_bar_interpolation_rule`; the configured storage hash becomes the
+physical table name. The rows keep the normal price-bar grain
 `(time_index, asset_identifier)`. The policy values are not repeated on every
 price row.
 
@@ -282,12 +268,12 @@ patches that metadata to the model-declared cadence before deriving the dynamic
 table. Runtime portfolio code then uses the registered table; it does not
 create or migrate dynamic storage.
 
-`AssetsConfiguration.price_type` chooses which column from the interpolated
-price table drives portfolio returns. For example, `PriceTypeNames.CLOSE` uses
-the `close` column. The source table cadence, `upsample_frequency_id`, and
-`intraday_bar_interpolation_rule` control how `InterpolatedPrices` shapes the
-source bars before `PortfoliosDataNode` calculates returns. Users do not pass a
-separate source bar frequency in `PricesConfiguration`.
+`PortfolioBuildConfiguration.price_column` chooses which column from the
+explicit price source drives portfolio returns. For example,
+`PriceTypeNames.CLOSE` uses the `close` column. `PortfoliosDataNode` may locally
+align the consumed price frame to the rebalance index for calculation, but it
+does not create persistent interpolation storage and does not hide an upstream
+DataNode.
 
 In code, the important wiring is:
 
@@ -295,22 +281,36 @@ In code, the important wiring is:
 source_bars_node = ExampleDailyBars(asset_identifiers=["asset-btc", "asset-eth"])
 source_bars_node.run(debug_mode=True, update_tree=False, force_update=True)
 
-assets_configuration = AssetsConfiguration(
-    asset_list=["asset-btc", "asset-eth"],
-    price_type=PriceTypeNames.CLOSE,
-    prices_configuration=PricesConfiguration(
-        upsample_frequency_id="1d",
+price_source = InterpolatedPrices(
+    interpolation_config=InterpolatedPricesConfig(
+        asset_list=["asset-btc", "asset-eth"],
         intraday_bar_interpolation_rule="ffill",
-        source_time_index_meta_table_uid=runtime.table(
-            ExternalPricesStorage
-        ).meta_table_uid,
+        source_time_index_meta_table_uid=runtime.table(ExternalPricesStorage).meta_table_uid,
+        upsample_frequency_id="1d",
+    )
+)
+
+signal_weights = FixedWeights.from_signal_configuration(...)
+
+portfolio_configuration = PortfolioConfiguration(
+    portfolio_build_configuration=PortfolioBuildConfiguration(
+        price_source_instance=price_source,
+        price_column=PriceTypeNames.CLOSE,
+        portfolio_prices_frequency="1d",
+        execution_configuration=PortfolioExecutionConfiguration(...),
+        backtesting_weights_configuration=BacktestingWeightsConfig(
+            signal_weights_instance=signal_weights,
+            rebalance_strategy_instance=ImmediateSignal(...),
+        ),
     ),
+    portfolio_markets_configuration=PortfolioMarketsConfig(...),
 )
 ```
 
-`PortfoliosDataNode` creates its `InterpolatedPrices` dependency from that
-`AssetsConfiguration`; users should not manually attach portfolio value frames
-for normal construction workflows.
+`PortfoliosDataNode.dependencies()` exposes the signal node and the explicit
+price source. Price sources may contain more assets than the signal requires;
+portfolio calculation filters to the signal-required asset subset and reports
+missing required assets when the consumed price source does not cover them.
 
 ## Account Target-Position Exposure To Portfolios
 

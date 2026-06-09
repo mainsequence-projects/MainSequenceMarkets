@@ -57,9 +57,9 @@ def prepare_equal_weight_portfolio_schema(
 ) -> dict[str, Any]:
     """Prepare the configured interpolated price storage used by the example."""
 
-    print_section("Portfolio Schema Preparation")
+    print_section("Portfolio Price Source Preparation")
 
-    print_step(1, "Attaching the static portfolio example schema.")
+    print_step(1, "Attaching the static price-source prerequisite schema.")
     runtime = start_portfolio_example_runtime(
         models=list(runtime_models or PORTFOLIO_EXAMPLE_RUNTIME_MODELS)
     )
@@ -102,12 +102,12 @@ def prepare_equal_weight_portfolio_schema(
     if check_only:
         if revision_file is None:
             raise RuntimeError(
-                "Configured interpolated price storage revision is missing and "
+                "Configured interpolated price-source storage revision is missing and "
                 f"--check-only was set: {storage_table.__table__.name}"
             )
         if existing is None:
             raise RuntimeError(
-                "Configured interpolated price storage metadata is missing and "
+                "Configured interpolated price-source storage metadata is missing and "
                 f"--check-only was set: {storage_table.__table__.name}"
             )
         print_detail("dynamic_revision_file", revision_file)
@@ -171,7 +171,7 @@ def prepare_equal_weight_portfolio_schema(
 
     if existing is None:
         raise RuntimeError(
-            "Configured interpolated price storage still does not exist after schema prep: "
+            "Configured interpolated price-source storage still does not exist after prep: "
             f"{storage_table.__table__.name}"
         )
 

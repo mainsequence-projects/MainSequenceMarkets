@@ -229,3 +229,94 @@ def test_curve_filter_uses_pricing_runtime_filters(monkeypatch) -> None:
             2,
         )
     ]
+
+
+def test_curve_list_uses_paginated_runtime_search(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    index_uid = uuid.uuid4()
+    context = object()
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.curves.resolve_pricing_runtime",
+        lambda **_kwargs: SimpleNamespace(context=context),
+    )
+
+    def fake_count_model(active_context, *, model, filters, contains_filters):
+        calls.append(("count", active_context, model, filters, contains_filters))
+        return {"rows": [{"count": 2}]}
+
+    def fake_search_model(
+        active_context,
+        *,
+        model,
+        filters,
+        contains_filters,
+        limit,
+        offset,
+    ):
+        calls.append(("search", active_context, model, filters, contains_filters, limit, offset))
+        return {
+            "rows": [
+                {
+                    "uid": curve_uid,
+                    "unique_identifier": "USD-SOFR-DISCOUNT",
+                    "display_name": "USD SOFR Discount Curve",
+                    "curve_type": "discount",
+                    "index_uid": index_uid,
+                }
+            ]
+        }
+
+    monkeypatch.setattr("msm_pricing.api.curves.count_model", fake_count_model)
+    monkeypatch.setattr("msm_pricing.api.curves.search_model", fake_search_model)
+
+    response = Curve.list(
+        limit=1,
+        offset=1,
+        search="SOFR",
+        curve_type="discount",
+        index_uid=index_uid,
+        source=None,
+    )
+
+    assert response == {
+        "count": 2,
+        "limit": 1,
+        "offset": 1,
+        "results": [
+            Curve(
+                uid=curve_uid,
+                unique_identifier="USD-SOFR-DISCOUNT",
+                display_name="USD SOFR Discount Curve",
+                curve_type="discount",
+                index_uid=index_uid,
+            )
+        ],
+    }
+    assert calls == [
+        (
+            "count",
+            context,
+            CurveTable,
+            {"curve_type": "discount", "index_uid": index_uid},
+            {"unique_identifier": "SOFR"},
+        ),
+        (
+            "search",
+            context,
+            CurveTable,
+            {"curve_type": "discount", "index_uid": index_uid},
+            {"unique_identifier": "SOFR"},
+            1,
+            1,
+        ),
+    ]
+
+
+def test_curve_list_validates_pagination() -> None:
+    with pytest.raises(ValueError, match="limit"):
+        Curve.list(limit=0)
+
+    with pytest.raises(ValueError, match="offset"):
+        Curve.list(offset=-1)

@@ -55,6 +55,10 @@ V1_PORTFOLIO_RUNTIME_MODELS = [
 ]
 V1_PRICING_RUNTIME_MODELS = [
     "Asset",
+    "IndexType",
+    "Index",
+    "IndexConventionDetails",
+    "Curve",
     "AssetCurrentPricingDetails",
     "PricingMarketDataSet",
     "PricingMarketDataSetBinding",

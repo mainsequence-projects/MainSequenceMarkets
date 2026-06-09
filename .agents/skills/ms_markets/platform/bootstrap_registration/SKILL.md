@@ -20,8 +20,9 @@ boundary:
 
 ```python
 import msm
+from msm.models import AssetTable, AssetTypeTable
 
-msm.start_engine(models=["AssetType", "Asset"])
+msm.start_engine(models=[AssetTypeTable, AssetTable])
 ```
 
 Do not recommend row-class schema shortcuts for schema creation.
@@ -90,16 +91,30 @@ Examples and application code should then attach once, then use row APIs:
 ```python
 import msm
 from msm.api.assets import Asset, AssetType
+from msm.models import AssetTable, AssetTypeTable
 
-msm.start_engine(models=["AssetType", "Asset"])
+msm.start_engine(models=[AssetTypeTable, AssetTable])
 
 AssetType.upsert(asset_type="equity", display_name="Equity")
 Asset.upsert(unique_identifier="AAPL", asset_type="equity")
 ```
 
-Use a narrow `models=[...]` list for small workflows. Include parent tables
+Use a narrow `models=[...]` list for small workflows. Prefer SQLAlchemy table or storage classes in project code; they remove ambiguity between row APIs and backend models. Include parent tables
 before child behavior by selecting all required logical models; the startup
 resolver keeps library dependency order.
+
+For `models=[...]`, pass backend SQLAlchemy table/storage classes, not typed row API classes.
+
+```python
+from msm.api.assets import Asset, AssetType, OpenFigiDetails
+from msm.models import AssetTable, AssetTypeTable, OpenFigiAssetDetailsTable
+
+# Correct: backend table/storage classes.
+msm.start_engine(models=[AssetTypeTable, AssetTable, OpenFigiAssetDetailsTable])
+
+# Incorrect: typed row APIs. These are used after runtime attachment.
+msm.start_engine(models=[AssetType, Asset, OpenFigiDetails])
+```
 
 Do not bootstrap or migrate implicitly from first row use. Row operations should
 fail when the runtime has not been initialized for their required tables.
@@ -129,6 +144,11 @@ project-owned SQLAlchemy table-name app segment instead of the library default
 globally unique `__metatable_identifier__`, does not affect row API selection,
 and does not remove the need for SDK migration/provider registration before
 runtime startup.
+
+Built-in ms-markets tables and storage classes use their built-in definitions as-is.
+Downstream projects must not set or override `__markets_storage_app__` on built-in
+ms-markets models. Set it only on project-local models before migration and
+registration.
 
 ```python
 from msm.base import MarketsBase, MarketsMetaTableMixin

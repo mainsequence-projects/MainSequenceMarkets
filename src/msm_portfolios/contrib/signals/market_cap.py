@@ -14,7 +14,6 @@ from msm_portfolios.data_nodes import (
     SignalWeights,
 )
 from msm_portfolios.configuration import (
-    AssetsConfiguration,
     MarketsTimeSeries,
     PortfolioConfigBaseModel,
 )
@@ -35,7 +34,7 @@ class VolatilityControlConfiguration(BaseModel):
 
 
 class MarketCapConfig(PortfolioConfigBaseModel):
-    signal_assets_configuration: AssetsConfiguration
+    asset_list: list[object]
     market_cap_time_series: MarketsTimeSeries = Field(
         ...,
         description=(
@@ -60,10 +59,6 @@ class MarketCap(SignalWeights):
         if not isinstance(self.signal_configuration, MarketCapConfig):
             raise TypeError("MarketCap requires MarketCapConfig as signal_configuration.")
         return self.signal_configuration
-
-    @property
-    def assets_configuration(self) -> AssetsConfiguration:
-        return self.market_cap_config.signal_assets_configuration
 
     @property
     def rolling_atvr_volume_windows(self) -> list[int]:
@@ -124,7 +119,7 @@ class MarketCap(SignalWeights):
 
         explanation = (
             "### 1. Dynamic Asset Universe Selection\n\n"
-            f"This strategy dynamically selects assets using a predefined category {self.assets_configuration.assets_category_unique_id} :\n\n"
+            "This strategy dynamically selects assets from the explicit configured asset list.\n\n"
             "### 2. Market Capitalization Filtering\n\n"
             f"The strategy retrieves historical market capitalization data and restricts the universe to the top **{self.num_top_assets}** assets. "
             "This ensures that only the largest and most influential market participants are considered.\n\n"
@@ -151,7 +146,7 @@ class MarketCap(SignalWeights):
         return explanation
 
     def get_asset_list(self) -> None | list:
-        return self.assets_configuration.get_asset_list()
+        return self.market_cap_config.asset_list
 
     def _calculate_signal_weights(self):
         """

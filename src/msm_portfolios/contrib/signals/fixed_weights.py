@@ -9,7 +9,7 @@ from msm_portfolios.data_nodes import (
     SIGNAL_UID,
     SignalWeights,
 )
-from msm_portfolios.configuration import AssetsConfiguration, PortfolioConfigBaseModel
+from msm_portfolios.configuration import PortfolioConfigBaseModel
 from mainsequence.meta_tables import APIDataNode, DataNode
 
 SIGNAL_OFFSET_START = datetime.datetime(2018, 1, 1, tzinfo=datetime.UTC)
@@ -21,7 +21,6 @@ class AUIDWeight(PortfolioConfigBaseModel):
 
 
 class FixedWeightsConfig(PortfolioConfigBaseModel):
-    signal_assets_configuration: AssetsConfiguration
     asset_unique_identifier_weights: list[AUIDWeight]
 
 
@@ -31,10 +30,6 @@ class FixedWeights(SignalWeights):
         if not isinstance(self.signal_configuration, FixedWeightsConfig):
             raise TypeError("FixedWeights requires FixedWeightsConfig as signal_configuration.")
         return self.signal_configuration
-
-    @property
-    def assets_configuration(self) -> AssetsConfiguration:
-        return self.fixed_weights_config.signal_assets_configuration
 
     @property
     def asset_unique_identifier_weights(self) -> list[AUIDWeight]:

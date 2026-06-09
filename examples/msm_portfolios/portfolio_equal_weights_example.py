@@ -54,18 +54,20 @@ from msm.data_nodes.assets.asset_indexed import (  # noqa: E402
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc  # noqa: E402
 from msm.api.portfolios import Portfolio  # noqa: E402
 from msm_portfolios.configuration import (  # noqa: E402
-    AssetsConfiguration,
     BacktestingWeightsConfig,
     PortfolioBuildConfiguration,
     PortfolioConfiguration,
     PortfolioExecutionConfiguration,
     PortfolioMarketsConfig,
-    PricesConfiguration,
 )
 from msm_portfolios.contrib.signals.fixed_weights import (  # noqa: E402
     AUIDWeight,
     FixedWeights,
     FixedWeightsConfig,
+)
+from msm_portfolios.contrib.prices.data_nodes import (  # noqa: E402
+    InterpolatedPrices,
+    InterpolatedPricesConfig,
 )
 from msm_portfolios.data_nodes.prices.storage import (  # noqa: E402
     ExternalPricesStorage,
@@ -200,27 +202,9 @@ def register_portfolio_index() -> Index:
     return portfolio_index
 
 
-def build_assets_configuration(
-    source_time_index_meta_table_uid: str,
-) -> AssetsConfiguration:
-    return AssetsConfiguration(
-        assets_category_unique_id=None,
-        price_type=PriceTypeNames.CLOSE,
-        asset_list=list(ASSET_UNIQUE_IDENTIFIERS),
-        prices_configuration=PricesConfiguration(
-            upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,
-            intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
-            source_time_index_meta_table_uid=source_time_index_meta_table_uid,
-        ),
-    )
-
-
-def build_fixed_weights_config(
-    source_time_index_meta_table_uid: str,
-) -> FixedWeightsConfig:
+def build_fixed_weights_config() -> FixedWeightsConfig:
     weight = 1.0 / len(ASSET_UNIQUE_IDENTIFIERS)
     return FixedWeightsConfig(
-        signal_assets_configuration=build_assets_configuration(source_time_index_meta_table_uid),
         asset_unique_identifier_weights=[
             AUIDWeight(unique_identifier=asset_uid, weight=weight)
             for asset_uid in ASSET_UNIQUE_IDENTIFIERS
@@ -232,11 +216,12 @@ def build_portfolio_configuration(
     signal_weights: FixedWeights,
     *,
     calendar: Calendar,
-    source_time_index_meta_table_uid: str,
+    price_source: InterpolatedPrices,
 ) -> PortfolioConfiguration:
     return PortfolioConfiguration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
-            assets_configuration=build_assets_configuration(source_time_index_meta_table_uid),
+            price_source_instance=price_source,
+            price_column=PriceTypeNames.CLOSE,
             portfolio_prices_frequency="1d",
             execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.00018),
             backtesting_weights_configuration=BacktestingWeightsConfig(
@@ -252,12 +237,24 @@ def build_portfolio_configuration(
     )
 
 
-def build_signal_weights_node(
-    source_time_index_meta_table_uid: str,
-) -> FixedWeights:
-    signal_configuration = build_fixed_weights_config(source_time_index_meta_table_uid)
+def build_signal_weights_node() -> FixedWeights:
+    signal_configuration = build_fixed_weights_config()
     return FixedWeights.from_signal_configuration(
         signal_configuration,
+        namespace=NAMESPACE,
+    )
+
+
+def build_interpolated_prices_node(
+    source_time_index_meta_table_uid: str,
+) -> InterpolatedPrices:
+    return InterpolatedPrices(
+        interpolation_config=InterpolatedPricesConfig(
+            asset_list=list(ASSET_UNIQUE_IDENTIFIERS),
+            intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
+            source_time_index_meta_table_uid=source_time_index_meta_table_uid,
+            upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,
+        ),
         namespace=NAMESPACE,
     )
 
@@ -384,6 +381,7 @@ def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> Non
         result["interpolated_prices_storage_cadence"],
     )
     print_detail("source_prices_data_node_uid", result["source_prices_node_uid"])
+    print_detail("interpolated_prices_data_node_uid", result["interpolated_prices_node_uid"])
     print_detail("signal_weights_data_node_uid", result["signal_weights_node_uid"])
     print_detail("portfolio_weights_data_node_uid", result["portfolio_weights_node_uid"])
     print_detail("portfolio_values_data_node_uid", result["portfolio_values_node_uid"])
@@ -412,7 +410,7 @@ def build_equal_weight_portfolio(
     print_step(4, "Registering the portfolio index row.")
     portfolio_index = register_portfolio_index()
 
-    print_step(5, "Preparing equal-weight signal and portfolio DataNodes.")
+    print_step(5, "Preparing explicit price, signal, and portfolio DataNodes.")
     source_prices_storage_uid, source_prices_storage_meta_table = resolve_source_prices_storage(
         runtime
     )
@@ -424,11 +422,12 @@ def build_equal_weight_portfolio(
         interpolated_prices_storage
     )
     source_bars_node = build_source_bars_node()
-    signal_weights_node = build_signal_weights_node(source_prices_storage_uid)
+    interpolated_prices_node = build_interpolated_prices_node(source_prices_storage_uid)
+    signal_weights_node = build_signal_weights_node()
     portfolio_configuration = build_portfolio_configuration(
         signal_weights_node,
         calendar=portfolio_calendar,
-        source_time_index_meta_table_uid=source_prices_storage_uid,
+        price_source=interpolated_prices_node,
     )
     portfolio = Portfolio.upsert(
         unique_identifier=PORTFOLIO_UNIQUE_IDENTIFIER,
@@ -450,6 +449,7 @@ def build_equal_weight_portfolio(
     print_detail("source_prices_storage_uid", source_prices_storage_uid)
     print_detail("source_prices_cadence", source_prices_cadence)
     print_detail("source_prices_storage_hash", source_prices_storage_meta_table.storage_hash)
+    print_detail("price_source_dependency", interpolated_prices_node.storage_hash)
     print_detail(
         "interpolated_prices_storage_table",
         interpolated_prices_storage.__table__.name,
@@ -478,6 +478,9 @@ def build_equal_weight_portfolio(
 
         portfolio_values_node.run(debug_mode=True, update_tree=True, force_update=True)
 
+        interpolated_prices_node_uid = str(interpolated_prices_node.data_node_update.uid)
+        print_detail("interpolated_prices_data_node_uid", interpolated_prices_node_uid)
+
         signal_weights_node_uid = str(signal_weights_node.data_node_update.uid)
         print_detail("signal_weights_data_node_uid", signal_weights_node_uid)
 
@@ -489,10 +492,12 @@ def build_equal_weight_portfolio(
         print_detail("portfolio_values_data_node_uid", portfolio_values_node_uid)
     else:
         print_detail("source_prices_data_node_uid", "skipped (--no-run-data-nodes)")
+        print_detail("interpolated_prices_data_node_uid", "skipped (--no-run-data-nodes)")
         print_detail("signal_weights_data_node_uid", "skipped (--no-run-data-nodes)")
         print_detail("portfolio_weights_data_node_uid", "skipped (--no-run-data-nodes)")
         print_detail("portfolio_values_data_node_uid", "skipped (--no-run-data-nodes)")
         source_prices_node_uid = None
+        interpolated_prices_node_uid = None
         signal_weights_node_uid = None
         portfolio_weights_node_uid = None
         portfolio_values_node_uid = None
@@ -525,6 +530,7 @@ def build_equal_weight_portfolio(
         "interpolated_prices_storage_table": interpolated_prices_storage.__table__.name,
         "interpolated_prices_storage_cadence": interpolated_prices_storage.__cadence__,
         "source_prices_node_uid": source_prices_node_uid,
+        "interpolated_prices_node_uid": interpolated_prices_node_uid,
         "signal_weights_node_uid": signal_weights_node_uid,
         "portfolio_weights_node_uid": portfolio_weights_node_uid,
         "portfolio_values_node_uid": portfolio_values_node_uid,

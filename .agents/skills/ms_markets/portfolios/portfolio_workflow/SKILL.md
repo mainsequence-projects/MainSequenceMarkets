@@ -103,6 +103,18 @@ may patch only that source metadata to the model-declared cadence before
 deriving the dynamic table. Normal runtime code then attaches only static models
 and fails clearly if the dynamic table has not been prepared.
 
+Portfolio construction must consume prices through an explicit dependency:
+
+```text
+source price DataNode -> InterpolatedPrices -> SignalWeights -> PortfoliosDataNode
+```
+
+`PortfoliosDataNode` must not construct `InterpolatedPrices` from
+`AssetsConfiguration`/`PricesConfiguration`. If persistent interpolation is
+needed, prepare or attach the interpolation node first and pass it as
+`PortfolioBuildConfiguration.price_source_instance`. Keep any local price
+alignment inside portfolio calculation as a temporary calculation step only.
+
 ## Write Pattern
 
 ```python

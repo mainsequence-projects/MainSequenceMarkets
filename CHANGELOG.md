@@ -50,10 +50,17 @@ and this project follows versioned releases.
   through one scoped MetaTable upsert operation.
 - Tightened account target-position validation so portfolio target rows cannot
   use `single_asset_quantity`.
+- Added the `apps/v1` pricing curve registry list endpoint backed by
+  `msm_pricing.api.Curve` and the shared limit-offset pagination envelope.
 - Promoted virtual-fund allocation strategy to the first-class
   `VirtualFundHoldingsStorage.allocation_strategy` column; low-level explicit
   publications write `explicit`, and planner-applied rows write the allocation
   policy mode.
+- Refactored portfolio construction to consume an explicit
+  `price_source_instance` instead of having `PortfoliosDataNode` construct
+  `InterpolatedPrices` from portfolio `AssetsConfiguration`/`PricesConfiguration`,
+  and updated the equal-weight portfolio example to show the explicit source
+  prices -> interpolation -> signal -> portfolio dependency graph.
 
 ### Fixed
 

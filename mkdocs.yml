@@ -31,6 +31,7 @@ nav:
       - v1: fast_api/v1/index.md
       - Portfolio: fast_api/v1/portfolio.md
       - Virtual Funds: fast_api/v1/virtualfund.md
+      - Pricing Curves: fast_api/v1/pricing_curves.md
       - Pricing Market Data: fast_api/v1/pricing_market_data.md
       - ADR:
           - Calendar CRUD Route: fast_api/v1/ADR/0001-calendar-crud-route.md
@@ -80,6 +81,7 @@ nav:
       - Account Target Position Portfolio Exposure: ADR/0027-account-target-position-portfolio-exposure.md
       - Core Calendar Reference Data Model: ADR/0028-core-calendar-reference-data.md
       - Account Holdings To Virtual Fund Allocation Policy: ADR/0029-account-holdings-virtual-fund-allocation-policy.md
+      - Explicit Portfolio Price Source Dependency: ADR/0030-explicit-portfolio-price-source-dependency.md
   - Changelog: changelog.md
   - Reference:
       - API Reference: reference/index.md

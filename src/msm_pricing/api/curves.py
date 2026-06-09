@@ -9,6 +9,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from msm.api.base import _warn_deprecated_create_schemas, operation_result_rows
 from msm.models import IndexTable, IndexTypeTable
 from msm.repositories.crud import (
+    count_model,
     create_model,
     get_model_by_uid,
     get_model_by_unique_identifier,
@@ -150,6 +151,42 @@ class Curve(BaseModel):
         return [cls.model_validate(row) for row in operation_result_rows(result)]
 
     @classmethod
+    def list(
+        cls,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        search: str | None = None,
+        **filters: Any,
+    ) -> dict[str, Any]:
+        limit, offset = _validate_pagination(limit=limit, offset=offset)
+        exact_filters = {key: value for key, value in filters.items() if value is not None}
+        contains_filters = (
+            {"unique_identifier": search.strip()} if search is not None and search.strip() else {}
+        )
+        context = cls._active_context()
+        count_result = count_model(
+            context,
+            model=cls.__table__,
+            filters=exact_filters,
+            contains_filters=contains_filters,
+        )
+        result = search_model(
+            context,
+            model=cls.__table__,
+            filters=exact_filters,
+            contains_filters=contains_filters,
+            limit=limit,
+            offset=offset,
+        )
+        return {
+            "count": _count_from_operation_result(count_result),
+            "limit": limit,
+            "offset": offset,
+            "results": [cls.model_validate(row) for row in operation_result_rows(result)],
+        }
+
+    @classmethod
     def _active_context(cls):
         runtime = resolve_pricing_runtime(
             models=cls.__required_tables__,
@@ -170,6 +207,21 @@ class Curve(BaseModel):
         if required:
             raise LookupError("MetaTable operation result did not include a Curve row.")
         return None
+
+
+def _validate_pagination(*, limit: int, offset: int) -> tuple[int, int]:
+    if limit < 1:
+        raise ValueError("limit must be greater than or equal to 1.")
+    if offset < 0:
+        raise ValueError("offset must be greater than or equal to 0.")
+    return limit, offset
+
+
+def _count_from_operation_result(result: Mapping[str, Any] | list[Any] | None) -> int:
+    rows = operation_result_rows(result or {})
+    if not rows:
+        return 0
+    return int(rows[0].get("count") or 0)
 
 
 class CurveCreate(BaseModel):

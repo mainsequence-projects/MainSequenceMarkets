@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import os
 from datetime import datetime
 from typing import Any
@@ -109,7 +108,6 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return self
 
     def _initialize_from_portfolio_configuration(self, portfolio_configuration: Any) -> None:
-        from ...contrib.prices.data_nodes import get_interpolated_prices_timeseries
         from ..signals import SignalWeights
 
         self.portfolio_configuration = portfolio_configuration
@@ -123,10 +121,10 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         self.portfolio_markets_config = portfolio_configuration.portfolio_markets_configuration
         self.commission_fee = self.execution_configuration.commission_fee
         self.portfolio_prices_frequency = portfolio_build_configuration.portfolio_prices_frequency
-        self.assets_configuration = portfolio_build_configuration.assets_configuration
-        self.portfolio_frequency = (
-            self.assets_configuration.prices_configuration.upsample_frequency_id
-        )
+        self.price_source = portfolio_build_configuration.price_source_instance
+        self.price_column = portfolio_build_configuration.price_column
+        self.price_alignment_policy = portfolio_build_configuration.price_alignment_policy
+        self.portfolio_frequency = self._portfolio_update_frequency()
 
         self.signal_weights = self.backtesting_weights_config.signal_weights_instance
         if not isinstance(self.signal_weights, SignalWeights):
@@ -137,17 +135,20 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         self.rebalancer = self.backtesting_weights_config.rebalance_strategy_instance
         self.rebalancer_explanation = ""
 
-        asset_list = None
-        if not self.assets_configuration.assets_category_unique_id:
-            asset_list = self.signal_weights.get_asset_list()
-            portfolio_asset_uid = self.signal_weights.get_asset_uid_to_override_portfolio_price()
-            if portfolio_asset_uid is not None:
-                asset_list = dedupe_asset_scope([*(asset_list or []), portfolio_asset_uid])
+        get_prices = getattr(self.price_source, "get_df_between_dates", None)
+        if not callable(get_prices):
+            raise TypeError(
+                "PortfolioBuildConfiguration.price_source_instance must expose "
+                "get_df_between_dates(...)."
+            )
 
-        self.bars_ts = get_interpolated_prices_timeseries(
-            copy.deepcopy(self.assets_configuration),
-            asset_list=asset_list,
-        )
+        preflight_asset_list = self.signal_weights.get_asset_list()
+        portfolio_asset_uid = self.signal_weights.get_asset_uid_to_override_portfolio_price()
+        if portfolio_asset_uid is not None:
+            preflight_asset_list = dedupe_asset_scope(
+                [*(preflight_asset_list or []), portfolio_asset_uid]
+            )
+        self.required_price_asset_preflight = preflight_asset_list
 
     def set_portfolio_values_frame(
         self,
@@ -171,7 +172,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
     def dependencies(self) -> dict[str, DataNode | APIDataNode]:
         if getattr(self, "portfolio_configuration", None) is None:
             return {}
-        return {"signal_weights": self.signal_weights, "bars_ts": self.bars_ts}
+        return {"signal_weights": self.signal_weights, "price_source": self.price_source}
 
     def run(
         self,
@@ -291,11 +292,16 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             f"signal_weights must have columns named {expected_columns}"
         )
 
+        last_rebalance_weights = self._get_last_weights()
+        required_price_asset_identifiers = self._required_price_asset_identifiers(
+            signal_weights=signal_weights,
+            last_rebalance_weights=last_rebalance_weights,
+        )
         raw_prices, interpolated_prices = self._interpolate_bars_index(
             new_index=new_index,
-            bars_ts=self.bars_ts,
+            price_source=self.price_source,
             index_freq=index_freq,
-            unique_identifiers=list(signal_weights.columns.get_level_values(ASSET_IDENTIFIER)),
+            unique_identifiers=required_price_asset_identifiers,
         )
 
         latest_value = self._latest_portfolio_time_index_value()
@@ -315,8 +321,8 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             start_date=start_date,
             prices_df=interpolated_prices,
             end_date=end_date,
-            last_rebalance_weights=self._get_last_weights(),
-            price_type=self.assets_configuration.price_type,
+            last_rebalance_weights=last_rebalance_weights,
+            price_type=self.price_column,
         )
 
         weights = self._postprocess_weights(weights)
@@ -334,13 +340,12 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             self.signal_weights.get_asset_uid_to_override_portfolio_price()
         )
         if asset_uid_to_override_portfolio_price is not None:
-            new_portfolio_price = self.bars_ts.get_ranged_data_per_asset(
-                range_descriptor={
-                    asset_uid_to_override_portfolio_price: {
-                        "start_date": portfolio.index.min(),
-                        "start_date_operand": ">=",
-                    }
-                }
+            new_portfolio_price = self.price_source.get_df_between_dates(
+                start_date=portfolio.index.min(),
+                great_or_equal=True,
+                dimension_filters={
+                    ASSET_IDENTIFIER: [asset_uid_to_override_portfolio_price],
+                },
             )
             if new_portfolio_price.empty:
                 self.logger.error("No Prices on portfolio target asset")
@@ -351,7 +356,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             new_portfolio_price = new_portfolio_price.reindex(union_index).ffill().bfill()
             new_portfolio_price = new_portfolio_price.reindex(portfolio.index)
             portfolio["calculated_close"] = portfolio["close"]
-            portfolio["close"] = new_portfolio_price["close"]
+            portfolio["close"] = new_portfolio_price[self.price_column.value]
             portfolio["return"] = portfolio["close"].pct_change().fillna(0.0)
 
         self.logger.info(f"{len(portfolio)} new portfolio values have been calculated.")
@@ -444,7 +449,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         ]
 
     def _calculate_start_end_dates(self):
-        update_statics_from_dependencies = self.bars_ts.update_statistics
+        update_statics_from_dependencies = self.price_source.update_statistics
         progress_values = update_statics_from_dependencies.get_index_progress_leaf_values()
         earliest_last_value = min(progress_values) if progress_values else None
 
@@ -454,10 +459,10 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             )
             raise Exception("Prices are empty")
 
-        if self.assets_configuration.prices_configuration.forward_fill_to_now:
+        if self.price_alignment_policy.forward_fill_to_now:
             end_date = datetime.now(pytz.utc)
         else:
-            end_date = earliest_last_value + self.bars_ts.maximum_forward_fill
+            end_date = earliest_last_value + self._price_source_maximum_forward_fill()
 
         start_date = self._latest_portfolio_time_index_value() or self.OFFSET_START
         max_td_env = os.getenv("MAX_TD_FROM_LATEST_VALUE", None)
@@ -468,7 +473,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return start_date, end_date
 
     def _generate_new_index(self, start_date, end_date, rebalancer_calendar):
-        upsample_freq = self.assets_configuration.prices_configuration.upsample_frequency_id
+        upsample_freq = self._portfolio_update_frequency()
 
         if "d" in upsample_freq:
             assert upsample_freq == "1d", "Only '1d' frequency is implemented."
@@ -508,6 +513,35 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
 
         return weights
 
+    def _required_price_asset_identifiers(
+        self,
+        *,
+        signal_weights: pd.DataFrame,
+        last_rebalance_weights: pd.DataFrame | None,
+    ) -> list[str]:
+        required_assets = [
+            str(value)
+            for value in signal_weights.columns.get_level_values(ASSET_IDENTIFIER)
+        ]
+        if (
+            last_rebalance_weights is not None
+            and not last_rebalance_weights.empty
+            and isinstance(last_rebalance_weights.index, pd.MultiIndex)
+            and ASSET_IDENTIFIER in last_rebalance_weights.index.names
+        ):
+            required_assets.extend(
+                str(value)
+                for value in last_rebalance_weights.index.get_level_values(
+                    ASSET_IDENTIFIER
+                ).unique()
+            )
+
+        portfolio_price_asset = self.signal_weights.get_asset_uid_to_override_portfolio_price()
+        if portfolio_price_asset is not None:
+            required_assets.append(str(portfolio_price_asset))
+
+        return list(dict.fromkeys(required_assets))
+
     def _calculate_portfolio_returns(
         self,
         weights: pd.DataFrame,
@@ -522,7 +556,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         price_current = weights.price_current
         weights_before = weights.weights_before.fillna(0)
         weights_current = weights.weights_current.fillna(0)
-        prices = prices[self.assets_configuration.price_type.value].unstack()
+        prices = prices[self.price_column.value].unstack()
         first_price_date = (
             prices.stack().dropna().index.union(price_current.stack().dropna().index)[0][0]
         )
@@ -591,11 +625,10 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         new_index: pd.DatetimeIndex,
         unique_identifiers: list,
         index_freq: str,
-        bars_ts: DataNode | APIDataNode,
+        price_source: DataNode | APIDataNode,
     ):
-        prices_config = self.assets_configuration.prices_configuration
         fetch_end_date = new_index.max()
-        raw_prices = bars_ts.get_df_between_dates(
+        raw_prices = price_source.get_df_between_dates(
             start_date=new_index.min() - pd.Timedelta(index_freq),
             end_date=fetch_end_date,
             great_or_equal=True,
@@ -605,13 +638,41 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
 
         if len(raw_prices) == 0:
             self.logger.info(
-                f"No prices data in index interpolation for node {bars_ts.storage_hash}"
+                "No prices data in local portfolio price alignment for "
+                f"price_source={self._price_source_identifier(price_source)}"
             )
             return pd.DataFrame(), pd.DataFrame()
 
+        raw_prices = self._filter_price_frame_to_requested_assets(
+            raw_prices,
+            requested_asset_identifiers=unique_identifiers,
+        )
+        if len(raw_prices) == 0:
+            self.logger.info(
+                "Price source returned no rows for the signal-required assets.",
+                price_source=self._price_source_identifier(price_source),
+                requested_asset_identifiers=[str(value) for value in unique_identifiers],
+            )
+            return pd.DataFrame(), pd.DataFrame()
+
+        self._diagnose_price_source_coverage(
+            raw_prices,
+            requested_asset_identifiers=unique_identifiers,
+            price_source=price_source,
+            start_date=new_index.min(),
+            end_date=fetch_end_date,
+        )
+
+        if self.price_column.value not in raw_prices.columns:
+            raise ValueError(
+                "Portfolio price source is missing required price column "
+                f"{self.price_column.value!r}. Available columns: "
+                f"{list(raw_prices.columns)}."
+            )
+
         raw_prices.sort_values("time_index", inplace=True)
         final_index_for_interpolation = new_index
-        if prices_config.forward_fill_to_now:
+        if self.price_alignment_policy.forward_fill_to_now:
             fill_end_date = datetime.now(pytz.utc)
             last_ts_in_df = raw_prices.index.get_level_values("time_index").max()
             self.logger.info(f"Forward-filling prices from {last_ts_in_df} to {fill_end_date}")
@@ -623,6 +684,21 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             )
 
         interpolated_prices = raw_prices.unstack([ASSET_IDENTIFIER])
+        raw_time_index = pd.DatetimeIndex(
+            raw_prices.index.get_level_values("time_index").unique()
+        )
+        missing_rebalance_times = pd.DatetimeIndex(final_index_for_interpolation).difference(
+            raw_time_index
+        )
+        if len(missing_rebalance_times) > 0:
+            self.logger.warning(
+                "Portfolio local price alignment forward-filled consumed prices.",
+                price_source=self._price_source_identifier(price_source),
+                missing_timestamp_count=len(missing_rebalance_times),
+                start_date=new_index.min(),
+                end_date=fetch_end_date,
+                price_column=self.price_column.value,
+            )
         interpolated_prices = interpolated_prices.reindex(
             final_index_for_interpolation,
             method="ffill",
@@ -630,6 +706,84 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         interpolated_prices.index.names = ["time_index"]
         interpolated_prices = interpolated_prices.stack([ASSET_IDENTIFIER])
         return raw_prices, interpolated_prices
+
+    def _filter_price_frame_to_requested_assets(
+        self,
+        raw_prices: pd.DataFrame,
+        *,
+        requested_asset_identifiers: list,
+    ) -> pd.DataFrame:
+        if raw_prices.empty or not isinstance(raw_prices.index, pd.MultiIndex):
+            return raw_prices
+        if ASSET_IDENTIFIER not in raw_prices.index.names:
+            return raw_prices
+        requested_identifiers = {str(value) for value in requested_asset_identifiers}
+        asset_level = raw_prices.index.get_level_values(ASSET_IDENTIFIER).map(str)
+        return raw_prices[asset_level.isin(requested_identifiers)]
+
+    def _diagnose_price_source_coverage(
+        self,
+        raw_prices: pd.DataFrame,
+        *,
+        requested_asset_identifiers: list,
+        price_source: DataNode | APIDataNode,
+        start_date,
+        end_date,
+    ) -> None:
+        if raw_prices.empty or not isinstance(raw_prices.index, pd.MultiIndex):
+            return
+
+        available_identifiers = {
+            str(value)
+            for value in raw_prices.index.get_level_values(ASSET_IDENTIFIER).unique()
+        }
+        requested_identifiers = {str(value) for value in requested_asset_identifiers}
+        missing_identifiers = sorted(requested_identifiers - available_identifiers)
+        if not missing_identifiers:
+            return
+
+        self.logger.warning(
+            "Portfolio price source is missing required signal assets.",
+            price_source=self._price_source_identifier(price_source),
+            missing_asset_identifiers=missing_identifiers,
+            start_date=start_date,
+            end_date=end_date,
+            price_column=self.price_column.value,
+            fail_on_missing_prices=self.price_alignment_policy.fail_on_missing_prices,
+        )
+        if self.price_alignment_policy.fail_on_missing_prices:
+            raise ValueError(
+                "Portfolio price source is missing required signal assets: "
+                f"{', '.join(missing_identifiers)}."
+            )
+
+    def _price_source_identifier(self, price_source: DataNode | APIDataNode) -> str:
+        storage_hash = getattr(price_source, "storage_hash", None)
+        if storage_hash not in (None, ""):
+            return str(storage_hash)
+        update_hash = getattr(price_source, "update_hash", None)
+        if update_hash not in (None, ""):
+            return str(update_hash)
+        return price_source.__class__.__name__
+
+    def _price_source_maximum_forward_fill(self) -> pd.Timedelta:
+        maximum_forward_fill = getattr(self.price_source, "maximum_forward_fill", None)
+        if maximum_forward_fill is not None:
+            return pd.Timedelta(maximum_forward_fill)
+        return pd.Timedelta(translate_to_pandas_freq(self._portfolio_update_frequency()))
+
+    def _portfolio_update_frequency(self) -> str:
+        if self.portfolio_prices_frequency not in (None, ""):
+            return str(self.portfolio_prices_frequency)
+        for attribute_name in ("upsample_frequency_id", "bar_frequency_id"):
+            frequency = getattr(self.price_source, attribute_name, None)
+            if frequency not in (None, ""):
+                return str(frequency)
+        storage_table = getattr(self.price_source, "storage_table", None)
+        cadence = getattr(storage_table, "__cadence__", None)
+        if cadence not in (None, ""):
+            return str(cadence)
+        return "1d"
 
     def _resample_portfolio_with_calendar(self, portfolio: pd.DataFrame) -> pd.DataFrame:
         if len(portfolio) == 0:

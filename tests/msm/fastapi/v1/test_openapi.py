@@ -79,6 +79,7 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
         "/api/v1/calendar/{calendar_uid}/sessions/",
         "/api/v1/index/",
         "/api/v1/portfolio/",
+        "/api/v1/pricing/curves/",
         "/api/v1/pricing/market_data/bindings/",
         "/api/v1/pricing/market_data/sets/",
         "/api/v1/pricing/market_data/sets/{market_data_set_uid}/bindings/",

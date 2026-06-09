@@ -329,18 +329,19 @@ optional portfolio `Index`, publishes example OHLCV source bars to
 `PortfolioWeights`, and `PortfoliosDataNode`, creates or reuses the crypto
 `CRYPTO_24_7` calendar, and stores the calendar, index, and DataNode UIDs on the
 `Portfolio` row. The price configuration stores the
-`ExternalPricesStorage` TimeIndexMetaTable UID as
-`source_time_index_meta_table_uid`, so interpolation can recover the price source
-through the SDK APIDataNode lookup path. The source price DataNode is not part of
-the portfolio configuration; the example publishes it first only to keep the
-workflow runnable. Real portfolio extensions can point at any compatible
-registered price storage table and focus on portfolio logic. The source bar
-frequency is read from the registered source table's cadence metadata, then used
-with `__metatable_extra_hash_components__` to select a configured output storage
-table, so different source cadence, upsample frequency, and interpolation rule
-combinations do not collide inside one price table. The script prints the
-workflow steps, created row UIDs, source price row counts, and published DataNode
-storage UIDs.
+`ExternalPricesStorage` TimeIndexMetaTable UID on `InterpolatedPricesConfig`, so
+the explicit upstream interpolation node can recover the price source through
+the SDK APIDataNode lookup path. The portfolio configuration receives that
+`InterpolatedPrices` node as `price_source_instance`; `PortfoliosDataNode` does
+not create interpolation storage internally. Real portfolio extensions can pass
+any compatible price DataNode or APIDataNode and focus on portfolio logic. The
+source bar frequency is read from the registered source table's cadence
+metadata, then used with `__metatable_extra_hash_components__` to select a
+configured output storage table, so different source cadence, upsample
+frequency, and interpolation rule combinations do not collide inside one price
+table. The script prints the workflow steps, created row UIDs, source price row
+counts, explicit price-source dependency details, and published DataNode storage
+UIDs.
 
 ```python
 from msm.api.accounts import (

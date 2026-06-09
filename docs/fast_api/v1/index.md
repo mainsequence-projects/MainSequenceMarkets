@@ -11,7 +11,7 @@ This API is intentionally thin:
 - reusable asset category workflows live under `src/msm/services`
 - asset, category, and index frontend route composition is backed by
   `src/msm/services/asset_master_lists.py`
-- pricing market-data set and binding workflows are backed by
+- pricing curve registry, market-data set, and binding workflows are backed by
   `msm_pricing.api`
 - portfolio detail and latest-weight workflows are backed by
   `src/msm_portfolios/services`
@@ -25,6 +25,8 @@ This API is intentionally thin:
   event maintenance.
 - [Pricing Market Data Routes](pricing_market_data.md): route group for
   pricing market-data set and concept binding management.
+- [Pricing Curve Routes](pricing_curves.md): route group for pricing curve
+  registry lists.
 - [Portfolio Routes](portfolio.md): route group for portfolio identity,
   detail-page composition, latest weights, and delete operations.
 - [Virtual Fund Routes](virtualfund.md): route group for account-owned
@@ -51,8 +53,8 @@ Current local-dev behavior:
   `VirtualFundHoldingsStorage` so virtual-fund routes attach to the shared
   markets runtime
 - the app calls `msm_pricing.bootstrap.attach_pricing_schemas(...)` during
-  startup for the pricing rows used by asset pricing details and pricing
-  market-data management
+  startup for the pricing rows used by asset pricing details, curve registry
+  lists, and pricing market-data management
 - schema mutation must already have been handled by
   `mainsequence migrations upgrade --provider migrations:migration head`
 - the app uses the real project/session data source already configured for the
@@ -359,6 +361,13 @@ Current local-dev behavior:
   - manage one event row and require it to belong to the path calendar uid
 
 ### Pricing Market Data
+
+- `GET /api/v1/pricing/curves/`
+  - lists pricing curve registry rows from `msm_pricing.api.Curve`
+  - supports `limit`, `offset`, `search`, `curve_type`, `index_uid`, and
+    `source`
+  - returns `PaginatedResponse[Curve]`
+  - does not return timestamped `DiscountCurvesStorage` observations
 
 - `GET /api/v1/pricing/market_data/`
   - returns the discoverability card for pricing market-data set and binding

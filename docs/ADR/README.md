@@ -29,3 +29,4 @@ Current architecture decisions:
 - [0027. Account Target Position Portfolio Exposure](0027-account-target-position-portfolio-exposure.md)
 - [0028. Core Calendar Reference Data Model](0028-core-calendar-reference-data.md)
 - [0029. Account Holdings To Virtual Fund Allocation Policy](0029-account-holdings-virtual-fund-allocation-policy.md)
+- [0030. Explicit Portfolio Price Source Dependency](0030-explicit-portfolio-price-source-dependency.md)

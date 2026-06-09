@@ -1,26 +1,22 @@
 from __future__ import annotations
 
-import copy
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from msm_portfolios.asset_scope import asset_field, asset_unique_identifier
-from msm_portfolios.contrib.prices.data_nodes import (
-    get_interpolated_prices_timeseries,
-)
 from msm_portfolios.contrib.signals.regression_utils import (
     rolling_elastic_net,
     rolling_lasso_regression,
 )
 from msm_portfolios.data_nodes import ASSET_IDENTIFIER, SignalWeights
-from msm_portfolios.configuration import AssetsConfiguration, PortfolioConfigBaseModel
+from msm_portfolios.configuration import PortfolioConfigBaseModel
+from msm_portfolios.enums import PriceTypeNames
 from msm_portfolios.utils import TIMEDELTA
 
-if TYPE_CHECKING:
-    from mainsequence.meta_tables import APIDataNode, DataNode
+from mainsequence.meta_tables import APIDataNode, DataNode
 
 
 class TrackingStrategy(Enum):
@@ -33,12 +29,15 @@ class TrackingStrategyConfiguration(PortfolioConfigBaseModel):
 
 
 class ETFReplicatorConfig(PortfolioConfigBaseModel):
-    signal_assets_configuration: AssetsConfiguration
+    asset_list: list[Any]
+    price_source_instance: DataNode | APIDataNode
+    etf_price_source_instance: DataNode | APIDataNode
     etf_ticker: str
     tracking_strategy_configuration: TrackingStrategyConfiguration
     etf_asset: Any | None = None
     in_window: int = 60
     tracking_strategy: TrackingStrategy = TrackingStrategy.LASSO
+    price_column: PriceTypeNames = PriceTypeNames.CLOSE
 
 
 class ETFReplicator(SignalWeights):
@@ -47,10 +46,6 @@ class ETFReplicator(SignalWeights):
         if not isinstance(self.signal_configuration, ETFReplicatorConfig):
             raise TypeError("ETFReplicator requires ETFReplicatorConfig as signal_configuration.")
         return self.signal_configuration
-
-    @property
-    def assets_configuration(self) -> AssetsConfiguration:
-        return self.replicator_config.signal_assets_configuration
 
     @property
     def in_window(self) -> int:
@@ -69,23 +64,16 @@ class ETFReplicator(SignalWeights):
         return self.replicator_config.tracking_strategy_configuration
 
     @property
-    def bars_ts(self):
-        bars_ts = getattr(self, "_bars_ts", None)
-        if bars_ts is None:
-            self._bars_ts = get_interpolated_prices_timeseries(
-                copy.deepcopy(self.assets_configuration)
-            )
-        return self._bars_ts
+    def price_column(self) -> PriceTypeNames:
+        return self.replicator_config.price_column
 
     @property
-    def etf_bars_ts(self):
-        etf_bars_ts = getattr(self, "_etf_bars_ts", None)
-        if etf_bars_ts is None:
-            etf_assets_configuration = copy.deepcopy(self.assets_configuration)
-            etf_assets_configuration.assets_category_unique_id = None
-            etf_assets_configuration.asset_list = [self._require_etf_asset()]
-            self._etf_bars_ts = get_interpolated_prices_timeseries(etf_assets_configuration)
-        return self._etf_bars_ts
+    def price_source(self):
+        return self.replicator_config.price_source_instance
+
+    @property
+    def etf_price_source(self):
+        return self.replicator_config.etf_price_source_instance
 
     def _require_etf_asset(self) -> Any:
         etf_asset = getattr(self, "etf_asset", None) or self.replicator_config.etf_asset
@@ -98,14 +86,14 @@ class ETFReplicator(SignalWeights):
         return etf_asset
 
     def get_asset_list(self) -> None | list:
-        self.price_assets = self.assets_configuration.get_asset_list()
+        self.price_assets = self.replicator_config.asset_list
         self.etf_asset = self._require_etf_asset()
         return self.price_assets + [self.etf_asset]
 
     def dependencies(self) -> dict[str, DataNode | APIDataNode]:
         return {
-            "bars_ts": self.bars_ts,
-            "etf_bars_ts": self.etf_bars_ts,
+            "price_source": self.price_source,
+            "etf_price_source": self.etf_price_source,
         }
 
     def get_explanation(self):
@@ -118,7 +106,7 @@ class ETFReplicator(SignalWeights):
         return info
 
     def maximum_forward_fill(self):
-        freq = self.bars_ts.bar_frequency_id
+        freq = self.price_source.bar_frequency_id
         return pd.Timedelta(freq) - TIMEDELTA
 
     def get_tracking_weights(self, prices: pd.DataFrame) -> pd.DataFrame:
@@ -149,6 +137,8 @@ class ETFReplicator(SignalWeights):
         return betas
 
     def _calculate_signal_weights(self) -> pd.DataFrame:
+        self.price_assets = getattr(self, "price_assets", None) or self.replicator_config.asset_list
+        self.etf_asset = getattr(self, "etf_asset", None) or self._require_etf_asset()
         if self.update_statistics.max_time_index_value:
             prices_start_date = self.update_statistics.max_time_index_value - pd.Timedelta(
                 days=self.in_window
@@ -156,7 +146,7 @@ class ETFReplicator(SignalWeights):
         else:
             prices_start_date = self.OFFSET_START - pd.Timedelta(days=self.in_window)
 
-        prices = self.bars_ts.get_df_between_dates(
+        prices = self.price_source.get_df_between_dates(
             start_date=prices_start_date,
             end_date=None,
             great_or_equal=True,
@@ -165,7 +155,7 @@ class ETFReplicator(SignalWeights):
                 ASSET_IDENTIFIER: [asset_unique_identifier(a) for a in self.price_assets]
             },
         )
-        etf_prices = self.etf_bars_ts.get_df_between_dates(
+        etf_prices = self.etf_price_source.get_df_between_dates(
             start_date=prices_start_date,
             end_date=None,
             great_or_equal=True,
@@ -177,7 +167,7 @@ class ETFReplicator(SignalWeights):
         prices = prices.reset_index().pivot_table(
             index="time_index",
             columns=ASSET_IDENTIFIER,
-            values=self.assets_configuration.price_type.value,
+            values=self.price_column.value,
         )
 
         if prices.shape[0] < self.in_window:

@@ -12,6 +12,7 @@ from pydantic import (
     field_serializer,
 )
 
+from mainsequence.meta_tables import APIDataNode, DataNode
 from msm_portfolios.asset_scope import require_asset_category_scope
 from msm_portfolios.data_nodes import (
     REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS,
@@ -26,6 +27,47 @@ from msm_portfolios.rebalance_strategy import (
 from msm_portfolios.utils import get_vfb_logger
 
 logger = get_vfb_logger()
+
+
+def canonical_price_source_configuration(
+    price_source: DataNode | APIDataNode,
+) -> dict[str, Any]:
+    """Return the canonical hash payload for a portfolio price dependency."""
+
+    storage_table = getattr(price_source, "storage_table", None)
+    storage_table_payload: dict[str, Any] = {}
+    if storage_table is not None:
+        if isinstance(storage_table, type):
+            storage_table_payload["storage_table_class_import_path"] = _class_import_path(
+                storage_table
+            )
+        metatable_identifier = getattr(storage_table, "metatable_identifier", None)
+        if callable(metatable_identifier):
+            storage_table_payload["metatable_identifier"] = metatable_identifier()
+        table = getattr(storage_table, "__table__", None)
+        table_name = getattr(table, "name", None)
+        if table_name not in (None, ""):
+            storage_table_payload["physical_table_name"] = str(table_name)
+
+    price_source_storage_hash = getattr(price_source, "storage_hash", None)
+    payload = {
+        "price_source_class_import_path": _class_import_path(price_source.__class__),
+        "price_source_storage_hash": None
+        if price_source_storage_hash in (None, "")
+        else str(price_source_storage_hash),
+        "price_source_storage_table": storage_table_payload,
+    }
+    return payload
+
+
+@build_operations.serialize_argument.register(DataNode)
+def _serialize_data_node_price_source(value: DataNode) -> dict[str, Any]:
+    return canonical_price_source_configuration(value)
+
+
+@build_operations.serialize_argument.register(APIDataNode)
+def _serialize_api_data_node_price_source(value: APIDataNode) -> dict[str, Any]:
+    return canonical_price_source_configuration(value)
 
 
 def canonical_rebalance_strategy_configuration(
@@ -311,6 +353,29 @@ class PortfolioExecutionConfiguration(PortfolioConfigBaseModel):
     )
 
 
+class PriceAlignmentPolicy(PortfolioConfigBaseModel):
+    """Portfolio-local price alignment behavior for consumed price sources."""
+
+    forward_fill_to_now: bool = Field(
+        default=False,
+        description=(
+            "If True, portfolio-local price alignment extends the rebalance index to now "
+            "and forward-fills the consumed price source for calculation only."
+        ),
+        examples=[False, True],
+    )
+    fail_on_missing_prices: bool = Field(
+        default=False,
+        description=(
+            "If True, portfolio calculation fails when required signal assets have no "
+            "usable price observations in the consumed price source. If False, the "
+            "portfolio logs diagnostics and continues when the downstream rebalance "
+            "calculation can still produce a usable frame."
+        ),
+        examples=[False, True],
+    )
+
+
 class FrontEndDetails(PortfolioConfigBaseModel):
     """
     Optional descriptive metadata intended for UI/front-end surfaces.
@@ -389,39 +454,49 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
     Full build configuration for a Portfolios portfolio.
 
     This section defines the *behavior* of the portfolio build pipeline:
-    - which assets/prices are used
+    - which explicit price source is consumed
     - how signal weights are generated
     - how rebalancing is applied
     - what fee model to apply
     - what frequency the portfolio series is produced at
 
     Attributes:
-        assets_configuration:
-            Asset universe + price configuration used by the portfolio.
+        price_source_instance:
+            Explicit DataNode/APIDataNode price dependency consumed by the portfolio.
+        price_column:
+            Price column from the consumed price source used for valuation.
+        price_alignment_policy:
+            Portfolio-local alignment behavior for the consumed price frame.
         portfolio_prices_frequency:
             Portfolio resampling/valuation frequency (e.g. "1d", "15m").
-            Often matches `prices_configuration.upsample_frequency_id`.
         execution_configuration:
             Fee/execution model.
         backtesting_weights_configuration:
             The injected signal + rebalance strategies.
     """
 
-    assets_configuration: AssetsConfiguration = Field(
-        ...,
-        description="Asset universe definition + price configuration used by the portfolio.",
-        examples=[
-            {
-                "assets_category_unique_id": "crypto",
-                "price_type": "close",
-                "prices_configuration": {
-                    "upsample_frequency_id": "1d",
-                    "intraday_bar_interpolation_rule": "ffill",
-                    "source_time_index_meta_table_uid": "00000000-0000-0000-0000-000000000000",
-                    "forward_fill_to_now": False,
-                },
-            }
-        ],
+    price_source_instance: Annotated[
+        DataNode | APIDataNode,
+        Field(
+            description=(
+                "Explicit price source DataNode or APIDataNode consumed by the portfolio. "
+                "Persistent interpolation, if needed, must be prepared upstream and "
+                "passed here as a normal dependency."
+            ),
+            examples=[{"strategy": "InterpolatedPrices"}],
+        ),
+        WithJsonSchema({"type": "object"}),
+    ]
+
+    price_column: PriceTypeNames = Field(
+        default=PriceTypeNames.CLOSE,
+        description="Which price column should be used for portfolio valuation and returns.",
+        examples=["close", "open", "vwap"],
+    )
+
+    price_alignment_policy: PriceAlignmentPolicy = Field(
+        default_factory=PriceAlignmentPolicy,
+        description="Portfolio-local policy for aligning consumed prices to the rebalance index.",
     )
 
     portfolio_prices_frequency: str | None = Field(
@@ -444,16 +519,28 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
         description="Injected signal and rebalance strategy instances used to build the portfolio.",
     )
 
+    @field_serializer(
+        "price_source_instance",
+        when_used="json",
+        return_type=dict[str, Any],
+    )
+    def ser_price_source(self, v: DataNode | APIDataNode) -> dict[str, Any]:
+        """Serialize the explicit price dependency identity, not backend update rows."""
+        return canonical_price_source_configuration(v)
+
+    @field_serializer(
+        "price_alignment_policy",
+        when_used="json",
+        return_type=dict[str, Any],
+    )
+    def ser_price_alignment_policy(self, v: PriceAlignmentPolicy) -> dict[str, Any]:
+        return v.model_dump()
+
     def model_dump(self, **kwargs):
         """
-        Preserve your existing behavior: explicitly dump nested configs.
-
-        (Pydantic already does this, but keeping your override maintains backward compatibility
-        if downstream code expects this exact structure.)
+        Preserve explicit nested strategy dumping for downstream config consumers.
         """
-        serialized_asset_config = self.assets_configuration.model_dump(**kwargs)
         data = super().model_dump(**kwargs)
-        data["assets_configuration"] = serialized_asset_config
         data["backtesting_weights_configuration"] = (
             self.backtesting_weights_configuration.model_dump(**kwargs)
         )

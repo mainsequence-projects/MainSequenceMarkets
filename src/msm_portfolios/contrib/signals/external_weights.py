@@ -8,16 +8,15 @@ from mainsequence.client import Artifact
 from msm_portfolios.asset_scope import asset_field
 from msm_portfolios.data_nodes import ASSET_IDENTIFIER, SignalWeights
 from msm_portfolios.configuration import (
-    AssetsConfiguration,
     PortfolioConfigBaseModel,
 )
 from msm_portfolios.utils import TIMEDELTA
 
 
 class ExternalWeightsConfig(PortfolioConfigBaseModel):
-    signal_assets_configuration: AssetsConfiguration
     artifact_name: str
     bucket_name: str
+    asset_list: list[object] | None = None
 
 
 class ExternalWeights(SignalWeights):
@@ -28,10 +27,6 @@ class ExternalWeights(SignalWeights):
                 "ExternalWeights requires ExternalWeightsConfig as signal_configuration."
             )
         return self.signal_configuration
-
-    @property
-    def assets_configuration(self) -> AssetsConfiguration:
-        return self.external_weights_config.signal_assets_configuration
 
     @property
     def artifact_name(self) -> str:
@@ -52,7 +47,7 @@ class ExternalWeights(SignalWeights):
         return explanation
 
     def get_asset_list(self) -> None | list:
-        return self.assets_configuration.get_asset_list()
+        return self.external_weights_config.asset_list
 
     def _calculate_signal_weights(self):
         source_artifact = Artifact.get(bucket__name=self.bucket_name, name=self.artifact_name)
