@@ -1,10 +1,60 @@
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from apps.v1.main import app
+
+
+def _asset_category_detail_payload(category_uid: uuid.UUID) -> dict[str, object]:
+    return {
+        "uid": str(category_uid),
+        "title": "Crypto Core",
+        "selected_category": {
+            "text": "Crypto Core",
+            "sub_text": "crypto_core",
+        },
+        "details": [
+            {
+                "name": "display_name",
+                "label": "Display name",
+                "value_type": "text",
+                "value": "Crypto Core",
+            },
+            {
+                "name": "unique_identifier",
+                "label": "Identifier",
+                "value_type": "text",
+                "value": "crypto_core",
+            },
+            {
+                "name": "description",
+                "label": "Description",
+                "value_type": "text",
+                "value": "Core digital assets",
+            },
+            {
+                "name": "number_of_assets",
+                "label": "Assets",
+                "value_type": "number",
+                "value": 2,
+            },
+        ],
+        "actions": {
+            "can_edit": True,
+            "can_delete": True,
+            "update_endpoint": f"/api/v1/asset-category/{category_uid}/",
+            "delete_endpoint": f"/api/v1/asset-category/{category_uid}/",
+        },
+        "assets_list": {
+            "list_endpoint": "/api/v1/asset/",
+            "query_endpoint": "/api/v1/asset/query/",
+            "response_format": "frontend_list",
+            "default_filters": {"categories__uid": str(category_uid)},
+        },
+    }
 
 
 def test_get_asset_categories_returns_core_rows(monkeypatch) -> None:
@@ -61,17 +111,11 @@ def test_get_asset_categories_rejects_unknown_response_format() -> None:
     assert "frontend_list" in response.json()["detail"]
 
 
-def test_get_asset_category_detail_returns_core_row(monkeypatch) -> None:
+def test_get_asset_category_detail_returns_membership_detail(monkeypatch) -> None:
     category_uid = uuid.uuid4()
     monkeypatch.setattr(
         "apps.v1.routers.asset_categories.get_asset_category_detail",
-        lambda uid: {
-            "uid": str(category_uid),
-            "unique_identifier": "crypto_core",
-            "display_name": "Crypto Core",
-            "description": "Core digital assets",
-            "metadata_json": None,
-        },
+        lambda uid: _asset_category_detail_payload(category_uid),
     )
 
     client = TestClient(app)
@@ -81,13 +125,51 @@ def test_get_asset_category_detail_returns_core_row(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "uid": str(category_uid),
-        "unique_identifier": "crypto_core",
-        "display_name": "Crypto Core",
-        "description": "Core digital assets",
-        "metadata_json": None,
+    payload = response.json()
+    assert payload["uid"] == str(category_uid)
+    assert payload["selected_category"] == {
+        "text": "Crypto Core",
+        "sub_text": "crypto_core",
     }
+    assert payload["details"][-1] == {
+        "name": "number_of_assets",
+        "label": "Assets",
+        "value_type": "number",
+        "value": 2,
+    }
+    assert payload["assets_list"]["default_filters"] == {
+        "categories__uid": str(category_uid),
+    }
+
+
+def test_asset_category_detail_service_uses_membership_frontend_detail(monkeypatch) -> None:
+    from apps.v1.services import asset_categories
+
+    category_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_detail(context, *, uid: str):
+        captured["context"] = context
+        captured["uid"] = uid
+        return _asset_category_detail_payload(category_uid)
+
+    monkeypatch.setattr(
+        asset_categories,
+        "_get_runtime",
+        lambda: SimpleNamespace(context="runtime-context"),
+    )
+    monkeypatch.setattr(
+        asset_categories,
+        "_get_asset_category_frontend_detail",
+        fake_detail,
+    )
+
+    detail = asset_categories.get_asset_category_detail(uid=str(category_uid))
+
+    assert captured == {"context": "runtime-context", "uid": str(category_uid)}
+    assert detail is not None
+    assert detail.uid == category_uid
+    assert detail.assets_list.default_filters == {"categories__uid": str(category_uid)}
 
 
 def test_get_asset_category_detail_returns_404_when_missing(monkeypatch) -> None:

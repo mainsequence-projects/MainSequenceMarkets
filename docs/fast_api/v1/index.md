@@ -256,7 +256,9 @@ Current local-dev behavior:
   - returns the library `msm.api.assets.AssetCategory` contract
 - `GET /api/v1/asset-category/{uid}/`
   - supports `response_format=frontend_detail`
-  - returns one library `msm.api.assets.AssetCategory` row
+  - returns `AssetCategoryDetailResponse` with category display fields,
+    membership-backed `number_of_assets`, and an `assets_list` configuration
+    whose default filter is `categories__uid=<category_uid>`
 - `POST /api/v1/asset-category/`
   - creates a category
   - derives `unique_identifier` from `display_name` when omitted
@@ -291,7 +293,7 @@ Current local-dev behavior:
 
 - `GET /api/v1/portfolio/`
   - supports `response_format=frontend_list`
-  - supports `search`, `calendar_uid`, `calendar_name`, `limit`, and `offset`
+  - supports `search`, `calendar_uid`, `limit`, and `offset`
   - returns `PaginatedResponse[Portfolio]` using the library
     `msm.api.portfolios.Portfolio` contract
 - `GET /api/v1/portfolio/{uid}/`
@@ -302,6 +304,9 @@ Current local-dev behavior:
   - returns the reusable `FrontEndDetailSummary` response for portfolio detail
     pages
   - uses the portfolio `uid` string as `entity.id`
+  - includes `portfolio_weights_data_node_uid`,
+    `signal_weights_data_node_uid`, and `portfolio_data_node_uid` as inline
+    fields and under `extensions.pointers`
 - `GET /api/v1/portfolio/{uid}/weights/`
   - supports `order`, `limit=1`, `include_asset_detail`, and exact
     `weights_date`

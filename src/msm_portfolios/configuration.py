@@ -357,7 +357,7 @@ class FrontEndDetails(PortfolioConfigBaseModel):
     Attributes:
         description: Required human-readable description of the portfolio.
         signal_name: Optional display name for the signal strategy.
-        signal_description: Optional description of the signal strategy.
+        signal_description: Optional plain-text or Markdown description of the signal strategy.
         rebalance_strategy_name: Optional display name for the rebalance strategy.
         rebalance_strategy_description: Optional description of the rebalance strategy.
     """
@@ -377,7 +377,10 @@ class FrontEndDetails(PortfolioConfigBaseModel):
 
     signal_description: str | None = Field(
         default=None,
-        description="Optional longer description of the signal strategy for UI.",
+        description=(
+            "Optional longer description of the signal strategy for UI. "
+            "Use plain text or Markdown; HTML tags are not part of the rendering contract."
+        ),
         examples=["Selects the top N assets by market cap and normalizes into weights."],
     )
 

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, HTTPException, Query, Request, status
 
 from apps.v1.schemas.asset_categories import (
     AssetCategory,
+    AssetCategoryDetailResponse,
     BulkDeleteAssetCategoriesRequest,
     BulkDeleteAssetCategoriesResponse,
     CreateAssetCategoryRequest,
@@ -124,11 +125,11 @@ def post_asset_category_bulk_delete(
 
 @router.get(
     "/{uid}/",
-    response_model=AssetCategory,
+    response_model=AssetCategoryDetailResponse,
     summary="Get asset category detail",
     description=(
-        "Return one core library asset category row. The `response_format` query "
-        "parameter is accepted for compatibility."
+        "Return one asset category detail payload, including membership-backed "
+        "asset count and the filtered asset-list configuration for the category."
     ),
     operation_id="getAssetCategoryDetail",
     responses={
@@ -150,7 +151,7 @@ def get_asset_category(
             description="Supported value for this endpoint is `frontend_detail`.",
         ),
     ] = "frontend_detail",
-) -> AssetCategory:
+) -> AssetCategoryDetailResponse:
     if response_format != "frontend_detail":
         raise HTTPException(
             status_code=400,

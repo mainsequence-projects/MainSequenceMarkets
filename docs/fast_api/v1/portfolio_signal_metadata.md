@@ -6,6 +6,9 @@ their associated `SignalWeightsStorage` cleanup operations.
 These routes manage signal metadata only. They do not run signal DataNodes or
 portfolio calculation jobs.
 
+`signal_description` is a plain-text or Markdown string. Do not send HTML tags;
+the API does not define HTML rendering semantics for signal descriptions.
+
 ## Runtime Sources
 
 - Signal metadata uses `msm_portfolios.api.market_metadata.SignalMetadata`.
@@ -143,4 +146,3 @@ Response:
 ```
 
 Missing metadata rows return 404. Protected delete conflicts return 409.
-

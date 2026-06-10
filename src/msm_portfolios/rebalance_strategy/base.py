@@ -36,10 +36,7 @@ class RebalanceStrategyBase(BaseModel):
         return self._calendar_obj
 
     def get_explanation(self):
-        info = f"""
-        <p>{self.__class__.__name__}: Rebalance strategy class.</p>
-        """
-        return info
+        return f"{self.__class__.__name__}: Rebalance strategy class."
 
     def calculate_rebalance_dates(
         self,

@@ -98,12 +98,13 @@ class ETFReplicator(SignalWeights):
 
     def get_explanation(self):
         etf_asset = self._require_etf_asset()
-        info = f"""
-        <p>{self.__class__.__name__}: Signal aims to replicate {asset_field(etf_asset, "ticker", self.etf_ticker)} using a data-driven approach.
-        This strategy will use {self.tracking_strategy} as approximation function with parameters </p>
-        <code>{self.tracking_strategy_configuration}</code>
-        """
-        return info
+        return (
+            f"{self.__class__.__name__}: Signal aims to replicate "
+            f"{asset_field(etf_asset, 'ticker', self.etf_ticker)} using a "
+            "data-driven approach.\n\n"
+            f"Uses `{self.tracking_strategy}` as approximation function with "
+            f"parameters: `{self.tracking_strategy_configuration}`."
+        )
 
     def maximum_forward_fill(self):
         freq = self.price_source.bar_frequency_id

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Mapping
 
 from apps.v1.schemas.command_center import TabularFrameResponse
 from apps.v1.schemas.common import FrontEndDetailSummary
@@ -14,11 +15,14 @@ from apps.v1.schemas.portfolios import (
 )
 
 
+class PortfolioDataIntegrityError(ValueError):
+    """Raised when stored portfolio rows violate the current portfolio contract."""
+
+
 def list_portfolios(
     *,
     search: str = "",
     calendar_uid: str | None = None,
-    calendar_name: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> dict[str, object]:
@@ -27,13 +31,12 @@ def list_portfolios(
         runtime.context,
         search=search,
         calendar_uid=calendar_uid,
-        calendar_name=calendar_name,
         limit=limit,
         offset=offset,
     )
     return {
         "count": int(response["count"]),
-        "results": [Portfolio.model_validate(row) for row in response["results"]],
+        "results": [_validate_portfolio_row(row) for row in response["results"]],
     }
 
 
@@ -42,6 +45,8 @@ def get_portfolio_detail(*, uid: str) -> PortfolioDetailResponse | None:
     response = _get_portfolio_detail_response(runtime.context, uid=uid)
     if response is None:
         return None
+    if isinstance(response, Mapping) and "portfolio" in response:
+        _validate_portfolio_row(response["portfolio"])
     return PortfolioDetailResponse.model_validate(response)
 
 
@@ -216,3 +221,24 @@ def _bulk_delete_portfolio_records(context, **kwargs):
     from msm_portfolios.services import bulk_delete_portfolio_records
 
     return bulk_delete_portfolio_records(context, **kwargs)
+
+
+def _validate_portfolio_row(row: object) -> Portfolio:
+    if isinstance(row, Mapping):
+        calendar_uid = row.get("calendar_uid")
+        uid = row.get("uid")
+        unique_identifier = row.get("unique_identifier")
+    else:
+        calendar_uid = getattr(row, "calendar_uid", None)
+        uid = getattr(row, "uid", None)
+        unique_identifier = getattr(row, "unique_identifier", None)
+
+    if calendar_uid in (None, ""):
+        row_label = unique_identifier or uid or "<unknown>"
+        raise PortfolioDataIntegrityError(
+            "Stored Portfolio row "
+            f"{row_label!r} has calendar_uid=NULL, which violates the current "
+            "PortfolioTable contract. Backfill calendar_uid to a persisted "
+            "CalendarTable.uid before using the portfolio API."
+        )
+    return Portfolio.model_validate(row)

@@ -25,8 +25,8 @@ Core `msm` already has a `CalendarTable`, but it stores a named JSON payload:
 +-----------------------------+
 ```
 
-Portfolio code does not use this table as a relational dependency. Portfolio
-identity stores a loose string:
+Older portfolio code did not use this table as a relational dependency.
+Portfolio identity stored a loose string:
 
 ```text
 PortfolioTable.calendar_name
@@ -556,7 +556,8 @@ src/msm_pricing/calendars/instrument_schedule.py
 ### Stage 4: Portfolio Integration
 
 - [x] Add `PortfolioTable.calendar_uid` FK to `CalendarTable.uid`.
-- [x] Deprecate `PortfolioTable.calendar_name` as durable relationship state.
+- [x] Remove `PortfolioTable.calendar_name`; `calendar_uid` is the only
+  portfolio calendar relationship.
 - [x] Update `Portfolio` row API payloads to accept `calendar_uid` and/or a
   `calendar_identifier` resolver.
 - [x] Update rebalance strategy code to consume persisted calendar schedules

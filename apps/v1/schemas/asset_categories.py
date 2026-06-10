@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -74,6 +75,51 @@ class PatchAssetCategoryRequest(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
+
+class AssetCategoryDetailSelectedCategory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    sub_text: str
+
+
+class AssetCategoryDetailField(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    label: str
+    value_type: str
+    value: str | int | float | bool | None
+
+
+class AssetCategoryDetailActions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    can_edit: bool
+    can_delete: bool
+    update_endpoint: str
+    delete_endpoint: str
+
+
+class AssetCategoryDetailAssetsList(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    list_endpoint: str
+    query_endpoint: str
+    response_format: str
+    default_filters: dict[str, Any]
+
+
+class AssetCategoryDetailResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    uid: UUID
+    title: str
+    selected_category: AssetCategoryDetailSelectedCategory
+    details: list[AssetCategoryDetailField]
+    actions: AssetCategoryDetailActions
+    assets_list: AssetCategoryDetailAssetsList
 
 
 class BulkDeleteAssetCategoriesRequest(BaseModel):

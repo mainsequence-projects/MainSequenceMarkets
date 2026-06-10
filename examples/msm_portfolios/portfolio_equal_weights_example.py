@@ -404,7 +404,6 @@ def build_equal_weight_portfolio(
     portfolio = Portfolio.upsert(
         unique_identifier=PORTFOLIO_UNIQUE_IDENTIFIER,
         calendar_uid=portfolio_calendar.uid,
-        calendar_name=portfolio_calendar.unique_identifier,
     )
     portfolio_resolver = ExamplePortfolioResolver(
         portfolio=portfolio,

@@ -27,7 +27,13 @@ class SignalMetadataCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     signal_uid: str = Field(min_length=1, max_length=255)
-    signal_description: str | None = None
+    signal_description: str | None = Field(
+        default=None,
+        description=(
+            "Plain-text or Markdown signal description. HTML tags are not part "
+            "of the rendering contract."
+        ),
+    )
 
 
 class SignalMetadataUpsert(SignalMetadataCreate):
@@ -37,7 +43,13 @@ class SignalMetadataUpsert(SignalMetadataCreate):
 class SignalMetadataUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    signal_description: str | None = None
+    signal_description: str | None = Field(
+        default=None,
+        description=(
+            "Plain-text or Markdown signal description. HTML tags are not part "
+            "of the rendering contract."
+        ),
+    )
 
 
 class RebalanceStrategyMetadata(MarketsMetaTableRow):

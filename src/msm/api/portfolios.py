@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from msm.api.base import MarketsMetaTableRow
 from msm.models import CalendarTable, IndexTable, IndexTypeTable, PortfolioTable
@@ -22,8 +22,7 @@ class Portfolio(MarketsMetaTableRow):
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
 
     unique_identifier: str
-    calendar_name: str | None = None
-    calendar_uid: uuid.UUID | None = None
+    calendar_uid: uuid.UUID
     published_index_uid: uuid.UUID | None = None
     portfolio_weights_data_node_uid: uuid.UUID | None = None
     signal_weights_data_node_uid: uuid.UUID | None = None
@@ -35,8 +34,7 @@ class PortfolioCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     unique_identifier: str = Field(min_length=1, max_length=255)
-    calendar_name: str | None = Field(default=None, max_length=255)
-    calendar_uid: uuid.UUID | str | None = None
+    calendar_uid: uuid.UUID | str
     published_index_uid: uuid.UUID | str | None = None
     portfolio_weights_data_node_uid: uuid.UUID | str | None = None
     signal_weights_data_node_uid: uuid.UUID | str | None = None
@@ -51,13 +49,19 @@ class PortfolioUpsert(PortfolioCreate):
 class PortfolioUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    calendar_name: str | None = Field(default=None, max_length=255)
     calendar_uid: uuid.UUID | str | None = None
     published_index_uid: uuid.UUID | str | None = None
     portfolio_weights_data_node_uid: uuid.UUID | str | None = None
     signal_weights_data_node_uid: uuid.UUID | str | None = None
     portfolio_data_node_uid: uuid.UUID | str | None = None
     backtest_table_price_column_name: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_null_calendar_uid(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "calendar_uid" in value and value["calendar_uid"] is None:
+            raise ValueError("calendar_uid cannot be null for Portfolio rows.")
+        return value
 
 
 __all__ = [

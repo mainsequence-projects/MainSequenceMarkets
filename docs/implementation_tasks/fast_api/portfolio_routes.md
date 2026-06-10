@@ -57,7 +57,6 @@ Fields exposed by the current public row model:
 
 - `uid`
 - `unique_identifier`
-- `calendar_name`
 - `calendar_uid`
 - `published_index_uid`
 - `portfolio_weights_data_node_uid`
@@ -237,7 +236,6 @@ Query parameters:
 - `response_format=frontend_list`
 - `search`
 - `calendar_uid`
-- `calendar_name`
 - `limit`
 - `offset`
 
@@ -258,8 +256,7 @@ Example:
     {
       "uid": "portfolio-uid",
       "unique_identifier": "example-sleeve",
-      "calendar_name": "CRYPTO_24_7",
-      "calendar_uid": null,
+      "calendar_uid": "00000000-0000-0000-0000-000000000001",
       "published_index_uid": "index-uid",
       "portfolio_weights_data_node_uid": null,
       "signal_weights_data_node_uid": null,
@@ -297,8 +294,7 @@ Example:
   "portfolio": {
     "uid": "portfolio-uid",
     "unique_identifier": "example-sleeve",
-    "calendar_name": "CRYPTO_24_7",
-    "calendar_uid": null,
+    "calendar_uid": "00000000-0000-0000-0000-000000000001",
     "published_index_uid": "index-uid",
     "portfolio_weights_data_node_uid": null,
     "signal_weights_data_node_uid": null,
@@ -351,7 +347,7 @@ Suggested fields:
 - title: `Portfolio.unique_identifier`
 - inline fields: `uid`, `unique_identifier`, `calendar_uid`,
   `published_index_uid`
-- highlight fields: `calendar_name`
+- highlight fields: none required by the portfolio identity contract
 - stats: latest weights count when cheap to resolve, otherwise omit or return
   no stats rather than issuing an expensive read
 - extensions: detail and latest-weights endpoint links
@@ -579,7 +575,7 @@ If some rows are protected:
 - [x] Add or reuse a source-level pagination helper that returns `count` and
   page rows for row APIs backed by `MarketsMetaTableRow`.
 - [x] Extend portfolio search/list support to accept `limit`, `offset`,
-  `search`, `calendar_uid`, and `calendar_name`.
+  `search`, and `calendar_uid`.
 - [x] Ensure portfolio list count uses the same filters as portfolio list rows.
 - [x] Add a reusable source helper that resolves one portfolio detail by `uid`
   and joins optional metadata by `unique_identifier`.

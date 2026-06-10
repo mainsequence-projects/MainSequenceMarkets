@@ -23,7 +23,7 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "Portfolio"
     __metatable_description__ = (
         "Portfolio identity and configuration table keyed by unique_identifier. "
-        "Stores optional calendar and published index linkage plus DataNode "
+        "Stores required calendar linkage, optional published index linkage, and DataNode "
         "pointers used to publish portfolio weights, signals, and values."
     )
     __table_args__ = markets_table_args(
@@ -32,10 +32,6 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
             None,
             "unique_identifier",
             unique=True,
-        ),
-        Index(
-            None,
-            "calendar_name",
         ),
         Index(
             None,
@@ -64,21 +60,13 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Stable business identifier used for idempotent upserts, lookup, and joins.",
         },
     )
-    calendar_name: Mapped[str | None] = mapped_column(
-        String(255),
-        nullable=True,
-        info={
-            "label": "Calendar Name",
-            "description": "Deprecated compatibility calendar name; durable relationships should use calendar_uid.",
-        },
-    )
-    calendar_uid: Mapped[uuid.UUID | None] = mapped_column(
+    calendar_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
             f"{CalendarTable.__table__.fullname}.uid",
-            ondelete="SET NULL",
+            ondelete="RESTRICT",
         ),
-        nullable=True,
+        nullable=False,
         info={
             "label": "Calendar UID",
             "description": "CalendarTable.uid for the persisted calendar used to schedule this portfolio.",

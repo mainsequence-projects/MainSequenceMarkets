@@ -20,7 +20,6 @@ from msm.repositories.crud import (
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
 from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
-from msm_portfolios.data_nodes.signals.weights import compute_signal_uid
 from msm_portfolios.models import PortfolioMetadataTable, SignalMetadataTable
 
 DEFAULT_PORTFOLIO_PAGE_SIZE = 50
@@ -40,7 +39,6 @@ def list_portfolio_rows_response(
     *,
     search: str = "",
     calendar_uid: str | uuid.UUID | None = None,
-    calendar_name: str | None = None,
     limit: int = DEFAULT_PORTFOLIO_PAGE_SIZE,
     offset: int = 0,
 ) -> dict[str, Any]:
@@ -49,7 +47,6 @@ def list_portfolio_rows_response(
     filters = _portfolio_filter_args(
         search=search,
         calendar_uid=calendar_uid,
-        calendar_name=calendar_name,
     )
     rows = _operation_result_rows(
         _execute_portfolio_select(
@@ -162,16 +159,26 @@ def get_portfolio_frontend_detail_summary(
                 "value": _string_or_none(portfolio.get("published_index_uid")),
                 "kind": "code",
             },
-        ],
-        "highlight_fields": [
             {
-                "key": "calendar_name",
-                "label": "Calendar",
-                "value": _string_or_none(portfolio.get("calendar_name")),
-                "kind": "text",
-                "icon": "calendar",
+                "key": "portfolio_weights_data_node_uid",
+                "label": "Portfolio Weights Node",
+                "value": _string_or_none(portfolio.get("portfolio_weights_data_node_uid")),
+                "kind": "code",
+            },
+            {
+                "key": "signal_weights_data_node_uid",
+                "label": "Signal Weights Node",
+                "value": _string_or_none(portfolio.get("signal_weights_data_node_uid")),
+                "kind": "code",
+            },
+            {
+                "key": "portfolio_data_node_uid",
+                "label": "Portfolio Values Node",
+                "value": _string_or_none(portfolio.get("portfolio_data_node_uid")),
+                "kind": "code",
             },
         ],
+        "highlight_fields": [],
         "stats": [],
         "label_management": {
             "labels": [],
@@ -184,6 +191,17 @@ def get_portfolio_frontend_detail_summary(
             "detail_url": f"/api/v1/portfolio/{portfolio_uid}/",
             "latest_weights_url": f"/api/v1/portfolio/{portfolio_uid}/weights/",
             "delete_url": f"/api/v1/portfolio/{portfolio_uid}/",
+            "pointers": {
+                "portfolio_weights_data_node_uid": _string_or_none(
+                    portfolio.get("portfolio_weights_data_node_uid")
+                ),
+                "signal_weights_data_node_uid": _string_or_none(
+                    portfolio.get("signal_weights_data_node_uid")
+                ),
+                "portfolio_data_node_uid": _string_or_none(
+                    portfolio.get("portfolio_data_node_uid")
+                ),
+            },
         },
     }
 
@@ -341,7 +359,11 @@ def get_portfolio_signal_weights_frame_response(
     if data_node_uid is None:
         raise ValueError("Portfolio has no signal_weights_data_node_uid configured.")
 
-    signal_uid = _signal_uid_from_data_node_update(data_node_uid)
+    signal_uid = _resolve_portfolio_signal_uid(
+        context,
+        portfolio,
+        data_node_uid=data_node_uid,
+    )
     rows = _portfolio_signal_weight_rows(
         context,
         signal_uid=signal_uid,
@@ -848,12 +870,10 @@ def _portfolio_filter_args(
     *,
     search: str,
     calendar_uid: str | uuid.UUID | None,
-    calendar_name: str | None,
 ) -> dict[str, Any]:
     return {
         "search": search.strip(),
         "calendar_uid": None if calendar_uid in (None, "") else calendar_uid,
-        "calendar_name": _string_or_none(calendar_name),
     }
 
 
@@ -861,13 +881,10 @@ def _portfolio_select(
     *,
     search: str,
     calendar_uid: str | uuid.UUID | None,
-    calendar_name: str | None,
 ):
     statement = select(PortfolioTable)
     if calendar_uid is not None:
         statement = statement.where(PortfolioTable.calendar_uid == calendar_uid)
-    if calendar_name is not None:
-        statement = statement.where(PortfolioTable.calendar_name == calendar_name)
 
     normalized_search = search.strip().lower()
     if normalized_search:
@@ -876,7 +893,6 @@ def _portfolio_select(
             or_(
                 func.lower(cast(PortfolioTable.uid, String)).like(needle),
                 func.lower(PortfolioTable.unique_identifier).like(needle),
-                func.lower(PortfolioTable.calendar_name).like(needle),
                 func.lower(cast(PortfolioTable.calendar_uid, String)).like(needle),
                 func.lower(cast(PortfolioTable.published_index_uid, String)).like(needle),
             )
@@ -1058,40 +1074,110 @@ def _apply_time_range(
     return statement
 
 
-def _signal_uid_from_data_node_update(data_node_uid: str) -> str:
-    from mainsequence.client.metatables import DataNodeUpdate
+def _resolve_portfolio_signal_uid(
+    context: MarketsRepositoryContext,
+    portfolio: Mapping[str, Any],
+    *,
+    data_node_uid: str,
+) -> str:
+    signal_uid = _signal_uid_from_data_node_update_statistics_or_none(data_node_uid)
+    if signal_uid is not None:
+        return signal_uid
 
-    data_node_update = DataNodeUpdate.get(uid=data_node_uid)
-    build_configuration = getattr(data_node_update, "build_configuration", None)
-    if not isinstance(build_configuration, dict):
+    signal_uids = _persisted_signal_weight_uids(context)
+    if len(signal_uids) == 1:
+        return signal_uids[0]
+    if len(signal_uids) > 1:
         raise ValueError(
-            f"Signal weights DataNode {data_node_uid!r} does not expose build_configuration."
+            "Portfolio signal weights are ambiguous because runtime update statistics "
+            f"are empty for SignalWeights update {data_node_uid!r} and persisted "
+            f"SignalWeightsStorage contains multiple signal_uid values: "
+            f"{', '.join(signal_uids)}."
         )
-    return compute_signal_uid(
-        _signal_uid_payload_from_data_node_build_configuration(build_configuration)
+    raise ValueError(
+        "Portfolio signal weights cannot be resolved because SignalWeights update "
+        f"{data_node_uid!r} has no runtime signal_uid in update statistics and "
+        "SignalWeightsStorage has no persisted signal_uid rows."
     )
 
 
-def _signal_uid_payload_from_data_node_build_configuration(
-    build_configuration: Mapping[str, Any],
-) -> dict[str, Any]:
-    config = build_configuration.get("config")
-    if isinstance(config, Mapping):
-        signal_configuration = config.get("signal_configuration")
-        if signal_configuration is not None:
-            import_path = build_configuration.get("time_series_class_import_path")
-            return {
-                "time_series_class_import_path": _string_or_empty(import_path),
-                "config": signal_configuration,
-            }
-    signal_configuration = build_configuration.get("signal_configuration")
-    if signal_configuration is not None:
-        import_path = build_configuration.get("time_series_class_import_path")
-        return {
-            "time_series_class_import_path": _string_or_empty(import_path),
-            "config": signal_configuration,
+def _signal_uid_from_data_node_update_statistics_or_none(data_node_uid: str) -> str | None:
+    from mainsequence.client.metatables import DataNodeUpdate
+
+    data_node_update = DataNodeUpdate.get(uid=data_node_uid, include_relations_detail=True)
+    update_statistics = _data_node_update_statistics_payload(data_node_update)
+    signal_uids = _signal_uids_from_update_statistics(update_statistics)
+    if len(signal_uids) == 1:
+        return signal_uids[0]
+    if len(signal_uids) > 1:
+        raise ValueError(
+            "Portfolio signal weights are ambiguous because SignalWeights update "
+            f"{data_node_uid!r} has multiple runtime signal_uid values: "
+            f"{', '.join(signal_uids)}. The portfolio row only stores "
+            "signal_weights_data_node_uid, so the API cannot choose one signal "
+            "without an explicit first-class signal pointer."
+        )
+    return None
+
+
+def _persisted_signal_weight_uids(context: MarketsRepositoryContext) -> list[str]:
+    statement = (
+        select(SignalWeightsStorage.signal_uid)
+        .where(SignalWeightsStorage.signal_uid.is_not(None))
+        .distinct()
+        .order_by(SignalWeightsStorage.signal_uid.asc())
+    )
+    rows = _operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                statement,
+                context=context,
+                operation="select",
+                models=[SignalWeightsStorage],
+                access="read",
+            ),
+            context=context,
+        )
+    )
+    return sorted(
+        {
+            str(row.get("signal_uid"))
+            for row in rows
+            if row.get("signal_uid") not in (None, "")
         }
-    return dict(build_configuration)
+    )
+
+
+def _data_node_update_statistics_payload(data_node_update: Any) -> Mapping[str, Any] | None:
+    update_details = getattr(data_node_update, "update_details", None)
+    if isinstance(update_details, Mapping):
+        update_statistics = update_details.get("update_statistics")
+    else:
+        update_statistics = getattr(update_details, "update_statistics", None)
+    return update_statistics if isinstance(update_statistics, Mapping) else None
+
+
+def _signal_uids_from_update_statistics(
+    update_statistics: Mapping[str, Any] | None,
+) -> list[str]:
+    if update_statistics is None:
+        return []
+
+    multi_index_stats = update_statistics.get("multi_index_stats")
+    index_progress = update_statistics.get("index_progress")
+    if not isinstance(index_progress, Mapping) and isinstance(multi_index_stats, Mapping):
+        index_progress = multi_index_stats.get("index_progress")
+    if not isinstance(index_progress, Mapping):
+        return []
+
+    ignored_keys = {"_GLOBAL_", "global_index_progress", "index_min"}
+    return sorted(
+        {
+            str(signal_uid)
+            for signal_uid in index_progress
+            if signal_uid not in ignored_keys and str(signal_uid).strip()
+        }
+    )
 
 
 def _tabular_frame_response(
@@ -1236,7 +1322,6 @@ def _build_portfolio_row(row: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "uid": row.get("uid"),
         "unique_identifier": _string_or_empty(row.get("unique_identifier")),
-        "calendar_name": _string_or_none(row.get("calendar_name")),
         "calendar_uid": _string_or_none(row.get("calendar_uid")),
         "published_index_uid": _string_or_none(row.get("published_index_uid")),
         "portfolio_weights_data_node_uid": _string_or_none(

@@ -178,6 +178,95 @@ def test_list_asset_rows_searches_related_openfigi_ticker(monkeypatch) -> None:
     assert any(call.get("uids") == (asset_uid,) for call in captured_asset_calls)
 
 
+def test_list_asset_rows_fetches_category_members_by_uid(monkeypatch) -> None:
+    asset_uid = str(uuid.uuid4())
+    captured_asset_calls: list[dict[str, object]] = []
+
+    def fake_search_assets(context, **kwargs):
+        captured_asset_calls.append(dict(kwargs))
+        if kwargs.get("uids") == (asset_uid,):
+            return {
+                "rows": [
+                    {
+                        "uid": asset_uid,
+                        "unique_identifier": "BTC",
+                        "asset_type": "crypto",
+                    }
+                ]
+            }
+        return {"rows": []}
+
+    monkeypatch.setattr(asset_master_service, "service_search_assets", fake_search_assets)
+    monkeypatch.setattr(
+        asset_master_service,
+        "service_list_asset_category_memberships",
+        lambda context, **kwargs: {"rows": [{"asset_uid": asset_uid}]},
+    )
+    monkeypatch.setattr(
+        asset_master_service,
+        "service_search_openfigi_details",
+        lambda context, **kwargs: {"rows": []},
+    )
+
+    rows = asset_master_service.list_asset_rows(
+        object(),
+        category_uid="category-uid-1",
+        limit=25,
+        offset=0,
+    )
+
+    assert rows == [
+        {
+            "uid": asset_uid,
+            "unique_identifier": "BTC",
+            "asset_type": "crypto",
+        }
+    ]
+    assert captured_asset_calls == [{"uids": (asset_uid,), "limit": 100}]
+
+
+def test_list_asset_catalog_rows_fetches_category_members_by_uid(monkeypatch) -> None:
+    asset_uid = str(uuid.uuid4())
+    captured_asset_calls: list[dict[str, object]] = []
+
+    def fake_search_assets(context, **kwargs):
+        captured_asset_calls.append(dict(kwargs))
+        if kwargs.get("uids") == (asset_uid,):
+            return {
+                "rows": [
+                    {
+                        "uid": asset_uid,
+                        "unique_identifier": "BTC",
+                        "asset_type": "crypto",
+                    }
+                ]
+            }
+        return {"rows": []}
+
+    monkeypatch.setattr(asset_master_service, "service_search_assets", fake_search_assets)
+    monkeypatch.setattr(
+        asset_master_service,
+        "service_list_asset_category_memberships",
+        lambda context, **kwargs: {"rows": [{"asset_uid": asset_uid}]},
+    )
+    monkeypatch.setattr(
+        asset_master_service,
+        "service_search_openfigi_details",
+        lambda context, **kwargs: {"rows": []},
+    )
+
+    rows = asset_master_service.list_asset_catalog_rows(
+        object(),
+        category_uid="category-uid-1",
+        limit=25,
+        offset=0,
+    )
+
+    assert rows[0]["uid"] == asset_uid
+    assert rows[0]["unique_identifier"] == "BTC"
+    assert captured_asset_calls == [{"uids": (asset_uid,), "limit": 100}]
+
+
 def test_get_asset_returns_detail_with_current_snapshot(monkeypatch) -> None:
     asset_uid = uuid.uuid4()
     monkeypatch.setattr(

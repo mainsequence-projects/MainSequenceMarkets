@@ -77,7 +77,6 @@ calendar = Calendar.create_from_pandas_calendar(
 portfolio = Portfolio.upsert(
     unique_identifier="btc-eth-target",
     calendar_uid=calendar.uid,
-    calendar_name=calendar.unique_identifier,
 )
 ```
 
@@ -122,12 +121,14 @@ src/msm_portfolios/models/portfolios/
 changing the portfolio identity row.
 
 Rebalance strategy calendar keys resolve persisted core `CalendarTable` rows
-first. Legacy pandas-market calendar keys remain a fallback path, but durable
-portfolio records should use `PortfolioTable.calendar_uid`.
+first. Durable portfolio records must use `PortfolioTable.calendar_uid`; this
+field is required and cannot be null. Legacy pandas-market calendar keys remain
+a fallback path only for runtime calendar resolution, not for persisted
+portfolio identity.
 
 ## Table Relationships
 
-Portfolio identity, calendar linkage, and optional published-index linkage:
+Portfolio identity, required calendar linkage, and optional published-index linkage:
 
 ```text
 +-----------------------------+        optional published index  +-----------------------------+
@@ -135,15 +136,14 @@ Portfolio identity, calendar linkage, and optional published-index linkage:
 |-----------------------------| published_index_uid             |-----------------------------|
 | uid PK                      |                                  | uid PK                      |
 | unique_identifier unique    |                                  | unique_identifier unique    |
-| calendar_uid FK ------------+----+                             | index_type                  |
-| calendar_name deprecated    |    |                             | display_name                |
+| calendar_uid FK NOT NULL ---+----+                             | index_type                  |
 | portfolio_weights_data_node_uid |--> PortfolioWeights           +-----------------------------+
 | signal_weights_data_node_uid    |--> SignalWeights
 | portfolio_data_node_uid         |--> PortfoliosDataNode
 | backtest_table_price_column_name|
 +-----------------------------+
                                   |
-                                  | durable calendar relationship
+                                  | required durable calendar relationship
                                   v
                          +-----------------------------+
                          | CalendarTable               |
@@ -188,6 +188,9 @@ MetaTables:
 | signal_description          |                                | asset_identifier                     |
 +-----------------------------+                                +--------------------------------------+
 ```
+
+`SignalMetadataTable.signal_description` is descriptive text for humans. Store
+plain text or Markdown, not HTML tags; rendering belongs to the consuming UI.
 
 `PortfoliosStorage.portfolio_identifier` and
 `PortfolioWeightsStorage.portfolio_identifier` reference

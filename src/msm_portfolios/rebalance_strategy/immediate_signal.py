@@ -9,8 +9,10 @@ from msm_portfolios.rebalance_strategy.base import (
 
 class ImmediateSignal(RebalanceStrategyBase):
     def get_explanation(self):
-        explanation = """<p> This rebalance strategy 'immediately' rebalances the weights. This is equivalent to just using the signal weights. </p>"""
-        return explanation
+        return (
+            "ImmediateSignal: rebalances immediately to the current signal weights. "
+            "This is equivalent to using the signal weights directly."
+        )
 
     def apply_rebalance_logic(
         self,

@@ -86,26 +86,27 @@ def list_asset_catalog_rows(
     category_uid: str | None = None,
 ) -> list[dict[str, Any]]:
     scan_limit = _scan_limit(offset=offset, limit=limit)
-    asset_rows = _operation_result_rows(service_search_assets(context, limit=scan_limit))
-
+    category_asset_uids: tuple[str, ...] | None = None
     if category_uid not in (None, ""):
-        membership_rows = _operation_result_rows(
-            service_list_asset_category_memberships(
+        category_asset_uids = tuple(
+            _category_membership_asset_uids(
                 context,
-                category_uid=category_uid,
-                limit=MAX_SCAN_LIMIT,
+                category_uid=str(category_uid),
             )
         )
-        allowed_asset_uids = {
-            str(row["asset_uid"])
-            for row in membership_rows
-            if isinstance(row, Mapping) and row.get("asset_uid") not in (None, "")
-        }
-        asset_rows = [
-            row
-            for row in asset_rows
-            if isinstance(row, Mapping) and str(row.get("uid")) in allowed_asset_uids
-        ]
+        asset_rows = (
+            _operation_result_rows(
+                service_search_assets(
+                    context,
+                    uids=category_asset_uids,
+                    limit=max(scan_limit, len(category_asset_uids)),
+                )
+            )
+            if category_asset_uids
+            else []
+        )
+    else:
+        asset_rows = _operation_result_rows(service_search_assets(context, limit=scan_limit))
 
     detail_rows = _operation_result_rows(
         service_search_openfigi_details(context, limit=MAX_SCAN_LIMIT)
@@ -159,8 +160,28 @@ def list_asset_rows(
 ) -> list[dict[str, Any]]:
     scan_limit = _scan_limit(offset=offset, limit=limit)
     normalized_search = search.strip().lower()
-    asset_rows = _operation_result_rows(service_search_assets(context, limit=scan_limit))
-    if normalized_search:
+    category_asset_uids: tuple[str, ...] | None = None
+    if category_uid not in (None, ""):
+        category_asset_uids = tuple(
+            _category_membership_asset_uids(
+                context,
+                category_uid=str(category_uid),
+            )
+        )
+        asset_rows = (
+            _operation_result_rows(
+                service_search_assets(
+                    context,
+                    uids=category_asset_uids,
+                    limit=max(scan_limit, len(category_asset_uids)),
+                )
+            )
+            if category_asset_uids
+            else []
+        )
+    else:
+        asset_rows = _operation_result_rows(service_search_assets(context, limit=scan_limit))
+    if normalized_search and category_asset_uids is None:
         asset_rows.extend(
             _operation_result_rows(
                 service_search_assets(
@@ -194,25 +215,6 @@ def list_asset_rows(
                     )
                 )
             )
-
-    if category_uid not in (None, ""):
-        membership_rows = _operation_result_rows(
-            service_list_asset_category_memberships(
-                context,
-                category_uid=category_uid,
-                limit=MAX_SCAN_LIMIT,
-            )
-        )
-        allowed_asset_uids = {
-            str(row["asset_uid"])
-            for row in membership_rows
-            if isinstance(row, Mapping) and row.get("asset_uid") not in (None, "")
-        }
-        asset_rows = [
-            row
-            for row in asset_rows
-            if isinstance(row, Mapping) and str(row.get("uid")) in allowed_asset_uids
-        ]
 
     normalized_rows = [
         _build_asset_record(asset_row)

@@ -51,6 +51,7 @@ from msm.api.accounts import (
     PositionSet,
 )
 from msm.api.assets import Asset
+from msm.api.calendars import Calendar
 from msm.api.portfolios import Portfolio
 from msm.services import build_target_positions_frame
 
@@ -73,6 +74,14 @@ account = Account.upsert(
 )
 
 btc_asset = Asset.upsert(unique_identifier="BTC-USD", asset_type="crypto")
+calendar = Calendar.create_from_pandas_calendar(
+    source_identifier="24/7",
+    unique_identifier="ACCOUNT_CRYPTO_24_7",
+    display_name="Account Crypto 24/7",
+    valid_from="2026-05-25",
+    valid_to="2026-05-25",
+    timezone="UTC",
+)
 
 target_allocation = AccountTargetAllocation.upsert(
     unique_identifier="acct-main-balanced-target",
@@ -86,7 +95,10 @@ position_set = PositionSet.upsert(
     position_set_time=dt.datetime(2026, 5, 25, tzinfo=dt.UTC),
 )
 
-portfolio_sleeve = Portfolio.upsert(unique_identifier="btc-eth-sleeve")
+portfolio_sleeve = Portfolio.upsert(
+    unique_identifier="btc-eth-sleeve",
+    calendar_uid=calendar.uid,
+)
 
 target_positions = build_target_positions_frame(
     target_positions_date=position_set.position_set_time,

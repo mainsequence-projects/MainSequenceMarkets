@@ -18,6 +18,7 @@ from apps.v1.schemas.portfolios import (
     PortfolioWeightsSnapshotResponse,
 )
 from apps.v1.services.portfolios import (
+    PortfolioDataIntegrityError,
     bulk_delete_portfolios,
     delete_portfolio,
     delete_portfolio_weights,
@@ -47,7 +48,11 @@ logger = logging.getLogger(__name__)
         400: {
             "model": ErrorResponse,
             "description": "Unsupported response format or invalid portfolio list request.",
-        }
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "A stored portfolio row violates the current portfolio contract.",
+        },
     },
 )
 def get_portfolios(
@@ -61,17 +66,13 @@ def get_portfolios(
         Query(
             description=(
                 "Case-insensitive search across portfolio uid, unique identifier, "
-                "calendar, and published-index uid fields."
+                "calendar uid, and published-index uid fields."
             ),
         ),
     ] = "",
     calendar_uid: Annotated[
         str | None,
         Query(description="Optional exact Calendar uid filter."),
-    ] = None,
-    calendar_name: Annotated[
-        str | None,
-        Query(description="Optional exact legacy calendar name filter."),
     ] = None,
     limit: Annotated[
         int,
@@ -91,10 +92,11 @@ def get_portfolios(
         response = list_portfolios(
             search=search,
             calendar_uid=calendar_uid,
-            calendar_name=calendar_name,
             limit=limit,
             offset=offset,
         )
+    except PortfolioDataIntegrityError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -400,11 +402,18 @@ def remove_portfolio_weights(
         404: {
             "model": ErrorResponse,
             "description": "The requested portfolio uid was not found.",
-        }
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "The stored portfolio row violates the current portfolio contract.",
+        },
     },
 )
 def get_portfolio_by_uid(uid: str) -> PortfolioDetailResponse:
-    detail = get_portfolio_detail(uid=uid)
+    try:
+        detail = get_portfolio_detail(uid=uid)
+    except PortfolioDataIntegrityError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if detail is None:
         raise HTTPException(status_code=404, detail=f"Portfolio {uid!r} was not found.")
     return detail

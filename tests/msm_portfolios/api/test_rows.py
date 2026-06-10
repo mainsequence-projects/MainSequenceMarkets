@@ -3,9 +3,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 from msm.api.base import MarketsMetaTableRow
-from msm.api.portfolios import Portfolio
+from msm.api.portfolios import Portfolio, PortfolioCreate, PortfolioUpdate, PortfolioUpsert
 from msm.models import CalendarTable, IndexTable, IndexTypeTable, PortfolioTable
 from msm_portfolios.api.market_metadata import (
     RebalanceStrategyMetadata,
@@ -78,3 +79,16 @@ def test_missing_required_table_fails_before_operation(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="CalendarTable"):
         Portfolio.filter(unique_identifier_contains="demo")
+
+
+def test_portfolio_create_payload_requires_calendar_uid() -> None:
+    with pytest.raises(ValidationError):
+        PortfolioCreate(unique_identifier="portfolio-without-calendar")
+
+    with pytest.raises(ValidationError):
+        PortfolioUpsert(unique_identifier="portfolio-without-calendar")
+
+
+def test_portfolio_update_payload_rejects_null_calendar_uid() -> None:
+    with pytest.raises(ValidationError, match="calendar_uid cannot be null"):
+        PortfolioUpdate(calendar_uid=None)

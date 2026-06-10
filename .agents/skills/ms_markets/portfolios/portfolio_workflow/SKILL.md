@@ -51,6 +51,9 @@ Rules:
 - Use `PortfolioTable.uid` for account target identity and
   `PortfolioTable.unique_identifier` as `portfolio_identifier` in portfolio
   storage.
+- Every `PortfolioTable` row must have a non-null `calendar_uid` that
+  references `CalendarTable.uid`. Do not add or write redundant calendar-name
+  fields on portfolio rows.
 - `PortfolioWeightsStorage.portfolio_identifier` and
   `PortfoliosStorage.portfolio_identifier` must reference
   `PortfolioTable.unique_identifier`. `PortfolioWeightsStorage.asset_identifier`
@@ -178,6 +181,9 @@ Rules:
   signal metadata must be registered before signal weights are published.
   `asset_identifier` must reference `AssetTable.unique_identifier`. A later row
   for another signal must not move this signal's start date.
+- `SignalMetadataTable.signal_description` and signal `get_explanation()` text
+  must be plain text or Markdown. Do not return or document HTML tags for signal
+  descriptions; rendering belongs to the consuming UI.
 - Missing required price assets must be logged with the price source, date
   range, price column, and policy. Strict policy fails; permissive policy logs
   and continues when the downstream calculation can still produce a usable
@@ -208,11 +214,23 @@ from portfolio core or contributed signals.
 ## Write Pattern
 
 ```python
+from msm.api.calendars import Calendar
 from msm.api.portfolios import Portfolio
 from msm.data_nodes.accounts import TargetPositions
 from msm.services import build_target_positions_frame
 
-portfolio_sleeve = Portfolio.upsert(unique_identifier="example-sleeve")
+calendar = Calendar.create_from_pandas_calendar(
+    source_identifier="24/7",
+    unique_identifier="EXAMPLE_CRYPTO_24_7",
+    display_name="Example Crypto 24/7",
+    valid_from="2026-05-25",
+    valid_to="2026-05-25",
+    timezone="UTC",
+)
+portfolio_sleeve = Portfolio.upsert(
+    unique_identifier="example-sleeve",
+    calendar_uid=calendar.uid,
+)
 
 frame = build_target_positions_frame(
     target_positions_date=position_set.position_set_time,

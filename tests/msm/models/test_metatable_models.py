@@ -47,6 +47,7 @@ from msm.models import (
     AssetTypeTable,
     AssetTable,
     BondAssetDetailsTable,
+    CalendarTable,
     CurrencySpotAssetDetailsTable,
     FutureAssetDetailsTable,
     IndexTable,
@@ -666,6 +667,17 @@ def test_virtual_fund_relationships_live_on_core_account_tables() -> None:
         foreign_key.column is AccountHoldingsSetTable.__table__.c.uid
         and foreign_key.ondelete == "RESTRICT"
         for foreign_key in holdings_set_source_column.foreign_keys
+    )
+
+
+def test_portfolio_requires_calendar_uid() -> None:
+    calendar_column = PortfolioTable.__table__.c["calendar_uid"]
+
+    assert not calendar_column.nullable
+    assert any(
+        foreign_key.column is CalendarTable.__table__.c.uid
+        and foreign_key.ondelete == "RESTRICT"
+        for foreign_key in calendar_column.foreign_keys
     )
 
 

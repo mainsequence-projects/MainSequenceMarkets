@@ -77,6 +77,12 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- Fixed the `apps/v1` asset-category detail endpoint so
+  `response_format=frontend_detail` returns membership-backed detail metadata,
+  including `number_of_assets` and the nested asset-list `categories__uid`
+  filter, instead of a bare `AssetCategory` row.
+- Fixed category-filtered asset lists so `categories__uid` resolves membership
+  asset UIDs directly instead of filtering only the first scanned asset page.
 - Fixed portfolio value row normalization so `PortfoliosDataNode` resolves a
   real portfolio identifier instead of stringifying its `_unique_identifier`
   method, and declared the `PortfoliosStorage.portfolio_identifier` foreign key

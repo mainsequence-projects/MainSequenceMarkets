@@ -106,8 +106,11 @@ The local FastAPI surface under `apps/v1` now exposes the migrated asset and
 asset-category registry routes. Keep the route layer thin and put reusable
 catalog/category logic under `src/msm/services`. The implemented category detail
 flow uses `GET /api/v1/asset-category/{uid}/` plus the nested asset list route
-`GET /api/v1/asset/?categories__uid=<uid>`. The same local API surface now also
-exposes the simple index registry routes:
+`GET /api/v1/asset/?categories__uid=<uid>`. The category detail response includes
+the membership-backed asset count and an `assets_list.default_filters` object
+with the same `categories__uid` value, so clients can render the category member
+table without inventing a second membership lookup. The same local API surface
+now also exposes the simple index registry routes:
 
 - `GET /api/v1/index/`
 - `GET /api/v1/index/{uid}/`
@@ -299,7 +302,6 @@ calendar = Calendar.create_from_pandas_calendar(
 portfolio = Portfolio.upsert(
     unique_identifier="btc-eth-target",
     calendar_uid=calendar.uid,
-    calendar_name=calendar.unique_identifier,
 )
 virtual_fund = VirtualFund.upsert(
     unique_identifier="vf-core",
@@ -382,7 +384,10 @@ position_set = PositionSet.upsert(
     position_set_time="2026-05-25T00:00:00Z",
 )
 btc_asset = Asset.upsert(unique_identifier="BTC", asset_type="crypto")
-portfolio_sleeve = Portfolio.upsert(unique_identifier="account-main-sleeve")
+portfolio_sleeve = Portfolio.upsert(
+    unique_identifier="account-main-sleeve",
+    calendar_uid=calendar.uid,
+)
 
 targets = build_target_positions_frame(
     target_positions_date="2026-05-25T00:00:00Z",

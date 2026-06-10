@@ -251,10 +251,18 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
     ) -> Any:
         from msm.api.portfolios import Portfolio
 
+        calendar_uid = getattr(portfolio, "calendar_uid", None)
+        if calendar_uid in (None, ""):
+            raise ValueError(
+                "PortfoliosDataNode cannot update PortfolioTable pointers for "
+                f"{portfolio.unique_identifier!r} because portfolio.calendar_uid is missing. "
+                "Portfolio rows must be created with calendar_uid before running the "
+                "portfolio graph."
+            )
+
         portfolio = Portfolio.upsert(
             unique_identifier=str(portfolio.unique_identifier),
-            calendar_uid=getattr(portfolio, "calendar_uid", None),
-            calendar_name=getattr(portfolio, "calendar_name", None),
+            calendar_uid=calendar_uid,
             published_index_uid=getattr(portfolio, "published_index_uid", None),
             backtest_table_price_column_name=(
                 getattr(portfolio, "backtest_table_price_column_name", None) or "close"

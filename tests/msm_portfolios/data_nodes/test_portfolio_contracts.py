@@ -290,7 +290,6 @@ def test_portfolio_values_updates_portfolio_data_node_pointers(monkeypatch) -> N
     portfolio = SimpleNamespace(
         unique_identifier="example-portfolio",
         calendar_uid="calendar-uid",
-        calendar_name="CRYPTO_24_7",
         published_index_uid="index-uid",
         backtest_table_price_column_name="close",
     )
@@ -307,7 +306,6 @@ def test_portfolio_values_updates_portfolio_data_node_pointers(monkeypatch) -> N
     assert captured == {
         "unique_identifier": "example-portfolio",
         "calendar_uid": "calendar-uid",
-        "calendar_name": "CRYPTO_24_7",
         "published_index_uid": "index-uid",
         "backtest_table_price_column_name": "close",
         "signal_weights_data_node_uid": "signal-node-uid",

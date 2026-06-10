@@ -15,6 +15,9 @@ library workflow outside this API surface.
   `msm_portfolios.data_nodes.portfolios.storage.PortfolioWeightsStorage`.
 - Weight row asset labels use `AssetSnapshotsStorage`; OpenFIGI is not used for
   portfolio weight labels.
+- Signal weights resolve from the runtime update state of
+  `Portfolio.signal_weights_data_node_uid`. The API does not recompute signal
+  identity from the DataNode build configuration.
 
 Latest weights resolve through:
 
@@ -30,8 +33,11 @@ resolution. It is publication metadata only.
 ## List Portfolios
 
 ```text
-GET /api/v1/portfolio/?response_format=frontend_list&search=&calendar_uid=&calendar_name=&limit=50&offset=0
+GET /api/v1/portfolio/?response_format=frontend_list&search=&calendar_uid=&limit=50&offset=0
 ```
+
+Portfolio rows always include a non-null `calendar_uid` that references a
+persisted `CalendarTable` row.
 
 Returns `PaginatedResponse[Portfolio]`:
 
@@ -44,8 +50,7 @@ Returns `PaginatedResponse[Portfolio]`:
     {
       "uid": "portfolio-uid",
       "unique_identifier": "example-sleeve",
-      "calendar_name": "CRYPTO_24_7",
-      "calendar_uid": null,
+      "calendar_uid": "00000000-0000-0000-0000-000000000001",
       "published_index_uid": "index-uid",
       "portfolio_weights_data_node_uid": null,
       "signal_weights_data_node_uid": null,
@@ -70,8 +75,7 @@ links:
   "portfolio": {
     "uid": "portfolio-uid",
     "unique_identifier": "example-sleeve",
-    "calendar_name": "CRYPTO_24_7",
-    "calendar_uid": null,
+    "calendar_uid": "00000000-0000-0000-0000-000000000001",
     "published_index_uid": "index-uid",
     "portfolio_weights_data_node_uid": null,
     "signal_weights_data_node_uid": null,
@@ -109,6 +113,21 @@ GET /api/v1/portfolio/{uid}/summary/
 
 Returns the shared `FrontEndDetailSummary` contract. The summary `entity.id`
 is the portfolio `uid` string.
+
+The summary includes the PortfolioTable pointer fields as inline code fields
+and as a structured `extensions.pointers` object:
+
+```json
+{
+  "extensions": {
+    "pointers": {
+      "portfolio_weights_data_node_uid": "weights-node-uid",
+      "signal_weights_data_node_uid": "signal-node-uid",
+      "portfolio_data_node_uid": "values-node-uid"
+    }
+  }
+}
+```
 
 ## Latest Portfolio Weights
 

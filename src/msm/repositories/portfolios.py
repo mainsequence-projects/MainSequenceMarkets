@@ -18,8 +18,7 @@ def build_create_portfolio_operation(
     context: MarketsRepositoryContext,
     *,
     unique_identifier: str,
-    calendar_name: str | None = None,
-    calendar_uid: uuid.UUID | str | None = None,
+    calendar_uid: uuid.UUID | str,
     published_index_uid: uuid.UUID | str | None = None,
     portfolio_weights_data_node_uid: uuid.UUID | str | None = None,
     signal_weights_data_node_uid: uuid.UUID | str | None = None,
@@ -30,7 +29,6 @@ def build_create_portfolio_operation(
         insert(PortfolioTable)
         .values(
             unique_identifier=unique_identifier,
-            calendar_name=calendar_name,
             calendar_uid=calendar_uid,
             published_index_uid=published_index_uid,
             portfolio_weights_data_node_uid=portfolio_weights_data_node_uid,
@@ -94,7 +92,6 @@ def build_search_portfolios_operation(
     context: MarketsRepositoryContext,
     *,
     unique_identifier_contains: str | None = None,
-    calendar_name: str | None = None,
     calendar_uid: uuid.UUID | str | None = None,
     published_index_uid: uuid.UUID | str | None = None,
     limit: int = 500,
@@ -104,8 +101,6 @@ def build_search_portfolios_operation(
         statement = statement.where(
             PortfolioTable.unique_identifier.contains(str(unique_identifier_contains))
         )
-    if calendar_name not in (None, ""):
-        statement = statement.where(PortfolioTable.calendar_name == str(calendar_name))
     if calendar_uid not in (None, ""):
         statement = statement.where(PortfolioTable.calendar_uid == calendar_uid)
     if published_index_uid not in (None, ""):

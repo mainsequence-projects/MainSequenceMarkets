@@ -53,7 +53,10 @@ class SignalMetadataTable(MarketsMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Signal Description",
-            "description": "Human-readable description of the signal definition.",
+            "description": (
+                "Human-readable plain-text or Markdown description of the signal "
+                "definition. HTML tags are not part of the rendering contract."
+            ),
         },
     )
 

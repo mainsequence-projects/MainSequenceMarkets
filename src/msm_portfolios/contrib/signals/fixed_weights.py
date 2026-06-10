@@ -39,8 +39,7 @@ class FixedWeights(SignalWeights):
         return timedelta(days=200 * 365)  # Always forward-fill to avoid filling the DB
 
     def get_explanation(self):
-        info = f"<p>{self.__class__.__name__}: Signal uses fixed weights with the following weights:</p>"
-        return info
+        return f"{self.__class__.__name__}: Signal uses fixed configured asset weights."
 
     def get_asset_list(self) -> None | list:
         return [w.unique_identifier for w in self.asset_unique_identifier_weights]

@@ -172,6 +172,7 @@ def run_account_portfolio_full_workflow(
         PositionSet,
     )
     from msm.api.assets import Asset, AssetType
+    from msm.api.calendars import Calendar
     from msm.api.portfolios import Portfolio
     from msm.data_nodes.accounts import AccountHoldings, TargetPositions
     from msm.data_nodes.assets import AssetSnapshot
@@ -258,7 +259,18 @@ def run_account_portfolio_full_workflow(
 
     if portfolio_example_result is None:
         print("8. Creating a portfolio sleeve that account targets can reference.")
-        target_sleeve_portfolio = Portfolio.upsert(**EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO)
+        sleeve_calendar = Calendar.create_from_pandas_calendar(
+            source_identifier="24/7",
+            unique_identifier="EXAMPLE_ACCOUNT_CRYPTO_24_7",
+            display_name="Example Account Crypto 24/7",
+            valid_from=workflow_time.date(),
+            valid_to=workflow_time.date(),
+            timezone="UTC",
+        )
+        target_sleeve_portfolio = Portfolio.upsert(
+            **EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO,
+            calendar_uid=sleeve_calendar.uid,
+        )
     else:
         print("8. Reusing the portfolio created by the portfolio example as a target sleeve.")
         target_sleeve_portfolio = portfolio_example_result["portfolio"]

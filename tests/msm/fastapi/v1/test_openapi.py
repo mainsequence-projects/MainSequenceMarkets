@@ -391,7 +391,7 @@ def test_openapi_json_documents_asset_category_routes() -> None:
     assert asset_category_detail_operation["operationId"] == "getAssetCategoryDetail"
     assert asset_category_detail_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/AssetCategory"}
+    ] == {"$ref": "#/components/schemas/AssetCategoryDetailResponse"}
 
     asset_category_bulk_delete_operation = payload["paths"]["/api/v1/asset-category/bulk-delete/"][
         "post"

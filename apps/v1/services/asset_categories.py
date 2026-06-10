@@ -5,6 +5,7 @@ from typing import Any
 
 from apps.v1.schemas.asset_categories import (
     AssetCategory,
+    AssetCategoryDetailResponse,
     BulkDeleteAssetCategoriesResponse,
 )
 
@@ -25,12 +26,12 @@ def list_asset_categories(
     return [AssetCategory.model_validate(row) for row in rows]
 
 
-def get_asset_category_detail(*, uid: str) -> AssetCategory | None:
+def get_asset_category_detail(*, uid: str) -> AssetCategoryDetailResponse | None:
     runtime = _get_runtime()
-    row = _get_asset_category_row(runtime.context, uid=uid)
-    if row is None:
+    detail = _get_asset_category_frontend_detail(runtime.context, uid=uid)
+    if detail is None:
         return None
-    return AssetCategory.model_validate(row)
+    return AssetCategoryDetailResponse.model_validate(detail)
 
 
 def create_asset_category(*, payload: Mapping[str, Any]) -> AssetCategory:
@@ -77,10 +78,10 @@ def _list_asset_category_rows(context, **kwargs):
     return list_asset_category_rows(context, **kwargs)
 
 
-def _get_asset_category_row(context, **kwargs):
-    from msm.services import get_asset_category_row
+def _get_asset_category_frontend_detail(context, **kwargs):
+    from msm.services import get_asset_category_frontend_detail
 
-    return get_asset_category_row(context, **kwargs)
+    return get_asset_category_frontend_detail(context, **kwargs)
 
 
 def _create_asset_category_record(context, **kwargs):

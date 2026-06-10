@@ -176,8 +176,7 @@ The date range is intentionally bounded. Do not create infinite calendars.
 ## Portfolio And Pricing Boundaries
 
 `msm_portfolios` may reference `CalendarTable.uid` through
-`PortfolioTable.calendar_uid`. The older `calendar_name` field is compatibility
-metadata only and should not be used as the durable relationship.
+`PortfolioTable.calendar_uid`. Portfolio rows do not duplicate calendar names.
 
 `msm_pricing` may add future QuantLib adapters and instrument schedule tables.
 Those schedule tables should reference `CalendarTable.uid` but remain outside
