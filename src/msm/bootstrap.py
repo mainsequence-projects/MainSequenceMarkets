@@ -68,17 +68,17 @@ def configure_metatable_namespace(namespace: str) -> None:
             f"{loaded_namespace!r}. Already loaded: {loaded_model_modules!r}."
         )
 
-    from msm.base import MarketsMetaTableMixin
+    from msm.base import MarketsMetaTableMixin, MarketsTimeIndexMetaTableMixin
 
     MarketsMetaTableMixin.__metatable_namespace__ = namespace
+    MarketsTimeIndexMetaTableMixin.__metatable_namespace__ = namespace
 
 
 def _loaded_metatable_modules() -> list[str]:
     return sorted(
         module_name
         for module_name in sys.modules
-        if module_name == "msm.models"
-        or module_name.startswith("msm.models.")
+        if module_name == "msm.models" or module_name.startswith("msm.models.")
     )
 
 

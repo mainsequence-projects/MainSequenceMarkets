@@ -28,11 +28,18 @@ from msm.base import MarketsBase, MarketsMetaTableMixin  # noqa: E402
 from msm.models import AssetTable  # noqa: E402
 
 
-class MyAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
+class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
+    """Project-local default namespace and physical table-name prefix."""
+
+    __abstract__ = True
+    __metatable_namespace__ = "com.my_project.markets"
+    __markets_storage_app__ = "my_project_markets"
+
+
+class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
     """Project-local one-to-one asset detail table."""
 
-    __markets_storage_app__ = "my_project_markets"
-    __metatable_identifier__ = "MyAssetDetails"
+    __markets_base_identifier__ = "MyAssetDetails"
     __metatable_extra_hash_components__ = {"storage_name": "my_asset_details"}
     __metatable_description__ = (
         "Project-local asset details keyed one-to-one by AssetTable.uid for custom "

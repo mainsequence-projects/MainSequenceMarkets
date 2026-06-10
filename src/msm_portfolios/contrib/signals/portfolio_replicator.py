@@ -139,10 +139,9 @@ class ETFReplicator(SignalWeights):
     def _calculate_signal_weights(self) -> pd.DataFrame:
         self.price_assets = getattr(self, "price_assets", None) or self.replicator_config.asset_list
         self.etf_asset = getattr(self, "etf_asset", None) or self._require_etf_asset()
-        if self.update_statistics.max_time_index_value:
-            prices_start_date = self.update_statistics.max_time_index_value - pd.Timedelta(
-                days=self.in_window
-            )
+        latest_value = self._latest_signal_time_index_value()
+        if latest_value is not None:
+            prices_start_date = latest_value - pd.Timedelta(days=self.in_window)
         else:
             prices_start_date = self.OFFSET_START - pd.Timedelta(days=self.in_window)
 

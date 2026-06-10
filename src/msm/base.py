@@ -15,6 +15,7 @@ from msm.settings import (
     DEFAULT_MARKETS_NAMESPACE,
     MSM_AUTO_REGISTER_NAMESPACE_ENV,
     markets_auto_register_namespace,
+    markets_configured_namespace,
     markets_identifier,
     markets_namespace,
 )
@@ -108,11 +109,13 @@ def markets_table_args(
     identifier: str,
     *constraints: Any,
     schema: str | None = MARKETS_SCHEMA,
+    namespace: str | None = None,
 ) -> tuple[Any, ...]:
+    resolved_namespace = markets_configured_namespace(namespace)
     table_options: dict[str, Any] = {
         "info": {
-            "namespace": markets_namespace(),
-            "identifier": markets_identifier(identifier),
+            "namespace": resolved_namespace,
+            "identifier": markets_identifier(identifier, namespace=resolved_namespace),
         },
     }
     normalized_schema = normalize_metatable_schema(schema)
@@ -132,13 +135,18 @@ class MarketsBase(DeclarativeBase):
 def _assign_markets_metatable_identifiers(cls: type) -> None:
     """Assign the SDK MetaTable identifier from the authored table identity."""
 
-    if "__metatable_identifier__" not in cls.__dict__ and cls.__dict__.get("__abstract__") is True:
+    if (
+        "__markets_base_identifier__" not in cls.__dict__
+        and "__metatable_identifier__" not in cls.__dict__
+        and cls.__dict__.get("__abstract__") is True
+    ):
         return
 
     authored_identifier = _authored_metatable_identifier_for_model(cls)
-    cls.__metatable_identifier__ = markets_identifier(
+    cls.__markets_authored_identifier__ = authored_identifier
+    cls.__metatable_identifier__ = _resolved_metatable_identifier_for_model(
+        cls,
         authored_identifier,
-        namespace=getattr(cls, "__metatable_namespace__", None),
     )
 
 
@@ -151,10 +159,48 @@ def _markets_table_name_for_model(cls: type) -> str:
 
 
 def _authored_metatable_identifier_for_model(cls: type) -> str:
-    identifier = cls.__dict__.get("__metatable_identifier__")
+    identifier = cls.__dict__.get("__markets_base_identifier__")
     if identifier in (None, ""):
-        raise ValueError(f"{cls.__name__} must declare __metatable_identifier__.")
+        identifier = cls.__dict__.get("__markets_authored_identifier__")
+    if identifier in (None, ""):
+        identifier = cls.__dict__.get("__metatable_identifier__")
+    if identifier in (None, ""):
+        raise ValueError(
+            f"{cls.__name__} must declare __markets_base_identifier__ or __metatable_identifier__."
+        )
     return str(identifier).strip(".")
+
+
+def _resolved_metatable_identifier_for_model(cls: type, authored_identifier: str) -> str:
+    declared_namespace = getattr(cls, "__metatable_namespace__", None)
+    effective_namespace = markets_configured_namespace(declared_namespace)
+    identifier = _identifier_for_effective_namespace(
+        cls=cls,
+        authored_identifier=authored_identifier,
+        declared_namespace=declared_namespace,
+        effective_namespace=effective_namespace,
+    )
+    return markets_identifier(identifier, namespace=effective_namespace)
+
+
+def _identifier_for_effective_namespace(
+    *,
+    cls: type,
+    authored_identifier: str,
+    declared_namespace: str | None,
+    effective_namespace: str,
+) -> str:
+    if "__markets_base_identifier__" in cls.__dict__:
+        return authored_identifier
+
+    if declared_namespace in (None, "", effective_namespace):
+        return authored_identifier
+
+    namespace_prefix = f"{str(declared_namespace).strip('.')}."
+    if authored_identifier.startswith(namespace_prefix):
+        return authored_identifier.removeprefix(namespace_prefix)
+
+    return authored_identifier
 
 
 def _build_markets_table(cls: type, *args: Any, **kwargs: Any) -> Any:
@@ -173,6 +219,14 @@ def _build_markets_table(cls: type, *args: Any, **kwargs: Any) -> Any:
 
     table_info = dict(table_kwargs.get("info") or {})
     table_info.setdefault("markets_storage_app", markets_table_storage_app(cls))
+    authored_identifier = _authored_metatable_identifier_for_model(cls)
+    table_info["namespace"] = markets_configured_namespace(
+        getattr(cls, "__metatable_namespace__", None)
+    )
+    table_info["identifier"] = _resolved_metatable_identifier_for_model(
+        cls,
+        authored_identifier,
+    )
     table_kwargs["info"] = table_info
 
     return Table(str(name), metadata, *table_items, **table_kwargs)
@@ -185,6 +239,7 @@ class MarketsMetaTableMixin(PlatformManagedMetaTable):
     __metatable_namespace__: ClassVar[str] = markets_namespace()
     __metatable_schema__: ClassVar[str | None] = MARKETS_SCHEMA
     __markets_storage_app__: ClassVar[str] = MARKETS_TABLE_APP
+    __markets_base_identifier__: ClassVar[str]
     __metatable_identifier__: ClassVar[str]
 
     @classmethod
@@ -228,6 +283,7 @@ class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaTable):
     __metatable_namespace__: ClassVar[str] = markets_namespace()
     __metatable_schema__: ClassVar[str | None] = MARKETS_SCHEMA
     __markets_storage_app__: ClassVar[str] = MARKETS_TABLE_APP
+    __markets_base_identifier__: ClassVar[str]
     __metatable_identifier__: ClassVar[str]
 
     @classmethod
@@ -243,6 +299,14 @@ class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaTable):
 
         table_info = dict(table_kwargs.get("info") or {})
         table_info.setdefault("markets_storage_app", markets_table_storage_app(cls))
+        authored_identifier = _authored_metatable_identifier_for_model(cls)
+        table_info["namespace"] = markets_configured_namespace(
+            getattr(cls, "__metatable_namespace__", None)
+        )
+        table_info["identifier"] = _resolved_metatable_identifier_for_model(
+            cls,
+            authored_identifier,
+        )
         table_kwargs["info"] = table_info
 
         return PlatformTimeIndexMetaTable.__table_cls__.__func__(cls, *args, **table_kwargs)
@@ -284,6 +348,7 @@ __all__ = [
     "MarketsBase",
     "MarketsMetaTableMixin",
     "MarketsTimeIndexMetaTableMixin",
+    "markets_configured_namespace",
     "markets_identifier",
     "markets_meta_table_identifier",
     "markets_table_args",

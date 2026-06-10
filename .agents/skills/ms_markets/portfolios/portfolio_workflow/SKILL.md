@@ -155,6 +155,18 @@ Rules:
   value override asset.
 - Price sources may contain extra assets; portfolio calculation filters to the
   required signal universe.
+- Portfolio update-window progress must be scoped to required portfolio assets:
+  the signal preflight universe, previous portfolio-weight assets still needing
+  valuation or liquidation, and any explicit portfolio value override asset. Do
+  not take the minimum progress timestamp across every asset in a large source
+  price table. If the required asset scope cannot be determined before deriving
+  the source window, fail instead of falling back to table-wide source progress.
+- Existing portfolio output progress must be scoped by `portfolio_identifier`;
+  `PortfoliosStorage` is shared and keyed by `(time_index, portfolio_identifier)`.
+  A later row for another portfolio must not move this portfolio's start date.
+- Contributed signal progress must be scoped by `signal_uid`; `SignalWeightsStorage`
+  is shared and keyed by `(time_index, signal_uid, asset_identifier)`. A later
+  row for another signal must not move this signal's start date.
 - Missing required price assets must be logged with the price source, date
   range, price column, and policy. Strict policy fails; permissive policy logs
   and continues when the downstream calculation can still produce a usable

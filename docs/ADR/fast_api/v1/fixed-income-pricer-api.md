@@ -9,8 +9,10 @@ discovery, typed request/response contracts, OpenAPI assertions, route tests,
 and core execution tests are implemented.
 
 Current curve-preview and fixings-availability endpoints are implemented as
-method-backed diagnostics. Decompressed curve nodes and effective curve dates
-are already exposed by the dedicated pricing curve route:
+method-backed diagnostics. Curve-preview also returns discount-curve references
+and links when the instrument exposes an index-backed selected curve.
+Decompressed curve nodes and effective curve dates are already exposed by the
+dedicated pricing curve route:
 
 ```text
 GET /api/v1/pricing/curves/{uid}/discount-curve/
@@ -126,7 +128,8 @@ Example response shape:
         "url": "/api/v1/pricing/assets/asset-uid/price/",
         "requires_valuation_date": true,
         "supports_market_data_set": true,
-        "request_model": "BondPricingOperationRequest",
+        "requires_market_data_set": true,
+        "request_model": "AssetPricingOperationRequest",
         "response_model": "BondPriceResponse"
       },
       {
@@ -136,7 +139,8 @@ Example response shape:
         "url": "/api/v1/pricing/assets/asset-uid/analytics/",
         "requires_valuation_date": true,
         "supports_market_data_set": true,
-        "request_model": "BondPricingOperationRequest",
+        "requires_market_data_set": true,
+        "request_model": "AssetPricingOperationRequest",
         "response_model": "BondAnalyticsResponse"
       }
     ]
@@ -642,12 +646,12 @@ Do not convert missing market-data dependencies into empty pricing results.
 
 ## Follow-Up Tasks
 
-- [ ] If the instrument/pricing engine exposes the selected curve uid, add that
+- [x] If the instrument/pricing engine exposes the selected curve uid, add that
       curve reference or link to `curve-preview` so the frontend can call the
       existing pricing curve discount-curve endpoint.
 - [ ] Enhance `fixings-availability` to return per-index required ranges,
       available ranges, missing count, and status from index fixing storage.
-- [ ] Enforce non-null `market_data_set` for operations whose instrument method
+- [x] Enforce non-null `market_data_set` for operations whose instrument method
       requires market-data-backed pricing.
 
 ## Success Criteria

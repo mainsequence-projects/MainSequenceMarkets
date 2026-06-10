@@ -53,7 +53,7 @@ class IntradayTrend(SignalWeights):
         """
         Updates the weights considering rebalance periods and execution frequency.
         """
-        latest_value = getattr(self.update_statistics, "max_time_index_value", None)
+        latest_value = self._latest_signal_time_index_value()
         asset_symbols = [a for assets in self.asset_symbols.values() for a in assets]
         exchange_per_symbol = {v: k for k, values in self.asset_symbols.items() for v in values}
 

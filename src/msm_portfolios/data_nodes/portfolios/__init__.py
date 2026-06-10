@@ -11,7 +11,7 @@ import pytz
 import mainsequence.meta_tables.data_nodes.build_operations as build_operations
 from mainsequence.client.metatables import UpdateStatistics
 from mainsequence.meta_tables import APIDataNode, DataNode
-from msm_portfolios.asset_scope import dedupe_asset_scope
+from msm_portfolios.asset_scope import asset_unique_identifier, dedupe_asset_scope
 
 from ..base import (
     PortfolioCanonicalDataNode,
@@ -432,16 +432,32 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         if update_statistics is None:
             return None
 
-        portfolio_uid = getattr(self, "_resolved_unique_identifier", None)
-        if portfolio_uid:
-            progress = getattr(update_statistics, "index_progress", None) or {}
-            progress_value = progress.get(portfolio_uid)
+        portfolio_identifier = self._portfolio_progress_identifier()
+        if portfolio_identifier is not None:
+            progress = update_statistics.index_progress
+            if progress is None:
+                return None
+            progress_value = progress.get(portfolio_identifier)
             if isinstance(progress_value, dict):
                 return progress_value.get("max") or progress_value.get("time_index")
-            if progress_value is not None:
-                return progress_value
+            return progress_value
 
-        return getattr(update_statistics, "max_time_index_value", None)
+        return update_statistics.max_time_index_value
+
+    def _portfolio_progress_identifier(self) -> str | None:
+        portfolio_identifier = getattr(self, "_resolved_unique_identifier", None)
+        if portfolio_identifier is not None:
+            return str(portfolio_identifier)
+
+        if (
+            getattr(self, "portfolio_configuration", None) is not None
+            or getattr(self, "_portfolio_configuration", None) is not None
+        ):
+            portfolio_identifier = self._unique_identifier()
+            self._resolved_unique_identifier = portfolio_identifier
+            return portfolio_identifier
+
+        return None
 
     def _portfolio_dimension_range_map(
         self,
@@ -460,7 +476,9 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
 
     def _calculate_start_end_dates(self):
         update_statics_from_dependencies = self.price_source.update_statistics
-        progress_values = update_statics_from_dependencies.get_index_progress_leaf_values()
+        progress_values = self._required_price_source_progress_values(
+            update_statics_from_dependencies
+        )
         earliest_last_value = min(progress_values) if progress_values else None
 
         if earliest_last_value is None:
@@ -481,6 +499,53 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             end_date = new_end_date if new_end_date < end_date else end_date
 
         return start_date, end_date
+
+    def _required_price_source_progress_values(self, update_statistics) -> list:
+        asset_identifiers = self._preflight_required_price_asset_identifiers()
+        if not asset_identifiers:
+            raise ValueError(
+                "PortfoliosDataNode cannot derive the price-source update window "
+                "without a required asset scope. The signal must expose a non-empty "
+                "preflight get_asset_list(), or this portfolio must have previous "
+                "weights that identify assets still needing valuation or liquidation."
+            )
+
+        progress_values = [
+            update_statistics.get_earliest_update_for_identity(asset_identifier)
+            for asset_identifier in asset_identifiers
+        ]
+        return [value for value in progress_values if value is not None]
+
+    def _preflight_required_price_asset_identifiers(self) -> list[str]:
+        required_assets = []
+        preflight_asset_list = getattr(self, "required_price_asset_preflight", None)
+        if preflight_asset_list is None:
+            get_asset_list = getattr(self.signal_weights, "get_asset_list", None)
+            if callable(get_asset_list):
+                preflight_asset_list = get_asset_list()
+
+        if preflight_asset_list:
+            required_assets.extend(asset_unique_identifier(asset) for asset in preflight_asset_list)
+
+        last_rebalance_weights = self._get_last_weights()
+        if (
+            last_rebalance_weights is not None
+            and not last_rebalance_weights.empty
+            and isinstance(last_rebalance_weights.index, pd.MultiIndex)
+            and ASSET_IDENTIFIER in last_rebalance_weights.index.names
+        ):
+            required_assets.extend(
+                str(value)
+                for value in last_rebalance_weights.index.get_level_values(
+                    ASSET_IDENTIFIER
+                ).unique()
+            )
+
+        portfolio_price_asset = self.signal_weights.get_asset_uid_to_override_portfolio_price()
+        if portfolio_price_asset is not None:
+            required_assets.append(str(portfolio_price_asset))
+
+        return list(dict.fromkeys(required_assets))
 
     def _generate_new_index(self, start_date, end_date, rebalancer_calendar):
         upsample_freq = self._portfolio_update_frequency()

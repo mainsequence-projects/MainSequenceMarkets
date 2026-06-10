@@ -154,6 +154,40 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
     def get_asset_uid_to_override_portfolio_price(self):
         return None
 
+    def _signal_progress(self):
+        progress = self.update_statistics.index_progress
+        if progress is None:
+            return None
+        return progress.get(self.signal_uid)
+
+    def _latest_signal_time_index_value(self):
+        progress = self._signal_progress()
+        if progress is None:
+            return None
+        return self._max_in_nested_values(progress)
+
+    def _signal_asset_latest_time_index_value(self, asset) -> object | None:
+        progress = self._signal_progress()
+        if not isinstance(progress, dict):
+            return None
+
+        asset_identifier = self._asset_unique_identifier(asset)
+        value = progress.get(asset_identifier)
+        if isinstance(value, dict):
+            return self._max_in_nested_values(value)
+        return value
+
+    def _signal_asset_start_date(self, asset):
+        latest_value = self._signal_asset_latest_time_index_value(asset)
+        if latest_value is not None:
+            return latest_value
+
+        fallback_date = self.update_statistics._initial_fallback_date
+        if fallback_date is not None:
+            return fallback_date
+
+        return self.get_offset_start()
+
     def interpolate_index(
         self,
         new_index: pd.DatetimeIndex,

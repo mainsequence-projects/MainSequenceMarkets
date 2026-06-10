@@ -50,7 +50,10 @@ class AssetPricingOperationRequest(BaseModel):
     )
     market_data_set: str | None = Field(
         default=None,
-        description="Pricing market-data set selector passed to the instrument operation.",
+        description=(
+            "Pricing market-data set selector passed to the instrument operation. "
+            "Required by the pricing operation registry for market-data-backed operations."
+        ),
         json_schema_extra={
             "x-ui-field-kind": "string",
             "x-ui-token": "pricing.market_data_set",
@@ -221,6 +224,19 @@ class BondCarryRollDownResponse(AssetPricingOperationResponseBase):
     metrics: dict[str, Any]
 
 
+class BondCurvePreviewCurveReference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: str
+    curve_uid: UUID
+    curve_identifier: str
+    curve_type: str
+    index_uid: UUID
+    source: str | None = None
+    discount_curve_url: str
+    discount_curve_query_params: dict[str, Any]
+
+
 class BondCurvePreviewResponse(AssetPricingOperationResponseBase):
     model_config = ConfigDict(
         extra="ignore",
@@ -230,7 +246,7 @@ class BondCurvePreviewResponse(AssetPricingOperationResponseBase):
         ),
     )
 
-    curves: list[dict[str, Any]]
+    curves: list[BondCurvePreviewCurveReference]
     diagnostics: dict[str, Any]
 
 

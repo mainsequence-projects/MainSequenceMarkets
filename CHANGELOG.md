@@ -9,6 +9,9 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Added project-local namespace defaults for ms-markets extension models through
+  `__metatable_namespace__` plus `__markets_base_identifier__`, while keeping
+  `MSM_AUTO_REGISTER_NAMESPACE` as the test/example override.
 - Added `MSDataInterface.get_latest_discount_curve(...)` for explicit latest
   discount-curve lookup by curve identity without using the global
   `USE_LAST_OBSERVATION_MS_INSTRUMENT` fallback.
@@ -93,6 +96,17 @@ and this project follows versioned releases.
 - Fixed `ImmediateSignal` so portfolio price sources only need the configured
   price column; missing `volume` now produces nullable portfolio-weight volume
   fields instead of failing the rebalance calculation.
+- Fixed portfolio update-window selection so source price coverage is evaluated
+  only for assets required by the portfolio, instead of taking the oldest
+  progress timestamp across every asset in a large upstream price table.
+- Made portfolio update-window selection strict when no required asset scope can
+  be determined, instead of falling back to table-wide source progress.
+- Fixed portfolio output progress lookup so a shared `PortfoliosStorage`
+  table-wide max from another `portfolio_identifier` cannot move the current
+  portfolio's update start date.
+- Fixed contributed portfolio signal cursors so shared `SignalWeightsStorage`
+  progress from another `signal_uid` cannot move the current signal's source
+  window.
 
 ### Removed
 

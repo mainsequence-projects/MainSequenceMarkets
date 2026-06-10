@@ -45,6 +45,9 @@ Provider services may compose table declarations and DataNodes when the provider
 needs to produce multiple library-owned objects. For example, the OpenFIGI
 service builds `msm.models.AssetTable`, `msm.models.OpenFigiAssetDetailsTable`, and an
 `msm.data_nodes.assets.AssetSnapshot` frame from the same provider row.
+Ticker-only asset intake should use the OpenFIGI mapping helper with explicit
+market, exchange, and security context; raw tickers should not be persisted as
+canonical `Asset.unique_identifier` values when a provider FIGI can be resolved.
 OpenFIGI requests read credentials from the Main Sequence secret
 `OPEN_FIGI_API_KEY`; set it in
 `www.main-sequence.app/app/main_sequence_workbench/secrets` before using the

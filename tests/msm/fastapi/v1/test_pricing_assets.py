@@ -59,8 +59,26 @@ def test_price_fixed_income_asset_route(monkeypatch) -> None:
     }
 
 
+def test_price_fixed_income_asset_route_requires_market_data_set() -> None:
+    asset_uid = uuid.uuid4()
+
+    client = TestClient(app)
+    response = client.post(
+        f"/api/v1/pricing/assets/{asset_uid}/price/",
+        json={
+            "valuation_date": "2026-06-09T00:00:00Z",
+            "parameters": {},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "market_data_set is required for price."}
+
+
 def test_fixed_income_routes_validate_operation_responses(monkeypatch) -> None:
     asset_uid = uuid.uuid4()
+    curve_uid = uuid.uuid4()
+    index_uid = uuid.uuid4()
     valuation_date = "2026-06-09T00:00:00Z"
 
     payloads = {
@@ -82,7 +100,24 @@ def test_fixed_income_routes_validate_operation_responses(monkeypatch) -> None:
         },
         "net-cashflows": {"cashflows": [{"payment_date": "2026-12-09", "net_cashflow": 2.5}]},
         "carry-roll-down": {"horizon_days": 30, "metrics": {"cr_dirty": 0.35}},
-        "curve-preview": {"curves": [], "diagnostics": {"pricing_engine_id": "engine-id"}},
+        "curve-preview": {
+            "curves": [
+                {
+                    "role": "discount",
+                    "curve_uid": str(curve_uid),
+                    "curve_identifier": "USD-SOFR-DISCOUNT",
+                    "curve_type": "discount",
+                    "index_uid": str(index_uid),
+                    "source": "example",
+                    "discount_curve_url": (f"/api/v1/pricing/curves/{curve_uid}/discount-curve/"),
+                    "discount_curve_query_params": {
+                        "market_data_set": "eod",
+                        "valuation_date": valuation_date,
+                    },
+                }
+            ],
+            "diagnostics": {"pricing_engine_id": "engine-id"},
+        },
         "fixings-availability": {"status": "available", "fixings": []},
     }
 

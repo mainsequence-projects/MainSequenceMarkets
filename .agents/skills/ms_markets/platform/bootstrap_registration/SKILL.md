@@ -138,12 +138,18 @@ That call must use the same direct backend lookup path as built-ins. Do not
 create a project-local UID map, secondary registry, alternate table-name
 resolver, direct runtime registration flow, or row-class schema bootstrap.
 
-Project-local extension models may set `__markets_storage_app__` to use a
-project-owned SQLAlchemy table-name app segment instead of the library default
-`ms_markets`. This is only physical table naming. It does not replace the
-globally unique `__metatable_identifier__`, does not affect row API selection,
-and does not remove the need for SDK migration/provider registration before
-runtime startup.
+Project-local extension models should define an abstract project mixin with a
+project-owned `__metatable_namespace__` and, when needed, a project-owned
+`__markets_storage_app__`. Concrete extension models should declare
+`__markets_base_identifier__` as the bare concept name. ms-markets combines the
+mixin namespace and base identifier into the globally unique MetaTable
+identifier. This does not affect row API selection and does not remove the need
+for SDK migration/provider registration before runtime startup.
+
+`MSM_AUTO_REGISTER_NAMESPACE` still overrides the project mixin namespace when
+it is set before model import. Use that for isolated tests and examples. Do not
+use environment-only namespace setup as the primary extension contract for a
+real project.
 
 Built-in ms-markets tables and storage classes use their built-in definitions as-is.
 Downstream projects must not set or override `__markets_storage_app__` on built-in
@@ -156,19 +162,25 @@ from msm.base import MarketsBase, MarketsMetaTableMixin
 
 class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
     __abstract__ = True
+    __metatable_namespace__ = "com.my_company.markets"
     __markets_storage_app__ = "my_project_markets"
 
 
 class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
-    __metatable_identifier__ = "com.my_company.markets.MyAssetDetails"
+    __markets_base_identifier__ = "MyAssetDetails"
     __metatable_description__ = (
         "Project-local asset details keyed one-to-one by AssetTable.uid."
     )
 ```
 
-Set `__markets_storage_app__` before SQLAlchemy maps the table. Changing it
-after migration finalization points the model at a different physical table name
-and requires the normal SDK migration and registration path.
+Already-qualified `__metatable_identifier__` values remain accepted for existing
+models. Prefer `__markets_base_identifier__` for new project-local models so the
+project namespace default and test namespace override are explicit.
+
+Set `__metatable_namespace__` and `__markets_storage_app__` before SQLAlchemy
+maps the table. Changing either after migration finalization points the model at
+a different logical or physical table and requires the normal SDK migration and
+registration path.
 
 When adding a new built-in markets MetaTable model:
 

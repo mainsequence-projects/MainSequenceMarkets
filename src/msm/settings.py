@@ -16,6 +16,17 @@ def markets_namespace(namespace: str | None = None) -> str:
     return os.getenv(MSM_AUTO_REGISTER_NAMESPACE_ENV) or DEFAULT_MARKETS_NAMESPACE
 
 
+def markets_configured_namespace(default_namespace: str | None = None) -> str:
+    """Return the env-overridable namespace for declarative model defaults."""
+
+    env_namespace = os.getenv(MSM_AUTO_REGISTER_NAMESPACE_ENV)
+    if env_namespace not in (None, ""):
+        return str(env_namespace)
+    if default_namespace not in (None, ""):
+        return str(default_namespace)
+    return DEFAULT_MARKETS_NAMESPACE
+
+
 def markets_auto_register_namespace() -> str | None:
     """Return the environment-provided startup namespace when configured."""
 
@@ -50,6 +61,7 @@ __all__ = [
     "INDEX_IDENTIFIER_DIMENSION",
     "MSM_AUTO_REGISTER_NAMESPACE_ENV",
     "markets_auto_register_namespace",
+    "markets_configured_namespace",
     "markets_data_node_identifier",
     "markets_identifier",
     "markets_namespace",

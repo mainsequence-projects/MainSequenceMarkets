@@ -197,18 +197,41 @@ security type, exchange, and raw provider payload to be stored relationally.
                                                                 +-----------------------------+
 ```
 
-Application code should still start with the `Asset` API. Resolve provider data,
-upsert the canonical asset, then upsert its OpenFIGI detail row using
-`asset_uid=asset.uid`:
+Application code should still start with the `Asset` API. Raw ticker symbols
+are not good `Asset.unique_identifier` values: they can collide across venues,
+change over time, and require exchange/security context to interpret. When a
+ticker is the only identifier available for a listed provider-backed asset,
+first resolve it through OpenFIGI with the required market, exchange, and
+security context. Then register the asset with the resolved FIGI as the stable
+`Asset.unique_identifier`, and store the ticker in `OpenFigiDetails` and
+display snapshots.
+
+If you already have a FIGI, resolve by FIGI:
 
 ```python
 from msm.api.assets import Asset, AssetType, OpenFigiDetails
 from msm.constants import ASSET_TYPE_EQUITY
-from msm.services.assets.openfigi import query_by_figi
+from msm.services.assets.openfigi import query_by_figi, query_figi
 
 AssetType.upsert(asset_type=ASSET_TYPE_EQUITY, display_name="Equity")
 
 normalized = query_by_figi("BBG00FNFPQH4")
+```
+
+If you only have a ticker, map the ticker to OpenFIGI first:
+
+```python
+normalized = query_figi(
+    ["AAPL"],
+    market_sector="Equity",
+    exch_code="US",
+)[0]
+```
+
+Then upsert the canonical asset and its OpenFIGI detail row using
+`asset_uid=asset.uid`:
+
+```python
 asset = Asset.upsert(
     unique_identifier=normalized["unique_identifier"],
     asset_type=ASSET_TYPE_EQUITY,

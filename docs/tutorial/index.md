@@ -377,16 +377,22 @@ inspection example that prints the SDK-derived table names.
 Use this workflow when an application owns a custom markets table that should be
 migrated and registered with the same path as built-in tables:
 
-1. Define the SQLAlchemy model with `MarketsMetaTableMixin` and `MarketsBase`.
-2. Give it one stable `__metatable_identifier__`.
-3. Declare relationships with normal SQLAlchemy `ForeignKey(...)` targets.
-4. Optionally set `__markets_storage_app__` to a project-owned app segment when
-   the extension table should not use the library default `ms_markets` physical
-   table-name prefix.
+1. Define an abstract project-local mixin with the project's default
+   `__metatable_namespace__` and, when needed, a project-owned
+   `__markets_storage_app__`.
+2. Define the SQLAlchemy model with that mixin and `MarketsBase`.
+3. Give it one stable `__markets_base_identifier__`; ms-markets combines this
+   base identifier with the mixin namespace to produce the globally unique
+   MetaTable identifier.
+4. Declare relationships with normal SQLAlchemy `ForeignKey(...)` targets.
 5. Add or sync the package/project migration that creates or refreshes the
    table and finalizes the schema.
 6. Attach at runtime with `msm.start_engine(models=[MyModelTable])`.
 7. Put row operations in an optional `MarketsMetaTableRow` wrapper.
+
+`MSM_AUTO_REGISTER_NAMESPACE` still overrides the project mixin namespace when
+set before model import. Use that for isolated tests and example runs; do not
+make env-only namespace setup the main project extension contract.
 
 The `models=[...]` selector is the public runtime attachment boundary. It
 expands foreign-key dependencies, verifies and attaches the selected SQLAlchemy

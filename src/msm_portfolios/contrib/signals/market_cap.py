@@ -164,7 +164,7 @@ class MarketCap(SignalWeights):
 
         unique_identifier_range_market_cap_map = {
             asset_unique_identifier(a): {
-                "start_date": self.update_statistics[asset_unique_identifier(a)],
+                "start_date": self._signal_asset_start_date(a),
                 "start_date_operand": ">",
             }
             for a in asset_list

@@ -82,8 +82,8 @@ MetaTable in both platform-managed and external-registered modes.
 
 Platform-managed models inherit `MarketsMetaTableMixin`, which assigns the
 physical SQLAlchemy table name through the package naming convention. Model
-classes should declare `__metatable_identifier__`, `__metatable_description__`,
-and SQLAlchemy `__table_args__`, but should not hand-write `__tablename__`.
+classes should declare a logical identifier, `__metatable_description__`, and
+SQLAlchemy `__table_args__`, but should not hand-write `__tablename__`.
 The physical name is `ms_markets__<lowercase-concept>` and gains an
 `MSM_AUTO_REGISTER_NAMESPACE` suffix when that environment variable is set
 before model import.
@@ -96,20 +96,28 @@ model is imported and mapped:
 ```python
 class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
     __abstract__ = True
+    __metatable_namespace__ = "com.my_project"
     __markets_storage_app__ = "my_project_markets"
 
 
 class BinanceSpotAccountDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
-    __metatable_identifier__ = "com.my_project.BinanceSpotAccountDetails"
+    __markets_base_identifier__ = "BinanceSpotAccountDetails"
     __metatable_description__ = (
         "Project-local Binance spot account details keyed by AssetTable.uid."
     )
 ```
 
 That changes only the SQLAlchemy physical table name, for example
-`my_project_markets__com_my_project_binancespotaccountdetails`. It does not
-replace `__metatable_identifier__`, which remains the logical catalog and row
-runtime identity.
+`my_project_markets__binancespotaccountdetails`. The local mixin's
+`__metatable_namespace__` combines with `__markets_base_identifier__` to produce
+the globally unique logical catalog and row runtime identity:
+`com.my_project.BinanceSpotAccountDetails`.
+
+`MSM_AUTO_REGISTER_NAMESPACE` overrides the mixin namespace when set before
+model import. That keeps tests and examples isolated without changing the
+project-local model source. Existing models may still declare an already
+qualified `__metatable_identifier__`; new extension models should prefer
+`__markets_base_identifier__` so the default namespace rule is visible.
 
 `__metatable_description__` is required on every concrete markets MetaTable,
 including `PlatformTimeIndexMetaTable` storage classes used by DataNodes. The
@@ -119,10 +127,10 @@ descriptions stay on SQLAlchemy column `info` metadata. Built-in markets and
 pricing tables are validated so every physical column has a non-empty
 description before registration-facing tests pass.
 
-`__metatable_identifier__` is authored as the bare logical name, such as
-`Asset`. At runtime the shared markets identifier rule keeps the bare name for
-the default markets namespace and prefixes non-default namespaces, such as
-`mainsequence.examples.Asset`.
+Built-in ms-markets models author `__metatable_identifier__` as the bare logical
+name, such as `Asset`. At runtime the shared markets identifier rule keeps the
+bare name for the default markets namespace and prefixes non-default test or
+example namespaces, such as `mainsequence.examples.Asset`.
 
 ## Extension Notes
 

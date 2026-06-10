@@ -24,6 +24,7 @@ from msm.base import (
     MarketsBase,
     MarketsMetaTableMixin,
     MarketsTimeIndexMetaTableMixin,
+    markets_table_args,
     markets_table_name,
     markets_table_storage_app,
     markets_table_storage_name,
@@ -308,10 +309,137 @@ def test_non_default_namespace_prefixes_metatable_identifier() -> None:
     class ExampleNamespacedTable(MarketsMetaTableMixin):
         __abstract__ = True
         __metatable_namespace__ = "mainsequence.examples"
-        __metatable_identifier__ = "Asset"
+        __markets_base_identifier__ = "Asset"
 
     assert ExampleNamespacedTable.__metatable_identifier__ == "mainsequence.examples.Asset"
     assert ExampleNamespacedTable.metatable_identifier() == "mainsequence.examples.Asset"
+
+
+def test_project_mixin_namespace_applies_to_base_identifier() -> None:
+    class ProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
+        __abstract__ = True
+        __metatable_namespace__ = "com.acme.markets"
+        __markets_storage_app__ = "acme_markets"
+
+    class ProjectAssetDetailsTable(ProjectMarketsMetaTableMixin, MarketsBase):
+        __markets_base_identifier__ = "ProjectAssetDetails"
+        __metatable_description__ = (
+            "Project-local asset details keyed by AssetTable uid for namespace "
+            "default extension tests."
+        )
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+
+    assert ProjectAssetDetailsTable.__metatable_identifier__ == (
+        "com.acme.markets.ProjectAssetDetails"
+    )
+    assert ProjectAssetDetailsTable.metatable_identifier() == (
+        "com.acme.markets.ProjectAssetDetails"
+    )
+    assert ProjectAssetDetailsTable.__table__.info["namespace"] == "com.acme.markets"
+    assert ProjectAssetDetailsTable.__table__.info["identifier"] == (
+        "com.acme.markets.ProjectAssetDetails"
+    )
+    assert ProjectAssetDetailsTable.__table__.name == markets_table_name(
+        "acme_markets",
+        "ProjectAssetDetails",
+    )
+
+
+def test_environment_namespace_overrides_project_mixin_default(monkeypatch) -> None:
+    monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.tests")
+
+    class ProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
+        __abstract__ = True
+        __metatable_namespace__ = "com.acme.markets"
+        __markets_storage_app__ = "acme_markets"
+
+    class ProjectNamespacedTestTable(ProjectMarketsMetaTableMixin, MarketsBase):
+        __markets_base_identifier__ = "ProjectNamespacedTest"
+        __metatable_description__ = (
+            "Project-local table used to verify environment namespace overrides "
+            "project mixin defaults."
+        )
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+
+    assert ProjectNamespacedTestTable.__metatable_identifier__ == (
+        "mainsequence.tests.ProjectNamespacedTest"
+    )
+    assert ProjectNamespacedTestTable.__table__.info["namespace"] == "mainsequence.tests"
+    assert ProjectNamespacedTestTable.__table__.info["identifier"] == (
+        "mainsequence.tests.ProjectNamespacedTest"
+    )
+    assert ProjectNamespacedTestTable.__table__.name == markets_table_name(
+        "acme_markets",
+        "ProjectNamespacedTest",
+        suffix="mainsequence.tests",
+    )
+
+
+def test_project_mixin_identifier_overrides_markets_table_args_info() -> None:
+    class ProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
+        __abstract__ = True
+        __metatable_namespace__ = "com.acme.markets"
+        __markets_storage_app__ = "acme_markets"
+
+    class ProjectTableArgsInfoTable(ProjectMarketsMetaTableMixin, MarketsBase):
+        __markets_base_identifier__ = "ProjectTableArgsInfo"
+        __table_args__ = markets_table_args("StaleTableArgsInfo")
+        __metatable_description__ = (
+            "Project-local table used to verify model identity overrides table "
+            "argument info metadata."
+        )
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+
+    assert ProjectTableArgsInfoTable.__table__.info["namespace"] == "com.acme.markets"
+    assert ProjectTableArgsInfoTable.__table__.info["identifier"] == (
+        "com.acme.markets.ProjectTableArgsInfo"
+    )
+
+
+def test_final_identifier_with_project_namespace_is_not_double_prefixed() -> None:
+    class ProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
+        __abstract__ = True
+        __metatable_namespace__ = "com.acme.markets"
+        __markets_storage_app__ = "acme_markets"
+
+    class ProjectFinalIdentifierTable(ProjectMarketsMetaTableMixin, MarketsBase):
+        __metatable_identifier__ = "com.acme.markets.ProjectFinalIdentifier"
+        __metatable_description__ = (
+            "Project-local table used to verify qualified identifiers are not prefixed twice."
+        )
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+
+    assert ProjectFinalIdentifierTable.__metatable_identifier__ == (
+        "com.acme.markets.ProjectFinalIdentifier"
+    )
+
+
+def test_environment_namespace_replaces_project_namespace_for_qualified_identifier(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.tests")
+
+    class ProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
+        __abstract__ = True
+        __metatable_namespace__ = "com.acme.markets"
+        __markets_storage_app__ = "acme_markets"
+
+    class ProjectQualifiedOverrideTable(ProjectMarketsMetaTableMixin, MarketsBase):
+        __metatable_identifier__ = "com.acme.markets.ProjectQualifiedOverride"
+        __metatable_description__ = (
+            "Project-local table used to verify environment namespace replacement "
+            "for qualified identifiers."
+        )
+
+        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+
+    assert ProjectQualifiedOverrideTable.__metatable_identifier__ == (
+        "mainsequence.tests.ProjectQualifiedOverride"
+    )
 
 
 def test_markets_metatable_identifier_uses_authored_identifier_metadata(monkeypatch) -> None:

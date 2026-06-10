@@ -50,6 +50,7 @@ Response:
         "url": "/api/v1/pricing/assets/asset-uid/price/",
         "requires_valuation_date": true,
         "supports_market_data_set": true,
+        "requires_market_data_set": true,
         "request_model": "AssetPricingOperationRequest",
         "response_model": "BondPriceResponse",
         "response_contract": "provider-native-json",
@@ -104,9 +105,10 @@ All operation endpoints use the same request envelope:
 ```
 
 `valuation_date` is required. `market_data_set` accepts the pricing market-data
-set selector passed to the instrument operation. Unknown top-level request fields
-are rejected. Unknown operation parameters are rejected by the core operation
-registry before dispatch.
+set selector passed to the instrument operation. Current registered fixed income
+operations require `market_data_set`; missing or blank values return `422` before
+the instrument is loaded. Unknown top-level request fields are rejected. Unknown
+operation parameters are rejected by the core operation registry before dispatch.
 
 ## Command Center Rendering Contracts
 
@@ -503,7 +505,9 @@ POST /api/v1/pricing/assets/{asset_uid}/curve-preview/
 
 This endpoint is intentionally method-backed. It prices the instrument and
 returns pricing-engine diagnostics without reading curve storage directly from
-the FastAPI layer.
+the FastAPI layer. When the instrument exposes an index-backed selected curve,
+the response includes a link to the existing pricing curve endpoint that returns
+decompressed nodes and the effective curve date.
 
 Response:
 
@@ -514,11 +518,31 @@ Response:
   "operation": "curve-preview",
   "valuation_date": "2026-06-09T00:00:00Z",
   "market_data_set": "eod",
-  "curves": [],
+  "curves": [
+    {
+      "role": "discount",
+      "curve_uid": "curve-uid",
+      "curve_identifier": "USD-SOFR-DISCOUNT",
+      "curve_type": "discount",
+      "index_uid": "index-uid",
+      "source": "example",
+      "discount_curve_url": "/api/v1/pricing/curves/curve-uid/discount-curve/",
+      "discount_curve_query_params": {
+        "market_data_set": "eod",
+        "valuation_date": "2026-06-09T00:00:00Z"
+      }
+    }
+  ],
   "diagnostics": {
     "pricing_engine_id": "engine-id"
   }
 }
+```
+
+To fetch the actual decompressed curve nodes, call:
+
+```text
+GET /api/v1/pricing/curves/{curve_uid}/discount-curve/?market_data_set=eod&valuation_date=2026-06-09T00:00:00Z
 ```
 
 ## Fixings Availability

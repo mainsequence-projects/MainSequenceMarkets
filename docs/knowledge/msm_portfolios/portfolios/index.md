@@ -323,6 +323,24 @@ portfolio_configuration = PortfolioConfiguration(
 price source. Price sources may contain more assets than the signal requires;
 portfolio calculation filters to the signal-required asset subset and reports
 missing required assets when the consumed price source does not cover them.
+The portfolio update window is also scoped to the assets the portfolio needs:
+the signal preflight universe, any previous portfolio-weight assets that still
+need valuation or liquidation, and any explicit portfolio value override asset.
+It does not use unrelated assets present in the source price table when deciding
+the usable source-data end timestamp. If the workflow cannot determine that
+asset scope before deriving the source-data window, it fails instead of falling
+back to table-wide price-source progress.
+
+Existing portfolio output progress is scoped by `portfolio_identifier` because
+`PortfoliosStorage` is keyed by `(time_index, portfolio_identifier)`. A later
+row for another portfolio in the shared storage table must not move this
+portfolio's start date; if this portfolio has no progress entry, the workflow
+treats it as a fresh portfolio rather than using the table-wide maximum.
+
+Signal progress follows the same rule. `SignalWeightsStorage` is keyed by
+`(time_index, signal_uid, asset_identifier)`, so contributed signal nodes must
+read progress under their own `signal_uid`; a later row from another signal in
+the shared table must not shorten this signal's source-data window.
 
 ## Account Target-Position Exposure To Portfolios
 

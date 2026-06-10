@@ -132,13 +132,17 @@ storage metadata from the backend registered table. Do not manually bind a UID,
 reconstruct a generic `MetaTable`, call storage `.register()` from runtime
 startup, or use manual bind helpers as an authoring step.
 
-Project-local storage classes may set `__markets_storage_app__` to use a
-project-owned SQLAlchemy table-name app segment instead of the library default
-`ms_markets`. This is useful for extension storage such as provider bars or
-account facts. It only changes physical table naming; the globally unique
-`__metatable_identifier__` remains the logical runtime identity.
-Changing the storage app after migration finalization is a physical
-table-name rotation and must go through the normal SDK migration and
+Project-local storage classes should inherit from an abstract project mixin that
+sets the project's default `__metatable_namespace__` and, when needed,
+`__markets_storage_app__`. Concrete storage classes should declare
+`__markets_base_identifier__` as the bare storage concept. This is useful for
+extension storage such as provider bars or account facts. ms-markets combines
+the namespace and base identifier into the globally unique logical runtime
+identity. `MSM_AUTO_REGISTER_NAMESPACE` still overrides the mixin namespace for
+isolated tests and examples.
+
+Changing the namespace or storage app after migration finalization is a logical
+or physical table-name rotation and must go through the normal SDK migration and
 registration path.
 
 Minimal storage-first pattern:
@@ -158,9 +162,14 @@ from msm.data_nodes.assets import (
 from msm.models.assets.core import AssetTable
 
 
-class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+class MyProjectMarketsStorageMixin(MarketsTimeIndexMetaTableMixin):
+    __abstract__ = True
+    __metatable_namespace__ = "com.my_project"
     __markets_storage_app__ = "my_project_markets"
-    __metatable_identifier__ = "ExampleAssetMetricsTS"
+
+
+class ExampleAssetMetricStorage(MyProjectMarketsStorageMixin, MarketsBase):
+    __markets_base_identifier__ = "ExampleAssetMetricsTS"
     __metatable_description__ = (
         "Timestamped asset metric observations keyed by asset identifier "
         "for market analytics and portfolio workflows."

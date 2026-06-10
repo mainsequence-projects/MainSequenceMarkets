@@ -94,6 +94,12 @@ class ExamplePriceSource(ExplicitPriceSource):
         return frame.set_index(["time_index", ASSET_IDENTIFIER])
 
 
+class ProgressSignal(SignalWeights):
+    @property
+    def signal_uid(self) -> str:
+        return "this-signal"
+
+
 @pytest.mark.parametrize(("node_cls", "storage_cls"), PORTFOLIO_NODE_STORAGE)
 def test_portfolio_nodes_source_column_dtypes_from_storage_classes(
     node_cls,
@@ -216,6 +222,201 @@ def test_portfolio_values_noop_when_existing_output_is_ahead_of_price_source() -
     frame = node._calculate_portfolio_workflow_values()
 
     assert frame.empty
+
+
+def test_portfolio_latest_value_ignores_other_portfolio_global_progress() -> None:
+    node = object.__new__(PortfoliosDataNode)
+    node._resolved_unique_identifier = "this-portfolio"
+    node.update_statistics = SimpleNamespace(
+        index_progress={
+            "other-portfolio": pd.Timestamp("2026-05-27T00:00:00Z"),
+        },
+        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
+    )
+
+    assert node._latest_portfolio_time_index_value() is None
+
+
+def test_portfolio_latest_value_handles_empty_progress_for_current_portfolio() -> None:
+    node = object.__new__(PortfoliosDataNode)
+    node._resolved_unique_identifier = "this-portfolio"
+    node.update_statistics = SimpleNamespace(
+        index_progress=None,
+        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
+    )
+
+    assert node._latest_portfolio_time_index_value() is None
+
+
+def test_portfolio_latest_value_uses_this_portfolio_progress() -> None:
+    this_portfolio_value = pd.Timestamp("2025-01-01T00:00:00Z")
+    node = object.__new__(PortfoliosDataNode)
+    node._resolved_unique_identifier = "this-portfolio"
+    node.update_statistics = SimpleNamespace(
+        index_progress={
+            "other-portfolio": pd.Timestamp("2026-05-27T00:00:00Z"),
+            "this-portfolio": this_portfolio_value,
+        },
+        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
+    )
+
+    assert node._latest_portfolio_time_index_value() == this_portfolio_value
+
+
+def test_signal_latest_value_ignores_other_signal_global_progress() -> None:
+    node = object.__new__(ProgressSignal)
+    node.update_statistics = SimpleNamespace(
+        index_progress={
+            "other-signal": {
+                "btc": pd.Timestamp("2026-05-27T00:00:00Z"),
+            },
+        },
+        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
+        _initial_fallback_date=pd.Timestamp("2018-01-01T00:00:00Z"),
+    )
+
+    assert node._latest_signal_time_index_value() is None
+
+
+def test_signal_latest_value_handles_empty_progress_for_current_signal() -> None:
+    node = object.__new__(ProgressSignal)
+    node.update_statistics = SimpleNamespace(
+        index_progress=None,
+        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
+        _initial_fallback_date=pd.Timestamp("2018-01-01T00:00:00Z"),
+    )
+
+    assert node._latest_signal_time_index_value() is None
+
+
+def test_signal_latest_value_uses_current_signal_progress() -> None:
+    latest_current_signal_value = pd.Timestamp("2025-01-03T00:00:00Z")
+    node = object.__new__(ProgressSignal)
+    node.update_statistics = SimpleNamespace(
+        index_progress={
+            "other-signal": {
+                "btc": pd.Timestamp("2026-05-27T00:00:00Z"),
+            },
+            "this-signal": {
+                "btc": pd.Timestamp("2025-01-01T00:00:00Z"),
+                "eth": latest_current_signal_value,
+            },
+        },
+        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
+        _initial_fallback_date=pd.Timestamp("2018-01-01T00:00:00Z"),
+    )
+
+    assert node._latest_signal_time_index_value() == latest_current_signal_value
+
+
+def test_signal_asset_start_date_uses_current_signal_asset_or_fallback() -> None:
+    fallback_date = pd.Timestamp("2018-01-01T00:00:00Z")
+    btc_signal_value = pd.Timestamp("2025-01-01T00:00:00Z")
+    node = object.__new__(ProgressSignal)
+    node.update_statistics = SimpleNamespace(
+        index_progress={
+            "other-signal": {
+                "eth": pd.Timestamp("2026-05-27T00:00:00Z"),
+            },
+            "this-signal": {
+                "btc": btc_signal_value,
+            },
+        },
+        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
+        _initial_fallback_date=fallback_date,
+    )
+
+    assert node._signal_asset_start_date("btc") == btc_signal_value
+    assert node._signal_asset_start_date("eth") == fallback_date
+
+
+def test_portfolio_update_window_uses_only_required_price_assets() -> None:
+    class ScopedProgress:
+        def __init__(self) -> None:
+            self.requested_identities: list[str] = []
+
+        def get_index_progress_leaf_values(self):
+            raise AssertionError("portfolio update window must not use global source progress")
+
+        def get_earliest_update_for_identity(self, identity):
+            self.requested_identities.append(identity)
+            return {
+                "btc": pd.Timestamp("2026-01-05T00:00:00Z"),
+                "eth": pd.Timestamp("2026-01-03T00:00:00Z"),
+            }[identity]
+
+    progress = ScopedProgress()
+    node = object.__new__(PortfoliosDataNode)
+    node.price_source = SimpleNamespace(update_statistics=progress)
+    node.signal_weights = SimpleNamespace(
+        get_asset_list=lambda: ["btc", "eth"],
+        get_asset_uid_to_override_portfolio_price=lambda: None,
+    )
+    node.required_price_asset_preflight = ["btc", "eth"]
+    node.price_alignment_policy = PriceAlignmentPolicy()
+    node.portfolio_prices_frequency = "1d"
+    node._get_last_weights = lambda: None
+
+    _start_date, end_date = node._calculate_start_end_dates()
+
+    assert end_date == pd.Timestamp("2026-01-04T00:00:00Z")
+    assert progress.requested_identities == ["btc", "eth"]
+
+
+def test_portfolio_update_window_includes_existing_weight_assets() -> None:
+    class ScopedProgress:
+        def __init__(self) -> None:
+            self.requested_identities: list[str] = []
+
+        def get_index_progress_leaf_values(self):
+            raise AssertionError("portfolio update window must not use global source progress")
+
+        def get_earliest_update_for_identity(self, identity):
+            self.requested_identities.append(identity)
+            return {
+                "btc": pd.Timestamp("2026-01-05T00:00:00Z"),
+                "eth": pd.Timestamp("2026-01-03T00:00:00Z"),
+                "sol": pd.Timestamp("2026-01-02T00:00:00Z"),
+            }[identity]
+
+    progress = ScopedProgress()
+    last_weights = pd.DataFrame(
+        {"weights_current": [1.0]},
+        index=pd.MultiIndex.from_tuples(
+            [(pd.Timestamp("2026-01-01T00:00:00Z"), "sol")],
+            names=["time_index", ASSET_IDENTIFIER],
+        ),
+    )
+    node = object.__new__(PortfoliosDataNode)
+    node.price_source = SimpleNamespace(update_statistics=progress)
+    node.signal_weights = SimpleNamespace(
+        get_asset_list=lambda: ["btc", "eth"],
+        get_asset_uid_to_override_portfolio_price=lambda: None,
+    )
+    node.required_price_asset_preflight = ["btc", "eth"]
+    node.price_alignment_policy = PriceAlignmentPolicy()
+    node.portfolio_prices_frequency = "1d"
+    node._get_last_weights = lambda: last_weights
+
+    _start_date, end_date = node._calculate_start_end_dates()
+
+    assert end_date == pd.Timestamp("2026-01-03T00:00:00Z")
+    assert progress.requested_identities == ["btc", "eth", "sol"]
+
+
+def test_portfolio_update_window_requires_price_asset_scope() -> None:
+    node = object.__new__(PortfoliosDataNode)
+    node.price_source = SimpleNamespace(update_statistics=SimpleNamespace())
+    node.signal_weights = SimpleNamespace(
+        get_asset_list=lambda: None,
+        get_asset_uid_to_override_portfolio_price=lambda: None,
+    )
+    node.price_alignment_policy = PriceAlignmentPolicy()
+    node.portfolio_prices_frequency = "1d"
+    node._get_last_weights = lambda: None
+
+    with pytest.raises(ValueError, match="required asset scope"):
+        node._calculate_start_end_dates()
 
 
 def test_portfolio_value_node_is_not_asset_scoped() -> None:

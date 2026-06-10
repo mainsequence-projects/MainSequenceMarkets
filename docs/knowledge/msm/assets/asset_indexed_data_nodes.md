@@ -142,12 +142,15 @@ SQLAlchemy `ForeignKey(...)` declaration on the storage class
 `asset_identifier` column. The DataNode uses its storage class through
 `_required_storage_table()`.
 
-Project-local storage classes may set `__markets_storage_app__` to use a
-project-owned SQLAlchemy table-name app segment instead of the library default
-`ms_markets`. Set it in the class body before model import/mapping. This only
-changes the physical table name, for example
-`my_project_markets__example_asset_metrics`; the logical
-`__metatable_identifier__` still owns catalog and runtime identity.
+Project-local storage classes should inherit from an abstract project mixin that
+sets the project's default `__metatable_namespace__` and, when needed,
+`__markets_storage_app__`. Concrete storage classes declare
+`__markets_base_identifier__` as the bare storage concept. ms-markets combines
+the namespace and base identifier into the globally unique catalog/runtime
+identity. Set the mixin attributes before model import/mapping.
+
+`MSM_AUTO_REGISTER_NAMESPACE` still overrides the project mixin namespace when
+set before model import. Use that for isolated tests and examples.
 
 ```python
 import datetime
@@ -161,9 +164,14 @@ from msm.data_nodes.assets import AssetDataNodeConfiguration, AssetTimestampedDa
 from msm.models.assets.core import AssetTable
 
 
-class ExampleAssetMetricStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+class MyProjectMarketsStorageMixin(MarketsTimeIndexMetaTableMixin):
+    __abstract__ = True
+    __metatable_namespace__ = "com.my_project"
     __markets_storage_app__ = "my_project_markets"
-    __metatable_identifier__ = "example_asset_metrics"
+
+
+class ExampleAssetMetricStorage(MyProjectMarketsStorageMixin, MarketsBase):
+    __markets_base_identifier__ = "ExampleAssetMetricsTS"
     __metatable_description__ = (
         "Timestamped asset metric observations keyed by asset identifier "
         "for market analytics and portfolio workflows."

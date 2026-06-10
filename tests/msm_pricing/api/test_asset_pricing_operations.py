@@ -16,8 +16,10 @@ from msm_pricing.api.asset_pricing_operations import (
 class FixedRateBond:
     def __init__(self):
         self.calls = []
+        self.valuation_date = None
 
     def set_valuation_date(self, valuation_date):
+        self.valuation_date = valuation_date
         self.calls.append(("set_valuation_date", valuation_date))
 
     def price(self, **kwargs):
@@ -67,6 +69,12 @@ class FixedRateBond:
         return "engine-id"
 
 
+class FloatingRateBond(FixedRateBond):
+    def __init__(self, *, floating_rate_index_uid):
+        super().__init__()
+        self.floating_rate_index_uid = floating_rate_index_uid
+
+
 def _patch_loaders(monkeypatch, instrument):
     asset_uid = uuid.uuid4()
     asset = SimpleNamespace(uid=asset_uid)
@@ -106,6 +114,7 @@ def test_asset_pricing_support_lists_registered_bond_operations() -> None:
         operation for operation in support["operations"] if operation["key"] == "price"
     )
     assert price_operation["url"] == f"/api/v1/pricing/assets/{asset_uid}/price/"
+    assert price_operation["requires_market_data_set"] is True
     assert price_operation["response_contract"] == "provider-native-json"
     assert price_operation["app_component"] == {
         "output_root": "response:$",
@@ -157,6 +166,22 @@ def test_execute_price_delegates_to_instrument_price(monkeypatch) -> None:
     ]
 
 
+def test_execute_market_data_backed_operation_requires_market_data_set(monkeypatch) -> None:
+    instrument = FixedRateBond()
+    asset_uid = _patch_loaders(monkeypatch, instrument)
+
+    with pytest.raises(ValueError, match="market_data_set is required for price"):
+        execute_asset_pricing_operation(
+            asset_uid=asset_uid,
+            operation="price",
+            valuation_date=dt.datetime(2026, 6, 9, tzinfo=dt.UTC),
+            market_data_set=None,
+            parameters={},
+        )
+
+    assert instrument.calls == []
+
+
 def test_execute_z_spread_requires_target_dirty_ccy(monkeypatch) -> None:
     asset_uid = _patch_loaders(monkeypatch, FixedRateBond())
 
@@ -203,6 +228,57 @@ def test_execute_carry_roll_down_prices_then_calls_carry(monkeypatch) -> None:
         ("price", {"market_data_set": "eod"}),
         ("carry_roll_down", {"horizon_days": 30, "clean": True}),
     ]
+
+
+def test_execute_curve_preview_links_selected_discount_curve(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    curve_uid = uuid.uuid4()
+    curve = SimpleNamespace(
+        uid=curve_uid,
+        unique_identifier="USD-SOFR-DISCOUNT",
+        curve_type="discount",
+        index_uid=index_uid,
+        source="example",
+    )
+    instrument = FloatingRateBond(floating_rate_index_uid=index_uid)
+    asset_uid = _patch_loaders(monkeypatch, instrument)
+    valuation_date = dt.datetime(2026, 6, 9, tzinfo=dt.UTC)
+    captured: dict[str, object] = {}
+
+    def fake_select_curve_for_reference(**kwargs):
+        captured.update(kwargs)
+        return curve
+
+    monkeypatch.setattr(
+        "msm_pricing.api.asset_pricing_operations._select_curve_for_reference",
+        fake_select_curve_for_reference,
+    )
+
+    response = execute_asset_pricing_operation(
+        asset_uid=asset_uid,
+        operation="curve-preview",
+        valuation_date=valuation_date,
+        market_data_set="eod",
+        parameters={},
+    )
+
+    assert captured == {"index_uid": index_uid, "curve_type": "discount"}
+    assert response["curves"] == [
+        {
+            "role": "discount",
+            "curve_uid": str(curve_uid),
+            "curve_identifier": "USD-SOFR-DISCOUNT",
+            "curve_type": "discount",
+            "index_uid": str(index_uid),
+            "source": "example",
+            "discount_curve_url": f"/api/v1/pricing/curves/{curve_uid}/discount-curve/",
+            "discount_curve_query_params": {
+                "market_data_set": "eod",
+                "valuation_date": "2026-06-09T00:00:00+00:00",
+            },
+        }
+    ]
+    assert response["diagnostics"] == {"pricing_engine_id": "engine-id"}
 
 
 def test_execute_unknown_operation_fails_before_dispatch(monkeypatch) -> None:

@@ -8,6 +8,7 @@ from typing import Any
 
 from msm.api.assets import Asset
 from msm_pricing import Instrument
+from msm_pricing.settings import PRICING_MARKET_DATA_SET_DEFAULT
 
 SUPPORTED_BOND_INSTRUMENT_TYPES = frozenset(
     {
@@ -45,6 +46,7 @@ class PricingOperationDefinition:
     parameter_keys: frozenset[str]
     required_parameter_keys: frozenset[str]
     executor: Callable[[Any, str | None, dict[str, Any]], Any]
+    requires_market_data_set: bool = True
     flat_outputs: tuple[str, ...] = ()
     response_mappings: tuple[dict[str, Any], ...] = ()
     frame_response_model: str | None = None
@@ -77,6 +79,7 @@ def build_asset_pricing_support(
                 "url": f"/api/v1/pricing/assets/{asset_uid}/{definition.key}/",
                 "requires_valuation_date": True,
                 "supports_market_data_set": True,
+                "requires_market_data_set": definition.requires_market_data_set,
                 "request_model": "AssetPricingOperationRequest",
                 "response_model": definition.response_model,
                 "response_contract": "provider-native-json",
@@ -121,6 +124,17 @@ def execute_asset_pricing_operation(
     if definition is None:
         raise UnsupportedAssetPricingOperationError(f"Unsupported pricing operation {operation!r}.")
 
+    validated_parameters = _validate_parameters(
+        operation=operation,
+        definition=definition,
+        parameters=parameters or {},
+    )
+    _validate_market_data_set(
+        operation=operation,
+        definition=definition,
+        market_data_set=market_data_set,
+    )
+
     asset = _load_asset(asset_uid)
     instrument = _load_instrument(asset)
     instrument_type = type(instrument).__name__
@@ -130,11 +144,6 @@ def execute_asset_pricing_operation(
         )
 
     instrument.set_valuation_date(valuation_date)
-    validated_parameters = _validate_parameters(
-        operation=operation,
-        definition=definition,
-        parameters=parameters or {},
-    )
 
     try:
         result = definition.executor(instrument, market_data_set, validated_parameters)
@@ -187,6 +196,16 @@ def _validate_parameters(
         raise ValueError(f"Missing required parameters for {operation}: {joined}.")
 
     return {key: value for key, value in parameters.items() if value is not None}
+
+
+def _validate_market_data_set(
+    *,
+    operation: str,
+    definition: PricingOperationDefinition,
+    market_data_set: str | None,
+) -> None:
+    if definition.requires_market_data_set and not str(market_data_set or "").strip():
+        raise ValueError(f"market_data_set is required for {operation}.")
 
 
 def _market_kwargs(market_data_set: str | None, parameters: Mapping[str, Any]) -> dict[str, Any]:
@@ -266,8 +285,16 @@ def _curve_preview(
     parameters: dict[str, Any],
 ) -> Mapping[str, Any]:
     instrument.price(**_market_kwargs(market_data_set, parameters))
+    curves, warnings = _instrument_curve_references(
+        instrument=instrument,
+        market_data_set=market_data_set,
+    )
     return {
-        "pricing_engine_id": instrument.pricing_engine_id(),
+        "curves": curves,
+        "diagnostics": {
+            "pricing_engine_id": instrument.pricing_engine_id(),
+            **({"curve_reference_warnings": warnings} if warnings else {}),
+        },
     }
 
 
@@ -361,7 +388,12 @@ def _operation_payload(
             "metrics": _json_safe(result),
         }
     if operation == "curve-preview":
-        return {**base, "curves": [], "diagnostics": _json_safe(result)}
+        preview = _json_safe(result)
+        return {
+            **base,
+            "curves": preview.get("curves", []),
+            "diagnostics": preview.get("diagnostics", {}),
+        }
     if operation == "fixings-availability":
         return {**base, **_json_safe(result)}
     return {**base, "result": _json_safe(result)}
@@ -382,6 +414,77 @@ def _json_safe(value: Any) -> Any:
         except Exception:
             pass
     return value
+
+
+def _instrument_curve_references(
+    *,
+    instrument: Any,
+    market_data_set: str | None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    references: list[dict[str, Any]] = []
+    warnings: list[str] = []
+
+    for role, index_uid in _instrument_curve_reference_candidates(instrument):
+        try:
+            curve = _select_curve_for_reference(index_uid=index_uid, curve_type="discount")
+        except (LookupError, ValueError) as exc:
+            warnings.append(f"{role}: {exc}")
+            continue
+        references.append(
+            _curve_reference_payload(
+                role=role,
+                curve=curve,
+                valuation_date=instrument.valuation_date,
+                market_data_set=market_data_set,
+            )
+        )
+
+    return references, warnings
+
+
+def _instrument_curve_reference_candidates(instrument: Any) -> list[tuple[str, uuid.UUID]]:
+    candidates: list[tuple[str, uuid.UUID]] = []
+    seen: set[uuid.UUID] = set()
+
+    floating_rate_index_uid = getattr(instrument, "floating_rate_index_uid", None)
+    if floating_rate_index_uid is not None:
+        index_uid = uuid.UUID(str(floating_rate_index_uid))
+        if index_uid not in seen:
+            candidates.append(("discount", index_uid))
+            seen.add(index_uid)
+
+    return candidates
+
+
+def _select_curve_for_reference(*, index_uid: uuid.UUID, curve_type: str):
+    from msm_pricing.pricing_engine import select_curve
+
+    return select_curve(index_uid=index_uid, curve_type=curve_type)
+
+
+def _curve_reference_payload(
+    *,
+    role: str,
+    curve: Any,
+    valuation_date: dt.datetime | dt.date | None,
+    market_data_set: str | None,
+) -> dict[str, Any]:
+    query_params: dict[str, Any] = {
+        "market_data_set": str(market_data_set or PRICING_MARKET_DATA_SET_DEFAULT),
+    }
+    if valuation_date is not None:
+        query_params["valuation_date"] = valuation_date.isoformat()
+
+    return {
+        "role": role,
+        "curve_uid": curve.uid,
+        "curve_identifier": curve.unique_identifier,
+        "curve_type": curve.curve_type,
+        "index_uid": curve.index_uid,
+        "source": getattr(curve, "source", None),
+        "discount_curve_url": f"/api/v1/pricing/curves/{curve.uid}/discount-curve/",
+        "discount_curve_query_params": query_params,
+    }
 
 
 PRICING_OPERATION_DEFINITIONS = {
