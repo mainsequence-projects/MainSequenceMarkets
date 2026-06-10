@@ -9,9 +9,14 @@ discovery, typed request/response contracts, OpenAPI assertions, route tests,
 and core execution tests are implemented.
 
 Current curve-preview and fixings-availability endpoints are implemented as
-method-backed diagnostics. They intentionally do not yet return decompressed
-curve nodes or per-index fixing coverage from storage. That deeper diagnostic
-payload remains tracked as follow-up work below.
+method-backed diagnostics. Decompressed curve nodes and effective curve dates
+are already exposed by the dedicated pricing curve route:
+
+```text
+GET /api/v1/pricing/curves/{uid}/discount-curve/
+```
+
+The asset pricer route should not duplicate that curve-storage endpoint.
 
 ## Context
 
@@ -471,11 +476,19 @@ Response:
 ### Curve Preview
 
 Curve preview is a frontend diagnostic for the market data used by the pricer.
-It should return the effective discount curve observation and decompressed curve
-nodes used for the valuation.
+It must stay asset/instrument-oriented and method-backed.
 
-This operation should use the same market-data set binding path as pricing. It
-must not read curve storage with hardcoded table names.
+Decompressed discount curve observations are not part of this endpoint because
+they already have a dedicated pricing curve route:
+
+```text
+GET /api/v1/pricing/curves/{uid}/discount-curve/?market_data_set=eod&valuation_date=2026-06-09T00:00:00Z
+```
+
+If the frontend needs curve nodes, it should use that existing pricing curve
+endpoint once it knows the relevant curve uid. Future asset-pricer diagnostics
+may expose curve references or links, but should not duplicate the curve node
+payload.
 
 Response:
 
@@ -485,19 +498,10 @@ Response:
   "instrument_type": "FixedRateBond",
   "valuation_date": "2026-06-09T00:00:00Z",
   "market_data_set": "eod",
-  "curves": [
-    {
-      "role": "discount",
-      "curve_identifier": "USD-SOFR-3M-DISCOUNT",
-      "effective_date": "2026-06-09T00:00:00Z",
-      "nodes": [
-        {
-          "days_to_maturity": 28,
-          "zero": 0.051
-        }
-      ]
-    }
-  ]
+  "curves": [],
+  "diagnostics": {
+    "pricing_engine_id": "engine-id"
+  }
 }
 ```
 
@@ -638,8 +642,9 @@ Do not convert missing market-data dependencies into empty pricing results.
 
 ## Follow-Up Tasks
 
-- [ ] Enhance `curve-preview` to return decompressed curve nodes and effective
-      curve dates from the selected pricing market-data set binding.
+- [ ] If the instrument/pricing engine exposes the selected curve uid, add that
+      curve reference or link to `curve-preview` so the frontend can call the
+      existing pricing curve discount-curve endpoint.
 - [ ] Enhance `fixings-availability` to return per-index required ranges,
       available ranges, missing count, and status from index fixing storage.
 - [ ] Enforce non-null `market_data_set` for operations whose instrument method

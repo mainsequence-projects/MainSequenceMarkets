@@ -219,7 +219,10 @@ that portfolio construction consumes. The price source may be an
 `InterpolatedPrices` instance, another DataNode, or an `APIDataNode` pointing at
 compatible registered storage. The price source must expose rows keyed by
 `(time_index, asset_identifier)` and include the configured price column, for
-example `close`.
+example `close`. `ImmediateSignal` does not require source volume; it writes
+empty volume fields in portfolio-weight output when the consumed price source
+does not provide volume. Volume-aware rebalance strategies, such as
+`VolumeParticipation`, still require volume explicitly.
 
 This producer boundary is intentional. Price collection, normalization, vendor
 mapping, and connector-specific scheduling are separate concerns from portfolio

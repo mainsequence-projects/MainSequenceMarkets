@@ -21,12 +21,16 @@ class ImmediateSignal(RebalanceStrategyBase):
         *args,
         **kwargs,
     ) -> pd.DataFrame:
-        volume_df = prices_df.reset_index().pivot(
-            index="time_index", columns=[ASSET_IDENTIFIER_DIMENSION], values="volume"
-        )
-        prices_df = prices_df.reset_index().pivot(
+        flat_prices = prices_df.reset_index()
+        prices_df = flat_prices.pivot(
             index="time_index", columns=[ASSET_IDENTIFIER_DIMENSION], values=price_type.value
         )
+        if "volume" in flat_prices.columns:
+            volume_df = flat_prices.pivot(
+                index="time_index", columns=[ASSET_IDENTIFIER_DIMENSION], values="volume"
+            )
+        else:
+            volume_df = pd.DataFrame(index=prices_df.index, columns=prices_df.columns)
 
         if last_rebalance_weights is not None:
             # This strategy emits backtest weights, so include the last observation

@@ -90,6 +90,9 @@ and this project follows versioned releases.
   value is already ahead of usable price-source coverage; the portfolio update
   now returns no new rows before calling calendar scheduling with a reversed
   date range.
+- Fixed `ImmediateSignal` so portfolio price sources only need the configured
+  price column; missing `volume` now produces nullable portfolio-weight volume
+  fields instead of failing the rebalance calculation.
 
 ### Removed
 

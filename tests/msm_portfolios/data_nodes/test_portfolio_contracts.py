@@ -34,6 +34,7 @@ from msm_portfolios.data_nodes.portfolios.storage import (
     PortfolioWeightsStorage,
     PortfoliosStorage,
 )
+from msm_portfolios.rebalance_strategy import ImmediateSignal
 from msm_portfolios.data_nodes.signals import SignalWeights
 from msm_portfolios.data_nodes import SignalWeightsConfiguration
 from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
@@ -251,6 +252,41 @@ def test_portfolio_price_alignment_ignores_extra_price_source_assets() -> None:
     )
 
     assert set(aligned_prices.index.get_level_values(ASSET_IDENTIFIER)) == {"btc", "eth"}
+
+
+def test_immediate_signal_does_not_require_price_source_volume() -> None:
+    time_index = pd.DatetimeIndex(
+        [
+            pd.Timestamp("2026-01-01T00:00:00Z"),
+            pd.Timestamp("2026-01-02T00:00:00Z"),
+        ]
+    )
+    signal_weights = pd.DataFrame(
+        [[0.6, 0.4], [0.5, 0.5]],
+        index=time_index,
+        columns=pd.Index(["btc", "eth"], name=ASSET_IDENTIFIER),
+    )
+    prices = pd.DataFrame(
+        [
+            {"time_index": time_index[0], ASSET_IDENTIFIER: "btc", "close": 100.0},
+            {"time_index": time_index[0], ASSET_IDENTIFIER: "eth", "close": 200.0},
+            {"time_index": time_index[1], ASSET_IDENTIFIER: "btc", "close": 110.0},
+            {"time_index": time_index[1], ASSET_IDENTIFIER: "eth", "close": 190.0},
+        ]
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+
+    weights = ImmediateSignal().apply_rebalance_logic(
+        last_rebalance_weights=None,
+        signal_weights=signal_weights,
+        prices_df=prices,
+        price_type=PriceTypeNames.CLOSE,
+    )
+
+    assert "volume_current" in weights.columns.get_level_values(0)
+    assert "volume_before" in weights.columns.get_level_values(0)
+    assert weights["volume_current"].isna().all().all()
+    assert weights["volume_before"].isna().all().all()
+    assert weights["price_current"].notna().all().all()
 
 
 def test_required_price_assets_include_previous_portfolio_weights() -> None:
