@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from apps.v1.schemas.command_center import TabularFrameResponse
 from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary, build_paginated_response
 from apps.v1.schemas.portfolios import (
+    PortfolioBulkCascadeDeleteResponse,
     PortfolioBulkDeleteResponse,
     PortfolioDeleteRequest,
     PortfolioDeleteResponse,
@@ -19,6 +20,7 @@ from apps.v1.schemas.portfolios import (
 )
 from apps.v1.services.portfolios import (
     PortfolioDataIntegrityError,
+    bulk_cascade_delete_portfolios,
     bulk_delete_portfolios,
     delete_portfolio,
     delete_portfolio_weights,
@@ -66,7 +68,7 @@ def get_portfolios(
         Query(
             description=(
                 "Case-insensitive search across portfolio uid, unique identifier, "
-                "calendar uid, and published-index uid fields."
+                "calendar uid, published-index uid, and signal uid fields."
             ),
         ),
     ] = "",
@@ -146,6 +148,58 @@ def bulk_delete_portfolio_rows(
                 "failed": [failure.model_dump(mode="json") for failure in response.failed],
                 "deleted_count": response.deleted_count,
                 "deleted_weights_count": response.deleted_weights_count,
+                "deleted_values_count": response.deleted_values_count,
+            },
+        )
+        raise HTTPException(status_code=409, detail=detail)
+    return response
+
+
+@router.post(
+    "/bulk-cascade-delete/",
+    response_model=PortfolioBulkCascadeDeleteResponse,
+    summary="Cascade delete portfolios",
+    description=(
+        "Delete multiple portfolio identity rows by uid and cascade-delete dependent "
+        "portfolio values, portfolio weights, target-position rows, virtual funds, "
+        "virtual-fund holdings sets, and virtual-fund holdings storage rows."
+    ),
+    operation_id="bulkCascadeDeletePortfolios",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "Invalid portfolio cascade-delete payload.",
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "One or more portfolios could not be cascade deleted.",
+        },
+    },
+)
+def bulk_cascade_delete_portfolio_rows(
+    payload: PortfolioDeleteRequest,
+) -> PortfolioBulkCascadeDeleteResponse:
+    try:
+        response = bulk_cascade_delete_portfolios(uids=payload.uids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if response.failed:
+        detail = _portfolio_bulk_delete_error_detail(response)
+        logger.warning(
+            "Portfolio bulk cascade delete failed.",
+            extra={
+                "failed": [failure.model_dump(mode="json") for failure in response.failed],
+                "deleted_count": response.deleted_count,
+                "deleted_weights_count": response.deleted_weights_count,
+                "deleted_values_count": response.deleted_values_count,
+                "deleted_target_positions_count": response.deleted_target_positions_count,
+                "deleted_virtual_funds_count": response.deleted_virtual_funds_count,
+                "deleted_virtual_fund_holdings_sets_count": (
+                    response.deleted_virtual_fund_holdings_sets_count
+                ),
+                "deleted_virtual_fund_holdings_count": (
+                    response.deleted_virtual_fund_holdings_count
+                ),
             },
         )
         raise HTTPException(status_code=409, detail=detail)

@@ -7,7 +7,9 @@ from apps.v1.schemas.command_center import TabularFrameResponse
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
     Portfolio,
+    PortfolioBulkCascadeDeleteResponse,
     PortfolioBulkDeleteResponse,
+    PortfolioCascadeDeleteResponse,
     PortfolioDeleteResponse,
     PortfolioDetailResponse,
     PortfolioWeightsDeleteResponse,
@@ -132,6 +134,14 @@ def delete_portfolio(*, uid: str) -> PortfolioDeleteResponse | None:
     return PortfolioDeleteResponse.model_validate(deleted)
 
 
+def cascade_delete_portfolio(*, uid: str) -> PortfolioCascadeDeleteResponse | None:
+    runtime = _get_runtime()
+    deleted = _cascade_delete_portfolio_record(runtime.context, uid=uid)
+    if not deleted:
+        return None
+    return PortfolioCascadeDeleteResponse.model_validate(deleted)
+
+
 def delete_portfolio_weights(
     *,
     uid: str,
@@ -150,6 +160,12 @@ def bulk_delete_portfolios(*, uids: list[str]) -> PortfolioBulkDeleteResponse:
     return PortfolioBulkDeleteResponse.model_validate(response)
 
 
+def bulk_cascade_delete_portfolios(*, uids: list[str]) -> PortfolioBulkCascadeDeleteResponse:
+    runtime = _get_runtime()
+    response = _bulk_cascade_delete_portfolio_records(runtime.context, uids=uids)
+    return PortfolioBulkCascadeDeleteResponse.model_validate(response)
+
+
 def _get_runtime():
     from apps.v1.runtime_bootstrap import resolve_apps_v1_portfolio_runtime
 
@@ -160,10 +176,14 @@ def _get_runtime():
             "Asset",
             "AssetSnapshotsStorage",
             "PortfolioMetadata",
+            "SignalMetadata",
             "PortfolioWeightsStorage",
             "PortfoliosStorage",
             "SignalWeightsStorage",
+            "TargetPositionsStorage",
             "VirtualFund",
+            "VirtualFundHoldingsSet",
+            "VirtualFundHoldingsStorage",
         ],
         row_model_name="GET /api/v1/portfolio/",
     )
@@ -211,6 +231,12 @@ def _delete_portfolio_record(context, **kwargs):
     return delete_portfolio_record(context, **kwargs)
 
 
+def _cascade_delete_portfolio_record(context, **kwargs):
+    from msm_portfolios.services import cascade_delete_portfolio_record
+
+    return cascade_delete_portfolio_record(context, **kwargs)
+
+
 def _delete_portfolio_weights(context, **kwargs):
     from msm_portfolios.services import delete_portfolio_weights
 
@@ -221,6 +247,12 @@ def _bulk_delete_portfolio_records(context, **kwargs):
     from msm_portfolios.services import bulk_delete_portfolio_records
 
     return bulk_delete_portfolio_records(context, **kwargs)
+
+
+def _bulk_cascade_delete_portfolio_records(context, **kwargs):
+    from msm_portfolios.services import bulk_cascade_delete_portfolio_records
+
+    return bulk_cascade_delete_portfolio_records(context, **kwargs)
 
 
 def _validate_portfolio_row(row: object) -> Portfolio:

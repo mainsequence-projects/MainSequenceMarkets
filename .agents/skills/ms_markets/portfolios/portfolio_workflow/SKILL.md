@@ -54,6 +54,9 @@ Rules:
 - Every `PortfolioTable` row must have a non-null `calendar_uid` that
   references `CalendarTable.uid`. Do not add or write redundant calendar-name
   fields on portfolio rows.
+- `PortfolioTable.signal_uid` is nullable because portfolio rows can be created
+  before a signal workflow runs, but when present it must be a real foreign key
+  reference to `SignalMetadataTable.signal_uid`.
 - `PortfolioWeightsStorage.portfolio_identifier` and
   `PortfoliosStorage.portfolio_identifier` must reference
   `PortfolioTable.unique_identifier`. `PortfolioWeightsStorage.asset_identifier`
@@ -192,9 +195,14 @@ Rules:
   alignment. It must not create persistent storage or hide a price DataNode.
 - `PortfoliosDataNode.run(..., update_pointers=True)` is the default portfolio
   workflow behavior. After the graph publishes, it must upsert the resolved
-  `PortfolioTable` row with `signal_weights_data_node_uid`,
+  `PortfolioTable` row with `signal_uid`, `signal_weights_data_node_uid`,
   `portfolio_weights_data_node_uid`, and `portfolio_data_node_uid`. Examples
   should not perform this final pointer upsert manually.
+- API reads for a portfolio's signal weights must filter by
+  `PortfolioTable.signal_uid`. Do not derive the signal from
+  `DataNodeUpdate.build_configuration`, runtime update statistics, or distinct
+  `SignalWeightsStorage.signal_uid` values because signal storage is shared by
+  many signals.
 
 Contributed signal rules:
 

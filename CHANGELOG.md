@@ -74,6 +74,10 @@ and this project follows versioned releases.
   latest-weight reads, delete cleanup, and account virtual-fund expansion use
   `PortfolioTable.unique_identifier` as `portfolio_identifier`; optional
   `published_index_uid` remains publication metadata only.
+- Added nullable `PortfolioTable.signal_uid` as a foreign-key pointer to
+  `SignalMetadataTable.signal_uid`; portfolio workflow pointer updates now
+  persist the resolved signal UID, and portfolio signal-weight API reads use
+  that first-class pointer instead of inferring from shared storage.
 
 ### Fixed
 

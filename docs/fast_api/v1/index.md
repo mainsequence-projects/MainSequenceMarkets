@@ -305,8 +305,12 @@ Current local-dev behavior:
     pages
   - uses the portfolio `uid` string as `entity.id`
   - includes `portfolio_weights_data_node_uid`,
-    `signal_weights_data_node_uid`, and `portfolio_data_node_uid` as inline
-    fields and under `extensions.pointers`
+    `signal_weights_data_node_uid`, nullable `signal_uid`, and
+    `portfolio_data_node_uid` as inline fields and under `extensions.pointers`
+- `GET /api/v1/portfolio/{uid}/signals_weights/`
+  - returns a Command Center tabular frame for the portfolio signal weights
+  - filters by `Portfolio.signal_uid`; it does not infer a signal from shared
+    `SignalWeightsStorage`
 - `GET /api/v1/portfolio/{uid}/weights/`
   - supports `order`, `limit=1`, `include_asset_detail`, and exact
     `weights_date`

@@ -260,6 +260,8 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                 "portfolio graph."
             )
 
+        self._ensure_signal_metadata(self.signal_weights)
+        signal_uid = self._required_signal_uid(self.signal_weights)
         portfolio = Portfolio.upsert(
             unique_identifier=str(portfolio.unique_identifier),
             calendar_uid=calendar_uid,
@@ -271,6 +273,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                 self.signal_weights,
                 "signal weights",
             ),
+            signal_uid=signal_uid,
             portfolio_weights_data_node_uid=self._required_data_node_update_uid(
                 portfolio_weights_node,
                 "portfolio weights",
@@ -282,6 +285,24 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         )
         self.target_portfolio = portfolio
         return portfolio
+
+    @staticmethod
+    def _ensure_signal_metadata(signal_weights: Any) -> None:
+        upsert_signal_metadata = getattr(
+            signal_weights, "_upsert_signal_metadata_if_available", None
+        )
+        if callable(upsert_signal_metadata):
+            upsert_signal_metadata()
+
+    @staticmethod
+    def _required_signal_uid(signal_weights: Any) -> str:
+        signal_uid = getattr(signal_weights, "signal_uid", None)
+        if signal_uid in (None, ""):
+            raise RuntimeError(
+                "Cannot update PortfolioTable signal pointer because signal_weights.signal_uid "
+                "is not available."
+            )
+        return str(signal_uid)
 
     @staticmethod
     def _required_data_node_update_uid(node: Any, label: str) -> str:

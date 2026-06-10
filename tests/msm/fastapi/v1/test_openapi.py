@@ -529,6 +529,21 @@ def test_openapi_json_documents_portfolio_routes() -> None:
         "schema"
     ] == {"$ref": "#/components/schemas/PortfolioBulkDeleteResponse"}
 
+    portfolio_bulk_cascade_delete_operation = payload["paths"][
+        "/api/v1/portfolio/bulk-cascade-delete/"
+    ]["post"]
+    assert portfolio_bulk_cascade_delete_operation["summary"] == "Cascade delete portfolios"
+    assert (
+        portfolio_bulk_cascade_delete_operation["operationId"]
+        == "bulkCascadeDeletePortfolios"
+    )
+    assert portfolio_bulk_cascade_delete_operation["requestBody"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PortfolioDeleteRequest"}
+    assert portfolio_bulk_cascade_delete_operation["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"] == {"$ref": "#/components/schemas/PortfolioBulkCascadeDeleteResponse"}
+
 
 def test_openapi_json_documents_portfolio_signal_routes() -> None:
     client = TestClient(app)

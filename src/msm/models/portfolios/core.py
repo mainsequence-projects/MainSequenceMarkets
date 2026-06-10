@@ -15,6 +15,7 @@ from msm.base import (
 
 from msm.models.indices import IndexTable
 from msm.models.calendars import CalendarTable
+from msm.models.portfolios.signals import SignalMetadataTable
 
 
 class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
@@ -40,6 +41,10 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         Index(
             None,
             "published_index_uid",
+        ),
+        Index(
+            None,
+            "signal_uid",
         ),
     )
 
@@ -102,6 +107,22 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         info={
             "label": "Signal Weights Data Node UID",
             "description": "Platform DataNodeUpdate.uid for the signal weights producer.",
+        },
+    )
+    signal_uid: Mapped[str | None] = mapped_column(
+        String(255),
+        ForeignKey(
+            f"{SignalMetadataTable.__table__.fullname}.signal_uid",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        info={
+            "label": "Signal UID",
+            "description": (
+                "Optional SignalMetadataTable.signal_uid for the signal currently "
+                "used by this portfolio. Populated by portfolio workflow pointer "
+                "updates after signal metadata has been persisted."
+            ),
         },
     )
     portfolio_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(

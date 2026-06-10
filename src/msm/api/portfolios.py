@@ -6,7 +6,13 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from msm.api.base import MarketsMetaTableRow
-from msm.models import CalendarTable, IndexTable, IndexTypeTable, PortfolioTable
+from msm.models import (
+    CalendarTable,
+    IndexTable,
+    IndexTypeTable,
+    PortfolioTable,
+    SignalMetadataTable,
+)
 
 
 class Portfolio(MarketsMetaTableRow):
@@ -17,6 +23,7 @@ class Portfolio(MarketsMetaTableRow):
         CalendarTable,
         IndexTypeTable,
         IndexTable,
+        SignalMetadataTable,
         PortfolioTable,
     ]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
@@ -26,6 +33,7 @@ class Portfolio(MarketsMetaTableRow):
     published_index_uid: uuid.UUID | None = None
     portfolio_weights_data_node_uid: uuid.UUID | None = None
     signal_weights_data_node_uid: uuid.UUID | None = None
+    signal_uid: str | None = None
     portfolio_data_node_uid: uuid.UUID | None = None
     backtest_table_price_column_name: str = "close"
 
@@ -38,6 +46,7 @@ class PortfolioCreate(BaseModel):
     published_index_uid: uuid.UUID | str | None = None
     portfolio_weights_data_node_uid: uuid.UUID | str | None = None
     signal_weights_data_node_uid: uuid.UUID | str | None = None
+    signal_uid: str | None = Field(default=None, max_length=255)
     portfolio_data_node_uid: uuid.UUID | str | None = None
     backtest_table_price_column_name: str = "close"
 
@@ -53,6 +62,7 @@ class PortfolioUpdate(BaseModel):
     published_index_uid: uuid.UUID | str | None = None
     portfolio_weights_data_node_uid: uuid.UUID | str | None = None
     signal_weights_data_node_uid: uuid.UUID | str | None = None
+    signal_uid: str | None = Field(default=None, max_length=255)
     portfolio_data_node_uid: uuid.UUID | str | None = None
     backtest_table_price_column_name: str | None = None
 

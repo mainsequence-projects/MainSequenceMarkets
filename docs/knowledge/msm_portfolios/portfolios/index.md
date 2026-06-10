@@ -96,16 +96,18 @@ Portfolio identity is core reference data and lives under:
 ```text
 src/msm/models/portfolios/
 ├── __init__.py
-└── core.py       PortfolioTable
+├── core.py       PortfolioTable
+└── signals.py    SignalMetadataTable
 ```
 
 `PortfolioTable` is the canonical portfolio identity row. It is keyed by
 `unique_identifier` and stores optional `published_index_uid` linkage to
-`IndexTable`, plus DataNode UIDs for canonical portfolio outputs. A portfolio is
-not an asset. The optional published index link is metadata for workflows that
-want to expose the portfolio as an index-like observable; core portfolio
-weights, values, account expansion, and virtual-fund allocation use
-`PortfolioTable.uid` / `PortfolioTable.unique_identifier`.
+`IndexTable`, an optional `signal_uid` linkage to `SignalMetadataTable`, plus
+DataNode UIDs for canonical portfolio outputs. A portfolio is not an asset. The
+optional published index link is metadata for workflows that want to expose the
+portfolio as an index-like observable; core portfolio weights, values, account
+expansion, and virtual-fund allocation use `PortfolioTable.uid` /
+`PortfolioTable.unique_identifier`.
 
 Portfolio descriptive metadata remains in `msm_portfolios`:
 
@@ -139,6 +141,7 @@ Portfolio identity, required calendar linkage, and optional published-index link
 | calendar_uid FK NOT NULL ---+----+                             | index_type                  |
 | portfolio_weights_data_node_uid |--> PortfolioWeights           +-----------------------------+
 | signal_weights_data_node_uid    |--> SignalWeights
+| signal_uid FK nullable ---------+----------------------------+
 | portfolio_data_node_uid         |--> PortfoliosDataNode
 | backtest_table_price_column_name|
 +-----------------------------+
@@ -151,6 +154,16 @@ Portfolio identity, required calendar linkage, and optional published-index link
                          | uid PK                      |
                          | unique_identifier unique    |
                          | valid_from / valid_to       |
+                         +-----------------------------+
+
+                                  optional signal pointer
+                                  v
+                         +-----------------------------+
+                         | SignalMetadataTable         |
+                         |-----------------------------|
+                         | uid PK                      |
+                         | signal_uid unique           |
+                         | signal_description          |
                          +-----------------------------+
 ```
 
@@ -191,6 +204,12 @@ MetaTables:
 
 `SignalMetadataTable.signal_description` is descriptive text for humans. Store
 plain text or Markdown, not HTML tags; rendering belongs to the consuming UI.
+`PortfolioTable.signal_uid` is nullable because portfolio rows can be registered
+before a signal workflow runs. Once `PortfoliosDataNode.run(...,
+update_pointers=True)` completes, the portfolio row should store the same
+`signal_uid` that identifies the signal metadata and signal-weight rows. API
+reads for portfolio signal weights must use this pointer; they must not infer a
+signal by scanning the shared `SignalWeightsStorage` table.
 
 `PortfoliosStorage.portfolio_identifier` and
 `PortfolioWeightsStorage.portfolio_identifier` reference

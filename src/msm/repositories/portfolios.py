@@ -22,6 +22,7 @@ def build_create_portfolio_operation(
     published_index_uid: uuid.UUID | str | None = None,
     portfolio_weights_data_node_uid: uuid.UUID | str | None = None,
     signal_weights_data_node_uid: uuid.UUID | str | None = None,
+    signal_uid: str | None = None,
     portfolio_data_node_uid: uuid.UUID | str | None = None,
     backtest_table_price_column_name: str = "close",
 ) -> MetaTableCompiledSQLOperation:
@@ -33,6 +34,7 @@ def build_create_portfolio_operation(
             published_index_uid=published_index_uid,
             portfolio_weights_data_node_uid=portfolio_weights_data_node_uid,
             signal_weights_data_node_uid=signal_weights_data_node_uid,
+            signal_uid=signal_uid,
             portfolio_data_node_uid=portfolio_data_node_uid,
             backtest_table_price_column_name=backtest_table_price_column_name,
         )

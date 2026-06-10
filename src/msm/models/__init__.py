@@ -30,6 +30,7 @@ from .execution import OrderManagerTable
 from .issuers import IssuerTable
 from .indices import IndexTable, IndexTypeTable
 from .portfolios import PortfolioTable
+from .portfolios import SignalMetadataTable
 
 
 def markets_sqlalchemy_models() -> list[type]:
@@ -53,6 +54,7 @@ def markets_sqlalchemy_models() -> list[type]:
         CalendarDateTable,
         CalendarSessionTable,
         CalendarEventTable,
+        SignalMetadataTable,
         PortfolioTable,
         AccountAllocationModelTable,
         AccountGroupTable,
@@ -122,6 +124,7 @@ __all__ = [
     "OrderManagerTable",
     "PositionSetTable",
     "PortfolioTable",
+    "SignalMetadataTable",
     "VirtualFundHoldingsSetTable",
     "VirtualFundTable",
     "markets_sqlalchemy_models",

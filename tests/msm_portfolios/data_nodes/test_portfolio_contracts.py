@@ -161,6 +161,16 @@ def test_signal_weights_storage_references_signal_metadata_and_asset_table() -> 
     assert asset_foreign_key.ondelete == "RESTRICT"
 
 
+def test_portfolio_table_signal_uid_references_signal_metadata() -> None:
+    signal_foreign_keys = PortfolioTable.__table__.c.signal_uid.foreign_keys
+
+    assert len(signal_foreign_keys) == 1
+    signal_foreign_key = next(iter(signal_foreign_keys))
+    assert signal_foreign_key.column is SignalMetadataTable.__table__.c.signal_uid
+    assert signal_foreign_key.ondelete == "RESTRICT"
+    assert PortfolioTable.__table__.c.signal_uid.nullable is True
+
+
 def test_signal_metadata_emission_uses_registry_upsert_by_default(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -281,7 +291,11 @@ def test_portfolio_values_updates_portfolio_data_node_pointers(monkeypatch) -> N
         return SimpleNamespace(uid="portfolio-uid", **kwargs)
 
     node = object.__new__(PortfoliosDataNode)
-    node.signal_weights = object()
+    metadata_calls: list[bool] = []
+    node.signal_weights = SimpleNamespace(
+        signal_uid="example-signal",
+        _upsert_signal_metadata_if_available=lambda: metadata_calls.append(True),
+    )
     node._required_data_node_update_uid = lambda _node, label: {
         "signal weights": "signal-node-uid",
         "portfolio weights": "weights-node-uid",
@@ -309,9 +323,11 @@ def test_portfolio_values_updates_portfolio_data_node_pointers(monkeypatch) -> N
         "published_index_uid": "index-uid",
         "backtest_table_price_column_name": "close",
         "signal_weights_data_node_uid": "signal-node-uid",
+        "signal_uid": "example-signal",
         "portfolio_weights_data_node_uid": "weights-node-uid",
         "portfolio_data_node_uid": "values-node-uid",
     }
+    assert metadata_calls == [True]
 
 
 def test_portfolio_values_identifier_resolution_does_not_stringify_method(monkeypatch) -> None:

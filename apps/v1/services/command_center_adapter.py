@@ -101,6 +101,7 @@ MUTATION_OPERATION_IDS = frozenset(
         "addAccountHoldings",
         "addAccountTargetPositions",
         "deleteIndex",
+        "bulkCascadeDeletePortfolios",
         "bulkDeletePortfolios",
         "deletePortfolio",
         "deletePortfolioWeights",

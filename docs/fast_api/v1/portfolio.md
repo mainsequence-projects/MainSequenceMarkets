@@ -15,9 +15,9 @@ library workflow outside this API surface.
   `msm_portfolios.data_nodes.portfolios.storage.PortfolioWeightsStorage`.
 - Weight row asset labels use `AssetSnapshotsStorage`; OpenFIGI is not used for
   portfolio weight labels.
-- Signal weights resolve from the runtime update state of
-  `Portfolio.signal_weights_data_node_uid`. The API does not recompute signal
-  identity from the DataNode build configuration.
+- Signal weights resolve from nullable `Portfolio.signal_uid`, which points to
+  `SignalMetadataTable.signal_uid`. The API does not recompute signal identity
+  from the DataNode build configuration or by scanning shared signal storage.
 
 Latest weights resolve through:
 
@@ -54,6 +54,7 @@ Returns `PaginatedResponse[Portfolio]`:
       "published_index_uid": "index-uid",
       "portfolio_weights_data_node_uid": null,
       "signal_weights_data_node_uid": null,
+      "signal_uid": null,
       "portfolio_data_node_uid": null,
       "backtest_table_price_column_name": "close"
     }
@@ -79,6 +80,7 @@ links:
     "published_index_uid": "index-uid",
     "portfolio_weights_data_node_uid": null,
     "signal_weights_data_node_uid": null,
+    "signal_uid": null,
     "portfolio_data_node_uid": null,
     "backtest_table_price_column_name": "close"
   },
@@ -123,11 +125,17 @@ and as a structured `extensions.pointers` object:
     "pointers": {
       "portfolio_weights_data_node_uid": "weights-node-uid",
       "signal_weights_data_node_uid": "signal-node-uid",
+      "signal_uid": "canonical-signal-uid",
       "portfolio_data_node_uid": "values-node-uid"
     }
   }
 }
 ```
+
+`signal_uid` is nullable for portfolios created before a signal workflow has run.
+When present, it is the canonical `SignalMetadataTable.signal_uid` used by
+`GET /api/v1/portfolio/{uid}/signals_weights/`. The signal-weights endpoint
+does not infer the signal by scanning shared signal-weight storage.
 
 ## Latest Portfolio Weights
 

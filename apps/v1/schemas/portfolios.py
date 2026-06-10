@@ -114,9 +114,21 @@ class PortfolioDeleteResponse(BaseModel):
     detail: str
     deleted_count: int = 0
     deleted_weights_count: int = 0
+    deleted_values_count: int = 0
 
 
 class PortfolioBulkDeleteResponse(PortfolioDeleteResponse):
+    failed: list[PortfolioDeleteFailure] = Field(default_factory=list)
+
+
+class PortfolioCascadeDeleteResponse(PortfolioDeleteResponse):
+    deleted_target_positions_count: int = 0
+    deleted_virtual_funds_count: int = 0
+    deleted_virtual_fund_holdings_sets_count: int = 0
+    deleted_virtual_fund_holdings_count: int = 0
+
+
+class PortfolioBulkCascadeDeleteResponse(PortfolioCascadeDeleteResponse):
     failed: list[PortfolioDeleteFailure] = Field(default_factory=list)
 
 

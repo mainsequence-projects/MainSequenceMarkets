@@ -43,5 +43,5 @@ def test_core_model_graph_owns_portfolio_identity_and_account_allocation() -> No
     assert PortfolioMetadataTable not in core_graph
     assert VirtualFundTable in core_graph
     assert VirtualFundHoldingsSetTable in core_graph
-    assert SignalMetadataTable not in core_graph
+    assert SignalMetadataTable in core_graph
     assert RebalanceStrategyMetadataTable not in core_graph
