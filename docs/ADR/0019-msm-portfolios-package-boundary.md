@@ -45,11 +45,11 @@ virtual funds should live in their own top-level package so users can import,
 bootstrap, test, and document that surface explicitly.
 
 The Main Sequence SDK documentation treats DataNodes as stable data products
-with storage/update identity and describes Virtual Fund Builder as a portfolio
-construction layer over DataNodes. That matches the intended split:
-portfolio/virtual-fund functionality should be an explicit library surface built
-on top of core markets models, not an implicit part of every core `msm`
-bootstrap.
+with storage/update identity. The portfolio construction layer in
+`msm_portfolios` follows that model: portfolio/virtual-fund functionality should
+be an explicit library surface built on top of core markets models, not an
+implicit part of every core `msm` bootstrap. Older builder terminology is
+deprecated for this package boundary.
 
 ## Decision
 

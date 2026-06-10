@@ -269,6 +269,16 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             self.logger.info("Start date is None, no update is done")
             return pd.DataFrame()
 
+        if pd.Timestamp(end_date) < pd.Timestamp(start_date):
+            self.logger.info(
+                "No new portfolio values to update because existing portfolio "
+                "output is already ahead of usable price-source coverage.",
+                price_source=self._price_source_identifier(self.price_source),
+                latest_portfolio_time_index=start_date,
+                usable_price_end_date=end_date,
+            )
+            return pd.DataFrame()
+
         new_index, index_freq = self._generate_new_index(
             start_date,
             end_date,
@@ -520,8 +530,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         last_rebalance_weights: pd.DataFrame | None,
     ) -> list[str]:
         required_assets = [
-            str(value)
-            for value in signal_weights.columns.get_level_values(ASSET_IDENTIFIER)
+            str(value) for value in signal_weights.columns.get_level_values(ASSET_IDENTIFIER)
         ]
         if (
             last_rebalance_weights is not None
@@ -684,9 +693,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             )
 
         interpolated_prices = raw_prices.unstack([ASSET_IDENTIFIER])
-        raw_time_index = pd.DatetimeIndex(
-            raw_prices.index.get_level_values("time_index").unique()
-        )
+        raw_time_index = pd.DatetimeIndex(raw_prices.index.get_level_values("time_index").unique())
         missing_rebalance_times = pd.DatetimeIndex(final_index_for_interpolation).difference(
             raw_time_index
         )
@@ -734,8 +741,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             return
 
         available_identifiers = {
-            str(value)
-            for value in raw_prices.index.get_level_values(ASSET_IDENTIFIER).unique()
+            str(value) for value in raw_prices.index.get_level_values(ASSET_IDENTIFIER).unique()
         }
         requested_identifiers = {str(value) for value in requested_asset_identifiers}
         missing_identifiers = sorted(requested_identifiers - available_identifiers)

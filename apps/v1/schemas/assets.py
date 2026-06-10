@@ -38,6 +38,42 @@ class AssetDetailResponse(BaseModel):
     order_form: dict[str, Any] | None = None
 
 
+class AssetPricingOperationParameterResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    required: bool
+
+
+class AssetPricingOperationLinkResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    label: str
+    method: str
+    url: str
+    requires_valuation_date: bool
+    supports_market_data_set: bool
+    request_model: str
+    response_model: str
+    response_contract: str
+    app_component: dict[str, Any]
+    parameters: list[AssetPricingOperationParameterResponse] = Field(default_factory=list)
+    response_mappings: list[dict[str, Any]] = Field(default_factory=list)
+    frame_url: str | None = None
+    frame_response_model: str | None = None
+    frame_response_contract: str | None = None
+
+
+class AssetPricingSupportResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    supported: bool
+    instrument_type: str
+    operations: list[AssetPricingOperationLinkResponse] = Field(default_factory=list)
+    reason: str | None = None
+
+
 class AssetCurrentPricingDetailsResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -49,3 +85,4 @@ class AssetCurrentPricingDetailsResponse(BaseModel):
     pricing_package_version: str | None = None
     source: str | None = None
     metadata_json: dict[str, Any] | None = None
+    pricing_support: AssetPricingSupportResponse | None = None

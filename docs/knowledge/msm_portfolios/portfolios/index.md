@@ -278,6 +278,12 @@ align the consumed price frame to the rebalance index for calculation, but it
 does not create persistent interpolation storage and does not hide an upstream
 DataNode.
 
+When a portfolio value series is already ahead of the usable price-source
+coverage, `PortfoliosDataNode` treats the update as an exhausted window and
+returns no new rows before asking the rebalance calendar for a schedule. This
+keeps calendar validation strict while making repeated or forced portfolio runs
+idempotent when upstream prices have not advanced.
+
 In code, the important wiring is:
 
 ```python
@@ -373,7 +379,7 @@ that portfolio exists. Their canonical docs live in core
 [`msm` account virtual funds](../../msm/accounts/virtual_funds.md).
 
 ```text
-Virtual Fund Builder / portfolio construction produces portfolio artifacts.
+Portfolio construction produces portfolio artifacts.
 It does not own virtual-fund identity and it does not connect directly to
 virtual-fund allocation rows.
 
@@ -384,7 +390,7 @@ virtual-fund allocation rows.
           \                         |                         /
            v                        v                        v
         +---------------------------------------------------------+
-        | Portfolio construction / VFB                            |
+        | Portfolio construction                                  |
         | - computes signal weights, portfolio weights, values    |
         | - writes portfolio DataNode outputs                     |
         +---------------------------+-----------------------------+

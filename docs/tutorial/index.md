@@ -149,6 +149,9 @@ and a `CRYPTO_24_7` calendar. See
 `examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` and
 `examples/msm_portfolios/portfolio_equal_weights_run.py` for the portfolio
 workflow using the generated crypto calendar as `Portfolio.calendar_uid`.
+Repeated portfolio runs are idempotent when upstream price coverage has not
+advanced past the latest stored portfolio value: the portfolio DataNode reports
+no new rows instead of calling the calendar with a reversed update window.
 
 ## Account Holdings Workflow
 

@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+from .asset_pricing_operations import (
+    AssetPricingDependencyError,
+    AssetPricingNotFoundError,
+    AssetPricingOperationError,
+    UnsupportedAssetPricingOperationError,
+    build_asset_pricing_support,
+    execute_asset_pricing_operation,
+)
 from .curves import Curve, CurveCreate, CurveUpdate, CurveUpsert
 from .index_convention_details import (
     DEFAULT_INDEX_CONVENTION_SERIALIZATION_FORMAT,
@@ -27,6 +35,9 @@ from .pricing_details import (
 )
 
 __all__ = [
+    "AssetPricingDependencyError",
+    "AssetPricingNotFoundError",
+    "AssetPricingOperationError",
     "AssetCurrentPricingDetails",
     "AssetCurrentPricingDetailsCreate",
     "AssetCurrentPricingDetailsUpdate",
@@ -48,6 +59,9 @@ __all__ = [
     "PricingMarketDataSetCreate",
     "PricingMarketDataSetUpdate",
     "PricingMarketDataSetUpsert",
+    "UnsupportedAssetPricingOperationError",
+    "build_asset_pricing_support",
+    "execute_asset_pricing_operation",
     "load_instrument_from_asset",
     "persist_current_pricing_details",
 ]

@@ -197,6 +197,26 @@ def test_portfolio_values_dependencies_expose_explicit_price_source() -> None:
     }
 
 
+def test_portfolio_values_noop_when_existing_output_is_ahead_of_price_source() -> None:
+    class ExplodingCalendar:
+        def schedule(self, **_kwargs):
+            raise AssertionError("calendar.schedule must not be called")
+
+    node = object.__new__(PortfoliosDataNode)
+    node.update_hash = "portfolio-node"
+    node._storage_table = SimpleNamespace(get_data_source_uid=lambda: "test-data-source")
+    node.price_source = explicit_price_source(update_hash="prices")
+    node.rebalancer = SimpleNamespace(calendar=ExplodingCalendar())
+    node._calculate_start_end_dates = lambda: (
+        pd.Timestamp("2026-01-03T00:00:00Z"),
+        pd.Timestamp("2026-01-02T00:00:00Z"),
+    )
+
+    frame = node._calculate_portfolio_workflow_values()
+
+    assert frame.empty
+
+
 def test_portfolio_value_node_is_not_asset_scoped() -> None:
     assert issubclass(PortfoliosDataNode, PortfolioCanonicalDataNode)
     assert not issubclass(PortfoliosDataNode, AssetScopedPortfolioCanonicalDataNode)

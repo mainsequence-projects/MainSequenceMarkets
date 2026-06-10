@@ -24,9 +24,9 @@ from msm_portfolios.enums import PriceTypeNames
 from msm_portfolios.rebalance_strategy import (
     RebalanceStrategyBase,
 )
-from msm_portfolios.utils import get_vfb_logger
+from msm_portfolios.utils import get_portfolios_logger
 
-logger = get_vfb_logger()
+logger = get_portfolios_logger()
 
 
 def canonical_price_source_configuration(
@@ -541,6 +541,7 @@ class PortfolioConfiguration(PortfolioConfigBaseModel):
         ...,
         description="Defines portfolio metadata used when syncing to the markets platform.",
     )
+
 
 """
 be sure to include in meta_tables 

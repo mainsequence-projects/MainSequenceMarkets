@@ -148,6 +148,100 @@ def test_openapi_json_documents_asset_list_endpoint() -> None:
     ] == {"$ref": "#/components/schemas/AssetCurrentPricingDetailsResponse"}
 
 
+def test_openapi_json_documents_fixed_income_pricing_asset_endpoints() -> None:
+    client = TestClient(app)
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    expected_operations = {
+        "/api/v1/pricing/assets/{asset_uid}/price/": (
+            "priceFixedIncomeAsset",
+            "BondPriceResponse",
+        ),
+        "/api/v1/pricing/assets/{asset_uid}/analytics/": (
+            "getFixedIncomeAssetAnalytics",
+            "BondAnalyticsResponse",
+        ),
+        "/api/v1/pricing/assets/{asset_uid}/duration/": (
+            "getFixedIncomeAssetDuration",
+            "BondDurationResponse",
+        ),
+        "/api/v1/pricing/assets/{asset_uid}/yield/": (
+            "getFixedIncomeAssetYield",
+            "BondYieldResponse",
+        ),
+        "/api/v1/pricing/assets/{asset_uid}/z-spread/": (
+            "getFixedIncomeAssetZSpread",
+            "BondZSpreadResponse",
+        ),
+        "/api/v1/pricing/assets/{asset_uid}/cashflows/": (
+            "getFixedIncomeAssetCashflows",
+            "BondCashflowsResponse",
+        ),
+        "/api/v1/pricing/assets/{asset_uid}/cashflows/frame/": (
+            "getFixedIncomeAssetCashflowsFrame",
+            "TabularFrameResponse",
+        ),
+        "/api/v1/pricing/assets/{asset_uid}/net-cashflows/": (
+            "getFixedIncomeAssetNetCashflows",
+            "BondNetCashflowsResponse",
+        ),
+        "/api/v1/pricing/assets/{asset_uid}/net-cashflows/frame/": (
+            "getFixedIncomeAssetNetCashflowsFrame",
+            "TabularFrameResponse",
+        ),
+        "/api/v1/pricing/assets/{asset_uid}/carry-roll-down/": (
+            "getFixedIncomeAssetCarryRollDown",
+            "BondCarryRollDownResponse",
+        ),
+        "/api/v1/pricing/assets/{asset_uid}/curve-preview/": (
+            "previewFixedIncomeAssetCurve",
+            "BondCurvePreviewResponse",
+        ),
+        "/api/v1/pricing/assets/{asset_uid}/fixings-availability/": (
+            "checkFixedIncomeAssetFixingsAvailability",
+            "BondFixingsAvailabilityResponse",
+        ),
+    }
+
+    for path, (operation_id, response_model) in expected_operations.items():
+        operation = payload["paths"][path]["post"]
+        assert operation["operationId"] == operation_id
+        assert operation["requestBody"]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/AssetPricingOperationRequest"
+        }
+        assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+            "$ref": f"#/components/schemas/{response_model}"
+        }
+
+    request_schema = payload["components"]["schemas"]["AssetPricingOperationRequest"]
+    assert request_schema["x-command-center-consumer"] == "app-component"
+    assert request_schema["x-ui-form-source"] == "openapi-request-body"
+    assert request_schema["properties"]["valuation_date"]["x-ui-field-kind"] == "date-time"
+    assert request_schema["properties"]["valuation_date"]["x-ui-token"] == (
+        "pricing.valuation_date"
+    )
+    assert request_schema["properties"]["parameters"]["x-ui-field-kind"] == "json"
+
+    price_schema = payload["components"]["schemas"]["BondPriceResponse"]
+    assert price_schema["x-command-center-consumer"] == "app-component"
+    assert price_schema["x-ui-output-root"] == "response:$"
+    assert price_schema["x-ui-response-mode"] == "provider-native-json"
+    assert price_schema["x-ui-flat-outputs"] == ["price", "units"]
+
+    cashflows_schema = payload["components"]["schemas"]["BondCashflowsResponse"]
+    assert cashflows_schema["x-response-mappings"][0]["contract"] == "core.tabular_frame@v1"
+    assert cashflows_schema["x-response-mappings"][0]["rowsPath"] == "$.legs.*[*]"
+
+    cashflows_frame_operation = payload["paths"][
+        "/api/v1/pricing/assets/{asset_uid}/cashflows/frame/"
+    ]["post"]
+    assert cashflows_frame_operation["x-ui-contract"] == "core.tabular_frame@v1"
+    assert cashflows_frame_operation["x-ui-output-root"] == "response:$"
+
+
 def test_openapi_json_documents_account_list_endpoint() -> None:
     client = TestClient(app)
     response = client.get("/openapi.json")

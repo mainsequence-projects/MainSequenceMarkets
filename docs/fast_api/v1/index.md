@@ -27,8 +27,17 @@ This API is intentionally thin:
   event maintenance.
 - [Pricing Market Data Routes](pricing_market_data.md): route group for
   pricing market-data set and concept binding management.
+- [Fixed Income Pricer Routes](fixed_income_pricer.md): route group for
+  method-backed bond pricing operations over assets with current pricing
+  details.
 - [Pricing Curve Routes](pricing_curves.md): route group for pricing curve
   registry lists.
+- [Fixed Income Pricer API](../../ADR/fast_api/v1/fixed-income-pricer-api.md):
+  registry-driven pricing workbench API for price, analytics, duration, yield,
+  z-spread, cashflows, carry/roll-down, curve preview, and fixings availability.
+- [Command Center Adapter Discovery](../../ADR/fast_api/v1/command-center-adapter-discovery.md):
+  additive Adapter from API discovery contract for Command Center without
+  breaking existing `/api/v1` clients.
 - [Portfolio Routes](portfolio.md): route group for portfolio identity,
   detail-page composition, latest weights, and delete operations.
 - [Virtual Fund Routes](virtualfund.md): route group for account-owned
@@ -65,6 +74,23 @@ Current local-dev behavior:
   should fail instead of redirecting writes into an ad hoc local store
 
 ## Implemented Routes
+
+### Command Center Adapter Discovery
+
+- `GET /health`
+  - returns a zero-argument health payload for API discovery
+  - response is `{ status, service, version }`
+  - does not touch MetaTables, pricing runtime data paths, or request identity
+- `GET /.well-known/command-center/connection-contract`
+  - returns the Adapter from API discovery contract for the existing
+    `apps/v1` FastAPI operations
+  - references `/openapi.json`
+  - lists every public `/api/v1/*` operation by its existing `operationId`
+  - classifies read/calculation operations as `query`
+  - classifies create/update/delete/write operations as `mutation`
+  - disables cache metadata for mutation operations and non-GET calculations
+  - keeps provider-native responses provider-native and exposes optional
+    `responseMappings` only as metadata
 
 ### Settings
 

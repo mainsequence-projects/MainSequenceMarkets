@@ -543,6 +543,7 @@ def test_get_asset_pricing_details_returns_pricing_contract(monkeypatch) -> None
         "pricing_package_version": "1.0.0",
         "source": "test",
         "metadata_json": {"provider": "example"},
+        "pricing_support": None,
     }
 
 
@@ -589,3 +590,5 @@ def test_asset_pricing_details_service_uses_pricing_api_lookup(monkeypatch) -> N
     assert captured == {"uid": str(asset_uid)}
     assert response is not None
     assert str(response.asset_uid) == str(asset_uid)
+    assert response.pricing_support is not None
+    assert response.pricing_support.supported is False

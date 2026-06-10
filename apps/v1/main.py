@@ -10,9 +10,11 @@ from apps.v1.routers.accounts import router as accounts_router
 from apps.v1.routers.asset_categories import router as asset_categories_router
 from apps.v1.routers.assets import router as assets_router
 from apps.v1.routers.calendars import router as calendars_router
+from apps.v1.routers.command_center import router as command_center_router
 from apps.v1.routers.indices import router as indices_router
 from apps.v1.routers.portfolios import router as portfolios_router
 from apps.v1.routers.pricing_curves import router as pricing_curves_router
+from apps.v1.routers.pricing_assets import router as pricing_assets_router
 from apps.v1.routers.pricing_market_data import router as pricing_market_data_router
 from apps.v1.routers.settings import router as settings_router
 from apps.v1.routers.virtual_funds import router as virtual_funds_router
@@ -55,6 +57,10 @@ API_TAGS = [
         "description": "Pricing curve registry endpoints.",
     },
     {
+        "name": "pricing-asset",
+        "description": "Fixed income asset pricing operation endpoints.",
+    },
+    {
         "name": "portfolio",
         "description": "Portfolio identity, detail, latest weights, and delete endpoints.",
     },
@@ -65,6 +71,10 @@ API_TAGS = [
     {
         "name": "settings",
         "description": "Read-only app settings and runtime assumption endpoints.",
+    },
+    {
+        "name": "command-center",
+        "description": "Command Center Adapter from API discovery and health endpoints.",
     },
 ]
 
@@ -94,6 +104,7 @@ def create_app() -> FastAPI:
             "name": "Apache-2.0",
         },
     )
+    app.include_router(command_center_router)
     app.include_router(accounts_router, prefix="/api/v1")
     app.include_router(assets_router, prefix="/api/v1")
     app.include_router(asset_categories_router, prefix="/api/v1")
@@ -101,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(portfolios_router, prefix="/api/v1")
     app.include_router(virtual_funds_router, prefix="/api/v1")
     app.include_router(calendars_router, prefix="/api/v1")
+    app.include_router(pricing_assets_router, prefix="/api/v1")
     app.include_router(pricing_curves_router, prefix="/api/v1")
     app.include_router(pricing_market_data_router, prefix="/api/v1")
     app.include_router(settings_router, prefix="/api/v1")

@@ -64,6 +64,9 @@ and this project follows versioned releases.
   `InterpolatedPrices` from portfolio `AssetsConfiguration`/`PricesConfiguration`,
   and updated the equal-weight portfolio example to show the explicit source
   prices -> interpolation -> signal -> portfolio dependency graph.
+- Replaced deprecated builder terminology with portfolio construction wording
+  across README, portfolio docs, ADRs, and internal portfolio logger helper
+  names.
 
 ### Fixed
 
@@ -83,6 +86,10 @@ and this project follows versioned releases.
   dynamic revision from the active migration namespace and runs the dynamic
   provider upgrade before `--run-after`, even when a stale metadata row already
   exists for the configured interpolation table.
+- Fixed `PortfoliosDataNode` forced reruns when the latest stored portfolio
+  value is already ahead of usable price-source coverage; the portfolio update
+  now returns no new rows before calling calendar scheduling with a reversed
+  date range.
 
 ### Removed
 

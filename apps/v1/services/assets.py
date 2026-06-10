@@ -45,7 +45,12 @@ def get_asset_pricing_details(*, uid: str) -> AssetCurrentPricingDetailsResponse
     details = _get_asset_current_pricing_details(uid)
     if details is None:
         return None
-    return AssetCurrentPricingDetailsResponse.model_validate(_model_dump(details))
+    payload = _model_dump(details)
+    payload["pricing_support"] = _build_asset_pricing_support(
+        asset_uid=payload["asset_uid"],
+        instrument_type=payload["instrument_type"],
+    )
+    return AssetCurrentPricingDetailsResponse.model_validate(payload)
 
 
 def delete_asset(*, uid: str) -> bool:
@@ -102,6 +107,15 @@ def _get_asset_current_pricing_details(asset_uid: str):
     from msm_pricing.api import AssetCurrentPricingDetails
 
     return AssetCurrentPricingDetails.get_by_asset_uid(asset_uid)
+
+
+def _build_asset_pricing_support(*, asset_uid: str, instrument_type: str):
+    from msm_pricing.api import build_asset_pricing_support
+
+    return build_asset_pricing_support(
+        asset_uid=asset_uid,
+        instrument_type=instrument_type,
+    )
 
 
 def _model_dump(value: Any) -> dict[str, Any]:

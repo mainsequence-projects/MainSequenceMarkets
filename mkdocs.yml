@@ -34,8 +34,10 @@ nav:
       - Virtual Funds: fast_api/v1/virtualfund.md
       - Pricing Curves: fast_api/v1/pricing_curves.md
       - Pricing Market Data: fast_api/v1/pricing_market_data.md
+      - Fixed Income Pricer: fast_api/v1/fixed_income_pricer.md
       - ADR:
           - Calendar CRUD Route: fast_api/v1/ADR/0001-calendar-crud-route.md
+          - Fixed Income Pricer API: ADR/fast_api/v1/fixed-income-pricer-api.md
   - Knowledge:
       - Overview: knowledge/index.md
       - msm:
@@ -83,6 +85,7 @@ nav:
       - Core Calendar Reference Data Model: ADR/0028-core-calendar-reference-data.md
       - Account Holdings To Virtual Fund Allocation Policy: ADR/0029-account-holdings-virtual-fund-allocation-policy.md
       - Explicit Portfolio Price Source Dependency: ADR/0030-explicit-portfolio-price-source-dependency.md
+      - FastAPI v1 Fixed Income Pricer API: ADR/fast_api/v1/fixed-income-pricer-api.md
   - Changelog: changelog.md
   - Reference:
       - API Reference: reference/index.md

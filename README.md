@@ -61,7 +61,7 @@ Main package areas:
 - `msm.models`: SQLAlchemy market-domain `*Table` declarations and MetaTable
   registration order
 - `msm_portfolios`: portfolio configuration, signal weights, rebalance
-  strategies, virtual funds, and Virtual Fund Builder workflows
+  strategies, virtual funds, and portfolio construction workflows
 - `msm_pricing`: optional QuantLib-backed instruments, curves, fixings, and
   pricing helpers installed with the `pricing` extra
 - `msm.repositories`: compiled persistence operations over market-domain models
