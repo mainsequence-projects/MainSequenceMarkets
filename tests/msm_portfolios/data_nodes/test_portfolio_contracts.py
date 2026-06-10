@@ -8,6 +8,7 @@ import msm_portfolios.data_nodes.portfolios as portfolios_module
 
 from mainsequence.meta_tables import APIDataNode, DataNode
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
+from msm.models import AssetTable, PortfolioTable
 from msm_portfolios.configuration import (
     PortfolioBuildConfiguration,
     PriceAlignmentPolicy,
@@ -130,13 +131,34 @@ def test_portfolio_weights_storage_keys_by_portfolio_identifier() -> None:
     assert not hasattr(PortfolioWeightsStorage, "portfolio_index_identifier")
 
 
-def test_signal_weights_storage_references_signal_metadata() -> None:
-    foreign_keys = SignalWeightsStorage.__table__.c.signal_uid.foreign_keys
+def test_portfolio_weights_storage_references_portfolio_and_asset_tables() -> None:
+    portfolio_foreign_keys = PortfolioWeightsStorage.__table__.c.portfolio_identifier.foreign_keys
+    asset_foreign_keys = PortfolioWeightsStorage.__table__.c.asset_identifier.foreign_keys
 
-    assert len(foreign_keys) == 1
-    foreign_key = next(iter(foreign_keys))
-    assert foreign_key.column is SignalMetadataTable.__table__.c.signal_uid
-    assert foreign_key.ondelete == "RESTRICT"
+    assert len(portfolio_foreign_keys) == 1
+    portfolio_foreign_key = next(iter(portfolio_foreign_keys))
+    assert portfolio_foreign_key.column is PortfolioTable.__table__.c.unique_identifier
+    assert portfolio_foreign_key.ondelete == "RESTRICT"
+
+    assert len(asset_foreign_keys) == 1
+    asset_foreign_key = next(iter(asset_foreign_keys))
+    assert asset_foreign_key.column is AssetTable.__table__.c.unique_identifier
+    assert asset_foreign_key.ondelete == "RESTRICT"
+
+
+def test_signal_weights_storage_references_signal_metadata_and_asset_table() -> None:
+    signal_foreign_keys = SignalWeightsStorage.__table__.c.signal_uid.foreign_keys
+    asset_foreign_keys = SignalWeightsStorage.__table__.c.asset_identifier.foreign_keys
+
+    assert len(signal_foreign_keys) == 1
+    signal_foreign_key = next(iter(signal_foreign_keys))
+    assert signal_foreign_key.column is SignalMetadataTable.__table__.c.signal_uid
+    assert signal_foreign_key.ondelete == "RESTRICT"
+
+    assert len(asset_foreign_keys) == 1
+    asset_foreign_key = next(iter(asset_foreign_keys))
+    assert asset_foreign_key.column is AssetTable.__table__.c.unique_identifier
+    assert asset_foreign_key.ondelete == "RESTRICT"
 
 
 def test_signal_metadata_emission_uses_registry_upsert_by_default(monkeypatch) -> None:

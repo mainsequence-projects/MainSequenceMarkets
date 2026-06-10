@@ -43,7 +43,6 @@ def test_execution_time_columns_are_datetime64_ns_utc() -> None:
                     "order_time": MICROSECOND_TIME,
                     "order_identifier": "order-1",
                     "account_identifier": "account-1",
-                    "fund_identifier": "",
                     "order_manager_identifier": "",
                     "asset_identifier": "asset-1",
                     "order_remote_id": "",

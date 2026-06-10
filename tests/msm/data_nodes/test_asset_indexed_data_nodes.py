@@ -36,7 +36,7 @@ from msm.data_nodes.execution.storage import (
     TradesStorage,
 )
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
-from msm.models import AssetTable, markets_sqlalchemy_models
+from msm.models import AccountTable, AssetTable, OrderManagerTable, markets_sqlalchemy_models
 from msm.models.registration import markets_foreign_key_target_identifiers
 from msm.settings import (
     ASSET_IDENTIFIER_DIMENSION as SETTINGS_ASSET_DIMENSION,
@@ -229,6 +229,50 @@ def test_timestamped_asset_storage_has_asset_foreign_key(storage_cls) -> None:
         and foreign_key.ondelete == "RESTRICT"
         for foreign_key in fk_column.foreign_keys
     )
+
+
+def test_execution_storage_has_account_and_asset_foreign_keys() -> None:
+    expected_foreign_keys = [
+        (
+            OrdersStorage.__table__.c.account_identifier,
+            AccountTable.__table__.c.unique_identifier,
+        ),
+        (
+            OrdersStorage.__table__.c.order_manager_identifier,
+            OrderManagerTable.__table__.c.unique_identifier,
+        ),
+        (
+            OrdersStorage.__table__.c.asset_identifier,
+            AssetTable.__table__.c.unique_identifier,
+        ),
+        (
+            TradesStorage.__table__.c.account_identifier,
+            AccountTable.__table__.c.unique_identifier,
+        ),
+        (
+            TradesStorage.__table__.c.asset_identifier,
+            AssetTable.__table__.c.unique_identifier,
+        ),
+        (
+            TradesStorage.__table__.c.commission_asset_identifier,
+            AssetTable.__table__.c.unique_identifier,
+        ),
+        (
+            TradesStorage.__table__.c.settlement_asset_identifier,
+            AssetTable.__table__.c.unique_identifier,
+        ),
+    ]
+
+    for storage_column, target_column in expected_foreign_keys:
+        assert any(
+            foreign_key.column is target_column and foreign_key.ondelete == "RESTRICT"
+            for foreign_key in storage_column.foreign_keys
+        )
+
+
+def test_core_execution_storage_does_not_carry_fund_identifier() -> None:
+    assert "fund_identifier" not in OrdersStorage.__table__.c
+    assert "fund_identifier" not in TradesStorage.__table__.c
 
 
 def test_asset_indexed_node_normalizes_asset_scope_helpers() -> None:

@@ -35,9 +35,16 @@ account-holdings pattern.
 
 Execution records should preserve enough raw platform or broker payload in JSON
 fields for audit, but normalized identifiers should still be present for joins.
-Core execution does not carry a `VirtualFundTable` foreign key. Virtual-fund
-execution workflows should be added in `msm_portfolios` as extensions when
-needed.
+`OrdersTS.account_identifier` and `TradesTS.account_identifier` reference
+`AccountTable.unique_identifier`; `OrdersTS.order_manager_identifier` references
+`OrderManagerTable.unique_identifier`; `OrdersTS.asset_identifier`,
+`TradesTS.asset_identifier`, `TradesTS.commission_asset_identifier`, and
+`TradesTS.settlement_asset_identifier` reference `AssetTable.unique_identifier`.
+Broker order identifiers, venue order ids, and trade identifiers stay plain
+external ids because execution event streams may carry those before a
+row-oriented order or trade registry exists. Core execution does not carry fund
+or `VirtualFundTable` references. Virtual-fund execution workflows should be
+added in `msm_portfolios` as extensions when needed.
 
 Use class-owned lifecycle methods only for order-manager intent:
 

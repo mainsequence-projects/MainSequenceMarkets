@@ -9,6 +9,7 @@ from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.models.assets import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.models.signals import SignalMetadataTable
 
@@ -46,11 +47,15 @@ class SignalWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         },
     )
     asset_identifier: Mapped[str] = mapped_column(
-        String,
+        String(255),
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
         nullable=False,
         info={
             "label": "Asset Identifier",
-            "description": "Asset unique identifier for the signaled instrument.",
+            "description": "AssetTable unique_identifier for the signaled instrument.",
         },
     )
     signal_weight: Mapped[float | None] = mapped_column(

@@ -5,11 +5,14 @@ from __future__ import annotations
 import datetime
 from typing import ClassVar
 
-from sqlalchemy import BigInteger, DateTime, Float, String
+from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.models.accounts import AccountTable
+from msm.models.assets.core import AssetTable
+from msm.models.execution import OrderManagerTable
 
 
 def _execution_info(column_name: str) -> dict[str, str]:
@@ -48,16 +51,31 @@ class OrdersStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         String, nullable=False, info=_execution_info("order_identifier")
     )
     account_identifier: Mapped[str] = mapped_column(
-        String, nullable=False, info=_execution_info("account_identifier")
-    )
-    fund_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("fund_identifier")
+        String(255),
+        ForeignKey(
+            f"{AccountTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        info=_execution_info("account_identifier"),
     )
     order_manager_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("order_manager_identifier")
+        String(255),
+        ForeignKey(
+            f"{OrderManagerTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        info=_execution_info("order_manager_identifier"),
     )
     asset_identifier: Mapped[str] = mapped_column(
-        String, nullable=False, info=_execution_info("asset_identifier")
+        String(255),
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        info=_execution_info("asset_identifier"),
     )
     order_remote_id: Mapped[str | None] = mapped_column(
         String, nullable=True, info=_execution_info("order_remote_id")
@@ -151,16 +169,25 @@ class TradesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         String, nullable=False, info=_execution_info("trade_identifier")
     )
     account_identifier: Mapped[str] = mapped_column(
-        String, nullable=False, info=_execution_info("account_identifier")
-    )
-    fund_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("fund_identifier")
+        String(255),
+        ForeignKey(
+            f"{AccountTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        info=_execution_info("account_identifier"),
     )
     order_identifier: Mapped[str | None] = mapped_column(
         String, nullable=True, info=_execution_info("order_identifier")
     )
     asset_identifier: Mapped[str] = mapped_column(
-        String, nullable=False, info=_execution_info("asset_identifier")
+        String(255),
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        info=_execution_info("asset_identifier"),
     )
     trade_side: Mapped[int | None] = mapped_column(
         BigInteger, nullable=True, info=_execution_info("trade_side")
@@ -173,13 +200,25 @@ class TradesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         Float, nullable=True, info=_execution_info("commission")
     )
     commission_asset_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("commission_asset_identifier")
+        String(255),
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        info=_execution_info("commission_asset_identifier"),
     )
     settlement_cost: Mapped[float | None] = mapped_column(
         Float, nullable=True, info=_execution_info("settlement_cost")
     )
     settlement_asset_identifier: Mapped[str | None] = mapped_column(
-        String, nullable=True, info=_execution_info("settlement_asset_identifier")
+        String(255),
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        info=_execution_info("settlement_asset_identifier"),
     )
     comments: Mapped[str | None] = mapped_column(
         String, nullable=True, info=_execution_info("comments")

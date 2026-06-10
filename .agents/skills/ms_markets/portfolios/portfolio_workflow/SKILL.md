@@ -51,6 +51,10 @@ Rules:
 - Use `PortfolioTable.uid` for account target identity and
   `PortfolioTable.unique_identifier` as `portfolio_identifier` in portfolio
   storage.
+- `PortfolioWeightsStorage.portfolio_identifier` and
+  `PortfoliosStorage.portfolio_identifier` must reference
+  `PortfolioTable.unique_identifier`. `PortfolioWeightsStorage.asset_identifier`
+  must reference `AssetTable.unique_identifier`.
 - Do not write target-position rows with `asset_identifier`.
 - Asset target rows use `target_type="asset"`, `target_uid=asset_uid`, and
   `portfolio_uid=None`.
@@ -171,8 +175,9 @@ Rules:
 - Contributed signal progress must be scoped by `signal_uid`; `SignalWeightsStorage`
   is shared and keyed by `(time_index, signal_uid, asset_identifier)`.
   `signal_uid` is a required reference to `SignalMetadataTable.signal_uid`, so
-  signal metadata must be registered before signal weights are published. A
-  later row for another signal must not move this signal's start date.
+  signal metadata must be registered before signal weights are published.
+  `asset_identifier` must reference `AssetTable.unique_identifier`. A later row
+  for another signal must not move this signal's start date.
 - Missing required price assets must be logged with the price source, date
   range, price column, and policy. Strict policy fails; permissive policy logs
   and continues when the downstream calculation can still produce a usable

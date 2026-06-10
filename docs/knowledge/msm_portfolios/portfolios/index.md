@@ -189,11 +189,14 @@ MetaTables:
 +-----------------------------+                                +--------------------------------------+
 ```
 
-`PortfoliosStorage.portfolio_identifier` references
-`PortfolioTable.unique_identifier`; portfolio value rows must be written for a
-real portfolio identity. `PortfoliosDataNode` resolves this value from the
-attached `PortfolioTable` row or from the explicit runtime identifier before
-normalizing rows.
+`PortfoliosStorage.portfolio_identifier` and
+`PortfolioWeightsStorage.portfolio_identifier` reference
+`PortfolioTable.unique_identifier`; portfolio value and weight rows must be
+written for a real portfolio identity. `PortfolioWeightsStorage.asset_identifier`
+also references `AssetTable.unique_identifier`, so executed weights cannot
+point to unknown assets. `PortfoliosDataNode` resolves the portfolio identifier
+from the attached `PortfolioTable` row or from the explicit runtime identifier
+before normalizing rows.
 
 Portfolio construction depends on a real price source, but portfolio logic does
 not own price ingestion. Example workflows publish normalized OHLCV bars to
@@ -356,10 +359,12 @@ treats it as a fresh portfolio rather than using the table-wide maximum.
 
 Signal output progress is scoped by `signal_uid` because `SignalWeightsStorage`
 is keyed by `(time_index, signal_uid, asset_identifier)`. `signal_uid` is a
-required reference to `SignalMetadataTable.signal_uid`, so signal metadata must
-be registered before signal-weight rows are published. Contributed signal nodes
-must read progress under their own `signal_uid`; a later row from another
-signal in the shared table must not shorten this signal's source-data window.
+required reference to `SignalMetadataTable.signal_uid`, and `asset_identifier`
+is a required reference to `AssetTable.unique_identifier`, so signal metadata
+and assets must exist before signal-weight rows are published. Contributed
+signal nodes must read progress under their own `signal_uid`; a later row from
+another signal in the shared table must not shorten this signal's source-data
+window.
 
 ## Account Target-Position Exposure To Portfolios
 
@@ -521,8 +526,10 @@ Storage dimensions use explicit names instead of reusing bare
 `unique_identifier`: `asset_identifier` for asset-keyed rows,
 `portfolio_identifier` for portfolio value rows and portfolio weight rows. The
 `portfolio_identifier` value is `PortfolioTable.unique_identifier`; for
-portfolio values this is enforced by the `PortfoliosStorage` foreign key. It
-does not require a linked `IndexTable` row.
+portfolio values and portfolio weights this is enforced by storage foreign keys.
+Portfolio weights also enforce `asset_identifier` against
+`AssetTable.unique_identifier`. Portfolio identity does not require a linked
+`IndexTable` row.
 
 See `examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` for the
 schema-preparation stage and
