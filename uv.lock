@@ -905,7 +905,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "4.3.14"
+version = "4.3.18"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -929,9 +929,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/75/c7/9994d393ef0824128b07a058723fd37cc5544d02627133d8bc2798a86f2d/mainsequence-4.3.14.tar.gz", hash = "sha256:60d0bbfef368d3e13c8553d651425895b59f21a0957c32506fc232b8118038f6", size = 491411, upload-time = "2026-06-07T16:16:11.757Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/fb/0893968fc32adb9d5ab994fbd3f32f074eb1761c944034d94036f8e24d21/mainsequence-4.3.18.tar.gz", hash = "sha256:e20f3e267a398df3f8aac48e0e913b8ab544f404ab20b6a58b4222c660d4c1e1", size = 496298, upload-time = "2026-06-09T19:54:09.233Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/92/d9/4000418123b198670fe26ef7cc8de9da85a50977242ccbf9182ad54fd56b/mainsequence-4.3.14-py3-none-any.whl", hash = "sha256:88dadd050f14364c02fbe2cea6b0ac0f1314437998574ab76f258c293ac07517", size = 423272, upload-time = "2026-06-07T16:16:10.394Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/7b/e03ed8f055868fdbb19ce1c7b91b2b17ba289432ceec3c6c76a4886ef601/mainsequence-4.3.18-py3-none-any.whl", hash = "sha256:2933bfe442892805805f19e516c8242cc8743068a1478c58f84d0af69ee07331", size = 426666, upload-time = "2026-06-09T19:54:07.393Z" },
 ]
 
 [[package]]
