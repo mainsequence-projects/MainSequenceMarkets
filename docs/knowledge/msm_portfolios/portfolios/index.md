@@ -179,7 +179,21 @@ MetaTables:
 | InterpolatedPrices          |------------------------------->| configured InterpolatedPricesStorage |
 +-----------------------------+                                +--------------------------------------+
           DataNode update logic                                  PlatformTimeIndexMetaTable
+
++-----------------------------+        required parent          +--------------------------------------+
+| SignalMetadataTable         |<-------------------------------| SignalWeightsStorage                 |
+|-----------------------------| signal_uid FK                  |--------------------------------------|
+| uid PK                      |                                | time_index                           |
+| signal_uid unique           |                                | signal_uid                           |
+| signal_description          |                                | asset_identifier                     |
++-----------------------------+                                +--------------------------------------+
 ```
+
+`PortfoliosStorage.portfolio_identifier` references
+`PortfolioTable.unique_identifier`; portfolio value rows must be written for a
+real portfolio identity. `PortfoliosDataNode` resolves this value from the
+attached `PortfolioTable` row or from the explicit runtime identifier before
+normalizing rows.
 
 Portfolio construction depends on a real price source, but portfolio logic does
 not own price ingestion. Example workflows publish normalized OHLCV bars to
@@ -340,10 +354,12 @@ row for another portfolio in the shared storage table must not move this
 portfolio's start date; if this portfolio has no progress entry, the workflow
 treats it as a fresh portfolio rather than using the table-wide maximum.
 
-Signal progress follows the same rule. `SignalWeightsStorage` is keyed by
-`(time_index, signal_uid, asset_identifier)`, so contributed signal nodes must
-read progress under their own `signal_uid`; a later row from another signal in
-the shared table must not shorten this signal's source-data window.
+Signal output progress is scoped by `signal_uid` because `SignalWeightsStorage`
+is keyed by `(time_index, signal_uid, asset_identifier)`. `signal_uid` is a
+required reference to `SignalMetadataTable.signal_uid`, so signal metadata must
+be registered before signal-weight rows are published. Contributed signal nodes
+must read progress under their own `signal_uid`; a later row from another
+signal in the shared table must not shorten this signal's source-data window.
 
 ## Account Target-Position Exposure To Portfolios
 
@@ -445,6 +461,13 @@ virtual-fund allocation rows.
         +---------------------------------------------------------+
 ```
 
+`PortfoliosDataNode.run(..., update_pointers=True)` updates the
+`PortfolioTable` DataNode pointer fields after the portfolio graph has
+published. This is enabled by default for portfolio-configuration runs, so
+examples and callers do not need to manually re-upsert the portfolio row after
+execution. Pass `update_pointers=False` only when deliberately running the graph
+without updating portfolio registry links.
+
 Virtual-fund allocation is a separate relationship over account holdings and a
 target portfolio:
 
@@ -497,8 +520,9 @@ from `VirtualFundTable`, `VirtualFundHoldingsSetTable`, and
 Storage dimensions use explicit names instead of reusing bare
 `unique_identifier`: `asset_identifier` for asset-keyed rows,
 `portfolio_identifier` for portfolio value rows and portfolio weight rows. The
-`portfolio_identifier` value is `PortfolioTable.unique_identifier`; it does not
-require a linked `IndexTable` row.
+`portfolio_identifier` value is `PortfolioTable.unique_identifier`; for
+portfolio values this is enforced by the `PortfoliosStorage` foreign key. It
+does not require a linked `IndexTable` row.
 
 See `examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` for the
 schema-preparation stage and

@@ -77,9 +77,14 @@ and this project follows versioned releases.
 
 ### Fixed
 
-- Clarified that `AssetCurrentPricingDetailsTable` and the timestamped
-  `AssetPricingDetail` DataNode are independent storage paths, not views or
-  automatic mirrors of each other.
+- Fixed portfolio value row normalization so `PortfoliosDataNode` resolves a
+  real portfolio identifier instead of stringifying its `_unique_identifier`
+  method, and declared the `PortfoliosStorage.portfolio_identifier` foreign key
+  to `PortfolioTable.unique_identifier`.
+- Reworked pricing-details writes so user-facing instrument attachment upserts
+  `AssetPricingDetailsStorage`; calls without `pricing_details_date` use `now()`
+  and update `AssetCurrentPricingDetailsTable`, while calls with an explicit
+  date upsert only that timestamped snapshot.
 - Clarified account and portfolio example console output with section titles,
   corrected portfolio workflow step numbering, and cleaner virtual-fund
   allocation frame rendering.

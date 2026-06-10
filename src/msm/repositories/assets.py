@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
@@ -131,15 +132,20 @@ def build_search_assets_operation(
     *,
     unique_identifier_contains: str | None = None,
     asset_type: str | None = None,
+    uids: Sequence[uuid.UUID | str] | None = None,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
     filters: dict[str, Any] = {}
+    in_filters: dict[str, Sequence[uuid.UUID | str]] = {}
     if asset_type not in (None, ""):
         filters["asset_type"] = asset_type
+    if uids:
+        in_filters["uid"] = uids
     return build_search_model_operation(
         asset,
         model=AssetTable,
         filters=filters,
+        in_filters=in_filters,
         contains_filters={"unique_identifier": unique_identifier_contains or ""},
         limit=limit,
     )

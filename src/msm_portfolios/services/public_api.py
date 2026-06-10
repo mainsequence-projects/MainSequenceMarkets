@@ -12,7 +12,9 @@ from msm.models import AssetTable, PortfolioTable, VirtualFundTable
 from msm.repositories import MarketsRepositoryContext
 from msm.repositories.crud import get_model_by_uid, search_model
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
-from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage
+from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
+from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
+from msm_portfolios.data_nodes.signals.weights import compute_signal_uid
 from msm_portfolios.models import PortfolioMetadataTable
 
 DEFAULT_PORTFOLIO_PAGE_SIZE = 50
@@ -240,6 +242,139 @@ def get_portfolio_weights_snapshot_response(
             for row in sorted(weight_rows, key=lambda row: str(row.get("asset_identifier", "")))
         ],
     }
+
+
+def get_portfolio_values_frame_response(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+    start_date: dt.datetime | None = None,
+    end_date: dt.datetime | None = None,
+    order: Literal["asc", "desc"] = "desc",
+    limit: int = DEFAULT_PORTFOLIO_PAGE_SIZE,
+) -> dict[str, Any] | None:
+    """Return portfolio value rows as a Command Center tabular frame payload."""
+
+    portfolio_row = _get_portfolio_row(context, uid=uid)
+    if portfolio_row is None:
+        return None
+
+    portfolio = _build_portfolio_row(portfolio_row)
+    portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
+    rows = _portfolio_values_rows(
+        context,
+        portfolio_identifier=portfolio_identifier,
+        start_date=start_date,
+        end_date=end_date,
+        order=order,
+        limit=limit,
+    )
+    return _tabular_frame_response(
+        status="ready",
+        columns=[
+            "time_index",
+            "portfolio_identifier",
+            "close",
+            "return",
+            "calculated_close",
+            "close_time",
+        ],
+        rows=[
+            {
+                "time_index": _datetime_or_none(row.get("time_index")),
+                "portfolio_identifier": _string_or_none(row.get("portfolio_identifier")),
+                "close": row.get("close"),
+                "return": row.get("return", row.get("return_")),
+                "calculated_close": row.get("calculated_close"),
+                "close_time": _datetime_or_none(row.get("close_time")),
+            }
+            for row in rows
+        ],
+        field_types={
+            "time_index": "datetime",
+            "portfolio_identifier": "string",
+            "close": "number",
+            "return": "number",
+            "calculated_close": "number",
+            "close_time": "datetime",
+        },
+        source_label="Portfolio values",
+        source_context={
+            "portfolio_uid": _string_or_none(portfolio.get("uid")),
+            "portfolio_identifier": portfolio_identifier,
+            "portfolio_data_node_uid": _string_or_none(portfolio.get("portfolio_data_node_uid")),
+            "start_date": start_date,
+            "end_date": end_date,
+            "limit": limit,
+            "order": order,
+        },
+    )
+
+
+def get_portfolio_signal_weights_frame_response(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+    start_date: dt.datetime | None = None,
+    end_date: dt.datetime | None = None,
+    order: Literal["asc", "desc"] = "desc",
+    limit: int = DEFAULT_PORTFOLIO_PAGE_SIZE,
+) -> dict[str, Any] | None:
+    """Return signal-weight rows as a Command Center tabular frame payload."""
+
+    portfolio_row = _get_portfolio_row(context, uid=uid)
+    if portfolio_row is None:
+        return None
+
+    portfolio = _build_portfolio_row(portfolio_row)
+    data_node_uid = _string_or_none(portfolio.get("signal_weights_data_node_uid"))
+    if data_node_uid is None:
+        raise ValueError("Portfolio has no signal_weights_data_node_uid configured.")
+
+    signal_uid = _signal_uid_from_data_node_update(data_node_uid)
+    rows = _portfolio_signal_weight_rows(
+        context,
+        signal_uid=signal_uid,
+        start_date=start_date,
+        end_date=end_date,
+        order=order,
+        limit=limit,
+    )
+    return _tabular_frame_response(
+        status="ready",
+        columns=[
+            "time_index",
+            "signal_uid",
+            "asset_identifier",
+            "signal_weight",
+        ],
+        rows=[
+            {
+                "time_index": _datetime_or_none(row.get("time_index")),
+                "signal_uid": _string_or_none(row.get("signal_uid")),
+                "asset_identifier": _string_or_none(row.get("asset_identifier")),
+                "signal_weight": row.get("signal_weight"),
+            }
+            for row in rows
+        ],
+        field_types={
+            "time_index": "datetime",
+            "signal_uid": "string",
+            "asset_identifier": "string",
+            "signal_weight": "number",
+        },
+        source_label="Portfolio signal weights",
+        source_context={
+            "portfolio_uid": _string_or_none(portfolio.get("uid")),
+            "portfolio_identifier": _string_or_none(portfolio.get("unique_identifier")),
+            "signal_weights_data_node_uid": data_node_uid,
+            "signal_uid": signal_uid,
+            "start_date": start_date,
+            "end_date": end_date,
+            "limit": limit,
+            "order": order,
+        },
+    )
 
 
 def delete_portfolio_record(
@@ -595,6 +730,160 @@ def _portfolio_weights_rows(
     )
 
 
+def _portfolio_values_rows(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_identifier: str,
+    start_date: dt.datetime | None,
+    end_date: dt.datetime | None,
+    order: Literal["asc", "desc"],
+    limit: int,
+) -> list[dict[str, Any]]:
+    statement = select(PortfoliosStorage).where(
+        PortfoliosStorage.portfolio_identifier == portfolio_identifier
+    )
+    statement = _apply_time_range(
+        statement,
+        time_column=PortfoliosStorage.time_index,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    statement = statement.order_by(
+        PortfoliosStorage.time_index.asc()
+        if order == "asc"
+        else PortfoliosStorage.time_index.desc()
+    )
+    statement = statement.limit(limit)
+    return _operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                statement,
+                context=context,
+                operation="select",
+                models=[PortfoliosStorage],
+                access="read",
+            ),
+            context=context,
+        )
+    )
+
+
+def _portfolio_signal_weight_rows(
+    context: MarketsRepositoryContext,
+    *,
+    signal_uid: str,
+    start_date: dt.datetime | None,
+    end_date: dt.datetime | None,
+    order: Literal["asc", "desc"],
+    limit: int,
+) -> list[dict[str, Any]]:
+    statement = select(SignalWeightsStorage).where(SignalWeightsStorage.signal_uid == signal_uid)
+    statement = _apply_time_range(
+        statement,
+        time_column=SignalWeightsStorage.time_index,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    statement = statement.order_by(
+        SignalWeightsStorage.time_index.asc()
+        if order == "asc"
+        else SignalWeightsStorage.time_index.desc()
+    )
+    statement = statement.limit(limit)
+    return _operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                statement,
+                context=context,
+                operation="select",
+                models=[SignalWeightsStorage],
+                access="read",
+            ),
+            context=context,
+        )
+    )
+
+
+def _apply_time_range(
+    statement,
+    *,
+    time_column,
+    start_date: dt.datetime | None,
+    end_date: dt.datetime | None,
+):
+    if start_date is not None:
+        statement = statement.where(time_column >= start_date)
+    if end_date is not None:
+        statement = statement.where(time_column <= end_date)
+    return statement
+
+
+def _signal_uid_from_data_node_update(data_node_uid: str) -> str:
+    from mainsequence.client.metatables import DataNodeUpdate
+
+    data_node_update = DataNodeUpdate.get(uid=data_node_uid)
+    build_configuration = getattr(data_node_update, "build_configuration", None)
+    if not isinstance(build_configuration, dict):
+        raise ValueError(
+            f"Signal weights DataNode {data_node_uid!r} does not expose build_configuration."
+        )
+    return compute_signal_uid(
+        _signal_uid_payload_from_data_node_build_configuration(build_configuration)
+    )
+
+
+def _signal_uid_payload_from_data_node_build_configuration(
+    build_configuration: Mapping[str, Any],
+) -> dict[str, Any]:
+    config = build_configuration.get("config")
+    if isinstance(config, Mapping):
+        signal_configuration = config.get("signal_configuration")
+        if signal_configuration is not None:
+            import_path = build_configuration.get("time_series_class_import_path")
+            return {
+                "time_series_class_import_path": _string_or_empty(import_path),
+                "config": signal_configuration,
+            }
+    signal_configuration = build_configuration.get("signal_configuration")
+    if signal_configuration is not None:
+        import_path = build_configuration.get("time_series_class_import_path")
+        return {
+            "time_series_class_import_path": _string_or_empty(import_path),
+            "config": signal_configuration,
+        }
+    return dict(build_configuration)
+
+
+def _tabular_frame_response(
+    *,
+    status: str,
+    columns: list[str],
+    rows: list[dict[str, Any]],
+    field_types: dict[str, str],
+    source_label: str,
+    source_context: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "columns": columns,
+        "rows": rows,
+        "fields": [
+            {
+                "key": column,
+                "label": column.replace("_", " ").title(),
+                "type": field_types.get(column, "unknown"),
+                "provenance": "backend",
+            }
+            for column in columns
+        ],
+        "source": {
+            "kind": "api",
+            "label": source_label,
+            "context": source_context,
+        },
+    }
+
+
 def _asset_references_by_unique_identifier(
     context: MarketsRepositoryContext,
     *,
@@ -833,6 +1122,8 @@ __all__ = [
     "delete_portfolio_weights",
     "get_portfolio_detail_response",
     "get_portfolio_frontend_detail_summary",
+    "get_portfolio_signal_weights_frame_response",
+    "get_portfolio_values_frame_response",
     "get_portfolio_weights_snapshot_response",
     "list_portfolio_rows_response",
 ]

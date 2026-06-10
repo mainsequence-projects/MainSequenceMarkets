@@ -169,14 +169,21 @@ Rules:
   `PortfoliosStorage` is shared and keyed by `(time_index, portfolio_identifier)`.
   A later row for another portfolio must not move this portfolio's start date.
 - Contributed signal progress must be scoped by `signal_uid`; `SignalWeightsStorage`
-  is shared and keyed by `(time_index, signal_uid, asset_identifier)`. A later
-  row for another signal must not move this signal's start date.
+  is shared and keyed by `(time_index, signal_uid, asset_identifier)`.
+  `signal_uid` is a required reference to `SignalMetadataTable.signal_uid`, so
+  signal metadata must be registered before signal weights are published. A
+  later row for another signal must not move this signal's start date.
 - Missing required price assets must be logged with the price source, date
   range, price column, and policy. Strict policy fails; permissive policy logs
   and continues when the downstream calculation can still produce a usable
   frame.
 - Local reindex/forward-fill inside `PortfoliosDataNode` is only calculation
   alignment. It must not create persistent storage or hide a price DataNode.
+- `PortfoliosDataNode.run(..., update_pointers=True)` is the default portfolio
+  workflow behavior. After the graph publishes, it must upsert the resolved
+  `PortfolioTable` row with `signal_weights_data_node_uid`,
+  `portfolio_weights_data_node_uid`, and `portfolio_data_node_uid`. Examples
+  should not perform this final pointer upsert manually.
 
 Contributed signal rules:
 

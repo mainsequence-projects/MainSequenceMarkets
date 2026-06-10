@@ -67,22 +67,27 @@ def build_search_openfigi_details_operation(
     asset_uid: uuid.UUID | str | None = None,
     figi: str | None = None,
     ticker: str | None = None,
+    ticker_contains: str | None = None,
     isin: str | None = None,
     limit: int = 500,
 ) -> MetaTableCompiledSQLOperation:
     filters: dict[str, Any] = {}
+    contains_filters: dict[str, str] = {}
     if asset_uid is not None:
         filters["asset_uid"] = asset_uid
     if figi not in (None, ""):
         filters["figi"] = figi
     if ticker not in (None, ""):
         filters["ticker"] = ticker
+    if ticker_contains not in (None, ""):
+        contains_filters["ticker"] = ticker_contains
     if isin not in (None, ""):
         filters["isin"] = isin
     return build_search_model_operation(
         context,
         model=OpenFigiAssetDetailsTable,
         filters=filters,
+        contains_filters=contains_filters,
         limit=limit,
     )
 

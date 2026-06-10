@@ -47,6 +47,8 @@ QUERY_OPERATION_IDS = frozenset(
         "listPortfolios",
         "getPortfolio",
         "getPortfolioSummary",
+        "getPortfolioSignalWeightsFrame",
+        "getPortfolioValuesFrame",
         "getPortfolioWeights",
         "listVirtualFunds",
         "getVirtualFund",

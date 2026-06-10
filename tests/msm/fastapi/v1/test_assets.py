@@ -117,12 +117,65 @@ def test_list_asset_rows_pushes_search_to_unique_identifier_contains(monkeypatch
         return {"rows": []}
 
     monkeypatch.setattr(asset_master_service, "service_search_assets", fake_search_assets)
+    monkeypatch.setattr(
+        asset_master_service,
+        "service_search_openfigi_details",
+        lambda context, **kwargs: {"rows": []},
+    )
 
     rows = asset_master_service.list_asset_rows(object(), search="BONO", limit=25, offset=0)
 
     assert len(rows) == 1
     assert rows[0]["unique_identifier"] == "MXN-BONO-2031"
     assert any(call.get("unique_identifier_contains") == "BONO" for call in captured_calls)
+
+
+def test_list_asset_rows_searches_related_openfigi_ticker(monkeypatch) -> None:
+    asset_uid = str(uuid.uuid4())
+    captured_asset_calls: list[dict[str, object]] = []
+    captured_detail_calls: list[dict[str, object]] = []
+
+    def fake_search_assets(context, **kwargs):
+        captured_asset_calls.append(dict(kwargs))
+        if kwargs.get("uids") == (asset_uid,):
+            return {
+                "rows": [
+                    {
+                        "uid": asset_uid,
+                        "unique_identifier": "MXN-GOVT-BILL-28D",
+                        "asset_type": "fixed_income",
+                    }
+                ]
+            }
+        return {"rows": []}
+
+    def fake_search_openfigi_details(context, **kwargs):
+        captured_detail_calls.append(dict(kwargs))
+        if kwargs.get("ticker_contains") == "CETE":
+            return {
+                "rows": [
+                    {
+                        "asset_uid": asset_uid,
+                        "ticker": "CETE 28D",
+                    }
+                ]
+            }
+        return {"rows": []}
+
+    monkeypatch.setattr(asset_master_service, "service_search_assets", fake_search_assets)
+    monkeypatch.setattr(
+        asset_master_service,
+        "service_search_openfigi_details",
+        fake_search_openfigi_details,
+    )
+
+    rows = asset_master_service.list_asset_rows(object(), search="CETE", limit=25, offset=0)
+
+    assert len(rows) == 1
+    assert rows[0]["uid"] == asset_uid
+    assert rows[0]["unique_identifier"] == "MXN-GOVT-BILL-28D"
+    assert captured_detail_calls[0]["ticker_contains"] == "CETE"
+    assert any(call.get("uids") == (asset_uid,) for call in captured_asset_calls)
 
 
 def test_get_asset_returns_detail_with_current_snapshot(monkeypatch) -> None:

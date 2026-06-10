@@ -16,7 +16,7 @@ from .index_convention_details import (
     IndexConventionDetailsUpdate,
     IndexConventionDetailsUpsert,
 )
-from .instruments import load_instrument_from_asset, persist_current_pricing_details
+from .instruments import add_pricing_details, load_instrument_from_asset
 from .market_data_bindings import (
     PricingMarketDataSet,
     PricingMarketDataSetBinding,
@@ -32,6 +32,9 @@ from .pricing_details import (
     AssetCurrentPricingDetailsCreate,
     AssetCurrentPricingDetailsUpdate,
     AssetCurrentPricingDetailsUpsert,
+    AssetPricingDetails,
+    AssetPricingDetailsAdd,
+    AssetPricingDetailsAddResult,
 )
 
 __all__ = [
@@ -42,6 +45,9 @@ __all__ = [
     "AssetCurrentPricingDetailsCreate",
     "AssetCurrentPricingDetailsUpdate",
     "AssetCurrentPricingDetailsUpsert",
+    "AssetPricingDetails",
+    "AssetPricingDetailsAdd",
+    "AssetPricingDetailsAddResult",
     "Curve",
     "CurveCreate",
     "CurveUpdate",
@@ -60,8 +66,8 @@ __all__ = [
     "PricingMarketDataSetUpdate",
     "PricingMarketDataSetUpsert",
     "UnsupportedAssetPricingOperationError",
+    "add_pricing_details",
     "build_asset_pricing_support",
     "execute_asset_pricing_operation",
     "load_instrument_from_asset",
-    "persist_current_pricing_details",
 ]

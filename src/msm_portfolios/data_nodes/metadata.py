@@ -27,7 +27,12 @@ def emit_signal_metadata(
     updater: Any | None,
 ) -> Any | None:
     if updater is None:
-        return None
+        from msm_portfolios.api.market_metadata import SignalMetadata
+
+        return SignalMetadata.upsert(
+            signal_uid=signal_uid,
+            signal_description=signal_description,
+        )
     payload = {
         "signal_uid": signal_uid,
         "signal_description": signal_description,

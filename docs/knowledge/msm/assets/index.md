@@ -311,14 +311,12 @@ what each type string means in a namespace.
 
 Pricing details are not the same thing as core asset details or market prices.
 Serialized priceable instrument terms belong to `msm_pricing`, not
-`msm.models.assets`: current terms are stored in
-`msm_pricing.models.AssetCurrentPricingDetailsTable`, historical pricing-detail
-observations live in `msm_pricing.data_nodes.pricing_details`, and users attach
-or load them through `Instrument.attach_to_asset(asset)` and
-`Instrument.load_from_asset(asset)`. The current table and the timestamped
-DataNode are independent storage paths, not views or automatic mirrors of one
-another, so `AssetCurrentPricingDetailsTable` may contain rows while the
-`AssetPricingDetail` DataNode is empty. Price histories and display snapshots
+`msm.models.assets`: timestamped pricing-detail observations live in
+`msm_pricing.data_nodes.pricing_details`, and no-date writes also update
+`msm_pricing.models.AssetCurrentPricingDetailsTable` for fast runtime loading.
+Users attach or load them through `Instrument.attach_to_asset(asset)` and
+`Instrument.load_from_asset(asset)`. Passing an explicit `pricing_details_date`
+upserts that timestamped snapshot only. Price histories and display snapshots
 remain market-data workflows.
 
 ## Creating, Querying, And Deleting Assets

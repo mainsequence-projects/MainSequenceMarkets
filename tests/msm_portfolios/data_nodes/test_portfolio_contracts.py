@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pytest
+import msm_portfolios.data_nodes.portfolios as portfolios_module
 
 from mainsequence.meta_tables import APIDataNode, DataNode
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
@@ -38,7 +39,8 @@ from msm_portfolios.rebalance_strategy import ImmediateSignal
 from msm_portfolios.data_nodes.signals import SignalWeights
 from msm_portfolios.data_nodes import SignalWeightsConfiguration
 from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
-from msm_portfolios.models import portfolio_sqlalchemy_models
+from msm_portfolios.models import SignalMetadataTable, portfolio_sqlalchemy_models
+from msm_portfolios.data_nodes.metadata import emit_signal_metadata
 
 PORTFOLIO_NODE_STORAGE = (
     (PortfolioWeights, PortfolioWeightsStorage),
@@ -128,6 +130,39 @@ def test_portfolio_weights_storage_keys_by_portfolio_identifier() -> None:
     assert not hasattr(PortfolioWeightsStorage, "portfolio_index_identifier")
 
 
+def test_signal_weights_storage_references_signal_metadata() -> None:
+    foreign_keys = SignalWeightsStorage.__table__.c.signal_uid.foreign_keys
+
+    assert len(foreign_keys) == 1
+    foreign_key = next(iter(foreign_keys))
+    assert foreign_key.column is SignalMetadataTable.__table__.c.signal_uid
+    assert foreign_key.ondelete == "RESTRICT"
+
+
+def test_signal_metadata_emission_uses_registry_upsert_by_default(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_upsert(**kwargs):
+        captured.update(kwargs)
+        return {"row": kwargs}
+
+    from msm_portfolios.api.market_metadata import SignalMetadata
+
+    monkeypatch.setattr(SignalMetadata, "upsert", staticmethod(fake_upsert))
+
+    result = emit_signal_metadata(
+        signal_uid="example-signal",
+        signal_description="Example signal",
+        updater=None,
+    )
+
+    assert result == {"row": captured}
+    assert captured == {
+        "signal_uid": "example-signal",
+        "signal_description": "Example signal",
+    }
+
+
 def test_portfolio_build_configuration_uses_explicit_price_source_contract() -> None:
     assert "price_source_instance" in PortfolioBuildConfiguration.model_fields
     assert "price_column" in PortfolioBuildConfiguration.model_fields
@@ -212,6 +247,67 @@ def test_portfolio_values_dependencies_expose_explicit_price_source() -> None:
         "signal_weights": signal_weights,
         "price_source": price_source,
     }
+
+
+def test_portfolio_values_updates_portfolio_data_node_pointers(monkeypatch) -> None:
+    from msm.api.portfolios import Portfolio
+
+    captured: dict[str, object] = {}
+
+    def fake_upsert(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(uid="portfolio-uid", **kwargs)
+
+    node = object.__new__(PortfoliosDataNode)
+    node.signal_weights = object()
+    node._required_data_node_update_uid = lambda _node, label: {
+        "signal weights": "signal-node-uid",
+        "portfolio weights": "weights-node-uid",
+        "portfolio values": "values-node-uid",
+    }[label]
+    portfolio = SimpleNamespace(
+        unique_identifier="example-portfolio",
+        calendar_uid="calendar-uid",
+        calendar_name="CRYPTO_24_7",
+        published_index_uid="index-uid",
+        backtest_table_price_column_name="close",
+    )
+
+    monkeypatch.setattr(Portfolio, "upsert", staticmethod(fake_upsert))
+
+    updated = node._update_portfolio_pointers(
+        portfolio=portfolio,
+        portfolio_weights_node=object(),
+    )
+
+    assert updated.uid == "portfolio-uid"
+    assert node.target_portfolio is updated
+    assert captured == {
+        "unique_identifier": "example-portfolio",
+        "calendar_uid": "calendar-uid",
+        "calendar_name": "CRYPTO_24_7",
+        "published_index_uid": "index-uid",
+        "backtest_table_price_column_name": "close",
+        "signal_weights_data_node_uid": "signal-node-uid",
+        "portfolio_weights_data_node_uid": "weights-node-uid",
+        "portfolio_data_node_uid": "values-node-uid",
+    }
+
+
+def test_portfolio_values_identifier_resolution_does_not_stringify_method(monkeypatch) -> None:
+    portfolio_configuration = object()
+    node = object.__new__(PortfoliosDataNode)
+    node._explicit_portfolio_identifier = None
+    node._portfolio_configuration = portfolio_configuration
+    node._portfolio_resolver = None
+
+    monkeypatch.setattr(
+        portfolios_module,
+        "get_or_create_portfolio",
+        lambda *args, **kwargs: SimpleNamespace(unique_identifier="example-portfolio"),
+    )
+
+    assert node._resolve_unique_identifier() == "example-portfolio"
 
 
 def test_portfolio_values_noop_when_existing_output_is_ahead_of_price_source() -> None:

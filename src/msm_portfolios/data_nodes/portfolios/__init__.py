@@ -68,6 +68,10 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         **kwargs,
     ):
         self.portfolio_configuration = portfolio_configuration
+        self._portfolio_configuration = portfolio_configuration
+        self._portfolio_resolver = None
+        self._explicit_portfolio_identifier: str | None = None
+        self.target_portfolio = None
         if portfolio_configuration is not None:
             self._initialize_from_portfolio_configuration(portfolio_configuration)
         super().__init__(config, *args, namespace=namespace, **kwargs)
@@ -161,7 +165,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
     ) -> PortfoliosDataNode:
         """Attach runtime value inputs without changing table identity."""
         self._portfolio_values_frame = portfolio_values_frame
-        self._unique_identifier = unique_identifier
+        self._explicit_portfolio_identifier = unique_identifier
         self._portfolio_configuration = portfolio_configuration
         self._portfolio_resolver = portfolio_resolver
         self._portfolio_description = portfolio_description
@@ -180,6 +184,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         update_tree: bool = True,
         force_update: bool = False,
         update_only_tree: bool = False,
+        update_pointers: bool = True,
         remote_scheduler: object | None = None,
         override_update_stats: UpdateStatistics | None = None,
     ):
@@ -226,10 +231,60 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                 remote_scheduler=remote_scheduler,
             )
 
+        if update_pointers:
+            portfolio = self._update_portfolio_pointers(
+                portfolio=portfolio,
+                portfolio_weights_node=portfolio_weights_node,
+            )
+
         return {
             "portfolio_weights": portfolio_weights_result,
             "portfolio_values": portfolio_values_result,
+            "portfolio": portfolio,
         }
+
+    def _update_portfolio_pointers(
+        self,
+        *,
+        portfolio: Any,
+        portfolio_weights_node: PortfolioWeights,
+    ) -> Any:
+        from msm.api.portfolios import Portfolio
+
+        portfolio = Portfolio.upsert(
+            unique_identifier=str(portfolio.unique_identifier),
+            calendar_uid=getattr(portfolio, "calendar_uid", None),
+            calendar_name=getattr(portfolio, "calendar_name", None),
+            published_index_uid=getattr(portfolio, "published_index_uid", None),
+            backtest_table_price_column_name=(
+                getattr(portfolio, "backtest_table_price_column_name", None) or "close"
+            ),
+            signal_weights_data_node_uid=self._required_data_node_update_uid(
+                self.signal_weights,
+                "signal weights",
+            ),
+            portfolio_weights_data_node_uid=self._required_data_node_update_uid(
+                portfolio_weights_node,
+                "portfolio weights",
+            ),
+            portfolio_data_node_uid=self._required_data_node_update_uid(
+                self,
+                "portfolio values",
+            ),
+        )
+        self.target_portfolio = portfolio
+        return portfolio
+
+    @staticmethod
+    def _required_data_node_update_uid(node: Any, label: str) -> str:
+        data_node_update = getattr(node, "data_node_update", None)
+        uid = getattr(data_node_update, "uid", None)
+        if uid in (None, ""):
+            raise RuntimeError(
+                f"Cannot update PortfolioTable DataNode pointers because {label} "
+                "DataNodeUpdate.uid is not available."
+            )
+        return str(uid)
 
     def update(self) -> pd.DataFrame:
         raw_frame = self._calculate_portfolio_values()
@@ -385,14 +440,13 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return node
 
     def _resolve_portfolio_identity(self) -> Any:
-        portfolio = getattr(self, "target_portfolio", None)
-        if portfolio is not None and getattr(portfolio, "unique_identifier", None):
-            return portfolio
+        if self.target_portfolio is not None and self.target_portfolio.unique_identifier:
+            return self.target_portfolio
 
-        portfolio_configuration = getattr(self, "portfolio_configuration", None) or getattr(
-            self,
-            "_portfolio_configuration",
-            None,
+        portfolio_configuration = (
+            self.portfolio_configuration
+            if self.portfolio_configuration is not None
+            else self._portfolio_configuration
         )
         if portfolio_configuration is None:
             raise ValueError(
@@ -402,14 +456,14 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
 
         portfolio = get_or_create_portfolio(
             portfolio_configuration,
-            portfolio_resolver=getattr(self, "_portfolio_resolver", None),
+            portfolio_resolver=self._portfolio_resolver,
         )
         self.target_portfolio = portfolio
         return portfolio
 
     def _unique_identifier(self) -> str:
         portfolio = self._resolve_portfolio_identity()
-        unique_identifier = getattr(portfolio, "unique_identifier", None)
+        unique_identifier = portfolio.unique_identifier
         if not unique_identifier:
             raise ValueError("Portfolio must expose unique_identifier.")
         return str(unique_identifier)
@@ -880,17 +934,16 @@ rebalance details:"""
         return f"{reba_strat}_{signa_name}"
 
     def _resolve_unique_identifier(self) -> str:
-        explicit_identifier = getattr(self, "_unique_identifier", None)
+        explicit_identifier = self._explicit_portfolio_identifier
         if explicit_identifier:
             return str(explicit_identifier)
 
-        portfolio_configuration = getattr(self, "_portfolio_configuration", None)
-        if portfolio_configuration is not None:
+        if self._portfolio_configuration is not None:
             resolved_portfolio = get_or_create_portfolio(
-                portfolio_configuration,
-                portfolio_resolver=getattr(self, "_portfolio_resolver", None),
+                self._portfolio_configuration,
+                portfolio_resolver=self._portfolio_resolver,
             )
-            resolved_identifier = getattr(resolved_portfolio, "unique_identifier", None)
+            resolved_identifier = resolved_portfolio.unique_identifier
             if resolved_identifier:
                 return str(resolved_identifier)
 

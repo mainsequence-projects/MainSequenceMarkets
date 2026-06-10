@@ -7,6 +7,7 @@ import pandas as pd
 from mainsequence.meta_tables import APIDataNode
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.models.assets.core import AssetTable
+from msm.models.portfolios import PortfolioTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.asset_scope import ASSET_IDENTIFIER
 from msm_portfolios.contrib.prices.data_nodes import (
@@ -85,6 +86,15 @@ def test_portfolio_price_storage_has_asset_identifier_foreign_key() -> None:
         foreign_keys = storage_table.__table__.c.asset_identifier.foreign_keys
         assert len(foreign_keys) == 1
         assert next(iter(foreign_keys)).target_fullname == expected_target
+
+
+def test_portfolio_values_storage_has_portfolio_identifier_foreign_key() -> None:
+    foreign_keys = PortfoliosStorage.__table__.c.portfolio_identifier.foreign_keys
+
+    assert len(foreign_keys) == 1
+    foreign_key = next(iter(foreign_keys))
+    assert foreign_key.column is PortfolioTable.__table__.c.unique_identifier
+    assert foreign_key.ondelete == "RESTRICT"
 
 
 def test_interpolated_prices_accepts_registered_top_level_source_cadence() -> None:

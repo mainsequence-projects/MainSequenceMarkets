@@ -20,6 +20,8 @@ _EXPORTS = {
     "get_portfolio_metadata_by_unique_identifier": ".market_metadata",
     "get_portfolio_detail_response": ".public_api",
     "get_portfolio_frontend_detail_summary": ".public_api",
+    "get_portfolio_signal_weights_frame_response": ".public_api",
+    "get_portfolio_values_frame_response": ".public_api",
     "get_portfolio_weights_snapshot_response": ".public_api",
     "search_portfolio_metadata": ".market_metadata",
     "search_rebalance_strategy_metadata": ".market_metadata",

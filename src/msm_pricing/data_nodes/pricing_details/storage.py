@@ -20,8 +20,11 @@ class AssetPricingDetailsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "AssetPricingDetailsTS"
     __metatable_description__ = (
         "Timestamped asset pricing-detail storage keyed by (time_index, "
-        "asset_identifier). Stores serialized pricing instrument payloads for "
-        "canonical assets before current-pricing rows are promoted."
+        "asset_identifier). Stores serialized pricing instrument payloads and "
+        "serialization metadata for canonical assets. User-facing pricing-detail "
+        "writes upsert this table; writes without an explicit timestamp also "
+        "update AssetCurrentPricingDetailsTable for fast runtime instrument "
+        "loading."
     )
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", ASSET_IDENTIFIER_DIMENSION]
@@ -45,10 +48,51 @@ class AssetPricingDetailsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     instrument_dump: Mapped[dict | None] = mapped_column(
         JSONB,
-        nullable=True,
+        nullable=False,
         info={
             "label": "Instrument Dump",
             "description": "Provider-specific pricing instrument payload for the asset observation.",
+        },
+    )
+    instrument_type: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+        info={
+            "label": "Instrument Type",
+            "description": "Concrete pricing instrument type used to rebuild the serialized payload.",
+        },
+    )
+    serialization_format: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+        info={
+            "label": "Serialization Format",
+            "description": "Serialization format used for the stored pricing payload.",
+        },
+    )
+    pricing_package_version: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        info={
+            "label": "Pricing Package Version",
+            "description": "Version of the pricing package that serialized the instrument payload.",
+        },
+    )
+    source: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info={
+            "label": "Source",
+            "description": "Source system, workflow, or provider that produced the observation.",
+        },
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        "metadata",
+        JSONB,
+        nullable=True,
+        info={
+            "label": "Metadata",
+            "description": "Structured metadata JSON for provider, pricing, or workflow-specific attributes.",
         },
     )
 

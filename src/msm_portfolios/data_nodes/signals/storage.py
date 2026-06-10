@@ -5,11 +5,12 @@ from __future__ import annotations
 import datetime
 from typing import ClassVar
 
-from sqlalchemy import DateTime, Float, String
+from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
+from msm_portfolios.models.signals import SignalMetadataTable
 
 
 class SignalWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
@@ -30,13 +31,17 @@ class SignalWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         info={"label": "Time Index", "description": "UTC timestamp for the signal weight row."},
     )
     signal_uid: Mapped[str] = mapped_column(
-        String,
+        String(255),
+        ForeignKey(
+            f"{SignalMetadataTable.__table__.fullname}.signal_uid",
+            ondelete="RESTRICT",
+        ),
         nullable=False,
         info={
             "label": "Signal UID",
             "description": (
                 "Deterministic hash of the canonical signal configuration that produced "
-                "this signal weight row."
+                "this signal weight row. References SignalMetadataTable.signal_uid."
             ),
         },
     )

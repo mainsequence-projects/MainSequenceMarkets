@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from apps.v1.schemas.command_center import TabularFrameResponse
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
     Portfolio,
@@ -74,6 +75,50 @@ def get_portfolio_weights(
     return PortfolioWeightsSnapshotResponse.model_validate(response)
 
 
+def get_portfolio_signal_weights_frame(
+    *,
+    uid: str,
+    start_date: dt.datetime | None = None,
+    end_date: dt.datetime | None = None,
+    order: str = "desc",
+    limit: int = 50,
+) -> TabularFrameResponse | None:
+    runtime = _get_runtime()
+    response = _get_portfolio_signal_weights_frame_response(
+        runtime.context,
+        uid=uid,
+        start_date=start_date,
+        end_date=end_date,
+        order=order,
+        limit=limit,
+    )
+    if response is None:
+        return None
+    return TabularFrameResponse.model_validate(response)
+
+
+def get_portfolio_values_frame(
+    *,
+    uid: str,
+    start_date: dt.datetime | None = None,
+    end_date: dt.datetime | None = None,
+    order: str = "desc",
+    limit: int = 50,
+) -> TabularFrameResponse | None:
+    runtime = _get_runtime()
+    response = _get_portfolio_values_frame_response(
+        runtime.context,
+        uid=uid,
+        start_date=start_date,
+        end_date=end_date,
+        order=order,
+        limit=limit,
+    )
+    if response is None:
+        return None
+    return TabularFrameResponse.model_validate(response)
+
+
 def delete_portfolio(*, uid: str) -> PortfolioDeleteResponse | None:
     runtime = _get_runtime()
     deleted = _delete_portfolio_record(runtime.context, uid=uid)
@@ -111,6 +156,8 @@ def _get_runtime():
             "AssetSnapshotsStorage",
             "PortfolioMetadata",
             "PortfolioWeightsStorage",
+            "PortfoliosStorage",
+            "SignalWeightsStorage",
             "VirtualFund",
         ],
         row_model_name="GET /api/v1/portfolio/",
@@ -139,6 +186,18 @@ def _get_portfolio_weights_snapshot_response(context, **kwargs):
     from msm_portfolios.services import get_portfolio_weights_snapshot_response
 
     return get_portfolio_weights_snapshot_response(context, **kwargs)
+
+
+def _get_portfolio_signal_weights_frame_response(context, **kwargs):
+    from msm_portfolios.services import get_portfolio_signal_weights_frame_response
+
+    return get_portfolio_signal_weights_frame_response(context, **kwargs)
+
+
+def _get_portfolio_values_frame_response(context, **kwargs):
+    from msm_portfolios.services import get_portfolio_values_frame_response
+
+    return get_portfolio_values_frame_response(context, **kwargs)
 
 
 def _delete_portfolio_record(context, **kwargs):

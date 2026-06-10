@@ -78,6 +78,11 @@ def test_asset_pricing_detail_resolves_storage_first_surface() -> None:
         "time_index",
         "asset_identifier",
         "instrument_dump",
+        "instrument_type",
+        "serialization_format",
+        "pricing_package_version",
+        "source",
+        "metadata",
     ]
 
 

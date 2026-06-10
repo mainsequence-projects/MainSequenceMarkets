@@ -74,14 +74,14 @@ class InstrumentModel(BaseModel):
         """Persist this instrument as the current pricing definition for an asset."""
 
         self.validate_asset(asset)
-        from msm_pricing.api.instruments import persist_current_pricing_details
+        from msm_pricing.api.instruments import add_pricing_details
 
-        row = persist_current_pricing_details(
+        add_pricing_details(
             asset=asset,
             instrument=self,
             **options,
         )
-        self._asset_uid = row.asset_uid
+        self._asset_uid = asset.uid
         return self
 
     @classmethod

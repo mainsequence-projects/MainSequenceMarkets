@@ -9,10 +9,14 @@ import pytest
 
 from msm.api.assets import Asset
 from msm_pricing.api.instruments import (
+    add_pricing_details,
     load_instrument_from_asset,
-    persist_current_pricing_details,
 )
-from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
+from msm_pricing.api.pricing_details import (
+    AssetCurrentPricingDetails,
+    AssetPricingDetails,
+    AssetPricingDetailsAddResult,
+)
 from msm_pricing.instruments.base_instrument import InstrumentModel
 
 
@@ -39,28 +43,33 @@ def _asset(*, asset_type: str = "example_asset") -> Asset:
     )
 
 
-def test_persist_current_pricing_details_serializes_identity_free_terms(monkeypatch) -> None:
+def test_add_pricing_details_serializes_identity_free_terms(monkeypatch) -> None:
     asset = _asset()
     instrument = ApiExampleInstrument(notional=100)
     pricing_details_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
     calls = []
 
-    def fake_upsert(**kwargs):
+    def fake_add(**kwargs):
         calls.append(kwargs)
-        return AssetCurrentPricingDetails(
-            asset_uid=kwargs["asset_uid"],
+        pricing_details = AssetPricingDetails(
+            time_index=kwargs["pricing_details_date"],
+            asset_identifier=kwargs["asset_identifier"],
             instrument_type=kwargs["instrument_type"],
             instrument_dump=kwargs["instrument_dump"],
-            pricing_details_date=kwargs["pricing_details_date"],
             serialization_format=kwargs["serialization_format"],
             pricing_package_version=kwargs["pricing_package_version"],
             source=kwargs["source"],
             metadata_json=kwargs["metadata_json"],
         )
+        return AssetPricingDetailsAddResult(
+            pricing_details=pricing_details,
+            current_pricing_details=None,
+            updated_current=False,
+        )
 
-    monkeypatch.setattr(AssetCurrentPricingDetails, "upsert", staticmethod(fake_upsert))
+    monkeypatch.setattr(AssetPricingDetails, "add", staticmethod(fake_add))
 
-    row = persist_current_pricing_details(
+    result = add_pricing_details(
         asset=asset,
         instrument=instrument,
         pricing_details_date=pricing_details_date,
@@ -68,11 +77,13 @@ def test_persist_current_pricing_details_serializes_identity_free_terms(monkeypa
         metadata_json={"source": "test"},
     )
 
-    assert row.asset_uid == asset.uid
+    assert result.current_pricing_details is None
+    assert result.updated_current is False
     assert instrument._asset_uid == asset.uid
     assert calls == [
         {
             "asset_uid": asset.uid,
+            "asset_identifier": asset.unique_identifier,
             "instrument_type": "ApiExampleInstrument",
             "instrument_dump": {"notional": 100.0},
             "pricing_details_date": pricing_details_date,
@@ -89,13 +100,13 @@ def test_instrument_attach_to_asset_is_primary_user_write_path(monkeypatch) -> N
     instrument = ApiExampleInstrument(notional=100)
     calls = []
 
-    def fake_persist_current_pricing_details(**kwargs):
+    def fake_add_pricing_details(**kwargs):
         calls.append(kwargs)
-        return SimpleNamespace(asset_uid=kwargs["asset"].uid)
+        return SimpleNamespace(current_pricing_details=SimpleNamespace(asset_uid=kwargs["asset"].uid))
 
     monkeypatch.setattr(
-        "msm_pricing.api.instruments.persist_current_pricing_details",
-        fake_persist_current_pricing_details,
+        "msm_pricing.api.instruments.add_pricing_details",
+        fake_add_pricing_details,
     )
 
     attached = instrument.attach_to_asset(asset, source="unit-test")

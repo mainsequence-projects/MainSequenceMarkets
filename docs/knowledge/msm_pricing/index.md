@@ -293,16 +293,18 @@ Important rules:
   `asset_uid`, `uid`, or the removed `main_sequence_asset_id`.
 - Asset linkage is owned by `AssetCurrentPricingDetailsTable.asset_uid`, not by
   `InstrumentModel`.
-- The table stores current terms. Historical pricing-detail observations belong
-  to the `AssetPricingDetail` DataNode.
-- `AssetCurrentPricingDetailsTable` is not a view of
-  `AssetPricingDetailsStorage`, and `AssetPricingDetailsStorage` is not the
-  history table automatically maintained by current-detail upserts.
-  `Instrument.attach_to_asset(asset)` writes the current table directly through
-  `AssetCurrentPricingDetails.upsert(...)`; it does not publish an
-  `AssetPricingDetail` DataNode row. Therefore a valid environment can have
-  current pricing details for assets while the `AssetPricingDetail` DataNode is
-  empty.
+- The public write path is timestamped: use `Instrument.attach_to_asset(asset)`
+  or `msm_pricing.api.add_pricing_details(...)`. That path writes
+  `AssetPricingDetailsStorage`.
+- `AssetCurrentPricingDetailsTable` is an internal current projection used for
+  fast runtime loading. When the caller does not provide
+  `pricing_details_date`, the API uses `now()` as the snapshot timestamp and
+  updates this current projection. When the caller provides
+  `pricing_details_date`, the API upserts that exact timestamped snapshot and
+  does not update the current projection.
+- Application code should not update `AssetCurrentPricingDetailsTable` directly
+  as the normal UX. Direct row APIs are low-level infrastructure for the
+  no-date current-snapshot path.
 
 The related DataNode stays separate:
 
@@ -313,7 +315,7 @@ AssetCurrentPricingDetailsTable
 
 AssetPricingDetail DataNode
   grain:   (time_index, asset_identifier)
-  purpose: timestamped pricing metadata or historical pricing-detail records
+  purpose: timestamped pricing metadata and historical pricing-detail records
 ```
 
 Use the instrument API, not manual row assembly:

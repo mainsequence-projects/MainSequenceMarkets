@@ -449,7 +449,13 @@ def build_equal_weight_portfolio(
         source_prices_node_uid = str(source_bars_node.data_node_update.uid)
         print_detail("source_prices_data_node_uid", source_prices_node_uid)
 
-        portfolio_values_node.run(debug_mode=True, update_tree=True, force_update=True)
+        portfolio_run_result = portfolio_values_node.run(
+            debug_mode=True,
+            update_tree=True,
+            force_update=True,
+            update_pointers=True,
+        )
+        portfolio = portfolio_run_result["portfolio"]
 
         interpolated_prices_node_uid = str(interpolated_prices_node.data_node_update.uid)
         print_detail("interpolated_prices_data_node_uid", interpolated_prices_node_uid)
@@ -475,15 +481,7 @@ def build_equal_weight_portfolio(
         portfolio_weights_node_uid = None
         portfolio_values_node_uid = None
 
-    print_step(6, "Updating the Portfolio row with DataNode links.")
-    portfolio = Portfolio.upsert(
-        unique_identifier=PORTFOLIO_UNIQUE_IDENTIFIER,
-        calendar_uid=portfolio_calendar.uid,
-        calendar_name=portfolio_calendar.unique_identifier,
-        signal_weights_data_node_uid=signal_weights_node_uid,
-        portfolio_weights_data_node_uid=portfolio_weights_node_uid,
-        portfolio_data_node_uid=portfolio_values_node_uid,
-    )
+    print_step(6, "Portfolio row has current DataNode links.")
     print_detail("portfolio_uid", portfolio.uid)
     print_detail("portfolio_identifier", portfolio.unique_identifier)
 

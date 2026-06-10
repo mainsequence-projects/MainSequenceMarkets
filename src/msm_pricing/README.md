@@ -143,9 +143,13 @@ bond.attach_to_asset(asset)
 loaded = pricing.Instrument.load_from_asset(asset)
 ```
 
-The generic loader rebuilds the concrete stored instrument type. Typed loaders
-such as `ZeroCouponBond.load_from_asset(asset)` validate that the attached
-instrument matches the requested class.
+`attach_to_asset(...)` writes a timestamped pricing-details observation. If no
+`pricing_details_date` is provided, it uses `now()` and updates the internal
+current table for fast loading. If a date is provided, it upserts that
+timestamped snapshot only. The generic loader rebuilds the concrete stored
+instrument type from the current projection. Typed loaders such as
+`ZeroCouponBond.load_from_asset(asset)` validate that the attached instrument
+matches the requested class.
 
 Pricing registry rows are also exposed through `msm_pricing.api`:
 

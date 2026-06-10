@@ -12,10 +12,12 @@ from msm_pricing.instruments.base_instrument import InstrumentModel
 from .pricing_details import (
     DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
     AssetCurrentPricingDetails,
+    AssetPricingDetails,
+    AssetPricingDetailsAddResult,
 )
 
 
-def persist_current_pricing_details(
+def add_pricing_details(
     *,
     asset: Asset,
     instrument: InstrumentModel,
@@ -24,13 +26,14 @@ def persist_current_pricing_details(
     pricing_package_version: str | None = None,
     source: str | None = None,
     metadata_json: dict[str, Any] | None = None,
-) -> AssetCurrentPricingDetails:
-    """Persist the current priceable instrument terms for an asset."""
+) -> AssetPricingDetailsAddResult:
+    """Add/upsert pricing details and update current when no date is provided."""
 
     instrument.validate_asset(asset)
     instrument_payload = _instrument_backend_payload(instrument)
-    row = AssetCurrentPricingDetails.upsert(
+    result = AssetPricingDetails.add(
         asset_uid=asset.uid,
+        asset_identifier=asset.unique_identifier,
         instrument_type=instrument_payload["instrument_type"],
         instrument_dump=instrument_payload["instrument"],
         pricing_details_date=pricing_details_date or dt.datetime.now(dt.UTC),
@@ -39,8 +42,8 @@ def persist_current_pricing_details(
         source=source,
         metadata_json=metadata_json,
     )
-    instrument._asset_uid = row.asset_uid
-    return row
+    instrument._asset_uid = asset.uid
+    return result
 
 
 def load_instrument_from_asset(
@@ -83,6 +86,6 @@ def _instrument_backend_payload(instrument: InstrumentModel) -> dict[str, Any]:
 
 
 __all__ = [
+    "add_pricing_details",
     "load_instrument_from_asset",
-    "persist_current_pricing_details",
 ]

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
+from apps.v1.schemas.command_center import TabularFrameResponse
 from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary, build_paginated_response
 from apps.v1.schemas.portfolios import (
     PortfolioBulkDeleteResponse,
@@ -20,12 +22,15 @@ from apps.v1.services.portfolios import (
     delete_portfolio,
     delete_portfolio_weights,
     get_portfolio_detail,
+    get_portfolio_signal_weights_frame,
     get_portfolio_summary,
+    get_portfolio_values_frame,
     get_portfolio_weights,
     list_portfolios,
 )
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
+logger = logging.getLogger(__name__)
 
 
 @router.get(
@@ -117,16 +122,39 @@ def get_portfolios(
         400: {
             "model": ErrorResponse,
             "description": "Invalid portfolio bulk-delete payload.",
-        }
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "One or more portfolios could not be deleted.",
+        },
     },
 )
 def bulk_delete_portfolio_rows(
     payload: PortfolioDeleteRequest,
 ) -> PortfolioBulkDeleteResponse:
     try:
-        return bulk_delete_portfolios(uids=payload.uids)
+        response = bulk_delete_portfolios(uids=payload.uids)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if response.failed:
+        detail = _portfolio_bulk_delete_error_detail(response)
+        logger.warning(
+            "Portfolio bulk delete failed.",
+            extra={
+                "failed": [failure.model_dump(mode="json") for failure in response.failed],
+                "deleted_count": response.deleted_count,
+                "deleted_weights_count": response.deleted_weights_count,
+            },
+        )
+        raise HTTPException(status_code=409, detail=detail)
+    return response
+
+
+def _portfolio_bulk_delete_error_detail(response: PortfolioBulkDeleteResponse) -> str:
+    failed_reasons = "; ".join(f"{failure.uid}: {failure.reason}" for failure in response.failed)
+    if failed_reasons:
+        return f"{response.detail} Failed: {failed_reasons}"
+    return response.detail
 
 
 @router.get(
@@ -212,6 +240,116 @@ def get_portfolio_weights_by_uid(
     if snapshot is None:
         raise HTTPException(status_code=404, detail=f"Portfolio {uid!r} was not found.")
     return snapshot
+
+
+@router.get(
+    "/{uid}/signals_weights/",
+    response_model=TabularFrameResponse,
+    summary="Get portfolio signal weights frame",
+    description=(
+        "Return raw signal-weight rows for the signal DataNode linked from the "
+        "portfolio row as a canonical Command Center tabular frame."
+    ),
+    operation_id="getPortfolioSignalWeightsFrame",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "The portfolio has no signal DataNode link or the request is invalid.",
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested portfolio uid was not found.",
+        },
+    },
+    openapi_extra={"x-ui-contract": "core.tabular_frame@v1"},
+)
+def get_portfolio_signal_weights_frame_by_uid(
+    uid: str,
+    start_date: Annotated[
+        dt.datetime | None,
+        Query(description="Optional inclusive lower time_index bound. Use ISO 8601."),
+    ] = None,
+    end_date: Annotated[
+        dt.datetime | None,
+        Query(description="Optional inclusive upper time_index bound. Use ISO 8601."),
+    ] = None,
+    order: Annotated[
+        Literal["asc", "desc"],
+        Query(description="Ordering by time_index."),
+    ] = "desc",
+    limit: Annotated[
+        int,
+        Query(ge=1, le=500, description="Maximum rows to return."),
+    ] = 50,
+) -> TabularFrameResponse:
+    try:
+        frame = get_portfolio_signal_weights_frame(
+            uid=uid,
+            start_date=start_date,
+            end_date=end_date,
+            order=order,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if frame is None:
+        raise HTTPException(status_code=404, detail=f"Portfolio {uid!r} was not found.")
+    return frame
+
+
+@router.get(
+    "/{uid}/portfolio_values/",
+    response_model=TabularFrameResponse,
+    summary="Get portfolio values frame",
+    description=(
+        "Return portfolio value rows keyed by the portfolio unique identifier as "
+        "a canonical Command Center tabular frame."
+    ),
+    operation_id="getPortfolioValuesFrame",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "Invalid portfolio values request.",
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested portfolio uid was not found.",
+        },
+    },
+    openapi_extra={"x-ui-contract": "core.tabular_frame@v1"},
+)
+def get_portfolio_values_frame_by_uid(
+    uid: str,
+    start_date: Annotated[
+        dt.datetime | None,
+        Query(description="Optional inclusive lower time_index bound. Use ISO 8601."),
+    ] = None,
+    end_date: Annotated[
+        dt.datetime | None,
+        Query(description="Optional inclusive upper time_index bound. Use ISO 8601."),
+    ] = None,
+    order: Annotated[
+        Literal["asc", "desc"],
+        Query(description="Ordering by time_index."),
+    ] = "desc",
+    limit: Annotated[
+        int,
+        Query(ge=1, le=500, description="Maximum rows to return."),
+    ] = 50,
+) -> TabularFrameResponse:
+    try:
+        frame = get_portfolio_values_frame(
+            uid=uid,
+            start_date=start_date,
+            end_date=end_date,
+            order=order,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if frame is None:
+        raise HTTPException(status_code=404, detail=f"Portfolio {uid!r} was not found.")
+    return frame
 
 
 @router.delete(

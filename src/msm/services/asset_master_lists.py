@@ -170,6 +170,30 @@ def list_asset_rows(
                 )
             )
         )
+    ticker_matched_asset_uids: set[str] = set()
+    if normalized_search:
+        detail_rows = _operation_result_rows(
+            service_search_openfigi_details(
+                context,
+                ticker_contains=search.strip(),
+                limit=scan_limit,
+            )
+        )
+        ticker_matched_asset_uids = {
+            str(row["asset_uid"])
+            for row in detail_rows
+            if isinstance(row, Mapping) and row.get("asset_uid") not in (None, "")
+        }
+        if ticker_matched_asset_uids:
+            asset_rows.extend(
+                _operation_result_rows(
+                    service_search_assets(
+                        context,
+                        uids=tuple(sorted(ticker_matched_asset_uids)),
+                        limit=scan_limit,
+                    )
+                )
+            )
 
     if category_uid not in (None, ""):
         membership_rows = _operation_result_rows(
@@ -200,13 +224,14 @@ def list_asset_rows(
         normalized_rows = [
             row
             for row in normalized_rows
-            if _matches_search(
-                values=(
-                    row["uid"],
-                    row["unique_identifier"],
-                    row.get("asset_type"),
-                ),
-                normalized_search=normalized_search,
+            if row["uid"] in ticker_matched_asset_uids
+            or _matches_search(
+                    values=(
+                        row["uid"],
+                        row["unique_identifier"],
+                        row.get("asset_type"),
+                    ),
+                    normalized_search=normalized_search,
             )
         ]
 

@@ -17,6 +17,7 @@ from msm.repositories.crud import (
 )
 
 from msm_pricing.bootstrap import attach_pricing_schemas, resolve_pricing_runtime
+from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
 from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 
 DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT = "msm_pricing.instrument.v1"
@@ -48,6 +49,7 @@ class AssetCurrentPricingDetails(BaseModel):
     __table__: ClassVar[type[AssetCurrentPricingDetailsTable]] = AssetCurrentPricingDetailsTable
     __required_tables__: ClassVar[list[type[Any]]] = [
         AssetTable,
+        AssetPricingDetailsStorage,
         AssetCurrentPricingDetailsTable,
     ]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("asset_uid",)
@@ -211,10 +213,156 @@ class AssetCurrentPricingDetailsUpdate(BaseModel):
         return AssetCurrentPricingDetails._require_timezone(value)
 
 
+class AssetPricingDetails(BaseModel):
+    """Timestamped priceable instrument terms observed for a canonical asset."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    __table__: ClassVar[type[AssetPricingDetailsStorage]] = AssetPricingDetailsStorage
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        AssetTable,
+        AssetPricingDetailsStorage,
+        AssetCurrentPricingDetailsTable,
+    ]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("time_index", "asset_identifier")
+
+    time_index: dt.datetime
+    asset_identifier: str
+    instrument_type: str
+    instrument_dump: dict[str, Any]
+    serialization_format: str = DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT
+    pricing_package_version: str | None = None
+    source: str | None = None
+    metadata_json: dict[str, Any] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("metadata_json", "metadata"),
+    )
+
+    @field_validator("time_index")
+    @classmethod
+    def _require_timezone(cls, value: dt.datetime) -> dt.datetime:
+        return AssetCurrentPricingDetails._require_timezone(value)
+
+    @classmethod
+    def add(
+        cls,
+        payload: AssetPricingDetailsAdd | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AssetPricingDetailsAddResult:
+        """Add or upsert a pricing-details snapshot."""
+
+        values = _validate_payload(AssetPricingDetailsAdd, payload, kwargs).model_dump()
+        update_current = values["pricing_details_date"] is None
+        if values["pricing_details_date"] is None:
+            values["pricing_details_date"] = dt.datetime.now(dt.UTC)
+        context = cls._active_context()
+        storage_values = _pricing_details_storage_values(values)
+        storage_result = upsert_model(
+            context,
+            model=cls.__table__,
+            values=storage_values,
+            conflict_columns=cls.__upsert_keys__,
+        )
+        pricing_details = cls._from_operation_result(storage_result)
+        if update_current:
+            current_pricing_details = AssetCurrentPricingDetails.upsert(
+                asset_uid=values["asset_uid"],
+                instrument_type=pricing_details.instrument_type,
+                instrument_dump=pricing_details.instrument_dump,
+                pricing_details_date=pricing_details.time_index,
+                serialization_format=pricing_details.serialization_format,
+                pricing_package_version=pricing_details.pricing_package_version,
+                source=pricing_details.source,
+                metadata_json=pricing_details.metadata_json,
+            )
+        else:
+            current_pricing_details = None
+        return AssetPricingDetailsAddResult(
+            pricing_details=pricing_details,
+            current_pricing_details=current_pricing_details,
+            updated_current=update_current,
+        )
+
+    @classmethod
+    def _active_context(cls):
+        runtime = resolve_pricing_runtime(
+            models=cls.__required_tables__,
+            row_model_name=cls.__name__,
+        )
+        return runtime.context
+
+    @classmethod
+    def _from_operation_result(
+        cls,
+        result: Mapping[str, Any],
+        *,
+        required: bool = True,
+    ) -> AssetPricingDetails | None:
+        rows = operation_result_rows(result)
+        if rows:
+            return cls.model_validate(rows[0])
+        if required:
+            raise LookupError("MetaTable operation result did not include an AssetPricingDetails row.")
+        return None
+
+
+class AssetPricingDetailsAdd(BaseModel):
+    """Payload for adding timestamped pricing details for an asset."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    asset_uid: uuid.UUID
+    asset_identifier: str = Field(min_length=1, max_length=255)
+    instrument_type: str = Field(min_length=1, max_length=128)
+    instrument_dump: dict[str, Any]
+    pricing_details_date: dt.datetime | None = None
+    serialization_format: str = Field(
+        default=DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
+        min_length=1,
+        max_length=128,
+    )
+    pricing_package_version: str | None = Field(default=None, max_length=64)
+    source: str | None = Field(default=None, max_length=255)
+    metadata_json: dict[str, Any] | None = None
+
+    @field_validator("pricing_details_date")
+    @classmethod
+    def _require_timezone(cls, value: dt.datetime | None) -> dt.datetime | None:
+        if value is None:
+            return None
+        return AssetCurrentPricingDetails._require_timezone(value)
+
+
+class AssetPricingDetailsAddResult(BaseModel):
+    """Result of adding/upserting pricing details and optional current update."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    pricing_details: AssetPricingDetails
+    current_pricing_details: AssetCurrentPricingDetails | None
+    updated_current: bool
+
+
+def _pricing_details_storage_values(values: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "time_index": values["pricing_details_date"],
+        "asset_identifier": values["asset_identifier"],
+        "instrument_type": values["instrument_type"],
+        "instrument_dump": values["instrument_dump"],
+        "serialization_format": values["serialization_format"],
+        "pricing_package_version": values["pricing_package_version"],
+        "source": values["source"],
+        "metadata_json": values["metadata_json"],
+    }
+
+
 __all__ = [
     "AssetCurrentPricingDetails",
     "AssetCurrentPricingDetailsCreate",
     "AssetCurrentPricingDetailsUpdate",
     "AssetCurrentPricingDetailsUpsert",
+    "AssetPricingDetails",
+    "AssetPricingDetailsAdd",
+    "AssetPricingDetailsAddResult",
     "DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT",
 ]

@@ -212,8 +212,10 @@ Use this workflow when connecting pricing terms to a canonical asset:
    terms.
 
 This keeps instrument reconstruction independent from Main Sequence persistence
-identity. The pricing details row decides which asset currently uses a given
-serialized instrument definition. See
+identity. `instrument.attach_to_asset(asset, ...)` writes a timestamped
+pricing-details observation. Without `pricing_details_date`, it uses `now()`
+and updates the current projection for fast `Instrument.load_from_asset(...)`
+reads. With an explicit date, it upserts only that timestamped snapshot. See
 `examples/msm_pricing/instrument_identity_boundary.py` for a minimal payload
 boundary example.
 
@@ -279,6 +281,11 @@ bond.attach_to_asset(asset)
 loaded = Instrument.load_from_asset(asset)
 ```
 
+`attach_to_asset(...)` is the normal user-facing write path. It records the
+timestamped pricing details first. Calls without `pricing_details_date` create a
+current snapshot at `now()` and update the active instrument definition. Calls
+with `pricing_details_date` upsert that historical timestamp only.
+
 Use `Instrument.load_from_asset(asset)` when the asset is known but the concrete
 pricing instrument is not. Use a typed loader such as
 `ZeroCouponBond.load_from_asset(asset)` when the caller expects a specific
@@ -319,7 +326,8 @@ For a full floating-rate bond workflow, use
    its concept bindings with `PricingMarketDataSet` and
    `PricingMarketDataSetBinding`.
 6. Create a `FloatingRateBond` with `floating_rate_index_uid=index.uid`.
-7. Attach the instrument with `instrument.attach_to_asset(asset, ...)`.
+7. Add pricing details with `instrument.attach_to_asset(asset, ...)`; without an
+   explicit timestamp this creates the current loadable instrument definition.
 8. Reload it generically with `Instrument.load_from_asset(asset)`, set the
    valuation date, then call `price(market_data_set="default")`,
    `analytics()`, `get_cashflows()`, and `carry_roll_down(...)`.

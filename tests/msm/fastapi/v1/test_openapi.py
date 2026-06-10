@@ -478,6 +478,26 @@ def test_openapi_json_documents_portfolio_routes() -> None:
         "schema"
     ] == {"$ref": "#/components/schemas/PortfolioWeightsSnapshotResponse"}
 
+    portfolio_signal_weights_operation = payload["paths"][
+        "/api/v1/portfolio/{uid}/signals_weights/"
+    ]["get"]
+    assert portfolio_signal_weights_operation["summary"] == ("Get portfolio signal weights frame")
+    assert portfolio_signal_weights_operation["operationId"] == ("getPortfolioSignalWeightsFrame")
+    assert portfolio_signal_weights_operation["x-ui-contract"] == "core.tabular_frame@v1"
+    assert portfolio_signal_weights_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/TabularFrameResponse"}
+
+    portfolio_values_operation = payload["paths"]["/api/v1/portfolio/{uid}/portfolio_values/"][
+        "get"
+    ]
+    assert portfolio_values_operation["summary"] == "Get portfolio values frame"
+    assert portfolio_values_operation["operationId"] == "getPortfolioValuesFrame"
+    assert portfolio_values_operation["x-ui-contract"] == "core.tabular_frame@v1"
+    assert portfolio_values_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/TabularFrameResponse"}
+
     portfolio_weights_delete_operation = payload["paths"]["/api/v1/portfolio/{uid}/weights/"][
         "delete"
     ]

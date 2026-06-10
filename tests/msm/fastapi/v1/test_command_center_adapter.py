@@ -123,6 +123,14 @@ def test_command_center_contract_documents_response_contract_boundaries() -> Non
     assert direct_frame["responseContract"] == DIRECT_FRAME_CONTRACT
     assert direct_frame["responseModel"] == "TabularFrameResponse"
 
+    portfolio_signal_weights = operations["getPortfolioSignalWeightsFrame"]
+    assert portfolio_signal_weights["responseContract"] == DIRECT_FRAME_CONTRACT
+    assert portfolio_signal_weights["responseModel"] == "TabularFrameResponse"
+
+    portfolio_values = operations["getPortfolioValuesFrame"]
+    assert portfolio_values["responseContract"] == DIRECT_FRAME_CONTRACT
+    assert portfolio_values["responseModel"] == "TabularFrameResponse"
+
     provider_native = operations["getFixedIncomeAssetCashflows"]
     assert provider_native["responseContract"] == PROVIDER_NATIVE_CONTRACT
     assert provider_native["responseModel"] == "BondCashflowsResponse"
