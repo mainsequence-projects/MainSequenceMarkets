@@ -37,11 +37,9 @@ For local `apps/v1` development:
 - set it before importing MetaTable-backed `msm.api` or `msm.models` modules
 - do not hardcode namespace bootstrap inside `apps/v1` route code
 
-For local launchers, prefer:
-
-- `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`
-
-The launcher or shell owns this environment choice, not application code.
+Local launchers must not hardcode a namespace. Leave `MSM_AUTO_REGISTER_NAMESPACE` unset unless
+the caller explicitly chooses a namespace for that run. The launcher or shell owns this environment
+choice, not application code.
 
 ## Required Structure
 

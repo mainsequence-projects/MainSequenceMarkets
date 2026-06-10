@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Sequence
 from typing import Any
+
+from msm.settings import markets_auto_register_namespace
 
 V1_RUNTIME_MODELS = [
     "AssetType",
@@ -25,6 +26,7 @@ V1_RUNTIME_MODELS = [
     "PositionSet",
     "Portfolio",
     "PortfolioMetadata",
+    "SignalMetadata",
     "PortfolioWeightsStorage",
     "PortfoliosStorage",
     "SignalWeightsStorage",
@@ -48,6 +50,7 @@ V1_PORTFOLIO_RUNTIME_MODELS = [
     "PositionSet",
     "Portfolio",
     "PortfolioMetadata",
+    "SignalMetadata",
     "PortfolioWeightsStorage",
     "PortfoliosStorage",
     "SignalWeightsStorage",
@@ -73,7 +76,7 @@ _PRICING_BOOTSTRAP_COMPLETE = False
 
 
 def prepare_apps_v1_import_namespace() -> None:
-    namespace = os.getenv("MSM_AUTO_REGISTER_NAMESPACE")
+    namespace = markets_auto_register_namespace()
     if not namespace:
         return
 
@@ -88,14 +91,10 @@ def ensure_apps_v1_runtime() -> Any | None:
     if _BOOTSTRAP_COMPLETE:
         return None
 
-    namespace = os.getenv("MSM_AUTO_REGISTER_NAMESPACE")
-    if not namespace:
-        return None
-
     import msm_portfolios
 
     runtime = msm_portfolios.start_engine(
-        namespace=namespace,
+        namespace=markets_auto_register_namespace(),
         models=V1_RUNTIME_MODELS,
     )
     _BOOTSTRAP_COMPLETE = True
@@ -122,14 +121,10 @@ def ensure_apps_v1_pricing_runtime() -> Any | None:
     if _PRICING_BOOTSTRAP_COMPLETE:
         return None
 
-    namespace = os.getenv("MSM_AUTO_REGISTER_NAMESPACE")
-    if not namespace:
-        return None
-
     from msm_pricing.bootstrap import attach_pricing_schemas
 
     runtime = attach_pricing_schemas(
-        namespace=namespace,
+        namespace=markets_auto_register_namespace(),
         models=V1_PRICING_RUNTIME_MODELS,
         seed_default_market_data_bindings=False,
         replace_default_market_data_bindings=False,

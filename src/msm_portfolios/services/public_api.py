@@ -10,12 +10,18 @@ from sqlalchemy import String, cast, delete, func, literal, or_, select
 from msm.data_nodes.assets.storage import AssetSnapshotsStorage
 from msm.models import AssetTable, PortfolioTable, VirtualFundTable
 from msm.repositories import MarketsRepositoryContext
-from msm.repositories.crud import get_model_by_uid, search_model
+from msm.repositories.crud import (
+    count_model,
+    create_model,
+    get_model_by_uid,
+    search_model,
+    update_model,
+)
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
 from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
 from msm_portfolios.data_nodes.signals.weights import compute_signal_uid
-from msm_portfolios.models import PortfolioMetadataTable
+from msm_portfolios.models import PortfolioMetadataTable, SignalMetadataTable
 
 DEFAULT_PORTFOLIO_PAGE_SIZE = 50
 MAX_PORTFOLIO_SCAN_LIMIT = 500
@@ -23,6 +29,10 @@ MAX_PORTFOLIO_SCAN_LIMIT = 500
 
 class PortfolioDeleteConflictError(ValueError):
     """Raised when a portfolio cannot be deleted because protected rows reference it."""
+
+
+class SignalDeleteConflictError(ValueError):
+    """Raised when a signal cannot be deleted because protected rows reference it."""
 
 
 def list_portfolio_rows_response(
@@ -377,6 +387,175 @@ def get_portfolio_signal_weights_frame_response(
     )
 
 
+def list_signal_metadata_response(
+    context: MarketsRepositoryContext,
+    *,
+    search: str = "",
+    signal_uid: str | None = None,
+    limit: int = DEFAULT_PORTFOLIO_PAGE_SIZE,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Return paginated SignalMetadata rows with a total count."""
+
+    filters = _signal_metadata_filters(signal_uid=signal_uid)
+    contains_filters = _signal_metadata_contains_filters(search=search)
+    rows = _operation_result_rows(
+        search_model(
+            context,
+            model=SignalMetadataTable,
+            filters=filters,
+            contains_filters=contains_filters,
+            limit=limit,
+            offset=offset,
+        )
+    )
+    count = _count_from_result(
+        count_model(
+            context,
+            model=SignalMetadataTable,
+            filters=filters,
+            contains_filters=contains_filters,
+        )
+    )
+    return {
+        "count": count,
+        "results": [_build_signal_metadata_row(row) for row in rows],
+    }
+
+
+def get_signal_metadata_response(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+) -> dict[str, Any] | None:
+    row = _get_signal_metadata_row(context, uid=uid)
+    if row is None:
+        return None
+    return _build_signal_metadata_row(row)
+
+
+def create_signal_metadata_response(
+    context: MarketsRepositoryContext,
+    *,
+    signal_uid: str,
+    signal_description: str | None = None,
+) -> dict[str, Any]:
+    row = _first_operation_row(
+        create_model(
+            context,
+            model=SignalMetadataTable,
+            values={
+                "signal_uid": signal_uid,
+                "signal_description": signal_description,
+            },
+        )
+    )
+    if row is None:
+        raise ValueError("Signal metadata creation returned no row.")
+    return _build_signal_metadata_row(row)
+
+
+def update_signal_metadata_response(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+    signal_description: str | None = None,
+) -> dict[str, Any] | None:
+    existing = _get_signal_metadata_row(context, uid=uid)
+    if existing is None:
+        return None
+    if signal_description is None:
+        return _build_signal_metadata_row(existing)
+
+    row = _first_operation_row(
+        update_model(
+            context,
+            model=SignalMetadataTable,
+            uid=uid,
+            values={"signal_description": signal_description},
+        )
+    )
+    if row is None:
+        return None
+    return _build_signal_metadata_row(row)
+
+
+def delete_signal_metadata_record(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+) -> dict[str, Any] | None:
+    existing = _get_signal_metadata_row(context, uid=uid)
+    if existing is None:
+        return None
+
+    signal = _build_signal_metadata_row(existing)
+    signal_metadata_uid = uuid.UUID(str(signal["uid"]))
+    signal_uid = _string_or_empty(signal.get("signal_uid"))
+
+    try:
+        rows = _operation_result_rows(
+            execute_markets_operation(
+                _compile_delete_signal_metadata_with_weights_operation(
+                    context,
+                    signal_metadata_uid=signal_metadata_uid,
+                ),
+                context=context,
+            )
+        )
+    except Exception as exc:
+        if _is_delete_conflict(exc):
+            raise SignalDeleteConflictError(
+                "Signal metadata is referenced by protected rows and could not be deleted."
+            ) from exc
+        raise
+
+    if not rows:
+        raise SignalDeleteConflictError(
+            "Signal metadata deletion was blocked by a concurrent protected reference."
+        )
+
+    return {
+        "detail": "Signal metadata deleted.",
+        "signal_metadata_uid": str(signal_metadata_uid),
+        "signal_uid": signal_uid,
+        "deleted_count": 1,
+        "deleted_weights_count": _int_or_zero(rows[0].get("deleted_weights_count")),
+    }
+
+
+def delete_signal_weights(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+    weights_date: dt.datetime | None = None,
+) -> dict[str, Any] | None:
+    existing = _get_signal_metadata_row(context, uid=uid)
+    if existing is None:
+        return None
+
+    signal = _build_signal_metadata_row(existing)
+    signal_metadata_uid = str(signal["uid"])
+    signal_uid = _string_or_empty(signal.get("signal_uid"))
+    rows = _operation_result_rows(
+        execute_markets_operation(
+            _compile_delete_signal_weights_operation(
+                context,
+                signal_uid=signal_uid,
+                weights_date=weights_date,
+            ),
+            context=context,
+        )
+    )
+    return {
+        "detail": "Signal weights deleted.",
+        "signal_metadata_uid": signal_metadata_uid,
+        "signal_uid": signal_uid,
+        "weights_date": weights_date,
+        "deleted_count": len(rows),
+    }
+
+
 def delete_portfolio_record(
     context: MarketsRepositoryContext,
     *,
@@ -530,6 +709,67 @@ def _virtual_fund_reference_count(
             ),
             context=context,
         )
+    )
+
+
+def _compile_delete_signal_weights_operation(
+    context: MarketsRepositoryContext,
+    *,
+    signal_uid: str,
+    weights_date: dt.datetime | None,
+):
+    statement = delete(SignalWeightsStorage).where(SignalWeightsStorage.signal_uid == signal_uid)
+    if weights_date is not None:
+        statement = statement.where(SignalWeightsStorage.time_index == weights_date)
+    statement = statement.returning(literal(1).label("deleted_weight"))
+    return compile_markets_statement(
+        statement,
+        context=context,
+        operation="delete",
+        models=[SignalWeightsStorage],
+        access="write",
+    )
+
+
+def _compile_delete_signal_metadata_with_weights_operation(
+    context: MarketsRepositoryContext,
+    *,
+    signal_metadata_uid: uuid.UUID,
+):
+    signal_scope = (
+        select(
+            SignalMetadataTable.uid.label("uid"),
+            SignalMetadataTable.signal_uid.label("signal_uid"),
+        )
+        .select_from(SignalMetadataTable)
+        .where(SignalMetadataTable.uid == signal_metadata_uid)
+        .cte("signal_scope")
+    )
+    signal_uids = select(signal_scope.c.signal_uid).where(signal_scope.c.signal_uid.is_not(None))
+    deleted_weights = (
+        delete(SignalWeightsStorage)
+        .where(SignalWeightsStorage.signal_uid.in_(signal_uids))
+        .returning(literal(1).label("deleted_weight"))
+        .cte("deleted_signal_weights")
+    )
+    deleted_weights_count = select(func.count()).select_from(deleted_weights).scalar_subquery()
+    statement = (
+        delete(SignalMetadataTable)
+        .where(SignalMetadataTable.uid.in_(select(signal_scope.c.uid)))
+        .returning(
+            SignalMetadataTable.uid.label("uid"),
+            SignalMetadataTable.signal_uid.label("signal_uid"),
+            deleted_weights_count.label("deleted_weights_count"),
+        )
+        .add_cte(signal_scope)
+        .add_cte(deleted_weights)
+    )
+    return compile_markets_statement(
+        statement,
+        context=context,
+        operation="delete",
+        models=[SignalMetadataTable, SignalWeightsStorage],
+        access="write",
     )
 
 
@@ -1019,6 +1259,42 @@ def _build_portfolio_metadata_row(row: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _get_signal_metadata_row(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+) -> dict[str, Any] | None:
+    return _first_operation_row(
+        get_model_by_uid(
+            context,
+            model=SignalMetadataTable,
+            uid=uid,
+        )
+    )
+
+
+def _build_signal_metadata_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "uid": row.get("uid"),
+        "signal_uid": _string_or_empty(row.get("signal_uid")),
+        "signal_description": _string_or_none(row.get("signal_description")),
+    }
+
+
+def _signal_metadata_filters(*, signal_uid: str | None) -> dict[str, Any]:
+    filters: dict[str, Any] = {}
+    if signal_uid not in (None, ""):
+        filters["signal_uid"] = signal_uid
+    return filters
+
+
+def _signal_metadata_contains_filters(*, search: str) -> dict[str, str]:
+    search_text = search.strip()
+    if not search_text:
+        return {}
+    return {"signal_uid": search_text}
+
+
 def _operation_result_rows(result: Mapping[str, Any] | list[Any] | None) -> list[dict[str, Any]]:
     if result is None:
         return []
@@ -1117,13 +1393,20 @@ def _datetime_or_none(value: Any) -> dt.datetime | None:
 
 __all__ = [
     "PortfolioDeleteConflictError",
+    "SignalDeleteConflictError",
     "bulk_delete_portfolio_records",
     "delete_portfolio_record",
     "delete_portfolio_weights",
+    "delete_signal_metadata_record",
+    "delete_signal_weights",
+    "create_signal_metadata_response",
     "get_portfolio_detail_response",
     "get_portfolio_frontend_detail_summary",
     "get_portfolio_signal_weights_frame_response",
     "get_portfolio_values_frame_response",
     "get_portfolio_weights_snapshot_response",
+    "get_signal_metadata_response",
+    "list_signal_metadata_response",
     "list_portfolio_rows_response",
+    "update_signal_metadata_response",
 ]

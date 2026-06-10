@@ -12,6 +12,7 @@ from apps.v1.routers.assets import router as assets_router
 from apps.v1.routers.calendars import router as calendars_router
 from apps.v1.routers.command_center import router as command_center_router
 from apps.v1.routers.indices import router as indices_router
+from apps.v1.routers.portfolio_signals import router as portfolio_signals_router
 from apps.v1.routers.portfolios import router as portfolios_router
 from apps.v1.routers.pricing_curves import router as pricing_curves_router
 from apps.v1.routers.pricing_assets import router as pricing_assets_router
@@ -65,6 +66,10 @@ API_TAGS = [
         "description": "Portfolio identity, detail, latest weights, and delete endpoints.",
     },
     {
+        "name": "portfolio-signal",
+        "description": "Portfolio signal metadata and signal-weight storage cleanup endpoints.",
+    },
+    {
         "name": "virtualfund",
         "description": "Virtual-fund identity, detail, and holdings endpoints.",
     },
@@ -109,6 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(assets_router, prefix="/api/v1")
     app.include_router(asset_categories_router, prefix="/api/v1")
     app.include_router(indices_router, prefix="/api/v1")
+    app.include_router(portfolio_signals_router, prefix="/api/v1")
     app.include_router(portfolios_router, prefix="/api/v1")
     app.include_router(virtual_funds_router, prefix="/api/v1")
     app.include_router(calendars_router, prefix="/api/v1")

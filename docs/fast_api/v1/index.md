@@ -40,14 +40,18 @@ This API is intentionally thin:
   breaking existing `/api/v1` clients.
 - [Portfolio Routes](portfolio.md): route group for portfolio identity,
   detail-page composition, latest weights, and delete operations.
+- [Portfolio Signal Metadata Routes](portfolio_signal_metadata.md): route
+  group for signal metadata list/detail/write operations and signal-weight
+  storage cleanup.
 - [Virtual Fund Routes](virtualfund.md): route group for account-owned
   virtual-fund identity and holdings snapshots.
 
 ## Runtime Bootstrap
 
-When `MSM_AUTO_REGISTER_NAMESPACE` is set for local development, `apps/v1`
-now performs startup-time runtime attachment instead of waiting for the first
-request to hit a row operation.
+`apps/v1` performs startup-time runtime attachment instead of waiting for the
+first request to hit a row operation. `MSM_AUTO_REGISTER_NAMESPACE` may override
+the namespace for local development; when it is not set, the runtime uses the
+default markets namespace from `msm.settings.markets_namespace()`.
 
 Current local-dev behavior:
 
@@ -321,6 +325,28 @@ Current local-dev behavior:
 - `POST /api/v1/portfolio/bulk-delete/`
   - deletes multiple portfolio identity rows by explicit `uids`
   - reports protected or missing rows in `failed`
+
+### Portfolio Signals
+
+- `GET /api/v1/portfolio-signal/`
+  - supports `search`, `signal_uid`, `limit`, and `offset`
+  - returns `PaginatedResponse[SignalMetadata]` using
+    `msm_portfolios.api.market_metadata.SignalMetadata`
+- `GET /api/v1/portfolio-signal/{uid}/`
+  - returns one `SignalMetadata` row by metadata row `uid`
+- `POST /api/v1/portfolio-signal/`
+  - creates one signal metadata row
+  - request body uses `SignalMetadataCreate`
+- `PATCH /api/v1/portfolio-signal/{uid}/`
+  - updates mutable signal metadata fields
+  - `signal_uid` is immutable because signal-weight storage rows reference it
+- `DELETE /api/v1/portfolio-signal/{uid}/weights/`
+  - supports optional exact `weights_date`
+  - deletes matching `SignalWeightsStorage` rows for the resolved `signal_uid`
+- `DELETE /api/v1/portfolio-signal/{uid}/`
+  - deletes one signal metadata row and matching historical
+    `SignalWeightsStorage` rows atomically
+  - returns `deleted_weights_count`
 
 ### Virtual Funds
 

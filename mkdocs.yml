@@ -31,6 +31,7 @@ nav:
       - v1: fast_api/v1/index.md
       - Settings: fast_api/v1/settings.md
       - Portfolio: fast_api/v1/portfolio.md
+      - Portfolio Signal Metadata: fast_api/v1/portfolio_signal_metadata.md
       - Virtual Funds: fast_api/v1/virtualfund.md
       - Pricing Curves: fast_api/v1/pricing_curves.md
       - Pricing Market Data: fast_api/v1/pricing_market_data.md

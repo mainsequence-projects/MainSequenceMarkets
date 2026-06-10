@@ -79,6 +79,7 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
         "/api/v1/calendar/{calendar_uid}/sessions/",
         "/api/v1/index/",
         "/api/v1/portfolio/",
+        "/api/v1/portfolio-signal/",
         "/api/v1/pricing/curves/",
         "/api/v1/pricing/market_data/bindings/",
         "/api/v1/pricing/market_data/sets/",
@@ -527,6 +528,70 @@ def test_openapi_json_documents_portfolio_routes() -> None:
     assert portfolio_bulk_delete_operation["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/PortfolioBulkDeleteResponse"}
+
+
+def test_openapi_json_documents_portfolio_signal_routes() -> None:
+    client = TestClient(app)
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    signal_list_operation = payload["paths"]["/api/v1/portfolio-signal/"]["get"]
+    assert signal_list_operation["summary"] == "List portfolio signals"
+    assert signal_list_operation["operationId"] == "listPortfolioSignals"
+    assert signal_list_operation["tags"] == ["portfolio-signal"]
+    assert signal_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PaginatedResponse_SignalMetadata_"
+    }
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/PaginatedResponse_SignalMetadata_",
+        result_ref="#/components/schemas/SignalMetadata",
+    )
+
+    signal_create_operation = payload["paths"]["/api/v1/portfolio-signal/"]["post"]
+    assert signal_create_operation["summary"] == "Create portfolio signal"
+    assert signal_create_operation["operationId"] == "createPortfolioSignal"
+    assert signal_create_operation["requestBody"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/SignalMetadataCreate"
+    }
+    assert signal_create_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/SignalMetadata"
+    }
+
+    signal_detail_operation = payload["paths"]["/api/v1/portfolio-signal/{uid}/"]["get"]
+    assert signal_detail_operation["summary"] == "Get portfolio signal"
+    assert signal_detail_operation["operationId"] == "getPortfolioSignal"
+    assert signal_detail_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/SignalMetadata"
+    }
+
+    signal_update_operation = payload["paths"]["/api/v1/portfolio-signal/{uid}/"]["patch"]
+    assert signal_update_operation["summary"] == "Update portfolio signal"
+    assert signal_update_operation["operationId"] == "updatePortfolioSignal"
+    assert signal_update_operation["requestBody"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/SignalMetadataUpdate"
+    }
+
+    signal_delete_operation = payload["paths"]["/api/v1/portfolio-signal/{uid}/"]["delete"]
+    assert signal_delete_operation["summary"] == "Delete portfolio signal"
+    assert signal_delete_operation["operationId"] == "deletePortfolioSignal"
+    assert signal_delete_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PortfolioSignalDeleteResponse"
+    }
+    assert signal_delete_operation["responses"]["409"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorResponse"
+    }
+
+    signal_weights_delete_operation = payload["paths"]["/api/v1/portfolio-signal/{uid}/weights/"][
+        "delete"
+    ]
+    assert signal_weights_delete_operation["summary"] == "Delete portfolio signal weights"
+    assert signal_weights_delete_operation["operationId"] == "deletePortfolioSignalWeights"
+    assert signal_weights_delete_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PortfolioSignalWeightsDeleteResponse"}
 
 
 def test_openapi_json_documents_calendar_routes() -> None:

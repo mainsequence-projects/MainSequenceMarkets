@@ -3,12 +3,29 @@ from __future__ import annotations
 import apps.v1.runtime_bootstrap as runtime_bootstrap
 
 
-def test_ensure_apps_v1_runtime_is_noop_without_namespace(monkeypatch) -> None:
+def test_ensure_apps_v1_runtime_uses_default_namespace_without_env(monkeypatch) -> None:
     monkeypatch.delenv("MSM_AUTO_REGISTER_NAMESPACE", raising=False)
     monkeypatch.setattr(runtime_bootstrap, "_BOOTSTRAP_COMPLETE", False)
 
-    assert runtime_bootstrap.ensure_apps_v1_runtime() is None
-    assert runtime_bootstrap._BOOTSTRAP_COMPLETE is False
+    start_engine_calls: list[dict[str, object]] = []
+    runtime = object()
+
+    import msm_portfolios
+
+    monkeypatch.setattr(
+        msm_portfolios,
+        "start_engine",
+        lambda **kwargs: start_engine_calls.append(kwargs) or runtime,
+    )
+
+    assert runtime_bootstrap.ensure_apps_v1_runtime() is runtime
+    assert start_engine_calls == [
+        {
+            "namespace": None,
+            "models": runtime_bootstrap.V1_RUNTIME_MODELS,
+        }
+    ]
+    assert runtime_bootstrap._BOOTSTRAP_COMPLETE is True
 
 
 def test_ensure_apps_v1_runtime_calls_start_engine_for_v1_model_set(monkeypatch) -> None:
@@ -135,6 +152,33 @@ def test_ensure_apps_v1_pricing_runtime_attaches_pricing_models(monkeypatch) -> 
     assert attach_calls == [
         {
             "namespace": "mainsequence.examples",
+            "models": runtime_bootstrap.V1_PRICING_RUNTIME_MODELS,
+            "seed_default_market_data_bindings": False,
+            "replace_default_market_data_bindings": False,
+        }
+    ]
+    assert runtime_bootstrap._PRICING_BOOTSTRAP_COMPLETE is True
+
+
+def test_ensure_apps_v1_pricing_runtime_uses_default_namespace_without_env(monkeypatch) -> None:
+    monkeypatch.delenv("MSM_AUTO_REGISTER_NAMESPACE", raising=False)
+    monkeypatch.setattr(runtime_bootstrap, "_PRICING_BOOTSTRAP_COMPLETE", False)
+
+    attach_calls: list[dict[str, object]] = []
+    runtime = object()
+
+    import msm_pricing.bootstrap as pricing_bootstrap
+
+    monkeypatch.setattr(
+        pricing_bootstrap,
+        "attach_pricing_schemas",
+        lambda **kwargs: attach_calls.append(kwargs) or runtime,
+    )
+
+    assert runtime_bootstrap.ensure_apps_v1_pricing_runtime() is runtime
+    assert attach_calls == [
+        {
+            "namespace": None,
             "models": runtime_bootstrap.V1_PRICING_RUNTIME_MODELS,
             "seed_default_market_data_bindings": False,
             "replace_default_market_data_bindings": False,
