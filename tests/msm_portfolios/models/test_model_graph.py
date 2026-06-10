@@ -29,7 +29,7 @@ def test_portfolio_model_graph_includes_core_portfolio_dependencies() -> None:
     assert PositionSetTable in model_graph
     assert PortfolioMetadataTable in model_graph
     assert TargetPositionsStorage in model_graph
-    assert VirtualFundTable not in model_graph
+    assert VirtualFundTable in model_graph
     assert VirtualFundHoldingsSetTable not in model_graph
     assert SignalMetadataTable in model_graph
     assert RebalanceStrategyMetadataTable in model_graph

@@ -308,10 +308,20 @@ Current local-dev behavior:
     matching weights snapshot exists
   - asset labels use latest `AssetSnapshotsStorage` rows; OpenFIGI is not used
 - `DELETE /api/v1/portfolio/{uid}/`
-  - deletes one portfolio identity row
-  - returns 409 when protected rows, such as account target-position history,
-    still reference the portfolio
-  - does not delete historical portfolio weights or values
+  - deletes one portfolio identity row and matching historical
+    `PortfolioWeightsStorage` rows atomically
+  - resolves historical weights through
+    `Portfolio.portfolio_index_uid -> Index.unique_identifier`
+  - returns `deleted_weights_count`
+  - returns 409 when protected rows, such as virtual funds or account
+    target-position history, still reference the portfolio
+  - returns 409 when another portfolio shares the same `portfolio_index_uid`
+- `DELETE /api/v1/portfolio/{uid}/weights/`
+  - supports optional exact `weights_date`
+  - deletes only matching `PortfolioWeightsStorage` rows for the resolved
+    portfolio index identifier
+  - returns `deleted_count` for removed weight rows
+  - returns 409 when another portfolio shares the same `portfolio_index_uid`
 - `POST /api/v1/portfolio/bulk-delete/`
   - deletes multiple portfolio identity rows by explicit `uids`
   - reports protected or missing rows in `failed`

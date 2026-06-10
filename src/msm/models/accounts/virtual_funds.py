@@ -77,7 +77,7 @@ class VirtualFundTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         ForeignKey(
             f"{PortfolioTable.__table__.fullname}.uid",
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
         ),
         nullable=False,
         info={

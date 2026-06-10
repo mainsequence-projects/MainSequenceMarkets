@@ -303,10 +303,18 @@ def _fixings_availability(
     market_data_set: str | None,
     parameters: dict[str, Any],
 ) -> Mapping[str, Any]:
-    instrument.price(**_market_kwargs(market_data_set, parameters))
+    del parameters
+    fixings = [
+        _fixing_availability_for_reference(
+            index_uid=index_uid,
+            valuation_date=instrument.valuation_date,
+            market_data_set=market_data_set,
+        )
+        for index_uid in _instrument_fixing_reference_candidates(instrument)
+    ]
     return {
-        "status": "available",
-        "fixings": [],
+        "status": _fixings_availability_status(fixings),
+        "fixings": fixings,
     }
 
 
@@ -485,6 +493,186 @@ def _curve_reference_payload(
         "discount_curve_url": f"/api/v1/pricing/curves/{curve.uid}/discount-curve/",
         "discount_curve_query_params": query_params,
     }
+
+
+def _instrument_fixing_reference_candidates(instrument: Any) -> list[uuid.UUID]:
+    candidates: list[uuid.UUID] = []
+    seen: set[uuid.UUID] = set()
+
+    for attribute in ("floating_rate_index_uid", "float_leg_index_uid"):
+        value = getattr(instrument, attribute, None)
+        if value is None:
+            continue
+        index_uid = uuid.UUID(str(value))
+        if index_uid in seen:
+            continue
+        candidates.append(index_uid)
+        seen.add(index_uid)
+
+    return candidates
+
+
+def _fixing_availability_for_reference(
+    *,
+    index_uid: uuid.UUID,
+    valuation_date: dt.datetime | dt.date | None,
+    market_data_set: str | None,
+) -> dict[str, Any]:
+    if valuation_date is None:
+        raise ValueError("valuation_date is required for fixings availability.")
+
+    index_identifier = _fixing_identifier_for_index(index_uid)
+    required_start, required_end = _required_fixing_range(valuation_date)
+    required_dates = set(
+        _required_fixing_dates(
+            index_uid=index_uid,
+            required_start=required_start,
+            required_end=required_end,
+        )
+    )
+    observations = _index_fixing_observations(
+        index_identifier=index_identifier,
+        required_start=required_start,
+        required_end=required_end,
+        market_data_set=market_data_set,
+    )
+    available_dates = set(observations)
+    missing_count = len(required_dates.difference(available_dates))
+
+    return {
+        "index_uid": index_uid,
+        "index_identifier": index_identifier,
+        "required_start_date": required_start.date(),
+        "required_end_date": required_end.date(),
+        "available_start_date": min(available_dates) if available_dates else None,
+        "available_end_date": max(available_dates) if available_dates else None,
+        "missing_count": missing_count,
+        "status": _fixing_row_status(
+            required_count=len(required_dates),
+            available_count=len(available_dates),
+            missing_count=missing_count,
+        ),
+    }
+
+
+def _fixing_identifier_for_index(index_uid: uuid.UUID) -> str:
+    from msm.api.indices import Index
+    from msm_pricing.api.index_convention_details import IndexConventionDetails
+
+    index = Index.get_by_uid(index_uid)
+    if index is None:
+        raise LookupError(f"No canonical index row found for index_uid={index_uid}.")
+
+    convention = IndexConventionDetails.get_by_index_uid(index_uid)
+    if convention is None:
+        return index.unique_identifier
+
+    convention_dump = convention.convention_dump
+    return str(
+        convention_dump.get("fixings_unique_identifier")
+        or convention_dump.get("fixings_uid")
+        or index.unique_identifier
+    )
+
+
+def _required_fixing_range(
+    valuation_date: dt.datetime | dt.date,
+) -> tuple[dt.datetime, dt.datetime]:
+    required_end = _ensure_datetime(valuation_date)
+    required_start = required_end - dt.timedelta(days=365)
+    return required_start, required_end
+
+
+def _required_fixing_dates(
+    *,
+    index_uid: uuid.UUID,
+    required_start: dt.datetime,
+    required_end: dt.datetime,
+) -> list[dt.date]:
+    ql_index = _resolve_index_for_fixing_dates(
+        index_uid=index_uid,
+        valuation_date=required_end,
+    )
+    dates: list[dt.date] = []
+    current = required_start.date()
+    end = required_end.date()
+    while current <= end:
+        if ql_index.isValidFixingDate(_to_ql_date(current)):
+            dates.append(current)
+        current += dt.timedelta(days=1)
+    return dates
+
+
+def _resolve_index_for_fixing_dates(*, index_uid: uuid.UUID, valuation_date: dt.datetime):
+    import QuantLib as ql
+
+    from msm_pricing.pricing_engine.resolvers import resolve_quantlib_index
+
+    valuation_day = _to_ql_date(valuation_date.date())
+    flat_curve = ql.YieldTermStructureHandle(
+        ql.FlatForward(valuation_day, 0.0, ql.Actual365Fixed())
+    )
+    return resolve_quantlib_index(
+        index_uid=index_uid,
+        valuation_date=valuation_date,
+        forwarding_curve=flat_curve,
+        hydrate_fixings=False,
+    )
+
+
+def _to_ql_date(value: dt.date):
+    from msm_pricing.utils import to_ql_date
+
+    return to_ql_date(value)
+
+
+def _index_fixing_observations(
+    *,
+    index_identifier: str,
+    required_start: dt.datetime,
+    required_end: dt.datetime,
+    market_data_set: str | None,
+) -> dict[dt.date, float]:
+    from msm_pricing.data_interface import data_interface
+
+    return data_interface.get_index_fixing_observations(
+        index_identifier,
+        required_start,
+        required_end,
+        market_data_set=market_data_set,
+    )
+
+
+def _ensure_datetime(value: dt.datetime | dt.date) -> dt.datetime:
+    if isinstance(value, dt.datetime):
+        return value
+    return dt.datetime.combine(value, dt.time())
+
+
+def _fixing_row_status(
+    *,
+    required_count: int,
+    available_count: int,
+    missing_count: int,
+) -> str:
+    if required_count == 0:
+        return "complete"
+    if available_count == 0:
+        return "missing"
+    if missing_count == 0:
+        return "complete"
+    return "partial"
+
+
+def _fixings_availability_status(fixings: list[dict[str, Any]]) -> str:
+    if not fixings:
+        return "not_required"
+    statuses = {str(row["status"]) for row in fixings}
+    if statuses == {"complete"}:
+        return "complete"
+    if "missing" in statuses:
+        return "missing"
+    return "partial"
 
 
 PRICING_OPERATION_DEFINITIONS = {

@@ -118,7 +118,21 @@ def test_fixed_income_routes_validate_operation_responses(monkeypatch) -> None:
             ],
             "diagnostics": {"pricing_engine_id": "engine-id"},
         },
-        "fixings-availability": {"status": "available", "fixings": []},
+        "fixings-availability": {
+            "status": "partial",
+            "fixings": [
+                {
+                    "index_uid": str(index_uid),
+                    "index_identifier": "USD-SOFR-3M",
+                    "required_start_date": "2025-06-09",
+                    "required_end_date": "2026-06-09",
+                    "available_start_date": "2025-06-09",
+                    "available_end_date": "2026-06-06",
+                    "missing_count": 1,
+                    "status": "partial",
+                }
+            ],
+        },
     }
 
     def fake_execute(**kwargs):

@@ -14,6 +14,7 @@ _EXPORTS = {
     "create_signal_metadata": ".market_metadata",
     "delete_portfolio_metadata": ".market_metadata",
     "delete_portfolio_record": ".public_api",
+    "delete_portfolio_weights": ".public_api",
     "delete_rebalance_strategy_metadata": ".market_metadata",
     "delete_signal_metadata": ".market_metadata",
     "get_portfolio_metadata_by_unique_identifier": ".market_metadata",

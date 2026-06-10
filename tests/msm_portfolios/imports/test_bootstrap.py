@@ -4,7 +4,7 @@ import inspect
 from types import SimpleNamespace
 
 import msm_portfolios.bootstrap as bootstrap
-from msm.models import AccountTable, AssetTable, IndexTable, PortfolioTable
+from msm.models import AccountTable, AssetTable, IndexTable, PortfolioTable, VirtualFundTable
 from msm_portfolios.models import portfolio_sqlalchemy_models
 
 
@@ -60,5 +60,5 @@ def test_portfolio_bootstrap_resolves_portfolio_names_and_passes_unknown_core_na
         AccountTable,
         IndexTable,
         PortfolioTable,
-        "VirtualFund",
+        VirtualFundTable,
     ]

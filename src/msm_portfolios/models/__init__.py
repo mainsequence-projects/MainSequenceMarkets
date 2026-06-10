@@ -13,6 +13,7 @@ from msm.models import (
     IndexTypeTable,
     PositionSetTable,
     PortfolioTable,
+    VirtualFundTable,
 )
 
 from .portfolios import PortfolioMetadataTable
@@ -42,6 +43,7 @@ def portfolio_sqlalchemy_models() -> list[type]:
         PositionSetTable,
         CalendarTable,
         PortfolioTable,
+        VirtualFundTable,
         SignalMetadataTable,
         RebalanceStrategyMetadataTable,
         PortfolioMetadataTable,
@@ -66,6 +68,7 @@ __all__ = [
     "IndexTypeTable",
     "PositionSetTable",
     "PortfolioMetadataTable",
+    "VirtualFundTable",
     "RebalanceStrategyMetadataTable",
     "SignalMetadataTable",
     "portfolio_sqlalchemy_models",

@@ -113,10 +113,21 @@ class PortfolioDeleteResponse(BaseModel):
 
     detail: str
     deleted_count: int = 0
+    deleted_weights_count: int = 0
 
 
 class PortfolioBulkDeleteResponse(PortfolioDeleteResponse):
     failed: list[PortfolioDeleteFailure] = Field(default_factory=list)
+
+
+class PortfolioWeightsDeleteResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    detail: str
+    portfolio_uid: str
+    portfolio_index_identifier: str | None = None
+    weights_date: dt.datetime | None = None
+    deleted_count: int = 0
 
 
 PortfolioListResponse = PaginatedResponse[Portfolio]

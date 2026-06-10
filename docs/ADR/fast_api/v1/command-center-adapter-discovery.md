@@ -316,6 +316,7 @@ Portfolio operations:
 
 - `bulkDeletePortfolios`
 - `deletePortfolio`
+- `deletePortfolioWeights`
 
 Calendar operations:
 

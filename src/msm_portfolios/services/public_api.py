@@ -5,12 +5,12 @@ import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import String, cast, delete, func, literal, or_, select
 
 from msm.data_nodes.assets.storage import AssetSnapshotsStorage
-from msm.models import AssetTable, IndexTable, PortfolioTable
+from msm.models import AssetTable, IndexTable, PortfolioTable, VirtualFundTable
 from msm.repositories import MarketsRepositoryContext
-from msm.repositories.crud import delete_model, get_model_by_uid, search_model
+from msm.repositories.crud import get_model_by_uid, search_model
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage
 from msm_portfolios.models import PortfolioMetadataTable
@@ -273,20 +273,110 @@ def delete_portfolio_record(
     context: MarketsRepositoryContext,
     *,
     uid: str,
-) -> bool:
+) -> dict[str, Any] | None:
     existing = _get_portfolio_row(context, uid=uid)
     if existing is None:
-        return False
+        return None
+
+    portfolio = _build_portfolio_row(existing)
+    portfolio_uid = uuid.UUID(str(portfolio["uid"]))
+    portfolio_index_uid = _uuid_or_none(portfolio.get("portfolio_index_uid"))
+
+    _raise_if_portfolio_delete_is_blocked(
+        context,
+        portfolio_uid=portfolio_uid,
+        portfolio_index_uid=portfolio_index_uid,
+    )
 
     try:
-        delete_model(context, model=PortfolioTable, uid=uid)
+        rows = _operation_result_rows(
+            execute_markets_operation(
+                _compile_delete_portfolio_with_weights_operation(
+                    context,
+                    portfolio_uid=portfolio_uid,
+                ),
+                context=context,
+            )
+        )
     except Exception as exc:
         if _is_delete_conflict(exc):
             raise PortfolioDeleteConflictError(
                 "Portfolio is referenced by target positions or other protected rows."
             ) from exc
         raise
-    return True
+
+    if not rows:
+        raise PortfolioDeleteConflictError(
+            "Portfolio deletion was blocked by a concurrent protected reference."
+        )
+
+    deleted_weights_count = _int_or_zero(rows[0].get("deleted_weights_count"))
+    return {
+        "detail": "Portfolio deleted.",
+        "deleted_count": 1,
+        "deleted_weights_count": deleted_weights_count,
+    }
+
+
+def delete_portfolio_weights(
+    context: MarketsRepositoryContext,
+    *,
+    uid: str,
+    weights_date: dt.datetime | None = None,
+) -> dict[str, Any] | None:
+    existing = _get_portfolio_row(context, uid=uid)
+    if existing is None:
+        return None
+
+    portfolio = _build_portfolio_row(existing)
+    portfolio_uid = uuid.UUID(str(portfolio["uid"]))
+    portfolio_index_uid = _uuid_or_none(portfolio.get("portfolio_index_uid"))
+    if portfolio_index_uid is None:
+        return {
+            "detail": "Portfolio has no portfolio_index_uid; no weights were deleted.",
+            "portfolio_uid": str(portfolio_uid),
+            "portfolio_index_identifier": None,
+            "weights_date": weights_date,
+            "deleted_count": 0,
+        }
+
+    _raise_if_portfolio_index_is_shared(
+        context,
+        portfolio_uid=portfolio_uid,
+        portfolio_index_uid=portfolio_index_uid,
+    )
+
+    portfolio_index_identifier = _portfolio_index_identifier(
+        context,
+        portfolio_index_uid=portfolio_index_uid,
+    )
+    if portfolio_index_identifier is None:
+        return {
+            "detail": "Portfolio index row could not be resolved; no weights were deleted.",
+            "portfolio_uid": str(portfolio_uid),
+            "portfolio_index_identifier": None,
+            "weights_date": weights_date,
+            "deleted_count": 0,
+        }
+
+    rows = _operation_result_rows(
+        execute_markets_operation(
+            _compile_delete_portfolio_weights_operation(
+                context,
+                portfolio_index_identifier=portfolio_index_identifier,
+                weights_date=weights_date,
+            ),
+            context=context,
+        )
+    )
+    deleted_count = len(rows)
+    return {
+        "detail": "Portfolio weights deleted.",
+        "portfolio_uid": str(portfolio_uid),
+        "portfolio_index_identifier": portfolio_index_identifier,
+        "weights_date": weights_date,
+        "deleted_count": deleted_count,
+    }
 
 
 def bulk_delete_portfolio_records(
@@ -295,6 +385,7 @@ def bulk_delete_portfolio_records(
     uids: Sequence[str],
 ) -> dict[str, Any]:
     deleted_count = 0
+    deleted_weights_count = 0
     failed: list[dict[str, str]] = []
 
     for uid in dict.fromkeys(str(value) for value in uids if str(value).strip()):
@@ -304,7 +395,8 @@ def bulk_delete_portfolio_records(
             failed.append({"uid": uid, "reason": str(exc)})
             continue
         if deleted:
-            deleted_count += 1
+            deleted_count += int(deleted.get("deleted_count", 1))
+            deleted_weights_count += _int_or_zero(deleted.get("deleted_weights_count"))
         else:
             failed.append({"uid": uid, "reason": "Portfolio was not found."})
 
@@ -321,8 +413,193 @@ def bulk_delete_portfolio_records(
     return {
         "detail": detail,
         "deleted_count": deleted_count,
+        "deleted_weights_count": deleted_weights_count,
         "failed": failed,
     }
+
+
+def _raise_if_portfolio_delete_is_blocked(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_uid: uuid.UUID,
+    portfolio_index_uid: uuid.UUID | None,
+) -> None:
+    virtual_fund_count = _virtual_fund_reference_count(context, portfolio_uid=portfolio_uid)
+    if virtual_fund_count:
+        raise PortfolioDeleteConflictError(
+            "Portfolio is referenced by virtual funds. Delete or retarget those funds first."
+        )
+
+    _raise_if_portfolio_index_is_shared(
+        context,
+        portfolio_uid=portfolio_uid,
+        portfolio_index_uid=portfolio_index_uid,
+    )
+
+
+def _raise_if_portfolio_index_is_shared(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_uid: uuid.UUID,
+    portfolio_index_uid: uuid.UUID | None,
+) -> None:
+    if portfolio_index_uid is None:
+        return
+
+    shared_count = _shared_portfolio_index_count(
+        context,
+        portfolio_uid=portfolio_uid,
+        portfolio_index_uid=portfolio_index_uid,
+    )
+    if shared_count:
+        raise PortfolioDeleteConflictError(
+            "Portfolio shares portfolio_index_uid with another portfolio; refusing to delete "
+            "weights that may belong to another portfolio."
+        )
+
+
+def _virtual_fund_reference_count(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_uid: uuid.UUID,
+) -> int:
+    statement = (
+        select(func.count().label("count"))
+        .select_from(VirtualFundTable)
+        .where(VirtualFundTable.target_portfolio_uid == portfolio_uid)
+    )
+    return _count_from_result(
+        execute_markets_operation(
+            compile_markets_statement(
+                statement,
+                context=context,
+                operation="select",
+                models=[VirtualFundTable],
+                access="read",
+            ),
+            context=context,
+        )
+    )
+
+
+def _shared_portfolio_index_count(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_uid: uuid.UUID,
+    portfolio_index_uid: uuid.UUID,
+) -> int:
+    statement = (
+        select(func.count().label("count"))
+        .select_from(PortfolioTable)
+        .where(PortfolioTable.portfolio_index_uid == portfolio_index_uid)
+        .where(PortfolioTable.uid != portfolio_uid)
+    )
+    return _count_from_result(
+        execute_markets_operation(
+            compile_markets_statement(
+                statement,
+                context=context,
+                operation="select",
+                models=[PortfolioTable],
+                access="read",
+            ),
+            context=context,
+        )
+    )
+
+
+def _portfolio_index_identifier(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_index_uid: uuid.UUID,
+) -> str | None:
+    index_row = _first_operation_row(
+        get_model_by_uid(context, model=IndexTable, uid=str(portfolio_index_uid))
+    )
+    if index_row is None:
+        return None
+    return _string_or_none(index_row.get("unique_identifier"))
+
+
+def _compile_delete_portfolio_weights_operation(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_index_identifier: str,
+    weights_date: dt.datetime | None,
+):
+    statement = delete(PortfolioWeightsStorage).where(
+        PortfolioWeightsStorage.portfolio_index_identifier == portfolio_index_identifier
+    )
+    if weights_date is not None:
+        statement = statement.where(PortfolioWeightsStorage.time_index == weights_date)
+    statement = statement.returning(literal(1).label("deleted_weight"))
+    return compile_markets_statement(
+        statement,
+        context=context,
+        operation="delete",
+        models=[PortfolioWeightsStorage],
+        access="write",
+    )
+
+
+def _compile_delete_portfolio_with_weights_operation(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_uid: uuid.UUID,
+):
+    other_portfolios = PortfolioTable.__table__.alias("other_portfolios")
+    virtual_fund_reference = (
+        select(literal(1))
+        .select_from(VirtualFundTable)
+        .where(VirtualFundTable.target_portfolio_uid == PortfolioTable.uid)
+        .exists()
+    )
+    shared_portfolio_index = (
+        select(literal(1))
+        .select_from(other_portfolios)
+        .where(other_portfolios.c.portfolio_index_uid == PortfolioTable.portfolio_index_uid)
+        .where(other_portfolios.c.uid != PortfolioTable.uid)
+        .exists()
+    )
+    portfolio_scope = (
+        select(
+            PortfolioTable.uid.label("uid"),
+            IndexTable.unique_identifier.label("portfolio_index_identifier"),
+        )
+        .select_from(PortfolioTable)
+        .outerjoin(IndexTable, PortfolioTable.portfolio_index_uid == IndexTable.uid)
+        .where(PortfolioTable.uid == portfolio_uid)
+        .where(~virtual_fund_reference)
+        .where(~shared_portfolio_index)
+        .cte("portfolio_scope")
+    )
+    portfolio_index_identifiers = select(portfolio_scope.c.portfolio_index_identifier).where(
+        portfolio_scope.c.portfolio_index_identifier.is_not(None)
+    )
+    deleted_weights = (
+        delete(PortfolioWeightsStorage)
+        .where(PortfolioWeightsStorage.portfolio_index_identifier.in_(portfolio_index_identifiers))
+        .returning(literal(1).label("deleted_weight"))
+        .cte("deleted_weights")
+    )
+    deleted_weights_count = select(func.count()).select_from(deleted_weights).scalar_subquery()
+    statement = (
+        delete(PortfolioTable)
+        .where(PortfolioTable.uid.in_(select(portfolio_scope.c.uid)))
+        .returning(
+            PortfolioTable.uid.label("uid"),
+            deleted_weights_count.label("deleted_weights_count"),
+        )
+        .add_cte(portfolio_scope)
+        .add_cte(deleted_weights)
+    )
+    return compile_markets_statement(
+        statement,
+        context=context,
+        operation="delete",
+        models=[PortfolioTable, PortfolioWeightsStorage, IndexTable, VirtualFundTable],
+        access="write",
+    )
 
 
 def _portfolio_filter_args(
@@ -630,6 +907,12 @@ def _count_from_result(result: Mapping[str, Any] | list[Any] | None) -> int:
     return 0
 
 
+def _int_or_zero(value: Any) -> int:
+    if value in (None, ""):
+        return 0
+    return int(value)
+
+
 def _is_delete_conflict(exc: Exception) -> bool:
     text = str(exc).lower()
     return any(
@@ -660,6 +943,14 @@ def _number_string_or_none(value: Any) -> str | None:
     return str(value)
 
 
+def _uuid_or_none(value: Any) -> uuid.UUID | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, uuid.UUID):
+        return value
+    return uuid.UUID(str(value))
+
+
 def _datetime_or_none(value: Any) -> dt.datetime | None:
     if value in (None, ""):
         return None
@@ -672,6 +963,7 @@ __all__ = [
     "PortfolioDeleteConflictError",
     "bulk_delete_portfolio_records",
     "delete_portfolio_record",
+    "delete_portfolio_weights",
     "get_portfolio_detail_response",
     "get_portfolio_frontend_detail_summary",
     "get_portfolio_weights_snapshot_response",

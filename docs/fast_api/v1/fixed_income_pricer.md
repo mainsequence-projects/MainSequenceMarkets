@@ -551,8 +551,9 @@ GET /api/v1/pricing/curves/{curve_uid}/discount-curve/?market_data_set=eod&valua
 POST /api/v1/pricing/assets/{asset_uid}/fixings-availability/
 ```
 
-This endpoint is intentionally method-backed. It prices the instrument against
-the requested market-data set. Missing curve or fixing dependencies surface as
+This endpoint reports whether the instrument's index references have historical
+fixings in the requested market-data set. It does not require a successful
+`price(...)` call; missing curve or fixing storage bindings still surface as
 typed API errors.
 
 Response:
@@ -564,7 +565,27 @@ Response:
   "operation": "fixings-availability",
   "valuation_date": "2026-06-09T00:00:00Z",
   "market_data_set": "eod",
-  "status": "available",
+  "status": "partial",
+  "fixings": [
+    {
+      "index_uid": "index-uid",
+      "index_identifier": "USD-SOFR-3M",
+      "required_start_date": "2025-06-09",
+      "required_end_date": "2026-06-09",
+      "available_start_date": "2025-06-09",
+      "available_end_date": "2026-06-06",
+      "missing_count": 1,
+      "status": "partial"
+    }
+  ]
+}
+```
+
+Fixed-rate instruments that do not require index fixings return:
+
+```json
+{
+  "status": "not_required",
   "fixings": []
 }
 ```

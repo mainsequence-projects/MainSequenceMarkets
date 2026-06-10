@@ -8,6 +8,7 @@ from apps.v1.schemas.portfolios import (
     PortfolioBulkDeleteResponse,
     PortfolioDeleteResponse,
     PortfolioDetailResponse,
+    PortfolioWeightsDeleteResponse,
     PortfolioWeightsSnapshotResponse,
 )
 
@@ -78,10 +79,19 @@ def delete_portfolio(*, uid: str) -> PortfolioDeleteResponse | None:
     deleted = _delete_portfolio_record(runtime.context, uid=uid)
     if not deleted:
         return None
-    return PortfolioDeleteResponse(
-        detail="Portfolio deleted.",
-        deleted_count=1,
-    )
+    return PortfolioDeleteResponse.model_validate(deleted)
+
+
+def delete_portfolio_weights(
+    *,
+    uid: str,
+    weights_date: dt.datetime | None = None,
+) -> PortfolioWeightsDeleteResponse | None:
+    runtime = _get_runtime()
+    response = _delete_portfolio_weights(runtime.context, uid=uid, weights_date=weights_date)
+    if response is None:
+        return None
+    return PortfolioWeightsDeleteResponse.model_validate(response)
 
 
 def bulk_delete_portfolios(*, uids: list[str]) -> PortfolioBulkDeleteResponse:
@@ -101,6 +111,7 @@ def _get_runtime():
             "AssetSnapshotsStorage",
             "PortfolioMetadata",
             "PortfolioWeightsStorage",
+            "VirtualFund",
         ],
         row_model_name="GET /api/v1/portfolio/",
     )
@@ -134,6 +145,12 @@ def _delete_portfolio_record(context, **kwargs):
     from msm_portfolios.services import delete_portfolio_record
 
     return delete_portfolio_record(context, **kwargs)
+
+
+def _delete_portfolio_weights(context, **kwargs):
+    from msm_portfolios.services import delete_portfolio_weights
+
+    return delete_portfolio_weights(context, **kwargs)
 
 
 def _bulk_delete_portfolio_records(context, **kwargs):

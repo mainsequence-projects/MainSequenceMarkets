@@ -99,6 +99,7 @@ MUTATION_OPERATION_IDS = frozenset(
         "deleteIndex",
         "bulkDeletePortfolios",
         "deletePortfolio",
+        "deletePortfolioWeights",
         "createCalendar",
         "updateCalendar",
         "deleteCalendar",

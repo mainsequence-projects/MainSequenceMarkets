@@ -182,20 +182,60 @@ response is 200 with an empty `weights` list:
 DELETE /api/v1/portfolio/{uid}/
 ```
 
+Deletes the portfolio identity row and historical
+`PortfolioWeightsStorage` rows resolved through:
+
+```text
+Portfolio.uid
+  -> Portfolio.portfolio_index_uid
+  -> Index.unique_identifier
+  -> PortfolioWeightsStorage.portfolio_index_identifier
+```
+
 Returns:
 
 ```json
 {
   "detail": "Portfolio deleted.",
-  "deleted_count": 1
+  "deleted_count": 1,
+  "deleted_weights_count": 4
 }
 ```
 
-If protected rows, such as account target-position history, reference the
-portfolio, the route returns 409 and does not delete the portfolio.
+If protected rows, such as virtual funds or account target-position history,
+reference the portfolio, the route returns 409 and does not delete the
+portfolio. If another portfolio shares the same `portfolio_index_uid`, the
+route also returns 409 so it does not remove shared historical weights.
 
-The delete route does not delete historical `PortfolioWeightsStorage`,
-`PortfoliosStorage`, or metadata rows.
+The delete route does not delete `PortfoliosStorage` value history or metadata
+rows.
+
+## Delete Portfolio Weights
+
+```text
+DELETE /api/v1/portfolio/{uid}/weights/?weights_date=2026-06-07T10:30:00Z
+```
+
+Deletes only `PortfolioWeightsStorage` rows for the resolved portfolio index
+identifier. If `weights_date` is omitted, all weight rows for that portfolio
+index identifier are deleted. If `weights_date` is provided, only the exact
+timestamp is deleted.
+
+Returns:
+
+```json
+{
+  "detail": "Portfolio weights deleted.",
+  "portfolio_uid": "portfolio-uid",
+  "portfolio_index_identifier": "example-sleeve-index",
+  "weights_date": "2026-06-07T10:30:00Z",
+  "deleted_count": 4
+}
+```
+
+If the portfolio has no resolvable portfolio index, the endpoint returns 200
+with `deleted_count: 0`. If another portfolio shares the same
+`portfolio_index_uid`, the route returns 409.
 
 ## Bulk Delete Portfolios
 
@@ -217,6 +257,7 @@ Response:
 {
   "detail": "Deleted 1 portfolio; 1 portfolio could not be deleted.",
   "deleted_count": 1,
+  "deleted_weights_count": 4,
   "failed": [
     {
       "uid": "protected-portfolio-uid",

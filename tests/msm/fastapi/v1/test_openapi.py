@@ -478,6 +478,15 @@ def test_openapi_json_documents_portfolio_routes() -> None:
         "schema"
     ] == {"$ref": "#/components/schemas/PortfolioWeightsSnapshotResponse"}
 
+    portfolio_weights_delete_operation = payload["paths"]["/api/v1/portfolio/{uid}/weights/"][
+        "delete"
+    ]
+    assert portfolio_weights_delete_operation["summary"] == "Delete portfolio weights"
+    assert portfolio_weights_delete_operation["operationId"] == "deletePortfolioWeights"
+    assert portfolio_weights_delete_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PortfolioWeightsDeleteResponse"}
+
     portfolio_delete_operation = payload["paths"]["/api/v1/portfolio/{uid}/"]["delete"]
     assert portfolio_delete_operation["summary"] == "Delete portfolio"
     assert portfolio_delete_operation["operationId"] == "deletePortfolio"

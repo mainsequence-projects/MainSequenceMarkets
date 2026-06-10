@@ -250,6 +250,19 @@ class BondCurvePreviewResponse(AssetPricingOperationResponseBase):
     diagnostics: dict[str, Any]
 
 
+class BondFixingAvailabilityRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    index_uid: UUID
+    index_identifier: str
+    required_start_date: dt.date
+    required_end_date: dt.date
+    available_start_date: dt.date | None = None
+    available_end_date: dt.date | None = None
+    missing_count: int
+    status: str
+
+
 class BondFixingsAvailabilityResponse(AssetPricingOperationResponseBase):
     model_config = ConfigDict(
         extra="ignore",
@@ -260,4 +273,4 @@ class BondFixingsAvailabilityResponse(AssetPricingOperationResponseBase):
     )
 
     status: str
-    fixings: list[dict[str, Any]]
+    fixings: list[BondFixingAvailabilityRow]

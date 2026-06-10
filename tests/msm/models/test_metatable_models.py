@@ -655,7 +655,7 @@ def test_virtual_fund_relationships_live_on_core_account_tables() -> None:
         for foreign_key in virtual_account_column.foreign_keys
     )
     assert any(
-        foreign_key.column is PortfolioTable.__table__.c.uid and foreign_key.ondelete == "CASCADE"
+        foreign_key.column is PortfolioTable.__table__.c.uid and foreign_key.ondelete == "RESTRICT"
         for foreign_key in virtual_portfolio_column.foreign_keys
     )
     assert any(

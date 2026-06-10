@@ -287,6 +287,39 @@ class MSDataInterface:
         fixings_df["date"] = fixings_df["date"].dt.date
         return fixings_df.set_index("date")["rate"].to_dict()
 
+    def get_index_fixing_observations(
+        self,
+        reference_rate_uid: str,
+        start_date: datetime.datetime,
+        end_date: datetime.datetime,
+        *,
+        market_data_set=None,
+    ) -> dict[datetime.date, float]:
+        """Return stored fixing observations without fallback or missing-data errors."""
+
+        data_node = self._data_node_for_concept(
+            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+            market_data_set=market_data_set,
+        )
+        fixings_df = data_node.get_df_between_dates(
+            dimension_range_map=dimension_range_for_identity(
+                identity_dimension=INDEX_IDENTIFIER_DIMENSION,
+                identity=reference_rate_uid,
+                date_info={
+                    "start_date": start_date,
+                    "start_date_operand": ">=",
+                    "end_date": end_date,
+                    "end_date_operand": "<=",
+                },
+            )
+        )
+        if fixings_df.empty:
+            return {}
+
+        fixings_df = fixings_df.reset_index().rename(columns={"time_index": "date"})
+        fixings_df["date"] = fixings_df["date"].dt.date
+        return fixings_df.set_index("date")["rate"].to_dict()
+
     # optional helpers
     @classmethod
     def clear_caches(cls) -> None:

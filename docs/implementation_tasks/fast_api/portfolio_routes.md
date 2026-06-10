@@ -43,8 +43,8 @@ Out of scope:
 - portfolio construction runs
 - signal, rebalance, virtual-fund, or price-source management
 - expanding account target-position portfolio rows into asset-level exposure
-- deleting historical weights or values unless a separate explicit cleanup
-  contract is added
+- historical weight cleanup beyond the explicit delete contracts documented in
+  `docs/implementation_tasks/fast_api/portfolio_delete_cleanup.md`
 
 ## Model And Relationship Analysis
 
@@ -525,18 +525,21 @@ Example:
 ```json
 {
   "detail": "Portfolio deleted.",
-  "deleted_count": 1
+  "deleted_count": 1,
+  "deleted_weights_count": 4
 }
 ```
 
 Behavior:
 
 - delete the core `PortfolioTable` row by `uid`
+- delete matching `PortfolioWeightsStorage` rows through
+  `Portfolio.portfolio_index_uid -> Index.unique_identifier`
 - return 404 when the portfolio does not exist
 - return 409 when the portfolio is referenced by target positions or other
   protected rows
-- do not delete `PortfolioWeightsStorage` or `PortfoliosStorage` rows as part of
-  this operation
+- return 409 when another portfolio shares the same `portfolio_index_uid`
+- do not delete `PortfoliosStorage` rows as part of this operation
 - do not delete `PortfolioMetadataTable` by default unless the delete contract
   explicitly adds a `delete_metadata=true` option
 

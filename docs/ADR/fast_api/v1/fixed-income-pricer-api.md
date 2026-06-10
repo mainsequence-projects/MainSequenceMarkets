@@ -528,6 +528,7 @@ Response:
   "instrument_type": "FloatingRateBond",
   "valuation_date": "2026-06-09T00:00:00Z",
   "market_data_set": "eod",
+  "status": "complete",
   "fixings": [
     {
       "index_uid": "index-uid",
@@ -649,7 +650,7 @@ Do not convert missing market-data dependencies into empty pricing results.
 - [x] If the instrument/pricing engine exposes the selected curve uid, add that
       curve reference or link to `curve-preview` so the frontend can call the
       existing pricing curve discount-curve endpoint.
-- [ ] Enhance `fixings-availability` to return per-index required ranges,
+- [x] Enhance `fixings-availability` to return per-index required ranges,
       available ranges, missing count, and status from index fixing storage.
 - [x] Enforce non-null `market_data_set` for operations whose instrument method
       requires market-data-backed pricing.

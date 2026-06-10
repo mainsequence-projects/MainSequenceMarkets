@@ -281,6 +281,78 @@ def test_execute_curve_preview_links_selected_discount_curve(monkeypatch) -> Non
     assert response["diagnostics"] == {"pricing_engine_id": "engine-id"}
 
 
+def test_execute_fixings_availability_returns_not_required_for_fixed_rate(
+    monkeypatch,
+) -> None:
+    instrument = FixedRateBond()
+    asset_uid = _patch_loaders(monkeypatch, instrument)
+    valuation_date = dt.datetime(2026, 6, 9, tzinfo=dt.UTC)
+
+    response = execute_asset_pricing_operation(
+        asset_uid=asset_uid,
+        operation="fixings-availability",
+        valuation_date=valuation_date,
+        market_data_set="eod",
+        parameters={},
+    )
+
+    assert response["status"] == "not_required"
+    assert response["fixings"] == []
+    assert instrument.calls == [("set_valuation_date", valuation_date)]
+
+
+def test_execute_fixings_availability_reports_index_storage_gaps(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    instrument = FloatingRateBond(floating_rate_index_uid=index_uid)
+    asset_uid = _patch_loaders(monkeypatch, instrument)
+    valuation_date = dt.datetime(2026, 6, 9, tzinfo=dt.UTC)
+    required_dates = [
+        dt.date(2026, 6, 5),
+        dt.date(2026, 6, 8),
+        dt.date(2026, 6, 9),
+    ]
+    observed_dates = {
+        dt.date(2026, 6, 5): 0.052,
+        dt.date(2026, 6, 9): 0.053,
+    }
+
+    monkeypatch.setattr(
+        "msm_pricing.api.asset_pricing_operations._fixing_identifier_for_index",
+        lambda index_uid: "USD-SOFR-3M",
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.asset_pricing_operations._required_fixing_dates",
+        lambda **_kwargs: required_dates,
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.asset_pricing_operations._index_fixing_observations",
+        lambda **_kwargs: observed_dates,
+    )
+
+    response = execute_asset_pricing_operation(
+        asset_uid=asset_uid,
+        operation="fixings-availability",
+        valuation_date=valuation_date,
+        market_data_set="eod",
+        parameters={},
+    )
+
+    assert response["status"] == "partial"
+    assert response["fixings"] == [
+        {
+            "index_uid": str(index_uid),
+            "index_identifier": "USD-SOFR-3M",
+            "required_start_date": "2025-06-09",
+            "required_end_date": "2026-06-09",
+            "available_start_date": "2026-06-05",
+            "available_end_date": "2026-06-09",
+            "missing_count": 1,
+            "status": "partial",
+        }
+    ]
+    assert instrument.calls == [("set_valuation_date", valuation_date)]
+
+
 def test_execute_unknown_operation_fails_before_dispatch(monkeypatch) -> None:
     _patch_loaders(monkeypatch, FixedRateBond())
 

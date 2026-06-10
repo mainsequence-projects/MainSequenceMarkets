@@ -462,6 +462,93 @@ Virtual-fund items in this stage are superseded by ADR 0029.
 - [x] Run focused compile, ruff, tests, strict MkDocs build, and
   `git diff --check`.
 
+### Stage 10: Portfolio Identity As Core Storage Key
+
+The previous cleanup made the portfolio-to-index relationship optional, but
+runtime workflows still use the linked index row as the effective storage key.
+That keeps `portfolio_index_uid` in the core path even though `PortfolioTable`
+already has a canonical `uid` and `unique_identifier`.
+
+Target contract:
+
+```text
++-----------------------------+
+| PortfolioTable              |
+|-----------------------------|
+| uid PK                      |<------------- account targets use this uid
+| unique_identifier unique    |<------------- portfolio storage key
+| calendar_uid FK             |
+| published_index_uid FK null |---- optional publication link -> IndexTable.uid
+| portfolio_weights_node_uid  |
+| signal_weights_node_uid     |
+| portfolio_values_node_uid   |
++-----------------------------+
+
++-----------------------------+
+| PortfolioWeightsStorage     |
+|-----------------------------|
+| time_index                  |
+| portfolio_identifier        |---- PortfolioTable.unique_identifier
+| asset_identifier            |
+| weight                      |
++-----------------------------+
+
++-----------------------------+
+| PortfoliosStorage           |
+|-----------------------------|
+| time_index                  |
+| portfolio_identifier        |---- PortfolioTable.unique_identifier
+| close                       |
++-----------------------------+
+```
+
+`IndexTable` should only enter the workflow when a portfolio is published as an
+index-like observable. It should not be required for weights, values, account
+target expansion, or virtual-fund allocation.
+
+- [ ] Add or update the schema migration so `PortfolioTable` stores optional
+  `published_index_uid` as publication metadata and removes or renames the
+  core-path `portfolio_index_uid` usage.
+- [ ] Update `PortfolioTable`, `Portfolio` API models, repositories, row API
+  helpers, and public API payloads so core portfolio identity is
+  `PortfolioTable.uid` / `PortfolioTable.unique_identifier`, with
+  `published_index_uid` clearly optional.
+- [ ] Update `PortfoliosDataNode` identity resolution so portfolio values are
+  keyed by `PortfolioTable.unique_identifier`, not by an `IndexTable`
+  `unique_identifier`.
+- [ ] Update `PortfolioWeights` and `PortfolioWeightsStorage` to use
+  `portfolio_identifier` from `PortfolioTable.unique_identifier`; remove
+  `portfolio_index_identifier` from the core storage contract.
+- [ ] Update account virtual-fund allocation expansion so
+  `TargetPositionsStorage.portfolio_uid -> PortfolioTable.uid` resolves latest
+  weights directly by portfolio identity, without requiring an `IndexTable`
+  row.
+- [ ] Keep a separate optional helper for portfolios that should publish an
+  `IndexTable` row, but do not call it from the mandatory portfolio build path.
+- [ ] Update portfolio delete/cleanup public API logic so shared-index checks do
+  not block deleting ordinary portfolio weights; only publication-specific
+  cleanup should inspect `published_index_uid`.
+- [ ] Verify and update the FastAPI portfolio/account-facing API schemas,
+  routes, response payloads, filters, and tests so external clients see
+  `portfolio_uid` / `portfolio_identifier` as the core identity and
+  `published_index_uid` only as optional publication metadata.
+- [ ] Update examples under `examples/msm_portfolios/` so the normal portfolio
+  workflow does not create an index unless the example is explicitly about index
+  publication.
+- [ ] Update `docs/knowledge/msm_portfolios/portfolios/index.md` to explain that
+  `PortfolioTable` is the core identity and `published_index_uid` is optional
+  publication metadata.
+- [ ] Update ADR 0029 account/virtual-fund allocation text so portfolio weights
+  expansion no longer flows through `PortfolioTable.portfolio_index_uid`.
+- [ ] Update `.agents/skills/ms_markets/portfolios/portfolio_workflow/SKILL.md`
+  so future agents do not reintroduce `portfolio_index_uid` as a core workflow
+  dependency.
+- [ ] Update tests covering portfolio storage keys, account virtual-fund
+  expansion, portfolio public API latest weights, delete cleanup, examples, and
+  docs navigation.
+- [ ] Run focused compile, ruff, portfolio/account tests, strict MkDocs build,
+  and `git diff --check`.
+
 ## Consequences
 
 The refactor makes the package boundary cleaner and makes startup behavior less
