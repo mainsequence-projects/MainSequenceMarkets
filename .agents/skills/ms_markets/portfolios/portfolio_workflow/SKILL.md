@@ -46,7 +46,11 @@ TargetPositionsStorage
 Rules:
 
 - Do not create `AssetTable` rows for portfolios.
-- Do not use `PortfolioTable.portfolio_index_uid` as account target identity.
+- Do not use `PortfolioTable.published_index_uid` as account target identity or
+  as the portfolio weights/values storage key.
+- Use `PortfolioTable.uid` for account target identity and
+  `PortfolioTable.unique_identifier` as `portfolio_identifier` in portfolio
+  storage.
 - Do not write target-position rows with `asset_identifier`.
 - Asset target rows use `target_type="asset"`, `target_uid=asset_uid`, and
   `portfolio_uid=None`.

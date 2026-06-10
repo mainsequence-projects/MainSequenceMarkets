@@ -101,9 +101,12 @@ src/msm/models/portfolios/
 ```
 
 `PortfolioTable` is the canonical portfolio identity row. It is keyed by
-`unique_identifier` and stores optional `portfolio_index_uid` linkage to
+`unique_identifier` and stores optional `published_index_uid` linkage to
 `IndexTable`, plus DataNode UIDs for canonical portfolio outputs. A portfolio is
-not an asset; optional index publication uses a core index row.
+not an asset. The optional published index link is metadata for workflows that
+want to expose the portfolio as an index-like observable; core portfolio
+weights, values, account expansion, and virtual-fund allocation use
+`PortfolioTable.uid` / `PortfolioTable.unique_identifier`.
 
 Portfolio descriptive metadata remains in `msm_portfolios`:
 
@@ -124,12 +127,12 @@ portfolio records should use `PortfolioTable.calendar_uid`.
 
 ## Table Relationships
 
-Portfolio identity, calendar linkage, and DataNode/index linkage:
+Portfolio identity, calendar linkage, and optional published-index linkage:
 
 ```text
-+-----------------------------+        optional portfolio index  +-----------------------------+
++-----------------------------+        optional published index  +-----------------------------+
 | PortfolioTable              |--------------------------------->| IndexTable                  |
-|-----------------------------| portfolio_index_uid             |-----------------------------|
+|-----------------------------| published_index_uid             |-----------------------------|
 | uid PK                      |                                  | uid PK                      |
 | unique_identifier unique    |                                  | unique_identifier unique    |
 | calendar_uid FK ------------+----+                             | index_type                  |
@@ -438,7 +441,7 @@ virtual-fund allocation rows.
         | - signal_weights_data_node_uid                          |
         | - portfolio_weights_data_node_uid                       |
         | - portfolio_data_node_uid                               |
-        | - optional portfolio_index_uid -> IndexTable.uid        |
+        | - optional published_index_uid -> IndexTable.uid        |
         +---------------------------------------------------------+
 ```
 
@@ -493,10 +496,9 @@ from `VirtualFundTable`, `VirtualFundHoldingsSetTable`, and
 
 Storage dimensions use explicit names instead of reusing bare
 `unique_identifier`: `asset_identifier` for asset-keyed rows,
-`portfolio_identifier` for portfolio value rows, and
-`portfolio_index_identifier` for portfolio index publication rows. These
-columns still point to the corresponding MetaTable `unique_identifier` values
-where a source-table foreign key exists.
+`portfolio_identifier` for portfolio value rows and portfolio weight rows. The
+`portfolio_identifier` value is `PortfolioTable.unique_identifier`; it does not
+require a linked `IndexTable` row.
 
 See `examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` for the
 schema-preparation stage and
@@ -504,11 +506,11 @@ schema-preparation stage and
 portfolio run. The reusable implementation lives in
 `examples/msm_portfolios/portfolio_equal_weights_example.py`; it reuses the
 shared crypto `Asset` example rows, creates or reuses a `CRYPTO_24_7` calendar
-from `pandas_market_calendars`, creates the portfolio `Index`, publishes
-example OHLCV bars to `ExternalPricesStorage`, interpolates those prices, runs
+from `pandas_market_calendars`, publishes example OHLCV bars to
+`ExternalPricesStorage`, interpolates those prices, runs
 `SignalWeights`, `PortfolioWeights`, and `PortfoliosDataNode`, and upserts the
-`Portfolio` row with `calendar_uid`, `portfolio_index_uid`, plus the published
-DataNode update UIDs. The example narrates each setup, source-price
+`Portfolio` row with `calendar_uid` plus the published DataNode update UIDs.
+The example narrates each setup, source-price
 publication, and portfolio step so terminal output explains what was created.
 It does not create virtual funds or virtual-fund allocation rows; those require
 an explicit account funding policy and belong in the core account

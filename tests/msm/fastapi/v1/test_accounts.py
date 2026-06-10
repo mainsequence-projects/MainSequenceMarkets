@@ -279,7 +279,7 @@ def test_search_account_target_allocation_targets_returns_candidates(monkeypatch
                     "display_label": "example-sleeve",
                     "secondary_label": None,
                     "current_snapshot": None,
-                    "metadata": {"portfolio_index_uid": None},
+                    "metadata": {"published_index_uid": None},
                 },
             ],
         }
@@ -811,7 +811,7 @@ def test_get_account_target_positions_returns_snapshot(monkeypatch) -> None:
                     "portfolio": {
                         "uid": str(portfolio_uid),
                         "unique_identifier": "example-sleeve",
-                        "portfolio_index_uid": None,
+                        "published_index_uid": None,
                     },
                 },
             ],
@@ -839,7 +839,7 @@ def test_get_account_target_positions_returns_snapshot(monkeypatch) -> None:
     assert body["positions"][1]["portfolio"] == {
         "uid": str(portfolio_uid),
         "unique_identifier": "example-sleeve",
-        "portfolio_index_uid": None,
+        "published_index_uid": None,
     }
     assert "figi" not in body["positions"][0]["asset"]
     assert "id" not in body["positions"][0]["asset"]
@@ -2099,7 +2099,7 @@ def test_core_search_account_target_allocation_candidates_maps_rows(monkeypatch)
                     "snapshot_name": "Bitcoin",
                     "snapshot_ticker": "BTC",
                     "asset_type": "crypto",
-                    "portfolio_index_uid": None,
+                    "published_index_uid": None,
                 },
                 {
                     "row_kind": "data",
@@ -2113,7 +2113,7 @@ def test_core_search_account_target_allocation_candidates_maps_rows(monkeypatch)
                     "snapshot_name": None,
                     "snapshot_ticker": None,
                     "asset_type": None,
-                    "portfolio_index_uid": None,
+                    "published_index_uid": None,
                 },
             ],
         }
@@ -2165,7 +2165,7 @@ def test_core_search_account_target_allocation_candidates_maps_rows(monkeypatch)
                 "display_label": "example-sleeve",
                 "secondary_label": None,
                 "current_snapshot": None,
-                "metadata": {"portfolio_index_uid": None},
+                "metadata": {"published_index_uid": None},
             },
         ],
     }
@@ -2302,7 +2302,7 @@ def test_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
             str(portfolio_uid): {
                 "uid": str(portfolio_uid),
                 "unique_identifier": "example-sleeve",
-                "portfolio_index_uid": None,
+                "published_index_uid": None,
             }
         },
     )
@@ -2349,7 +2349,7 @@ def test_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
                 "portfolio": {
                     "uid": str(portfolio_uid),
                     "unique_identifier": "example-sleeve",
-                    "portfolio_index_uid": None,
+                    "published_index_uid": None,
                 },
             },
         ],

@@ -59,7 +59,7 @@ Fields exposed by the current public row model:
 - `unique_identifier`
 - `calendar_name`
 - `calendar_uid`
-- `portfolio_index_uid`
+- `published_index_uid`
 - `portfolio_weights_data_node_uid`
 - `signal_weights_data_node_uid`
 - `portfolio_data_node_uid`
@@ -86,16 +86,19 @@ Important boundary:
   must not pretend metadata was automatically cascade-deleted unless the code
   explicitly deletes it.
 
-### Portfolio Index Linkage
+### Portfolio Publication Linkage
 
-`PortfolioTable.portfolio_index_uid` optionally points to `IndexTable.uid`.
+`PortfolioTable.published_index_uid` optionally points to `IndexTable.uid`.
+It is publication metadata only. It is not required to read or delete portfolio
+weights, portfolio values, account target expansion, or virtual-fund
+allocation.
 
-This matters for latest weights because `PortfolioWeightsStorage` does not use
-`portfolio_uid` as its dimension. It is keyed by:
+Latest weights resolve from the core portfolio identity. `PortfolioWeightsStorage`
+does not use `portfolio_uid` as its dimension. It is keyed by:
 
 ```text
 time_index
-portfolio_index_identifier
+portfolio_identifier
 asset_identifier
 ```
 
@@ -103,16 +106,12 @@ Therefore the latest-weights endpoint must resolve:
 
 ```text
 PortfolioTable.uid
-  -> PortfolioTable.portfolio_index_uid
-  -> IndexTable.uid
-  -> IndexTable.unique_identifier
-  -> PortfolioWeightsStorage.portfolio_index_identifier
+  -> PortfolioTable.unique_identifier
+  -> PortfolioWeightsStorage.portfolio_identifier
 ```
 
-If a portfolio has no `portfolio_index_uid`, or the index row cannot be
-resolved, the portfolio exists but no weight storage coordinate can be
-identified. Return 200 with an empty weights snapshot and a clear warning field,
-not 404.
+If a portfolio exists, its `unique_identifier` is the weight storage coordinate.
+Return 404 only when the portfolio row itself does not exist.
 
 ### Portfolio Weights Storage
 
@@ -122,7 +121,7 @@ the latest weights tab data.
 Rows expose:
 
 - `time_index`
-- `portfolio_index_identifier`
+- `portfolio_identifier`
 - `asset_identifier`
 - `weight`
 - `weight_before`
@@ -261,7 +260,7 @@ Example:
       "unique_identifier": "example-sleeve",
       "calendar_name": "CRYPTO_24_7",
       "calendar_uid": null,
-      "portfolio_index_uid": "index-uid",
+      "published_index_uid": "index-uid",
       "portfolio_weights_data_node_uid": null,
       "signal_weights_data_node_uid": null,
       "portfolio_data_node_uid": null,
@@ -300,7 +299,7 @@ Example:
     "unique_identifier": "example-sleeve",
     "calendar_name": "CRYPTO_24_7",
     "calendar_uid": null,
-    "portfolio_index_uid": "index-uid",
+    "published_index_uid": "index-uid",
     "portfolio_weights_data_node_uid": null,
     "signal_weights_data_node_uid": null,
     "portfolio_data_node_uid": null,
@@ -351,7 +350,7 @@ Suggested fields:
 
 - title: `Portfolio.unique_identifier`
 - inline fields: `uid`, `unique_identifier`, `calendar_uid`,
-  `portfolio_index_uid`
+  `published_index_uid`
 - highlight fields: `calendar_name`
 - stats: latest weights count when cheap to resolve, otherwise omit or return
   no stats rather than issuing an expensive read
@@ -385,14 +384,14 @@ Example:
 {
   "portfolio_uid": "portfolio-uid",
   "portfolio_unique_identifier": "example-sleeve",
-  "portfolio_index_uid": "index-uid",
-  "portfolio_index_identifier": "example-sleeve-index",
+  "published_index_uid": "index-uid",
+  "portfolio_identifier": "example-sleeve",
   "weights_date": "2026-06-07T10:30:00Z",
   "resolution_warning": null,
   "weights": [
     {
       "time_index": "2026-06-07T10:30:00Z",
-      "portfolio_index_identifier": "example-sleeve-index",
+      "portfolio_identifier": "example-sleeve",
       "asset_identifier": "example-asset-btc",
       "weight": "0.600000000000000000",
       "weight_before": "0.550000000000000000",
@@ -419,24 +418,10 @@ Empty snapshot when the portfolio exists but no weights are available:
 {
   "portfolio_uid": "portfolio-uid",
   "portfolio_unique_identifier": "example-sleeve",
-  "portfolio_index_uid": "index-uid",
-  "portfolio_index_identifier": "example-sleeve-index",
+  "published_index_uid": "index-uid",
+  "portfolio_identifier": "example-sleeve",
   "weights_date": null,
   "resolution_warning": null,
-  "weights": []
-}
-```
-
-Empty snapshot when the portfolio exists but no portfolio index can be resolved:
-
-```json
-{
-  "portfolio_uid": "portfolio-uid",
-  "portfolio_unique_identifier": "example-sleeve",
-  "portfolio_index_uid": null,
-  "portfolio_index_identifier": null,
-  "weights_date": null,
-  "resolution_warning": "Portfolio has no portfolio_index_uid; latest weights cannot be resolved.",
   "weights": []
 }
 ```
@@ -480,14 +465,14 @@ Example response:
 {
   "portfolio_uid": "portfolio-uid",
   "portfolio_unique_identifier": "example-sleeve",
-  "portfolio_index_uid": "index-uid",
-  "portfolio_index_identifier": "example-sleeve-index",
+  "published_index_uid": "index-uid",
+  "portfolio_identifier": "example-sleeve",
   "weights_date": "2026-06-07T10:30:00Z",
   "resolution_warning": null,
   "weights": [
     {
       "time_index": "2026-06-07T10:30:00Z",
-      "portfolio_index_identifier": "example-sleeve-index",
+      "portfolio_identifier": "example-sleeve",
       "asset_identifier": "example-asset-btc",
       "weight": "0.600000000000000000",
       "weight_before": "0.550000000000000000",
@@ -534,11 +519,10 @@ Behavior:
 
 - delete the core `PortfolioTable` row by `uid`
 - delete matching `PortfolioWeightsStorage` rows through
-  `Portfolio.portfolio_index_uid -> Index.unique_identifier`
+  `Portfolio.unique_identifier -> PortfolioWeightsStorage.portfolio_identifier`
 - return 404 when the portfolio does not exist
 - return 409 when the portfolio is referenced by target positions or other
   protected rows
-- return 409 when another portfolio shares the same `portfolio_index_uid`
 - do not delete `PortfoliosStorage` rows as part of this operation
 - do not delete `PortfolioMetadataTable` by default unless the delete contract
   explicitly adds a `delete_metadata=true` option
@@ -600,9 +584,9 @@ If some rows are protected:
 - [x] Add a reusable source helper that resolves one portfolio detail by `uid`
   and joins optional metadata by `unique_identifier`.
 - [x] Add a reusable source helper that resolves
-  `Portfolio.portfolio_index_uid -> Index.unique_identifier`.
+  `Portfolio.uid -> Portfolio.unique_identifier`.
 - [x] Add a reusable source helper that reads one latest
-  `PortfolioWeightsStorage` snapshot by `portfolio_index_identifier`.
+  `PortfolioWeightsStorage` snapshot by `portfolio_identifier`.
 - [x] Add exact-date latest weights support using `weights_date`.
 - [x] Add latest weights asset-detail enrichment from `AssetTable` and latest
   `AssetSnapshotsStorage`, not OpenFIGI.
@@ -676,8 +660,6 @@ If some rows are protected:
 - [x] Test latest weights returns empty snapshot when no rows exist.
 - [x] Test exact-date weights returns empty snapshot when no rows exist for the
   requested timestamp.
-- [x] Test latest weights returns empty snapshot with warning when portfolio
-  index cannot be resolved.
 - [x] Test latest weights asset details use `AssetSnapshotsStorage` name and
   ticker.
 - [x] Test single delete returns success.
@@ -692,7 +674,8 @@ If some rows are protected:
 - [x] Add portfolio route documentation under `docs/fast_api/v1/`.
 - [x] Update `docs/fast_api/v1/index.md` route inventory.
 - [x] Document that portfolio routes do not create portfolios.
-- [x] Document latest weights resolution through `portfolio_index_uid`.
+- [x] Document latest weights resolution through
+  `Portfolio.unique_identifier -> PortfolioWeightsStorage.portfolio_identifier`.
 - [x] Document exact-date portfolio weights requests with `weights_date`.
 - [x] Document that missing latest weights return 200 with an empty `weights`
   array.

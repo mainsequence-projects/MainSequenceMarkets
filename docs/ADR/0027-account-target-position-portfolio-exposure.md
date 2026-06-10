@@ -258,7 +258,7 @@ Required documentation updates:
 ## Non-Goals
 
 - Do not create `AssetTable` rows for portfolios.
-- Do not use `IndexTable` or `portfolio_index_uid` as the target-position
+- Do not use `IndexTable` or `published_index_uid` as the target-position
   identity.
 - Do not introduce a generic `PositionTargetTable`.
 - Do not support arbitrary future target kinds in this ADR.

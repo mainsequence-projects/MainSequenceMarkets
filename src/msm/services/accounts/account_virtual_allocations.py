@@ -1217,13 +1217,12 @@ def _expand_portfolio_target_rows(
 
     from msm.api.base import operation_result_rows
     from msm.bootstrap import resolve_runtime
-    from msm.models.indices import IndexTable
     from msm.models.portfolios import PortfolioTable
     from msm.repositories.crud import search_model
     from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage
 
     runtime = resolve_runtime(
-        models=[PortfolioTable, IndexTable, PortfolioWeightsStorage],
+        models=[PortfolioTable, PortfolioWeightsStorage],
         row_model_name="Account virtual-fund allocation portfolio expansion",
     )
     context = runtime.context
@@ -1243,64 +1242,29 @@ def _expand_portfolio_target_rows(
     if missing_portfolios:
         raise ValueError(f"Could not resolve PortfolioTable rows for {missing_portfolios}.")
 
-    index_uids = sorted(
-        {
-            str(row["portfolio_index_uid"])
-            for row in portfolio_records
-            if row.get("portfolio_index_uid") not in (None, "")
-        }
-    )
-    if len(index_uids) != len(portfolio_uids):
-        missing_index = sorted(
-            uid
-            for uid in portfolio_uids
-            if portfolio_by_uid[uid].get("portfolio_index_uid") in (None, "")
-        )
-        raise ValueError(
-            "Portfolio target rows require PortfolioTable.portfolio_index_uid. "
-            f"Missing for portfolio_uids={missing_index}."
-        )
-
-    index_records = operation_result_rows(
-        search_model(
-            context,
-            model=IndexTable,
-            in_filters={"uid": index_uids},
-            limit=DEFAULT_ALLOCATION_SCAN_LIMIT,
-        )
-    )
-    index_identifier_by_uid = {
-        str(row["uid"]): str(row["unique_identifier"]) for row in index_records
-    }
-    missing_indexes = sorted(set(index_uids) - set(index_identifier_by_uid))
-    if missing_indexes:
-        raise ValueError(f"Could not resolve IndexTable rows for {missing_indexes}.")
-
-    portfolio_index_identifier_by_uid = {
-        portfolio_uid: index_identifier_by_uid[str(portfolio_row["portfolio_index_uid"])]
+    portfolio_identifier_by_uid = {
+        portfolio_uid: _required_string(portfolio_row.get("unique_identifier"), "unique_identifier")
         for portfolio_uid, portfolio_row in portfolio_by_uid.items()
     }
     weight_records = _latest_portfolio_weight_records(
         context,
         portfolio_weights_storage=PortfolioWeightsStorage,
-        portfolio_index_identifiers=sorted(set(portfolio_index_identifier_by_uid.values())),
+        portfolio_identifiers=sorted(set(portfolio_identifier_by_uid.values())),
         valuation_time=valuation_time,
     )
-    weights_by_index_identifier: dict[str, list[dict[str, Any]]] = {}
+    weights_by_portfolio_identifier: dict[str, list[dict[str, Any]]] = {}
     for row in weight_records:
-        weights_by_index_identifier.setdefault(str(row["portfolio_index_identifier"]), []).append(
-            row
-        )
+        weights_by_portfolio_identifier.setdefault(str(row["portfolio_identifier"]), []).append(row)
 
     expanded_rows: list[dict[str, Any]] = []
     for row in portfolio_rows:
         portfolio_uid = _required_string(row.get("portfolio_uid"), "portfolio_uid")
-        index_identifier = portfolio_index_identifier_by_uid[portfolio_uid]
-        portfolio_weights = weights_by_index_identifier.get(index_identifier, [])
+        portfolio_identifier = portfolio_identifier_by_uid[portfolio_uid]
+        portfolio_weights = weights_by_portfolio_identifier.get(portfolio_identifier, [])
         if not portfolio_weights:
             raise ValueError(
                 "No PortfolioWeightsStorage rows found for "
-                f"portfolio_uid={portfolio_uid}, portfolio_index_identifier={index_identifier!r}, "
+                f"portfolio_uid={portfolio_uid}, portfolio_identifier={portfolio_identifier!r}, "
                 f"at or before valuation_time={valuation_time.isoformat()}."
             )
         for weight_row in portfolio_weights:
@@ -1328,10 +1292,10 @@ def _latest_portfolio_weight_records(
     context: Any,
     *,
     portfolio_weights_storage: Any,
-    portfolio_index_identifiers: Sequence[str],
+    portfolio_identifiers: Sequence[str],
     valuation_time: dt.datetime,
 ) -> list[dict[str, Any]]:
-    if not portfolio_index_identifiers:
+    if not portfolio_identifiers:
         return []
 
     from sqlalchemy import and_, func, select
@@ -1341,18 +1305,12 @@ def _latest_portfolio_weight_records(
 
     latest_times = (
         select(
-            portfolio_weights_storage.portfolio_index_identifier.label(
-                "portfolio_index_identifier"
-            ),
+            portfolio_weights_storage.portfolio_identifier.label("portfolio_identifier"),
             func.max(portfolio_weights_storage.time_index).label("time_index"),
         )
-        .where(
-            portfolio_weights_storage.portfolio_index_identifier.in_(
-                list(portfolio_index_identifiers)
-            )
-        )
+        .where(portfolio_weights_storage.portfolio_identifier.in_(list(portfolio_identifiers)))
         .where(portfolio_weights_storage.time_index <= valuation_time)
-        .group_by(portfolio_weights_storage.portfolio_index_identifier)
+        .group_by(portfolio_weights_storage.portfolio_identifier)
         .subquery()
     )
     statement = (
@@ -1360,13 +1318,13 @@ def _latest_portfolio_weight_records(
         .join(
             latest_times,
             and_(
-                portfolio_weights_storage.portfolio_index_identifier
-                == latest_times.c.portfolio_index_identifier,
+                portfolio_weights_storage.portfolio_identifier
+                == latest_times.c.portfolio_identifier,
                 portfolio_weights_storage.time_index == latest_times.c.time_index,
             ),
         )
         .order_by(
-            portfolio_weights_storage.portfolio_index_identifier,
+            portfolio_weights_storage.portfolio_identifier,
             portfolio_weights_storage.asset_identifier,
         )
     )

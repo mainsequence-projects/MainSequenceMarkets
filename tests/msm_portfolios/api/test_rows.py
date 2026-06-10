@@ -6,7 +6,7 @@ import pytest
 
 from msm.api.base import MarketsMetaTableRow
 from msm.api.portfolios import Portfolio
-from msm.models import CalendarTable, IndexTable, PortfolioTable
+from msm.models import CalendarTable, IndexTable, IndexTypeTable, PortfolioTable
 from msm_portfolios.api.market_metadata import (
     RebalanceStrategyMetadata,
     SignalMetadata,
@@ -58,7 +58,7 @@ def test_portfolio_create_schemas_includes_domain_required_tables(monkeypatch) -
     assert Portfolio.start_engine(namespace="mainsequence.examples") is runtime
     assert calls == [
         {
-            "models": [CalendarTable, IndexTable, PortfolioTable],
+            "models": [CalendarTable, IndexTypeTable, IndexTable, PortfolioTable],
             "namespace": "mainsequence.examples",
         }
     ]

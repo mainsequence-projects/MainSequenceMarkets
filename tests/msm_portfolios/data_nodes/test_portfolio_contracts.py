@@ -118,6 +118,16 @@ def test_portfolio_configurations_do_not_carry_storage_schema() -> None:
     assert "index_names" not in SignalWeightsConfiguration.model_fields
 
 
+def test_portfolio_weights_storage_keys_by_portfolio_identifier() -> None:
+    assert PortfolioWeightsStorage.__index_names__ == [
+        "time_index",
+        "portfolio_identifier",
+        ASSET_IDENTIFIER,
+    ]
+    assert hasattr(PortfolioWeightsStorage, "portfolio_identifier")
+    assert not hasattr(PortfolioWeightsStorage, "portfolio_index_identifier")
+
+
 def test_portfolio_build_configuration_uses_explicit_price_source_contract() -> None:
     assert "price_source_instance" in PortfolioBuildConfiguration.model_fields
     assert "price_column" in PortfolioBuildConfiguration.model_fields

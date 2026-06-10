@@ -213,19 +213,18 @@ Portfolio weights are resolved from the portfolio target row:
 ```text
 TargetPositionsStorage.portfolio_uid
   -> PortfolioTable.uid
-  -> PortfolioTable.portfolio_index_uid
-  -> IndexTable.uid
-  -> IndexTable.unique_identifier
+  -> PortfolioTable.unique_identifier
   -> PortfolioWeightsStorage rows
-       where portfolio_index_identifier = IndexTable.unique_identifier
+       where portfolio_identifier = PortfolioTable.unique_identifier
        and time_index = valuation_time
 ```
 
-If `PortfolioTable.portfolio_index_uid` is missing, the referenced `IndexTable`
-row is missing, or no portfolio weights exist for the selected time, the planner
-fails by default. Latest-available weights may be accepted only when
-`allocation_policy` explicitly allows that selection rule, and the resolved
-weight timestamp must be recorded in diagnostics.
+If no portfolio weights exist for the selected time, the planner fails by
+default. Latest-available weights may be accepted only when `allocation_policy`
+explicitly allows that selection rule, and the resolved weight timestamp must be
+recorded in diagnostics. Optional portfolio publication through
+`PortfolioTable.published_index_uid` is not part of account or virtual-fund
+allocation.
 
 ## Inputs
 

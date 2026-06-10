@@ -4,8 +4,6 @@ from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
 PORTFOLIO_CANONICAL_TIME_INDEX_NAME = "time_index"
 PORTFOLIO_IDENTIFIER_DIMENSION = "portfolio_identifier"
-PORTFOLIO_INDEX_IDENTIFIER_DIMENSION = "portfolio_index_identifier"
-PORTFOLIO_INDEX_IDENTIFIER = PORTFOLIO_INDEX_IDENTIFIER_DIMENSION
 ASSET_IDENTIFIER = ASSET_IDENTIFIER_DIMENSION
 PORTFOLIO_IDENTIFIER = PORTFOLIO_IDENTIFIER_DIMENSION
 PORTFOLIO_METADATA_UNIQUE_IDENTIFIER = "unique_identifier"
@@ -17,7 +15,7 @@ REBALANCE_STRATEGY_DESCRIPTION = "rebalance_strategy_description"
 
 PORTFOLIO_WEIGHTS_INDEX_NAMES = [
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
-    PORTFOLIO_INDEX_IDENTIFIER,
+    PORTFOLIO_IDENTIFIER,
     ASSET_IDENTIFIER,
 ]
 
@@ -50,7 +48,7 @@ SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS = frozenset(
         "portfolio_consumers",
         "portfolio_id",
         "portfolio_uid",
-        "portfolio_index_identifier",
+        "portfolio_identifier",
         "display_name",
         "display_label",
         "signal_name",
@@ -80,7 +78,7 @@ REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS = frozenset(
         "portfolio_consumers",
         "portfolio_id",
         "portfolio_uid",
-        "portfolio_index_identifier",
+        "portfolio_identifier",
         "display_name",
         "display_label",
         "rebalance_strategy_name",

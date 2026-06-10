@@ -685,7 +685,7 @@ def _portfolio_references_by_uid(
         references[portfolio_uid] = {
             "uid": portfolio_uid,
             "unique_identifier": _string_or_empty(row.get("unique_identifier")),
-            "portfolio_index_uid": _string_or_none(row.get("portfolio_index_uid")),
+            "published_index_uid": _string_or_none(row.get("published_index_uid")),
         }
     return references
 
@@ -749,7 +749,7 @@ def _build_account_target_allocation_candidate(row: Mapping[str, Any]) -> dict[s
     metadata = (
         {"asset_type": _string_or_none(row.get("asset_type"))}
         if target_type == TARGET_TYPE_ASSET
-        else {"portfolio_index_uid": _string_or_none(row.get("portfolio_index_uid"))}
+        else {"published_index_uid": _string_or_none(row.get("published_index_uid"))}
     )
     current_snapshot = None
     if target_type == TARGET_TYPE_ASSET:
@@ -804,9 +804,7 @@ def _target_positions_frame_operation_rows(frame: pd.DataFrame) -> list[dict[str
                 field_name="portfolio_uid",
             ),
             "weight_notional_exposure": _none_if_missing(row.get("weight_notional_exposure")),
-            "constant_notional_exposure": _none_if_missing(
-                row.get("constant_notional_exposure")
-            ),
+            "constant_notional_exposure": _none_if_missing(row.get("constant_notional_exposure")),
             "single_asset_quantity": _none_if_missing(row.get("single_asset_quantity")),
             "metadata_json": _mapping_or_empty(row.get("metadata_json")),
         }

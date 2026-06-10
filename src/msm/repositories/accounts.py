@@ -371,7 +371,7 @@ def build_search_account_target_allocation_candidates_operation(
         candidates.c.snapshot_name,
         candidates.c.snapshot_ticker,
         candidates.c.asset_type,
-        candidates.c.portfolio_index_uid,
+        candidates.c.published_index_uid,
     ]
     paged_candidates = (
         select(*candidate_columns)
@@ -398,7 +398,7 @@ def build_search_account_target_allocation_candidates_operation(
         cast(null(), String).label("snapshot_name"),
         cast(null(), String).label("snapshot_ticker"),
         cast(null(), String).label("asset_type"),
-        cast(null(), String).label("portfolio_index_uid"),
+        cast(null(), String).label("published_index_uid"),
         func.count().label("total_count"),
     ).select_from(candidates)
     data_branch = select(
@@ -413,7 +413,7 @@ def build_search_account_target_allocation_candidates_operation(
         paged_candidates.c.snapshot_name,
         paged_candidates.c.snapshot_ticker,
         paged_candidates.c.asset_type,
-        paged_candidates.c.portfolio_index_uid,
+        paged_candidates.c.published_index_uid,
         cast(null(), Integer).label("total_count"),
     ).select_from(paged_candidates)
     statement = union_all(count_branch, data_branch)
@@ -438,28 +438,25 @@ def search_account_target_allocation_candidates(
 
 def _account_target_asset_candidate_select(*, search: str):
     latest_snapshots = _latest_asset_snapshots_subquery()
-    statement = (
-        select(
-            literal("asset").label("target_type"),
-            cast(AssetTable.uid, String).label("target_uid"),
-            cast(AssetTable.uid, String).label("asset_uid"),
-            cast(null(), String).label("portfolio_uid"),
-            AssetTable.unique_identifier.label("identifier"),
-            func.coalesce(
-                latest_snapshots.c.snapshot_name,
-                AssetTable.unique_identifier,
-            ).label("display_label"),
-            latest_snapshots.c.snapshot_ticker.label("secondary_label"),
-            latest_snapshots.c.snapshot_name.label("snapshot_name"),
-            latest_snapshots.c.snapshot_ticker.label("snapshot_ticker"),
-            AssetTable.asset_type.label("asset_type"),
-            cast(null(), String).label("portfolio_index_uid"),
-        )
-        .select_from(
-            AssetTable.__table__.outerjoin(
-                latest_snapshots,
-                latest_snapshots.c.asset_identifier == AssetTable.unique_identifier,
-            )
+    statement = select(
+        literal("asset").label("target_type"),
+        cast(AssetTable.uid, String).label("target_uid"),
+        cast(AssetTable.uid, String).label("asset_uid"),
+        cast(null(), String).label("portfolio_uid"),
+        AssetTable.unique_identifier.label("identifier"),
+        func.coalesce(
+            latest_snapshots.c.snapshot_name,
+            AssetTable.unique_identifier,
+        ).label("display_label"),
+        latest_snapshots.c.snapshot_ticker.label("secondary_label"),
+        latest_snapshots.c.snapshot_name.label("snapshot_name"),
+        latest_snapshots.c.snapshot_ticker.label("snapshot_ticker"),
+        AssetTable.asset_type.label("asset_type"),
+        cast(null(), String).label("published_index_uid"),
+    ).select_from(
+        AssetTable.__table__.outerjoin(
+            latest_snapshots,
+            latest_snapshots.c.asset_identifier == AssetTable.unique_identifier,
         )
     )
     normalized_search = search.strip().lower()
@@ -489,7 +486,7 @@ def _account_target_portfolio_candidate_select(*, search: str):
         cast(null(), String).label("snapshot_name"),
         cast(null(), String).label("snapshot_ticker"),
         cast(null(), String).label("asset_type"),
-        cast(PortfolioTable.portfolio_index_uid, String).label("portfolio_index_uid"),
+        cast(PortfolioTable.published_index_uid, String).label("published_index_uid"),
     )
     normalized_search = search.strip().lower()
     if normalized_search:
@@ -498,7 +495,7 @@ def _account_target_portfolio_candidate_select(*, search: str):
             or_(
                 func.lower(cast(PortfolioTable.uid, String)).like(needle),
                 func.lower(PortfolioTable.unique_identifier).like(needle),
-                func.lower(cast(PortfolioTable.portfolio_index_uid, String)).like(needle),
+                func.lower(cast(PortfolioTable.published_index_uid, String)).like(needle),
             )
         )
     return statement
@@ -772,9 +769,7 @@ def build_replace_account_holdings_snapshot_operation(
         .cte("deleted")
     )
     deleted_gate = (
-        select(func.count().label("deleted_count"))
-        .select_from(deleted)
-        .cte("deleted_gate")
+        select(func.count().label("deleted_count")).select_from(deleted).cte("deleted_gate")
     )
     statement = (
         insert(AccountHoldingsStorage)
@@ -871,8 +866,7 @@ def build_replace_account_target_positions_snapshot_operation(
             ),
             allocation_model_name=cast(account_uid_param, String()),
             allocation_model_description=(
-                "Default target allocation model for account "
-                f"{uuid.UUID(str(account_uid))!s}"
+                f"Default target allocation model for account {uuid.UUID(str(account_uid))!s}"
             ),
             metadata_json=cast(
                 bindparam(
@@ -887,8 +881,7 @@ def build_replace_account_target_positions_snapshot_operation(
             index_elements=[AccountAllocationModelTable.allocation_model_name],
             set_={
                 "allocation_model_description": (
-                    "Default target allocation model for account "
-                    f"{uuid.UUID(str(account_uid))!s}"
+                    f"Default target allocation model for account {uuid.UUID(str(account_uid))!s}"
                 ),
                 "metadata_json": cast(
                     bindparam(
@@ -903,9 +896,7 @@ def build_replace_account_target_positions_snapshot_operation(
         .returning(AccountAllocationModelTable.uid)
         .cte("account_allocation_model")
     )
-    account_target_allocation_insert = postgresql_insert(
-        AccountTargetAllocationTable
-    ).from_select(
+    account_target_allocation_insert = postgresql_insert(AccountTargetAllocationTable).from_select(
         [
             "uid",
             "unique_identifier",
@@ -1103,9 +1094,7 @@ def build_replace_account_target_positions_snapshot_operation(
         .cte("deleted")
     )
     deleted_gate = (
-        select(func.count().label("deleted_count"))
-        .select_from(deleted)
-        .cte("deleted_gate")
+        select(func.count().label("deleted_count")).select_from(deleted).cte("deleted_gate")
     )
     statement = (
         insert(TargetPositionsStorage)

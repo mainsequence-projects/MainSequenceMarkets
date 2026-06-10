@@ -28,11 +28,8 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
     ASSET_UNIQUE_IDENTIFIERS,
     CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
     DYNAMIC_MIGRATION_PROVIDER,
-    INDEX_TYPE_PORTFOLIO,
     NAMESPACE,
     PORTFOLIO_EXAMPLE_RUNTIME_MODELS,
-    PORTFOLIO_INDEX_DISPLAY_NAME,
-    PORTFOLIO_INDEX_UNIQUE_IDENTIFIER,
     PORTFOLIO_UNIQUE_IDENTIFIER,
     PRICE_INTERPOLATION_RULE,
     PRICE_UPSAMPLE_FREQUENCY_ID,
@@ -47,7 +44,6 @@ from mainsequence.client.metatables import TimeIndexMetaTable  # noqa: E402
 from mainsequence.meta_tables import APIDataNode, DataNode  # noqa: E402
 from msm.api.assets import Asset, AssetType  # noqa: E402
 from msm.api.calendars import Calendar  # noqa: E402
-from msm.api.indices import Index, IndexType  # noqa: E402
 from msm.data_nodes.assets.asset_indexed import (  # noqa: E402
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
@@ -82,11 +78,10 @@ from msm_portfolios.rebalance_strategy import ImmediateSignal  # noqa: E402
 
 
 class ExamplePortfolioResolver:
-    """Bind one example portfolio configuration to its Portfolio and Index rows."""
+    """Bind one example portfolio configuration to its Portfolio row."""
 
-    def __init__(self, *, portfolio: Portfolio, portfolio_index: Index) -> None:
+    def __init__(self, *, portfolio: Portfolio) -> None:
         self.portfolio = portfolio
-        self.portfolio_index = portfolio_index
 
     def get_or_create_from_configuration_hash(
         self,
@@ -94,9 +89,9 @@ class ExamplePortfolioResolver:
         portfolio_configuration_hash: str,
         portfolio_configuration: dict[str, Any],
         timeout: int | float | tuple[float, float] | None = None,
-    ) -> tuple[Portfolio, Index]:
+    ) -> Portfolio:
         del portfolio_configuration_hash, portfolio_configuration, timeout
-        return self.portfolio, self.portfolio_index
+        return self.portfolio
 
 
 class ExampleDailyBars(AssetIndexedDataNode):
@@ -180,27 +175,6 @@ def create_crypto_calendar_from_pandas() -> Calendar:
         f"{portfolio_calendar.source}:{portfolio_calendar.source_identifier}",
     )
     return portfolio_calendar
-
-
-def register_portfolio_index() -> Index:
-    """Create the optional Index row that represents this portfolio as a series."""
-
-    index_type = IndexType.upsert(
-        index_type=INDEX_TYPE_PORTFOLIO,
-        display_name="Portfolio",
-        description="Synthetic index rows that represent portfolio value series.",
-    )
-    portfolio_index = Index.upsert(
-        unique_identifier=PORTFOLIO_INDEX_UNIQUE_IDENTIFIER,
-        index_type=INDEX_TYPE_PORTFOLIO,
-        display_name=PORTFOLIO_INDEX_DISPLAY_NAME,
-        provider="msm_portfolios.examples",
-        metadata_json={"portfolio_unique_identifier": PORTFOLIO_UNIQUE_IDENTIFIER},
-    )
-    print_detail("index_type", index_type.index_type)
-    print_detail("portfolio_index_uid", portfolio_index.uid)
-    print_detail("portfolio_index_identifier", portfolio_index.unique_identifier)
-    return portfolio_index
 
 
 def build_fixed_weights_config() -> FixedWeightsConfig:
@@ -295,9 +269,7 @@ def build_example_interpolated_prices_storage(source_meta_table: Any) -> type[An
     """Derive this example's configured interpolation storage from source metadata."""
 
     return configured_equal_weight_interpolated_prices_storage(
-        source_time_index_meta_table_uid=source_time_index_meta_table_uid(
-            source_meta_table
-        ),
+        source_time_index_meta_table_uid=source_time_index_meta_table_uid(source_meta_table),
         source_cadence=source_cadence_from_meta_table(source_meta_table),
     )
 
@@ -360,14 +332,11 @@ def build_example_daily_bars_frame(asset_identifiers: Sequence[str]) -> pd.DataF
 
 def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> None:
     portfolio = result["portfolio"]
-    portfolio_index = result["portfolio_index"]
     portfolio_calendar = result["portfolio_calendar"]
 
     print_step(8, "Final portfolio workflow summary.")
     print_detail("portfolio_uid", portfolio.uid)
     print_detail("portfolio_identifier", portfolio.unique_identifier)
-    print_detail("portfolio_index_uid", portfolio_index.uid)
-    print_detail("portfolio_index_identifier", portfolio_index.unique_identifier)
     print_detail("portfolio_calendar_uid", portfolio_calendar.uid)
     print_detail("portfolio_calendar_identifier", portfolio_calendar.unique_identifier)
     print_detail("portfolio_configuration_hash", result["portfolio_configuration_hash"])
@@ -400,7 +369,7 @@ def build_equal_weight_portfolio(
     run_data_nodes: bool = True,
     runtime_models: Sequence[str | type[Any]] | None = None,
 ) -> dict[str, Any]:
-    """Create the portfolio index, run portfolio DataNodes, and upsert Portfolio."""
+    """Create the portfolio, run portfolio DataNodes, and upsert Portfolio."""
 
     print_section("Equal-Weight Portfolio Workflow")
 
@@ -413,10 +382,7 @@ def build_equal_weight_portfolio(
     print_step(3, "Creating or reusing the crypto 24/7 calendar.")
     portfolio_calendar = create_crypto_calendar_from_pandas()
 
-    print_step(4, "Registering the portfolio index row.")
-    portfolio_index = register_portfolio_index()
-
-    print_step(5, "Preparing explicit price, signal, and portfolio DataNodes.")
+    print_step(4, "Preparing explicit price, signal, and portfolio DataNodes.")
     source_prices_storage_uid, source_prices_storage_meta_table = resolve_source_prices_storage(
         runtime
     )
@@ -439,11 +405,9 @@ def build_equal_weight_portfolio(
         unique_identifier=PORTFOLIO_UNIQUE_IDENTIFIER,
         calendar_uid=portfolio_calendar.uid,
         calendar_name=portfolio_calendar.unique_identifier,
-        portfolio_index_uid=portfolio_index.uid,
     )
     portfolio_resolver = ExamplePortfolioResolver(
         portfolio=portfolio,
-        portfolio_index=portfolio_index,
     )
     portfolio_values_node = build_portfolio_values_node(
         portfolio_configuration,
@@ -479,7 +443,7 @@ def build_equal_weight_portfolio(
         "source_prices_rows", len(build_example_daily_bars_frame(ASSET_UNIQUE_IDENTIFIERS))
     )
 
-    print_step(6, "Publishing portfolio DataNode storage outputs.")
+    print_step(5, "Publishing portfolio DataNode storage outputs.")
     if run_data_nodes:
         source_bars_node.run(debug_mode=True, update_tree=False, force_update=True)
         source_prices_node_uid = str(source_bars_node.data_node_update.uid)
@@ -511,12 +475,11 @@ def build_equal_weight_portfolio(
         portfolio_weights_node_uid = None
         portfolio_values_node_uid = None
 
-    print_step(7, "Updating the Portfolio row with DataNode links.")
+    print_step(6, "Updating the Portfolio row with DataNode links.")
     portfolio = Portfolio.upsert(
         unique_identifier=PORTFOLIO_UNIQUE_IDENTIFIER,
         calendar_uid=portfolio_calendar.uid,
         calendar_name=portfolio_calendar.unique_identifier,
-        portfolio_index_uid=portfolio_index.uid,
         signal_weights_data_node_uid=signal_weights_node_uid,
         portfolio_weights_data_node_uid=portfolio_weights_node_uid,
         portfolio_data_node_uid=portfolio_values_node_uid,
@@ -527,7 +490,6 @@ def build_equal_weight_portfolio(
     result = {
         "assets": assets,
         "portfolio": portfolio,
-        "portfolio_index": portfolio_index,
         "portfolio_calendar": portfolio_calendar,
         "portfolio_configuration_hash": compute_portfolio_configuration_hash(
             portfolio_configuration

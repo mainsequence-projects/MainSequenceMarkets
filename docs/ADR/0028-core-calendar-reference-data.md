@@ -340,7 +340,7 @@ Target direction:
 | uid PK                      |       | uid PK                      |
 | unique_identifier unique    |       | unique_identifier unique    |
 | calendar_uid FK ------------+------>| display_name                |
-| portfolio_index_uid FK      |       | timezone                    |
+| published_index_uid FK      |       | timezone                    |
 | DataNode UID pointers       |       | valid_from / valid_to       |
 +-----------------------------+       +-----------------------------+
 ```

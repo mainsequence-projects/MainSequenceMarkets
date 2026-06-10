@@ -16,7 +16,7 @@ def _portfolio_row(uid: uuid.UUID | None = None) -> dict[str, object]:
         "unique_identifier": "example-sleeve",
         "calendar_name": "CRYPTO_24_7",
         "calendar_uid": None,
-        "portfolio_index_uid": str(uuid.uuid4()),
+        "published_index_uid": str(uuid.uuid4()),
         "portfolio_weights_data_node_uid": None,
         "signal_weights_data_node_uid": None,
         "portfolio_data_node_uid": None,
@@ -174,7 +174,6 @@ def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
 
 def test_get_portfolio_weights_returns_snapshot(monkeypatch) -> None:
     portfolio_uid = uuid.uuid4()
-    index_uid = uuid.uuid4()
     asset_uid = uuid.uuid4()
     captured: dict[str, object] = {}
 
@@ -183,14 +182,14 @@ def test_get_portfolio_weights_returns_snapshot(monkeypatch) -> None:
         return {
             "portfolio_uid": str(portfolio_uid),
             "portfolio_unique_identifier": "example-sleeve",
-            "portfolio_index_uid": str(index_uid),
-            "portfolio_index_identifier": "example-sleeve-index",
+            "published_index_uid": None,
+            "portfolio_identifier": "example-sleeve",
             "weights_date": "2026-06-07T10:30:00Z",
             "resolution_warning": None,
             "weights": [
                 {
                     "time_index": "2026-06-07T10:30:00Z",
-                    "portfolio_index_identifier": "example-sleeve-index",
+                    "portfolio_identifier": "example-sleeve",
                     "asset_identifier": "example-asset-btc",
                     "weight": "0.6",
                     "weight_before": "0.55",
@@ -252,10 +251,10 @@ def test_get_portfolio_weights_returns_empty_snapshot(monkeypatch) -> None:
         lambda **kwargs: {
             "portfolio_uid": str(portfolio_uid),
             "portfolio_unique_identifier": "example-sleeve",
-            "portfolio_index_uid": None,
-            "portfolio_index_identifier": None,
+            "published_index_uid": None,
+            "portfolio_identifier": "example-sleeve",
             "weights_date": None,
-            "resolution_warning": "Portfolio has no portfolio_index_uid; latest weights cannot be resolved.",
+            "resolution_warning": None,
             "weights": [],
         },
     )
@@ -265,7 +264,7 @@ def test_get_portfolio_weights_returns_empty_snapshot(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["weights"] == []
-    assert "portfolio_index_uid" in response.json()["resolution_warning"]
+    assert response.json()["portfolio_identifier"] == "example-sleeve"
 
 
 def test_delete_portfolio_returns_success(monkeypatch) -> None:
@@ -326,7 +325,7 @@ def test_delete_portfolio_weights_returns_success(monkeypatch) -> None:
         return {
             "detail": "Portfolio weights deleted.",
             "portfolio_uid": str(portfolio_uid),
-            "portfolio_index_identifier": "example-sleeve-index",
+            "portfolio_identifier": "example-sleeve",
             "weights_date": "2026-06-07T10:30:00Z",
             "deleted_count": 4,
         }
@@ -346,7 +345,7 @@ def test_delete_portfolio_weights_returns_success(monkeypatch) -> None:
     assert response.json() == {
         "detail": "Portfolio weights deleted.",
         "portfolio_uid": str(portfolio_uid),
-        "portfolio_index_identifier": "example-sleeve-index",
+        "portfolio_identifier": "example-sleeve",
         "weights_date": "2026-06-07T10:30:00Z",
         "deleted_count": 4,
     }
@@ -367,24 +366,6 @@ def test_delete_portfolio_weights_returns_404_when_missing(monkeypatch) -> None:
 
     assert response.status_code == 404
     assert "missing-portfolio" in response.json()["detail"]
-
-
-def test_delete_portfolio_weights_returns_409_when_coordinate_is_shared(monkeypatch) -> None:
-    from msm_portfolios.services import PortfolioDeleteConflictError
-
-    def fake_delete_portfolio_weights(**kwargs):
-        raise PortfolioDeleteConflictError("Portfolio shares portfolio_index_uid.")
-
-    monkeypatch.setattr(
-        "apps.v1.routers.portfolios.delete_portfolio_weights",
-        fake_delete_portfolio_weights,
-    )
-
-    client = TestClient(app)
-    response = client.delete(f"/api/v1/portfolio/{uuid.uuid4()}/weights/")
-
-    assert response.status_code == 409
-    assert "shares portfolio_index_uid" in response.json()["detail"]
 
 
 def test_bulk_delete_portfolios_reports_failures(monkeypatch) -> None:
@@ -460,8 +441,8 @@ def test_portfolio_weights_service_maps_source_snapshot(monkeypatch) -> None:
         return {
             "portfolio_uid": str(portfolio_uid),
             "portfolio_unique_identifier": "example-sleeve",
-            "portfolio_index_uid": None,
-            "portfolio_index_identifier": None,
+            "published_index_uid": None,
+            "portfolio_identifier": "example-sleeve",
             "weights_date": None,
             "resolution_warning": None,
             "weights": [],
@@ -532,7 +513,7 @@ def test_delete_portfolio_weights_service_maps_source_response(monkeypatch) -> N
         return {
             "detail": "Portfolio weights deleted.",
             "portfolio_uid": str(portfolio_uid),
-            "portfolio_index_identifier": "example-sleeve-index",
+            "portfolio_identifier": "example-sleeve",
             "weights_date": weights_date,
             "deleted_count": 2,
         }
@@ -550,7 +531,7 @@ def test_delete_portfolio_weights_service_maps_source_response(monkeypatch) -> N
     assert response.model_dump(mode="json") == {
         "detail": "Portfolio weights deleted.",
         "portfolio_uid": str(portfolio_uid),
-        "portfolio_index_identifier": "example-sleeve-index",
+        "portfolio_identifier": "example-sleeve",
         "weights_date": "2026-06-07T10:30:00Z",
         "deleted_count": 2,
     }
@@ -628,7 +609,7 @@ def test_public_delete_portfolio_operation_uses_weights_cleanup_cte(monkeypatch)
         fake_compile,
     )
 
-    from msm.models import IndexTable, PortfolioTable, VirtualFundTable
+    from msm.models import PortfolioTable, VirtualFundTable
     from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage
     from msm_portfolios.services.public_api import _compile_delete_portfolio_with_weights_operation
 
@@ -644,7 +625,6 @@ def test_public_delete_portfolio_operation_uses_weights_cleanup_cte(monkeypatch)
     assert captured["models"] == [
         PortfolioTable,
         PortfolioWeightsStorage,
-        IndexTable,
         VirtualFundTable,
     ]
     assert "portfolio_scope" in statement_text
@@ -652,7 +632,7 @@ def test_public_delete_portfolio_operation_uses_weights_cleanup_cte(monkeypatch)
     assert "delete from" in statement_text
 
 
-def test_public_delete_portfolio_weights_resolves_index_identifier(monkeypatch) -> None:
+def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) -> None:
     portfolio = _portfolio_row()
     weights_date = dt.datetime(2026, 6, 7, 10, 30, tzinfo=dt.UTC)
     captured: dict[str, object] = {}
@@ -660,14 +640,6 @@ def test_public_delete_portfolio_weights_resolves_index_identifier(monkeypatch) 
     monkeypatch.setattr(
         "msm_portfolios.services.public_api._get_portfolio_row",
         lambda context, uid: portfolio,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._raise_if_portfolio_index_is_shared",
-        lambda context, **kwargs: captured.update({"shared_check": kwargs}),
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._portfolio_index_identifier",
-        lambda context, portfolio_index_uid: "example-sleeve-index",
     )
     monkeypatch.setattr(
         "msm_portfolios.services.public_api._compile_delete_portfolio_weights_operation",
@@ -689,11 +661,11 @@ def test_public_delete_portfolio_weights_resolves_index_identifier(monkeypatch) 
     assert response == {
         "detail": "Portfolio weights deleted.",
         "portfolio_uid": str(portfolio["uid"]),
-        "portfolio_index_identifier": "example-sleeve-index",
+        "portfolio_identifier": "example-sleeve",
         "weights_date": weights_date,
         "deleted_count": 2,
     }
     assert captured["compile"] == {
-        "portfolio_index_identifier": "example-sleeve-index",
+        "portfolio_identifier": "example-sleeve",
         "weights_date": weights_date,
     }

@@ -32,12 +32,14 @@ Historical portfolio weights are stored in
 
 ```text
 time_index
-portfolio_index_identifier
+portfolio_identifier
 asset_identifier
 ```
 
 They are not keyed by `PortfolioTable.uid`, so there is no database cascade from
-portfolio uid to historical weights.
+portfolio uid to historical weights. They are keyed by
+`PortfolioTable.unique_identifier` through the `portfolio_identifier` storage
+dimension.
 
 The current virtual-fund model has:
 
@@ -68,10 +70,8 @@ New behavior:
 
 ```text
 PortfolioTable.uid
-  -> PortfolioTable.portfolio_index_uid
-  -> IndexTable.uid
-  -> IndexTable.unique_identifier
-  -> PortfolioWeightsStorage.portfolio_index_identifier
+  -> PortfolioTable.unique_identifier
+  -> PortfolioWeightsStorage.portfolio_identifier
 ```
 
 4. delete matching historical `PortfolioWeightsStorage` rows
@@ -96,8 +96,8 @@ Conflict response:
 }
 ```
 
-If the portfolio has no `portfolio_index_uid`, deletion may still proceed. In
-that case `deleted_weights_count` is `0`.
+If the portfolio exists, its `unique_identifier` is the historical weight
+coordinate. Missing matching weights are reported as `deleted_weights_count: 0`.
 
 `PortfoliosStorage` value-series cleanup remains out of scope unless explicitly
 added. This task only changes portfolio weights cleanup.
@@ -121,15 +121,15 @@ Response:
 {
   "detail": "Portfolio weights deleted.",
   "portfolio_uid": "portfolio-uid",
-  "portfolio_index_identifier": "portfolio-index-key",
+  "portfolio_identifier": "example-sleeve",
   "weights_date": null,
   "deleted_count": 42
 }
 ```
 
-If the portfolio exists but has no resolvable portfolio-index coordinate, return
-`200` with `deleted_count: 0` and a clear detail message. Do not return `404`
-unless the portfolio uid itself does not exist.
+If the portfolio exists but no matching weights are present, return `200` with
+`deleted_count: 0`. Do not return `404` unless the portfolio uid itself does
+not exist.
 
 ## Implementation Design
 
@@ -158,7 +158,7 @@ Conceptual shape:
 
 ```text
 portfolio_scope CTE:
-  select PortfolioTable.uid, IndexTable.unique_identifier
+  select PortfolioTable.uid, PortfolioTable.unique_identifier
   where PortfolioTable.uid = :uid
   and not exists (
     select 1 from VirtualFundTable
@@ -167,7 +167,7 @@ portfolio_scope CTE:
 
 deleted_weights CTE:
   delete from PortfolioWeightsStorage
-  where PortfolioWeightsStorage.portfolio_index_identifier in (
+  where PortfolioWeightsStorage.portfolio_identifier in (
     select unique_identifier from portfolio_scope
   )
   returning 1
@@ -238,7 +238,7 @@ New response model:
 {
   "detail": "Portfolio weights deleted.",
   "portfolio_uid": "portfolio-uid",
-  "portfolio_index_identifier": "portfolio-index-key",
+  "portfolio_identifier": "example-sleeve",
   "weights_date": "2026-06-07T10:30:00Z",
   "deleted_count": 4
 }
@@ -254,7 +254,7 @@ New response model:
 - [x] Add thin FastAPI service wrapper
       `delete_portfolio_weights(...)` in `apps/v1/services/portfolios.py`.
 - [x] Add source helper to resolve
-      `PortfolioTable.uid -> IndexTable.unique_identifier`.
+      `PortfolioTable.uid -> PortfolioTable.unique_identifier`.
 - [x] Add source helper to count/check `VirtualFundTable` references.
 - [x] Replace `delete_portfolio_record(...)` with a protected atomic delete that
       deletes `PortfolioWeightsStorage` first and `PortfolioTable` second.
@@ -271,7 +271,7 @@ New response model:
 - [x] Add service tests for the atomic portfolio delete statement shape.
 - [x] Add service tests that virtual-fund references block portfolio deletion.
 - [x] Add service tests that portfolio delete removes matching weights by
-      `portfolio_index_identifier`.
+      `portfolio_identifier`.
 - [x] Add route tests for `DELETE /api/v1/portfolio/{uid}/weights/`.
 - [x] Add route tests for `DELETE /api/v1/portfolio/{uid}/` returning
       `deleted_weights_count`.
@@ -325,10 +325,6 @@ claiming the schema-level protection is complete.
 - If the FK remains `CASCADE`, `apps/v1` can protect its own route, but lower
   level delete paths can still cascade-delete virtual funds. The robust fix is
   the FK migration to `RESTRICT`.
-- If a portfolio has no `portfolio_index_uid`, there is no safe weight storage
-  coordinate to delete. The API should report `deleted_weights_count: 0`.
-- If multiple portfolios share the same portfolio index row, deleting weights by
-  `portfolio_index_identifier` would affect all portfolios sharing that index.
-  Before implementation, decide whether shared portfolio indexes are valid. If
-  they are valid, portfolio delete must reject shared index coordinates instead
-  of deleting shared weights.
+- Portfolio weight cleanup is scoped by `PortfolioTable.unique_identifier`.
+  Optional `published_index_uid` values are not involved in ordinary portfolio
+  deletion.

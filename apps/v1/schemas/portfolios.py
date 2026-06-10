@@ -72,7 +72,7 @@ class PortfolioWeightRow(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     time_index: dt.datetime | None = None
-    portfolio_index_identifier: str | None = None
+    portfolio_identifier: str | None = None
     asset_identifier: str
     weight: str | None = None
     weight_before: str | None = None
@@ -88,8 +88,8 @@ class PortfolioWeightsSnapshotResponse(BaseModel):
 
     portfolio_uid: str | None = None
     portfolio_unique_identifier: str | None = None
-    portfolio_index_uid: str | None = None
-    portfolio_index_identifier: str | None = None
+    published_index_uid: str | None = None
+    portfolio_identifier: str | None = None
     weights_date: dt.datetime | None = None
     resolution_warning: str | None = None
     weights: list[PortfolioWeightRow] = Field(default_factory=list)
@@ -125,7 +125,7 @@ class PortfolioWeightsDeleteResponse(BaseModel):
 
     detail: str
     portfolio_uid: str
-    portfolio_index_identifier: str | None = None
+    portfolio_identifier: str | None = None
     weights_date: dt.datetime | None = None
     deleted_count: int = 0
 

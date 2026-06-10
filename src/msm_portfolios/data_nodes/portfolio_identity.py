@@ -29,14 +29,14 @@ def compute_portfolio_configuration_hash(portfolio_configuration: Any) -> str:
     return storage_hash
 
 
-def get_or_create_portfolio_index(
+def get_or_create_portfolio(
     portfolio_configuration: Any,
     *,
     portfolio_configuration_hash: str | None = None,
     portfolio_resolver: Any | None = None,
     timeout: int | float | tuple[float, float] | None = None,
-) -> tuple[Any, Any]:
-    """Resolve the backend Portfolio and PortfolioIndex for a config hash."""
+) -> Any:
+    """Resolve the backend Portfolio for a config hash."""
     resolved_hash = portfolio_configuration_hash or compute_portfolio_configuration_hash(
         portfolio_configuration
     )
@@ -112,20 +112,18 @@ def _extract_portfolio_configuration_from_mapping(
     return value
 
 
-def _coerce_portfolio_resolution_result(result: Any) -> tuple[Any, Any]:
-    if isinstance(result, tuple) and len(result) == 2:
-        return result
+def _coerce_portfolio_resolution_result(result: Any) -> Any:
     if isinstance(result, dict):
         portfolio = result.get("portfolio")
-        portfolio_index = result.get("portfolio_index") or result.get("index")
-        if portfolio is not None and portfolio_index is not None:
-            return portfolio, portfolio_index
+        if portfolio is not None:
+            return portfolio
     portfolio = getattr(result, "portfolio", None)
-    portfolio_index = getattr(result, "portfolio_index", None) or getattr(result, "index", None)
-    if portfolio is not None and portfolio_index is not None:
-        return portfolio, portfolio_index
+    if portfolio is not None:
+        return portfolio
+    if getattr(result, "unique_identifier", None) not in (None, ""):
+        return result
 
     raise TypeError(
         "Portfolio configuration resolver must return "
-        "(portfolio, portfolio_index) or an object/dict with those fields."
+        "a portfolio row or an object/dict with a portfolio field."
     )

@@ -56,7 +56,7 @@ def get_portfolios(
         Query(
             description=(
                 "Case-insensitive search across portfolio uid, unique identifier, "
-                "calendar, and portfolio index fields."
+                "calendar, and published-index uid fields."
             ),
         ),
     ] = "",
@@ -221,9 +221,8 @@ def get_portfolio_weights_by_uid(
     description=(
         "Delete historical portfolio weight rows for one portfolio. When "
         "`weights_date` is provided, only that exact timestamp is deleted. "
-        "Without `weights_date`, all weight rows for the resolved portfolio "
-        "index identifier are deleted. The route rejects portfolios whose "
-        "portfolio_index_uid is shared by another portfolio."
+        "Without `weights_date`, all weight rows for the portfolio identifier "
+        "are deleted."
     ),
     operation_id="deletePortfolioWeights",
     status_code=status.HTTP_200_OK,
@@ -231,10 +230,6 @@ def get_portfolio_weights_by_uid(
         404: {
             "model": ErrorResponse,
             "description": "The requested portfolio uid was not found.",
-        },
-        409: {
-            "model": ErrorResponse,
-            "description": "The portfolio weights coordinate is shared or protected.",
         },
     },
 )
@@ -248,8 +243,6 @@ def remove_portfolio_weights(
     try:
         response = delete_portfolio_weights(uid=uid, weights_date=weights_date)
     except ValueError as exc:
-        if exc.__class__.__name__ == "PortfolioDeleteConflictError":
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if response is None:
         raise HTTPException(status_code=404, detail=f"Portfolio {uid!r} was not found.")

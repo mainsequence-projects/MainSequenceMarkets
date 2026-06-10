@@ -71,7 +71,7 @@ Fund                          -> FundTable
 OpenFigiDetails               -> OpenFigiAssetDetailsTable
 OrderManager                  -> OrderManagerTable
 Portfolio                     -> PortfolioTable
-PortfolioAssetDetail          -> PortfolioAssetDetailTable
+PortfolioAssetDetail          -> PortfolioAssetDetailTable (superseded by ADR 0019)
 PortfolioMetadata             -> PortfolioMetadataTable
 RebalanceStrategyMetadata     -> RebalanceStrategyMetadataTable
 SignalMetadata                -> SignalMetadataTable
@@ -175,17 +175,18 @@ class Asset:
 
 class Portfolio:
     __table__ = PortfolioTable
-    __required_tables__ = [PortfolioTable, AssetTable, PortfolioAssetDetailTable]
+    __required_tables__ = [CalendarTable, IndexTypeTable, IndexTable, PortfolioTable]
 
     @classmethod
     def upsert(cls, ...): ...
 ```
 
 At scale, each row model can own the operations that make sense for that domain.
-`Asset.upsert(...)` is a single-table operation. `Portfolio.upsert(...)` may be a
-multi-table operation that touches portfolio identity, index-asset details, and
-asset identity. The class declares its required tables and should raise a clear
-bootstrap error if the active runtime was initialized without those tables.
+`Asset.upsert(...)` is a single-table operation. `Portfolio.upsert(...)` owns
+portfolio identity and optional publication/index references, but it must not
+create portfolio assets or use removed portfolio asset-detail tables. The class
+declares its required tables and should raise a clear bootstrap error if the
+active runtime was initialized without those tables.
 
 The refactor initially used compatibility aliases to reduce migration risk.
 Those aliases are now removed so `msm.models` only exports SQLAlchemy
@@ -348,15 +349,17 @@ This is the first larger multi-table API stage. It should prove that
 class-owned operations scale beyond single-table assets.
 
 - [x] Add Pydantic row and mutation contracts for:
-  `Portfolio`, `PortfolioAssetDetail`, `PortfolioMetadata`, and `Fund`.
-- [x] Add `Portfolio.__required_tables__ = [PortfolioTable, AssetTable,
-  PortfolioAssetDetailTable]` for workflows that maintain index asset details.
+  `Portfolio`, `PortfolioMetadata`, and `Fund`. The earlier
+  `PortfolioAssetDetail` contract was superseded and removed by ADR 0019.
+- [x] Add `Portfolio.__required_tables__ = [CalendarTable, IndexTypeTable,
+  IndexTable, PortfolioTable]` for workflows that maintain portfolio identity
+  and optional published-index references.
 - [x] Add `Portfolio.create_schemas(...)`.
 - [x] Add `Portfolio.upsert(...)` as a domain-specific operation, not a generic
-  table upsert. It may resolve or validate asset identity and write
-  `PortfolioAssetDetail` when required by the payload.
+  table upsert. Portfolio asset-detail writes were later removed; portfolio
+  identity now stays on `PortfolioTable`.
 - [x] Add `Portfolio.filter(...)`, `Portfolio.get_by_unique_identifier(...)`,
-  and typed portfolio asset detail helpers.
+  and typed portfolio identity helpers.
 - [x] Add `Fund.__required_tables__ = [FundTable, AccountTable,
   PortfolioTable]`.
 - [x] Add `Fund.upsert(...)` and lookup helpers after account and portfolio APIs

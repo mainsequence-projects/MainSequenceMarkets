@@ -20,7 +20,7 @@ def test_portfolio_time_columns_are_datetime64_ns_utc() -> None:
             [
                 {
                     "time_index": MICROSECOND_TIME,
-                    "portfolio_index_identifier": "portfolio-1",
+                    "portfolio_identifier": "portfolio-1",
                     "asset_identifier": "asset-1",
                     "weight": 1.0,
                     "weight_before": 0.0,

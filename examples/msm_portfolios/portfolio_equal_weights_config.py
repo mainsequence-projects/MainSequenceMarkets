@@ -26,10 +26,7 @@ from msm_portfolios.data_nodes.prices.storage import (  # noqa: E402
 )
 
 NAMESPACE = "mainsequence.examples.portfolios"
-INDEX_TYPE_PORTFOLIO = "portfolio"
 PORTFOLIO_UNIQUE_IDENTIFIER = "example-equal-weight-portfolio"
-PORTFOLIO_INDEX_UNIQUE_IDENTIFIER = "example-equal-weight-portfolio-index"
-PORTFOLIO_INDEX_DISPLAY_NAME = "Example Equal Weight Portfolio Index"
 CRYPTO_CALENDAR_UNIQUE_IDENTIFIER = "CRYPTO_24_7"
 TIME_INDEX = pd.Timestamp("2026-05-25T00:00:00Z")
 ASSET_UNIQUE_IDENTIFIERS = [payload["unique_identifier"] for payload in EXAMPLE_CRYPTO_ASSETS]
@@ -48,8 +45,6 @@ DYNAMIC_MIGRATION_PROVIDER = (
 )
 
 PORTFOLIO_EXAMPLE_RUNTIME_MODELS = [
-    "IndexType",
-    "Index",
     "AssetType",
     "Asset",
     "Calendar",
@@ -166,9 +161,7 @@ def dynamic_provider_env(
 def dynamic_storage_from_env() -> type[Any]:
     """Build the configured interpolation storage class for the migration provider."""
 
-    source_time_index_meta_table_uid = os.environ.get(
-        DYNAMIC_SOURCE_TIME_INDEX_META_TABLE_UID_ENV
-    )
+    source_time_index_meta_table_uid = os.environ.get(DYNAMIC_SOURCE_TIME_INDEX_META_TABLE_UID_ENV)
     source_cadence = os.environ.get(DYNAMIC_SOURCE_CADENCE_ENV)
     if source_time_index_meta_table_uid in (None, "") or source_cadence in (None, ""):
         raise RuntimeError(
@@ -201,11 +194,8 @@ __all__ = [
     "DYNAMIC_SOURCE_CADENCE_ENV",
     "DYNAMIC_SOURCE_TIME_INDEX_META_TABLE_UID_ENV",
     "DYNAMIC_UPSAMPLE_FREQUENCY_ENV",
-    "INDEX_TYPE_PORTFOLIO",
     "NAMESPACE",
     "PORTFOLIO_EXAMPLE_RUNTIME_MODELS",
-    "PORTFOLIO_INDEX_DISPLAY_NAME",
-    "PORTFOLIO_INDEX_UNIQUE_IDENTIFIER",
     "PORTFOLIO_UNIQUE_IDENTIFIER",
     "PRICE_INTERPOLATION_RULE",
     "PRICE_UPSAMPLE_FREQUENCY_ID",

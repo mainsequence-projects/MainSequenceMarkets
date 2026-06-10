@@ -8,7 +8,7 @@ from typing import Any, Literal
 from sqlalchemy import String, cast, delete, func, literal, or_, select
 
 from msm.data_nodes.assets.storage import AssetSnapshotsStorage
-from msm.models import AssetTable, IndexTable, PortfolioTable, VirtualFundTable
+from msm.models import AssetTable, PortfolioTable, VirtualFundTable
 from msm.repositories import MarketsRepositoryContext
 from msm.repositories.crud import get_model_by_uid, search_model
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
@@ -115,8 +115,8 @@ def get_portfolio_frontend_detail_summary(
     portfolio_uid = str(portfolio["uid"])
     title = str(portfolio["unique_identifier"]) or portfolio_uid
     badges = []
-    if portfolio.get("portfolio_index_uid") not in (None, ""):
-        badges.append({"key": "portfolio_index", "label": "Indexed", "tone": "info"})
+    if portfolio.get("published_index_uid") not in (None, ""):
+        badges.append({"key": "published_index", "label": "Published Index", "tone": "info"})
 
     return {
         "entity": {
@@ -145,9 +145,9 @@ def get_portfolio_frontend_detail_summary(
                 "kind": "code",
             },
             {
-                "key": "portfolio_index_uid",
-                "label": "Portfolio Index UID",
-                "value": _string_or_none(portfolio.get("portfolio_index_uid")),
+                "key": "published_index_uid",
+                "label": "Published Index UID",
+                "value": _string_or_none(portfolio.get("published_index_uid")),
                 "kind": "code",
             },
         ],
@@ -193,56 +193,29 @@ def get_portfolio_weights_snapshot_response(
         return None
 
     portfolio = _build_portfolio_row(portfolio_row)
-    portfolio_index_uid = _string_or_none(portfolio.get("portfolio_index_uid"))
-    if portfolio_index_uid is None:
-        return _empty_weights_snapshot(
-            portfolio=portfolio,
-            portfolio_index_identifier=None,
-            warning="Portfolio has no portfolio_index_uid; latest weights cannot be resolved.",
-        )
-
-    index_row = _first_operation_row(
-        get_model_by_uid(context, model=IndexTable, uid=portfolio_index_uid)
-    )
-    if index_row is None:
-        return _empty_weights_snapshot(
-            portfolio=portfolio,
-            portfolio_index_identifier=None,
-            warning=(
-                "Portfolio portfolio_index_uid could not be resolved to an Index row; "
-                "latest weights cannot be resolved."
-            ),
-        )
-
-    portfolio_index_identifier = _string_or_none(index_row.get("unique_identifier"))
-    if portfolio_index_identifier is None:
-        return _empty_weights_snapshot(
-            portfolio=portfolio,
-            portfolio_index_identifier=None,
-            warning="Resolved portfolio index row has no unique_identifier.",
-        )
+    portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
 
     snapshot_time = weights_date or _portfolio_weights_snapshot_time(
         context,
-        portfolio_index_identifier=portfolio_index_identifier,
+        portfolio_identifier=portfolio_identifier,
         order=order,
     )
     if snapshot_time is None:
         return _empty_weights_snapshot(
             portfolio=portfolio,
-            portfolio_index_identifier=portfolio_index_identifier,
+            portfolio_identifier=portfolio_identifier,
             warning=None,
         )
 
     weight_rows = _portfolio_weights_rows(
         context,
-        portfolio_index_identifier=portfolio_index_identifier,
+        portfolio_identifier=portfolio_identifier,
         weights_date=snapshot_time,
     )
     if not weight_rows:
         return _empty_weights_snapshot(
             portfolio=portfolio,
-            portfolio_index_identifier=portfolio_index_identifier,
+            portfolio_identifier=portfolio_identifier,
             warning=None,
         )
 
@@ -254,8 +227,8 @@ def get_portfolio_weights_snapshot_response(
     return {
         "portfolio_uid": _string_or_none(portfolio["uid"]),
         "portfolio_unique_identifier": _string_or_none(portfolio["unique_identifier"]),
-        "portfolio_index_uid": portfolio_index_uid,
-        "portfolio_index_identifier": portfolio_index_identifier,
+        "published_index_uid": _string_or_none(portfolio.get("published_index_uid")),
+        "portfolio_identifier": portfolio_identifier,
         "weights_date": snapshot_time,
         "resolution_warning": None,
         "weights": [
@@ -280,12 +253,10 @@ def delete_portfolio_record(
 
     portfolio = _build_portfolio_row(existing)
     portfolio_uid = uuid.UUID(str(portfolio["uid"]))
-    portfolio_index_uid = _uuid_or_none(portfolio.get("portfolio_index_uid"))
 
     _raise_if_portfolio_delete_is_blocked(
         context,
         portfolio_uid=portfolio_uid,
-        portfolio_index_uid=portfolio_index_uid,
     )
 
     try:
@@ -330,40 +301,13 @@ def delete_portfolio_weights(
 
     portfolio = _build_portfolio_row(existing)
     portfolio_uid = uuid.UUID(str(portfolio["uid"]))
-    portfolio_index_uid = _uuid_or_none(portfolio.get("portfolio_index_uid"))
-    if portfolio_index_uid is None:
-        return {
-            "detail": "Portfolio has no portfolio_index_uid; no weights were deleted.",
-            "portfolio_uid": str(portfolio_uid),
-            "portfolio_index_identifier": None,
-            "weights_date": weights_date,
-            "deleted_count": 0,
-        }
-
-    _raise_if_portfolio_index_is_shared(
-        context,
-        portfolio_uid=portfolio_uid,
-        portfolio_index_uid=portfolio_index_uid,
-    )
-
-    portfolio_index_identifier = _portfolio_index_identifier(
-        context,
-        portfolio_index_uid=portfolio_index_uid,
-    )
-    if portfolio_index_identifier is None:
-        return {
-            "detail": "Portfolio index row could not be resolved; no weights were deleted.",
-            "portfolio_uid": str(portfolio_uid),
-            "portfolio_index_identifier": None,
-            "weights_date": weights_date,
-            "deleted_count": 0,
-        }
+    portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
 
     rows = _operation_result_rows(
         execute_markets_operation(
             _compile_delete_portfolio_weights_operation(
                 context,
-                portfolio_index_identifier=portfolio_index_identifier,
+                portfolio_identifier=portfolio_identifier,
                 weights_date=weights_date,
             ),
             context=context,
@@ -373,7 +317,7 @@ def delete_portfolio_weights(
     return {
         "detail": "Portfolio weights deleted.",
         "portfolio_uid": str(portfolio_uid),
-        "portfolio_index_identifier": portfolio_index_identifier,
+        "portfolio_identifier": portfolio_identifier,
         "weights_date": weights_date,
         "deleted_count": deleted_count,
     }
@@ -422,39 +366,11 @@ def _raise_if_portfolio_delete_is_blocked(
     context: MarketsRepositoryContext,
     *,
     portfolio_uid: uuid.UUID,
-    portfolio_index_uid: uuid.UUID | None,
 ) -> None:
     virtual_fund_count = _virtual_fund_reference_count(context, portfolio_uid=portfolio_uid)
     if virtual_fund_count:
         raise PortfolioDeleteConflictError(
             "Portfolio is referenced by virtual funds. Delete or retarget those funds first."
-        )
-
-    _raise_if_portfolio_index_is_shared(
-        context,
-        portfolio_uid=portfolio_uid,
-        portfolio_index_uid=portfolio_index_uid,
-    )
-
-
-def _raise_if_portfolio_index_is_shared(
-    context: MarketsRepositoryContext,
-    *,
-    portfolio_uid: uuid.UUID,
-    portfolio_index_uid: uuid.UUID | None,
-) -> None:
-    if portfolio_index_uid is None:
-        return
-
-    shared_count = _shared_portfolio_index_count(
-        context,
-        portfolio_uid=portfolio_uid,
-        portfolio_index_uid=portfolio_index_uid,
-    )
-    if shared_count:
-        raise PortfolioDeleteConflictError(
-            "Portfolio shares portfolio_index_uid with another portfolio; refusing to delete "
-            "weights that may belong to another portfolio."
         )
 
 
@@ -482,53 +398,14 @@ def _virtual_fund_reference_count(
     )
 
 
-def _shared_portfolio_index_count(
-    context: MarketsRepositoryContext,
-    *,
-    portfolio_uid: uuid.UUID,
-    portfolio_index_uid: uuid.UUID,
-) -> int:
-    statement = (
-        select(func.count().label("count"))
-        .select_from(PortfolioTable)
-        .where(PortfolioTable.portfolio_index_uid == portfolio_index_uid)
-        .where(PortfolioTable.uid != portfolio_uid)
-    )
-    return _count_from_result(
-        execute_markets_operation(
-            compile_markets_statement(
-                statement,
-                context=context,
-                operation="select",
-                models=[PortfolioTable],
-                access="read",
-            ),
-            context=context,
-        )
-    )
-
-
-def _portfolio_index_identifier(
-    context: MarketsRepositoryContext,
-    *,
-    portfolio_index_uid: uuid.UUID,
-) -> str | None:
-    index_row = _first_operation_row(
-        get_model_by_uid(context, model=IndexTable, uid=str(portfolio_index_uid))
-    )
-    if index_row is None:
-        return None
-    return _string_or_none(index_row.get("unique_identifier"))
-
-
 def _compile_delete_portfolio_weights_operation(
     context: MarketsRepositoryContext,
     *,
-    portfolio_index_identifier: str,
+    portfolio_identifier: str,
     weights_date: dt.datetime | None,
 ):
     statement = delete(PortfolioWeightsStorage).where(
-        PortfolioWeightsStorage.portfolio_index_identifier == portfolio_index_identifier
+        PortfolioWeightsStorage.portfolio_identifier == portfolio_identifier
     )
     if weights_date is not None:
         statement = statement.where(PortfolioWeightsStorage.time_index == weights_date)
@@ -547,38 +424,28 @@ def _compile_delete_portfolio_with_weights_operation(
     *,
     portfolio_uid: uuid.UUID,
 ):
-    other_portfolios = PortfolioTable.__table__.alias("other_portfolios")
     virtual_fund_reference = (
         select(literal(1))
         .select_from(VirtualFundTable)
         .where(VirtualFundTable.target_portfolio_uid == PortfolioTable.uid)
         .exists()
     )
-    shared_portfolio_index = (
-        select(literal(1))
-        .select_from(other_portfolios)
-        .where(other_portfolios.c.portfolio_index_uid == PortfolioTable.portfolio_index_uid)
-        .where(other_portfolios.c.uid != PortfolioTable.uid)
-        .exists()
-    )
     portfolio_scope = (
         select(
             PortfolioTable.uid.label("uid"),
-            IndexTable.unique_identifier.label("portfolio_index_identifier"),
+            PortfolioTable.unique_identifier.label("portfolio_identifier"),
         )
         .select_from(PortfolioTable)
-        .outerjoin(IndexTable, PortfolioTable.portfolio_index_uid == IndexTable.uid)
         .where(PortfolioTable.uid == portfolio_uid)
         .where(~virtual_fund_reference)
-        .where(~shared_portfolio_index)
         .cte("portfolio_scope")
     )
-    portfolio_index_identifiers = select(portfolio_scope.c.portfolio_index_identifier).where(
-        portfolio_scope.c.portfolio_index_identifier.is_not(None)
+    portfolio_identifiers = select(portfolio_scope.c.portfolio_identifier).where(
+        portfolio_scope.c.portfolio_identifier.is_not(None)
     )
     deleted_weights = (
         delete(PortfolioWeightsStorage)
-        .where(PortfolioWeightsStorage.portfolio_index_identifier.in_(portfolio_index_identifiers))
+        .where(PortfolioWeightsStorage.portfolio_identifier.in_(portfolio_identifiers))
         .returning(literal(1).label("deleted_weight"))
         .cte("deleted_weights")
     )
@@ -597,7 +464,7 @@ def _compile_delete_portfolio_with_weights_operation(
         statement,
         context=context,
         operation="delete",
-        models=[PortfolioTable, PortfolioWeightsStorage, IndexTable, VirtualFundTable],
+        models=[PortfolioTable, PortfolioWeightsStorage, VirtualFundTable],
         access="write",
     )
 
@@ -636,7 +503,7 @@ def _portfolio_select(
                 func.lower(PortfolioTable.unique_identifier).like(needle),
                 func.lower(PortfolioTable.calendar_name).like(needle),
                 func.lower(cast(PortfolioTable.calendar_uid, String)).like(needle),
-                func.lower(cast(PortfolioTable.portfolio_index_uid, String)).like(needle),
+                func.lower(cast(PortfolioTable.published_index_uid, String)).like(needle),
             )
         )
     return statement
@@ -682,7 +549,7 @@ def _get_portfolio_metadata_row(
 def _portfolio_weights_snapshot_time(
     context: MarketsRepositoryContext,
     *,
-    portfolio_index_identifier: str,
+    portfolio_identifier: str,
     order: Literal["asc", "desc"],
 ) -> dt.datetime | None:
     aggregate = (
@@ -691,7 +558,7 @@ def _portfolio_weights_snapshot_time(
         else func.max(PortfolioWeightsStorage.time_index)
     )
     statement = select(aggregate.label("time_index")).where(
-        PortfolioWeightsStorage.portfolio_index_identifier == portfolio_index_identifier
+        PortfolioWeightsStorage.portfolio_identifier == portfolio_identifier
     )
     result = execute_markets_operation(
         compile_markets_statement(
@@ -712,7 +579,7 @@ def _portfolio_weights_snapshot_time(
 def _portfolio_weights_rows(
     context: MarketsRepositoryContext,
     *,
-    portfolio_index_identifier: str,
+    portfolio_identifier: str,
     weights_date: dt.datetime,
 ) -> list[dict[str, Any]]:
     return _operation_result_rows(
@@ -720,7 +587,7 @@ def _portfolio_weights_rows(
             context,
             model=PortfolioWeightsStorage,
             filters={
-                "portfolio_index_identifier": portfolio_index_identifier,
+                "portfolio_identifier": portfolio_identifier,
                 "time_index": weights_date,
             },
             limit=MAX_PORTFOLIO_SCAN_LIMIT,
@@ -802,14 +669,14 @@ def _latest_asset_snapshots_by_unique_identifier(
 def _empty_weights_snapshot(
     *,
     portfolio: Mapping[str, Any],
-    portfolio_index_identifier: str | None,
+    portfolio_identifier: str | None,
     warning: str | None,
 ) -> dict[str, Any]:
     return {
         "portfolio_uid": _string_or_none(portfolio.get("uid")),
         "portfolio_unique_identifier": _string_or_none(portfolio.get("unique_identifier")),
-        "portfolio_index_uid": _string_or_none(portfolio.get("portfolio_index_uid")),
-        "portfolio_index_identifier": portfolio_index_identifier,
+        "published_index_uid": _string_or_none(portfolio.get("published_index_uid")),
+        "portfolio_identifier": portfolio_identifier,
         "weights_date": None,
         "resolution_warning": warning,
         "weights": [],
@@ -824,7 +691,7 @@ def _build_weight_row(
 ) -> dict[str, Any]:
     return {
         "time_index": _datetime_or_none(row.get("time_index")),
-        "portfolio_index_identifier": _string_or_none(row.get("portfolio_index_identifier")),
+        "portfolio_identifier": _string_or_none(row.get("portfolio_identifier")),
         "asset_identifier": _string_or_empty(row.get("asset_identifier")),
         "weight": _number_string_or_none(row.get("weight")),
         "weight_before": _number_string_or_none(row.get("weight_before")),
@@ -842,7 +709,7 @@ def _build_portfolio_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "unique_identifier": _string_or_empty(row.get("unique_identifier")),
         "calendar_name": _string_or_none(row.get("calendar_name")),
         "calendar_uid": _string_or_none(row.get("calendar_uid")),
-        "portfolio_index_uid": _string_or_none(row.get("portfolio_index_uid")),
+        "published_index_uid": _string_or_none(row.get("published_index_uid")),
         "portfolio_weights_data_node_uid": _string_or_none(
             row.get("portfolio_weights_data_node_uid")
         ),

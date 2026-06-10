@@ -20,14 +20,12 @@ Latest weights resolve through:
 
 ```text
 Portfolio.uid
-  -> Portfolio.portfolio_index_uid
-  -> Index.uid
-  -> Index.unique_identifier
-  -> PortfolioWeightsStorage.portfolio_index_identifier
+  -> Portfolio.unique_identifier
+  -> PortfolioWeightsStorage.portfolio_identifier
 ```
 
-If a portfolio has no `portfolio_index_uid`, the weights endpoint returns 200
-with an empty `weights` list and a `resolution_warning`.
+The optional `published_index_uid` field is not used for latest-weight
+resolution. It is publication metadata only.
 
 ## List Portfolios
 
@@ -48,7 +46,7 @@ Returns `PaginatedResponse[Portfolio]`:
       "unique_identifier": "example-sleeve",
       "calendar_name": "CRYPTO_24_7",
       "calendar_uid": null,
-      "portfolio_index_uid": "index-uid",
+      "published_index_uid": "index-uid",
       "portfolio_weights_data_node_uid": null,
       "signal_weights_data_node_uid": null,
       "portfolio_data_node_uid": null,
@@ -74,7 +72,7 @@ links:
     "unique_identifier": "example-sleeve",
     "calendar_name": "CRYPTO_24_7",
     "calendar_uid": null,
-    "portfolio_index_uid": "index-uid",
+    "published_index_uid": "index-uid",
     "portfolio_weights_data_node_uid": null,
     "signal_weights_data_node_uid": null,
     "portfolio_data_node_uid": null,
@@ -124,14 +122,14 @@ Returns one `PortfolioWeightsSnapshotResponse`:
 {
   "portfolio_uid": "portfolio-uid",
   "portfolio_unique_identifier": "example-sleeve",
-  "portfolio_index_uid": "index-uid",
-  "portfolio_index_identifier": "example-sleeve-index",
+  "published_index_uid": "index-uid",
+  "portfolio_identifier": "example-sleeve",
   "weights_date": "2026-06-07T10:30:00Z",
   "resolution_warning": null,
   "weights": [
     {
       "time_index": "2026-06-07T10:30:00Z",
-      "portfolio_index_identifier": "example-sleeve-index",
+      "portfolio_identifier": "example-sleeve",
       "asset_identifier": "example-asset-btc",
       "weight": "0.600000000000000000",
       "weight_before": "0.550000000000000000",
@@ -168,8 +166,8 @@ response is 200 with an empty `weights` list:
 {
   "portfolio_uid": "portfolio-uid",
   "portfolio_unique_identifier": "example-sleeve",
-  "portfolio_index_uid": "index-uid",
-  "portfolio_index_identifier": "example-sleeve-index",
+  "published_index_uid": "index-uid",
+  "portfolio_identifier": "example-sleeve",
   "weights_date": null,
   "resolution_warning": null,
   "weights": []
@@ -187,9 +185,8 @@ Deletes the portfolio identity row and historical
 
 ```text
 Portfolio.uid
-  -> Portfolio.portfolio_index_uid
-  -> Index.unique_identifier
-  -> PortfolioWeightsStorage.portfolio_index_identifier
+  -> Portfolio.unique_identifier
+  -> PortfolioWeightsStorage.portfolio_identifier
 ```
 
 Returns:
@@ -204,8 +201,7 @@ Returns:
 
 If protected rows, such as virtual funds or account target-position history,
 reference the portfolio, the route returns 409 and does not delete the
-portfolio. If another portfolio shares the same `portfolio_index_uid`, the
-route also returns 409 so it does not remove shared historical weights.
+portfolio.
 
 The delete route does not delete `PortfoliosStorage` value history or metadata
 rows.
@@ -216,9 +212,9 @@ rows.
 DELETE /api/v1/portfolio/{uid}/weights/?weights_date=2026-06-07T10:30:00Z
 ```
 
-Deletes only `PortfolioWeightsStorage` rows for the resolved portfolio index
-identifier. If `weights_date` is omitted, all weight rows for that portfolio
-index identifier are deleted. If `weights_date` is provided, only the exact
+Deletes only `PortfolioWeightsStorage` rows for the portfolio identifier. If
+`weights_date` is omitted, all weight rows for that portfolio identifier are
+deleted. If `weights_date` is provided, only the exact
 timestamp is deleted.
 
 Returns:
@@ -227,15 +223,14 @@ Returns:
 {
   "detail": "Portfolio weights deleted.",
   "portfolio_uid": "portfolio-uid",
-  "portfolio_index_identifier": "example-sleeve-index",
+  "portfolio_identifier": "example-sleeve",
   "weights_date": "2026-06-07T10:30:00Z",
   "deleted_count": 4
 }
 ```
 
-If the portfolio has no resolvable portfolio index, the endpoint returns 200
-with `deleted_count: 0`. If another portfolio shares the same
-`portfolio_index_uid`, the route returns 409.
+Weight deletion itself is scoped by `Portfolio.unique_identifier`; protected
+portfolio references only matter for deleting the portfolio identity row.
 
 ## Bulk Delete Portfolios
 

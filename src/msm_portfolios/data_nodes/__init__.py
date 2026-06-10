@@ -11,7 +11,6 @@ from .constants import (
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
     PORTFOLIO_DESCRIPTION,
     PORTFOLIO_IDENTIFIER,
-    PORTFOLIO_INDEX_IDENTIFIER,
     PORTFOLIO_METADATA_UNIQUE_IDENTIFIER,
     PORTFOLIO_WEIGHTS_INDEX_NAMES,
     PORTFOLIOS_INDEX_NAMES,
@@ -26,7 +25,7 @@ from .constants import (
 from .portfolio_identity import (
     canonical_portfolio_configuration,
     compute_portfolio_configuration_hash,
-    get_or_create_portfolio_index,
+    get_or_create_portfolio,
 )
 from .portfolios.weights import PortfolioWeights, normalize_portfolio_weights_frame
 from .portfolios import PortfoliosDataNode, normalize_portfolio_values_frame
@@ -41,7 +40,6 @@ __all__ = [
     "ASSET_IDENTIFIER",
     "PORTFOLIO_DESCRIPTION",
     "PORTFOLIO_IDENTIFIER",
-    "PORTFOLIO_INDEX_IDENTIFIER",
     "PORTFOLIO_METADATA_UNIQUE_IDENTIFIER",
     "PORTFOLIO_WEIGHTS_INDEX_NAMES",
     "PORTFOLIOS_INDEX_NAMES",
@@ -64,7 +62,7 @@ __all__ = [
     "canonical_signal_configuration",
     "compute_portfolio_configuration_hash",
     "compute_signal_uid",
-    "get_or_create_portfolio_index",
+    "get_or_create_portfolio",
     "normalize_portfolio_weights_frame",
     "normalize_portfolio_values_frame",
     "normalize_signal_weights_frame",

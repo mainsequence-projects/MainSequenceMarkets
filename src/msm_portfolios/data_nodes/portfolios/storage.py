@@ -12,23 +12,22 @@ from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.data_nodes.constants import (
     PORTFOLIO_IDENTIFIER_DIMENSION,
-    PORTFOLIO_INDEX_IDENTIFIER_DIMENSION,
 )
 
 
 class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
-    """Executed portfolio weights keyed by portfolio index and held asset."""
+    """Executed portfolio weights keyed by portfolio identity and held asset."""
 
     __metatable_identifier__ = "PortfolioWeightsTS"
     __metatable_description__ = (
         "Timestamped portfolio weight storage keyed by time_index, "
-        "portfolio_index_identifier, and asset_identifier. Stores "
+        "portfolio_identifier, and asset_identifier. Stores "
         "executed asset allocation weights and supporting price/volume facts."
     )
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
-        PORTFOLIO_INDEX_IDENTIFIER_DIMENSION,
+        PORTFOLIO_IDENTIFIER_DIMENSION,
         ASSET_IDENTIFIER_DIMENSION,
     ]
 
@@ -40,13 +39,13 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             "description": "UTC timestamp for the executed portfolio weight row.",
         },
     )
-    portfolio_index_identifier: Mapped[str] = mapped_column(
+    portfolio_identifier: Mapped[str] = mapped_column(
         String,
         nullable=False,
         info={
-            "label": "Portfolio Index Identifier",
+            "label": "Portfolio Identifier",
             "description": (
-                "Stable PortfolioIndex unique identifier for the portfolio that "
+                "Stable PortfolioTable unique_identifier for the portfolio that "
                 "owns this executed weight row."
             ),
         },
@@ -131,7 +130,7 @@ class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=False,
         info={
             "label": "Portfolio Identifier",
-            "description": "Stable portfolio or portfolio-index unique identifier for the value series.",
+            "description": "Stable PortfolioTable unique_identifier for the value series.",
         },
     )
     close: Mapped[float | None] = mapped_column(
@@ -168,7 +167,6 @@ class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 
 __all__ = [
     "PORTFOLIO_IDENTIFIER_DIMENSION",
-    "PORTFOLIO_INDEX_IDENTIFIER_DIMENSION",
     "PortfolioWeightsStorage",
     "PortfoliosStorage",
 ]

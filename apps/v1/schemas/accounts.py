@@ -127,7 +127,7 @@ class AccountTargetPositionPortfolioReference(BaseModel):
 
     uid: str | None = None
     unique_identifier: str | None = None
-    portfolio_index_uid: str | None = None
+    published_index_uid: str | None = None
 
 
 class AccountTargetPositionRow(BaseModel):

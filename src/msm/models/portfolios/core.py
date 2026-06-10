@@ -23,7 +23,7 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "Portfolio"
     __metatable_description__ = (
         "Portfolio identity and configuration table keyed by unique_identifier. "
-        "Stores optional calendar and portfolio index linkage plus DataNode "
+        "Stores optional calendar and published index linkage plus DataNode "
         "pointers used to publish portfolio weights, signals, and values."
     )
     __table_args__ = markets_table_args(
@@ -43,7 +43,7 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         ),
         Index(
             None,
-            "portfolio_index_uid",
+            "published_index_uid",
         ),
     )
 
@@ -84,7 +84,7 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
             "description": "CalendarTable.uid for the persisted calendar used to schedule this portfolio.",
         },
     )
-    portfolio_index_uid: Mapped[uuid.UUID | None] = mapped_column(
+    published_index_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
             f"{IndexTable.__table__.fullname}.uid",
@@ -92,8 +92,12 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         ),
         nullable=True,
         info={
-            "label": "Portfolio Index UID",
-            "description": "IndexTable.uid for the optional index representing this portfolio.",
+            "label": "Published Index UID",
+            "description": (
+                "Optional IndexTable.uid used when this portfolio is published as "
+                "an index-like observable. Core portfolio weights and values use "
+                "PortfolioTable identity instead."
+            ),
         },
     )
     portfolio_weights_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(

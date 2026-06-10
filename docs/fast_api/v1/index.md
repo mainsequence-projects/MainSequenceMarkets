@@ -208,7 +208,7 @@ Current local-dev behavior:
     `AssetSnapshotsStorage` `name` / `ticker`; no OpenFIGI or numeric asset id
     fields are returned
   - portfolio details include `uid`, `unique_identifier`, and optional
-    `portfolio_index_uid`; portfolio targets are mandate exposure, not custody
+    `published_index_uid`; portfolio targets are mandate exposure, not custody
     holdings
 
 ### Assets
@@ -301,8 +301,7 @@ Current local-dev behavior:
 - `GET /api/v1/portfolio/{uid}/weights/`
   - supports `order`, `limit=1`, `include_asset_detail`, and exact
     `weights_date`
-  - resolves weights through
-    `Portfolio.portfolio_index_uid -> Index.unique_identifier`
+  - resolves weights through `Portfolio.unique_identifier`
   - returns one snapshot backed by `PortfolioWeightsStorage`
   - returns 200 with an empty `weights` list when the portfolio exists but no
     matching weights snapshot exists
@@ -310,18 +309,15 @@ Current local-dev behavior:
 - `DELETE /api/v1/portfolio/{uid}/`
   - deletes one portfolio identity row and matching historical
     `PortfolioWeightsStorage` rows atomically
-  - resolves historical weights through
-    `Portfolio.portfolio_index_uid -> Index.unique_identifier`
+  - resolves historical weights through `Portfolio.unique_identifier`
   - returns `deleted_weights_count`
   - returns 409 when protected rows, such as virtual funds or account
     target-position history, still reference the portfolio
-  - returns 409 when another portfolio shares the same `portfolio_index_uid`
 - `DELETE /api/v1/portfolio/{uid}/weights/`
   - supports optional exact `weights_date`
   - deletes only matching `PortfolioWeightsStorage` rows for the resolved
-    portfolio index identifier
+    portfolio identifier
   - returns `deleted_count` for removed weight rows
-  - returns 409 when another portfolio shares the same `portfolio_index_uid`
 - `POST /api/v1/portfolio/bulk-delete/`
   - deletes multiple portfolio identity rows by explicit `uids`
   - reports protected or missing rows in `failed`

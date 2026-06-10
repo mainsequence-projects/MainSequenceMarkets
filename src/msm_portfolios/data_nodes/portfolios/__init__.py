@@ -28,10 +28,9 @@ from ..constants import (
     ASSET_IDENTIFIER,
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
     PORTFOLIO_IDENTIFIER,
-    PORTFOLIO_INDEX_IDENTIFIER,
 )
 from ..metadata import emit_portfolio_metadata, extract_portfolio_description
-from ..portfolio_identity import get_or_create_portfolio_index
+from ..portfolio_identity import get_or_create_portfolio
 from .weights import PortfolioWeights
 from .storage import PortfoliosStorage
 
@@ -194,9 +193,9 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                 override_update_stats=override_update_stats,
             )
 
-        _portfolio, portfolio_index = self._resolve_portfolio_identity()
-        portfolio_index_unique_identifier = str(portfolio_index.unique_identifier)
-        self._resolved_unique_identifier = portfolio_index_unique_identifier
+        portfolio = self._resolve_portfolio_identity()
+        portfolio_unique_identifier = str(portfolio.unique_identifier)
+        self._resolved_unique_identifier = portfolio_unique_identifier
         portfolio_weights_node = self._canonical_portfolio_weights_node()
 
         portfolio_values_result = super().run(
@@ -215,9 +214,9 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         if weights is not None and not weights.empty:
             portfolio_weights_node.set_weights_frame(
                 weights,
-                portfolio_index_identifier=portfolio_index_unique_identifier,
+                portfolio_identifier=portfolio_unique_identifier,
                 portfolio_configuration=self.portfolio_configuration,
-                portfolio_index=portfolio_index,
+                portfolio=portfolio,
                 portfolio_description=self._resolve_portfolio_description(),
             )
             portfolio_weights_result = portfolio_weights_node.run(
@@ -385,11 +384,10 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             self._portfolio_weights_node = node
         return node
 
-    def _resolve_portfolio_identity(self) -> tuple[Any, Any]:
+    def _resolve_portfolio_identity(self) -> Any:
         portfolio = getattr(self, "target_portfolio", None)
-        portfolio_index = getattr(self, "portfolio_index", None)
-        if portfolio is not None and getattr(portfolio_index, "unique_identifier", None):
-            return portfolio, portfolio_index
+        if portfolio is not None and getattr(portfolio, "unique_identifier", None):
+            return portfolio
 
         portfolio_configuration = getattr(self, "portfolio_configuration", None) or getattr(
             self,
@@ -399,22 +397,21 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         if portfolio_configuration is None:
             raise ValueError(
                 "PortfoliosDataNode requires a portfolio_configuration to resolve "
-                "the portfolio index identity."
+                "the portfolio identity."
             )
 
-        portfolio, portfolio_index = get_or_create_portfolio_index(
+        portfolio = get_or_create_portfolio(
             portfolio_configuration,
             portfolio_resolver=getattr(self, "_portfolio_resolver", None),
         )
         self.target_portfolio = portfolio
-        self.portfolio_index = portfolio_index
-        return portfolio, portfolio_index
+        return portfolio
 
     def _unique_identifier(self) -> str:
-        _portfolio, portfolio_index = self._resolve_portfolio_identity()
-        unique_identifier = getattr(portfolio_index, "unique_identifier", None)
+        portfolio = self._resolve_portfolio_identity()
+        unique_identifier = getattr(portfolio, "unique_identifier", None)
         if not unique_identifier:
-            raise ValueError("PortfolioIndex must expose unique_identifier.")
+            raise ValueError("Portfolio must expose unique_identifier.")
         return str(unique_identifier)
 
     def _resolve_portfolio_description(self) -> str | None:
@@ -679,7 +676,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             dimension_range_map=self._portfolio_dimension_range_map(
                 start_date=latest_value,
                 start_date_operand=">=",
-                identifier_dimension=PORTFOLIO_INDEX_IDENTIFIER,
+                identifier_dimension=PORTFOLIO_IDENTIFIER,
             )
         )
         if last_obs is None or last_obs.empty:
@@ -690,8 +687,8 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         last_weights = last_obs[
             last_obs.index.get_level_values("time_index") == latest_time_index
         ].copy()
-        if PORTFOLIO_INDEX_IDENTIFIER in last_weights.index.names:
-            last_weights = last_weights.droplevel(PORTFOLIO_INDEX_IDENTIFIER)
+        if PORTFOLIO_IDENTIFIER in last_weights.index.names:
+            last_weights = last_weights.droplevel(PORTFOLIO_IDENTIFIER)
         return last_weights.rename(columns={"weight": "weights_current"})
 
     def _interpolate_bars_index(
@@ -889,11 +886,11 @@ rebalance details:"""
 
         portfolio_configuration = getattr(self, "_portfolio_configuration", None)
         if portfolio_configuration is not None:
-            _portfolio, resolved_index = get_or_create_portfolio_index(
+            resolved_portfolio = get_or_create_portfolio(
                 portfolio_configuration,
                 portfolio_resolver=getattr(self, "_portfolio_resolver", None),
             )
-            resolved_identifier = getattr(resolved_index, "unique_identifier", None)
+            resolved_identifier = getattr(resolved_portfolio, "unique_identifier", None)
             if resolved_identifier:
                 return str(resolved_identifier)
 

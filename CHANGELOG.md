@@ -70,6 +70,10 @@ and this project follows versioned releases.
 - Replaced deprecated builder terminology with portfolio construction wording
   across README, portfolio docs, ADRs, and internal portfolio logger helper
   names.
+- Changed core portfolio storage identity so portfolio weights, values, FastAPI
+  latest-weight reads, delete cleanup, and account virtual-fund expansion use
+  `PortfolioTable.unique_identifier` as `portfolio_identifier`; optional
+  `published_index_uid` remains publication metadata only.
 
 ### Fixed
 

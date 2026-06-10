@@ -24,7 +24,7 @@ _EXPORTS = {
     "canonical_signal_configuration": ".data_nodes",
     "compute_portfolio_configuration_hash": ".data_nodes",
     "compute_signal_uid": ".data_nodes",
-    "get_or_create_portfolio_index": ".data_nodes",
+    "get_or_create_portfolio": ".data_nodes",
     "get_runtime": ".bootstrap",
     "normalize_portfolio_values_frame": ".data_nodes",
     "normalize_portfolio_weights_frame": ".data_nodes",
