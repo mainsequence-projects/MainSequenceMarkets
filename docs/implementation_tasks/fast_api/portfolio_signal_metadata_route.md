@@ -25,13 +25,15 @@ metadata contracts must reuse `msm_portfolios.api.market_metadata` models.
   - `signal_uid` is immutable because storage rows reference it.
 - `DELETE /api/v1/portfolio-signal/{uid}/`
   - Properly delete one signal metadata row.
-  - Delete matching `SignalWeightsStorage` rows first, then delete the
-    metadata row in the same backend operation.
+  - Clear matching `SignalWeightsStorage` rows first through
+    `SignalWeightsStorage.get_time_index_meta_table().delete_after_date(...)`,
+    scoped by `signal_uid`, then delete the metadata row.
   - Return deleted metadata and storage counts.
 - `DELETE /api/v1/portfolio-signal/{uid}/weights/`
   - Delete only historical `SignalWeightsStorage` rows for one signal metadata
     row.
-  - Optional query parameter: `weights_date` for exact timestamp deletion.
+  - Optional query parameter: `weights_date` for inclusive tail deletion through
+    `SignalWeightsStorage.get_time_index_meta_table().delete_after_date(...)`.
 
 ## Core Implementation Tasks
 

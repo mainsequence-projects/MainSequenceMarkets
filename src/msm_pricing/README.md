@@ -139,8 +139,18 @@ When the argument is omitted, the process default market-data set is used.
 User-facing persistence starts from instruments:
 
 ```python
+from msm_pricing.api import add_many_pricing_details
+
 bond.attach_to_asset(asset)
 loaded = pricing.Instrument.load_from_asset(asset)
+
+add_many_pricing_details(
+    [
+        {"asset": asset, "instrument": instrument}
+        for asset, instrument in asset_instrument_pairs
+    ],
+    batch_size=1000,
+)
 ```
 
 `attach_to_asset(...)` writes a timestamped pricing-details observation. If no
@@ -150,6 +160,10 @@ timestamped snapshot only. The generic loader rebuilds the concrete stored
 instrument type from the current projection. Typed loaders such as
 `ZeroCouponBond.load_from_asset(asset)` validate that the attached instrument
 matches the requested class.
+
+For thousands of assets, use `add_many_pricing_details(...)` rather than
+calling `attach_to_asset(...)` in a loop. The batch API serializes instruments
+once and persists timestamped/current pricing rows with chunked bulk upserts.
 
 Pricing registry rows are also exposed through `msm_pricing.api`:
 

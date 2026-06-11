@@ -307,6 +307,13 @@ Current local-dev behavior:
   - includes `portfolio_weights_data_node_uid`,
     `signal_weights_data_node_uid`, nullable `signal_uid`, and
     `portfolio_data_node_uid` as inline fields and under `extensions.pointers`
+  - uses nullable field-level `link_url` values on badges, inline fields,
+    highlight fields, and stats for frontend navigation to related pages and
+    table endpoints
+  - resolves `extensions.calendar` with calendar display labels and calendar
+    detail/date/session/event URLs
+  - resolves `extensions.nodes` with portfolio weights, signal weights, and
+    portfolio values URLs for frontend navigation
 - `GET /api/v1/portfolio/{uid}/signals_weights/`
   - returns a Command Center tabular frame for the portfolio signal weights
   - filters by `Portfolio.signal_uid`; it does not infer a signal from shared
@@ -321,14 +328,17 @@ Current local-dev behavior:
   - asset labels use latest `AssetSnapshotsStorage` rows; OpenFIGI is not used
 - `DELETE /api/v1/portfolio/{uid}/`
   - deletes one portfolio identity row and matching historical
-    `PortfolioWeightsStorage` rows atomically
-  - resolves historical weights through `Portfolio.unique_identifier`
+    `PortfolioWeightsStorage` and `PortfoliosStorage` rows
+  - storage cleanup uses `TimeIndexMetaTable.delete_after_date(...)`, scoped
+    by `Portfolio.unique_identifier`
   - returns `deleted_weights_count`
+  - returns `deleted_values_count`
   - returns 409 when protected rows, such as virtual funds or account
     target-position history, still reference the portfolio
 - `DELETE /api/v1/portfolio/{uid}/weights/`
-  - supports optional exact `weights_date`
-  - deletes only matching `PortfolioWeightsStorage` rows for the resolved
+  - supports optional inclusive `weights_date` cutoff
+  - deletes matching `PortfolioWeightsStorage` rows through
+    `TimeIndexMetaTable.delete_after_date(...)`, scoped by the resolved
     portfolio identifier
   - returns `deleted_count` for removed weight rows
 - `POST /api/v1/portfolio/bulk-delete/`
@@ -350,11 +360,14 @@ Current local-dev behavior:
   - updates mutable signal metadata fields
   - `signal_uid` is immutable because signal-weight storage rows reference it
 - `DELETE /api/v1/portfolio-signal/{uid}/weights/`
-  - supports optional exact `weights_date`
-  - deletes matching `SignalWeightsStorage` rows for the resolved `signal_uid`
+  - supports optional inclusive `weights_date` cutoff
+  - deletes matching `SignalWeightsStorage` rows through
+    `TimeIndexMetaTable.delete_after_date(...)`, scoped by the resolved
+    `signal_uid`
 - `DELETE /api/v1/portfolio-signal/{uid}/`
   - deletes one signal metadata row and matching historical
-    `SignalWeightsStorage` rows atomically
+    `SignalWeightsStorage` rows through `TimeIndexMetaTable.delete_after_date(...)`,
+    scoped by the resolved `signal_uid`
   - returns `deleted_weights_count`
 
 ### Virtual Funds

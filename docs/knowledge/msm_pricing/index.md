@@ -294,7 +294,10 @@ Important rules:
 - Asset linkage is owned by `AssetCurrentPricingDetailsTable.asset_uid`, not by
   `InstrumentModel`.
 - The public write path is timestamped: use `Instrument.attach_to_asset(asset)`
-  or `msm_pricing.api.add_pricing_details(...)`. That path writes
+  or `msm_pricing.api.add_pricing_details(...)` for one asset. For large
+  universes, use `msm_pricing.api.add_many_pricing_details(...)`; it serializes
+  many asset/instrument pairs and writes them through chunked bulk upserts
+  instead of one MetaTable operation per asset. Both paths write
   `AssetPricingDetailsStorage`.
 - `AssetCurrentPricingDetailsTable` is an internal current projection used for
   fast runtime loading. When the caller does not provide
@@ -323,6 +326,7 @@ Use the instrument API, not manual row assembly:
 ```python
 from msm.api.assets import Asset
 from msm_pricing import Instrument, FloatingRateBond
+from msm_pricing.api import add_many_pricing_details
 
 asset = Asset.get_by_unique_identifier("example-floating-bond")
 bond = FloatingRateBond(
@@ -333,6 +337,14 @@ bond = FloatingRateBond(
 
 bond.attach_to_asset(asset)
 loaded = Instrument.load_from_asset(asset)
+
+add_many_pricing_details(
+    [
+        {"asset": asset, "instrument": instrument}
+        for asset, instrument in asset_instrument_pairs
+    ],
+    batch_size=1000,
+)
 ```
 
 `Instrument.load_from_asset(asset)` reads the current pricing details row,

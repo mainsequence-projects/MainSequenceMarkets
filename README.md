@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://www.main-sequence.io/images/logos/MS_logo_long_black.png" alt="Main Sequence Logo" width="500"/>
+  <img src="docs/img/main-sequence-markets/main_sequence_markets_primary_wordmark_black_bg.png" alt="MainSequence Markets" width="640"/>
 </p>
 
 # MainSequence Markets

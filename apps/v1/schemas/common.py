@@ -89,6 +89,7 @@ class FrontEndDetailSummaryBadge(BaseModel):
     key: str
     label: str
     tone: str
+    link_url: str | None = None
 
 
 class FrontEndDetailSummaryField(BaseModel):
@@ -97,6 +98,7 @@ class FrontEndDetailSummaryField(BaseModel):
     value: str | int | float | bool | None
     kind: str
     icon: str | None = None
+    link_url: str | None = None
 
 
 class FrontEndDetailSummaryStat(BaseModel):
@@ -105,6 +107,7 @@ class FrontEndDetailSummaryStat(BaseModel):
     display: str
     value: str | int | float | bool | None
     kind: str
+    link_url: str | None = None
 
 
 class FrontEndDetailSummaryLabelManagement(BaseModel):

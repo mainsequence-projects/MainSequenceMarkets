@@ -18,8 +18,10 @@ the API does not define HTML rendering semantics for signal descriptions.
   `msm_portfolios.data_nodes.signals.storage.SignalWeightsStorage`.
 
 `SignalWeightsStorage.signal_uid` references `SignalMetadataTable.signal_uid`.
-Deleting a signal metadata row therefore deletes matching signal-weight storage
-rows first, in the same backend operation, before deleting the metadata row.
+Deleting a signal metadata row therefore first clears matching signal-weight
+storage rows through `TimeIndexMetaTable.delete_after_date(None,
+dimension_filters=...)`, scoped by `signal_uid`, before deleting the metadata
+row.
 
 ## List Portfolio Signals
 
@@ -107,10 +109,13 @@ DELETE /api/v1/portfolio-signal/{uid}/weights/?weights_date=2026-06-10T10:30:00Z
 ```
 
 Deletes historical `SignalWeightsStorage` rows for the metadata row's
-`signal_uid`.
+`signal_uid` through the storage table's
+`TimeIndexMetaTable.delete_after_date(...)` API.
 
 When `weights_date` is omitted, all weight rows for the signal are deleted.
-When `weights_date` is provided, only that exact `time_index` is deleted.
+When `weights_date` is provided, rows at or after that timestamp are deleted.
+The API never calls `delete_after_date(None)` without a `signal_uid` dimension
+scope.
 
 Response:
 
@@ -131,7 +136,9 @@ DELETE /api/v1/portfolio-signal/{uid}/
 ```
 
 Deletes one signal metadata row and all matching historical
-`SignalWeightsStorage` rows.
+`SignalWeightsStorage` rows. Storage cleanup uses
+`TimeIndexMetaTable.delete_after_date(None, dimension_filters=...)`, scoped by
+the signal's `signal_uid`.
 
 Response:
 

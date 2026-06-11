@@ -471,6 +471,14 @@ def test_openapi_json_documents_portfolio_routes() -> None:
     assert portfolio_summary_operation["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/FrontEndDetailSummary"}
+    summary_schema = payload["components"]["schemas"]["FrontEndDetailSummary"]
+    assert "links" not in summary_schema["properties"]
+    for schema_name in (
+        "FrontEndDetailSummaryBadge",
+        "FrontEndDetailSummaryField",
+        "FrontEndDetailSummaryStat",
+    ):
+        assert "link_url" in payload["components"]["schemas"][schema_name]["properties"]
 
     portfolio_weights_operation = payload["paths"]["/api/v1/portfolio/{uid}/weights/"]["get"]
     assert portfolio_weights_operation["summary"] == "Get portfolio weights snapshot"
@@ -533,10 +541,7 @@ def test_openapi_json_documents_portfolio_routes() -> None:
         "/api/v1/portfolio/bulk-cascade-delete/"
     ]["post"]
     assert portfolio_bulk_cascade_delete_operation["summary"] == "Cascade delete portfolios"
-    assert (
-        portfolio_bulk_cascade_delete_operation["operationId"]
-        == "bulkCascadeDeletePortfolios"
-    )
+    assert portfolio_bulk_cascade_delete_operation["operationId"] == "bulkCascadeDeletePortfolios"
     assert portfolio_bulk_cascade_delete_operation["requestBody"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/PortfolioDeleteRequest"}

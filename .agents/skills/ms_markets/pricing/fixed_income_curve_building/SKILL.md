@@ -216,6 +216,11 @@ Rules:
   when a caller wants the latest available curve snapshot for one curve
   identity. Do not use `USE_LAST_OBSERVATION_MS_INSTRUMENT` as normal
   application control flow.
+- Persist pricing details for one asset with `instrument.attach_to_asset(asset)`
+  or `msm_pricing.api.add_pricing_details(...)`. For thousands of assets, use
+  `msm_pricing.api.add_many_pricing_details(...)` so instruments are serialized
+  once and pricing-detail/current rows are written through chunked bulk upserts.
+  Do not loop single-asset writes for large universes.
 
 ## Fixings Pattern
 

@@ -8,7 +8,7 @@ dev_addr: 127.0.0.1:8004
 
 theme:
   name: material
-  logo: https://main-sequence.app/static/media/logos/MS_logo_long_black.png
+  logo: img/main-sequence-markets/main_sequence_markets_icon_emblem_transparent.png
   palette:
     scheme: slate
     primary: black

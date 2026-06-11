@@ -413,10 +413,10 @@ def get_portfolio_values_frame_by_uid(
     response_model=PortfolioWeightsDeleteResponse,
     summary="Delete portfolio weights",
     description=(
-        "Delete historical portfolio weight rows for one portfolio. When "
-        "`weights_date` is provided, only that exact timestamp is deleted. "
-        "Without `weights_date`, all weight rows for the portfolio identifier "
-        "are deleted."
+        "Delete historical portfolio weight rows for one portfolio through the "
+        "TimeIndexMetaTable tail-delete API. When `weights_date` is provided, "
+        "rows at or after that timestamp are deleted. Without `weights_date`, "
+        "all weight rows for the portfolio identifier are deleted."
     ),
     operation_id="deletePortfolioWeights",
     status_code=status.HTTP_200_OK,
@@ -431,7 +431,7 @@ def remove_portfolio_weights(
     uid: str,
     weights_date: Annotated[
         dt.datetime | None,
-        Query(description="Exact portfolio weights timestamp to delete. Use ISO 8601."),
+        Query(description="Inclusive portfolio weights cutoff timestamp. Use ISO 8601."),
     ] = None,
 ) -> PortfolioWeightsDeleteResponse:
     try:

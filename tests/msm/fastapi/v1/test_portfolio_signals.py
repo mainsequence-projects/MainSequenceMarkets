@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -255,12 +256,16 @@ def test_public_delete_signal_metadata_reports_deleted_weights(monkeypatch) -> N
         lambda context, uid: signal,
     )
     monkeypatch.setattr(
-        "msm_portfolios.services.public_api._compile_delete_signal_metadata_with_weights_operation",
+        "msm_portfolios.services.public_api._delete_signal_weight_rows",
+        lambda context, **kwargs: captured.update({"delete_weights": kwargs}) or 4,
+    )
+    monkeypatch.setattr(
+        "msm_portfolios.services.public_api._compile_delete_signal_metadata_operation",
         lambda context, **kwargs: captured.update({"compile": kwargs}) or "delete-signal-op",
     )
     monkeypatch.setattr(
         "msm_portfolios.services.public_api.execute_markets_operation",
-        lambda operation, context: {"rows": [{"deleted_weights_count": 4}]},
+        lambda operation, context: {"rows": [{"uid": str(signal_uid), "signal_uid": "example-signal"}]},
     )
 
     from msm_portfolios.services.public_api import delete_signal_metadata_record
@@ -275,6 +280,10 @@ def test_public_delete_signal_metadata_reports_deleted_weights(monkeypatch) -> N
         "deleted_weights_count": 4,
     }
     assert captured["compile"] == {"signal_metadata_uid": signal_uid}
+    assert captured["delete_weights"] == {
+        "signal_uid": "example-signal",
+        "after_date": None,
+    }
 
 
 def test_public_delete_signal_weights_uses_signal_uid(monkeypatch) -> None:
@@ -287,23 +296,28 @@ def test_public_delete_signal_weights_uses_signal_uid(monkeypatch) -> None:
     }
     captured: dict[str, object] = {}
 
+    class FakeTimeIndexMetaTable:
+        def delete_after_date(self, after_date, *, dimension_filters, timeout=None):
+            captured["delete_after_date"] = {
+                "after_date": after_date,
+                "dimension_filters": dimension_filters,
+                "timeout": timeout,
+            }
+            return {"deleted_count": 2}
+
     monkeypatch.setattr(
         "msm_portfolios.services.public_api._get_signal_metadata_row",
         lambda context, uid: signal,
     )
     monkeypatch.setattr(
-        "msm_portfolios.services.public_api._compile_delete_signal_weights_operation",
-        lambda context, **kwargs: captured.update({"compile": kwargs}) or "delete-weights-op",
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.execute_markets_operation",
-        lambda operation, context: {"rows": [{"deleted": 1}, {"deleted": 1}]},
+        "msm_portfolios.data_nodes.signals.storage.SignalWeightsStorage.get_time_index_meta_table",
+        classmethod(lambda cls: FakeTimeIndexMetaTable()),
     )
 
     from msm_portfolios.services.public_api import delete_signal_weights
 
     response = delete_signal_weights(
-        object(),
+        SimpleNamespace(timeout=30),
         uid=str(signal_uid),
         weights_date=weights_date,
     )
@@ -315,13 +329,14 @@ def test_public_delete_signal_weights_uses_signal_uid(monkeypatch) -> None:
         "weights_date": weights_date,
         "deleted_count": 2,
     }
-    assert captured["compile"] == {
-        "signal_uid": "example-signal",
-        "weights_date": weights_date,
+    assert captured["delete_after_date"] == {
+        "after_date": weights_date,
+        "dimension_filters": {"signal_uid": ["example-signal"]},
+        "timeout": 30,
     }
 
 
-def test_public_delete_signal_metadata_operation_uses_weights_cleanup_cte(monkeypatch) -> None:
+def test_public_delete_signal_metadata_operation_deletes_metadata_only(monkeypatch) -> None:
     signal_metadata_uid = uuid.uuid4()
     captured: dict[str, object] = {}
 
@@ -335,13 +350,12 @@ def test_public_delete_signal_metadata_operation_uses_weights_cleanup_cte(monkey
         fake_compile,
     )
 
-    from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
     from msm_portfolios.models import SignalMetadataTable
     from msm_portfolios.services.public_api import (
-        _compile_delete_signal_metadata_with_weights_operation,
+        _compile_delete_signal_metadata_operation,
     )
 
-    operation = _compile_delete_signal_metadata_with_weights_operation(
+    operation = _compile_delete_signal_metadata_operation(
         object(),
         signal_metadata_uid=signal_metadata_uid,
     )
@@ -350,7 +364,7 @@ def test_public_delete_signal_metadata_operation_uses_weights_cleanup_cte(monkey
     assert operation == "compiled-delete-signal-op"
     assert captured["operation"] == "delete"
     assert captured["access"] == "write"
-    assert captured["models"] == [SignalMetadataTable, SignalWeightsStorage]
-    assert "signal_scope" in statement_text
-    assert "deleted_signal_weights" in statement_text
+    assert captured["models"] == [SignalMetadataTable]
+    assert "signal_scope" not in statement_text
+    assert "deleted_signal_weights" not in statement_text
     assert "delete from" in statement_text

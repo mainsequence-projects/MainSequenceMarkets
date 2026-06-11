@@ -161,9 +161,10 @@ def update_portfolio_signal_by_uid(
     response_model=PortfolioSignalWeightsDeleteResponse,
     summary="Delete portfolio signal weights",
     description=(
-        "Delete historical SignalWeightsStorage rows for one signal metadata row. "
-        "When weights_date is provided, only that exact timestamp is deleted. "
-        "Without weights_date, all storage rows for the signal_uid are deleted."
+        "Delete historical SignalWeightsStorage rows for one signal metadata row "
+        "through the TimeIndexMetaTable tail-delete API. When weights_date is "
+        "provided, rows at or after that timestamp are deleted. Without "
+        "weights_date, all storage rows for the signal_uid are deleted."
     ),
     operation_id="deletePortfolioSignalWeights",
     status_code=status.HTTP_200_OK,
@@ -178,7 +179,7 @@ def remove_portfolio_signal_weights(
     uid: str,
     weights_date: Annotated[
         dt.datetime | None,
-        Query(description="Exact signal weights timestamp to delete. Use ISO 8601."),
+        Query(description="Inclusive signal weights cutoff timestamp. Use ISO 8601."),
     ] = None,
 ) -> PortfolioSignalWeightsDeleteResponse:
     try:
@@ -196,7 +197,7 @@ def remove_portfolio_signal_weights(
     summary="Delete portfolio signal",
     description=(
         "Delete one SignalMetadata row and its historical SignalWeightsStorage rows. "
-        "The storage rows are deleted first inside the same backend operation."
+        "Storage cleanup uses the TimeIndexMetaTable tail-delete API scoped by signal_uid."
     ),
     operation_id="deletePortfolioSignal",
     status_code=status.HTTP_200_OK,

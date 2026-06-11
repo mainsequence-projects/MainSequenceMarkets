@@ -224,8 +224,10 @@ def test_get_portfolio_summary_returns_standard_summary(monkeypatch) -> None:
 
 def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
     portfolio = _portfolio_row()
+    portfolio["calendar_uid"] = str(uuid.uuid4())
     portfolio["portfolio_weights_data_node_uid"] = str(uuid.uuid4())
     portfolio["signal_weights_data_node_uid"] = str(uuid.uuid4())
+    portfolio["signal_uid"] = "example-signal"
     portfolio["portfolio_data_node_uid"] = str(uuid.uuid4())
     monkeypatch.setattr(
         "msm_portfolios.services.public_api._get_portfolio_row",
@@ -234,6 +236,14 @@ def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
     monkeypatch.setattr(
         "msm_portfolios.services.public_api._get_portfolio_metadata_row",
         lambda context, unique_identifier: None,
+    )
+    monkeypatch.setattr(
+        "msm_portfolios.services.public_api._get_calendar_row",
+        lambda context, uid: {
+            "uid": uid,
+            "unique_identifier": "EXAMPLE_CALENDAR",
+            "display_name": "Example Calendar",
+        },
     )
 
     from msm_portfolios.services.public_api import get_portfolio_frontend_detail_summary
@@ -259,6 +269,71 @@ def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
         "signal_uid": portfolio["signal_uid"],
         "portfolio_data_node_uid": portfolio["portfolio_data_node_uid"],
     }
+    assert summary["highlight_fields"][0] == {
+        "key": "calendar",
+        "label": "Calendar",
+        "value": "Example Calendar",
+        "kind": "text",
+        "icon": "calendar",
+        "link_url": f"/api/v1/calendar/{portfolio['calendar_uid']}/",
+    }
+    inline_fields_by_key = {field["key"]: field for field in summary["inline_fields"]}
+    assert inline_fields_by_key["calendar_uid"]["link_url"] == (
+        f"/api/v1/calendar/{portfolio['calendar_uid']}/"
+    )
+    assert inline_fields_by_key["published_index_uid"]["link_url"] == (
+        f"/api/v1/index/{portfolio['published_index_uid']}/"
+    )
+    assert inline_fields_by_key["portfolio_weights_data_node_uid"]["link_url"] == (
+        f"/api/v1/portfolio/{portfolio['uid']}/weights/"
+        "?order=desc&limit=1&include_asset_detail=true"
+    )
+    assert inline_fields_by_key["signal_weights_data_node_uid"]["link_url"] == (
+        f"/api/v1/portfolio/{portfolio['uid']}/signals_weights/?order=desc&limit=100"
+    )
+    assert inline_fields_by_key["portfolio_data_node_uid"]["link_url"] == (
+        f"/api/v1/portfolio/{portfolio['uid']}/portfolio_values/?order=desc&limit=100"
+    )
+    assert summary["badges"] == [
+        {
+            "key": "published_index",
+            "label": "Published Index",
+            "tone": "info",
+            "link_url": f"/api/v1/index/{portfolio['published_index_uid']}/",
+        }
+    ]
+    assert summary["extensions"]["calendar"] == {
+        "uid": portfolio["calendar_uid"],
+        "label": "Example Calendar",
+        "display_name": "Example Calendar",
+        "unique_identifier": "EXAMPLE_CALENDAR",
+        "detail_url": f"/api/v1/calendar/{portfolio['calendar_uid']}/",
+        "dates_url": f"/api/v1/calendar/{portfolio['calendar_uid']}/dates/",
+        "sessions_url": f"/api/v1/calendar/{portfolio['calendar_uid']}/sessions/",
+        "events_url": f"/api/v1/calendar/{portfolio['calendar_uid']}/events/",
+    }
+    assert summary["extensions"]["nodes"] == {
+        "portfolio_weights": {
+            "uid": portfolio["portfolio_weights_data_node_uid"],
+            "label": "Portfolio weights",
+            "url": (
+                f"/api/v1/portfolio/{portfolio['uid']}/weights/"
+                "?order=desc&limit=1&include_asset_detail=true"
+            ),
+        },
+        "signal_weights": {
+            "uid": portfolio["signal_weights_data_node_uid"],
+            "signal_uid": "example-signal",
+            "label": "Signal weights",
+            "url": f"/api/v1/portfolio/{portfolio['uid']}/signals_weights/?order=desc&limit=100",
+        },
+        "portfolio_values": {
+            "uid": portfolio["portfolio_data_node_uid"],
+            "label": "Portfolio values",
+            "url": f"/api/v1/portfolio/{portfolio['uid']}/portfolio_values/?order=desc&limit=100",
+        },
+    }
+    assert "links" not in summary
 
 
 def test_get_portfolio_weights_returns_snapshot(monkeypatch) -> None:
@@ -1149,7 +1224,15 @@ def test_public_delete_portfolio_reports_deleted_weights(monkeypatch) -> None:
         lambda context, **kwargs: captured.update({"blocked_check": kwargs}),
     )
     monkeypatch.setattr(
-        "msm_portfolios.services.public_api._compile_delete_portfolio_with_weights_operation",
+        "msm_portfolios.services.public_api._delete_portfolio_weight_rows",
+        lambda context, **kwargs: captured.update({"delete_weights": kwargs}) or 4,
+    )
+    monkeypatch.setattr(
+        "msm_portfolios.services.public_api._delete_portfolio_value_rows",
+        lambda context, **kwargs: captured.update({"delete_values": kwargs}) or 5,
+    )
+    monkeypatch.setattr(
+        "msm_portfolios.services.public_api._compile_delete_portfolio_operation",
         lambda context, **kwargs: captured.update({"compile": kwargs}) or "delete-op",
     )
     monkeypatch.setattr(
@@ -1158,8 +1241,6 @@ def test_public_delete_portfolio_reports_deleted_weights(monkeypatch) -> None:
             "rows": [
                 {
                     "uid": portfolio["uid"],
-                    "deleted_weights_count": 4,
-                    "deleted_values_count": 5,
                 }
             ]
         },
@@ -1176,6 +1257,14 @@ def test_public_delete_portfolio_reports_deleted_weights(monkeypatch) -> None:
         "deleted_values_count": 5,
     }
     assert captured["compile"]["portfolio_uid"] == uuid.UUID(str(portfolio["uid"]))
+    assert captured["delete_weights"] == {
+        "portfolio_identifier": "example-sleeve",
+        "after_date": None,
+    }
+    assert captured["delete_values"] == {
+        "portfolio_identifier": "example-sleeve",
+        "after_date": None,
+    }
 
 
 def test_public_portfolio_values_frame_queries_storage_by_portfolio_identifier(monkeypatch) -> None:
@@ -1321,7 +1410,7 @@ def test_public_signal_weights_frame_requires_signal_data_node(monkeypatch) -> N
         get_portfolio_signal_weights_frame_response(object(), uid=str(portfolio["uid"]))
 
 
-def test_public_delete_portfolio_operation_uses_weights_cleanup_cte(monkeypatch) -> None:
+def test_public_delete_portfolio_operation_deletes_identity_only(monkeypatch) -> None:
     portfolio_uid = uuid.uuid4()
     captured: dict[str, object] = {}
 
@@ -1337,13 +1426,9 @@ def test_public_delete_portfolio_operation_uses_weights_cleanup_cte(monkeypatch)
 
     from msm.data_nodes.accounts.storage import TargetPositionsStorage
     from msm.models import PortfolioTable, VirtualFundTable
-    from msm_portfolios.data_nodes.portfolios.storage import (
-        PortfolioWeightsStorage,
-        PortfoliosStorage,
-    )
-    from msm_portfolios.services.public_api import _compile_delete_portfolio_with_weights_operation
+    from msm_portfolios.services.public_api import _compile_delete_portfolio_operation
 
-    operation = _compile_delete_portfolio_with_weights_operation(
+    operation = _compile_delete_portfolio_operation(
         object(),
         portfolio_uid=portfolio_uid,
     )
@@ -1354,14 +1439,12 @@ def test_public_delete_portfolio_operation_uses_weights_cleanup_cte(monkeypatch)
     assert captured["access"] == "write"
     assert captured["models"] == [
         PortfolioTable,
-        PortfolioWeightsStorage,
-        PortfoliosStorage,
         TargetPositionsStorage,
         VirtualFundTable,
     ]
     assert "portfolio_scope" in statement_text
-    assert "deleted_weights" in statement_text
-    assert "deleted_values" in statement_text
+    assert "deleted_weights" not in statement_text
+    assert "deleted_values" not in statement_text
     assert "delete from" in statement_text
 
 
@@ -1379,13 +1462,7 @@ def test_public_cascade_delete_portfolio_operation_deletes_dependents(monkeypatc
         fake_compile,
     )
 
-    from msm.data_nodes.accounts.storage import TargetPositionsStorage
-    from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
     from msm.models import PortfolioTable, VirtualFundHoldingsSetTable, VirtualFundTable
-    from msm_portfolios.data_nodes.portfolios.storage import (
-        PortfolioWeightsStorage,
-        PortfoliosStorage,
-    )
     from msm_portfolios.services.public_api import _compile_cascade_delete_portfolio_operation
 
     operation = _compile_cascade_delete_portfolio_operation(
@@ -1399,18 +1476,15 @@ def test_public_cascade_delete_portfolio_operation_deletes_dependents(monkeypatc
     assert captured["access"] == "write"
     assert captured["models"] == [
         PortfolioTable,
-        PortfolioWeightsStorage,
-        PortfoliosStorage,
-        TargetPositionsStorage,
-        VirtualFundHoldingsStorage,
         VirtualFundHoldingsSetTable,
         VirtualFundTable,
     ]
-    assert "deleted_target_positions" in statement_text
     assert "deleted_virtual_funds" in statement_text
-    assert "deleted_virtual_fund_holdings" in statement_text
-    assert "deleted_weights" in statement_text
-    assert "deleted_values" in statement_text
+    assert "deleted_virtual_fund_holdings_sets" in statement_text
+    assert "deleted_target_positions" not in statement_text
+    assert "deleted_virtual_fund_holdings as" not in statement_text
+    assert "deleted_weights" not in statement_text
+    assert "deleted_values" not in statement_text
 
 
 def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) -> None:
@@ -1418,23 +1492,28 @@ def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) 
     weights_date = dt.datetime(2026, 6, 7, 10, 30, tzinfo=dt.UTC)
     captured: dict[str, object] = {}
 
+    class FakeTimeIndexMetaTable:
+        def delete_after_date(self, after_date, *, dimension_filters, timeout=None):
+            captured["delete_after_date"] = {
+                "after_date": after_date,
+                "dimension_filters": dimension_filters,
+                "timeout": timeout,
+            }
+            return {"deleted_count": 2}
+
     monkeypatch.setattr(
         "msm_portfolios.services.public_api._get_portfolio_row",
         lambda context, uid: portfolio,
     )
     monkeypatch.setattr(
-        "msm_portfolios.services.public_api._compile_delete_portfolio_weights_operation",
-        lambda context, **kwargs: captured.update({"compile": kwargs}) or "delete-weights-op",
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.execute_markets_operation",
-        lambda operation, context: {"rows": [{"deleted": 1}, {"deleted": 1}]},
+        "msm_portfolios.data_nodes.portfolios.storage.PortfolioWeightsStorage.get_time_index_meta_table",
+        classmethod(lambda cls: FakeTimeIndexMetaTable()),
     )
 
     from msm_portfolios.services.public_api import delete_portfolio_weights
 
     response = delete_portfolio_weights(
-        object(),
+        SimpleNamespace(timeout=30),
         uid=str(portfolio["uid"]),
         weights_date=weights_date,
     )
@@ -1446,7 +1525,8 @@ def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) 
         "weights_date": weights_date,
         "deleted_count": 2,
     }
-    assert captured["compile"] == {
-        "portfolio_identifier": "example-sleeve",
-        "weights_date": weights_date,
+    assert captured["delete_after_date"] == {
+        "after_date": weights_date,
+        "dimension_filters": {"portfolio_identifier": ["example-sleeve"]},
+        "timeout": 30,
     }

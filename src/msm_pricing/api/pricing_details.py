@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from typing import Any, ClassVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
@@ -10,6 +10,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from msm.api.base import _warn_deprecated_create_schemas, operation_result_rows
 from msm.models import AssetTable
 from msm.repositories.crud import (
+    bulk_upsert_model,
     create_model,
     get_model_by_uid,
     update_model,
@@ -114,6 +115,34 @@ class AssetCurrentPricingDetails(BaseModel):
         return cls._from_operation_result(result)
 
     @classmethod
+    def upsert_many(
+        cls,
+        payloads: Sequence[AssetCurrentPricingDetailsUpsert | Mapping[str, Any]],
+        *,
+        batch_size: int = 1000,
+    ) -> list[AssetCurrentPricingDetails]:
+        """Insert or replace current pricing details in bulk."""
+
+        values = [
+            _validate_payload(AssetCurrentPricingDetailsUpsert, payload, {}).model_dump()
+            for payload in payloads
+        ]
+        if not values:
+            return []
+
+        context = cls._active_context()
+        rows: list[AssetCurrentPricingDetails] = []
+        for chunk in _chunks(values, batch_size=batch_size):
+            result = bulk_upsert_model(
+                context,
+                model=cls.__table__,
+                values=chunk,
+                conflict_columns=cls.__upsert_keys__,
+            )
+            rows.extend(cls._from_operation_result_many(result))
+        return rows
+
+    @classmethod
     def update(
         cls,
         asset_uid: uuid.UUID | str,
@@ -162,6 +191,13 @@ class AssetCurrentPricingDetails(BaseModel):
                 "MetaTable operation result did not include an AssetCurrentPricingDetails row."
             )
         return None
+
+    @classmethod
+    def _from_operation_result_many(
+        cls,
+        result: Mapping[str, Any] | list[Any] | None,
+    ) -> list[AssetCurrentPricingDetails]:
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
 
 
 class AssetCurrentPricingDetailsCreate(BaseModel):
@@ -284,6 +320,69 @@ class AssetPricingDetails(BaseModel):
         )
 
     @classmethod
+    def add_many(
+        cls,
+        payloads: Sequence[AssetPricingDetailsAdd | Mapping[str, Any]],
+        *,
+        batch_size: int = 1000,
+    ) -> AssetPricingDetailsBatchAddResult:
+        """Add or upsert pricing-details snapshots in bulk.
+
+        Rows with ``pricing_details_date=None`` share one timestamp and update
+        the current pricing-details table through a second bulk upsert.
+        Explicitly dated rows are treated as historical snapshots and do not
+        update current pricing details.
+        """
+
+        values = [
+            _validate_payload(AssetPricingDetailsAdd, payload, {}).model_dump()
+            for payload in payloads
+        ]
+        if not values:
+            return AssetPricingDetailsBatchAddResult(
+                pricing_details=[],
+                current_pricing_details=[],
+                updated_current=False,
+                updated_current_count=0,
+            )
+
+        default_pricing_details_date = dt.datetime.now(dt.UTC)
+        update_current_by_index: list[bool] = []
+        for value in values:
+            update_current = value["pricing_details_date"] is None
+            update_current_by_index.append(update_current)
+            if update_current:
+                value["pricing_details_date"] = default_pricing_details_date
+
+        context = cls._active_context()
+        storage_values = [_pricing_details_storage_values(value) for value in values]
+        pricing_details: list[AssetPricingDetails] = []
+        for chunk in _chunks(storage_values, batch_size=batch_size):
+            result = bulk_upsert_model(
+                context,
+                model=cls.__table__,
+                values=chunk,
+                conflict_columns=cls.__upsert_keys__,
+            )
+            pricing_details.extend(cls._from_operation_result_many(result))
+
+        current_values = [
+            _current_pricing_details_values(value)
+            for value, update_current in zip(values, update_current_by_index, strict=True)
+            if update_current
+        ]
+        current_pricing_details = AssetCurrentPricingDetails.upsert_many(
+            current_values,
+            batch_size=batch_size,
+        )
+        return AssetPricingDetailsBatchAddResult(
+            pricing_details=pricing_details,
+            current_pricing_details=current_pricing_details,
+            updated_current=bool(current_pricing_details),
+            updated_current_count=len(current_pricing_details),
+        )
+
+    @classmethod
     def _active_context(cls):
         runtime = resolve_pricing_runtime(
             models=cls.__required_tables__,
@@ -302,8 +401,17 @@ class AssetPricingDetails(BaseModel):
         if rows:
             return cls.model_validate(rows[0])
         if required:
-            raise LookupError("MetaTable operation result did not include an AssetPricingDetails row.")
+            raise LookupError(
+                "MetaTable operation result did not include an AssetPricingDetails row."
+            )
         return None
+
+    @classmethod
+    def _from_operation_result_many(
+        cls,
+        result: Mapping[str, Any] | list[Any] | None,
+    ) -> list[AssetPricingDetails]:
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
 
 
 class AssetPricingDetailsAdd(BaseModel):
@@ -343,6 +451,17 @@ class AssetPricingDetailsAddResult(BaseModel):
     updated_current: bool
 
 
+class AssetPricingDetailsBatchAddResult(BaseModel):
+    """Result of bulk pricing-details upsert."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    pricing_details: list[AssetPricingDetails]
+    current_pricing_details: list[AssetCurrentPricingDetails]
+    updated_current: bool
+    updated_current_count: int
+
+
 def _pricing_details_storage_values(values: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "time_index": values["pricing_details_date"],
@@ -356,6 +475,30 @@ def _pricing_details_storage_values(values: Mapping[str, Any]) -> dict[str, Any]
     }
 
 
+def _current_pricing_details_values(values: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "asset_uid": values["asset_uid"],
+        "instrument_type": values["instrument_type"],
+        "instrument_dump": values["instrument_dump"],
+        "pricing_details_date": values["pricing_details_date"],
+        "serialization_format": values["serialization_format"],
+        "pricing_package_version": values["pricing_package_version"],
+        "source": values["source"],
+        "metadata_json": values["metadata_json"],
+    }
+
+
+def _chunks(
+    values: Sequence[Mapping[str, Any]],
+    *,
+    batch_size: int,
+) -> Iterator[Sequence[Mapping[str, Any]]]:
+    if batch_size < 1:
+        raise ValueError("batch_size must be greater than zero.")
+    for index in range(0, len(values), batch_size):
+        yield values[index : index + batch_size]
+
+
 __all__ = [
     "AssetCurrentPricingDetails",
     "AssetCurrentPricingDetailsCreate",
@@ -363,6 +506,7 @@ __all__ = [
     "AssetCurrentPricingDetailsUpsert",
     "AssetPricingDetails",
     "AssetPricingDetailsAdd",
+    "AssetPricingDetailsBatchAddResult",
     "AssetPricingDetailsAddResult",
     "DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT",
 ]

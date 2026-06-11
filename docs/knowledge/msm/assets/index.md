@@ -315,9 +315,11 @@ Serialized priceable instrument terms belong to `msm_pricing`, not
 `msm_pricing.data_nodes.pricing_details`, and no-date writes also update
 `msm_pricing.models.AssetCurrentPricingDetailsTable` for fast runtime loading.
 Users attach or load them through `Instrument.attach_to_asset(asset)` and
-`Instrument.load_from_asset(asset)`. Passing an explicit `pricing_details_date`
-upserts that timestamped snapshot only. Price histories and display snapshots
-remain market-data workflows.
+`Instrument.load_from_asset(asset)`. For large universes, use
+`msm_pricing.api.add_many_pricing_details(...)` instead of looping
+single-asset writes. Passing an explicit `pricing_details_date` upserts that
+timestamped snapshot only. Price histories and display snapshots remain
+market-data workflows.
 
 ## Creating, Querying, And Deleting Assets
 

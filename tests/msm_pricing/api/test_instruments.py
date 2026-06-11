@@ -9,6 +9,8 @@ import pytest
 
 from msm.api.assets import Asset
 from msm_pricing.api.instruments import (
+    AssetInstrumentPricingDetailsAdd,
+    add_many_pricing_details,
     add_pricing_details,
     load_instrument_from_asset,
 )
@@ -35,10 +37,14 @@ class ApiOtherInstrument(InstrumentModel):
     notional: float
 
 
-def _asset(*, asset_type: str = "example_asset") -> Asset:
+def _asset(
+    *,
+    asset_type: str = "example_asset",
+    unique_identifier: str = "example",
+) -> Asset:
     return Asset(
         uid=uuid.uuid4(),
-        unique_identifier="example",
+        unique_identifier=unique_identifier,
         asset_type=asset_type,
     )
 
@@ -95,6 +101,110 @@ def test_add_pricing_details_serializes_identity_free_terms(monkeypatch) -> None
     ]
 
 
+def test_add_pricing_details_without_date_delegates_current_update(monkeypatch) -> None:
+    asset = _asset()
+    instrument = ApiExampleInstrument(notional=100)
+    calls = []
+
+    def fake_add(**kwargs):
+        calls.append(kwargs)
+        pricing_details_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+        pricing_details = AssetPricingDetails(
+            time_index=pricing_details_date,
+            asset_identifier=kwargs["asset_identifier"],
+            instrument_type=kwargs["instrument_type"],
+            instrument_dump=kwargs["instrument_dump"],
+            serialization_format=kwargs["serialization_format"],
+            pricing_package_version=kwargs["pricing_package_version"],
+            source=kwargs["source"],
+            metadata_json=kwargs["metadata_json"],
+        )
+        return AssetPricingDetailsAddResult(
+            pricing_details=pricing_details,
+            current_pricing_details=AssetCurrentPricingDetails(
+                asset_uid=kwargs["asset_uid"],
+                instrument_type=kwargs["instrument_type"],
+                instrument_dump=kwargs["instrument_dump"],
+                pricing_details_date=pricing_details_date,
+            ),
+            updated_current=True,
+        )
+
+    monkeypatch.setattr(AssetPricingDetails, "add", staticmethod(fake_add))
+
+    result = add_pricing_details(asset=asset, instrument=instrument)
+
+    assert result.updated_current is True
+    assert calls[0]["pricing_details_date"] is None
+
+
+def test_add_many_pricing_details_serializes_instruments_in_one_batch(monkeypatch) -> None:
+    first_asset = _asset(unique_identifier="asset-1")
+    second_asset = _asset(unique_identifier="asset-2")
+    first_instrument = ApiExampleInstrument(notional=100)
+    second_instrument = ApiExampleInstrument(notional=200)
+    pricing_details_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    calls = []
+
+    def fake_add_many(payloads, *, batch_size):
+        calls.append((payloads, batch_size))
+        pricing_details = [
+            AssetPricingDetails(
+                time_index=payload.pricing_details_date or pricing_details_date,
+                asset_identifier=payload.asset_identifier,
+                instrument_type=payload.instrument_type,
+                instrument_dump=payload.instrument_dump,
+                serialization_format=payload.serialization_format,
+                pricing_package_version=payload.pricing_package_version,
+                source=payload.source,
+                metadata_json=payload.metadata_json,
+            )
+            for payload in payloads
+        ]
+        return SimpleNamespace(
+            pricing_details=pricing_details,
+            current_pricing_details=[],
+            updated_current=False,
+            updated_current_count=0,
+        )
+
+    monkeypatch.setattr(AssetPricingDetails, "add_many", staticmethod(fake_add_many))
+
+    result = add_many_pricing_details(
+        [
+            AssetInstrumentPricingDetailsAdd(
+                asset=first_asset,
+                instrument=first_instrument,
+                source="item-source",
+            ),
+            {
+                "asset": second_asset,
+                "instrument": second_instrument,
+                "pricing_details_date": pricing_details_date,
+            },
+        ],
+        source="batch-source",
+        metadata_json={"batch": True},
+        batch_size=500,
+    )
+
+    payloads, batch_size = calls[0]
+    assert batch_size == 500
+    assert [payload.asset_uid for payload in payloads] == [first_asset.uid, second_asset.uid]
+    assert [payload.asset_identifier for payload in payloads] == ["asset-1", "asset-2"]
+    assert [payload.instrument_dump for payload in payloads] == [
+        {"notional": 100.0},
+        {"notional": 200.0},
+    ]
+    assert payloads[0].pricing_details_date is None
+    assert payloads[0].source == "item-source"
+    assert payloads[1].pricing_details_date == pricing_details_date
+    assert payloads[1].source == "batch-source"
+    assert first_instrument._asset_uid == first_asset.uid
+    assert second_instrument._asset_uid == second_asset.uid
+    assert len(result.pricing_details) == 2
+
+
 def test_instrument_attach_to_asset_is_primary_user_write_path(monkeypatch) -> None:
     asset = _asset()
     instrument = ApiExampleInstrument(notional=100)
@@ -102,7 +212,9 @@ def test_instrument_attach_to_asset_is_primary_user_write_path(monkeypatch) -> N
 
     def fake_add_pricing_details(**kwargs):
         calls.append(kwargs)
-        return SimpleNamespace(current_pricing_details=SimpleNamespace(asset_uid=kwargs["asset"].uid))
+        return SimpleNamespace(
+            current_pricing_details=SimpleNamespace(asset_uid=kwargs["asset"].uid)
+        )
 
     monkeypatch.setattr(
         "msm_pricing.api.instruments.add_pricing_details",

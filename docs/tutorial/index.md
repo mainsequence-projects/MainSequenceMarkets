@@ -219,6 +219,23 @@ reads. With an explicit date, it upserts only that timestamped snapshot. See
 `examples/msm_pricing/instrument_identity_boundary.py` for a minimal payload
 boundary example.
 
+For large universes, use `msm_pricing.api.add_many_pricing_details(...)` instead
+of calling `attach_to_asset(...)` or `add_pricing_details(...)` in a loop. It
+serializes many asset/instrument pairs and persists pricing rows through
+chunked bulk upserts:
+
+```python
+from msm_pricing.api import add_many_pricing_details
+
+add_many_pricing_details(
+    [
+        {"asset": asset, "instrument": instrument}
+        for asset, instrument in asset_instrument_pairs
+    ],
+    batch_size=1000,
+)
+```
+
 When the pricing persistence tables are needed, attach them through
 `msm_pricing.bootstrap.attach_pricing_schemas(...)`. That startup flow includes
 the core asset and index tables first, then pricing extension tables, and uses

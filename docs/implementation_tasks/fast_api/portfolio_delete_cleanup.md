@@ -113,7 +113,9 @@ DELETE /api/v1/portfolio/{uid}/weights/
 Query params:
 
 - `weights_date`: optional ISO timestamp. When omitted, delete all historical
-  weights for the portfolio. When provided, delete only that timestamp snapshot.
+  weights for the portfolio. When provided, delete rows at or after that
+  timestamp through the storage table's `TimeIndexMetaTable.delete_after_date(...)`
+  API.
 
 Response:
 
@@ -146,44 +148,22 @@ Add or update helpers under `src/msm_portfolios/services/public_api.py`:
 The FastAPI service in `apps/v1/services/portfolios.py` should only call these
 helpers and validate the returned response model.
 
-### Atomic SQL Operation
+### Storage Cleanup Operation
 
-Do not use raw SQL strings.
+Do not use raw SQL strings and do not use compiled SQL deletes for DataNode
+storage cleanup. Historical `PortfolioWeightsStorage` and `PortfoliosStorage`
+rows must be deleted through each storage table's
+`TimeIndexMetaTable.delete_after_date(...)`, scoped by
+`portfolio_identifier`.
 
-Use SQLAlchemy Core and the existing compiled operation path. The portfolio
-delete should compile as a top-level `DELETE` operation so the backend sees the
-correct statement type.
+The remaining portfolio identity delete should compile as a top-level
+`DELETE PortfolioTable` operation so the backend sees the correct statement
+type.
 
-Conceptual shape:
-
-```text
-portfolio_scope CTE:
-  select PortfolioTable.uid, PortfolioTable.unique_identifier
-  where PortfolioTable.uid = :uid
-  and not exists (
-    select 1 from VirtualFundTable
-    where VirtualFundTable.target_portfolio_uid = PortfolioTable.uid
-  )
-
-deleted_weights CTE:
-  delete from PortfolioWeightsStorage
-  where PortfolioWeightsStorage.portfolio_identifier in (
-    select unique_identifier from portfolio_scope
-  )
-  returning 1
-
-top-level statement:
-  delete from PortfolioTable
-  where PortfolioTable.uid in (select uid from portfolio_scope)
-  returning PortfolioTable.uid,
-            (select count(*) from deleted_weights) as deleted_weights_count
-```
-
-Attach `deleted_weights` with `.add_cte(...)` so weight deletion executes before
-the portfolio delete in the same statement.
-
-The delete-only-weights endpoint should use a top-level `DELETE` against
-`PortfolioWeightsStorage`, optionally filtered by `weights_date`.
+The delete-only-weights endpoint should use
+`PortfolioWeightsStorage.get_time_index_meta_table().delete_after_date(...)`,
+scoped by `portfolio_identifier`. Never call `delete_after_date(None)` without
+that dimension scope.
 
 ### Virtual Fund Protection
 

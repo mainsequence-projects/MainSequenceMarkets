@@ -1,5 +1,9 @@
 # MainSequence Markets
 
+<p align="center">
+  <img src="img/main-sequence-markets/main_sequence_markets_primary_wordmark_transparent.png" alt="MainSequence Markets" width="640"/>
+</p>
+
 `ms-markets` is the financial markets extension layer for the Main Sequence platform.
 It provides the package foundation for reusable market-domain models, engines, and
 application surfaces.
