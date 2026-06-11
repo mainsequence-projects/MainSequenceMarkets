@@ -121,6 +121,9 @@ and this project follows versioned releases.
 - Fixed `msm_pricing.api.add_pricing_details(...)` so omitting
   `pricing_details_date` delegates the no-date current-update behavior to
   `AssetPricingDetails.add(...)` instead of pre-filling a timestamp too early.
+- Fixed explicit-date pricing detail writes so current pricing details are
+  updated when no current row exists, when the new date is newer than current,
+  or when the same timestamp is being replaced.
 - Fixed portfolio update-window selection so source price coverage is evaluated
   only for assets required by the portfolio, instead of taking the oldest
   progress timestamp across every asset in a large upstream price table.

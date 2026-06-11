@@ -304,7 +304,8 @@ Important rules:
   `pricing_details_date`, the API uses `now()` as the snapshot timestamp and
   updates this current projection. When the caller provides
   `pricing_details_date`, the API upserts that exact timestamped snapshot and
-  does not update the current projection.
+  updates current when no current row exists or when the new date is newer than
+  current.
 - Application code should not update `AssetCurrentPricingDetailsTable` directly
   as the normal UX. Direct row APIs are low-level infrastructure for the
   no-date current-snapshot path.

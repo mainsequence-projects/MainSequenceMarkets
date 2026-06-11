@@ -77,6 +77,19 @@ Current local-dev behavior:
 - if the session cannot resolve a valid DynamicTable data source, startup
   should fail instead of redirecting writes into an ad hoc local store
 
+## API Discoverability
+
+- `GET /openapi.json`
+  - includes Redocly-compatible `info.x-logo` metadata for Main Sequence
+    Markets branding
+  - uses the local emblem served by this FastAPI app at
+    `/static/main-sequence-markets/main_sequence_markets_icon_emblem_transparent.png`
+- `GET /docs`
+  - serves the Swagger UI for interactive inspection
+- `GET /redoc`
+  - serves the ReDoc view; consumers that support `info.x-logo` can render the
+    configured logo
+
 ## Implemented Routes
 
 ### Command Center Adapter Discovery

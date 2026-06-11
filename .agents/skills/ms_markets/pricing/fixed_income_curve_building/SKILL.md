@@ -220,7 +220,10 @@ Rules:
   or `msm_pricing.api.add_pricing_details(...)`. For thousands of assets, use
   `msm_pricing.api.add_many_pricing_details(...)` so instruments are serialized
   once and pricing-detail/current rows are written through chunked bulk upserts.
-  Do not loop single-asset writes for large universes.
+  Do not loop single-asset writes for large universes. Explicit
+  `pricing_details_date` writes must still reconcile the current projection:
+  update current when no current row exists or when the new date is newer than
+  current.
 
 ## Fixings Pattern
 

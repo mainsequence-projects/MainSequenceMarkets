@@ -13,6 +13,7 @@ from msm.repositories.crud import (
     bulk_upsert_model,
     create_model,
     get_model_by_uid,
+    search_model,
     update_model,
     upsert_model,
 )
@@ -300,23 +301,22 @@ class AssetPricingDetails(BaseModel):
             conflict_columns=cls.__upsert_keys__,
         )
         pricing_details = cls._from_operation_result(storage_result)
-        if update_current:
-            current_pricing_details = AssetCurrentPricingDetails.upsert(
-                asset_uid=values["asset_uid"],
-                instrument_type=pricing_details.instrument_type,
-                instrument_dump=pricing_details.instrument_dump,
-                pricing_details_date=pricing_details.time_index,
-                serialization_format=pricing_details.serialization_format,
-                pricing_package_version=pricing_details.pricing_package_version,
-                source=pricing_details.source,
-                metadata_json=pricing_details.metadata_json,
-            )
-        else:
-            current_pricing_details = None
+        current_values = _current_pricing_details_values_for_batch_update(
+            context,
+            values=[values],
+            always_update_current=[update_current],
+            batch_size=1,
+        )
+        current_rows = _bulk_upsert_current_pricing_details(
+            context,
+            current_values,
+            batch_size=1,
+        )
+        current_pricing_details = current_rows[0] if current_rows else None
         return AssetPricingDetailsAddResult(
             pricing_details=pricing_details,
             current_pricing_details=current_pricing_details,
-            updated_current=update_current,
+            updated_current=current_pricing_details is not None,
         )
 
     @classmethod
@@ -328,10 +328,10 @@ class AssetPricingDetails(BaseModel):
     ) -> AssetPricingDetailsBatchAddResult:
         """Add or upsert pricing-details snapshots in bulk.
 
-        Rows with ``pricing_details_date=None`` share one timestamp and update
-        the current pricing-details table through a second bulk upsert.
-        Explicitly dated rows are treated as historical snapshots and do not
-        update current pricing details.
+        Rows with ``pricing_details_date=None`` share one timestamp and always
+        update the current pricing-details table through a second bulk upsert.
+        Explicitly dated rows update current when no current row exists or when
+        their date is newer than current.
         """
 
         values = [
@@ -366,12 +366,14 @@ class AssetPricingDetails(BaseModel):
             )
             pricing_details.extend(cls._from_operation_result_many(result))
 
-        current_values = [
-            _current_pricing_details_values(value)
-            for value, update_current in zip(values, update_current_by_index, strict=True)
-            if update_current
-        ]
-        current_pricing_details = AssetCurrentPricingDetails.upsert_many(
+        current_values = _current_pricing_details_values_for_batch_update(
+            context,
+            values=values,
+            always_update_current=update_current_by_index,
+            batch_size=batch_size,
+        )
+        current_pricing_details = _bulk_upsert_current_pricing_details(
+            context,
             current_values,
             batch_size=batch_size,
         )
@@ -488,11 +490,96 @@ def _current_pricing_details_values(values: Mapping[str, Any]) -> dict[str, Any]
     }
 
 
-def _chunks(
+def _current_pricing_details_values_for_batch_update(
+    context: Any,
+    *,
+    values: Sequence[Mapping[str, Any]],
+    always_update_current: Sequence[bool],
+    batch_size: int,
+) -> list[dict[str, Any]]:
+    explicit_values = [
+        value
+        for value, should_update in zip(values, always_update_current, strict=True)
+        if not should_update
+    ]
+    current_by_asset_uid = _current_pricing_details_by_asset_uid(
+        context,
+        [value["asset_uid"] for value in explicit_values],
+        batch_size=batch_size,
+    )
+
+    selected_by_asset_uid: dict[uuid.UUID, dict[str, Any]] = {}
+    for value, should_always_update in zip(values, always_update_current, strict=True):
+        asset_uid = value["asset_uid"]
+        should_update = should_always_update
+        if not should_update:
+            current = current_by_asset_uid.get(asset_uid)
+            should_update = (
+                current is None or value["pricing_details_date"] > current.pricing_details_date
+            )
+        if not should_update:
+            continue
+
+        current_values = _current_pricing_details_values(value)
+        previous = selected_by_asset_uid.get(asset_uid)
+        if (
+            previous is None
+            or current_values["pricing_details_date"] >= previous["pricing_details_date"]
+        ):
+            selected_by_asset_uid[asset_uid] = current_values
+
+    return list(selected_by_asset_uid.values())
+
+
+def _current_pricing_details_by_asset_uid(
+    context: Any,
+    asset_uids: Sequence[uuid.UUID],
+    *,
+    batch_size: int,
+) -> dict[uuid.UUID, AssetCurrentPricingDetails]:
+    unique_asset_uids = list(dict.fromkeys(asset_uids))
+    current_by_asset_uid: dict[uuid.UUID, AssetCurrentPricingDetails] = {}
+    for chunk in _chunks(unique_asset_uids, batch_size=batch_size):
+        result = search_model(
+            context,
+            model=AssetCurrentPricingDetailsTable,
+            in_filters={"asset_uid": chunk},
+            limit=len(chunk),
+        )
+        for row in operation_result_rows(result):
+            current = AssetCurrentPricingDetails.model_validate(row)
+            current_by_asset_uid[current.asset_uid] = current
+    return current_by_asset_uid
+
+
+def _bulk_upsert_current_pricing_details(
+    context: Any,
     values: Sequence[Mapping[str, Any]],
     *,
     batch_size: int,
-) -> Iterator[Sequence[Mapping[str, Any]]]:
+) -> list[AssetCurrentPricingDetails]:
+    if not values:
+        return []
+
+    current_pricing_details: list[AssetCurrentPricingDetails] = []
+    for chunk in _chunks(values, batch_size=batch_size):
+        result = bulk_upsert_model(
+            context,
+            model=AssetCurrentPricingDetailsTable,
+            values=chunk,
+            conflict_columns=AssetCurrentPricingDetails.__upsert_keys__,
+        )
+        current_pricing_details.extend(
+            AssetCurrentPricingDetails._from_operation_result_many(result)
+        )
+    return current_pricing_details
+
+
+def _chunks(
+    values: Sequence[Any],
+    *,
+    batch_size: int,
+) -> Iterator[Sequence[Any]]:
     if batch_size < 1:
         raise ValueError("batch_size must be greater than zero.")
     for index in range(0, len(values), batch_size):

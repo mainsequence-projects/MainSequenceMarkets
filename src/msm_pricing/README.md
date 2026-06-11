@@ -153,13 +153,14 @@ add_many_pricing_details(
 )
 ```
 
-`attach_to_asset(...)` writes a timestamped pricing-details observation. If no
-`pricing_details_date` is provided, it uses `now()` and updates the internal
+`attach_to_asset(...)` writes a timestamped pricing-details observation. When
+`pricing_details_date` is not provided, it uses `now()` and updates the internal
 current table for fast loading. If a date is provided, it upserts that
-timestamped snapshot only. The generic loader rebuilds the concrete stored
+timestamped snapshot and updates current when no current row exists, when the
+date is newer than current. The generic loader rebuilds the concrete stored
 instrument type from the current projection. Typed loaders such as
-`ZeroCouponBond.load_from_asset(asset)` validate that the attached instrument
-matches the requested class.
+`ZeroCouponBond.load_from_asset(asset)`
+validate that the attached instrument matches the requested class.
 
 For thousands of assets, use `add_many_pricing_details(...)` rather than
 calling `attach_to_asset(...)` in a loop. The batch API serializes instruments

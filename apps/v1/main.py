@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from importlib.metadata import version
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
+from fastapi.staticfiles import StaticFiles
 
 from apps.v1.routers.accounts import router as accounts_router
 from apps.v1.routers.asset_categories import router as asset_categories_router
@@ -23,6 +25,14 @@ from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime, ensure_app
 
 API_TITLE = "MainSequence Markets Public API"
 API_VERSION = version("ms-markets")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+OPENAPI_LOGO_URL = "/static/main-sequence-markets/main_sequence_markets_icon_emblem_transparent.png"
+OPENAPI_LOGO = {
+    "url": OPENAPI_LOGO_URL,
+    "altText": "Main Sequence Markets",
+    "backgroundColor": "#111827",
+    "href": "/docs",
+}
 API_DESCRIPTION = (
     "HTTP API for the local `apps/v1` surface in MainSequence Markets. "
     "This API resolves requests into reusable markets logic from `src/` and "
@@ -109,6 +119,11 @@ def create_app() -> FastAPI:
             "name": "Apache-2.0",
         },
     )
+    app.mount(
+        "/static/main-sequence-markets",
+        StaticFiles(directory=PROJECT_ROOT / "docs" / "img" / "main-sequence-markets"),
+        name="main-sequence-markets-static",
+    )
     app.include_router(command_center_router)
     app.include_router(accounts_router, prefix="/api/v1")
     app.include_router(assets_router, prefix="/api/v1")
@@ -138,6 +153,7 @@ def create_app() -> FastAPI:
         ]
         openapi_schema.setdefault("info", {})
         openapi_schema["info"]["x-app-scope"] = "apps/v1"
+        openapi_schema["info"]["x-logo"] = OPENAPI_LOGO
         app.openapi_schema = openapi_schema
         return app.openapi_schema
 

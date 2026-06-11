@@ -189,11 +189,14 @@ def test_asset_pricing_details_add_without_date_uses_now_and_updates_current(mon
         SimpleNamespace(datetime=SimpleNamespace(now=lambda _tz: now), UTC=dt.UTC),
     )
 
-    def fake_current_upsert(**kwargs):
-        calls.append(("current-upsert", kwargs))
-        return AssetCurrentPricingDetails(**kwargs)
+    def fake_bulk_upsert_model(active_context, *, model, values, conflict_columns):
+        calls.append(("current-bulk-upsert", active_context, model, values, conflict_columns))
+        return {"rows": values}
 
-    monkeypatch.setattr(AssetCurrentPricingDetails, "upsert", staticmethod(fake_current_upsert))
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.bulk_upsert_model",
+        fake_bulk_upsert_model,
+    )
 
     result = AssetPricingDetails.add(
         asset_uid=asset_uid,
@@ -224,21 +227,26 @@ def test_asset_pricing_details_add_without_date_uses_now_and_updates_current(mon
         ("time_index", "asset_identifier"),
     )
     assert calls[-1] == (
-        "current-upsert",
-        {
-            "asset_uid": asset_uid,
-            "instrument_type": "ExampleInstrument",
-            "instrument_dump": {"notional": 100},
-            "pricing_details_date": now,
-            "serialization_format": DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
-            "pricing_package_version": None,
-            "source": "unit-test",
-            "metadata_json": {"provider": "test"},
-        },
+        "current-bulk-upsert",
+        context,
+        AssetCurrentPricingDetailsTable,
+        [
+            {
+                "asset_uid": asset_uid,
+                "instrument_type": "ExampleInstrument",
+                "instrument_dump": {"notional": 100},
+                "pricing_details_date": now,
+                "serialization_format": DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
+                "pricing_package_version": None,
+                "source": "unit-test",
+                "metadata_json": {"provider": "test"},
+            }
+        ],
+        ("asset_uid",),
     )
 
 
-def test_asset_pricing_details_add_with_date_upserts_snapshot_only(monkeypatch) -> None:
+def test_asset_pricing_details_add_with_date_updates_current_when_missing(monkeypatch) -> None:
     asset_uid = uuid.uuid4()
     pricing_details_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
     context = object()
@@ -250,7 +258,7 @@ def test_asset_pricing_details_add_with_date_upserts_snapshot_only(monkeypatch) 
     )
 
     def fake_upsert_model(active_context, *, model, values, conflict_columns):
-        calls.append((active_context, model, values, conflict_columns))
+        calls.append(("history-upsert", active_context, model, values, conflict_columns))
         return {
             "row": {
                 "time_index": values["time_index"],
@@ -265,10 +273,23 @@ def test_asset_pricing_details_add_with_date_upserts_snapshot_only(monkeypatch) 
         }
 
     monkeypatch.setattr("msm_pricing.api.pricing_details.upsert_model", fake_upsert_model)
+
+    def fake_search_model(active_context, *, model, in_filters, limit):
+        calls.append(("current-search", active_context, model, in_filters, limit))
+        return {"rows": []}
+
     monkeypatch.setattr(
-        AssetCurrentPricingDetails,
-        "upsert",
-        staticmethod(lambda **_kwargs: pytest.fail("dated snapshots must not update current")),
+        "msm_pricing.api.pricing_details.search_model",
+        fake_search_model,
+    )
+
+    def fake_bulk_upsert_model(active_context, *, model, values, conflict_columns):
+        calls.append(("current-bulk-upsert", active_context, model, values, conflict_columns))
+        return {"rows": values}
+
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.bulk_upsert_model",
+        fake_bulk_upsert_model,
     )
 
     result = AssetPricingDetails.add(
@@ -279,25 +300,42 @@ def test_asset_pricing_details_add_with_date_upserts_snapshot_only(monkeypatch) 
         pricing_details_date=pricing_details_date,
     )
 
-    assert result.updated_current is False
-    assert result.current_pricing_details is None
-    assert calls == [
-        (
-            context,
-            AssetPricingDetailsStorage,
+    assert result.updated_current is True
+    assert result.current_pricing_details is not None
+    assert calls[0] == (
+        "history-upsert",
+        context,
+        AssetPricingDetailsStorage,
+        {
+            "time_index": pricing_details_date,
+            "asset_identifier": "example-asset",
+            "instrument_type": "ExampleInstrument",
+            "instrument_dump": {"notional": 100},
+            "serialization_format": DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
+            "pricing_package_version": None,
+            "source": None,
+            "metadata_json": None,
+        },
+        ("time_index", "asset_identifier"),
+    )
+    assert calls[-1] == (
+        "current-bulk-upsert",
+        context,
+        AssetCurrentPricingDetailsTable,
+        [
             {
-                "time_index": pricing_details_date,
-                "asset_identifier": "example-asset",
+                "asset_uid": asset_uid,
                 "instrument_type": "ExampleInstrument",
                 "instrument_dump": {"notional": 100},
+                "pricing_details_date": pricing_details_date,
                 "serialization_format": DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
                 "pricing_package_version": None,
                 "source": None,
                 "metadata_json": None,
-            },
-            ("time_index", "asset_identifier"),
-        )
-    ]
+            }
+        ],
+        ("asset_uid",),
+    )
 
 
 def test_asset_pricing_details_add_many_uses_bulk_upserts_and_updates_current(
@@ -329,6 +367,13 @@ def test_asset_pricing_details_add_many_uses_bulk_upserts_and_updates_current(
         "msm_pricing.api.pricing_details.bulk_upsert_model",
         fake_bulk_upsert_model,
     )
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.search_model",
+        lambda active_context, *, model, in_filters, limit: (
+            calls.append(("current-search", active_context, model, in_filters, limit))
+            or {"rows": []}
+        ),
+    )
 
     result = AssetPricingDetails.add_many(
         [
@@ -352,9 +397,12 @@ def test_asset_pricing_details_add_many_uses_bulk_upserts_and_updates_current(
     )
 
     assert result.updated_current is True
-    assert result.updated_current_count == 1
+    assert result.updated_current_count == 2
     assert [row.asset_identifier for row in result.pricing_details] == ["asset-1", "asset-2"]
-    assert [row.asset_uid for row in result.current_pricing_details] == [first_asset_uid]
+    assert [row.asset_uid for row in result.current_pricing_details] == [
+        first_asset_uid,
+        second_asset_uid,
+    ]
     assert calls[1] == (
         "bulk-upsert",
         context,
@@ -397,7 +445,17 @@ def test_asset_pricing_details_add_many_uses_bulk_upserts_and_updates_current(
                 "pricing_package_version": None,
                 "source": "unit-test",
                 "metadata_json": None,
-            }
+            },
+            {
+                "asset_uid": second_asset_uid,
+                "instrument_type": "ExampleInstrument",
+                "instrument_dump": {"notional": 200},
+                "pricing_details_date": historical_date,
+                "serialization_format": DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
+                "pricing_package_version": None,
+                "source": "unit-test",
+                "metadata_json": None,
+            },
         ],
         ("asset_uid",),
     )
@@ -405,6 +463,7 @@ def test_asset_pricing_details_add_many_uses_bulk_upserts_and_updates_current(
 
 def test_asset_pricing_details_add_many_chunks_history_upserts(monkeypatch) -> None:
     pricing_details_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    current_pricing_details_date = dt.datetime(2026, 5, 28, tzinfo=dt.UTC)
     context = object()
     calls = []
 
@@ -420,6 +479,25 @@ def test_asset_pricing_details_add_many_chunks_history_upserts(monkeypatch) -> N
     monkeypatch.setattr(
         "msm_pricing.api.pricing_details.bulk_upsert_model",
         fake_bulk_upsert_model,
+    )
+
+    def fake_search_model(active_context, *, model, in_filters, limit):
+        return {
+            "rows": [
+                {
+                    "asset_uid": asset_uid,
+                    "instrument_type": "ExistingInstrument",
+                    "instrument_dump": {"notional": 0},
+                    "pricing_details_date": current_pricing_details_date,
+                    "serialization_format": DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
+                }
+                for asset_uid in in_filters["asset_uid"]
+            ]
+        }
+
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.search_model",
+        fake_search_model,
     )
 
     result = AssetPricingDetails.add_many(
@@ -439,3 +517,130 @@ def test_asset_pricing_details_add_many_chunks_history_upserts(monkeypatch) -> N
     assert result.updated_current is False
     assert result.current_pricing_details == []
     assert [len(call[2]) for call in calls] == [2, 1]
+
+
+def test_asset_pricing_details_add_many_reconciles_explicit_dates_with_current(
+    monkeypatch,
+) -> None:
+    older_asset_uid = uuid.uuid4()
+    newer_asset_uid = uuid.uuid4()
+    equal_asset_uid = uuid.uuid4()
+    missing_asset_uid = uuid.uuid4()
+    pricing_details_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    context = object()
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.resolve_pricing_runtime",
+        lambda **_kwargs: SimpleNamespace(context=context),
+    )
+
+    def fake_search_model(active_context, *, model, in_filters, limit):
+        calls.append(("current-search", active_context, model, in_filters, limit))
+        return {
+            "rows": [
+                {
+                    "asset_uid": older_asset_uid,
+                    "instrument_type": "ExistingInstrument",
+                    "instrument_dump": {"notional": 10},
+                    "pricing_details_date": dt.datetime(2026, 5, 28, tzinfo=dt.UTC),
+                    "serialization_format": DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
+                },
+                {
+                    "asset_uid": newer_asset_uid,
+                    "instrument_type": "ExistingInstrument",
+                    "instrument_dump": {"notional": 20},
+                    "pricing_details_date": dt.datetime(2026, 5, 26, tzinfo=dt.UTC),
+                    "serialization_format": DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
+                },
+                {
+                    "asset_uid": equal_asset_uid,
+                    "instrument_type": "ExistingInstrument",
+                    "instrument_dump": {"notional": 30},
+                    "pricing_details_date": pricing_details_date,
+                    "serialization_format": DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
+                },
+            ]
+        }
+
+    def fake_bulk_upsert_model(active_context, *, model, values, conflict_columns):
+        calls.append(("bulk-upsert", active_context, model, values, conflict_columns))
+        return {"rows": values}
+
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.search_model",
+        fake_search_model,
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.bulk_upsert_model",
+        fake_bulk_upsert_model,
+    )
+
+    result = AssetPricingDetails.add_many(
+        [
+            {
+                "asset_uid": older_asset_uid,
+                "asset_identifier": "older-current",
+                "instrument_type": "ExampleInstrument",
+                "instrument_dump": {"notional": 100},
+                "pricing_details_date": pricing_details_date,
+            },
+            {
+                "asset_uid": newer_asset_uid,
+                "asset_identifier": "newer-current",
+                "instrument_type": "ExampleInstrument",
+                "instrument_dump": {"notional": 200},
+                "pricing_details_date": pricing_details_date,
+            },
+            {
+                "asset_uid": equal_asset_uid,
+                "asset_identifier": "equal-current",
+                "instrument_type": "ExampleInstrument",
+                "instrument_dump": {"notional": 300},
+                "pricing_details_date": pricing_details_date,
+            },
+            {
+                "asset_uid": missing_asset_uid,
+                "asset_identifier": "missing-current",
+                "instrument_type": "ExampleInstrument",
+                "instrument_dump": {"notional": 400},
+                "pricing_details_date": pricing_details_date,
+            },
+        ],
+        batch_size=1000,
+    )
+
+    assert result.updated_current is True
+    assert result.updated_current_count == 2
+    assert [row.asset_uid for row in result.current_pricing_details] == [
+        newer_asset_uid,
+        missing_asset_uid,
+    ]
+    assert calls[-1] == (
+        "bulk-upsert",
+        context,
+        AssetCurrentPricingDetailsTable,
+        [
+            {
+                "asset_uid": newer_asset_uid,
+                "instrument_type": "ExampleInstrument",
+                "instrument_dump": {"notional": 200},
+                "pricing_details_date": pricing_details_date,
+                "serialization_format": DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
+                "pricing_package_version": None,
+                "source": None,
+                "metadata_json": None,
+            },
+            {
+                "asset_uid": missing_asset_uid,
+                "instrument_type": "ExampleInstrument",
+                "instrument_dump": {"notional": 400},
+                "pricing_details_date": pricing_details_date,
+                "serialization_format": DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
+                "pricing_package_version": None,
+                "source": None,
+                "metadata_json": None,
+            },
+        ],
+        ("asset_uid",),
+    )

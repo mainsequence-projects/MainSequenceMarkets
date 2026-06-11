@@ -318,7 +318,8 @@ Users attach or load them through `Instrument.attach_to_asset(asset)` and
 `Instrument.load_from_asset(asset)`. For large universes, use
 `msm_pricing.api.add_many_pricing_details(...)` instead of looping
 single-asset writes. Passing an explicit `pricing_details_date` upserts that
-timestamped snapshot only. Price histories and display snapshots remain
+timestamped snapshot and updates current when no current row exists, when the
+date is newer than current. Price histories and display snapshots remain
 market-data workflows.
 
 ## Creating, Querying, And Deleting Assets

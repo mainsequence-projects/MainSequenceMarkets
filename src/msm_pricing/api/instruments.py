@@ -54,7 +54,7 @@ def add_pricing_details(
     source: str | None = None,
     metadata_json: dict[str, Any] | None = None,
 ) -> AssetPricingDetailsAddResult:
-    """Add/upsert pricing details and update current when no date is provided."""
+    """Add/upsert pricing details and reconcile the current pricing projection."""
 
     instrument.validate_asset(asset)
     instrument_payload = _instrument_backend_payload(instrument)

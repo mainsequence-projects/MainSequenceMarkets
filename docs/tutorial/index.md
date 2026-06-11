@@ -215,7 +215,8 @@ This keeps instrument reconstruction independent from Main Sequence persistence
 identity. `instrument.attach_to_asset(asset, ...)` writes a timestamped
 pricing-details observation. Without `pricing_details_date`, it uses `now()`
 and updates the current projection for fast `Instrument.load_from_asset(...)`
-reads. With an explicit date, it upserts only that timestamped snapshot. See
+reads. With an explicit date, it upserts that timestamped snapshot and updates
+current when no current row exists or when the date is newer than current. See
 `examples/msm_pricing/instrument_identity_boundary.py` for a minimal payload
 boundary example.
 
@@ -301,7 +302,8 @@ loaded = Instrument.load_from_asset(asset)
 `attach_to_asset(...)` is the normal user-facing write path. It records the
 timestamped pricing details first. Calls without `pricing_details_date` create a
 current snapshot at `now()` and update the active instrument definition. Calls
-with `pricing_details_date` upsert that historical timestamp only.
+with `pricing_details_date` reconcile that dated snapshot against the active
+instrument definition and update current when the dated snapshot should win.
 
 Use `Instrument.load_from_asset(asset)` when the asset is known but the concrete
 pricing instrument is not. Use a typed loader such as

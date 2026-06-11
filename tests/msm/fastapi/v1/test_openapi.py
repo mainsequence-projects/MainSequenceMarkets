@@ -40,7 +40,24 @@ def test_openapi_json_exposes_core_api_metadata() -> None:
     assert payload["info"]["title"] == "MainSequence Markets Public API"
     assert payload["info"]["version"]
     assert payload["info"]["x-app-scope"] == "apps/v1"
+    assert payload["info"]["x-logo"] == {
+        "url": "/static/main-sequence-markets/main_sequence_markets_icon_emblem_transparent.png",
+        "altText": "Main Sequence Markets",
+        "backgroundColor": "#111827",
+        "href": "/docs",
+    }
     assert payload["servers"] == [{"url": "/", "description": "Current deployment"}]
+
+
+def test_openapi_logo_url_serves_project_emblem() -> None:
+    client = TestClient(app)
+    response = client.get(
+        "/static/main-sequence-markets/main_sequence_markets_icon_emblem_transparent.png"
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content.startswith(b"\x89PNG")
 
 
 def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
