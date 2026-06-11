@@ -539,21 +539,6 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
 
         return None
 
-    def _portfolio_dimension_range_map(
-        self,
-        *,
-        start_date,
-        start_date_operand: str = ">=",
-        identifier_dimension: str = PORTFOLIO_IDENTIFIER,
-    ) -> list[dict]:
-        return [
-            {
-                "coordinate": {identifier_dimension: self._unique_identifier()},
-                "start_date": start_date,
-                "start_date_operand": start_date_operand,
-            }
-        ]
-
     def _calculate_start_end_dates(self):
         update_statics_from_dependencies = self.price_source.update_statistics
         progress_values = self._required_price_source_progress_values(
@@ -732,10 +717,9 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         latest_value = self._latest_portfolio_time_index_value()
         if latest_value is not None:
             last_obs = self.get_df_between_dates(
-                dimension_range_map=self._portfolio_dimension_range_map(
-                    start_date=latest_value,
-                    start_date_operand=">=",
-                )
+                start_date=latest_value,
+                great_or_equal=True,
+                dimension_filters={PORTFOLIO_IDENTIFIER: [self._unique_identifier()]},
             )
             if last_obs is not None and not last_obs.empty:
                 last_obs = last_obs.sort_index()
@@ -756,11 +740,9 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
 
         portfolio_weights_node = self._canonical_portfolio_weights_node()
         last_obs = portfolio_weights_node.get_df_between_dates(
-            dimension_range_map=self._portfolio_dimension_range_map(
-                start_date=latest_value,
-                start_date_operand=">=",
-                identifier_dimension=PORTFOLIO_IDENTIFIER,
-            )
+            start_date=latest_value,
+            great_or_equal=True,
+            dimension_filters={PORTFOLIO_IDENTIFIER: [self._unique_identifier()]},
         )
         if last_obs is None or last_obs.empty:
             return None

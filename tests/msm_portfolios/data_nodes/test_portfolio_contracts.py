@@ -23,7 +23,7 @@ from msm_portfolios.contrib.signals.portfolio_replicator import (
     ETFReplicatorConfig,
     TrackingStrategyConfiguration,
 )
-from msm_portfolios.data_nodes.constants import ASSET_IDENTIFIER
+from msm_portfolios.data_nodes.constants import ASSET_IDENTIFIER, PORTFOLIO_IDENTIFIER
 from msm_portfolios.data_nodes.base import (
     AssetScopedPortfolioCanonicalDataNode,
     PortfolioCanonicalDataNode,
@@ -364,6 +364,89 @@ def test_portfolio_values_noop_when_existing_output_is_ahead_of_price_source() -
     frame = node._calculate_portfolio_workflow_values()
 
     assert frame.empty
+
+
+def test_portfolio_values_reads_existing_values_with_dimension_filter() -> None:
+    latest_value = pd.Timestamp("2026-01-01T00:00:00Z")
+    captured: dict[str, object] = {}
+
+    def fake_get_df_between_dates(**kwargs):
+        captured.update(kwargs)
+        frame = pd.DataFrame(
+            {"close": [10.0]},
+            index=pd.MultiIndex.from_tuples(
+                [(latest_value, "example-portfolio")],
+                names=["time_index", PORTFOLIO_IDENTIFIER],
+            ),
+        )
+        return frame
+
+    node = object.__new__(PortfoliosDataNode)
+    node._latest_portfolio_time_index_value = lambda: latest_value
+    node._unique_identifier = lambda: "example-portfolio"
+    node.get_df_between_dates = fake_get_df_between_dates
+    portfolio_returns = pd.DataFrame(
+        {"return": [0.0, 0.1]},
+        index=[
+            latest_value,
+            pd.Timestamp("2026-01-02T00:00:00Z"),
+        ],
+    )
+
+    result = node._apply_cumulative_portfolio_values(portfolio_returns)
+
+    assert captured == {
+        "start_date": latest_value,
+        "great_or_equal": True,
+        "dimension_filters": {PORTFOLIO_IDENTIFIER: ["example-portfolio"]},
+    }
+    assert "dimension_range_map" not in captured
+    assert list(result.index) == [pd.Timestamp("2026-01-02T00:00:00Z")]
+    assert result["close"].iloc[0] == pytest.approx(11.0)
+
+
+def test_portfolio_values_reads_last_weights_with_dimension_filter() -> None:
+    latest_value = pd.Timestamp("2026-01-01T00:00:00Z")
+    captured: dict[str, object] = {}
+
+    class FakePortfolioWeightsNode:
+        def get_df_between_dates(self, **kwargs):
+            captured.update(kwargs)
+            frame = pd.DataFrame(
+                {"weight": [0.25, 0.75]},
+                index=pd.MultiIndex.from_tuples(
+                    [
+                        (latest_value, "example-portfolio", "btc"),
+                        (latest_value, "example-portfolio", "eth"),
+                    ],
+                    names=["time_index", PORTFOLIO_IDENTIFIER, ASSET_IDENTIFIER],
+                ),
+            )
+            return frame
+
+    node = object.__new__(PortfoliosDataNode)
+    node._latest_portfolio_time_index_value = lambda: latest_value
+    node._unique_identifier = lambda: "example-portfolio"
+    node._canonical_portfolio_weights_node = FakePortfolioWeightsNode
+
+    weights = node._get_last_weights()
+
+    assert captured == {
+        "start_date": latest_value,
+        "great_or_equal": True,
+        "dimension_filters": {PORTFOLIO_IDENTIFIER: ["example-portfolio"]},
+    }
+    assert "dimension_range_map" not in captured
+    assert weights is not None
+    assert weights.index.names == ["time_index", ASSET_IDENTIFIER]
+    assert weights["weights_current"].to_dict() == {
+        (latest_value, "btc"): 0.25,
+        (latest_value, "eth"): 0.75,
+    }
+
+
+def test_portfolio_values_does_not_expose_partial_dimension_range_map_helper() -> None:
+    assert not hasattr(PortfoliosDataNode, "_portfolio_dimension_range_map")
 
 
 def test_portfolio_latest_value_ignores_other_portfolio_global_progress() -> None:
