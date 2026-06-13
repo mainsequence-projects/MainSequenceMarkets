@@ -429,8 +429,8 @@ def canonical_signal_configuration(signal: Any) -> dict[str, Any]:
 def compute_signal_uid(signal: Any) -> str:
     """Compute the deterministic Portfolios `signal_uid` for a signal producer."""
     payload = canonical_signal_configuration(signal)
-    _update_hash, storage_hash = build_operations.hash_signature(payload)
-    return storage_hash
+    _update_hash, remote_identity_hash = build_operations.hash_signature(payload)
+    return remote_identity_hash
 
 
 def normalize_signal_weights_frame(

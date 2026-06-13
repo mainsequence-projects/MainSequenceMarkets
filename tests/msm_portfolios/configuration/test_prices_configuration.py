@@ -27,7 +27,7 @@ class _StorageTable:
 def _api_price_source() -> APIDataNode:
     return APIDataNode(
         data_source_uid="source-data-source",
-        storage_hash="source-prices",
+        physical_table_name="source-prices",
         storage_table=_StorageTable(),
     )
 
@@ -44,9 +44,7 @@ def test_prices_configuration_uses_time_index_meta_table_uid() -> None:
         source_time_index_meta_table_uid=SOURCE_TIME_INDEX_META_TABLE_UID,
     )
 
-    assert str(configuration.source_time_index_meta_table_uid) == (
-        SOURCE_TIME_INDEX_META_TABLE_UID
-    )
+    assert str(configuration.source_time_index_meta_table_uid) == (SOURCE_TIME_INDEX_META_TABLE_UID)
 
 
 def test_prices_configuration_requires_source_time_index_meta_table_uid() -> None:
@@ -80,9 +78,7 @@ def test_interpolated_prices_config_accepts_source_storage_uid() -> None:
         asset_list=["example-asset-btc"],
     )
 
-    assert str(configuration.source_time_index_meta_table_uid) == (
-        SOURCE_TIME_INDEX_META_TABLE_UID
-    )
+    assert str(configuration.source_time_index_meta_table_uid) == (SOURCE_TIME_INDEX_META_TABLE_UID)
     assert configuration.source_price_instance is None
 
 

@@ -105,7 +105,7 @@ def test_interpolated_prices_accepts_registered_top_level_source_cadence() -> No
     )
     source_price = APIDataNode(
         data_source_uid="source-data-source",
-        storage_hash="source-prices",
+        physical_table_name="source-prices",
         storage_table=source_prices_ts,
     )
 

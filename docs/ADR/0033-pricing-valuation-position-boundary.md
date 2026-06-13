@@ -245,6 +245,10 @@ Costs:
       silently dropping lines.
 - [ ] Add an example showing ad hoc fixed-income valuation from instruments and
       units.
+- [ ] Update `examples/msm_pricing/bond_pricing_example/` to show
+      `ValuationPosition` usage for at least one bond valuation, so the example
+      demonstrates both single-instrument pricing and instrument-plus-units
+      basket valuation.
 - [ ] Add adapter examples or docs for account/portfolio sources once those
       workflows need basket valuation.
 - [ ] Update `src/msm_pricing/README.md`,

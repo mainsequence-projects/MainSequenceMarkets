@@ -368,18 +368,14 @@ def resolve_registered_markets_meta_tables(
     """Resolve already-registered markets MetaTables without creating schemas."""
 
     resolved_models = resolve_markets_meta_table_models(models)
-    table_names_by_model = {
-        model: markets_table_storage_name(model) for model in resolved_models
-    }
+    table_names_by_model = {model: markets_table_storage_name(model) for model in resolved_models}
     normal_models = [
         model for model in resolved_models if not is_time_index_meta_table_model(model)
     ]
     time_index_models = [
         model for model in resolved_models if is_time_index_meta_table_model(model)
     ]
-    normal_table_names = list(
-        dict.fromkeys(table_names_by_model[model] for model in normal_models)
-    )
+    normal_table_names = list(dict.fromkeys(table_names_by_model[model] for model in normal_models))
     time_index_table_names = list(
         dict.fromkeys(table_names_by_model[model] for model in time_index_models)
     )
@@ -502,11 +498,7 @@ def _unique_matches_by_physical_table_name(
     requested = set(requested_table_names)
     matches_by_table_name: dict[str, MetaTable] = {}
     for meta_table in matches:
-        table_name = str(
-            getattr(meta_table, "physical_table_name", None)
-            or getattr(meta_table, "storage_hash", "")
-            or ""
-        )
+        table_name = str(getattr(meta_table, "physical_table_name", None) or "")
         if table_name not in requested:
             raise LookupError(
                 f"Registered markets {resource_name} lookup returned unexpected "

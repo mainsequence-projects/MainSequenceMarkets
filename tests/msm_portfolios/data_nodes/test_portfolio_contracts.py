@@ -208,7 +208,9 @@ def test_portfolio_build_configuration_uses_explicit_valuation_source_contract()
 
 
 def test_valuation_source_configuration_uses_sdk_data_node_identity() -> None:
-    valuation_source = explicit_price_source(update_hash="valuations-node", data_source_uid="source")
+    valuation_source = explicit_price_source(
+        update_hash="valuations-node", data_source_uid="source"
+    )
 
     assert canonical_valuation_source_configuration(valuation_source) == {
         "is_time_serie_instance": True,
@@ -218,7 +220,7 @@ def test_valuation_source_configuration_uses_sdk_data_node_identity() -> None:
 
     api_valuation_source = APIDataNode(
         data_source_uid="source",
-        storage_hash="registered_valuations",
+        physical_table_name="registered_valuations",
     )
     assert canonical_valuation_source_configuration(api_valuation_source) == {
         "is_api_time_serie_instance": True,

@@ -143,9 +143,9 @@ def schema_table_name(
 
 Use `app` for the project/package prefix, `concept` for the table concept, and
 `suffix` for a namespace, variant, or bounded specialization when the same
-concept exists in multiple logical scopes. The mixin derives only the logical
-`storage_hash` from storage-relevant configuration and table shape; it must not
-use that hash as the SQLAlchemy table name.
+concept exists in multiple logical scopes. The SQLAlchemy table name is the
+first-class physical table identity; any SDK-computed contract fingerprint is
+only validation metadata and must not be treated as the table name.
 
 When a platform-managed table must support in-place contract migrations from its
 first version, use Alembic. Keep the SDK model as a normal
@@ -171,9 +171,9 @@ The column description must explain what the value means in this table and how
 it is used, not just restate the column name or dtype.
 
 Use `__metatable_extra_hash_components__` when two backend-managed tables could
-otherwise produce the same storage hash because their storage-relevant shape is
-identical or intentionally generic. The value must be stable and deterministic,
-usually a small mapping such as `{"storage_name": "account_holdings"}`.
+otherwise produce the same contract fingerprint because their storage-relevant
+shape is identical or intentionally generic. The value must be stable and
+deterministic, usually a small mapping such as `{"storage_name": "account_holdings"}`.
 
 This attribute is part of storage identity. Changing it defines a different
 table. Do not use it for labels, descriptions, runtime options, test isolation,

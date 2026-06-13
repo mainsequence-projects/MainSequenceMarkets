@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
+import json
 from functools import lru_cache
 from typing import ClassVar
 
@@ -19,8 +21,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mainsequence.meta_tables import schema_index_name
-from mainsequence.meta_tables.sqlalchemy_contracts import _configured_storage_hash_for_model
-from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.base import (
+    MARKETS_TABLE_APP,
+    MarketsBase,
+    MarketsTimeIndexMetaTableMixin,
+    markets_table_name,
+)
 from msm.models.assets.core import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
@@ -115,7 +121,7 @@ class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
-def interpolated_prices_storage_hash_components(
+def interpolated_prices_storage_identity_components(
     *,
     source_time_index_meta_table_uid: str,
     source_cadence: str,
@@ -145,14 +151,18 @@ def interpolated_prices_storage_table_name(
 ) -> str:
     """Return the configured physical table name for interpolated prices."""
 
-    return _configured_storage_hash_for_model(
-        InterpolatedPricesStorage,
-        extra_hash_components=interpolated_prices_storage_hash_components(
+    contract_suffix = _interpolated_prices_storage_identity_suffix(
+        interpolated_prices_storage_identity_components(
             source_time_index_meta_table_uid=source_time_index_meta_table_uid,
             source_cadence=source_cadence,
             upsample_frequency_id=upsample_frequency_id,
             intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
-        ),
+        )
+    )
+    return markets_table_name(
+        MARKETS_TABLE_APP,
+        "interpolated_prices",
+        suffix=contract_suffix,
     )
 
 
@@ -166,7 +176,7 @@ def configured_interpolated_prices_storage(
 ) -> type[MarketsBase]:
     """Build the storage class for one interpolated-price storage identity."""
 
-    components = interpolated_prices_storage_hash_components(
+    components = interpolated_prices_storage_identity_components(
         source_time_index_meta_table_uid=source_time_index_meta_table_uid,
         source_cadence=source_cadence,
         upsample_frequency_id=upsample_frequency_id,
@@ -195,6 +205,11 @@ def configured_interpolated_prices_storage(
             "__index_names__": list(InterpolatedPricesStorage.__index_names__),
         },
     )
+
+
+def _interpolated_prices_storage_identity_suffix(components: dict[str, str]) -> str:
+    encoded = json.dumps(components, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()[:16]
 
 
 def _copy_interpolated_prices_table(table_name: str) -> Table:
@@ -321,6 +336,6 @@ __all__ = [
     "INTERPOLATED_PRICES_UPSAMPLE_FREQUENCY_COMPONENT",
     "InterpolatedPricesStorage",
     "configured_interpolated_prices_storage",
-    "interpolated_prices_storage_hash_components",
+    "interpolated_prices_storage_identity_components",
     "interpolated_prices_storage_table_name",
 ]

@@ -34,7 +34,6 @@ SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS = frozenset(
     {
         "hash_namespace",
         "namespace",
-        "storage_hash",
         "update_hash",
         "storage_id",
         "storage_uid",
@@ -64,7 +63,6 @@ REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS = frozenset(
     {
         "hash_namespace",
         "namespace",
-        "storage_hash",
         "update_hash",
         "storage_id",
         "storage_uid",
@@ -95,7 +93,6 @@ PORTFOLIO_CONFIGURATION_HASH_EXCLUDED_KEYS = frozenset(
     {
         "hash_namespace",
         "namespace",
-        "storage_hash",
         "update_hash",
         "storage_id",
         "storage_uid",

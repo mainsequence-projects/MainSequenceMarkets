@@ -25,8 +25,8 @@ def canonical_portfolio_configuration(
 def compute_portfolio_configuration_hash(portfolio_configuration: Any) -> str:
     """Compute the deterministic identity hash for a Portfolios portfolio config."""
     payload = canonical_portfolio_configuration(portfolio_configuration)
-    _update_hash, storage_hash = build_operations.hash_signature(payload)
-    return storage_hash
+    _update_hash, remote_identity_hash = build_operations.hash_signature(payload)
+    return remote_identity_hash
 
 
 def get_or_create_portfolio(

@@ -34,7 +34,7 @@ market asset.
 | mainsequence.meta_tables.   |---------------------------------->| TimeIndexMetaTable storage   |
 | DataNode                    |                                   | registered from storage cls |
 |-----------------------------|                                   |-----------------------------|
-| storage_hash                |                                   | published table             |
+| physical_table_name         |                                   | published table             |
 | update_hash                 |                                   | schema / columns            |
 | dependencies()              |                                   | update history              |
 | update()                    |                                   +-----------------------------+
@@ -126,11 +126,9 @@ select the updater scope and must affect `update_hash`. `reference_dimension` is
 a `ClassVar` because it is a fixed implementation invariant, not run
 configuration.
 
-Do not use legacy platform metadata markers such as `update_only`,
-`runtime_only`, `ignore_from_storage_hash`, or `_ARGS_IGNORE_IN_STORAGE_HASH` to
-remove DataNode config fields from hashing. There is no third asset-scope case:
-if it is a config field, it is hashed; if it is not hashed, it must not be a
-config field.
+Do not use legacy platform metadata markers to remove DataNode config fields
+from hashing. There is no third asset-scope case: if it is a config field, it is
+hashed; if it is not hashed, it must not be a config field.
 
 ## Canonical Foreign Key
 

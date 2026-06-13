@@ -223,7 +223,8 @@ and this project follows versioned releases.
   names.
 - Fixed configured `InterpolatedPrices` storage identity so schema preparation
   and runtime construction derive the same dynamic table from registered source
-  storage hash, source cadence, upsample frequency, and interpolation rule.
+  TimeIndexMetaTable UID, source cadence, upsample frequency, and interpolation
+  rule.
 - Fixed stale source-cadence handling in the equal-weight portfolio
   schema-preparation workflow.
 - Fixed string asset scopes in `InterpolatedPrices.update()` so portfolio

@@ -296,7 +296,7 @@ Implementation steps:
 
    The registration request should be built from the storage class contract and existing target FK mapping, exactly as in the fresh registration path.
 
-3. Keep catalog row validation as an integrity check. It can compare expected contract/storage hash values, but it should not replace the SDK time-index registration lifecycle.
+3. Keep catalog row validation as an integrity check. It can compare expected contract fingerprints, but it should not replace the SDK time-index registration lifecycle.
 
 4. For ordinary non-time-index meta tables, keep the existing catalog/import logic unless it also bypasses an SDK-required registration invariant.
 
