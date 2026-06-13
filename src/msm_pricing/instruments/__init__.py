@@ -11,8 +11,6 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "FloatingRateBond": (".bond", "FloatingRateBond"),
     "Instrument": (".base_instrument", "InstrumentModel"),
     "InterestRateSwap": (".interest_rate_swap", "InterestRateSwap"),
-    "Position": (".position", "Position"),
-    "PositionLine": (".position", "PositionLine"),
     "ZeroCouponBond": (".bond", "ZeroCouponBond"),
 }
 
@@ -24,8 +22,6 @@ __all__ = [
     "FloatingRateBond",
     "Instrument",
     "InterestRateSwap",
-    "Position",
-    "PositionLine",
     "ZeroCouponBond",
 ]
 

@@ -21,6 +21,7 @@ from .instruments import (
     add_many_pricing_details,
     add_pricing_details,
     load_instrument_from_asset,
+    load_instruments_from_assets,
 )
 from .market_data_bindings import (
     PricingMarketDataSet,
@@ -79,4 +80,5 @@ __all__ = [
     "build_asset_pricing_support",
     "execute_asset_pricing_operation",
     "load_instrument_from_asset",
+    "load_instruments_from_assets",
 ]

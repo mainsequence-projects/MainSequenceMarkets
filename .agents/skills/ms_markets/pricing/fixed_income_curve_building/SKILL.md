@@ -25,6 +25,9 @@ IndexTable.unique_identifier
 
 Use these skills first when the task crosses their boundaries:
 
+- Generic pricing runtime, pricing details, market-data-set, or valuation-basket
+  behavior:
+  `.agents/skills/ms_markets/pricing/general_pricing/SKILL.md`
 - Generic Main Sequence DataNode behavior:
   `.agents/skills/mainsequence/data_publishing/data_nodes/SKILL.md`
 - Generic Main Sequence MetaTable behavior:

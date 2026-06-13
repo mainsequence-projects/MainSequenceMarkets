@@ -13,6 +13,7 @@ pricing extra:
 import msm_pricing as pricing
 from msm_pricing import FixedRateBond, FloatingRateBond, InterestRateSwap
 from msm_pricing.pricing_engine import resolve_quantlib_index, resolve_pricing_curve
+from msm_pricing.valuation import ValuationLine, ValuationPosition
 ```
 
 ## Package Layout
@@ -42,8 +43,13 @@ The current package exports:
 - `FloatingRateBond`
 - `AmortizingFloatingRateBond`
 - `InterestRateSwap`
-- `Position`
-- `PositionLine`
+- `ValuationLine`
+- `ValuationPosition`
+
+`ValuationPosition` is an in-memory valuation basket. It links priceable
+instrument instances to unit multipliers for one explicit valuation context. It
+is not a persisted pricing MetaTable and does not own account or portfolio
+position state.
 
 ## Runtime Responsibilities
 
@@ -135,10 +141,23 @@ bond.price(market_data_set="live")
 
 When the argument is omitted, the process default market-data set is used.
 
+For instrument-plus-units valuation, use `ValuationPosition`:
+
+```python
+from msm_pricing.valuation import ValuationLine, ValuationPosition
+
+position = ValuationPosition(
+    valuation_date=valuation_date,
+    market_data_set="eod",
+    lines=[ValuationLine(instrument=bond, units=25.0, asset_uid=asset.uid)],
+)
+portfolio_value = position.price()
+```
+
 User-facing persistence starts from instruments:
 
 ```python
-from msm_pricing.api import add_many_pricing_details
+from msm_pricing.api import add_many_pricing_details, load_instruments_from_assets
 
 bond.attach_to_asset(asset)
 loaded = pricing.Instrument.load_from_asset(asset)
@@ -152,10 +171,18 @@ add_many_pricing_details(
 )
 ```
 
+Use `load_instruments_from_assets(...)` when an account, portfolio, or custom
+workflow has already resolved the asset rows and needs the current priceable
+instrument for each asset:
+
+```python
+instruments_by_asset_uid = load_instruments_from_assets(assets, batch_size=1000)
+```
+
 `attach_to_asset(...)` writes a timestamped pricing-details observation. When
 `pricing_details_date` is not provided, it uses `now()` and updates the internal
 current table for fast loading. If a date is provided, it upserts that
-timestamped snapshot and updates current when no current row exists, when the
+timestamped snapshot and updates current when no current row exists or when the
 date is newer than current. The generic loader rebuilds the concrete stored
 instrument type from the current projection. Typed loaders such as
 `ZeroCouponBond.load_from_asset(asset)`
@@ -168,6 +195,30 @@ Each compiled MetaTable operation sets an SDK `max_rows` limit large enough for
 the submitted chunk, so backend defaults do not silently truncate
 `RETURNING` rows; `batch_size` controls how many rows are submitted per bulk
 upsert operation.
+
+Account holdings and portfolio weights are not pricing positions. Their owning
+package must select the relevant snapshot, resolve asset rows, and normalize
+exposure into signed `units`. Pricing then receives only valuation lines:
+
+```python
+from msm_pricing.api import load_instruments_from_assets
+from msm_pricing.valuation import ValuationLine, ValuationPosition
+
+instruments_by_asset_uid = load_instruments_from_assets(assets)
+lines = [
+    ValuationLine(
+        instrument=instruments_by_asset_uid[row["asset_uid"]],
+        units=row["units"],
+        asset_uid=row["asset_uid"],
+    )
+    for row in normalized_source_rows
+]
+position = ValuationPosition(
+    valuation_date=valuation_date,
+    market_data_set="eod",
+    lines=lines,
+)
+```
 
 Pricing registry rows are also exposed through `msm_pricing.api`:
 

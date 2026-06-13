@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -147,6 +148,56 @@ def load_instrument_from_asset(
     return instrument
 
 
+def load_instruments_from_assets(
+    assets: Sequence[Asset],
+    *,
+    registry: Mapping[str, type[InstrumentModel]] | None = None,
+    batch_size: int = 1000,
+    allow_missing: bool = False,
+) -> dict[uuid.UUID, InstrumentModel]:
+    """Load current concrete pricing instruments for many assets."""
+
+    assets_by_uid: dict[uuid.UUID, Asset] = {}
+    asset_uids: list[uuid.UUID] = []
+    for asset in assets:
+        asset_uid = uuid.UUID(str(asset.uid))
+        if asset_uid in assets_by_uid:
+            continue
+        assets_by_uid[asset_uid] = asset
+        asset_uids.append(asset_uid)
+    if not asset_uids:
+        return {}
+
+    rows_by_asset_uid = AssetCurrentPricingDetails.get_many_by_asset_uid(
+        asset_uids,
+        batch_size=batch_size,
+    )
+    missing_asset_uids = [
+        asset_uid for asset_uid in asset_uids if asset_uid not in rows_by_asset_uid
+    ]
+    if missing_asset_uids and not allow_missing:
+        missing = ", ".join(str(asset_uid) for asset_uid in missing_asset_uids)
+        raise LookupError(f"No current pricing details are attached to asset UIDs: {missing}.")
+
+    instruments_by_asset_uid: dict[uuid.UUID, InstrumentModel] = {}
+    for asset_uid in asset_uids:
+        row = rows_by_asset_uid.get(asset_uid)
+        if row is None:
+            continue
+        asset = assets_by_uid[asset_uid]
+        instrument = InstrumentModel.rebuild(
+            {
+                "instrument_type": row.instrument_type,
+                "instrument": row.instrument_dump,
+            },
+            registry=registry,
+        )
+        instrument.validate_asset(asset)
+        instrument._asset_uid = asset_uid
+        instruments_by_asset_uid[asset_uid] = instrument
+    return instruments_by_asset_uid
+
+
 def _validate_instrument_pricing_details_item(
     item: AssetInstrumentPricingDetailsAdd | Mapping[str, Any],
 ) -> AssetInstrumentPricingDetailsAdd:
@@ -180,4 +231,5 @@ __all__ = [
     "add_many_pricing_details",
     "add_pricing_details",
     "load_instrument_from_asset",
+    "load_instruments_from_assets",
 ]

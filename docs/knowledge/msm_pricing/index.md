@@ -42,6 +42,9 @@ Pricing does not own:
 - Index identity. Indexes stay in `msm.models.IndexTable`.
 - Platform Constant aliases. Constants are not pricing identity.
 - Curve-as-asset modeling. Curves are pricing rows, not tradable assets.
+- Durable generic position state. Pricing can value transient
+  instrument-and-units baskets, but accounts and portfolios own their own
+  exposure state.
 - Legacy string relationships such as `floating_rate_index_name`.
 
 ## Package Map
@@ -235,6 +238,22 @@ bond.price(market_data_set="live")
 When `market_data_set` is omitted, pricing uses the process-wide default
 configuration, whose default selector is `default`.
 
+Transient basket valuation uses `ValuationPosition`. It applies one valuation
+date and market-data set to every instrument, scales prices and cashflows by
+line units, and does not persist a pricing `PositionTable`:
+
+```python
+from msm_pricing.valuation import ValuationLine, ValuationPosition
+
+position = ValuationPosition(
+    valuation_date=valuation_date,
+    market_data_set="eod",
+    lines=[ValuationLine(instrument=bond, units=25.0, asset_uid=asset.uid)],
+)
+value = position.price()
+breakdown = position.price_breakdown()
+```
+
 Registration order matters because pricing MetaTables reference core tables:
 
 ```text
@@ -335,7 +354,7 @@ Use the instrument API, not manual row assembly:
 ```python
 from msm.api.assets import Asset
 from msm_pricing import Instrument, FloatingRateBond
-from msm_pricing.api import add_many_pricing_details
+from msm_pricing.api import add_many_pricing_details, load_instruments_from_assets
 
 asset = Asset.get_by_unique_identifier("example-floating-bond")
 bond = FloatingRateBond(
@@ -361,6 +380,71 @@ rebuilds the concrete instrument class stored in `instrument_type`, attaches
 private runtime context such as `_asset_uid`, and returns the concrete object.
 Typed loaders such as `FloatingRateBond.load_from_asset(asset)` use the same
 path but reject mismatched stored instrument types.
+
+For many assets, use the batch loader:
+
+```python
+instruments_by_asset_uid = load_instruments_from_assets(assets, batch_size=1000)
+```
+
+It reads `AssetCurrentPricingDetailsTable` with chunked `asset_uid IN (...)`
+searches, rebuilds concrete instrument classes, validates each instrument
+against the corresponding asset, and returns a mapping keyed by `Asset.uid`.
+
+## Account And Portfolio Valuation Inputs
+
+`msm_pricing` does not query account holdings, target positions, or portfolio
+weights directly. Those packages own snapshot selection and exposure
+normalization. Pricing starts after the source rows have been reduced to asset
+rows plus signed units.
+
+Account holdings use `asset_identifier`, `quantity`, and `direction`. The
+account workflow should select the holdings snapshot, resolve each
+`asset_identifier` to an `Asset` row, then normalize units as
+`quantity * direction`:
+
+```python
+from msm_pricing.api import load_instruments_from_assets
+from msm_pricing.valuation import ValuationLine, ValuationPosition
+
+assets = list(assets_by_identifier.values())
+instruments_by_asset_uid = load_instruments_from_assets(assets)
+lines = [
+    ValuationLine(
+        instrument=instruments_by_asset_uid[asset.uid],
+        units=row["quantity"] * row["direction"],
+        asset_uid=asset.uid,
+    )
+    for row in account_holding_rows
+    for asset in [assets_by_identifier[row["asset_identifier"]]]
+]
+position = ValuationPosition(
+    valuation_date=valuation_date,
+    market_data_set="eod",
+    lines=lines,
+)
+```
+
+Portfolio workflows follow the same boundary after they choose the portfolio
+composition source and convert weights, notionals, or quantities into concrete
+asset-level units:
+
+```python
+assets = list(assets_by_uid.values())
+instruments_by_asset_uid = load_instruments_from_assets(assets)
+lines = [
+    ValuationLine(
+        instrument=instruments_by_asset_uid[row["asset_uid"]],
+        units=row["units"],
+        asset_uid=row["asset_uid"],
+    )
+    for row in normalized_portfolio_rows
+]
+```
+
+`ValuationPosition` has one `market_data_set` for the whole basket. Build
+separate baskets when two groups of lines must be valued against different
+market-data sets.
 
 ## Index Conventions
 

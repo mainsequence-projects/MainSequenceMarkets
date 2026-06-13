@@ -41,6 +41,17 @@ def test_bond_pricing_example_uses_storage_uids_for_bindings() -> None:
     assert "fixing_node._default_identifier()" not in source
 
 
+def test_bond_pricing_example_shows_valuation_position_usage() -> None:
+    example_path = Path(__file__).parents[2] / "examples/msm_pricing/bond_pricing_example/main.py"
+    source = example_path.read_text()
+
+    assert "from msm_pricing.valuation import ValuationLine, ValuationPosition" in source
+    assert "ValuationPosition(" in source
+    assert "ValuationLine(" in source
+    assert '"valuation_position_price"' in source
+    assert '"valuation_position_breakdown"' in source
+
+
 def _has_false_keyword(call: ast.Call, keyword_name: str) -> bool:
     return any(
         keyword.arg == keyword_name

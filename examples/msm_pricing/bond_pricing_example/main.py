@@ -71,6 +71,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
         PRICING_MARKET_DATA_SET_DEFAULT,
     )
+    from msm_pricing.valuation import ValuationLine, ValuationPosition
 
     valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
     ql.Settings.instance().evaluationDate = ql.Date(27, 5, 2026)
@@ -334,6 +335,25 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     )
     carry_roll_down = loaded_instrument.carry_roll_down(ql.Period("1M"), clean=True)
     _print_step("Computed one-month carry and roll-down", result=carry_roll_down)
+    valuation_position = ValuationPosition(
+        valuation_date=valuation_date,
+        market_data_set=market_data_set.set_key,
+        lines=[
+            ValuationLine(
+                instrument=loaded_instrument,
+                units=25.0,
+                asset_uid=bond_asset.uid,
+                metadata_json={"example": "bond-pricing-valuation-position"},
+            )
+        ],
+    )
+    valuation_position_price = valuation_position.price()
+    valuation_position_breakdown = valuation_position.price_breakdown()
+    _print_step(
+        "Computed valuation position price",
+        units=valuation_position.lines[0].units,
+        price=valuation_position_price,
+    )
 
     return {
         "bond_asset_type": bond_asset_type,
@@ -357,6 +377,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         "analytics": analytics,
         "cashflows": _preview_cashflows(cashflows),
         "carry_roll_down": carry_roll_down,
+        "valuation_position_price": valuation_position_price,
+        "valuation_position_breakdown": valuation_position_breakdown,
     }
 
 

@@ -168,6 +168,82 @@ def test_pricing_details_get_by_asset_uid_uses_primary_key_lookup(monkeypatch) -
     assert calls == [(context, AssetCurrentPricingDetailsTable, asset_uid)]
 
 
+def test_pricing_details_get_many_by_asset_uid_uses_chunked_runtime_search(monkeypatch) -> None:
+    asset_uids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
+    pricing_details_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    context = MarketsRepositoryContext(
+        data_source_uid=str(uuid.UUID("00000000-0000-0000-0000-000000000001")),
+        limits={"max_rows": 1, "statement_timeout_ms": 5000},
+    )
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.resolve_pricing_runtime",
+        lambda **_kwargs: SimpleNamespace(context=context),
+    )
+
+    def fake_search_model(active_context, *, model, in_filters, limit):
+        calls.append((active_context, model, in_filters, limit))
+        return {
+            "rows": [
+                {
+                    "asset_uid": asset_uid,
+                    "instrument_type": "ExampleInstrument",
+                    "instrument_dump": {"notional": asset_uids.index(asset_uid)},
+                    "pricing_details_date": pricing_details_date,
+                    "serialization_format": DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
+                }
+                for index, asset_uid in enumerate(in_filters["asset_uid"])
+            ]
+        }
+
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.search_model",
+        fake_search_model,
+    )
+
+    rows = AssetCurrentPricingDetails.get_many_by_asset_uid(asset_uids, batch_size=2)
+
+    assert list(rows) == asset_uids
+    assert [row.instrument_dump for row in rows.values()] == [
+        {"notional": 0},
+        {"notional": 1},
+        {"notional": 2},
+    ]
+    assert calls == [
+        (
+            context.__class__(
+                data_source_uid=context.data_source_uid,
+                limits={"max_rows": 2, "statement_timeout_ms": 5000},
+            ),
+            AssetCurrentPricingDetailsTable,
+            {"asset_uid": asset_uids[:2]},
+            2,
+        ),
+        (
+            context.__class__(
+                data_source_uid=context.data_source_uid,
+                limits={"max_rows": 1, "statement_timeout_ms": 5000},
+            ),
+            AssetCurrentPricingDetailsTable,
+            {"asset_uid": asset_uids[2:]},
+            1,
+        ),
+    ]
+
+
+def test_pricing_details_get_many_by_asset_uid_empty_input_skips_runtime(monkeypatch) -> None:
+    def fail_runtime(**_kwargs):
+        raise AssertionError("runtime should not be resolved for empty input")
+
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.resolve_pricing_runtime",
+        fail_runtime,
+    )
+
+    assert AssetCurrentPricingDetails.get_many_by_asset_uid([]) == {}
+
+
 def test_asset_pricing_details_add_without_date_uses_now_and_updates_current(monkeypatch) -> None:
     asset_uid = uuid.uuid4()
     now = dt.datetime(2026, 5, 27, 12, 30, tzinfo=dt.UTC)

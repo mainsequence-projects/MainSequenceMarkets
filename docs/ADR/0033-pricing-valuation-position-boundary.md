@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted - implementation complete
 
 ## Context
 
@@ -105,8 +105,9 @@ class ValuationPosition(BaseModel):
 The required semantics are:
 
 - `valuation_date` is required at the basket level.
-- `market_data_set` is selected at the basket level for the first
-  implementation.
+- `market_data_set` is selected at the basket level. Line-level market-data-set
+  overrides are not supported; mixed source valuation must build separate
+  baskets or normalize source selection before constructing the basket.
 - `units` is a multiplier on the instrument-defined economics.
 - Each instrument is valued only after the basket applies the valuation date.
 - Pricing failures are strict. If a requested output cannot be produced for one
@@ -176,6 +177,33 @@ Future persistence should not start with a generic `PositionTable` in
 - valuation-run audit input/output, owned by `msm_pricing` only if the purpose
   is reproducible pricing audit.
 
+A future pricing-owned valuation-run persistence design should use explicit
+valuation-run language, not position language. The expected shape is:
+
+```text
+ValuationRun
+  uid
+  valuation_date
+  market_data_set
+  requested_outputs
+  created_at
+  metadata_json
+
+ValuationRunLine
+  valuation_run_uid
+  line_index
+  asset_uid nullable
+  units
+  instrument_type
+  instrument_dump
+  pricing_details_date nullable
+  result_json
+  metadata_json
+```
+
+That persistence should require a separate ADR before implementation because it
+would define an audit artifact, not account holdings or portfolio positions.
+
 ## Construction Paths
 
 The valuation basket should support multiple sources without owning them:
@@ -195,10 +223,22 @@ The valuation basket should support multiple sources without owning them:
 Those packages own their own source selection and should pass normalized
 valuation lines into pricing.
 
-The first implementation should not add generic `source_type` or `source_uid`
-fields. Those fields are too arbitrary without a concrete consumer. If an
-account or portfolio adapter needs provenance later, that adapter should own its
-own mapping or a later ADR should introduce a specific provenance contract.
+Pricing should provide only the asset-to-instrument bulk loader, because
+current pricing details are pricing-owned:
+
+```python
+from msm_pricing.api import load_instruments_from_assets
+
+instruments_by_asset_uid = load_instruments_from_assets(assets)
+```
+
+Account and portfolio code should use that mapping after they resolve their own
+source rows into `(asset_uid, units)` pairs.
+
+This implementation does not add generic `source_type` or `source_uid` fields.
+Those fields are too arbitrary without a concrete consumer. If an account or
+portfolio adapter needs provenance later, that adapter should own its own
+mapping or a later ADR should introduce a specific provenance contract.
 
 ## Non-Goals
 
@@ -230,41 +270,46 @@ Costs:
 
 ## Implementation Tasks
 
-- [ ] Remove `Position` and `PositionLine` from the top-level `msm_pricing`
+Completed:
+
+- [x] Remove `Position` and `PositionLine` from the top-level `msm_pricing`
       exports.
-- [ ] Remove or replace `src/msm_pricing/instruments/position.py`.
-- [ ] Add the new in-memory valuation-basket implementation under a clear
+- [x] Remove or replace `src/msm_pricing/instruments/position.py`.
+- [x] Add the new in-memory valuation-basket implementation under a clear
       module such as `msm_pricing.valuation`.
-- [ ] Add tests proving `valuation_date` is applied to every instrument before
+- [x] Add tests proving `valuation_date` is applied to every instrument before
       valuation.
-- [ ] Add tests proving `market_data_set` is passed through to supported
+- [x] Add tests proving `market_data_set` is passed through to supported
       instrument methods.
-- [ ] Add tests proving price, analytics, and cashflow outputs are scaled by
+- [x] Add tests proving price, analytics, and cashflow outputs are scaled by
       `units`.
-- [ ] Add tests proving unsupported requested outputs fail clearly instead of
+- [x] Add tests proving unsupported requested outputs fail clearly instead of
       silently dropping lines.
-- [ ] Add an example showing ad hoc fixed-income valuation from instruments and
+- [x] Add an example showing ad hoc fixed-income valuation from instruments and
       units.
-- [ ] Update `examples/msm_pricing/bond_pricing_example/` to show
+- [x] Update `examples/msm_pricing/bond_pricing_example/` to show
       `ValuationPosition` usage for at least one bond valuation, so the example
       demonstrates both single-instrument pricing and instrument-plus-units
       basket valuation.
-- [ ] Add adapter examples or docs for account/portfolio sources once those
-      workflows need basket valuation.
-- [ ] Update `src/msm_pricing/README.md`,
+- [x] Update `src/msm_pricing/README.md`,
       `docs/knowledge/msm_pricing/index.md`, and the pricing tutorial text to
       remove the old `Position` surface and document the valuation basket.
-- [ ] Update the pricing skill after implementation so agents stop recommending
+- [x] Update the pricing skill after implementation so agents stop recommending
       `msm_pricing.Position`.
+- [x] Add account and portfolio adapter docs showing how each owning package
+      normalizes source rows into `ValuationLine` inputs.
+- [x] Decide line-level `market_data_set` overrides: not supported in this
+      implementation; a `ValuationPosition` is homogeneous by market-data set.
+- [x] Add a pricing-owned bulk loader,
+      `msm_pricing.api.load_instruments_from_assets(...)`, next to
+      pricing-details persistence.
+- [x] Design the future valuation-run persistence boundary: it must be a
+      valuation-run audit artifact introduced by a later ADR, not a pricing
+      `PositionTable`.
 
 ## Open Questions
 
-- Should line-level `market_data_set` overrides be supported later, or should a
-  valuation basket always be homogeneous by market-data set?
-- Should `asset_uid` be required for all lines loaded from persisted pricing
-  details, while remaining optional for ad hoc instruments?
-- Should the first implementation provide helpers that load instruments from
-  assets in bulk, or should that stay in `msm_pricing.api` next to pricing
-  details persistence?
-- If valuation-run persistence is added later, should it store instrument dumps,
-  references to pricing detail rows, or both?
+- Should `asset_uid` remain optional forever, or become required for helpers
+  that specifically build lines from persisted pricing details?
+- If valuation-run persistence is added later, should result snapshots include
+  only requested output JSON or also normalized tabular cashflow/analytics rows?

@@ -174,6 +174,24 @@ class AssetCurrentPricingDetails(BaseModel):
         return cls._from_operation_result(result, required=False)
 
     @classmethod
+    def get_many_by_asset_uid(
+        cls,
+        asset_uids: Sequence[uuid.UUID | str],
+        *,
+        batch_size: int = 1000,
+    ) -> dict[uuid.UUID, AssetCurrentPricingDetails]:
+        """Load current pricing details for many asset UIDs in chunked searches."""
+
+        normalized_asset_uids = [uuid.UUID(str(asset_uid)) for asset_uid in asset_uids]
+        if not normalized_asset_uids:
+            return {}
+        return _current_pricing_details_by_asset_uid(
+            cls._active_context(),
+            normalized_asset_uids,
+            batch_size=_operation_batch_size(batch_size),
+        )
+
+    @classmethod
     def _active_context(cls):
         runtime = resolve_pricing_runtime(
             models=cls.__required_tables__,

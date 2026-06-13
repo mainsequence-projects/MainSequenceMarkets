@@ -13,6 +13,7 @@ from msm_pricing.api.instruments import (
     add_many_pricing_details,
     add_pricing_details,
     load_instrument_from_asset,
+    load_instruments_from_assets,
 )
 from msm_pricing.api.pricing_details import (
     AssetCurrentPricingDetails,
@@ -261,6 +262,87 @@ def test_load_instrument_from_asset_rebuilds_concrete_instrument(monkeypatch) ->
     assert isinstance(instrument, ApiExampleInstrument)
     assert instrument.notional == 100
     assert instrument._asset_uid == asset.uid
+
+
+def test_load_instruments_from_assets_rebuilds_current_instruments_in_bulk(monkeypatch) -> None:
+    first_asset = _asset(unique_identifier="asset-1")
+    second_asset = _asset(unique_identifier="asset-2")
+    pricing_details_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    calls = []
+
+    def fake_get_many_by_asset_uid(asset_uids, *, batch_size):
+        calls.append((asset_uids, batch_size))
+        return {
+            first_asset.uid: AssetCurrentPricingDetails(
+                asset_uid=first_asset.uid,
+                instrument_type="ApiExampleInstrument",
+                instrument_dump={"notional": 100},
+                pricing_details_date=pricing_details_date,
+            ),
+            second_asset.uid: AssetCurrentPricingDetails(
+                asset_uid=second_asset.uid,
+                instrument_type="ApiExampleInstrument",
+                instrument_dump={"notional": 200},
+                pricing_details_date=pricing_details_date,
+            ),
+        }
+
+    monkeypatch.setattr(
+        AssetCurrentPricingDetails,
+        "get_many_by_asset_uid",
+        staticmethod(fake_get_many_by_asset_uid),
+    )
+
+    instruments = load_instruments_from_assets(
+        [first_asset, second_asset, first_asset],
+        batch_size=250,
+    )
+
+    assert calls == [([first_asset.uid, second_asset.uid], 250)]
+    assert list(instruments) == [first_asset.uid, second_asset.uid]
+    assert isinstance(instruments[first_asset.uid], ApiExampleInstrument)
+    assert instruments[first_asset.uid].notional == 100
+    assert instruments[first_asset.uid]._asset_uid == first_asset.uid
+    assert instruments[second_asset.uid].notional == 200
+    assert instruments[second_asset.uid]._asset_uid == second_asset.uid
+
+
+def test_load_instruments_from_assets_raises_for_missing_current_rows(monkeypatch) -> None:
+    asset = _asset()
+
+    monkeypatch.setattr(
+        AssetCurrentPricingDetails,
+        "get_many_by_asset_uid",
+        staticmethod(lambda _asset_uids, *, batch_size: {}),
+    )
+
+    with pytest.raises(LookupError, match=str(asset.uid)):
+        load_instruments_from_assets([asset])
+
+
+def test_load_instruments_from_assets_can_allow_missing_current_rows(monkeypatch) -> None:
+    asset = _asset()
+
+    monkeypatch.setattr(
+        AssetCurrentPricingDetails,
+        "get_many_by_asset_uid",
+        staticmethod(lambda _asset_uids, *, batch_size: {}),
+    )
+
+    assert load_instruments_from_assets([asset], allow_missing=True) == {}
+
+
+def test_load_instruments_from_assets_empty_input_skips_current_lookup(monkeypatch) -> None:
+    def fail_get_many_by_asset_uid(_asset_uids, *, batch_size):
+        raise AssertionError("current pricing details should not be loaded")
+
+    monkeypatch.setattr(
+        AssetCurrentPricingDetails,
+        "get_many_by_asset_uid",
+        staticmethod(fail_get_many_by_asset_uid),
+    )
+
+    assert load_instruments_from_assets([]) == {}
 
 
 def test_generic_instrument_load_from_asset_dispatches_to_concrete_type(monkeypatch) -> None:

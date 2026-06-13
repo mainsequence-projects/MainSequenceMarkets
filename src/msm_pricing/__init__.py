@@ -10,8 +10,6 @@ _INSTRUMENT_EXPORTS = [
     "FloatingRateBond",
     "Instrument",
     "InterestRateSwap",
-    "Position",
-    "PositionLine",
     "ZeroCouponBond",
 ]
 
@@ -25,10 +23,14 @@ __all__ = [
     "PRICING_MARKET_DATA_SET_LIVE",
     "PRICING_MARKET_DATA_SET_RISK_MANAGER",
     "PricingMarketDataConfiguration",
+    "ValuationLine",
+    "ValuationPosition",
 ]
 
 _ATTR_TO_MODULE = {name: ".instruments" for name in _INSTRUMENT_EXPORTS}
 _ATTR_TO_MODULE["PricingMarketDataConfiguration"] = ".config"
+_ATTR_TO_MODULE["ValuationLine"] = ".valuation"
+_ATTR_TO_MODULE["ValuationPosition"] = ".valuation"
 for _name in (
     "PRICING_CONCEPT_DISCOUNT_CURVES",
     "PRICING_CONCEPT_EQUITY_VOL_CURVES",

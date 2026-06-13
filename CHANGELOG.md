@@ -25,6 +25,12 @@ and this project follows versioned releases.
   `pricing-streamlit` optional extra.
 - Added ADR 0033 to document the pricing valuation-position boundary and the
   planned replacement for the legacy in-memory `Position` surface.
+- Replaced the legacy in-memory `msm_pricing.Position` export with
+  `ValuationLine` and `ValuationPosition` for explicit instrument-plus-units
+  valuation.
+- Added `msm_pricing.api.load_instruments_from_assets(...)` for chunked
+  current-instrument loading from asset rows, and documented the account and
+  portfolio normalization boundary for valuation baskets.
 - Added `MSDataInterface.get_latest_discount_curve(...)` for explicit latest
   discount-curve lookup by curve identity without using the global
   `USE_LAST_OBSERVATION_MS_INSTRUMENT` fallback.

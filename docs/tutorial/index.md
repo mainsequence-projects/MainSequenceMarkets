@@ -227,7 +227,7 @@ serializes many asset/instrument pairs and persists pricing rows through
 chunked bulk upserts:
 
 ```python
-from msm_pricing.api import add_many_pricing_details
+from msm_pricing.api import add_many_pricing_details, load_instruments_from_assets
 
 add_many_pricing_details(
     [
@@ -237,6 +237,17 @@ add_many_pricing_details(
     batch_size=1000,
 )
 ```
+
+When an account, portfolio, or custom workflow already has asset rows and
+signed units, use `load_instruments_from_assets(...)` to batch-load the current
+instrument definitions before constructing `ValuationLine` rows:
+
+```python
+instruments_by_asset_uid = load_instruments_from_assets(assets, batch_size=1000)
+```
+
+Account and portfolio packages still own snapshot selection and unit
+normalization. Pricing receives only the normalized valuation lines.
 
 When the pricing persistence tables are needed, attach them through
 `msm_pricing.bootstrap.attach_pricing_schemas(...)`. That startup flow includes
@@ -351,6 +362,11 @@ For a full floating-rate bond workflow, use
 8. Reload it generically with `Instrument.load_from_asset(asset)`, set the
    valuation date, then call `price(market_data_set="default")`,
    `analytics()`, `get_cashflows()`, and `carry_roll_down(...)`.
+9. Use `ValuationPosition` when the valuation input is an instrument plus a
+   unit multiplier. For account or portfolio sources, normalize the owning
+   package's source rows into `ValuationLine` inputs first; the pricing basket
+   does not query those tables. The bond pricing example now values the loaded
+   bond both as a single instrument and as a one-line valuation basket.
 
 The reusable mock market-data components live in `examples/msm_pricing/utils/` so
 the same curve and fixing DataNode extension pattern can be reused by swap
