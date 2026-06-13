@@ -6,7 +6,7 @@ from msm.models import (
     markets_sqlalchemy_models,
 )
 from msm.models.accounts import AccountTargetAllocationTable, PositionSetTable
-from msm.models import PortfolioTable
+from msm.models import PortfolioGroupMembershipTable, PortfolioGroupTable, PortfolioTable
 from msm.data_nodes.accounts.storage import TargetPositionsStorage
 from msm.models.indices import IndexTable, IndexTypeTable
 from msm.models.calendars import CalendarTable
@@ -32,6 +32,8 @@ def test_portfolio_model_graph_includes_core_portfolio_dependencies() -> None:
     assert VirtualFundTable in model_graph
     assert VirtualFundHoldingsSetTable not in model_graph
     assert SignalMetadataTable in model_graph
+    assert PortfolioGroupTable in model_graph
+    assert PortfolioGroupMembershipTable in model_graph
     assert RebalanceStrategyMetadataTable in model_graph
 
 
@@ -44,4 +46,6 @@ def test_core_model_graph_owns_portfolio_identity_and_account_allocation() -> No
     assert VirtualFundTable in core_graph
     assert VirtualFundHoldingsSetTable in core_graph
     assert SignalMetadataTable in core_graph
+    assert PortfolioGroupTable in core_graph
+    assert PortfolioGroupMembershipTable in core_graph
     assert RebalanceStrategyMetadataTable not in core_graph

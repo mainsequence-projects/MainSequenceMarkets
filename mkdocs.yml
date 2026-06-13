@@ -31,6 +31,7 @@ nav:
       - v1: fast_api/v1/index.md
       - Settings: fast_api/v1/settings.md
       - Portfolio: fast_api/v1/portfolio.md
+      - Portfolio Groups: fast_api/v1/portfolio_groups.md
       - Portfolio Signal Metadata: fast_api/v1/portfolio_signal_metadata.md
       - Virtual Funds: fast_api/v1/virtualfund.md
       - Pricing Curves: fast_api/v1/pricing_curves.md
@@ -87,6 +88,8 @@ nav:
       - Account Holdings To Virtual Fund Allocation Policy: ADR/0029-account-holdings-virtual-fund-allocation-policy.md
       - Explicit Portfolio Price Source Dependency: ADR/0030-explicit-portfolio-price-source-dependency.md
       - Generic Portfolio Valuation Source: ADR/0031-generic-portfolio-valuation-source.md
+      - Portfolio Groups As Many-To-Many Classification: ADR/0032-portfolio-group-many-to-many.md
+      - Pricing Valuation Position Boundary: ADR/0033-pricing-valuation-position-boundary.md
       - FastAPI v1 Fixed Income Pricer API: ADR/fast_api/v1/fixed-income-pricer-api.md
   - Changelog: changelog.md
   - Reference:

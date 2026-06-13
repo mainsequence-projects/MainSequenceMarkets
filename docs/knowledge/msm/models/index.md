@@ -52,7 +52,8 @@ Models answer these questions:
 - `msm_portfolios.models.virtual_funds`: funds.
 - `msm.models.indices`: index type registry and canonical index reference rows.
 - `msm.models.issuers`: issuer reference data used by bond assets.
-- `msm.models.portfolios`: core portfolio identity/reference tables.
+- `msm.models.portfolios`: core portfolio identity, signal metadata, portfolio
+  group, and portfolio group membership tables.
 - `msm.models.assets.provider_details`: provider-specific asset metadata.
 - `msm_portfolios.models.rebalancing`: rebalance strategy metadata.
 - `msm_portfolios.models.signals`: signal metadata.
@@ -143,6 +144,11 @@ When adding a built-in library model:
    should manipulate typed row objects.
 5. Add service wrappers if the operation is part of a broader application
    workflow.
+
+Portfolio groups are an example of this split: `PortfolioGroupTable` and
+`PortfolioGroupMembershipTable` live in `msm.models.portfolios` because they
+reference core `PortfolioTable`, while the user-facing helpers live in
+`msm.api.portfolios.PortfolioGroup` and the HTTP route lives under `apps/v1`.
 
 Project-local extension models do not need to modify `markets_sqlalchemy_models()`.
 Pass the SQLAlchemy model class directly to

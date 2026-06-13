@@ -166,9 +166,9 @@ The full workflow example is
 prepares only the contributed interpolated-price output storage needed by the
 reusable equal-weight portfolio example, then chains that portfolio workflow.
 The account example reuses the resulting `Portfolio` row as a target sleeve,
-publishes `AssetSnapshot` rows with canonical ticker and name metadata, creates
-two accounts, assigns both to one account group, and adds target allocations for
-those accounts. Each
+assigns that sleeve to an example `PortfolioGroup`, publishes `AssetSnapshot`
+rows with canonical ticker and name metadata, creates two accounts, assigns both
+to one account group, and adds target allocations for those accounts. Each
 account-owned target relationship points at the same reusable
 `AccountAllocationModel`, and each `PositionSet` publishes one
 direct asset target row with `target_type="asset"` plus one portfolio target row

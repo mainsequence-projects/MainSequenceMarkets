@@ -21,6 +21,10 @@ and this project follows versioned releases.
 - Removed the obsolete pricing schema-creation bootstrap entrypoint; pricing
   startup now uses the attach-only `msm_pricing.bootstrap.attach_pricing_schemas(...)`
   API.
+- Removed the unused `msm_pricing.streamlit` helper package and the
+  `pricing-streamlit` optional extra.
+- Added ADR 0033 to document the pricing valuation-position boundary and the
+  planned replacement for the legacy in-memory `Position` surface.
 - Added `MSDataInterface.get_latest_discount_curve(...)` for explicit latest
   discount-curve lookup by curve identity without using the global
   `USE_LAST_OBSERVATION_MS_INSTRUMENT` fallback.
@@ -92,6 +96,12 @@ and this project follows versioned releases.
   `valuation_source_instance` plus arbitrary `valuation_column: str`, replacing
   the OHLC-bound `price_source_instance` and `PriceTypeNames` price-column
   contract while keeping bar-specific helpers in contributed price workflows.
+- Added core portfolio group MetaTables, typed row helpers, FastAPI v1 routes,
+  docs, examples, and tests for many-to-many portfolio classification through
+  `PortfolioGroupTable` and `PortfolioGroupMembershipTable`.
+- Extended the full account portfolio example to assign the generated target
+  sleeve portfolio to an example `PortfolioGroup` through the public portfolio
+  group API.
 
 ### Fixed
 

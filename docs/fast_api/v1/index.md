@@ -40,6 +40,8 @@ This API is intentionally thin:
   breaking existing `/api/v1` clients.
 - [Portfolio Routes](portfolio.md): route group for portfolio identity,
   detail-page composition, latest weights, and delete operations.
+- [Portfolio Group Routes](portfolio_groups.md): route group for many-to-many
+  portfolio classification and membership lookups.
 - [Portfolio Signal Metadata Routes](portfolio_signal_metadata.md): route
   group for signal metadata list/detail/write operations and signal-weight
   storage cleanup.
@@ -357,6 +359,33 @@ Current local-dev behavior:
 - `POST /api/v1/portfolio/bulk-delete/`
   - deletes multiple portfolio identity rows by explicit `uids`
   - reports protected or missing rows in `failed`
+
+### Portfolio Groups
+
+- `GET /api/v1/portfolio-group/`
+  - supports `response_format=frontend_list`
+  - supports `search`, `unique_identifier`, `display_name`, `limit`, and
+    `offset`
+  - returns `PaginatedResponse[PortfolioGroup]`
+- `POST /api/v1/portfolio-group/`
+  - creates or upserts one portfolio group by `unique_identifier`
+- `PATCH /api/v1/portfolio-group/{uid}/`
+  - updates mutable portfolio group display fields
+- `DELETE /api/v1/portfolio-group/{uid}/`
+  - deletes one group row; membership rows cascade and portfolios remain
+- `POST /api/v1/portfolio-group/bulk-delete/`
+  - deletes multiple group rows by UID and/or unique identifier
+- `POST /api/v1/portfolio-group/{uid}/portfolios/`
+  - idempotently adds one portfolio membership by portfolio UID or unique
+    identifier
+- `GET /api/v1/portfolio-group/{uid}/portfolios/`
+  - returns all portfolios assigned to one group
+- `GET /api/v1/portfolio-group/by-portfolio/{portfolio_uid}/`
+  - returns all groups containing one portfolio
+- `DELETE /api/v1/portfolio-group/{uid}/portfolios/{portfolio_uid}/`
+  - deletes only the membership row
+- `POST /api/v1/portfolio-group/membership/bulk-delete/`
+  - bulk deletes membership rows by membership UID, group UID, or portfolio UID
 
 ### Portfolio Signals
 

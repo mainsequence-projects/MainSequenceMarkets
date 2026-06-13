@@ -59,6 +59,13 @@ EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO = {
     "unique_identifier": "example-account-target-sleeve",
 }
 
+EXAMPLE_ACCOUNT_PORTFOLIO_GROUP = {
+    "unique_identifier": "example-account-target-sleeves",
+    "display_name": "Example Account Target Sleeves",
+    "description": "Example group for portfolio sleeves used by account target allocations.",
+    "metadata_json": {"source": EXAMPLE_ACCOUNT_WORKFLOW_SOURCE},
+}
+
 
 def example_account_holdings_positions(
     *,
@@ -114,6 +121,7 @@ __all__ = [
     "EXAMPLE_ACCOUNT_ALLOCATION_MODEL",
     "EXAMPLE_ACCOUNT_TARGET_ALLOCATION",
     "EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO",
+    "EXAMPLE_ACCOUNT_PORTFOLIO_GROUP",
     "example_account_holdings_positions",
     "example_account_target_positions",
 ]

@@ -31,5 +31,7 @@ Current architecture decisions:
 - [0029. Account Holdings To Virtual Fund Allocation Policy](0029-account-holdings-virtual-fund-allocation-policy.md)
 - [0030. Explicit Portfolio Price Source Dependency](0030-explicit-portfolio-price-source-dependency.md)
 - [0031. Generic Portfolio Valuation Source](0031-generic-portfolio-valuation-source.md)
+- [0032. Portfolio Groups As Many-To-Many Classification](0032-portfolio-group-many-to-many.md)
+- [0033. Pricing Valuation Position Boundary](0033-pricing-valuation-position-boundary.md)
 - [FastAPI v1 Fixed Income Pricer API](fast_api/v1/fixed-income-pricer-api.md)
 - [FastAPI v1 Command Center Adapter Discovery](fast_api/v1/command-center-adapter-discovery.md)

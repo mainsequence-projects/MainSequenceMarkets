@@ -6,20 +6,22 @@ description: Use this skill when creating, extending, reviewing, or documenting 
 # Main Sequence Markets Portfolio Workflow
 
 Use this skill for `msm_portfolios` concepts: portfolio calculation DataNodes,
-portfolio metadata, rebalance/signal workflows, and contributed portfolio price
-sources. Core `msm` owns `PortfolioTable` identity, account target-position
-exposure rows, and virtual-fund allocation state.
+portfolio metadata, rebalance/signal workflows, contributed portfolio price
+sources, and portfolio classification workflows. Core `msm` owns
+`PortfolioTable` identity, `PortfolioGroupTable` classification rows, account
+target-position exposure rows, and virtual-fund allocation state.
 
 ## Read First
 
 Before changing portfolio workflow code, inspect:
 
 1. `src/msm/models/portfolios/core.py`
-2. `src/msm_portfolios/models/portfolios/metadata.py`
-3. `src/msm_portfolios/data_nodes/portfolios/storage.py`
-4. `src/msm_portfolios/data_nodes/portfolios/__init__.py`
-5. `docs/knowledge/msm_portfolios/portfolios/index.md`
-6. `docs/knowledge/msm/accounts/index.md`
+2. `src/msm/models/portfolios/groups.py`
+3. `src/msm_portfolios/models/portfolios/metadata.py`
+4. `src/msm_portfolios/data_nodes/portfolios/storage.py`
+5. `src/msm_portfolios/data_nodes/portfolios/__init__.py`
+6. `docs/knowledge/msm_portfolios/portfolios/index.md`
+7. `docs/knowledge/msm/accounts/index.md`
 
 ## Account Target Exposure Boundary
 
@@ -69,6 +71,37 @@ Rules:
 - Exactly one exposure column must be present:
   `weight_notional_exposure`, `constant_notional_exposure`, or
   `single_asset_quantity`.
+
+## Portfolio Group Boundary
+
+Portfolio groups are optional classification metadata, not portfolio identity
+and not portfolio construction state.
+
+```text
+PortfolioGroupTable
+  uid
+  unique_identifier
+  display_name
+
+PortfolioGroupMembershipTable
+  portfolio_group_uid -> PortfolioGroupTable.uid
+  portfolio_uid       -> PortfolioTable.uid
+  unique(portfolio_group_uid, portfolio_uid)
+```
+
+Rules:
+
+- Do not add `portfolio_group_uid` to `PortfolioTable`.
+- Use `msm.api.portfolios.PortfolioGroup.add(...)` to create or upsert groups.
+- Use `PortfolioGroup.add_portfolio(...)`,
+  `PortfolioGroup.remove_portfolio(...)`, `PortfolioGroup.get_portfolios(...)`,
+  and `PortfolioGroup.get_groups_for_portfolio(...)` for relationship
+  workflows.
+- Deleting a group removes only membership rows through cascade. It must not
+  delete portfolios.
+- Deleting a portfolio removes only membership rows through cascade. It must not
+  delete groups.
+- FastAPI portfolio-group operations live under `/api/v1/portfolio-group/`.
 
 ## Runtime Pattern
 

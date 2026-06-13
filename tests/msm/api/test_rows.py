@@ -26,6 +26,7 @@ from msm.api.assets import (
 from msm.api.calendars import Calendar, CalendarDate, CalendarEvent, CalendarSession
 from msm.api.execution import OrderManager
 from msm.api.indices import Index, IndexType
+from msm.api.portfolios import PortfolioGroup, PortfolioGroupMembership
 from msm.api.virtual_funds import VirtualFund, VirtualFundHoldingsSet
 from msm.models import (
     AccountGroupTable,
@@ -44,6 +45,8 @@ from msm.models import (
     OpenFigiAssetDetailsTable,
     OrderManagerTable,
     PositionSetTable,
+    PortfolioGroupMembershipTable,
+    PortfolioGroupTable,
     VirtualFundHoldingsSetTable,
     VirtualFundTable,
 )
@@ -92,6 +95,12 @@ from msm.models import (
         ),
         (IndexType, IndexTypeTable, ("index_type",)),
         (Index, IndexTable, ("unique_identifier",)),
+        (PortfolioGroup, PortfolioGroupTable, ("unique_identifier",)),
+        (
+            PortfolioGroupMembership,
+            PortfolioGroupMembershipTable,
+            ("portfolio_group_uid", "portfolio_uid"),
+        ),
         (OrderManager, OrderManagerTable, ("unique_identifier",)),
     ],
 )

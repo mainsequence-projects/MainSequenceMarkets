@@ -55,6 +55,8 @@ from msm.models import (
     IssuerTable,
     OpenFigiAssetDetailsTable,
     PositionSetTable,
+    PortfolioGroupMembershipTable,
+    PortfolioGroupTable,
     PortfolioTable,
     VirtualFundHoldingsSetTable,
     VirtualFundTable,
@@ -675,9 +677,47 @@ def test_portfolio_requires_calendar_uid() -> None:
 
     assert not calendar_column.nullable
     assert any(
-        foreign_key.column is CalendarTable.__table__.c.uid
-        and foreign_key.ondelete == "RESTRICT"
+        foreign_key.column is CalendarTable.__table__.c.uid and foreign_key.ondelete == "RESTRICT"
         for foreign_key in calendar_column.foreign_keys
+    )
+
+
+def test_portfolio_groups_are_many_to_many_classification_tables() -> None:
+    assert PortfolioGroupTable.__metatable_identifier__ == "PortfolioGroup"
+    assert PortfolioGroupMembershipTable.__metatable_identifier__ == "PortfolioGroupMembership"
+    assert "portfolio_group_uid" not in PortfolioTable.__table__.c
+
+    group_table = PortfolioGroupTable.__table__
+    membership_table = PortfolioGroupMembershipTable.__table__
+
+    assert {"uid", "unique_identifier", "display_name", "description", "metadata_json"}.issubset(
+        group_table.c.keys()
+    )
+    assert {"uid", "portfolio_group_uid", "portfolio_uid"}.issubset(membership_table.c.keys())
+    assert any(
+        index.unique and [column.name for column in index.columns] == ["unique_identifier"]
+        for index in group_table.indexes
+    )
+    assert any(
+        index.unique
+        and [column.name for column in index.columns]
+        == [
+            "portfolio_group_uid",
+            "portfolio_uid",
+        ]
+        for index in membership_table.indexes
+    )
+
+    group_fk_column = membership_table.c["portfolio_group_uid"]
+    portfolio_fk_column = membership_table.c["portfolio_uid"]
+    assert any(
+        foreign_key.column is PortfolioGroupTable.__table__.c.uid
+        and foreign_key.ondelete == "CASCADE"
+        for foreign_key in group_fk_column.foreign_keys
+    )
+    assert any(
+        foreign_key.column is PortfolioTable.__table__.c.uid and foreign_key.ondelete == "CASCADE"
+        for foreign_key in portfolio_fk_column.foreign_keys
     )
 
 

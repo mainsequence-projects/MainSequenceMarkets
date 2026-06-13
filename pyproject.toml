@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ms-markets"
-version = "0.0.67"
+version = "0.0.68"
 description = "Financial markets ORM, engines, and application management extensions for Main Sequence."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -83,12 +83,6 @@ public_api = [
 pricing = [
   "matplotlib",
   "QuantLib",
-]
-"pricing-streamlit" = [
-  "matplotlib",
-  "QuantLib",
-  "streamlit",
-  "streamlit-aggrid",
 ]
 
 [project.urls]

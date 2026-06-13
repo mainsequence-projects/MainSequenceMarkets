@@ -28,7 +28,8 @@ Services answer these questions:
   workflows over repository operations.
 - `msm.services.accounts.account_virtual_allocations`: account holdings to
   virtual-fund allocation planner and apply step.
-- `msm.services.portfolios`: core portfolio identity workflows over repository operations.
+- `msm.services.portfolios`: core portfolio identity, portfolio group, and
+  portfolio group membership workflows over repository operations.
 - `msm.services.holdings`: DataNode frame builders and validators for account
   holdings tables.
 - `msm.services.target_positions`: account target-position frame builders,

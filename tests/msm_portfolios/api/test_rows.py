@@ -6,8 +6,22 @@ import pytest
 from pydantic import ValidationError
 
 from msm.api.base import MarketsMetaTableRow
-from msm.api.portfolios import Portfolio, PortfolioCreate, PortfolioUpdate, PortfolioUpsert
-from msm.models import CalendarTable, IndexTable, IndexTypeTable, PortfolioTable
+from msm.api.portfolios import (
+    Portfolio,
+    PortfolioCreate,
+    PortfolioGroup,
+    PortfolioGroupMembership,
+    PortfolioUpdate,
+    PortfolioUpsert,
+)
+from msm.models import (
+    CalendarTable,
+    IndexTable,
+    IndexTypeTable,
+    PortfolioGroupMembershipTable,
+    PortfolioGroupTable,
+    PortfolioTable,
+)
 from msm_portfolios.api.market_metadata import (
     RebalanceStrategyMetadata,
     SignalMetadata,
@@ -26,6 +40,12 @@ from msm_portfolios.models import (
     ("row_model", "table_model", "upsert_keys"),
     [
         (Portfolio, PortfolioTable, ("unique_identifier",)),
+        (PortfolioGroup, PortfolioGroupTable, ("unique_identifier",)),
+        (
+            PortfolioGroupMembership,
+            PortfolioGroupMembershipTable,
+            ("portfolio_group_uid", "portfolio_uid"),
+        ),
         (PortfolioMetadata, PortfolioMetadataTable, ("unique_identifier",)),
         (SignalMetadata, SignalMetadataTable, ("signal_uid",)),
         (
@@ -59,7 +79,13 @@ def test_portfolio_create_schemas_includes_domain_required_tables(monkeypatch) -
     assert Portfolio.start_engine(namespace="mainsequence.examples") is runtime
     assert calls == [
         {
-            "models": [CalendarTable, IndexTypeTable, IndexTable, PortfolioTable],
+            "models": [
+                CalendarTable,
+                IndexTypeTable,
+                IndexTable,
+                SignalMetadataTable,
+                PortfolioTable,
+            ],
             "namespace": "mainsequence.examples",
         }
     ]

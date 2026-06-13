@@ -26,7 +26,6 @@ src/msm_pricing/
 ├── meta_tables.py       # Pricing MetaTable discovery and registration
 ├── models/              # SQLAlchemy MetaTable declarations
 ├── pricing_engine/      # QuantLib curve, index, bond, and swap helpers
-├── streamlit/           # UI helpers for pricing forms
 ├── settings.py
 └── utils.py
 ```

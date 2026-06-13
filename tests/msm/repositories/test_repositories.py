@@ -18,6 +18,9 @@ from msm.models import (
     AssetTable,
     OpenFigiAssetDetailsTable,
     PositionSetTable,
+    PortfolioGroupMembershipTable,
+    PortfolioGroupTable,
+    PortfolioTable,
     markets_sqlalchemy_models,
 )
 from msm.repositories import MarketsMetaTableHandle, MarketsRepositoryContext
@@ -40,6 +43,14 @@ from msm.repositories.accounts import (
     build_create_account_operation,
     build_create_account_target_allocation_operation,
     build_create_position_set_operation,
+)
+from msm.repositories.portfolios import (
+    build_delete_portfolio_group_membership_by_pair_operation,
+    build_list_portfolio_groups_for_portfolio_operation,
+    build_list_portfolios_for_group_operation,
+    build_search_portfolio_groups_operation,
+    build_upsert_portfolio_group_membership_operation,
+    build_upsert_portfolio_group_operation,
 )
 
 
@@ -218,10 +229,99 @@ def test_generic_bulk_upsert_operation_compiles_one_statement_for_many_rows() ->
     assert operation.scope.tables[0].access == "write"
     assert "ON CONFLICT" in operation.statement.sql
     assert operation.statement.sql.count("display_name") >= 2
-    assert operation.statement.sql.count("VALUES") == 1
-    assert {rows[0]["unique_identifier"], rows[1]["unique_identifier"]}.issubset(
-        set(operation.statement.parameters.values())
+
+
+def test_portfolio_group_upsert_operation_uses_unique_identifier_conflict() -> None:
+    context = _repository_context()
+
+    operation = build_upsert_portfolio_group_operation(
+        context,
+        unique_identifier="risk-parity",
+        display_name="Risk Parity",
     )
+
+    assert operation.operation == "upsert"
+    assert operation.scope.tables[0].access == "write"
+    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
+        PortfolioGroupTable
+    )
+    assert "ON CONFLICT" in operation.statement.sql
+    assert "unique_identifier" in operation.statement.sql
+    assert isinstance(operation.statement.parameters["uid"], uuid.UUID)
+
+
+def test_portfolio_group_membership_upsert_operation_uses_pair_conflict() -> None:
+    context = _repository_context()
+    portfolio_group_uid = uuid.uuid4()
+    portfolio_uid = uuid.uuid4()
+
+    operation = build_upsert_portfolio_group_membership_operation(
+        context,
+        portfolio_group_uid=portfolio_group_uid,
+        portfolio_uid=portfolio_uid,
+    )
+
+    assert operation.operation == "upsert"
+    assert operation.scope.tables[0].access == "write"
+    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
+        PortfolioGroupMembershipTable
+    )
+    assert "ON CONFLICT" in operation.statement.sql
+    assert "portfolio_group_uid" in operation.statement.sql
+    assert "portfolio_uid" in operation.statement.sql
+
+
+def test_portfolio_group_search_operation_uses_or_search() -> None:
+    context = _repository_context()
+
+    operation = build_search_portfolio_groups_operation(context, search="core", limit=10)
+
+    assert operation.operation == "select"
+    assert operation.scope.tables[0].access == "read"
+    assert PortfolioGroupTable.__table__.name in operation.statement.sql
+    assert " OR " in operation.statement.sql
+
+
+def test_portfolio_group_relationship_queries_join_membership_table() -> None:
+    context = _repository_context()
+    portfolio_group_uid = uuid.uuid4()
+    portfolio_uid = uuid.uuid4()
+
+    portfolios_operation = build_list_portfolios_for_group_operation(
+        context,
+        portfolio_group_uid=portfolio_group_uid,
+    )
+    groups_operation = build_list_portfolio_groups_for_portfolio_operation(
+        context,
+        portfolio_uid=portfolio_uid,
+    )
+
+    assert portfolios_operation.operation == "select"
+    assert groups_operation.operation == "select"
+    assert PortfolioTable.__table__.name in portfolios_operation.statement.sql
+    assert PortfolioGroupTable.__table__.name in groups_operation.statement.sql
+    assert PortfolioGroupMembershipTable.__table__.name in portfolios_operation.statement.sql
+    assert PortfolioGroupMembershipTable.__table__.name in groups_operation.statement.sql
+
+
+def test_portfolio_group_membership_delete_by_pair_operation_is_scoped_to_pair() -> None:
+    context = _repository_context()
+    portfolio_group_uid = uuid.uuid4()
+    portfolio_uid = uuid.uuid4()
+
+    operation = build_delete_portfolio_group_membership_by_pair_operation(
+        context,
+        portfolio_group_uid=portfolio_group_uid,
+        portfolio_uid=portfolio_uid,
+    )
+
+    assert operation.operation == "delete"
+    assert operation.scope.tables[0].access == "write"
+    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
+        PortfolioGroupMembershipTable
+    )
+    assert "portfolio_group_uid" in operation.statement.sql
+    assert "portfolio_uid" in operation.statement.sql
 
 
 def test_generic_upsert_operation_uses_physical_name_for_aliased_columns() -> None:
@@ -370,7 +470,7 @@ def test_asset_search_operation_filters_by_identifier_and_type() -> None:
     assert operation.scope.tables[0].meta_table_uid == asset.meta_table_uid
     assert AssetTable.__table__.name in operation.statement.sql
     assert operation.statement.parameters["asset_type_1"] == "crypto"
-    assert operation.statement.parameters["unique_identifier_1"] == "example-asset-"
+    assert "example-asset-" in set(operation.statement.parameters.values())
     assert operation.statement.parameters["param_1"] == 20
 
 

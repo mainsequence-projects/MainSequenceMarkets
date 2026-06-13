@@ -169,7 +169,10 @@ account virtual-fund allocation plan using
 `--with-virtual-fund-allocation`; use `--apply-virtual-fund-allocation` only
 when the example should publish `VirtualFundHoldings` rows after printing the
 plan. Use
-`run_account_portfolio_full_workflow(use_portfolio_example=False)` or the
+The full workflow also assigns the resulting target sleeve portfolio to an
+example `PortfolioGroup` through `PortfolioGroup.add(...)` and
+`PortfolioGroup.add_portfolio(...)`; do not write membership rows directly.
+Use `run_account_portfolio_full_workflow(use_portfolio_example=False)` or the
 example CLI flag `--standalone-target-sleeve` only when testing the account
 path without the portfolio example. Use `--skip-schema-prep` only when that
 contributed interpolation output table has already been migrated.

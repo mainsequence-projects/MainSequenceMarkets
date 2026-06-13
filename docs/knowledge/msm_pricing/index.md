@@ -19,6 +19,11 @@ runtime source selection as loose `context_key` plus DataNode identifier
 strings. It stores first-class market-data set rows and concept bindings keyed
 by backend DataNode storage table UID.
 
+[ADR 0033](../../ADR/0033-pricing-valuation-position-boundary.md) defines the
+target boundary for valuation baskets. Pricing should value transient
+instrument-and-units lines for an explicit valuation context, but it should not
+own a durable generic position registry.
+
 ## What Pricing Owns
 
 Pricing answers these questions:
@@ -49,7 +54,6 @@ msm_pricing/
   data_nodes/      pricing DataNodes and storage-facing publishing helpers
   pricing_engine/  QuantLib builders, resolvers, pricers, and analytics
   data_interface/  platform reads for curves and index fixings
-  streamlit/       pricing UI form helpers
   utils/           shared date and serialization utilities
 ```
 

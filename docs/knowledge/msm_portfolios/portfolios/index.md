@@ -98,6 +98,7 @@ Portfolio identity is core reference data and lives under:
 src/msm/models/portfolios/
 ├── __init__.py
 ├── core.py       PortfolioTable
+├── groups.py     PortfolioGroupTable, PortfolioGroupMembershipTable
 └── signals.py    SignalMetadataTable
 ```
 
@@ -109,6 +110,12 @@ optional published index link is metadata for workflows that want to expose the
 portfolio as an index-like observable; core portfolio weights, values, account
 expansion, and virtual-fund allocation use `PortfolioTable.uid` /
 `PortfolioTable.unique_identifier`.
+
+Portfolio groups are core reference data too. `PortfolioGroupTable` stores
+group identity and `PortfolioGroupMembershipTable` stores the many-to-many
+relationship between groups and portfolios. There is no `portfolio_group_uid`
+column on `PortfolioTable`; a portfolio can belong to several groups without
+duplicating or changing the portfolio identity row.
 
 Portfolio descriptive metadata remains in `msm_portfolios`:
 
@@ -179,6 +186,33 @@ Portfolio metadata is a separate descriptive table:
 | registry/config fields      |                                           | description                 |
 +-----------------------------+                                           +-----------------------------+
 ```
+
+Portfolio groups are many-to-many classification metadata:
+
+```text
++-----------------------------+        1..*        +-----------------------------------+
+| PortfolioGroupTable         |------------------->| PortfolioGroupMembershipTable     |
+|-----------------------------|                    |-----------------------------------|
+| uid PK                      |                    | uid PK                            |
+| unique_identifier unique    |                    | portfolio_group_uid FK cascade    |
+| display_name                |                    | portfolio_uid FK cascade          |
+| description                 |                    | unique(group, portfolio)          |
++-----------------------------+                    +------------------+----------------+
+                                                                   |
+                                                                   | *..1
+                                                                   v
+                                                        +-----------------------------+
+                                                        | PortfolioTable              |
+                                                        |-----------------------------|
+                                                        | uid PK                      |
+                                                        | unique_identifier unique    |
+                                                        | calendar_uid FK NOT NULL    |
+                                                        +-----------------------------+
+```
+
+Deleting a portfolio group removes only membership rows through cascade.
+Deleting a portfolio removes only its membership rows through cascade. Neither
+operation deletes the other side of the relationship.
 
 Portfolio DataNode storage is separate from registry MetaTables. These storage
 classes are registered through the same catalog bootstrap, after their FK target

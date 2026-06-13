@@ -14,7 +14,7 @@ msm.instruments
 
 That package contained more than instrument definitions. It also contained
 pricing models, curve/index registration, market-data interfaces, interest-rate
-ETL helpers, QuantLib codecs, and Streamlit pricing forms.
+ETL helpers, and QuantLib codecs.
 
 The old nested path also produced awkward imports such as:
 
@@ -39,7 +39,6 @@ msm_pricing.models
 msm_pricing.pricing_engine
 msm_pricing.data_interface
 msm_pricing.data_nodes
-msm_pricing.streamlit
 ```
 
 The old `pricing_models` package is renamed to `pricing_engine`. The
@@ -61,7 +60,8 @@ from msm_pricing.instruments import FixedRateBond
 from msm_pricing.pricing_engine import get_index
 ```
 
-The optional dependency extras are renamed from `instruments` to `pricing`, and
-from `instruments-streamlit` to `pricing-streamlit`.
+The optional dependency extra is renamed from `instruments` to `pricing`.
 Core `ms-markets` does not depend on QuantLib; users install
-`ms-markets[pricing]` when they need pricing capabilities.
+`ms-markets[pricing]` when they need pricing capabilities. Streamlit pricing
+form helpers were later removed from `msm_pricing`; UI surfaces should live in
+application packages instead of the pricing runtime package.

@@ -15,6 +15,7 @@ if __package__ in {None, ""}:
 from examples.msm.accounts.utils import (
     EXAMPLE_ACCOUNT_GROUP,
     EXAMPLE_ACCOUNT_ALLOCATION_MODEL,
+    EXAMPLE_ACCOUNT_PORTFOLIO_GROUP,
     EXAMPLE_ACCOUNT_TARGET_ALLOCATION,
     EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO,
     EXAMPLE_ACCOUNT_WORKFLOW_SOURCE,
@@ -50,6 +51,8 @@ ACCOUNT_WORKFLOW_RUNTIME_MODELS = [
     "PositionSet",
     "AccountHoldingsStorage",
     "Portfolio",
+    "PortfolioGroup",
+    "PortfolioGroupMembership",
     "VirtualFund",
     "VirtualFundHoldingsSet",
     "VirtualFundHoldingsStorage",
@@ -173,7 +176,7 @@ def run_account_portfolio_full_workflow(
     )
     from msm.api.assets import Asset, AssetType
     from msm.api.calendars import Calendar
-    from msm.api.portfolios import Portfolio
+    from msm.api.portfolios import Portfolio, PortfolioGroup
     from msm.data_nodes.accounts import AccountHoldings, TargetPositions
     from msm.data_nodes.assets import AssetSnapshot
     from msm.services import build_account_holdings_frame, build_target_positions_frame
@@ -280,12 +283,36 @@ def run_account_portfolio_full_workflow(
         f"unique_identifier={target_sleeve_portfolio.unique_identifier}"
     )
 
-    print("9. Creating the AccountHoldings DataNode instance.")
+    print("9. Assigning the target sleeve Portfolio to an example PortfolioGroup.")
+    portfolio_group = PortfolioGroup.add(**EXAMPLE_ACCOUNT_PORTFOLIO_GROUP)
+    portfolio_group_membership = PortfolioGroup.add_portfolio(
+        portfolio_group_uid=portfolio_group.uid,
+        portfolio_uid=target_sleeve_portfolio.uid,
+    )
+    portfolio_groups_for_target_sleeve = PortfolioGroup.get_groups_for_portfolio(
+        portfolio_uid=target_sleeve_portfolio.uid,
+    )
+    print(
+        "   PortfolioGroup "
+        f"uid={portfolio_group.uid} "
+        f"unique_identifier={portfolio_group.unique_identifier}"
+    )
+    print(
+        "   PortfolioGroupMembership "
+        f"uid={portfolio_group_membership.uid} "
+        f"portfolio_uid={portfolio_group_membership.portfolio_uid}"
+    )
+    print(
+        "   Groups for target sleeve="
+        f"{[group.unique_identifier for group in portfolio_groups_for_target_sleeve]}"
+    )
+
+    print("10. Creating the AccountHoldings DataNode instance.")
     holdings_node = AccountHoldings(config=AccountHoldings.default_config())
     print(f"   AccountHoldings identifier={holdings_node._default_identifier()}")
 
     print(
-        "10. Creating account-owned target allocation relationships for every "
+        "11. Creating account-owned target allocation relationships for every "
         "target account and pointing them to the same AccountAllocationModel."
     )
     target_records: list[dict[str, Any]] = []
@@ -351,7 +378,7 @@ def run_account_portfolio_full_workflow(
     combined_target_positions_frame = pd.concat(target_position_frames).sort_index()
     print(f"   Combined target-position rows ready: rows={len(combined_target_positions_frame)}")
 
-    print("11. Running the TargetPositions DataNode update.")
+    print("12. Running the TargetPositions DataNode update.")
     target_positions_node = TargetPositions(config=TargetPositions.default_config())
     target_positions_node.set_frame(combined_target_positions_frame)
     target_positions_error, persisted_target_positions_frame = target_positions_node.run(
@@ -370,7 +397,7 @@ def run_account_portfolio_full_workflow(
     )
     print(f"    Persisted target-position target types={persisted_target_type_counts}")
 
-    print("12. Building two-asset holdings rows for both accounts.")
+    print("13. Building two-asset holdings rows for both accounts.")
     holdings_frames = []
     account_quantities = (
         {"btc_quantity": 10.0, "eth_quantity": 25.0, "eth_direction": 1},
@@ -406,13 +433,13 @@ def run_account_portfolio_full_workflow(
     holdings_node.set_frame(combined_holdings_frame)
     print(f"   Combined holdings rows attached: rows={len(combined_holdings_frame)}")
 
-    print("13. Running the AccountHoldings DataNode update.")
+    print("14. Running the AccountHoldings DataNode update.")
     error_on_last_update, holdings_frame = holdings_node.run(debug_mode=True, force_update=True)
     if error_on_last_update:
         raise RuntimeError("Account holdings update failed; inspect the DataNode run logs.")
     print(f"    Persisted holdings rows={len(holdings_frame)}")
 
-    print("14. Pretty-printing resolved positions for each account.")
+    print("15. Pretty-printing resolved positions for each account.")
     pretty_positions_by_account = {}
     for account in accounts:
         print(f"    Positions for {account.unique_identifier}:")
@@ -430,6 +457,9 @@ def run_account_portfolio_full_workflow(
         "asset_snapshot_frame": asset_snapshot_frame,
         "allocation_model": allocation_model,
         "target_sleeve_portfolio": target_sleeve_portfolio,
+        "portfolio_group": portfolio_group,
+        "portfolio_group_membership": portfolio_group_membership,
+        "portfolio_groups_for_target_sleeve": portfolio_groups_for_target_sleeve,
         "account_group": account_group,
         "accounts": accounts,
         "target_accounts": target_accounts,
@@ -618,6 +648,7 @@ def main() -> None:
     print("Account group UID:", result["account_group"].uid)
     print("Shared account allocation model UID:", result["allocation_model"].uid)
     print("Referenced target sleeve Portfolio UID:", result["target_sleeve_portfolio"].uid)
+    print("Target sleeve PortfolioGroup UID:", result["portfolio_group"].uid)
     for target_record in result["target_records"]:
         account = target_record["account"]
         target_allocation = target_record["target_allocation"]

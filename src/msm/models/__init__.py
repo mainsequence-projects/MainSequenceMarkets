@@ -29,7 +29,7 @@ from .derivatives import FutureAssetDetailsTable
 from .execution import OrderManagerTable
 from .issuers import IssuerTable
 from .indices import IndexTable, IndexTypeTable
-from .portfolios import PortfolioTable
+from .portfolios import PortfolioGroupMembershipTable, PortfolioGroupTable, PortfolioTable
 from .portfolios import SignalMetadataTable
 
 
@@ -56,6 +56,8 @@ def markets_sqlalchemy_models() -> list[type]:
         CalendarEventTable,
         SignalMetadataTable,
         PortfolioTable,
+        PortfolioGroupTable,
+        PortfolioGroupMembershipTable,
         AccountAllocationModelTable,
         AccountGroupTable,
         AccountTable,
@@ -123,6 +125,8 @@ __all__ = [
     "OpenFigiAssetDetailsTable",
     "OrderManagerTable",
     "PositionSetTable",
+    "PortfolioGroupMembershipTable",
+    "PortfolioGroupTable",
     "PortfolioTable",
     "SignalMetadataTable",
     "VirtualFundHoldingsSetTable",
