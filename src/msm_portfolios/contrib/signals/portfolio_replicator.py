@@ -13,7 +13,6 @@ from msm_portfolios.contrib.signals.regression_utils import (
 )
 from msm_portfolios.data_nodes import ASSET_IDENTIFIER, SignalWeights
 from msm_portfolios.configuration import PortfolioConfigBaseModel
-from msm_portfolios.enums import PriceTypeNames
 from msm_portfolios.utils import TIMEDELTA
 
 from mainsequence.meta_tables import APIDataNode, DataNode
@@ -37,7 +36,7 @@ class ETFReplicatorConfig(PortfolioConfigBaseModel):
     etf_asset: Any | None = None
     in_window: int = 60
     tracking_strategy: TrackingStrategy = TrackingStrategy.LASSO
-    price_column: PriceTypeNames = PriceTypeNames.CLOSE
+    valuation_column: str = "close"
 
 
 class ETFReplicator(SignalWeights):
@@ -64,8 +63,8 @@ class ETFReplicator(SignalWeights):
         return self.replicator_config.tracking_strategy_configuration
 
     @property
-    def price_column(self) -> PriceTypeNames:
-        return self.replicator_config.price_column
+    def valuation_column(self) -> str:
+        return self.replicator_config.valuation_column
 
     @property
     def price_source(self):
@@ -167,7 +166,7 @@ class ETFReplicator(SignalWeights):
         prices = prices.reset_index().pivot_table(
             index="time_index",
             columns=ASSET_IDENTIFIER,
-            values=self.price_column.value,
+            values=self.valuation_column,
         )
 
         if prices.shape[0] < self.in_window:

@@ -165,6 +165,10 @@ validate that the attached instrument matches the requested class.
 For thousands of assets, use `add_many_pricing_details(...)` rather than
 calling `attach_to_asset(...)` in a loop. The batch API serializes instruments
 once and persists timestamped/current pricing rows with chunked bulk upserts.
+Each compiled MetaTable operation sets an SDK `max_rows` limit large enough for
+the submitted chunk, so backend defaults do not silently truncate
+`RETURNING` rows; `batch_size` controls how many rows are submitted per bulk
+upsert operation.
 
 Pricing registry rows are also exposed through `msm_pricing.api`:
 

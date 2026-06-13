@@ -86,6 +86,7 @@ nav:
       - Core Calendar Reference Data Model: ADR/0028-core-calendar-reference-data.md
       - Account Holdings To Virtual Fund Allocation Policy: ADR/0029-account-holdings-virtual-fund-allocation-policy.md
       - Explicit Portfolio Price Source Dependency: ADR/0030-explicit-portfolio-price-source-dependency.md
+      - Generic Portfolio Valuation Source: ADR/0031-generic-portfolio-valuation-source.md
       - FastAPI v1 Fixed Income Pricer API: ADR/fast_api/v1/fixed-income-pricer-api.md
   - Changelog: changelog.md
   - Reference:

@@ -12,7 +12,7 @@ from msm.models import AssetTable, PortfolioTable
 from msm_portfolios.configuration import (
     PortfolioBuildConfiguration,
     PriceAlignmentPolicy,
-    canonical_price_source_configuration,
+    canonical_valuation_source_configuration,
 )
 from msm_portfolios.contrib.signals.external_weights import ExternalWeightsConfig
 from msm_portfolios.contrib.signals.fixed_weights import FixedWeightsConfig
@@ -29,7 +29,6 @@ from msm_portfolios.data_nodes.base import (
     PortfolioCanonicalDataNode,
     PortfolioCanonicalDataNodeConfiguration,
 )
-from msm_portfolios.enums import PriceTypeNames
 from msm_portfolios.data_nodes.portfolios.weights import PortfolioWeights
 from msm_portfolios.data_nodes.portfolios import PortfoliosDataNode
 from msm_portfolios.data_nodes.portfolios.storage import (
@@ -80,16 +79,19 @@ class ExamplePriceSource(ExplicitPriceSource):
                     "time_index": "2026-01-01T00:00:00Z",
                     ASSET_IDENTIFIER: "btc",
                     "close": 100.0,
+                    "fair_value": 101.0,
                 },
                 {
                     "time_index": "2026-01-01T00:00:00Z",
                     ASSET_IDENTIFIER: "eth",
                     "close": 200.0,
+                    "fair_value": 201.0,
                 },
                 {
                     "time_index": "2026-01-01T00:00:00Z",
                     ASSET_IDENTIFIER: "sol",
                     "close": 300.0,
+                    "fair_value": 301.0,
                 },
             ]
         )
@@ -195,26 +197,32 @@ def test_signal_metadata_emission_uses_registry_upsert_by_default(monkeypatch) -
     }
 
 
-def test_portfolio_build_configuration_uses_explicit_price_source_contract() -> None:
-    assert "price_source_instance" in PortfolioBuildConfiguration.model_fields
-    assert "price_column" in PortfolioBuildConfiguration.model_fields
+def test_portfolio_build_configuration_uses_explicit_valuation_source_contract() -> None:
+    assert "valuation_source_instance" in PortfolioBuildConfiguration.model_fields
+    assert "valuation_column" in PortfolioBuildConfiguration.model_fields
+    assert PortfolioBuildConfiguration.model_fields["valuation_column"].default == "close"
+    assert "price_source_instance" not in PortfolioBuildConfiguration.model_fields
+    assert "price_column" not in PortfolioBuildConfiguration.model_fields
     assert "price_alignment_policy" in PortfolioBuildConfiguration.model_fields
     assert "assets_configuration" not in PortfolioBuildConfiguration.model_fields
 
 
-def test_price_source_configuration_uses_sdk_data_node_identity() -> None:
-    price_source = explicit_price_source(update_hash="prices-node", data_source_uid="source")
+def test_valuation_source_configuration_uses_sdk_data_node_identity() -> None:
+    valuation_source = explicit_price_source(update_hash="valuations-node", data_source_uid="source")
 
-    assert canonical_price_source_configuration(price_source) == {
+    assert canonical_valuation_source_configuration(valuation_source) == {
         "is_time_serie_instance": True,
-        "update_hash": "prices-node",
+        "update_hash": "valuations-node",
         "data_source_uid": "source",
     }
 
-    api_price_source = APIDataNode(data_source_uid="source", storage_hash="registered_prices")
-    assert canonical_price_source_configuration(api_price_source) == {
+    api_valuation_source = APIDataNode(
+        data_source_uid="source",
+        storage_hash="registered_valuations",
+    )
+    assert canonical_valuation_source_configuration(api_valuation_source) == {
         "is_api_time_serie_instance": True,
-        "update_hash": "API_registered_prices",
+        "update_hash": "API_registered_valuations",
         "data_source_uid": "source",
     }
 
@@ -267,17 +275,17 @@ def test_contributed_price_signals_expose_explicit_dependency_names() -> None:
     assert intraday.dependencies() == {"price_source": intraday_price_source}
 
 
-def test_portfolio_values_dependencies_expose_explicit_price_source() -> None:
+def test_portfolio_values_dependencies_expose_explicit_valuation_source() -> None:
     signal_weights = object()
-    price_source = object()
+    valuation_source = object()
     node = object.__new__(PortfoliosDataNode)
     node.portfolio_configuration = object()
     node.signal_weights = signal_weights
-    node.price_source = price_source
+    node.valuation_source = valuation_source
 
     assert node.dependencies() == {
         "signal_weights": signal_weights,
-        "price_source": price_source,
+        "valuation_source": valuation_source,
     }
 
 
@@ -346,7 +354,7 @@ def test_portfolio_values_identifier_resolution_does_not_stringify_method(monkey
     assert node._resolve_unique_identifier() == "example-portfolio"
 
 
-def test_portfolio_values_noop_when_existing_output_is_ahead_of_price_source() -> None:
+def test_portfolio_values_noop_when_existing_output_is_ahead_of_valuation_source() -> None:
     class ExplodingCalendar:
         def schedule(self, **_kwargs):
             raise AssertionError("calendar.schedule must not be called")
@@ -354,7 +362,7 @@ def test_portfolio_values_noop_when_existing_output_is_ahead_of_price_source() -
     node = object.__new__(PortfoliosDataNode)
     node.update_hash = "portfolio-node"
     node._storage_table = SimpleNamespace(get_data_source_uid=lambda: "test-data-source")
-    node.price_source = explicit_price_source(update_hash="prices")
+    node.valuation_source = explicit_price_source(update_hash="valuations")
     node.rebalancer = SimpleNamespace(calendar=ExplodingCalendar())
     node._calculate_start_end_dates = lambda: (
         pd.Timestamp("2026-01-03T00:00:00Z"),
@@ -555,7 +563,7 @@ def test_signal_asset_start_date_uses_current_signal_asset_or_fallback() -> None
     assert node._signal_asset_start_date("eth") == fallback_date
 
 
-def test_portfolio_update_window_uses_only_required_price_assets() -> None:
+def test_portfolio_update_window_uses_only_required_valuation_assets() -> None:
     class ScopedProgress:
         def __init__(self) -> None:
             self.requested_identities: list[str] = []
@@ -572,12 +580,12 @@ def test_portfolio_update_window_uses_only_required_price_assets() -> None:
 
     progress = ScopedProgress()
     node = object.__new__(PortfoliosDataNode)
-    node.price_source = SimpleNamespace(update_statistics=progress)
+    node.valuation_source = SimpleNamespace(update_statistics=progress)
     node.signal_weights = SimpleNamespace(
         get_asset_list=lambda: ["btc", "eth"],
         get_asset_uid_to_override_portfolio_price=lambda: None,
     )
-    node.required_price_asset_preflight = ["btc", "eth"]
+    node.required_valuation_asset_preflight = ["btc", "eth"]
     node.price_alignment_policy = PriceAlignmentPolicy()
     node.portfolio_prices_frequency = "1d"
     node._get_last_weights = lambda: None
@@ -613,12 +621,12 @@ def test_portfolio_update_window_includes_existing_weight_assets() -> None:
         ),
     )
     node = object.__new__(PortfoliosDataNode)
-    node.price_source = SimpleNamespace(update_statistics=progress)
+    node.valuation_source = SimpleNamespace(update_statistics=progress)
     node.signal_weights = SimpleNamespace(
         get_asset_list=lambda: ["btc", "eth"],
         get_asset_uid_to_override_portfolio_price=lambda: None,
     )
-    node.required_price_asset_preflight = ["btc", "eth"]
+    node.required_valuation_asset_preflight = ["btc", "eth"]
     node.price_alignment_policy = PriceAlignmentPolicy()
     node.portfolio_prices_frequency = "1d"
     node._get_last_weights = lambda: last_weights
@@ -629,9 +637,9 @@ def test_portfolio_update_window_includes_existing_weight_assets() -> None:
     assert progress.requested_identities == ["btc", "eth", "sol"]
 
 
-def test_portfolio_update_window_requires_price_asset_scope() -> None:
+def test_portfolio_update_window_requires_valuation_asset_scope() -> None:
     node = object.__new__(PortfoliosDataNode)
-    node.price_source = SimpleNamespace(update_statistics=SimpleNamespace())
+    node.valuation_source = SimpleNamespace(update_statistics=SimpleNamespace())
     node.signal_weights = SimpleNamespace(
         get_asset_list=lambda: None,
         get_asset_uid_to_override_portfolio_price=lambda: None,
@@ -664,20 +672,58 @@ def test_portfolio_storage_classes_are_registered_metatables(_node_cls, storage_
     assert storage_cls in set(portfolio_sqlalchemy_models())
 
 
-def test_portfolio_price_alignment_ignores_extra_price_source_assets() -> None:
+def test_portfolio_valuation_alignment_ignores_extra_source_assets() -> None:
     node = object.__new__(PortfoliosDataNode)
-    node.price_column = PriceTypeNames.CLOSE
+    node.valuation_column = "fair_value"
     node.price_alignment_policy = PriceAlignmentPolicy()
     node.portfolio_prices_frequency = "1d"
 
-    _raw_prices, aligned_prices = node._interpolate_bars_index(
+    _raw_valuations, aligned_valuations = node._align_valuation_source_to_index(
         new_index=pd.DatetimeIndex([pd.Timestamp("2026-01-01T00:00:00Z")]),
         unique_identifiers=["btc", "eth"],
         index_freq="1D",
-        price_source=explicit_price_source(source_cls=ExamplePriceSource),
+        valuation_source=explicit_price_source(source_cls=ExamplePriceSource),
     )
 
-    assert set(aligned_prices.index.get_level_values(ASSET_IDENTIFIER)) == {"btc", "eth"}
+    assert set(aligned_valuations.index.get_level_values(ASSET_IDENTIFIER)) == {"btc", "eth"}
+    assert "fair_value" in aligned_valuations.columns
+
+
+def test_portfolio_returns_use_custom_valuation_column() -> None:
+    node = object.__new__(PortfoliosDataNode)
+    node.valuation_column = "fair_value"
+    node.commission_fee = 0.0
+    node._latest_portfolio_time_index_value = lambda: None
+    time_index = pd.DatetimeIndex(
+        [
+            pd.Timestamp("2026-01-01T00:00:00Z"),
+            pd.Timestamp("2026-01-02T00:00:00Z"),
+        ],
+        name="time_index",
+    )
+    weights = pd.DataFrame(
+        {
+            "weights_before": [1.0, 1.0],
+            "weights_current": [1.0, 1.0],
+            "price_current": [None, None],
+            "price_before": [None, None],
+        },
+        index=pd.MultiIndex.from_product(
+            [time_index, ["btc"]],
+            names=["time_index", ASSET_IDENTIFIER],
+        ),
+    )
+    valuations = pd.DataFrame(
+        {"fair_value": [100.0, 110.0]},
+        index=pd.MultiIndex.from_product(
+            [time_index, ["btc"]],
+            names=["time_index", ASSET_IDENTIFIER],
+        ),
+    )
+
+    returns = node._calculate_portfolio_returns(weights, valuations)
+
+    assert returns["return"].iloc[-1] == pytest.approx(0.1)
 
 
 def test_immediate_signal_does_not_require_price_source_volume() -> None:
@@ -704,8 +750,8 @@ def test_immediate_signal_does_not_require_price_source_volume() -> None:
     weights = ImmediateSignal().apply_rebalance_logic(
         last_rebalance_weights=None,
         signal_weights=signal_weights,
-        prices_df=prices,
-        price_type=PriceTypeNames.CLOSE,
+        valuations_df=prices,
+        valuation_column="close",
     )
 
     assert "volume_current" in weights.columns.get_level_values(0)
@@ -715,7 +761,7 @@ def test_immediate_signal_does_not_require_price_source_volume() -> None:
     assert weights["price_current"].notna().all().all()
 
 
-def test_required_price_assets_include_previous_portfolio_weights() -> None:
+def test_required_valuation_assets_include_previous_portfolio_weights() -> None:
     node = object.__new__(PortfoliosDataNode)
     node.signal_weights = SimpleNamespace(
         get_asset_uid_to_override_portfolio_price=lambda: None,
@@ -733,17 +779,17 @@ def test_required_price_assets_include_previous_portfolio_weights() -> None:
         ),
     )
 
-    assert node._required_price_asset_identifiers(
+    assert node._required_valuation_asset_identifiers(
         signal_weights=signal_weights,
         last_rebalance_weights=last_weights,
     ) == ["btc", "eth", "sol"]
 
 
-def test_missing_required_prices_continue_by_default() -> None:
+def test_missing_required_valuations_continue_by_default() -> None:
     node = object.__new__(PortfoliosDataNode)
     node.update_hash = "test-update"
     node._storage_table = SimpleNamespace(get_data_source_uid=lambda: "test-data-source")
-    node.price_column = PriceTypeNames.CLOSE
+    node.valuation_column = "close"
     node.price_alignment_policy = PriceAlignmentPolicy()
     raw_prices = pd.DataFrame(
         [
@@ -757,20 +803,20 @@ def test_missing_required_prices_continue_by_default() -> None:
     raw_prices["time_index"] = pd.to_datetime(raw_prices["time_index"], utc=True)
     raw_prices = raw_prices.set_index(["time_index", ASSET_IDENTIFIER])
 
-    node._diagnose_price_source_coverage(
+    node._diagnose_valuation_source_coverage(
         raw_prices,
         requested_asset_identifiers=["btc", "eth"],
-        price_source=explicit_price_source(update_hash="prices"),
+        valuation_source=explicit_price_source(update_hash="valuations"),
         start_date=pd.Timestamp("2026-01-01T00:00:00Z"),
         end_date=pd.Timestamp("2026-01-02T00:00:00Z"),
     )
 
 
-def test_missing_required_prices_fail_under_strict_policy() -> None:
+def test_missing_required_valuations_fail_under_strict_policy() -> None:
     node = object.__new__(PortfoliosDataNode)
     node.update_hash = "test-update"
     node._storage_table = SimpleNamespace(get_data_source_uid=lambda: "test-data-source")
-    node.price_column = PriceTypeNames.CLOSE
+    node.valuation_column = "close"
     node.price_alignment_policy = PriceAlignmentPolicy(fail_on_missing_prices=True)
     raw_prices = pd.DataFrame(
         [
@@ -785,10 +831,10 @@ def test_missing_required_prices_fail_under_strict_policy() -> None:
     raw_prices = raw_prices.set_index(["time_index", ASSET_IDENTIFIER])
 
     with pytest.raises(ValueError, match="missing required signal assets"):
-        node._diagnose_price_source_coverage(
+        node._diagnose_valuation_source_coverage(
             raw_prices,
             requested_asset_identifiers=["btc", "eth"],
-            price_source=explicit_price_source(update_hash="prices"),
+            valuation_source=explicit_price_source(update_hash="valuations"),
             start_date=pd.Timestamp("2026-01-01T00:00:00Z"),
             end_date=pd.Timestamp("2026-01-02T00:00:00Z"),
         )

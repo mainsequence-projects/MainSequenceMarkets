@@ -9,7 +9,7 @@ portfolio metadata, and portfolio value time series.
 Portfolios answer these questions:
 
 - Which assets are eligible for a portfolio?
-- Which price source provides bars for those assets?
+- Which valuation source provides the asset values used for returns?
 - Which signals produce target weights?
 - Which rebalance strategy converts signals into portfolio weights?
 - Which DataNodes store canonical portfolio values, signal weights, and
@@ -52,8 +52,9 @@ identifiers, while a non-default `MSM_AUTO_REGISTER_NAMESPACE` prefixes them.
 That namespace also becomes the default DataNode `hash_namespace`. Pass an
 explicit namespace only for isolated tests or experiments.
 
-Forward-fill behavior, price source selection, signal semantics, and rebalance
-frequency should be explicit in configuration rather than inferred from data.
+Forward-fill behavior, valuation source selection, signal semantics, and
+rebalance frequency should be explicit in configuration rather than inferred
+from data.
 
 Use the typed row API for registry records:
 
@@ -220,17 +221,17 @@ point to unknown assets. `PortfoliosDataNode` resolves the portfolio identifier
 from the attached `PortfolioTable` row or from the explicit runtime identifier
 before normalizing rows.
 
-Portfolio construction depends on a real price source, but portfolio logic does
-not own price ingestion. Example workflows publish normalized OHLCV bars to
-`ExternalPricesStorage` only so the example is self-contained. Production users
-can point portfolio configurations at any registered compatible price storage
-table, including one produced by another library, vendor connector, or project
-DataNode.
+Portfolio construction depends on a real valuation source, but portfolio logic
+does not own valuation ingestion. Example workflows publish normalized OHLCV
+bars to `ExternalPricesStorage` only so the example is self-contained.
+Production users can point portfolio configurations at any registered
+compatible valuation storage table, including one produced by another library,
+vendor connector, model valuation process, or project DataNode.
 
-## Price Source Resolution
+## Valuation Source Resolution
 
-Portfolio prices are not stored on `PortfolioTable`. They are provided by the
-portfolio build configuration and consumed through DataNode dependencies.
+Portfolio valuation inputs are not stored on `PortfolioTable`. They are provided
+by the portfolio build configuration and consumed through DataNode dependencies.
 
 The current portfolio path is explicit:
 
@@ -256,22 +257,23 @@ The current portfolio path is explicit:
                              +-----------------------------+
 ```
 
-`PortfolioBuildConfiguration.price_source_instance` receives the price source
-that portfolio construction consumes. The price source may be an
+`PortfolioBuildConfiguration.valuation_source_instance` receives the valuation
+source that portfolio construction consumes. The valuation source may be an
 `InterpolatedPrices` instance, another DataNode, or an `APIDataNode` pointing at
-compatible registered storage. The price source must expose rows keyed by
-`(time_index, asset_identifier)` and include the configured price column, for
-example `close`. `ImmediateSignal` does not require source volume; it writes
-empty volume fields in portfolio-weight output when the consumed price source
-does not provide volume. Volume-aware rebalance strategies, such as
-`VolumeParticipation`, still require volume explicitly.
+compatible registered storage. The valuation source must expose rows keyed by
+`(time_index, asset_identifier)` and include the configured numeric
+`valuation_column`, for example `close`, `fair_value`, `nav`, or `mark_price`.
+`ImmediateSignal` does not require source volume; it writes empty volume fields
+in portfolio-weight output when the consumed valuation source does not provide
+volume. Volume-aware rebalance strategies, such as `VolumeParticipation`, still
+require volume explicitly.
 
-This producer boundary is intentional. Price collection, normalization, vendor
-mapping, and connector-specific scheduling are separate concerns from portfolio
-construction. Portfolio extensions should focus on universe selection, signals,
-rebalancing, execution assumptions, and portfolio output storage. They should
-consume a registered price storage contract instead of importing or constructing
-the price producer that wrote it.
+This producer boundary is intentional. Price collection, valuation modeling,
+normalization, vendor mapping, and connector-specific scheduling are separate
+concerns from portfolio construction. Portfolio extensions should focus on
+universe selection, signals, rebalancing, execution assumptions, and portfolio
+output storage. They should consume a registered valuation storage contract
+instead of importing or constructing the producer that wrote it.
 
 If persistent interpolation is needed, `InterpolatedPrices` is built before the
 portfolio and then passed into `PortfolioBuildConfiguration` like any other
@@ -316,18 +318,27 @@ patches that metadata to the model-declared cadence before deriving the dynamic
 table. Runtime portfolio code then uses the registered table; it does not
 create or migrate dynamic storage.
 
-`PortfolioBuildConfiguration.price_column` chooses which column from the
-explicit price source drives portfolio returns. For example,
-`PriceTypeNames.CLOSE` uses the `close` column. `PortfoliosDataNode` may locally
-align the consumed price frame to the rebalance index for calculation, but it
-does not create persistent interpolation storage and does not hide an upstream
-DataNode.
+`PortfolioBuildConfiguration.valuation_column` chooses which numeric column from
+the explicit valuation source drives portfolio returns. It is a string, not an
+OHLC enum. Bar-based workflows can use `valuation_column="close"`, while model
+or vendor workflows can use fields such as `fair_value`, `nav`, or
+`settlement_price`. `PortfoliosDataNode` may locally align the consumed
+valuation frame to the rebalance index for calculation, but it does not create
+persistent interpolation storage and does not hide an upstream DataNode.
 
-When a portfolio value series is already ahead of the usable price-source
+For a custom valuation source, register or migrate the source storage outside
+portfolio core, then pass the registered `TimeIndexMetaTable` UID through
+`APIDataNode.build_from_table_uid(...)`. The source table must keep its real
+value column name; it should not be reshaped to `close` just to satisfy
+portfolio core. See
+`examples/msm_portfolios/portfolio_custom_valuation_column_example.py` for the
+`fair_value` configuration path.
+
+When a portfolio value series is already ahead of the usable valuation-source
 coverage, `PortfoliosDataNode` treats the update as an exhausted window and
 returns no new rows before asking the rebalance calendar for a schedule. This
 keeps calendar validation strict while making repeated or forced portfolio runs
-idempotent when upstream prices have not advanced.
+idempotent when upstream valuations have not advanced.
 
 In code, the important wiring is:
 
@@ -348,8 +359,8 @@ signal_weights = FixedWeights.from_signal_configuration(...)
 
 portfolio_configuration = PortfolioConfiguration(
     portfolio_build_configuration=PortfolioBuildConfiguration(
-        price_source_instance=price_source,
-        price_column=PriceTypeNames.CLOSE,
+        valuation_source_instance=price_source,
+        valuation_column="close",
         portfolio_prices_frequency="1d",
         execution_configuration=PortfolioExecutionConfiguration(...),
         backtesting_weights_configuration=BacktestingWeightsConfig(
@@ -361,17 +372,36 @@ portfolio_configuration = PortfolioConfiguration(
 )
 ```
 
+For a user-owned fair-value source, the same portfolio configuration uses the
+source UID directly and keeps the valuation column explicit:
+
+```python
+valuation_source = APIDataNode.build_from_table_uid(fair_value_table_uid)
+
+portfolio_configuration = PortfolioConfiguration(
+    portfolio_build_configuration=PortfolioBuildConfiguration(
+        valuation_source_instance=valuation_source,
+        valuation_column="fair_value",
+        portfolio_prices_frequency="1d",
+        execution_configuration=PortfolioExecutionConfiguration(...),
+        backtesting_weights_configuration=BacktestingWeightsConfig(...),
+    ),
+    portfolio_markets_configuration=PortfolioMarketsConfig(...),
+)
+```
+
 `PortfoliosDataNode.dependencies()` exposes the signal node and the explicit
-price source. Price sources may contain more assets than the signal requires;
-portfolio calculation filters to the signal-required asset subset and reports
-missing required assets when the consumed price source does not cover them.
+valuation source. Valuation sources may contain more assets than the signal
+requires; portfolio calculation filters to the signal-required asset subset and
+reports missing required assets when the consumed valuation source does not
+cover them.
 The portfolio update window is also scoped to the assets the portfolio needs:
 the signal preflight universe, any previous portfolio-weight assets that still
 need valuation or liquidation, and any explicit portfolio value override asset.
-It does not use unrelated assets present in the source price table when deciding
+It does not use unrelated assets present in the source valuation table when deciding
 the usable source-data end timestamp. If the workflow cannot determine that
 asset scope before deriving the source-data window, it fails instead of falling
-back to table-wide price-source progress.
+back to table-wide valuation-source progress.
 
 Existing portfolio output progress is scoped by `portfolio_identifier` because
 `PortfoliosStorage` is keyed by `(time_index, portfolio_identifier)`. A later

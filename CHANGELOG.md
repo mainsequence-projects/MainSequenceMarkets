@@ -15,6 +15,12 @@ and this project follows versioned releases.
 - Added `msm_pricing.api.add_many_pricing_details(...)` and
   `AssetPricingDetails.add_many(...)` for chunked bulk persistence of
   asset/instrument pricing details.
+- Changed pricing-detail batch writes to set per-operation SDK `max_rows`
+  limits from the submitted chunk size instead of carrying a local response
+  pagination loop.
+- Removed the obsolete pricing schema-creation bootstrap entrypoint; pricing
+  startup now uses the attach-only `msm_pricing.bootstrap.attach_pricing_schemas(...)`
+  API.
 - Added `MSDataInterface.get_latest_discount_curve(...)` for explicit latest
   discount-curve lookup by curve identity without using the global
   `USE_LAST_OBSERVATION_MS_INSTRUMENT` fallback.
@@ -66,10 +72,11 @@ and this project follows versioned releases.
   publications write `explicit`, and planner-applied rows write the allocation
   policy mode.
 - Refactored portfolio construction to consume an explicit
-  `price_source_instance` instead of having `PortfoliosDataNode` construct
+  `valuation_source_instance` instead of having `PortfoliosDataNode` construct
   `InterpolatedPrices` from portfolio `AssetsConfiguration`/`PricesConfiguration`,
   and updated the equal-weight portfolio example to show the explicit source
-  prices -> interpolation -> signal -> portfolio dependency graph.
+  valuations -> interpolation when needed -> signal -> portfolio dependency
+  graph.
 - Replaced deprecated builder terminology with portfolio construction wording
   across README, portfolio docs, ADRs, and internal portfolio logger helper
   names.
@@ -81,6 +88,10 @@ and this project follows versioned releases.
   `SignalMetadataTable.signal_uid`; portfolio workflow pointer updates now
   persist the resolved signal UID, and portfolio signal-weight API reads use
   that first-class pointer instead of inferring from shared storage.
+- Changed portfolio core construction to consume
+  `valuation_source_instance` plus arbitrary `valuation_column: str`, replacing
+  the OHLC-bound `price_source_instance` and `PriceTypeNames` price-column
+  contract while keeping bar-specific helpers in contributed price workflows.
 
 ### Fixed
 
@@ -112,21 +123,22 @@ and this project follows versioned releases.
   provider upgrade before `--run-after`, even when a stale metadata row already
   exists for the configured interpolation table.
 - Fixed `PortfoliosDataNode` forced reruns when the latest stored portfolio
-  value is already ahead of usable price-source coverage; the portfolio update
-  now returns no new rows before calling calendar scheduling with a reversed
-  date range.
-- Fixed `ImmediateSignal` so portfolio price sources only need the configured
-  price column; missing `volume` now produces nullable portfolio-weight volume
-  fields instead of failing the rebalance calculation.
+  value is already ahead of usable valuation-source coverage; the portfolio
+  update now returns no new rows before calling calendar scheduling with a
+  reversed date range.
+- Fixed `ImmediateSignal` so portfolio valuation sources only need the
+  configured valuation column; missing `volume` now produces nullable
+  portfolio-weight volume fields instead of failing the rebalance calculation.
 - Fixed `msm_pricing.api.add_pricing_details(...)` so omitting
   `pricing_details_date` delegates the no-date current-update behavior to
   `AssetPricingDetails.add(...)` instead of pre-filling a timestamp too early.
 - Fixed explicit-date pricing detail writes so current pricing details are
   updated when no current row exists, when the new date is newer than current,
   or when the same timestamp is being replaced.
-- Fixed portfolio update-window selection so source price coverage is evaluated
-  only for assets required by the portfolio, instead of taking the oldest
-  progress timestamp across every asset in a large upstream price table.
+- Fixed portfolio update-window selection so source valuation coverage is
+  evaluated only for assets required by the portfolio, instead of taking the
+  oldest progress timestamp across every asset in a large upstream valuation
+  table.
 - Made portfolio update-window selection strict when no required asset scope can
   be determined, instead of falling back to table-wide source progress.
 - Fixed portfolio output progress lookup so a shared `PortfoliosStorage`

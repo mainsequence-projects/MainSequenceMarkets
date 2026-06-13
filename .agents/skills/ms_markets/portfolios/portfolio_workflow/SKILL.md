@@ -116,30 +116,31 @@ python examples/msm_portfolios/portfolio_equal_weights_run.py
 The preparation step derives only the contributed interpolation output table,
 creates/applies its dynamic Alembic revision if needed, and verifies the
 `TimeIndexMetaTable`. Normal runtime code still builds the graph explicitly as
-source price node -> interpolation node -> signal node -> portfolio node. If
+source price or valuation node -> interpolation when needed -> signal node -> portfolio node. If
 the backend dependency tree was created by an older graph, run the top-level
 portfolio node once with `refresh_dependency_tree=True`, or call
 `set_relation_tree(force_rebuild=True)` during setup, so stale backend edges are
 cleared before dependency execution.
 
-Portfolio construction must consume prices through an explicit dependency:
+Portfolio construction must consume valuations through an explicit dependency:
 
 ```text
-source price DataNode -> InterpolatedPrices -> SignalWeights -> PortfoliosDataNode
+source prices / valuations DataNode -> optional InterpolatedPrices -> SignalWeights -> PortfoliosDataNode
 ```
 
 `PortfoliosDataNode` must not construct `InterpolatedPrices` from
 `AssetsConfiguration`/`PricesConfiguration`. If persistent interpolation is
 needed, prepare or attach the interpolation node first and pass it as
-`PortfolioBuildConfiguration.price_source_instance`. Keep any local price
-alignment inside portfolio calculation as a temporary calculation step only.
+`PortfolioBuildConfiguration.valuation_source_instance`. Keep any local
+valuation alignment inside portfolio calculation as a temporary calculation
+step only.
 
 Current portfolio build contract:
 
 ```text
 PortfolioBuildConfiguration
-  price_source_instance     DataNode | APIDataNode
-  price_column              close | open | vwap | ...
+  valuation_source_instance DataNode | APIDataNode
+  valuation_column          str, defaults to close
   price_alignment_policy    PriceAlignmentPolicy
   portfolio_prices_frequency
   execution_configuration
@@ -149,9 +150,18 @@ PortfolioBuildConfiguration
 Rules:
 
 - `PortfolioBuildConfiguration` must not contain `assets_configuration`.
-- `price_source_instance` is the recoverable upstream price dependency. It may
-  be `InterpolatedPrices`, another compatible DataNode, or an `APIDataNode`
-  built from a registered TimeIndexMetaTable UID.
+- `valuation_source_instance` is the recoverable upstream valuation dependency.
+  It may be `InterpolatedPrices`, another compatible DataNode, or an
+  `APIDataNode` built from a registered TimeIndexMetaTable UID.
+- `valuation_column` is a strict string column name. Portfolio core must not
+  force `close`, `open`, `vwap`, or any other OHLC enum. Specific contributed
+  strategies may validate additional OHLC fields only when they truly need
+  those fields.
+- For custom valuation sources, keep the source column name as published. For
+  example, pass `valuation_column="fair_value"` for a fair-value table instead
+  of renaming the column to `close`. Use
+  `examples/msm_portfolios/portfolio_custom_valuation_column_example.py` as the
+  reference configuration path.
 - `InterpolatedPricesConfig` accepts either `source_price_instance` or
   `source_time_index_meta_table_uid`. Use the instance path when the raw/source
   price node is already in the graph; use the UID path only to attach an
@@ -161,20 +171,21 @@ Rules:
 - Persistent interpolation belongs to `msm_portfolios.contrib.prices`, not to
   `PortfoliosDataNode`.
 - `PortfoliosDataNode.dependencies()` must expose both `signal_weights` and
-  `price_source`.
+  `valuation_source`.
 - The authoritative portfolio universe is the signal output frame. A signal
   `get_asset_list()` is preflight/context only.
-- Required priced assets are derived from signal output, previous portfolio
+- Required valuation assets are derived from signal output, previous portfolio
   weights that still need valuation or liquidation, and any explicit portfolio
   value override asset.
-- Price sources may contain extra assets; portfolio calculation filters to the
-  required signal universe.
+- Valuation sources may contain extra assets; portfolio calculation filters to
+  the required signal universe.
 - Portfolio update-window progress must be scoped to required portfolio assets:
   the signal preflight universe, previous portfolio-weight assets still needing
   valuation or liquidation, and any explicit portfolio value override asset. Do
   not take the minimum progress timestamp across every asset in a large source
-  price table. If the required asset scope cannot be determined before deriving
-  the source window, fail instead of falling back to table-wide source progress.
+  valuation table. If the required asset scope cannot be determined before
+  deriving the source window, fail instead of falling back to table-wide source
+  progress.
 - Existing portfolio output progress must be scoped by `portfolio_identifier`;
   `PortfoliosStorage` is shared and keyed by `(time_index, portfolio_identifier)`.
   A later row for another portfolio must not move this portfolio's start date.
@@ -187,12 +198,12 @@ Rules:
 - `SignalMetadataTable.signal_description` and signal `get_explanation()` text
   must be plain text or Markdown. Do not return or document HTML tags for signal
   descriptions; rendering belongs to the consuming UI.
-- Missing required price assets must be logged with the price source, date
-  range, price column, and policy. Strict policy fails; permissive policy logs
-  and continues when the downstream calculation can still produce a usable
-  frame.
+- Missing required valuation assets must be logged with the valuation source,
+  date range, valuation column, and policy. Strict policy fails; permissive
+  policy logs and continues when the downstream calculation can still produce a
+  usable frame.
 - Local reindex/forward-fill inside `PortfoliosDataNode` is only calculation
-  alignment. It must not create persistent storage or hide a price DataNode.
+  alignment. It must not create persistent storage or hide a valuation DataNode.
 - `PortfoliosDataNode.run(..., update_pointers=True)` is the default portfolio
   workflow behavior. After the graph publishes, it must upsert the resolved
   `PortfolioTable` row with `signal_uid`, `signal_weights_data_node_uid`,
@@ -282,7 +293,7 @@ the account target-position table.
 
 ## Validation
 
-For explicit portfolio price-source changes, run:
+For explicit portfolio valuation-source changes, run:
 
 ```bash
 uv run --extra portfolios --extra dev ruff check src/msm_portfolios/configuration.py src/msm_portfolios/data_nodes/portfolios src/msm_portfolios/contrib/signals examples/msm_portfolios tests/msm_portfolios/data_nodes/test_portfolio_contracts.py

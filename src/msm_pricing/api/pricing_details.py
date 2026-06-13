@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import replace
 from typing import Any, ClassVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
@@ -23,6 +24,7 @@ from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsSt
 from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 
 DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT = "msm_pricing.instrument.v1"
+MAX_PRICING_DETAILS_UPSERT_OPERATION_ROWS = 10_000
 
 
 def _validate_payload(
@@ -132,10 +134,12 @@ class AssetCurrentPricingDetails(BaseModel):
             return []
 
         context = cls._active_context()
+        operation_batch_size = _operation_batch_size(batch_size)
         rows: list[AssetCurrentPricingDetails] = []
-        for chunk in _chunks(values, batch_size=batch_size):
+        for chunk in _chunks(values, batch_size=operation_batch_size):
+            chunk_context = _context_with_return_row_limit(context, len(chunk))
             result = bulk_upsert_model(
-                context,
+                chunk_context,
                 model=cls.__table__,
                 values=chunk,
                 conflict_columns=cls.__upsert_keys__,
@@ -357,25 +361,33 @@ class AssetPricingDetails(BaseModel):
         context = cls._active_context()
         storage_values = [_pricing_details_storage_values(value) for value in values]
         pricing_details: list[AssetPricingDetails] = []
-        for chunk in _chunks(storage_values, batch_size=batch_size):
+        operation_batch_size = _operation_batch_size(batch_size)
+        for chunk in _chunks(storage_values, batch_size=operation_batch_size):
+            chunk_context = _context_with_return_row_limit(context, len(chunk))
             result = bulk_upsert_model(
-                context,
+                chunk_context,
                 model=cls.__table__,
                 values=chunk,
                 conflict_columns=cls.__upsert_keys__,
             )
-            pricing_details.extend(cls._from_operation_result_many(result))
+            chunk_rows = cls._from_operation_result_many(result)
+            if len(chunk_rows) != len(chunk):
+                raise RuntimeError(
+                    "Pricing-details bulk upsert returned "
+                    f"{len(chunk_rows)} rows for {len(chunk)} submitted rows."
+                )
+            pricing_details.extend(chunk_rows)
 
         current_values = _current_pricing_details_values_for_batch_update(
             context,
             values=values,
             always_update_current=update_current_by_index,
-            batch_size=batch_size,
+            batch_size=operation_batch_size,
         )
         current_pricing_details = _bulk_upsert_current_pricing_details(
             context,
             current_values,
-            batch_size=batch_size,
+            batch_size=operation_batch_size,
         )
         return AssetPricingDetailsBatchAddResult(
             pricing_details=pricing_details,
@@ -540,8 +552,9 @@ def _current_pricing_details_by_asset_uid(
     unique_asset_uids = list(dict.fromkeys(asset_uids))
     current_by_asset_uid: dict[uuid.UUID, AssetCurrentPricingDetails] = {}
     for chunk in _chunks(unique_asset_uids, batch_size=batch_size):
+        chunk_context = _context_with_return_row_limit(context, len(chunk))
         result = search_model(
-            context,
+            chunk_context,
             model=AssetCurrentPricingDetailsTable,
             in_filters={"asset_uid": chunk},
             limit=len(chunk),
@@ -563,16 +576,64 @@ def _bulk_upsert_current_pricing_details(
 
     current_pricing_details: list[AssetCurrentPricingDetails] = []
     for chunk in _chunks(values, batch_size=batch_size):
+        chunk_context = _context_with_return_row_limit(context, len(chunk))
         result = bulk_upsert_model(
-            context,
+            chunk_context,
             model=AssetCurrentPricingDetailsTable,
             values=chunk,
             conflict_columns=AssetCurrentPricingDetails.__upsert_keys__,
         )
-        current_pricing_details.extend(
-            AssetCurrentPricingDetails._from_operation_result_many(result)
-        )
+        chunk_rows = AssetCurrentPricingDetails._from_operation_result_many(result)
+        if len(chunk_rows) != len(chunk):
+            raise RuntimeError(
+                "Current pricing-details bulk upsert returned "
+                f"{len(chunk_rows)} rows for {len(chunk)} submitted rows."
+            )
+        current_pricing_details.extend(chunk_rows)
     return current_pricing_details
+
+
+def _context_with_return_row_limit(context: Any, row_count: int) -> Any:
+    if row_count < 1:
+        return context
+    limits = _limits_with_return_row_limit(
+        getattr(context, "limits", None),
+        row_count=row_count,
+    )
+    try:
+        return replace(context, limits=limits)
+    except TypeError:
+        return context
+
+
+def _limits_with_return_row_limit(
+    limits: Any,
+    *,
+    row_count: int,
+) -> dict[str, Any]:
+    if limits is None:
+        values: dict[str, Any] = {}
+    elif isinstance(limits, Mapping):
+        values = dict(limits)
+    elif hasattr(limits, "model_dump"):
+        values = limits.model_dump(exclude_none=True)
+    else:
+        values = {
+            key: getattr(limits, key)
+            for key in ("max_rows", "offset", "statement_timeout_ms")
+            if hasattr(limits, key) and getattr(limits, key) is not None
+        }
+
+    current_max_rows = values.get("max_rows")
+    if current_max_rows is None or int(current_max_rows) < row_count:
+        values["max_rows"] = row_count
+    return values
+
+
+def _operation_batch_size(batch_size: int) -> int:
+    if batch_size < 1:
+        raise ValueError("batch_size must be greater than zero.")
+    return min(batch_size, MAX_PRICING_DETAILS_UPSERT_OPERATION_ROWS)
 
 
 def _chunks(

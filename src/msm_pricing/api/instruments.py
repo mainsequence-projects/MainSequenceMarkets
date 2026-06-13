@@ -88,8 +88,9 @@ def add_many_pricing_details(
     if pricing_details_date is not None:
         AssetInstrumentPricingDetailsAdd._require_timezone(pricing_details_date)
 
-    payloads: list[AssetPricingDetailsAdd] = []
     validated_items = [_validate_instrument_pricing_details_item(item) for item in items]
+
+    payloads: list[AssetPricingDetailsAdd] = []
     for item in validated_items:
         item.instrument.validate_asset(item.asset)
         instrument_payload = _instrument_backend_payload(item.instrument)

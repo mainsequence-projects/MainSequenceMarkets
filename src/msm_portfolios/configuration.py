@@ -20,7 +20,6 @@ from msm_portfolios.data_nodes import (
     canonical_signal_configuration,
 )
 from msm_portfolios.data_nodes.base import _class_import_path, _drop_excluded_keys
-from msm_portfolios.enums import PriceTypeNames
 from msm_portfolios.rebalance_strategy import (
     RebalanceStrategyBase,
 )
@@ -29,19 +28,21 @@ from msm_portfolios.utils import get_portfolios_logger
 logger = get_portfolios_logger()
 
 
-def canonical_price_source_configuration(
-    price_source: DataNode | APIDataNode,
+def canonical_valuation_source_configuration(
+    valuation_source: DataNode | APIDataNode,
 ) -> dict[str, Any]:
-    """Return the canonical hash payload for a portfolio price dependency."""
+    """Return the canonical hash payload for a portfolio valuation dependency."""
 
-    if price_source.is_api:
-        if not isinstance(price_source, APIDataNode):
-            raise TypeError("API portfolio price sources must be APIDataNode instances.")
+    if valuation_source.is_api:
+        if not isinstance(valuation_source, APIDataNode):
+            raise TypeError("API portfolio valuation sources must be APIDataNode instances.")
     else:
-        if not isinstance(price_source, DataNode):
-            raise TypeError("Portfolio price sources must be DataNode or APIDataNode instances.")
+        if not isinstance(valuation_source, DataNode):
+            raise TypeError(
+                "Portfolio valuation sources must be DataNode or APIDataNode instances."
+            )
 
-    return build_operations.serialize_argument(price_source)
+    return build_operations.serialize_argument(valuation_source)
 
 
 def canonical_rebalance_strategy_configuration(
@@ -183,7 +184,7 @@ class AssetsConfiguration(PortfolioConfigBaseModel):
             as the universe for both prices and portfolio construction.
             If None, the signal node is expected to define its own universe via get_asset_list().
         price_type:
-            Which price field to use for portfolio return computation (OPEN/CLOSE/VWAP).
+            Which source valuation field to use in legacy contributed price helpers.
         prices_configuration:
             Pricing configuration used to fetch and interpolate/upsample bars.
     """
@@ -207,10 +208,14 @@ class AssetsConfiguration(PortfolioConfigBaseModel):
         json_schema_extra={"hash_excluded": True},
     )
 
-    price_type: PriceTypeNames = Field(
-        default=PriceTypeNames.CLOSE,
-        description="Which price field should be used as the valuation/return price for the portfolio.",
-        examples=["close", "open", "vwap"],
+    price_type: str = Field(
+        default="close",
+        min_length=1,
+        description=(
+            "Source valuation field used by legacy contributed price helpers. "
+            "Portfolio core uses PortfolioBuildConfiguration.valuation_column."
+        ),
+        examples=["close", "fair_value", "nav"],
     )
 
     prices_configuration: PricesConfiguration = Field(
@@ -431,17 +436,17 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
     Full build configuration for a Portfolios portfolio.
 
     This section defines the *behavior* of the portfolio build pipeline:
-    - which explicit price source is consumed
+    - which explicit valuation source is consumed
     - how signal weights are generated
     - how rebalancing is applied
     - what fee model to apply
     - what frequency the portfolio series is produced at
 
     Attributes:
-        price_source_instance:
-            Explicit DataNode/APIDataNode price dependency consumed by the portfolio.
-        price_column:
-            Price column from the consumed price source used for valuation.
+        valuation_source_instance:
+            Explicit DataNode/APIDataNode valuation dependency consumed by the portfolio.
+        valuation_column:
+            Numeric column from the consumed valuation source used for valuation.
         price_alignment_policy:
             Portfolio-local alignment behavior for the consumed price frame.
         portfolio_prices_frequency:
@@ -452,23 +457,31 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
             The injected signal + rebalance strategies.
     """
 
-    price_source_instance: Annotated[
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    valuation_source_instance: Annotated[
         DataNode | APIDataNode,
         Field(
             description=(
-                "Explicit price source DataNode or APIDataNode consumed by the portfolio. "
-                "Persistent interpolation, if needed, must be prepared upstream and "
-                "passed here as a normal dependency."
+                "Explicit valuation source DataNode or APIDataNode consumed by the portfolio. "
+                "The source may be a market bar table, model value table, NAV table, "
+                "or any asset-indexed time series with the configured valuation column. "
+                "Persistent interpolation, if needed, must be prepared upstream."
             ),
             examples=[{"strategy": "InterpolatedPrices"}],
         ),
         WithJsonSchema({"type": "object"}),
     ]
 
-    price_column: PriceTypeNames = Field(
-        default=PriceTypeNames.CLOSE,
-        description="Which price column should be used for portfolio valuation and returns.",
-        examples=["close", "open", "vwap"],
+    valuation_column: str = Field(
+        default="close",
+        min_length=1,
+        description=(
+            "Numeric column from the consumed valuation source used for portfolio "
+            "valuation and returns. Defaults to 'close' for bar-based workflows, "
+            "but may be any source column such as fair_value, nav, or mark_price."
+        ),
+        examples=["close", "fair_value", "nav", "mark_price"],
     )
 
     price_alignment_policy: PriceAlignmentPolicy = Field(
@@ -497,13 +510,13 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
     )
 
     @field_serializer(
-        "price_source_instance",
+        "valuation_source_instance",
         when_used="json",
         return_type=dict[str, Any],
     )
-    def ser_price_source(self, v: DataNode | APIDataNode) -> dict[str, Any]:
-        """Serialize the explicit price dependency identity, not backend update rows."""
-        return canonical_price_source_configuration(v)
+    def ser_valuation_source(self, v: DataNode | APIDataNode) -> dict[str, Any]:
+        """Serialize the explicit valuation dependency identity, not backend update rows."""
+        return canonical_valuation_source_configuration(v)
 
     @field_serializer(
         "price_alignment_policy",
@@ -530,14 +543,14 @@ class PortfolioConfiguration(PortfolioConfigBaseModel):
 
     Attributes:
         portfolio_build_configuration:
-            Defines the portfolio build behavior (assets/prices/signal/rebalance/fees).
+            Defines the portfolio build behavior (valuation/signal/rebalance/fees).
         portfolio_markets_configuration:
             Defines the portfolio metadata used for Markets backend sync.
     """
 
     portfolio_build_configuration: PortfolioBuildConfiguration = Field(
         ...,
-        description="Defines how the portfolio is built (assets/prices/signal/rebalance/fees).",
+        description="Defines how the portfolio is built (valuation/signal/rebalance/fees).",
     )
 
     portfolio_markets_configuration: PortfolioMarketsConfig = Field(

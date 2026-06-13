@@ -8,6 +8,11 @@ This ADR defines the target architecture for portfolio price consumption in
 `msm_portfolios`. It supersedes the current design where `PortfoliosDataNode`
 builds an `InterpolatedPrices` DataNode internally from `AssetsConfiguration`.
 
+Amendment: [ADR 0031](0031-generic-portfolio-valuation-source.md) supersedes
+the `price_column: PriceTypeNames` part of this ADR. Portfolio core should
+consume a generic valuation source and `valuation_column: str`, while
+OHLC-specific enums remain in contributed price/bar helpers.
+
 Implemented in the portfolio configuration contract, `PortfoliosDataNode`,
 contributed signal configurations, the equal-weight portfolio example, docs,
 skills, changelog, and focused portfolio tests.

@@ -163,8 +163,9 @@ portfolio example, chains that portfolio workflow, reuses the resulting
 `Portfolio` row, and assigns that portfolio UID as one of the account target
 positions. This preparation is not portfolio core registration:
 `PortfoliosDataNode` must still consume an explicit
-`PortfolioBuildConfiguration.price_source_instance`. The same full workflow can
-be extended with a dry-run account virtual-fund allocation plan using
+`PortfolioBuildConfiguration.valuation_source_instance` and configured
+`valuation_column`. The same full workflow can be extended with a dry-run
+account virtual-fund allocation plan using
 `--with-virtual-fund-allocation`; use `--apply-virtual-fund-allocation` only
 when the example should publish `VirtualFundHoldings` rows after printing the
 plan. Use

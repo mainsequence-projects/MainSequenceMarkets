@@ -35,9 +35,8 @@ from .settings import (
     PRICING_MARKET_DATA_SET_DEFAULT,
 )
 
-_CREATE_PRICING_SCHEMAS_LOCK = Lock()
+_PRICING_RUNTIME_LOCK = Lock()
 _PRICING_RUNTIME: PricingRuntime | None = None
-_CREATE_PRICING_SCHEMAS_CONFIG: tuple[tuple[str, Any], ...] | None = None
 _PRICING_RUNTIME_BY_CONFIG: dict[tuple[tuple[str, Any], ...], PricingRuntime] = {}
 
 
@@ -56,88 +55,6 @@ class PricingRuntime:
     @property
     def meta_table_models(self) -> list[type[Any]]:
         return list(self.registration.models)
-
-
-def create_pricing_schemas(
-    *,
-    management_mode: PricingManagementMode = "platform_managed",
-    namespace: str | None = None,
-    market_data_configuration: PricingMarketDataConfigurationInput | None = None,
-    seed_default_market_data_bindings: bool = True,
-    replace_default_market_data_bindings: bool = False,
-    models: Sequence[PricingModelSelector] | None = None,
-    timeout: int | float | tuple[float, float] | None = None,
-) -> PricingRuntime:
-    """Attach pricing schemas and return a pricing repository runtime.
-
-    MetaTable registration is migration-owned. This legacy entrypoint remains
-    for callers that also want pricing market-data configuration during startup.
-    """
-
-    resolved_models = _pricing_startup_models(
-        models,
-        seed_default_market_data_bindings=seed_default_market_data_bindings,
-    )
-    namespace = markets_namespace(namespace)
-    schema_config = _schema_config(
-        management_mode=management_mode,
-        namespace=namespace,
-        models=resolved_models,
-        timeout=timeout,
-    )
-
-    global _PRICING_RUNTIME, _CREATE_PRICING_SCHEMAS_CONFIG
-    with _CREATE_PRICING_SCHEMAS_LOCK:
-        cached_runtime = _PRICING_RUNTIME_BY_CONFIG.get(schema_config)
-        if cached_runtime is not None:
-            _configure_pricing_runtime_market_data(
-                cached_runtime,
-                market_data_configuration=market_data_configuration,
-                seed_default_market_data_bindings=seed_default_market_data_bindings,
-                replace_default_market_data_bindings=replace_default_market_data_bindings,
-            )
-            return cached_runtime
-        if _CREATE_PRICING_SCHEMAS_CONFIG is not None:
-            if _CREATE_PRICING_SCHEMAS_CONFIG == schema_config:
-                if _PRICING_RUNTIME is None:
-                    raise RuntimeError("Pricing runtime cache is inconsistent.")
-                _configure_pricing_runtime_market_data(
-                    _PRICING_RUNTIME,
-                    market_data_configuration=market_data_configuration,
-                    seed_default_market_data_bindings=seed_default_market_data_bindings,
-                    replace_default_market_data_bindings=replace_default_market_data_bindings,
-                )
-                return _PRICING_RUNTIME
-            raise RuntimeError(
-                "msm_pricing.create_pricing_schemas() has already initialized "
-                "this process with different schema arguments. Run it once at "
-                "process startup before pricing row operations."
-            )
-
-        registration = _resolve_registered_pricing_meta_tables(
-            management_mode=management_mode,
-            timeout=timeout,
-            models=resolved_models,
-        )
-        runtime = PricingRuntime(
-            registration=registration,
-            context=MarketsRepositoryContext(
-                timeout=timeout,
-                namespace=namespace,
-            ),
-            namespace=namespace,
-        )
-
-        _PRICING_RUNTIME = runtime
-        _CREATE_PRICING_SCHEMAS_CONFIG = schema_config
-        _PRICING_RUNTIME_BY_CONFIG[schema_config] = runtime
-        _configure_pricing_runtime_market_data(
-            runtime,
-            market_data_configuration=market_data_configuration,
-            seed_default_market_data_bindings=seed_default_market_data_bindings,
-            replace_default_market_data_bindings=replace_default_market_data_bindings,
-        )
-        return runtime
 
 
 def attach_pricing_schemas(
@@ -166,7 +83,7 @@ def attach_pricing_schemas(
     )
 
     global _PRICING_RUNTIME
-    with _CREATE_PRICING_SCHEMAS_LOCK:
+    with _PRICING_RUNTIME_LOCK:
         cached_runtime = _PRICING_RUNTIME_BY_CONFIG.get(schema_config)
         if cached_runtime is not None:
             _configure_pricing_runtime_market_data(
@@ -557,6 +474,5 @@ __all__ = [
     "PricingRuntime",
     "attach_pricing_schemas",
     "configure_pricing_market_data",
-    "create_pricing_schemas",
     "resolve_pricing_runtime",
 ]

@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from msm.models import AssetTable
+from msm.repositories import MarketsRepositoryContext
 from msm_pricing.api.pricing_details import (
     DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT,
     AssetCurrentPricingDetails,
@@ -644,3 +645,76 @@ def test_asset_pricing_details_add_many_reconciles_explicit_dates_with_current(
         ],
         ("asset_uid",),
     )
+
+
+def test_asset_pricing_details_add_many_pages_upsert_operations_and_sets_return_limits(
+    monkeypatch,
+) -> None:
+    pricing_details_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    context = MarketsRepositoryContext(
+        data_source_uid=str(uuid.UUID("00000000-0000-0000-0000-000000000001")),
+        limits={"max_rows": 1000, "statement_timeout_ms": 5000},
+    )
+    asset_uids = [uuid.uuid4() for _ in range(1757)]
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.resolve_pricing_runtime",
+        lambda **_kwargs: SimpleNamespace(context=context),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.MAX_PRICING_DETAILS_UPSERT_OPERATION_ROWS",
+        1000,
+    )
+
+    def fake_bulk_upsert_model(active_context, *, model, values, conflict_columns):
+        calls.append(("bulk-upsert", model, len(values), conflict_columns, active_context.limits))
+        return {"rows": values}
+
+    def fake_search_model(active_context, *, model, in_filters, limit):
+        calls.append(
+            ("current-search", model, len(in_filters["asset_uid"]), limit, active_context.limits)
+        )
+        return {"rows": []}
+
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.bulk_upsert_model",
+        fake_bulk_upsert_model,
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.pricing_details.search_model",
+        fake_search_model,
+    )
+
+    result = AssetPricingDetails.add_many(
+        [
+            {
+                "asset_uid": asset_uid,
+                "asset_identifier": f"asset-{index}",
+                "instrument_type": "ExampleInstrument",
+                "instrument_dump": {"notional": index},
+                "pricing_details_date": pricing_details_date,
+            }
+            for index, asset_uid in enumerate(asset_uids)
+        ],
+        batch_size=5000,
+    )
+
+    assert len(result.pricing_details) == 1757
+    assert len(result.current_pricing_details) == 1757
+    history_calls = [
+        call for call in calls if call[:2] == ("bulk-upsert", AssetPricingDetailsStorage)
+    ]
+    current_search_calls = [
+        call for call in calls if call[:2] == ("current-search", AssetCurrentPricingDetailsTable)
+    ]
+    current_upsert_calls = [
+        call for call in calls if call[:2] == ("bulk-upsert", AssetCurrentPricingDetailsTable)
+    ]
+    assert [call[2] for call in history_calls] == [1000, 757]
+    assert [call[2] for call in current_search_calls] == [1000, 757]
+    assert [call[2] for call in current_upsert_calls] == [1000, 757]
+    assert [call[4]["max_rows"] for call in history_calls] == [1000, 1000]
+    assert [call[4]["max_rows"] for call in current_search_calls] == [1000, 1000]
+    assert [call[4]["max_rows"] for call in current_upsert_calls] == [1000, 1000]
+    assert [call[4]["statement_timeout_ms"] for call in history_calls] == [5000, 5000]

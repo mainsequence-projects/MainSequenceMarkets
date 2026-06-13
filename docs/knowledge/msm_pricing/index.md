@@ -306,6 +306,10 @@ Important rules:
   `pricing_details_date`, the API upserts that exact timestamped snapshot and
   updates current when no current row exists or when the new date is newer than
   current.
+- Batch persistence chunks by caller `batch_size` and sets each compiled
+  MetaTable operation's SDK `max_rows` limit to cover the submitted chunk.
+  Returned row counts are validated per bulk operation so partial write-returning
+  responses fail instead of being treated as complete.
 - Application code should not update `AssetCurrentPricingDetailsTable` directly
   as the normal UX. Direct row APIs are low-level infrastructure for the
   no-date current-snapshot path.

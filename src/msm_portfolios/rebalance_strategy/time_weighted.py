@@ -5,10 +5,7 @@ import numpy as np
 import pandas as pd
 from pydantic import Field, field_validator, model_validator
 
-from msm_portfolios.enums import (
-    PriceTypeNames,
-    RebalanceFrequencyStrategyName,
-)
+from msm_portfolios.enums import RebalanceFrequencyStrategyName
 from msm_portfolios.rebalance_strategy.base import (
     RebalanceStrategyBase,
 )
@@ -65,8 +62,8 @@ class TimeWeighted(RebalanceStrategyBase):
         start_date: datetime.datetime,
         end_date: datetime.datetime,
         signal_weights: pd.DataFrame,
-        prices_df: pd.DataFrame,
-        price_type: PriceTypeNames,
+        valuations_df: pd.DataFrame,
+        valuation_column: str,
     ) -> pd.DataFrame:
         """
         Rebalance weights are set at start_time of rebalancing.
@@ -117,18 +114,20 @@ class TimeWeighted(RebalanceStrategyBase):
         diff_weights = rebalance_weights - past_rebalance_weights
         rebalance_weights = past_rebalance_weights + diff_weights.multiply(time_weight, axis=0)
 
-        prices_df = (
-            prices_df.reset_index()
-            .pivot(index="time_index", columns="asset_symbol", values=price_type)
+        valuations_df = (
+            valuations_df.reset_index()
+            .pivot(index="time_index", columns="asset_symbol", values=valuation_column)
             .ffill()
             .fillna(0)
         )
-        valid_columns = rebalance_weights.columns[rebalance_weights.columns.isin(prices_df.columns)]
+        valid_columns = rebalance_weights.columns[
+            rebalance_weights.columns.isin(valuations_df.columns)
+        ]
         if len(valid_columns) != rebalance_weights.shape[1]:
             rebalance_weights = rebalance_weights[valid_columns].copy()
             rebalance_weights = rebalance_weights.divide(rebalance_weights.sum(axis=1), axis=0)
 
-        nan_mask = prices_df.loc[rebalance_weights.index].isna()
+        nan_mask = valuations_df.loc[rebalance_weights.index].isna()
         rebalance_weights[nan_mask] = np.nan
 
         if len(rebalance_weights) == 0:
@@ -138,7 +137,12 @@ class TimeWeighted(RebalanceStrategyBase):
         shifted_rebalance_weights = rebalance_weights.shift(1)
         shifted_rebalance_weights.iloc[0] = past_rebalance_weight
         rebalance_weights = pd.concat(
-            objs=[shifted_rebalance_weights, rebalance_weights, prices_df, prices_df.shift(1)],
+            objs=[
+                shifted_rebalance_weights,
+                rebalance_weights,
+                valuations_df,
+                valuations_df.shift(1),
+            ],
             keys=["weights_before", "weights_current", "price_current", "price_before"],
             axis=1,
         )

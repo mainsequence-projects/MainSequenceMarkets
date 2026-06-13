@@ -73,7 +73,6 @@ from msm_portfolios.data_nodes import (  # noqa: E402
     PortfoliosDataNode,
     compute_portfolio_configuration_hash,
 )
-from msm_portfolios.enums import PriceTypeNames  # noqa: E402
 from msm_portfolios.rebalance_strategy import ImmediateSignal  # noqa: E402
 
 
@@ -195,8 +194,8 @@ def build_portfolio_configuration(
 ) -> PortfolioConfiguration:
     return PortfolioConfiguration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
-            price_source_instance=price_source,
-            price_column=PriceTypeNames.CLOSE,
+            valuation_source_instance=price_source,
+            valuation_column="close",
             portfolio_prices_frequency="1d",
             execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.00018),
             backtesting_weights_configuration=BacktestingWeightsConfig(

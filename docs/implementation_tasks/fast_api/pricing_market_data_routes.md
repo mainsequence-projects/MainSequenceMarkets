@@ -512,8 +512,7 @@ Open decision:
 
 - [x] Add a pricing runtime helper in `apps/v1/runtime_bootstrap.py` or a new
   adjacent module.
-- [x] The helper must call `msm_pricing.bootstrap.attach_pricing_schemas(...)`,
-  not `create_pricing_schemas(...)`.
+- [x] The helper must call the attach-only pricing runtime API.
 - [x] The helper must respect `MSM_AUTO_REGISTER_NAMESPACE`, matching the
   existing v1 app behavior.
 - [x] The helper must attach at least `PricingMarketDataSet` and

@@ -85,8 +85,8 @@ class VolumeParticipation(RebalanceStrategyBase):
         start_date: datetime.datetime,
         end_date: datetime.datetime,
         signal_weights: pd.DataFrame,
-        prices_df: pd.DataFrame,
-        price_type: str,
+        valuations_df: pd.DataFrame,
+        valuation_column: str,
     ) -> pd.DataFrame:
         raise NotImplementedError
         asset_list = list(signal_weights.columns)
@@ -105,13 +105,13 @@ class VolumeParticipation(RebalanceStrategyBase):
         signal_weights["day"] = signal_weights.index.floor("D")
 
         volume_df = (
-            prices_df.reset_index()
+            valuations_df.reset_index()
             .pivot(index="time_index", columns="asset_symbol", values="volume")
             .fillna(0)
         )
-        prices_df = (
-            prices_df.reset_index()
-            .pivot(index="time_index", columns="asset_symbol", values=price_type)
+        valuations_df = (
+            valuations_df.reset_index()
+            .pivot(index="time_index", columns="asset_symbol", values=valuation_column)
             .fillna(0)
         )
 
@@ -123,7 +123,7 @@ class VolumeParticipation(RebalanceStrategyBase):
 
         rebalance_weights = rebalance_weights.set_index("day", append=True)
 
-        max_participation_volume = (volume_df * prices_df) * self.max_percent_volume_in_bar
+        max_participation_volume = (volume_df * valuations_df) * self.max_percent_volume_in_bar
         max_participation_volume["day"] = max_participation_volume.index.floor("D")
         max_participation_volume = max_participation_volume.set_index("day", append=True)
         max_participation_volume = max_participation_volume[
@@ -184,8 +184,8 @@ class VolumeParticipation(RebalanceStrategyBase):
             objs=[
                 rebalance_weights,
                 shifted_rebalance_weights,
-                prices_df,
-                prices_df.shift(1),
+                valuations_df,
+                valuations_df.shift(1),
                 volume_df,
                 volume_df.shift(1),
             ],

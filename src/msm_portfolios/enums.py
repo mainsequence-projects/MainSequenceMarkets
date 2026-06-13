@@ -7,12 +7,6 @@ class RebalanceFrequencyStrategyName(Enum):
     QUARTERLY = "quarterly"
 
 
-class PriceTypeNames(Enum):
-    VWAP = "vwap"
-    OPEN = "open"
-    CLOSE = "close"
-
-
 class RunStrategy(Enum):
     BACKTEST = "backtest"
     LIVE = "live"

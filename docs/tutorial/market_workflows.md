@@ -334,16 +334,26 @@ optional portfolio `Index`, publishes example OHLCV source bars to
 `ExternalPricesStorage` TimeIndexMetaTable UID on `InterpolatedPricesConfig`, so
 the explicit upstream interpolation node can recover the price source through
 the SDK APIDataNode lookup path. The portfolio configuration receives that
-`InterpolatedPrices` node as `price_source_instance`; `PortfoliosDataNode` does
-not create interpolation storage internally. Real portfolio extensions can pass
-any compatible price DataNode or APIDataNode and focus on portfolio logic. The
-source bar frequency is read from the registered source table's cadence
+`InterpolatedPrices` node as `valuation_source_instance` and sets
+`valuation_column="close"`; `PortfoliosDataNode` does not create interpolation
+storage internally. Real portfolio extensions can pass any compatible
+asset-indexed valuation DataNode or APIDataNode and choose any numeric valuation
+column, such as `fair_value` or `nav`, without reshaping the source into OHLC
+bars. A focused configuration example is available at
+`examples/msm_portfolios/portfolio_custom_valuation_column_example.py`:
+
+```bash
+python examples/msm_portfolios/portfolio_custom_valuation_column_example.py \
+  --source-time-index-meta-table-uid <fair-value-time-index-meta-table-uid>
+```
+
+The source bar frequency is read from the registered source table's cadence
 metadata, then used with `__metatable_extra_hash_components__` to select a
 configured output storage table, so different source cadence, upsample
 frequency, and interpolation rule combinations do not collide inside one price
-table. The script prints the workflow steps, created row UIDs, source price row
-counts, explicit price-source dependency details, and published DataNode storage
-UIDs.
+table. The script prints the workflow steps, created row UIDs, source valuation
+row counts, explicit valuation-source dependency details, and published DataNode
+storage UIDs.
 
 ```python
 from msm.api.accounts import (

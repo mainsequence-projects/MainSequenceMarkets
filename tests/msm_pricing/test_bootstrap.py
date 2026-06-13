@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import uuid
 from types import SimpleNamespace
 
@@ -26,7 +25,6 @@ from msm_pricing.settings import (
 @pytest.fixture(autouse=True)
 def reset_pricing_runtime(monkeypatch) -> None:
     monkeypatch.setattr(pricing_bootstrap, "_PRICING_RUNTIME", None)
-    monkeypatch.setattr(pricing_bootstrap, "_CREATE_PRICING_SCHEMAS_CONFIG", None)
     monkeypatch.setattr(pricing_bootstrap, "_PRICING_RUNTIME_BY_CONFIG", {})
     reset_pricing_market_data_configuration()
     monkeypatch.delenv("MSM_AUTO_REGISTER_NAMESPACE", raising=False)
@@ -138,15 +136,15 @@ def install_fake_pricing_bootstrap(monkeypatch):
     return attach_calls
 
 
-def test_create_pricing_schemas_returns_cached_runtime_for_same_config(monkeypatch) -> None:
+def test_attach_pricing_schemas_returns_cached_runtime_for_same_config(monkeypatch) -> None:
     attach_calls = install_fake_pricing_bootstrap(monkeypatch)
 
-    first_runtime = pricing_bootstrap.create_pricing_schemas(
+    first_runtime = pricing_bootstrap.attach_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
         seed_default_market_data_bindings=False,
     )
-    second_runtime = pricing_bootstrap.create_pricing_schemas(
+    second_runtime = pricing_bootstrap.attach_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
         seed_default_market_data_bindings=False,
@@ -158,8 +156,17 @@ def test_create_pricing_schemas_returns_cached_runtime_for_same_config(monkeypat
     assert len(attach_calls) == 1
 
 
-def test_create_pricing_schemas_signature_excludes_migration_setup_arguments() -> None:
-    parameters = inspect.signature(pricing_bootstrap.create_pricing_schemas).parameters
+def test_removed_pricing_schema_creation_entrypoint_is_absent() -> None:
+    removed_name = "_".join(["create", "pricing", "schemas"])
+
+    assert not hasattr(pricing_bootstrap, removed_name)
+    assert removed_name not in pricing_bootstrap.__all__
+
+
+def test_attach_pricing_schemas_signature_excludes_migration_setup_arguments() -> None:
+    import inspect
+
+    parameters = inspect.signature(pricing_bootstrap.attach_pricing_schemas).parameters
 
     assert "data_source_uid" not in parameters
     assert "open_for_everyone" not in parameters
@@ -167,12 +174,12 @@ def test_create_pricing_schemas_signature_excludes_migration_setup_arguments() -
     assert "introspect" not in parameters
 
 
-def test_create_pricing_schemas_installs_market_data_configuration_override(
+def test_attach_pricing_schemas_installs_market_data_configuration_override(
     monkeypatch,
 ) -> None:
     install_fake_pricing_bootstrap(monkeypatch)
 
-    pricing_bootstrap.create_pricing_schemas(
+    pricing_bootstrap.attach_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
         seed_default_market_data_bindings=False,
@@ -197,13 +204,13 @@ def test_create_pricing_schemas_installs_market_data_configuration_override(
     )
 
 
-def test_create_pricing_schemas_without_market_data_override_leaves_defaults(
+def test_attach_pricing_schemas_without_market_data_override_leaves_defaults(
     monkeypatch,
 ) -> None:
     install_fake_pricing_bootstrap(monkeypatch)
     monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
 
-    pricing_bootstrap.create_pricing_schemas(
+    pricing_bootstrap.attach_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
         seed_default_market_data_bindings=False,
@@ -213,54 +220,7 @@ def test_create_pricing_schemas_without_market_data_override_leaves_defaults(
     assert configuration == PricingMarketDataConfiguration()
 
 
-def test_create_pricing_schemas_rejects_second_process_config_change(
-    monkeypatch,
-) -> None:
-    install_fake_pricing_bootstrap(monkeypatch)
-
-    pricing_bootstrap.create_pricing_schemas(
-        namespace="mainsequence.examples",
-        models=["CurveTable"],
-        seed_default_market_data_bindings=False,
-    )
-
-    with pytest.raises(RuntimeError, match="already initialized"):
-        pricing_bootstrap.create_pricing_schemas(
-            namespace="mainsequence.other",
-            models=["CurveTable"],
-            seed_default_market_data_bindings=False,
-        )
-
-
-def test_create_pricing_schemas_does_not_install_market_data_override_on_schema_error(
-    monkeypatch,
-) -> None:
-    install_fake_pricing_bootstrap(monkeypatch)
-
-    pricing_bootstrap.create_pricing_schemas(
-        namespace="mainsequence.examples",
-        models=["CurveTable"],
-        seed_default_market_data_bindings=False,
-    )
-
-    with pytest.raises(RuntimeError, match="already initialized"):
-        pricing_bootstrap.create_pricing_schemas(
-            namespace="mainsequence.other",
-            models=["CurveTable"],
-            seed_default_market_data_bindings=False,
-            market_data_configuration={
-                "market_data_set": "eod",
-                "data_node_uids": {
-                    PRICING_CONCEPT_DISCOUNT_CURVES: ("00000000-0000-0000-0000-000000000201"),
-                },
-            },
-        )
-
-    configuration = get_pricing_market_data_configuration()
-    assert configuration == PricingMarketDataConfiguration()
-
-
-def test_create_pricing_schemas_seeds_default_market_data_bindings(
+def test_attach_pricing_schemas_seeds_default_market_data_bindings(
     monkeypatch,
 ) -> None:
     install_fake_pricing_bootstrap(monkeypatch)
@@ -290,9 +250,10 @@ def test_create_pricing_schemas_seeds_default_market_data_bindings(
     monkeypatch.setattr(pricing_bootstrap, "upsert_model", fake_upsert_model)
     monkeypatch.setattr(pricing_bootstrap, "create_model", fake_create_model)
 
-    pricing_bootstrap.create_pricing_schemas(
+    pricing_bootstrap.attach_pricing_schemas(
         namespace="mainsequence.examples",
         models=["PricingMarketDataSetBindingTable"],
+        seed_default_market_data_bindings=True,
     )
 
     create_values = [call[3] for call in calls if call[0] == "create"]
@@ -348,8 +309,9 @@ def test_default_market_data_binding_seeding_does_not_overwrite_existing_rows(
     monkeypatch.setattr(pricing_bootstrap, "upsert_model", fake_upsert_model)
     monkeypatch.setattr(pricing_bootstrap, "create_model", fake_create_model)
 
-    runtime = pricing_bootstrap.create_pricing_schemas(
+    runtime = pricing_bootstrap.attach_pricing_schemas(
         models=["PricingMarketDataSetBindingTable"],
+        seed_default_market_data_bindings=True,
     )
 
     rows = pricing_bootstrap.seed_default_pricing_market_data_bindings(runtime)
@@ -373,8 +335,9 @@ def test_default_market_data_binding_seeding_replaces_when_requested(
 
     monkeypatch.setattr(pricing_bootstrap, "upsert_model", fake_upsert_model)
 
-    runtime = pricing_bootstrap.create_pricing_schemas(
+    runtime = pricing_bootstrap.attach_pricing_schemas(
         models=["PricingMarketDataSetBindingTable"],
+        seed_default_market_data_bindings=True,
         replace_default_market_data_bindings=True,
     )
 
@@ -409,7 +372,7 @@ def test_resolve_pricing_runtime_requires_initialized_runtime(monkeypatch) -> No
 def test_resolve_pricing_runtime_returns_active_runtime(monkeypatch) -> None:
     attach_calls = install_fake_pricing_bootstrap(monkeypatch)
 
-    runtime = pricing_bootstrap.create_pricing_schemas(
+    runtime = pricing_bootstrap.attach_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
         seed_default_market_data_bindings=False,
@@ -466,7 +429,7 @@ def test_resolve_pricing_runtime_missing_tables_error_names_declarations(
 ) -> None:
     install_fake_pricing_bootstrap(monkeypatch)
 
-    pricing_bootstrap.create_pricing_schemas(
+    pricing_bootstrap.attach_pricing_schemas(
         namespace="mainsequence.examples",
         models=["CurveTable"],
         seed_default_market_data_bindings=False,
