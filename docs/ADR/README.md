@@ -15,7 +15,7 @@ Recommended sections:
 - Decision
 - Consequences
 
-Current architecture decisions:
+## Core Decisions
 
 - [0005. Pricing Package Refactor](0005-pricing-package-refactor.md)
 - [0006. Asset Package Boundary](0006-asset-package-boundary.md)
@@ -33,5 +33,12 @@ Current architecture decisions:
 - [0031. Generic Portfolio Valuation Source](0031-generic-portfolio-valuation-source.md)
 - [0032. Portfolio Groups As Many-To-Many Classification](0032-portfolio-group-many-to-many.md)
 - [0033. Pricing Valuation Position Boundary](0033-pricing-valuation-position-boundary.md)
-- [FastAPI v1 Fixed Income Pricer API](fast_api/v1/fixed-income-pricer-api.md)
+
+## Command Center Decisions
+
+- [0034. Command Center Asset Monitor Helpers](0034-command-center-asset-monitor-helpers.md)
 - [FastAPI v1 Command Center Adapter Discovery](fast_api/v1/command-center-adapter-discovery.md)
+
+## FastAPI Decisions
+
+- [FastAPI v1 Fixed Income Pricer API](fast_api/v1/fixed-income-pricer-api.md)

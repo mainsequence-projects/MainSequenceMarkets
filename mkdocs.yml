@@ -90,6 +90,9 @@ nav:
       - Generic Portfolio Valuation Source: ADR/0031-generic-portfolio-valuation-source.md
       - Portfolio Groups As Many-To-Many Classification: ADR/0032-portfolio-group-many-to-many.md
       - Pricing Valuation Position Boundary: ADR/0033-pricing-valuation-position-boundary.md
+      - Command Center:
+          - Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
+          - FastAPI v1 Adapter Discovery: ADR/fast_api/v1/command-center-adapter-discovery.md
       - FastAPI v1 Fixed Income Pricer API: ADR/fast_api/v1/fixed-income-pricer-api.md
   - Changelog: changelog.md
   - Reference:
