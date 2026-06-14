@@ -115,6 +115,37 @@ def test_command_center_contract_classifies_read_operations_as_query_operations(
     }
 
 
+def test_command_center_contract_exposes_portfolio_group_operations() -> None:
+    payload = _contract_payload()
+    operations = _operation_by_id(payload)
+
+    expected_query_operations = {
+        "listPortfolioGroups": "GET",
+        "getPortfolioGroup": "GET",
+        "listGroupsForPortfolio": "GET",
+        "listPortfoliosInGroup": "GET",
+    }
+    expected_mutation_operations = {
+        "createPortfolioGroup": "POST",
+        "updatePortfolioGroup": "PATCH",
+        "deletePortfolioGroup": "DELETE",
+        "bulkDeletePortfolioGroups": "POST",
+        "addPortfolioToGroup": "POST",
+        "removePortfolioFromGroup": "DELETE",
+        "bulkDeletePortfolioGroupMemberships": "POST",
+    }
+
+    for operation_id, method in expected_query_operations.items():
+        assert operations[operation_id]["method"] == method
+        assert operations[operation_id]["kind"] == "query"
+        assert operations[operation_id]["capabilities"] == ["query"]
+
+    for operation_id, method in expected_mutation_operations.items():
+        assert operations[operation_id]["method"] == method
+        assert operations[operation_id]["kind"] == "mutation"
+        assert operations[operation_id]["capabilities"] == ["mutation"]
+
+
 def test_command_center_contract_documents_response_contract_boundaries() -> None:
     payload = _contract_payload()
     operations = _operation_by_id(payload)

@@ -89,6 +89,27 @@ Rules:
 
 If an endpoint is intentionally unstructured, document why.
 
+## Command Center Adapter Exposure
+
+Every public `apps/v1` endpoint must also be exposed in the Command Center
+Adapter from API contract unless the route is explicitly internal-only and that
+exception is documented in the route or implementation task.
+
+When adding or changing an `apps/v1` route:
+
+- keep the FastAPI `operation_id` stable and unique
+- add the operation ID to `apps/v1/services/command_center_adapter.py`
+  `QUERY_OPERATION_IDS` or `MUTATION_OPERATION_IDS`
+- classify read/list/detail/calculation endpoints as query operations
+- classify create/update/delete/write endpoints as mutation operations
+- add or update tests under `tests/msm/fastapi/v1/` proving the operation is
+  present in `/.well-known/command-center/connection-contract`
+- verify the OpenAPI route and Command Center contract stay aligned
+
+Do not leave a route visible in `/openapi.json` but missing from the Command
+Center datasource contract. The frontend treats that as "contract does not
+expose METHOD /path".
+
 ## Documentation Standards
 
 Every endpoint in `apps/v1` must be documented.
