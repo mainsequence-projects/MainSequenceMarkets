@@ -39,9 +39,11 @@ ms-markets agent skills:
 msm copy-msm-skills --path .
 ```
 
-The command copies the packaged bundle into `.agents/skills/ms_markets/` and
-overwrites only matching skill folders under that namespace. It does not touch
-`.agents/skills/mainsequence`, project-state files, or `AGENTS.md`.
+The command copies the packaged bundle into `.agents/skills/ms_markets/`,
+overwrites only matching skill folders under that namespace, and writes
+`.agents/skills/ms_markets/PINNED_FROM.txt` with the installed ms-markets
+version. It does not touch `.agents/skills/mainsequence`, project-state files,
+or `AGENTS.md`.
 
 Run it only from a separate host project. The CLI rejects the ms-markets source
 checkout to avoid deleting the package-owned skill bundle.

@@ -143,9 +143,9 @@ def schema_table_name(
 
 Use `app` for the project/package prefix, `concept` for the table concept, and
 `suffix` for a namespace, variant, or bounded specialization when the same
-concept exists in multiple logical scopes. The SQLAlchemy table name is the
-first-class physical table identity; any SDK-computed contract fingerprint is
-only validation metadata and must not be treated as the table name.
+concept exists in multiple logical scopes. The mixin derives only the logical
+`storage_hash` from storage-relevant configuration and table shape; it must not
+use that hash as the SQLAlchemy table name.
 
 When a platform-managed table must support in-place contract migrations from its
 first version, use Alembic. Keep the SDK model as a normal
@@ -171,9 +171,9 @@ The column description must explain what the value means in this table and how
 it is used, not just restate the column name or dtype.
 
 Use `__metatable_extra_hash_components__` when two backend-managed tables could
-otherwise produce the same contract fingerprint because their storage-relevant
-shape is identical or intentionally generic. The value must be stable and
-deterministic, usually a small mapping such as `{"storage_name": "account_holdings"}`.
+otherwise produce the same storage hash because their storage-relevant shape is
+identical or intentionally generic. The value must be stable and deterministic,
+usually a small mapping such as `{"storage_name": "account_holdings"}`.
 
 This attribute is part of storage identity. Changing it defines a different
 table. Do not use it for labels, descriptions, runtime options, test isolation,
@@ -387,6 +387,24 @@ Only use physical table names returned by registered `MetaTable` objects when co
 
 Do not hardcode platform-managed physical names manually.
 
+### 7. DataNode storage deletes use the DataNode tail-delete API
+
+For `PlatformTimeIndexMetaTable` storage owned by DataNodes, do not design raw
+SQL delete operations or compiled SQL delete operations for rollback, repair, or
+stream cleanup. Route that work to the DataNode skill and use
+`TimeIndexMetaTable.delete_after_date(...)`.
+
+The DataNode delete path is:
+
+```text
+POST /orm/api/ts_manager/dynamic_table/<dynamic_table_uid>/delete_after_date/
+```
+
+Use `after_date` for global tail rollback. Use `dimension_filters` or
+`index_coordinates` for scoped deletes, including scoped full-stream deletes
+where `after_date=None`. Never allow `after_date=None` without an explicit
+dimension or coordinate scope.
+
 ## Review Rules
 
 When reviewing an existing MetaTable workflow, look for:
@@ -406,6 +424,8 @@ When reviewing an existing MetaTable workflow, look for:
 - migration work that asks users to define backend payloads, artifact rows, or SDK request objects
 - compiled SQL operations without complete table scope
 - raw SQL that hardcodes stale physical names
+- raw SQL or compiled SQL deletes against DataNode-owned
+  `PlatformTimeIndexMetaTable` storage instead of `delete_after_date(...)`
 - a table that should really be modeled as a DataNode instead
 
 ## Validation Checklist

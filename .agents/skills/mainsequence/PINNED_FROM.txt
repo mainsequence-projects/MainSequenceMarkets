@@ -1,0 +1,7 @@
+schema=1
+library_name=mainsequence
+namespace=mainsequence
+pinned_version=4.4.8
+skills_path=/Users/jose/mainsequence-dev/main-sequence-workbench/projects/mainsequencemarkets-1d0530c0-65d1-4db0-856b-dc29d8260a09/.venv/lib/python3.11/site-packages/agent_scaffold/skills
+copied_at_utc=2026-06-14T15:25:22Z
+command=mainsequence project update_agent_skills

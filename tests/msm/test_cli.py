@@ -67,6 +67,11 @@ def test_copy_msm_skills_dry_run_writes_nothing(tmp_path, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload["dry_run"] is True
     assert payload["destination_root"] == str(tmp_path / ".agents" / "skills" / "ms_markets")
+    assert payload["library_name"] == "ms-markets"
+    assert payload["namespace"] == "ms_markets"
+    assert payload["sentinel_path"] == str(
+        tmp_path / ".agents" / "skills" / "ms_markets" / "PINNED_FROM.txt"
+    )
     assert sorted(item["name"] for item in payload["updated"]) == _bundled_bundle_names()
 
 
@@ -128,6 +133,12 @@ def test_copy_msm_skills_copies_only_ms_markets_namespace(tmp_path) -> None:
     assert sentinel.read_text(encoding="utf-8") == "keep me"
     assert not stale_file.exists()
     assert not (tmp_path / ".agents" / "ms_markets").exists()
+    pin_file = tmp_path / ".agents" / "skills" / "ms_markets" / "PINNED_FROM.txt"
+    pin_content = pin_file.read_text(encoding="utf-8")
+    assert "library_name=ms-markets" in pin_content
+    assert "namespace=ms_markets" in pin_content
+    assert "command=msm copy-msm-skills" in pin_content
+    assert "pinned_version=" in pin_content
     for skill_path in _bundled_skill_paths():
         skill_file = (
             tmp_path

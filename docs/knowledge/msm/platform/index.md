@@ -61,9 +61,11 @@ The `msm` import path is side-effect free. Installing the package makes the
 ms-markets skill bundle available as package data, but skills are copied into a
 host project only when a user runs `msm copy-msm-skills --path <project>`.
 That command writes to `.agents/skills/ms_markets/` and leaves Main Sequence
-scaffold skills and project-state files untouched. The command is blocked when
-the target path is the ms-markets source checkout because that checkout is also
-the packaged skill source.
+scaffold skills and project-state files untouched. It also writes
+`.agents/skills/ms_markets/PINNED_FROM.txt` so host projects can see which
+installed ms-markets version supplied the copied skills. The command is blocked
+when the target path is the ms-markets source checkout because that checkout is
+also the packaged skill source.
 
 ## Extension Notes
 

@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
+import tomllib
 from importlib.metadata import PackageNotFoundError, distribution
-from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
+from mainsequence.scaffold_skills import ScaffoldSkillCopyBlocked, copy_scaffold_skills
+
 SOURCE_MSM_SKILLS_PATH = (".agents", "skills", "ms_markets")
 BUNDLED_MSM_SKILLS_PATH = SOURCE_MSM_SKILLS_PATH
+MSM_SKILL_NAMESPACE = "ms_markets"
+MSM_SKILL_COPY_COMMAND = "msm copy-msm-skills"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -34,24 +37,30 @@ def copy_msm_skills_command(
     emit_json: bool = False,
 ) -> int:
     source_root = bundled_msm_skills_root()
-    if not _traversable_exists(source_root) or not source_root.is_dir():
+    if not source_root.exists() or not source_root.is_dir():
         raise SystemExit(f"Packaged ms-markets skill bundle is missing: {source_root}")
 
-    project_dir = path.expanduser().resolve()
-    destination_root = project_dir / ".agents" / "skills" / "ms_markets"
+    project_dir = path.expanduser().resolve(strict=False)
+    destination_root = project_dir / ".agents" / "skills" / MSM_SKILL_NAMESPACE
     source_label = _source_root_label(source_root)
-    block_reason = _copy_msm_skills_block_reason(
-        project_dir=project_dir,
-        destination_root=destination_root,
-        source_root=source_root,
-    )
-    if block_reason is not None:
+    try:
+        result = copy_scaffold_skills(
+            project_dir=project_dir,
+            library_name="ms-markets",
+            namespace=MSM_SKILL_NAMESPACE,
+            skills_path=source_root,
+            pinned_version=_ms_markets_version(),
+            command=MSM_SKILL_COPY_COMMAND,
+            dry_run=dry_run,
+            project_guard=_copy_msm_skills_block_reason,
+        )
+    except ScaffoldSkillCopyBlocked as exc:
         payload = {
             "blocked": True,
             "destination_root": str(destination_root),
             "dry_run": dry_run,
             "project": str(project_dir),
-            "reason": block_reason,
+            "reason": str(exc),
             "source": source_label,
             "updated": [],
             "updated_count": 0,
@@ -59,32 +68,29 @@ def copy_msm_skills_command(
         if emit_json:
             print(json.dumps(payload, indent=2, sort_keys=True))
         else:
-            print(block_reason, file=sys.stderr)
+            print(str(exc), file=sys.stderr)
         return 2
-
-    skill_sources = _iter_skill_roots(source_root)
 
     copied = [
         {
-            "name": source.name,
-            "source": f"{source_label}/{source.name}",
-            "destination": str(destination_root / source.name),
+            "name": item.name,
+            "source": f"{source_label}/{item.name}",
+            "destination": str(item.destination),
         }
-        for source in skill_sources
+        for item in result.copied
     ]
     payload = {
         "project": str(project_dir),
         "source": source_label,
-        "destination_root": str(destination_root),
+        "destination_root": str(result.destination_root),
+        "library_name": result.library_name,
+        "namespace": result.namespace,
+        "pinned_version": result.pinned_version,
+        "sentinel_path": str(result.sentinel_path),
         "dry_run": dry_run,
         "updated_count": len(copied),
         "updated": copied,
     }
-
-    if not dry_run:
-        for source in skill_sources:
-            destination = destination_root / source.name
-            _copy_traversable_tree(source, destination)
 
     if emit_json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -121,23 +127,15 @@ def _ms_markets_source_checkout_root() -> Path:
 
 
 def _copy_msm_skills_block_reason(
-    *,
     project_dir: Path,
-    destination_root: Path,
-    source_root: Path,
 ) -> str | None:
-    if _same_resolved_path(
-        project_dir, _ms_markets_source_checkout_root()
-    ) or _is_ms_markets_source_checkout(project_dir):
+    source_checkout_root = _ms_markets_source_checkout_root()
+    if _same_or_inside_path(project_dir, source_checkout_root) or _is_ms_markets_source_checkout(
+        project_dir
+    ):
         return (
             "Blocked: msm copy-msm-skills cannot run inside the ms-markets source "
             "checkout. Use this command only from a separate host project."
-        )
-
-    if _same_resolved_path(destination_root, source_root):
-        return (
-            "Blocked: destination .agents/skills/ms_markets is the packaged "
-            "ms-markets skill source. Copying here would delete source skills."
         )
 
     return None
@@ -194,41 +192,24 @@ def _source_root_label(source_root: Path) -> str:
     return "/".join(BUNDLED_MSM_SKILLS_PATH)
 
 
-def _iter_skill_roots(source_root: Path) -> list[Path]:
-    return [
-        item
-        for item in sorted(source_root.iterdir(), key=lambda child: child.name)
-        if item.is_dir() and not item.name.startswith(".") and not item.name.startswith("__")
-    ]
+def _same_or_inside_path(path: Path, possible_parent: Path) -> bool:
+    resolved_path = path.expanduser().resolve(strict=False)
+    resolved_parent = possible_parent.expanduser().resolve(strict=False)
+    return resolved_path == resolved_parent or resolved_path.is_relative_to(resolved_parent)
 
 
-def _copy_traversable_tree(source: Path, destination: Path) -> None:
-    if destination.exists():
-        shutil.rmtree(destination)
-    destination.mkdir(parents=True, exist_ok=True)
-
-    for child in source.iterdir():
-        child_destination = destination / child.name
-        if child.is_dir():
-            _copy_traversable_tree(child, child_destination)
-            continue
-        if child.is_file():
-            child_destination.parent.mkdir(parents=True, exist_ok=True)
-            child_destination.write_bytes(child.read_bytes())
-
-
-def _traversable_exists(item: Traversable) -> bool:
+def _ms_markets_version() -> str:
     try:
-        return item.exists()
-    except FileNotFoundError:
-        return False
-
-
-def _same_resolved_path(left: Path, right: Path) -> bool:
-    try:
-        return left.resolve() == right.resolve()
-    except FileNotFoundError:
-        return left.expanduser().resolve(strict=False) == right.expanduser().resolve(strict=False)
+        return distribution("ms-markets").version
+    except PackageNotFoundError:
+        pyproject = _ms_markets_source_checkout_root() / "pyproject.toml"
+        if not pyproject.is_file():
+            raise RuntimeError("ms-markets package metadata is unavailable.")
+        project_config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        version = project_config.get("project", {}).get("version")
+        if not isinstance(version, str) or not version.strip():
+            raise RuntimeError("ms-markets package version is unavailable.")
+        return version
 
 
 def _print_table(title: str, headers: list[str], rows: list[list[Any]]) -> None:

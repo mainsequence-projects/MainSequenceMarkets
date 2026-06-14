@@ -108,6 +108,9 @@ and this project follows versioned releases.
 - Extended the full account portfolio example to assign the generated target
   sleeve portfolio to an example `PortfolioGroup` through the public portfolio
   group API.
+- Changed `msm copy-msm-skills` to delegate its filesystem copy mechanics to
+  the Main Sequence SDK scaffold-skill helper while keeping the same public
+  command UX. Successful copies now write `.agents/skills/ms_markets/PINNED_FROM.txt`.
 
 ### Fixed
 
