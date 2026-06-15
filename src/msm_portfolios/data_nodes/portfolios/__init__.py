@@ -453,9 +453,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                 ASSET_IDENTIFIER, drop=True
             )
             union_index = new_portfolio_valuation.index.union(portfolio.index.unique()).unique()
-            new_portfolio_valuation = new_portfolio_valuation.reindex(
-                union_index
-            ).ffill().bfill()
+            new_portfolio_valuation = new_portfolio_valuation.reindex(union_index).ffill().bfill()
             new_portfolio_valuation = new_portfolio_valuation.reindex(portfolio.index)
             portfolio["calculated_close"] = portfolio["close"]
             portfolio["close"] = new_portfolio_valuation[self.valuation_column]
@@ -549,7 +547,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return None
 
     def _calculate_start_end_dates(self):
-        update_statics_from_dependencies = self.valuation_source.update_statistics
+        update_statics_from_dependencies = self._valuation_source_update_statistics()
         progress_values = self._required_valuation_source_progress_values(
             update_statics_from_dependencies
         )
@@ -573,6 +571,25 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             end_date = new_end_date if new_end_date < end_date else end_date
 
         return start_date, end_date
+
+    def _valuation_source_update_statistics(self) -> UpdateStatistics:
+        update_statistics = self.valuation_source.update_statistics
+        if update_statistics is not None:
+            return update_statistics
+
+        if isinstance(self.valuation_source, APIDataNode):
+            update_statistics = self.valuation_source.get_update_statistics()
+            self.valuation_source.update_statistics = update_statistics
+            return update_statistics
+
+        if isinstance(self.valuation_source, DataNode):
+            raise RuntimeError(
+                "PortfoliosDataNode valuation source DataNode has no update_statistics. "
+                "The SDK runner must populate dependency update_statistics before "
+                "portfolio update-window calculation."
+            )
+
+        raise TypeError("PortfoliosDataNode valuation_source must be a DataNode or APIDataNode.")
 
     def _required_valuation_source_progress_values(self, update_statistics) -> list:
         asset_identifiers = self._preflight_required_valuation_asset_identifiers()
@@ -820,9 +837,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         if self.price_alignment_policy.forward_fill_to_now:
             fill_end_date = datetime.now(pytz.utc)
             last_ts_in_df = raw_valuations.index.get_level_values("time_index").max()
-            self.logger.info(
-                f"Forward-filling valuations from {last_ts_in_df} to {fill_end_date}"
-            )
+            self.logger.info(f"Forward-filling valuations from {last_ts_in_df} to {fill_end_date}")
             pandas_freq = translate_to_pandas_freq(self.portfolio_prices_frequency)
             final_index_for_interpolation = pd.date_range(
                 start=new_index.min(),
@@ -881,8 +896,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             return
 
         available_identifiers = {
-            str(value)
-            for value in raw_valuations.index.get_level_values(ASSET_IDENTIFIER).unique()
+            str(value) for value in raw_valuations.index.get_level_values(ASSET_IDENTIFIER).unique()
         }
         requested_identifiers = {str(value) for value in requested_asset_identifiers}
         missing_identifiers = sorted(requested_identifiers - available_identifiers)

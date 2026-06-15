@@ -161,6 +161,9 @@ and this project follows versioned releases.
   evaluated only for assets required by the portfolio, instead of taking the
   oldest progress timestamp across every asset in a large upstream valuation
   table.
+- Fixed portfolio update-window selection for `APIDataNode` valuation sources
+  by loading the API source table update statistics before required asset
+  progress is evaluated.
 - Made portfolio update-window selection strict when no required asset scope can
   be determined, instead of falling back to table-wide source progress.
 - Fixed portfolio output progress lookup so a shared `PortfoliosStorage`

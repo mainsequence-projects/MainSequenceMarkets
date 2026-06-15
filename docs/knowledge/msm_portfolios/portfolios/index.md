@@ -367,6 +367,10 @@ value column name; it should not be reshaped to `close` just to satisfy
 portfolio core. See
 `examples/msm_portfolios/portfolio_custom_valuation_column_example.py` for the
 `fair_value` configuration path.
+When the valuation source is an `APIDataNode`, `PortfoliosDataNode` loads the
+source table's update statistics before calculating the portfolio update
+window. Normal `DataNode` valuation sources still rely on the SDK runner to
+populate dependency update statistics before portfolio calculation starts.
 
 When a portfolio value series is already ahead of the usable valuation-source
 coverage, `PortfoliosDataNode` treats the update as an exhausted window and

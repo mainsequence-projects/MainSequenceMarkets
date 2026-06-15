@@ -186,6 +186,10 @@ Rules:
 - `valuation_source_instance` is the recoverable upstream valuation dependency.
   It may be `InterpolatedPrices`, another compatible DataNode, or an
   `APIDataNode` built from a registered TimeIndexMetaTable UID.
+- When `valuation_source_instance` is an `APIDataNode`, `PortfoliosDataNode`
+  loads the source table update statistics before calculating the update window.
+  Normal `DataNode` valuation sources must already have dependency
+  `update_statistics` populated by the SDK runner.
 - `valuation_column` is a strict string column name. Portfolio core must not
   force `close`, `open`, `vwap`, or any other OHLC enum. Specific contributed
   strategies may validate additional OHLC fields only when they truly need

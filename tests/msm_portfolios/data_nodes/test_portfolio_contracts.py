@@ -598,6 +598,52 @@ def test_portfolio_update_window_uses_only_required_valuation_assets() -> None:
     assert progress.requested_identities == ["btc", "eth"]
 
 
+def test_portfolio_update_window_loads_api_valuation_source_statistics() -> None:
+    class ScopedProgress:
+        def __init__(self) -> None:
+            self.requested_identities: list[str] = []
+
+        def get_earliest_update_for_identity(self, identity):
+            self.requested_identities.append(identity)
+            return {
+                "btc": pd.Timestamp("2026-01-05T00:00:00Z"),
+                "eth": pd.Timestamp("2026-01-03T00:00:00Z"),
+            }[identity]
+
+    progress = ScopedProgress()
+    valuation_source = APIDataNode(
+        data_source_uid="test-data-source",
+        physical_table_name="test-valuations",
+    )
+    valuation_source.get_update_statistics = lambda: progress
+
+    node = object.__new__(PortfoliosDataNode)
+    node.valuation_source = valuation_source
+    node.signal_weights = SimpleNamespace(
+        get_asset_list=lambda: ["btc", "eth"],
+        get_asset_uid_to_override_portfolio_price=lambda: None,
+    )
+    node.required_valuation_asset_preflight = ["btc", "eth"]
+    node.price_alignment_policy = PriceAlignmentPolicy()
+    node.portfolio_prices_frequency = "1d"
+    node._get_last_weights = lambda: None
+
+    _start_date, end_date = node._calculate_start_end_dates()
+
+    assert valuation_source.update_statistics is progress
+    assert end_date == pd.Timestamp("2026-01-04T00:00:00Z")
+    assert progress.requested_identities == ["btc", "eth"]
+
+
+def test_portfolio_update_window_requires_runner_statistics_for_data_node_source() -> None:
+    node = object.__new__(PortfoliosDataNode)
+    node.valuation_source = explicit_price_source()
+    node.valuation_source.update_statistics = None
+
+    with pytest.raises(RuntimeError, match="SDK runner must populate"):
+        node._valuation_source_update_statistics()
+
+
 def test_portfolio_update_window_includes_existing_weight_assets() -> None:
     class ScopedProgress:
         def __init__(self) -> None:
