@@ -99,6 +99,53 @@ def test_get_assets_passes_category_filter(monkeypatch) -> None:
     }
 
 
+def test_get_asset_monitor_frame_returns_tabular_asset_frame(monkeypatch) -> None:
+    asset_uid = uuid.uuid4()
+    runtime = SimpleNamespace(context=object())
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("apps.v1.services.assets._get_runtime", lambda: runtime)
+
+    def fake_list_asset_rows(context, **kwargs):
+        captured["context"] = context
+        captured.update(kwargs)
+        return [
+            {
+                "uid": str(asset_uid),
+                "unique_identifier": "MXN-BONO-2031",
+                "asset_type": "fixed_income",
+            }
+        ]
+
+    monkeypatch.setattr("apps.v1.services.assets._list_asset_rows", fake_list_asset_rows)
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/asset/monitor/frame/",
+        params={
+            "search": "BONO",
+            "limit": 25,
+            "offset": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ready"
+    assert payload["columns"][:3] == ["uid", "unique_identifier", "asset_type"]
+    assert payload["rows"][0]["uid"] == str(asset_uid)
+    assert payload["rows"][0]["unique_identifier"] == "MXN-BONO-2031"
+    assert "Symbol" not in payload["rows"][0]
+    assert payload["meta"]["marketAsset"]["assetKeyField"] == "unique_identifier"
+    assert captured == {
+        "context": runtime.context,
+        "search": "BONO",
+        "limit": 25,
+        "offset": 0,
+        "category_uid": None,
+    }
+
+
 def test_list_asset_rows_pushes_search_to_unique_identifier_contains(monkeypatch) -> None:
     captured_calls: list[dict[str, object]] = []
 

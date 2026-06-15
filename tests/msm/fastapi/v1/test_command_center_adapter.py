@@ -162,6 +162,10 @@ def test_command_center_contract_documents_response_contract_boundaries() -> Non
     assert portfolio_values["responseContract"] == DIRECT_FRAME_CONTRACT
     assert portfolio_values["responseModel"] == "TabularFrameResponse"
 
+    asset_monitor = operations["getAssetMonitorFrame"]
+    assert asset_monitor["responseContract"] == DIRECT_FRAME_CONTRACT
+    assert asset_monitor["responseModel"] == "TabularFrameResponse"
+
     provider_native = operations["getFixedIncomeAssetCashflows"]
     assert provider_native["responseContract"] == PROVIDER_NATIVE_CONTRACT
     assert provider_native["responseModel"] == "BondCashflowsResponse"

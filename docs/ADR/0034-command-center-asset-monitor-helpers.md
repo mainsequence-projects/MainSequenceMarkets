@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted - implementation not started
+Accepted - implementation complete
 
 ## Success Condition
 
@@ -27,12 +27,14 @@ The implementation is successful only when:
 - Adapter from API discovery advertises the operation as a canonical tabular
   frame operation;
 - workspace helpers can wire a `connection-query` source widget into
-  `ms-markets-asset-screener`;
+  `main-sequence-markets__asset-screener`;
 - documentation and skills describe the helper contract, CLI workflow, and
   verification checks.
 
-This ADR does not implement the helpers. It defines the package boundary and
-contract that the implementation must follow.
+This ADR is implemented by the reusable helper package under
+`src/command_center`, the reference `apps/v1` operation
+`getAssetMonitorFrame`, the Command Center documentation pages, and the nested
+Asset Monitor skill under `.agents/skills/ms_markets/command_center`.
 
 ## Context
 
@@ -54,13 +56,11 @@ operationId: listAssets
 
 However, that operation is a provider-native paginated response. It is not the
 right long-term source for an Asset Screener or Asset Monitor widget because the
-widget consumes `core.tabular_frame@v1` through a source widget output and
-expects asset-facing fields such as:
-
-```text
-unique_identifier
-Symbol
-```
+active widget consumes `core.tabular_frame@v1` through a source widget output.
+The active `main-sequence-markets__asset-screener` registry resolves asset
+identity from source metadata, explicit field mappings, or recognizable
+identity fields such as `unique_identifier`, `assetKey`, `asset_identifier`,
+`symbol`, or `ticker`; it does not require an exact `Symbol` column.
 
 Using `listAssets` plus a response mapping is acceptable as a temporary
 workspace-wiring check, but it hides the real data contract in frontend glue.
@@ -73,7 +73,7 @@ The first target workflow is:
 apps/v1 FastAPI API
   -> command_center.adapter_from_api connection
   -> connection-query source widget
-  -> ms-markets-asset-screener visible widget
+  -> main-sequence-markets__asset-screener visible widget
 ```
 
 The package also needs a clearer home for Command Center-specific helpers and
@@ -192,13 +192,13 @@ asset_monitor_meta(...)
 build_asset_monitor_frame(...)
 ```
 
-The minimum frame columns are:
+The ms-markets helper emits these identity/domain columns:
 
 ```text
 uid
 unique_identifier
-Symbol
 asset_type
+ticker
 ```
 
 Recommended enrichment columns from related detail tables include:
@@ -216,11 +216,10 @@ currency
 
 The binding rules are:
 
-- `unique_identifier` is the stable market asset key.
+- `unique_identifier` is the ms-markets stable market asset key emitted by this
+  helper. It is not an exact column requirement imposed by the widget registry.
 - `uid` is the backend row identifier.
-- `Symbol` is the widget-facing display symbol. For the first implementation,
-  it should resolve from ticker when available and otherwise fall back to
-  `unique_identifier`.
+- `ticker` is an optional display/recognizable identity field when available.
 - ticker and OpenFIGI fields enrich the monitor; they do not replace
   `AssetTable` identity.
 - helper inputs should be already-loaded rows or row-like objects. The helper
@@ -233,7 +232,6 @@ under `meta`, for example:
 ```text
 marketAsset.assetKeyField = unique_identifier
 marketAsset.uidField = uid
-marketAsset.displayField = Symbol
 ```
 
 The exact metadata object may evolve with the registered widget contract, but
@@ -268,6 +266,7 @@ search
 limit
 offset
 asset_type
+unique_identifiers
 ```
 
 Search behavior must align with the asset search service:
@@ -320,7 +319,7 @@ connection-query source widget
   operationId: getAssetMonitorFrame
   output: dataset
 
-ms-markets-asset-screener visible widget
+main-sequence-markets__asset-screener visible widget
   binding seedData <- source dataset
 ```
 
@@ -360,7 +359,7 @@ The skill should cover:
 - API contract verification;
 - Adapter from API connection setup;
 - workspace JSON creation;
-- `connection-query` to `ms-markets-asset-screener` binding;
+- `connection-query` to `main-sequence-markets__asset-screener` binding;
 - post-creation verification.
 
 The old workspace-oriented skill path should either be removed or replaced with
@@ -371,13 +370,14 @@ a short redirect note so future agents use the Command Center location.
 Implementation should include focused tests for:
 
 - `build_tabular_frame(...)` returns the SDK `TabularFrameResponse` shape;
-- `build_asset_monitor_frame(...)` includes `unique_identifier` and `Symbol`;
+- `build_asset_monitor_frame(...)` includes ms-markets asset identity fields
+  and does not add a synthetic `Symbol` column;
 - ticker/OpenFIGI enrichment works when detail rows are available;
 - missing detail rows do not break frame generation;
 - Adapter from API discovery advertises `getAssetMonitorFrame` as
   `core.tabular_frame@v1`;
 - workspace helper output binds `connection-query.dataset` to
-  `ms-markets-asset-screener.seedData`.
+  `main-sequence-markets__asset-screener.seedData`.
 
 Manual verification should include:
 
@@ -392,7 +392,7 @@ Platform verification should still use the Command Center CLI to inspect:
 connection type command_center.adapter_from_api
 connection instance Main Sequence Market
 registered widget type connection-query
-registered widget type ms-markets-asset-screener
+registered widget type main-sequence-markets__asset-screener
 workspace detail widget bindings
 ```
 

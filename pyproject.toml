@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ms-markets"
-version = "0.0.73"
+version = "0.0.74"
 description = "Financial markets ORM, engines, and application management extensions for Main Sequence."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -98,6 +98,7 @@ msm = "cli.main:main"
 [tool.hatch.build.targets.wheel]
 packages = [
   "src/cli",
+  "src/command_center",
   "src/msm",
   "src/migrations",
   "src/msm_portfolios",

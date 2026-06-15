@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
+
+from command_center.widgets.asset_monitor import (
+    ASSET_MONITOR_OPERATION_ID,
+    build_asset_monitor_frame,
+)
+from mainsequence.client.command_center.contracts.tabular import TabularFrameResponse
 
 from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
 from apps.v1.schemas.common import FrontEndDetailSummary
@@ -12,6 +19,7 @@ def list_assets(
     limit: int = 50,
     offset: int = 0,
     category_uid: str | None = None,
+    unique_identifiers: Sequence[str] | None = None,
 ) -> list[Asset]:
     runtime = _get_runtime()
     rows = _list_asset_rows(
@@ -20,8 +28,46 @@ def list_assets(
         limit=limit,
         offset=offset,
         category_uid=category_uid,
+        unique_identifiers=unique_identifiers,
     )
     return [Asset.model_validate(row) for row in rows]
+
+
+def get_asset_monitor_frame(
+    *,
+    search: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    asset_type: str | None = None,
+    unique_identifiers: Sequence[str] | None = None,
+    request_url: str | None = None,
+) -> TabularFrameResponse:
+    fetch_limit = 500 if asset_type else limit
+    fetch_offset = 0 if asset_type else offset
+    rows = list_assets(
+        search=search,
+        limit=fetch_limit,
+        offset=fetch_offset,
+        unique_identifiers=unique_identifiers,
+    )
+    if asset_type:
+        rows = [row for row in rows if row.asset_type == asset_type][offset : offset + limit]
+
+    source_context: dict[str, Any] = {"operationId": ASSET_MONITOR_OPERATION_ID}
+    if unique_identifiers:
+        source_context["uniqueIdentifiers"] = list(unique_identifiers)
+    if request_url is not None:
+        source_context["url"] = request_url
+
+    return build_asset_monitor_frame(
+        rows[:limit],
+        source={
+            "kind": "api",
+            "id": ASSET_MONITOR_OPERATION_ID,
+            "label": "apps/v1 Asset Monitor",
+            "context": source_context,
+        },
+    )
 
 
 def get_asset(*, uid: str) -> AssetDetailResponse | None:

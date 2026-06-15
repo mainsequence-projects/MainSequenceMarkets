@@ -157,7 +157,35 @@ def list_asset_rows(
     limit: int = DEFAULT_FRONTEND_PAGE_SIZE,
     offset: int = 0,
     category_uid: str | None = None,
+    unique_identifiers: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
+    normalized_unique_identifiers = tuple(
+        str(identifier).strip()
+        for identifier in (unique_identifiers or ())
+        if str(identifier).strip()
+    )
+    if normalized_unique_identifiers:
+        asset_rows = [
+            row
+            for identifier in normalized_unique_identifiers
+            for row in _operation_result_rows(
+                service_get_asset_by_unique_identifier(
+                    context,
+                    unique_identifier=identifier,
+                )
+            )
+        ]
+        normalized_rows = [
+            _build_asset_record(asset_row)
+            for asset_row in _deduplicate_rows_by_uid(asset_rows)
+        ]
+        normalized_rows.sort(
+            key=lambda row: normalized_unique_identifiers.index(row["unique_identifier"])
+            if row["unique_identifier"] in normalized_unique_identifiers
+            else len(normalized_unique_identifiers)
+        )
+        return normalized_rows[offset : offset + limit]
+
     scan_limit = _scan_limit(offset=offset, limit=limit)
     normalized_search = search.strip().lower()
     category_asset_uids: tuple[str, ...] | None = None

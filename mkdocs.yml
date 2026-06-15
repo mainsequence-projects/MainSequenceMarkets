@@ -40,6 +40,9 @@ nav:
       - ADR:
           - Calendar CRUD Route: fast_api/v1/ADR/0001-calendar-crud-route.md
           - Fixed Income Pricer API: ADR/fast_api/v1/fixed-income-pricer-api.md
+  - Command Center:
+      - Overview: command_center/index.md
+      - Asset Monitor: command_center/asset_monitor.md
   - Knowledge:
       - Overview: knowledge/index.md
       - msm:

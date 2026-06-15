@@ -5,6 +5,9 @@ import json
 from importlib.metadata import version
 from typing import Any
 
+from mainsequence.client.command_center.contracts.tabular import CORE_TABULAR_FRAME_CONTRACT
+from mainsequence.client.command_center.providers.adapter_from_api import PROVIDER_NATIVE_CONTRACT
+
 from apps.v1.schemas.command_center_adapter import (
     ApiHealthResponse,
     CommandCenterAdapterInfo,
@@ -24,13 +27,13 @@ ADAPTER_DESCRIPTION = "Adapter contract for the apps/v1 markets FastAPI surface.
 CONTRACT_VERSION = 1
 HEALTH_OPERATION_ID = "getApiHealth"
 CONTRACT_OPERATION_ID = "getCommandCenterConnectionContract"
-DIRECT_FRAME_CONTRACT = "core.tabular_frame@v1"
-PROVIDER_NATIVE_CONTRACT = "provider-native-json"
+DIRECT_FRAME_CONTRACT = CORE_TABULAR_FRAME_CONTRACT
 
 QUERY_OPERATION_IDS = frozenset(
     {
         "getApiSettings",
         "listAssets",
+        "getAssetMonitorFrame",
         "getAsset",
         "getAssetSummary",
         "getAssetPricingDetails",

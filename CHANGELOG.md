@@ -9,6 +9,9 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Added reusable `command_center` helpers for ms-markets Command Center
+  tabular frames and Asset Monitor workspace documents, plus the
+  `apps/v1` `getAssetMonitorFrame` reference endpoint.
 - Added project-local namespace defaults for ms-markets extension models through
   `__metatable_namespace__` plus `__markets_base_identifier__`, while keeping
   `MSM_AUTO_REGISTER_NAMESPACE` as the test/example override.

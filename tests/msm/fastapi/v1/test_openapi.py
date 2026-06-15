@@ -75,6 +75,8 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
         parameter_names = {parameter["name"] for parameter in operation.get("parameters", [])}
         if not {"limit", "offset"}.issubset(parameter_names):
             continue
+        if operation.get("x-ui-contract") == "core.tabular_frame@v1":
+            continue
 
         schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
         resolved_schema = _resolve_schema_ref(payload, schema)
@@ -131,6 +133,14 @@ def test_openapi_json_documents_asset_list_endpoint() -> None:
     assert asset_list_operation["responses"]["400"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/ErrorResponse"
     }
+
+    asset_monitor_operation = payload["paths"]["/api/v1/asset/monitor/frame/"]["get"]
+    assert asset_monitor_operation["summary"] == "Get asset monitor frame"
+    assert asset_monitor_operation["operationId"] == "getAssetMonitorFrame"
+    assert asset_monitor_operation["x-ui-contract"] == "core.tabular_frame@v1"
+    assert asset_monitor_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/TabularFrameResponse"}
 
     asset_detail_operation = payload["paths"]["/api/v1/asset/{uid}/"]["get"]
     assert asset_detail_operation["summary"] == "Get asset"

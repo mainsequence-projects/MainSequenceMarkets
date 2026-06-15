@@ -95,6 +95,7 @@ Recommended entry points:
 - [Getting Started](https://mainsequence-projects.github.io/MainSequenceMarkets/getting-started/)
 - [Tutorial](https://mainsequence-projects.github.io/MainSequenceMarkets/tutorial/)
 - [FastAPI v1](https://mainsequence-projects.github.io/MainSequenceMarkets/fast_api/v1/)
+- [Command Center](https://mainsequence-projects.github.io/MainSequenceMarkets/command_center/)
 - [Knowledge Base](https://mainsequence-projects.github.io/MainSequenceMarkets/knowledge/)
 - [Architecture Decision Records](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/)
 - [Changelog](https://mainsequence-projects.github.io/MainSequenceMarkets/changelog/)

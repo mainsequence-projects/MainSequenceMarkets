@@ -4,6 +4,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
+from mainsequence.client.command_center.contracts.tabular import TabularFrameResponse
+
 from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
 from apps.v1.schemas.common import (
     ErrorResponse,
@@ -14,6 +16,7 @@ from apps.v1.schemas.common import (
 from apps.v1.services.assets import (
     delete_asset,
     get_asset,
+    get_asset_monitor_frame,
     get_asset_pricing_details,
     get_asset_summary,
     list_assets,
@@ -90,6 +93,81 @@ def get_assets(
         results=rows,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get(
+    "/monitor/frame/",
+    response_model=TabularFrameResponse,
+    summary="Get asset monitor frame",
+    description=(
+        "Return a Command Center `core.tabular_frame@v1` payload for the "
+        "ms-markets Asset Monitor / Asset Screener widget. The frame publishes "
+        "`AssetTable.unique_identifier` as the ms-markets stable asset key without "
+        "adding a synthetic `Symbol` column."
+    ),
+    operation_id="getAssetMonitorFrame",
+    openapi_extra={
+        "x-ui-contract": "core.tabular_frame@v1",
+        "x-ui-output-root": "response:$",
+    },
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "Invalid request boundary input.",
+        }
+    },
+)
+def get_asset_monitor_frame_route(
+    request: Request,
+    search: Annotated[
+        str,
+        Query(
+            description=(
+                "Case-insensitive search across asset identifiers and available ticker "
+                "detail fields."
+            ),
+        ),
+    ] = "",
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=500,
+            description="Maximum number of asset monitor rows to return.",
+        ),
+    ] = 50,
+    offset: Annotated[
+        int,
+        Query(
+            ge=0,
+            description="Zero-based starting offset into the filtered asset monitor rows.",
+        ),
+    ] = 0,
+    asset_type: Annotated[
+        str | None,
+        Query(
+            description="Optional asset_type filter applied before frame construction.",
+        ),
+    ] = None,
+    unique_identifiers: Annotated[
+        list[str] | None,
+        Query(
+            description=(
+                "Optional repeated unique_identifier filter. Use "
+                "`?unique_identifiers=ASSET_A&unique_identifiers=ASSET_B` to scope the "
+                "frame to selected assets."
+            ),
+        ),
+    ] = None,
+) -> TabularFrameResponse:
+    return get_asset_monitor_frame(
+        search=search,
+        limit=limit,
+        offset=offset,
+        asset_type=asset_type,
+        unique_identifiers=unique_identifiers,
+        request_url=str(request.url),
     )
 
 

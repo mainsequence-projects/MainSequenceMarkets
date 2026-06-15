@@ -110,6 +110,9 @@ Current local-dev behavior:
   - disables cache metadata for mutation operations and non-GET calculations
   - keeps provider-native responses provider-native and exposes optional
     `responseMappings` only as metadata
+  - advertises `getAssetMonitorFrame` as a direct
+    `core.tabular_frame@v1` query operation for Command Center Asset Monitor
+    workspaces
 
 ### Settings
 
@@ -238,6 +241,14 @@ Current local-dev behavior:
   - supports `categories__uid` for nested category asset tables
   - returns the library `msm.api.assets.Asset` contract:
     `uid`, `unique_identifier`, and `asset_type`
+- `GET /api/v1/asset/monitor/frame/`
+  - supports `search`, `limit`, `offset`, optional `asset_type`, and repeated
+    `unique_identifiers`
+  - returns a Command Center `TabularFrameResponse`
+  - exposes the `core.tabular_frame@v1` contract for
+    `main-sequence-markets__asset-screener`
+  - publishes `AssetTable.unique_identifier` as the ms-markets stable asset key
+    without adding a synthetic `Symbol` column
 - `GET /api/v1/asset/{uid}/`
   - supports `response_format=frontend_detail`
   - resolves the asset by `uid`

@@ -11,6 +11,7 @@ Planned tutorial areas:
 - installing the optional pricing extra and using `msm_pricing` priceable instruments
 - exposing markets workflows through Main Sequence applications with the
   optional `public_api` extra
+- publishing Command Center-ready tabular frames for markets widgets
 
 ## Library Maintenance Workflow
 
@@ -104,6 +105,25 @@ Sequence secret `OPEN_FIGI_API_KEY`.
 
 See `examples/msm/assets/asset_type_constants.py` for a small import-only example
 that prints the built-in constants and `AssetType.upsert(...)` payloads.
+
+## Command Center Asset Monitor
+
+Use the Command Center helpers when a project wants to publish ms-markets asset
+data into a Command Center workspace:
+
+1. Load or resolve asset rows in the project API or application layer.
+2. Pass already-loaded rows into
+   `command_center.widgets.asset_monitor.build_asset_monitor_frame(...)`.
+3. Return the resulting `TabularFrameResponse` from a provider API operation
+   such as `getAssetMonitorFrame`.
+4. Expose that operation through Adapter from API discovery.
+5. Bind `connection-query.dataset` into
+   `main-sequence-markets__asset-screener.seedData`.
+
+See [Command Center Asset Monitor](../command_center/asset_monitor.md) for the
+full frame contract and workspace binding rules. See
+`examples/msm/command_center/asset_monitor_frame.py` for an import-only example
+that builds the canonical frame from sample asset rows.
 
 For timestamped facts keyed to index reference rows, use the same stamped
 DataNode workflow with `msm.data_nodes.indices.IndexTimestampedDataNode` and an
