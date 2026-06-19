@@ -78,6 +78,13 @@ and this project follows versioned releases.
   through one scoped MetaTable upsert operation.
 - Tightened account target-position validation so portfolio target rows cannot
   use `single_asset_quantity`.
+- Tightened `PortfoliosDataNode.run(update_pointers=True)` so portfolio pointer
+  updates use explicit DataNodeUpdate UIDs, preserve the existing executed
+  weights pointer when no new weights are produced, and no longer cache a hidden
+  `PortfolioWeights` helper on the portfolio node.
+- Changed portfolio update-window calculation so the start date comes from this
+  portfolio's own `PortfoliosStorage.portfolio_identifier`, and valuation-source
+  coverage is applied only after reading the actual signal frame.
 - Added the `apps/v1` pricing curve registry list endpoint backed by
   `msm_pricing.api.Curve` and the shared limit-offset pagination envelope.
 - Promoted virtual-fund allocation strategy to the first-class

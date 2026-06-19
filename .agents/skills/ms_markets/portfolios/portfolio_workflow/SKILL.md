@@ -216,16 +216,18 @@ Rules:
   value override asset.
 - Valuation sources may contain extra assets; portfolio calculation filters to
   the required signal universe.
-- Portfolio update-window progress must be scoped to required portfolio assets:
-  the signal preflight universe, previous portfolio-weight assets still needing
-  valuation or liquidation, and any explicit portfolio value override asset. Do
-  not take the minimum progress timestamp across every asset in a large source
-  valuation table. If the required asset scope cannot be determined before
-  deriving the source window, fail instead of falling back to table-wide source
-  progress.
 - Existing portfolio output progress must be scoped by `portfolio_identifier`;
   `PortfoliosStorage` is shared and keyed by `(time_index, portfolio_identifier)`.
   A later row for another portfolio must not move this portfolio's start date.
+  The authoritative portfolio update start is this portfolio's latest
+  `PortfoliosStorage` timestamp for the resolved `PortfolioTable.unique_identifier`.
+- Portfolio valuation-source coverage is applied after the actual signal frame
+  has been read. The usable valuation end timestamp must be scoped to assets
+  from the signal output frame, previous portfolio-weight assets still needing
+  valuation or liquidation, and any explicit portfolio value override asset. Do
+  not take the minimum progress timestamp across every asset in a large source
+  valuation table, and do not use signal preflight as the authoritative
+  portfolio universe.
 - Contributed signal progress must be scoped by `signal_uid`; `SignalWeightsStorage`
   is shared and keyed by `(time_index, signal_uid, asset_identifier)`.
   `signal_uid` is a required reference to `SignalMetadataTable.signal_uid`, so
@@ -246,6 +248,9 @@ Rules:
   `PortfolioTable` row with `signal_uid`, `signal_weights_data_node_uid`,
   `portfolio_weights_data_node_uid`, and `portfolio_data_node_uid`. Examples
   should not perform this final pointer upsert manually.
+- If the run produces no new executed weights, pointer update must preserve the
+  existing `PortfolioTable.portfolio_weights_data_node_uid` instead of
+  requiring a fresh `PortfolioWeights` DataNodeUpdate.
 - API reads for a portfolio's signal weights must filter by
   `PortfolioTable.signal_uid`. Do not derive the signal from
   `DataNodeUpdate.build_configuration`, runtime update statistics, or distinct

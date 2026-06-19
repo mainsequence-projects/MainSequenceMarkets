@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pandas as pd
 import pytest
@@ -98,6 +100,25 @@ def test_asset_snapshot_build_frame_is_easy_entrypoint() -> None:
     assert frame.index.get_level_values("asset_identifier").tolist() == ["example-asset-eth"]
 
 
+def test_asset_snapshot_set_snapshots_can_disable_backend_verify() -> None:
+    node = object.__new__(AssetSnapshot)
+    node.set_frame = Mock(return_value=node)
+
+    result = AssetSnapshot.set_snapshots(
+        node,
+        {
+            "time_index": "2026-05-25T00:00:00Z",
+            "asset_identifier": "example-asset-eth",
+        },
+        verify_existing=False,
+    )
+
+    assert result is node
+    assert node._verify_existing_snapshot_index is False
+    frame = node.set_frame.call_args.args[0]
+    assert frame.index.get_level_values("asset_identifier").tolist() == ["example-asset-eth"]
+
+
 def test_asset_snapshot_frame_rejects_blank_identifier() -> None:
     with pytest.raises(ValueError, match="non-empty asset_identifier"):
         AssetSnapshot.build_frame(
@@ -123,6 +144,53 @@ def test_asset_snapshot_frame_rejects_duplicate_index_rows() -> None:
                 {"time_index": time_index, "asset_identifier": "BTC"},
             ],
         )
+
+
+def test_asset_snapshot_existing_backend_index_keys_uses_one_compiled_query(monkeypatch) -> None:
+    first_time = pd.Timestamp("2026-05-25T00:00:00Z")
+    second_time = pd.Timestamp("2026-05-26T00:00:00Z")
+    frame = AssetSnapshot.build_frame(
+        [
+            {"time_index": first_time, "asset_identifier": "asset-a"},
+            {"time_index": second_time, "asset_identifier": "asset-b"},
+        ]
+    )
+
+    node = object.__new__(AssetSnapshot)
+    node._storage_table = AssetSnapshotsStorage
+    node._local_persist_manager = SimpleNamespace(storage_metadata=object())
+    node._log_existing_asset_snapshot_key = Mock()
+    node.get_df_between_dates = Mock(side_effect=AssertionError("per-key reads are too slow"))
+
+    bind_meta_table = Mock()
+    compile_statement = Mock(return_value=object())
+    execute_operation = Mock(
+        return_value={
+            "rows": [
+                {
+                    "time_index": second_time,
+                    "asset_identifier": "asset-b",
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(AssetSnapshotsStorage, "_bind_meta_table", bind_meta_table)
+    monkeypatch.setattr(
+        "msm.data_nodes.assets.snapshots.compile_markets_statement",
+        compile_statement,
+    )
+    monkeypatch.setattr(
+        "msm.data_nodes.assets.snapshots.execute_markets_operation",
+        execute_operation,
+    )
+
+    existing_keys = node.existing_backend_index_keys(frame)
+
+    assert existing_keys == [(second_time.isoformat(), "asset-b")]
+    bind_meta_table.assert_called_once_with(node.local_persist_manager.storage_metadata)
+    compile_statement.assert_called_once()
+    execute_operation.assert_called_once()
+    node.get_df_between_dates.assert_not_called()
 
 
 def test_openfigi_snapshot_builder_uses_generic_entrypoint() -> None:

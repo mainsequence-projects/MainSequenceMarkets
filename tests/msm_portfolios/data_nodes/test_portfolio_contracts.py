@@ -306,11 +306,7 @@ def test_portfolio_values_updates_portfolio_data_node_pointers(monkeypatch) -> N
         signal_uid="example-signal",
         _upsert_signal_metadata_if_available=lambda: metadata_calls.append(True),
     )
-    node._required_data_node_update_uid = lambda _node, label: {
-        "signal weights": "signal-node-uid",
-        "portfolio weights": "weights-node-uid",
-        "portfolio values": "values-node-uid",
-    }[label]
+    node.valuation_column = "close"
     portfolio = SimpleNamespace(
         unique_identifier="example-portfolio",
         calendar_uid="calendar-uid",
@@ -322,7 +318,9 @@ def test_portfolio_values_updates_portfolio_data_node_pointers(monkeypatch) -> N
 
     updated = node._update_portfolio_pointers(
         portfolio=portfolio,
-        portfolio_weights_node=object(),
+        signal_weights_data_node_uid="signal-node-uid",
+        portfolio_weights_data_node_uid="weights-node-uid",
+        portfolio_data_node_uid="values-node-uid",
     )
 
     assert updated.uid == "portfolio-uid"
@@ -338,6 +336,43 @@ def test_portfolio_values_updates_portfolio_data_node_pointers(monkeypatch) -> N
         "portfolio_data_node_uid": "values-node-uid",
     }
     assert metadata_calls == [True]
+
+
+def test_portfolio_pointer_update_preserves_existing_weights_uid_on_no_new_weights(
+    monkeypatch,
+) -> None:
+    from msm.api.portfolios import Portfolio
+
+    captured: dict[str, object] = {}
+
+    def fake_upsert(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(uid="portfolio-uid", **kwargs)
+
+    node = object.__new__(PortfoliosDataNode)
+    node.signal_weights = SimpleNamespace(
+        signal_uid="example-signal",
+        _upsert_signal_metadata_if_available=lambda: None,
+    )
+    node.valuation_column = "close"
+    portfolio = SimpleNamespace(
+        unique_identifier="example-portfolio",
+        calendar_uid="calendar-uid",
+        published_index_uid="index-uid",
+        backtest_table_price_column_name="close",
+        portfolio_weights_data_node_uid="existing-weights-node-uid",
+    )
+
+    monkeypatch.setattr(Portfolio, "upsert", staticmethod(fake_upsert))
+
+    node._update_portfolio_pointers(
+        portfolio=portfolio,
+        signal_weights_data_node_uid="signal-node-uid",
+        portfolio_weights_data_node_uid=portfolio.portfolio_weights_data_node_uid,
+        portfolio_data_node_uid="values-node-uid",
+    )
+
+    assert captured["portfolio_weights_data_node_uid"] == "existing-weights-node-uid"
 
 
 def test_portfolio_values_identifier_resolution_does_not_stringify_method(monkeypatch) -> None:
@@ -415,11 +450,14 @@ def test_portfolio_values_reads_existing_values_with_dimension_filter() -> None:
     assert result["close"].iloc[0] == pytest.approx(11.0)
 
 
-def test_portfolio_values_reads_last_weights_with_dimension_filter() -> None:
+def test_portfolio_values_reads_last_weights_with_dimension_filter(monkeypatch) -> None:
     latest_value = pd.Timestamp("2026-01-01T00:00:00Z")
     captured: dict[str, object] = {}
 
     class FakePortfolioWeightsNode:
+        def __init__(self, *, namespace=None):
+            self.namespace = namespace
+
         def get_df_between_dates(self, **kwargs):
             captured.update(kwargs)
             frame = pd.DataFrame(
@@ -437,7 +475,8 @@ def test_portfolio_values_reads_last_weights_with_dimension_filter() -> None:
     node = object.__new__(PortfoliosDataNode)
     node._latest_portfolio_time_index_value = lambda: latest_value
     node._unique_identifier = lambda: "example-portfolio"
-    node._canonical_portfolio_weights_node = FakePortfolioWeightsNode
+    node._canonical_namespace = lambda: "test-namespace"
+    monkeypatch.setattr(portfolios_module, "PortfolioWeights", FakePortfolioWeightsNode)
 
     weights = node._get_last_weights()
 
@@ -565,7 +604,33 @@ def test_signal_asset_start_date_uses_current_signal_asset_or_fallback() -> None
     assert node._signal_asset_start_date("eth") == fallback_date
 
 
-def test_portfolio_update_window_uses_only_required_valuation_assets() -> None:
+def test_portfolio_update_window_start_uses_this_portfolio_identifier(monkeypatch) -> None:
+    class ValuationSourceMustNotBeRead:
+        @property
+        def update_statistics(self):
+            raise AssertionError("start-date resolution must not read valuation stats")
+
+    this_portfolio_value = pd.Timestamp("2025-01-01T00:00:00Z")
+    node = object.__new__(PortfoliosDataNode)
+    node._resolved_unique_identifier = "this-portfolio"
+    node.update_statistics = SimpleNamespace(
+        index_progress={
+            "other-portfolio": pd.Timestamp("2026-05-27T00:00:00Z"),
+            "this-portfolio": this_portfolio_value,
+        },
+        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
+    )
+    node.valuation_source = ValuationSourceMustNotBeRead()
+
+    monkeypatch.setenv("MAX_TD_FROM_LATEST_VALUE", "1D")
+
+    start_date, end_date = node._calculate_start_end_dates()
+
+    assert start_date == this_portfolio_value
+    assert end_date == this_portfolio_value + pd.Timedelta("1D")
+
+
+def test_usable_valuation_end_uses_only_required_valuation_assets() -> None:
     class ScopedProgress:
         def __init__(self) -> None:
             self.requested_identities: list[str] = []
@@ -583,16 +648,10 @@ def test_portfolio_update_window_uses_only_required_valuation_assets() -> None:
     progress = ScopedProgress()
     node = object.__new__(PortfoliosDataNode)
     node.valuation_source = SimpleNamespace(update_statistics=progress)
-    node.signal_weights = SimpleNamespace(
-        get_asset_list=lambda: ["btc", "eth"],
-        get_asset_uid_to_override_portfolio_price=lambda: None,
-    )
-    node.required_valuation_asset_preflight = ["btc", "eth"]
     node.price_alignment_policy = PriceAlignmentPolicy()
     node.portfolio_prices_frequency = "1d"
-    node._get_last_weights = lambda: None
 
-    _start_date, end_date = node._calculate_start_end_dates()
+    end_date = node._usable_valuation_end_date(["btc", "eth"])
 
     assert end_date == pd.Timestamp("2026-01-04T00:00:00Z")
     assert progress.requested_identities == ["btc", "eth"]
@@ -619,16 +678,10 @@ def test_portfolio_update_window_loads_api_valuation_source_statistics() -> None
 
     node = object.__new__(PortfoliosDataNode)
     node.valuation_source = valuation_source
-    node.signal_weights = SimpleNamespace(
-        get_asset_list=lambda: ["btc", "eth"],
-        get_asset_uid_to_override_portfolio_price=lambda: None,
-    )
-    node.required_valuation_asset_preflight = ["btc", "eth"]
     node.price_alignment_policy = PriceAlignmentPolicy()
     node.portfolio_prices_frequency = "1d"
-    node._get_last_weights = lambda: None
 
-    _start_date, end_date = node._calculate_start_end_dates()
+    end_date = node._usable_valuation_end_date(["btc", "eth"])
 
     assert valuation_source.update_statistics is progress
     assert end_date == pd.Timestamp("2026-01-04T00:00:00Z")
@@ -644,7 +697,7 @@ def test_portfolio_update_window_requires_runner_statistics_for_data_node_source
         node._valuation_source_update_statistics()
 
 
-def test_portfolio_update_window_includes_existing_weight_assets() -> None:
+def test_required_valuation_assets_include_existing_weight_assets() -> None:
     class ScopedProgress:
         def __init__(self) -> None:
             self.requested_identities: list[str] = []
@@ -671,33 +724,80 @@ def test_portfolio_update_window_includes_existing_weight_assets() -> None:
     node = object.__new__(PortfoliosDataNode)
     node.valuation_source = SimpleNamespace(update_statistics=progress)
     node.signal_weights = SimpleNamespace(
-        get_asset_list=lambda: ["btc", "eth"],
         get_asset_uid_to_override_portfolio_price=lambda: None,
     )
-    node.required_valuation_asset_preflight = ["btc", "eth"]
     node.price_alignment_policy = PriceAlignmentPolicy()
     node.portfolio_prices_frequency = "1d"
-    node._get_last_weights = lambda: last_weights
+    signal_weights = pd.DataFrame(
+        [[0.5, 0.5]],
+        index=pd.DatetimeIndex([pd.Timestamp("2026-01-02T00:00:00Z")]),
+        columns=pd.Index(["btc", "eth"], name=ASSET_IDENTIFIER),
+    )
+    required_assets = node._required_valuation_asset_identifiers(
+        signal_weights=signal_weights,
+        last_rebalance_weights=last_weights,
+    )
 
-    _start_date, end_date = node._calculate_start_end_dates()
+    end_date = node._usable_valuation_end_date(required_assets)
 
+    assert required_assets == ["btc", "eth", "sol"]
     assert end_date == pd.Timestamp("2026-01-03T00:00:00Z")
     assert progress.requested_identities == ["btc", "eth", "sol"]
 
 
 def test_portfolio_update_window_requires_valuation_asset_scope() -> None:
     node = object.__new__(PortfoliosDataNode)
-    node.valuation_source = SimpleNamespace(update_statistics=SimpleNamespace())
-    node.signal_weights = SimpleNamespace(
-        get_asset_list=lambda: None,
-        get_asset_uid_to_override_portfolio_price=lambda: None,
-    )
-    node.price_alignment_policy = PriceAlignmentPolicy()
-    node.portfolio_prices_frequency = "1d"
-    node._get_last_weights = lambda: None
 
     with pytest.raises(ValueError, match="required asset scope"):
-        node._calculate_start_end_dates()
+        node._required_valuation_source_progress_values(
+            SimpleNamespace(),
+            asset_identifiers=[],
+        )
+
+
+def test_portfolio_workflow_reads_signal_before_valuation_coverage_noop() -> None:
+    class Signal:
+        def __init__(self) -> None:
+            self.interpolate_called = False
+
+        def interpolate_index(self, index):
+            self.interpolate_called = True
+            return pd.DataFrame(
+                [[1.0] for _value in index],
+                index=index,
+                columns=pd.Index(["btc"], name=ASSET_IDENTIFIER),
+            )
+
+        def maximum_forward_fill(self):
+            return pd.Timedelta("1D")
+
+        def get_asset_uid_to_override_portfolio_price(self):
+            return None
+
+    start_date = pd.Timestamp("2026-01-02T00:00:00Z")
+    end_date = pd.Timestamp("2026-01-03T00:00:00Z")
+    signal = Signal()
+    node = object.__new__(PortfoliosDataNode)
+    node.update_hash = "portfolio-node"
+    node._storage_table = SimpleNamespace(get_data_source_uid=lambda: "test-data-source")
+    node.signal_weights = signal
+    node.valuation_source = SimpleNamespace()
+    node.rebalancer = SimpleNamespace(calendar=object())
+    node._calculate_start_end_dates = lambda: (start_date, end_date)
+    node._generate_new_index = lambda *_args: (
+        pd.DatetimeIndex([start_date, end_date]),
+        "1d",
+    )
+    node._get_last_weights = lambda: None
+    node._usable_valuation_end_date = lambda _asset_identifiers: pd.Timestamp(
+        "2026-01-01T00:00:00Z"
+    )
+    node._valuation_source_identifier = lambda _valuation_source: "valuations"
+
+    frame = node._calculate_portfolio_workflow_values()
+
+    assert signal.interpolate_called is True
+    assert frame.empty
 
 
 def test_portfolio_value_node_is_not_asset_scoped() -> None:

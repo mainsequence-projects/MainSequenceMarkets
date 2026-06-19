@@ -11,7 +11,7 @@ import pytz
 import mainsequence.meta_tables.data_nodes.build_operations as build_operations
 from mainsequence.client.metatables import UpdateStatistics
 from mainsequence.meta_tables import APIDataNode, DataNode
-from msm_portfolios.asset_scope import asset_unique_identifier, dedupe_asset_scope
+from msm_portfolios.asset_scope import dedupe_asset_scope
 
 from ..base import (
     PortfolioCanonicalDataNode,
@@ -71,6 +71,11 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         self._portfolio_configuration = portfolio_configuration
         self._portfolio_resolver = None
         self._explicit_portfolio_identifier: str | None = None
+        self._portfolio_values_frame: pd.DataFrame | None = None
+        self._portfolio_description: str | None = None
+        self._portfolio_metadata_updater = None
+        self._resolved_unique_identifier: str | None = None
+        self.required_valuation_asset_preflight = None
         self.target_portfolio = None
         if portfolio_configuration is not None:
             self._initialize_from_portfolio_configuration(portfolio_configuration)
@@ -138,7 +143,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         self.rebalancer = self.backtesting_weights_config.rebalance_strategy_instance
         self.rebalancer_explanation = ""
 
-        get_valuations = getattr(self.valuation_source, "get_df_between_dates", None)
+        get_valuations = self.valuation_source.get_df_between_dates
         if not callable(get_valuations):
             raise TypeError(
                 "PortfolioBuildConfiguration.valuation_source_instance must expose "
@@ -173,7 +178,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return self
 
     def dependencies(self) -> dict[str, DataNode | APIDataNode]:
-        if getattr(self, "portfolio_configuration", None) is None:
+        if self.portfolio_configuration is None:
             return {}
         return {
             "signal_weights": self.signal_weights,
@@ -191,7 +196,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         remote_scheduler: object | None = None,
         override_update_stats: UpdateStatistics | None = None,
     ):
-        if getattr(self, "portfolio_configuration", None) is None:
+        if self.portfolio_configuration is None:
             return super().run(
                 debug_mode=debug_mode,
                 update_tree=update_tree,
@@ -204,7 +209,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         portfolio = self._resolve_portfolio_identity()
         portfolio_unique_identifier = str(portfolio.unique_identifier)
         self._resolved_unique_identifier = portfolio_unique_identifier
-        portfolio_weights_node = self._canonical_portfolio_weights_node()
+        portfolio_weights_node = PortfolioWeights(namespace=self._canonical_namespace())
 
         portfolio_values_result = super().run(
             debug_mode=debug_mode,
@@ -217,9 +222,10 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         if update_only_tree:
             return portfolio_values_result
 
-        weights = getattr(self, "_last_canonical_weights_frame", pd.DataFrame())
+        weights = self._last_canonical_weights_frame
         portfolio_weights_result = None
-        if weights is not None and not weights.empty:
+        portfolio_weights_data_node_uid = portfolio.portfolio_weights_data_node_uid
+        if not weights.empty:
             portfolio_weights_node.set_weights_frame(
                 weights,
                 portfolio_identifier=portfolio_unique_identifier,
@@ -233,11 +239,23 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                 force_update=force_update,
                 remote_scheduler=remote_scheduler,
             )
+            portfolio_weights_data_node_uid = self._required_data_node_update_uid(
+                portfolio_weights_node,
+                "portfolio weights",
+            )
 
         if update_pointers:
             portfolio = self._update_portfolio_pointers(
                 portfolio=portfolio,
-                portfolio_weights_node=portfolio_weights_node,
+                signal_weights_data_node_uid=self._required_data_node_update_uid(
+                    self.signal_weights,
+                    "signal weights",
+                ),
+                portfolio_weights_data_node_uid=portfolio_weights_data_node_uid,
+                portfolio_data_node_uid=self._required_data_node_update_uid(
+                    self,
+                    "portfolio values",
+                ),
             )
 
         return {
@@ -250,11 +268,13 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         self,
         *,
         portfolio: Any,
-        portfolio_weights_node: PortfolioWeights,
+        signal_weights_data_node_uid: str,
+        portfolio_weights_data_node_uid: str | None,
+        portfolio_data_node_uid: str,
     ) -> Any:
         from msm.api.portfolios import Portfolio
 
-        calendar_uid = getattr(portfolio, "calendar_uid", None)
+        calendar_uid = portfolio.calendar_uid
         if calendar_uid in (None, ""):
             raise ValueError(
                 "PortfoliosDataNode cannot update PortfolioTable pointers for "
@@ -268,39 +288,25 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         portfolio = Portfolio.upsert(
             unique_identifier=str(portfolio.unique_identifier),
             calendar_uid=calendar_uid,
-            published_index_uid=getattr(portfolio, "published_index_uid", None),
+            published_index_uid=portfolio.published_index_uid,
             backtest_table_price_column_name=(
-                getattr(portfolio, "backtest_table_price_column_name", None)
-                or self.valuation_column
+                portfolio.backtest_table_price_column_name or self.valuation_column
             ),
-            signal_weights_data_node_uid=self._required_data_node_update_uid(
-                self.signal_weights,
-                "signal weights",
-            ),
+            signal_weights_data_node_uid=signal_weights_data_node_uid,
             signal_uid=signal_uid,
-            portfolio_weights_data_node_uid=self._required_data_node_update_uid(
-                portfolio_weights_node,
-                "portfolio weights",
-            ),
-            portfolio_data_node_uid=self._required_data_node_update_uid(
-                self,
-                "portfolio values",
-            ),
+            portfolio_weights_data_node_uid=portfolio_weights_data_node_uid,
+            portfolio_data_node_uid=portfolio_data_node_uid,
         )
         self.target_portfolio = portfolio
         return portfolio
 
     @staticmethod
     def _ensure_signal_metadata(signal_weights: Any) -> None:
-        upsert_signal_metadata = getattr(
-            signal_weights, "_upsert_signal_metadata_if_available", None
-        )
-        if callable(upsert_signal_metadata):
-            upsert_signal_metadata()
+        signal_weights._upsert_signal_metadata_if_available()
 
     @staticmethod
     def _required_signal_uid(signal_weights: Any) -> str:
-        signal_uid = getattr(signal_weights, "signal_uid", None)
+        signal_uid = signal_weights.signal_uid
         if signal_uid in (None, ""):
             raise RuntimeError(
                 "Cannot update PortfolioTable signal pointer because signal_weights.signal_uid "
@@ -310,8 +316,8 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
 
     @staticmethod
     def _required_data_node_update_uid(node: Any, label: str) -> str:
-        data_node_update = getattr(node, "data_node_update", None)
-        uid = getattr(data_node_update, "uid", None)
+        data_node_update = node.data_node_update
+        uid = data_node_update.uid
         if uid in (None, ""):
             raise RuntimeError(
                 f"Cannot update PortfolioTable DataNode pointers because {label} "
@@ -337,13 +343,12 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return frame
 
     def _calculate_portfolio_values(self) -> pd.DataFrame:
-        if getattr(self, "portfolio_configuration", None) is not None:
+        if self.portfolio_configuration is not None:
             return self._calculate_portfolio_workflow_values()
 
-        portfolio_values_frame = getattr(self, "_portfolio_values_frame", None)
-        if portfolio_values_frame is None:
+        if self._portfolio_values_frame is None:
             return self.get_canonical_frame()
-        return portfolio_values_frame
+        return self._portfolio_values_frame
 
     def _calculate_portfolio_workflow_values(self) -> pd.DataFrame:
         self.logger.debug("Starting update of portfolio weights.")
@@ -394,6 +399,30 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             signal_weights=signal_weights,
             last_rebalance_weights=last_rebalance_weights,
         )
+        usable_valuation_end_date = self._usable_valuation_end_date(
+            required_valuation_asset_identifiers
+        )
+        if pd.Timestamp(usable_valuation_end_date) < pd.Timestamp(start_date):
+            self.logger.info(
+                "No new portfolio values to update because existing portfolio "
+                "output is already ahead of usable valuation-source coverage.",
+                valuation_source=self._valuation_source_identifier(self.valuation_source),
+                latest_portfolio_time_index=start_date,
+                usable_valuation_end_date=usable_valuation_end_date,
+            )
+            return pd.DataFrame()
+
+        new_index = new_index[new_index <= usable_valuation_end_date]
+        signal_weights = signal_weights[signal_weights.index <= usable_valuation_end_date]
+        if len(new_index) == 0 or len(signal_weights) == 0:
+            self.logger.info(
+                "No new portfolio values to update after applying valuation-source coverage.",
+                valuation_source=self._valuation_source_identifier(self.valuation_source),
+                latest_portfolio_time_index=start_date,
+                usable_valuation_end_date=usable_valuation_end_date,
+            )
+            return pd.DataFrame()
+
         raw_valuations, aligned_valuations = self._align_valuation_source_to_index(
             new_index=new_index,
             valuation_source=self.valuation_source,
@@ -465,15 +494,8 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return portfolio
 
     def _canonical_namespace(self) -> str | None:
-        namespace = getattr(self, "hash_namespace", "") or ""
+        namespace = self.hash_namespace or ""
         return namespace or None
-
-    def _canonical_portfolio_weights_node(self) -> PortfolioWeights:
-        node = getattr(self, "_portfolio_weights_node", None)
-        if node is None:
-            node = PortfolioWeights(namespace=self._canonical_namespace())
-            self._portfolio_weights_node = node
-        return node
 
     def _resolve_portfolio_identity(self) -> Any:
         if self.target_portfolio is not None and self.target_portfolio.unique_identifier:
@@ -505,17 +527,16 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return str(unique_identifier)
 
     def _resolve_portfolio_description(self) -> str | None:
-        explicit_description = self.__dict__.get("_portfolio_description")
-        if explicit_description is not None:
-            return str(explicit_description)
-        front_end_details = getattr(self.portfolio_markets_config, "front_end_details", None)
+        if self._portfolio_description is not None:
+            return str(self._portfolio_description)
+        front_end_details = self.portfolio_markets_config.front_end_details
         if front_end_details is None:
             return None
-        description = getattr(front_end_details, "description", None)
+        description = front_end_details.description
         return None if description is None else str(description)
 
     def _latest_portfolio_time_index_value(self):
-        update_statistics = getattr(self, "update_statistics", None)
+        update_statistics = self.update_statistics
         if update_statistics is None:
             return None
 
@@ -532,14 +553,11 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return update_statistics.max_time_index_value
 
     def _portfolio_progress_identifier(self) -> str | None:
-        portfolio_identifier = getattr(self, "_resolved_unique_identifier", None)
+        portfolio_identifier = self._resolved_unique_identifier
         if portfolio_identifier is not None:
             return str(portfolio_identifier)
 
-        if (
-            getattr(self, "portfolio_configuration", None) is not None
-            or getattr(self, "_portfolio_configuration", None) is not None
-        ):
+        if self.portfolio_configuration is not None or self._portfolio_configuration is not None:
             portfolio_identifier = self._unique_identifier()
             self._resolved_unique_identifier = portfolio_identifier
             return portfolio_identifier
@@ -547,9 +565,23 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return None
 
     def _calculate_start_end_dates(self):
+        start_date = self._portfolio_update_start_date()
+        end_date = datetime.now(pytz.utc)
+        max_td_env = os.getenv("MAX_TD_FROM_LATEST_VALUE", None)
+        if max_td_env is not None:
+            new_end_date = start_date + pd.Timedelta(max_td_env)
+            end_date = new_end_date if new_end_date < end_date else end_date
+
+        return start_date, end_date
+
+    def _portfolio_update_start_date(self):
+        return self._latest_portfolio_time_index_value() or self.OFFSET_START
+
+    def _usable_valuation_end_date(self, asset_identifiers: list[str]):
         update_statics_from_dependencies = self._valuation_source_update_statistics()
         progress_values = self._required_valuation_source_progress_values(
-            update_statics_from_dependencies
+            update_statics_from_dependencies,
+            asset_identifiers=asset_identifiers,
         )
         earliest_last_value = min(progress_values) if progress_values else None
 
@@ -560,17 +592,8 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             raise Exception("Valuation source is empty")
 
         if self.price_alignment_policy.forward_fill_to_now:
-            end_date = datetime.now(pytz.utc)
-        else:
-            end_date = earliest_last_value + self._valuation_source_maximum_forward_fill()
-
-        start_date = self._latest_portfolio_time_index_value() or self.OFFSET_START
-        max_td_env = os.getenv("MAX_TD_FROM_LATEST_VALUE", None)
-        if max_td_env is not None:
-            new_end_date = start_date + pd.Timedelta(max_td_env)
-            end_date = new_end_date if new_end_date < end_date else end_date
-
-        return start_date, end_date
+            return datetime.now(pytz.utc)
+        return earliest_last_value + self._valuation_source_maximum_forward_fill()
 
     def _valuation_source_update_statistics(self) -> UpdateStatistics:
         update_statistics = self.valuation_source.update_statistics
@@ -591,14 +614,18 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
 
         raise TypeError("PortfoliosDataNode valuation_source must be a DataNode or APIDataNode.")
 
-    def _required_valuation_source_progress_values(self, update_statistics) -> list:
-        asset_identifiers = self._preflight_required_valuation_asset_identifiers()
+    def _required_valuation_source_progress_values(
+        self,
+        update_statistics,
+        *,
+        asset_identifiers: list[str],
+    ) -> list:
         if not asset_identifiers:
             raise ValueError(
                 "PortfoliosDataNode cannot derive the valuation-source update window "
-                "without a required asset scope. The signal must expose a non-empty "
-                "preflight get_asset_list(), or this portfolio must have previous "
-                "weights that identify assets still needing valuation or liquidation."
+                "without a required asset scope. The actual signal frame must expose "
+                "asset columns, or this portfolio must have previous weights that "
+                "identify assets still needing valuation or liquidation."
             )
 
         progress_values = [
@@ -606,37 +633,6 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             for asset_identifier in asset_identifiers
         ]
         return [value for value in progress_values if value is not None]
-
-    def _preflight_required_valuation_asset_identifiers(self) -> list[str]:
-        required_assets = []
-        preflight_asset_list = getattr(self, "required_valuation_asset_preflight", None)
-        if preflight_asset_list is None:
-            get_asset_list = getattr(self.signal_weights, "get_asset_list", None)
-            if callable(get_asset_list):
-                preflight_asset_list = get_asset_list()
-
-        if preflight_asset_list:
-            required_assets.extend(asset_unique_identifier(asset) for asset in preflight_asset_list)
-
-        last_rebalance_weights = self._get_last_weights()
-        if (
-            last_rebalance_weights is not None
-            and not last_rebalance_weights.empty
-            and isinstance(last_rebalance_weights.index, pd.MultiIndex)
-            and ASSET_IDENTIFIER in last_rebalance_weights.index.names
-        ):
-            required_assets.extend(
-                str(value)
-                for value in last_rebalance_weights.index.get_level_values(
-                    ASSET_IDENTIFIER
-                ).unique()
-            )
-
-        portfolio_price_asset = self.signal_weights.get_asset_uid_to_override_portfolio_price()
-        if portfolio_price_asset is not None:
-            required_assets.append(str(portfolio_price_asset))
-
-        return list(dict.fromkeys(required_assets))
 
     def _generate_new_index(self, start_date, end_date, rebalancer_calendar):
         upsample_freq = self._portfolio_update_frequency()
@@ -764,7 +760,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         if latest_value is None:
             return None
 
-        portfolio_weights_node = self._canonical_portfolio_weights_node()
+        portfolio_weights_node = PortfolioWeights(namespace=self._canonical_namespace())
         last_obs = portfolio_weights_node.get_df_between_dates(
             start_date=latest_value,
             great_or_equal=True,
@@ -930,7 +926,10 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return str(valuation_source.update_hash)
 
     def _valuation_source_maximum_forward_fill(self) -> pd.Timedelta:
-        maximum_forward_fill = getattr(self.valuation_source, "maximum_forward_fill", None)
+        try:
+            maximum_forward_fill = self.valuation_source.maximum_forward_fill
+        except AttributeError:
+            maximum_forward_fill = None
         if maximum_forward_fill is not None:
             return pd.Timedelta(maximum_forward_fill)
         return pd.Timedelta(translate_to_pandas_freq(self._portfolio_update_frequency()))
@@ -938,12 +937,25 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
     def _portfolio_update_frequency(self) -> str:
         if self.portfolio_prices_frequency not in (None, ""):
             return str(self.portfolio_prices_frequency)
-        for attribute_name in ("upsample_frequency_id", "bar_frequency_id"):
-            frequency = getattr(self.valuation_source, attribute_name, None)
-            if frequency not in (None, ""):
-                return str(frequency)
-        storage_table = getattr(self.valuation_source, "storage_table", None)
-        cadence = getattr(storage_table, "__cadence__", None)
+        try:
+            upsample_frequency_id = self.valuation_source.upsample_frequency_id
+        except AttributeError:
+            upsample_frequency_id = None
+        if upsample_frequency_id not in (None, ""):
+            return str(upsample_frequency_id)
+
+        try:
+            bar_frequency_id = self.valuation_source.bar_frequency_id
+        except AttributeError:
+            bar_frequency_id = None
+        if bar_frequency_id not in (None, ""):
+            return str(bar_frequency_id)
+
+        try:
+            storage_table = self.valuation_source.storage_table
+        except AttributeError:
+            storage_table = None
+        cadence = None if storage_table is None else storage_table.__cadence__
         if cadence not in (None, ""):
             return str(cadence)
         return "1d"
@@ -993,8 +1005,8 @@ rebalance details:"""
         )
 
     def _upsert_portfolio_metadata_if_available(self, frame: pd.DataFrame) -> None:
-        portfolio_configuration = getattr(self, "_portfolio_configuration", None)
-        portfolio_description = self.__dict__.get("_portfolio_description")
+        portfolio_configuration = self._portfolio_configuration
+        portfolio_description = self._portfolio_description
         if portfolio_configuration is None and portfolio_description is None:
             return
 
@@ -1015,7 +1027,7 @@ rebalance details:"""
             unique_identifier=str(unique_identifier),
             description=portfolio_description
             or extract_portfolio_description(portfolio_configuration),
-            updater=getattr(self, "_portfolio_metadata_updater", None),
+            updater=self._portfolio_metadata_updater,
         )
 
     @staticmethod

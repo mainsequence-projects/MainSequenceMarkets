@@ -4,7 +4,9 @@ from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar
 
 import pandas as pd
+from sqlalchemy import select
 
+from msm.api.base import operation_result_rows
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc, normalize_timestamp_ns_utc
 from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
@@ -15,6 +17,11 @@ from msm.data_nodes.utils.stamped import (
     StampedDataNodeConfiguration,
     StampedFrameMixin,
     reset_frame_index,
+)
+from msm.repositories.base import (
+    MarketsRepositoryContext,
+    compile_markets_statement,
+    execute_markets_operation,
 )
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
@@ -89,9 +96,12 @@ class AssetSnapshot(AssetTimestampedDataNode):
     def set_snapshots(
         self,
         snapshots: AssetSnapshotInput | Sequence[AssetSnapshotInput],
+        *,
+        verify_existing: bool = True,
     ) -> AssetSnapshot:
         """Validate snapshot row payloads and attach them to this DataNode."""
 
+        self._verify_existing_snapshot_index = verify_existing
         return self.set_frame(self.build_frame(snapshots))
 
     def _execute_local_update(self, historical_update: Any):
@@ -103,7 +113,11 @@ class AssetSnapshot(AssetTimestampedDataNode):
 
     def update(self) -> pd.DataFrame:
         frame = super().update()
-        if getattr(self, "_verify_backend_snapshot_index", False):
+        if getattr(self, "_verify_backend_snapshot_index", False) and getattr(
+            self,
+            "_verify_existing_snapshot_index",
+            True,
+        ):
             self.verify_backend_index_available(frame)
         return frame
 
@@ -127,28 +141,53 @@ class AssetSnapshot(AssetTimestampedDataNode):
         candidate_keys = _asset_snapshot_index_keys(
             self.validate_frame(frame, storage_table=self.storage_table)
         )
-        existing_keys: list[tuple[str, str]] = []
-        for time_index, unique_identifier in candidate_keys:
-            existing_frame = self.get_df_between_dates(
-                start_date=time_index.to_pydatetime(),
-                end_date=time_index.to_pydatetime(),
-                great_or_equal=True,
-                less_or_equal=True,
-                dimension_filters={
-                    ASSET_IDENTIFIER_DIMENSION: [unique_identifier],
-                },
+        if not candidate_keys:
+            return []
+
+        candidate_key_set = set(candidate_keys)
+        times = sorted({time_index for time_index, _ in candidate_key_set})
+        asset_identifiers = sorted({asset_identifier for _, asset_identifier in candidate_key_set})
+
+        AssetSnapshotsStorage._bind_meta_table(self.local_persist_manager.storage_metadata)
+        context = MarketsRepositoryContext()
+        statement = (
+            select(
+                AssetSnapshotsStorage.time_index.label("time_index"),
+                AssetSnapshotsStorage.asset_identifier.label(ASSET_IDENTIFIER_DIMENSION),
             )
-            if _backend_frame_contains_asset_snapshot_key(
-                existing_frame,
+            .where(
+                AssetSnapshotsStorage.time_index >= times[0].to_pydatetime(),
+                AssetSnapshotsStorage.time_index <= times[-1].to_pydatetime(),
+                AssetSnapshotsStorage.asset_identifier.in_(asset_identifiers),
+            )
+        )
+        operation = compile_markets_statement(
+            statement,
+            context=context,
+            operation="select",
+            models=[AssetSnapshotsStorage],
+            access="read",
+        )
+        result = execute_markets_operation(operation, context=context)
+        existing_key_set = {
+            (
+                normalize_timestamp_ns_utc(row["time_index"]),
+                str(row[ASSET_IDENTIFIER_DIMENSION]),
+            )
+            for row in operation_result_rows(result)
+            if row.get("time_index") is not None
+            and row.get(ASSET_IDENTIFIER_DIMENSION) is not None
+        }
+        existing_keys = sorted(candidate_key_set & existing_key_set)
+        for time_index, unique_identifier in existing_keys:
+            self._log_existing_asset_snapshot_key(
                 time_index=time_index,
                 unique_identifier=unique_identifier,
-            ):
-                self._log_existing_asset_snapshot_key(
-                    time_index=time_index,
-                    unique_identifier=unique_identifier,
-                )
-                existing_keys.append((time_index.isoformat(), unique_identifier))
-        return existing_keys
+            )
+        return [
+            (time_index.isoformat(), unique_identifier)
+            for time_index, unique_identifier in existing_keys
+        ]
 
     def _log_existing_asset_snapshot_key(
         self,
@@ -193,34 +232,6 @@ def _asset_snapshot_index_keys(frame: pd.DataFrame) -> list[tuple[pd.Timestamp, 
         )
         for _, row in keys.iterrows()
     ]
-
-
-def _backend_frame_contains_asset_snapshot_key(
-    frame: pd.DataFrame,
-    *,
-    time_index: pd.Timestamp,
-    unique_identifier: str,
-) -> bool:
-    if frame is None or frame.empty:
-        return False
-
-    flat = reset_frame_index(
-        frame.copy(),
-        index_names=[
-            "time_index",
-            ASSET_IDENTIFIER_DIMENSION,
-        ],
-    )
-    if "time_index" not in flat.columns:
-        return True
-    if ASSET_IDENTIFIER_DIMENSION not in flat.columns:
-        return True
-
-    flat["time_index"] = normalize_datetime64_ns_utc(flat["time_index"])
-    flat[ASSET_IDENTIFIER_DIMENSION] = flat[ASSET_IDENTIFIER_DIMENSION].astype(str)
-    return (
-        (flat["time_index"] == time_index) & (flat[ASSET_IDENTIFIER_DIMENSION] == unique_identifier)
-    ).any()
 
 
 def _snapshot_items(

@@ -372,11 +372,19 @@ source table's update statistics before calculating the portfolio update
 window. Normal `DataNode` valuation sources still rely on the SDK runner to
 populate dependency update statistics before portfolio calculation starts.
 
-When a portfolio value series is already ahead of the usable valuation-source
-coverage, `PortfoliosDataNode` treats the update as an exhausted window and
-returns no new rows before asking the rebalance calendar for a schedule. This
-keeps calendar validation strict while making repeated or forced portfolio runs
-idempotent when upstream valuations have not advanced.
+The portfolio update start is always the latest `PortfoliosStorage` timestamp
+for the resolved `PortfolioTable.unique_identifier`, stored as
+`PortfoliosStorage.portfolio_identifier`. It is not derived from signal progress,
+valuation-source progress, or the table-wide maximum of the shared
+`PortfoliosStorage` table.
+
+After resolving that portfolio-scoped start, `PortfoliosDataNode` builds the
+candidate rebalance index, reads the actual signal frame, derives the required
+valuation assets from that signal frame plus any previous weights still needing
+valuation or liquidation, and only then caps the usable end timestamp by
+valuation-source coverage. If the portfolio is already ahead of usable
+valuation coverage, the run returns no new rows after the signal has been read
+and logged as part of the current graph.
 
 In code, the important wiring is:
 
@@ -433,13 +441,11 @@ valuation source. Valuation sources may contain more assets than the signal
 requires; portfolio calculation filters to the signal-required asset subset and
 reports missing required assets when the consumed valuation source does not
 cover them.
-The portfolio update window is also scoped to the assets the portfolio needs:
-the signal preflight universe, any previous portfolio-weight assets that still
-need valuation or liquidation, and any explicit portfolio value override asset.
-It does not use unrelated assets present in the source valuation table when deciding
-the usable source-data end timestamp. If the workflow cannot determine that
-asset scope before deriving the source-data window, it fails instead of falling
-back to table-wide valuation-source progress.
+The usable valuation end timestamp is scoped to the assets the portfolio
+actually needs: the actual signal output frame, any previous portfolio-weight
+assets that still need valuation or liquidation, and any explicit portfolio
+value override asset. It does not use unrelated assets present in the source
+valuation table when deciding the usable source-data end timestamp.
 
 Existing portfolio output progress is scoped by `portfolio_identifier` because
 `PortfoliosStorage` is keyed by `(time_index, portfolio_identifier)`. A later
@@ -562,6 +568,12 @@ published. This is enabled by default for portfolio-configuration runs, so
 examples and callers do not need to manually re-upsert the portfolio row after
 execution. Pass `update_pointers=False` only when deliberately running the graph
 without updating portfolio registry links.
+
+When a run publishes no new executed weights, the workflow must not require a
+fresh `PortfolioWeights` DataNodeUpdate. It preserves the existing
+`PortfolioTable.portfolio_weights_data_node_uid` and still updates the signal
+and portfolio-values pointers from the DataNodeUpdates produced by the current
+graph run.
 
 Virtual-fund allocation is a separate relationship over account holdings and a
 target portfolio:
