@@ -6,7 +6,6 @@ from typing import Any, ClassVar
 import pandas as pd
 from sqlalchemy import select
 
-from msm.api.base import operation_result_rows
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc, normalize_timestamp_ns_utc
 from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
@@ -17,11 +16,6 @@ from msm.data_nodes.utils.stamped import (
     StampedDataNodeConfiguration,
     StampedFrameMixin,
     reset_frame_index,
-)
-from msm.repositories.base import (
-    MarketsRepositoryContext,
-    compile_markets_statement,
-    execute_markets_operation,
 )
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
@@ -138,6 +132,12 @@ class AssetSnapshot(AssetTimestampedDataNode):
     def existing_backend_index_keys(self, frame: pd.DataFrame) -> list[tuple[str, str]]:
         """Return existing backend keys that would collide with `frame`."""
 
+        from msm.repositories.base import (
+            MarketsRepositoryContext,
+            compile_markets_statement,
+            execute_markets_operation,
+        )
+
         candidate_keys = _asset_snapshot_index_keys(
             self.validate_frame(frame, storage_table=self.storage_table)
         )
@@ -174,7 +174,7 @@ class AssetSnapshot(AssetTimestampedDataNode):
                 normalize_timestamp_ns_utc(row["time_index"]),
                 str(row[ASSET_IDENTIFIER_DIMENSION]),
             )
-            for row in operation_result_rows(result)
+            for row in _operation_result_rows(result)
             if row.get("time_index") is not None
             and row.get(ASSET_IDENTIFIER_DIMENSION) is not None
         }
@@ -232,6 +232,37 @@ def _asset_snapshot_index_keys(frame: pd.DataFrame) -> list[tuple[pd.Timestamp, 
         )
         for _, row in keys.iterrows()
     ]
+
+
+def _operation_result_rows(result: Mapping[str, Any] | list[Any] | None) -> list[dict[str, Any]]:
+    if result is None:
+        return []
+    if isinstance(result, list):
+        return [row for row in result if isinstance(row, dict)]
+    if not isinstance(result, Mapping):
+        return []
+
+    for key in ("rows", "results"):
+        rows = result.get(key)
+        if isinstance(rows, list):
+            return [row for row in rows if isinstance(row, dict)]
+
+    for key in ("row", "data"):
+        value = result.get(key)
+        if isinstance(value, Mapping):
+            nested_rows = _operation_result_rows(value)
+            if nested_rows:
+                return nested_rows
+            if key == "row":
+                return [dict(value)]
+            if "uid" in value:
+                return [dict(value)]
+        if isinstance(value, list):
+            return [row for row in value if isinstance(row, dict)]
+
+    if "uid" in result:
+        return [dict(result)]
+    return []
 
 
 def _snapshot_items(

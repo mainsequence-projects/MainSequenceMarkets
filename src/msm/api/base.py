@@ -8,15 +8,6 @@ from typing import Any, ClassVar, TypeVar
 from pydantic import BaseModel, ConfigDict
 
 from msm.base import MarketsBase
-from msm.repositories.crud import (
-    create_model,
-    delete_model,
-    get_model_by_uid,
-    get_model_by_unique_identifier,
-    search_model,
-    update_model,
-    upsert_model,
-)
 
 RowT = TypeVar("RowT", bound="MarketsMetaTableRow")
 Payload = BaseModel | Mapping[str, Any] | None
@@ -54,6 +45,8 @@ class MarketsMetaTableRow(BaseModel):
     def create(cls: type[RowT], payload: Payload = None, **kwargs: Any) -> RowT:
         """Insert one row through the active markets runtime."""
 
+        from msm.repositories.crud import create_model
+
         result = create_model(
             cls._active_context(),
             model=cls.__table__,
@@ -64,6 +57,8 @@ class MarketsMetaTableRow(BaseModel):
     @classmethod
     def upsert(cls: type[RowT], payload: Payload = None, **kwargs: Any) -> RowT:
         """Upsert one row through the active markets runtime."""
+
+        from msm.repositories.crud import upsert_model
 
         if not cls.__upsert_keys__:
             raise NotImplementedError(f"{cls.__name__} does not define upsert keys.")
@@ -84,6 +79,8 @@ class MarketsMetaTableRow(BaseModel):
     ) -> RowT:
         """Update one row by UID through the active markets runtime."""
 
+        from msm.repositories.crud import update_model
+
         result = update_model(
             cls._active_context(),
             model=cls.__table__,
@@ -96,11 +93,15 @@ class MarketsMetaTableRow(BaseModel):
     def delete(cls, uid: uuid.UUID | str) -> dict[str, Any]:
         """Delete one row by UID through the active markets runtime."""
 
+        from msm.repositories.crud import delete_model
+
         return delete_model(cls._active_context(), model=cls.__table__, uid=uid)
 
     @classmethod
     def get_by_uid(cls: type[RowT], uid: uuid.UUID | str) -> RowT | None:
         """Return one row by UID from the active markets runtime."""
+
+        from msm.repositories.crud import get_model_by_uid
 
         result = get_model_by_uid(cls._active_context(), model=cls.__table__, uid=uid)
         return cls._from_operation_result(result, required=False)
@@ -108,6 +109,8 @@ class MarketsMetaTableRow(BaseModel):
     @classmethod
     def get_by_unique_identifier(cls: type[RowT], unique_identifier: str) -> RowT | None:
         """Return one row by `unique_identifier` when the table has that column."""
+
+        from msm.repositories.crud import get_model_by_unique_identifier
 
         cls._require_column("unique_identifier")
         result = get_model_by_unique_identifier(
@@ -124,6 +127,8 @@ class MarketsMetaTableRow(BaseModel):
         Keyword arguments ending in `_contains` compile to SQL `contains`
         filters. Other keyword arguments compile to equality filters.
         """
+
+        from msm.repositories.crud import search_model
 
         exact_filters: dict[str, Any] = {}
         contains_filters: dict[str, str] = {}

@@ -176,11 +176,11 @@ def test_asset_snapshot_existing_backend_index_keys_uses_one_compiled_query(monk
     )
     monkeypatch.setattr(AssetSnapshotsStorage, "_bind_meta_table", bind_meta_table)
     monkeypatch.setattr(
-        "msm.data_nodes.assets.snapshots.compile_markets_statement",
+        "msm.repositories.base.compile_markets_statement",
         compile_statement,
     )
     monkeypatch.setattr(
-        "msm.data_nodes.assets.snapshots.execute_markets_operation",
+        "msm.repositories.base.execute_markets_operation",
         execute_operation,
     )
 
