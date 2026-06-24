@@ -305,3 +305,6 @@ Stop and report the exact failing command if:
 - the API route returns provider-native JSON instead of `TabularFrameResponse`
 
 Do not hide these by changing widget props.
+
+
+
