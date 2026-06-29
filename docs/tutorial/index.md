@@ -151,6 +151,9 @@ custom calendar facts:
 `pandas_market_calendars` is not the durable source of truth. It is an adapter
 that writes into `CalendarDateTable` and `CalendarSessionTable`; consumers
 should read the persisted rows or reference `CalendarTable.uid`.
+Portfolio construction depends on those persisted session rows. A portfolio
+calendar with no sessions for the requested update range raises a calendar
+materialization error instead of producing an empty portfolio no-op.
 
 ```python
 from msm.api.calendars import Calendar

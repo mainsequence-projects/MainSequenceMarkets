@@ -54,6 +54,20 @@ def translate_to_pandas_freq(custom_freq: str) -> str:
     return f"{number}{freq_mapping[unit]}"
 
 
+def _calendar_schedule_name(calendar: Any) -> str:
+    for attr_name in ("name", "calendar_key"):
+        value = getattr(calendar, attr_name, None)
+        if value not in (None, ""):
+            return str(value)
+    persisted_calendar = getattr(calendar, "calendar", None)
+    if persisted_calendar is not None:
+        for attr_name in ("unique_identifier", "display_name", "source_identifier", "uid"):
+            value = getattr(persisted_calendar, attr_name, None)
+            if value not in (None, ""):
+                return str(value)
+    return calendar.__class__.__name__
+
+
 class PortfoliosDataNode(PortfolioCanonicalDataNode):
     """Canonical portfolio values DataNode and portfolio workflow orchestrator."""
 
@@ -642,6 +656,14 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             upsample_freq = translate_to_pandas_freq(upsample_freq)
             freq = upsample_freq.replace("days", "d")
             schedule = rebalancer_calendar.schedule(start_date=start_date, end_date=end_date)
+            if schedule.empty:
+                calendar_name = _calendar_schedule_name(rebalancer_calendar)
+                raise ValueError(
+                    f"Calendar {calendar_name} has no sessions for requested "
+                    f"portfolio update range {start_date} to {end_date}. "
+                    "Materialize CalendarSession rows for this calendar before "
+                    "running portfolio execution."
+                )
             new_index = schedule.set_index("market_close").index
             new_index.name = None
             new_index = new_index[new_index <= end_date]

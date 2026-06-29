@@ -81,6 +81,12 @@ portfolio = Portfolio.upsert(
 )
 ```
 
+Portfolio execution uses persisted `CalendarSession` rows to build the daily
+rebalance index. If the referenced calendar has no sessions in the requested
+portfolio update range, `PortfoliosDataNode` fails loudly instead of treating
+the empty schedule as a clean no-op. Materialize the calendar sessions before
+running the portfolio graph.
+
 `Portfolio.upsert(...)` writes only the portfolio identity row. Portfolio
 constituents, weights, values, and optional index publication are separate
 portfolio workflows.

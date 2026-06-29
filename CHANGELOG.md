@@ -118,6 +118,9 @@ and this project follows versioned releases.
 - Extended the full account portfolio example to assign the generated target
   sleeve portfolio to an example `PortfolioGroup` through the public portfolio
   group API.
+- Changed portfolio execution to raise a clear calendar materialization error
+  when the rebalance calendar has no sessions for the requested update range,
+  instead of reporting a misleading empty portfolio-weight no-op.
 - Changed `msm copy-msm-skills` to delegate its filesystem copy mechanics to
   the Main Sequence SDK scaffold-skill helper while keeping the same public
   command UX. Successful copies now write `.agents/skills/ms_markets/PINNED_FROM.txt`.

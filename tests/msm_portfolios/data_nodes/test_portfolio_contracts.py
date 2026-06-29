@@ -411,6 +411,28 @@ def test_portfolio_values_noop_when_existing_output_is_ahead_of_valuation_source
     assert frame.empty
 
 
+def test_portfolio_values_fail_when_calendar_has_no_sessions() -> None:
+    class EmptyCalendar:
+        name = "BMV"
+
+        def schedule(self, **_kwargs):
+            return pd.DataFrame(columns=["market_open", "market_close"])
+
+    node = object.__new__(PortfoliosDataNode)
+    node._portfolio_update_frequency = lambda: "1d"
+    start_date = pd.Timestamp("2026-06-01T00:00:00Z")
+    end_date = pd.Timestamp("2026-06-30T00:00:00Z")
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Calendar BMV has no sessions for requested portfolio update range "
+            ".*Materialize CalendarSession rows"
+        ),
+    ):
+        node._generate_new_index(start_date, end_date, EmptyCalendar())
+
+
 def test_portfolio_values_reads_existing_values_with_dimension_filter() -> None:
     latest_value = pd.Timestamp("2026-01-01T00:00:00Z")
     captured: dict[str, object] = {}

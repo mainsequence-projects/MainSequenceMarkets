@@ -378,7 +378,7 @@ def build_equal_weight_portfolio(
     print_step(2, "Registering the crypto asset universe.")
     assets = register_assets()
 
-    print_step(3, "Creating or reusing the crypto 24/7 calendar.")
+    print_step(3, "Creating or reusing the crypto 24/7 calendar with sessions.")
     portfolio_calendar = create_crypto_calendar_from_pandas()
 
     print_step(4, "Preparing explicit price, signal, and portfolio DataNodes.")
