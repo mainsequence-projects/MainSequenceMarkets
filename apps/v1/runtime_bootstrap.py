@@ -17,6 +17,7 @@ V1_RUNTIME_MODELS = [
     "CalendarEvent",
     "IndexType",
     "Index",
+    "FutureAssetDetails",
     "AccountAllocationModel",
     "AccountGroup",
     "Account",
@@ -70,9 +71,13 @@ V1_PRICING_RUNTIME_MODELS = [
     "Index",
     "IndexConventionDetails",
     "Curve",
+    "CurveBuildingDetails",
+    "IndexFixingsStorage",
     "AssetCurrentPricingDetails",
+    "AssetPricingDetailsStorage",
     "PricingMarketDataSet",
     "PricingMarketDataSetBinding",
+    "PricingMarketDataSetCurveBinding",
 ]
 _BOOTSTRAP_COMPLETE = False
 _PORTFOLIO_BOOTSTRAP_COMPLETE = False

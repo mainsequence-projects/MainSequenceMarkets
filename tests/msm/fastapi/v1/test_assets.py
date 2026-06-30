@@ -709,7 +709,7 @@ def test_get_asset_pricing_details_returns_pricing_contract(monkeypatch) -> None
         "apps.v1.routers.assets.get_asset_pricing_details",
         lambda uid: {
             "asset_uid": str(asset_uid),
-            "instrument_type": "bond",
+            "instrument_type": "FixedRateBond",
             "instrument_dump": {"currency": "USD"},
             "pricing_details_date": "2026-05-28T00:00:00+00:00",
             "serialization_format": "msm_pricing.instrument.v1",
@@ -725,7 +725,7 @@ def test_get_asset_pricing_details_returns_pricing_contract(monkeypatch) -> None
     assert response.status_code == 200
     assert response.json() == {
         "asset_uid": str(asset_uid),
-        "instrument_type": "bond",
+        "instrument_type": "FixedRateBond",
         "instrument_dump": {"currency": "USD"},
         "pricing_details_date": "2026-05-28T00:00:00Z",
         "serialization_format": "msm_pricing.instrument.v1",
@@ -759,7 +759,7 @@ def test_asset_pricing_details_service_uses_pricing_api_lookup(monkeypatch) -> N
         captured["uid"] = uid
         return {
             "asset_uid": str(asset_uid),
-            "instrument_type": "bond",
+            "instrument_type": "FixedRateBond",
             "instrument_dump": {"currency": "USD"},
             "pricing_details_date": "2026-05-28T00:00:00+00:00",
             "serialization_format": "msm_pricing.instrument.v1",
@@ -780,4 +780,6 @@ def test_asset_pricing_details_service_uses_pricing_api_lookup(monkeypatch) -> N
     assert response is not None
     assert str(response.asset_uid) == str(asset_uid)
     assert response.pricing_support is not None
-    assert response.pricing_support.supported is False
+    assert response.pricing_support.supported is True
+    assert response.pricing_support.operations
+    assert response.pricing_support.operations[0].requires_market_data_set is True

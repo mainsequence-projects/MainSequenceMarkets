@@ -1,8 +1,12 @@
-# msm_portfolios Knowledge
+# msm_portfolios
 
 `msm_portfolios` owns portfolio construction workflows. It is kept outside the
 core `msm` package because portfolios behave like a small application layer
 over assets, accounts, signals, rebalance strategies, and portfolio DataNodes.
+
+It is an optional package built on top of `msm`; read [Core Concepts](../../concepts.md)
+first for the shared runtime model (row objects, `start_engine(...)`,
+migrations-before-runtime).
 
 The package may depend on core `msm` tables such as assets, accounts, and
 portfolio identity, but portfolio-specific metadata, calculation DataNodes, and
@@ -17,8 +21,13 @@ owns portfolio-only runtime helpers such as `pandas-market-calendars`; the core
 
 - [Portfolios](portfolios/index.md): portfolio identity, asset linkage,
   metadata, signals, rebalance strategies, and canonical portfolio DataNodes.
-- [Virtual Funds Boundary](virtualfunds/index.md): historical boundary note
-  pointing to core `msm` virtual-fund documentation.
+
+Virtual funds are **not** owned by `msm_portfolios`. They are core `msm`
+account-allocation state; see
+[Core Account Virtual Funds](../msm/accounts/virtual_funds.md). `msm_portfolios`
+can supply the portfolio weights or DataNodes the allocation workflow consumes,
+but it does not own `VirtualFundTable`, `VirtualFundHoldingsSetTable`,
+`VirtualFundHoldingsStorage`, or the allocation planner.
 
 ## Package Boundary
 
@@ -29,3 +38,12 @@ Core market reference data, account allocation, and virtual-fund state remain
 in [`msm`](../msm/index.md). Pricing engines and QuantLib-backed market-data
 configuration remain in
 [`msm_pricing`](../msm_pricing/index.md).
+
+## Related Concepts
+
+- [Core Concepts](../../concepts.md) — the shared runtime model.
+- [Portfolios](portfolios/index.md) — the portfolio construction reference.
+- [Accounts](../msm/accounts/index.md) and
+  [Virtual Funds](../msm/accounts/virtual_funds.md) — how account allocation
+  consumes portfolios.
+- [msm_pricing](../msm_pricing/index.md) — valuation of portfolio constituents.

@@ -34,38 +34,31 @@ into `src/msm`.
 
 ## Library Style
 
-The general style of `msm` is to keep user-facing code typed and domain-oriented.
-Application code should operate on Pydantic row objects such as `Asset`,
-`Account`, and `OrderManager`, while schema registration code works with
-SQLAlchemy MetaTable declarations such as `AssetTable`, `AccountTable`, and
-`OrderManagerTable`. Timestamped execution facts such as orders, events, and
-trades are DataNode storage contracts, not duplicate row MetaTables.
+The general style of `msm` is to keep user-facing code typed and
+domain-oriented. Application code operates on Pydantic row objects such as
+`Asset`, `Account`, and `OrderManager`; schema code works with SQLAlchemy
+`*Table` declarations such as `AssetTable`; timestamped facts live in DataNodes.
 
 ```python
-from msm.api.assets import Asset
-from msm.models import AssetTable
+from msm.api.assets import Asset       # row object — application code
+from msm.models import AssetTable       # SQLAlchemy declaration — schema code
 ```
 
-Row objects expose class methods such as `upsert(...)`, `filter(...)`, and
-lifecycle helpers where the domain needs them. Mutation and lookup methods use
-the active runtime created during process initialization; they do not attach to
-MetaTables or register schemas on first row use. `start_engine()` is the
-explicit runtime attachment entrypoint and resolves already-registered backend
-tables by each model's SQLAlchemy table name after SDK-managed migrations are
-current. Schema mutation belongs to the SDK migration command with
-`--provider migrations:migration`.
-`MSM_AUTO_REGISTER_NAMESPACE` is only a namespace default for examples or local
-development; it does not make row operations register schemas. Lower-level
-repository helpers remain available when a workflow needs direct access to
-registered table handles or raw platform operation payloads.
+The full runtime model — the three layers, `start_engine()` as attachment (not
+schema creation), migrations-before-runtime, and `MSM_AUTO_REGISTER_NAMESPACE` —
+is documented once in [Core Concepts](concepts.md). Read it before the rest of
+the docs.
 
 ## Documentation Map
 
 - [Getting Started](getting-started.md)
+- [Core Concepts](concepts.md)
 - [Tutorial](tutorial/index.md)
 - [FastAPI v1](fast_api/v1/index.md)
 - [Command Center](command_center/index.md)
-- [Knowledge Base](knowledge/index.md)
+- Package reference: [msm](knowledge/msm/index.md),
+  [msm_portfolios](knowledge/msm_portfolios/index.md),
+  [msm_pricing](knowledge/msm_pricing/index.md)
 - [Architecture Decision Records](ADR/README.md)
 - [Changelog](changelog.md)
 - [API Reference](reference/index.md)

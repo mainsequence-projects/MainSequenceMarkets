@@ -71,11 +71,13 @@ startup resolves registered `MetaTable` and `TimeIndexMetaTable` objects
 directly by each model's SQLAlchemy table name.
 
 Curves are pricing-owned reference data, not assets. `CurveTable` owns curve
-identity, and `DiscountCurvesNode` lives under `msm_pricing.data_nodes` as a
-stamped DataNode keyed by `(time_index, curve_identifier)`. Curve
-DataNode configurations use the actual `CurveTable.unique_identifier`; they do
-not resolve Main Sequence Constants into curve identity. EOD curve observations
-declare daily cadence on `DiscountCurvesStorage.__cadence__`.
+identity, `CurveBuildingDetailsTable` owns curve construction rules, and
+`PricingMarketDataSetCurveBindingTable` owns valuation-context curve selection.
+`DiscountCurvesNode` lives under `msm_pricing.data_nodes` as a stamped DataNode
+keyed by `(time_index, curve_identifier)`. Curve DataNode configurations use
+the actual `CurveTable.unique_identifier`; they do not resolve Main Sequence
+Constants into curve identity. EOD curve observations declare daily cadence on
+`DiscountCurvesStorage.__cadence__`.
 
 Fixings are index facts, not assets and not a separate rate model.
 `FixingRatesNode` lives under `msm_pricing.data_nodes` as an
@@ -125,6 +127,23 @@ PricingMarketDataSetBinding.upsert(
     concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
     data_node_uid=DiscountCurvesStorage.get_meta_table_uid(),
     storage_table_identifier=DiscountCurvesStorage.get_identifier(),
+)
+```
+
+Storage-source binding is separate from curve-identity binding. A single
+discount-curve storage table can contain many curve identifiers, so market-data
+sets also select the curve for each valuation role:
+
+```python
+from msm_pricing.api import PricingMarketDataSetCurveBinding
+
+PricingMarketDataSetCurveBinding.upsert(
+    market_data_set_uid=market_data_set.uid,
+    role_key="projection",
+    selector_type="index",
+    selector_key=str(index.uid),
+    quote_side="mid",
+    curve_uid=curve.uid,
 )
 ```
 

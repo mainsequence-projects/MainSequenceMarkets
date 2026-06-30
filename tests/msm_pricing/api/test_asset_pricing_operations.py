@@ -235,9 +235,8 @@ def test_execute_curve_preview_links_selected_discount_curve(monkeypatch) -> Non
     curve_uid = uuid.uuid4()
     curve = SimpleNamespace(
         uid=curve_uid,
-        unique_identifier="USD-SOFR-DISCOUNT",
-        curve_type="discount",
-        index_uid=index_uid,
+        unique_identifier="USD-SOFR-PROJECTION",
+        curve_type="projection",
         source="example",
     )
     instrument = FloatingRateBond(floating_rate_index_uid=index_uid)
@@ -262,13 +261,17 @@ def test_execute_curve_preview_links_selected_discount_curve(monkeypatch) -> Non
         parameters={},
     )
 
-    assert captured == {"index_uid": index_uid, "curve_type": "discount"}
+    assert captured == {
+        "index_uid": index_uid,
+        "curve_type": "projection",
+        "market_data_set": "eod",
+    }
     assert response["curves"] == [
         {
-            "role": "discount",
+            "role": "projection",
             "curve_uid": str(curve_uid),
-            "curve_identifier": "USD-SOFR-DISCOUNT",
-            "curve_type": "discount",
+            "curve_identifier": "USD-SOFR-PROJECTION",
+            "curve_type": "projection",
             "index_uid": str(index_uid),
             "source": "example",
             "discount_curve_url": f"/api/v1/pricing/curves/{curve_uid}/discount-curve/",

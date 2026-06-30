@@ -57,9 +57,11 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     from msm_pricing.api import (
         AssetCurrentPricingDetails,
         Curve,
+        CurveBuildingDetails,
         IndexConventionDetails,
         PricingMarketDataSet,
         PricingMarketDataSetBinding,
+        PricingMarketDataSetCurveBinding,
     )
     from msm_pricing.bootstrap import attach_pricing_schemas
     from msm_pricing.data_nodes import CurveConfig, IndexFixingConfiguration
@@ -87,9 +89,11 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
             "Index",
             "IndexConventionDetails",
             "Curve",
+            "CurveBuildingDetails",
             "AssetCurrentPricingDetails",
             "PricingMarketDataSet",
             "PricingMarketDataSetBinding",
+            "PricingMarketDataSetCurveBinding",
             "DiscountCurvesStorage",
             "IndexFixingsStorage",
         ],
@@ -224,18 +228,46 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     )
     curve = Curve.upsert(
         unique_identifier=EXAMPLE_CURVE_UNIQUE_IDENTIFIER,
-        display_name="USD SOFR Example Discount Curve",
-        curve_type="discount",
-        index_uid=index.uid,
-        interpolation_method="log_linear_discount",
-        compounding="compounded_annual",
+        display_name="USD SOFR Example Projection Curve",
+        curve_type="projection",
+        currency_code="USD",
+        quote_side="mid",
         source="example",
         metadata_json={"example": "flat-forward zero curve"},
     )
     _print_step(
-        "Upserted discount curve",
+        "Upserted projection curve",
         curve_uid=curve.uid,
         unique_identifier=curve.unique_identifier,
+    )
+    curve_building_details = CurveBuildingDetails.upsert(
+        curve_uid=curve.uid,
+        builder_type="zero_rate_curve",
+        quote_convention="zero_rate",
+        rate_unit="decimal",
+        day_counter_code="Actual360",
+        calendar_code="TARGET",
+        interpolation_method="log_linear_discount",
+        compounding="simple",
+        extrapolation_policy="enabled",
+        source="example",
+        metadata_json={"example": "flat-forward zero curve"},
+    )
+    curve_selection_binding = PricingMarketDataSetCurveBinding.upsert(
+        market_data_set_uid=market_data_set.uid,
+        role_key="projection",
+        selector_type="index",
+        selector_key=str(index.uid),
+        quote_side="mid",
+        curve_uid=curve.uid,
+        source="examples/msm_pricing/bond_pricing_example",
+        metadata_json={"workflow": "floating-rate-bond-pricing-example"},
+    )
+    _print_step(
+        "Upserted curve build details and selection binding",
+        curve_uid=curve_building_details.curve_uid,
+        binding_key=curve_selection_binding.binding_key,
+        selected_curve_uid=curve_selection_binding.curve_uid,
     )
 
     curve_node = MockFlatForwardDiscountCurvesNode(

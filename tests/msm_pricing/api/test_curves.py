@@ -7,19 +7,13 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from msm.models import IndexTable, IndexTypeTable
 from msm_pricing.api.curves import Curve, CurveUpsert
-from msm_pricing.models import CurveTable, IndexConventionDetailsTable
+from msm_pricing.models import CurveTable
 
 
 def test_curve_api_declares_table_contract() -> None:
     assert Curve.__table__ is CurveTable
-    assert Curve.__required_tables__ == [
-        IndexTypeTable,
-        IndexTable,
-        IndexConventionDetailsTable,
-        CurveTable,
-    ]
+    assert Curve.__required_tables__ == [CurveTable]
     assert Curve.__upsert_keys__ == ("unique_identifier",)
 
 
@@ -39,7 +33,7 @@ def test_curve_start_engine_uses_pricing_dependencies(monkeypatch) -> None:
     assert Curve.start_engine(namespace="pricing-test") is runtime
     assert calls == [
         {
-            "models": [IndexTypeTable, IndexTable, IndexConventionDetailsTable, CurveTable],
+            "models": [CurveTable],
             "namespace": "pricing-test",
         }
     ]
@@ -51,7 +45,6 @@ def test_curve_payload_rejects_unknown_fields() -> None:
             unique_identifier="USD-SOFR-DISCOUNT",
             display_name="USD SOFR Discount Curve",
             curve_type="discount",
-            index_uid=uuid.uuid4(),
             uid=uuid.uuid4(),
         )
 
@@ -63,7 +56,6 @@ def test_curve_row_accepts_physical_metadata_alias() -> None:
             "unique_identifier": "USD-SOFR-DISCOUNT",
             "display_name": "USD SOFR Discount Curve",
             "curve_type": "discount",
-            "index_uid": uuid.uuid4(),
             "metadata": {"provider": "unit-test"},
         }
     )
@@ -75,7 +67,6 @@ def test_curve_upsert_uses_pricing_runtime_and_unique_identifier_key(
     monkeypatch,
 ) -> None:
     curve_uid = uuid.uuid4()
-    index_uid = uuid.uuid4()
     context = object()
     runtime = SimpleNamespace(context=context)
     calls = []
@@ -98,7 +89,8 @@ def test_curve_upsert_uses_pricing_runtime_and_unique_identifier_key(
         unique_identifier="USD-SOFR-DISCOUNT",
         display_name="USD SOFR Discount Curve",
         curve_type="discount",
-        index_uid=index_uid,
+        currency_code="USD",
+        quote_side="mid",
         interpolation_method="log_linear",
         compounding="continuous",
         source="unit-test",
@@ -110,7 +102,8 @@ def test_curve_upsert_uses_pricing_runtime_and_unique_identifier_key(
         unique_identifier="USD-SOFR-DISCOUNT",
         display_name="USD SOFR Discount Curve",
         curve_type="discount",
-        index_uid=index_uid,
+        currency_code="USD",
+        quote_side="mid",
         interpolation_method="log_linear",
         compounding="continuous",
         source="unit-test",
@@ -120,7 +113,7 @@ def test_curve_upsert_uses_pricing_runtime_and_unique_identifier_key(
         (
             "runtime",
             {
-                "models": [IndexTypeTable, IndexTable, IndexConventionDetailsTable, CurveTable],
+                "models": [CurveTable],
                 "row_model_name": "Curve",
             },
         ),
@@ -132,10 +125,12 @@ def test_curve_upsert_uses_pricing_runtime_and_unique_identifier_key(
                 "unique_identifier": "USD-SOFR-DISCOUNT",
                 "display_name": "USD SOFR Discount Curve",
                 "curve_type": "discount",
-                "index_uid": index_uid,
+                "currency_code": "USD",
+                "quote_side": "mid",
                 "interpolation_method": "log_linear",
                 "compounding": "continuous",
                 "source": "unit-test",
+                "status": "ACTIVE",
                 "metadata_json": {"provider": "test"},
             },
             ("unique_identifier",),
@@ -145,7 +140,6 @@ def test_curve_upsert_uses_pricing_runtime_and_unique_identifier_key(
 
 def test_curve_get_by_unique_identifier_uses_curve_lookup(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
-    index_uid = uuid.uuid4()
     context = object()
     calls = []
 
@@ -162,7 +156,7 @@ def test_curve_get_by_unique_identifier_uses_curve_lookup(monkeypatch) -> None:
                 "unique_identifier": "USD-SOFR-DISCOUNT",
                 "display_name": "USD SOFR Discount Curve",
                 "curve_type": "discount",
-                "index_uid": index_uid,
+                "status": "ACTIVE",
             }
         }
 
@@ -180,7 +174,6 @@ def test_curve_get_by_unique_identifier_uses_curve_lookup(monkeypatch) -> None:
 
 def test_curve_frontend_detail_summary_uses_curve_row(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
-    index_uid = uuid.uuid4()
 
     monkeypatch.setattr(
         Curve,
@@ -191,7 +184,8 @@ def test_curve_frontend_detail_summary_uses_curve_row(monkeypatch) -> None:
                 unique_identifier="USD-SOFR-DISCOUNT",
                 display_name="USD SOFR Discount Curve",
                 curve_type="discount",
-                index_uid=index_uid,
+                currency_code="USD",
+                quote_side="mid",
                 interpolation_method="log_linear_discount",
                 compounding="compounded_annual",
                 source="unit-test",
@@ -215,6 +209,16 @@ def test_curve_frontend_detail_summary_uses_curve_row(monkeypatch) -> None:
                 "tone": "info",
             },
             {
+                "key": "currency_code",
+                "label": "USD",
+                "tone": "neutral",
+            },
+            {
+                "key": "quote_side",
+                "label": "mid",
+                "tone": "neutral",
+            },
+            {
                 "key": "source",
                 "label": "unit-test",
                 "tone": "neutral",
@@ -233,12 +237,6 @@ def test_curve_frontend_detail_summary_uses_curve_row(monkeypatch) -> None:
                 "value": "USD-SOFR-DISCOUNT",
                 "kind": "code",
             },
-            {
-                "key": "index_uid",
-                "label": "Index UID",
-                "value": str(index_uid),
-                "kind": "code",
-            },
         ],
         "highlight_fields": [
             {
@@ -254,6 +252,13 @@ def test_curve_frontend_detail_summary_uses_curve_row(monkeypatch) -> None:
                 "value": "discount",
                 "kind": "code",
                 "icon": "line-chart",
+            },
+            {
+                "key": "currency_code",
+                "label": "Currency",
+                "value": "USD",
+                "kind": "code",
+                "icon": "circle-dollar-sign",
             },
             {
                 "key": "interpolation_method",
@@ -279,10 +284,12 @@ def test_curve_frontend_detail_summary_uses_curve_row(monkeypatch) -> None:
                 "unique_identifier": "USD-SOFR-DISCOUNT",
                 "display_name": "USD SOFR Discount Curve",
                 "curve_type": "discount",
-                "index_uid": str(index_uid),
+                "currency_code": "USD",
+                "quote_side": "mid",
                 "interpolation_method": "log_linear_discount",
                 "compounding": "compounded_annual",
                 "source": "unit-test",
+                "status": "ACTIVE",
                 "metadata_json": {"provider": "test"},
             },
             "metadata_json": {"provider": "test"},
@@ -298,7 +305,6 @@ def test_curve_frontend_detail_summary_returns_none_when_missing(monkeypatch) ->
 
 def test_curve_discount_curve_nodes_use_market_data_binding(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
-    index_uid = uuid.uuid4()
     market_data_set_uid = uuid.uuid4()
     binding_uid = uuid.uuid4()
     data_node_uid = uuid.uuid4()
@@ -314,7 +320,6 @@ def test_curve_discount_curve_nodes_use_market_data_binding(monkeypatch) -> None
                 unique_identifier="USD-SOFR-DISCOUNT",
                 display_name="USD SOFR Discount Curve",
                 curve_type="discount",
-                index_uid=index_uid,
             )
         ),
     )
@@ -378,10 +383,12 @@ def test_curve_discount_curve_nodes_use_market_data_binding(monkeypatch) -> None
             "unique_identifier": "USD-SOFR-DISCOUNT",
             "display_name": "USD SOFR Discount Curve",
             "curve_type": "discount",
-            "index_uid": str(index_uid),
+            "currency_code": None,
+            "quote_side": None,
             "interpolation_method": None,
             "compounding": None,
             "source": None,
+            "status": "ACTIVE",
             "metadata_json": None,
         },
         "market_data_set": {
@@ -411,7 +418,6 @@ def test_curve_discount_curve_nodes_use_market_data_binding(monkeypatch) -> None
 
 def test_curve_discount_curve_nodes_use_latest_when_valuation_date_missing(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
-    index_uid = uuid.uuid4()
     market_data_set_uid = uuid.uuid4()
     binding_uid = uuid.uuid4()
     data_node_uid = uuid.uuid4()
@@ -426,7 +432,6 @@ def test_curve_discount_curve_nodes_use_latest_when_valuation_date_missing(monke
                 unique_identifier="USD-SOFR-DISCOUNT",
                 display_name="USD SOFR Discount Curve",
                 curve_type="discount",
-                index_uid=index_uid,
             )
         ),
     )
@@ -492,7 +497,6 @@ def test_curve_discount_curve_nodes_return_none_when_curve_missing(monkeypatch) 
 
 def test_curve_filter_uses_pricing_runtime_filters(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
-    index_uid = uuid.uuid4()
     context = object()
     calls = []
 
@@ -510,7 +514,6 @@ def test_curve_filter_uses_pricing_runtime_filters(monkeypatch) -> None:
                     "unique_identifier": "USD-SOFR-DISCOUNT",
                     "display_name": "USD SOFR Discount Curve",
                     "curve_type": "discount",
-                    "index_uid": index_uid,
                 }
             ]
         }
@@ -520,7 +523,7 @@ def test_curve_filter_uses_pricing_runtime_filters(monkeypatch) -> None:
         fake_search_model,
     )
 
-    rows = Curve.filter(index_uid=index_uid, curve_type="discount", source=None, limit=2)
+    rows = Curve.filter(curve_type="discount", source=None, limit=2)
 
     assert rows == [
         Curve(
@@ -528,7 +531,6 @@ def test_curve_filter_uses_pricing_runtime_filters(monkeypatch) -> None:
             unique_identifier="USD-SOFR-DISCOUNT",
             display_name="USD SOFR Discount Curve",
             curve_type="discount",
-            index_uid=index_uid,
         )
     ]
     assert calls == [
@@ -536,7 +538,6 @@ def test_curve_filter_uses_pricing_runtime_filters(monkeypatch) -> None:
             context,
             CurveTable,
             {
-                "index_uid": index_uid,
                 "curve_type": "discount",
             },
             2,
@@ -546,7 +547,6 @@ def test_curve_filter_uses_pricing_runtime_filters(monkeypatch) -> None:
 
 def test_curve_list_uses_paginated_runtime_search(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
-    index_uid = uuid.uuid4()
     context = object()
     calls = []
 
@@ -576,7 +576,6 @@ def test_curve_list_uses_paginated_runtime_search(monkeypatch) -> None:
                     "unique_identifier": "USD-SOFR-DISCOUNT",
                     "display_name": "USD SOFR Discount Curve",
                     "curve_type": "discount",
-                    "index_uid": index_uid,
                 }
             ]
         }
@@ -589,7 +588,6 @@ def test_curve_list_uses_paginated_runtime_search(monkeypatch) -> None:
         offset=1,
         search="SOFR",
         curve_type="discount",
-        index_uid=index_uid,
         source=None,
     )
 
@@ -603,7 +601,6 @@ def test_curve_list_uses_paginated_runtime_search(monkeypatch) -> None:
                 unique_identifier="USD-SOFR-DISCOUNT",
                 display_name="USD SOFR Discount Curve",
                 curve_type="discount",
-                index_uid=index_uid,
             )
         ],
     }
@@ -612,14 +609,14 @@ def test_curve_list_uses_paginated_runtime_search(monkeypatch) -> None:
             "count",
             context,
             CurveTable,
-            {"curve_type": "discount", "index_uid": index_uid},
+            {"curve_type": "discount"},
             {"unique_identifier": "SOFR"},
         ),
         (
             "search",
             context,
             CurveTable,
-            {"curve_type": "discount", "index_uid": index_uid},
+            {"curve_type": "discount"},
             {"unique_identifier": "SOFR"},
             1,
             1,

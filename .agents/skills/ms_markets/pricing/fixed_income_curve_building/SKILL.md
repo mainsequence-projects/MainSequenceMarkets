@@ -106,10 +106,19 @@ day convention, settlement days, end-of-month handling, and optional fixing
 identity override.
 
 `CurveTable` is pricing-owned curve identity. It has its own `uid` and
-`unique_identifier`, but its `index_uid` points to
-`IndexConventionDetailsTable.index_uid`, not directly to loose strings. Curve
-rows describe which convention/index the curve belongs to and how to interpret
-published curve observations.
+`unique_identifier`. `index_uid` is nullable legacy metadata only; new curve
+selection must use `PricingMarketDataSetCurveBindingTable`.
+
+`CurveBuildingDetailsTable` is keyed one-to-one by `curve_uid` and stores how to
+turn published observations into a QuantLib curve: builder type, quote
+convention, rate unit, day counter, calendar, interpolation, compounding,
+extrapolation policy, source, and metadata.
+
+`PricingMarketDataSetCurveBindingTable` selects curve identity within a
+market-data set. Use it for `discount`, `projection`, `forwarding`,
+`z_spread_base`, bid/mid/offer, source/scenario, basis/spread, and future
+volatility curve or surface selection decisions. Do not encode those policy
+choices as foreign keys from `CurveTable` to `IndexConventionDetailsTable`.
 
 Pricing runtime attachment order matters. `attach_pricing_schemas(...)` is the
 startup entrypoint; it attaches already-registered pricing MetaTables and
@@ -126,9 +135,11 @@ attach_pricing_schemas(seed_default_market_data_bindings=True)
 `msm.start_engine(...)`: already-registered tables are attached, and dependency
 order is resolved before runtime binding. The dependency order includes
 `AssetTable`, `IndexTypeTable`, `IndexTable`, `IndexConventionDetailsTable`,
-`CurveTable`, then pricing details and pricing DataNode storage tables. Missing
-MetaTables indicate SDK migration/provider work still needs to run before
-pricing startup.
+`CurveTable`, `CurveBuildingDetailsTable`, then pricing details,
+`PricingMarketDataSetTable`, `PricingMarketDataSetBindingTable`,
+`PricingMarketDataSetCurveBindingTable`, and pricing DataNode storage tables.
+Missing MetaTables indicate SDK migration/provider work still needs to run
+before pricing startup.
 
 ## Creation Workflow
 
@@ -344,8 +355,9 @@ curve = resolve_pricing_curve(
 Resolver expectations:
 
 - `IndexConventionDetails` exists for the index UID.
-- Exactly one matching `Curve` exists, or the caller passes `source` or
-  `curve_unique_identifier`.
+- `PricingMarketDataSetCurveBinding` resolves the valuation role and selector
+  to exactly one `Curve`.
+- `CurveBuildingDetails` exists for the selected curve.
 - `PricingMarketDataSetBinding` resolves the active
   `(market_data_set_uid, concept_key)` to the backend DataNode storage table UID
   for the published curve and fixing DataNodes.
@@ -374,12 +386,14 @@ An example should print or otherwise expose each step:
 1. Register asset/index/reference rows.
 2. Upsert `IndexConventionDetails`.
 3. Upsert `Curve`.
-4. Publish fixings.
-5. Publish discount curves.
-6. Attach pricing storage tables and upsert the pricing market-data set plus
+4. Upsert `CurveBuildingDetails`.
+5. Upsert `PricingMarketDataSetCurveBinding`.
+6. Publish fixings.
+7. Publish discount curves.
+8. Attach pricing storage tables and upsert the pricing market-data set plus
    `PricingMarketDataSetBinding` rows explicitly.
-7. Attach/load the instrument by asset.
-8. Price and show analytics/cashflows.
+9. Attach/load the instrument by asset.
+10. Price and show analytics/cashflows.
 
 ## Validation Checklist
 
@@ -387,7 +401,9 @@ Before finishing a change:
 
 - `IndexTable` remains free of Constant-name and curve fields.
 - `IndexConventionDetailsTable.index_uid` is one-to-one with `IndexTable.uid`.
-- `CurveTable.index_uid` depends on `IndexConventionDetailsTable.index_uid`.
+- `CurveTable.index_uid` is not required by new code paths.
+- Every priced curve has `CurveBuildingDetails`.
+- Market-data-set curve selection uses `PricingMarketDataSetCurveBinding`.
 - Fixing DataNode rows use `time_index`, `index_identifier`, and `rate`.
 - Curve DataNode rows use `time_index`, `curve_identifier`, and `curve`.
 - Instrument payloads store backend index UUIDs and reject raw index-name

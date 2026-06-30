@@ -35,8 +35,12 @@ def test_bond_pricing_example_uses_storage_uids_for_bindings() -> None:
     assert "IndexFixingsStorage.get_identifier()" in source
     assert "PricingMarketDataSet.upsert(" in source
     assert "PricingMarketDataSetBinding.upsert(" in source
+    assert "CurveBuildingDetails.upsert(" in source
+    assert "PricingMarketDataSetCurveBinding.upsert(" in source
     assert "data_node_uid=curve_data_node_uid" in source
     assert "data_node_uid=fixing_data_node_uid" in source
+    assert 'role_key="projection"' in source
+    assert 'selector_type="index"' in source
     assert "curve_node._default_identifier()" not in source
     assert "fixing_node._default_identifier()" not in source
 

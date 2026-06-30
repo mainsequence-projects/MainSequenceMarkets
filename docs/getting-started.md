@@ -123,4 +123,4 @@ with the same arguments return the cached runtime; different arguments are
 rejected for that process. See
 [MetaTable Registration](knowledge/msm/platform/meta_table_registration.md),
 [Migrations](knowledge/msm/migrations/index.md), and
-[Market Workflows](tutorial/market_workflows.md).
+[Tutorial](tutorial/index.md).

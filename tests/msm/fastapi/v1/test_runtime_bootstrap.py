@@ -54,6 +54,7 @@ def test_ensure_apps_v1_runtime_calls_start_engine_for_v1_model_set(monkeypatch)
 
 
 def test_ensure_apps_v1_runtime_includes_target_position_models() -> None:
+    assert "FutureAssetDetails" in runtime_bootstrap.V1_RUNTIME_MODELS
     assert "Portfolio" in runtime_bootstrap.V1_RUNTIME_MODELS
     assert "PortfolioMetadata" in runtime_bootstrap.V1_RUNTIME_MODELS
     assert "PortfolioWeightsStorage" in runtime_bootstrap.V1_RUNTIME_MODELS
@@ -63,6 +64,24 @@ def test_ensure_apps_v1_runtime_includes_target_position_models() -> None:
     assert "VirtualFund" in runtime_bootstrap.V1_RUNTIME_MODELS
     assert "VirtualFundHoldingsSet" in runtime_bootstrap.V1_RUNTIME_MODELS
     assert "VirtualFundHoldingsStorage" in runtime_bootstrap.V1_RUNTIME_MODELS
+
+
+def test_ensure_apps_v1_pricing_runtime_covers_current_pricing_detail_dependencies() -> None:
+    from msm_pricing.api import (
+        AssetCurrentPricingDetails,
+        CurveBuildingDetails,
+        PricingMarketDataSetCurveBinding,
+    )
+    from msm_pricing.meta_tables import resolve_pricing_meta_table_models
+
+    runtime_models = set(
+        resolve_pricing_meta_table_models(runtime_bootstrap.V1_PRICING_RUNTIME_MODELS)
+    )
+
+    assert set(AssetCurrentPricingDetails.__required_tables__).issubset(runtime_models)
+    assert set(CurveBuildingDetails.__required_tables__).issubset(runtime_models)
+    assert set(PricingMarketDataSetCurveBinding.__required_tables__).issubset(runtime_models)
+    assert "IndexFixingsStorage" in runtime_bootstrap.V1_PRICING_RUNTIME_MODELS
 
 
 def test_ensure_apps_v1_runtime_propagates_start_engine_failures(monkeypatch) -> None:

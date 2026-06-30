@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import datetime
+import math
 import uuid
 from typing import Any
 
 import QuantLib as ql
 
 from msm.api.indices import Index
+from msm_pricing.api.curve_building_details import CurveBuildingDetails
 from msm_pricing.api.curves import Curve
 from msm_pricing.api.index_convention_details import IndexConventionDetails
+from msm_pricing.api.market_data_bindings import PricingMarketDataSetCurveBinding
 from msm_pricing.data_interface import data_interface
 from msm_pricing.instruments.json_codec import (
     bdc_from_json,
@@ -29,81 +32,116 @@ def resolve_index_convention(index_uid: uuid.UUID | str) -> IndexConventionDetai
     return convention
 
 
+def resolve_curve_building_details(curve_uid: uuid.UUID | str) -> CurveBuildingDetails:
+    """Load curve-owned build details for a CurveTable row."""
+
+    curve_uid = _coerce_uuid(curve_uid, field_name="curve_uid")
+    details = CurveBuildingDetails.get_by_curve_uid(curve_uid)
+    if details is None:
+        raise LookupError(f"No curve building details found for curve_uid={curve_uid}.")
+    return details
+
+
 def select_curve(
     *,
-    index_uid: uuid.UUID | str,
+    index_uid: uuid.UUID | str | None = None,
     curve_type: str = "discount",
+    market_data_set: Any | None = None,
+    role_key: str | None = None,
+    selector_type: str | None = None,
+    selector_key: str | None = None,
+    quote_side: str | None = None,
+    currency_code: str | None = None,
     source: str | None = None,
+    curve_uid: uuid.UUID | str | None = None,
     curve_unique_identifier: str | None = None,
 ) -> Curve:
-    """Select a curve identity row for an index UID using strict default rules."""
+    """Select a curve identity row through explicit curve binding policy."""
 
-    index_uid = _coerce_uuid(index_uid, field_name="index_uid")
+    if curve_uid is not None and curve_unique_identifier is not None:
+        raise ValueError("Pass either curve_uid or curve_unique_identifier, not both.")
+
+    if curve_uid is not None:
+        curve = Curve.get_by_uid(curve_uid)
+        if curve is None:
+            raise LookupError(f"No curve row found for uid={curve_uid!r}.")
+        return _validate_selected_curve(
+            curve,
+            curve_type=curve_type,
+            source=source,
+        )
+
     if curve_unique_identifier:
         curve = Curve.get_by_unique_identifier(curve_unique_identifier)
         if curve is None:
             raise LookupError(
                 f"No curve row found for unique_identifier={curve_unique_identifier!r}."
             )
-        if curve.index_uid != index_uid:
-            raise ValueError(
-                f"Curve {curve.unique_identifier!r} belongs to index_uid={curve.index_uid}, "
-                f"not index_uid={index_uid}."
-            )
-        if curve_type and curve.curve_type != curve_type:
-            raise ValueError(
-                f"Curve {curve.unique_identifier!r} has curve_type={curve.curve_type!r}, "
-                f"not {curve_type!r}."
-            )
-        if source and curve.source != source:
-            raise ValueError(
-                f"Curve {curve.unique_identifier!r} has source={curve.source!r}, not {source!r}."
-            )
-        return curve
-
-    filters: dict[str, Any] = {
-        "index_uid": index_uid,
-        "curve_type": curve_type,
-    }
-    if source is not None:
-        filters["source"] = source
-
-    matches = Curve.filter(limit=2, **filters)
-    if len(matches) == 1:
-        return matches[0]
-    if not matches:
-        raise LookupError(
-            f"No curve row found for index_uid={index_uid}, curve_type={curve_type!r}"
-            + (f", source={source!r}." if source else ".")
+        return _validate_selected_curve(
+            curve,
+            curve_type=curve_type,
+            source=source,
         )
-    raise ValueError(
-        f"Multiple curve rows match index_uid={index_uid}, curve_type={curve_type!r}. "
-        "Pass source or curve_unique_identifier to select one explicitly."
+
+    role_key, selector_type, selector_key = _curve_binding_selector(
+        index_uid=index_uid,
+        curve_type=curve_type,
+        role_key=role_key,
+        selector_type=selector_type,
+        selector_key=selector_key,
+        currency_code=currency_code,
+    )
+    curve_uid = PricingMarketDataSetCurveBinding.resolve_curve_uid(
+        market_data_set=market_data_set,
+        role_key=role_key,
+        selector_type=selector_type,
+        selector_key=selector_key,
+        quote_side=quote_side,
+    )
+    curve = Curve.get_by_uid(curve_uid)
+    if curve is None:
+        raise LookupError(
+            f"Curve binding selected curve_uid={curve_uid}, but no Curve row was found."
+        )
+    return _validate_selected_curve(
+        curve,
+        curve_type=curve_type,
+        source=source,
     )
 
 
 def resolve_pricing_curve(
     *,
-    index_uid: uuid.UUID | str,
+    index_uid: uuid.UUID | str | None = None,
     valuation_date: datetime.date | datetime.datetime | ql.Date,
     market_data_set: Any | None = None,
     curve_type: str = "discount",
+    role_key: str | None = None,
+    selector_type: str | None = None,
+    selector_key: str | None = None,
+    quote_side: str | None = None,
+    currency_code: str | None = None,
     source: str | None = None,
+    curve_uid: uuid.UUID | str | None = None,
     curve_unique_identifier: str | None = None,
 ) -> ql.YieldTermStructureHandle:
     """Resolve and build a QuantLib curve from pricing MetaTables and curve data."""
 
-    index_uid = _coerce_uuid(index_uid, field_name="index_uid")
-    convention = resolve_index_convention(index_uid)
     curve = select_curve(
         index_uid=index_uid,
         curve_type=curve_type,
+        market_data_set=market_data_set,
+        role_key=role_key,
+        selector_type=selector_type,
+        selector_key=selector_key,
+        quote_side=quote_side,
+        currency_code=currency_code,
         source=source,
+        curve_uid=curve_uid,
         curve_unique_identifier=curve_unique_identifier,
     )
     return build_curve_from_curve_row(
         curve=curve,
-        convention=convention,
         valuation_date=valuation_date,
         market_data_set=market_data_set,
     )
@@ -112,11 +150,11 @@ def resolve_pricing_curve(
 def build_curve_from_curve_row(
     *,
     curve: Curve,
-    convention: IndexConventionDetails,
+    building_details: CurveBuildingDetails | None = None,
     valuation_date: datetime.date | datetime.datetime | ql.Date,
     market_data_set: Any | None = None,
 ) -> ql.YieldTermStructureHandle:
-    """Build a QuantLib discount curve from a curve row and convention payload."""
+    """Build a QuantLib discount curve from a curve row and curve-owned build details."""
 
     target_date = _ensure_datetime(valuation_date)
     nodes, effective_curve_date = data_interface.get_historical_discount_curve(
@@ -124,12 +162,15 @@ def build_curve_from_curve_row(
         target_date,
         market_data_set=market_data_set,
     )
+    if building_details is None:
+        building_details = resolve_curve_building_details(curve.uid)
+
+    _validate_supported_curve_build(curve=curve, building_details=building_details)
 
     base_dt = _ensure_datetime(effective_curve_date)
     base = to_ql_date(base_dt)
-    convention_dump = convention.convention_dump
-    day_counter = _day_counter_from_convention(convention_dump)
-    calendar = _calendar_from_convention(convention_dump)
+    day_counter = daycount_from_json(building_details.day_counter_code)
+    calendar = _calendar_from_code(building_details.calendar_code)
 
     dates = [base]
     discounts = [1.0]
@@ -142,15 +183,20 @@ def build_curve_from_curve_row(
         if ql_date.serialNumber() in seen:
             continue
         seen.add(ql_date.serialNumber())
-        zero = float(node.get("zero", node.get("zero_rate", node.get("rate"))))
-        if zero > 1.0:
-            zero *= 0.01
+        quote = _curve_node_quote(node, building_details=building_details)
         tenor = day_counter.yearFraction(base, ql_date)
-        discounts.append(1.0 / (1.0 + zero * tenor))
+        discounts.append(
+            _discount_from_quote(
+                quote=quote,
+                tenor=tenor,
+                building_details=building_details,
+            )
+        )
         dates.append(ql_date)
 
     term_structure = ql.DiscountCurve(dates, discounts, day_counter, calendar)
-    term_structure.enableExtrapolation()
+    if _extrapolation_enabled(building_details.extrapolation_policy):
+        term_structure.enableExtrapolation()
     return ql.YieldTermStructureHandle(term_structure)
 
 
@@ -163,7 +209,10 @@ def resolve_quantlib_index(
     hydrate_fixings: bool = True,
     settlement_days: int | None = None,
     curve_type: str = "discount",
+    role_key: str | None = None,
+    quote_side: str | None = None,
     source: str | None = None,
+    curve_uid: uuid.UUID | str | None = None,
     curve_unique_identifier: str | None = None,
 ) -> ql.IborIndex:
     """Build a QuantLib Ibor index from a canonical backend index UID."""
@@ -177,12 +226,18 @@ def resolve_quantlib_index(
     convention_dump = convention.convention_dump
     curve = _as_curve_handle(forwarding_curve)
     if curve is None:
+        selection_role = role_key or _default_index_curve_role(curve_type)
         curve = resolve_pricing_curve(
             index_uid=index_uid,
             valuation_date=valuation_date,
             market_data_set=market_data_set,
-            curve_type=curve_type,
+            curve_type=selection_role,
+            role_key=selection_role,
+            selector_type="index",
+            selector_key=str(index_uid),
+            quote_side=quote_side,
             source=source,
+            curve_uid=curve_uid,
             curve_unique_identifier=curve_unique_identifier,
         )
 
@@ -256,6 +311,116 @@ def _coerce_uuid(value: uuid.UUID | str, *, field_name: str) -> uuid.UUID:
         raise ValueError(f"{field_name} must be a UUID value.") from exc
 
 
+def _validate_selected_curve(
+    curve: Curve,
+    *,
+    curve_type: str | None,
+    source: str | None,
+) -> Curve:
+    if curve_type and curve.curve_type != curve_type:
+        raise ValueError(
+            f"Curve {curve.unique_identifier!r} has curve_type={curve.curve_type!r}, "
+            f"not {curve_type!r}."
+        )
+    if source and curve.source != source:
+        raise ValueError(
+            f"Curve {curve.unique_identifier!r} has source={curve.source!r}, not {source!r}."
+        )
+    return curve
+
+
+def _curve_binding_selector(
+    *,
+    index_uid: uuid.UUID | str | None,
+    curve_type: str,
+    role_key: str | None,
+    selector_type: str | None,
+    selector_key: str | None,
+    currency_code: str | None,
+) -> tuple[str, str, str]:
+    role = role_key or curve_type
+    if selector_type is not None or selector_key is not None:
+        if selector_type is None or selector_key is None:
+            raise ValueError("selector_type and selector_key must be passed together.")
+        return role, selector_type, selector_key
+    if currency_code:
+        return role, "currency", currency_code
+    if index_uid is not None:
+        return role, "index", str(_coerce_uuid(index_uid, field_name="index_uid"))
+    raise ValueError(
+        "Curve resolution requires curve_uid, curve_unique_identifier, or a "
+        "market-data-set curve binding selector."
+    )
+
+
+def _default_index_curve_role(curve_type: str) -> str:
+    if curve_type == "discount":
+        return "projection"
+    return curve_type
+
+
+def _validate_supported_curve_build(
+    *,
+    curve: Curve,
+    building_details: CurveBuildingDetails,
+) -> None:
+    builder_type = building_details.builder_type.lower()
+    quote_convention = building_details.quote_convention.lower()
+    if builder_type != "zero_rate_curve":
+        raise NotImplementedError(
+            f"Curve {curve.unique_identifier!r} uses unsupported builder_type="
+            f"{building_details.builder_type!r}."
+        )
+    if quote_convention not in {"zero_rate", "zero"}:
+        raise NotImplementedError(
+            f"Curve {curve.unique_identifier!r} uses unsupported quote_convention="
+            f"{building_details.quote_convention!r}."
+        )
+
+
+def _curve_node_quote(
+    node: dict[str, Any],
+    *,
+    building_details: CurveBuildingDetails,
+) -> float:
+    quote_convention = building_details.quote_convention.lower()
+    if quote_convention in {"zero_rate", "zero"}:
+        value = node.get("zero", node.get("zero_rate", node.get("rate")))
+    else:
+        value = None
+    if value is None:
+        raise ValueError(
+            "Curve observation node is missing the quote required by "
+            f"quote_convention={building_details.quote_convention!r}."
+        )
+    quote = float(value)
+    if building_details.rate_unit.lower() in {"percent", "percentage"}:
+        quote *= 0.01
+    elif building_details.rate_unit.lower() == "decimal":
+        pass
+    elif abs(quote) > 1.0:
+        quote *= 0.01
+    return quote
+
+
+def _discount_from_quote(
+    *,
+    quote: float,
+    tenor: float,
+    building_details: CurveBuildingDetails,
+) -> float:
+    compounding = building_details.compounding.lower()
+    if compounding in {"continuous", "continuous_compounding"}:
+        return math.exp(-quote * tenor)
+    if compounding in {"compounded", "compounded_annual", "annual"}:
+        return 1.0 / ((1.0 + quote) ** tenor)
+    return 1.0 / (1.0 + quote * tenor)
+
+
+def _extrapolation_enabled(policy: str) -> bool:
+    return policy.lower() in {"enabled", "enable", "true", "yes", "on"}
+
+
 def _ensure_datetime(value: datetime.date | datetime.datetime | ql.Date) -> datetime.datetime:
     if isinstance(value, datetime.datetime):
         return value
@@ -315,6 +480,10 @@ def _calendar_from_convention(convention_dump: dict[str, Any]) -> ql.Calendar:
     return calendar_from_json(value)
 
 
+def _calendar_from_code(value: str) -> ql.Calendar:
+    return _calendar_from_convention({"calendar_code": value})
+
+
 def _period_from_convention(
     convention_dump: dict[str, Any],
     *,
@@ -371,6 +540,7 @@ def _end_of_month(convention_dump: dict[str, Any]) -> bool:
 __all__ = [
     "add_historical_fixings",
     "build_curve_from_curve_row",
+    "resolve_curve_building_details",
     "resolve_index_convention",
     "resolve_pricing_curve",
     "resolve_quantlib_index",

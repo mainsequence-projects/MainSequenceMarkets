@@ -54,6 +54,7 @@ class AssetPricingOperationLinkResponse(BaseModel):
     url: str
     requires_valuation_date: bool
     supports_market_data_set: bool
+    requires_market_data_set: bool
     request_model: str
     response_model: str
     response_contract: str

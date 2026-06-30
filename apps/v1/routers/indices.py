@@ -5,8 +5,14 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from apps.v1.schemas.common import ErrorResponse, PaginatedResponse, build_paginated_response
+from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.indices import Index
-from apps.v1.services.indices import delete_index, get_index, list_indices
+from apps.v1.services.indices import (
+    delete_index,
+    get_index,
+    get_index_delete_impact,
+    list_indices,
+)
 
 router = APIRouter(prefix="/index", tags=["index"])
 
@@ -89,6 +95,31 @@ def get_index_by_uid(uid: str) -> Index:
     if record is None:
         raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")
     return record
+
+
+@router.get(
+    "/{uid}/delete-impact/",
+    response_model=DeleteImpactResponse,
+    summary="Preview index delete impact",
+    description=(
+        "Return a non-destructive preflight summary for deleting one index. "
+        "The response reports dependent rows, delete effects, and whether "
+        "`DELETE /api/v1/index/{uid}/` is currently blocked by restrictive "
+        "relationships."
+    ),
+    operation_id="getIndexDeleteImpact",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested index uid was not found.",
+        }
+    },
+)
+def get_index_delete_impact_by_uid(uid: str) -> DeleteImpactResponse:
+    impact = get_index_delete_impact(uid=uid)
+    if impact is None:
+        raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")
+    return impact
 
 
 @router.delete(

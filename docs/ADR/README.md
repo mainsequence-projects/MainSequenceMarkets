@@ -33,12 +33,15 @@ Recommended sections:
 - [0031. Generic Portfolio Valuation Source](0031-generic-portfolio-valuation-source.md)
 - [0032. Portfolio Groups As Many-To-Many Classification](0032-portfolio-group-many-to-many.md)
 - [0033. Pricing Valuation Position Boundary](0033-pricing-valuation-position-boundary.md)
+- [0035. Pricing Curve Identity And Market-Data Curve Bindings](0035-pricing-curve-identity-and-market-data-curve-bindings.md)
 
 ## Command Center Decisions
 
 - [0034. Command Center Asset Monitor Helpers](0034-command-center-asset-monitor-helpers.md)
-- [FastAPI v1 Command Center Adapter Discovery](fast_api/v1/command-center-adapter-discovery.md)
 
-## FastAPI Decisions
+## FastAPI v1 Decisions
 
-- [FastAPI v1 Fixed Income Pricer API](fast_api/v1/fixed-income-pricer-api.md)
+- [0001. Calendar CRUD And Summary Route](fast_api/v1/0001-calendar-crud-route.md)
+- [0002. Command Center Adapter Discovery](fast_api/v1/0002-command-center-adapter-discovery.md)
+- [0003. Fixed Income Pricer API](fast_api/v1/0003-fixed-income-pricer-api.md)
+- [0004. Reusable Delete Impact Contract](fast_api/v1/0004-delete-impact-contract.md)

@@ -6,9 +6,11 @@ def test_models_package_is_metatable_only() -> None:
 
     assert models.__all__ == [
         "AssetCurrentPricingDetailsTable",
+        "CurveBuildingDetailsTable",
         "CurveTable",
         "IndexConventionDetailsTable",
         "PricingMarketDataSetBindingTable",
+        "PricingMarketDataSetCurveBindingTable",
         "PricingMarketDataSetTable",
     ]
     assert not hasattr(models, "get_index")
@@ -23,6 +25,7 @@ def test_pricing_engine_owns_runtime_helpers() -> None:
 
     assert "resolve_quantlib_index" in pricing_engine.__all__
     assert "resolve_pricing_curve" in pricing_engine.__all__
+    assert "resolve_curve_building_details" in pricing_engine.__all__
     assert "build_curve_from_curve_row" in pricing_engine.__all__
     assert "get_index" not in pricing_engine.__all__
     assert "register_index_spec" not in pricing_engine.__all__

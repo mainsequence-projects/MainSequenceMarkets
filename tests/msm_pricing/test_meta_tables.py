@@ -11,9 +11,11 @@ from msm_pricing.meta_tables import (
 )
 from msm_pricing.models import (
     AssetCurrentPricingDetailsTable,
+    CurveBuildingDetailsTable,
     CurveTable,
     IndexConventionDetailsTable,
     PricingMarketDataSetBindingTable,
+    PricingMarketDataSetCurveBindingTable,
     PricingMarketDataSetTable,
 )
 
@@ -25,9 +27,11 @@ EXPECTED_PRICING_MODELS = [
     IndexTable,
     IndexConventionDetailsTable,
     CurveTable,
+    CurveBuildingDetailsTable,
     AssetCurrentPricingDetailsTable,
     PricingMarketDataSetTable,
     PricingMarketDataSetBindingTable,
+    PricingMarketDataSetCurveBindingTable,
     DiscountCurvesStorage,
     IndexFixingsStorage,
     AssetPricingDetailsStorage,
@@ -61,9 +65,11 @@ def test_core_markets_models_do_not_include_pricing_extension_table() -> None:
     assert IndexTable in markets_sqlalchemy_models()
     assert IndexConventionDetailsTable not in markets_sqlalchemy_models()
     assert CurveTable not in markets_sqlalchemy_models()
+    assert CurveBuildingDetailsTable not in markets_sqlalchemy_models()
     assert AssetCurrentPricingDetailsTable not in markets_sqlalchemy_models()
     assert PricingMarketDataSetTable not in markets_sqlalchemy_models()
     assert PricingMarketDataSetBindingTable not in markets_sqlalchemy_models()
+    assert PricingMarketDataSetCurveBindingTable not in markets_sqlalchemy_models()
     # ADR 0017: pricing DataNode storage registers through the pricing registry only.
     assert DiscountCurvesStorage not in markets_sqlalchemy_models()
     assert IndexFixingsStorage not in markets_sqlalchemy_models()

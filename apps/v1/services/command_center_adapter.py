@@ -47,6 +47,7 @@ QUERY_OPERATION_IDS = frozenset(
         "getAccountTargetPositions",
         "listIndexes",
         "getIndex",
+        "getIndexDeleteImpact",
         "listPortfolios",
         "getPortfolio",
         "getPortfolioSummary",

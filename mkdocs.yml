@@ -24,12 +24,56 @@ theme:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
+  - Core Concepts: concepts.md
   - Tutorial:
       - Overview: tutorial/index.md
-      - Market Workflows: tutorial/market_workflows.md
+      - Assets And Categories: tutorial/01-assets.md
+      - Calendars: tutorial/02-calendars.md
+      - Accounts And Holdings: tutorial/03-accounts.md
+      - Portfolios: tutorial/04-portfolios.md
+      - Pricing Instruments: tutorial/05-pricing.md
+  - msm:
+      - Overview: knowledge/msm/index.md
+      - Accounts:
+          - Overview: knowledge/msm/accounts/index.md
+          - Virtual Funds: knowledge/msm/accounts/virtual_funds.md
+      - Assets:
+          - Overview: knowledge/msm/assets/index.md
+          - Bond Assets: knowledge/msm/assets/bonds.md
+          - Currency And Spot Assets: knowledge/msm/assets/currency.md
+          - Asset-Indexed DataNodes: knowledge/msm/assets/asset_indexed_data_nodes.md
+      - Calendars: knowledge/msm/calendars/index.md
+      - Client: knowledge/msm/client/index.md
+      - Derivatives:
+          - Overview: knowledge/msm/derivatives/index.md
+          - Futures: knowledge/msm/derivatives/futures.md
+      - Execution: knowledge/msm/execution/index.md
+      - Indexes: knowledge/msm/indices/index.md
+      - Migrations: knowledge/msm/migrations/index.md
+      - Models: knowledge/msm/models/index.md
+      - Platform:
+          - Overview: knowledge/msm/platform/index.md
+          - MetaTable Registration: knowledge/msm/platform/meta_table_registration.md
+          - MetaTable Migrations: knowledge/msm/platform/metatable_migrations.md
+      - Repositories: knowledge/msm/repositories/index.md
+      - Services: knowledge/msm/services/index.md
+  - msm_portfolios:
+      - Overview: knowledge/msm_portfolios/index.md
+      - Portfolios: knowledge/msm_portfolios/portfolios/index.md
+  - msm_pricing:
+      - Overview: knowledge/msm_pricing/index.md
+      - Market Data Sets: knowledge/msm_pricing/market_data_sets.md
+      - Instruments: knowledge/msm_pricing/instruments.md
+      - Curves: knowledge/msm_pricing/curves.md
+      - Fixings: knowledge/msm_pricing/fixings.md
+      - Runtime Resolution: knowledge/msm_pricing/runtime_resolution.md
   - FastAPI:
-      - v1: fast_api/v1/index.md
+      - Overview: fast_api/v1/index.md
       - Settings: fast_api/v1/settings.md
+      - Account Routes: fast_api/v1/accounts.md
+      - Asset Routes: fast_api/v1/assets.md
+      - Index Routes: fast_api/v1/indexes.md
+      - Calendar Routes: fast_api/v1/calendars.md
       - Portfolio: fast_api/v1/portfolio.md
       - Portfolio Groups: fast_api/v1/portfolio_groups.md
       - Portfolio Signal Metadata: fast_api/v1/portfolio_signal_metadata.md
@@ -37,44 +81,9 @@ nav:
       - Pricing Curves: fast_api/v1/pricing_curves.md
       - Pricing Market Data: fast_api/v1/pricing_market_data.md
       - Fixed Income Pricer: fast_api/v1/fixed_income_pricer.md
-      - ADR:
-          - Calendar CRUD Route: fast_api/v1/ADR/0001-calendar-crud-route.md
-          - Fixed Income Pricer API: ADR/fast_api/v1/fixed-income-pricer-api.md
   - Command Center:
       - Overview: command_center/index.md
       - Asset Monitor: command_center/asset_monitor.md
-  - Knowledge:
-      - Overview: knowledge/index.md
-      - msm:
-          - Overview: knowledge/msm/index.md
-          - Accounts:
-              - Overview: knowledge/msm/accounts/index.md
-              - Virtual Funds: knowledge/msm/accounts/virtual_funds.md
-          - Assets:
-              - Overview: knowledge/msm/assets/index.md
-              - Bond Assets: knowledge/msm/assets/bonds.md
-              - Currency And Spot Assets: knowledge/msm/assets/currency.md
-              - Asset-Indexed DataNodes: knowledge/msm/assets/asset_indexed_data_nodes.md
-          - Calendars: knowledge/msm/calendars/index.md
-          - Client: knowledge/msm/client/index.md
-          - Derivatives:
-              - Overview: knowledge/msm/derivatives/index.md
-              - Futures: knowledge/msm/derivatives/futures.md
-          - Execution: knowledge/msm/execution/index.md
-          - Indexes: knowledge/msm/indices/index.md
-          - Migrations: knowledge/msm/migrations/index.md
-          - Models: knowledge/msm/models/index.md
-          - Platform:
-              - Overview: knowledge/msm/platform/index.md
-              - MetaTable Registration: knowledge/msm/platform/meta_table_registration.md
-              - MetaTable Migrations: knowledge/msm/platform/metatable_migrations.md
-          - Repositories: knowledge/msm/repositories/index.md
-          - Services: knowledge/msm/services/index.md
-      - msm_portfolios:
-          - Overview: knowledge/msm_portfolios/index.md
-          - Portfolios: knowledge/msm_portfolios/portfolios/index.md
-      - msm_pricing:
-          - Overview: knowledge/msm_pricing/index.md
   - Architecture:
       - ADR: ADR/README.md
       - Pricing Package Refactor: ADR/0005-pricing-package-refactor.md
@@ -93,10 +102,13 @@ nav:
       - Generic Portfolio Valuation Source: ADR/0031-generic-portfolio-valuation-source.md
       - Portfolio Groups As Many-To-Many Classification: ADR/0032-portfolio-group-many-to-many.md
       - Pricing Valuation Position Boundary: ADR/0033-pricing-valuation-position-boundary.md
-      - Command Center:
-          - Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
-          - FastAPI v1 Adapter Discovery: ADR/fast_api/v1/command-center-adapter-discovery.md
-      - FastAPI v1 Fixed Income Pricer API: ADR/fast_api/v1/fixed-income-pricer-api.md
+      - Pricing Curve Identity And Market-Data Curve Bindings: ADR/0035-pricing-curve-identity-and-market-data-curve-bindings.md
+      - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
+      - FastAPI v1:
+          - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md
+          - Command Center Adapter Discovery: ADR/fast_api/v1/0002-command-center-adapter-discovery.md
+          - Fixed Income Pricer API: ADR/fast_api/v1/0003-fixed-income-pricer-api.md
+          - Reusable Delete Impact Contract: ADR/fast_api/v1/0004-delete-impact-contract.md
   - Changelog: changelog.md
   - Reference:
       - API Reference: reference/index.md

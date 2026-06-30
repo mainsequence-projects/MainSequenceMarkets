@@ -70,6 +70,7 @@ attach_pricing_schemas(
         "IndexConventionDetails",
         "Curve",
         "AssetCurrentPricingDetails",
+        "AssetPricingDetailsStorage",
         "PricingMarketDataSet",
         "PricingMarketDataSetBinding",
     ],
@@ -152,9 +153,13 @@ Rules:
 
 ## Market-Data Sets
 
-Use `PricingMarketDataSet` and `PricingMarketDataSetBinding` for source
+Use `PricingMarketDataSet` and `PricingMarketDataSetBinding` for storage-source
 selection. Bindings store backend DataNode storage table UIDs for pricing
 concepts such as `discount_curves` and `interest_rate_index_fixings`.
+
+Use `PricingMarketDataSetCurveBinding` for curve-identity selection inside the
+chosen source. It maps a valuation role and selector, such as
+`projection:index:<index_uid>:mid`, to `CurveTable.uid`.
 
 Callers select sources at valuation time:
 

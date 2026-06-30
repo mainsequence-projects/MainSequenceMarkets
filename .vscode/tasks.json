@@ -1,0 +1,150 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Main Sequence: refresh token",
+      "type": "shell",
+      "command": "uv",
+      "args": [
+        "run",
+        "mainsequence",
+        "project",
+        "refresh_token",
+        "--path",
+        "."
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PYTHONPATH": "${workspaceFolder}/src"
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Main Sequence: Check current migration",
+      "type": "shell",
+      "command": "uv",
+      "args": [
+        "run",
+        "mainsequence",
+        "migrations",
+        "current",
+        "--provider",
+        "migrations:migration",
+        "--json"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PYTHONPATH": "${workspaceFolder}/src"
+        }
+      },
+      "dependsOn": [
+        "Main Sequence: refresh token"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "Main Sequence: Create migration revision (autogenerate)",
+      "type": "shell",
+      "command": "uv",
+      "args": [
+        "run",
+        "mainsequence",
+        "migrations",
+        "revision",
+        "--provider",
+        "migrations:migration",
+        "--autogenerate",
+        "-m",
+        "${input:migrationMessage}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PYTHONPATH": "${workspaceFolder}/src"
+        }
+      },
+      "dependsOn": [
+        "Main Sequence: refresh token"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "Main Sequence: Apply migrations (upgrade head)",
+      "type": "shell",
+      "command": "uv",
+      "args": [
+        "run",
+        "mainsequence",
+        "migrations",
+        "upgrade",
+        "--provider",
+        "migrations:migration",
+        "head"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PYTHONPATH": "${workspaceFolder}/src"
+        }
+      },
+      "dependsOn": [
+        "Main Sequence: refresh token"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "Main Sequence: Downgrade migrations to target",
+      "type": "shell",
+      "command": "uv",
+      "args": [
+        "run",
+        "mainsequence",
+        "migrations",
+        "downgrade",
+        "--provider",
+        "migrations:migration",
+        "${input:migrationTargetRevision}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PYTHONPATH": "${workspaceFolder}/src"
+        }
+      },
+      "dependsOn": [
+        "Main Sequence: refresh token"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "Main Sequence: Check then apply migrations",
+      "dependsOn": [
+        "Main Sequence: Check current migration",
+        "Main Sequence: Apply migrations (upgrade head)"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "migrationMessage",
+      "type": "promptString",
+      "description": "Alembic migration message",
+      "default": "describe change"
+    },
+    {
+      "id": "migrationTargetRevision",
+      "type": "promptString",
+      "description": "Alembic target revision",
+      "default": "-1"
+    }
+  ]
+}

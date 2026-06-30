@@ -19,7 +19,7 @@ import msm
 
 
 def main() -> None:
-    """Register an index convention row and a curve identity row for pricing."""
+    """Register separate index convention and curve identity rows for pricing."""
 
     msm.start_engine(
         models=["IndexType", "Index"],
@@ -68,13 +68,15 @@ def main() -> None:
         unique_identifier="USD-SOFR-DISCOUNT",
         display_name="USD SOFR Discount Curve",
         curve_type="discount",
-        index_uid=index.uid,
         interpolation_method="log_linear",
         compounding="continuous",
         source="example",
     )
 
-    print(f"registered curve {curve.unique_identifier} for index {index.unique_identifier}")
+    print(
+        "registered index convention "
+        f"{index.unique_identifier} and curve {curve.unique_identifier}"
+    )
 
 
 if __name__ == "__main__":

@@ -9,6 +9,12 @@ from .asset_pricing_operations import (
     execute_asset_pricing_operation,
 )
 from .curves import Curve, CurveCreate, CurveUpdate, CurveUpsert
+from .curve_building_details import (
+    CurveBuildingDetails,
+    CurveBuildingDetailsCreate,
+    CurveBuildingDetailsUpdate,
+    CurveBuildingDetailsUpsert,
+)
 from .index_convention_details import (
     DEFAULT_INDEX_CONVENTION_SERIALIZATION_FORMAT,
     IndexConventionDetails,
@@ -29,6 +35,10 @@ from .market_data_bindings import (
     PricingMarketDataSetBindingCreate,
     PricingMarketDataSetBindingUpdate,
     PricingMarketDataSetBindingUpsert,
+    PricingMarketDataSetCurveBinding,
+    PricingMarketDataSetCurveBindingCreate,
+    PricingMarketDataSetCurveBindingUpdate,
+    PricingMarketDataSetCurveBindingUpsert,
     PricingMarketDataSetCreate,
     PricingMarketDataSetUpdate,
     PricingMarketDataSetUpsert,
@@ -58,6 +68,10 @@ __all__ = [
     "AssetPricingDetailsAddResult",
     "AssetInstrumentPricingDetailsAdd",
     "Curve",
+    "CurveBuildingDetails",
+    "CurveBuildingDetailsCreate",
+    "CurveBuildingDetailsUpdate",
+    "CurveBuildingDetailsUpsert",
     "CurveCreate",
     "CurveUpdate",
     "CurveUpsert",
@@ -71,6 +85,10 @@ __all__ = [
     "PricingMarketDataSetBindingCreate",
     "PricingMarketDataSetBindingUpdate",
     "PricingMarketDataSetBindingUpsert",
+    "PricingMarketDataSetCurveBinding",
+    "PricingMarketDataSetCurveBindingCreate",
+    "PricingMarketDataSetCurveBindingUpdate",
+    "PricingMarketDataSetCurveBindingUpsert",
     "PricingMarketDataSetCreate",
     "PricingMarketDataSetUpdate",
     "PricingMarketDataSetUpsert",

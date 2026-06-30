@@ -69,9 +69,12 @@ def test_pricing_curve_list_uses_paginated_source_list(monkeypatch) -> None:
                 "display_name": "USD SOFR Discount Curve",
                 "curve_type": "discount",
                 "index_uid": str(index_uid),
+                "currency_code": None,
+                "quote_side": None,
                 "interpolation_method": "log_linear_discount",
                 "compounding": "compounded_annual",
                 "source": "unit-test",
+                "status": "ACTIVE",
                 "metadata_json": {"provider": "test"},
             }
         ],
@@ -119,6 +122,7 @@ def test_get_pricing_curve_summary_returns_standard_summary(monkeypatch) -> None
                     "key": "curve_type",
                     "label": "discount",
                     "tone": "info",
+                    "link_url": None,
                 }
             ],
             "inline_fields": [
@@ -174,24 +178,27 @@ def test_get_pricing_curve_summary_returns_standard_summary(monkeypatch) -> None
                 "key": "curve_type",
                 "label": "discount",
                 "tone": "info",
+                "link_url": None,
             }
         ],
         "inline_fields": [
             {
                 "key": "uid",
                 "label": "UID",
-                "value": str(curve_uid),
-                "kind": "code",
-                "icon": None,
-            },
-            {
-                "key": "index_uid",
-                "label": "Index UID",
-                "value": str(index_uid),
-                "kind": "code",
-                "icon": None,
-            },
-        ],
+                    "value": str(curve_uid),
+                    "kind": "code",
+                    "icon": None,
+                    "link_url": None,
+                },
+                {
+                    "key": "index_uid",
+                    "label": "Index UID",
+                    "value": str(index_uid),
+                    "kind": "code",
+                    "icon": None,
+                    "link_url": None,
+                },
+            ],
         "highlight_fields": [
             {
                 "key": "display_name",
@@ -199,6 +206,7 @@ def test_get_pricing_curve_summary_returns_standard_summary(monkeypatch) -> None
                 "value": "USD SOFR Discount Curve",
                 "kind": "text",
                 "icon": "database",
+                "link_url": None,
             }
         ],
         "stats": [],

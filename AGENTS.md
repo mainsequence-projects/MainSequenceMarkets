@@ -325,6 +325,11 @@ Rules:
 - every major project area must have its own page under `docs/`
 - operational and verification procedures must be documented under `docs/`
 - any new feature, workflow, component, or integration must be reflected in documentation
+- for the per-change docs/examples/tutorial/changelog loop, follow
+  `.agents/skills/library_maintenance/general_maintenance/SKILL.md`; to audit and
+  realign the whole docs tree (orphans, duplication, ADR tree, package parity),
+  use the `.agents/prompts/keep-docs-current.md` prompt
+- new doc pages must be wired into `mkdocs.yml` nav (the published-structure source)
 
 ## SDK / Platform Issue Handling
 

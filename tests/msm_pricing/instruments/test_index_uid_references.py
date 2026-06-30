@@ -12,7 +12,11 @@ from pydantic import ValidationError
 ql = pytest.importorskip("QuantLib")
 
 from msm.api.assets import Asset
-from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
+from msm_pricing.api.pricing_details import (
+    AssetCurrentPricingDetails,
+    AssetPricingDetails,
+    AssetPricingDetailsAddResult,
+)
 from msm_pricing.instruments import FloatingRateBond, InterestRateSwap
 
 
@@ -246,9 +250,9 @@ def test_attach_load_round_trip_preserves_bond_index_uid(monkeypatch) -> None:
     pricing_details_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
     stored: dict[str, object] = {}
 
-    def fake_upsert(**kwargs):
+    def fake_add(**kwargs):
         stored.update(kwargs)
-        return AssetCurrentPricingDetails(
+        current = AssetCurrentPricingDetails(
             asset_uid=kwargs["asset_uid"],
             instrument_type=kwargs["instrument_type"],
             instrument_dump=kwargs["instrument_dump"],
@@ -258,8 +262,23 @@ def test_attach_load_round_trip_preserves_bond_index_uid(monkeypatch) -> None:
             source=kwargs["source"],
             metadata_json=kwargs["metadata_json"],
         )
+        pricing_details = AssetPricingDetails(
+            time_index=kwargs["pricing_details_date"],
+            asset_identifier=kwargs["asset_identifier"],
+            instrument_type=kwargs["instrument_type"],
+            instrument_dump=kwargs["instrument_dump"],
+            serialization_format=kwargs["serialization_format"],
+            pricing_package_version=kwargs["pricing_package_version"],
+            source=kwargs["source"],
+            metadata_json=kwargs["metadata_json"],
+        )
+        return AssetPricingDetailsAddResult(
+            pricing_details=pricing_details,
+            current_pricing_details=current,
+            updated_current=True,
+        )
 
-    monkeypatch.setattr(AssetCurrentPricingDetails, "upsert", staticmethod(fake_upsert))
+    monkeypatch.setattr(AssetPricingDetails, "add", staticmethod(fake_add))
 
     bond.attach_to_asset(
         asset,

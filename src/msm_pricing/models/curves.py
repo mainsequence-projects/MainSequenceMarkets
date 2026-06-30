@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, Index, String
+from sqlalchemy import Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
@@ -13,17 +13,15 @@ from msm.base import (
     new_markets_uid,
 )
 
-from .index_convention_details import IndexConventionDetailsTable
-
 
 class CurveTable(MarketsMetaTableMixin, MarketsBase):
-    """Pricing-owned curve identity linked to index convention details."""
+    """Pricing-owned curve registry identity."""
 
     __metatable_identifier__ = "Curve"
     __metatable_description__ = (
-        "Pricing curve registry keyed by unique_identifier. Links each curve to "
-        "index convention details and stores curve type, interpolation, compounding, "
-        "source, and metadata used by pricing resolvers."
+        "Pricing curve registry keyed by unique_identifier. Stores curve identity "
+        "and high-level classification. Curve construction details and "
+        "market-data-set selection policy live in dedicated pricing tables."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
@@ -34,15 +32,23 @@ class CurveTable(MarketsMetaTableMixin, MarketsBase):
         ),
         Index(
             None,
-            "index_uid",
-        ),
-        Index(
-            None,
             "curve_type",
         ),
         Index(
             None,
+            "currency_code",
+        ),
+        Index(
+            None,
+            "quote_side",
+        ),
+        Index(
+            None,
             "source",
+        ),
+        Index(
+            None,
+            "status",
         ),
     )
 
@@ -79,16 +85,20 @@ class CurveTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Pricing curve type, such as discount, zero, forward, projection, or basis.",
         },
     )
-    index_uid: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True),
-        ForeignKey(
-            f"{IndexConventionDetailsTable.__table__.fullname}.index_uid",
-            ondelete="RESTRICT",
-        ),
-        nullable=False,
+    currency_code: Mapped[str | None] = mapped_column(
+        String(16),
+        nullable=True,
         info={
-            "label": "Index UID",
-            "description": "Foreign key to the canonical index or index convention row used by pricing.",
+            "label": "Currency Code",
+            "description": "Optional ISO currency or pricing currency code for this curve identity.",
+        },
+    )
+    quote_side: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        info={
+            "label": "Quote Side",
+            "description": "Optional quote side such as bid, mid, offer, official, or model.",
         },
     )
     interpolation_method: Mapped[str | None] = mapped_column(
@@ -113,6 +123,15 @@ class CurveTable(MarketsMetaTableMixin, MarketsBase):
         info={
             "label": "Source",
             "description": "Source system, workflow, or provider that produced the row.",
+        },
+    )
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="ACTIVE",
+        info={
+            "label": "Status",
+            "description": "Operational status for selecting this curve in pricing workflows.",
         },
     )
     metadata_json: Mapped[dict | None] = mapped_column(

@@ -12,7 +12,10 @@ from msm_pricing.config import (
     reset_pricing_market_data_configuration,
 )
 from msm_pricing.models import (
+    CurveBuildingDetailsTable,
+    CurveTable,
     PricingMarketDataSetBindingTable,
+    PricingMarketDataSetCurveBindingTable,
     PricingMarketDataSetTable,
 )
 from msm_pricing.settings import (
@@ -39,6 +42,18 @@ def install_fake_pricing_bootstrap(monkeypatch):
     from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 
     monkeypatch.setattr(
+        CurveTable,
+        "__metatable_uid__",
+        "curve-meta-table-uid",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        CurveBuildingDetailsTable,
+        "__metatable_uid__",
+        "curve-building-details-meta-table-uid",
+        raising=False,
+    )
+    monkeypatch.setattr(
         PricingMarketDataSetTable,
         "__metatable_uid__",
         "pricing-market-data-set-uid",
@@ -48,6 +63,12 @@ def install_fake_pricing_bootstrap(monkeypatch):
         PricingMarketDataSetBindingTable,
         "__metatable_uid__",
         "pricing-market-data-set-binding-uid",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        PricingMarketDataSetCurveBindingTable,
+        "__metatable_uid__",
+        "pricing-market-data-set-curve-binding-uid",
         raising=False,
     )
     monkeypatch.setattr(
@@ -89,6 +110,12 @@ def install_fake_pricing_bootstrap(monkeypatch):
                 resolved.append(PricingMarketDataSetTable)
             elif model == "PricingMarketDataSetBindingTable":
                 resolved.append(PricingMarketDataSetBindingTable)
+            elif model == "PricingMarketDataSetCurveBindingTable":
+                resolved.append(PricingMarketDataSetCurveBindingTable)
+            elif model == "CurveBuildingDetailsTable":
+                resolved.append(CurveBuildingDetailsTable)
+            elif model == "CurveTable":
+                resolved.append(CurveTable)
             elif model == "DiscountCurvesStorage":
                 resolved.append(DiscountCurvesStorage)
             elif model == "IndexFixingsStorage":
@@ -101,9 +128,11 @@ def install_fake_pricing_bootstrap(monkeypatch):
         model_name = str(getattr(model, "__name__", model))
         return {
             "CurveTable": "Curve",
+            "CurveBuildingDetailsTable": "CurveBuildingDetails",
             "IndexConventionDetailsTable": "IndexConventionDetails",
             "PricingMarketDataSetTable": "PricingMarketDataSet",
             "PricingMarketDataSetBindingTable": "PricingMarketDataSetBinding",
+            "PricingMarketDataSetCurveBindingTable": "PricingMarketDataSetCurveBinding",
         }.get(model_name, model_name)
 
     def fake_resolve_registered_markets_meta_tables(**kwargs):

@@ -1,0 +1,105 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Main Sequence: Check current migration",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "args": [
+        "migrations",
+        "current",
+        "--provider",
+        "migrations:migration",
+        "--json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "preLaunchTask": "Main Sequence: refresh token",
+      "justMyCode": false
+    },
+    {
+      "name": "Main Sequence: Create migration revision (autogenerate)",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "args": [
+        "migrations",
+        "revision",
+        "--provider",
+        "migrations:migration",
+        "--autogenerate",
+        "-m",
+        "${input:migrationMessage}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "preLaunchTask": "Main Sequence: refresh token",
+      "justMyCode": false
+    },
+    {
+      "name": "Main Sequence: Apply migrations (upgrade head)",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "args": [
+        "migrations",
+        "upgrade",
+        "--provider",
+        "migrations:migration",
+        "head"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "preLaunchTask": "Main Sequence: refresh token",
+      "justMyCode": false
+    },
+    {
+      "name": "Main Sequence: Downgrade migrations to target",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "args": [
+        "migrations",
+        "downgrade",
+        "--provider",
+        "migrations:migration",
+        "${input:migrationTargetRevision}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "preLaunchTask": "Main Sequence: refresh token",
+      "justMyCode": false
+    }
+  ],
+  "inputs": [
+    {
+      "id": "migrationMessage",
+      "type": "promptString",
+      "description": "Alembic migration message",
+      "default": "describe change"
+    },
+    {
+      "id": "migrationTargetRevision",
+      "type": "promptString",
+      "description": "Alembic target revision",
+      "default": "-1"
+    }
+  ]
+}

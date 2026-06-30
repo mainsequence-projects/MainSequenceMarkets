@@ -18,8 +18,10 @@ from msm.repositories.crud import (
 )
 
 from msm_pricing.bootstrap import attach_pricing_schemas, resolve_pricing_runtime
+from msm_pricing.models.curves import CurveTable
 from msm_pricing.models.market_data_bindings import (
     PricingMarketDataSetBindingTable,
+    PricingMarketDataSetCurveBindingTable,
     PricingMarketDataSetTable,
 )
 from msm_pricing.settings import PRICING_MARKET_DATA_SET_DEFAULT
@@ -397,6 +399,245 @@ class PricingMarketDataSetBinding(BaseModel):
         return None
 
 
+class PricingMarketDataSetCurveBinding(BaseModel):
+    """Binding from a pricing market-data set valuation role to a curve identity."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    __table__: ClassVar[type[PricingMarketDataSetCurveBindingTable]] = (
+        PricingMarketDataSetCurveBindingTable
+    )
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        PricingMarketDataSetTable,
+        CurveTable,
+        PricingMarketDataSetCurveBindingTable,
+    ]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("market_data_set_uid", "binding_key")
+
+    uid: uuid.UUID
+    market_data_set_uid: uuid.UUID
+    binding_key: str
+    role_key: str
+    selector_type: str
+    selector_key: str
+    quote_side: str | None = None
+    curve_uid: uuid.UUID
+    source: str | None = None
+    priority: int = 0
+    status: str = "ACTIVE"
+    metadata_json: dict[str, Any] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("metadata_json", "metadata"),
+    )
+
+    @classmethod
+    def start_engine(cls, **kwargs: Any):
+        requested_models = kwargs.pop("models", None)
+        models = [*cls.__required_tables__, *(requested_models or [])]
+        return attach_pricing_schemas(models=models, **kwargs)
+
+    @classmethod
+    def create_schemas(cls, **kwargs: Any):
+        _warn_deprecated_create_schemas(cls.__name__)
+        return cls.start_engine(**kwargs)
+
+    @classmethod
+    def create(
+        cls,
+        payload: PricingMarketDataSetCurveBindingCreate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> PricingMarketDataSetCurveBinding:
+        payload_row = _validate_payload(PricingMarketDataSetCurveBindingCreate, payload, kwargs)
+        values = _curve_binding_values(payload_row.model_dump())
+        result = create_model(cls._active_context(), model=cls.__table__, values=values)
+        return cls._from_operation_result(result)
+
+    @classmethod
+    def upsert(
+        cls,
+        payload: PricingMarketDataSetCurveBindingUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> PricingMarketDataSetCurveBinding:
+        payload_row = _validate_payload(PricingMarketDataSetCurveBindingUpsert, payload, kwargs)
+        values = _curve_binding_values(payload_row.model_dump())
+        result = upsert_model(
+            cls._active_context(),
+            model=cls.__table__,
+            values=values,
+            conflict_columns=cls.__upsert_keys__,
+        )
+        return cls._from_operation_result(result)
+
+    @classmethod
+    def update(
+        cls,
+        uid: uuid.UUID | str,
+        payload: PricingMarketDataSetCurveBindingUpdate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> PricingMarketDataSetCurveBinding:
+        values = _validate_payload(
+            PricingMarketDataSetCurveBindingUpdate,
+            payload,
+            kwargs,
+        ).model_dump(exclude_unset=True)
+        result = update_model(
+            cls._active_context(),
+            model=cls.__table__,
+            uid=uid,
+            values=values,
+        )
+        return cls._from_operation_result(result)
+
+    @classmethod
+    def delete(cls, uid: uuid.UUID | str) -> dict[str, Any]:
+        return delete_model(cls._active_context(), model=cls.__table__, uid=uid)
+
+    @classmethod
+    def get_by_uid(cls, uid: uuid.UUID | str) -> PricingMarketDataSetCurveBinding | None:
+        result = get_model_by_uid(cls._active_context(), model=cls.__table__, uid=uid)
+        return cls._from_operation_result(result, required=False)
+
+    @classmethod
+    def get_by_set_and_binding_key(
+        cls,
+        *,
+        market_data_set_uid: uuid.UUID | str,
+        binding_key: str,
+        status: str | None = "ACTIVE",
+    ) -> PricingMarketDataSetCurveBinding | None:
+        filters: dict[str, Any] = {
+            "market_data_set_uid": _coerce_uuid(market_data_set_uid),
+            "binding_key": _normalize_binding_key(binding_key),
+        }
+        if status is not None:
+            filters["status"] = status
+        result = search_model(
+            cls._active_context(),
+            model=cls.__table__,
+            filters=filters,
+            limit=2,
+        )
+        rows = [cls.model_validate(row) for row in operation_result_rows(result)]
+        if len(rows) > 1:
+            raise ValueError(
+                "Multiple pricing market-data curve bindings found for "
+                f"market_data_set_uid={market_data_set_uid}, binding_key={binding_key!r}."
+            )
+        return rows[0] if rows else None
+
+    @classmethod
+    def get_by_role_selector(
+        cls,
+        *,
+        market_data_set_uid: uuid.UUID | str,
+        role_key: str,
+        selector_type: str,
+        selector_key: str,
+        quote_side: str | None = None,
+        status: str | None = "ACTIVE",
+    ) -> PricingMarketDataSetCurveBinding | None:
+        binding_key = curve_binding_key(
+            role_key=role_key,
+            selector_type=selector_type,
+            selector_key=selector_key,
+            quote_side=quote_side,
+        )
+        return cls.get_by_set_and_binding_key(
+            market_data_set_uid=market_data_set_uid,
+            binding_key=binding_key,
+            status=status,
+        )
+
+    @classmethod
+    def resolve_curve_uid(
+        cls,
+        *,
+        market_data_set: PricingMarketDataSetSelector = None,
+        role_key: str,
+        selector_type: str,
+        selector_key: str,
+        quote_side: str | None = None,
+    ) -> uuid.UUID:
+        market_data_set_uid = PricingMarketDataSet.resolve_uid(market_data_set)
+        binding = cls.get_by_role_selector(
+            market_data_set_uid=market_data_set_uid,
+            role_key=role_key,
+            selector_type=selector_type,
+            selector_key=selector_key,
+            quote_side=quote_side,
+            status="ACTIVE",
+        )
+        if binding is None:
+            raise LookupError(
+                "No pricing market-data curve binding found for "
+                f"market_data_set_uid={market_data_set_uid}, role_key={role_key!r}, "
+                f"selector_type={selector_type!r}, selector_key={selector_key!r}, "
+                f"quote_side={quote_side!r}."
+            )
+        return binding.curve_uid
+
+    @classmethod
+    def filter(cls, *, limit: int = 500, **filters: Any) -> list[PricingMarketDataSetCurveBinding]:
+        result = search_model(
+            cls._active_context(),
+            model=cls.__table__,
+            filters={key: value for key, value in filters.items() if value is not None},
+            limit=limit,
+        )
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
+
+    @classmethod
+    def list(
+        cls,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        **filters: Any,
+    ) -> dict[str, Any]:
+        limit, offset = _validate_pagination(limit=limit, offset=offset)
+        exact_filters = {key: value for key, value in filters.items() if value is not None}
+        context = cls._active_context()
+        count_result = count_model(context, model=cls.__table__, filters=exact_filters)
+        result = search_model(
+            context,
+            model=cls.__table__,
+            filters=exact_filters,
+            limit=limit,
+            offset=offset,
+        )
+        return {
+            "count": _count_from_operation_result(count_result),
+            "limit": limit,
+            "offset": offset,
+            "results": [cls.model_validate(row) for row in operation_result_rows(result)],
+        }
+
+    @classmethod
+    def _active_context(cls):
+        runtime = resolve_pricing_runtime(
+            models=cls.__required_tables__,
+            row_model_name=cls.__name__,
+        )
+        return runtime.context
+
+    @classmethod
+    def _from_operation_result(
+        cls,
+        result: Mapping[str, Any],
+        *,
+        required: bool = True,
+    ) -> PricingMarketDataSetCurveBinding | None:
+        rows = operation_result_rows(result)
+        if rows:
+            return cls.model_validate(rows[0])
+        if required:
+            raise LookupError(
+                "MetaTable operation result did not include a "
+                "PricingMarketDataSetCurveBinding row."
+            )
+        return None
+
+
 class PricingMarketDataSetCreate(BaseModel):
     """Payload for creating one pricing market-data set."""
 
@@ -452,6 +693,41 @@ class PricingMarketDataSetBindingUpdate(BaseModel):
     metadata_json: dict[str, Any] | None = None
 
 
+class PricingMarketDataSetCurveBindingCreate(BaseModel):
+    """Payload for creating one market-data-set curve binding."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    market_data_set_uid: uuid.UUID
+    binding_key: str | None = Field(default=None, min_length=1, max_length=255)
+    role_key: str = Field(min_length=1, max_length=64)
+    selector_type: str = Field(min_length=1, max_length=64)
+    selector_key: str = Field(min_length=1, max_length=255)
+    quote_side: str | None = Field(default=None, max_length=32)
+    curve_uid: uuid.UUID
+    source: str | None = Field(default=None, max_length=255)
+    priority: int = 0
+    status: str = Field(default="ACTIVE", min_length=1, max_length=32)
+    metadata_json: dict[str, Any] | None = None
+
+
+class PricingMarketDataSetCurveBindingUpsert(PricingMarketDataSetCurveBindingCreate):
+    """Payload for inserting or replacing a curve binding by derived binding key."""
+
+
+class PricingMarketDataSetCurveBindingUpdate(BaseModel):
+    """Payload for updating mutable market-data-set curve binding fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    quote_side: str | None = Field(default=None, max_length=32)
+    curve_uid: uuid.UUID | None = None
+    source: str | None = Field(default=None, max_length=255)
+    priority: int | None = None
+    status: str | None = Field(default=None, min_length=1, max_length=32)
+    metadata_json: dict[str, Any] | None = None
+
+
 def _normalize_set_key(value: str) -> str:
     normalized = str(value).strip()
     if not normalized:
@@ -463,6 +739,74 @@ def _normalize_concept_key(value: str) -> str:
     normalized = str(value).strip()
     if not normalized:
         raise ValueError("concept_key cannot be empty.")
+    return normalized
+
+
+def curve_binding_key(
+    *,
+    role_key: str,
+    selector_type: str,
+    selector_key: str,
+    quote_side: str | None = None,
+) -> str:
+    role = _normalize_curve_binding_part(role_key, field_name="role_key").lower()
+    selector = _normalize_curve_binding_part(
+        selector_type,
+        field_name="selector_type",
+    ).lower()
+    key = _normalize_curve_binding_part(selector_key, field_name="selector_key")
+    if selector == "currency":
+        key = key.upper()
+    side = "default" if quote_side in (None, "") else _normalize_quote_side(quote_side)
+    return f"{role}:{selector}:{key}:{side}"
+
+
+def _curve_binding_values(values: dict[str, Any]) -> dict[str, Any]:
+    if not values.get("binding_key"):
+        values["binding_key"] = curve_binding_key(
+            role_key=values["role_key"],
+            selector_type=values["selector_type"],
+            selector_key=values["selector_key"],
+            quote_side=values.get("quote_side"),
+        )
+    else:
+        values["binding_key"] = _normalize_binding_key(values["binding_key"])
+    values["role_key"] = _normalize_curve_binding_part(
+        values["role_key"],
+        field_name="role_key",
+    ).lower()
+    values["selector_type"] = _normalize_curve_binding_part(
+        values["selector_type"],
+        field_name="selector_type",
+    ).lower()
+    values["selector_key"] = _normalize_curve_binding_part(
+        values["selector_key"],
+        field_name="selector_key",
+    )
+    if values["selector_type"] == "currency":
+        values["selector_key"] = values["selector_key"].upper()
+    if values.get("quote_side") not in (None, ""):
+        values["quote_side"] = _normalize_quote_side(values["quote_side"])
+    else:
+        values["quote_side"] = None
+    return values
+
+
+def _normalize_binding_key(value: str) -> str:
+    normalized = str(value).strip()
+    if not normalized:
+        raise ValueError("binding_key cannot be empty.")
+    return normalized
+
+
+def _normalize_quote_side(value: str) -> str:
+    return _normalize_curve_binding_part(value, field_name="quote_side").lower()
+
+
+def _normalize_curve_binding_part(value: str, *, field_name: str) -> str:
+    normalized = str(value).strip()
+    if not normalized:
+        raise ValueError(f"{field_name} cannot be empty.")
     return normalized
 
 
@@ -490,11 +834,16 @@ def _coerce_uuid(value: uuid.UUID | str | Any) -> uuid.UUID:
 
 
 __all__ = [
+    "curve_binding_key",
     "PricingMarketDataSet",
     "PricingMarketDataSetBinding",
     "PricingMarketDataSetBindingCreate",
     "PricingMarketDataSetBindingUpdate",
     "PricingMarketDataSetBindingUpsert",
+    "PricingMarketDataSetCurveBinding",
+    "PricingMarketDataSetCurveBindingCreate",
+    "PricingMarketDataSetCurveBindingUpdate",
+    "PricingMarketDataSetCurveBindingUpsert",
     "PricingMarketDataSetCreate",
     "PricingMarketDataSetSelector",
     "PricingMarketDataSetUpdate",

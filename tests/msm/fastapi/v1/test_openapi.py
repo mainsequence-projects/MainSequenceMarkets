@@ -460,6 +460,13 @@ def test_openapi_json_documents_index_routes() -> None:
         "$ref": "#/components/schemas/Index"
     }
 
+    index_delete_impact_operation = payload["paths"]["/api/v1/index/{uid}/delete-impact/"]["get"]
+    assert index_delete_impact_operation["summary"] == "Preview index delete impact"
+    assert index_delete_impact_operation["operationId"] == "getIndexDeleteImpact"
+    assert index_delete_impact_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/DeleteImpactResponse"}
+
     index_delete_operation = payload["paths"]["/api/v1/index/{uid}/"]["delete"]
     assert index_delete_operation["summary"] == "Delete index"
     assert index_delete_operation["operationId"] == "deleteIndex"

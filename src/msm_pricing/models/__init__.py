@@ -7,9 +7,11 @@ from typing import Any
 
 _EXPORTS = {
     "AssetCurrentPricingDetailsTable": ".pricing_details",
+    "CurveBuildingDetailsTable": ".curve_building_details",
     "CurveTable": ".curves",
     "IndexConventionDetailsTable": ".index_convention_details",
     "PricingMarketDataSetBindingTable": ".market_data_bindings",
+    "PricingMarketDataSetCurveBindingTable": ".market_data_bindings",
     "PricingMarketDataSetTable": ".market_data_bindings",
 }
 
@@ -29,8 +31,10 @@ def __dir__() -> list[str]:
 
 __all__ = [
     "AssetCurrentPricingDetailsTable",
+    "CurveBuildingDetailsTable",
     "CurveTable",
     "IndexConventionDetailsTable",
     "PricingMarketDataSetBindingTable",
+    "PricingMarketDataSetCurveBindingTable",
     "PricingMarketDataSetTable",
 ]

@@ -8,7 +8,6 @@ from typing import Any, ClassVar
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from msm.api.base import _warn_deprecated_create_schemas, operation_result_rows
-from msm.models import IndexTable, IndexTypeTable
 from msm.repositories.crud import (
     count_model,
     create_model,
@@ -21,7 +20,6 @@ from msm.repositories.crud import (
 
 from msm_pricing.bootstrap import attach_pricing_schemas, resolve_pricing_runtime
 from msm_pricing.models.curves import CurveTable
-from msm_pricing.models.index_convention_details import IndexConventionDetailsTable
 from msm_pricing.settings import PRICING_CONCEPT_DISCOUNT_CURVES
 
 
@@ -49,22 +47,19 @@ class Curve(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     __table__: ClassVar[type[CurveTable]] = CurveTable
-    __required_tables__: ClassVar[list[type[Any]]] = [
-        IndexTypeTable,
-        IndexTable,
-        IndexConventionDetailsTable,
-        CurveTable,
-    ]
+    __required_tables__: ClassVar[list[type[Any]]] = [CurveTable]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
 
     uid: uuid.UUID
     unique_identifier: str
     display_name: str
     curve_type: str
-    index_uid: uuid.UUID
+    currency_code: str | None = None
+    quote_side: str | None = None
     interpolation_method: str | None = None
     compounding: str | None = None
     source: str | None = None
+    status: str = "ACTIVE"
     metadata_json: dict[str, Any] | None = Field(
         default=None,
         validation_alias=AliasChoices("metadata_json", "metadata"),
@@ -159,6 +154,22 @@ class Curve(BaseModel):
                 "tone": "info",
             }
         ]
+        if row.currency_code not in (None, ""):
+            badges.append(
+                {
+                    "key": "currency_code",
+                    "label": str(row.currency_code),
+                    "tone": "neutral",
+                }
+            )
+        if row.quote_side not in (None, ""):
+            badges.append(
+                {
+                    "key": "quote_side",
+                    "label": str(row.quote_side),
+                    "tone": "neutral",
+                }
+            )
         if row.source not in (None, ""):
             badges.append(
                 {
@@ -184,6 +195,16 @@ class Curve(BaseModel):
                 "icon": "line-chart",
             },
         ]
+        if row.currency_code not in (None, ""):
+            highlight_fields.append(
+                {
+                    "key": "currency_code",
+                    "label": "Currency",
+                    "value": row.currency_code,
+                    "kind": "code",
+                    "icon": "circle-dollar-sign",
+                }
+            )
         if row.interpolation_method not in (None, ""):
             highlight_fields.append(
                 {
@@ -205,7 +226,7 @@ class Curve(BaseModel):
                 }
             )
 
-        return {
+        summary = {
             "entity": {
                 "id": row_uid,
                 "type": "pricing_curve",
@@ -225,12 +246,6 @@ class Curve(BaseModel):
                     "value": row.unique_identifier,
                     "kind": "code",
                 },
-                {
-                    "key": "index_uid",
-                    "label": "Index UID",
-                    "value": str(row.index_uid),
-                    "kind": "code",
-                },
             ],
             "highlight_fields": highlight_fields,
             "stats": [],
@@ -241,6 +256,7 @@ class Curve(BaseModel):
                 "metadata_json": row.metadata_json,
             },
         }
+        return summary
 
     @classmethod
     def get_discount_curve_nodes(
@@ -431,10 +447,12 @@ class CurveCreate(BaseModel):
     unique_identifier: str = Field(min_length=1, max_length=255)
     display_name: str = Field(min_length=1, max_length=255)
     curve_type: str = Field(min_length=1, max_length=64)
-    index_uid: uuid.UUID
+    currency_code: str | None = Field(default=None, max_length=16)
+    quote_side: str | None = Field(default=None, max_length=32)
     interpolation_method: str | None = Field(default=None, max_length=64)
     compounding: str | None = Field(default=None, max_length=64)
     source: str | None = Field(default=None, max_length=255)
+    status: str = Field(default="ACTIVE", min_length=1, max_length=32)
     metadata_json: dict[str, Any] | None = None
 
 
@@ -449,10 +467,12 @@ class CurveUpdate(BaseModel):
 
     display_name: str | None = Field(default=None, min_length=1, max_length=255)
     curve_type: str | None = Field(default=None, min_length=1, max_length=64)
-    index_uid: uuid.UUID | None = None
+    currency_code: str | None = Field(default=None, max_length=16)
+    quote_side: str | None = Field(default=None, max_length=32)
     interpolation_method: str | None = Field(default=None, max_length=64)
     compounding: str | None = Field(default=None, max_length=64)
     source: str | None = Field(default=None, max_length=255)
+    status: str | None = Field(default=None, min_length=1, max_length=32)
     metadata_json: dict[str, Any] | None = None
 
 

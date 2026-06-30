@@ -1,15 +1,31 @@
-# Market Workflows
+# Assets and Categories
 
-These examples show the intended runtime boundary.
+Start with assets before building anything else. Asset identity is the stable
+contract consumed by holdings, target positions, pricing details, and portfolio
+workflows. This chapter covers runtime setup, asset types and constants,
+categories, currency assets, bond assets, and asset snapshots.
 
-1. Use typed `msm.api` row APIs for market records.
-2. Initialize the required MetaTable runtime explicitly during process startup.
-3. Treat row operations as business operations only; they do not register or
-   attach MetaTables on first use.
-4. Use DataNode helpers for historical tables such as holdings and target
-   positions.
+For the runtime model behind these row APIs, see [Core Concepts](../concepts.md).
 
-## Runtime Setup
+## Schema migrations before runtime
+
+`msm.start_engine(...)` is runtime attachment. It resolves finalized
+`MetaTable` and `TimeIndexMetaTable` resources directly by each selected
+model's SQLAlchemy table name, then binds those backend objects for row APIs.
+It does not create or evolve schema.
+
+Run admin migrations before application startup:
+
+```bash
+mainsequence migrations current --provider migrations:migration --json
+mainsequence migrations upgrade --provider migrations:migration head
+```
+
+See [Migrations](../knowledge/msm/migrations/index.md)
+for the package registry, SDK Alembic provider, upgrade flow, schema
+finalization, and runtime attachment lifecycle.
+
+## Runtime setup
 
 Production code normally initializes the required market MetaTables during
 application startup. A row call such as `Asset.upsert(...)` uses the active
@@ -61,11 +77,46 @@ The returned runtime from explicit preflight still exposes table handles and
 context for lower-level repository/service internals, but examples should not
 pass those handles around for normal row CRUD.
 
-## Assets And Categories
+## Asset identity and provider rows
 
-Start with assets before building reusable universes. Asset identity is the
-stable contract consumed by holdings, target positions, pricing details, and
-portfolio workflows.
+Use this workflow when ingesting external asset metadata:
+
+1. Resolve or normalize provider data through a service module, for example
+   `msm.services.assets.openfigi`.
+2. Register the asset type through `msm.api.assets.AssetType` when the type is
+   new to the project or namespace. Use `msm.constants` for built-in type keys
+   such as `ASSET_TYPE_BOND`, `ASSET_TYPE_CRYPTO`, `ASSET_TYPE_CURRENCY`,
+   `ASSET_TYPE_CURRENCY_SPOT`, `ASSET_TYPE_EQUITY`, and
+   `ASSET_TYPE_FUTURE`.
+3. Persist canonical identity through the user-facing `msm.api.assets.Asset`
+   row API. Row operations attach to registered MetaTables lazily.
+4. Store timestamped asset facts through DataNode schemas in
+   `msm.data_nodes.assets`.
+
+The package boundary is deliberate: `msm.api` owns user row operations,
+`msm.models.*Table` owns SQLAlchemy schema declarations, DataNodes own
+time-indexed market facts, and services own external provider integration.
+
+```python
+from msm.data_nodes.assets import AssetSnapshot
+from msm.services.assets.openfigi import (
+    query_by_figi,
+)
+from msm.constants import ASSET_TYPE_BOND
+```
+
+See `examples/msm/assets/asset_crud_workflow.py` for the asset workflow covering
+OpenFIGI resolution, `Asset` registration, `OpenFigiDetails`, and
+`AssetSnapshot` writes. The OpenFIGI helpers read the API key from the Main
+Sequence secret `OPEN_FIGI_API_KEY`.
+
+See `examples/msm/assets/asset_type_constants.py` for a small import-only example
+that prints the built-in constants and `AssetType.upsert(...)` payloads.
+
+## Assets and categories
+
+Asset identity is the stable contract consumed by holdings, target positions,
+pricing details, and portfolio workflows.
 
 ```python
 from msm.api.assets import Asset
@@ -125,7 +176,7 @@ platform/data-source issue should be fixed directly.
 See [FastAPI v1](../fast_api/v1/index.md) for the current route inventory and
 contract notes.
 
-## Currency Assets
+## Currency assets
 
 Single currencies and currency spot pairs are separate assets. Create or resolve
 the component currency assets first, then let `CurrencySpot.upsert(...)` own the
@@ -156,7 +207,7 @@ See `examples/msm/assets/currency_spot_workflow.py` and
 [Currency Assets](../knowledge/msm/assets/currency.md) for the detailed schema and
 workflow.
 
-## Bond Assets
+## Bond assets
 
 Bond setup uses reference issuers plus canonical asset rows. Create the issuer
 and denomination currency first, then let `Bond.upsert(...)` own the bond asset
@@ -199,7 +250,7 @@ a US Treasury note where CUSIP maps to canonical asset identity, FIGI maps to
 provider details, and coupon/tenor fields stay outside the minimal bond detail
 table.
 
-## Asset Snapshots
+## Asset snapshots
 
 `AssetSnapshot` is a DataNode, not a MetaTable. Build validated snapshot frames
 or a configured node through `AssetSnapshot` methods. Construct the node first,
@@ -273,141 +324,31 @@ normal run leaves assets in the category unless the cleanup flag is used. Asset
 examples reuse shared identifiers and FIGI constants from
 `examples/msm/assets/utils/reference_data.py`.
 
-## Accounts, Virtual Funds, And Portfolios
+## Command Center asset monitor
 
-```python
-import msm
+Use the Command Center helpers when a project wants to publish ms-markets asset
+data into a Command Center workspace:
 
-from msm.api.accounts import Account
-from msm.api.calendars import Calendar
-from msm.api.portfolios import Portfolio
-from msm.api.virtual_funds import VirtualFund
+1. Load or resolve asset rows in the project API or application layer.
+2. Pass already-loaded rows into
+   `command_center.widgets.asset_monitor.build_asset_monitor_frame(...)`.
+3. Return the resulting `TabularFrameResponse` from a provider API operation
+   such as `getAssetMonitorFrame`.
+4. Expose that operation through Adapter from API discovery.
+5. Bind `connection-query.dataset` into
+   `main-sequence-markets__asset-screener.seedData`.
 
-msm.start_engine(
-    models=["Account", "Calendar", "CalendarDate", "CalendarSession", "Portfolio", "VirtualFund"]
-)
+See [Command Center Asset Monitor](../command_center/asset_monitor.md) for the
+full frame contract and workspace binding rules. See
+`examples/msm/command_center/asset_monitor_frame.py` for an import-only example
+that builds the canonical frame from sample asset rows.
 
-account = Account.upsert(
-    unique_identifier="acct-main",
-    account_name="Main Account",
-)
-calendar = Calendar.create_from_pandas_calendar(
-    source_identifier="24/7",
-    unique_identifier="CRYPTO_24_7",
-    display_name="Crypto 24/7",
-    valid_from="2026-05-25",
-    valid_to="2026-05-25",
-    timezone="UTC",
-)
-portfolio = Portfolio.upsert(
-    unique_identifier="btc-eth-target",
-    calendar_uid=calendar.uid,
-)
-virtual_fund = VirtualFund.upsert(
-    unique_identifier="vf-core",
-    account_uid=account.uid,
-    target_portfolio_uid=portfolio.uid,
-)
-```
+For timestamped facts keyed to index reference rows, use the same stamped
+DataNode workflow with `msm.data_nodes.indices.IndexTimestampedDataNode` and an
+`IndexDataNodeConfiguration` subclass. The frame contract is
+`["time_index", "index_identifier"]`, with a canonical source-table foreign key
+from `index_identifier` to `IndexTable.unique_identifier`. Keep index identity
+on `uid` and `unique_identifier`; do not add legacy platform Constant-name
+fields.
 
-## Holdings And Target Positions
-
-Run the portfolio workflow in two stages:
-
-```bash
-python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
-python examples/msm_portfolios/portfolio_equal_weights_run.py
-```
-
-The preparation script derives the configured interpolated price storage from
-the registered `ExternalPricesStorage` table and the example interpolation
-policy, finds or generates the real dynamic Alembic revision under the active
-migration namespace, and runs the dynamic provider upgrade before portfolio
-DataNodes write. If an older registered `ExternalPricesStorage` table is missing
-cadence metadata, the preparation step repairs that source metadata before
-deriving the dynamic interpolation table. The run script creates the
-optional portfolio `Index`, publishes example OHLCV source bars to
-`ExternalPricesStorage`, interpolates prices, runs `SignalWeights`,
-`PortfolioWeights`, and `PortfoliosDataNode`, creates or reuses the crypto
-`CRYPTO_24_7` calendar, and stores the calendar, index, and DataNode UIDs on the
-`Portfolio` row. The price configuration stores the
-`ExternalPricesStorage` TimeIndexMetaTable UID on `InterpolatedPricesConfig`, so
-the explicit upstream interpolation node can recover the price source through
-the SDK APIDataNode lookup path. The portfolio configuration receives that
-`InterpolatedPrices` node as `valuation_source_instance` and sets
-`valuation_column="close"`; `PortfoliosDataNode` does not create interpolation
-storage internally. Real portfolio extensions can pass any compatible
-asset-indexed valuation DataNode or APIDataNode and choose any numeric valuation
-column, such as `fair_value` or `nav`, without reshaping the source into OHLC
-bars. A focused configuration example is available at
-`examples/msm_portfolios/portfolio_custom_valuation_column_example.py`:
-
-```bash
-python examples/msm_portfolios/portfolio_custom_valuation_column_example.py \
-  --source-time-index-meta-table-uid <fair-value-time-index-meta-table-uid>
-```
-
-The source bar frequency is read from the registered source table's cadence
-metadata, then used with `__metatable_extra_hash_components__` to select a
-configured output storage table, so different source cadence, upsample
-frequency, and interpolation rule combinations do not collide inside one price
-table. The script prints the workflow steps, created row UIDs, source valuation
-row counts, explicit valuation-source dependency details, and published DataNode
-storage UIDs.
-
-```python
-from msm.api.accounts import (
-    AccountAllocationModel,
-    AccountHoldingsSet,
-    AccountTargetAllocation,
-    PositionSet,
-)
-from msm.api.assets import Asset
-from msm.api.portfolios import Portfolio
-from msm.services import build_account_holdings_frame
-from msm.services import build_target_positions_frame
-
-holdings_set = AccountHoldingsSet.upsert(
-    account_uid=account.uid,
-    time_index="2026-05-25T00:00:00Z",
-)
-holdings = build_account_holdings_frame(
-    holdings_date="2026-05-25T00:00:00Z",
-    account_uid=account.uid,
-    holdings_set_uid=holdings_set.uid,
-    positions=[
-        {"asset_identifier": "BTC", "quantity": 1.0, "direction": 1},
-        {"asset_identifier": "ETH", "quantity": 10.0, "direction": -1},
-    ],
-)
-
-allocation_model = AccountAllocationModel.upsert(
-    allocation_model_name="balanced-allocation-model"
-)
-account_target_allocation = AccountTargetAllocation.upsert(
-    unique_identifier="account-main-balanced-target",
-    account_uid=account.uid,
-    account_allocation_model_uid=allocation_model.uid,
-)
-position_set = PositionSet.upsert(
-    account_target_allocation_uid=account_target_allocation.uid,
-    position_set_time="2026-05-25T00:00:00Z",
-)
-btc_asset = Asset.upsert(unique_identifier="BTC", asset_type="crypto")
-portfolio_sleeve = Portfolio.upsert(
-    unique_identifier="account-main-sleeve",
-    calendar_uid=calendar.uid,
-)
-
-targets = build_target_positions_frame(
-    target_positions_date="2026-05-25T00:00:00Z",
-    position_set_uid=position_set.uid,
-    positions=[
-        {"asset_uid": btc_asset.uid, "weight_notional_exposure": 0.6},
-        {"portfolio_uid": portfolio_sleeve.uid, "weight_notional_exposure": 0.4},
-    ],
-)
-```
-
-The DataNode frame helpers validate the dynamic-table contract locally. The
-actual table provisioning and writes remain generic TDAG/DataNode behavior.
+**Next →** [Calendars](02-calendars.md)

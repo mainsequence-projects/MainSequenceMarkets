@@ -6,8 +6,11 @@ from msm.base import MARKETS_TABLE_APP, markets_table_name
 from msm.models import AssetTable, IndexTable
 from msm_pricing.models import (
     AssetCurrentPricingDetailsTable,
+    CurveBuildingDetailsTable,
     CurveTable,
     IndexConventionDetailsTable,
+    PricingMarketDataSetCurveBindingTable,
+    PricingMarketDataSetTable,
 )
 
 
@@ -84,7 +87,7 @@ def test_index_convention_details_uses_index_uid_as_one_to_one_primary_key() -> 
     }
 
 
-def test_curve_table_references_index_convention_details() -> None:
+def test_curve_table_has_no_index_relationship() -> None:
     assert issubclass(CurveTable, PlatformManagedMetaTable)
 
     table = CurveTable.__table__
@@ -95,24 +98,94 @@ def test_curve_table_references_index_convention_details() -> None:
         "unique_identifier",
         "display_name",
         "curve_type",
-        "index_uid",
+        "currency_code",
+        "quote_side",
         "interpolation_method",
         "compounding",
         "source",
+        "status",
         "metadata",
     }
     assert "day_counter_code" not in table.c
-    assert "currency_code" not in table.c
-
-    index_uid_fk = next(iter(table.c.index_uid.foreign_keys))
-    assert index_uid_fk.column is IndexConventionDetailsTable.__table__.c.index_uid
-    assert index_uid_fk.ondelete == "RESTRICT"
+    assert "index_uid" not in table.c
 
     expected_indexes = {
         ("unique_identifier",),
-        ("index_uid",),
         ("curve_type",),
+        ("currency_code",),
+        ("quote_side",),
         ("source",),
+        ("status",),
+    }
+    actual_indexes = {tuple(column.name for column in index.columns) for index in table.indexes}
+    assert expected_indexes.issubset(actual_indexes)
+
+
+def test_curve_building_details_is_one_to_one_with_curve() -> None:
+    assert issubclass(CurveBuildingDetailsTable, PlatformManagedMetaTable)
+
+    table = CurveBuildingDetailsTable.__table__
+
+    assert "uid" not in table.c
+    assert [column.name for column in table.primary_key.columns] == ["curve_uid"]
+    curve_uid_fk = next(iter(table.c.curve_uid.foreign_keys))
+    assert curve_uid_fk.column is CurveTable.__table__.c.uid
+    assert curve_uid_fk.ondelete == "CASCADE"
+
+    assert set(table.c.keys()) == {
+        "curve_uid",
+        "builder_type",
+        "quote_convention",
+        "rate_unit",
+        "day_counter_code",
+        "calendar_code",
+        "interpolation_method",
+        "compounding",
+        "compounding_frequency",
+        "extrapolation_policy",
+        "bootstrap_method",
+        "builder_payload",
+        "source",
+        "metadata",
+    }
+
+
+def test_market_data_set_curve_binding_selects_curve_identity() -> None:
+    assert issubclass(PricingMarketDataSetCurveBindingTable, PlatformManagedMetaTable)
+
+    table = PricingMarketDataSetCurveBindingTable.__table__
+
+    assert [column.name for column in table.primary_key.columns] == ["uid"]
+    assert set(table.c.keys()) == {
+        "uid",
+        "market_data_set_uid",
+        "binding_key",
+        "role_key",
+        "selector_type",
+        "selector_key",
+        "quote_side",
+        "curve_uid",
+        "source",
+        "priority",
+        "status",
+        "metadata",
+    }
+
+    set_uid_fk = next(iter(table.c.market_data_set_uid.foreign_keys))
+    assert set_uid_fk.column is PricingMarketDataSetTable.__table__.c.uid
+    assert set_uid_fk.ondelete == "CASCADE"
+
+    curve_uid_fk = next(iter(table.c.curve_uid.foreign_keys))
+    assert curve_uid_fk.column is CurveTable.__table__.c.uid
+    assert curve_uid_fk.ondelete == "RESTRICT"
+
+    expected_indexes = {
+        ("market_data_set_uid", "binding_key"),
+        ("role_key",),
+        ("selector_type", "selector_key"),
+        ("quote_side",),
+        ("curve_uid",),
+        ("status",),
     }
     actual_indexes = {tuple(column.name for column in index.columns) for index in table.indexes}
     assert expected_indexes.issubset(actual_indexes)

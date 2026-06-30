@@ -10,10 +10,12 @@ from msm.models.registration import (
 from msm.models.assets import AssetTable
 from msm.models.indices import IndexTable, IndexTypeTable
 
+from .models.curve_building_details import CurveBuildingDetailsTable
 from .models.curves import CurveTable
 from .models.index_convention_details import IndexConventionDetailsTable
 from .models.market_data_bindings import (
     PricingMarketDataSetBindingTable,
+    PricingMarketDataSetCurveBindingTable,
     PricingMarketDataSetTable,
 )
 from .models.pricing_details import AssetCurrentPricingDetailsTable
@@ -36,9 +38,11 @@ def pricing_sqlalchemy_models() -> list[type[MarketsBase]]:
         IndexTable,
         IndexConventionDetailsTable,
         CurveTable,
+        CurveBuildingDetailsTable,
         AssetCurrentPricingDetailsTable,
         PricingMarketDataSetTable,
         PricingMarketDataSetBindingTable,
+        PricingMarketDataSetCurveBindingTable,
         *_pricing_data_node_storage_models(),
     ]
 

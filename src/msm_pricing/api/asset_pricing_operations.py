@@ -434,7 +434,11 @@ def _instrument_curve_references(
 
     for role, index_uid in _instrument_curve_reference_candidates(instrument):
         try:
-            curve = _select_curve_for_reference(index_uid=index_uid, curve_type="discount")
+            curve = _select_curve_for_reference(
+                index_uid=index_uid,
+                curve_type=role,
+                market_data_set=market_data_set,
+            )
         except (LookupError, ValueError) as exc:
             warnings.append(f"{role}: {exc}")
             continue
@@ -442,6 +446,7 @@ def _instrument_curve_references(
             _curve_reference_payload(
                 role=role,
                 curve=curve,
+                index_uid=index_uid,
                 valuation_date=instrument.valuation_date,
                 market_data_set=market_data_set,
             )
@@ -458,22 +463,33 @@ def _instrument_curve_reference_candidates(instrument: Any) -> list[tuple[str, u
     if floating_rate_index_uid is not None:
         index_uid = uuid.UUID(str(floating_rate_index_uid))
         if index_uid not in seen:
-            candidates.append(("discount", index_uid))
+            candidates.append(("projection", index_uid))
             seen.add(index_uid)
 
     return candidates
 
 
-def _select_curve_for_reference(*, index_uid: uuid.UUID, curve_type: str):
+def _select_curve_for_reference(
+    *,
+    index_uid: uuid.UUID,
+    curve_type: str,
+    market_data_set: str | None,
+):
     from msm_pricing.pricing_engine import select_curve
 
-    return select_curve(index_uid=index_uid, curve_type=curve_type)
+    return select_curve(
+        index_uid=index_uid,
+        curve_type=curve_type,
+        market_data_set=market_data_set,
+        role_key=curve_type,
+    )
 
 
 def _curve_reference_payload(
     *,
     role: str,
     curve: Any,
+    index_uid: uuid.UUID | None,
     valuation_date: dt.datetime | dt.date | None,
     market_data_set: str | None,
 ) -> dict[str, Any]:
@@ -488,7 +504,7 @@ def _curve_reference_payload(
         "curve_uid": curve.uid,
         "curve_identifier": curve.unique_identifier,
         "curve_type": curve.curve_type,
-        "index_uid": curve.index_uid,
+        "index_uid": index_uid,
         "source": getattr(curve, "source", None),
         "discount_curve_url": f"/api/v1/pricing/curves/{curve.uid}/discount-curve/",
         "discount_curve_query_params": query_params,

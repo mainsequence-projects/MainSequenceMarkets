@@ -10,7 +10,11 @@ ql = pytest.importorskip("QuantLib")
 
 def test_floating_bond_attach_load_round_trip_prices(monkeypatch) -> None:
     from msm.api.assets import Asset
-    from msm_pricing.api.pricing_details import AssetCurrentPricingDetails
+    from msm_pricing.api.pricing_details import (
+        AssetCurrentPricingDetails,
+        AssetPricingDetails,
+        AssetPricingDetailsAddResult,
+    )
     from msm_pricing.instruments import FloatingRateBond, Instrument
     from msm_pricing.utils import to_ql_date
 
@@ -25,10 +29,37 @@ def test_floating_bond_attach_load_round_trip_prices(monkeypatch) -> None:
         asset_type="bond",
     )
 
-    def fake_upsert(**kwargs):
-        row = AssetCurrentPricingDetails.model_validate(kwargs)
+    def fake_add(**kwargs):
+        row = AssetCurrentPricingDetails.model_validate(
+            {
+                "asset_uid": kwargs["asset_uid"],
+                "instrument_type": kwargs["instrument_type"],
+                "instrument_dump": kwargs["instrument_dump"],
+                "pricing_details_date": kwargs["pricing_details_date"],
+                "serialization_format": kwargs["serialization_format"],
+                "pricing_package_version": kwargs["pricing_package_version"],
+                "source": kwargs["source"],
+                "metadata_json": kwargs["metadata_json"],
+            }
+        )
         row_store[row.asset_uid] = row
-        return row
+        pricing_details = AssetPricingDetails.model_validate(
+            {
+                "time_index": kwargs["pricing_details_date"],
+                "asset_identifier": kwargs["asset_identifier"],
+                "instrument_type": kwargs["instrument_type"],
+                "instrument_dump": kwargs["instrument_dump"],
+                "serialization_format": kwargs["serialization_format"],
+                "pricing_package_version": kwargs["pricing_package_version"],
+                "source": kwargs["source"],
+                "metadata_json": kwargs["metadata_json"],
+            }
+        )
+        return AssetPricingDetailsAddResult(
+            pricing_details=pricing_details,
+            current_pricing_details=row,
+            updated_current=True,
+        )
 
     def fake_get_by_asset_uid(target_asset_uid):
         return row_store.get(uuid.UUID(str(target_asset_uid)))
@@ -58,7 +89,7 @@ def test_floating_bond_attach_load_round_trip_prices(monkeypatch) -> None:
             curve,
         )
 
-    monkeypatch.setattr(AssetCurrentPricingDetails, "upsert", staticmethod(fake_upsert))
+    monkeypatch.setattr(AssetPricingDetails, "add", staticmethod(fake_add))
     monkeypatch.setattr(
         AssetCurrentPricingDetails,
         "get_by_asset_uid",

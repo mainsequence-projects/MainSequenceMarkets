@@ -28,6 +28,12 @@ and this project follows versioned releases.
   `pricing-streamlit` optional extra.
 - Added ADR 0033 to document the pricing valuation-position boundary and the
   planned replacement for the legacy in-memory `Position` surface.
+- Added ADR 0035 to document the target pricing curve identity model, curve
+  building details, and market-data-set curve binding layer.
+- Implemented ADR 0035 phase-one pricing curve infrastructure with
+  `CurveBuildingDetails`, `PricingMarketDataSetCurveBinding`, nullable legacy
+  `Curve.index_uid`, resolver cutover to explicit curve bindings, and Alembic
+  revision `0007`.
 - Replaced the legacy in-memory `msm_pricing.Position` export with
   `ValuationLine` and `ValuationPosition` for explicit instrument-plus-units
   valuation.
@@ -87,6 +93,12 @@ and this project follows versioned releases.
   coverage is applied only after reading the actual signal frame.
 - Added the `apps/v1` pricing curve registry list endpoint backed by
   `msm_pricing.api.Curve` and the shared limit-offset pagination envelope.
+- Added the `apps/v1` index delete-impact preflight endpoint so clients can
+  inspect restrictive dependencies, cascade effects, and SET NULL effects
+  before calling the individual index delete route.
+- Added the FastAPI v1 reusable delete-impact contract and migrated the index
+  preflight route to the shared `DeleteImpactResponse` serializer before
+  additional delete routes copy the index-specific shape.
 - Promoted virtual-fund allocation strategy to the first-class
   `VirtualFundHoldingsStorage.allocation_strategy` column; low-level explicit
   publications write `explicit`, and planner-applied rows write the allocation
