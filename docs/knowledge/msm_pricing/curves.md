@@ -116,6 +116,10 @@ Curve identity rules:
 - `PricingMarketDataSetCurveBindingTable` stores valuation-policy selection:
   `market_data_set_uid + role_key + selector_type + selector_key + quote_side`
   resolves to `curve_uid`.
+- `curve_uid` is not unique in `PricingMarketDataSetCurveBindingTable`. A curve
+  can be selected by many market-data-set roles, selector types, index UIDs,
+  quote sides, or source sets. The curve row is the target of selection, not the
+  owner of the selector.
 - `IndexConventionDetailsTable` is only for rebuilding QuantLib indexes and
   fixings. It is not the source of truth for curve construction.
 - Do not encode curve selection as an index relationship. Market-data sets may

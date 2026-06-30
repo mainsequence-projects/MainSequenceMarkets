@@ -31,6 +31,7 @@ PricingMarketDataSetCurveBinding
   role_key            = discount | projection | forwarding | z_spread_base
   selector_type       = currency | index | global
   selector_key        = USD | <IndexTable.uid> | global
+  quote_side          = bid | mid | offer | official | model | null
   curve_uid           -> CurveTable.uid
 ```
 
@@ -137,6 +138,32 @@ The helper writes the generic `PricingMarketDataSetCurveBinding` row with
 index-based workflows should not pass those selector fields directly. Use the
 raw `upsert(...)` method only for generic selectors such as currency, future
 asset-scoped selectors, volatility surfaces, or other policy dimensions.
+
+### Binding uniqueness and curve sharing
+
+Curve-binding uniqueness is selector-side, not curve-side. Within one
+market-data set, `binding_key` is unique. The key is built from `role_key`,
+`selector_type`, `selector_key`, and `quote_side`, so one selector intent
+resolves to exactly one curve:
+
+```text
+default + projection:index:<SOFR index uid>:mid -> SOFR projection curve
+```
+
+`curve_uid` is deliberately not unique in `PricingMarketDataSetCurveBinding`.
+It is the selected target, not an ownership boundary. Multiple selector intents
+may point to the same curve when that is the correct market-data policy:
+
+```text
+default + projection:index:<SOFR index uid>:mid     -> USD OIS curve
+default + z_spread_base:index:<SOFR index uid>:mid  -> USD OIS curve
+default + projection:index:<FedFunds index uid>:mid -> USD OIS curve
+```
+
+What is not allowed inside the same market-data set is two rows with the same
+`binding_key` pointing to different curves. To inspect every selector that uses
+a curve, query `PricingMarketDataSetCurveBinding` by `curve_uid`; do not expect
+the curve row to have one owning index or selector.
 
 Benchmark analytics use the same binding table. A bond's
 `benchmark_rate_index_uid` selects the index identity only; z-spread resolves

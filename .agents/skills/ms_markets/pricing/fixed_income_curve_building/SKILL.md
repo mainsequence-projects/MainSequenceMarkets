@@ -124,6 +124,11 @@ market-data set. Use it for `discount`, `projection`, `forwarding`,
 `z_spread_base`, bid/mid/offer, source/scenario, basis/spread, and future
 volatility curve or surface selection decisions. Do not encode those policy
 choices as foreign keys from `CurveTable` to `IndexConventionDetailsTable`.
+The binding uniqueness boundary is `(market_data_set_uid, binding_key)`, where
+`binding_key` is derived from role, selector type, selector key, and quote side.
+`curve_uid` is not unique: multiple roles, indices, quote sides, source sets,
+or selector types may deliberately select the same curve. Do not infer a single
+owning index or selector from a `Curve` row.
 
 ## Runtime Usability Invariant
 
@@ -477,6 +482,10 @@ Before finishing a change:
   non-runtime registry/staging row.
 - Market-data-set curve selection uses `PricingMarketDataSetCurveBinding`, and
   index-scoped selections use `upsert_index_curve_selection(...)`.
+- Curve-binding reviews distinguish selector uniqueness from curve sharing:
+  duplicate `(market_data_set_uid, binding_key)` rows are invalid, but multiple
+  bindings pointing at the same `curve_uid` are valid when the policy calls for
+  shared curve identity.
 - Runtime curve reads have a `PricingMarketDataSetBinding` for
   `PRICING_CONCEPT_DISCOUNT_CURVES`.
 - Fixing DataNode rows use `time_index`, `index_identifier`, and `rate`.

@@ -248,7 +248,8 @@ market_data_set_uid + concept_key -> data_node_uid
 The new curve binding is the identity binding:
 
 ```text
-market_data_set_uid + role_key + selector_type + selector_key -> curve_uid
+market_data_set_uid + role_key + selector_type + selector_key + quote_side
+  -> curve_uid
 ```
 
 `binding_key` is a deterministic normalized key used for uniqueness within a
@@ -274,7 +275,21 @@ Recommended uniqueness:
 ```
 
 This avoids nullable uniqueness traps across index-specific, currency-specific,
-and global bindings.
+and global bindings. This uniqueness is intentionally selector-side only.
+`curve_uid` must not be unique in this table. A curve can be selected by many
+bindings across roles, selector types, index UIDs, quote sides, or market-data
+sets:
+
+```text
+SOFR index UID    + role=projection    + side=mid -> USD OIS curve
+SOFR index UID    + role=z_spread_base + side=mid -> USD OIS curve
+FedFunds index UID + role=projection   + side=mid -> USD OIS curve
+```
+
+The reverse relationship is therefore many-to-one. `CurveTable` does not own an
+index or selector, and a caller must inspect
+`PricingMarketDataSetCurveBindingTable` rows by `curve_uid` to see every
+selector that uses a curve.
 
 Examples:
 
