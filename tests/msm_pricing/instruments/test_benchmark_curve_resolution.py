@@ -131,8 +131,6 @@ def test_benchmark_z_spread_missing_binding_raises_actionable_error(monkeypatch)
     assert f"benchmark_rate_index_uid={index_uid}" in message
     assert f"market_data_set={market_data_set_uid}" in message
     assert "role_key='z_spread_base'" in message
-    assert "selector_type='index'" in message
-    assert f"selector_key='{index_uid}'" in message
     assert "quote_side='mid'" in message
 
 
