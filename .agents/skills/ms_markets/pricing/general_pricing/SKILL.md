@@ -161,6 +161,12 @@ Use `PricingMarketDataSetCurveBinding` for curve-identity selection inside the
 chosen source. It maps a valuation role and selector, such as
 `projection:index:<IndexTable.uid>:mid`, to `CurveTable.uid`.
 
+For active curves intended for runtime pricing, a `Curve` row by itself is not
+enough. The curve must also have `CurveBuildingDetails`, at least one
+`PricingMarketDataSetCurveBinding`, and a market-data-set source binding for
+`PRICING_CONCEPT_DISCOUNT_CURVES`. When creating or reviewing those curve
+relationships, switch to the fixed-income curve-building skill.
+
 Callers select sources at valuation time:
 
 ```python

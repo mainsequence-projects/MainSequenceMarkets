@@ -1,6 +1,6 @@
 ---
 name: mainsequence-markets-fixed-income-curve-building
-description: Use this skill when creating, extending, reviewing, or using ms-markets/msm_pricing fixed-income pricing infrastructure, including Index convention details, index fixing DataNodes, Curve rows, discount curve DataNodes, QuantLib index/curve resolvers, and bond or swap examples that depend on those three coupled concepts.
+description: Use this skill when creating, extending, reviewing, or using ms-markets/msm_pricing fixed-income pricing infrastructure, including Index convention details, index fixing DataNodes, Curve rows, CurveBuildingDetails rows, market-data-set curve bindings, discount curve DataNodes, QuantLib index/curve resolvers, and bond or swap examples that depend on those coupled concepts.
 ---
 
 # Main Sequence Markets Fixed-Income Curve Building
@@ -47,7 +47,8 @@ Then use this skill for pricing-specific index, fixing, and curve choices.
 
 - Creating or reviewing `IndexConventionDetails` rows for canonical
   `msm.models.IndexTable` rows.
-- Creating or reviewing `Curve` rows linked to index convention details.
+- Creating or reviewing `Curve` rows, their `CurveBuildingDetails`, and their
+  market-data-set curve selection bindings.
 - Creating or extending `FixingRatesNode` subclasses that publish index fixings.
 - Creating or extending `DiscountCurvesNode` subclasses that publish compressed
   curve payloads.
@@ -123,6 +124,29 @@ market-data set. Use it for `discount`, `projection`, `forwarding`,
 `z_spread_base`, bid/mid/offer, source/scenario, basis/spread, and future
 volatility curve or surface selection decisions. Do not encode those policy
 choices as foreign keys from `CurveTable` to `IndexConventionDetailsTable`.
+
+## Runtime Usability Invariant
+
+An active `Curve` row intended for runtime pricing is incomplete unless the
+agent also creates or verifies all of the following:
+
+- `CurveBuildingDetails` exists for `curve_uid`.
+- At least one `PricingMarketDataSetCurveBinding` selects the curve for the
+  intended market-data set, valuation role, selector, and quote side.
+- The market-data set has a `PricingMarketDataSetBinding` for
+  `PRICING_CONCEPT_DISCOUNT_CURVES` pointing at the curve storage DataNode.
+- Published or publishable `DiscountCurvesNode` observations use
+  `curve_identifier=Curve.unique_identifier`.
+
+For index-scoped curve selection, use
+`PricingMarketDataSetCurveBinding.upsert_index_curve_selection(...)`; do not ask
+users or examples to pass `selector_type="index"` and `selector_key=str(index.uid)`.
+
+If a curve is deliberately created only as a registry/staging row, state that
+explicitly in the code, example, or documentation. Do not claim the curve is
+priceable, observable through runtime resolution, or ready for bond/swap pricing
+until the build details, market-data source binding, and curve selection binding
+exist.
 
 Pricing runtime attachment order matters. `attach_pricing_schemas(...)` is the
 startup entrypoint; it attaches already-registered pricing MetaTables and
@@ -431,7 +455,8 @@ An example should print or otherwise expose each step:
 2. Upsert `IndexConventionDetails`.
 3. Upsert `Curve`.
 4. Upsert `CurveBuildingDetails`.
-5. Upsert `PricingMarketDataSetCurveBinding`.
+5. Upsert `PricingMarketDataSetCurveBinding` through
+   `upsert_index_curve_selection(...)` for index-scoped selections.
 6. Publish fixings.
 7. Publish discount curves.
 8. Attach pricing storage tables and upsert the pricing market-data set plus
@@ -446,8 +471,14 @@ Before finishing a change:
 - `IndexTable` remains free of Constant-name and curve fields.
 - `IndexConventionDetailsTable.index_uid` is one-to-one with `IndexTable.uid`.
 - `CurveTable` has no index ownership field.
-- Every priced curve has `CurveBuildingDetails`.
-- Market-data-set curve selection uses `PricingMarketDataSetCurveBinding`.
+- Every active/runtime priced curve has `CurveBuildingDetails`.
+- Every active/runtime priced curve has at least one
+  `PricingMarketDataSetCurveBinding`, or is explicitly documented as a
+  non-runtime registry/staging row.
+- Market-data-set curve selection uses `PricingMarketDataSetCurveBinding`, and
+  index-scoped selections use `upsert_index_curve_selection(...)`.
+- Runtime curve reads have a `PricingMarketDataSetBinding` for
+  `PRICING_CONCEPT_DISCOUNT_CURVES`.
 - Fixing DataNode rows use `time_index`, `index_identifier`, and `rate`.
 - Curve DataNode rows use `time_index`, `curve_identifier`, and `curve`.
 - Instrument payloads store backend index UUIDs and reject raw index-name
