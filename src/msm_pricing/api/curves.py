@@ -299,11 +299,21 @@ class Curve(BaseModel):
                 }
             }
         )
-        nodes, effective_date = _read_discount_curve_nodes(
-            interface=interface,
-            curve_identifier=curve.unique_identifier,
-            valuation_date=valuation_date,
-        )
+        try:
+            nodes, effective_date = _read_discount_curve_nodes(
+                interface=interface,
+                curve_identifier=curve.unique_identifier,
+                valuation_date=valuation_date,
+            )
+        except LookupError as exc:
+            raise LookupError(
+                _missing_discount_curve_observation_message(
+                    curve_identifier=curve.unique_identifier,
+                    market_data_set_row=market_data_set_row,
+                    binding=binding,
+                    valuation_date=valuation_date,
+                )
+            ) from exc
 
         return {
             "curve_uid": curve.uid,
@@ -427,6 +437,34 @@ def _read_discount_curve_nodes(
         if " is empty" in message or "No latest discount curve observation" in message:
             raise LookupError(message) from exc
         raise
+
+
+def _missing_discount_curve_observation_message(
+    *,
+    curve_identifier: str,
+    market_data_set_row: Any,
+    binding: Any,
+    valuation_date: dt.datetime | None,
+) -> str:
+    market_data_set_label = market_data_set_row.set_key or str(market_data_set_row.uid)
+    storage_label = binding.storage_table_identifier or "DiscountCurvesStorage"
+    data_node_uid = str(binding.data_node_uid)
+
+    if valuation_date is None:
+        return (
+            f"No discount-curve data has been published for curve {curve_identifier!r} "
+            f"in pricing market-data set {market_data_set_label!r}. The curve registry "
+            f"row and discount_curves binding exist, but bound DataNode {data_node_uid} "
+            f"has no latest {storage_label} observation for this curve_identifier."
+        )
+
+    return (
+        f"No discount-curve data was found for curve {curve_identifier!r} at "
+        f"valuation_date {valuation_date.isoformat()} in pricing market-data set "
+        f"{market_data_set_label!r}. The curve registry row and discount_curves "
+        f"binding exist, but bound DataNode {data_node_uid} has no {storage_label} "
+        "observation for this curve_identifier at that valuation date."
+    )
 
 
 def _normalize_discount_curve_nodes(nodes: list[Mapping[str, Any]]) -> list[dict[str, Any]]:

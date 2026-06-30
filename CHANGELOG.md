@@ -99,6 +99,9 @@ and this project follows versioned releases.
 - Added the FastAPI v1 reusable delete-impact contract and migrated the index
   preflight route to the shared `DeleteImpactResponse` serializer before
   additional delete routes copy the index-specific shape.
+- Clarified missing discount-curve API errors so a curve with registry and
+  market-data binding but no published `DiscountCurvesStorage` observations is
+  reported as missing data, not a generic latest-observation lookup failure.
 - Promoted virtual-fund allocation strategy to the first-class
   `VirtualFundHoldingsStorage.allocation_strategy` column; low-level explicit
   publications write `explicit`, and planner-applied rows write the allocation

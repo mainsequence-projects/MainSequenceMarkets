@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted - partially implemented
+Accepted - implemented
 
 ## Context
 
@@ -12,9 +12,9 @@ The current pricing curve model couples three different concerns:
 2. curve construction rules;
 3. valuation-context curve selection.
 
-Today `CurveTable.index_uid` is required and points to
-`IndexConventionDetailsTable.index_uid`. That means every curve row is forced to
-belong to an index convention row.
+The earlier curve model carried a required index ownership foreign key into
+`IndexConventionDetailsTable`. That meant every curve row was forced to belong
+to an index convention row.
 
 That relationship is too strong. It makes sense for some rate curves, but it is
 not a general curve identity rule. A discount curve, issuer curve, credit curve,
@@ -43,7 +43,7 @@ index-keyed:
 
 `DiscountCurvesStorage.curve_identifier` points to
 `CurveTable.unique_identifier`. Runtime data reads use that curve identifier.
-They do not need `CurveTable.index_uid`.
+They do not need an index ownership column on the curve registry.
 
 `PricingMarketDataSetTable` and `PricingMarketDataSetBindingTable` already
 solve a different problem: selecting which registered storage table should be
@@ -72,11 +72,10 @@ A single discount-curve storage table can contain many `curve_identifier`
 values. Pricing needs a second market-data-set layer that selects the curve
 identity for a valuation role and selector.
 
-The current implementation uses `CurveTable.index_uid` as an implicit selection
-shortcut:
+The old implementation used an implicit selection shortcut:
 
 ```text
-index_uid + curve_type -> CurveTable row
+index UUID + curve type -> CurveTable row
 ```
 
 That is the wrong ownership boundary. The relationship between an index and a
@@ -118,10 +117,9 @@ CurveTable
 marks without bid/offer semantics. When present, it distinguishes curve
 identities such as bid, mid, offer, or model.
 
-`CurveTable.index_uid` should be treated as a legacy field. New code must not
-use it as the primary curve relationship. The field can remain during a
-migration window, but it should become nullable or be removed after resolvers
-and bindings move to the new model.
+`CurveTable` must not contain an index ownership field. A relationship between
+an index and a curve is valuation policy and must be expressed through
+`PricingMarketDataSetCurveBindingTable`.
 
 `CurveTable.unique_identifier` remains the stable observation key used by curve
 DataNodes through `curve_identifier`.
@@ -295,10 +293,9 @@ PricingMarketDataSet("eod")
      )
 
 PricingMarketDataSet("eod")
-  -> PricingMarketDataSetCurveBinding(
+  -> PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
        role_key="projection",
-       selector_type="index",
-       selector_key="<SOFR_3M_INDEX_UID>",
+       index_uid=SOFR_3M_INDEX_UID,
        quote_side="mid",
        curve_uid=USD_SOFR_3M_FORWARD
      )
@@ -371,12 +368,22 @@ index_uid
   -> IndexConventionDetailsTable
   -> QuantLib index and fixings
 
-market_data_set_key + role_key="projection" + selector_type="index" + index_uid
+market_data_set_key + role_key="projection" + index_uid
+  -> upsert_index_curve_selection(...)
   -> PricingMarketDataSetCurveBindingTable
   -> CurveTable
   -> CurveBuildingDetailsTable
   -> forwarding curve handle
 ```
+
+For benchmark z-spread, the same binding graph uses
+`role_key="z_spread_base"` and `index_uid=benchmark_rate_index_uid` through
+`upsert_index_curve_selection(...)`. The helper persists
+`selector_type="index"` and `selector_key=str(benchmark_rate_index_uid)` in the
+generic binding table. The role describes why the curve is selected; it does
+not require `CurveTable.curve_type` to equal `z_spread_base`. A selected
+benchmark curve may have `curve_type="discount"`, `projection`, `government`,
+or another supported physical curve type.
 
 The resolver may still expose convenience functions, but their internals should
 use the explicit model:
@@ -399,9 +406,9 @@ Explicit overrides should not require an index relationship.
 
 ## Migration Plan
 
-Implement this change in phases.
+Implement this change without a curve-index compatibility path.
 
-### Phase 1: Additive Schema
+### Phase 1: Schema
 
 Add:
 
@@ -410,29 +417,14 @@ Add:
 - public row APIs for both tables;
 - tests for API validation, uniqueness, and strict missing-row errors.
 
-Do not remove `CurveTable.index_uid` in this phase.
+Remove the old index ownership column from the curve table in the same
+migration.
 
-### Phase 2: Backfill
+### Phase 2: Explicit Data Setup
 
-Backfill `CurveBuildingDetailsTable` from existing curve rows and their current
-borrowed index conventions.
-
-For each existing `CurveTable` row:
-
-1. copy high-level curve metadata from `CurveTable`;
-2. derive current day counter, calendar, compounding, and interpolation values
-   from existing fields and the referenced `IndexConventionDetailsTable` only
-   as a migration source;
-3. write a one-to-one `CurveBuildingDetailsTable` row.
-
-Backfill `PricingMarketDataSetCurveBindingTable` from the existing
-`Curve.index_uid + curve_type + source` selection behavior.
-
-The backfill must be explicit about the market-data set it targets. For clean
-initial data, it may target only the `default` set. For environments with
-multiple market-data sets, the migration or follow-up repair script must verify
-which curve identifiers exist in each set's bound discount-curve storage before
-creating bindings.
+Existing environments must create `CurveBuildingDetailsTable` rows and
+`PricingMarketDataSetCurveBindingTable` rows explicitly. There is no implicit
+runtime fallback from old implicit curve selection relationships.
 
 ### Phase 3: Resolver Cutover
 
@@ -451,30 +443,23 @@ Resolvers should fail loudly when:
 - the selected storage source has no observations for the selected curve
   identifier and valuation date.
 
-### Phase 4: Legacy Field Deprecation
+### Phase 4: Enforcement
 
-Deprecate `CurveTable.index_uid` after resolver cutover.
-
-The field may remain temporarily for old rows and diagnostics, but new public
-APIs should stop requiring it. A later migration can make it nullable or remove
-it once platform data has been backfilled and all runtime paths use explicit
-curve bindings.
+Public APIs, examples, docs, and packaged skills must not expose a curve-owned
+index relationship. Missing bindings must fail loudly.
 
 ## Non-Goals
 
 This ADR does not:
 
-- implement the schema changes;
-- generate Alembic revisions;
-- remove `CurveTable.index_uid` immediately;
 - define every future curve family;
 - make `IndexTable` own curve identity;
 - store curve observations directly on `CurveTable`;
 - use `PricingMarketDataSetBindingTable.metadata_json` as an unstructured
   substitute for curve selection rows;
 - add line-level market-data-set overrides to `ValuationPosition`;
-- preserve silent fallback from missing curve bindings to legacy
-  `Curve.index_uid` selection after migration.
+- preserve silent fallback from missing curve bindings to old implicit curve
+  selection behavior.
 
 ## Consequences
 
@@ -494,10 +479,8 @@ Negative consequences:
 - Pricing gains two new MetaTables and public row APIs.
 - Existing examples and tests that create curves must also create building
   details and curve bindings.
-- Backfill requires careful validation when multiple market-data sets are
-  active.
-- Resolver APIs need a compatibility and deprecation period for callers that
-  currently depend on `index_uid + curve_type` selection.
+- Existing persisted curve rows require explicit setup of build details and
+  curve bindings before they can be priced.
 
 ## Implementation Tasks
 
@@ -506,9 +489,10 @@ Negative consequences:
 - [x] Add public row APIs for curve building details and market-data-set curve
       bindings.
 - [x] Add migration revisions for the additive tables.
-- [ ] Add a backfill path from existing `Curve.index_uid` rows.
-- [x] Update `Curve` create/upsert APIs so `index_uid` is no longer required for
-      new curve identity.
+- [x] Remove the curve-owned index relationship from the curve model and pending
+      migration.
+- [x] Update `Curve` create/upsert APIs so curve identity has no index selector
+      field.
 - [x] Update pricing resolvers to use market-data-set curve bindings.
 - [ ] Update fixed-rate bond, zero-coupon bond, floating-rate bond, and swap
       examples to create explicit curve bindings.
@@ -518,7 +502,8 @@ Negative consequences:
 - [x] Add tests for strict missing binding and explicit curve override
       behavior.
 - [ ] Add tests for selected storage with missing observations.
-- [ ] Deprecate and later remove or relax `CurveTable.index_uid`.
+- [x] Remove public docs and packaged-skill guidance for curve-owned index
+      selection.
 
 ## Success Criteria
 
@@ -528,8 +513,7 @@ This ADR is complete only when:
 - each persisted curve used for pricing has one `CurveBuildingDetailsTable` row;
 - market-data-set curve bindings select curve identity for discount,
   projection, forwarding, and z-spread-base roles;
-- pricing resolution no longer uses `CurveTable.index_uid` as the primary
-  selector;
+- pricing resolution never reads an index selector from the curve row;
 - index resolution still uses `IndexConventionDetailsTable` for QuantLib index
   construction and fixings;
 - missing source bindings, curve bindings, build details, and observations fail

@@ -25,6 +25,9 @@ def test_pricing_engine_owns_runtime_helpers() -> None:
 
     assert "resolve_quantlib_index" in pricing_engine.__all__
     assert "resolve_pricing_curve" in pricing_engine.__all__
+    assert "resolve_curve_for_index_binding" in pricing_engine.__all__
+    assert "CurveSelectionContext" in pricing_engine.__all__
+    assert "normalize_curve_quote_side" in pricing_engine.__all__
     assert "resolve_curve_building_details" in pricing_engine.__all__
     assert "build_curve_from_curve_row" in pricing_engine.__all__
     assert "get_index" not in pricing_engine.__all__

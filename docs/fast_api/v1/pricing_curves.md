@@ -221,3 +221,13 @@ When `valuation_date` is omitted:
 
 The endpoint returns `404` when the curve, market-data set, discount-curve
 binding, or requested observation does not exist.
+
+When the curve registry row and `discount_curves` binding exist but the bound
+DataNode has no rows for that curve, the response reports the missing data
+state explicitly:
+
+```json
+{
+  "detail": "No discount-curve data has been published for curve 'VALMER_TIIE_28' in pricing market-data set 'default'. The curve registry row and discount_curves binding exist, but bound DataNode <data-node-uid> has no latest ms_markets__discountcurvests observation for this curve_identifier."
+}
+```

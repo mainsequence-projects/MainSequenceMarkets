@@ -109,6 +109,9 @@ nav:
           - Command Center Adapter Discovery: ADR/fast_api/v1/0002-command-center-adapter-discovery.md
           - Fixed Income Pricer API: ADR/fast_api/v1/0003-fixed-income-pricer-api.md
           - Reusable Delete Impact Contract: ADR/fast_api/v1/0004-delete-impact-contract.md
+  - Planning:
+      - Implementation Tasks:
+          - Benchmark Curve Resolution: planning/implementation_tasks/benchmark_curve_resolution_plan.md
   - Changelog: changelog.md
   - Reference:
       - API Reference: reference/index.md

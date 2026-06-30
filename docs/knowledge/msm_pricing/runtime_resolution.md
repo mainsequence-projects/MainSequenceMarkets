@@ -101,13 +101,52 @@ Curve selection must be strict:
 - first resolve `PricingMarketDataSetBinding` for the storage source, such as
   `discount_curves -> DiscountCurvesStorage`;
 - then resolve `PricingMarketDataSetCurveBinding` for the valuation role and
-  selector, such as `projection:index:<index_uid>:mid -> CurveTable.uid`;
+  selector, such as `projection:index:<IndexTable.uid>:mid -> CurveTable.uid`;
 - then load `CurveBuildingDetails` for the selected curve;
 - if any row is missing, fail with a specific missing-binding or missing-build
   detail error.
 
-This lets `bond.price()` work without silently picking ambiguous market data or
-using `Curve.index_uid` as an implicit policy shortcut.
+This lets curve-dependent operations work without silently picking ambiguous
+market data or using an implicit curve-index relationship as a policy shortcut.
+Index-based user workflows should create those rows with
+`PricingMarketDataSetCurveBinding.upsert_index_curve_selection(...)`; the raw
+`selector_type` and `selector_key` fields are the persisted generic selector
+format.
+Fixed-rate and zero-coupon `price()` still use `with_yield`, an explicitly reset
+curve, or another explicit pricing policy. They do not automatically turn
+`benchmark_rate_index_uid` into a discount curve.
+
+## Benchmark z-spread resolution
+
+`benchmark_rate_index_uid` is a persisted instrument field that points to
+`IndexTable.uid`. It is not a curve UID and it is not enough to identify a curve.
+For z-spread, the runtime resolves the benchmark curve through the market-data
+binding graph:
+
+```text
+----------------------------------------------+
+| instrument.benchmark_rate_index_uid         |
++----------------------+-----------------------+
+                       |
+                       | selector_key
+                       v
+PricingMarketDataSetCurveBinding
+  market_data_set = requested set
+  role_key        = "z_spread_base"
+  selector_type   = "index"
+  selector_key    = str(benchmark_rate_index_uid)
+  quote_side      = requested side or default
+  -> curve_uid
+  -> CurveTable.unique_identifier
+  -> DiscountCurvesNode.curve_identifier
+  -> CurveBuildingDetails
+  -> ql.YieldTermStructureHandle
+```
+
+Missing `z_spread_base` bindings fail the `z_spread` operation with the
+benchmark index UID, market-data set, role, and quote side in the error. The
+runtime does not swallow that failure and fall back to an unrelated default
+curve.
 
 ## User Workflow
 
@@ -121,7 +160,7 @@ Issuer/Currency/AssetType
   -> IndexConventionDetails row
   -> Curve row
   -> CurveBuildingDetails row
-  -> PricingMarketDataSetCurveBinding row
+  -> upsert_index_curve_selection(...) row
   -> DiscountCurvesNode observations
   -> FixingRatesNode observations
   -> FloatingRateBond(floating_rate_index_uid=<IndexTable.uid>)

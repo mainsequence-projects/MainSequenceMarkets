@@ -159,7 +159,7 @@ concepts such as `discount_curves` and `interest_rate_index_fixings`.
 
 Use `PricingMarketDataSetCurveBinding` for curve-identity selection inside the
 chosen source. It maps a valuation role and selector, such as
-`projection:index:<index_uid>:mid`, to `CurveTable.uid`.
+`projection:index:<IndexTable.uid>:mid`, to `CurveTable.uid`.
 
 Callers select sources at valuation time:
 

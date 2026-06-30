@@ -30,6 +30,9 @@ from .instruments import (
     load_instruments_from_assets,
 )
 from .market_data_bindings import (
+    IndexCurveSelection,
+    IndexCurveSelectionCreate,
+    IndexCurveSelectionUpsert,
     PricingMarketDataSet,
     PricingMarketDataSetBinding,
     PricingMarketDataSetBindingCreate,
@@ -80,6 +83,9 @@ __all__ = [
     "IndexConventionDetailsCreate",
     "IndexConventionDetailsUpdate",
     "IndexConventionDetailsUpsert",
+    "IndexCurveSelection",
+    "IndexCurveSelectionCreate",
+    "IndexCurveSelectionUpsert",
     "PricingMarketDataSet",
     "PricingMarketDataSetBinding",
     "PricingMarketDataSetBindingCreate",

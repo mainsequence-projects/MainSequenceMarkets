@@ -142,9 +142,12 @@ before publishing curve observations:
 2. Persist the canonical index through `msm.api.indices.Index`.
 3. Upsert `msm_pricing.api.IndexConventionDetails` with the index UID and the
    serializable convention payload needed to rebuild the pricing index.
-4. Upsert `msm_pricing.api.Curve` with a stable curve `unique_identifier`, the
-   index UID, and curve construction metadata.
-5. Publish curve observations through `DiscountCurvesNode` with
+4. Upsert `msm_pricing.api.Curve` with a stable curve `unique_identifier`.
+5. Upsert `msm_pricing.api.CurveBuildingDetails` for that curve.
+6. Upsert `msm_pricing.api.PricingMarketDataSetCurveBinding` through
+   `upsert_index_curve_selection(...)` to bind the selected market-data set,
+   valuation role, index UID, and quote side to the curve UID.
+7. Publish curve observations through `DiscountCurvesNode` with
    `curve_identifier` set to the same curve `unique_identifier`.
 
 See `examples/msm_pricing/pricing_registry_rows.py` for the row API workflow.
@@ -153,6 +156,43 @@ Serialized pricing instruments should reference these rows by UUID, not by
 mutable names. Use `floating_rate_index_uid` on floating-rate bonds and
 `float_leg_index_uid` on swaps. The runtime resolver turns those UUIDs into the
 correct convention row, curve row, QuantLib index, curve, and fixing series.
+
+Fixed-rate and zero-coupon bonds can also store `benchmark_rate_index_uid` for
+benchmark analytics. That field is only the index selector; the benchmark curve
+for z-spread must be bound explicitly:
+
+```python
+from msm_pricing import FixedRateBond
+from msm_pricing.api import PricingMarketDataSetCurveBinding
+
+PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
+    market_data_set_uid=market_data_set.uid,
+    role_key="z_spread_base",
+    index_uid=benchmark_index.uid,
+    quote_side="mid",
+    curve_uid=benchmark_curve.uid,
+)
+
+bond = FixedRateBond(
+    face_value=100.0,
+    issue_date=issue_date,
+    maturity_date=maturity_date,
+    day_count=day_count,
+    coupon_frequency=coupon_frequency,
+    coupon_rate=0.05,
+    benchmark_rate_index_uid=benchmark_index.uid,
+)
+bond.set_valuation_date(valuation_date)
+spread = bond.z_spread(
+    target_dirty_ccy=101.25,
+    market_data_set=market_data_set.set_key,
+    benchmark_curve_quote_side="mid",
+)
+```
+
+If the binding is written with `quote_side="mid"`, the runtime call must also
+request `"mid"`. Omitted quote side means the `default` binding key, not an
+implicit mid quote.
 
 ## Bond pricing workflow
 
@@ -163,7 +203,11 @@ For a full floating-rate bond workflow, use
    asset through `msm.api.assets` and `msm.api.issuers`.
 2. Register the `interest_rate` index type through `msm.api.indices.IndexType`,
    then register the canonical index through `msm.api.indices.Index`.
-3. Upsert `IndexConventionDetails` and `Curve` rows under `msm_pricing.api`.
+3. Upsert `IndexConventionDetails`, `Curve`, `CurveBuildingDetails`, and
+   `PricingMarketDataSetCurveBinding.upsert_index_curve_selection(...)` rows
+   under `msm_pricing.api`. The helper persists the generic selector fields
+   internally, so index-based workflows should pass `index_uid`, not
+   `selector_type` and `selector_key`.
 4. Publish one month of mock fixings through a `FixingRatesNode` subclass and a
    sampled flat-forward curve through a `DiscountCurvesNode` subclass. The
    pricing storage classes declare their EOD cadence as `__cadence__ = "1d"`.

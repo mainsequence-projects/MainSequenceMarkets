@@ -257,9 +257,7 @@ def _net_cashflows(
     market_data_set: str | None,
     parameters: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    if market_data_set is not None:
-        instrument.get_cashflows(market_data_set=market_data_set)
-    net_cashflows = instrument.get_net_cashflows(**parameters)
+    net_cashflows = instrument.get_net_cashflows(**_market_kwargs(market_data_set, parameters))
     return _serialize_series_like(net_cashflows)
 
 
@@ -272,7 +270,7 @@ def _carry_roll_down(
     clean = bool(parameters.get("clean", False))
     price_parameters = {
         key: parameters[key]
-        for key in ("with_yield", "flat_compounding", "flat_frequency")
+        for key in ("with_yield", "flat_compounding", "flat_frequency", "curve_quote_side")
         if key in parameters
     }
     instrument.price(**_market_kwargs(market_data_set, price_parameters))
@@ -288,6 +286,8 @@ def _curve_preview(
     curves, warnings = _instrument_curve_references(
         instrument=instrument,
         market_data_set=market_data_set,
+        curve_quote_side=parameters.get("curve_quote_side"),
+        benchmark_curve_quote_side=parameters.get("benchmark_curve_quote_side"),
     )
     return {
         "curves": curves,
@@ -428,16 +428,20 @@ def _instrument_curve_references(
     *,
     instrument: Any,
     market_data_set: str | None,
+    curve_quote_side: str | None = None,
+    benchmark_curve_quote_side: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     references: list[dict[str, Any]] = []
     warnings: list[str] = []
 
     for role, index_uid in _instrument_curve_reference_candidates(instrument):
+        quote_side = benchmark_curve_quote_side if role == "z_spread_base" else curve_quote_side
         try:
             curve = _select_curve_for_reference(
                 index_uid=index_uid,
-                curve_type=role,
+                role_key=role,
                 market_data_set=market_data_set,
+                quote_side=quote_side,
             )
         except (LookupError, ValueError) as exc:
             warnings.append(f"{role}: {exc}")
@@ -449,6 +453,7 @@ def _instrument_curve_references(
                 index_uid=index_uid,
                 valuation_date=instrument.valuation_date,
                 market_data_set=market_data_set,
+                quote_side=quote_side,
             )
         )
 
@@ -457,14 +462,23 @@ def _instrument_curve_references(
 
 def _instrument_curve_reference_candidates(instrument: Any) -> list[tuple[str, uuid.UUID]]:
     candidates: list[tuple[str, uuid.UUID]] = []
-    seen: set[uuid.UUID] = set()
+    seen: set[tuple[str, uuid.UUID]] = set()
 
     floating_rate_index_uid = getattr(instrument, "floating_rate_index_uid", None)
     if floating_rate_index_uid is not None:
         index_uid = uuid.UUID(str(floating_rate_index_uid))
-        if index_uid not in seen:
+        key = ("projection", index_uid)
+        if key not in seen:
             candidates.append(("projection", index_uid))
-            seen.add(index_uid)
+            seen.add(key)
+
+    benchmark_rate_index_uid = getattr(instrument, "benchmark_rate_index_uid", None)
+    if benchmark_rate_index_uid is not None:
+        index_uid = uuid.UUID(str(benchmark_rate_index_uid))
+        key = ("z_spread_base", index_uid)
+        if key not in seen:
+            candidates.append(key)
+            seen.add(key)
 
     return candidates
 
@@ -472,16 +486,21 @@ def _instrument_curve_reference_candidates(instrument: Any) -> list[tuple[str, u
 def _select_curve_for_reference(
     *,
     index_uid: uuid.UUID,
-    curve_type: str,
+    role_key: str,
     market_data_set: str | None,
+    quote_side: str | None = None,
 ):
     from msm_pricing.pricing_engine import select_curve
 
+    expected_curve_type = role_key if role_key != "z_spread_base" else None
     return select_curve(
         index_uid=index_uid,
-        curve_type=curve_type,
+        curve_type=expected_curve_type or role_key,
+        expected_curve_type=expected_curve_type,
+        validate_curve_type=expected_curve_type is not None,
         market_data_set=market_data_set,
-        role_key=curve_type,
+        role_key=role_key,
+        quote_side=quote_side,
     )
 
 
@@ -492,6 +511,7 @@ def _curve_reference_payload(
     index_uid: uuid.UUID | None,
     valuation_date: dt.datetime | dt.date | None,
     market_data_set: str | None,
+    quote_side: str | None,
 ) -> dict[str, Any]:
     query_params: dict[str, Any] = {
         "market_data_set": str(market_data_set or PRICING_MARKET_DATA_SET_DEFAULT),
@@ -505,6 +525,7 @@ def _curve_reference_payload(
         "curve_identifier": curve.unique_identifier,
         "curve_type": curve.curve_type,
         "index_uid": index_uid,
+        "binding_quote_side": quote_side,
         "source": getattr(curve, "source", None),
         "discount_curve_url": f"/api/v1/pricing/curves/{curve.uid}/discount-curve/",
         "discount_curve_query_params": query_params,
@@ -696,7 +717,9 @@ PRICING_OPERATION_DEFINITIONS = {
         key="price",
         label="Price",
         response_model="BondPriceResponse",
-        parameter_keys=frozenset({"with_yield", "flat_compounding", "flat_frequency"}),
+        parameter_keys=frozenset(
+            {"with_yield", "flat_compounding", "flat_frequency", "curve_quote_side"}
+        ),
         required_parameter_keys=frozenset(),
         executor=_price,
         flat_outputs=("price", "units"),
@@ -705,7 +728,9 @@ PRICING_OPERATION_DEFINITIONS = {
         key="analytics",
         label="Analytics",
         response_model="BondAnalyticsResponse",
-        parameter_keys=frozenset({"with_yield", "flat_compounding", "flat_frequency"}),
+        parameter_keys=frozenset(
+            {"with_yield", "flat_compounding", "flat_frequency", "curve_quote_side"}
+        ),
         required_parameter_keys=frozenset(),
         executor=_analytics,
         flat_outputs=(
@@ -719,7 +744,13 @@ PRICING_OPERATION_DEFINITIONS = {
         label="Duration",
         response_model="BondDurationResponse",
         parameter_keys=frozenset(
-            {"with_yield", "duration_type", "flat_compounding", "flat_frequency"}
+            {
+                "with_yield",
+                "duration_type",
+                "flat_compounding",
+                "flat_frequency",
+                "curve_quote_side",
+            }
         ),
         required_parameter_keys=frozenset(),
         executor=_duration,
@@ -738,7 +769,20 @@ PRICING_OPERATION_DEFINITIONS = {
         key="z-spread",
         label="Z-Spread",
         response_model="BondZSpreadResponse",
-        parameter_keys=frozenset({"target_dirty_ccy", "use_quantlib", "tol", "max_iter"}),
+        parameter_keys=frozenset(
+            {
+                "target_dirty_ccy",
+                "use_quantlib",
+                "tol",
+                "max_iter",
+                "curve_quote_side",
+                "benchmark_curve_role_key",
+                "benchmark_curve_quote_side",
+                "benchmark_curve_uid",
+                "benchmark_curve_unique_identifier",
+                "benchmark_expected_curve_type",
+            }
+        ),
         required_parameter_keys=frozenset({"target_dirty_ccy"}),
         executor=_z_spread,
         flat_outputs=("z_spread", "target_dirty_ccy", "units"),
@@ -747,7 +791,7 @@ PRICING_OPERATION_DEFINITIONS = {
         key="cashflows",
         label="Cashflows",
         response_model="BondCashflowsResponse",
-        parameter_keys=frozenset(),
+        parameter_keys=frozenset({"curve_quote_side"}),
         required_parameter_keys=frozenset(),
         executor=_cashflows,
         flat_outputs=("legs",),
@@ -772,7 +816,7 @@ PRICING_OPERATION_DEFINITIONS = {
         key="net-cashflows",
         label="Net Cashflows",
         response_model="BondNetCashflowsResponse",
-        parameter_keys=frozenset(),
+        parameter_keys=frozenset({"curve_quote_side"}),
         required_parameter_keys=frozenset(),
         executor=_net_cashflows,
         flat_outputs=("cashflows",),
@@ -797,7 +841,14 @@ PRICING_OPERATION_DEFINITIONS = {
         label="Carry/Roll-Down",
         response_model="BondCarryRollDownResponse",
         parameter_keys=frozenset(
-            {"horizon_days", "clean", "with_yield", "flat_compounding", "flat_frequency"}
+            {
+                "horizon_days",
+                "clean",
+                "with_yield",
+                "flat_compounding",
+                "flat_frequency",
+                "curve_quote_side",
+            }
         ),
         required_parameter_keys=frozenset({"horizon_days"}),
         executor=_carry_roll_down,
@@ -807,7 +858,15 @@ PRICING_OPERATION_DEFINITIONS = {
         key="curve-preview",
         label="Curve Preview",
         response_model="BondCurvePreviewResponse",
-        parameter_keys=frozenset({"with_yield", "flat_compounding", "flat_frequency"}),
+        parameter_keys=frozenset(
+            {
+                "with_yield",
+                "flat_compounding",
+                "flat_frequency",
+                "curve_quote_side",
+                "benchmark_curve_quote_side",
+            }
+        ),
         required_parameter_keys=frozenset(),
         executor=_curve_preview,
         flat_outputs=("curves", "diagnostics.pricing_engine_id"),

@@ -489,6 +489,82 @@ def test_curve_discount_curve_nodes_use_latest_when_valuation_date_missing(monke
     assert response["nodes"] == [{"days_to_maturity": 91, "zero": 0.105}]
 
 
+def test_curve_discount_curve_nodes_explain_missing_latest_observation(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    market_data_set_uid = uuid.uuid4()
+    binding_uid = uuid.uuid4()
+    data_node_uid = uuid.uuid4()
+
+    monkeypatch.setattr(
+        Curve,
+        "get_by_uid",
+        classmethod(
+            lambda cls, uid: Curve(
+                uid=curve_uid,
+                unique_identifier="VALMER_TIIE_28",
+                display_name="Valmer TIIE 28 zero curve",
+                curve_type="discount",
+            )
+        ),
+    )
+
+    from msm_pricing.api.market_data_bindings import (
+        PricingMarketDataSet,
+        PricingMarketDataSetBinding,
+    )
+
+    monkeypatch.setattr(
+        PricingMarketDataSet,
+        "resolve_uid",
+        classmethod(lambda cls, market_data_set: market_data_set_uid),
+    )
+    monkeypatch.setattr(
+        PricingMarketDataSet,
+        "get_by_uid",
+        classmethod(
+            lambda cls, uid: PricingMarketDataSet(
+                uid=market_data_set_uid,
+                set_key="default",
+                display_name="Default",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        PricingMarketDataSetBinding,
+        "get_by_set_and_concept",
+        classmethod(
+            lambda cls, market_data_set_uid, concept_key: PricingMarketDataSetBinding(
+                uid=binding_uid,
+                market_data_set_uid=market_data_set_uid,
+                concept_key=concept_key,
+                data_node_uid=data_node_uid,
+                storage_table_identifier="ms_markets__discountcurvests",
+            )
+        ),
+    )
+
+    class FakeMSDataInterface:
+        def __init__(self, market_data_configuration):
+            pass
+
+        def get_latest_discount_curve(self, curve_identifier):
+            raise LookupError(
+                f"No latest discount curve observation found for {curve_identifier!r}."
+            )
+
+    monkeypatch.setattr("msm_pricing.data_interface.MSDataInterface", FakeMSDataInterface)
+
+    with pytest.raises(LookupError) as exc_info:
+        Curve.get_discount_curve_nodes(uid=curve_uid, market_data_set="default")
+
+    message = str(exc_info.value)
+    assert "No discount-curve data has been published" in message
+    assert "VALMER_TIIE_28" in message
+    assert "pricing market-data set 'default'" in message
+    assert f"bound DataNode {data_node_uid}" in message
+    assert "has no latest ms_markets__discountcurvests observation" in message
+
+
 def test_curve_discount_curve_nodes_return_none_when_curve_missing(monkeypatch) -> None:
     monkeypatch.setattr(Curve, "get_by_uid", classmethod(lambda cls, uid: None))
 

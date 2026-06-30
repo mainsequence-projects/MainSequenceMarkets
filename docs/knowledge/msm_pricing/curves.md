@@ -87,8 +87,8 @@ Curves are pricing concepts. They are not assets and do not reference
 
 `CurveTable` is a pricing-owned MetaTable with its own `uid` and
 `unique_identifier`. It is the curve registry. It does not need to belong to an
-index. The legacy nullable `index_uid` field may still exist on old rows, but
-new runtime selection uses explicit market-data-set curve bindings.
+index and it has no index ownership field. Runtime selection uses explicit
+market-data-set curve bindings.
 
 ```text
 +-----------------------------+        build spec keyed by        +-----------------------------+
@@ -118,9 +118,9 @@ Curve identity rules:
   resolves to `curve_uid`.
 - `IndexConventionDetailsTable` is only for rebuilding QuantLib indexes and
   fixings. It is not the source of truth for curve construction.
-- Do not make `(index_uid, curve_type)` unique. `index_uid` is legacy metadata,
-  and market-data sets may choose different bid/mid/offer, source, scenario,
-  discount, projection, spread, basis, or future volatility curves.
+- Do not encode curve selection as an index relationship. Market-data sets may
+  choose different bid/mid/offer, source, scenario, discount, projection,
+  spread, basis, or future volatility curves.
 
 ```python
 from msm_pricing.api import Curve, CurveBuildingDetails, PricingMarketDataSetCurveBinding
@@ -144,15 +144,53 @@ CurveBuildingDetails.upsert(
     compounding="simple",
     extrapolation_policy="enabled",
 )
-PricingMarketDataSetCurveBinding.upsert(
+PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
     market_data_set_uid=market_data_set.uid,
     role_key="projection",
-    selector_type="index",
-    selector_key=str(index.uid),
+    index_uid=index.uid,
     quote_side="mid",
     curve_uid=curve.uid,
 )
 ```
+
+For benchmark z-spread analytics, bind the benchmark index UID with the
+`z_spread_base` role. The curve row may still have `curve_type="discount"` or
+another physical curve type; the role describes why the curve is selected.
+
+```python
+benchmark_curve = Curve.upsert(
+    unique_identifier="USD-SOFR-ZSPREAD-BASE",
+    display_name="USD SOFR Z-Spread Base Curve",
+    curve_type="discount",
+    currency_code="USD",
+    source="example",
+)
+CurveBuildingDetails.upsert(
+    curve_uid=benchmark_curve.uid,
+    builder_type="zero_rate_curve",
+    quote_convention="zero_rate",
+    rate_unit="decimal",
+    day_counter_code="Actual360",
+    calendar_code="TARGET",
+    interpolation_method="log_linear_discount",
+    compounding="simple",
+    extrapolation_policy="enabled",
+)
+PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
+    market_data_set_uid=market_data_set.uid,
+    role_key="z_spread_base",
+    index_uid=benchmark_index.uid,
+    quote_side=None,
+    curve_uid=benchmark_curve.uid,
+)
+```
+
+The instrument then stores only `benchmark_rate_index_uid=benchmark_index.uid`.
+At runtime, `z_spread(...)` resolves the curve through the index curve
+selection above. The helper writes `selector_type="index"` and
+`selector_key=str(benchmark_index.uid)` into the generic binding table
+internally; callers should not pass those selector fields in normal
+index-based workflows.
 
 ## Curve Observations
 

@@ -7,6 +7,8 @@ import pytest
 from pydantic import ValidationError
 
 from msm_pricing.api.market_data_bindings import (
+    IndexCurveSelection,
+    IndexCurveSelectionUpsert,
     PricingMarketDataSet,
     PricingMarketDataSetBinding,
     PricingMarketDataSetBindingUpsert,
@@ -108,6 +110,17 @@ def test_pricing_market_data_curve_binding_payload_rejects_identifier_only_contr
             selector_key="USD",
             curve_uid=uuid.uuid4(),
             curve_unique_identifier="USD-OIS-DISCOUNT",
+        )
+
+
+def test_index_curve_selection_payload_rejects_selector_plumbing() -> None:
+    with pytest.raises(ValidationError, match="Extra inputs"):
+        IndexCurveSelectionUpsert(
+            market_data_set_uid=uuid.uuid4(),
+            role_key="projection",
+            index_uid=uuid.uuid4(),
+            selector_type="index",
+            curve_uid=uuid.uuid4(),
         )
 
 
@@ -356,6 +369,87 @@ def test_pricing_market_data_curve_binding_upsert_derives_binding_key(
                 "role_key": "discount",
                 "selector_type": "currency",
                 "selector_key": "USD",
+                "quote_side": "mid",
+                "curve_uid": curve_uid,
+                "source": "unit-test",
+                "priority": 0,
+                "status": "ACTIVE",
+                "metadata_json": {"seeded": True},
+            },
+            ("market_data_set_uid", "binding_key"),
+        ),
+    ]
+
+
+def test_index_curve_selection_upsert_hides_selector_plumbing(monkeypatch) -> None:
+    binding_uid = uuid.uuid4()
+    market_data_set_uid = uuid.uuid4()
+    index_uid = uuid.uuid4()
+    curve_uid = uuid.uuid4()
+    context = object()
+    runtime = SimpleNamespace(context=context)
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.PricingMarketDataSet.resolve_uid",
+        staticmethod(lambda market_data_set=None: market_data_set_uid),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.resolve_pricing_runtime",
+        lambda **kwargs: calls.append(("runtime", kwargs)) or runtime,
+    )
+
+    def fake_upsert_model(active_context, *, model, values, conflict_columns):
+        calls.append(("upsert", active_context, model, values, conflict_columns))
+        return {"row": {"uid": binding_uid, **values}}
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.upsert_model",
+        fake_upsert_model,
+    )
+
+    selection = PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
+        market_data_set="eod",
+        role_key=" Projection ",
+        index_uid=index_uid,
+        quote_side=" MID ",
+        curve_uid=curve_uid,
+        source="unit-test",
+        metadata_json={"seeded": True},
+    )
+
+    assert selection == IndexCurveSelection(
+        uid=binding_uid,
+        market_data_set_uid=market_data_set_uid,
+        role_key="projection",
+        index_uid=index_uid,
+        quote_side="mid",
+        curve_uid=curve_uid,
+        source="unit-test",
+        metadata_json={"seeded": True},
+    )
+    assert calls == [
+        (
+            "runtime",
+            {
+                "models": [
+                    PricingMarketDataSetTable,
+                    CurveTable,
+                    PricingMarketDataSetCurveBindingTable,
+                ],
+                "row_model_name": "PricingMarketDataSetCurveBinding",
+            },
+        ),
+        (
+            "upsert",
+            context,
+            PricingMarketDataSetCurveBindingTable,
+            {
+                "market_data_set_uid": market_data_set_uid,
+                "binding_key": f"projection:index:{index_uid}:mid",
+                "role_key": "projection",
+                "selector_type": "index",
+                "selector_key": str(index_uid),
                 "quote_side": "mid",
                 "curve_uid": curve_uid,
                 "source": "unit-test",
@@ -726,6 +820,69 @@ def test_pricing_market_data_curve_binding_resolves_curve_uid(monkeypatch) -> No
             {
                 "market_data_set_uid": market_data_set_uid,
                 "binding_key": "projection:index:00000000-0000-0000-0000-000000000001:mid",
+                "status": "ACTIVE",
+            },
+            2,
+        )
+    ]
+
+
+def test_pricing_market_data_index_curve_selection_resolves_curve_uid(monkeypatch) -> None:
+    market_data_set_uid = uuid.uuid4()
+    binding_uid = uuid.uuid4()
+    index_uid = uuid.uuid4()
+    curve_uid = uuid.uuid4()
+    context = object()
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.PricingMarketDataSet.resolve_uid",
+        staticmethod(lambda market_data_set=None: market_data_set_uid),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.resolve_pricing_runtime",
+        lambda **_kwargs: SimpleNamespace(context=context),
+    )
+
+    def fake_search_model(active_context, *, model, filters, limit):
+        calls.append((active_context, model, filters, limit))
+        return {
+            "rows": [
+                {
+                    "uid": binding_uid,
+                    "market_data_set_uid": market_data_set_uid,
+                    "binding_key": f"z_spread_base:index:{index_uid}:offer",
+                    "role_key": "z_spread_base",
+                    "selector_type": "index",
+                    "selector_key": str(index_uid),
+                    "quote_side": "offer",
+                    "curve_uid": curve_uid,
+                    "status": "ACTIVE",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.search_model",
+        fake_search_model,
+    )
+
+    assert (
+        PricingMarketDataSetCurveBinding.resolve_index_curve_uid(
+            market_data_set="eod",
+            role_key="z_spread_base",
+            index_uid=index_uid,
+            quote_side="offer",
+        )
+        == curve_uid
+    )
+    assert calls == [
+        (
+            context,
+            PricingMarketDataSetCurveBindingTable,
+            {
+                "market_data_set_uid": market_data_set_uid,
+                "binding_key": f"z_spread_base:index:{index_uid}:offer",
                 "status": "ACTIVE",
             },
             2,

@@ -53,8 +53,8 @@ class FixedRateBond:
             "redemption": [{"payment_date": dt.date(2030, 6, 9), "amount": 100.0}],
         }
 
-    def get_net_cashflows(self):
-        self.calls.append(("get_net_cashflows", {}))
+    def get_net_cashflows(self, **kwargs):
+        self.calls.append(("get_net_cashflows", kwargs))
         return {dt.date(2026, 12, 9): 2.5}
 
     def carry_roll_down(self, horizon_days, *, clean=False):
@@ -73,6 +73,10 @@ class FloatingRateBond(FixedRateBond):
     def __init__(self, *, floating_rate_index_uid):
         super().__init__()
         self.floating_rate_index_uid = floating_rate_index_uid
+
+
+def _operation_parameter_keys(operation: dict[str, object]) -> set[str]:
+    return {str(parameter["key"]) for parameter in operation["parameters"]}
 
 
 def _patch_loaders(monkeypatch, instrument):
@@ -120,6 +124,19 @@ def test_asset_pricing_support_lists_registered_bond_operations() -> None:
         "output_root": "response:$",
         "flat_outputs": ["price", "units"],
     }
+    assert "curve_quote_side" in _operation_parameter_keys(price_operation)
+
+    z_spread_operation = next(
+        operation for operation in support["operations"] if operation["key"] == "z-spread"
+    )
+    assert {
+        "curve_quote_side",
+        "benchmark_curve_role_key",
+        "benchmark_curve_quote_side",
+        "benchmark_curve_uid",
+        "benchmark_curve_unique_identifier",
+        "benchmark_expected_curve_type",
+    }.issubset(_operation_parameter_keys(z_spread_operation))
 
     cashflows_operation = next(
         operation for operation in support["operations"] if operation["key"] == "cashflows"
@@ -130,6 +147,14 @@ def test_asset_pricing_support_lists_registered_bond_operations() -> None:
     assert cashflows_operation["frame_response_model"] == "TabularFrameResponse"
     assert cashflows_operation["frame_response_contract"] == "core.tabular_frame@v1"
     assert cashflows_operation["response_mappings"][0]["contract"] == "core.tabular_frame@v1"
+
+    curve_preview_operation = next(
+        operation for operation in support["operations"] if operation["key"] == "curve-preview"
+    )
+    assert {
+        "curve_quote_side",
+        "benchmark_curve_quote_side",
+    }.issubset(_operation_parameter_keys(curve_preview_operation))
 
 
 def test_asset_pricing_support_rejects_unsupported_instrument() -> None:
@@ -163,6 +188,45 @@ def test_execute_price_delegates_to_instrument_price(monkeypatch) -> None:
     assert instrument.calls == [
         ("set_valuation_date", valuation_date),
         ("price", {"market_data_set": "eod", "with_yield": 0.05}),
+    ]
+
+
+def test_execute_z_spread_forwards_benchmark_curve_selection(monkeypatch) -> None:
+    instrument = FixedRateBond()
+    asset_uid = _patch_loaders(monkeypatch, instrument)
+    valuation_date = dt.datetime(2026, 6, 9, tzinfo=dt.UTC)
+    benchmark_curve_uid = uuid.uuid4()
+
+    response = execute_asset_pricing_operation(
+        asset_uid=asset_uid,
+        operation="z-spread",
+        valuation_date=valuation_date,
+        market_data_set="eod",
+        parameters={
+            "target_dirty_ccy": 100.0,
+            "curve_quote_side": "offer",
+            "benchmark_curve_role_key": "z_spread_base",
+            "benchmark_curve_quote_side": "mid",
+            "benchmark_curve_uid": benchmark_curve_uid,
+            "benchmark_expected_curve_type": "discount",
+        },
+    )
+
+    assert response["z_spread"] == 0.0042
+    assert instrument.calls == [
+        ("set_valuation_date", valuation_date),
+        (
+            "z_spread",
+            {
+                "target_dirty_ccy": 100.0,
+                "market_data_set": "eod",
+                "curve_quote_side": "offer",
+                "benchmark_curve_role_key": "z_spread_base",
+                "benchmark_curve_quote_side": "mid",
+                "benchmark_curve_uid": benchmark_curve_uid,
+                "benchmark_expected_curve_type": "discount",
+            },
+        ),
     ]
 
 
@@ -204,11 +268,14 @@ def test_execute_cashflows_serializes_dates(monkeypatch) -> None:
         operation="cashflows",
         valuation_date=dt.datetime(2026, 6, 9, tzinfo=dt.UTC),
         market_data_set="eod",
-        parameters={},
+        parameters={"curve_quote_side": "mid"},
     )
 
     assert response["legs"]["fixed"][0]["payment_date"] == "2026-12-09"
-    assert instrument.calls[-1] == ("get_cashflows", {"market_data_set": "eod"})
+    assert instrument.calls[-1] == (
+        "get_cashflows",
+        {"market_data_set": "eod", "curve_quote_side": "mid"},
+    )
 
 
 def test_execute_carry_roll_down_prices_then_calls_carry(monkeypatch) -> None:
@@ -220,12 +287,12 @@ def test_execute_carry_roll_down_prices_then_calls_carry(monkeypatch) -> None:
         operation="carry-roll-down",
         valuation_date=dt.datetime(2026, 6, 9, tzinfo=dt.UTC),
         market_data_set="eod",
-        parameters={"horizon_days": 30, "clean": True},
+        parameters={"horizon_days": 30, "clean": True, "curve_quote_side": "mid"},
     )
 
     assert response["metrics"] == {"cr_dirty": 0.35, "roll_down_dirty": 0.2}
     assert instrument.calls[-2:] == [
-        ("price", {"market_data_set": "eod"}),
+        ("price", {"market_data_set": "eod", "curve_quote_side": "mid"}),
         ("carry_roll_down", {"horizon_days": 30, "clean": True}),
     ]
 
@@ -263,8 +330,9 @@ def test_execute_curve_preview_links_selected_discount_curve(monkeypatch) -> Non
 
     assert captured == {
         "index_uid": index_uid,
-        "curve_type": "projection",
+        "role_key": "projection",
         "market_data_set": "eod",
+        "quote_side": None,
     }
     assert response["curves"] == [
         {
@@ -274,6 +342,7 @@ def test_execute_curve_preview_links_selected_discount_curve(monkeypatch) -> Non
             "curve_type": "projection",
             "index_uid": str(index_uid),
             "source": "example",
+            "binding_quote_side": None,
             "discount_curve_url": f"/api/v1/pricing/curves/{curve_uid}/discount-curve/",
             "discount_curve_query_params": {
                 "market_data_set": "eod",
@@ -282,6 +351,48 @@ def test_execute_curve_preview_links_selected_discount_curve(monkeypatch) -> Non
         }
     ]
     assert response["diagnostics"] == {"pricing_engine_id": "engine-id"}
+
+
+def test_execute_curve_preview_uses_benchmark_selection_quote_side(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    curve_uid = uuid.uuid4()
+    curve = SimpleNamespace(
+        uid=curve_uid,
+        unique_identifier="USD-SOFR-ZSPREAD",
+        curve_type="discount",
+        source="example",
+    )
+    instrument = FixedRateBond()
+    instrument.benchmark_rate_index_uid = index_uid
+    asset_uid = _patch_loaders(monkeypatch, instrument)
+    valuation_date = dt.datetime(2026, 6, 9, tzinfo=dt.UTC)
+    captured: dict[str, object] = {}
+
+    def fake_select_curve_for_reference(**kwargs):
+        captured.update(kwargs)
+        return curve
+
+    monkeypatch.setattr(
+        "msm_pricing.api.asset_pricing_operations._select_curve_for_reference",
+        fake_select_curve_for_reference,
+    )
+
+    response = execute_asset_pricing_operation(
+        asset_uid=asset_uid,
+        operation="curve-preview",
+        valuation_date=valuation_date,
+        market_data_set="eod",
+        parameters={"benchmark_curve_quote_side": "mid"},
+    )
+
+    assert captured == {
+        "index_uid": index_uid,
+        "role_key": "z_spread_base",
+        "market_data_set": "eod",
+        "quote_side": "mid",
+    }
+    assert response["curves"][0]["role"] == "z_spread_base"
+    assert response["curves"][0]["binding_quote_side"] == "mid"
 
 
 def test_execute_fixings_availability_returns_not_required_for_fixed_rate(

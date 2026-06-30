@@ -57,7 +57,7 @@ def test_select_curve_uses_market_data_set_curve_binding(monkeypatch) -> None:
 
     monkeypatch.setattr(
         PricingMarketDataSetCurveBinding,
-        "resolve_curve_uid",
+        "resolve_index_curve_uid",
         staticmethod(
             lambda **kwargs: calls.append(("binding", kwargs)) or curve_uid
         ),
@@ -82,8 +82,7 @@ def test_select_curve_uses_market_data_set_curve_binding(monkeypatch) -> None:
             {
                 "market_data_set": "eod",
                 "role_key": "projection",
-                "selector_type": "index",
-                "selector_key": str(index_uid),
+                "index_uid": str(index_uid),
                 "quote_side": "mid",
             },
         ),
@@ -109,7 +108,7 @@ def test_select_curve_explicit_override_does_not_require_index_relationship(
     )
     monkeypatch.setattr(
         PricingMarketDataSetCurveBinding,
-        "resolve_curve_uid",
+        "resolve_index_curve_uid",
         staticmethod(lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no binding"))),
     )
 
@@ -119,6 +118,164 @@ def test_select_curve_explicit_override_does_not_require_index_relationship(
     )
 
     assert selected is curve
+
+
+def test_curve_selection_context_normalizes_index_role_and_quote_side() -> None:
+    index_uid = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
+    selection = resolvers.CurveSelectionContext.for_z_spread_base_index(
+        index_uid=index_uid,
+        market_data_set="eod",
+        quote_side=" MID ",
+    )
+
+    assert selection.role_key == "z_spread_base"
+    assert selection.selector_type == "index"
+    assert selection.selector_key == str(index_uid)
+    assert selection.quote_side == "mid"
+    assert "role:z_spread_base" in selection.cache_key()
+    assert f"selector:index:{index_uid}" in selection.cache_key()
+    assert "side:mid" in selection.cache_key()
+
+
+def test_select_curve_decouples_binding_role_from_expected_curve_type(monkeypatch) -> None:
+    index_uid = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    curve_uid = uuid.uuid4()
+    curve = Curve(
+        uid=curve_uid,
+        unique_identifier="USD-SOFR-ZSPREAD",
+        display_name="USD SOFR Z-Spread Base",
+        curve_type="discount",
+    )
+    calls = []
+
+    monkeypatch.setattr(
+        PricingMarketDataSetCurveBinding,
+        "resolve_index_curve_uid",
+        staticmethod(
+            lambda **kwargs: calls.append(("binding", kwargs)) or curve_uid
+        ),
+    )
+    monkeypatch.setattr(
+        Curve,
+        "get_by_uid",
+        staticmethod(lambda uid: calls.append(("curve", uid)) or curve),
+    )
+
+    selected = resolvers.select_curve(
+        index_uid=index_uid,
+        curve_type="z_spread_base",
+        expected_curve_type="discount",
+        market_data_set="eod",
+        role_key="z_spread_base",
+        selector_type="index",
+        selector_key=str(index_uid),
+    )
+
+    assert selected is curve
+    assert calls == [
+        (
+            "binding",
+            {
+                "market_data_set": "eod",
+                "role_key": "z_spread_base",
+                "index_uid": str(index_uid),
+                "quote_side": None,
+            },
+        ),
+        ("curve", curve_uid),
+    ]
+
+
+def test_resolve_curve_for_index_binding_uses_index_selector_without_curve_index_fk(
+    monkeypatch,
+) -> None:
+    index_uid = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    curve_uid = uuid.uuid4()
+    curve = Curve(
+        uid=curve_uid,
+        unique_identifier="USD-SOFR-ZSPREAD",
+        display_name="USD SOFR Z-Spread Base",
+        curve_type="discount",
+    )
+    calls = []
+
+    monkeypatch.setattr(
+        PricingMarketDataSetCurveBinding,
+        "resolve_index_curve_uid",
+        staticmethod(
+            lambda **kwargs: calls.append(("binding", kwargs)) or curve_uid
+        ),
+    )
+    monkeypatch.setattr(
+        Curve,
+        "get_by_uid",
+        staticmethod(lambda uid: calls.append(("curve", uid)) or curve),
+    )
+    monkeypatch.setattr(
+        CurveBuildingDetails,
+        "get_by_curve_uid",
+        staticmethod(
+            lambda uid: calls.append(("build_details", uid)) or _building_details(uid)
+        ),
+    )
+    monkeypatch.setattr(
+        resolvers.data_interface,
+        "get_historical_discount_curve",
+        lambda curve_unique_identifier, target_date, *, market_data_set=None: (
+            calls.append(("curve_data", curve_unique_identifier, target_date, market_data_set))
+            or ([{"days_to_maturity": 1, "zero": 0.05}], target_date)
+        ),
+    )
+
+    valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    handle = resolvers.resolve_curve_for_index_binding(
+        index_uid=index_uid,
+        valuation_date=valuation_date,
+        market_data_set="eod",
+        role_key="z_spread_base",
+        quote_side=" MID ",
+        expected_curve_type="discount",
+    )
+
+    assert isinstance(handle, ql.YieldTermStructureHandle)
+    assert calls == [
+        (
+            "binding",
+            {
+                "market_data_set": "eod",
+                "role_key": "z_spread_base",
+                "index_uid": str(index_uid),
+                "quote_side": "mid",
+            },
+        ),
+        ("curve", curve_uid),
+        ("curve_data", "USD-SOFR-ZSPREAD", valuation_date, "eod"),
+        ("build_details", curve_uid),
+    ]
+
+
+def test_curve_binding_quote_side_has_no_implicit_mid_fallback(monkeypatch) -> None:
+    index_uid = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    curve_uid = uuid.uuid4()
+
+    def fake_resolve_curve_uid(**kwargs):
+        if kwargs["quote_side"] != "mid":
+            raise LookupError("no default binding")
+        return curve_uid
+
+    monkeypatch.setattr(
+        PricingMarketDataSetCurveBinding,
+        "resolve_index_curve_uid",
+        staticmethod(fake_resolve_curve_uid),
+    )
+
+    with pytest.raises(LookupError, match="no default binding"):
+        resolvers.select_curve(
+            index_uid=index_uid,
+            curve_type="projection",
+            market_data_set="eod",
+        )
 
 
 def test_resolve_quantlib_index_uses_curve_binding_and_build_details(monkeypatch) -> None:
@@ -154,7 +311,7 @@ def test_resolve_quantlib_index_uses_curve_binding_and_build_details(monkeypatch
     )
     monkeypatch.setattr(
         PricingMarketDataSetCurveBinding,
-        "resolve_curve_uid",
+        "resolve_index_curve_uid",
         staticmethod(
             lambda **kwargs: calls.append(("curve_binding", kwargs)) or curve_uid
         ),
@@ -205,8 +362,7 @@ def test_resolve_quantlib_index_uses_curve_binding_and_build_details(monkeypatch
             {
                 "market_data_set": "eod",
                 "role_key": "projection",
-                "selector_type": "index",
-                "selector_key": str(index_uid),
+                "index_uid": str(index_uid),
                 "quote_side": "mid",
             },
         ),

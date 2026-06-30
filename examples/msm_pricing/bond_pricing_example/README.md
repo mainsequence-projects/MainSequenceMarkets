@@ -3,9 +3,9 @@
 This example shows the complete pricing workflow for a bond asset:
 
 1. upsert the bond asset type, issuer, currency asset, and bond asset rows
-2. upsert the `interest_rate` index type, a canonical index, its pricing convention details, and a curve identity
+2. upsert the `interest_rate` index type, a canonical index, its pricing convention details, a curve identity, curve build details, and a market-data-set curve binding
 3. publish one month of mock index fixings and a flat-forward discount curve through pricing DataNodes
-4. use the seeded `default` pricing market-data bindings for `discount_curves`
+4. use explicit `default` pricing market-data bindings for `discount_curves`
    and `interest_rate_index_fixings`
 5. attach a serialized `FloatingRateBond` to the bond asset
 6. reload the instrument generically with `Instrument.load_from_asset(...)`
@@ -22,3 +22,8 @@ uv run python examples/msm_pricing/bond_pricing_example/main.py
 The migration step must complete before the script starts. The script uses
 `msm.start_engine(...)` and `msm_pricing.bootstrap.attach_pricing_schemas(...)`
 only to attach already-migrated MetaTables and configure pricing runtime state.
+
+The example writes the projection curve selection as the default quote-side
+binding (`quote_side=None`) because the valuation basket passes only
+`market_data_set`. If a workflow writes `quote_side="mid"` instead, runtime calls
+must pass the same quote side, for example `price(curve_quote_side="mid")`.

@@ -137,15 +137,19 @@ sets also select the curve for each valuation role:
 ```python
 from msm_pricing.api import PricingMarketDataSetCurveBinding
 
-PricingMarketDataSetCurveBinding.upsert(
+PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
     market_data_set_uid=market_data_set.uid,
     role_key="projection",
-    selector_type="index",
-    selector_key=str(index.uid),
+    index_uid=index.uid,
     quote_side="mid",
     curve_uid=curve.uid,
 )
 ```
+
+`upsert_index_curve_selection(...)` persists the generic
+`selector_type="index"` and `selector_key=str(index.uid)` fields internally.
+Use the raw `upsert(...)` binding API only when you really need a non-index
+selector policy.
 
 The data interface resolves direct in-memory overrides first and persisted
 market-data set bindings second. The final lookup uses

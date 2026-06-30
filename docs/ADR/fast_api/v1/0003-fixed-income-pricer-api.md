@@ -233,7 +233,8 @@ Request parameters:
 {
   "with_yield": null,
   "flat_compounding": null,
-  "flat_frequency": null
+  "flat_frequency": null,
+  "curve_quote_side": null
 }
 ```
 
@@ -257,6 +258,17 @@ Python source:
 
 ```python
 instrument.analytics(market_data_set="eod")
+```
+
+Request parameters:
+
+```json
+{
+  "with_yield": null,
+  "flat_compounding": null,
+  "flat_frequency": null,
+  "curve_quote_side": null
+}
 ```
 
 Response:
@@ -290,7 +302,8 @@ Request parameters:
   "with_yield": null,
   "duration_type": "Modified",
   "flat_compounding": null,
-  "flat_frequency": null
+  "flat_frequency": null,
+  "curve_quote_side": null
 }
 ```
 
@@ -348,11 +361,23 @@ Request parameters:
 ```json
 {
   "target_dirty_ccy": 101.25,
+  "curve_quote_side": null,
+  "benchmark_curve_role_key": "z_spread_base",
+  "benchmark_curve_quote_side": null,
+  "benchmark_curve_uid": null,
+  "benchmark_curve_unique_identifier": null,
+  "benchmark_expected_curve_type": null,
   "use_quantlib": true,
   "tol": 1e-12,
   "max_iter": 200
 }
 ```
+
+For instruments with `benchmark_rate_index_uid`, the benchmark curve is resolved
+through `PricingMarketDataSetCurveBinding.resolve_index_curve_uid(...)` using
+`role_key="z_spread_base"`, the benchmark index UID, and the requested quote
+side. Missing benchmark bindings are pricing dependency errors, not clean
+no-ops or implicit fallback curves.
 
 Response:
 
@@ -373,7 +398,7 @@ Response:
 Python source:
 
 ```python
-instrument.get_cashflows(market_data_set="eod")
+instrument.get_cashflows(market_data_set="eod", curve_quote_side=None)
 ```
 
 Response:
@@ -408,7 +433,7 @@ Response:
 Python source:
 
 ```python
-instrument.get_net_cashflows()
+instrument.get_net_cashflows(market_data_set="eod", curve_quote_side=None)
 ```
 
 The API must not return a pandas `Series`. It must serialize to rows:
@@ -437,7 +462,7 @@ The API must not return a pandas `Series`. It must serialize to rows:
 Python source:
 
 ```python
-instrument.price(market_data_set="eod")
+instrument.price(market_data_set="eod", curve_quote_side=None)
 instrument.carry_roll_down(...)
 ```
 

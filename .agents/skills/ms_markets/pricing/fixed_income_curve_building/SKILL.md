@@ -8,17 +8,21 @@ description: Use this skill when creating, extending, reviewing, or using ms-mar
 Use this skill when an agent needs to build or modify the fixed-income pricing
 stack in `msm_pricing`.
 
-This skill treats index conventions, fixings, and curves as one coupled runtime:
+This skill treats index conventions, fixings, and curve selection as one
+explicit runtime:
 
 ```text
 IndexTable.uid
   -> IndexConventionDetails.index_uid
-  -> Curve.index_uid
+  -> QuantLib index and fixing hydration
+
+PricingMarketDataSetCurveBinding(role + selector + quote side)
+  -> CurveTable.uid
+  -> CurveBuildingDetails.curve_uid
   -> DiscountCurvesNode(curve_identifier)
 
 IndexTable.unique_identifier
   -> FixingRatesNode(index_identifier, rate)
-  -> QuantLib index hydration
 ```
 
 ## Route First
@@ -106,8 +110,8 @@ day convention, settlement days, end-of-month handling, and optional fixing
 identity override.
 
 `CurveTable` is pricing-owned curve identity. It has its own `uid` and
-`unique_identifier`. `index_uid` is nullable legacy metadata only; new curve
-selection must use `PricingMarketDataSetCurveBindingTable`.
+`unique_identifier`. It has no index ownership field. Curve selection must use
+`PricingMarketDataSetCurveBindingTable`.
 
 `CurveBuildingDetailsTable` is keyed one-to-one by `curve_uid` and stores how to
 turn published observations into a QuantLib curve: builder type, quote
@@ -153,9 +157,11 @@ from msm.constants import (
 )
 from msm_pricing.api import (
     Curve,
+    CurveBuildingDetails,
     IndexConventionDetails,
     PricingMarketDataSet,
     PricingMarketDataSetBinding,
+    PricingMarketDataSetCurveBinding,
 )
 from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
@@ -193,7 +199,8 @@ curve = Curve.upsert(
     unique_identifier="USD-SOFR-3M-DISCOUNT",
     display_name="USD SOFR 3M Discount Curve",
     curve_type="discount",
-    index_uid=index.uid,
+    currency_code="USD",
+    quote_side="mid",
     interpolation_method="log_linear_discount",
     compounding="compounded_annual",
     source="example",
@@ -202,6 +209,26 @@ curve = Curve.upsert(
 market_data_set = PricingMarketDataSet.upsert(
     set_key=PRICING_MARKET_DATA_SET_DEFAULT,
     display_name="Default pricing market data",
+)
+CurveBuildingDetails.upsert(
+    curve_uid=curve.uid,
+    builder_type="zero_rate_curve",
+    quote_convention="zero_rate",
+    rate_unit="decimal",
+    day_counter_code="Actual360",
+    calendar_code="TARGET",
+    interpolation_method="log_linear_discount",
+    compounding="simple",
+    extrapolation_policy="enabled",
+    source="example",
+)
+PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
+    market_data_set_uid=market_data_set.uid,
+    role_key="projection",
+    index_uid=index.uid,
+    quote_side="mid",
+    curve_uid=curve.uid,
+    source="example",
 )
 PricingMarketDataSetBinding.upsert(
     market_data_set_uid=market_data_set.uid,
@@ -219,8 +246,8 @@ PricingMarketDataSetBinding.upsert(
 
 Rules:
 
-- Use `IndexTable.uid` for pricing relationships stored in instruments and
-  convention/curve MetaTables.
+- Use `IndexTable.uid` for pricing relationships stored in instruments,
+  convention details, and market-data curve binding selectors.
 - Use `index_identifier` for index-stamped DataNode rows. It stores
   `IndexTable.unique_identifier`.
 - Use `curve_identifier` for curve DataNode rows. It stores
@@ -327,8 +354,8 @@ Rules:
   compresses it before persistence.
 - The builder configuration's `curve_unique_identifier` must exist as a `Curve`
   row before publishing; emitted storage rows use `curve_identifier`.
-- Keep interpolation and compounding metadata on `Curve`, not in ad hoc builder
-  globals.
+- Keep interpolation and compounding metadata on `CurveBuildingDetails`, not in
+  ad hoc builder globals.
 
 ## Runtime Resolution
 
@@ -337,6 +364,7 @@ instruments:
 
 ```python
 from msm_pricing.pricing_engine.resolvers import (
+    resolve_curve_for_index_binding,
     resolve_pricing_curve,
     resolve_quantlib_index,
 )
@@ -350,13 +378,26 @@ curve = resolve_pricing_curve(
     valuation_date=valuation_date,
     curve_type="discount",
 )
+benchmark_curve = resolve_curve_for_index_binding(
+    index_uid=benchmark_index.uid,
+    valuation_date=valuation_date,
+    role_key="z_spread_base",
+    market_data_set="eod",
+    quote_side="mid",
+)
 ```
 
 Resolver expectations:
 
 - `IndexConventionDetails` exists for the index UID.
 - `PricingMarketDataSetCurveBinding` resolves the valuation role and selector
-  to exactly one `Curve`.
+  to exactly one `Curve`. For index-scoped workflows, use
+  `upsert_index_curve_selection(...)` and `resolve_index_curve_uid(...)` instead
+  of passing raw selector fields.
+- `benchmark_rate_index_uid` is only an index selector. Benchmark z-spread
+  resolution must use `role_key="z_spread_base"`, the benchmark index UID, and
+  the requested quote side through
+  `PricingMarketDataSetCurveBinding.resolve_index_curve_uid(...)`.
 - `CurveBuildingDetails` exists for the selected curve.
 - `PricingMarketDataSetBinding` resolves the active
   `(market_data_set_uid, concept_key)` to the backend DataNode storage table UID
@@ -367,6 +408,9 @@ Resolver expectations:
 - When multiple market-data source sets exist in one process, select them at
   pricing time with `bond.price(market_data_set="eod")` or
   `swap.price(market_data_set="live")`.
+- There is no implicit `mid` fallback. If a binding is written with
+  `quote_side="mid"`, runtime calls must request that quote side; omitted quote
+  side means the default binding key.
 
 For instrument payloads:
 
@@ -401,7 +445,7 @@ Before finishing a change:
 
 - `IndexTable` remains free of Constant-name and curve fields.
 - `IndexConventionDetailsTable.index_uid` is one-to-one with `IndexTable.uid`.
-- `CurveTable.index_uid` is not required by new code paths.
+- `CurveTable` has no index ownership field.
 - Every priced curve has `CurveBuildingDetails`.
 - Market-data-set curve selection uses `PricingMarketDataSetCurveBinding`.
 - Fixing DataNode rows use `time_index`, `index_identifier`, and `rate`.

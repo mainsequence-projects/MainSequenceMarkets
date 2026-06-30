@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from msm.api.base import _warn_deprecated_create_schemas, operation_result_rows
 from msm.repositories.crud import (
@@ -469,6 +469,30 @@ class PricingMarketDataSetCurveBinding(BaseModel):
         return cls._from_operation_result(result)
 
     @classmethod
+    def create_index_curve_selection(
+        cls,
+        payload: IndexCurveSelectionCreate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> IndexCurveSelection:
+        """Create an index-scoped curve selection without exposing selector plumbing."""
+
+        selection = _validate_payload(IndexCurveSelectionCreate, payload, kwargs)
+        binding = cls.create(_index_curve_selection_values(selection))
+        return IndexCurveSelection.from_curve_binding(binding)
+
+    @classmethod
+    def upsert_index_curve_selection(
+        cls,
+        payload: IndexCurveSelectionUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> IndexCurveSelection:
+        """Upsert an index-scoped curve selection without exposing selector plumbing."""
+
+        selection = _validate_payload(IndexCurveSelectionUpsert, payload, kwargs)
+        binding = cls.upsert(_index_curve_selection_values(selection))
+        return IndexCurveSelection.from_curve_binding(binding)
+
+    @classmethod
     def update(
         cls,
         uid: uuid.UUID | str,
@@ -549,6 +573,35 @@ class PricingMarketDataSetCurveBinding(BaseModel):
         )
 
     @classmethod
+    def get_index_curve_selection(
+        cls,
+        *,
+        market_data_set: PricingMarketDataSetSelector = None,
+        market_data_set_uid: uuid.UUID | str | None = None,
+        role_key: str,
+        index_uid: uuid.UUID | str,
+        quote_side: str | None = None,
+        status: str | None = "ACTIVE",
+    ) -> IndexCurveSelection | None:
+        """Return one index-scoped curve selection for a market-data set and role."""
+
+        resolved_market_data_set_uid = _resolve_market_data_set_uid(
+            market_data_set=market_data_set,
+            market_data_set_uid=market_data_set_uid,
+        )
+        binding = cls.get_by_role_selector(
+            market_data_set_uid=resolved_market_data_set_uid,
+            role_key=role_key,
+            selector_type="index",
+            selector_key=str(_coerce_uuid(index_uid)),
+            quote_side=quote_side,
+            status=status,
+        )
+        if binding is None:
+            return None
+        return IndexCurveSelection.from_curve_binding(binding)
+
+    @classmethod
     def resolve_curve_uid(
         cls,
         *,
@@ -573,8 +626,42 @@ class PricingMarketDataSetCurveBinding(BaseModel):
                 f"market_data_set_uid={market_data_set_uid}, role_key={role_key!r}, "
                 f"selector_type={selector_type!r}, selector_key={selector_key!r}, "
                 f"quote_side={quote_side!r}."
-            )
+        )
         return binding.curve_uid
+
+    @classmethod
+    def resolve_index_curve_uid(
+        cls,
+        *,
+        market_data_set: PricingMarketDataSetSelector = None,
+        market_data_set_uid: uuid.UUID | str | None = None,
+        role_key: str,
+        index_uid: uuid.UUID | str,
+        quote_side: str | None = None,
+    ) -> uuid.UUID:
+        """Resolve an index-scoped curve selection to the selected CurveTable.uid."""
+
+        selection = cls.get_index_curve_selection(
+            market_data_set=market_data_set,
+            market_data_set_uid=market_data_set_uid,
+            role_key=role_key,
+            index_uid=index_uid,
+            quote_side=quote_side,
+            status="ACTIVE",
+        )
+        if selection is None:
+            resolved_market_data_set_uid = _resolve_market_data_set_uid(
+                market_data_set=market_data_set,
+                market_data_set_uid=market_data_set_uid,
+            )
+            resolved_index_uid = _coerce_uuid(index_uid)
+            raise LookupError(
+                "No pricing market-data index curve selection found for "
+                f"market_data_set_uid={resolved_market_data_set_uid}, "
+                f"role_key={role_key!r}, index_uid={resolved_index_uid}, "
+                f"quote_side={quote_side!r}."
+            )
+        return selection.curve_uid
 
     @classmethod
     def filter(cls, *, limit: int = 500, **filters: Any) -> list[PricingMarketDataSetCurveBinding]:
@@ -585,6 +672,33 @@ class PricingMarketDataSetCurveBinding(BaseModel):
             limit=limit,
         )
         return [cls.model_validate(row) for row in operation_result_rows(result)]
+
+    @classmethod
+    def filter_index_curve_selections(
+        cls,
+        *,
+        limit: int = 500,
+        market_data_set: PricingMarketDataSetSelector = None,
+        market_data_set_uid: uuid.UUID | str | None = None,
+        role_key: str | None = None,
+        index_uid: uuid.UUID | str | None = None,
+        quote_side: str | None = None,
+        status: str | None = "ACTIVE",
+    ) -> list[IndexCurveSelection]:
+        """Filter index-scoped curve selections without exposing selector fields."""
+
+        filters = _index_curve_selection_filters(
+            market_data_set=market_data_set,
+            market_data_set_uid=market_data_set_uid,
+            role_key=role_key,
+            index_uid=index_uid,
+            quote_side=quote_side,
+            status=status,
+        )
+        return [
+            IndexCurveSelection.from_curve_binding(binding)
+            for binding in cls.filter(limit=limit, **filters)
+        ]
 
     @classmethod
     def list(
@@ -610,6 +724,38 @@ class PricingMarketDataSetCurveBinding(BaseModel):
             "limit": limit,
             "offset": offset,
             "results": [cls.model_validate(row) for row in operation_result_rows(result)],
+        }
+
+    @classmethod
+    def list_index_curve_selections(
+        cls,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        market_data_set: PricingMarketDataSetSelector = None,
+        market_data_set_uid: uuid.UUID | str | None = None,
+        role_key: str | None = None,
+        index_uid: uuid.UUID | str | None = None,
+        quote_side: str | None = None,
+        status: str | None = "ACTIVE",
+    ) -> dict[str, Any]:
+        """List index-scoped curve selections in the standard pagination envelope."""
+
+        filters = _index_curve_selection_filters(
+            market_data_set=market_data_set,
+            market_data_set_uid=market_data_set_uid,
+            role_key=role_key,
+            index_uid=index_uid,
+            quote_side=quote_side,
+            status=status,
+        )
+        response = cls.list(limit=limit, offset=offset, **filters)
+        return {
+            **response,
+            "results": [
+                IndexCurveSelection.from_curve_binding(binding)
+                for binding in response["results"]
+            ],
         }
 
     @classmethod
@@ -728,6 +874,77 @@ class PricingMarketDataSetCurveBindingUpdate(BaseModel):
     metadata_json: dict[str, Any] | None = None
 
 
+class IndexCurveSelection(BaseModel):
+    """User-facing view of an index-scoped market-data curve selection."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    uid: uuid.UUID
+    market_data_set_uid: uuid.UUID
+    role_key: str
+    index_uid: uuid.UUID
+    quote_side: str | None = None
+    curve_uid: uuid.UUID
+    source: str | None = None
+    priority: int = 0
+    status: str = "ACTIVE"
+    metadata_json: dict[str, Any] | None = None
+
+    @classmethod
+    def from_curve_binding(
+        cls,
+        binding: PricingMarketDataSetCurveBinding,
+    ) -> IndexCurveSelection:
+        selector_type = _normalize_curve_binding_part(
+            binding.selector_type,
+            field_name="selector_type",
+        ).lower()
+        if selector_type != "index":
+            raise ValueError(
+                "IndexCurveSelection can only be built from selector_type='index' "
+                f"bindings, not selector_type={binding.selector_type!r}."
+            )
+        return cls(
+            uid=binding.uid,
+            market_data_set_uid=binding.market_data_set_uid,
+            role_key=binding.role_key,
+            index_uid=_coerce_uuid(binding.selector_key),
+            quote_side=binding.quote_side,
+            curve_uid=binding.curve_uid,
+            source=binding.source,
+            priority=binding.priority,
+            status=binding.status,
+            metadata_json=binding.metadata_json,
+        )
+
+
+class IndexCurveSelectionCreate(BaseModel):
+    """Payload for selecting a curve by market-data set, role, index, and quote side."""
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+    market_data_set: PricingMarketDataSetSelector = None
+    market_data_set_uid: uuid.UUID | None = None
+    role_key: str = Field(min_length=1, max_length=64)
+    index_uid: uuid.UUID
+    quote_side: str | None = Field(default=None, max_length=32)
+    curve_uid: uuid.UUID
+    source: str | None = Field(default=None, max_length=255)
+    priority: int = 0
+    status: str = Field(default="ACTIVE", min_length=1, max_length=32)
+    metadata_json: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _validate_market_data_set_selector(self) -> IndexCurveSelectionCreate:
+        if self.market_data_set is not None and self.market_data_set_uid is not None:
+            raise ValueError("Pass either market_data_set or market_data_set_uid, not both.")
+        return self
+
+
+class IndexCurveSelectionUpsert(IndexCurveSelectionCreate):
+    """Payload for inserting or replacing an index curve selection."""
+
+
 def _normalize_set_key(value: str) -> str:
     normalized = str(value).strip()
     if not normalized:
@@ -810,6 +1027,80 @@ def _normalize_curve_binding_part(value: str, *, field_name: str) -> str:
     return normalized
 
 
+def _resolve_market_data_set_uid(
+    *,
+    market_data_set: PricingMarketDataSetSelector = None,
+    market_data_set_uid: uuid.UUID | str | None = None,
+) -> uuid.UUID:
+    if market_data_set is not None and market_data_set_uid is not None:
+        raise ValueError("Pass either market_data_set or market_data_set_uid, not both.")
+    if market_data_set_uid is not None:
+        return _coerce_uuid(market_data_set_uid)
+    return PricingMarketDataSet.resolve_uid(market_data_set)
+
+
+def _optional_market_data_set_uid(
+    *,
+    market_data_set: PricingMarketDataSetSelector = None,
+    market_data_set_uid: uuid.UUID | str | None = None,
+) -> uuid.UUID | None:
+    if market_data_set is not None and market_data_set_uid is not None:
+        raise ValueError("Pass either market_data_set or market_data_set_uid, not both.")
+    if market_data_set_uid is not None:
+        return _coerce_uuid(market_data_set_uid)
+    if market_data_set is not None:
+        return PricingMarketDataSet.resolve_uid(market_data_set)
+    return None
+
+
+def _index_curve_selection_values(selection: BaseModel) -> dict[str, Any]:
+    market_data_set_uid = _resolve_market_data_set_uid(
+        market_data_set=getattr(selection, "market_data_set"),
+        market_data_set_uid=getattr(selection, "market_data_set_uid"),
+    )
+    return {
+        "market_data_set_uid": market_data_set_uid,
+        "role_key": selection.role_key,
+        "selector_type": "index",
+        "selector_key": str(_coerce_uuid(selection.index_uid)),
+        "quote_side": selection.quote_side,
+        "curve_uid": selection.curve_uid,
+        "source": selection.source,
+        "priority": selection.priority,
+        "status": selection.status,
+        "metadata_json": selection.metadata_json,
+    }
+
+
+def _index_curve_selection_filters(
+    *,
+    market_data_set: PricingMarketDataSetSelector = None,
+    market_data_set_uid: uuid.UUID | str | None = None,
+    role_key: str | None = None,
+    index_uid: uuid.UUID | str | None = None,
+    quote_side: str | None = None,
+    status: str | None = "ACTIVE",
+) -> dict[str, Any]:
+    filters: dict[str, Any] = {
+        "market_data_set_uid": _optional_market_data_set_uid(
+            market_data_set=market_data_set,
+            market_data_set_uid=market_data_set_uid,
+        ),
+        "selector_type": "index",
+        "status": status,
+    }
+    if role_key is not None:
+        filters["role_key"] = _normalize_curve_binding_part(
+            role_key,
+            field_name="role_key",
+        ).lower()
+    if index_uid is not None:
+        filters["selector_key"] = str(_coerce_uuid(index_uid))
+    if quote_side is not None:
+        filters["quote_side"] = _normalize_quote_side(quote_side)
+    return filters
+
+
 def _validate_pagination(*, limit: int, offset: int) -> tuple[int, int]:
     if limit < 0:
         raise ValueError("limit must be greater than or equal to 0.")
@@ -835,6 +1126,9 @@ def _coerce_uuid(value: uuid.UUID | str | Any) -> uuid.UUID:
 
 __all__ = [
     "curve_binding_key",
+    "IndexCurveSelection",
+    "IndexCurveSelectionCreate",
+    "IndexCurveSelectionUpsert",
     "PricingMarketDataSet",
     "PricingMarketDataSetBinding",
     "PricingMarketDataSetBindingCreate",

@@ -253,12 +253,11 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         source="example",
         metadata_json={"example": "flat-forward zero curve"},
     )
-    curve_selection_binding = PricingMarketDataSetCurveBinding.upsert(
+    curve_selection = PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
         market_data_set_uid=market_data_set.uid,
         role_key="projection",
-        selector_type="index",
-        selector_key=str(index.uid),
-        quote_side="mid",
+        index_uid=index.uid,
+        quote_side=None,
         curve_uid=curve.uid,
         source="examples/msm_pricing/bond_pricing_example",
         metadata_json={"workflow": "floating-rate-bond-pricing-example"},
@@ -266,8 +265,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     _print_step(
         "Upserted curve build details and selection binding",
         curve_uid=curve_building_details.curve_uid,
-        binding_key=curve_selection_binding.binding_key,
-        selected_curve_uid=curve_selection_binding.curve_uid,
+        index_uid=curve_selection.index_uid,
+        selected_curve_uid=curve_selection.curve_uid,
     )
 
     curve_node = MockFlatForwardDiscountCurvesNode(

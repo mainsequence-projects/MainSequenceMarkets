@@ -60,6 +60,10 @@ Response:
         },
         "parameters": [
           {
+            "key": "curve_quote_side",
+            "required": false
+          },
+          {
             "key": "flat_compounding",
             "required": false
           },
@@ -109,6 +113,28 @@ set selector passed to the instrument operation. Current registered fixed income
 operations require `market_data_set`; missing or blank values return `422` before
 the instrument is loaded. Unknown top-level request fields are rejected. Unknown
 operation parameters are rejected by the core operation registry before dispatch.
+
+Curve-dependent operations can carry `curve_quote_side`. Z-spread can also carry
+benchmark-specific selection fields:
+
+```json
+{
+  "parameters": {
+    "target_dirty_ccy": 101.25,
+    "benchmark_curve_role_key": "z_spread_base",
+    "benchmark_curve_quote_side": "mid",
+    "benchmark_curve_uid": null,
+    "benchmark_curve_unique_identifier": null,
+    "benchmark_expected_curve_type": "discount"
+  }
+}
+```
+
+`benchmark_rate_index_uid` stored on an instrument is only an index selector.
+For z-spread, the backend resolves the curve through
+`PricingMarketDataSetCurveBinding.resolve_index_curve_uid(...)` using the
+requested market-data set, `role_key`, `benchmark_rate_index_uid`, and quote
+side. That user API hides the generic persisted selector fields.
 
 ## Command Center Rendering Contracts
 
@@ -267,9 +293,24 @@ Required parameter:
 
 ```json
 {
-  "target_dirty_ccy": 101.25
+  "target_dirty_ccy": 101.25,
+  "curve_quote_side": "offer",
+  "benchmark_curve_role_key": "z_spread_base",
+  "benchmark_curve_quote_side": "mid",
+  "benchmark_curve_uid": null,
+  "benchmark_curve_unique_identifier": null,
+  "benchmark_expected_curve_type": "discount",
+  "use_quantlib": true,
+  "tol": 1e-12,
+  "max_iter": 200
 }
 ```
+
+If the instrument has `benchmark_rate_index_uid`, omitted
+`benchmark_curve_quote_side` uses `curve_quote_side` when supplied; otherwise it
+requests the default quote-side binding. A missing
+`z_spread_base:index:<uid>:<quote_side>` binding is returned as a pricing
+dependency error instead of being treated as a clean fallback.
 
 Response:
 
@@ -295,7 +336,7 @@ POST /api/v1/pricing/assets/{asset_uid}/cashflows/
 Delegates to:
 
 ```python
-instrument.get_cashflows(market_data_set=market_data_set)
+instrument.get_cashflows(market_data_set=market_data_set, **parameters)
 ```
 
 Response:
@@ -386,7 +427,7 @@ POST /api/v1/pricing/assets/{asset_uid}/net-cashflows/
 Delegates to:
 
 ```python
-instrument.get_net_cashflows()
+instrument.get_net_cashflows(market_data_set=market_data_set, **parameters)
 ```
 
 The API serializes the returned series-like object into rows.
@@ -509,6 +550,10 @@ the FastAPI layer. When the instrument exposes an index-backed selected curve,
 the response includes a link to the existing pricing curve endpoint that returns
 decompressed nodes and the effective curve date.
 
+For floating-rate projection curves, pass `curve_quote_side`. For benchmark
+z-spread curves, pass `benchmark_curve_quote_side`; the response reports that
+side as `binding_quote_side`.
+
 Response:
 
 ```json
@@ -525,6 +570,7 @@ Response:
       "curve_identifier": "USD-SOFR-DISCOUNT",
       "curve_type": "discount",
       "index_uid": "index-uid",
+      "binding_quote_side": "mid",
       "source": "example",
       "discount_curve_url": "/api/v1/pricing/curves/curve-uid/discount-curve/",
       "discount_curve_query_params": {

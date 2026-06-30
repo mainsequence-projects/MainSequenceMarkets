@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import math
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 import QuantLib as ql
@@ -42,10 +43,150 @@ def resolve_curve_building_details(curve_uid: uuid.UUID | str) -> CurveBuildingD
     return details
 
 
+@dataclass(frozen=True)
+class CurveSelectionContext:
+    """Normalized market-data curve binding selector.
+
+    This object carries binding identity only. It deliberately does not store
+    QuantLib handles or resolved curve rows.
+    """
+
+    market_data_set: Any | None
+    role_key: str
+    selector_type: str
+    selector_key: str
+    quote_side: str | None = None
+    curve_uid: uuid.UUID | str | None = None
+    curve_unique_identifier: str | None = None
+    expected_curve_type: str | None = None
+    source: str | None = None
+
+    @classmethod
+    def for_index(
+        cls,
+        *,
+        index_uid: uuid.UUID | str,
+        role_key: str,
+        market_data_set: Any | None = None,
+        quote_side: str | None = None,
+        curve_uid: uuid.UUID | str | None = None,
+        curve_unique_identifier: str | None = None,
+        expected_curve_type: str | None = None,
+        source: str | None = None,
+    ) -> CurveSelectionContext:
+        return cls(
+            market_data_set=market_data_set,
+            role_key=_normalize_curve_selection_part(role_key, field_name="role_key").lower(),
+            selector_type="index",
+            selector_key=str(_coerce_uuid(index_uid, field_name="index_uid")),
+            quote_side=normalize_curve_quote_side(quote_side),
+            curve_uid=curve_uid,
+            curve_unique_identifier=curve_unique_identifier,
+            expected_curve_type=expected_curve_type,
+            source=source,
+        )
+
+    @classmethod
+    def for_projection_index(
+        cls,
+        *,
+        index_uid: uuid.UUID | str,
+        market_data_set: Any | None = None,
+        quote_side: str | None = None,
+        **kwargs: Any,
+    ) -> CurveSelectionContext:
+        return cls.for_index(
+            index_uid=index_uid,
+            role_key="projection",
+            market_data_set=market_data_set,
+            quote_side=quote_side,
+            expected_curve_type=kwargs.pop("expected_curve_type", "projection"),
+            **kwargs,
+        )
+
+    @classmethod
+    def for_forwarding_index(
+        cls,
+        *,
+        index_uid: uuid.UUID | str,
+        market_data_set: Any | None = None,
+        quote_side: str | None = None,
+        **kwargs: Any,
+    ) -> CurveSelectionContext:
+        return cls.for_index(
+            index_uid=index_uid,
+            role_key="forwarding",
+            market_data_set=market_data_set,
+            quote_side=quote_side,
+            expected_curve_type=kwargs.pop("expected_curve_type", "forwarding"),
+            **kwargs,
+        )
+
+    @classmethod
+    def for_discount_index(
+        cls,
+        *,
+        index_uid: uuid.UUID | str,
+        market_data_set: Any | None = None,
+        quote_side: str | None = None,
+        **kwargs: Any,
+    ) -> CurveSelectionContext:
+        return cls.for_index(
+            index_uid=index_uid,
+            role_key="discount",
+            market_data_set=market_data_set,
+            quote_side=quote_side,
+            expected_curve_type=kwargs.pop("expected_curve_type", "discount"),
+            **kwargs,
+        )
+
+    @classmethod
+    def for_z_spread_base_index(
+        cls,
+        *,
+        index_uid: uuid.UUID | str,
+        market_data_set: Any | None = None,
+        quote_side: str | None = None,
+        **kwargs: Any,
+    ) -> CurveSelectionContext:
+        return cls.for_index(
+            index_uid=index_uid,
+            role_key="z_spread_base",
+            market_data_set=market_data_set,
+            quote_side=quote_side,
+            **kwargs,
+        )
+
+    def cache_key(self) -> str:
+        side = self.quote_side or "default"
+        curve_override = self.curve_uid or self.curve_unique_identifier or "binding"
+        curve_type = self.expected_curve_type or "any"
+        return (
+            f"mds:{self.market_data_set or 'unresolved'}|role:{self.role_key}|"
+            f"selector:{self.selector_type}:{self.selector_key}|side:{side}|"
+            f"curve:{curve_override}|expected:{curve_type}|source:{self.source or 'any'}"
+        )
+
+
+def normalize_curve_quote_side(value: str | None) -> str | None:
+    if value in (None, ""):
+        return None
+    return _normalize_curve_selection_part(value, field_name="quote_side").lower()
+
+
+def _normalize_curve_selection_part(value: str, *, field_name: str) -> str:
+    normalized = str(value).strip()
+    if not normalized:
+        raise ValueError(f"{field_name} cannot be empty.")
+    return normalized
+
+
 def select_curve(
     *,
     index_uid: uuid.UUID | str | None = None,
     curve_type: str = "discount",
+    expected_curve_type: str | None = None,
+    validate_curve_type: bool = True,
     market_data_set: Any | None = None,
     role_key: str | None = None,
     selector_type: str | None = None,
@@ -67,7 +208,11 @@ def select_curve(
             raise LookupError(f"No curve row found for uid={curve_uid!r}.")
         return _validate_selected_curve(
             curve,
-            curve_type=curve_type,
+            curve_type=_curve_type_validation_target(
+                curve_type=curve_type,
+                expected_curve_type=expected_curve_type,
+                validate_curve_type=validate_curve_type,
+            ),
             source=source,
         )
 
@@ -79,7 +224,11 @@ def select_curve(
             )
         return _validate_selected_curve(
             curve,
-            curve_type=curve_type,
+            curve_type=_curve_type_validation_target(
+                curve_type=curve_type,
+                expected_curve_type=expected_curve_type,
+                validate_curve_type=validate_curve_type,
+            ),
             source=source,
         )
 
@@ -91,13 +240,21 @@ def select_curve(
         selector_key=selector_key,
         currency_code=currency_code,
     )
-    curve_uid = PricingMarketDataSetCurveBinding.resolve_curve_uid(
-        market_data_set=market_data_set,
-        role_key=role_key,
-        selector_type=selector_type,
-        selector_key=selector_key,
-        quote_side=quote_side,
-    )
+    if str(selector_type).strip().lower() == "index":
+        curve_uid = PricingMarketDataSetCurveBinding.resolve_index_curve_uid(
+            market_data_set=market_data_set,
+            role_key=role_key,
+            index_uid=selector_key,
+            quote_side=quote_side,
+        )
+    else:
+        curve_uid = PricingMarketDataSetCurveBinding.resolve_curve_uid(
+            market_data_set=market_data_set,
+            role_key=role_key,
+            selector_type=selector_type,
+            selector_key=selector_key,
+            quote_side=quote_side,
+        )
     curve = Curve.get_by_uid(curve_uid)
     if curve is None:
         raise LookupError(
@@ -105,7 +262,11 @@ def select_curve(
         )
     return _validate_selected_curve(
         curve,
-        curve_type=curve_type,
+        curve_type=_curve_type_validation_target(
+            curve_type=curve_type,
+            expected_curve_type=expected_curve_type,
+            validate_curve_type=validate_curve_type,
+        ),
         source=source,
     )
 
@@ -116,6 +277,8 @@ def resolve_pricing_curve(
     valuation_date: datetime.date | datetime.datetime | ql.Date,
     market_data_set: Any | None = None,
     curve_type: str = "discount",
+    expected_curve_type: str | None = None,
+    validate_curve_type: bool = True,
     role_key: str | None = None,
     selector_type: str | None = None,
     selector_key: str | None = None,
@@ -130,6 +293,8 @@ def resolve_pricing_curve(
     curve = select_curve(
         index_uid=index_uid,
         curve_type=curve_type,
+        expected_curve_type=expected_curve_type,
+        validate_curve_type=validate_curve_type,
         market_data_set=market_data_set,
         role_key=role_key,
         selector_type=selector_type,
@@ -144,6 +309,45 @@ def resolve_pricing_curve(
         curve=curve,
         valuation_date=valuation_date,
         market_data_set=market_data_set,
+    )
+
+
+def resolve_curve_for_index_binding(
+    *,
+    index_uid: uuid.UUID | str,
+    valuation_date: datetime.date | datetime.datetime | ql.Date,
+    market_data_set: Any | None = None,
+    role_key: str,
+    quote_side: str | None = None,
+    curve_uid: uuid.UUID | str | None = None,
+    curve_unique_identifier: str | None = None,
+    expected_curve_type: str | None = None,
+    source: str | None = None,
+) -> ql.YieldTermStructureHandle:
+    """Resolve a curve directly from an index-scoped market-data curve binding."""
+
+    selection = CurveSelectionContext.for_index(
+        index_uid=index_uid,
+        role_key=role_key,
+        market_data_set=market_data_set,
+        quote_side=quote_side,
+        curve_uid=curve_uid,
+        curve_unique_identifier=curve_unique_identifier,
+        expected_curve_type=expected_curve_type,
+        source=source,
+    )
+    return resolve_pricing_curve(
+        index_uid=index_uid,
+        valuation_date=valuation_date,
+        market_data_set=market_data_set,
+        curve_type=expected_curve_type or selection.role_key,
+        expected_curve_type=expected_curve_type,
+        validate_curve_type=expected_curve_type is not None,
+        role_key=selection.role_key,
+        quote_side=selection.quote_side,
+        source=source,
+        curve_uid=curve_uid,
+        curve_unique_identifier=curve_unique_identifier,
     )
 
 
@@ -233,8 +437,6 @@ def resolve_quantlib_index(
             market_data_set=market_data_set,
             curve_type=selection_role,
             role_key=selection_role,
-            selector_type="index",
-            selector_key=str(index_uid),
             quote_side=quote_side,
             source=source,
             curve_uid=curve_uid,
@@ -327,6 +529,19 @@ def _validate_selected_curve(
             f"Curve {curve.unique_identifier!r} has source={curve.source!r}, not {source!r}."
         )
     return curve
+
+
+def _curve_type_validation_target(
+    *,
+    curve_type: str | None,
+    expected_curve_type: str | None,
+    validate_curve_type: bool,
+) -> str | None:
+    if expected_curve_type is not None:
+        return expected_curve_type
+    if validate_curve_type:
+        return curve_type
+    return None
 
 
 def _curve_binding_selector(
@@ -540,9 +755,12 @@ def _end_of_month(convention_dump: dict[str, Any]) -> bool:
 __all__ = [
     "add_historical_fixings",
     "build_curve_from_curve_row",
+    "CurveSelectionContext",
     "resolve_curve_building_details",
+    "resolve_curve_for_index_binding",
     "resolve_index_convention",
     "resolve_pricing_curve",
     "resolve_quantlib_index",
+    "normalize_curve_quote_side",
     "select_curve",
 ]

@@ -144,6 +144,8 @@ def test_bond_resolver_receives_backend_index_uid(monkeypatch) -> None:
                 "forwarding_curve": None,
                 "hydrate_fixings": True,
                 "market_data_set": None,
+                "role_key": "projection",
+                "quote_side": None,
             },
         )
     ]
@@ -183,6 +185,35 @@ def test_bond_resolver_receives_explicit_market_data_set_uid(monkeypatch) -> Non
     assert calls[0][1]["market_data_set"] == market_data_set_uid
 
 
+def test_bond_resolver_receives_curve_quote_side(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    bond = _floating_bond(index_uid)
+    valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    calls = []
+
+    class FakeIndex:
+        pass
+
+    monkeypatch.setattr(
+        "msm_pricing.instruments.bond.resolve_quantlib_index",
+        lambda backend_index_uid, **kwargs: (
+            calls.append((backend_index_uid, kwargs)) or FakeIndex()
+        ),
+    )
+    monkeypatch.setattr(
+        FloatingRateBond,
+        "_register_index_observer",
+        lambda self: None,
+    )
+
+    bond._apply_curve_quote_side(" MID ")
+    bond.set_valuation_date(valuation_date)
+    bond._ensure_index()
+
+    assert calls[0][0] == index_uid
+    assert calls[0][1]["quote_side"] == "mid"
+
+
 def test_swap_resolver_receives_backend_index_uid(monkeypatch) -> None:
     index_uid = uuid.uuid4()
     swap = _swap(index_uid)
@@ -209,6 +240,8 @@ def test_swap_resolver_receives_backend_index_uid(monkeypatch) -> None:
                 "valuation_date": valuation_date,
                 "hydrate_fixings": True,
                 "market_data_set": None,
+                "role_key": "projection",
+                "quote_side": None,
             },
         )
     ]
@@ -241,6 +274,30 @@ def test_swap_resolver_receives_explicit_market_data_set_uid(monkeypatch) -> Non
 
     assert calls[0][0] == index_uid
     assert calls[0][1]["market_data_set"] == market_data_set_uid
+
+
+def test_swap_resolver_receives_curve_quote_side(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    swap = _swap(index_uid)
+    valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    calls = []
+
+    class FakeIndex:
+        pass
+
+    monkeypatch.setattr(
+        "msm_pricing.instruments.interest_rate_swap.resolve_quantlib_index",
+        lambda backend_index_uid, **kwargs: (
+            calls.append((backend_index_uid, kwargs)) or FakeIndex()
+        ),
+    )
+
+    swap._apply_curve_quote_side(" OFFER ")
+    swap.set_valuation_date(valuation_date)
+    swap._ensure_index()
+
+    assert calls[0][0] == index_uid
+    assert calls[0][1]["quote_side"] == "offer"
 
 
 def test_attach_load_round_trip_preserves_bond_index_uid(monkeypatch) -> None:

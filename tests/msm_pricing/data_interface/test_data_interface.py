@@ -203,12 +203,18 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
         "mxn_tiie_discount",
         dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
     )
+    cached_nodes, cached_target_date = interface.get_historical_discount_curve(
+        "mxn_tiie_discount",
+        dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+    )
 
     assert target_date == dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
     assert nodes == [
         {"days_to_maturity": 28, "zero": 0.11},
         {"days_to_maturity": 91, "zero": 0.105},
     ]
+    assert cached_target_date == target_date
+    assert cached_nodes == nodes
     assert calls == [
         [
             {
@@ -220,6 +226,7 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
             }
         ]
     ]
+    assert interface.cache_info()["discount_curve_cache"]["size"] == 1
 
 
 def test_get_historical_discount_curve_uses_persisted_pricing_market_data_binding(

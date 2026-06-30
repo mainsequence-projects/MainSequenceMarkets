@@ -9,6 +9,7 @@ import QuantLib as ql
 from pydantic import Field, PrivateAttr
 
 from msm_pricing.api.market_data_bindings import PricingMarketDataSet, PricingMarketDataSetSelector
+from msm_pricing.pricing_engine.resolvers import normalize_curve_quote_side
 from msm_pricing.pricing_engine.resolvers import resolve_quantlib_index
 from msm_pricing.pricing_engine.swap_pricer import (
     get_swap_cashflows,
@@ -62,6 +63,7 @@ class InterestRateSwap(InstrumentModel):
     _swap: ql.VanillaSwap | None = PrivateAttr(default=None)
     _float_leg_index: ql.IborIndex | None = PrivateAttr(default=None)
     _market_data_set_uid: uuid.UUID | None = PrivateAttr(default=None)
+    _curve_quote_side: str | None = PrivateAttr(default=None)
 
     # ---------- convenience access to runtime index (NOT serialized) ----------
     @property
@@ -78,6 +80,8 @@ class InterestRateSwap(InstrumentModel):
             self.float_leg_index_uid,
             valuation_date=self.valuation_date,
             market_data_set=self._market_data_set_uid,
+            role_key="projection",
+            quote_side=self._curve_quote_side,
             hydrate_fixings=True,
         )
 
@@ -110,6 +114,15 @@ class InterestRateSwap(InstrumentModel):
             self._float_leg_index = None
             self._reset_runtime()
 
+    def _apply_curve_quote_side(self, curve_quote_side: str | None = None) -> None:
+        if curve_quote_side is None:
+            return
+        normalized = normalize_curve_quote_side(curve_quote_side)
+        if self._curve_quote_side != normalized:
+            self._curve_quote_side = normalized
+            self._float_leg_index = None
+            self._reset_runtime()
+
     # ---------- pricing ----------
     def _setup_pricer(self) -> None:
         """Set up the pricer using the curve resolved from the floating index UID."""
@@ -122,17 +135,38 @@ class InterestRateSwap(InstrumentModel):
         # Call the common swap construction logic.
         self._build_swap(default_curve)
 
-    def price(self, *, market_data_set: PricingMarketDataSetSelector = None) -> float:
+    def price(
+        self,
+        *,
+        market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
+    ) -> float:
         self._apply_market_data_set(market_data_set)
+        self._apply_curve_quote_side(curve_quote_side)
         self._setup_pricer()
         return float(self._swap.NPV())
 
-    def get_cashflows(self) -> dict[str, list[dict[str, Any]]]:
+    def get_cashflows(
+        self,
+        *,
+        market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
+    ) -> dict[str, list[dict[str, Any]]]:
+        self._apply_market_data_set(market_data_set)
+        self._apply_curve_quote_side(curve_quote_side)
         self._setup_pricer()
         return get_swap_cashflows(self._swap)
 
-    def get_net_cashflows(self) -> pd.Series:
-        cashflows = self.get_cashflows()
+    def get_net_cashflows(
+        self,
+        *,
+        market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
+    ) -> pd.Series:
+        cashflows = self.get_cashflows(
+            market_data_set=market_data_set,
+            curve_quote_side=curve_quote_side,
+        )
         fixed_df = pd.DataFrame(cashflows["fixed"]).set_index("payment_date")
         float_df = pd.DataFrame(cashflows["floating"]).set_index("payment_date")
         joint = fixed_df.index.union(float_df.index)

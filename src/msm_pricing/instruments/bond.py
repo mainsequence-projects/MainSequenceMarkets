@@ -15,7 +15,12 @@ from msm_pricing.api.market_data_bindings import PricingMarketDataSet, PricingMa
 from msm_pricing.pricing_engine.bond_pricer import (
     create_floating_rate_bond_with_curve,
 )
-from msm_pricing.pricing_engine.resolvers import resolve_quantlib_index
+from msm_pricing.pricing_engine.resolvers import (
+    CurveSelectionContext,
+    normalize_curve_quote_side,
+    resolve_curve_for_index_binding,
+    resolve_quantlib_index,
+)
 from msm_pricing.utils import to_py_date, to_ql_date
 
 from .base_instrument import InstrumentModel
@@ -179,6 +184,7 @@ class Bond(InstrumentModel):
     _last_discount_curve_handle: ql.YieldTermStructureHandle | None = PrivateAttr(default=None)
     _curve_observer: ql.Observer | None = PrivateAttr(default=None)
     _market_data_set_uid: uuid.UUID | None = PrivateAttr(default=None)
+    _curve_quote_side: str | None = PrivateAttr(default=None)
 
     def get_bond(self):
         return self._bond
@@ -212,6 +218,9 @@ class Bond(InstrumentModel):
     def _on_market_data_set_changed(self) -> None:
         self._invalidate_pricer()
 
+    def _on_curve_selection_changed(self) -> None:
+        self._invalidate_pricer()
+
     def _apply_market_data_set(self, market_data_set: PricingMarketDataSetSelector = None) -> None:
         if market_data_set is None:
             return
@@ -222,6 +231,17 @@ class Bond(InstrumentModel):
 
     def _market_data_set_cache_key(self) -> str:
         return f"mds:{self._market_data_set_uid or 'unresolved'}"
+
+    def _apply_curve_quote_side(self, curve_quote_side: str | None = None) -> None:
+        if curve_quote_side is None:
+            return
+        normalized = normalize_curve_quote_side(curve_quote_side)
+        if self._curve_quote_side != normalized:
+            self._curve_quote_side = normalized
+            self._on_curve_selection_changed()
+
+    def _curve_selection_cache_key(self) -> str:
+        return f"curve_quote_side:{self._curve_quote_side or 'default'}"
 
     def _price_cache_key_suffix(self) -> str:
         """
@@ -237,11 +257,7 @@ class Bond(InstrumentModel):
 
     def _curve_key_for_observer(self, handle: "ql.YieldTermStructureHandle") -> int | None:
         """Return the integer identity we use as the YTS key for versioning."""
-        try:
-            yts = handle.currentLink()
-        except Exception:
-            yts = None
-        return id(yts) if yts is not None else id(handle)
+        return id(handle)
 
     def _ensure_curve_observer(self, handle: "ql.YieldTermStructureHandle") -> None:
         """Register an observer on the discount handle so in-place curve updates bump the version tick."""
@@ -274,6 +290,8 @@ class Bond(InstrumentModel):
         *,
         forwarding_curve: ql.YieldTermStructureHandle | None = None,
         hydrate_fixings: bool = True,
+        role_key: str | None = None,
+        quote_side: str | None = None,
     ) -> ql.IborIndex:
         """
         Build a QuantLib index by backend index UID for the bond's valuation_date,
@@ -289,17 +307,39 @@ class Bond(InstrumentModel):
             market_data_set=self._market_data_set_uid,
             forwarding_curve=forwarding_curve,
             hydrate_fixings=hydrate_fixings,
+            role_key=role_key,
+            quote_side=self._curve_quote_side if quote_side is None else quote_side,
         )
 
-    def get_benchmark_index_curve(self) -> ql.YieldTermStructureHandle:
+    def get_benchmark_index_curve(
+        self,
+        *,
+        role_key: str = "z_spread_base",
+        quote_side: str | None = None,
+        curve_uid: uuid.UUID | str | None = None,
+        curve_unique_identifier: str | None = None,
+        expected_curve_type: str | None = None,
+    ) -> ql.YieldTermStructureHandle:
         """
-        Return the forwarding term structure for the bond's benchmark index
-        (given by benchmark_rate_index_uid). Mirrors FloatingRateBond.get_index_curve().
+        Return the term structure selected for this bond's benchmark index.
         """
         if not self.benchmark_rate_index_uid:
             raise ValueError("benchmark_rate_index_uid is not set for this instrument.")
-        idx = self._get_index_by_uid(self.benchmark_rate_index_uid, hydrate_fixings=True)
-        return idx.forwardingTermStructure()
+        if self.valuation_date is None:
+            raise ValueError(
+                "Set valuation_date before requesting a benchmark curve: "
+                "set_valuation_date(dt)."
+            )
+        return resolve_curve_for_index_binding(
+            index_uid=self.benchmark_rate_index_uid,
+            valuation_date=self.valuation_date,
+            market_data_set=self._market_data_set_uid,
+            role_key=role_key,
+            quote_side=quote_side,
+            curve_uid=curve_uid,
+            curve_unique_identifier=curve_unique_identifier,
+            expected_curve_type=expected_curve_type,
+        )
 
     def get_benchmark_index(self) -> ql.IborIndex:
         if not self.benchmark_rate_index_uid:
@@ -327,20 +367,19 @@ class Bond(InstrumentModel):
 
     def _curve_cache_id_from_handle(self, handle: "ql.YieldTermStructureHandle") -> str:
         """
-        Deterministic id for a curve handle suitable for cross-instance cache hits:
-          - identity of the underlying YieldTermStructure object
+        Deterministic id for a curve handle suitable for in-process cache hits:
+          - identity of the QuantLib handle object
           - its reference date
+
+        QuantLib's Python binding can return a fresh SWIG proxy on each
+        currentLink() call, so using id(currentLink()) makes identical handles
+        miss the cache.
         """
-        try:
-            yts = handle.currentLink()
-        except Exception:
-            yts = None
-        yts_id = id(yts) if yts is not None else id(handle)
         try:
             ref_serial = int(handle.referenceDate().serialNumber())
         except Exception as e:
             raise e
-        return f"yts:{yts_id}|ref:{ref_serial}"
+        return f"yts:{id(handle)}|ref:{ref_serial}"
 
     def _context_key_for_handle(self, handle: "ql.YieldTermStructureHandle") -> str:
         """Build the cache context key for an explicit curve handle (yts id + ref + version ticks + val-date)."""
@@ -351,7 +390,7 @@ class Bond(InstrumentModel):
         fixv = self._fixings_version()
         return (
             f"{base}|v:{yts_ver}|fixv:{fixv}|val:{self._val_ordinal()}|"
-            f"{self._market_data_set_cache_key()}"
+            f"{self._market_data_set_cache_key()}|{self._curve_selection_cache_key()}"
         )
 
     def _normalize_currency(self, x: float) -> float:
@@ -377,7 +416,7 @@ class Bond(InstrumentModel):
             freq_i = int(flat_frequency)
             key = (
                 f"flat|y:{wy}|comp:{comp_i}|freq:{freq_i}|val:{val_ord}|"
-                f"{self._market_data_set_cache_key()}"
+                f"{self._market_data_set_cache_key()}|{self._curve_selection_cache_key()}"
             )
             suf = self._price_cache_key_suffix()
             return f"{key}|{suf}" if suf else key
@@ -396,7 +435,10 @@ class Bond(InstrumentModel):
         yts_ver = _YTS_VERSION.get(yts_key, 0)
         # fixings version tick (default 0 for non-floaters; overridden in FloatingRateBond)
         fixv = self._fixings_version()
-        key = f"{base}|v:{yts_ver}|fixv:{fixv}|val:{val_ord}|{self._market_data_set_cache_key()}"
+        key = (
+            f"{base}|v:{yts_ver}|fixv:{fixv}|val:{val_ord}|"
+            f"{self._market_data_set_cache_key()}|{self._curve_selection_cache_key()}"
+        )
         suf = self._price_cache_key_suffix()
         return f"{key}|{suf}" if suf else key
 
@@ -552,12 +594,14 @@ class Bond(InstrumentModel):
         with_yield: float | None = None,
         *,
         market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
         flat_compounding: int = ql.Compounded,
         flat_frequency: int = ql.Annual,
     ) -> float:
         if self.valuation_date is None:
             raise ValueError("Set valuation_date before pricing: set_valuation_date(dt).")
         self._apply_market_data_set(market_data_set)
+        self._apply_curve_quote_side(curve_quote_side)
 
         inst_key = self._instrument_cache_key()
         price_key = self._price_context_key(
@@ -596,7 +640,13 @@ class Bond(InstrumentModel):
         target_dirty_ccy: float,
         *,
         market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
         discount_curve: ql.YieldTermStructureHandle | ql.YieldTermStructure | None = None,
+        benchmark_curve_role_key: str = "z_spread_base",
+        benchmark_curve_quote_side: str | None = None,
+        benchmark_curve_uid: uuid.UUID | str | None = None,
+        benchmark_curve_unique_identifier: str | None = None,
+        benchmark_expected_curve_type: str | None = None,
         use_quantlib: bool = True,
         tol: float = 1e-12,
         max_iter: int = 200,
@@ -608,10 +658,12 @@ class Bond(InstrumentModel):
         Cached per instrument + curve context + target price, like price().
         """
         self._apply_market_data_set(market_data_set)
+        self._apply_curve_quote_side(curve_quote_side)
         # Ensure we at least have the instrument built (no engine required)
         self._ensure_instrument()
 
         # Resolve the base curve handle (prefer explicit arg; else index; else benchmark; else default)
+        selection_key = "curve_source:explicit"
         if discount_curve is not None:
             h = (
                 discount_curve
@@ -622,22 +674,53 @@ class Bond(InstrumentModel):
             h = None
 
             # 1) Index curve (floaters)
-            if h is None and hasattr(self, "get_index_curve"):
-                try:
-                    h = self.get_index_curve()
-                except Exception:
-                    h = None
+            if h is None and getattr(self, "floating_rate_index_uid", None) is not None:
+                h = self.get_index_curve()
+                selection_key = (
+                    "curve_source:floating|role:projection|"
+                    f"index:{getattr(self, 'floating_rate_index_uid')}|"
+                    f"side:{self._curve_quote_side or 'default'}"
+                )
 
             # 2) Benchmark curve (if configured)
             if h is None and self.benchmark_rate_index_uid:
+                benchmark_quote_side = (
+                    self._curve_quote_side
+                    if benchmark_curve_quote_side is None
+                    else normalize_curve_quote_side(benchmark_curve_quote_side)
+                )
+                benchmark_selection = CurveSelectionContext.for_index(
+                    index_uid=self.benchmark_rate_index_uid,
+                    role_key=benchmark_curve_role_key,
+                    market_data_set=self._market_data_set_uid,
+                    quote_side=benchmark_quote_side,
+                    curve_uid=benchmark_curve_uid,
+                    curve_unique_identifier=benchmark_curve_unique_identifier,
+                    expected_curve_type=benchmark_expected_curve_type,
+                )
                 try:
-                    h = self.get_benchmark_index_curve()
-                except Exception:
-                    h = None
+                    h = self.get_benchmark_index_curve(
+                        role_key=benchmark_selection.role_key,
+                        quote_side=benchmark_selection.quote_side,
+                        curve_uid=benchmark_curve_uid,
+                        curve_unique_identifier=benchmark_curve_unique_identifier,
+                        expected_curve_type=benchmark_expected_curve_type,
+                    )
+                except Exception as exc:
+                    raise LookupError(
+                        "Unable to resolve benchmark curve for z_spread: "
+                        f"benchmark_rate_index_uid={self.benchmark_rate_index_uid}, "
+                        f"market_data_set={self._market_data_set_uid}, "
+                        f"role_key={benchmark_selection.role_key!r}, "
+                        f"quote_side={benchmark_selection.quote_side!r}."
+                    ) from exc
+                selection_key = f"curve_source:benchmark|{benchmark_selection.cache_key()}"
 
             # 3) Default curve (fixed/zcb if user set reset_curve)
             if h is None:
                 h = self._get_default_discount_curve()
+                if h is not None:
+                    selection_key = "curve_source:default"
 
             if h is None:
                 raise ValueError(
@@ -650,7 +733,7 @@ class Bond(InstrumentModel):
         inst_key = self._instrument_cache_key()
         ctx_key = self._context_key_for_handle(h)
         tgt = self._normalize_currency(target_dirty_ccy)
-        z_key = f"z|{ctx_key}|dirty:{tgt}|method:{'ql' if use_quantlib else 'cont'}"
+        z_key = f"z|{ctx_key}|{selection_key}|dirty:{tgt}|method:{'ql' if use_quantlib else 'cont'}"
 
         # Cache hit
         with _BOND_CACHE_LOCK:
@@ -886,10 +969,12 @@ class Bond(InstrumentModel):
         with_yield: float | None = None,
         *,
         market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
         flat_compounding: int = ql.Compounded,
         flat_frequency: int = ql.Annual,
     ) -> dict:
         self._apply_market_data_set(market_data_set)
+        self._apply_curve_quote_side(curve_quote_side)
         self._setup_pricer(
             with_yield=with_yield,
             flat_compounding=flat_compounding,
@@ -906,6 +991,7 @@ class Bond(InstrumentModel):
         self,
         *,
         market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
     ) -> dict[str, list[dict[str, Any]]]:
         """
         Generic cashflow extractor.
@@ -913,6 +999,7 @@ class Bond(InstrumentModel):
         For floaters, you'll see "floating" + "redemption".
         """
         self._apply_market_data_set(market_data_set)
+        self._apply_curve_quote_side(curve_quote_side)
         self._setup_pricer()
         ql.Settings.instance().evaluationDate = to_ql_date(self.valuation_date)
 
@@ -957,13 +1044,23 @@ class Bond(InstrumentModel):
         # Trim empty legs to stay tidy
         return {k: v for k, v in out.items() if len(v) > 0}
 
-    def get_cashflows_df(self):
+    def get_cashflows_df(
+        self,
+        *,
+        market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
+    ):
         """Convenience dataframe with coupon + redemption aligned."""
+        self._apply_market_data_set(market_data_set)
+        self._apply_curve_quote_side(curve_quote_side)
         self._ensure_instrument()  # << build-only; no curve/yield needed
 
         import pandas as pd
 
-        cfs = self.get_cashflows()
+        cfs = self.get_cashflows(
+            market_data_set=market_data_set,
+            curve_quote_side=curve_quote_side,
+        )
         legs = [k for k in ("fixed", "floating") if k in cfs]
         if not legs and "redemption" not in cfs:
             return pd.DataFrame()
@@ -1003,9 +1100,17 @@ class Bond(InstrumentModel):
 
         return df_out
 
-    def get_net_cashflows(self):
+    def get_net_cashflows(
+        self,
+        *,
+        market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
+    ):
         """Shorthand Series of combined coupon + redemption."""
-        df = self.get_cashflows_df()
+        df = self.get_cashflows_df(
+            market_data_set=market_data_set,
+            curve_quote_side=curve_quote_side,
+        )
         return df["net_cashflow"] if "net_cashflow" in df.columns else df.squeeze()
 
     def get_yield(self, override_clean_price: float | None = None) -> float:
@@ -1029,6 +1134,7 @@ class Bond(InstrumentModel):
         *,
         build_if_needed: bool = True,
         with_yield: float | None = None,
+        curve_quote_side: str | None = None,
         flat_compounding: int = ql.Compounded,
         flat_frequency: int = ql.Annual,
     ) -> ql.Bond:
@@ -1040,6 +1146,8 @@ class Bond(InstrumentModel):
             raise ValueError(
                 "Set valuation_date before accessing the QuantLib bond (set_valuation_date(dt))."
             )
+
+        self._apply_curve_quote_side(curve_quote_side)
 
         if build_if_needed:
             # If caller gave a yield OR we have a default curve, do full pricing setup.
@@ -1086,6 +1194,7 @@ class Bond(InstrumentModel):
         with_yield: float | None = None,
         *,
         market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
         duration_type=ql.Duration.Modified,
         flat_compounding: int = ql.Compounded,
         flat_frequency: int = ql.Annual,
@@ -1109,6 +1218,7 @@ class Bond(InstrumentModel):
                 "Set valuation_date before computing duration: set_valuation_date(dt)."
             )
         self._apply_market_data_set(market_data_set)
+        self._apply_curve_quote_side(curve_quote_side)
 
         # ---------- build cache keys ----------
         inst_key = self._instrument_cache_key()
@@ -1617,6 +1727,7 @@ class CallableFixedRateBond(_FixedRateBondCommon):
         with_yield: float | None = None,
         *,
         market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
         flat_compounding: int = ql.Compounded,
         flat_frequency: int = ql.Annual,
         discount_parameters: DiscountParameters | dict[str, Any] | None = None,
@@ -1625,6 +1736,7 @@ class CallableFixedRateBond(_FixedRateBondCommon):
         return super().price(
             with_yield=with_yield,
             market_data_set=market_data_set,
+            curve_quote_side=curve_quote_side,
             flat_compounding=flat_compounding,
             flat_frequency=flat_frequency,
         )
@@ -1634,6 +1746,7 @@ class CallableFixedRateBond(_FixedRateBondCommon):
         with_yield: float | None = None,
         *,
         market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
         flat_compounding: int = ql.Compounded,
         flat_frequency: int = ql.Annual,
         discount_parameters: DiscountParameters | dict[str, Any] | None = None,
@@ -1642,6 +1755,7 @@ class CallableFixedRateBond(_FixedRateBondCommon):
         return super().analytics(
             with_yield=with_yield,
             market_data_set=market_data_set,
+            curve_quote_side=curve_quote_side,
             flat_compounding=flat_compounding,
             flat_frequency=flat_frequency,
         )
@@ -1651,6 +1765,7 @@ class CallableFixedRateBond(_FixedRateBondCommon):
         with_yield: float | None = None,
         *,
         market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
         discount_parameters: DiscountParameters | dict[str, Any] | None = None,
         duration_type=ql.Duration.Modified,
         flat_compounding: int = ql.Compounded,
@@ -1660,6 +1775,7 @@ class CallableFixedRateBond(_FixedRateBondCommon):
         return super().duration(
             with_yield=with_yield,
             market_data_set=market_data_set,
+            curve_quote_side=curve_quote_side,
             duration_type=duration_type,
             flat_compounding=flat_compounding,
             flat_frequency=flat_frequency,
@@ -1670,6 +1786,7 @@ class CallableFixedRateBond(_FixedRateBondCommon):
         *,
         build_if_needed: bool = True,
         with_yield: float | None = None,
+        curve_quote_side: str | None = None,
         flat_compounding: int = ql.Compounded,
         flat_frequency: int = ql.Annual,
         discount_parameters: DiscountParameters | dict[str, Any] | None = None,
@@ -1682,6 +1799,7 @@ class CallableFixedRateBond(_FixedRateBondCommon):
         return super().get_ql_bond(
             build_if_needed=build_if_needed,
             with_yield=with_yield,
+            curve_quote_side=curve_quote_side,
             flat_compounding=flat_compounding,
             flat_frequency=flat_frequency,
         )
@@ -1930,7 +2048,11 @@ class _FloatingRateBondCommon(Bond):
             return
         if self.valuation_date is None:
             raise ValueError("Set valuation_date before pricing: set_valuation_date(dt).")
-        self._index = self._get_index_by_uid(self.floating_rate_index_uid, hydrate_fixings=True)
+        self._index = self._get_index_by_uid(
+            self.floating_rate_index_uid,
+            hydrate_fixings=True,
+            role_key="projection",
+        )
         self._register_index_observer()
 
     def _register_index_observer(self) -> None:
@@ -1984,6 +2106,9 @@ class _FloatingRateBondCommon(Bond):
         self._index_observer = None
 
     def _on_market_data_set_changed(self) -> None:
+        self._on_valuation_date_set()
+
+    def _on_curve_selection_changed(self) -> None:
         self._on_valuation_date_set()
 
     def reset_curve(self, curve: ql.YieldTermStructureHandle) -> None:
@@ -2081,11 +2206,13 @@ class FloatingRateBond(_FloatingRateBondCommon):
         self,
         *,
         market_data_set: PricingMarketDataSetSelector = None,
+        curve_quote_side: str | None = None,
     ) -> dict[str, list[dict[str, Any]]]:
         """
         Keep the original floater-specific structure (floating + redemption).
         """
         self._apply_market_data_set(market_data_set)
+        self._apply_curve_quote_side(curve_quote_side)
         self._setup_pricer()
         ql.Settings.instance().evaluationDate = to_ql_date(self.valuation_date)
 

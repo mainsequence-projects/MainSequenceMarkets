@@ -30,7 +30,7 @@ PricingMarketDataSetCurveBinding
   binding_key         = role:selector_type:selector_key:quote_side
   role_key            = discount | projection | forwarding | z_spread_base
   selector_type       = currency | index | global
-  selector_key        = USD | <index_uid> | global
+  selector_key        = USD | <IndexTable.uid> | global
   curve_uid           -> CurveTable.uid
 ```
 
@@ -117,24 +117,51 @@ PricingMarketDataSetBinding.upsert(
 answer which curve inside that storage should be used. A discount-curve storage
 table can contain many `curve_identifier` values.
 
-Use `PricingMarketDataSetCurveBinding` to select curve identity for a valuation
-role:
+Use `PricingMarketDataSetCurveBinding.upsert_index_curve_selection(...)` to
+select curve identity for an index-scoped valuation role:
 
 ```python
 from msm_pricing.api import PricingMarketDataSetCurveBinding
 
-PricingMarketDataSetCurveBinding.upsert(
+PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
     market_data_set_uid=market_data_set.uid,
     role_key="projection",
-    selector_type="index",
-    selector_key=str(index.uid),
+    index_uid=index.uid,
     quote_side="mid",
     curve_uid=curve.uid,
 )
 ```
 
-The public API derives `binding_key`, for example
-`projection:index:<index_uid>:mid`, instead of asking callers to hand-author it.
+The helper writes the generic `PricingMarketDataSetCurveBinding` row with
+`selector_type="index"` and `selector_key=str(index.uid)` internally. Normal
+index-based workflows should not pass those selector fields directly. Use the
+raw `upsert(...)` method only for generic selectors such as currency, future
+asset-scoped selectors, volatility surfaces, or other policy dimensions.
+
+Benchmark analytics use the same binding table. A bond's
+`benchmark_rate_index_uid` selects the index identity only; z-spread resolves
+the curve from a `z_spread_base` binding:
+
+```python
+PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
+    market_data_set_uid=market_data_set.uid,
+    role_key="z_spread_base",
+    index_uid=benchmark_index.uid,
+    quote_side="mid",
+    curve_uid=benchmark_curve.uid,
+)
+
+spread = bond.z_spread(
+    target_dirty_ccy=101.25,
+    market_data_set=market_data_set.set_key,
+    benchmark_curve_quote_side="mid",
+)
+```
+
+There is no implicit `mid` fallback. A binding written with `quote_side="mid"`
+is looked up only when the runtime request also carries `quote_side="mid"`.
+Use `quote_side=None` when the binding should be the default side for that
+market-data set and role.
 
 ## Selecting a market-data set
 
