@@ -48,6 +48,10 @@ and this project follows versioned releases.
 - Added the optional `msm_pricing.data_nodes.CurveKeyNode` helper as the
   recommended key-node shape, including raw quote fields and yield-native
   `yield` serialization for discount-curve producers.
+- Added `DiscountCurvesNode.normalize_key_nodes(...)` and
+  `set_key_nodes_validator(...)` so curve DataNode producers can enforce
+  source-specific key-node provenance schemas without tightening the shared
+  storage contract.
 - Tightened `DiscountCurvesStorage.curve` to a required non-null payload and
   made discount-curve builders reject missing, null, or empty curve mappings.
 - Added observation-level discount-curve reads carrying `nodes`, `key_nodes`,

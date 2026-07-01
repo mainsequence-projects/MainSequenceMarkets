@@ -301,6 +301,38 @@ Rules:
   `CurveBuildingDetails` still describes how the final stored `curve` is built
   and interpreted by pricing.
 
+When a producer needs stricter source-specific validation, extend the DataNode
+validator instead of tightening the shared storage contract. The base
+`DiscountCurvesNode` calls `normalize_key_nodes(...)` for each row after
+storage-level JSON normalization. Subclass it for source-owned rules:
+
+```python
+from msm_pricing.data_nodes import CurveKeyNode, DiscountCurvesNode
+
+
+class SourceDiscountCurvesNode(DiscountCurvesNode):
+    def normalize_key_nodes(self, value, *, row, curve_identifier):
+        nodes = super().normalize_key_nodes(
+            value,
+            row=row,
+            curve_identifier=curve_identifier,
+        )
+        return [
+            CurveKeyNode.model_validate(node).model_dump(
+                mode="json",
+                by_alias=True,
+                exclude_none=True,
+            )
+            for node in nodes
+        ]
+```
+
+For runtime composition, attach a callable with
+`node.set_key_nodes_validator(...)`. The callable receives the normalized
+`value`, the full row, and the `curve_identifier`, and must return JSON
+object/list provenance. Do not put validator callables in `CurveConfig`; they
+are execution behavior, not hashed dataset identity.
+
 A `DiscountCurvesNode` publisher passes the values as ordinary DataFrame
 columns. Keep `key_nodes` beside `curve`; do not nest it inside the compressed
 pricing payload:

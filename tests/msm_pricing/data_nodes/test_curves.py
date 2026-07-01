@@ -361,6 +361,115 @@ def test_curve_key_node_helper_accepts_yield_alias() -> None:
     assert node.model_dump(mode="json", by_alias=True, exclude_none=True)["yield"] == 0.105
 
 
+def test_discount_curves_node_supports_runtime_key_nodes_validator() -> None:
+    def validate_valmer_key_nodes(value, *, row, curve_identifier):
+        assert curve_identifier == "mxn_tiie_discount"
+        assert row["metadata_json"] == {"source_snapshot": "mock"}
+        validated = []
+        for node in value:
+            if node.get("quote_type") != "clean_price":
+                raise ValueError("Valmer key nodes must use clean_price quotes.")
+            validated.append({**node, "validated_by": "valmer"})
+        return validated
+
+    node = object.__new__(DiscountCurvesNode)
+    node.set_key_nodes_validator(validate_valmer_key_nodes)
+
+    normalized = node._normalize_builder_frame(
+        pd.DataFrame(
+            [
+                {
+                    "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+                    "curve_identifier": "mxn_tiie_discount",
+                    "curve": {28: 0.11, 91: 0.105},
+                    "key_nodes": [
+                        {
+                            "maturity_date": "2031-05-27",
+                            "asset_identifier": "MXN_BONO_2031",
+                            "instrument_type": "fixed_rate_bond",
+                            "quote": 99.25,
+                            "quote_type": "clean_price",
+                            "quote_unit": "price_per_100",
+                        }
+                    ],
+                    "metadata_json": {"source_snapshot": "mock"},
+                }
+            ]
+        ),
+        curve_identifier="mxn_tiie_discount",
+    )
+
+    assert normalized["key_nodes"].tolist() == [
+        [
+            {
+                "maturity_date": "2031-05-27",
+                "asset_identifier": "MXN_BONO_2031",
+                "instrument_type": "fixed_rate_bond",
+                "quote": 99.25,
+                "quote_type": "clean_price",
+                "quote_unit": "price_per_100",
+                "validated_by": "valmer",
+            }
+        ]
+    ]
+
+
+def test_discount_curves_node_subclass_can_override_key_nodes_validation() -> None:
+    class StrictDiscountCurvesNode(DiscountCurvesNode):
+        def normalize_key_nodes(self, value, *, row, curve_identifier):
+            normalized = super().normalize_key_nodes(
+                value,
+                row=row,
+                curve_identifier=curve_identifier,
+            )
+            return [
+                CurveKeyNode.model_validate(node).model_dump(
+                    mode="json",
+                    by_alias=True,
+                    exclude_none=True,
+                )
+                for node in normalized
+            ]
+
+    node = object.__new__(StrictDiscountCurvesNode)
+    node.key_nodes_validator = None
+
+    normalized = node._normalize_builder_frame(
+        pd.DataFrame(
+            [
+                {
+                    "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+                    "curve_identifier": "mxn_tiie_discount",
+                    "curve": {28: 0.11, 91: 0.105},
+                    "key_nodes": [
+                        {
+                            "maturity_date": "2027-05-27",
+                            "instrument_type": "direct_zero_rate",
+                            "yield": 0.105,
+                            "quote_type": "zero_rate",
+                            "quote_unit": "decimal",
+                        }
+                    ],
+                }
+            ]
+        ),
+        curve_identifier="mxn_tiie_discount",
+    )
+
+    assert normalized["key_nodes"].tolist() == [
+        [
+            {
+                "maturity_date": "2027-05-27",
+                "instrument_type": "direct_zero_rate",
+                "quote_type": "zero_rate",
+                "quote_unit": "decimal",
+                "quote_side": "mid",
+                "yield": 0.105,
+            }
+        ]
+    ]
+
+
 def test_discount_curves_node_rejects_stale_builder_identity_name() -> None:
     with pytest.raises(ValueError, match="curve_identifier"):
         DiscountCurvesNode._normalize_builder_frame(

@@ -153,7 +153,9 @@ before publishing curve observations:
    nodes and `key_nodes` for the dated input quotes used to build that row.
    `key_nodes` is source-owned JSON. Prefer the optional `CurveKeyNode` helper
    or the standard fields shown below when they fit the source, including
-   yield-native inputs for discount curves.
+   yield-native inputs for discount curves. Source-specific producers can
+   override `DiscountCurvesNode.normalize_key_nodes(...)` or attach
+   `set_key_nodes_validator(...)` when they need stricter validation.
 
    ```python
    return pd.DataFrame(

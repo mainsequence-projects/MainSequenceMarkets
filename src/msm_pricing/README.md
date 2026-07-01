@@ -84,6 +84,9 @@ recommended fields such as `maturity_date`, `asset_identifier`,
 `instrument_type`, `quote`, `quote_type`, `quote_unit`, `quote_side`, and
 `yield`, but the storage layer does not force that schema. `CurveBuildingDetails`
 still describes how the final stored curve is built and interpreted by pricing.
+Source-specific builders can enforce stricter provenance semantics by
+overriding `DiscountCurvesNode.normalize_key_nodes(...)` or by attaching a
+runtime callable with `set_key_nodes_validator(...)`.
 
 Curve construction is strict. `CurveBuildingDetails.interpolation_method` must
 be one of `log_linear_discount`, `log_cubic_discount`, `linear_zero`,

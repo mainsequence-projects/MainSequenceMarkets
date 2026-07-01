@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Mapping
-from typing import ClassVar, Protocol
+from typing import Any, ClassVar, Protocol
 
 import pandas as pd
 from pydantic import Field
@@ -30,6 +30,18 @@ class DiscountCurveBuilder(Protocol):
         curve_identifier: str,
         base_node_curve_points: APIDataNode | None,
     ) -> pd.DataFrame: ...
+
+
+class CurveKeyNodesValidator(Protocol):
+    """Runtime semantic validator for source-owned curve key-node provenance."""
+
+    def __call__(
+        self,
+        value: Any,
+        *,
+        row: Mapping[str, Any],
+        curve_identifier: str,
+    ) -> Any: ...
 
 
 class CurveDataNodeConfiguration(StampedDataNodeConfiguration):
@@ -82,6 +94,7 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
     ):
         self.curve_config = curve_config
         self.curve_builder: DiscountCurveBuilder | None = None
+        self.key_nodes_validator: CurveKeyNodesValidator | None = None
         self.base_node_curve_points = None
         if curve_config.curve_points_dependency_node_uid:
             self.base_node_curve_points = APIDataNode.build_from_identifier(
@@ -101,6 +114,39 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
     def set_curve_builder(self, curve_builder: DiscountCurveBuilder) -> DiscountCurvesNode:
         self.curve_builder = curve_builder
         return self
+
+    def set_key_nodes_validator(
+        self,
+        key_nodes_validator: CurveKeyNodesValidator | None,
+    ) -> DiscountCurvesNode:
+        """Attach optional producer-owned semantic validation for key_nodes.
+
+        The base DataNode always applies storage-level JSON normalization. This
+        hook lets a producer enforce source-specific requirements without making
+        those requirements part of the shared storage contract or hashed config.
+        """
+
+        self.key_nodes_validator = key_nodes_validator
+        return self
+
+    def normalize_key_nodes(
+        self,
+        value: Any,
+        *,
+        row: Mapping[str, Any],
+        curve_identifier: str,
+    ) -> Any:
+        """Normalize and optionally validate source-owned key-node provenance."""
+
+        normalized = normalize_curve_key_nodes(value)
+        if self.key_nodes_validator is None:
+            return normalized
+        validated = self.key_nodes_validator(
+            normalized,
+            row=row,
+            curve_identifier=curve_identifier,
+        )
+        return normalize_curve_key_nodes(validated)
 
     def update(self) -> pd.DataFrame:
         curve_identifier = self.curve_config.curve_unique_identifier
@@ -145,13 +191,21 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
             base_node_curve_points=base_node_curve_points,
         )
 
-    @staticmethod
     def _normalize_builder_frame(
-        frame: pd.DataFrame,
+        self_or_frame,
+        frame: pd.DataFrame | None = None,
         *,
         curve_identifier: str,
+        key_nodes_normalizer: CurveKeyNodesValidator | None = None,
     ) -> pd.DataFrame:
-        normalized = frame.copy()
+        instance = None if frame is None else self_or_frame
+        source_frame = self_or_frame if frame is None else frame
+        if key_nodes_normalizer is None and isinstance(instance, DiscountCurvesNode):
+            key_nodes_normalizer = instance.normalize_key_nodes
+        if key_nodes_normalizer is None:
+            key_nodes_normalizer = _normalize_key_nodes_without_semantic_validator
+
+        normalized = source_frame.copy()
         normalized = normalized.reset_index()
         stale_columns = {"unique_identifier", "curve_unique_identifier"}.intersection(
             normalized.columns
@@ -169,16 +223,23 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
                 "mapping for each curve observation."
             )
         normalized["curve"] = normalized["curve"].apply(_normalize_curve_payload)
+        if "metadata_json" not in normalized.columns:
+            normalized["metadata_json"] = None
+        else:
+            normalized["metadata_json"] = normalized["metadata_json"].apply(normalize_curve_metadata)
         if "key_nodes" not in normalized.columns:
             raise ValueError(
                 "Discount curve builder frames must include key_nodes construction "
                 "provenance for each curve observation."
             )
-        normalized["key_nodes"] = normalized["key_nodes"].apply(normalize_curve_key_nodes)
-        if "metadata_json" not in normalized.columns:
-            normalized["metadata_json"] = None
-        else:
-            normalized["metadata_json"] = normalized["metadata_json"].apply(normalize_curve_metadata)
+        normalized["key_nodes"] = [
+            key_nodes_normalizer(
+                row["key_nodes"],
+                row=row,
+                curve_identifier=str(row.get(CURVE_IDENTIFIER) or curve_identifier),
+            )
+            for row in normalized.to_dict(orient="records")
+        ]
         return normalized
 
 
@@ -191,11 +252,21 @@ def _normalize_curve_payload(value):
     return dict(value)
 
 
+def _normalize_key_nodes_without_semantic_validator(
+    value: Any,
+    *,
+    row: Mapping[str, Any],
+    curve_identifier: str,
+) -> Any:
+    return normalize_curve_key_nodes(value)
+
+
 __all__ = [
     "CURVE_IDENTIFIER",
     "CurveConfig",
     "CurveDataNodeConfiguration",
     "CurveKeyNode",
+    "CurveKeyNodesValidator",
     "CurveTimestampedDataNode",
     "DiscountCurvesNode",
     "DiscountCurveBuilder",

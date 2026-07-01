@@ -414,6 +414,12 @@ Rules:
   `quote_side`, and optional yield-native `yield` via the Python field
   `yield_value`. Per-node `quote_type` and `quote_unit` describe raw source
   inputs; `CurveBuildingDetails` describes the final stored curve.
+- When a producer needs stricter source-specific semantics, override
+  `DiscountCurvesNode.normalize_key_nodes(...)` or attach a runtime callable
+  with `set_key_nodes_validator(...)`. The hook receives the normalized
+  key-node value, the full row, and the curve identifier. It must return JSON
+  object/list provenance. Do not put validator callables in `CurveConfig`; they
+  are execution behavior, not hashed DataNode configuration.
 - Optional row diagnostics belong in the storage column named `metadata_json`.
 - The builder configuration's `curve_unique_identifier` must exist as a `Curve`
   row before publishing; emitted storage rows use `curve_identifier`.

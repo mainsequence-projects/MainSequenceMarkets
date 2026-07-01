@@ -30,6 +30,9 @@ shape with `maturity_date`, `instrument_type`, `quote`, `quote_type`,
 `quote_unit`, `quote_side`, and yield-native `yield` values. Producers may use
 their own JSON schema when that is needed to audit the source build;
 `CurveBuildingDetails` still owns the final constructed curve convention.
+Real source publishers that need stricter checks should override
+`DiscountCurvesNode.normalize_key_nodes(...)` or attach
+`set_key_nodes_validator(...)` instead of changing the shared storage schema.
 
 The example writes the projection curve selection as the default quote-side
 binding (`quote_side=None`) because the valuation basket passes only
