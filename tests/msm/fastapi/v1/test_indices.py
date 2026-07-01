@@ -215,7 +215,7 @@ def test_index_delete_impact_service_counts_dependency_effects(monkeypatch) -> N
         ("pricing-context", "IndexFixingsStorage"): 2,
         ("core-context", "PortfolioTable"): 3,
         ("pricing-context", "IndexConventionDetailsTable"): 1,
-        ("pricing-context", "CurveTable"): 4,
+        ("pricing-context", "PricingMarketDataSetCurveBindingTable"): 4,
     }
 
     def fake_count_model(context, *, model, filters):
@@ -237,7 +237,7 @@ def test_index_delete_impact_service_counts_dependency_effects(monkeypatch) -> N
         "index_fixings",
         "portfolio_published_index",
         "index_convention_details",
-        "pricing_curves",
+        "pricing_curve_selections",
     ]
     assert [relationship.severity for relationship in response.relationships] == [
         "blocking",
@@ -251,7 +251,14 @@ def test_index_delete_impact_service_counts_dependency_effects(monkeypatch) -> N
         ("pricing-context", "IndexFixingsStorage", {"index_identifier": "MX-TIIE"}),
         ("core-context", "PortfolioTable", {"published_index_uid": str(index_uid)}),
         ("pricing-context", "IndexConventionDetailsTable", {"index_uid": str(index_uid)}),
-        ("pricing-context", "CurveTable", {"index_uid": str(index_uid)}),
+        (
+            "pricing-context",
+            "PricingMarketDataSetCurveBindingTable",
+            {
+                "selector_type": "index",
+                "selector_key": str(index_uid),
+            },
+        ),
     ]
 
 

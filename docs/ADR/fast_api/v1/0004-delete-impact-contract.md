@@ -211,8 +211,9 @@ For index deletion, the resolver should continue to report:
 - `IndexFixingsStorage.index_identifier` as blocking;
 - `PortfolioTable.published_index_uid` as `SET NULL`;
 - `IndexConventionDetailsTable.index_uid` as cascade;
-- `CurveTable.index_uid` as an indirect restriction that can block the
-  convention cascade.
+- `PricingMarketDataSetCurveBindingTable.selector_type="index"` and
+  `selector_key=<index_uid>` as application-owned curve selections that must be
+  removed or repointed before delete.
 
 ## Command Center Adapter Contract
 

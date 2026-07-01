@@ -4,7 +4,11 @@ import datetime as dt
 
 from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime
 from apps.v1.schemas.common import FrontEndDetailSummary
-from apps.v1.schemas.pricing_curves import Curve, DiscountCurveResponse
+from apps.v1.schemas.pricing_curves import (
+    Curve,
+    CurveSelectionsResponse,
+    DiscountCurveResponse,
+)
 
 
 def list_pricing_curves(
@@ -13,7 +17,6 @@ def list_pricing_curves(
     offset: int,
     search: str | None = None,
     curve_type: str | None = None,
-    index_uid: str | None = None,
     source: str | None = None,
 ) -> dict:
     ensure_apps_v1_pricing_runtime()
@@ -22,7 +25,6 @@ def list_pricing_curves(
         offset=offset,
         search=search,
         curve_type=curve_type,
-        index_uid=index_uid,
         source=source,
     )
 
@@ -33,6 +35,14 @@ def get_pricing_curve_summary(*, uid: str) -> FrontEndDetailSummary | None:
     if summary is None:
         return None
     return FrontEndDetailSummary.model_validate(summary)
+
+
+def list_pricing_curve_selections(*, uid: str) -> CurveSelectionsResponse | None:
+    ensure_apps_v1_pricing_runtime()
+    response = _list_curve_selections(uid)
+    if response is None:
+        return None
+    return CurveSelectionsResponse.model_validate(response)
 
 
 def get_pricing_curve_discount_curve(
@@ -54,6 +64,10 @@ def get_pricing_curve_discount_curve(
 
 def _get_curve_frontend_detail_summary(uid: str):
     return Curve.get_frontend_detail_summary(uid)
+
+
+def _list_curve_selections(uid: str):
+    return Curve.list_curve_selections(uid)
 
 
 def _get_curve_discount_curve_nodes(**kwargs):

@@ -262,6 +262,7 @@ Pricing curve read operations:
 
 - `listPricingCurves`
 - `getPricingCurveSummary`
+- `listPricingCurveSelections`
 - `getPricingDiscountCurve`
 
 Pricing market-data read operations:

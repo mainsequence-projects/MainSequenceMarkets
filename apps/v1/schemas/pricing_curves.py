@@ -25,6 +25,53 @@ class CurveListResponse(PaginatedResponse[Curve]):
     model_config = ConfigDict(extra="ignore")
 
 
+class CurveSelectionCurve(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    uid: UUID
+    unique_identifier: str
+    display_name: str | None = None
+    curve_type: str
+
+
+class CurveSelectionMarketDataSet(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    uid: UUID
+    set_key: str | None = None
+    display_name: str | None = None
+
+
+class CurveSelectionSelector(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    type: str
+    selector_key: str | None = None
+    index_uid: UUID | None = None
+    index_identifier: str | None = None
+    display_name: str | None = None
+
+
+class CurveSelection(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    binding_uid: UUID
+    market_data_set: CurveSelectionMarketDataSet
+    role_key: str
+    quote_side: str | None = None
+    selector: CurveSelectionSelector
+    status: str
+    source: str | None = None
+
+
+class CurveSelectionsResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    curve: CurveSelectionCurve
+    count: int
+    results: list[CurveSelection]
+
+
 class DiscountCurveNode(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

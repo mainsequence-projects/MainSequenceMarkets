@@ -193,6 +193,11 @@ def test_curve_frontend_detail_summary_uses_curve_row(monkeypatch) -> None:
             )
         ),
     )
+    monkeypatch.setattr(
+        Curve,
+        "count_curve_selections",
+        classmethod(lambda cls, uid: 2),
+    )
 
     summary = Curve.get_frontend_detail_summary(curve_uid)
 
@@ -236,6 +241,13 @@ def test_curve_frontend_detail_summary_uses_curve_row(monkeypatch) -> None:
                 "label": "Identifier",
                 "value": "USD-SOFR-DISCOUNT",
                 "kind": "code",
+            },
+            {
+                "key": "curve_selection_count",
+                "label": "Curve Selections",
+                "value": 2,
+                "kind": "number",
+                "link_url": f"/api/v1/pricing/curves/{curve_uid}/curve-selections/",
             },
         ],
         "highlight_fields": [
@@ -292,6 +304,8 @@ def test_curve_frontend_detail_summary_uses_curve_row(monkeypatch) -> None:
                 "status": "ACTIVE",
                 "metadata_json": {"provider": "test"},
             },
+            "curve_selection_count": 2,
+            "curve_selections_url": f"/api/v1/pricing/curves/{curve_uid}/curve-selections/",
             "metadata_json": {"provider": "test"},
         },
     }
@@ -301,6 +315,191 @@ def test_curve_frontend_detail_summary_returns_none_when_missing(monkeypatch) ->
     monkeypatch.setattr(Curve, "get_by_uid", classmethod(lambda cls, uid: None))
 
     assert Curve.get_frontend_detail_summary(uuid.uuid4()) is None
+
+
+def test_curve_list_curve_selections_returns_reverse_binding_view(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    binding_uid_1 = uuid.uuid4()
+    binding_uid_2 = uuid.uuid4()
+    market_data_set_uid = uuid.uuid4()
+    index_uid = uuid.uuid4()
+    calls: list[object] = []
+
+    monkeypatch.setattr(
+        Curve,
+        "get_by_uid",
+        classmethod(
+            lambda cls, uid: Curve(
+                uid=curve_uid,
+                unique_identifier="USD-SOFR-OFFER-BENCHMARK",
+                display_name="USD SOFR offer benchmark",
+                curve_type="discount",
+            )
+        ),
+    )
+
+    from msm.api.indices import Index
+    from msm_pricing.api.market_data_bindings import (
+        PricingMarketDataSet,
+        PricingMarketDataSetCurveBinding,
+    )
+
+    def fake_filter_for_curve(cls, *, curve_uid, limit, status=None):
+        calls.append(("filter_for_curve", curve_uid, limit, status))
+        return [
+            PricingMarketDataSetCurveBinding(
+                uid=binding_uid_1,
+                market_data_set_uid=market_data_set_uid,
+                binding_key=f"z_spread_base:index:{index_uid}:offer",
+                role_key="z_spread_base",
+                selector_type="index",
+                selector_key=str(index_uid),
+                quote_side="offer",
+                curve_uid=curve_uid,
+                status="ACTIVE",
+                source="example",
+            ),
+            PricingMarketDataSetCurveBinding(
+                uid=binding_uid_2,
+                market_data_set_uid=market_data_set_uid,
+                binding_key=f"projection:index:{index_uid}:mid",
+                role_key="projection",
+                selector_type="index",
+                selector_key=str(index_uid),
+                quote_side="mid",
+                curve_uid=curve_uid,
+                status="ACTIVE",
+                source="example",
+            ),
+        ]
+
+    monkeypatch.setattr(
+        PricingMarketDataSetCurveBinding,
+        "filter_for_curve",
+        classmethod(fake_filter_for_curve),
+    )
+    monkeypatch.setattr(
+        PricingMarketDataSet,
+        "get_by_uid",
+        classmethod(lambda cls, uid: pytest.fail("market-data set lookup must be batched")),
+    )
+    monkeypatch.setattr(
+        Index,
+        "get_by_uid",
+        classmethod(lambda cls, uid: pytest.fail("index lookup must be batched")),
+    )
+    monkeypatch.setattr(
+        PricingMarketDataSet,
+        "_active_context",
+        classmethod(lambda cls: "pricing-context"),
+    )
+    monkeypatch.setattr(
+        Index,
+        "_active_context",
+        classmethod(lambda cls: "core-context"),
+    )
+
+    def fake_search_model(active_context, *, model, in_filters, limit):
+        calls.append(("search", active_context, model.__name__, in_filters, limit))
+        if model.__name__ == "PricingMarketDataSetTable":
+            return {
+                "rows": [
+                    {
+                        "uid": market_data_set_uid,
+                        "set_key": "eod",
+                        "display_name": "End of day",
+                    }
+                ]
+            }
+        if model.__name__ == "IndexTable":
+            return {
+                "rows": [
+                    {
+                        "uid": index_uid,
+                        "unique_identifier": "USD-SOFR",
+                        "index_type": "interest_rate",
+                        "display_name": "USD SOFR",
+                    }
+                ]
+            }
+        raise AssertionError(model.__name__)
+
+    monkeypatch.setattr("msm_pricing.api.curves.search_model", fake_search_model)
+
+    response = Curve.list_curve_selections(curve_uid)
+
+    assert response == {
+        "curve": {
+            "uid": curve_uid,
+            "unique_identifier": "USD-SOFR-OFFER-BENCHMARK",
+            "display_name": "USD SOFR offer benchmark",
+            "curve_type": "discount",
+        },
+        "count": 2,
+        "results": [
+            {
+                "binding_uid": binding_uid_1,
+                "market_data_set": {
+                    "uid": market_data_set_uid,
+                    "set_key": "eod",
+                    "display_name": "End of day",
+                },
+                "role_key": "z_spread_base",
+                "quote_side": "offer",
+                "selector": {
+                    "type": "index",
+                    "selector_key": str(index_uid),
+                    "index_uid": index_uid,
+                    "index_identifier": "USD-SOFR",
+                    "display_name": "USD SOFR",
+                },
+                "status": "ACTIVE",
+                "source": "example",
+            },
+            {
+                "binding_uid": binding_uid_2,
+                "market_data_set": {
+                    "uid": market_data_set_uid,
+                    "set_key": "eod",
+                    "display_name": "End of day",
+                },
+                "role_key": "projection",
+                "quote_side": "mid",
+                "selector": {
+                    "type": "index",
+                    "selector_key": str(index_uid),
+                    "index_uid": index_uid,
+                    "index_identifier": "USD-SOFR",
+                    "display_name": "USD SOFR",
+                },
+                "status": "ACTIVE",
+                "source": "example",
+            },
+        ],
+    }
+    assert calls == [
+        ("filter_for_curve", curve_uid, 5000, None),
+        (
+            "search",
+            "pricing-context",
+            "PricingMarketDataSetTable",
+            {"uid": [market_data_set_uid]},
+            1,
+        ),
+        (
+            "search",
+            "core-context",
+            "IndexTable",
+            {"uid": [index_uid]},
+            1,
+        ),
+    ]
+
+
+def test_curve_list_curve_selections_returns_none_when_curve_missing(monkeypatch) -> None:
+    monkeypatch.setattr(Curve, "get_by_uid", classmethod(lambda cls, uid: None))
+
+    assert Curve.list_curve_selections(uuid.uuid4()) is None
 
 
 def test_curve_discount_curve_nodes_use_market_data_binding(monkeypatch) -> None:

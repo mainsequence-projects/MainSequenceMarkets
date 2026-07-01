@@ -35,6 +35,36 @@ PricingMarketDataSetCurveBinding
   curve_uid           -> CurveTable.uid
 ```
 
+One market-data set drives **two** independent binding layers — one selects the
+storage source, the other selects the curve identity inside that source:
+
+```text
+                      +-------------------------------+
+                      | PricingMarketDataSetTable     |
+                      | set_key (default|eod|live|...) |
+                      +---------------+---------------+
+                        1 │                       │ 1
+              concept     │ N                   N │   role + selector
+              binding     ▼                       ▼   binding
+        +-----------------------------+   +-----------------------------------+
+        | PricingMarketDataSetBinding |   | PricingMarketDataSetCurveBinding  |
+        | concept_key                 |   | role_key, selector_type,          |
+        |   -> data_node_uid          |   | selector_key, quote_side          |
+        | "WHERE do I read from?"     |   |   -> curve_uid                    |
+        +--------------+--------------+   | "WHICH curve identity?"           |
+                       │ data_node_uid    +-----------------+-----------------+
+                       ▼                                    │ curve_uid (N:1)
+              +-----------------+                           ▼
+              | storage table   |<------ curve_identifier --+----- CurveTable
+              | DiscountCurves  |        column selects the row inside
+              | Storage         |        the storage table chosen on the left
+              +-----------------+
+```
+
+Both layers are required: the source binding picks the storage table, then the
+curve binding picks which `curve_identifier` inside it to read. Neither is
+inferred from the other.
+
 ## The `data_node_uid` boundary
 
 The important boundary is:

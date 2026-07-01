@@ -209,7 +209,9 @@ class PricingMarketDataSet(BaseModel):
         if rows:
             return cls.model_validate(rows[0])
         if required:
-            raise LookupError("MetaTable operation result did not include a PricingMarketDataSet row.")
+            raise LookupError(
+                "MetaTable operation result did not include a PricingMarketDataSet row."
+            )
         return None
 
 
@@ -218,9 +220,7 @@ class PricingMarketDataSetBinding(BaseModel):
 
     model_config = ConfigDict(extra="ignore", frozen=True)
 
-    __table__: ClassVar[type[PricingMarketDataSetBindingTable]] = (
-        PricingMarketDataSetBindingTable
-    )
+    __table__: ClassVar[type[PricingMarketDataSetBindingTable]] = PricingMarketDataSetBindingTable
     __required_tables__: ClassVar[list[type[Any]]] = [
         PricingMarketDataSetTable,
         PricingMarketDataSetBindingTable,
@@ -626,7 +626,7 @@ class PricingMarketDataSetCurveBinding(BaseModel):
                 f"market_data_set_uid={market_data_set_uid}, role_key={role_key!r}, "
                 f"selector_type={selector_type!r}, selector_key={selector_key!r}, "
                 f"quote_side={quote_side!r}."
-        )
+            )
         return binding.curve_uid
 
     @classmethod
@@ -701,6 +701,54 @@ class PricingMarketDataSetCurveBinding(BaseModel):
         ]
 
     @classmethod
+    def filter_for_curve(
+        cls,
+        *,
+        curve_uid: uuid.UUID | str,
+        limit: int = 500,
+        status: str | None = None,
+    ) -> list[PricingMarketDataSetCurveBinding]:
+        """Return curve-selection bindings that point at one CurveTable row."""
+
+        filters: dict[str, Any] = {"curve_uid": _coerce_uuid(curve_uid)}
+        if status is not None:
+            filters["status"] = status
+        return cls.filter(limit=limit, **filters)
+
+    @classmethod
+    def count_for_curve(
+        cls,
+        *,
+        curve_uid: uuid.UUID | str,
+        status: str | None = None,
+    ) -> int:
+        """Count curve-selection bindings that point at one CurveTable row."""
+
+        filters: dict[str, Any] = {"curve_uid": _coerce_uuid(curve_uid)}
+        if status is not None:
+            filters["status"] = status
+        result = count_model(cls._active_context(), model=cls.__table__, filters=filters)
+        return _count_from_operation_result(result)
+
+    @classmethod
+    def count_index_selector_references(
+        cls,
+        *,
+        index_uid: uuid.UUID | str,
+        status: str | None = None,
+    ) -> int:
+        """Count curve-selection bindings that use an index as selector."""
+
+        filters: dict[str, Any] = {
+            "selector_type": "index",
+            "selector_key": str(_coerce_uuid(index_uid)),
+        }
+        if status is not None:
+            filters["status"] = status
+        result = count_model(cls._active_context(), model=cls.__table__, filters=filters)
+        return _count_from_operation_result(result)
+
+    @classmethod
     def list(
         cls,
         *,
@@ -753,8 +801,7 @@ class PricingMarketDataSetCurveBinding(BaseModel):
         return {
             **response,
             "results": [
-                IndexCurveSelection.from_curve_binding(binding)
-                for binding in response["results"]
+                IndexCurveSelection.from_curve_binding(binding) for binding in response["results"]
             ],
         }
 
@@ -778,8 +825,7 @@ class PricingMarketDataSetCurveBinding(BaseModel):
             return cls.model_validate(rows[0])
         if required:
             raise LookupError(
-                "MetaTable operation result did not include a "
-                "PricingMarketDataSetCurveBinding row."
+                "MetaTable operation result did not include a PricingMarketDataSetCurveBinding row."
             )
         return None
 

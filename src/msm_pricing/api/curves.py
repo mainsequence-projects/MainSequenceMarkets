@@ -146,6 +146,8 @@ class Curve(BaseModel):
         row_payload = row.model_dump(mode="json")
         row_uid = str(row.uid)
         title = row.display_name or row.unique_identifier or row_uid
+        curve_selection_count = cls.count_curve_selections(row.uid)
+        curve_selections_url = f"/api/v1/pricing/curves/{row_uid}/curve-selections/"
 
         badges: list[dict[str, Any]] = [
             {
@@ -246,6 +248,13 @@ class Curve(BaseModel):
                     "value": row.unique_identifier,
                     "kind": "code",
                 },
+                {
+                    "key": "curve_selection_count",
+                    "label": "Curve Selections",
+                    "value": curve_selection_count,
+                    "kind": "number",
+                    "link_url": curve_selections_url,
+                },
             ],
             "highlight_fields": highlight_fields,
             "stats": [],
@@ -253,10 +262,45 @@ class Curve(BaseModel):
             "summary_warning": None,
             "extensions": {
                 "curve": row_payload,
+                "curve_selection_count": curve_selection_count,
+                "curve_selections_url": curve_selections_url,
                 "metadata_json": row.metadata_json,
             },
         }
         return summary
+
+    @classmethod
+    def count_curve_selections(cls, uid: uuid.UUID | str) -> int:
+        from msm_pricing.api.market_data_bindings import PricingMarketDataSetCurveBinding
+
+        return PricingMarketDataSetCurveBinding.count_for_curve(curve_uid=uid)
+
+    @classmethod
+    def list_curve_selections(cls, uid: uuid.UUID | str) -> dict[str, Any] | None:
+        curve = cls.get_by_uid(uid)
+        if curve is None:
+            return None
+
+        from msm_pricing.api.market_data_bindings import PricingMarketDataSetCurveBinding
+
+        bindings = PricingMarketDataSetCurveBinding.filter_for_curve(
+            curve_uid=curve.uid,
+            limit=5000,
+        )
+        related_context = _curve_selection_related_context(bindings)
+        results = [
+            _curve_selection_payload(binding, context=related_context) for binding in bindings
+        ]
+        return {
+            "curve": {
+                "uid": curve.uid,
+                "unique_identifier": curve.unique_identifier,
+                "display_name": curve.display_name,
+                "curve_type": curve.curve_type,
+            },
+            "count": len(results),
+            "results": results,
+        }
 
     @classmethod
     def get_discount_curve_nodes(
@@ -403,6 +447,126 @@ class Curve(BaseModel):
         if required:
             raise LookupError("MetaTable operation result did not include a Curve row.")
         return None
+
+
+def _curve_selection_related_context(bindings: list[Any]) -> dict[str, dict[uuid.UUID, Any]]:
+    market_data_set_uids = {binding.market_data_set_uid for binding in bindings}
+    index_uids: set[uuid.UUID] = set()
+    for binding in bindings:
+        if str(binding.selector_type).lower() != "index":
+            continue
+        try:
+            index_uids.add(uuid.UUID(str(binding.selector_key)))
+        except ValueError:
+            continue
+
+    return {
+        "market_data_sets": _market_data_sets_by_uid(market_data_set_uids),
+        "indexes": _indexes_by_uid(index_uids),
+    }
+
+
+def _market_data_sets_by_uid(uids: set[uuid.UUID]) -> dict[uuid.UUID, Any]:
+    if not uids:
+        return {}
+
+    from msm_pricing.api.market_data_bindings import PricingMarketDataSet
+
+    result = search_model(
+        PricingMarketDataSet._active_context(),
+        model=PricingMarketDataSet.__table__,
+        in_filters={"uid": list(uids)},
+        limit=len(uids),
+    )
+    rows: dict[uuid.UUID, Any] = {}
+    for row in operation_result_rows(result):
+        market_data_set = PricingMarketDataSet.model_validate(row)
+        rows[market_data_set.uid] = market_data_set
+    return rows
+
+
+def _indexes_by_uid(uids: set[uuid.UUID]) -> dict[uuid.UUID, Any]:
+    if not uids:
+        return {}
+
+    from msm.api.indices import Index
+
+    result = search_model(
+        Index._active_context(),
+        model=Index.__table__,
+        in_filters={"uid": list(uids)},
+        limit=len(uids),
+    )
+    rows: dict[uuid.UUID, Any] = {}
+    for row in operation_result_rows(result):
+        index = Index.model_validate(row)
+        rows[index.uid] = index
+    return rows
+
+
+def _curve_selection_payload(
+    binding: Any,
+    *,
+    context: dict[str, dict[uuid.UUID, Any]],
+) -> dict[str, Any]:
+    return {
+        "binding_uid": binding.uid,
+        "market_data_set": _curve_selection_market_data_set_payload(
+            binding,
+            context=context,
+        ),
+        "role_key": binding.role_key,
+        "quote_side": binding.quote_side,
+        "selector": _curve_selection_selector_payload(binding, context=context),
+        "status": binding.status,
+        "source": binding.source,
+    }
+
+
+def _curve_selection_market_data_set_payload(
+    binding: Any,
+    *,
+    context: dict[str, dict[uuid.UUID, Any]],
+) -> dict[str, Any]:
+    market_data_set = context["market_data_sets"].get(binding.market_data_set_uid)
+    if market_data_set is None:
+        return {
+            "uid": binding.market_data_set_uid,
+            "set_key": None,
+            "display_name": None,
+        }
+    return {
+        "uid": market_data_set.uid,
+        "set_key": market_data_set.set_key,
+        "display_name": market_data_set.display_name,
+    }
+
+
+def _curve_selection_selector_payload(
+    binding: Any,
+    *,
+    context: dict[str, dict[uuid.UUID, Any]],
+) -> dict[str, Any]:
+    selector_type = str(binding.selector_type)
+    payload: dict[str, Any] = {
+        "type": selector_type,
+        "selector_key": binding.selector_key,
+    }
+    if selector_type.lower() != "index":
+        return payload
+
+    try:
+        index_uid = uuid.UUID(str(binding.selector_key))
+    except ValueError:
+        return payload
+
+    payload["index_uid"] = index_uid
+
+    index = context["indexes"].get(index_uid)
+    if index is not None:
+        payload["index_identifier"] = index.unique_identifier
+        payload["display_name"] = index.display_name
+    return payload
 
 
 def _validate_pagination(*, limit: int, offset: int) -> tuple[int, int]:

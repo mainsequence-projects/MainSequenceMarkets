@@ -138,9 +138,9 @@ def test_openapi_json_documents_asset_list_endpoint() -> None:
     assert asset_monitor_operation["summary"] == "Get asset monitor frame"
     assert asset_monitor_operation["operationId"] == "getAssetMonitorFrame"
     assert asset_monitor_operation["x-ui-contract"] == "core.tabular_frame@v1"
-    assert asset_monitor_operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/TabularFrameResponse"}
+    assert asset_monitor_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/TabularFrameResponse"
+    }
 
     asset_detail_operation = payload["paths"]["/api/v1/asset/{uid}/"]["get"]
     assert asset_detail_operation["summary"] == "Get asset"
@@ -725,6 +725,9 @@ def test_openapi_json_documents_pricing_curve_routes() -> None:
     assert curve_list_operation["summary"] == "List pricing curves"
     assert curve_list_operation["operationId"] == "listPricingCurves"
     assert curve_list_operation["tags"] == ["pricing-curve"]
+    assert "index_uid" not in {
+        parameter["name"] for parameter in curve_list_operation["parameters"]
+    }
     assert curve_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/CurveListResponse"
     }
@@ -743,6 +746,18 @@ def test_openapi_json_documents_pricing_curve_routes() -> None:
     assert curve_summary_operation["responses"]["404"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/ErrorResponse"
     }
+
+    curve_selections_operation = payload["paths"]["/api/v1/pricing/curves/{uid}/curve-selections/"][
+        "get"
+    ]
+    assert curve_selections_operation["summary"] == "List pricing curve selections"
+    assert curve_selections_operation["operationId"] == "listPricingCurveSelections"
+    assert curve_selections_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/CurveSelectionsResponse"}
+    assert curve_selections_operation["responses"]["404"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ErrorResponse"}
 
     discount_curve_operation = payload["paths"]["/api/v1/pricing/curves/{uid}/discount-curve/"][
         "get"

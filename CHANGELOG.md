@@ -99,6 +99,9 @@ and this project follows versioned releases.
 - Added the FastAPI v1 reusable delete-impact contract and migrated the index
   preflight route to the shared `DeleteImpactResponse` serializer before
   additional delete routes copy the index-specific shape.
+- Added the FastAPI v1 curve-selection reverse lookup endpoint for pricing
+  curves, removed the curve list `index_uid` filter, and changed index
+  delete-impact to count `PricingMarketDataSetCurveBinding` index selectors.
 - Clarified missing discount-curve API errors so a curve with registry and
   market-data binding but no published `DiscountCurvesStorage` observations is
   reported as missing data, not a generic latest-observation lookup failure.

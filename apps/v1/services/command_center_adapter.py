@@ -75,6 +75,7 @@ QUERY_OPERATION_IDS = frozenset(
         "getCalendarEvent",
         "listPricingCurves",
         "getPricingCurveSummary",
+        "listPricingCurveSelections",
         "getPricingDiscountCurve",
         "getPricingMarketDataCard",
         "listPricingMarketDataSets",

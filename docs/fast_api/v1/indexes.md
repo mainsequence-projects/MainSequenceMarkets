@@ -19,8 +19,9 @@ dependencies, and index delete.
   - reports dependent row counts, delete effects, and whether the individual
     `DELETE /api/v1/index/{uid}/` route is currently blocked
   - treats `FutureAssetDetailsTable.underlying_index_uid`,
-    `IndexFixingsStorage.index_identifier`, and indirect curve references as
-    blocking dependencies when matching rows exist
+    `IndexFixingsStorage.index_identifier`, and
+    `PricingMarketDataSetCurveBindingTable` index selectors as blocking
+    dependencies when matching rows exist
   - reports non-blocking side effects for
     `PortfolioTable.published_index_uid` (`SET NULL`) and
     `IndexConventionDetailsTable.index_uid` (`CASCADE`)

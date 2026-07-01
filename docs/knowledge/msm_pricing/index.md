@@ -89,30 +89,81 @@ The pricing graph has four persistent layers:
 3. pricing DataNodes that publish curve and fixing observations;
 4. serialized instrument payloads that reference backend UUIDs.
 
+Per [ADR 0035](../../ADR/0035-pricing-curve-identity-and-market-data-curve-bindings.md),
+curve **identity**, curve **construction**, index **conventions**, and curve
+**selection** are four separate responsibilities. `CurveTable` has no index
+ownership column: the link from an index to a curve is *valuation policy* held in
+`PricingMarketDataSetCurveBindingTable`, not intrinsic curve identity. The full
+relationship map:
+
 ```text
-AssetTable.uid
-  -> AssetCurrentPricingDetailsTable.asset_uid
-  -> Instrument payload with backend index UID fields
+                 CORE msm REFERENCE                         PRICING EXTENSIONS (1:1)
+        +-------------------+                          +-----------------------------+
+        | AssetTable        |  1 ───── 1:1 ──────────> | AssetCurrentPricingDetails  |
+        | uid, unique_id    |  (asset_uid PK/FK)       | instrument payload (refs     |
+        +-------------------+                          | index UIDs inside payload)   |
+                                                       +-----------------------------+
+        +-------------------+                          +-----------------------------+
+        | IndexTable        |  1 ───── 1:1 ──────────> | IndexConventionDetails       |
+        | uid, unique_id    |  (index_uid PK/FK)       | QuantLib index + fixings only|
+        +---------+---------+                          +-----------------------------+
+                  │
+                  │ unique_identifier
+                  ▼
+        +-------------------+
+        | IndexFixings      |  observations keyed by index_identifier
+        | Storage (obs)     |
+        +-------------------+
 
-IndexTypeTable.index_type
-  -> IndexTable.index_type
-  -> IndexConventionDetailsTable.index_uid
-  -> QuantLib index and fixings
-
-PricingMarketDataSetTable
-  -> PricingMarketDataSetBindingTable(concept_key="discount_curves")
-  -> DiscountCurvesStorage
-
-PricingMarketDataSetTable
-  -> PricingMarketDataSetCurveBindingTable(role_key, selector_type, selector_key)
-  -> CurveTable.uid
-  -> CurveBuildingDetailsTable.curve_uid
-  -> DiscountCurvesNode(curve_identifier)
-
-IndexTable.unique_identifier
-  -> FixingRatesNode(index_identifier, rate)
-  -> QuantLib index hydration
+                 PRICING CURVE REGISTRY  (NO index ownership — ADR 0035)
+        +-------------------+  1 ──── 1:1 (curve_uid PK/FK) ──> +-------------------------+
+        | CurveTable        |                                   | CurveBuildingDetails    |
+        | uid, unique_id    |                                   | builder_type,           |
+        | curve_type        |                                   | interpolation, ...      |
+        | currency_code     |                                   | (how to build the QL    |
+        | quote_side        |                                   |  term structure)        |
+        +---+-----------+---+                                   +-------------------------+
+            │ 1         ▲ N
+            │           │ curve_uid  (NOT unique here)
+            │ unique_id │
+            ▼           │
+   +-----------------+  │        MARKET-DATA SETS: two binding layers
+   | DiscountCurves  |  │   +-----------------------------------------------+
+   | Storage (obs)   |  │   | PricingMarketDataSetTable (set_key)           |
+   +-----------------+  │   +------+----------------------------------+-----+
+                        │      1 │ N (concept binding)        1 │ N (curve binding)
+                        │        ▼                              ▼
+              +---------+----------------+      +-------------------------------------+
+              | PricingMarketDataSet     |      | PricingMarketDataSetCurveBinding    |
+              | CurveBinding             |      | concept_key -> data_node_uid        |
+              | role_key, selector_type, |      |  (SOURCE: which storage table)      |
+              | selector_key, quote_side |      +------------------+------------------+
+              |   -> curve_uid ──────────┘                         │ data_node_uid
+              | selector_key MAY hold an                           ▼
+              | IndexTable.uid as a STRING                 selected storage table
+              | (policy, not a table FK)                   (e.g. DiscountCurvesStorage)
+              +--------------------------+
 ```
+
+Read it as two questions answered by two different binding rows:
+
+- **Where do I read observations from?** `PricingMarketDataSetBinding`:
+  `(market_data_set, concept_key) -> data_node_uid -> storage table`.
+- **Which curve identity inside that storage do I use?**
+  `PricingMarketDataSetCurveBinding`:
+  `(market_data_set, role_key, selector_type, selector_key, quote_side) -> curve_uid`.
+
+Cardinalities that matter:
+
+- `AssetCurrentPricingDetails`, `IndexConventionDetails`, and
+  `CurveBuildingDetails` are each **one-to-one** with their parent
+  (`asset_uid`, `index_uid`, `curve_uid` is both PK and FK).
+- A curve binding is **many-to-one** onto `CurveTable`: `curve_uid` is *not*
+  unique in `PricingMarketDataSetCurveBindingTable`, so the same curve can be
+  selected by many roles, selectors, sides, and sets. To find every selector
+  that uses a curve, query the binding table by `curve_uid`.
+- An index participates in curve selection only as `selector_key` (its UID
+  stored as a string) — there is no foreign key from a curve to an index.
 
 The complete fixed-income pricing path, and how the pricing resolver walks it,
 is documented in [Runtime Resolution](runtime_resolution.md). The market-data

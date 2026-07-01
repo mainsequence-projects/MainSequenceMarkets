@@ -49,9 +49,7 @@ def get_index_delete_impact(*, uid: str) -> DeleteImpactResponse | None:
 
     warnings: list[str] = []
     if blocking_count:
-        warnings.append(
-            "Delete is blocked while RESTRICT dependencies reference this index."
-        )
+        warnings.append("Delete is blocked while dependent rows reference this index.")
     for item in relationships:
         if item["count"] <= 0:
             continue
@@ -63,8 +61,11 @@ def get_index_delete_impact(*, uid: str) -> DeleteImpactResponse | None:
         elif item["effect"] == "cascade_delete":
             warnings.append("Index convention details will be deleted by cascade.")
         elif item["effect"] == "blocks_cascade":
+            warnings.append("A dependent relationship blocks a cascade delete path.")
+        elif item["effect"] == "manual_cleanup_required":
             warnings.append(
-                "Curve rows restrict deletion of the index convention row that would cascade."
+                "Pricing curve selections use this index as selector and must be "
+                "removed or repointed before delete."
             )
 
     if not warnings:
@@ -119,7 +120,7 @@ def _get_delete_impact_pricing_runtime():
             "IndexType",
             "Index",
             "IndexConventionDetails",
-            "Curve",
+            "PricingMarketDataSetCurveBinding",
             "IndexFixingsStorage",
         ],
         row_model_name="Index delete impact apps/v1",
@@ -136,8 +137,8 @@ def _build_index_delete_impact_relationships(
     from msm.models import FutureAssetDetailsTable, PortfolioTable
     from msm.repositories.crud import count_model
     from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
-    from msm_pricing.models.curves import CurveTable
     from msm_pricing.models.index_convention_details import IndexConventionDetailsTable
+    from msm_pricing.models.market_data_bindings import PricingMarketDataSetCurveBindingTable
 
     def count(context: Any, model: Any, filters: dict[str, Any]) -> int:
         return _count_from_result(count_model(context, model=model, filters=filters))
@@ -162,10 +163,13 @@ def _build_index_delete_impact_relationships(
         IndexConventionDetailsTable,
         {"index_uid": uid},
     )
-    pricing_curves_count = count(
+    pricing_curve_selections_count = count(
         pricing_context,
-        CurveTable,
-        {"index_uid": uid},
+        PricingMarketDataSetCurveBindingTable,
+        {
+            "selector_type": "index",
+            "selector_key": uid,
+        },
     )
 
     return [
@@ -195,9 +199,7 @@ def _build_index_delete_impact_relationships(
             "effect": "blocks_delete",
             "severity": "blocking",
             "blocks_delete": index_fixings_count > 0,
-            "description": (
-                "Timestamped fixing rows reference this index by unique identifier."
-            ),
+            "description": ("Timestamped fixing rows reference this index by unique identifier."),
         },
         {
             "key": "portfolio_published_index",
@@ -230,19 +232,17 @@ def _build_index_delete_impact_relationships(
             ),
         },
         {
-            "key": "pricing_curves",
-            "label": "Pricing curves",
-            "model": "CurveTable",
-            "column": "index_uid",
-            "relationship_type": "indirect",
-            "on_delete": "RESTRICT",
-            "count": pricing_curves_count,
-            "effect": "blocks_cascade",
+            "key": "pricing_curve_selections",
+            "label": "Pricing curve selections",
+            "model": "PricingMarketDataSetCurveBindingTable",
+            "column": "selector_key",
+            "relationship_type": "derived",
+            "on_delete": "APPLICATION",
+            "count": pricing_curve_selections_count,
+            "effect": "manual_cleanup_required",
             "severity": "blocking",
-            "blocks_delete": pricing_curves_count > 0,
-            "description": (
-                "Curve rows reference the index convention row and can block the cascade."
-            ),
+            "blocks_delete": pricing_curve_selections_count > 0,
+            "description": ("Market-data-set curve selections use this index as their selector."),
         },
     ]
 

@@ -13,7 +13,7 @@ compressed curve payloads.
 ## List Curves
 
 ```text
-GET /api/v1/pricing/curves/?limit=25&offset=0&search=SOFR&curve_type=discount&index_uid=...&source=example
+GET /api/v1/pricing/curves/?limit=25&offset=0&search=SOFR&curve_type=discount&source=example
 ```
 
 Query parameters:
@@ -22,7 +22,6 @@ Query parameters:
 - `offset`: zero-based row offset, default `0`
 - `search`: optional contains search on `unique_identifier`
 - `curve_type`: optional exact curve type filter
-- `index_uid`: optional exact index uid filter
 - `source`: optional exact source filter
 
 Response:
@@ -38,7 +37,6 @@ Response:
       "unique_identifier": "USD-SOFR-3M-DISCOUNT",
       "display_name": "USD SOFR 3M Discount Curve",
       "curve_type": "discount",
-      "index_uid": "index-uid",
       "interpolation_method": "log_linear_discount",
       "compounding": "compounded_annual",
       "source": "example",
@@ -102,11 +100,12 @@ Response:
       "icon": null
     },
     {
-      "key": "index_uid",
-      "label": "Index UID",
-      "value": "index-uid",
-      "kind": "code",
-      "icon": null
+      "key": "curve_selection_count",
+      "label": "Curve Selections",
+      "value": 2,
+      "kind": "number",
+      "icon": null,
+      "link_url": "/api/v1/pricing/curves/curve-uid/curve-selections/"
     }
   ],
   "highlight_fields": [
@@ -134,14 +133,64 @@ Response:
       "unique_identifier": "USD-SOFR-3M-DISCOUNT",
       "display_name": "USD SOFR 3M Discount Curve",
       "curve_type": "discount",
-      "index_uid": "index-uid",
       "interpolation_method": "log_linear_discount",
       "compounding": "compounded_annual",
       "source": "example",
       "metadata_json": {}
     },
+    "curve_selection_count": 2,
+    "curve_selections_url": "/api/v1/pricing/curves/curve-uid/curve-selections/",
     "metadata_json": {}
   }
+}
+```
+
+Returns `404` when the curve `uid` does not exist.
+
+## Curve Selections
+
+```text
+GET /api/v1/pricing/curves/{uid}/curve-selections/
+```
+
+Returns market-data-set curve-selection bindings that point to this curve.
+This is a reverse lookup over `PricingMarketDataSetCurveBindingTable`; it does
+not imply that the curve owns the index or selector.
+
+Response model: `CurveSelectionsResponse`
+
+Response:
+
+```json
+{
+  "curve": {
+    "uid": "curve-uid",
+    "unique_identifier": "USD-SOFR-OFFER-BENCHMARK",
+    "display_name": "USD SOFR offer benchmark",
+    "curve_type": "discount"
+  },
+  "count": 1,
+  "results": [
+    {
+      "binding_uid": "binding-uid",
+      "market_data_set": {
+        "uid": "market-data-set-uid",
+        "set_key": "eod",
+        "display_name": "End of day"
+      },
+      "role_key": "z_spread_base",
+      "quote_side": "offer",
+      "selector": {
+        "type": "index",
+        "selector_key": "index-uid",
+        "index_uid": "index-uid",
+        "index_identifier": "USD-SOFR",
+        "display_name": "USD SOFR"
+      },
+      "status": "ACTIVE",
+      "source": "example"
+    }
+  ]
 }
 ```
 
@@ -175,7 +224,6 @@ Response:
     "unique_identifier": "USD-SOFR-3M-DISCOUNT",
     "display_name": "USD SOFR 3M Discount Curve",
     "curve_type": "discount",
-    "index_uid": "index-uid",
     "interpolation_method": "log_linear_discount",
     "compounding": "compounded_annual",
     "source": "example",

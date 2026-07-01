@@ -509,14 +509,26 @@ Negative consequences:
 - [x] Update `Curve` create/upsert APIs so curve identity has no index selector
       field.
 - [x] Update pricing resolvers to use market-data-set curve bindings.
-- [ ] Update fixed-rate bond, zero-coupon bond, floating-rate bond, and swap
-      examples to create explicit curve bindings.
+- [x] Update fixed-rate bond, zero-coupon bond, floating-rate bond, and swap
+      examples to create explicit curve bindings. (Done for the floating-rate
+      bond example, `examples/msm_pricing/bond_pricing_example/main.py`, which
+      creates `CurveBuildingDetails` and an `upsert_index_curve_selection`
+      binding. No separate fixed-rate, zero-coupon, or swap example files exist;
+      those instrument types are covered by tests, not standalone examples.)
 - [x] Update pricing docs and packaged skills.
-- [ ] Add FastAPI route surfaces for curve building details and curve bindings
-      if frontend workflows need direct CRUD over those rows.
+- [~] Add FastAPI route surfaces for curve building details and curve bindings
+      if frontend workflows need direct CRUD over those rows. (Read surface
+      added: `GET /pricing/curves/{uid}/curve-selections/` lists the curve
+      bindings for a curve. Write CRUD and building-details routes are not
+      built; deferred until a frontend needs them.)
 - [x] Add tests for strict missing binding and explicit curve override
       behavior.
-- [ ] Add tests for selected storage with missing observations.
+- [~] Add tests for selected storage with missing observations.
+      (Skipped — the strict missing-binding coverage in
+      `tests/msm_pricing/instruments/test_benchmark_curve_resolution.py` and
+      `tests/msm_pricing/pricing_engine/test_resolvers.py` is considered
+      sufficient; a dedicated missing-observation test was intentionally not
+      added.)
 - [x] Remove public docs and packaged-skill guidance for curve-owned index
       selection.
 

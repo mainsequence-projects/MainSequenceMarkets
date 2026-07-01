@@ -381,6 +381,47 @@ def test_pricing_market_data_curve_binding_upsert_derives_binding_key(
     ]
 
 
+def test_pricing_market_data_curve_binding_counts_reverse_relationships(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    index_uid = uuid.uuid4()
+    context = object()
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.resolve_pricing_runtime",
+        lambda **_kwargs: SimpleNamespace(context=context),
+    )
+
+    def fake_count_model(active_context, *, model, filters):
+        calls.append((active_context, model, filters))
+        return {"rows": [{"count": 4}]}
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.count_model",
+        fake_count_model,
+    )
+
+    assert PricingMarketDataSetCurveBinding.count_for_curve(curve_uid=curve_uid) == 4
+    assert (
+        PricingMarketDataSetCurveBinding.count_index_selector_references(index_uid=index_uid) == 4
+    )
+    assert calls == [
+        (
+            context,
+            PricingMarketDataSetCurveBindingTable,
+            {"curve_uid": curve_uid},
+        ),
+        (
+            context,
+            PricingMarketDataSetCurveBindingTable,
+            {
+                "selector_type": "index",
+                "selector_key": str(index_uid),
+            },
+        ),
+    ]
+
+
 def test_index_curve_selection_upsert_hides_selector_plumbing(monkeypatch) -> None:
     binding_uid = uuid.uuid4()
     market_data_set_uid = uuid.uuid4()

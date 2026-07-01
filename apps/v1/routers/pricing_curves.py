@@ -6,10 +6,15 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary, build_paginated_response
-from apps.v1.schemas.pricing_curves import CurveListResponse, DiscountCurveResponse
+from apps.v1.schemas.pricing_curves import (
+    CurveListResponse,
+    CurveSelectionsResponse,
+    DiscountCurveResponse,
+)
 from apps.v1.services.pricing_curves import (
     get_pricing_curve_discount_curve,
     get_pricing_curve_summary,
+    list_pricing_curve_selections,
     list_pricing_curves,
 )
 
@@ -57,10 +62,6 @@ def get_pricing_curves(
         str | None,
         Query(description="Optional exact curve_type filter, such as discount or projection."),
     ] = None,
-    index_uid: Annotated[
-        str | None,
-        Query(description="Optional exact index_uid filter."),
-    ] = None,
     source: Annotated[
         str | None,
         Query(description="Optional exact source filter."),
@@ -73,7 +74,6 @@ def get_pricing_curves(
                 offset=offset,
                 search=search,
                 curve_type=curve_type,
-                index_uid=index_uid,
                 source=source,
             )
         )
@@ -112,6 +112,29 @@ def get_pricing_curve_summary_by_uid(uid: str) -> FrontEndDetailSummary:
     if summary is None:
         raise HTTPException(status_code=404, detail=f"Pricing curve {uid!r} was not found.")
     return summary
+
+
+@router.get(
+    "/{uid}/curve-selections/",
+    response_model=CurveSelectionsResponse,
+    summary="List pricing curve selections",
+    description=(
+        "Return market-data-set curve-selection bindings that point to one pricing "
+        "curve. This is a reverse lookup; the curve does not own the selector."
+    ),
+    operation_id="listPricingCurveSelections",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested pricing curve uid was not found.",
+        }
+    },
+)
+def list_pricing_curve_selections_by_uid(uid: str) -> CurveSelectionsResponse:
+    response = list_pricing_curve_selections(uid=uid)
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"Pricing curve {uid!r} was not found.")
+    return response
 
 
 @router.get(

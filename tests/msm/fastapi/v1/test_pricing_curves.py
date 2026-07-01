@@ -12,14 +12,12 @@ from apps.v1.schemas.pricing_curves import Curve
 def _curve_row(
     *,
     uid: uuid.UUID | None = None,
-    index_uid: uuid.UUID | None = None,
 ) -> Curve:
     return Curve(
         uid=uid or uuid.uuid4(),
         unique_identifier="USD-SOFR-DISCOUNT",
         display_name="USD SOFR Discount Curve",
         curve_type="discount",
-        index_uid=index_uid or uuid.uuid4(),
         interpolation_method="log_linear_discount",
         compounding="compounded_annual",
         source="unit-test",
@@ -28,8 +26,7 @@ def _curve_row(
 
 
 def test_pricing_curve_list_uses_paginated_source_list(monkeypatch) -> None:
-    index_uid = uuid.uuid4()
-    row = _curve_row(index_uid=index_uid)
+    row = _curve_row()
     captured: dict[str, object] = {}
 
     def fake_list_curves(**kwargs):
@@ -49,7 +46,6 @@ def test_pricing_curve_list_uses_paginated_source_list(monkeypatch) -> None:
             "offset": 0,
             "search": "SOFR",
             "curve_type": "discount",
-            "index_uid": str(index_uid),
             "source": "unit-test",
         },
     )
@@ -59,7 +55,7 @@ def test_pricing_curve_list_uses_paginated_source_list(monkeypatch) -> None:
         "count": 2,
         "next": (
             "http://testserver/api/v1/pricing/curves/?limit=1&offset=1&search=SOFR"
-            f"&curve_type=discount&index_uid={index_uid}&source=unit-test"
+            "&curve_type=discount&source=unit-test"
         ),
         "previous": None,
         "results": [
@@ -68,7 +64,6 @@ def test_pricing_curve_list_uses_paginated_source_list(monkeypatch) -> None:
                 "unique_identifier": "USD-SOFR-DISCOUNT",
                 "display_name": "USD SOFR Discount Curve",
                 "curve_type": "discount",
-                "index_uid": str(index_uid),
                 "currency_code": None,
                 "quote_side": None,
                 "interpolation_method": "log_linear_discount",
@@ -84,7 +79,6 @@ def test_pricing_curve_list_uses_paginated_source_list(monkeypatch) -> None:
         "offset": 0,
         "search": "SOFR",
         "curve_type": "discount",
-        "index_uid": str(index_uid),
         "source": "unit-test",
     }
 
@@ -107,7 +101,7 @@ def test_pricing_curve_list_returns_400_for_source_value_error(monkeypatch) -> N
 
 def test_get_pricing_curve_summary_returns_standard_summary(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
-    index_uid = uuid.uuid4()
+    curve_selections_url = f"/api/v1/pricing/curves/{curve_uid}/curve-selections/"
 
     monkeypatch.setattr(
         "apps.v1.routers.pricing_curves.get_pricing_curve_summary",
@@ -133,10 +127,11 @@ def test_get_pricing_curve_summary_returns_standard_summary(monkeypatch) -> None
                     "kind": "code",
                 },
                 {
-                    "key": "index_uid",
-                    "label": "Index UID",
-                    "value": str(index_uid),
-                    "kind": "code",
+                    "key": "curve_selection_count",
+                    "label": "Curve Selections",
+                    "value": 2,
+                    "kind": "number",
+                    "link_url": curve_selections_url,
                 },
             ],
             "highlight_fields": [
@@ -157,8 +152,9 @@ def test_get_pricing_curve_summary_returns_standard_summary(monkeypatch) -> None
                     "unique_identifier": "USD-SOFR-DISCOUNT",
                     "display_name": "USD SOFR Discount Curve",
                     "curve_type": "discount",
-                    "index_uid": str(index_uid),
-                }
+                },
+                "curve_selection_count": 2,
+                "curve_selections_url": curve_selections_url,
             },
         },
     )
@@ -185,20 +181,20 @@ def test_get_pricing_curve_summary_returns_standard_summary(monkeypatch) -> None
             {
                 "key": "uid",
                 "label": "UID",
-                    "value": str(curve_uid),
-                    "kind": "code",
-                    "icon": None,
-                    "link_url": None,
-                },
-                {
-                    "key": "index_uid",
-                    "label": "Index UID",
-                    "value": str(index_uid),
-                    "kind": "code",
-                    "icon": None,
-                    "link_url": None,
-                },
-            ],
+                "value": str(curve_uid),
+                "kind": "code",
+                "icon": None,
+                "link_url": None,
+            },
+            {
+                "key": "curve_selection_count",
+                "label": "Curve Selections",
+                "value": 2,
+                "kind": "number",
+                "icon": None,
+                "link_url": curve_selections_url,
+            },
+        ],
         "highlight_fields": [
             {
                 "key": "display_name",
@@ -218,8 +214,9 @@ def test_get_pricing_curve_summary_returns_standard_summary(monkeypatch) -> None
                 "unique_identifier": "USD-SOFR-DISCOUNT",
                 "display_name": "USD SOFR Discount Curve",
                 "curve_type": "discount",
-                "index_uid": str(index_uid),
-            }
+            },
+            "curve_selection_count": 2,
+            "curve_selections_url": curve_selections_url,
         },
     }
 
@@ -232,6 +229,95 @@ def test_get_pricing_curve_summary_returns_404_when_missing(monkeypatch) -> None
 
     client = TestClient(app)
     response = client.get("/api/v1/pricing/curves/missing-curve/summary/")
+
+    assert response.status_code == 404
+    assert "missing-curve" in response.json()["detail"]
+
+
+def test_list_pricing_curve_selections_returns_reverse_bindings(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    binding_uid = uuid.uuid4()
+    market_data_set_uid = uuid.uuid4()
+    index_uid = uuid.uuid4()
+
+    monkeypatch.setattr(
+        "apps.v1.routers.pricing_curves.list_pricing_curve_selections",
+        lambda uid: {
+            "curve": {
+                "uid": str(curve_uid),
+                "unique_identifier": "USD-SOFR-OFFER-BENCHMARK",
+                "display_name": "USD SOFR offer benchmark",
+                "curve_type": "discount",
+            },
+            "count": 1,
+            "results": [
+                {
+                    "binding_uid": str(binding_uid),
+                    "market_data_set": {
+                        "uid": str(market_data_set_uid),
+                        "set_key": "eod",
+                        "display_name": "End of day",
+                    },
+                    "role_key": "z_spread_base",
+                    "quote_side": "offer",
+                    "selector": {
+                        "type": "index",
+                        "selector_key": str(index_uid),
+                        "index_uid": str(index_uid),
+                        "index_identifier": "USD-SOFR",
+                        "display_name": "USD SOFR",
+                    },
+                    "status": "ACTIVE",
+                    "source": "example",
+                }
+            ],
+        },
+    )
+
+    client = TestClient(app)
+    response = client.get(f"/api/v1/pricing/curves/{curve_uid}/curve-selections/")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "curve": {
+            "uid": str(curve_uid),
+            "unique_identifier": "USD-SOFR-OFFER-BENCHMARK",
+            "display_name": "USD SOFR offer benchmark",
+            "curve_type": "discount",
+        },
+        "count": 1,
+        "results": [
+            {
+                "binding_uid": str(binding_uid),
+                "market_data_set": {
+                    "uid": str(market_data_set_uid),
+                    "set_key": "eod",
+                    "display_name": "End of day",
+                },
+                "role_key": "z_spread_base",
+                "quote_side": "offer",
+                "selector": {
+                    "type": "index",
+                    "selector_key": str(index_uid),
+                    "index_uid": str(index_uid),
+                    "index_identifier": "USD-SOFR",
+                    "display_name": "USD SOFR",
+                },
+                "status": "ACTIVE",
+                "source": "example",
+            }
+        ],
+    }
+
+
+def test_list_pricing_curve_selections_returns_404_when_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.pricing_curves.list_pricing_curve_selections",
+        lambda uid: None,
+    )
+
+    client = TestClient(app)
+    response = client.get("/api/v1/pricing/curves/missing-curve/curve-selections/")
 
     assert response.status_code == 404
     assert "missing-curve" in response.json()["detail"]
@@ -413,7 +499,6 @@ def test_get_pricing_discount_curve_returns_404_for_missing_observation(monkeypa
 
 def test_pricing_curve_summary_service_uses_pricing_api(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
-    index_uid = uuid.uuid4()
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(
@@ -431,10 +516,10 @@ def test_pricing_curve_summary_service_uses_pricing_api(monkeypatch) -> None:
             "badges": [],
             "inline_fields": [
                 {
-                    "key": "index_uid",
-                    "label": "Index UID",
-                    "value": str(index_uid),
-                    "kind": "code",
+                    "key": "curve_selection_count",
+                    "label": "Curve Selections",
+                    "value": 0,
+                    "kind": "number",
                 }
             ],
             "highlight_fields": [],
@@ -455,3 +540,62 @@ def test_pricing_curve_summary_service_uses_pricing_api(monkeypatch) -> None:
     assert captured == {"uid": str(curve_uid)}
     assert response is not None
     assert response.entity.id == str(curve_uid)
+
+
+def test_pricing_curve_selection_service_uses_pricing_api(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    market_data_set_uid = uuid.uuid4()
+    binding_uid = uuid.uuid4()
+    index_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "apps.v1.services.pricing_curves.ensure_apps_v1_pricing_runtime", lambda: None
+    )
+
+    def fake_selections(uid):
+        captured["uid"] = uid
+        return {
+            "curve": {
+                "uid": str(curve_uid),
+                "unique_identifier": "USD-SOFR-DISCOUNT",
+                "display_name": "USD SOFR Discount Curve",
+                "curve_type": "discount",
+            },
+            "count": 1,
+            "results": [
+                {
+                    "binding_uid": str(binding_uid),
+                    "market_data_set": {
+                        "uid": str(market_data_set_uid),
+                        "set_key": "eod",
+                        "display_name": "End of day",
+                    },
+                    "role_key": "projection",
+                    "quote_side": "mid",
+                    "selector": {
+                        "type": "index",
+                        "selector_key": str(index_uid),
+                        "index_uid": str(index_uid),
+                        "index_identifier": "USD-SOFR",
+                        "display_name": "USD SOFR",
+                    },
+                    "status": "ACTIVE",
+                    "source": "unit-test",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.services.pricing_curves._list_curve_selections",
+        fake_selections,
+    )
+
+    from apps.v1.services.pricing_curves import list_pricing_curve_selections
+
+    response = list_pricing_curve_selections(uid=str(curve_uid))
+
+    assert captured == {"uid": str(curve_uid)}
+    assert response is not None
+    assert response.count == 1
+    assert response.results[0].selector.index_identifier == "USD-SOFR"
