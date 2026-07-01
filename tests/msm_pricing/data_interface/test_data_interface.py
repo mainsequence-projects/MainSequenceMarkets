@@ -19,6 +19,7 @@ from msm_pricing.data_interface.data_interface import (
     dimension_range_for_identity,
 )
 from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER
+from msm_pricing.data_nodes.curves.key_nodes import compress_key_nodes_to_string
 from msm_pricing.config import reset_pricing_market_data_configuration
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
@@ -183,13 +184,15 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
                         "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
                         "curve_identifier": "mxn_tiie_discount",
                         "curve": compress_curve_to_string({28: 0.11, 91: 0.105}),
-                        "key_nodes": [
-                            {
-                                "maturity_date": "2026-06-24",
-                                "asset_identifier": "MXN_TIIE_SWAP_28D",
-                                "quote": 0.11,
-                            }
-                        ],
+                        "key_nodes": compress_key_nodes_to_string(
+                            [
+                                {
+                                    "maturity_date": "2026-06-24",
+                                    "asset_identifier": "MXN_TIIE_SWAP_28D",
+                                    "quote": 0.11,
+                                }
+                            ]
+                        ),
                         "metadata_json": {"source_snapshot": "mock-2026-05-27"},
                     }
                 ]
@@ -340,7 +343,9 @@ def test_get_latest_discount_curve_uses_last_update_for_curve_identity(monkeypat
                         "time_index": latest_date,
                         "curve_identifier": "mxn_tiie_discount",
                         "curve": compress_curve_to_string({28: 0.11, 91: 0.105}),
-                        "key_nodes": [{"maturity_date": "2026-06-24", "quote": 0.11}],
+                        "key_nodes": compress_key_nodes_to_string(
+                            [{"maturity_date": "2026-06-24", "quote": 0.11}]
+                        ),
                         "metadata_json": {"source_snapshot": "mock-latest"},
                     }
                 ]

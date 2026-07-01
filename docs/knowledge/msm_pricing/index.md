@@ -206,7 +206,7 @@ For an end-to-end example that shows the explicit architecture, inspect
 storage tables, disables automatic default seeding, creates
 `PricingMarketDataSet(set_key="default")`, binds discount curves and
 interest-rate fixings by storage table UID, publishes a discount-curve row with
-both `curve` and `key_nodes`, and then calls
+both `curve` and source-owned JSON `key_nodes`, and then calls
 `loaded_instrument.price(market_data_set=market_data_set.set_key)`.
 
 ## Rejected Patterns

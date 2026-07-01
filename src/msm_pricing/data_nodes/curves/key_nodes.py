@@ -2,21 +2,26 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import datetime as dt
 import json
 import math
+import zlib
 from collections.abc import Mapping
 from typing import Any
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
+KEY_NODES_CODEC_PREFIX = "msm_pricing.key_nodes.zlib+base64.v1:"
+
 
 class CurveKeyNode(BaseModel):
     """Recommended, optional shape for discount-curve construction provenance.
 
-    Storage remains permissive JSON. Producers may use this helper when the
-    standard fields fit their source, and may add source-specific fields through
-    Pydantic ``extra="allow"``.
+    The base storage contract accepts JSON object/list provenance. Producers
+    may use this helper when the standard fields fit their source, and may add
+    source-specific fields through Pydantic ``extra="allow"``.
     """
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
@@ -69,9 +74,9 @@ class CurveKeyNode(BaseModel):
 def normalize_curve_key_nodes(value: Any) -> Any:
     """Normalize producer-owned key-node provenance for one curve row.
 
-    ``key_nodes`` is intentionally not a financial schema contract. The only
-    storage-level requirements are that the top-level value is a JSON object or
-    list and that nested values are JSON-compatible.
+    The shared storage contract stays compact: the top-level value is a JSON
+    object or list and nested values are JSON-compatible. Financial schemas
+    belong in the optional ``CurveKeyNode`` helper or producer validators.
     """
 
     if value is None:
@@ -94,6 +99,52 @@ def normalize_curve_metadata(value: Any) -> dict[str, Any] | None:
     return _normalize_json_object(value, path="metadata_json")
 
 
+def compress_key_nodes_to_string(value: Any) -> str:
+    """Serialize key-node provenance into the compressed storage representation."""
+
+    normalized = normalize_curve_key_nodes(value)
+    json_bytes = json.dumps(
+        normalized,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    compressed_bytes = zlib.compress(json_bytes)
+    encoded = base64.b64encode(compressed_bytes).decode("ascii")
+    return f"{KEY_NODES_CODEC_PREFIX}{encoded}"
+
+
+def decompress_key_nodes_from_string(value: str) -> Any:
+    """Decode compressed key-node provenance from storage into JSON."""
+
+    if not isinstance(value, str) or not value:
+        raise ValueError("Discount curve key_nodes must be a non-empty compressed string.")
+
+    if value.startswith(KEY_NODES_CODEC_PREFIX):
+        encoded = value.removeprefix(KEY_NODES_CODEC_PREFIX)
+        try:
+            compressed_bytes = base64.b64decode(encoded.encode("ascii"), validate=True)
+            json_bytes = zlib.decompress(compressed_bytes)
+            decoded = json.loads(json_bytes.decode("utf-8"))
+        except (
+            binascii.Error,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            zlib.error,
+            ValueError,
+        ) as exc:
+            raise ValueError("Discount curve key_nodes compressed payload is invalid.") from exc
+        return normalize_curve_key_nodes(decoded)
+
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "Discount curve key_nodes must use the compressed key-node codec."
+        ) from exc
+    return normalize_curve_key_nodes(decoded)
+
+
 def _normalize_json_value(value: Any, *, path: str) -> Any:
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json", by_alias=True, exclude_none=True)
@@ -101,8 +152,7 @@ def _normalize_json_value(value: Any, *, path: str) -> Any:
         return _normalize_json_object(value, path=path)
     if isinstance(value, list | tuple):
         return [
-            _normalize_json_value(item, path=f"{path}[{index}]")
-            for index, item in enumerate(value)
+            _normalize_json_value(item, path=f"{path}[{index}]") for index, item in enumerate(value)
         ]
     if isinstance(value, dt.datetime):
         return value.isoformat()
@@ -135,6 +185,9 @@ def _normalize_json_object(value: Mapping[str, Any], *, path: str) -> dict[str, 
 
 __all__ = [
     "CurveKeyNode",
+    "KEY_NODES_CODEC_PREFIX",
+    "compress_key_nodes_to_string",
+    "decompress_key_nodes_from_string",
     "normalize_curve_key_nodes",
     "normalize_curve_metadata",
 ]

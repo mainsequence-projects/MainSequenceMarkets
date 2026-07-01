@@ -47,11 +47,13 @@ index-keyed:
 `CurveTable.unique_identifier`. Runtime data reads use that curve identifier.
 They do not need an index ownership column on the curve registry.
 `DiscountCurvesStorage.curve` remains the constructed pricing payload, while
-`key_nodes` records producer-owned provenance for the dated input quotes used
-to build the specific observation row. Producers may include per-node raw input
-fields such as `quote_type`, `quote_unit`, and yield-native values when those
-are needed to audit the source build. `CurveBuildingDetails` remains the source
-for interpreting the final constructed curve.
+`key_nodes` records compressed-at-rest producer-owned provenance for the dated
+input quotes used to build the specific observation row. Producers should use
+the recommended `CurveKeyNode` fields when they fit, including per-node raw
+input fields such as `quote_type`, `quote_unit`, and yield-native values, and
+may add source-specific extensions validated by their `DiscountCurvesNode`.
+`CurveBuildingDetails` remains the source for interpreting the final
+constructed curve.
 
 `PricingMarketDataSetTable` and `PricingMarketDataSetBindingTable` already
 solve a different problem: selecting which registered storage table should be

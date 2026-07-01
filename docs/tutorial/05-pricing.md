@@ -151,10 +151,13 @@ before publishing curve observations:
    `curve_identifier` set to the same curve `unique_identifier`. Each emitted
    row must include a non-empty `curve` mapping for the constructed pricing
    nodes and `key_nodes` for the dated input quotes used to build that row.
-   `key_nodes` is source-owned JSON. Prefer the optional `CurveKeyNode` helper
-   or the standard fields shown below when they fit the source, including
-   yield-native inputs for discount curves. Source-specific producers can
-   override `DiscountCurvesNode.normalize_key_nodes(...)` or attach
+   `key_nodes` is source-owned JSON at the publisher/API boundary and is
+   compressed by storage. The base contract is JSON object/list provenance with
+   JSON-serializable nested values. Prefer the optional `CurveKeyNode` helper or
+   the standard fields shown below when they fit the source, including
+   yield-native inputs for discount curves. Source-specific producers can add
+   source-owned extensions and can override
+   `DiscountCurvesNode.normalize_key_nodes(...)` or attach
    `set_key_nodes_validator(...)` when they need stricter validation.
 
    ```python
@@ -253,11 +256,12 @@ For a full floating-rate bond workflow, use
    `selector_type` and `selector_key`.
 4. Publish one month of mock fixings through a `FixingRatesNode` subclass and a
    sampled flat-forward curve through a `DiscountCurvesNode` subclass. The curve
-   row stores both the compressed pricing `curve` and source-owned `key_nodes`
-   provenance. The mock example uses the recommended yield-aware
-   `CurveKeyNode` shape, while `CurveBuildingDetails` remains the source for
-   final curve construction rules. The pricing storage classes declare their
-   EOD cadence as `__cadence__ = "1d"`.
+   storage row stores both the compressed pricing `curve` and compressed
+   source-owned `key_nodes` provenance. The publisher emits `key_nodes` as JSON,
+   and read/API helpers return decompressed JSON. The mock example uses the
+   recommended yield-aware `CurveKeyNode` shape, while `CurveBuildingDetails`
+   remains the source for final curve construction rules. The pricing storage
+   classes declare their EOD cadence as `__cadence__ = "1d"`.
 5. Attach pricing storage tables, then upsert the `default` market-data set and
    its concept bindings with `PricingMarketDataSet` and
    `PricingMarketDataSetBinding`.

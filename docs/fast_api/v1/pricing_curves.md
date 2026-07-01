@@ -214,10 +214,12 @@ Query parameters:
 Response model: `DiscountCurveResponse`
 
 `nodes` is the normalized decompressed pricing curve. `key_nodes` is
-producer-owned construction provenance returned as stored JSON. Consumers may
-display standard fields such as `maturity_date`, `asset_identifier`,
-`instrument_type`, `quote`, `quote_type`, `quote_unit`, `quote_side`, and
-`yield` when present, but the API does not require that schema.
+producer-owned construction provenance returned as decompressed JSON; the
+storage column is compressed text. Consumers may display standard fields such
+as `maturity_date`, `asset_identifier`, `instrument_type`, `quote`,
+`quote_type`, `quote_unit`, `quote_side`, and `yield` when present, but the API
+only requires the base JSON object/list contract because source producers may
+enforce stricter schemas through their DataNode validation extension.
 
 Response:
 

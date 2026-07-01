@@ -260,9 +260,10 @@ without a separate decision.
 
 `key_nodes` records the input quotes used to build that specific curve
 observation. It is row-level construction provenance, not another convention
-source. Storage preserves producer-owned JSON, so sources may keep their own
-schema when needed. `msm_pricing.data_nodes.CurveKeyNode` is the recommended
-helper when the standard fields fit the source:
+source. Publishers pass producer-owned JSON that satisfies the base contract
+below; the DataNode compresses that JSON into the storage column, and read/API
+helpers return it decompressed. `msm_pricing.data_nodes.CurveKeyNode` is the
+recommended helper when the standard fields fit the source:
 
 ```json
 [
@@ -289,14 +290,19 @@ helper when the standard fields fit the source:
 
 Rules:
 
-- `key_nodes` must be a JSON object or list when present.
-- The library does not enforce per-node financial fields because mixed curves
-  may combine bonds, zero-coupon instruments, swaps, deposits, direct zero
-  rates, and source-specific payloads.
+- Publisher `key_nodes` values must be JSON object/list provenance with
+  JSON-serializable nested values. They are stored as compressed text and
+  returned by helpers as decompressed JSON.
+- The shared storage layer does not enforce one fixed per-node financial schema
+  because mixed curves may combine bonds, zero-coupon instruments, swaps,
+  deposits, direct zero rates, and source-specific payloads.
 - Prefer the standard fields `maturity_date`, `asset_identifier`,
   `instrument_type`, `quote`, `quote_type`, `quote_unit`, and `quote_side` when
   they fit the source. Discount-curve producers that think in yields may also
   include the optional `yield` field.
+- Source publishers that need more structure should encode that structure in
+  their own `CurveKeyNode`-compatible extensions or enforce it through
+  `normalize_key_nodes(...)` / `set_key_nodes_validator(...)`.
 - `quote_type` and `quote_unit` describe the raw source input for that key node.
   `CurveBuildingDetails` still describes how the final stored `curve` is built
   and interpreted by pricing.
@@ -335,7 +341,7 @@ are execution behavior, not hashed dataset identity.
 
 A `DiscountCurvesNode` publisher passes the values as ordinary DataFrame
 columns. Keep `key_nodes` beside `curve`; do not nest it inside the compressed
-pricing payload:
+pricing payload and do not precompress it in the publisher:
 
 ```python
 return pd.DataFrame(

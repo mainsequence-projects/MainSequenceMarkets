@@ -148,8 +148,8 @@ PricingMarketDataSetBinding.upsert(
 answer which curve inside that storage should be used. A discount-curve storage
 table can contain many `curve_identifier` values. Each selected curve must have
 published `DiscountCurvesStorage` observations whose rows include the
-compressed pricing `curve`, dated construction `key_nodes`, and optional
-`metadata_json` diagnostics.
+compressed pricing `curve`, compressed dated construction `key_nodes`, and
+optional `metadata_json` diagnostics.
 
 Use `PricingMarketDataSetCurveBinding.upsert_index_curve_selection(...)` to
 select curve identity for an index-scoped valuation role:
@@ -257,8 +257,9 @@ metadata_json = observation["metadata_json"]
 ```
 
 `nodes` is normalized decompressed pricing data. `key_nodes` is producer-owned
-JSON provenance and may use the recommended `CurveKeyNode` fields or a
-source-specific object/list.
+JSON provenance returned decompressed by the interface even though the storage
+column is compressed text. It may use the recommended `CurveKeyNode` fields or
+a source-specific extension enforced by the publisher's DataNode validation.
 
 Instrument pricing chooses the set explicitly when the caller needs more than
 one source set in the same process:

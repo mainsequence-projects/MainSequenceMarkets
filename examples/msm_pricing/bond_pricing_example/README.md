@@ -23,15 +23,15 @@ The migration step must complete before the script starts. The script uses
 `msm.start_engine(...)` and `msm_pricing.bootstrap.attach_pricing_schemas(...)`
 only to attach already-migrated MetaTables and configure pricing runtime state.
 
-The discount-curve DataNode returns `key_nodes` as a top-level storage column
-beside the compressed `curve` payload. `key_nodes` is source-owned JSON
-provenance. The mock flat-forward publisher uses the recommended `CurveKeyNode`
-shape with `maturity_date`, `instrument_type`, `quote`, `quote_type`,
-`quote_unit`, `quote_side`, and yield-native `yield` values. Producers may use
-their own JSON schema when that is needed to audit the source build;
-`CurveBuildingDetails` still owns the final constructed curve convention.
-Real source publishers that need stricter checks should override
-`DiscountCurvesNode.normalize_key_nodes(...)` or attach
+The discount-curve DataNode publishes `key_nodes` beside the `curve` payload.
+Publishers pass `key_nodes` as source-owned JSON; storage compresses it at rest
+and read/API helpers return decompressed JSON. The mock flat-forward publisher
+uses the recommended `CurveKeyNode` shape with `maturity_date`,
+`instrument_type`, `quote`, `quote_type`, `quote_unit`, `quote_side`, and
+yield-native `yield` values. Producers may add source-specific extensions when
+that is needed to audit the source build; `CurveBuildingDetails` still owns the
+final constructed curve convention. Real source publishers that need stricter
+checks should override `DiscountCurvesNode.normalize_key_nodes(...)` or attach
 `set_key_nodes_validator(...)` instead of changing the shared storage schema.
 
 The example writes the projection curve selection as the default quote-side

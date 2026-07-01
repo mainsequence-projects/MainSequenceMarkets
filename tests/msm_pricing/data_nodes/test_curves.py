@@ -5,6 +5,7 @@ import os
 
 import pandas as pd
 import pytest
+from sqlalchemy import Text
 
 # Prevent SDK import-time project resolution from reading the local .env.
 os.environ["MAIN_SEQUENCE_PROJECT_UID"] = " "
@@ -25,7 +26,12 @@ from msm_pricing.data_nodes.curves import (
     CurveKeyNode,
     DiscountCurvesNode,
 )
-from msm_pricing.data_nodes.curves.key_nodes import normalize_curve_key_nodes
+from msm_pricing.data_nodes.curves.key_nodes import (
+    KEY_NODES_CODEC_PREFIX,
+    compress_key_nodes_to_string,
+    decompress_key_nodes_from_string,
+    normalize_curve_key_nodes,
+)
 from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from msm_pricing.meta_tables import pricing_sqlalchemy_models
 from msm_pricing.models import CurveTable
@@ -92,12 +98,14 @@ def test_discount_curves_storage_declares_key_nodes_and_metadata_columns() -> No
     assert "metadata_json" in columns
     assert columns["key_nodes"].nullable is True
     assert columns["metadata_json"].nullable is True
+    assert isinstance(columns["key_nodes"].type, Text)
     assert (
         columns["key_nodes"].info["description"]
-        == "Source-owned construction provenance for this curve observation. "
-        "Producers may use the recommended CurveKeyNode shape, including "
-        "quote_type, quote_unit, quote_side, and optional yield fields, or "
-        "store another JSON object/list needed to audit the source build."
+        == "Compressed source-owned JSON construction provenance for this curve "
+        "observation. Producers pass JSON object/list values and may use the "
+        "recommended CurveKeyNode shape, including quote_type, quote_unit, "
+        "quote_side, and optional yield fields, plus source-specific extensions "
+        "validated by the producer DataNode."
     )
     assert (
         columns["metadata_json"].info["description"]
@@ -132,13 +140,15 @@ def test_discount_curves_node_validate_frame_normalizes_curve_frame() -> None:
                     "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
                     "curve_identifier": "mxn_tiie_discount",
                     "curve": "compressed-payload",
-                    "key_nodes": [
-                        {
-                            "maturity_date": "2026-06-24",
-                            "asset_identifier": "MXN_TIIE_SWAP_28D",
-                            "quote": 0.11,
-                        }
-                    ],
+                    "key_nodes": compress_key_nodes_to_string(
+                        [
+                            {
+                                "maturity_date": "2026-06-24",
+                                "asset_identifier": "MXN_TIIE_SWAP_28D",
+                                "quote": 0.11,
+                            }
+                        ]
+                    ),
                     "metadata_json": None,
                 }
             ]
@@ -264,6 +274,27 @@ def test_discount_curves_node_requires_curve_payload(frame, message) -> None:
 def test_curve_codec_rejects_null_curve_payload() -> None:
     with pytest.raises(ValueError, match="non-empty mapping"):
         compress_curve_to_string(None)
+
+
+def test_curve_key_nodes_codec_round_trips_source_owned_json() -> None:
+    key_nodes = [
+        {
+            "maturity_date": "2031-05-27",
+            "custom_source_key": "mxn-bono-bucket",
+            "quote": 99.25,
+            "nested_vendor_payload": {"source_fields": ["bucket", 1, True]},
+        }
+    ]
+
+    compressed = compress_key_nodes_to_string(key_nodes)
+
+    assert compressed.startswith(KEY_NODES_CODEC_PREFIX)
+    assert decompress_key_nodes_from_string(compressed) == key_nodes
+
+
+def test_curve_key_nodes_codec_rejects_invalid_compressed_payload() -> None:
+    with pytest.raises(ValueError, match="compressed payload is invalid"):
+        decompress_key_nodes_from_string(f"{KEY_NODES_CODEC_PREFIX}not-base64")
 
 
 @pytest.mark.parametrize(

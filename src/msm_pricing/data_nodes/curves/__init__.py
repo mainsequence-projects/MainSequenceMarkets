@@ -14,7 +14,12 @@ from msm.data_nodes.utils.stamped import (
 )
 
 from ..curve_codec import compress_curve_to_string
-from .key_nodes import CurveKeyNode, normalize_curve_key_nodes, normalize_curve_metadata
+from .key_nodes import (
+    CurveKeyNode,
+    compress_key_nodes_to_string,
+    normalize_curve_key_nodes,
+    normalize_curve_metadata,
+)
 from .storage import CURVE_IDENTIFIER_DIMENSION, DiscountCurvesStorage
 
 CURVE_IDENTIFIER = CURVE_IDENTIFIER_DIMENSION
@@ -163,6 +168,7 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
             curve_identifier=curve_identifier,
         )
         normalized["curve"] = normalized["curve"].apply(compress_curve_to_string)
+        normalized["key_nodes"] = normalized["key_nodes"].apply(compress_key_nodes_to_string)
         normalized["time_index"] = pd.to_datetime(normalized["time_index"], utc=True)
 
         last = self.update_statistics.get_last_update_for_identity(curve_identifier)
@@ -226,7 +232,9 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
         if "metadata_json" not in normalized.columns:
             normalized["metadata_json"] = None
         else:
-            normalized["metadata_json"] = normalized["metadata_json"].apply(normalize_curve_metadata)
+            normalized["metadata_json"] = normalized["metadata_json"].apply(
+                normalize_curve_metadata
+            )
         if "key_nodes" not in normalized.columns:
             raise ValueError(
                 "Discount curve builder frames must include key_nodes construction "

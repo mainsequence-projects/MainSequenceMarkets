@@ -98,10 +98,12 @@ from pricing market-data bindings; see [Market Data Sets](market_data_sets.md)
 for how the selected set resolves to a `data_node_uid`.
 
 Runtime pricing reads the compressed `curve` payload. `key_nodes` is retained on
-the same curve observation row as construction provenance. It is producer-owned
-JSON and may include per-node `quote_type`, `quote_unit`, `quote_side`, and
-yield-native fields when those describe the raw source inputs. Runtime pricing
-does not infer the final curve interpretation from `key_nodes`;
+the same curve observation row as compressed-at-rest construction provenance.
+The data interface and FastAPI responses return it as producer-owned JSON. It
+may include per-node `quote_type`, `quote_unit`, `quote_side`, and yield-native
+fields when those describe the raw source inputs. Source publishers may add
+their own extensions and enforce them through the DataNode validation hook.
+Runtime pricing does not infer the final curve interpretation from `key_nodes`;
 `CurveBuildingDetails` remains the source for the constructed curve convention.
 
 Curve selection must be strict:

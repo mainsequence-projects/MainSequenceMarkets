@@ -43,8 +43,9 @@ and this project follows versioned releases.
 - Added `MSDataInterface.get_latest_discount_curve(...)` for explicit latest
   discount-curve lookup by curve identity without using the global
   `USE_LAST_OBSERVATION_MS_INSTRUMENT` fallback.
-- Added `DiscountCurvesStorage.key_nodes` and row `metadata_json` JSONB columns,
-  with `key_nodes` treated as producer-owned JSON construction provenance.
+- Added `DiscountCurvesStorage.key_nodes` and row `metadata_json` columns, with
+  `key_nodes` treated as producer-owned JSON construction provenance at
+  publisher/API boundaries and compressed text at rest.
 - Added the optional `msm_pricing.data_nodes.CurveKeyNode` helper as the
   recommended key-node shape, including raw quote fields and yield-native
   `yield` serialization for discount-curve producers.

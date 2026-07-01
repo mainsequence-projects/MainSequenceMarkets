@@ -77,16 +77,18 @@ identity, `CurveBuildingDetailsTable` owns curve construction rules, and
 keyed by `(time_index, curve_identifier)`. Curve DataNode configurations use
 the actual `CurveTable.unique_identifier`; they do not resolve Main Sequence
 Constants into curve identity. EOD curve observations declare daily cadence on
-`DiscountCurvesStorage.__cadence__`. Each new curve observation row carries the
-compressed pricing `curve` plus `key_nodes` construction provenance. Key nodes
-are source-owned JSON. Producers may use the optional `CurveKeyNode` helper and
+`DiscountCurvesStorage.__cadence__`. Publishers emit a curve mapping plus
+`key_nodes` construction provenance; storage keeps both the pricing `curve` and
+`key_nodes` compressed at rest, while read/API helpers return decompressed JSON.
+Key nodes are source-owned JSON object/list provenance with JSON-serializable
+nested values. Producers may use the optional `CurveKeyNode` helper and
 recommended fields such as `maturity_date`, `asset_identifier`,
 `instrument_type`, `quote`, `quote_type`, `quote_unit`, `quote_side`, and
-`yield`, but the storage layer does not force that schema. `CurveBuildingDetails`
-still describes how the final stored curve is built and interpreted by pricing.
-Source-specific builders can enforce stricter provenance semantics by
-overriding `DiscountCurvesNode.normalize_key_nodes(...)` or by attaching a
-runtime callable with `set_key_nodes_validator(...)`.
+`yield`, and may add source-specific extensions. `CurveBuildingDetails` still
+describes how the final stored curve is built and interpreted by pricing.
+Source-specific builders can enforce stricter provenance semantics by overriding
+`DiscountCurvesNode.normalize_key_nodes(...)` or by attaching a runtime callable
+with `set_key_nodes_validator(...)`.
 
 Curve construction is strict. `CurveBuildingDetails.interpolation_method` must
 be one of `log_linear_discount`, `log_cubic_discount`, `linear_zero`,

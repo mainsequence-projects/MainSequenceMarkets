@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import datetime
-from typing import Any, ClassVar
+from typing import ClassVar
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,17 +23,18 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     compressed term-structure payload and key_nodes recording the input quotes
     used to build that observation. The dataset reconstructs discount term
     structures by curve identity when pricing bonds and other fixed-income
-    instruments, while preserving row-level construction provenance for audit
-    and diagnostics.
+    instruments, while preserving compressed row-level construction provenance
+    for audit and diagnostics.
     """
 
     __metatable_identifier__ = "DiscountCurvesTS"
     __metatable_description__ = (
         "Timestamped discount-curve storage keyed by (time_index, "
         "curve_identifier). Stores compressed curve payloads that reconstruct "
-        "discount term structures for pricing workflows, key-node input quotes "
-        "used to build each curve observation, and optional structured metadata. "
-        "Each curve identity links back to the Curve MetaTable."
+        "discount term structures for pricing workflows, compressed key-node "
+        "input quote provenance used to build each curve observation, and "
+        "optional structured metadata. Each curve identity links back to the "
+        "Curve MetaTable."
     )
     __time_index_name__: ClassVar[str] = "time_index"
     __cadence__: ClassVar[str] = "1d"
@@ -67,16 +68,17 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             ),
         },
     )
-    key_nodes: Mapped[Any | None] = mapped_column(
-        JSONB,
+    key_nodes: Mapped[str | None] = mapped_column(
+        Text,
         nullable=True,
         info={
-            "label": "Key Nodes",
+            "label": "Compressed Key Nodes",
             "description": (
-                "Source-owned construction provenance for this curve observation. "
-                "Producers may use the recommended CurveKeyNode shape, including "
-                "quote_type, quote_unit, quote_side, and optional yield fields, or "
-                "store another JSON object/list needed to audit the source build."
+                "Compressed source-owned JSON construction provenance for this "
+                "curve observation. Producers pass JSON object/list values and may "
+                "use the recommended CurveKeyNode shape, including quote_type, "
+                "quote_unit, quote_side, and optional yield fields, plus "
+                "source-specific extensions validated by the producer DataNode."
             ),
         },
     )

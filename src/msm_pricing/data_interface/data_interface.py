@@ -18,6 +18,10 @@ from msm_pricing.data_nodes.curve_codec import (
     decompress_string_to_curve as _decompress_string_to_curve,
 )
 from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER
+from msm_pricing.data_nodes.curves.key_nodes import (
+    decompress_key_nodes_from_string as _decompress_key_nodes_from_string,
+    normalize_curve_key_nodes as _normalize_curve_key_nodes,
+)
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
@@ -423,12 +427,15 @@ def _optional_datetime(value: Any) -> datetime.datetime | None:
 def _optional_json_container(value: Any) -> Any | None:
     if _is_missing_optional(value):
         return None
+    if isinstance(value, str):
+        return _decompress_key_nodes_from_string(value)
     if isinstance(value, Mapping):
-        return dict(value)
+        return _normalize_curve_key_nodes(value)
     if isinstance(value, list):
-        return value
+        return _normalize_curve_key_nodes(value)
     raise ValueError(
-        "Discount curve observation key_nodes must be a JSON object or list when present."
+        "Discount curve observation key_nodes must be compressed JSON, a JSON object, "
+        "or a JSON list when present."
     )
 
 
