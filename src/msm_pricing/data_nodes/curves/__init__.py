@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Mapping
 from typing import ClassVar, Protocol
 
 import pandas as pd
@@ -162,6 +163,12 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
             )
         if CURVE_IDENTIFIER not in normalized.columns:
             normalized[CURVE_IDENTIFIER] = curve_identifier
+        if "curve" not in normalized.columns:
+            raise ValueError(
+                "Discount curve builder frames must include a non-empty curve "
+                "mapping for each curve observation."
+            )
+        normalized["curve"] = normalized["curve"].apply(_normalize_curve_payload)
         if "key_nodes" not in normalized.columns:
             raise ValueError(
                 "Discount curve builder frames must include key_nodes construction "
@@ -173,6 +180,15 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
         else:
             normalized["metadata_json"] = normalized["metadata_json"].apply(normalize_curve_metadata)
         return normalized
+
+
+def _normalize_curve_payload(value):
+    if not isinstance(value, Mapping) or not value:
+        raise ValueError(
+            "Discount curve builder frames must include a non-empty curve "
+            "mapping for each curve observation."
+        )
+    return dict(value)
 
 
 __all__ = [

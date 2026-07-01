@@ -251,11 +251,12 @@ DiscountCurvesNode
   FK:      curve_identifier -> CurveTable.unique_identifier
 ```
 
-`curve` remains the serialized compressed pricing payload consumed by runtime
-valuation. It stores the constructed curve nodes keyed by days to maturity; the
-quote meaning comes from `CurveBuildingDetails.quote_convention`,
-`rate_unit`, `compounding`, and the related build fields. Do not normalize curve
-points into a different row grain without a separate decision.
+`curve` is required. It remains the serialized compressed pricing payload
+consumed by runtime valuation. It stores the constructed curve nodes keyed by
+days to maturity; the quote meaning comes from
+`CurveBuildingDetails.quote_convention`, `rate_unit`, `compounding`, and the
+related build fields. Do not normalize curve points into a different row grain
+without a separate decision.
 
 `key_nodes` records the input quotes used to build that specific curve
 observation. It is row-level construction provenance, not another convention

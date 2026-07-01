@@ -149,8 +149,8 @@ before publishing curve observations:
    valuation role, index UID, and quote side to the curve UID.
 7. Publish curve observations through `DiscountCurvesNode` with
    `curve_identifier` set to the same curve `unique_identifier`. Each emitted
-   row must include `curve` for the constructed pricing nodes and `key_nodes`
-   for the dated input quotes used to build that row.
+   row must include a non-empty `curve` mapping for the constructed pricing
+   nodes and `key_nodes` for the dated input quotes used to build that row.
 
    ```python
    return pd.DataFrame(

@@ -46,6 +46,8 @@ and this project follows versioned releases.
 - Added `DiscountCurvesStorage.key_nodes` and row `metadata_json` JSONB columns, with
   `DiscountCurvesNode` validation requiring dated construction input quotes for
   new curve observations.
+- Tightened `DiscountCurvesStorage.curve` to a required non-null payload and
+  made discount-curve builders reject missing, null, or empty curve mappings.
 - Refactored the `migrations:migration` provider, Alembic environment, model
   registry, and dynamic portfolio example provider onto the SDK-owned
   MetaTable migration helpers, with revision directories treated as generated

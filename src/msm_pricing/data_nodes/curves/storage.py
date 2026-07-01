@@ -56,9 +56,9 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             "description": "Curve unique identifier from the Curve MetaTable.",
         },
     )
-    curve: Mapped[str | None] = mapped_column(
+    curve: Mapped[str] = mapped_column(
         String,
-        nullable=True,
+        nullable=False,
         info={
             "label": "Compressed Curve",
             "description": (

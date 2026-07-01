@@ -17,6 +17,7 @@ from mainsequence.meta_tables.sqlalchemy_contracts import (
 )
 from msm.data_nodes.utils.stamped import StampedDataNodeConfiguration
 from msm.models.registration import markets_foreign_key_target_identifiers
+from msm_pricing.data_nodes.curve_codec import compress_curve_to_string
 from msm_pricing.data_nodes.curves import (
     CURVE_IDENTIFIER,
     CurveConfig,
@@ -85,6 +86,7 @@ def test_discount_curves_storage_has_curve_foreign_key() -> None:
 def test_discount_curves_storage_declares_key_nodes_and_metadata_columns() -> None:
     columns = DiscountCurvesStorage.__table__.columns
 
+    assert columns["curve"].nullable is False
     assert "key_nodes" in columns
     assert "metadata_json" in columns
     assert columns["key_nodes"].nullable is True
@@ -199,6 +201,62 @@ def test_discount_curves_node_requires_key_nodes() -> None:
             ),
             curve_identifier="mxn_tiie_discount",
         )
+
+
+@pytest.mark.parametrize(
+    ("frame", "message"),
+    [
+        (
+            pd.DataFrame(
+                [
+                    {
+                        "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+                        "curve_identifier": "mxn_tiie_discount",
+                        "key_nodes": [{"maturity_date": "2026-06-24", "quote": 0.11}],
+                    }
+                ]
+            ),
+            "curve",
+        ),
+        (
+            pd.DataFrame(
+                [
+                    {
+                        "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+                        "curve_identifier": "mxn_tiie_discount",
+                        "curve": None,
+                        "key_nodes": [{"maturity_date": "2026-06-24", "quote": 0.11}],
+                    }
+                ]
+            ),
+            "non-empty curve",
+        ),
+        (
+            pd.DataFrame(
+                [
+                    {
+                        "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+                        "curve_identifier": "mxn_tiie_discount",
+                        "curve": {},
+                        "key_nodes": [{"maturity_date": "2026-06-24", "quote": 0.11}],
+                    }
+                ]
+            ),
+            "non-empty curve",
+        ),
+    ],
+)
+def test_discount_curves_node_requires_curve_payload(frame, message) -> None:
+    with pytest.raises(ValueError, match=message):
+        DiscountCurvesNode._normalize_builder_frame(
+            frame,
+            curve_identifier="mxn_tiie_discount",
+        )
+
+
+def test_curve_codec_rejects_null_curve_payload() -> None:
+    with pytest.raises(ValueError, match="non-empty mapping"):
+        compress_curve_to_string(None)
 
 
 @pytest.mark.parametrize(
