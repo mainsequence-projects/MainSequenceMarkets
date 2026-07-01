@@ -11,6 +11,7 @@ from msm.models import IndexTable, IndexTypeTable
 from msm.repositories.crud import (
     create_model,
     get_model_by_uid,
+    search_model,
     update_model,
     upsert_model,
 )
@@ -126,6 +127,22 @@ class IndexConventionDetails(BaseModel):
         return cls._from_operation_result(result, required=False)
 
     @classmethod
+    def filter_by_index_uids(
+        cls,
+        index_uids: list[uuid.UUID | str] | tuple[uuid.UUID | str, ...] | set[uuid.UUID | str],
+    ) -> list[IndexConventionDetails]:
+        resolved_uids = [_coerce_uuid(value) for value in index_uids]
+        if not resolved_uids:
+            return []
+        result = search_model(
+            cls._active_context(),
+            model=cls.__table__,
+            in_filters={"index_uid": resolved_uids},
+            limit=len(resolved_uids),
+        )
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
+
+    @classmethod
     def _active_context(cls):
         runtime = resolve_pricing_runtime(
             models=cls.__required_tables__,
@@ -181,6 +198,10 @@ class IndexConventionDetailsUpdate(BaseModel):
     serialization_format: str | None = Field(default=None, min_length=1, max_length=128)
     source: str | None = Field(default=None, max_length=255)
     metadata_json: dict[str, Any] | None = None
+
+
+def _coerce_uuid(value: uuid.UUID | str) -> uuid.UUID:
+    return uuid.UUID(str(value))
 
 
 __all__ = [

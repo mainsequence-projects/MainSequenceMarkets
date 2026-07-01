@@ -217,6 +217,58 @@ class MSDataInterface:
 
         return observation, target_date
 
+    def get_historical_discount_curve_observations(
+        self,
+        curve_names: list[str] | tuple[str, ...] | set[str],
+        target_date,
+        *,
+        market_data_set=None,
+    ) -> dict[str, tuple[DiscountCurveObservation, datetime.datetime]]:
+        """Return latest-at-or-before discount curve observations for many curves."""
+
+        requested_curve_names = list(dict.fromkeys(str(name) for name in curve_names))
+        if not requested_curve_names:
+            return {}
+
+        target_dt = _ensure_datetime(target_date)
+        start_dt = datetime.datetime(1900, 1, 1, tzinfo=target_dt.tzinfo)
+        data_node = self._data_node_for_concept(
+            PRICING_CONCEPT_DISCOUNT_CURVES,
+            market_data_set=market_data_set,
+        )
+        curve_df = data_node.get_df_between_dates(
+            dimension_range_map=[
+                dimension_range_for_identity(
+                    identity_dimension=CURVE_IDENTIFIER,
+                    identity=curve_name,
+                    date_info={
+                        "start_date": start_dt,
+                        "start_date_operand": ">=",
+                        "end_date": target_dt,
+                        "end_date_operand": "<=",
+                    },
+                )[0]
+                for curve_name in requested_curve_names
+            ]
+        )
+        if curve_df.empty:
+            return {}
+
+        rows = curve_df.reset_index()
+        observations: dict[str, tuple[DiscountCurveObservation, datetime.datetime]] = {}
+        for curve_name in requested_curve_names:
+            identity_rows = rows[rows[CURVE_IDENTIFIER] == curve_name]
+            if identity_rows.empty:
+                continue
+            identity_rows = identity_rows.sort_values("time_index")
+            row = identity_rows.iloc[-1].to_dict()
+            effective_date = _ensure_datetime(row["time_index"])
+            observations[curve_name] = (
+                self._discount_curve_observation_from_row(row=row, curve_name=curve_name),
+                effective_date,
+            )
+        return observations
+
     def get_latest_discount_curve(self, curve_name, *, market_data_set=None):
         observation, target_date = self.get_latest_discount_curve_observation(
             curve_name,
@@ -272,11 +324,18 @@ class MSDataInterface:
             )
 
         row = curve.reset_index().iloc[0].to_dict()
+        return MSDataInterface._discount_curve_observation_from_row(
+            row=row,
+            curve_name=curve_name,
+        )
+
+    @staticmethod
+    def _discount_curve_observation_from_row(*, row: Mapping[str, Any], curve_name: str):
         compressed_curve = row.get("curve")
         if not isinstance(compressed_curve, str) or not compressed_curve:
             raise ValueError(
-                f"Discount curve observation for {curve_name!r} at {target_date} has no "
-                "compressed curve payload."
+                f"Discount curve observation for {curve_name!r} at "
+                f"{row.get('time_index')!r} has no compressed curve payload."
             )
 
         zeros = _decompress_string_to_curve(compressed_curve)
@@ -389,6 +448,51 @@ class MSDataInterface:
         fixings_df["date"] = fixings_df["date"].dt.date
         return fixings_df.set_index("date")["rate"].to_dict()
 
+    def get_historical_fixings_for_identifiers(
+        self,
+        reference_rate_uids: list[str] | tuple[str, ...] | set[str],
+        start_date: datetime.datetime,
+        end_date: datetime.datetime,
+        *,
+        market_data_set=None,
+    ) -> dict[str, dict[datetime.date, float]]:
+        """Return historical fixings for many reference-rate identifiers in one read."""
+
+        requested_identifiers = list(dict.fromkeys(str(uid) for uid in reference_rate_uids))
+        if not requested_identifiers:
+            return {}
+
+        data_node = self._data_node_for_concept(
+            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+            market_data_set=market_data_set,
+        )
+        fixings_df = data_node.get_df_between_dates(
+            dimension_range_map=[
+                dimension_range_for_identity(
+                    identity_dimension=INDEX_IDENTIFIER_DIMENSION,
+                    identity=reference_rate_uid,
+                    date_info={
+                        "start_date": start_date,
+                        "start_date_operand": ">=",
+                        "end_date": end_date,
+                        "end_date_operand": "<=",
+                    },
+                )[0]
+                for reference_rate_uid in requested_identifiers
+            ]
+        )
+        if fixings_df.empty:
+            return {reference_rate_uid: {} for reference_rate_uid in requested_identifiers}
+
+        fixings_df = fixings_df.reset_index().rename(columns={"time_index": "date"})
+        fixings_df["date"] = fixings_df["date"].dt.date
+        result: dict[str, dict[datetime.date, float]] = {
+            reference_rate_uid: {} for reference_rate_uid in requested_identifiers
+        }
+        for reference_rate_uid, rows in fixings_df.groupby(INDEX_IDENTIFIER_DIMENSION):
+            result[str(reference_rate_uid)] = rows.set_index("date")["rate"].astype(float).to_dict()
+        return result
+
     # optional helpers
     @classmethod
     def clear_caches(cls) -> None:
@@ -453,3 +557,9 @@ def _is_missing_optional(value: Any) -> bool:
     if isinstance(value, float):
         return bool(pd.isna(value))
     return False
+
+
+def _ensure_datetime(value: datetime.date | datetime.datetime) -> datetime.datetime:
+    if isinstance(value, datetime.datetime):
+        return value
+    return datetime.datetime.combine(value, datetime.time())

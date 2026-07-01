@@ -301,6 +301,15 @@ class Bond(InstrumentModel):
             raise ValueError(
                 "Set valuation_date before requesting an index: set_valuation_date(dt)."
             )
+        context = getattr(self, "_pricing_valuation_context", None)
+        if context is not None:
+            return context.resolve_quantlib_index(
+                index_uid,
+                forwarding_curve=forwarding_curve,
+                hydrate_fixings=hydrate_fixings,
+                role_key=role_key,
+                quote_side=self._curve_quote_side if quote_side is None else quote_side,
+            )
         return resolve_quantlib_index(
             index_uid,
             valuation_date=self.valuation_date,
@@ -329,6 +338,16 @@ class Bond(InstrumentModel):
             raise ValueError(
                 "Set valuation_date before requesting a benchmark curve: "
                 "set_valuation_date(dt)."
+            )
+        context = getattr(self, "_pricing_valuation_context", None)
+        if context is not None:
+            return context.resolve_curve_for_index_binding(
+                index_uid=self.benchmark_rate_index_uid,
+                role_key=role_key,
+                quote_side=quote_side,
+                curve_uid=curve_uid,
+                curve_unique_identifier=curve_unique_identifier,
+                expected_curve_type=expected_curve_type,
             )
         return resolve_curve_for_index_binding(
             index_uid=self.benchmark_rate_index_uid,

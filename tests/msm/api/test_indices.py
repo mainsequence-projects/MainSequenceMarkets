@@ -90,7 +90,7 @@ def test_index_upsert_uses_active_runtime(monkeypatch) -> None:
         }
 
     monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
-    monkeypatch.setattr("msm.api.base.upsert_model", fake_upsert_model)
+    monkeypatch.setattr("msm.repositories.crud.upsert_model", fake_upsert_model)
 
     index = Index.upsert(
         IndexUpsert(
@@ -119,6 +119,49 @@ def test_index_upsert_uses_active_runtime(monkeypatch) -> None:
                 "provider": "example",
             },
             ("unique_identifier",),
+        )
+    ]
+
+
+def test_index_filter_by_uids_uses_single_in_filter(monkeypatch) -> None:
+    first_uid = uuid.uuid4()
+    second_uid = uuid.uuid4()
+    context = object()
+    runtime = SimpleNamespace(context=context)
+    calls = []
+
+    monkeypatch.setattr("msm.bootstrap.resolve_runtime", lambda **_kwargs: runtime)
+
+    def fake_search_model(active_context, *, model, in_filters, limit):
+        calls.append((active_context, model, in_filters, limit))
+        return {
+            "rows": [
+                {
+                    "uid": first_uid,
+                    "unique_identifier": "USD-SOFR",
+                    "index_type": INDEX_TYPE_INTEREST_RATE,
+                    "display_name": "USD SOFR",
+                },
+                {
+                    "uid": second_uid,
+                    "unique_identifier": "MXN-TIIE",
+                    "index_type": INDEX_TYPE_INTEREST_RATE,
+                    "display_name": "MXN TIIE",
+                },
+            ]
+        }
+
+    monkeypatch.setattr("msm.api.indices.search_model", fake_search_model)
+
+    rows = Index.filter_by_uids([first_uid, second_uid])
+
+    assert [row.uid for row in rows] == [first_uid, second_uid]
+    assert calls == [
+        (
+            context,
+            IndexTable,
+            {"uid": [first_uid, second_uid]},
+            2,
         )
     ]
 

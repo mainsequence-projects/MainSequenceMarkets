@@ -275,7 +275,32 @@ For a full floating-rate bond workflow, use
    unit multiplier. For account or portfolio sources, normalize the owning
    package's source rows into `ValuationLine` inputs first; the pricing basket
    does not query those tables. The bond pricing example now values the loaded
-   bond both as a single instrument and as a one-line valuation basket.
+   bond both as a single instrument and as a one-line valuation basket. For
+   portfolio-style runs, prepare a public valuation context once and pass it to
+   the basket methods:
+
+   ```python
+   from msm_pricing.valuation import PricingValuationContext
+
+   context = PricingValuationContext.prepare_for_position(
+       position,
+       curve_quote_side="mid",
+   )
+   total_market_value = position.price(context=context)
+   ```
+
+   `PricingValuationContext` returns copied or wrapped prepared instruments; it
+   does not mutate the caller-owned instruments in the submitted valuation
+   lines. The prepared context is fixed to the instrument universe submitted to
+   `prepare(...)` or `prepare_for_position(...)`; build a new context when the
+   valuation date, market-data set, quote side, or instrument universe changes.
+   Scenario runs use the public `msm_pricing.price_scenario(...)` helper with
+   explicit line-scoped base and scenario curve handles, so scenario state is
+   applied to prepared copies instead of caller-owned instruments.
+   For a fast local smoke test of that workflow, run
+   `examples/msm_pricing/pricing_valuation_context.py`; it uses the shared mock
+   flat-forward curve and mock fixing builders without requiring platform
+   market-data setup.
 
 The reusable mock market-data components live in `examples/msm_pricing/utils/` so
 the same curve and fixing DataNode extension pattern can be reused by swap

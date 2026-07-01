@@ -129,6 +129,22 @@ class Curve(BaseModel):
         return cls._from_operation_result(result, required=False)
 
     @classmethod
+    def filter_by_uids(
+        cls,
+        uids: list[uuid.UUID | str] | tuple[uuid.UUID | str, ...] | set[uuid.UUID | str],
+    ) -> list[Curve]:
+        resolved_uids = [_coerce_uuid(value) for value in uids]
+        if not resolved_uids:
+            return []
+        result = search_model(
+            cls._active_context(),
+            model=cls.__table__,
+            in_filters={"uid": resolved_uids},
+            limit=len(resolved_uids),
+        )
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
+
+    @classmethod
     def get_by_unique_identifier(cls, unique_identifier: str) -> Curve | None:
         result = get_model_by_unique_identifier(
             cls._active_context(),
@@ -710,6 +726,10 @@ class CurveUpdate(BaseModel):
     source: str | None = Field(default=None, max_length=255)
     status: str | None = Field(default=None, min_length=1, max_length=32)
     metadata_json: dict[str, Any] | None = None
+
+
+def _coerce_uuid(value: uuid.UUID | str) -> uuid.UUID:
+    return uuid.UUID(str(value))
 
 
 __all__ = [

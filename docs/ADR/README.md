@@ -34,6 +34,7 @@ Recommended sections:
 - [0032. Portfolio Groups As Many-To-Many Classification](0032-portfolio-group-many-to-many.md)
 - [0033. Pricing Valuation Position Boundary](0033-pricing-valuation-position-boundary.md)
 - [0035. Pricing Curve Identity And Market-Data Curve Bindings](0035-pricing-curve-identity-and-market-data-curve-bindings.md)
+- [0036. Prepared Pricing Valuation Context](0036-prepared-pricing-valuation-context.md)
 
 ## Command Center Decisions
 

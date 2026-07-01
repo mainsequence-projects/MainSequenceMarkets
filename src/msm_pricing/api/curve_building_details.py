@@ -162,6 +162,22 @@ class CurveBuildingDetails(BaseModel):
         return cls._from_operation_result(result, required=False)
 
     @classmethod
+    def filter_by_curve_uids(
+        cls,
+        curve_uids: list[uuid.UUID | str] | tuple[uuid.UUID | str, ...] | set[uuid.UUID | str],
+    ) -> list[CurveBuildingDetails]:
+        resolved_uids = [_coerce_uuid(value) for value in curve_uids]
+        if not resolved_uids:
+            return []
+        result = search_model(
+            cls._active_context(),
+            model=cls.__table__,
+            in_filters={"curve_uid": resolved_uids},
+            limit=len(resolved_uids),
+        )
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
+
+    @classmethod
     def filter(cls, *, limit: int = 500, **filters: Any) -> list[CurveBuildingDetails]:
         result = search_model(
             cls._active_context(),
@@ -306,6 +322,10 @@ def _count_from_operation_result(result: Mapping[str, Any] | list[Any] | None) -
     if not rows:
         return 0
     return int(rows[0].get("count") or 0)
+
+
+def _coerce_uuid(value: uuid.UUID | str) -> uuid.UUID:
+    return uuid.UUID(str(value))
 
 
 __all__ = [

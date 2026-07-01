@@ -22,15 +22,27 @@ __all__ = [
     "PRICING_MARKET_DATA_SET_EOD",
     "PRICING_MARKET_DATA_SET_LIVE",
     "PRICING_MARKET_DATA_SET_RISK_MANAGER",
+    "IndexCurveRequirement",
     "PricingMarketDataConfiguration",
+    "PricingValuationContext",
+    "PricingValuationContextSpec",
+    "PricingValuationInstrumentKey",
+    "PreparedInstrument",
     "ValuationLine",
     "ValuationPosition",
+    "price_scenario",
 ]
 
 _ATTR_TO_MODULE = {name: ".instruments" for name in _INSTRUMENT_EXPORTS}
+_ATTR_TO_MODULE["IndexCurveRequirement"] = ".valuation"
 _ATTR_TO_MODULE["PricingMarketDataConfiguration"] = ".config"
+_ATTR_TO_MODULE["PricingValuationContext"] = ".valuation"
+_ATTR_TO_MODULE["PricingValuationContextSpec"] = ".valuation"
+_ATTR_TO_MODULE["PricingValuationInstrumentKey"] = ".valuation"
+_ATTR_TO_MODULE["PreparedInstrument"] = ".valuation"
 _ATTR_TO_MODULE["ValuationLine"] = ".valuation"
 _ATTR_TO_MODULE["ValuationPosition"] = ".valuation"
+_ATTR_TO_MODULE["price_scenario"] = ".valuation"
 for _name in (
     "PRICING_CONCEPT_DISCOUNT_CURVES",
     "PRICING_CONCEPT_EQUITY_VOL_CURVES",

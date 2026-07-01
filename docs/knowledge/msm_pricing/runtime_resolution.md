@@ -4,6 +4,11 @@ This page traces how `price()` walks the persisted graph at runtime, from an
 instrument payload down to QuantLib objects, and gives the end-to-end ordering a
 user follows to build a priceable fixed-income asset.
 
+For portfolio and scenario valuation, [ADR 0036](../../ADR/0036-prepared-pricing-valuation-context.md)
+defines the implemented prepared-context path. The prepared context resolves
+the same persisted graph with set-based SQLAlchemy-backed queries before line
+pricing begins, rather than repeating this resolution once per instrument.
+
 ## Runtime Resolution
 
 When a user calls:

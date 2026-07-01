@@ -83,6 +83,49 @@ startup attaches already migrated and registered MetaTables.
 
 ## Instrument Persistence
 
+### QuantLib Instrument Serialization
+
+Persisted instrument payloads must be produced by the instrument serializer:
+
+```python
+payload = instrument.serialize_for_backend()
+```
+
+or, when the caller needs the inner instrument object only:
+
+```python
+instrument_terms = instrument.model_dump(mode="json")
+```
+
+Do not hand-build QuantLib field JSON for persisted instruments. Do not use
+`msm_pricing.instruments.json_codec.calendar_to_json(...)` for fields typed as
+`ql_fields.QuantLibCalendar`; that codec uses class/market JSON and is not the
+instrument field wire contract.
+
+Instrument calendar fields are serialized by `ql_fields.QuantLibCalendar` as
+QuantLib display-name objects:
+
+```python
+{"name": calendar.name()}
+```
+
+Strict examples:
+
+- `ql.TARGET()` must serialize as `{"name": "TARGET"}`.
+- `ql.Mexico()` and `ql.Mexico(ql.Mexico.BMV)` must serialize as
+  `{"name": "Mexican stock exchange"}`.
+- Do not persist `{"name": "Mexico"}` for instrument calendar fields.
+- Do not persist `{"name": "Mexico-BMV"}` for instrument calendar fields.
+- Do not persist class/market calendar JSON such as
+  `{"name": "UnitedStates", "market": 1}` for instrument calendar fields unless
+  the field decoder is explicitly changed and tested to accept that contract.
+
+When reviewing or writing pricing-detail importers, migrations, examples, or
+connectors, reject manual calendar dictionaries in `instrument_dump`. If source
+data arrives as class/market or vendor calendar names, instantiate the intended
+`QuantLib` calendar first, build the instrument model, and let
+`serialize_for_backend()` write the stored payload.
+
 Persist one asset/instrument relationship with:
 
 ```python

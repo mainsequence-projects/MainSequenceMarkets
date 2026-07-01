@@ -25,6 +25,7 @@ from msm_pricing.models import (
 )
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
+    PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
     PRICING_MARKET_DATA_SET_DEFAULT,
 )
 
@@ -780,6 +781,83 @@ def test_pricing_market_data_binding_resolves_data_node_uid(monkeypatch) -> None
     ]
 
 
+def test_pricing_market_data_binding_filters_concepts_with_in_filter(monkeypatch) -> None:
+    market_data_set_uid = uuid.uuid4()
+    discount_binding_uid = uuid.uuid4()
+    fixings_binding_uid = uuid.uuid4()
+    discount_data_node_uid = uuid.uuid4()
+    fixings_data_node_uid = uuid.uuid4()
+    context = object()
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.resolve_pricing_runtime",
+        lambda **kwargs: calls.append(("runtime", kwargs)) or SimpleNamespace(context=context),
+    )
+
+    def fake_search_model(active_context, *, model, filters, in_filters, limit):
+        calls.append(("search", active_context, model, filters, in_filters, limit))
+        return {
+            "rows": [
+                {
+                    "uid": discount_binding_uid,
+                    "market_data_set_uid": market_data_set_uid,
+                    "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
+                    "data_node_uid": discount_data_node_uid,
+                },
+                {
+                    "uid": fixings_binding_uid,
+                    "market_data_set_uid": market_data_set_uid,
+                    "concept_key": PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+                    "data_node_uid": fixings_data_node_uid,
+                },
+            ]
+        }
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.search_model",
+        fake_search_model,
+    )
+
+    rows = PricingMarketDataSetBinding.filter_for_set_and_concepts(
+        market_data_set_uid=market_data_set_uid,
+        concept_keys=[
+            PRICING_CONCEPT_DISCOUNT_CURVES,
+            PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+        ],
+    )
+
+    assert [row.concept_key for row in rows] == [
+        PRICING_CONCEPT_DISCOUNT_CURVES,
+        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+    ]
+    assert calls == [
+        (
+            "runtime",
+            {
+                "models": [
+                    PricingMarketDataSetTable,
+                    PricingMarketDataSetBindingTable,
+                ],
+                "row_model_name": "PricingMarketDataSetBinding",
+            },
+        ),
+        (
+            "search",
+            context,
+            PricingMarketDataSetBindingTable,
+            {"market_data_set_uid": market_data_set_uid},
+            {
+                "concept_key": [
+                    PRICING_CONCEPT_DISCOUNT_CURVES,
+                    PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+                ]
+            },
+            2,
+        ),
+    ]
+
+
 def test_pricing_market_data_binding_missing_concept_fails_before_data_node_lookup(
     monkeypatch,
 ) -> None:
@@ -928,6 +1006,78 @@ def test_pricing_market_data_index_curve_selection_resolves_curve_uid(monkeypatc
             },
             2,
         )
+    ]
+
+
+def test_pricing_market_data_curve_binding_filters_keys_with_in_filter(monkeypatch) -> None:
+    market_data_set_uid = uuid.uuid4()
+    binding_uid = uuid.uuid4()
+    index_uid = uuid.uuid4()
+    curve_uid = uuid.uuid4()
+    context = object()
+    calls = []
+    binding_key = curve_binding_key(
+        role_key="projection",
+        selector_type="index",
+        selector_key=str(index_uid),
+        quote_side="mid",
+    )
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.resolve_pricing_runtime",
+        lambda **kwargs: calls.append(("runtime", kwargs)) or SimpleNamespace(context=context),
+    )
+
+    def fake_search_model(active_context, *, model, filters, in_filters, limit):
+        calls.append(("search", active_context, model, filters, in_filters, limit))
+        return {
+            "rows": [
+                {
+                    "uid": binding_uid,
+                    "market_data_set_uid": market_data_set_uid,
+                    "binding_key": binding_key,
+                    "role_key": "projection",
+                    "selector_type": "index",
+                    "selector_key": str(index_uid),
+                    "quote_side": "mid",
+                    "curve_uid": curve_uid,
+                    "status": "ACTIVE",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.search_model",
+        fake_search_model,
+    )
+
+    rows = PricingMarketDataSetCurveBinding.filter_by_binding_keys(
+        market_data_set_uid=market_data_set_uid,
+        binding_keys=[binding_key, binding_key],
+        status="ACTIVE",
+    )
+
+    assert [row.binding_key for row in rows] == [binding_key]
+    assert calls == [
+        (
+            "runtime",
+            {
+                "models": [
+                    PricingMarketDataSetTable,
+                    CurveTable,
+                    PricingMarketDataSetCurveBindingTable,
+                ],
+                "row_model_name": "PricingMarketDataSetCurveBinding",
+            },
+        ),
+        (
+            "search",
+            context,
+            PricingMarketDataSetCurveBindingTable,
+            {"market_data_set_uid": market_data_set_uid, "status": "ACTIVE"},
+            {"binding_key": [binding_key]},
+            2,
+        ),
     ]
 
 

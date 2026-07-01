@@ -195,6 +195,29 @@ position = ValuationPosition(
 portfolio_value = position.price()
 ```
 
+For portfolio or scenario pricing, prepare a `PricingValuationContext` before
+the line-pricing loop. The context resolves the fixed-income market-data graph
+in bulk and prices prepared copies rather than mutating caller-owned
+instruments:
+
+```python
+from msm_pricing import price_scenario
+from msm_pricing.valuation import PricingValuationContext
+
+context = PricingValuationContext.prepare_for_position(
+    position,
+    curve_quote_side="mid",
+)
+portfolio_value = position.price(context=context)
+
+scenario = price_scenario(
+    position=position,
+    context=context,
+    line_curve_handles=base_handles_by_line,
+    scenario_curve_handles=scenario_handles_by_line,
+)
+```
+
 User-facing persistence starts from instruments:
 
 ```python

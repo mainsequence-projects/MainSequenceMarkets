@@ -166,6 +166,53 @@ separate baskets when two groups of lines must be valued against different
 market-data sets. See [Market Data Sets](market_data_sets.md) for how the
 selected set resolves to DataNode reads.
 
+Use `PricingValuationContext` for portfolio-style pricing instead of calling
+private valuation-position helpers. The context prepares the known instrument
+universe once, resolves supported fixed-income market-data rows with set-based
+row API operations, stores the immutable input contract in
+`PricingValuationContextSpec`, and returns copied/wrapped prepared instruments
+so the caller-owned instrument terms are not mutated:
+
+```python
+from msm_pricing.valuation import PricingValuationContext
+
+context = PricingValuationContext.prepare_for_position(
+    position,
+    curve_quote_side="mid",
+)
+
+total_market_value = position.price(context=context)
+per_line = position.price_breakdown(context=context)
+
+prepared = context.prepare_instrument(position.lines[0].instrument)
+assert prepared.instrument is not position.lines[0].instrument
+unit_price = prepared.price()
+```
+
+For scenario runs, use `msm_pricing.price_scenario(...)` with explicit
+line-scoped base and scenario curve handles. The helper prepares separate
+copies for override cases, so mutable scenario curve state does not leak into
+the caller-owned instruments or the cached base prepared instrument.
+
+The prepared context is intentionally not expandable. Its spec records the
+valuation date, market-data set, quote side, valuation-role requirements, and
+submitted instrument universe. Calling `prepare_instrument(...)` with an
+instrument that was not included in `prepare(...)` or
+`prepare_for_position(...)` is rejected; build a new context for a different
+universe.
+
+The prepared context caches market-data concept bindings, index rows, index
+convention rows, curve bindings, curve rows, curve-building details, curve
+observations, fixing observations, QuantLib curve handles, and base QuantLib
+indexes for index-referencing instruments. Prepared floating-rate bond pricing
+uses that context state rather than re-entering backend row or observation
+resolution in the line-pricing hot loop. See
+`examples/msm_pricing/pricing_valuation_context.py` for a runnable offline
+example that uses the repository's mock flat-forward curve and mock fixing
+builders, prepares a mock index-referencing instrument through
+`PricingValuationContext`, and demonstrates the copy boundary without requiring
+live platform market data.
+
 ## Related Concepts
 
 - [msm_pricing overview](index.md)

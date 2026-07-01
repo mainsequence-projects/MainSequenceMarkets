@@ -25,6 +25,7 @@ class InstrumentModel(BaseModel):
 
     _valuation_date: datetime.datetime | None = PrivateAttr(default=None)
     _asset_uid: uuid.UUID | None = PrivateAttr(default=None)
+    _pricing_valuation_context: Any | None = PrivateAttr(default=None)
 
     _DEFAULT_REGISTRY: ClassVar[dict[str, type["InstrumentModel"]]] = {}
     expected_asset_type: ClassVar[str | None] = None
@@ -69,6 +70,9 @@ class InstrumentModel(BaseModel):
         self._valuation_date = value
         if old_value != value and hasattr(self, "_on_valuation_date_set"):
             self._on_valuation_date_set()
+
+    def _apply_pricing_valuation_context(self, context: Any | None) -> None:
+        self._pricing_valuation_context = context
 
     def attach_to_asset(self, asset: Any, **options: Any) -> Self:
         """Persist this instrument as the current pricing definition for an asset."""

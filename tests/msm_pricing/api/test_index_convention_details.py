@@ -172,3 +172,52 @@ def test_index_convention_details_get_by_index_uid_uses_primary_key_lookup(
     assert row is not None
     assert row.index_uid == index_uid
     assert calls == [(context, IndexConventionDetailsTable, index_uid)]
+
+
+def test_index_convention_details_filters_index_uids_with_in_filter(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    context = object()
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.index_convention_details.resolve_pricing_runtime",
+        lambda **kwargs: calls.append(("runtime", kwargs)) or SimpleNamespace(context=context),
+    )
+
+    def fake_search_model(active_context, *, model, in_filters, limit):
+        calls.append(("search", active_context, model, in_filters, limit))
+        return {
+            "rows": [
+                {
+                    "index_uid": index_uid,
+                    "index_family": "overnight",
+                    "convention_dump": {"day_counter": "Actual360"},
+                    "serialization_format": DEFAULT_INDEX_CONVENTION_SERIALIZATION_FORMAT,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        "msm_pricing.api.index_convention_details.search_model",
+        fake_search_model,
+    )
+
+    rows = IndexConventionDetails.filter_by_index_uids([index_uid, str(index_uid)])
+
+    assert [row.index_uid for row in rows] == [index_uid]
+    assert calls == [
+        (
+            "runtime",
+            {
+                "models": [IndexTypeTable, IndexTable, IndexConventionDetailsTable],
+                "row_model_name": "IndexConventionDetails",
+            },
+        ),
+        (
+            "search",
+            context,
+            IndexConventionDetailsTable,
+            {"index_uid": [index_uid, index_uid]},
+            2,
+        ),
+    ]

@@ -30,6 +30,20 @@ and this project follows versioned releases.
   planned replacement for the legacy in-memory `Position` surface.
 - Added ADR 0035 to document the target pricing curve identity model, curve
   building details, and market-data-set curve binding layer.
+- Added ADR 0036 to document the prepared pricing valuation context target,
+  including the requirement that portfolio/scenario valuation use bulk
+  SQLAlchemy-backed resolution instead of hiding per-line backend lookup loops
+  behind a public API, and that prepared instruments are copied or wrapped
+  rather than mutating caller-owned instrument objects.
+- Implemented `PricingValuationContext` with a public `PreparedInstrument`
+  wrapper, frozen `PricingValuationContextSpec` input contract, fixed
+  prepared-instrument universe, package-level exports, context-aware
+  `ValuationPosition` methods, `price_scenario(...)`, set-based row API helpers
+  for pricing market-data bindings, index rows, index convention details, curve
+  bindings, curves, and curve-building details, bulk curve/fixing observation
+  reads, context-owned QuantLib curve handles/indexes, hot-loop resolver
+  injection for prepared floating-rate bond pricing, and a runnable mock
+  curve/fixing valuation-context example.
 - Implemented ADR 0035 phase-one pricing curve infrastructure with
   `CurveBuildingDetails`, `PricingMarketDataSetCurveBinding`, nullable legacy
   `Curve.index_uid`, resolver cutover to explicit curve bindings, and Alembic

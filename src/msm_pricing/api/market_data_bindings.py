@@ -320,6 +320,27 @@ class PricingMarketDataSetBinding(BaseModel):
         return cls._from_operation_result(result, required=False)
 
     @classmethod
+    def filter_for_set_and_concepts(
+        cls,
+        *,
+        market_data_set_uid: uuid.UUID | str,
+        concept_keys: list[str] | tuple[str, ...] | set[str],
+    ) -> list[PricingMarketDataSetBinding]:
+        normalized_concept_keys = list(
+            dict.fromkeys(_normalize_concept_key(value) for value in concept_keys)
+        )
+        if not normalized_concept_keys:
+            return []
+        result = search_model(
+            cls._active_context(),
+            model=cls.__table__,
+            filters={"market_data_set_uid": _coerce_uuid(market_data_set_uid)},
+            in_filters={"concept_key": normalized_concept_keys},
+            limit=len(normalized_concept_keys),
+        )
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
+
+    @classmethod
     def resolve_data_node_uid(
         cls,
         *,
@@ -548,6 +569,34 @@ class PricingMarketDataSetCurveBinding(BaseModel):
                 f"market_data_set_uid={market_data_set_uid}, binding_key={binding_key!r}."
             )
         return rows[0] if rows else None
+
+    @classmethod
+    def filter_by_binding_keys(
+        cls,
+        *,
+        market_data_set_uid: uuid.UUID | str,
+        binding_keys: list[str] | tuple[str, ...] | set[str],
+        status: str | None = "ACTIVE",
+    ) -> list[PricingMarketDataSetCurveBinding]:
+        normalized_binding_keys = list(
+            dict.fromkeys(_normalize_binding_key(value) for value in binding_keys)
+        )
+        if not normalized_binding_keys:
+            return []
+
+        filters: dict[str, Any] = {
+            "market_data_set_uid": _coerce_uuid(market_data_set_uid),
+        }
+        if status is not None:
+            filters["status"] = status
+        result = search_model(
+            cls._active_context(),
+            model=cls.__table__,
+            filters=filters,
+            in_filters={"binding_key": normalized_binding_keys},
+            limit=len(normalized_binding_keys) * 2,
+        )
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
 
     @classmethod
     def get_by_role_selector(

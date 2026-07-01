@@ -277,6 +277,14 @@ Rules:
 
 - Use `IndexTable.uid` for pricing relationships stored in instruments,
   convention details, and market-data curve binding selectors.
+- Persist fixed-income instruments through `instrument.serialize_for_backend()`,
+  `instrument.attach_to_asset(...)`, `msm_pricing.api.add_pricing_details(...)`,
+  or `msm_pricing.api.add_many_pricing_details(...)`. Do not hand-build
+  `instrument_dump` calendar JSON. Instrument calendar fields use
+  `ql_fields.QuantLibCalendar` and must store QuantLib display-name JSON from
+  `calendar.name()`: for Mexico BMV, store
+  `{"name": "Mexican stock exchange"}`, not `{"name": "Mexico"}` and not
+  `{"name": "Mexico-BMV"}`.
 - Use `index_identifier` for index-stamped DataNode rows. It stores
   `IndexTable.unique_identifier`.
 - Use `curve_identifier` for curve DataNode rows. It stores

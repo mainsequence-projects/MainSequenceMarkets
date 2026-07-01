@@ -172,6 +172,47 @@ def test_curve_get_by_unique_identifier_uses_curve_lookup(monkeypatch) -> None:
     assert calls == [(context, CurveTable, "USD-SOFR-DISCOUNT")]
 
 
+def test_curve_filters_uids_with_in_filter(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    context = object()
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.curves.resolve_pricing_runtime",
+        lambda **kwargs: calls.append(("runtime", kwargs)) or SimpleNamespace(context=context),
+    )
+
+    def fake_search_model(active_context, *, model, in_filters, limit):
+        calls.append(("search", active_context, model, in_filters, limit))
+        return {
+            "rows": [
+                {
+                    "uid": curve_uid,
+                    "unique_identifier": "USD-SOFR-DISCOUNT",
+                    "display_name": "USD SOFR Discount Curve",
+                    "curve_type": "discount",
+                    "status": "ACTIVE",
+                }
+            ]
+        }
+
+    monkeypatch.setattr("msm_pricing.api.curves.search_model", fake_search_model)
+
+    rows = Curve.filter_by_uids([curve_uid, str(curve_uid)])
+
+    assert [row.uid for row in rows] == [curve_uid]
+    assert calls == [
+        (
+            "runtime",
+            {
+                "models": [CurveTable],
+                "row_model_name": "Curve",
+            },
+        ),
+        ("search", context, CurveTable, {"uid": [curve_uid, curve_uid]}, 2),
+    ]
+
+
 def test_curve_frontend_detail_summary_uses_curve_row(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
 

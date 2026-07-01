@@ -177,3 +177,46 @@ def test_curve_building_details_get_by_curve_uid_uses_primary_key(monkeypatch) -
     assert row is not None
     assert row.curve_uid == curve_uid
     assert calls == [(context, CurveBuildingDetailsTable, curve_uid)]
+
+
+def test_curve_building_details_filters_curve_uids_with_in_filter(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    context = object()
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.api.curve_building_details.resolve_pricing_runtime",
+        lambda **kwargs: calls.append(("runtime", kwargs)) or SimpleNamespace(context=context),
+    )
+
+    def fake_search_model(active_context, *, model, in_filters, limit):
+        calls.append(("search", active_context, model, in_filters, limit))
+        return {"rows": [_build_details_payload(curve_uid)]}
+
+    monkeypatch.setattr(
+        "msm_pricing.api.curve_building_details.search_model",
+        fake_search_model,
+    )
+
+    rows = CurveBuildingDetails.filter_by_curve_uids([curve_uid, str(curve_uid)])
+
+    assert [row.curve_uid for row in rows] == [curve_uid]
+    assert calls == [
+        (
+            "runtime",
+            {
+                "models": [
+                    CurveTable,
+                    CurveBuildingDetailsTable,
+                ],
+                "row_model_name": "CurveBuildingDetails",
+            },
+        ),
+        (
+            "search",
+            context,
+            CurveBuildingDetailsTable,
+            {"curve_uid": [curve_uid, curve_uid]},
+            2,
+        ),
+    ]

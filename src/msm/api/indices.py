@@ -7,8 +7,9 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from msm.api.base import MarketsMetaTableRow
+from msm.api.base import MarketsMetaTableRow, operation_result_rows
 from msm.models import IndexTable, IndexTypeTable
+from msm.repositories.crud import search_model
 
 
 def _validate_payload(
@@ -162,6 +163,22 @@ class Index(MarketsMetaTableRow):
         **kwargs: Any,
     ) -> Index:
         return super().update(uid, _validate_payload(IndexUpdate, payload, kwargs))
+
+    @classmethod
+    def filter_by_uids(
+        cls,
+        uids: list[uuid.UUID | str] | tuple[uuid.UUID | str, ...] | set[uuid.UUID | str],
+    ) -> list[Index]:
+        resolved_uids = [uuid.UUID(str(value)) for value in uids]
+        if not resolved_uids:
+            return []
+        result = search_model(
+            cls._active_context(),
+            model=cls.__table__,
+            in_filters={"uid": resolved_uids},
+            limit=len(resolved_uids),
+        )
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
 
 
 class IndexCreate(BaseModel):

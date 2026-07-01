@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -388,8 +389,37 @@ def build_curve_from_curve_row(
     if building_details is None:
         building_details = resolve_curve_building_details(curve.uid)
 
+    return build_curve_from_curve_observation(
+        curve=curve,
+        building_details=building_details,
+        observation={
+            "curve_identifier": curve.unique_identifier,
+            "time_index": effective_curve_date,
+            "nodes": nodes,
+            "key_nodes": None,
+            "metadata_json": None,
+        },
+        effective_curve_date=effective_curve_date,
+    )
+
+
+def build_curve_from_curve_observation(
+    *,
+    curve: Curve,
+    building_details: CurveBuildingDetails,
+    observation: Mapping[str, Any],
+    effective_curve_date: datetime.date | datetime.datetime | ql.Date | None = None,
+) -> ql.YieldTermStructureHandle:
+    """Build a QuantLib curve from cached curve rows, build details, and observations."""
+
     _validate_supported_curve_build(curve=curve, building_details=building_details)
 
+    if effective_curve_date is None:
+        effective_curve_date = observation.get("time_index")
+    if effective_curve_date is None:
+        raise ValueError(
+            f"Curve observation for {curve.unique_identifier!r} is missing time_index."
+        )
     base_dt = _ensure_datetime(effective_curve_date)
     base = to_ql_date(base_dt)
     day_counter = daycount_from_json(building_details.day_counter_code)
@@ -397,7 +427,12 @@ def build_curve_from_curve_row(
 
     curve_nodes: list[tuple[ql.Date, float]] = []
     seen = {base.serialNumber()}
-    for node in sorted(nodes, key=lambda item: int(item["days_to_maturity"])):
+    observation_nodes = observation.get("nodes")
+    if not isinstance(observation_nodes, list):
+        raise ValueError(
+            f"Curve observation for {curve.unique_identifier!r} must contain a node list."
+        )
+    for node in sorted(observation_nodes, key=lambda item: int(item["days_to_maturity"])):
         days = int(node["days_to_maturity"])
         if days <= 0:
             continue
@@ -450,7 +485,6 @@ def resolve_quantlib_index(
         raise LookupError(f"No canonical index row found for index_uid={index_uid}.")
 
     convention = resolve_index_convention(index_uid)
-    convention_dump = convention.convention_dump
     curve = _as_curve_handle(forwarding_curve)
     if curve is None:
         selection_role = role_key or _default_index_curve_role(curve_type)
@@ -466,6 +500,47 @@ def resolve_quantlib_index(
             curve_unique_identifier=curve_unique_identifier,
         )
 
+    ql_index = build_quantlib_index_from_rows(
+        index=index,
+        convention=convention,
+        valuation_date=valuation_date,
+        forwarding_curve=curve,
+        hydrate_fixings=False,
+        settlement_days=settlement_days,
+    )
+
+    if hydrate_fixings:
+        target_date = _ensure_datetime(valuation_date)
+        fixings_identifier = str(
+            fixing_identifier_from_rows(index=index, convention=convention)
+        )
+        add_historical_fixings(
+            to_ql_date(target_date),
+            ql_index,
+            reference_rate_uid=fixings_identifier,
+            market_data_set=market_data_set,
+        )
+
+    return ql_index
+
+
+def build_quantlib_index_from_rows(
+    *,
+    index: Index,
+    convention: IndexConventionDetails,
+    valuation_date: datetime.date | datetime.datetime | ql.Date,
+    forwarding_curve: ql.YieldTermStructureHandle | ql.YieldTermStructure | None,
+    hydrate_fixings: bool = True,
+    settlement_days: int | None = None,
+    fixings: Mapping[datetime.date, float] | None = None,
+) -> ql.IborIndex:
+    """Build a QuantLib Ibor index from already-resolved index/convention rows."""
+
+    convention_dump = convention.convention_dump
+    curve = _as_curve_handle(forwarding_curve)
+    if curve is None:
+        raise ValueError("forwarding_curve is required when building an index from cached rows.")
+
     ql_index = ql.IborIndex(
         index.unique_identifier,
         _period_from_convention(convention_dump, index_family=convention.index_family),
@@ -478,21 +553,44 @@ def resolve_quantlib_index(
         curve,
     )
 
-    if hydrate_fixings:
-        target_date = _ensure_datetime(valuation_date)
-        fixings_identifier = str(
-            convention_dump.get("fixings_unique_identifier")
-            or convention_dump.get("fixings_uid")
-            or index.unique_identifier
-        )
-        add_historical_fixings(
-            to_ql_date(target_date),
-            ql_index,
-            reference_rate_uid=fixings_identifier,
-            market_data_set=market_data_set,
-        )
-
+    if hydrate_fixings and fixings:
+        add_fixing_observations(ql_index, fixings)
     return ql_index
+
+
+def fixing_identifier_from_rows(
+    *,
+    index: Index,
+    convention: IndexConventionDetails,
+) -> str:
+    convention_dump = convention.convention_dump
+    return str(
+        convention_dump.get("fixings_unique_identifier")
+        or convention_dump.get("fixings_uid")
+        or index.unique_identifier
+    )
+
+
+def add_fixing_observations(
+    ibor_index: ql.IborIndex,
+    fixings: Mapping[datetime.date, float],
+) -> None:
+    """Hydrate a QuantLib index from already-cached fixing observations."""
+
+    ql_dates = ql.DateVector()
+    values = ql.DoubleVector()
+    seen_serials: set[int] = set()
+    for fixing_date, fixing_value in sorted(fixings.items()):
+        ql_date = to_ql_date(fixing_date)
+        serial = ql_date.serialNumber()
+        if serial in seen_serials:
+            continue
+        seen_serials.add(serial)
+        ql_dates.push_back(ql_date)
+        values.push_back(float(fixing_value))
+
+    if len(ql_dates) > 0:
+        ibor_index.addFixings(ql_dates, values, True)
 
 
 def add_historical_fixings(
@@ -1067,8 +1165,12 @@ def _end_of_month(convention_dump: dict[str, Any]) -> bool:
 
 __all__ = [
     "add_historical_fixings",
+    "add_fixing_observations",
+    "build_curve_from_curve_observation",
     "build_curve_from_curve_row",
+    "build_quantlib_index_from_rows",
     "CurveSelectionContext",
+    "fixing_identifier_from_rows",
     "resolve_curve_building_details",
     "resolve_curve_for_index_binding",
     "resolve_index_convention",
