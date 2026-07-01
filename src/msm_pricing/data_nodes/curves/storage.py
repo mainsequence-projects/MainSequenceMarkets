@@ -6,6 +6,7 @@ import datetime
 from typing import ClassVar
 
 from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
@@ -19,17 +20,20 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 
     Each row represents one valuation timestamp and one curve_identifier
     registered in the Curve MetaTable, with the curve column storing the
-    compressed term-structure payload. The dataset reconstructs discount term
+    compressed term-structure payload and key_nodes recording the input quotes
+    used to build that observation. The dataset reconstructs discount term
     structures by curve identity when pricing bonds and other fixed-income
-    instruments.
+    instruments, while preserving row-level construction provenance for audit
+    and diagnostics.
     """
 
     __metatable_identifier__ = "DiscountCurvesTS"
     __metatable_description__ = (
         "Timestamped discount-curve storage keyed by (time_index, "
         "curve_identifier). Stores compressed curve payloads that reconstruct "
-        "discount term structures for pricing workflows and link each curve identity "
-        "back to the Curve MetaTable."
+        "discount term structures for pricing workflows, key-node input quotes "
+        "used to build each curve observation, and optional structured metadata. "
+        "Each curve identity links back to the Curve MetaTable."
     )
     __time_index_name__: ClassVar[str] = "time_index"
     __cadence__: ClassVar[str] = "1d"
@@ -57,7 +61,35 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Compressed Curve",
-            "description": "Compressed discount-curve points payload for the curve observation.",
+            "description": (
+                "Compressed pricing curve node payload consumed by runtime pricing. "
+                "The node quote meaning is interpreted through CurveBuildingDetails."
+            ),
+        },
+    )
+    key_nodes: Mapped[list[dict] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        info={
+            "label": "Key Nodes",
+            "description": (
+                "Construction input quotes for this curve observation. Each item "
+                "stores maturity_date, quote, and an optional asset_identifier for "
+                "the source instrument; curve-level quote interpretation comes from "
+                "CurveBuildingDetails."
+            ),
+        },
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        info={
+            "label": "Metadata JSON",
+            "description": (
+                "Optional structured row metadata for curve-source diagnostics, "
+                "quality flags, provider snapshots, workflow details, or other "
+                "non-pricing provenance."
+            ),
         },
     )
 

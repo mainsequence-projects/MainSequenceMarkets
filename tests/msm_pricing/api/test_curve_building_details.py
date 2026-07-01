@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from msm_pricing.api.curve_building_details import (
     CurveBuildingDetails,
+    CurveBuildingDetailsUpdate,
     CurveBuildingDetailsUpsert,
 )
 from msm_pricing.models import CurveBuildingDetailsTable, CurveTable
@@ -44,6 +45,43 @@ def test_curve_building_details_payload_rejects_unknown_fields() -> None:
             **_build_details_payload(uuid.uuid4()),
             uid=uuid.uuid4(),
         )
+
+
+@pytest.mark.parametrize(
+    "interpolation_method",
+    [
+        "log_linear_zero",
+        "LogLinearZeroCurve",
+        "monotonic_log_cubic_discount",
+        "MonotonicLogCubicDiscountCurve",
+    ],
+)
+def test_curve_building_details_payload_rejects_deprecated_interpolation_methods(
+    interpolation_method: str,
+) -> None:
+    with pytest.raises(ValidationError, match="Unsupported interpolation_method"):
+        CurveBuildingDetailsUpsert(
+            **{
+                **_build_details_payload(uuid.uuid4()),
+                "interpolation_method": interpolation_method,
+            }
+        )
+
+
+def test_curve_building_details_payload_rejects_unknown_interpolation_method() -> None:
+    with pytest.raises(ValidationError, match="Unsupported interpolation_method"):
+        CurveBuildingDetailsUpsert(
+            **{
+                **_build_details_payload(uuid.uuid4()),
+                "interpolation_method": "unsupported_curve_math",
+            }
+        )
+
+
+def test_curve_building_details_update_normalizes_interpolation_method() -> None:
+    payload = CurveBuildingDetailsUpdate(interpolation_method=" CUBIC_ZERO ")
+
+    assert payload.interpolation_method == "cubic_zero"
 
 
 def test_curve_building_details_row_accepts_physical_metadata_alias() -> None:

@@ -126,6 +126,32 @@ Curve identity rules:
   choose different bid/mid/offer, source, scenario, discount, projection,
   spread, basis, or future volatility curves.
 
+### Native curve construction methods
+
+Runtime curve construction honors `CurveBuildingDetails.interpolation_method`;
+it does not silently coerce every curve into log-linear discount space.
+Supported methods are intentionally limited to non-deprecated QuantLib
+constructors:
+
+```text
+log_linear_discount -> ql.DiscountCurve
+log_cubic_discount  -> ql.LogCubicDiscountCurve
+linear_zero         -> ql.ZeroCurve with ql.Linear()
+cubic_zero          -> ql.NaturalCubicZeroCurve with ql.SplineCubic()
+natural_cubic_zero  -> ql.NaturalCubicZeroCurve with ql.SplineCubic()
+monotone_cubic_zero -> ql.MonotonicCubicZeroCurve with ql.MonotonicCubic()
+linear_forward      -> ql.LinearForwardCurve, only for forward_rate quotes
+```
+
+Zero-rate discount-space methods convert stored zero rates into discount
+factors with `ql.InterestRate(...).discountFactor(...)`. Zero-space methods
+pass zero rates to the QuantLib zero-curve constructor with the declared
+compounding and frequency. `rate_unit` parsing is the only local scaling step.
+
+Deprecated QuantLib methods are rejected instead of aliased. Do not persist
+`log_linear_zero`, `LogLinearZeroCurve`, `monotonic_log_cubic_discount`, or
+`MonotonicLogCubicDiscountCurve` as curve build methods.
+
 ```python
 from msm_pricing.api import Curve, CurveBuildingDetails, PricingMarketDataSetCurveBinding
 
@@ -209,7 +235,9 @@ is `CurveTable.unique_identifier`, exposed on the DataNode row as
 | uid                  PK     |                                  | time_index                  |
 | unique_identifier    unique |                                  | curve_identifier            |
 | curve_type                  |                                  | curve                       |
-| currency_code               |                                  +-----------------------------+
+| currency_code               |                                  | key_nodes                   |
+|                             |                                  | metadata_json               |
+|                             |                                  +-----------------------------+
 +-----------------------------+
 ```
 
@@ -219,12 +247,75 @@ The curve DataNode contract is:
 DiscountCurvesNode
   index:   (time_index, curve_identifier)
   cadence: 1d
-  columns: curve
+  columns: curve, key_nodes, metadata_json
   FK:      curve_identifier -> CurveTable.unique_identifier
 ```
 
-`curve` remains a serialized compressed curve payload. Do not normalize curve
+`curve` remains the serialized compressed pricing payload consumed by runtime
+valuation. It stores the constructed curve nodes keyed by days to maturity; the
+quote meaning comes from `CurveBuildingDetails.quote_convention`,
+`rate_unit`, `compounding`, and the related build fields. Do not normalize curve
 points into a different row grain without a separate decision.
+
+`key_nodes` records the input quotes used to build that specific curve
+observation. It is row-level construction provenance, not another convention
+source. Each key node must use one shape:
+
+```json
+[
+  {
+    "maturity_date": "2026-06-24",
+    "asset_identifier": "MXN_TIIE_SWAP_28D",
+    "quote": 0.11
+  }
+]
+```
+
+Rules:
+
+- `maturity_date` is required and stored as an ISO date.
+- `quote` is required and finite.
+- `asset_identifier` is optional and should be present only when the quote came
+  from a registered source instrument.
+- `tenor`, `quote_type`, `quote_unit`, and source-level convention fields do
+  not belong in `key_nodes`; those are curve-level build details or optional
+  row metadata.
+
+A `DiscountCurvesNode` publisher passes the values as ordinary DataFrame
+columns. Keep `key_nodes` beside `curve`; do not nest it inside the compressed
+pricing payload:
+
+```python
+return pd.DataFrame(
+    [
+        {
+            "time_index": valuation_timestamp,
+            "curve_identifier": curve.unique_identifier,
+            "curve": {
+                30: 0.0500,
+                90: 0.0508,
+                180: 0.0512,
+            },
+            "key_nodes": [
+                {
+                    "maturity_date": "2026-06-26",
+                    "quote": 0.0500,
+                },
+                {
+                    "maturity_date": "2026-08-25",
+                    "asset_identifier": "USD_SOFR_SWAP_3M",
+                    "quote": 0.0508,
+                },
+            ],
+            "metadata_json": {"source_snapshot": "example-2026-05-27"},
+        }
+    ]
+)
+```
+
+`metadata_json` stores optional row diagnostics such as provider snapshot IDs,
+quality flags, workflow labels, or raw-source checksums. It should not be used
+to override the pricing interpretation of `curve` or `key_nodes`.
 
 Source publishers should subclass `DiscountCurvesNode` or inject runtime curve
 builder callables. The builder is execution wiring; it is not persisted dataset

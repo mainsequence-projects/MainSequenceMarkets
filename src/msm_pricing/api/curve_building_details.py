@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from msm.api.base import _warn_deprecated_create_schemas, operation_result_rows
 from msm.repositories.crud import (
@@ -21,6 +21,37 @@ from msm_pricing.models.curve_building_details import CurveBuildingDetailsTable
 from msm_pricing.models.curves import CurveTable
 
 DEFAULT_CURVE_BUILDING_DETAILS_SERIALIZATION_FORMAT = "msm_pricing.curve_building_details.v1"
+SUPPORTED_CURVE_INTERPOLATION_METHODS = frozenset(
+    {
+        "log_linear_discount",
+        "log_cubic_discount",
+        "linear_zero",
+        "cubic_zero",
+        "natural_cubic_zero",
+        "monotone_cubic_zero",
+        "linear_forward",
+    }
+)
+REJECTED_CURVE_INTERPOLATION_METHODS = {
+    "log_linear_zero": "QuantLib deprecates LogLinearZeroCurve.",
+    "log_linear_zero_curve": "QuantLib deprecates LogLinearZeroCurve.",
+    "loglinearzerocurve": "QuantLib deprecates LogLinearZeroCurve.",
+    "monotonic_log_cubic_discount": (
+        "QuantLib deprecates MonotonicLogCubicDiscountCurve; use log_cubic_discount."
+    ),
+    "monotone_log_cubic_discount": (
+        "QuantLib deprecates MonotonicLogCubicDiscountCurve; use log_cubic_discount."
+    ),
+    "monotonic_log_cubic_discount_curve": (
+        "QuantLib deprecates MonotonicLogCubicDiscountCurve; use log_cubic_discount."
+    ),
+    "monotoniclogcubicdiscountcurve": (
+        "QuantLib deprecates MonotonicLogCubicDiscountCurve; use log_cubic_discount."
+    ),
+}
+SUPPORTED_CURVE_INTERPOLATION_METHODS_TEXT = ", ".join(
+    sorted(SUPPORTED_CURVE_INTERPOLATION_METHODS)
+)
 
 
 def _validate_payload(
@@ -209,6 +240,11 @@ class CurveBuildingDetailsCreate(BaseModel):
     source: str | None = Field(default=None, max_length=255)
     metadata_json: dict[str, Any] | None = None
 
+    @field_validator("interpolation_method")
+    @classmethod
+    def _validate_interpolation_method(cls, value: str) -> str:
+        return _validate_curve_interpolation_method(value)
+
 
 class CurveBuildingDetailsUpsert(CurveBuildingDetailsCreate):
     """Payload for inserting or replacing curve build details by curve_uid."""
@@ -233,6 +269,29 @@ class CurveBuildingDetailsUpdate(BaseModel):
     source: str | None = Field(default=None, max_length=255)
     metadata_json: dict[str, Any] | None = None
 
+    @field_validator("interpolation_method")
+    @classmethod
+    def _validate_interpolation_method(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _validate_curve_interpolation_method(value)
+
+
+def _validate_curve_interpolation_method(value: str) -> str:
+    interpolation_method = value.strip().lower()
+    rejected_reason = REJECTED_CURVE_INTERPOLATION_METHODS.get(interpolation_method)
+    if rejected_reason is not None:
+        raise ValueError(
+            f"Unsupported interpolation_method={value!r}. {rejected_reason} "
+            f"Supported values: {SUPPORTED_CURVE_INTERPOLATION_METHODS_TEXT}."
+        )
+    if interpolation_method not in SUPPORTED_CURVE_INTERPOLATION_METHODS:
+        raise ValueError(
+            f"Unsupported interpolation_method={value!r}. Supported values: "
+            f"{SUPPORTED_CURVE_INTERPOLATION_METHODS_TEXT}."
+        )
+    return interpolation_method
+
 
 def _validate_pagination(*, limit: int, offset: int) -> tuple[int, int]:
     if limit < 0:
@@ -255,4 +314,7 @@ __all__ = [
     "CurveBuildingDetailsUpdate",
     "CurveBuildingDetailsUpsert",
     "DEFAULT_CURVE_BUILDING_DETAILS_SERIALIZATION_FORMAT",
+    "REJECTED_CURVE_INTERPOLATION_METHODS",
+    "SUPPORTED_CURVE_INTERPOLATION_METHODS",
+    "SUPPORTED_CURVE_INTERPOLATION_METHODS_TEXT",
 ]

@@ -23,6 +23,7 @@ from msm_pricing.data_nodes.curves import (
     CurveDataNodeConfiguration,
     DiscountCurvesNode,
 )
+from msm_pricing.data_nodes.curves.key_nodes import normalize_curve_key_nodes
 from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from msm_pricing.meta_tables import pricing_sqlalchemy_models
 from msm_pricing.models import CurveTable
@@ -81,6 +82,28 @@ def test_discount_curves_storage_has_curve_foreign_key() -> None:
     assert DiscountCurvesStorage in set(pricing_sqlalchemy_models())
 
 
+def test_discount_curves_storage_declares_key_nodes_and_metadata_columns() -> None:
+    columns = DiscountCurvesStorage.__table__.columns
+
+    assert "key_nodes" in columns
+    assert "metadata_json" in columns
+    assert columns["key_nodes"].nullable is True
+    assert columns["metadata_json"].nullable is True
+    assert (
+        columns["key_nodes"].info["description"]
+        == "Construction input quotes for this curve observation. Each item "
+        "stores maturity_date, quote, and an optional asset_identifier for "
+        "the source instrument; curve-level quote interpretation comes from "
+        "CurveBuildingDetails."
+    )
+    assert (
+        columns["metadata_json"].info["description"]
+        == "Optional structured row metadata for curve-source diagnostics, "
+        "quality flags, provider snapshots, workflow details, or other "
+        "non-pricing provenance."
+    )
+
+
 def test_discount_curves_storage_registration_request_declares_daily_cadence() -> None:
     request = time_indexed_registration_request_from_sqlalchemy_model(
         DiscountCurvesStorage,
@@ -106,6 +129,14 @@ def test_discount_curves_node_validate_frame_normalizes_curve_frame() -> None:
                     "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
                     "curve_identifier": "mxn_tiie_discount",
                     "curve": "compressed-payload",
+                    "key_nodes": [
+                        {
+                            "maturity_date": "2026-06-24",
+                            "asset_identifier": "MXN_TIIE_SWAP_28D",
+                            "quote": 0.11,
+                        }
+                    ],
+                    "metadata_json": None,
                 }
             ]
         )
@@ -124,6 +155,14 @@ def test_discount_curves_node_normalizes_curve_identifier_builder_name() -> None
                 "time_index": time_index,
                 "curve_identifier": "mxn_tiie_discount",
                 "curve": {28: 0.11, 91: 0.105},
+                "key_nodes": [
+                    {
+                        "maturity_date": dt.date(2026, 6, 24),
+                        "asset_identifier": " MXN_TIIE_SWAP_28D ",
+                        "quote": "0.11",
+                    }
+                ],
+                "metadata_json": {"source_snapshot": "mock"},
             }
         ]
     ).set_index(["time_index", "curve_identifier"])
@@ -134,6 +173,54 @@ def test_discount_curves_node_normalizes_curve_identifier_builder_name() -> None
     )
 
     assert normalized[CURVE_IDENTIFIER].tolist() == ["mxn_tiie_discount"]
+    assert normalized["key_nodes"].tolist() == [
+        [
+            {
+                "maturity_date": "2026-06-24",
+                "quote": 0.11,
+                "asset_identifier": "MXN_TIIE_SWAP_28D",
+            }
+        ]
+    ]
+    assert normalized["metadata_json"].tolist() == [{"source_snapshot": "mock"}]
+
+
+def test_discount_curves_node_requires_key_nodes() -> None:
+    with pytest.raises(ValueError, match="key_nodes"):
+        DiscountCurvesNode._normalize_builder_frame(
+            pd.DataFrame(
+                [
+                    {
+                        "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+                        "curve_identifier": "mxn_tiie_discount",
+                        "curve": {28: 0.11, 91: 0.105},
+                    }
+                ]
+            ),
+            curve_identifier="mxn_tiie_discount",
+        )
+
+
+@pytest.mark.parametrize(
+    ("key_nodes", "message"),
+    [
+        ([{"asset_identifier": "MXN_TIIE_SWAP_28D", "quote": 0.11}], "maturity_date"),
+        ([{"maturity_date": "2026-06-24"}], "quote"),
+        ([{"maturity_date": "2026-06-24", "quote": float("nan")}], "finite"),
+        ([{"maturity_date": "2026-06-24", "quote": 0.11, "tenor": "28D"}], "tenor"),
+        (
+            [{"maturity_date": "2026-06-24", "quote": 0.11, "quote_type": "yield"}],
+            "quote_type",
+        ),
+        (
+            [{"maturity_date": "2026-06-24", "quote": 0.11, "asset_identifier": " "}],
+            "asset_identifier",
+        ),
+    ],
+)
+def test_discount_curve_key_nodes_reject_invalid_payloads(key_nodes, message) -> None:
+    with pytest.raises(ValueError, match=message):
+        normalize_curve_key_nodes(key_nodes)
 
 
 def test_discount_curves_node_rejects_stale_builder_identity_name() -> None:
@@ -145,6 +232,7 @@ def test_discount_curves_node_rejects_stale_builder_identity_name() -> None:
                         "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
                         "curve_unique_identifier": "mxn_tiie_discount",
                         "curve": {28: 0.11, 91: 0.105},
+                        "key_nodes": [{"maturity_date": "2026-06-24", "quote": 0.11}],
                     }
                 ]
             ),

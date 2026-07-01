@@ -366,6 +366,11 @@ class ExampleDiscountCurveNode(DiscountCurvesNode):
                     "time_index": "2026-05-27T00:00:00Z",
                     "curve_identifier": curve_identifier,
                     "curve": {30: 0.05, 90: 0.051, 365: 0.052},
+                    "key_nodes": [
+                        {"maturity_date": "2026-06-26", "quote": 0.05},
+                        {"maturity_date": "2026-08-25", "quote": 0.051},
+                        {"maturity_date": "2027-05-27", "quote": 0.052},
+                    ],
                 }
             ]
         )
@@ -381,10 +386,25 @@ Rules:
 
 - The builder returns a mapping from days-to-maturity to zero rates; the node
   compresses it before persistence.
+- The builder also returns `key_nodes` construction provenance. Each key node
+  must contain `maturity_date` and `quote`, with optional `asset_identifier`
+  when the quote came from a registered source instrument. Do not publish
+  `tenor`, `quote_type`, `quote_unit`, or per-node convention fields in
+  `key_nodes`; curve-level interpretation belongs to `CurveBuildingDetails`.
+- Optional row diagnostics belong in the storage column named `metadata_json`.
 - The builder configuration's `curve_unique_identifier` must exist as a `Curve`
   row before publishing; emitted storage rows use `curve_identifier`.
 - Keep interpolation and compounding metadata on `CurveBuildingDetails`, not in
-  ad hoc builder globals.
+  ad hoc builder globals. Runtime curve construction must dispatch to native
+  QuantLib constructors by `interpolation_method`; do not hardcode every curve
+  as log-linear discount.
+- Supported `interpolation_method` values are `log_linear_discount`,
+  `log_cubic_discount`, `linear_zero`, `cubic_zero`, `natural_cubic_zero`,
+  `monotone_cubic_zero`, and `linear_forward` only when
+  `quote_convention="forward_rate"`.
+- Reject deprecated QuantLib method names such as `log_linear_zero`,
+  `LogLinearZeroCurve`, `monotonic_log_cubic_discount`, and
+  `MonotonicLogCubicDiscountCurve`. Do not add aliases for them.
 
 ## Runtime Resolution
 

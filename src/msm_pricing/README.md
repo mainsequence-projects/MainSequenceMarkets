@@ -77,7 +77,18 @@ identity, `CurveBuildingDetailsTable` owns curve construction rules, and
 keyed by `(time_index, curve_identifier)`. Curve DataNode configurations use
 the actual `CurveTable.unique_identifier`; they do not resolve Main Sequence
 Constants into curve identity. EOD curve observations declare daily cadence on
-`DiscountCurvesStorage.__cadence__`.
+`DiscountCurvesStorage.__cadence__`. Each new curve observation row carries the
+compressed pricing `curve` plus `key_nodes` construction provenance. Key nodes
+use one shape, `{maturity_date, quote, asset_identifier?}`, and the quote
+meaning remains on `CurveBuildingDetails` rather than per-node fields such as
+`quote_type` or `tenor`.
+
+Curve construction is strict. `CurveBuildingDetails.interpolation_method` must
+be one of `log_linear_discount`, `log_cubic_discount`, `linear_zero`,
+`cubic_zero`, `natural_cubic_zero`, `monotone_cubic_zero`, or `linear_forward`
+with `quote_convention="forward_rate"`. Deprecated QuantLib names such as
+`log_linear_zero`, `LogLinearZeroCurve`, `monotonic_log_cubic_discount`, and
+`MonotonicLogCubicDiscountCurve` are rejected instead of aliased.
 
 Fixings are index facts, not assets and not a separate rate model.
 `FixingRatesNode` lives under `msm_pricing.data_nodes` as an

@@ -38,12 +38,18 @@ index-keyed:
 | uid                         |                                  | time_index                  |
 | unique_identifier           |                                  | curve_identifier            |
 | curve_type                  |                                  | curve                       |
+|                             |                                  | key_nodes                   |
+|                             |                                  | metadata_json               |
 +-----------------------------+                                  +-----------------------------+
 ```
 
 `DiscountCurvesStorage.curve_identifier` points to
 `CurveTable.unique_identifier`. Runtime data reads use that curve identifier.
 They do not need an index ownership column on the curve registry.
+`DiscountCurvesStorage.curve` remains the constructed pricing payload, while
+`key_nodes` records the dated input quotes used to build the specific
+observation row. Quote interpretation remains on `CurveBuildingDetails`, not on
+per-node fields.
 
 `PricingMarketDataSetTable` and `PricingMarketDataSetBindingTable` already
 solve a different problem: selecting which registered storage table should be
@@ -183,6 +189,29 @@ The initial implementation can support only the currently needed
 `zero_rate_curve` path, but the schema should not encode the assumption that
 all curves are index curves or that all future pricing market data is a rate
 term structure.
+
+Curve construction must use native QuantLib constructors selected by
+`interpolation_method`. The supported non-deprecated method set is:
+
+```text
+log_linear_discount -> ql.DiscountCurve
+log_cubic_discount  -> ql.LogCubicDiscountCurve
+linear_zero         -> ql.ZeroCurve with ql.Linear()
+cubic_zero          -> ql.NaturalCubicZeroCurve with ql.SplineCubic()
+natural_cubic_zero  -> ql.NaturalCubicZeroCurve with ql.SplineCubic()
+monotone_cubic_zero -> ql.MonotonicCubicZeroCurve with ql.MonotonicCubic()
+linear_forward      -> ql.LinearForwardCurve, only for forward_rate quotes
+```
+
+For discount-space methods, stored zero rates are converted to discount factors
+with `ql.InterestRate(...).discountFactor(...)`. The pricing code must not
+hand-roll compounding math. For zero-space methods, stored zero rates are passed
+to the QuantLib zero-curve constructor with the declared compounding and
+frequency. Local code only performs parsing and `rate_unit` scaling.
+
+Deprecated QuantLib constructors are intentionally not exposed as aliases.
+`log_linear_zero`, `LogLinearZeroCurve`, `monotonic_log_cubic_discount`, and
+`MonotonicLogCubicDiscountCurve` must fail validation before runtime pricing.
 
 ### IndexConventionDetailsTable
 

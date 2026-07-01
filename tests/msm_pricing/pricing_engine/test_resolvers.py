@@ -44,6 +44,26 @@ def _building_details(curve_uid: uuid.UUID) -> CurveBuildingDetails:
     )
 
 
+def _curve(curve_uid: uuid.UUID | None = None) -> Curve:
+    return Curve(
+        uid=curve_uid or uuid.uuid4(),
+        unique_identifier="USD-SOFR-DISCOUNT",
+        display_name="USD SOFR Discount",
+        curve_type="discount",
+    )
+
+
+def _mock_curve_nodes(monkeypatch, nodes: list[dict]) -> None:
+    monkeypatch.setattr(
+        resolvers.data_interface,
+        "get_historical_discount_curve",
+        lambda curve_unique_identifier, target_date, *, market_data_set=None: (
+            nodes,
+            target_date,
+        ),
+    )
+
+
 def test_select_curve_uses_market_data_set_curve_binding(monkeypatch) -> None:
     index_uid = uuid.UUID("00000000-0000-0000-0000-000000000001")
     curve_uid = uuid.uuid4()
@@ -88,6 +108,140 @@ def test_select_curve_uses_market_data_set_curve_binding(monkeypatch) -> None:
         ),
         ("curve", curve_uid),
     ]
+
+
+def test_build_curve_uses_quantlib_interest_rate_for_discount_space(
+    monkeypatch,
+) -> None:
+    curve = _curve()
+    valuation_date = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    _mock_curve_nodes(
+        monkeypatch,
+        [
+            {"days_to_maturity": 365, "zero": 5.0},
+            {"days_to_maturity": 730, "zero": 5.25},
+        ],
+    )
+    details = _building_details(curve.uid).model_copy(
+        update={
+            "rate_unit": "percent",
+            "compounding": "compounded",
+            "compounding_frequency": "quarterly",
+            "interpolation_method": "log_linear_discount",
+        }
+    )
+
+    handle = resolvers.build_curve_from_curve_row(
+        curve=curve,
+        building_details=details,
+        valuation_date=valuation_date,
+        market_data_set="eod",
+    )
+
+    base = ql.Date(1, 1, 2026)
+    node_date = ql.Date(1, 1, 2027)
+    expected_discount = ql.InterestRate(
+        0.05,
+        ql.Actual360(),
+        ql.Compounded,
+        ql.Quarterly,
+    ).discountFactor(base, node_date)
+    assert handle.discount(node_date) == pytest.approx(expected_discount)
+
+
+@pytest.mark.parametrize(
+    "interpolation_method",
+    [
+        "log_cubic_discount",
+        "cubic_zero",
+        "linear_zero",
+        "natural_cubic_zero",
+        "monotone_cubic_zero",
+    ],
+)
+def test_build_curve_supports_native_quantlib_interpolation_methods(
+    monkeypatch,
+    interpolation_method: str,
+) -> None:
+    curve = _curve()
+    valuation_date = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    _mock_curve_nodes(
+        monkeypatch,
+        [
+            {"days_to_maturity": 30, "zero": 0.0500},
+            {"days_to_maturity": 180, "zero": 0.0510},
+            {"days_to_maturity": 365, "zero": 0.0520},
+            {"days_to_maturity": 730, "zero": 0.0530},
+        ],
+    )
+    details = _building_details(curve.uid).model_copy(
+        update={"interpolation_method": interpolation_method, "compounding": "continuous"}
+    )
+
+    handle = resolvers.build_curve_from_curve_row(
+        curve=curve,
+        building_details=details,
+        valuation_date=valuation_date,
+    )
+
+    assert handle.discount(ql.Date(1, 1, 2027)) > 0.0
+
+
+def test_build_curve_supports_linear_forward_only_for_forward_rate_quotes(
+    monkeypatch,
+) -> None:
+    curve = _curve()
+    valuation_date = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    _mock_curve_nodes(
+        monkeypatch,
+        [
+            {"days_to_maturity": 30, "forward_rate": 0.0500},
+            {"days_to_maturity": 180, "forward_rate": 0.0510},
+            {"days_to_maturity": 365, "forward_rate": 0.0520},
+        ],
+    )
+    details = _building_details(curve.uid).model_copy(
+        update={
+            "builder_type": "forward_rate_curve",
+            "quote_convention": "forward_rate",
+            "interpolation_method": "linear_forward",
+        }
+    )
+
+    handle = resolvers.build_curve_from_curve_row(
+        curve=curve,
+        building_details=details,
+        valuation_date=valuation_date,
+    )
+
+    assert handle.discount(ql.Date(1, 1, 2027)) > 0.0
+
+
+@pytest.mark.parametrize(
+    "interpolation_method",
+    [
+        "log_linear_zero",
+        "LogLinearZeroCurve",
+        "monotonic_log_cubic_discount",
+        "MonotonicLogCubicDiscountCurve",
+    ],
+)
+def test_build_curve_rejects_deprecated_quantlib_interpolation_methods(
+    monkeypatch,
+    interpolation_method: str,
+) -> None:
+    curve = _curve()
+    _mock_curve_nodes(monkeypatch, [{"days_to_maturity": 365, "zero": 0.05}])
+    details = _building_details(curve.uid).model_copy(
+        update={"interpolation_method": interpolation_method}
+    )
+
+    with pytest.raises(NotImplementedError, match="deprecated|deprecates|unsupported"):
+        resolvers.build_curve_from_curve_row(
+            curve=curve,
+            building_details=details,
+            valuation_date=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+        )
 
 
 def test_select_curve_explicit_override_does_not_require_index_relationship(

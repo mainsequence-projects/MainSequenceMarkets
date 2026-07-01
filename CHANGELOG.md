@@ -43,6 +43,9 @@ and this project follows versioned releases.
 - Added `MSDataInterface.get_latest_discount_curve(...)` for explicit latest
   discount-curve lookup by curve identity without using the global
   `USE_LAST_OBSERVATION_MS_INSTRUMENT` fallback.
+- Added `DiscountCurvesStorage.key_nodes` and row `metadata_json` JSONB columns, with
+  `DiscountCurvesNode` validation requiring dated construction input quotes for
+  new curve observations.
 - Refactored the `migrations:migration` provider, Alembic environment, model
   registry, and dynamic portfolio example provider onto the SDK-owned
   MetaTable migration helpers, with revision directories treated as generated
@@ -105,6 +108,10 @@ and this project follows versioned releases.
 - Clarified missing discount-curve API errors so a curve with registry and
   market-data binding but no published `DiscountCurvesStorage` observations is
   reported as missing data, not a generic latest-observation lookup failure.
+- Changed pricing curve construction to honor
+  `CurveBuildingDetails.interpolation_method` with native QuantLib curve
+  constructors and reject deprecated methods such as `log_linear_zero` and
+  `MonotonicLogCubicDiscountCurve`.
 - Promoted virtual-fund allocation strategy to the first-class
   `VirtualFundHoldingsStorage.allocation_strategy` column; low-level explicit
   publications write `explicit`, and planner-applied rows write the allocation

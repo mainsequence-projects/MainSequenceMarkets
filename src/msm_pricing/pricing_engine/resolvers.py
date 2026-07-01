@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import math
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -9,7 +8,12 @@ from typing import Any
 import QuantLib as ql
 
 from msm.api.indices import Index
-from msm_pricing.api.curve_building_details import CurveBuildingDetails
+from msm_pricing.api.curve_building_details import (
+    REJECTED_CURVE_INTERPOLATION_METHODS,
+    SUPPORTED_CURVE_INTERPOLATION_METHODS,
+    SUPPORTED_CURVE_INTERPOLATION_METHODS_TEXT,
+    CurveBuildingDetails,
+)
 from msm_pricing.api.curves import Curve
 from msm_pricing.api.index_convention_details import IndexConventionDetails
 from msm_pricing.api.market_data_bindings import PricingMarketDataSetCurveBinding
@@ -21,6 +25,21 @@ from msm_pricing.instruments.json_codec import (
     period_from_json,
 )
 from msm_pricing.utils import to_py_date, to_ql_date
+
+
+_DISCOUNT_INTERPOLATION_METHODS = {
+    "log_linear_discount",
+    "log_cubic_discount",
+}
+_ZERO_INTERPOLATION_METHODS = {
+    "cubic_zero",
+    "linear_zero",
+    "natural_cubic_zero",
+    "monotone_cubic_zero",
+}
+_FORWARD_INTERPOLATION_METHODS = {
+    "linear_forward",
+}
 
 
 def resolve_index_convention(index_uid: uuid.UUID | str) -> IndexConventionDetails:
@@ -358,7 +377,7 @@ def build_curve_from_curve_row(
     valuation_date: datetime.date | datetime.datetime | ql.Date,
     market_data_set: Any | None = None,
 ) -> ql.YieldTermStructureHandle:
-    """Build a QuantLib discount curve from a curve row and curve-owned build details."""
+    """Build a QuantLib curve from a curve row and curve-owned build details."""
 
     target_date = _ensure_datetime(valuation_date)
     nodes, effective_curve_date = data_interface.get_historical_discount_curve(
@@ -376,8 +395,7 @@ def build_curve_from_curve_row(
     day_counter = daycount_from_json(building_details.day_counter_code)
     calendar = _calendar_from_code(building_details.calendar_code)
 
-    dates = [base]
-    discounts = [1.0]
+    curve_nodes: list[tuple[ql.Date, float]] = []
     seen = {base.serialNumber()}
     for node in sorted(nodes, key=lambda item: int(item["days_to_maturity"])):
         days = int(node["days_to_maturity"])
@@ -388,17 +406,22 @@ def build_curve_from_curve_row(
             continue
         seen.add(ql_date.serialNumber())
         quote = _curve_node_quote(node, building_details=building_details)
-        tenor = day_counter.yearFraction(base, ql_date)
-        discounts.append(
-            _discount_from_quote(
-                quote=quote,
-                tenor=tenor,
-                building_details=building_details,
-            )
-        )
-        dates.append(ql_date)
+        curve_nodes.append((ql_date, quote))
 
-    term_structure = ql.DiscountCurve(dates, discounts, day_counter, calendar)
+    if not curve_nodes:
+        raise ValueError(
+            f"Curve {curve.unique_identifier!r} has no positive maturity nodes "
+            f"for effective_curve_date={effective_curve_date!r}."
+        )
+
+    term_structure = _build_quantlib_curve_from_nodes(
+        curve=curve,
+        building_details=building_details,
+        base=base,
+        curve_nodes=curve_nodes,
+        day_counter=day_counter,
+        calendar=calendar,
+    )
     if _extrapolation_enabled(building_details.extrapolation_policy):
         term_structure.enableExtrapolation()
     return ql.YieldTermStructureHandle(term_structure)
@@ -579,8 +602,35 @@ def _validate_supported_curve_build(
     curve: Curve,
     building_details: CurveBuildingDetails,
 ) -> None:
-    builder_type = building_details.builder_type.lower()
-    quote_convention = building_details.quote_convention.lower()
+    builder_type = _normalize_curve_build_token(
+        building_details.builder_type,
+        field_name="builder_type",
+    )
+    quote_convention = _normalize_curve_build_token(
+        building_details.quote_convention,
+        field_name="quote_convention",
+    )
+    interpolation_method = _normalize_interpolation_method(
+        curve=curve,
+        building_details=building_details,
+    )
+    interpolation_space = _interpolation_space(interpolation_method)
+
+    if interpolation_space == "forward":
+        if builder_type not in {"forward_curve", "forward_rate_curve"}:
+            raise NotImplementedError(
+                f"Curve {curve.unique_identifier!r} uses interpolation_method="
+                f"{building_details.interpolation_method!r}, which requires "
+                "builder_type='forward_rate_curve'."
+            )
+        if quote_convention not in {"forward_rate", "forward"}:
+            raise NotImplementedError(
+                f"Curve {curve.unique_identifier!r} uses interpolation_method="
+                f"{building_details.interpolation_method!r}, which requires "
+                "quote_convention='forward_rate'."
+            )
+        return
+
     if builder_type != "zero_rate_curve":
         raise NotImplementedError(
             f"Curve {curve.unique_identifier!r} uses unsupported builder_type="
@@ -593,14 +643,190 @@ def _validate_supported_curve_build(
         )
 
 
+def _normalize_curve_build_token(value: str | None, *, field_name: str) -> str:
+    token = (value or "").strip().lower()
+    if not token:
+        raise ValueError(f"Curve building details require non-empty {field_name}.")
+    return token
+
+
+def _normalize_interpolation_method(
+    *,
+    curve: Curve,
+    building_details: CurveBuildingDetails,
+) -> str:
+    interpolation_method = _normalize_curve_build_token(
+        building_details.interpolation_method,
+        field_name="interpolation_method",
+    )
+    rejected_reason = REJECTED_CURVE_INTERPOLATION_METHODS.get(interpolation_method)
+    if rejected_reason is not None:
+        raise NotImplementedError(
+            f"Curve {curve.unique_identifier!r} uses unsupported interpolation_method="
+            f"{building_details.interpolation_method!r}. {rejected_reason} "
+            "Supported interpolation_method values: "
+            f"{SUPPORTED_CURVE_INTERPOLATION_METHODS_TEXT}."
+        )
+    if interpolation_method not in SUPPORTED_CURVE_INTERPOLATION_METHODS:
+        raise NotImplementedError(
+            f"Curve {curve.unique_identifier!r} uses unsupported interpolation_method="
+            f"{building_details.interpolation_method!r}. Supported values: "
+            f"{SUPPORTED_CURVE_INTERPOLATION_METHODS_TEXT}."
+        )
+    return interpolation_method
+
+
+def _interpolation_space(interpolation_method: str) -> str:
+    if interpolation_method in _DISCOUNT_INTERPOLATION_METHODS:
+        return "discount"
+    if interpolation_method in _ZERO_INTERPOLATION_METHODS:
+        return "zero"
+    if interpolation_method in _FORWARD_INTERPOLATION_METHODS:
+        return "forward"
+    raise AssertionError(f"Unhandled interpolation_method={interpolation_method!r}.")
+
+
+def _build_quantlib_curve_from_nodes(
+    *,
+    curve: Curve,
+    building_details: CurveBuildingDetails,
+    base: ql.Date,
+    curve_nodes: list[tuple[ql.Date, float]],
+    day_counter: ql.DayCounter,
+    calendar: ql.Calendar,
+) -> ql.YieldTermStructure:
+    interpolation_method = _normalize_interpolation_method(
+        curve=curve,
+        building_details=building_details,
+    )
+    interpolation_space = _interpolation_space(interpolation_method)
+    if interpolation_space == "discount":
+        return _build_discount_space_curve(
+            interpolation_method=interpolation_method,
+            building_details=building_details,
+            base=base,
+            curve_nodes=curve_nodes,
+            day_counter=day_counter,
+            calendar=calendar,
+        )
+    if interpolation_space == "zero":
+        return _build_zero_space_curve(
+            interpolation_method=interpolation_method,
+            building_details=building_details,
+            base=base,
+            curve_nodes=curve_nodes,
+            day_counter=day_counter,
+            calendar=calendar,
+        )
+    return _build_forward_space_curve(
+        interpolation_method=interpolation_method,
+        base=base,
+        curve_nodes=curve_nodes,
+        day_counter=day_counter,
+        calendar=calendar,
+    )
+
+
+def _build_discount_space_curve(
+    *,
+    interpolation_method: str,
+    building_details: CurveBuildingDetails,
+    base: ql.Date,
+    curve_nodes: list[tuple[ql.Date, float]],
+    day_counter: ql.DayCounter,
+    calendar: ql.Calendar,
+) -> ql.YieldTermStructure:
+    compounding, frequency = _ql_compounding_and_frequency(building_details)
+    dates = [base]
+    discounts = [1.0]
+    for ql_date, zero_rate in curve_nodes:
+        interest_rate = ql.InterestRate(zero_rate, day_counter, compounding, frequency)
+        dates.append(ql_date)
+        discounts.append(interest_rate.discountFactor(base, ql_date))
+
+    if interpolation_method == "log_linear_discount":
+        return ql.DiscountCurve(dates, discounts, day_counter, calendar)
+    if interpolation_method == "log_cubic_discount":
+        return ql.LogCubicDiscountCurve(dates, discounts, day_counter, calendar)
+    raise AssertionError(f"Unhandled discount interpolation_method={interpolation_method!r}.")
+
+
+def _build_zero_space_curve(
+    *,
+    interpolation_method: str,
+    building_details: CurveBuildingDetails,
+    base: ql.Date,
+    curve_nodes: list[tuple[ql.Date, float]],
+    day_counter: ql.DayCounter,
+    calendar: ql.Calendar,
+) -> ql.YieldTermStructure:
+    compounding, frequency = _ql_compounding_and_frequency(building_details)
+    first_quote = curve_nodes[0][1]
+    dates = [base, *(ql_date for ql_date, _quote in curve_nodes)]
+    zero_rates = [first_quote, *(quote for _ql_date, quote in curve_nodes)]
+
+    if interpolation_method == "linear_zero":
+        return ql.ZeroCurve(
+            dates,
+            zero_rates,
+            day_counter,
+            calendar,
+            ql.Linear(),
+            compounding,
+            frequency,
+        )
+    if interpolation_method in {"cubic_zero", "natural_cubic_zero"}:
+        return ql.NaturalCubicZeroCurve(
+            dates,
+            zero_rates,
+            day_counter,
+            calendar,
+            ql.SplineCubic(),
+            compounding,
+            frequency,
+        )
+    if interpolation_method == "monotone_cubic_zero":
+        return ql.MonotonicCubicZeroCurve(
+            dates,
+            zero_rates,
+            day_counter,
+            calendar,
+            ql.MonotonicCubic(),
+            compounding,
+            frequency,
+        )
+    raise AssertionError(f"Unhandled zero interpolation_method={interpolation_method!r}.")
+
+
+def _build_forward_space_curve(
+    *,
+    interpolation_method: str,
+    base: ql.Date,
+    curve_nodes: list[tuple[ql.Date, float]],
+    day_counter: ql.DayCounter,
+    calendar: ql.Calendar,
+) -> ql.YieldTermStructure:
+    if interpolation_method != "linear_forward":
+        raise AssertionError(f"Unhandled forward interpolation_method={interpolation_method!r}.")
+    first_quote = curve_nodes[0][1]
+    dates = [base, *(ql_date for ql_date, _quote in curve_nodes)]
+    forward_rates = [first_quote, *(quote for _ql_date, quote in curve_nodes)]
+    return ql.LinearForwardCurve(dates, forward_rates, day_counter, calendar)
+
+
 def _curve_node_quote(
     node: dict[str, Any],
     *,
     building_details: CurveBuildingDetails,
 ) -> float:
-    quote_convention = building_details.quote_convention.lower()
+    quote_convention = _normalize_curve_build_token(
+        building_details.quote_convention,
+        field_name="quote_convention",
+    )
     if quote_convention in {"zero_rate", "zero"}:
         value = node.get("zero", node.get("zero_rate", node.get("rate")))
+    elif quote_convention in {"forward_rate", "forward"}:
+        value = node.get("forward", node.get("forward_rate", node.get("rate")))
     else:
         value = None
     if value is None:
@@ -609,27 +835,114 @@ def _curve_node_quote(
             f"quote_convention={building_details.quote_convention!r}."
         )
     quote = float(value)
-    if building_details.rate_unit.lower() in {"percent", "percentage"}:
+    rate_unit = _normalize_curve_build_token(building_details.rate_unit, field_name="rate_unit")
+    if rate_unit in {"percent", "percentage"}:
         quote *= 0.01
-    elif building_details.rate_unit.lower() == "decimal":
+    elif rate_unit == "decimal":
         pass
-    elif abs(quote) > 1.0:
-        quote *= 0.01
+    else:
+        raise ValueError(
+            f"Unsupported rate_unit={building_details.rate_unit!r}. "
+            "Supported values: decimal, percent."
+        )
     return quote
 
 
-def _discount_from_quote(
-    *,
-    quote: float,
-    tenor: float,
+def _ql_compounding_and_frequency(
     building_details: CurveBuildingDetails,
-) -> float:
-    compounding = building_details.compounding.lower()
+) -> tuple[int, int]:
+    compounding = _normalize_curve_build_token(
+        building_details.compounding,
+        field_name="compounding",
+    )
+    explicit_frequency = _frequency_from_token(
+        building_details.compounding_frequency,
+        field_name="compounding_frequency",
+        required=False,
+    )
+
+    if compounding in {"simple", "simple_compounding"}:
+        if explicit_frequency not in {None, ql.NoFrequency}:
+            raise ValueError(
+                "compounding_frequency is not supported when compounding='simple'."
+            )
+        return ql.Simple, ql.NoFrequency
     if compounding in {"continuous", "continuous_compounding"}:
-        return math.exp(-quote * tenor)
-    if compounding in {"compounded", "compounded_annual", "annual"}:
-        return 1.0 / ((1.0 + quote) ** tenor)
-    return 1.0 / (1.0 + quote * tenor)
+        if explicit_frequency not in {None, ql.NoFrequency}:
+            raise ValueError(
+                "compounding_frequency is not supported when compounding='continuous'."
+            )
+        return ql.Continuous, ql.NoFrequency
+
+    implied_frequency: int | None = None
+    if compounding in {"compounded", "compound"}:
+        pass
+    elif compounding in {"compounded_annual", "annual", "annually"}:
+        implied_frequency = ql.Annual
+    elif compounding in {"compounded_semiannual", "semiannual", "semi_annual"}:
+        implied_frequency = ql.Semiannual
+    elif compounding in {"compounded_quarterly", "quarterly"}:
+        implied_frequency = ql.Quarterly
+    elif compounding in {"compounded_monthly", "monthly"}:
+        implied_frequency = ql.Monthly
+    else:
+        raise ValueError(
+            f"Unsupported compounding={building_details.compounding!r}. Supported values: "
+            "simple, continuous, compounded, compounded_annual, "
+            "compounded_semiannual, compounded_quarterly, compounded_monthly."
+        )
+
+    if explicit_frequency is not None and implied_frequency is not None:
+        if explicit_frequency != implied_frequency:
+            raise ValueError(
+                f"compounding={building_details.compounding!r} conflicts with "
+                f"compounding_frequency={building_details.compounding_frequency!r}."
+            )
+        frequency = implied_frequency
+    else:
+        frequency = explicit_frequency or implied_frequency
+
+    if frequency is None or frequency == ql.NoFrequency:
+        raise ValueError(
+            "compounded curve construction requires compounding_frequency unless "
+            "the compounding value encodes one, such as 'compounded_annual'."
+        )
+    return ql.Compounded, frequency
+
+
+def _frequency_from_token(
+    value: str | None,
+    *,
+    field_name: str,
+    required: bool,
+) -> int | None:
+    if value is None:
+        if required:
+            raise ValueError(f"{field_name} is required.")
+        return None
+    token = value.strip().lower()
+    if not token:
+        if required:
+            raise ValueError(f"{field_name} is required.")
+        return None
+    if token in {"none", "no_frequency", "nofrequency"}:
+        return ql.NoFrequency
+    if token in {"annual", "annually", "yearly", "1y"}:
+        return ql.Annual
+    if token in {"semiannual", "semi_annual", "semi-annually", "semiannually", "6m"}:
+        return ql.Semiannual
+    if token in {"quarterly", "3m"}:
+        return ql.Quarterly
+    if token in {"monthly", "1m"}:
+        return ql.Monthly
+    if token in {"weekly", "1w"}:
+        return ql.Weekly
+    if token in {"daily", "1d"}:
+        return ql.Daily
+    raise ValueError(
+        f"Unsupported {field_name}={value!r}. Supported values: annual, "
+        "semiannual, quarterly, monthly, weekly, daily, no_frequency."
+    )
 
 
 def _extrapolation_enabled(policy: str) -> bool:

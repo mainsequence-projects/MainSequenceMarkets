@@ -57,6 +57,27 @@ def test_bond_pricing_example_shows_valuation_position_usage() -> None:
     assert '"valuation_position_breakdown"' in source
 
 
+def test_mock_market_data_publishes_curve_key_nodes() -> None:
+    example_path = Path(__file__).parents[2] / "examples/msm_pricing/utils/mock_market_data.py"
+    source = example_path.read_text()
+
+    assert "build_flat_forward_key_nodes(" in source
+    assert '"key_nodes": key_nodes' in source
+    assert '"metadata_json": {' in source
+    assert '"maturity_date"' in source
+    assert '"quote"' in source
+    assert '"quote_type"' not in source
+    assert '"tenor"' not in source
+
+
+def test_bond_pricing_example_reports_curve_key_node_count() -> None:
+    example_path = Path(__file__).parents[2] / "examples/msm_pricing/bond_pricing_example/main.py"
+    source = example_path.read_text()
+
+    assert "_count_curve_key_nodes(" in source
+    assert "key_nodes=_count_curve_key_nodes(curve_frame)" in source
+
+
 def _has_false_keyword(call: ast.Call, keyword_name: str) -> bool:
     return any(
         keyword.arg == keyword_name

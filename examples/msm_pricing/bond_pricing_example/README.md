@@ -23,6 +23,11 @@ The migration step must complete before the script starts. The script uses
 `msm.start_engine(...)` and `msm_pricing.bootstrap.attach_pricing_schemas(...)`
 only to attach already-migrated MetaTables and configure pricing runtime state.
 
+The discount-curve DataNode returns `key_nodes` as a top-level storage column
+beside the compressed `curve` payload. Each key node is shaped as
+`{maturity_date, quote, asset_identifier?}`; quote convention and units stay on
+`CurveBuildingDetails`, not inside each key node.
+
 The example writes the projection curve selection as the default quote-side
 binding (`quote_side=None`) because the valuation basket passes only
 `market_data_set`. If a workflow writes `quote_side="mid"` instead, runtime calls

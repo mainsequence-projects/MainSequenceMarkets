@@ -79,6 +79,7 @@ the runtime should follow the persisted graph:
 |-----------------------------|
 | curve_identifier            |
 | curve                       |
+| key_nodes                   |
 +--------------+--------------+
                |
                | Pydantic validation + QuantLib adapters
@@ -96,6 +97,12 @@ The `DiscountCurvesNode` and `FixingRatesNode` locations used in this chain come
 from pricing market-data bindings; see [Market Data Sets](market_data_sets.md)
 for how the selected set resolves to a `data_node_uid`.
 
+Runtime pricing reads the compressed `curve` payload. `key_nodes` is retained on
+the same curve observation row as construction provenance: each key node carries
+`maturity_date`, `quote`, and optional `asset_identifier`. Quote meaning remains
+on `CurveBuildingDetails`; do not add per-node `quote_type`, `quote_unit`, or
+`tenor` fields.
+
 Curve selection must be strict:
 
 - first resolve `PricingMarketDataSetBinding` for the storage source, such as
@@ -103,6 +110,8 @@ Curve selection must be strict:
 - then resolve `PricingMarketDataSetCurveBinding` for the valuation role and
   selector, such as `projection:index:<IndexTable.uid>:mid -> CurveTable.uid`;
 - then load `CurveBuildingDetails` for the selected curve;
+- then build the QuantLib curve with the declared `interpolation_method`,
+  compounding, frequency, day counter, and calendar;
 - if any row is missing, fail with a specific missing-binding or missing-build
   detail error.
 
@@ -115,6 +124,13 @@ format.
 Fixed-rate and zero-coupon `price()` still use `with_yield`, an explicitly reset
 curve, or another explicit pricing policy. They do not automatically turn
 `benchmark_rate_index_uid` into a discount curve.
+
+Curve construction is native QuantLib construction. The resolver supports only
+the documented non-deprecated methods: `log_linear_discount`,
+`log_cubic_discount`, `linear_zero`, `cubic_zero`, `natural_cubic_zero`,
+`monotone_cubic_zero`, and `linear_forward` for `forward_rate` quotes. Deprecated
+QuantLib methods such as `log_linear_zero` and
+`MonotonicLogCubicDiscountCurve` fail loudly.
 
 ## Benchmark z-spread resolution
 

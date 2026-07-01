@@ -205,7 +205,8 @@ For an end-to-end example that shows the explicit architecture, inspect
 `examples/msm_pricing/bond_pricing_example/main.py`. It attaches the pricing
 storage tables, disables automatic default seeding, creates
 `PricingMarketDataSet(set_key="default")`, binds discount curves and
-interest-rate fixings by storage table UID, and then calls
+interest-rate fixings by storage table UID, publishes a discount-curve row with
+both `curve` and `key_nodes`, and then calls
 `loaded_instrument.price(market_data_set=market_data_set.set_key)`.
 
 ## Rejected Patterns

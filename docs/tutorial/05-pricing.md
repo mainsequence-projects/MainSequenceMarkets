@@ -148,9 +148,38 @@ before publishing curve observations:
    `upsert_index_curve_selection(...)` to bind the selected market-data set,
    valuation role, index UID, and quote side to the curve UID.
 7. Publish curve observations through `DiscountCurvesNode` with
-   `curve_identifier` set to the same curve `unique_identifier`.
+   `curve_identifier` set to the same curve `unique_identifier`. Each emitted
+   row must include `curve` for the constructed pricing nodes and `key_nodes`
+   for the dated input quotes used to build that row.
+
+   ```python
+   return pd.DataFrame(
+       [
+           {
+               "time_index": valuation_timestamp,
+               "curve_identifier": curve.unique_identifier,
+               "curve": compressed_curve_nodes,
+               "key_nodes": [
+                   {"maturity_date": "2026-06-26", "quote": 0.0500},
+                   {
+                       "maturity_date": "2026-08-25",
+                       "asset_identifier": "USD_SOFR_SWAP_3M",
+                       "quote": 0.0508,
+                   },
+               ],
+               "metadata_json": {"source_snapshot": "example-2026-05-27"},
+           }
+       ]
+   )
+   ```
 
 See `examples/msm_pricing/pricing_registry_rows.py` for the row API workflow.
+
+`CurveBuildingDetails.interpolation_method` is enforced at runtime. Use one of
+`log_linear_discount`, `log_cubic_discount`, `linear_zero`,
+`cubic_zero`, `natural_cubic_zero`, `monotone_cubic_zero`, or `linear_forward` with
+`quote_convention="forward_rate"`. Deprecated QuantLib methods such as
+`log_linear_zero` and `MonotonicLogCubicDiscountCurve` are rejected.
 
 Serialized pricing instruments should reference these rows by UUID, not by
 mutable names. Use `floating_rate_index_uid` on floating-rate bonds and
@@ -209,8 +238,11 @@ For a full floating-rate bond workflow, use
    internally, so index-based workflows should pass `index_uid`, not
    `selector_type` and `selector_key`.
 4. Publish one month of mock fixings through a `FixingRatesNode` subclass and a
-   sampled flat-forward curve through a `DiscountCurvesNode` subclass. The
-   pricing storage classes declare their EOD cadence as `__cadence__ = "1d"`.
+   sampled flat-forward curve through a `DiscountCurvesNode` subclass. The curve
+   row stores both the compressed pricing `curve` and `key_nodes` shaped as
+   `{maturity_date, quote, asset_identifier?}`; quote convention stays on
+   `CurveBuildingDetails`. The pricing storage classes declare their EOD
+   cadence as `__cadence__ = "1d"`.
 5. Attach pricing storage tables, then upsert the `default` market-data set and
    its concept bindings with `PricingMarketDataSet` and
    `PricingMarketDataSetBinding`.

@@ -13,6 +13,7 @@ from msm.data_nodes.utils.stamped import (
 )
 
 from ..curve_codec import compress_curve_to_string
+from .key_nodes import normalize_curve_key_nodes, normalize_curve_metadata
 from .storage import CURVE_IDENTIFIER_DIMENSION, DiscountCurvesStorage
 
 CURVE_IDENTIFIER = CURVE_IDENTIFIER_DIMENSION
@@ -161,6 +162,16 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
             )
         if CURVE_IDENTIFIER not in normalized.columns:
             normalized[CURVE_IDENTIFIER] = curve_identifier
+        if "key_nodes" not in normalized.columns:
+            raise ValueError(
+                "Discount curve builder frames must include key_nodes construction "
+                "provenance for each curve observation."
+            )
+        normalized["key_nodes"] = normalized["key_nodes"].apply(normalize_curve_key_nodes)
+        if "metadata_json" not in normalized.columns:
+            normalized["metadata_json"] = None
+        else:
+            normalized["metadata_json"] = normalized["metadata_json"].apply(normalize_curve_metadata)
         return normalized
 
 

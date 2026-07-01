@@ -146,7 +146,10 @@ PricingMarketDataSetBinding.upsert(
 
 `PricingMarketDataSetBinding` answers where to read a concept from. It does not
 answer which curve inside that storage should be used. A discount-curve storage
-table can contain many `curve_identifier` values.
+table can contain many `curve_identifier` values. Each selected curve must have
+published `DiscountCurvesStorage` observations whose rows include the
+compressed pricing `curve`, dated construction `key_nodes`, and optional
+`metadata_json` diagnostics.
 
 Use `PricingMarketDataSetCurveBinding.upsert_index_curve_selection(...)` to
 select curve identity for an index-scoped valuation role:

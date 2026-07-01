@@ -278,6 +278,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     _print_step(
         "Published mock discount curve rows",
         rows=len(curve_frame),
+        key_nodes=_count_curve_key_nodes(curve_frame),
         data_node_uid=curve_data_node_uid,
         storage_table_identifier=curve_storage_table_identifier,
     )
@@ -429,6 +430,12 @@ def _run_data_node_frame(node: Any, *, label: str) -> Any:
             raise RuntimeError(f"{label} DataNode update failed; inspect the run logs.")
         return frame
     return result
+
+
+def _count_curve_key_nodes(frame: Any) -> int:
+    if frame is None or not hasattr(frame, "columns") or "key_nodes" not in frame.columns:
+        return 0
+    return sum(len(nodes) for nodes in frame["key_nodes"] if isinstance(nodes, list))
 
 
 def _print_step(message: str, **fields: Any) -> None:

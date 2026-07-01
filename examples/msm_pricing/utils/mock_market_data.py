@@ -13,7 +13,7 @@ from msm_pricing.data_nodes import (
     IndexFixingConfiguration,
 )
 from msm.settings import INDEX_IDENTIFIER_DIMENSION
-from msm_pricing.utils import to_ql_date
+from msm_pricing.utils import to_py_date, to_ql_date
 
 EXAMPLE_INDEX_UNIQUE_IDENTIFIER = "USD-SOFR-EXAMPLE"
 EXAMPLE_CURVE_UNIQUE_IDENTIFIER = "USD-SOFR-EXAMPLE-DISCOUNT"
@@ -51,6 +51,25 @@ def build_flat_forward_zero_curve(
             handle.zeroRate(maturity, day_counter, ql.Compounded, ql.Annual).rate()
         )
     return zeros
+
+
+def build_flat_forward_key_nodes(
+    *,
+    valuation_date: dt.date | dt.datetime,
+    zero_rate: float,
+    sampling_days: tuple[int, ...] = DEFAULT_CURVE_SAMPLING_DAYS,
+) -> list[dict[str, Any]]:
+    """Build dated key-node inputs for the sampled flat-forward zero curve."""
+
+    base_date = _as_datetime(valuation_date)
+    ql_date = to_ql_date(base_date)
+    return [
+        {
+            "maturity_date": to_py_date(ql_date + int(days)).date().isoformat(),
+            "quote": float(zero_rate),
+        }
+        for days in sampling_days
+    ]
 
 
 def build_mock_fixings_frame(
@@ -123,12 +142,21 @@ class MockFlatForwardDiscountCurvesNode(DiscountCurvesNode):
             valuation_date=self.valuation_date,
             zero_rate=self.zero_rate,
         )
+        key_nodes = build_flat_forward_key_nodes(
+            valuation_date=self.valuation_date,
+            zero_rate=self.zero_rate,
+        )
         return pd.DataFrame(
             [
                 {
                     "time_index": _utc_timestamp(self.valuation_date),
                     CURVE_IDENTIFIER: curve_identifier,
                     "curve": curve,
+                    "key_nodes": key_nodes,
+                    "metadata_json": {
+                        "source": "mock_flat_forward",
+                        "sampling_days": list(DEFAULT_CURVE_SAMPLING_DAYS),
+                    },
                 }
             ]
         )
