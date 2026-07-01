@@ -151,6 +151,9 @@ before publishing curve observations:
    `curve_identifier` set to the same curve `unique_identifier`. Each emitted
    row must include a non-empty `curve` mapping for the constructed pricing
    nodes and `key_nodes` for the dated input quotes used to build that row.
+   `key_nodes` is source-owned JSON. Prefer the optional `CurveKeyNode` helper
+   or the standard fields shown below when they fit the source, including
+   yield-native inputs for discount curves.
 
    ```python
    return pd.DataFrame(
@@ -160,11 +163,20 @@ before publishing curve observations:
                "curve_identifier": curve.unique_identifier,
                "curve": compressed_curve_nodes,
                "key_nodes": [
-                   {"maturity_date": "2026-06-26", "quote": 0.0500},
+                   {
+                       "maturity_date": "2026-06-26",
+                       "instrument_type": "direct_zero_rate",
+                       "quote": 0.0500,
+                       "quote_type": "zero_rate",
+                       "quote_unit": "decimal",
+                       "yield": 0.0500,
+                   },
                    {
                        "maturity_date": "2026-08-25",
                        "asset_identifier": "USD_SOFR_SWAP_3M",
                        "quote": 0.0508,
+                       "quote_type": "par_rate",
+                       "quote_unit": "decimal",
                    },
                ],
                "metadata_json": {"source_snapshot": "example-2026-05-27"},
@@ -239,10 +251,11 @@ For a full floating-rate bond workflow, use
    `selector_type` and `selector_key`.
 4. Publish one month of mock fixings through a `FixingRatesNode` subclass and a
    sampled flat-forward curve through a `DiscountCurvesNode` subclass. The curve
-   row stores both the compressed pricing `curve` and `key_nodes` shaped as
-   `{maturity_date, quote, asset_identifier?}`; quote convention stays on
-   `CurveBuildingDetails`. The pricing storage classes declare their EOD
-   cadence as `__cadence__ = "1d"`.
+   row stores both the compressed pricing `curve` and source-owned `key_nodes`
+   provenance. The mock example uses the recommended yield-aware
+   `CurveKeyNode` shape, while `CurveBuildingDetails` remains the source for
+   final curve construction rules. The pricing storage classes declare their
+   EOD cadence as `__cadence__ = "1d"`.
 5. Attach pricing storage tables, then upsert the `default` market-data set and
    its concept bindings with `PricingMarketDataSet` and
    `PricingMarketDataSetBinding`.

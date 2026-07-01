@@ -24,9 +24,12 @@ The migration step must complete before the script starts. The script uses
 only to attach already-migrated MetaTables and configure pricing runtime state.
 
 The discount-curve DataNode returns `key_nodes` as a top-level storage column
-beside the compressed `curve` payload. Each key node is shaped as
-`{maturity_date, quote, asset_identifier?}`; quote convention and units stay on
-`CurveBuildingDetails`, not inside each key node.
+beside the compressed `curve` payload. `key_nodes` is source-owned JSON
+provenance. The mock flat-forward publisher uses the recommended `CurveKeyNode`
+shape with `maturity_date`, `instrument_type`, `quote`, `quote_type`,
+`quote_unit`, `quote_side`, and yield-native `yield` values. Producers may use
+their own JSON schema when that is needed to audit the source build;
+`CurveBuildingDetails` still owns the final constructed curve convention.
 
 The example writes the projection curve selection as the default quote-side
 binding (`quote_side=None`) because the valuation basket passes only

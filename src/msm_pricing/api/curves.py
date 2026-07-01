@@ -344,7 +344,7 @@ class Curve(BaseModel):
             }
         )
         try:
-            nodes, effective_date = _read_discount_curve_nodes(
+            observation, effective_date = _read_discount_curve_observation(
                 interface=interface,
                 curve_identifier=curve.unique_identifier,
                 valuation_date=valuation_date,
@@ -377,7 +377,11 @@ class Curve(BaseModel):
             "valuation_date": valuation_date,
             "effective_date": effective_date,
             "request_mode": "historical" if valuation_date is not None else "latest",
-            "nodes": _normalize_discount_curve_nodes(nodes),
+            "nodes": _normalize_discount_curve_nodes(observation["nodes"]),
+            "key_nodes": _normalize_discount_curve_key_nodes(observation.get("key_nodes")),
+            "metadata_json": _normalize_discount_curve_metadata(
+                observation.get("metadata_json")
+            ),
         }
 
     @classmethod
@@ -584,16 +588,28 @@ def _count_from_operation_result(result: Mapping[str, Any] | list[Any] | None) -
     return int(rows[0].get("count") or 0)
 
 
-def _read_discount_curve_nodes(
+def _read_discount_curve_observation(
     *,
     interface: Any,
     curve_identifier: str,
     valuation_date: dt.datetime | None,
-) -> tuple[list[dict[str, Any]], dt.datetime]:
+) -> tuple[dict[str, Any], dt.datetime]:
     try:
         if valuation_date is None:
-            return interface.get_latest_discount_curve(curve_identifier)
-        return interface.get_historical_discount_curve(curve_identifier, valuation_date)
+            if hasattr(interface, "get_latest_discount_curve_observation"):
+                return interface.get_latest_discount_curve_observation(curve_identifier)
+            nodes, effective_date = interface.get_latest_discount_curve(curve_identifier)
+            return {"nodes": nodes, "key_nodes": None, "metadata_json": None}, effective_date
+        if hasattr(interface, "get_historical_discount_curve_observation"):
+            return interface.get_historical_discount_curve_observation(
+                curve_identifier,
+                valuation_date,
+            )
+        nodes, effective_date = interface.get_historical_discount_curve(
+            curve_identifier,
+            valuation_date,
+        )
+        return {"nodes": nodes, "key_nodes": None, "metadata_json": None}, effective_date
     except LookupError:
         raise
     except Exception as exc:
@@ -639,6 +655,24 @@ def _normalize_discount_curve_nodes(nodes: list[Mapping[str, Any]]) -> list[dict
         }
         for node in nodes
     ]
+
+
+def _normalize_discount_curve_key_nodes(key_nodes: Any | None) -> Any | None:
+    if key_nodes is None:
+        return None
+    if isinstance(key_nodes, Mapping):
+        return dict(key_nodes)
+    if isinstance(key_nodes, list):
+        return key_nodes
+    raise ValueError("Discount curve key_nodes must be a JSON object or list when present.")
+
+
+def _normalize_discount_curve_metadata(
+    metadata_json: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    if metadata_json is None:
+        return None
+    return dict(metadata_json)
 
 
 class CurveCreate(BaseModel):

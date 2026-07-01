@@ -1,6 +1,7 @@
 import datetime
 import os
 import uuid
+from collections.abc import Mapping
 from operator import attrgetter
 from threading import RLock
 from typing import Any, Callable, TypedDict
@@ -35,6 +36,19 @@ class DateInfo(TypedDict, total=False):
 UniqueIdentifierRangeMap = dict[str, DateInfo]
 
 
+class DiscountCurveNode(TypedDict):
+    days_to_maturity: int | float
+    zero: float
+
+
+class DiscountCurveObservation(TypedDict):
+    curve_identifier: str
+    time_index: datetime.datetime | None
+    nodes: list[DiscountCurveNode]
+    key_nodes: Any | None
+    metadata_json: dict[str, Any] | None
+
+
 def dimension_range_for_identity(
     *,
     identity_dimension: str,
@@ -53,6 +67,9 @@ class MSDataInterface:
     # ---- bounded, shared caches (class-level) ----
     _curve_cache = LRUCache(maxsize=1024)
     _curve_cache_lock = RLock()
+
+    _curve_observation_cache = LRUCache(maxsize=1024)
+    _curve_observation_cache_lock = RLock()
 
     _fixings_cache = LRUCache(maxsize=4096)
     _fixings_cache_lock = RLock()
@@ -150,6 +167,24 @@ class MSDataInterface:
     # NOTE: caching is applied at the method boundary; body is unchanged.
     @cachedmethod(cache=attrgetter("_curve_cache"), lock=attrgetter("_curve_cache_lock"))
     def get_historical_discount_curve(self, curve_name, target_date, *, market_data_set=None):
+        observation, effective_date = self.get_historical_discount_curve_observation(
+            curve_name,
+            target_date,
+            market_data_set=market_data_set,
+        )
+        return observation["nodes"], effective_date
+
+    @cachedmethod(
+        cache=attrgetter("_curve_observation_cache"),
+        lock=attrgetter("_curve_observation_cache_lock"),
+    )
+    def get_historical_discount_curve_observation(
+        self,
+        curve_name,
+        target_date,
+        *,
+        market_data_set=None,
+    ):
         from mainsequence.logconf import logger
 
         data_node = self._data_node_for_concept(
@@ -167,7 +202,7 @@ class MSDataInterface:
             target_date = update_statistics.get_last_update_for_identity(curve_name)
             logger.warning("Curve is using last observation")
 
-        nodes = self._read_discount_curve_nodes(
+        observation = self._read_discount_curve_observation(
             data_node=data_node,
             curve_name=curve_name,
             target_date=target_date,
@@ -176,9 +211,16 @@ class MSDataInterface:
         if use_last_observation:
             target_date = original_request_date
 
-        return nodes, target_date
+        return observation, target_date
 
     def get_latest_discount_curve(self, curve_name, *, market_data_set=None):
+        observation, target_date = self.get_latest_discount_curve_observation(
+            curve_name,
+            market_data_set=market_data_set,
+        )
+        return observation["nodes"], target_date
+
+    def get_latest_discount_curve_observation(self, curve_name, *, market_data_set=None):
         data_node = self._data_node_for_concept(
             PRICING_CONCEPT_DISCOUNT_CURVES,
             market_data_set=market_data_set,
@@ -188,15 +230,23 @@ class MSDataInterface:
         if target_date is None:
             raise LookupError(f"No latest discount curve observation found for {curve_name!r}.")
 
-        nodes = self._read_discount_curve_nodes(
+        observation = self._read_discount_curve_observation(
             data_node=data_node,
             curve_name=curve_name,
             target_date=target_date,
         )
-        return nodes, target_date
+        return observation, target_date
 
     @staticmethod
     def _read_discount_curve_nodes(*, data_node, curve_name, target_date):
+        return MSDataInterface._read_discount_curve_observation(
+            data_node=data_node,
+            curve_name=curve_name,
+            target_date=target_date,
+        )["nodes"]
+
+    @staticmethod
+    def _read_discount_curve_observation(*, data_node, curve_name, target_date):
         limit = target_date + datetime.timedelta(days=1)
 
         curve = data_node.get_df_between_dates(
@@ -216,14 +266,29 @@ class MSDataInterface:
             raise Exception(
                 f"{target_date} is empty. If you want to  use the latest curve available set USE_LAST_OBSERVATION_MS_INSTRUMENT=true"
             )
-        zeros = _decompress_string_to_curve(curve["curve"].iloc[0])
+
+        row = curve.reset_index().iloc[0].to_dict()
+        compressed_curve = row.get("curve")
+        if not isinstance(compressed_curve, str) or not compressed_curve:
+            raise ValueError(
+                f"Discount curve observation for {curve_name!r} at {target_date} has no "
+                "compressed curve payload."
+            )
+
+        zeros = _decompress_string_to_curve(compressed_curve)
         zeros = pd.Series(zeros).reset_index()
         zeros["index"] = pd.to_numeric(zeros["index"])
         zeros = zeros.set_index("index")[0]
 
         nodes = [{"days_to_maturity": d, "zero": z} for d, z in zeros.to_dict().items() if d > 0]
 
-        return nodes
+        return {
+            "curve_identifier": str(row.get(CURVE_IDENTIFIER) or curve_name),
+            "time_index": _optional_datetime(row.get("time_index")),
+            "nodes": nodes,
+            "key_nodes": _optional_json_container(row.get("key_nodes")),
+            "metadata_json": _optional_mapping(row.get("metadata_json")),
+        }
 
     @cachedmethod(cache=attrgetter("_fixings_cache"), lock=attrgetter("_fixings_cache_lock"))
     def get_historical_fixings(
@@ -324,6 +389,7 @@ class MSDataInterface:
     @classmethod
     def clear_caches(cls) -> None:
         cls._curve_cache.clear()
+        cls._curve_observation_cache.clear()
         cls._fixings_cache.clear()
 
     @classmethod
@@ -333,8 +399,50 @@ class MSDataInterface:
                 "size": cls._curve_cache.currsize,
                 "max": cls._curve_cache.maxsize,
             },
+            "discount_curve_observation_cache": {
+                "size": cls._curve_observation_cache.currsize,
+                "max": cls._curve_observation_cache.maxsize,
+            },
             "fixings_cache": {
                 "size": cls._fixings_cache.currsize,
                 "max": cls._fixings_cache.maxsize,
             },
         }
+
+
+def _optional_datetime(value: Any) -> datetime.datetime | None:
+    if _is_missing_optional(value):
+        return None
+    if isinstance(value, pd.Timestamp):
+        return value.to_pydatetime()
+    if isinstance(value, datetime.datetime):
+        return value
+    return None
+
+
+def _optional_json_container(value: Any) -> Any | None:
+    if _is_missing_optional(value):
+        return None
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, list):
+        return value
+    raise ValueError(
+        "Discount curve observation key_nodes must be a JSON object or list when present."
+    )
+
+
+def _optional_mapping(value: Any) -> dict[str, Any] | None:
+    if _is_missing_optional(value):
+        return None
+    if isinstance(value, Mapping):
+        return dict(value)
+    raise ValueError("Discount curve observation metadata_json must be a mapping when present.")
+
+
+def _is_missing_optional(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, float):
+        return bool(pd.isna(value))
+    return False

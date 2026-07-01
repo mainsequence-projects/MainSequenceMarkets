@@ -183,6 +183,14 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
                         "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
                         "curve_identifier": "mxn_tiie_discount",
                         "curve": compress_curve_to_string({28: 0.11, 91: 0.105}),
+                        "key_nodes": [
+                            {
+                                "maturity_date": "2026-06-24",
+                                "asset_identifier": "MXN_TIIE_SWAP_28D",
+                                "quote": 0.11,
+                            }
+                        ],
+                        "metadata_json": {"source_snapshot": "mock-2026-05-27"},
                     }
                 ]
             ).set_index(["time_index", "curve_identifier"])
@@ -215,6 +223,25 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
     ]
     assert cached_target_date == target_date
     assert cached_nodes == nodes
+    observation, observation_target_date = interface.get_historical_discount_curve_observation(
+        "mxn_tiie_discount",
+        dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+        market_data_set=None,
+    )
+    assert observation_target_date == target_date
+    assert observation == {
+        "curve_identifier": "mxn_tiie_discount",
+        "time_index": dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+        "nodes": nodes,
+        "key_nodes": [
+            {
+                "maturity_date": "2026-06-24",
+                "asset_identifier": "MXN_TIIE_SWAP_28D",
+                "quote": 0.11,
+            }
+        ],
+        "metadata_json": {"source_snapshot": "mock-2026-05-27"},
+    }
     assert calls == [
         [
             {
@@ -227,6 +254,7 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
         ]
     ]
     assert interface.cache_info()["discount_curve_cache"]["size"] == 1
+    assert interface.cache_info()["discount_curve_observation_cache"]["size"] == 1
 
 
 def test_get_historical_discount_curve_uses_persisted_pricing_market_data_binding(
@@ -312,6 +340,8 @@ def test_get_latest_discount_curve_uses_last_update_for_curve_identity(monkeypat
                         "time_index": latest_date,
                         "curve_identifier": "mxn_tiie_discount",
                         "curve": compress_curve_to_string({28: 0.11, 91: 0.105}),
+                        "key_nodes": [{"maturity_date": "2026-06-24", "quote": 0.11}],
+                        "metadata_json": {"source_snapshot": "mock-latest"},
                     }
                 ]
             ).set_index(["time_index", "curve_identifier"])
@@ -335,7 +365,28 @@ def test_get_latest_discount_curve_uses_last_update_for_curve_identity(monkeypat
         {"days_to_maturity": 28, "zero": 0.11},
         {"days_to_maturity": 91, "zero": 0.105},
     ]
+    observation, observation_effective_date = interface.get_latest_discount_curve_observation(
+        "mxn_tiie_discount"
+    )
+    assert observation_effective_date == latest_date
+    assert observation["key_nodes"] == [{"maturity_date": "2026-06-24", "quote": 0.11}]
+    assert observation["metadata_json"] == {"source_snapshot": "mock-latest"}
     assert calls == [
+        ("table_uid", str(curves_data_node_uid)),
+        ("stats",),
+        ("latest", "mxn_tiie_discount"),
+        (
+            "range",
+            [
+                {
+                    "coordinate": {CURVE_IDENTIFIER: "mxn_tiie_discount"},
+                    "start_date": latest_date,
+                    "start_date_operand": ">=",
+                    "end_date": latest_date + dt.timedelta(days=1),
+                    "end_date_operand": "<",
+                }
+            ],
+        ),
         ("table_uid", str(curves_data_node_uid)),
         ("stats",),
         ("latest", "mxn_tiie_discount"),

@@ -243,6 +243,23 @@ nodes, effective_date = interface.get_latest_discount_curve(
 )
 ```
 
+When a consumer needs construction provenance, use the observation-level helper
+instead of the node-only pricing helper:
+
+```python
+observation, effective_date = interface.get_latest_discount_curve_observation(
+    curve.unique_identifier,
+    market_data_set="eod",
+)
+nodes = observation["nodes"]
+key_nodes = observation["key_nodes"]
+metadata_json = observation["metadata_json"]
+```
+
+`nodes` is normalized decompressed pricing data. `key_nodes` is producer-owned
+JSON provenance and may use the recommended `CurveKeyNode` fields or a
+source-specific object/list.
+
 Instrument pricing chooses the set explicitly when the caller needs more than
 one source set in the same process:
 

@@ -8,6 +8,7 @@ import pandas as pd
 from msm_pricing.data_nodes import (
     CURVE_IDENTIFIER,
     CurveConfig,
+    CurveKeyNode,
     DiscountCurvesNode,
     FixingRatesNode,
     IndexFixingConfiguration,
@@ -64,10 +65,15 @@ def build_flat_forward_key_nodes(
     base_date = _as_datetime(valuation_date)
     ql_date = to_ql_date(base_date)
     return [
-        {
-            "maturity_date": to_py_date(ql_date + int(days)).date().isoformat(),
-            "quote": float(zero_rate),
-        }
+        CurveKeyNode(
+            maturity_date=to_py_date(ql_date + int(days)).date(),
+            instrument_type="direct_zero_rate",
+            quote=float(zero_rate),
+            quote_type="zero_rate",
+            quote_unit="decimal",
+            quote_side="mid",
+            yield_value=float(zero_rate),
+        ).model_dump(mode="json", by_alias=True, exclude_none=True)
         for days in sampling_days
     ]
 

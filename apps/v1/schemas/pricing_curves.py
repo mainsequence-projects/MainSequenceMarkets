@@ -108,3 +108,5 @@ class DiscountCurveResponse(BaseModel):
     effective_date: dt.datetime
     request_mode: str
     nodes: list[DiscountCurveNode]
+    key_nodes: Any | None = None
+    metadata_json: dict[str, Any] | None = None

@@ -14,7 +14,7 @@ from msm.data_nodes.utils.stamped import (
 )
 
 from ..curve_codec import compress_curve_to_string
-from .key_nodes import normalize_curve_key_nodes, normalize_curve_metadata
+from .key_nodes import CurveKeyNode, normalize_curve_key_nodes, normalize_curve_metadata
 from .storage import CURVE_IDENTIFIER_DIMENSION, DiscountCurvesStorage
 
 CURVE_IDENTIFIER = CURVE_IDENTIFIER_DIMENSION
@@ -195,6 +195,7 @@ __all__ = [
     "CURVE_IDENTIFIER",
     "CurveConfig",
     "CurveDataNodeConfiguration",
+    "CurveKeyNode",
     "CurveTimestampedDataNode",
     "DiscountCurvesNode",
     "DiscountCurveBuilder",

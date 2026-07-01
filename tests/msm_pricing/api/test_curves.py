@@ -562,9 +562,19 @@ def test_curve_discount_curve_nodes_use_market_data_binding(monkeypatch) -> None
         def __init__(self, market_data_configuration):
             calls.append(("configuration", market_data_configuration))
 
-        def get_historical_discount_curve(self, curve_identifier, target_date):
+        def get_historical_discount_curve_observation(self, curve_identifier, target_date):
             calls.append(("historical", curve_identifier, target_date))
-            return [{"days_to_maturity": 28, "zero": 0.11}], target_date
+            return {
+                "nodes": [{"days_to_maturity": 28, "zero": 0.11}],
+                "key_nodes": [
+                    {
+                        "maturity_date": "2026-06-29",
+                        "asset_identifier": "USD_SOFR_SWAP_1M",
+                        "quote": 0.11,
+                    }
+                ],
+                "metadata_json": {"source_snapshot": "mock"},
+            }, target_date
 
     monkeypatch.setattr("msm_pricing.data_interface.MSDataInterface", FakeMSDataInterface)
 
@@ -605,6 +615,14 @@ def test_curve_discount_curve_nodes_use_market_data_binding(monkeypatch) -> None
         "effective_date": valuation_date,
         "request_mode": "historical",
         "nodes": [{"days_to_maturity": 28, "zero": 0.11}],
+        "key_nodes": [
+            {
+                "maturity_date": "2026-06-29",
+                "asset_identifier": "USD_SOFR_SWAP_1M",
+                "quote": 0.11,
+            }
+        ],
+        "metadata_json": {"source_snapshot": "mock"},
     }
     assert calls == [
         (
@@ -673,9 +691,13 @@ def test_curve_discount_curve_nodes_use_latest_when_valuation_date_missing(monke
         def __init__(self, market_data_configuration):
             pass
 
-        def get_latest_discount_curve(self, curve_identifier):
+        def get_latest_discount_curve_observation(self, curve_identifier):
             assert curve_identifier == "USD-SOFR-DISCOUNT"
-            return [{"days_to_maturity": 91, "zero": 0.105}], latest_date
+            return {
+                "nodes": [{"days_to_maturity": 91, "zero": 0.105}],
+                "key_nodes": [{"maturity_date": "2026-08-31", "quote": 0.105}],
+                "metadata_json": {"source_snapshot": "mock-latest"},
+            }, latest_date
 
     monkeypatch.setattr("msm_pricing.data_interface.MSDataInterface", FakeMSDataInterface)
 
@@ -686,6 +708,8 @@ def test_curve_discount_curve_nodes_use_latest_when_valuation_date_missing(monke
     assert response["effective_date"] == latest_date
     assert response["request_mode"] == "latest"
     assert response["nodes"] == [{"days_to_maturity": 91, "zero": 0.105}]
+    assert response["key_nodes"] == [{"maturity_date": "2026-08-31", "quote": 0.105}]
+    assert response["metadata_json"] == {"source_snapshot": "mock-latest"}
 
 
 def test_curve_discount_curve_nodes_explain_missing_latest_observation(monkeypatch) -> None:

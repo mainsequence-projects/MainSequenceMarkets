@@ -213,6 +213,12 @@ Query parameters:
 
 Response model: `DiscountCurveResponse`
 
+`nodes` is the normalized decompressed pricing curve. `key_nodes` is
+producer-owned construction provenance returned as stored JSON. Consumers may
+display standard fields such as `maturity_date`, `asset_identifier`,
+`instrument_type`, `quote`, `quote_type`, `quote_unit`, `quote_side`, and
+`yield` when present, but the API does not require that schema.
+
 Response:
 
 ```json
@@ -252,7 +258,21 @@ Response:
       "days_to_maturity": 91,
       "zero": 0.105
     }
-  ]
+  ],
+  "key_nodes": [
+    {
+      "maturity_date": "2026-06-29",
+      "asset_identifier": "USD_SOFR_SWAP_1M",
+      "instrument_type": "interest_rate_swap",
+      "quote": 0.11,
+      "quote_type": "par_rate",
+      "quote_unit": "decimal",
+      "quote_side": "mid"
+    }
+  ],
+  "metadata_json": {
+    "source_snapshot": "example-2026-06-01"
+  }
 }
 ```
 
@@ -263,7 +283,9 @@ When `valuation_date` is omitted:
   "valuation_date": null,
   "effective_date": "2026-06-02T00:00:00Z",
   "request_mode": "latest",
-  "nodes": []
+  "nodes": [],
+  "key_nodes": null,
+  "metadata_json": null
 }
 ```
 

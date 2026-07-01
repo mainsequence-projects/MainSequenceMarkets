@@ -22,6 +22,7 @@ from msm_pricing.data_nodes.curves import (
     CURVE_IDENTIFIER,
     CurveConfig,
     CurveDataNodeConfiguration,
+    CurveKeyNode,
     DiscountCurvesNode,
 )
 from msm_pricing.data_nodes.curves.key_nodes import normalize_curve_key_nodes
@@ -93,10 +94,10 @@ def test_discount_curves_storage_declares_key_nodes_and_metadata_columns() -> No
     assert columns["metadata_json"].nullable is True
     assert (
         columns["key_nodes"].info["description"]
-        == "Construction input quotes for this curve observation. Each item "
-        "stores maturity_date, quote, and an optional asset_identifier for "
-        "the source instrument; curve-level quote interpretation comes from "
-        "CurveBuildingDetails."
+        == "Source-owned construction provenance for this curve observation. "
+        "Producers may use the recommended CurveKeyNode shape, including "
+        "quote_type, quote_unit, quote_side, and optional yield fields, or "
+        "store another JSON object/list needed to audit the source build."
     )
     assert (
         columns["metadata_json"].info["description"]
@@ -162,6 +163,9 @@ def test_discount_curves_node_normalizes_curve_identifier_builder_name() -> None
                         "maturity_date": dt.date(2026, 6, 24),
                         "asset_identifier": " MXN_TIIE_SWAP_28D ",
                         "quote": "0.11",
+                        "quote_type": "yield",
+                        "quote_unit": "decimal",
+                        "vendor_extra": {"curve_bucket": "front_end"},
                     }
                 ],
                 "metadata_json": {"source_snapshot": "mock"},
@@ -179,8 +183,11 @@ def test_discount_curves_node_normalizes_curve_identifier_builder_name() -> None
         [
             {
                 "maturity_date": "2026-06-24",
-                "quote": 0.11,
-                "asset_identifier": "MXN_TIIE_SWAP_28D",
+                "asset_identifier": " MXN_TIIE_SWAP_28D ",
+                "quote": "0.11",
+                "quote_type": "yield",
+                "quote_unit": "decimal",
+                "vendor_extra": {"curve_bucket": "front_end"},
             }
         ]
     ]
@@ -262,23 +269,96 @@ def test_curve_codec_rejects_null_curve_payload() -> None:
 @pytest.mark.parametrize(
     ("key_nodes", "message"),
     [
-        ([{"asset_identifier": "MXN_TIIE_SWAP_28D", "quote": 0.11}], "maturity_date"),
-        ([{"maturity_date": "2026-06-24"}], "quote"),
         ([{"maturity_date": "2026-06-24", "quote": float("nan")}], "finite"),
-        ([{"maturity_date": "2026-06-24", "quote": 0.11, "tenor": "28D"}], "tenor"),
-        (
-            [{"maturity_date": "2026-06-24", "quote": 0.11, "quote_type": "yield"}],
-            "quote_type",
-        ),
-        (
-            [{"maturity_date": "2026-06-24", "quote": 0.11, "asset_identifier": " "}],
-            "asset_identifier",
-        ),
+        ("not-json-container", "object or list"),
+        ([{"maturity_date": "2026-06-24", "quote": object()}], "JSON serializable"),
     ],
 )
 def test_discount_curve_key_nodes_reject_invalid_payloads(key_nodes, message) -> None:
     with pytest.raises(ValueError, match=message):
         normalize_curve_key_nodes(key_nodes)
+
+
+def test_discount_curve_key_nodes_accept_source_owned_schema() -> None:
+    key_nodes = normalize_curve_key_nodes(
+        [
+            {
+                "maturity_date": dt.date(2026, 6, 24),
+                "asset_identifier": "MXN_BONO_2031",
+                "instrument_type": "fixed_rate_bond",
+                "quote": 99.25,
+                "quote_type": "clean_price",
+                "quote_unit": "price_per_100",
+                "quote_side": "mid",
+                "vendor_bucket": "long_end",
+            },
+            {
+                "maturity_date": "2027-05-27",
+                "instrument_type": "direct_zero_rate",
+                "yield": 0.105,
+                "quote_type": "zero_rate",
+                "quote_unit": "decimal",
+            },
+        ]
+    )
+
+    assert key_nodes == [
+        {
+            "maturity_date": "2026-06-24",
+            "asset_identifier": "MXN_BONO_2031",
+            "instrument_type": "fixed_rate_bond",
+            "quote": 99.25,
+            "quote_type": "clean_price",
+            "quote_unit": "price_per_100",
+            "quote_side": "mid",
+            "vendor_bucket": "long_end",
+        },
+        {
+            "maturity_date": "2027-05-27",
+            "instrument_type": "direct_zero_rate",
+            "yield": 0.105,
+            "quote_type": "zero_rate",
+            "quote_unit": "decimal",
+        },
+    ]
+
+
+def test_curve_key_node_helper_serializes_recommended_yield_shape() -> None:
+    node = CurveKeyNode(
+        maturity_date=dt.date(2027, 5, 27),
+        instrument_type="direct_zero_rate",
+        quote=0.105,
+        quote_type="zero_rate",
+        quote_unit="decimal",
+        yield_value=0.105,
+        source="unit-test",
+    )
+
+    assert node.model_dump(mode="json", by_alias=True, exclude_none=True) == {
+        "maturity_date": "2027-05-27",
+        "instrument_type": "direct_zero_rate",
+        "quote": 0.105,
+        "quote_type": "zero_rate",
+        "quote_unit": "decimal",
+        "quote_side": "mid",
+        "yield": 0.105,
+        "source": "unit-test",
+    }
+
+
+def test_curve_key_node_helper_accepts_yield_alias() -> None:
+    node = CurveKeyNode.model_validate(
+        {
+            "maturity_date": "2027-05-27",
+            "instrument_type": "direct_zero_rate",
+            "yield": 0.105,
+            "quote_type": "zero_rate",
+            "quote_unit": "decimal",
+        }
+    )
+
+    assert node.yield_value == 0.105
+    assert node.model_dump(mode="json", by_alias=True, exclude_none=True)["yield"] == 0.105
 
 
 def test_discount_curves_node_rejects_stale_builder_identity_name() -> None:

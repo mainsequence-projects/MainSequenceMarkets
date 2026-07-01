@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import datetime
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB
@@ -67,16 +67,16 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             ),
         },
     )
-    key_nodes: Mapped[list[dict] | None] = mapped_column(
+    key_nodes: Mapped[Any | None] = mapped_column(
         JSONB,
         nullable=True,
         info={
             "label": "Key Nodes",
             "description": (
-                "Construction input quotes for this curve observation. Each item "
-                "stores maturity_date, quote, and an optional asset_identifier for "
-                "the source instrument; curve-level quote interpretation comes from "
-                "CurveBuildingDetails."
+                "Source-owned construction provenance for this curve observation. "
+                "Producers may use the recommended CurveKeyNode shape, including "
+                "quote_type, quote_unit, quote_side, and optional yield fields, or "
+                "store another JSON object/list needed to audit the source build."
             ),
         },
     )

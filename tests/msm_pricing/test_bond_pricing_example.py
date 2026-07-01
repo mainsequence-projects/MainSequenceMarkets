@@ -64,9 +64,11 @@ def test_mock_market_data_publishes_curve_key_nodes() -> None:
     assert "build_flat_forward_key_nodes(" in source
     assert '"key_nodes": key_nodes' in source
     assert '"metadata_json": {' in source
-    assert '"maturity_date"' in source
-    assert '"quote"' in source
-    assert '"quote_type"' not in source
+    assert "maturity_date=" in source
+    assert "quote=" in source
+    assert "quote_type=" in source
+    assert "quote_unit=" in source
+    assert "yield_value=" in source
     assert '"tenor"' not in source
 
 

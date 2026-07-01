@@ -355,6 +355,8 @@ def test_get_pricing_discount_curve_returns_latest_nodes(monkeypatch) -> None:
             "effective_date": effective_date.isoformat(),
             "request_mode": "latest",
             "nodes": [{"days_to_maturity": 28, "zero": 0.11}],
+            "key_nodes": [{"maturity_date": "2026-06-30", "quote": 0.11}],
+            "metadata_json": {"source_snapshot": "mock"},
         }
 
     monkeypatch.setattr(
@@ -391,6 +393,8 @@ def test_get_pricing_discount_curve_returns_latest_nodes(monkeypatch) -> None:
         "effective_date": "2026-06-02T00:00:00Z",
         "request_mode": "latest",
         "nodes": [{"days_to_maturity": 28, "zero": 0.11}],
+        "key_nodes": [{"maturity_date": "2026-06-30", "quote": 0.11}],
+        "metadata_json": {"source_snapshot": "mock"},
     }
     assert captured == {
         "uid": str(curve_uid),
@@ -428,6 +432,8 @@ def test_get_pricing_discount_curve_passes_historical_date(monkeypatch) -> None:
             "effective_date": valuation_date.isoformat(),
             "request_mode": "historical",
             "nodes": [{"days_to_maturity": 91, "zero": 0.105}],
+            "key_nodes": None,
+            "metadata_json": None,
         }
 
     monkeypatch.setattr(

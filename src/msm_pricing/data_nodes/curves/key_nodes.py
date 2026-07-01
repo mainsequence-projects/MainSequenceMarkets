@@ -1,29 +1,87 @@
-"""Validation helpers for curve-observation construction provenance."""
+"""Helpers for curve-observation construction provenance."""
 
 from __future__ import annotations
 
 import datetime as dt
+import json
 import math
 from collections.abc import Mapping
 from typing import Any
 
-ALLOWED_KEY_NODE_FIELDS = frozenset({"maturity_date", "asset_identifier", "quote"})
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 
-def normalize_curve_key_nodes(value: Any) -> list[dict[str, Any]]:
-    """Normalize and validate curve key-node provenance for one curve row."""
+class CurveKeyNode(BaseModel):
+    """Recommended, optional shape for discount-curve construction provenance.
+
+    Storage remains permissive JSON. Producers may use this helper when the
+    standard fields fit their source, and may add source-specific fields through
+    Pydantic ``extra="allow"``.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    maturity_date: dt.date | None = Field(
+        default=None,
+        description="Maturity date for the source input when the input is maturity-based.",
+    )
+    asset_identifier: str | None = Field(
+        default=None,
+        description="Optional registered source-instrument identifier for this key node.",
+    )
+    instrument_type: str | None = Field(
+        default=None,
+        description="Optional source instrument type, such as direct_zero_rate or bond.",
+    )
+    quote: float | None = Field(
+        default=None,
+        description="Raw source quote used by the producer for this key node.",
+    )
+    quote_type: str | None = Field(
+        default=None,
+        description="Meaning of quote, such as zero_rate, yield, clean_price, or par_rate.",
+    )
+    quote_unit: str | None = Field(
+        default=None,
+        description="Unit of quote, such as decimal, percent, or price_per_100.",
+    )
+    quote_side: str | None = Field(
+        default="mid",
+        description="Optional source quote side, such as bid, mid, or offer.",
+    )
+    yield_value: float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("yield", "yield_value"),
+        serialization_alias="yield",
+        description=(
+            "Optional yield-native value for producers whose curve inputs are "
+            "naturally represented as yields."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_recommended_quote(self) -> CurveKeyNode:
+        if self.quote is None and self.yield_value is None:
+            raise ValueError("CurveKeyNode requires quote or yield.")
+        return self
+
+
+def normalize_curve_key_nodes(value: Any) -> Any:
+    """Normalize producer-owned key-node provenance for one curve row.
+
+    ``key_nodes`` is intentionally not a financial schema contract. The only
+    storage-level requirements are that the top-level value is a JSON object or
+    list and that nested values are JSON-compatible.
+    """
 
     if value is None:
         raise ValueError(
-            "Discount curve builder frames must include key_nodes with at least "
-            "one item containing maturity_date and quote."
+            "Discount curve builder frames must include key_nodes construction provenance."
         )
-    if not isinstance(value, list | tuple):
-        raise ValueError("Discount curve key_nodes must be a list of JSON objects.")
-    if not value:
-        raise ValueError("Discount curve key_nodes must contain at least one node.")
-
-    return [_normalize_key_node(node, index=index) for index, node in enumerate(value)]
+    normalized = _normalize_json_value(value, path="key_nodes")
+    if not isinstance(normalized, list | dict):
+        raise ValueError("Discount curve key_nodes must be a JSON object or list when present.")
+    return normalized
 
 
 def normalize_curve_metadata(value: Any) -> dict[str, Any] | None:
@@ -33,80 +91,50 @@ def normalize_curve_metadata(value: Any) -> dict[str, Any] | None:
         return None
     if not isinstance(value, Mapping):
         raise ValueError("Discount curve metadata_json must be a JSON object when provided.")
-    return dict(value)
+    return _normalize_json_object(value, path="metadata_json")
 
 
-def _normalize_key_node(node: Any, *, index: int) -> dict[str, Any]:
-    if not isinstance(node, Mapping):
-        raise ValueError(f"Discount curve key_nodes[{index}] must be a JSON object.")
+def _normalize_json_value(value: Any, *, path: str) -> Any:
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json", by_alias=True, exclude_none=True)
+    if isinstance(value, Mapping):
+        return _normalize_json_object(value, path=path)
+    if isinstance(value, list | tuple):
+        return [
+            _normalize_json_value(item, path=f"{path}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    if isinstance(value, dt.datetime):
+        return value.isoformat()
+    if isinstance(value, dt.date):
+        return value.isoformat()
+    if isinstance(value, str | bool) or value is None:
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"Discount curve {path} must contain finite JSON numbers.")
+        return value
 
-    unexpected_fields = set(node) - ALLOWED_KEY_NODE_FIELDS
-    if unexpected_fields:
-        raise ValueError(
-            "Discount curve key_nodes only supports maturity_date, asset_identifier, "
-            f"and quote. Unsupported fields at index {index}: {sorted(unexpected_fields)!r}."
-        )
+    try:
+        json.dumps(value, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Discount curve {path} must be JSON serializable.") from exc
+    return value
 
-    normalized = {
-        "maturity_date": _normalize_maturity_date(node.get("maturity_date"), index=index),
-        "quote": _normalize_quote(node.get("quote"), index=index),
-    }
-    asset_identifier = node.get("asset_identifier")
-    if asset_identifier is not None:
-        normalized["asset_identifier"] = _normalize_asset_identifier(
-            asset_identifier,
-            index=index,
-        )
+
+def _normalize_json_object(value: Mapping[str, Any], *, path: str) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise ValueError(f"Discount curve {path} JSON object keys must be strings.")
+        normalized[key] = _normalize_json_value(item, path=f"{path}.{key}")
     return normalized
 
 
-def _normalize_maturity_date(value: Any, *, index: int) -> str:
-    if isinstance(value, dt.datetime):
-        return value.date().isoformat()
-    if isinstance(value, dt.date):
-        return value.isoformat()
-    if isinstance(value, str):
-        cleaned = value.strip()
-        if not cleaned:
-            raise ValueError(f"Discount curve key_nodes[{index}].maturity_date is required.")
-        try:
-            if "T" in cleaned:
-                return dt.datetime.fromisoformat(cleaned.replace("Z", "+00:00")).date().isoformat()
-            return dt.date.fromisoformat(cleaned).isoformat()
-        except ValueError as exc:
-            raise ValueError(
-                f"Discount curve key_nodes[{index}].maturity_date must be an ISO date."
-            ) from exc
-    raise ValueError(f"Discount curve key_nodes[{index}].maturity_date is required.")
-
-
-def _normalize_quote(value: Any, *, index: int) -> float:
-    if value is None:
-        raise ValueError(f"Discount curve key_nodes[{index}].quote is required.")
-    try:
-        quote = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"Discount curve key_nodes[{index}].quote must be numeric.") from exc
-    if not math.isfinite(quote):
-        raise ValueError(f"Discount curve key_nodes[{index}].quote must be finite.")
-    return quote
-
-
-def _normalize_asset_identifier(value: Any, *, index: int) -> str:
-    if not isinstance(value, str):
-        raise ValueError(
-            f"Discount curve key_nodes[{index}].asset_identifier must be a string when provided."
-        )
-    cleaned = value.strip()
-    if not cleaned:
-        raise ValueError(
-            f"Discount curve key_nodes[{index}].asset_identifier cannot be empty."
-        )
-    return cleaned
-
-
 __all__ = [
-    "ALLOWED_KEY_NODE_FIELDS",
+    "CurveKeyNode",
     "normalize_curve_key_nodes",
     "normalize_curve_metadata",
 ]

@@ -260,27 +260,46 @@ without a separate decision.
 
 `key_nodes` records the input quotes used to build that specific curve
 observation. It is row-level construction provenance, not another convention
-source. Each key node must use one shape:
+source. Storage preserves producer-owned JSON, so sources may keep their own
+schema when needed. `msm_pricing.data_nodes.CurveKeyNode` is the recommended
+helper when the standard fields fit the source:
 
 ```json
 [
   {
-    "maturity_date": "2026-06-24",
-    "asset_identifier": "MXN_TIIE_SWAP_28D",
-    "quote": 0.11
+    "maturity_date": "2031-05-27",
+    "asset_identifier": "MXN_BONO_2031",
+    "instrument_type": "fixed_rate_bond",
+    "quote": 99.25,
+    "quote_type": "clean_price",
+    "quote_unit": "price_per_100",
+    "quote_side": "mid"
+  },
+  {
+    "maturity_date": "2027-05-27",
+    "instrument_type": "direct_zero_rate",
+    "quote": 0.105,
+    "quote_type": "zero_rate",
+    "quote_unit": "decimal",
+    "quote_side": "mid",
+    "yield": 0.105
   }
 ]
 ```
 
 Rules:
 
-- `maturity_date` is required and stored as an ISO date.
-- `quote` is required and finite.
-- `asset_identifier` is optional and should be present only when the quote came
-  from a registered source instrument.
-- `tenor`, `quote_type`, `quote_unit`, and source-level convention fields do
-  not belong in `key_nodes`; those are curve-level build details or optional
-  row metadata.
+- `key_nodes` must be a JSON object or list when present.
+- The library does not enforce per-node financial fields because mixed curves
+  may combine bonds, zero-coupon instruments, swaps, deposits, direct zero
+  rates, and source-specific payloads.
+- Prefer the standard fields `maturity_date`, `asset_identifier`,
+  `instrument_type`, `quote`, `quote_type`, `quote_unit`, and `quote_side` when
+  they fit the source. Discount-curve producers that think in yields may also
+  include the optional `yield` field.
+- `quote_type` and `quote_unit` describe the raw source input for that key node.
+  `CurveBuildingDetails` still describes how the final stored `curve` is built
+  and interpreted by pricing.
 
 A `DiscountCurvesNode` publisher passes the values as ordinary DataFrame
 columns. Keep `key_nodes` beside `curve`; do not nest it inside the compressed
@@ -301,11 +320,16 @@ return pd.DataFrame(
                 {
                     "maturity_date": "2026-06-26",
                     "quote": 0.0500,
+                    "quote_type": "zero_rate",
+                    "quote_unit": "decimal",
+                    "yield": 0.0500,
                 },
                 {
                     "maturity_date": "2026-08-25",
                     "asset_identifier": "USD_SOFR_SWAP_3M",
                     "quote": 0.0508,
+                    "quote_type": "par_rate",
+                    "quote_unit": "decimal",
                 },
             ],
             "metadata_json": {"source_snapshot": "example-2026-05-27"},

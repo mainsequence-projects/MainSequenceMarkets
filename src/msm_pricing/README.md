@@ -79,9 +79,11 @@ the actual `CurveTable.unique_identifier`; they do not resolve Main Sequence
 Constants into curve identity. EOD curve observations declare daily cadence on
 `DiscountCurvesStorage.__cadence__`. Each new curve observation row carries the
 compressed pricing `curve` plus `key_nodes` construction provenance. Key nodes
-use one shape, `{maturity_date, quote, asset_identifier?}`, and the quote
-meaning remains on `CurveBuildingDetails` rather than per-node fields such as
-`quote_type` or `tenor`.
+are source-owned JSON. Producers may use the optional `CurveKeyNode` helper and
+recommended fields such as `maturity_date`, `asset_identifier`,
+`instrument_type`, `quote`, `quote_type`, `quote_unit`, `quote_side`, and
+`yield`, but the storage layer does not force that schema. `CurveBuildingDetails`
+still describes how the final stored curve is built and interpreted by pricing.
 
 Curve construction is strict. `CurveBuildingDetails.interpolation_method` must
 be one of `log_linear_discount`, `log_cubic_discount`, `linear_zero`,

@@ -43,11 +43,16 @@ and this project follows versioned releases.
 - Added `MSDataInterface.get_latest_discount_curve(...)` for explicit latest
   discount-curve lookup by curve identity without using the global
   `USE_LAST_OBSERVATION_MS_INSTRUMENT` fallback.
-- Added `DiscountCurvesStorage.key_nodes` and row `metadata_json` JSONB columns, with
-  `DiscountCurvesNode` validation requiring dated construction input quotes for
-  new curve observations.
+- Added `DiscountCurvesStorage.key_nodes` and row `metadata_json` JSONB columns,
+  with `key_nodes` treated as producer-owned JSON construction provenance.
+- Added the optional `msm_pricing.data_nodes.CurveKeyNode` helper as the
+  recommended key-node shape, including raw quote fields and yield-native
+  `yield` serialization for discount-curve producers.
 - Tightened `DiscountCurvesStorage.curve` to a required non-null payload and
   made discount-curve builders reject missing, null, or empty curve mappings.
+- Added observation-level discount-curve reads carrying `nodes`, `key_nodes`,
+  and `metadata_json`, and exposed those provenance fields in the pricing curve
+  API response.
 - Refactored the `migrations:migration` provider, Alembic environment, model
   registry, and dynamic portfolio example provider onto the SDK-owned
   MetaTable migration helpers, with revision directories treated as generated
