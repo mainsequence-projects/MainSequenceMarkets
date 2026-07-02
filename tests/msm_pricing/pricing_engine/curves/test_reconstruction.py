@@ -13,6 +13,7 @@ from msm_pricing.api import Curve, CurveBuildingDetails
 from msm_pricing.pricing_engine.curves import (
     OISRateHelperSpec,
     OvernightDepositHelperSpec,
+    build_ois_rate_helper,
     curve_observation_value,
     export_curve_observation_nodes,
     helper_specs_from_key_nodes,
@@ -115,6 +116,65 @@ def test_reconstruct_curve_handle_from_helper_specs() -> None:
     assert handle.discount(ql.Date(2, 1, 2027)) > 0.0
 
 
+def test_build_ois_rate_helper_supports_extended_schedule_fields() -> None:
+    previous_evaluation_date = ql.Settings.instance().evaluationDate
+    ql.Settings.instance().evaluationDate = ql.Date(30, 6, 2026)
+    try:
+        helper = build_ois_rate_helper(
+            OISRateHelperSpec(
+                quote=0.065256,
+                tenor="28D",
+                overnight_index=ql.Sofr(),
+                settlement_days=1,
+                payment_convention="ModifiedFollowing",
+                payment_frequency="EveryFourthWeek",
+                payment_calendar="Mexico",
+                fixed_payment_frequency="EveryFourthWeek",
+                fixed_calendar="Mexico",
+                averaging_method="Compound",
+            )
+        )
+        earliest_date = helper.earliestDate()
+        maturity_date = helper.maturityDate()
+        pillar_date = helper.pillarDate()
+    finally:
+        ql.Settings.instance().evaluationDate = previous_evaluation_date
+
+    assert earliest_date == ql.Date(1, 7, 2026)
+    assert maturity_date == ql.Date(29, 7, 2026)
+    assert pillar_date == ql.Date(29, 7, 2026)
+
+
+def test_helper_specs_from_key_nodes_maps_extended_ois_fields() -> None:
+    specs = helper_specs_from_key_nodes(
+        [
+            {
+                "helper_type": "ois_rate_helper",
+                "quote": 6.5256,
+                "quote_type": "par_swap_rate",
+                "quote_unit": "percent",
+                "tenor": "28D",
+                "settlement_days": 1,
+                "floating_index": "OVERNIGHT-INDEX",
+                "payment_convention": "ModifiedFollowing",
+                "fixed_payment_frequency": "EveryFourthWeek",
+                "fixed_calendar_code": "Mexico",
+                "averaging_method": "Compound",
+            }
+        ],
+        overnight_index=ql.Sofr(),
+    )
+
+    spec = specs[0]
+    assert isinstance(spec, OISRateHelperSpec)
+    assert spec.quote == pytest.approx(0.065256)
+    assert spec.payment_frequency == "EveryFourthWeek"
+    assert spec.payment_calendar == "Mexico"
+    assert spec.fixed_payment_frequency == "EveryFourthWeek"
+    assert spec.fixed_calendar == "Mexico"
+    assert spec.payment_convention == "ModifiedFollowing"
+
+
 def test_build_curve_from_observation_supports_rate_helper_build_details() -> None:
     curve = _curve()
     valuation_date = dt.datetime(2026, 1, 2, tzinfo=dt.UTC)
@@ -128,6 +188,21 @@ def test_build_curve_from_observation_supports_rate_helper_build_details() -> No
     )
 
     assert handle.discount(ql.Date(2, 1, 2027)) > 0.0
+
+
+def test_rate_helper_build_details_require_helper_schema() -> None:
+    curve = _curve()
+    valuation_date = dt.datetime(2026, 1, 2, tzinfo=dt.UTC)
+    details = _rate_helper_details(curve.uid).model_copy(update={"builder_payload": None})
+
+    with pytest.raises(ValueError, match="helper_schema='rate_helpers@v1'"):
+        build_curve_from_curve_observation(
+            curve=curve,
+            building_details=details,
+            observation={"time_index": valuation_date, "key_nodes": _key_nodes()},
+            effective_curve_date=valuation_date,
+            overnight_index=ql.Sofr(),
+        )
 
 
 def test_build_curve_from_observation_supports_rate_helper_bootstrap_alias() -> None:

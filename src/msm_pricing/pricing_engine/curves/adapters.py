@@ -56,12 +56,13 @@ def reconstruct_curve_from_curve_building_details(
 
 def _validate_rate_helper_payload(building_details: object) -> None:
     payload = getattr(building_details, "builder_payload", None)
-    if payload is None:
-        return
     if not isinstance(payload, Mapping):
-        raise ValueError("CurveBuildingDetails.builder_payload must be a mapping when provided.")
+        raise ValueError(
+            "Rate-helper curve reconstruction requires "
+            "CurveBuildingDetails.builder_payload with helper_schema='rate_helpers@v1'."
+        )
     helper_schema = _token(payload.get("helper_schema") or payload.get("input_schema"))
-    if helper_schema and helper_schema != "rate_helpers@v1":
+    if helper_schema != "rate_helpers@v1":
         raise ValueError(
             "Rate-helper curve reconstruction supports helper_schema='rate_helpers@v1' only."
         )

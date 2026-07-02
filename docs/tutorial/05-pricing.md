@@ -224,6 +224,12 @@ handle = reconstruct_curve_handle_from_helper_specs(
             tenor="1Y",
             settlement_days=2,
             overnight_index=ql.Sofr(),
+            payment_convention="ModifiedFollowing",
+            payment_frequency="Annual",
+            payment_calendar=ql.TARGET(),
+            fixed_payment_frequency="Annual",
+            fixed_calendar=ql.TARGET(),
+            averaging_method="Compound",
         ),
     ),
     valuation_date=valuation_date,
@@ -238,6 +244,10 @@ nodes = export_curve_observation_nodes(
 
 Run `examples/msm_pricing/curve_reconstruction.py` for the offline helper
 reconstruction and observation-export smoke test.
+For curves whose OIS helpers require non-default payment schedules, pass the
+generic OIS schedule fields explicitly in `OISRateHelperSpec` or in helper key
+nodes; do not keep a connector-local constructor only because the payment
+frequency, payment calendar, or averaging method is non-default.
 
 Serialized pricing instruments should reference these rows by UUID, not by
 mutable names. Use `floating_rate_index_uid` on floating-rate bonds and

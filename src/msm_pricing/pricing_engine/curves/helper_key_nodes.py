@@ -52,6 +52,25 @@ class OISRateHelperKeyNode(BaseModel):
     tenor: str
     settlement_days: int = 0
     floating_index: str | None = None
+    telescopic_value_dates: bool = False
+    payment_lag: int = 0
+    payment_convention: int | str = Field(default="Following")
+    payment_frequency: int | str | None = None
+    payment_calendar_code: str | dict[str, Any] | None = None
+    forward_start: str = "0D"
+    overnight_spread: float = 0.0
+    pillar: int | str = Field(default="LastRelevantDate")
+    custom_pillar_date: str | None = None
+    averaging_method: int | str = Field(default="Compound")
+    end_of_month: bool | None = None
+    fixed_payment_frequency: int | str | None = None
+    fixed_calendar_code: str | dict[str, Any] | None = None
+    lookback_days: int | None = None
+    lockout_days: int = 0
+    apply_observation_shift: bool = False
+    rule: int | str = Field(default="Backward")
+    overnight_calendar_code: str | dict[str, Any] | None = None
+    date_generation_convention: int | str = Field(default="ModifiedFollowing")
 
 
 RateHelperKeyNode = OvernightDepositHelperKeyNode | OISRateHelperKeyNode
@@ -126,6 +145,25 @@ def helper_specs_from_key_nodes(
                     overnight_index=overnight_index,
                     overnight_index_resolver=overnight_index_resolver,
                 ),
+                telescopic_value_dates=node.telescopic_value_dates,
+                payment_lag=node.payment_lag,
+                payment_convention=node.payment_convention,
+                payment_frequency=_payment_frequency(node),
+                payment_calendar=_payment_calendar(node),
+                forward_start=node.forward_start,
+                overnight_spread=node.overnight_spread,
+                pillar=node.pillar,
+                custom_pillar_date=node.custom_pillar_date,
+                averaging_method=node.averaging_method,
+                end_of_month=node.end_of_month,
+                fixed_payment_frequency=node.fixed_payment_frequency,
+                fixed_calendar=node.fixed_calendar_code,
+                lookback_days=node.lookback_days,
+                lockout_days=node.lockout_days,
+                apply_observation_shift=node.apply_observation_shift,
+                rule=node.rule,
+                overnight_calendar=node.overnight_calendar_code,
+                date_generation_convention=node.date_generation_convention,
             )
         )
     if not specs:
@@ -168,6 +206,20 @@ def _resolve_overnight_index(
         "OIS rate-helper key nodes require overnight_index or overnight_index_resolver; "
         "msm_pricing does not infer indexes from curve or provider names."
     )
+
+
+def _payment_frequency(node: OISRateHelperKeyNode) -> int | str:
+    if node.payment_frequency not in (None, ""):
+        return node.payment_frequency
+    if node.fixed_payment_frequency not in (None, ""):
+        return node.fixed_payment_frequency
+    return "Annual"
+
+
+def _payment_calendar(node: OISRateHelperKeyNode) -> str | dict[str, Any] | None:
+    if node.payment_calendar_code not in (None, ""):
+        return node.payment_calendar_code
+    return node.fixed_calendar_code
 
 
 __all__ = [

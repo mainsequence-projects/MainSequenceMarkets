@@ -35,6 +35,10 @@ and this project follows versioned releases.
   specs/builders, helper-key-node adapters, helper-based curve reconstruction,
   and curve observation export, plus resolver/scenario support for
   `builder_type="rate_helper_curve"` without importing connector-specific code.
+- Extended generic OIS helper reconstruction to expose QuantLib OIS
+  schedule/convention fields and to require persisted
+  `builder_payload.helper_schema="rate_helpers@v1"` for helper-based curve
+  adapters.
 - Updated `InterestRateSwap.reset_curve(...)` to accept a
   `YieldTermStructureHandle` directly so prepared scenario handles work for swap
   repricing as well as bond repricing.

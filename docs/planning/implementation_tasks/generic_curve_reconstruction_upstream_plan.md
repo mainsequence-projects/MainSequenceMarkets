@@ -216,10 +216,10 @@ Initial model contracts:
 
 | Model | File | Type | Required Fields | Optional Fields |
 | --- | --- | --- | --- | --- |
-| `OISRateHelperSpec` | `pricing_engine/curves/helpers.py` | frozen dataclass | `quote: float`, `tenor: str | ql.Period`, `overnight_index: ql.OvernightIndex` | `settlement_days: int` |
+| `OISRateHelperSpec` | `pricing_engine/curves/helpers.py` | frozen dataclass | `quote: float`, `tenor: str | ql.Period`, `overnight_index: ql.OvernightIndex` | Generic QuantLib OIS fields: `settlement_days`, `discounting_curve`, `telescopic_value_dates`, `payment_lag`, `payment_convention`, `payment_frequency`, `payment_calendar`, `forward_start`, `overnight_spread`, `pillar`, `custom_pillar_date`, `averaging_method`, `end_of_month`, `fixed_payment_frequency`, `fixed_calendar`, `lookback_days`, `lockout_days`, `apply_observation_shift`, `pricer`, `rule`, `overnight_calendar`, and `date_generation_convention`. |
 | `OvernightDepositHelperSpec` | `pricing_engine/curves/helpers.py` | frozen dataclass | `quote: float` | `tenor: str | ql.Period`, `fixing_days`, `calendar`, `convention`, `end_of_month`, `day_counter` |
 | `InterestRateFutureHelperSpec` | `pricing_engine/curves/helpers.py` | frozen dataclass, deferred | To be defined only when futures are implemented generically. | To be defined only when futures are implemented generically. |
-| `OISRateHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model | `helper_type: Literal["ois_rate_helper", "overnight_indexed_swap_helper"]`, `quote: float`, `quote_type: str`, `quote_unit: str`, `tenor: str` | `settlement_days`, `floating_index`, source metadata fields |
+| `OISRateHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model | `helper_type: Literal["ois_rate_helper", "overnight_indexed_swap_helper"]`, `quote: float`, `quote_type: str`, `quote_unit: str`, `tenor: str` | `settlement_days`, `floating_index`, generic OIS schedule/convention fields mirroring `OISRateHelperSpec`, and source metadata fields |
 | `OvernightDepositHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model | `helper_type: Literal["overnight_deposit_helper"]`, `quote: float`, `quote_type: str`, `quote_unit: str` | `tenor`, `fixing_days`, `calendar_code`, `business_day_convention`, `day_counter_code`, `end_of_month`, source metadata fields |
 | `InterestRateFutureHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model, deferred | To be defined only when futures are implemented generically. | To be defined only when futures are implemented generically. |
 | `CurveReconstructionConfig` | `pricing_engine/curves/reconstruction.py` | Pydantic model | none beyond defaults | `bootstrap_method`, `day_counter_code`, `extrapolation`; derived from `CurveBuildingDetails` by the adapter. |
@@ -448,7 +448,8 @@ Tasks:
 - [x] Add strict `ql_period_from_tenor(...)` supporting `D`, `W`, `M`, and `Y`.
 - [x] Add typed helper specs for OIS and optional overnight deposit helpers.
 - [x] Add `build_ois_rate_helper(...)` with explicit quote, tenor, settlement
-  days, and caller-supplied overnight-index inputs.
+  days, caller-supplied overnight-index inputs, and the generic QuantLib OIS
+  schedule/convention fields required by non-default market conventions.
 - [x] Add `build_overnight_deposit_helper(...)` without hard-coded
   source/currency calendar defaults.
 - [x] Add `build_rate_helper_vector(...)`.
@@ -472,6 +473,9 @@ Tasks:
 - [x] Keep connector-specific source repair outside this adapter.
 - [x] Support `helper_type="overnight_deposit_helper"`,
   `"ois_rate_helper"`, and `"overnight_indexed_swap_helper"` in v1.
+- [x] Map generic OIS key-node fields such as payment convention,
+  payment/fixed-leg frequency, payment/fixed-leg calendar, averaging method,
+  pillar choice, and observation-shift fields into `OISRateHelperSpec`.
 - [x] Defer futures helper key nodes to a separate stage unless the
   implementation can define a clean generic interest-rate futures spec.
 
@@ -508,6 +512,9 @@ Tasks:
 - [x] If existing rows require `builder_type="rate_helper_bootstrap"`, accept it
   only as a compatibility alias that maps to
   `builder_type="rate_helper_curve"`.
+- [x] Require persisted `builder_payload.helper_schema="rate_helpers@v1"` for
+  helper-based curve reconstruction instead of treating the schema marker as
+  optional documentation.
 
 ### Stage 4: Scenario Integration
 
@@ -547,6 +554,11 @@ Tasks:
 - [ ] Preserve connector-owned tests for Valmer-specific row mapping.
 - [ ] Add compatibility wrappers only where downstream imports require them,
   and mark those wrappers as temporary.
+- [ ] Before deleting connector-local OIS helpers, add a parity test that
+  rebuilds the existing connector fixture through the generic OIS helper path
+  and compares exported observation nodes against the current connector output.
+  If parity fails, extend the generic OIS surface, not the connector-local
+  helper path.
 
 ## Validation Requirements
 

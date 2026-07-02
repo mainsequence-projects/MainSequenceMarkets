@@ -180,6 +180,12 @@ handle = reconstruct_curve_handle_from_helper_specs(
             tenor="1Y",
             settlement_days=2,
             overnight_index=ql.Sofr(),
+            payment_convention="ModifiedFollowing",
+            payment_frequency="Annual",
+            payment_calendar=ql.TARGET(),
+            fixed_payment_frequency="Annual",
+            fixed_calendar=ql.TARGET(),
+            averaging_method="Compound",
         ),
     ),
     valuation_date=valuation_date,
@@ -195,9 +201,9 @@ nodes = export_curve_observation_nodes(
 The persistence adapter is narrower. Persisted helper curves use
 `CurveBuildingDetails.builder_type="rate_helper_curve"` and publish generic
 helper-shaped dictionaries in `DiscountCurvesNode.key_nodes`. The adapter reads
-the build details, validates `builder_payload.helper_schema="rate_helpers@v1"`
-when present, converts key nodes into runtime helper specs, builds QuantLib
-rate helpers, and delegates to `reconstruct_curve_handle(...)`.
+the build details, requires `builder_payload.helper_schema="rate_helpers@v1"`,
+converts key nodes into runtime helper specs, builds QuantLib rate helpers, and
+delegates to `reconstruct_curve_handle(...)`.
 
 Supported v1 helper key-node types are:
 
@@ -221,7 +227,13 @@ Supported v1 helper key-node types are:
     "quote_unit": "percent",
     "tenor": "1Y",
     "settlement_days": 2,
-    "floating_index": "USD-OVERNIGHT"
+    "floating_index": "USD-OVERNIGHT",
+    "payment_convention": "ModifiedFollowing",
+    "payment_frequency": "Annual",
+    "payment_calendar_code": "TARGET",
+    "fixed_payment_frequency": "Annual",
+    "fixed_calendar_code": "TARGET",
+    "averaging_method": "Compound"
   }
 ]
 ```
@@ -231,6 +243,14 @@ resolver callable at runtime. `msm_pricing` does not infer an index from curve
 names, currencies, vendors, or local product names. Source-specific file
 parsing, fallback quote units, and source identifier repairs belong in the
 connector or publisher before data becomes generic helper key nodes.
+
+The OIS spec exposes the generic QuantLib OIS schedule/convention surface,
+including payment lag, payment convention, payment frequency/calendar,
+forward-start period, overnight spread, pillar choice, averaging method,
+end-of-month flag, fixed-leg frequency/calendar, and observation-shift fields.
+Those fields exist for parity with market conventions; callers should pass
+them explicitly when the source curve depends on them instead of rebuilding
+curves through connector-local helper constructors.
 
 Observation export is also generic. `export_curve_observation_nodes(...)`
 exports resolver-compatible nodes from a QuantLib handle or term structure on
