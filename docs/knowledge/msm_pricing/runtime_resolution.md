@@ -227,6 +227,68 @@ and swap-style instruments prefer `projection`, then `floating`, then
 non-empty shock on an unselected related curve is not silently dropped in
 strict mode.
 
+There are two curve-scenario entry points:
+
+- `price_curve_scenario(...)` is the context-resolved workflow. Use it when
+  `msm_pricing` should resolve curve bindings from the prepared valuation
+  context and build scenario handles from copied `key_nodes`.
+- `price_resolved_curve_scenario(...)` is the caller-resolved workflow. Use it
+  when an application or connector already has explicit base and scenario curve
+  handles per valuation line.
+
+The resolved workflow is still typed and still delegates pricing through
+`price_scenario(...)`:
+
+```python
+from collections.abc import Mapping, Sequence
+from typing import TypeAlias
+
+from msm_pricing.scenarios.curves import (
+    CurveScenario,
+    CurveScenarioResult,
+    LineCurveResolution,
+    price_resolved_curve_scenario,
+)
+from msm_pricing.valuation import PricingValuationContext, ValuationPosition
+
+LineCurveResolutionInput: TypeAlias = (
+    Sequence[LineCurveResolution]
+    | Mapping[int, LineCurveResolution | Sequence[LineCurveResolution]]
+)
+
+
+def run_resolved_scenario(
+    position: ValuationPosition,
+    scenario: CurveScenario,
+    resolutions: LineCurveResolutionInput,
+    context: PricingValuationContext,
+) -> CurveScenarioResult:
+    return price_resolved_curve_scenario(
+        position,
+        scenario,
+        line_curve_resolutions=resolutions,
+        context=context,
+        curve_quote_side="mid",
+        strict=True,
+    )
+```
+
+`LineCurveResolutionInput` can be a flat sequence or a mapping keyed by
+`line_index`. Each `LineCurveResolution` carries the line role, selector,
+`Curve.unique_identifier`, base handle, and optional scenario handle. A
+non-empty shock on the selected curve requires `scenario_handle`; empty shocks
+reuse `base_handle`. If `context` is omitted, the helper creates a minimal
+instrument-preparation context only. It does not resolve market-data-set
+bindings, curve rows, curve observations, or key-node scenario handles. Pass a
+prepared `PricingValuationContext` when the instrument needs cached index
+conventions, fixings, or other platform-resolved inputs.
+
+This is the migration target for project-local compatibility helpers that
+already build curve handles outside the standard context path. Those wrappers
+should adapt their local handle-resolution output into `LineCurveResolution`
+records and then call `price_resolved_curve_scenario(...)`; connector-specific
+curve construction remains outside core `msm_pricing`.
+
 ## User Workflow
 
 The fixed-income workflow is:

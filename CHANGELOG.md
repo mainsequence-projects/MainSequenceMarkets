@@ -25,6 +25,9 @@ and this project follows versioned releases.
   key-node basis-point bump helpers, runtime scenario curve-handle construction,
   and `price_curve_scenario(...)` delegation to the prepared
   `price_scenario(...)` path.
+- Added `price_resolved_curve_scenario(...)` and `LineCurveResolutionInput` for
+  caller-resolved curve scenarios that already have explicit base/scenario
+  handles per valuation line.
 - Added `msm_pricing.analytics.spreads` with cross-asset spread primitives,
   fixed-income DV01 spread metrics, optional dependency diagnostics, and an
   offline fixed-income spread analytics example.

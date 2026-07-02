@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import math
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeAlias
 
 _ZERO_BP_TOLERANCE = 1e-9
 
@@ -52,8 +52,7 @@ class CurveBumpSpec:
             days = raw_key if isinstance(raw_key, int) else tenor_to_days(raw_key)
             if days is None or int(days) <= 0:
                 raise ValueError(
-                    "keyrate_bp keys must be tenor labels or positive day counts: "
-                    f"{raw_key!r}."
+                    f"keyrate_bp keys must be tenor labels or positive day counts: {raw_key!r}."
                 )
             value = _finite_float(raw_value, field_name=f"keyrate_bp[{raw_key!r}]")
             out[int(days)] = value
@@ -143,6 +142,11 @@ class ResolvedLineCurve:
 
 
 LineCurveResolution = ResolvedLineCurve
+# Public input contract for caller-resolved curve scenario handles.
+LineCurveResolutionInput: TypeAlias = (
+    Sequence[LineCurveResolution]
+    | Mapping[int, LineCurveResolution | Sequence[LineCurveResolution]]
+)
 
 
 @dataclass(frozen=True)
@@ -266,5 +270,6 @@ __all__ = [
     "CurveScenarioDiagnostic",
     "CurveScenarioResult",
     "LineCurveResolution",
+    "LineCurveResolutionInput",
     "ResolvedLineCurve",
 ]

@@ -105,7 +105,9 @@ Track 3: Curve-keyed scenario pricing
   src/msm_pricing/__init__.py
   tests/msm_pricing/scenarios/curves/test_key_node_bumps.py
   tests/msm_pricing/scenarios/curves/test_curve_scenarios.py
+  tests/msm_pricing/scenarios/curves/test_resolved_curve_scenarios.py
   examples/msm_pricing/curve_scenario.py
+  examples/msm_pricing/resolved_curve_scenario.py
   docs/knowledge/msm_pricing/instruments.md
   docs/knowledge/msm_pricing/curves.md
   docs/knowledge/msm_pricing/runtime_resolution.md
@@ -310,6 +312,12 @@ Additional donor analysis:
   scenario behavior that should be adapted into `msm_pricing`, but not copied
   as-is because it imports a project default quote side and contains permissive
   diagnostic fallback behavior.
+- `local_ms_markets/curve_scenario.py` also contains a reusable explicit
+  curve-resolution workflow that is not covered by the first
+  `price_curve_scenario(...)` implementation: callers can already have
+  base/scenario curve handles per position line and need generic machinery to
+  price the base position and shocked position without asking
+  `PricingValuationContext` to resolve or rebuild those curves again.
 - `local_valmer/curve_scenarios.py` contains both a generic runtime conversion
   shape and a Valmer TIIE/OIS special rebuild. The generic conversion belongs
   in `msm_pricing`; the TIIE/OIS branch that imports
@@ -363,6 +371,28 @@ that derives those descriptors from `PricingValuationContext` and
 `PricingMarketDataSetCurveBinding`, but that resolver must preserve the
 set-based preparation guarantees from ADR 0036.
 
+The library needs two public curve-scenario workflows, not one overloaded
+function:
+
+```text
+price_curve_scenario(...)
+  Context-resolved workflow. The helper resolves curve rows, observations,
+  build details, base handles, and scenario handles from a
+  PricingValuationContext.
+
+price_resolved_curve_scenario(...)
+  Caller-resolved workflow. The caller supplies explicit line-curve
+  resolutions containing base handles and optional scenario handles. The helper
+  only selects the correct runtime handle per line, preserves z-spread overlays,
+  delegates pricing to price_scenario(...), and reports scenario impacts.
+```
+
+Do not hide both workflows behind optional arguments on
+`price_curve_scenario(...)`. The preflight contract is different: the
+context-resolved workflow validates backend curve observations and build
+details, while the resolved-handle workflow validates the caller-supplied
+runtime handles and line-to-curve mappings.
+
 Generic key-node bump helpers must:
 
 - operate on copies of source key-node dictionaries and never mutate submitted
@@ -409,6 +439,33 @@ The scenario helper must:
 - expose any diagnostic/partial-pricing mode explicitly;
 - use `apply_z_spread_to_curve(...)` only for runtime overlays when a line's
   observed z-spread should be preserved under a scenario curve.
+
+The reusable machinery here is line-level curve handle selection. It should be
+implemented as generic scenario machinery, not as a private project-specific
+helper. Its responsibility is:
+
+- receive all resolved curve candidates for one valuation line;
+- deduplicate candidates by `Curve.unique_identifier` so a shared curve is
+  shocked once and reused;
+- choose the one runtime handle that can be passed through the current
+  `reset_curve(...)` override contract;
+- use an explicit role-preference policy, for example projection/floating
+  curves before discount/z-spread-base curves for floating instruments, and
+  z-spread-base or discount curves before projection curves for fixed-rate
+  instruments;
+- build both base and scenario line-handle maps for
+  `msm_pricing.valuation.price_scenario(...)`;
+- apply observed decimal z-spread overlays to the selected runtime handle only,
+  without mutating the base curve, scenario curve, submitted instrument, or
+  prepared context;
+- fail or emit structured diagnostics when a non-empty shock exists for a
+  related curve that cannot be selected under the current single-reset-curve
+  instrument contract.
+
+This selection policy is not a curve resolver and not a connector adapter. It
+assumes curve rows or handles have already been resolved, and it answers only:
+"given the curve candidates for this position line, which base handle and which
+scenario handle should be passed to pricing?"
 
 The helper may expose line-level and group-level impact frames, but those
 frames are valuation outputs. They must not become portfolio source-selection
@@ -826,6 +883,134 @@ sub-stages. Do not land it as one opaque port from the downstream project.
   and failure modes.
 - [x] Add a changelog entry only when the public code is implemented, not for
   this planning expansion alone.
+
+#### Stage 4.9: Resolved Curve Scenario Pricing Entry Point
+
+The initial curve-scenario implementation covers the context-resolved workflow.
+Downstream projects also need a generic caller-resolved workflow where a
+position already has explicit base and scenario curve handles per line. This is
+the reusable part of the downstream `local_ms_markets/curve_scenario.py` file
+that should still move into `msm_pricing`.
+
+Target public function and input types:
+
+```python
+from collections.abc import Mapping, Sequence
+from typing import TypeAlias
+
+from msm_pricing.scenarios.curves import (
+    CurveScenario,
+    CurveScenarioResult,
+    LineCurveResolution,
+)
+from msm_pricing.valuation import PricingValuationContext, ValuationPosition
+
+LineCurveResolutionInput: TypeAlias = (
+    Sequence[LineCurveResolution]
+    | Mapping[int, LineCurveResolution | Sequence[LineCurveResolution]]
+)
+
+
+def price_resolved_curve_scenario(
+    position: ValuationPosition,
+    scenario: CurveScenario,
+    *,
+    line_curve_resolutions: LineCurveResolutionInput,
+    context: PricingValuationContext | None = None,
+    curve_quote_side: str | None = None,
+    strict: bool = True,
+) -> CurveScenarioResult:
+    ...
+```
+
+`LineCurveResolutionInput` accepts either a flat sequence of typed
+`LineCurveResolution` records or a mapping keyed by `line_index` for callers
+that already group curve roles per position line. The implementation must
+normalize this input into `dict[int, tuple[LineCurveResolution, ...]]` before
+building the base and scenario handle maps for `price_scenario(...)`.
+
+Implementation requirements:
+
+- [x] Add `price_resolved_curve_scenario(...)` under
+  `src/msm_pricing/scenarios/curves/engine.py` and export it from
+  `src/msm_pricing/scenarios/curves/__init__.py`.
+- [x] Add a concrete public type alias for `LineCurveResolutionInput` or an
+  equivalent explicitly typed input model. Do not document or implement this
+  API with an untyped `resolutions` placeholder.
+- [x] Keep `price_curve_scenario(...)` as the context-resolved entry point.
+  Do not add a hidden optional mode to it for explicit resolved handles.
+- [x] Reuse the existing `ResolvedLineCurve` / `LineCurveResolution` model as
+  the caller-supplied descriptor, or add a clearly named sibling model only if
+  the explicit-handle workflow needs different required fields.
+- [x] Accept a sequence or mapping of line-curve resolutions that can represent
+  multiple curve roles per line, including shared curves used by several
+  lines.
+- [x] Validate in strict mode that each non-empty shocked selected curve has a
+  `scenario_handle`; diagnostic mode may fall back to the base handle only with
+  an explicit structured diagnostic.
+- [x] Extract the current role-selection logic from the context-resolved path
+  into a shared internal helper, for example
+  `_line_curve_handle_maps_from_resolutions(...)`, so both public workflows
+  select handles with the same policy.
+- [x] Use the downstream explicit-handle selection workflow as behavioral
+  evidence, but remove project-specific concerns: no project default quote side
+  import, no permissive context-failure fallback, and no DataFrame-specific
+  result contract in the core selection helper.
+- [x] Selection must be deterministic and documented. For floating/indexed
+  instruments prefer `projection`, `floating`, `discount`,
+  `z_spread_base`; for fixed-rate instruments prefer `z_spread_base`,
+  `discount`, `projection`, `floating`.
+- [x] Preserve observed z-spread overlays by applying
+  `apply_z_spread_to_curve(...)` to the selected base/scenario runtime handles
+  immediately before building the maps passed to `price_scenario(...)`.
+- [x] Delegate all pricing to `msm_pricing.valuation.price_scenario(...)`.
+  Do not reintroduce the downstream parallel pricing loop that prepares and
+  prices lines itself.
+- [x] Return the same `CurveScenarioResult` shape as the context-resolved
+  workflow so consumers can compare base/scenario market value, line impacts,
+  curve shocks, diagnostics, and raw delegated payload consistently.
+
+Resolved workflow preflight requirements:
+
+- [x] Fail clearly when `line_curve_resolutions` contains no curves but the
+  scenario has a non-empty default shock.
+- [x] Fail clearly when a non-empty shock names a curve identifier that is not
+  present in any supplied resolution.
+- [x] Fail clearly when a selected shocked curve has no scenario handle.
+- [x] Emit a structured diagnostic when a non-selected related curve has a
+  non-empty shock that cannot be applied through the single `reset_curve(...)`
+  override available to the instrument.
+- [x] Keep strict mode as the default. Any diagnostic/partial-pricing behavior
+  must be visible at the call site with `strict=False`.
+
+Tests:
+
+- [x] Add `tests/msm_pricing/scenarios/curves/test_resolved_curve_scenarios.py`
+  covering an empty no-op scenario, a single shocked curve, one shared shocked
+  curve reused across multiple lines, multiple roles on one line, missing
+  scenario handle strict failure, non-selected shocked related-curve
+  diagnostics, and observed z-spread overlay isolation.
+- [x] Add a regression test that proves `price_resolved_curve_scenario(...)`
+  does not prepare or resolve backend curve observations when explicit handles
+  are supplied.
+- [x] Add a regression test that proves the resolved workflow and the
+  context-resolved workflow produce equivalent delegated `price_scenario(...)`
+  inputs when given equivalent `ResolvedLineCurve` records.
+
+Documentation and example:
+
+- [x] Document the two-workflow choice in
+  `docs/knowledge/msm_pricing/runtime_resolution.md`: use
+  `price_curve_scenario(...)` when `msm_pricing` should resolve/build curves
+  from a prepared context; use `price_resolved_curve_scenario(...)` when an
+  application or connector already produced explicit base/scenario handles.
+- [x] Add an example at `examples/msm_pricing/resolved_curve_scenario.py`
+  showing a small offline position, explicit base/scenario curve handles,
+  `LineCurveResolution` records, and a call to
+  `price_resolved_curve_scenario(...)`.
+- [x] Update downstream migration guidance so project-local files like
+  `local_ms_markets/curve_scenario.py` can become compatibility wrappers or be
+  removed after the resolved entry point is available.
 
 ### Stage 5: Optional Spread Analytics
 

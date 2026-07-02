@@ -9,6 +9,7 @@ connector-owned source data.
 
 from __future__ import annotations
 
+import datetime as dt
 import math
 import uuid
 from collections.abc import Mapping, Sequence
@@ -30,9 +31,17 @@ from msm_pricing.scenarios.curves.models import (
     CurveScenario,
     CurveScenarioDiagnostic,
     CurveScenarioResult,
+    LineCurveResolutionInput,
     ResolvedLineCurve,
 )
-from msm_pricing.valuation import PricingValuationContext, ValuationPosition, price_scenario
+from msm_pricing.valuation import (
+    PricingValuationContext,
+    PricingValuationContextSpec,
+    ValuationPosition,
+    _instrument_index_curve_requirements,
+    _instrument_keys,
+    price_scenario,
+)
 
 _FLOATING_ROLE_ATTRIBUTES = (
     ("floating_rate_index_uid", "projection"),
@@ -205,6 +214,69 @@ def price_curve_scenario(
     )
 
 
+def price_resolved_curve_scenario(
+    position: ValuationPosition,
+    scenario: CurveScenario,
+    *,
+    line_curve_resolutions: LineCurveResolutionInput,
+    context: PricingValuationContext | None = None,
+    curve_quote_side: str | None = None,
+    strict: bool = True,
+) -> CurveScenarioResult:
+    """Price a curve scenario from caller-supplied line curve resolutions.
+
+    Use this entry point when an application or connector has already resolved
+    each valuation line to explicit base and scenario runtime curve handles.
+    ``line_curve_resolutions`` accepts either a flat sequence of
+    ``LineCurveResolution`` records or a mapping keyed by ``line_index``. Each
+    non-empty selected shock must have a ``scenario_handle``. Empty shocks reuse
+    the selected base handle.
+
+    Pricing is still delegated to ``msm_pricing.valuation.price_scenario(...)``.
+    This helper does not resolve market-data-set curve bindings, load curve
+    rows, read curve observations, rebuild handles from key nodes, or mutate
+    submitted instruments. If ``context`` is omitted, a minimal context is
+    created for instrument preparation only; callers whose instruments need
+    cached index conventions or fixings should pass a prepared context.
+    """
+
+    diagnostics: list[CurveScenarioDiagnostic] = []
+    context = _resolved_curve_scenario_context(
+        position=position,
+        context=context,
+        curve_quote_side=curve_quote_side,
+    )
+    resolutions = _normalize_line_curve_resolutions(line_curve_resolutions)
+    _validate_resolution_line_indices(position=position, resolutions=resolutions)
+    resolutions = _with_position_z_spread_defaults(position=position, resolutions=resolutions)
+    _preflight_shocks_have_resolutions(
+        scenario=scenario,
+        resolutions=resolutions,
+        diagnostics=diagnostics,
+        strict=strict,
+    )
+    base_handles_by_line, scenario_handles_by_line = _line_curve_handle_maps_from_resolutions(
+        position=position,
+        scenario=scenario,
+        resolutions=resolutions,
+        diagnostics=diagnostics,
+        strict=strict,
+    )
+    payload = price_scenario(
+        position=position,
+        context=context,
+        line_curve_handles=base_handles_by_line,
+        scenario_curve_handles=scenario_handles_by_line,
+    )
+    return CurveScenarioResult.from_price_scenario_payload(
+        scenario_name=scenario.name,
+        payload=payload,
+        curve_shocks=_curve_shock_rows(scenario=scenario, resolutions=resolutions),
+        errors=tuple(diagnostics),
+        line_curve_resolutions=resolutions,
+    )
+
+
 def _build_scenario_handles_by_identifier(
     *,
     scenario: CurveScenario,
@@ -291,6 +363,23 @@ def _line_curve_handle_maps(
     diagnostics: list[CurveScenarioDiagnostic],
     strict: bool,
 ) -> tuple[dict[int, object], dict[int, object]]:
+    return _line_curve_handle_maps_from_resolutions(
+        position=position,
+        scenario=scenario,
+        resolutions=resolutions,
+        diagnostics=diagnostics,
+        strict=strict,
+    )
+
+
+def _line_curve_handle_maps_from_resolutions(
+    *,
+    position: ValuationPosition,
+    scenario: CurveScenario,
+    resolutions: Sequence[ResolvedLineCurve],
+    diagnostics: list[CurveScenarioDiagnostic],
+    strict: bool,
+) -> tuple[dict[int, object], dict[int, object]]:
     by_line: dict[int, list[ResolvedLineCurve]] = {}
     for resolution in resolutions:
         by_line.setdefault(resolution.line_index, []).append(resolution)
@@ -314,7 +403,9 @@ def _line_curve_handle_maps(
             selected.observed_z_spread_decimal,
         )
         selected_shock = scenario.shock_for(selected.curve_identifier)
-        scenario_handle = selected.base_handle if selected_shock.is_empty() else selected.scenario_handle
+        scenario_handle = (
+            selected.base_handle if selected_shock.is_empty() else selected.scenario_handle
+        )
         if scenario_handle is None:
             _record_or_raise(
                 CurveScenarioDiagnostic(
@@ -333,6 +424,138 @@ def _line_curve_handle_maps(
             selected.observed_z_spread_decimal,
         )
     return base_handles, scenario_handles_by_line
+
+
+def _normalize_line_curve_resolutions(
+    line_curve_resolutions: LineCurveResolutionInput,
+) -> tuple[ResolvedLineCurve, ...]:
+    if isinstance(line_curve_resolutions, Mapping):
+        rows: list[ResolvedLineCurve] = []
+        for raw_line_index, raw_value in line_curve_resolutions.items():
+            line_index = _coerce_line_index(raw_line_index)
+            for resolution in _line_resolution_sequence(raw_value):
+                if resolution.line_index != line_index:
+                    raise ValueError(
+                        "line_curve_resolutions mapping key does not match "
+                        f"resolution.line_index: key={line_index}, "
+                        f"resolution.line_index={resolution.line_index}."
+                    )
+                rows.append(resolution)
+        return tuple(rows)
+
+    if isinstance(line_curve_resolutions, str | bytes) or not isinstance(
+        line_curve_resolutions,
+        Sequence,
+    ):
+        raise TypeError(
+            "line_curve_resolutions must be a sequence of LineCurveResolution "
+            "records or a mapping keyed by line_index."
+        )
+    return tuple(_require_line_resolution(row) for row in line_curve_resolutions)
+
+
+def _line_resolution_sequence(value: object) -> tuple[ResolvedLineCurve, ...]:
+    if isinstance(value, ResolvedLineCurve):
+        return (value,)
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise TypeError(
+            "line_curve_resolutions mapping values must be LineCurveResolution "
+            "records or sequences of them."
+        )
+    return tuple(_require_line_resolution(row) for row in value)
+
+
+def _require_line_resolution(value: object) -> ResolvedLineCurve:
+    if not isinstance(value, ResolvedLineCurve):
+        raise TypeError(
+            "line_curve_resolutions must contain LineCurveResolution records, "
+            f"not {type(value).__name__}."
+        )
+    return value
+
+
+def _coerce_line_index(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError("line_curve_resolutions mapping keys must be integer line indexes.")
+    return value
+
+
+def _validate_resolution_line_indices(
+    *,
+    position: ValuationPosition,
+    resolutions: Sequence[ResolvedLineCurve],
+) -> None:
+    line_count = len(position.lines)
+    for resolution in resolutions:
+        if resolution.line_index < 0 or resolution.line_index >= line_count:
+            raise ValueError(
+                "LineCurveResolution.line_index is outside the valuation position: "
+                f"{resolution.line_index} for {line_count} lines."
+            )
+
+
+def _with_position_z_spread_defaults(
+    *,
+    position: ValuationPosition,
+    resolutions: Sequence[ResolvedLineCurve],
+) -> tuple[ResolvedLineCurve, ...]:
+    out: list[ResolvedLineCurve] = []
+    observed_by_line: dict[int, float | None] = {}
+    for resolution in resolutions:
+        if resolution.observed_z_spread_decimal is not None:
+            out.append(resolution)
+            continue
+        if resolution.line_index not in observed_by_line:
+            observed_by_line[resolution.line_index] = _observed_z_spread_decimal(
+                position.lines[resolution.line_index].metadata_json,
+            )
+        observed = observed_by_line[resolution.line_index]
+        out.append(
+            resolution
+            if observed is None
+            else replace(resolution, observed_z_spread_decimal=observed)
+        )
+    return tuple(out)
+
+
+def _resolved_curve_scenario_context(
+    *,
+    position: ValuationPosition,
+    context: PricingValuationContext | None,
+    curve_quote_side: str | None,
+) -> PricingValuationContext:
+    if context is not None:
+        context.validate_position_compatibility(position)
+        return context
+
+    normalized_quote_side = _normalize_curve_quote_side(curve_quote_side)
+    instruments = tuple(line.instrument for line in position.lines)
+    return PricingValuationContext(
+        spec=PricingValuationContextSpec(
+            valuation_date=_normalize_valuation_date(position.valuation_date),
+            market_data_set=position.market_data_set,
+            market_data_set_uid=None,
+            curve_quote_side=normalized_quote_side,
+            requirements=_instrument_index_curve_requirements(
+                instruments,
+                quote_side=normalized_quote_side,
+            ),
+            instruments=_instrument_keys(instruments),
+        )
+    )
+
+
+def _normalize_curve_quote_side(value: str | None) -> str | None:
+    if value in (None, ""):
+        return None
+    normalized = str(value).strip().lower()
+    return normalized or None
+
+
+def _normalize_valuation_date(value: dt.datetime) -> dt.datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=dt.UTC)
+    return value
 
 
 def _validate_unselected_shocks(
@@ -421,9 +644,7 @@ def _curve_shock_rows(
             {
                 "curve_identifier": resolution.curve_identifier,
                 "parallel_bp": scenario.shock_for(resolution.curve_identifier).parallel_bp,
-                "keyrate_bp": dict(
-                    scenario.shock_for(resolution.curve_identifier).keyrate_bp
-                ),
+                "keyrate_bp": dict(scenario.shock_for(resolution.curve_identifier).keyrate_bp),
                 "line_count": 0,
             },
         )
@@ -549,5 +770,6 @@ def _coerce_uuid(value: object, *, field_name: str) -> uuid.UUID:
 __all__ = [
     "build_scenario_curve_handle",
     "price_curve_scenario",
+    "price_resolved_curve_scenario",
     "resolve_line_curve_resolutions",
 ]

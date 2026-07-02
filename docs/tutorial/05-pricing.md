@@ -345,16 +345,19 @@ For a full floating-rate bond workflow, use
    )
    ```
 
-   Use `msm_pricing.price_scenario(...)` directly only when the caller already
-   has exact line-scoped base and scenario curve handles. In both cases,
+   Use `msm_pricing.scenarios.curves.price_resolved_curve_scenario(...)` when
+   the caller already has exact line-scoped base and scenario curve handles.
+   That resolved workflow accepts typed `LineCurveResolution` records and still
+   delegates line pricing to `msm_pricing.price_scenario(...)`. In both cases,
    scenario state is applied to prepared copies instead of caller-owned
    instruments.
    For a fast local smoke test of that workflow, run
    `examples/msm_pricing/valuation_inputs.py` for normalized valuation rows or
    `examples/msm_pricing/pricing_valuation_context.py` for prepared
    fixed-income context behavior. Run `examples/msm_pricing/curve_scenario.py`
-   for an offline curve-scenario example. These examples avoid live platform
-   market-data setup.
+   for the context-resolved offline curve-scenario example, or
+   `examples/msm_pricing/resolved_curve_scenario.py` for the explicit-handle
+   workflow. These examples avoid live platform market-data setup.
 
 ## Optional spread analytics
 

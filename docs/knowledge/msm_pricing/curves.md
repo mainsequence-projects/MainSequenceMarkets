@@ -296,6 +296,14 @@ not be moved into core `msm_pricing`; the connector can either publish generic
 key nodes that this API can convert or build connector-owned scenario handles
 before calling lower-level pricing helpers.
 
+When the caller already has exact base and scenario curve handles, use
+`price_resolved_curve_scenario(...)` instead of rebuilding handles from
+`key_nodes`. That workflow accepts typed `LineCurveResolution` records, applies
+the same deterministic line-role selection and observed z-spread overlays, and
+returns the same `CurveScenarioResult` shape as `price_curve_scenario(...)`.
+See [Runtime Resolution](runtime_resolution.md#curve-scenario-resolution) and
+`examples/msm_pricing/resolved_curve_scenario.py`.
+
 ## Curve Observations
 
 `DiscountCurvesNode` publishes timestamped curve observations. Its storage key
