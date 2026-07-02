@@ -20,6 +20,9 @@ from examples.msm_pricing.utils import (  # noqa: E402
 from examples.msm_pricing.pricing_valuation_context import (  # noqa: E402
     build_mock_context_workflow,
 )
+from examples.msm_pricing.valuation_inputs import (  # noqa: E402
+    build_normalized_valuation_input_example,
+)
 
 
 def test_mock_fixings_default_to_one_month_window() -> None:
@@ -77,3 +80,34 @@ def test_pricing_valuation_context_example_runs_with_mock_market_data() -> None:
     assert result["prepared_z_spread"] == pytest.approx(0.0025)
     assert result["prepared_analytics"]["unit_price"] == result["unit_price"]
     assert result["prepared_analytics"]["one_year_zero_rate"] > 0
+
+
+def test_normalized_valuation_input_example_builds_position() -> None:
+    result = build_normalized_valuation_input_example()
+
+    assert result["valuation_date"] == "2026-05-27T00:00:00+00:00"
+    assert result["market_data_set"] == "eod"
+    assert result["line_count"] == 2
+    assert result["market_value"] == pytest.approx(54.375)
+    assert result["first_original_valuation_date"] is None
+    assert result["second_original_valuation_date"] is None
+    assert result["breakdown"] == [
+        {
+            "line_index": 0,
+            "instrument_type": "FlatPriceInstrument",
+            "asset_uid": "00000000-0000-4000-8000-000000000101",
+            "units": 2.0,
+            "unit_price": 101.25,
+            "market_value": 202.5,
+            "metadata_json": {"source": "example-row-1"},
+        },
+        {
+            "line_index": 1,
+            "instrument_type": "FlatPriceInstrument",
+            "asset_uid": "00000000-0000-4000-8000-000000000102",
+            "units": -1.5,
+            "unit_price": 98.75,
+            "market_value": -148.125,
+            "metadata_json": {"source": "example-row-2"},
+        },
+    ]

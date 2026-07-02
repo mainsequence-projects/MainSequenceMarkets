@@ -124,23 +124,24 @@ account workflow should select the holdings snapshot, resolve each
 
 ```python
 from msm_pricing.api import load_instruments_from_assets
-from msm_pricing.valuation import ValuationLine, ValuationPosition
+from msm_pricing.valuation import build_valuation_position
 
 assets = list(assets_by_identifier.values())
 instruments_by_asset_uid = load_instruments_from_assets(assets)
-lines = [
-    ValuationLine(
-        instrument=instruments_by_asset_uid[asset.uid],
-        units=row["quantity"] * row["direction"],
-        asset_uid=asset.uid,
-    )
+valuation_rows = [
+    {
+        "instrument": instruments_by_asset_uid[asset.uid],
+        "units": row["quantity"] * row["direction"],
+        "asset_uid": asset.uid,
+        "metadata_json": {"source": "account_holding"},
+    }
     for row in account_holding_rows
     for asset in [assets_by_identifier[row["asset_identifier"]]]
 ]
-position = ValuationPosition(
+position = build_valuation_position(
+    valuation_rows,
     valuation_date=valuation_date,
     market_data_set="eod",
-    lines=lines,
 )
 ```
 
@@ -151,20 +152,33 @@ asset-level units:
 ```python
 assets = list(assets_by_uid.values())
 instruments_by_asset_uid = load_instruments_from_assets(assets)
-lines = [
-    ValuationLine(
-        instrument=instruments_by_asset_uid[row["asset_uid"]],
-        units=row["units"],
-        asset_uid=row["asset_uid"],
-    )
+valuation_rows = [
+    {
+        "instrument": instruments_by_asset_uid[row["asset_uid"]],
+        "units": row["units"],
+        "asset_uid": row["asset_uid"],
+        "metadata_json": {"source": "portfolio_weight"},
+    }
     for row in normalized_portfolio_rows
 ]
+position = build_valuation_position(
+    valuation_rows,
+    valuation_date=valuation_date,
+    market_data_set="eod",
+)
 ```
 
 `ValuationPosition` has one `market_data_set` for the whole basket. Build
 separate baskets when two groups of lines must be valued against different
 market-data sets. See [Market Data Sets](market_data_sets.md) for how the
 selected set resolves to DataNode reads.
+
+`build_valuation_position(...)` accepts normalized mappings or a pandas
+DataFrame with required `instrument` and `units` fields, plus optional
+`asset_uid` and `metadata_json`. The valuation date is required and the
+market-data set is passed only at the basket level. Rows must not carry their
+own `market_data_set`; source-specific selection and asset/instrument loading
+belong before this pricing boundary.
 
 Use `PricingValuationContext` for portfolio-style pricing instead of calling
 private valuation-position helpers. The context prepares the known instrument

@@ -30,6 +30,7 @@ __all__ = [
     "PreparedInstrument",
     "ValuationLine",
     "ValuationPosition",
+    "build_valuation_position",
     "price_scenario",
 ]
 
@@ -42,6 +43,7 @@ _ATTR_TO_MODULE["PricingValuationInstrumentKey"] = ".valuation"
 _ATTR_TO_MODULE["PreparedInstrument"] = ".valuation"
 _ATTR_TO_MODULE["ValuationLine"] = ".valuation"
 _ATTR_TO_MODULE["ValuationPosition"] = ".valuation"
+_ATTR_TO_MODULE["build_valuation_position"] = ".valuation"
 _ATTR_TO_MODULE["price_scenario"] = ".valuation"
 for _name in (
     "PRICING_CONCEPT_DISCOUNT_CURVES",

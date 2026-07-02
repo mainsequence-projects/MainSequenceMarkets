@@ -30,6 +30,7 @@ from msm_pricing.valuation import (
     PricingValuationContextSpec,
     ValuationLine,
     ValuationPosition,
+    build_valuation_position,
     price_scenario,
 )
 
@@ -249,6 +250,128 @@ def test_valuation_position_net_cashflows_falls_back_to_cashflow_rows() -> None:
 def test_valuation_position_rejects_non_finite_units() -> None:
     with pytest.raises(ValueError, match="units must be finite"):
         ValuationLine(instrument=FakePricedInstrument(), units=float("nan"))
+
+
+def test_build_valuation_position_from_normalized_rows_preserves_order_and_context() -> None:
+    valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    first_asset_uid = uuid.uuid4()
+    first = FakePricedInstrument(price_value=10.0)
+    second = FakePricedInstrument(price_value=4.0)
+
+    position = build_valuation_position(
+        [
+            {
+                "instrument": first,
+                "units": "3.5",
+                "asset_uid": first_asset_uid,
+                "metadata_json": {"source": "portfolio-a"},
+            },
+            {
+                "instrument": second,
+                "units": -2,
+                "metadata_json": None,
+            },
+        ],
+        valuation_date=valuation_date,
+        market_data_set="eod",
+    )
+
+    assert position.valuation_date == valuation_date
+    assert position.market_data_set == "eod"
+    assert [line.instrument for line in position.lines] == [first, second]
+    assert [line.units for line in position.lines] == [3.5, -2.0]
+    assert position.lines[0].asset_uid == first_asset_uid
+    assert position.lines[0].metadata_json == {"source": "portfolio-a"}
+    assert position.lines[1].metadata_json == {}
+
+
+def test_build_valuation_position_accepts_dataframe_rows() -> None:
+    valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    instrument = FakePricedInstrument(price_value=9.0)
+    frame = pd.DataFrame(
+        [
+            {
+                "instrument": instrument,
+                "units": 2.0,
+                "asset_uid": uuid.uuid4(),
+                "metadata_json": {"source": "dataframe"},
+            }
+        ]
+    )
+
+    position = build_valuation_position(
+        frame,
+        valuation_date=valuation_date,
+        market_data_set=uuid.uuid4(),
+    )
+
+    assert len(position.lines) == 1
+    assert position.lines[0].instrument is instrument
+    assert position.lines[0].units == 2.0
+    assert position.lines[0].metadata_json == {"source": "dataframe"}
+
+
+def test_build_valuation_position_requires_explicit_valuation_date() -> None:
+    with pytest.raises(ValueError, match="valuation_date is required"):
+        build_valuation_position(
+            [{"instrument": FakePricedInstrument(), "units": 1.0}],
+            valuation_date=None,
+        )
+
+
+def test_build_valuation_position_rejects_missing_required_fields() -> None:
+    with pytest.raises(ValueError, match="row 0.*'instrument'"):
+        build_valuation_position(
+            [{"units": 1.0}],
+            valuation_date=dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+        )
+    with pytest.raises(ValueError, match="row 0.*'units'"):
+        build_valuation_position(
+            [{"instrument": FakePricedInstrument()}],
+            valuation_date=dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+        )
+
+
+def test_build_valuation_position_rejects_line_market_data_set_override() -> None:
+    with pytest.raises(ValueError, match="must not define market_data_set"):
+        build_valuation_position(
+            [
+                {
+                    "instrument": FakePricedInstrument(),
+                    "units": 1.0,
+                    "market_data_set": "live",
+                }
+            ],
+            valuation_date=dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+            market_data_set="eod",
+        )
+
+
+def test_build_valuation_position_rejects_non_mapping_rows_and_metadata() -> None:
+    with pytest.raises(TypeError, match="row 0 must be a mapping"):
+        build_valuation_position(
+            [("instrument", FakePricedInstrument())],
+            valuation_date=dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+        )
+    with pytest.raises(ValueError, match="metadata_json must be a mapping"):
+        build_valuation_position(
+            [
+                {
+                    "instrument": FakePricedInstrument(),
+                    "units": 1.0,
+                    "metadata_json": "not-a-mapping",
+                }
+            ],
+            valuation_date=dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+        )
+
+
+def test_build_valuation_position_rejects_non_finite_units() -> None:
+    with pytest.raises(ValueError, match="units must be finite"):
+        build_valuation_position(
+            [{"instrument": FakePricedInstrument(), "units": float("inf")}],
+            valuation_date=dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+        )
 
 
 def test_valuation_position_fails_for_unsupported_requested_output() -> None:
@@ -490,140 +613,154 @@ def test_pricing_valuation_context_bulk_resolves_fixed_income_rows(monkeypatch) 
 
     monkeypatch.setattr(
         "msm_pricing.api.market_data_bindings.PricingMarketDataSet.resolve_uid",
-        staticmethod(lambda selector: calls.append(("market_data_set", selector)) or market_data_set_uid),
+        staticmethod(
+            lambda selector: calls.append(("market_data_set", selector)) or market_data_set_uid
+        ),
     )
     monkeypatch.setattr(
         "msm_pricing.api.market_data_bindings.PricingMarketDataSetBinding.filter_for_set_and_concepts",
         staticmethod(
-            lambda **kwargs: calls.append(("concept_bindings", kwargs))
-            or [
-                PricingMarketDataSetBinding(
-                    uid=uuid.uuid4(),
-                    market_data_set_uid=market_data_set_uid,
-                    concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-                    data_node_uid=uuid.uuid4(),
-                ),
-                PricingMarketDataSetBinding(
-                    uid=uuid.uuid4(),
-                    market_data_set_uid=market_data_set_uid,
-                    concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-                    data_node_uid=uuid.uuid4(),
-                ),
-            ]
+            lambda **kwargs: (
+                calls.append(("concept_bindings", kwargs))
+                or [
+                    PricingMarketDataSetBinding(
+                        uid=uuid.uuid4(),
+                        market_data_set_uid=market_data_set_uid,
+                        concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
+                        data_node_uid=uuid.uuid4(),
+                    ),
+                    PricingMarketDataSetBinding(
+                        uid=uuid.uuid4(),
+                        market_data_set_uid=market_data_set_uid,
+                        concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+                        data_node_uid=uuid.uuid4(),
+                    ),
+                ]
+            )
         ),
     )
     monkeypatch.setattr(
         Index,
         "filter_by_uids",
         staticmethod(
-            lambda index_uids: calls.append(("indexes", index_uids))
-            or [
-                Index(
-                    uid=index_uid,
-                    unique_identifier="USD-SOFR",
-                    index_type="interest_rate",
-                    display_name="USD SOFR",
-                )
-            ]
+            lambda index_uids: (
+                calls.append(("indexes", index_uids))
+                or [
+                    Index(
+                        uid=index_uid,
+                        unique_identifier="USD-SOFR",
+                        index_type="interest_rate",
+                        display_name="USD SOFR",
+                    )
+                ]
+            )
         ),
     )
     monkeypatch.setattr(
         "msm_pricing.api.index_convention_details.IndexConventionDetails.filter_by_index_uids",
         staticmethod(
-            lambda index_uids: calls.append(("index_conventions", index_uids))
-            or [
-                IndexConventionDetails(
-                    index_uid=index_uid,
-                    index_family="ibor",
-                    convention_dump={
-                        "currency_code": "USD",
-                        "day_counter_code": "Actual360",
-                        "calendar_code": "TARGET",
-                        "business_day_convention": "ModifiedFollowing",
-                        "settlement_days": 2,
-                        "period": "3M",
-                    },
-                )
-            ]
+            lambda index_uids: (
+                calls.append(("index_conventions", index_uids))
+                or [
+                    IndexConventionDetails(
+                        index_uid=index_uid,
+                        index_family="ibor",
+                        convention_dump={
+                            "currency_code": "USD",
+                            "day_counter_code": "Actual360",
+                            "calendar_code": "TARGET",
+                            "business_day_convention": "ModifiedFollowing",
+                            "settlement_days": 2,
+                            "period": "3M",
+                        },
+                    )
+                ]
+            )
         ),
     )
     monkeypatch.setattr(
         "msm_pricing.api.market_data_bindings.PricingMarketDataSetCurveBinding.filter_by_binding_keys",
         staticmethod(
-            lambda **kwargs: calls.append(("curve_bindings", kwargs))
-            or [
-                PricingMarketDataSetCurveBinding(
-                    uid=uuid.uuid4(),
-                    market_data_set_uid=market_data_set_uid,
-                    binding_key=binding_key,
-                    role_key="projection",
-                    selector_type="index",
-                    selector_key=str(index_uid),
-                    quote_side="mid",
-                    curve_uid=curve_uid,
-                )
-            ]
+            lambda **kwargs: (
+                calls.append(("curve_bindings", kwargs))
+                or [
+                    PricingMarketDataSetCurveBinding(
+                        uid=uuid.uuid4(),
+                        market_data_set_uid=market_data_set_uid,
+                        binding_key=binding_key,
+                        role_key="projection",
+                        selector_type="index",
+                        selector_key=str(index_uid),
+                        quote_side="mid",
+                        curve_uid=curve_uid,
+                    )
+                ]
+            )
         ),
     )
     monkeypatch.setattr(
         "msm_pricing.api.curves.Curve.filter_by_uids",
         staticmethod(
-            lambda curve_uids: calls.append(("curves", curve_uids))
-            or [
-                Curve(
-                    uid=curve_uid,
-                    unique_identifier="USD-SOFR-PROJECTION",
-                    display_name="USD SOFR Projection",
-                    curve_type="projection",
-                )
-            ]
+            lambda curve_uids: (
+                calls.append(("curves", curve_uids))
+                or [
+                    Curve(
+                        uid=curve_uid,
+                        unique_identifier="USD-SOFR-PROJECTION",
+                        display_name="USD SOFR Projection",
+                        curve_type="projection",
+                    )
+                ]
+            )
         ),
     )
     monkeypatch.setattr(
         "msm_pricing.api.curve_building_details.CurveBuildingDetails.filter_by_curve_uids",
         staticmethod(
-            lambda curve_uids: calls.append(("curve_building_details", curve_uids))
-            or [
-                CurveBuildingDetails(
-                    curve_uid=curve_uid,
-                    builder_type="zero_rate_curve",
-                    quote_convention="zero_rate",
-                    rate_unit="decimal",
-                    day_counter_code="Actual360",
-                    calendar_code="TARGET",
-                    interpolation_method="linear_zero",
-                    compounding="simple",
-                    extrapolation_policy="enabled",
-                )
-            ]
+            lambda curve_uids: (
+                calls.append(("curve_building_details", curve_uids))
+                or [
+                    CurveBuildingDetails(
+                        curve_uid=curve_uid,
+                        builder_type="zero_rate_curve",
+                        quote_convention="zero_rate",
+                        rate_unit="decimal",
+                        day_counter_code="Actual360",
+                        calendar_code="TARGET",
+                        interpolation_method="linear_zero",
+                        compounding="simple",
+                        extrapolation_policy="enabled",
+                    )
+                ]
+            )
         ),
     )
     monkeypatch.setattr(
         MSDataInterface,
         "get_historical_discount_curve_observations",
-        lambda self, curve_names, target_date, *, market_data_set=None: calls.append(
-            ("curve_observations", curve_names, target_date, market_data_set)
-        )
-        or {
-            "USD-SOFR-PROJECTION": (
-                {
-                    "curve_identifier": "USD-SOFR-PROJECTION",
-                    "time_index": target_date,
-                    "nodes": [{"days_to_maturity": 365, "zero": 0.05}],
-                    "key_nodes": None,
-                    "metadata_json": None,
-                },
-                target_date,
-            )
-        },
+        lambda self, curve_names, target_date, *, market_data_set=None: (
+            calls.append(("curve_observations", curve_names, target_date, market_data_set))
+            or {
+                "USD-SOFR-PROJECTION": (
+                    {
+                        "curve_identifier": "USD-SOFR-PROJECTION",
+                        "time_index": target_date,
+                        "nodes": [{"days_to_maturity": 365, "zero": 0.05}],
+                        "key_nodes": None,
+                        "metadata_json": None,
+                    },
+                    target_date,
+                )
+            }
+        ),
     )
     monkeypatch.setattr(
         MSDataInterface,
         "get_historical_fixings_for_identifiers",
-        lambda self, identifiers, start_date, end_date, *, market_data_set=None: calls.append(
-            ("fixings", identifiers, start_date, end_date, market_data_set)
-        )
-        or {"USD-SOFR": {dt.date(2026, 5, 26): 0.0525}},
+        lambda self, identifiers, start_date, end_date, *, market_data_set=None: (
+            calls.append(("fixings", identifiers, start_date, end_date, market_data_set))
+            or {"USD-SOFR": {dt.date(2026, 5, 26): 0.0525}}
+        ),
     )
 
     context = PricingValuationContext.prepare(
@@ -639,7 +776,10 @@ def test_pricing_valuation_context_bulk_resolves_fixed_income_rows(monkeypatch) 
         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
     }
     assert context.get_index_convention(index_uid).index_family == "ibor"
-    assert context.get_index_curve_binding(role_key="projection", index_uid=index_uid).curve_uid == curve_uid
+    assert (
+        context.get_index_curve_binding(role_key="projection", index_uid=index_uid).curve_uid
+        == curve_uid
+    )
     assert context.get_curve(curve_uid).unique_identifier == "USD-SOFR-PROJECTION"
     assert context.get_curve_building_details(curve_uid).curve_uid == curve_uid
     assert context.spec.requested_roles == ("projection",)
@@ -1081,4 +1221,5 @@ def test_price_scenario_uses_line_scoped_curve_handle_copies() -> None:
 def test_package_exports_pricing_valuation_context() -> None:
     assert msm_pricing.PricingValuationContext is PricingValuationContext
     assert msm_pricing.PricingValuationContextSpec is PricingValuationContextSpec
+    assert msm_pricing.build_valuation_position is build_valuation_position
     assert msm_pricing.price_scenario is price_scenario

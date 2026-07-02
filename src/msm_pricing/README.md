@@ -17,7 +17,7 @@ from msm_pricing.pricing_engine import (
     resolve_quantlib_index,
     resolve_pricing_curve,
 )
-from msm_pricing.valuation import ValuationLine, ValuationPosition
+from msm_pricing.valuation import ValuationLine, ValuationPosition, build_valuation_position
 ```
 
 ## Package Layout
@@ -49,6 +49,7 @@ The current package exports:
 - `InterestRateSwap`
 - `ValuationLine`
 - `ValuationPosition`
+- `build_valuation_position`
 
 `ValuationPosition` is an in-memory valuation basket. It links priceable
 instrument instances to unit multipliers for one explicit valuation context. It
@@ -189,15 +190,28 @@ When the argument is omitted, the process default market-data set is used.
 For instrument-plus-units valuation, use `ValuationPosition`:
 
 ```python
-from msm_pricing.valuation import ValuationLine, ValuationPosition
+from msm_pricing.valuation import build_valuation_position
 
-position = ValuationPosition(
+position = build_valuation_position(
+    [
+        {
+            "instrument": bond,
+            "units": 25.0,
+            "asset_uid": asset.uid,
+            "metadata_json": {"source": "example"},
+        }
+    ],
     valuation_date=valuation_date,
     market_data_set="eod",
-    lines=[ValuationLine(instrument=bond, units=25.0, asset_uid=asset.uid)],
 )
 portfolio_value = position.price()
 ```
+
+`build_valuation_position(...)` accepts normalized row mappings or a pandas
+DataFrame with required `instrument` and `units` fields, plus optional
+`asset_uid` and `metadata_json`. It does not resolve assets or load instruments;
+callers should use the package-owned source workflows first and pass already
+loaded priceable instruments into the helper.
 
 For portfolio or scenario pricing, prepare a `PricingValuationContext` before
 the line-pricing loop. The context resolves the fixed-income market-data graph
@@ -276,21 +290,21 @@ exposure into signed `units`. Pricing then receives only valuation lines:
 
 ```python
 from msm_pricing.api import load_instruments_from_assets
-from msm_pricing.valuation import ValuationLine, ValuationPosition
+from msm_pricing.valuation import build_valuation_position
 
 instruments_by_asset_uid = load_instruments_from_assets(assets)
-lines = [
-    ValuationLine(
-        instrument=instruments_by_asset_uid[row["asset_uid"]],
-        units=row["units"],
-        asset_uid=row["asset_uid"],
-    )
+valuation_rows = [
+    {
+        "instrument": instruments_by_asset_uid[row["asset_uid"]],
+        "units": row["units"],
+        "asset_uid": row["asset_uid"],
+    }
     for row in normalized_source_rows
 ]
-position = ValuationPosition(
+position = build_valuation_position(
+    valuation_rows,
     valuation_date=valuation_date,
     market_data_set="eod",
-    lines=lines,
 )
 ```
 

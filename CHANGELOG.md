@@ -15,6 +15,9 @@ and this project follows versioned releases.
 - Added `PreparedInstrument.z_spread(...)` so valuation-context prepared
   instruments propagate the selected market-data set and curve quote side when
   solving z-spreads.
+- Added `msm_pricing.valuation.build_valuation_position(...)` for strict
+  construction of transient valuation baskets from normalized instrument/unit
+  rows.
 - Added reusable `command_center` helpers for ms-markets Command Center
   tabular frames and Asset Monitor workspace documents, plus the
   `apps/v1` `getAssetMonitorFrame` reference endpoint.
@@ -41,6 +44,10 @@ and this project follows versioned releases.
   SQLAlchemy-backed resolution instead of hiding per-line backend lookup loops
   behind a public API, and that prepared instruments are copied or wrapped
   rather than mutating caller-owned instrument objects.
+- Added an implementation task plan for reusable valuation input construction,
+  portfolio and asset read services, curve-keyed scenario pricing, and optional
+  fixed-income spread analytics without copying project-local adapter code into
+  the library.
 - Implemented `PricingValuationContext` with a public `PreparedInstrument`
   wrapper, frozen `PricingValuationContextSpec` input contract, fixed
   prepared-instrument universe, package-level exports, context-aware

@@ -6,7 +6,7 @@ import inspect
 import math
 import uuid
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -63,7 +63,9 @@ class ValuationPosition(BaseModel):
             )
         )
 
-    def price_breakdown(self, *, context: PricingValuationContext | None = None) -> list[dict[str, Any]]:
+    def price_breakdown(
+        self, *, context: PricingValuationContext | None = None
+    ) -> list[dict[str, Any]]:
         """Return per-line pricing details scaled by units."""
 
         context = self._context(context)
@@ -219,6 +221,52 @@ class ValuationPosition(BaseModel):
         if not callable(method):
             raise TypeError(f"{prepared.instrument_type} does not support {method_name}().")
         return method()
+
+
+def build_valuation_position(
+    rows: pd.DataFrame | Iterable[Mapping[str, Any]],
+    *,
+    valuation_date: dt.datetime,
+    market_data_set: PricingMarketDataSetSelector = None,
+) -> ValuationPosition:
+    """Build a valuation basket from normalized instrument/unit rows.
+
+    Source-specific snapshot selection, asset resolution, and instrument
+    loading must happen before this helper is called. Each row must provide an
+    already loaded priceable instrument and a unit multiplier.
+    """
+
+    if valuation_date is None:
+        raise ValueError("valuation_date is required.")
+
+    lines: list[ValuationLine] = []
+    for row_index, row in enumerate(_valuation_input_records(rows)):
+        row_mapping = _valuation_input_row_mapping(row, row_index=row_index)
+        _reject_line_market_data_set(row_mapping, row_index=row_index)
+        for required_field in ("instrument", "units"):
+            if required_field not in row_mapping:
+                raise ValueError(
+                    f"valuation input row {row_index} is missing required field {required_field!r}."
+                )
+        metadata_json = row_mapping.get("metadata_json", {})
+        if metadata_json is None:
+            metadata_json = {}
+        if not isinstance(metadata_json, Mapping):
+            raise ValueError(f"valuation input row {row_index} metadata_json must be a mapping.")
+        lines.append(
+            ValuationLine(
+                instrument=row_mapping["instrument"],
+                units=row_mapping["units"],
+                asset_uid=row_mapping.get("asset_uid"),
+                metadata_json=dict(metadata_json),
+            )
+        )
+
+    return ValuationPosition(
+        valuation_date=valuation_date,
+        market_data_set=market_data_set,
+        lines=lines,
+    )
 
 
 @dataclass(frozen=True)
@@ -388,8 +436,7 @@ class PricingValuationContext:
         position_source_ids = tuple(id(line.instrument) for line in position.lines)
         if position_source_ids != self.spec.instrument_source_id_sequence:
             raise ValueError(
-                "PricingValuationContext instrument universe does not match the "
-                "ValuationPosition."
+                "PricingValuationContext instrument universe does not match the ValuationPosition."
             )
         for line in position.lines:
             self.spec.validate_instrument_member(line.instrument)
@@ -422,7 +469,11 @@ class PricingValuationContext:
         return prepared
 
     def market_data_set_for_instrument(self) -> PricingMarketDataSetSelector:
-        return self.market_data_set_uid if self.market_data_set_uid is not None else self.market_data_set
+        return (
+            self.market_data_set_uid
+            if self.market_data_set_uid is not None
+            else self.market_data_set
+        )
 
     def get_market_data_binding(self, concept_key: str) -> Any:
         try:
@@ -449,8 +500,7 @@ class PricingValuationContext:
             return self.indexes[resolved_uid]
         except KeyError as exc:
             raise LookupError(
-                "PricingValuationContext has no index row cached for "
-                f"index_uid={resolved_uid}."
+                f"PricingValuationContext has no index row cached for index_uid={resolved_uid}."
             ) from exc
 
     def get_index_curve_binding(
@@ -772,7 +822,9 @@ class PricingValuationContext:
             self.valuation_date,
         )
         self.fixing_observations.update(observations)
-        missing = [identifier for identifier in identifiers if not self.fixing_observations.get(identifier)]
+        missing = [
+            identifier for identifier in identifiers if not self.fixing_observations.get(identifier)
+        ]
         if missing:
             raise LookupError(
                 "PricingValuationContext could not resolve fixing observations: "
@@ -1048,9 +1100,7 @@ def _require_keys(
 ) -> None:
     missing = [key for key in required_keys if key not in cache]
     if missing:
-        raise LookupError(
-            f"{missing_message}: {', '.join(str(key) for key in missing)}."
-        )
+        raise LookupError(f"{missing_message}: {', '.join(str(key) for key in missing)}.")
 
 
 def _duplicate_values(values: Any) -> set[str]:
@@ -1119,6 +1169,29 @@ def _accepts_keyword(method: Any, keyword: str) -> bool:
     return False
 
 
+def _valuation_input_records(
+    rows: pd.DataFrame | Iterable[Mapping[str, Any]],
+) -> Iterable[Mapping[str, Any]]:
+    if isinstance(rows, pd.DataFrame):
+        return rows.to_dict("records")
+    return rows
+
+
+def _valuation_input_row_mapping(row: Any, *, row_index: int) -> Mapping[str, Any]:
+    if not isinstance(row, Mapping):
+        raise TypeError(f"valuation input row {row_index} must be a mapping.")
+    return row
+
+
+def _reject_line_market_data_set(row: Mapping[str, Any], *, row_index: int) -> None:
+    if row.get("market_data_set") not in (None, ""):
+        raise ValueError(
+            "valuation input rows must not define market_data_set; pass it to "
+            f"build_valuation_position(...). Row {row_index} has a line-level "
+            "market_data_set value."
+        )
+
+
 __all__ = [
     "IndexCurveRequirement",
     "PreparedInstrument",
@@ -1127,5 +1200,6 @@ __all__ = [
     "PricingValuationInstrumentKey",
     "ValuationLine",
     "ValuationPosition",
+    "build_valuation_position",
     "price_scenario",
 ]

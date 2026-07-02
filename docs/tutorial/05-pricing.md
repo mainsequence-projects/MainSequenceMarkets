@@ -284,16 +284,24 @@ For a full floating-rate bond workflow, use
 8. Reload it generically with `Instrument.load_from_asset(asset)`, set the
    valuation date, then call `price(market_data_set="default")`,
    `analytics()`, `get_cashflows()`, and `carry_roll_down(...)`.
-9. Use `ValuationPosition` when the valuation input is an instrument plus a
-   unit multiplier. For account or portfolio sources, normalize the owning
-   package's source rows into `ValuationLine` inputs first; the pricing basket
-   does not query those tables. The bond pricing example now values the loaded
-   bond both as a single instrument and as a one-line valuation basket. For
-   portfolio-style runs, prepare a public valuation context once and pass it to
-   the basket methods:
+9. Use `build_valuation_position(...)` when the valuation input is already
+   normalized to instrument plus unit rows. For account or portfolio sources,
+   the owning package still selects the source snapshot and resolves assets;
+   pricing receives rows with `instrument`, `units`, optional `asset_uid`, and
+   optional `metadata_json`. Rows must not carry their own market-data set
+   because `ValuationPosition` has one basket-level source selection. The bond
+   pricing example now values the loaded bond both as a single instrument and
+   as a one-line valuation basket. For portfolio-style runs, prepare a public
+   valuation context once and pass it to the basket methods:
 
    ```python
-   from msm_pricing.valuation import PricingValuationContext
+   from msm_pricing.valuation import PricingValuationContext, build_valuation_position
+
+   position = build_valuation_position(
+       normalized_rows,
+       valuation_date=valuation_date,
+       market_data_set="eod",
+   )
 
    context = PricingValuationContext.prepare_for_position(
        position,
@@ -315,8 +323,9 @@ For a full floating-rate bond workflow, use
    explicit line-scoped base and scenario curve handles, so scenario state is
    applied to prepared copies instead of caller-owned instruments.
    For a fast local smoke test of that workflow, run
-   `examples/msm_pricing/pricing_valuation_context.py`; it uses the shared mock
-   flat-forward curve and mock fixing builders without requiring platform
+   `examples/msm_pricing/valuation_inputs.py` for normalized valuation rows or
+   `examples/msm_pricing/pricing_valuation_context.py` for prepared
+   fixed-income context behavior. Both examples avoid live platform
    market-data setup.
 
 The reusable mock market-data components live in `examples/msm_pricing/utils/` so
