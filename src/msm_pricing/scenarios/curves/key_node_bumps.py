@@ -17,24 +17,12 @@ from typing import Any
 
 import pandas as pd
 
-from msm_pricing.scenarios.curves.models import CurveBumpSpec
-
-RATE_QUOTE_TYPES = frozenset(
-    {
-        "deposit_rate",
-        "forward",
-        "forward_rate",
-        "overnight_rate",
-        "par_rate",
-        "par_swap_rate",
-        "rate",
-        "swap_rate",
-        "yield",
-        "yield_to_maturity",
-        "zero",
-        "zero_rate",
-    }
+from msm_pricing.pricing_engine.curves.quote_units import (
+    RATE_QUOTE_TYPES,
+    key_node_decimal_rate,
+    normalize_rate_value,
 )
+from msm_pricing.scenarios.curves.models import CurveBumpSpec
 
 _KEY_NODE_QUOTE_PLACEHOLDERS = frozenset({"key_node_quote", "key_node_quote_type"})
 _KEY_NODE_UNIT_PLACEHOLDERS = frozenset({"key_node_unit", "key_node_quote_unit"})
@@ -122,64 +110,6 @@ def to_utc_datetime(value: object) -> dt.datetime | None:
     else:
         timestamp = timestamp.tz_convert("UTC")
     return timestamp.to_pydatetime()
-
-
-def key_node_decimal_rate(node: Mapping[str, Any]) -> float:
-    """Return a supported key-node rate/yield normalized to decimal units.
-
-    Supported fields are ``yield``/``yield_value``, rate-like ``quote`` values
-    whose ``quote_type`` is an explicit rate convention, and ``implied_rate``.
-    Units must be explicit decimal or percent units. Clean prices, price per
-    100, and other source quote forms are rejected because they require
-    producer- or connector-owned interpretation.
-    """
-
-    if _has_value(node.get("yield")):
-        return normalize_rate_value(
-            node.get("yield"),
-            _first_present(node, "yield_unit", "quote_unit", "rate_unit"),
-            field_name="yield",
-        )
-    if _has_value(node.get("yield_value")):
-        return normalize_rate_value(
-            node.get("yield_value"),
-            _first_present(node, "yield_unit", "quote_unit", "rate_unit"),
-            field_name="yield_value",
-        )
-
-    quote_type = _normalized_token(node.get("quote_type"))
-    if quote_type in RATE_QUOTE_TYPES and _has_value(node.get("quote")):
-        return normalize_rate_value(
-            node.get("quote"),
-            _first_present(node, "quote_unit", "rate_unit"),
-            field_name="quote",
-        )
-
-    if _has_value(node.get("implied_rate")):
-        return normalize_rate_value(
-            node.get("implied_rate"),
-            _first_present(node, "implied_rate_unit", "rate_unit", "quote_unit"),
-            field_name="implied_rate",
-        )
-
-    raise ValueError(f"Curve key node has no supported explicit rate/yield field: {node!r}.")
-
-
-def normalize_rate_value(value: object, unit: object, *, field_name: str = "rate") -> float:
-    """Normalize a raw key-node rate/yield to decimal units.
-
-    ``decimal``/``decimals`` values are returned unchanged. ``percent`` and
-    ``percentage`` values are divided by 100. Missing or unsupported units raise
-    because scenario math must not infer vendor quote units.
-    """
-
-    raw = _finite_float(value, field_name=field_name)
-    unit_text = _normalize_rate_unit(unit)
-    if unit_text == "decimal":
-        return raw
-    if unit_text == "percent":
-        return raw * 0.01
-    raise AssertionError(f"Unhandled normalized unit {unit_text!r}.")
 
 
 def bumped_raw_rate(value: object, *, unit: object, bump_bp: float) -> float:

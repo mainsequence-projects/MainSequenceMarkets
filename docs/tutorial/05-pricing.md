@@ -198,6 +198,47 @@ See `examples/msm_pricing/pricing_registry_rows.py` for the row API workflow.
 `quote_convention="forward_rate"`. Deprecated QuantLib methods such as
 `log_linear_zero` and `MonotonicLogCubicDiscountCurve` are rejected.
 
+When the source curve is made from rate-helper instruments instead of direct
+zero or forward nodes, use the generic helper reconstruction path instead of a
+connector-local curve builder. Persist
+`CurveBuildingDetails.builder_type="rate_helper_curve"`, publish generic helper
+key nodes with `helper_type` values such as `overnight_deposit_helper` and
+`ois_rate_helper`, and provide the required runtime overnight index to the
+resolver or scenario builder. The primitive API also works fully in memory:
+
+```python
+import QuantLib as ql
+
+from msm_pricing.pricing_engine.curves import (
+    OISRateHelperSpec,
+    OvernightDepositHelperSpec,
+    export_curve_observation_nodes,
+    reconstruct_curve_handle_from_helper_specs,
+)
+
+handle = reconstruct_curve_handle_from_helper_specs(
+    (
+        OvernightDepositHelperSpec(quote=0.0475, tenor="1D"),
+        OISRateHelperSpec(
+            quote=0.0480,
+            tenor="1Y",
+            settlement_days=2,
+            overnight_index=ql.Sofr(),
+        ),
+    ),
+    valuation_date=valuation_date,
+    day_counter=ql.Actual360(),
+)
+nodes = export_curve_observation_nodes(
+    handle,
+    valuation_date=valuation_date,
+    node_days=[7, 30, 90, 180, 365],
+)
+```
+
+Run `examples/msm_pricing/curve_reconstruction.py` for the offline helper
+reconstruction and observation-export smoke test.
+
 Serialized pricing instruments should reference these rows by UUID, not by
 mutable names. Use `floating_rate_index_uid` on floating-rate bonds and
 `float_leg_index_uid` on swaps. The runtime resolver turns those UUIDs into the

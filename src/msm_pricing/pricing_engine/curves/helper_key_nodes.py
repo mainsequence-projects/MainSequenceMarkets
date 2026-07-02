@@ -1,0 +1,185 @@
+"""Adapters from generic helper-shaped key nodes to QuantLib helper specs."""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, Literal
+
+import QuantLib as ql
+from pydantic import BaseModel, ConfigDict, Field
+
+from msm_pricing.pricing_engine.curves.helpers import (
+    OISRateHelperSpec,
+    OvernightDepositHelperSpec,
+    RateHelperSpec,
+)
+from msm_pricing.pricing_engine.curves.quote_units import key_node_decimal_rate
+
+OIS_HELPER_TYPES = frozenset({"ois_rate_helper", "overnight_indexed_swap_helper"})
+OVERNIGHT_DEPOSIT_HELPER_TYPE = "overnight_deposit_helper"
+SUPPORTED_RATE_HELPER_TYPES = frozenset(
+    {*OIS_HELPER_TYPES, OVERNIGHT_DEPOSIT_HELPER_TYPE}
+)
+OvernightIndexResolver = Callable[[str | None, Mapping[str, Any]], ql.OvernightIndex]
+
+
+class OvernightDepositHelperKeyNode(BaseModel):
+    """Generic key-node schema for a QuantLib overnight deposit helper."""
+
+    model_config = ConfigDict(extra="allow")
+
+    helper_type: Literal["overnight_deposit_helper"]
+    quote: float
+    quote_type: str
+    quote_unit: str
+    tenor: str = "1D"
+    fixing_days: int = 0
+    calendar_code: str = "TARGET"
+    business_day_convention: int | str = Field(default="Following")
+    end_of_month: bool = False
+    day_counter_code: str = "Actual360"
+
+
+class OISRateHelperKeyNode(BaseModel):
+    """Generic key-node schema for a QuantLib overnight-indexed swap helper."""
+
+    model_config = ConfigDict(extra="allow")
+
+    helper_type: Literal["ois_rate_helper", "overnight_indexed_swap_helper"]
+    quote: float
+    quote_type: str
+    quote_unit: str
+    tenor: str
+    settlement_days: int = 0
+    floating_index: str | None = None
+
+
+RateHelperKeyNode = OvernightDepositHelperKeyNode | OISRateHelperKeyNode
+
+
+def normalize_helper_type(value: object) -> str:
+    """Normalize a key-node helper type token."""
+
+    helper_type = str(value or "").strip().lower()
+    if helper_type not in SUPPORTED_RATE_HELPER_TYPES:
+        raise ValueError(
+            f"Unsupported helper_type={value!r}. Supported helper types: "
+            f"{', '.join(sorted(SUPPORTED_RATE_HELPER_TYPES))}."
+        )
+    return helper_type
+
+
+def parse_rate_helper_key_node(node: Mapping[str, Any]) -> RateHelperKeyNode:
+    """Validate one generic helper-shaped key node."""
+
+    helper_type = normalize_helper_type(node.get("helper_type"))
+    payload = dict(node)
+    payload["helper_type"] = helper_type
+    if helper_type == OVERNIGHT_DEPOSIT_HELPER_TYPE:
+        return OvernightDepositHelperKeyNode.model_validate(payload)
+    return OISRateHelperKeyNode.model_validate(payload)
+
+
+def helper_specs_from_key_nodes(
+    key_nodes: Sequence[Mapping[str, Any]],
+    *,
+    overnight_index: ql.OvernightIndex | None = None,
+    overnight_index_resolver: OvernightIndexResolver | None = None,
+) -> tuple[RateHelperSpec, ...]:
+    """Convert helper-shaped key nodes to primitive QuantLib helper specs.
+
+    OIS helpers require an overnight index supplied either directly through
+    ``overnight_index`` or through ``overnight_index_resolver``. The resolver
+    receives ``(floating_index, original_node)`` and must return a QuantLib
+    ``OvernightIndex``. No index is inferred from vendor or product names.
+    """
+
+    if isinstance(key_nodes, str | bytes) or not isinstance(key_nodes, Sequence):
+        raise TypeError("key_nodes must be a sequence of mapping objects.")
+    specs: list[RateHelperSpec] = []
+    for raw_node in key_nodes:
+        if not isinstance(raw_node, Mapping):
+            raise TypeError("Each rate-helper key node must be a mapping.")
+        node = parse_rate_helper_key_node(raw_node)
+        decimal_quote = key_node_decimal_rate(node.model_dump())
+        if isinstance(node, OvernightDepositHelperKeyNode):
+            specs.append(
+                OvernightDepositHelperSpec(
+                    quote=decimal_quote,
+                    tenor=node.tenor,
+                    fixing_days=node.fixing_days,
+                    calendar=node.calendar_code,
+                    convention=node.business_day_convention,
+                    end_of_month=node.end_of_month,
+                    day_counter=node.day_counter_code,
+                )
+            )
+            continue
+        specs.append(
+            OISRateHelperSpec(
+                quote=decimal_quote,
+                tenor=node.tenor,
+                settlement_days=node.settlement_days,
+                overnight_index=_resolve_overnight_index(
+                    node,
+                    raw_node=raw_node,
+                    overnight_index=overnight_index,
+                    overnight_index_resolver=overnight_index_resolver,
+                ),
+            )
+        )
+    if not specs:
+        raise ValueError("At least one rate-helper key node is required.")
+    return tuple(specs)
+
+
+def key_nodes_contain_rate_helpers(key_nodes: object) -> bool:
+    """Return whether every submitted key node declares a supported helper type."""
+
+    if isinstance(key_nodes, str | bytes) or not isinstance(key_nodes, Sequence):
+        return False
+    if not key_nodes:
+        return False
+    for node in key_nodes:
+        if not isinstance(node, Mapping):
+            return False
+        try:
+            normalize_helper_type(node.get("helper_type"))
+        except ValueError:
+            return False
+    return True
+
+
+def _resolve_overnight_index(
+    node: OISRateHelperKeyNode,
+    *,
+    raw_node: Mapping[str, Any],
+    overnight_index: ql.OvernightIndex | None,
+    overnight_index_resolver: OvernightIndexResolver | None,
+) -> ql.OvernightIndex:
+    if overnight_index is not None:
+        return overnight_index
+    if overnight_index_resolver is not None:
+        resolved = overnight_index_resolver(node.floating_index, raw_node)
+        if not isinstance(resolved, ql.OvernightIndex):
+            raise TypeError("overnight_index_resolver must return a QuantLib OvernightIndex.")
+        return resolved
+    raise ValueError(
+        "OIS rate-helper key nodes require overnight_index or overnight_index_resolver; "
+        "msm_pricing does not infer indexes from curve or provider names."
+    )
+
+
+__all__ = [
+    "OIS_HELPER_TYPES",
+    "OISRateHelperKeyNode",
+    "OVERNIGHT_DEPOSIT_HELPER_TYPE",
+    "OvernightDepositHelperKeyNode",
+    "OvernightIndexResolver",
+    "RateHelperKeyNode",
+    "SUPPORTED_RATE_HELPER_TYPES",
+    "helper_specs_from_key_nodes",
+    "key_nodes_contain_rate_helpers",
+    "normalize_helper_type",
+    "parse_rate_helper_key_node",
+]

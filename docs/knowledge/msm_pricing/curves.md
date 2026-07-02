@@ -152,6 +152,93 @@ Deprecated QuantLib methods are rejected instead of aliased. Do not persist
 `log_linear_zero`, `LogLinearZeroCurve`, `monotonic_log_cubic_discount`, or
 `MonotonicLogCubicDiscountCurve` as curve build methods.
 
+### Helper-based curve reconstruction
+
+Some curves are not best represented as direct zero or forward nodes at the
+source boundary. When the source inputs are helper-style instruments, use the
+generic reconstruction machinery under
+`msm_pricing.pricing_engine.curves`.
+
+The primitive API is QuantLib-first and has no MetaTable, DataNode, connector,
+vendor, currency, or index-name dependency:
+
+```python
+import QuantLib as ql
+
+from msm_pricing.pricing_engine.curves import (
+    OISRateHelperSpec,
+    OvernightDepositHelperSpec,
+    export_curve_observation_nodes,
+    reconstruct_curve_handle_from_helper_specs,
+)
+
+handle = reconstruct_curve_handle_from_helper_specs(
+    (
+        OvernightDepositHelperSpec(quote=0.0475, tenor="1D"),
+        OISRateHelperSpec(
+            quote=0.0480,
+            tenor="1Y",
+            settlement_days=2,
+            overnight_index=ql.Sofr(),
+        ),
+    ),
+    valuation_date=valuation_date,
+    day_counter=ql.Actual360(),
+)
+nodes = export_curve_observation_nodes(
+    handle,
+    valuation_date=valuation_date,
+    node_days=[7, 30, 90, 180, 365],
+)
+```
+
+The persistence adapter is narrower. Persisted helper curves use
+`CurveBuildingDetails.builder_type="rate_helper_curve"` and publish generic
+helper-shaped dictionaries in `DiscountCurvesNode.key_nodes`. The adapter reads
+the build details, validates `builder_payload.helper_schema="rate_helpers@v1"`
+when present, converts key nodes into runtime helper specs, builds QuantLib
+rate helpers, and delegates to `reconstruct_curve_handle(...)`.
+
+Supported v1 helper key-node types are:
+
+```json
+[
+  {
+    "helper_type": "overnight_deposit_helper",
+    "quote": 4.75,
+    "quote_type": "deposit_rate",
+    "quote_unit": "percent",
+    "tenor": "1D",
+    "fixing_days": 0,
+    "calendar_code": "TARGET",
+    "business_day_convention": "Following",
+    "day_counter_code": "Actual360"
+  },
+  {
+    "helper_type": "ois_rate_helper",
+    "quote": 4.80,
+    "quote_type": "par_swap_rate",
+    "quote_unit": "percent",
+    "tenor": "1Y",
+    "settlement_days": 2,
+    "floating_index": "USD-OVERNIGHT"
+  }
+]
+```
+
+OIS key nodes require the caller to supply a QuantLib overnight index or a
+resolver callable at runtime. `msm_pricing` does not infer an index from curve
+names, currencies, vendors, or local product names. Source-specific file
+parsing, fallback quote units, and source identifier repairs belong in the
+connector or publisher before data becomes generic helper key nodes.
+
+Observation export is also generic. `export_curve_observation_nodes(...)`
+exports resolver-compatible nodes from a QuantLib handle or term structure on
+an explicit `node_days` grid, or from pillar dates when the submitted QuantLib
+object exposes them. `zero_rate` is the initial exported quote convention;
+future curve families should add quote conventions to the exporter rather than
+forking product-specific export functions.
+
 ```python
 from msm_pricing.api import Curve, CurveBuildingDetails, PricingMarketDataSetCurveBinding
 
@@ -290,11 +377,13 @@ If persisted build details use source placeholders such as
 `builder_payload` must explicitly declare the runtime output convention and
 unit. The scenario helper fails instead of guessing.
 
-Connector-specific curve rebuilds remain connector-owned. For example, a
-Valmer-specific TIIE/OIS reconstruction that imports `valmer_connectors` should
-not be moved into core `msm_pricing`; the connector can either publish generic
-key nodes that this API can convert or build connector-owned scenario handles
-before calling lower-level pricing helpers.
+Connector-specific curve rebuilds remain connector-owned when they interpret
+source files, source identifiers, or vendor quote policy. Once a connector has
+generic helper key nodes, `builder_type="rate_helper_curve"` can be shocked and
+rebuilt by core `msm_pricing` without importing connector code. If a connector
+needs source-only interpretation before generic helper key nodes exist, it can
+build connector-owned scenario handles and then call lower-level pricing
+helpers.
 
 When the caller already has exact base and scenario curve handles, use
 `price_resolved_curve_scenario(...)` instead of rebuilding handles from

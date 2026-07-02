@@ -25,6 +25,11 @@ from msm_pricing.instruments.json_codec import (
     daycount_from_json,
     period_from_json,
 )
+from msm_pricing.pricing_engine.curves import (
+    OvernightIndexResolver,
+    is_rate_helper_curve_build,
+    reconstruct_curve_from_curve_building_details,
+)
 from msm_pricing.utils import to_py_date, to_ql_date
 
 
@@ -377,6 +382,8 @@ def build_curve_from_curve_row(
     building_details: CurveBuildingDetails | None = None,
     valuation_date: datetime.date | datetime.datetime | ql.Date,
     market_data_set: Any | None = None,
+    overnight_index: ql.OvernightIndex | None = None,
+    overnight_index_resolver: OvernightIndexResolver | None = None,
 ) -> ql.YieldTermStructureHandle:
     """Build a QuantLib curve from a curve row and curve-owned build details."""
 
@@ -400,6 +407,8 @@ def build_curve_from_curve_row(
             "metadata_json": None,
         },
         effective_curve_date=effective_curve_date,
+        overnight_index=overnight_index,
+        overnight_index_resolver=overnight_index_resolver,
     )
 
 
@@ -409,10 +418,10 @@ def build_curve_from_curve_observation(
     building_details: CurveBuildingDetails,
     observation: Mapping[str, Any],
     effective_curve_date: datetime.date | datetime.datetime | ql.Date | None = None,
+    overnight_index: ql.OvernightIndex | None = None,
+    overnight_index_resolver: OvernightIndexResolver | None = None,
 ) -> ql.YieldTermStructureHandle:
     """Build a QuantLib curve from cached curve rows, build details, and observations."""
-
-    _validate_supported_curve_build(curve=curve, building_details=building_details)
 
     if effective_curve_date is None:
         effective_curve_date = observation.get("time_index")
@@ -420,6 +429,17 @@ def build_curve_from_curve_observation(
         raise ValueError(
             f"Curve observation for {curve.unique_identifier!r} is missing time_index."
         )
+    if is_rate_helper_curve_build(building_details):
+        return reconstruct_curve_from_curve_building_details(
+            building_details=building_details,
+            observation=observation,
+            effective_curve_date=effective_curve_date,
+            overnight_index=overnight_index,
+            overnight_index_resolver=overnight_index_resolver,
+        )
+
+    _validate_supported_curve_build(curve=curve, building_details=building_details)
+
     base_dt = _ensure_datetime(effective_curve_date)
     base = to_ql_date(base_dt)
     day_counter = daycount_from_json(building_details.day_counter_code)

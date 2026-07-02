@@ -16,9 +16,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
+import QuantLib as ql
+
 from msm_pricing.api.curve_building_details import CurveBuildingDetails
 from msm_pricing.api.curves import Curve
 from msm_pricing.instruments.base_instrument import InstrumentModel
+from msm_pricing.pricing_engine.curves import OvernightIndexResolver, is_rate_helper_curve_build
 from msm_pricing.pricing_engine.curve_overlays import apply_z_spread_to_curve
 from msm_pricing.pricing_engine.resolvers import build_curve_from_curve_observation
 from msm_pricing.scenarios.curves.key_node_bumps import (
@@ -57,6 +60,8 @@ def build_scenario_curve_handle(
     observation: Mapping[str, Any],
     bump_spec: CurveBumpSpec,
     effective_curve_date: object,
+    overnight_index: ql.OvernightIndex | None = None,
+    overnight_index_resolver: OvernightIndexResolver | None = None,
 ) -> object:
     """Build one runtime curve handle from copied, bumped source key nodes.
 
@@ -73,6 +78,24 @@ def build_scenario_curve_handle(
         bump_spec,
         effective_curve_date=effective_curve_date,
     )
+    if is_rate_helper_curve_build(building_details):
+        scenario_observation = dict(observation)
+        scenario_observation.update(
+            {
+                "curve_identifier": curve.unique_identifier,
+                "time_index": effective_curve_date,
+                "key_nodes": bumped,
+            }
+        )
+        return build_curve_from_curve_observation(
+            curve=curve,
+            building_details=building_details,
+            observation=scenario_observation,
+            effective_curve_date=effective_curve_date,
+            overnight_index=overnight_index,
+            overnight_index_resolver=overnight_index_resolver,
+        )
+
     runtime_details = runtime_observation_building_details(building_details)
     nodes = key_nodes_to_curve_observation_nodes(
         bumped,

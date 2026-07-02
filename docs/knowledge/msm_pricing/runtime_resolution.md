@@ -140,6 +140,28 @@ the documented non-deprecated methods: `log_linear_discount`,
 QuantLib methods such as `log_linear_zero` and
 `MonotonicLogCubicDiscountCurve` fail loudly.
 
+Helper-based reconstruction is a separate resolver branch. When
+`CurveBuildingDetails.builder_type="rate_helper_curve"`, runtime resolution
+does not coerce helper inputs into zero nodes first. It reads
+`DiscountCurvesNode.key_nodes`, validates generic helper key-node dictionaries,
+builds QuantLib rate helpers through `msm_pricing.pricing_engine.curves`, and
+bootstraps the curve with `reconstruct_curve_handle(...)`. OIS helper key nodes
+require a caller-supplied QuantLib overnight index or resolver callable; the
+library does not infer indexes from curve names or connector-specific labels.
+
+The primitive reconstruction API never accepts `CurveBuildingDetails` directly.
+The dependency flow is:
+
+```text
+CurveBuildingDetails + DiscountCurvesNode.key_nodes
+  -> persistence adapter
+  -> helper key-node models
+  -> QuantLib helper specs
+  -> QuantLib RateHelper objects
+  -> reconstruct_curve_handle(...)
+  -> optional export_curve_observation_nodes(...)
+```
+
 ## Benchmark z-spread resolution
 
 `benchmark_rate_index_uid` is a persisted instrument field that points to
@@ -201,8 +223,11 @@ already cached curve bindings, curve rows, curve-building details, observations,
 effective observation dates, and base QuantLib handles from that context.
 
 Scenario shocks are keyed by `Curve.unique_identifier`. Non-empty shocks rebuild
-transient scenario handles from copied `key_nodes` and runtime observation
-nodes, then line pricing is delegated to `msm_pricing.valuation.price_scenario(...)`.
+transient scenario handles from copied `key_nodes`, then line pricing is
+delegated to `msm_pricing.valuation.price_scenario(...)`. Node-built curves are
+converted into runtime observation nodes. Helper-built curves keep their
+helper-shaped key nodes and delegate reconstruction to
+`msm_pricing.pricing_engine.curves`.
 The scenario helper does not run a second pricing loop and does not mutate:
 
 - submitted instruments;

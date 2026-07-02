@@ -31,6 +31,10 @@ and this project follows versioned releases.
 - Added `msm_pricing.analytics.spreads` with cross-asset spread primitives,
   fixed-income DV01 spread metrics, optional dependency diagnostics, and an
   offline fixed-income spread analytics example.
+- Added `msm_pricing.pricing_engine.curves` with generic QuantLib rate-helper
+  specs/builders, helper-key-node adapters, helper-based curve reconstruction,
+  and curve observation export, plus resolver/scenario support for
+  `builder_type="rate_helper_curve"` without importing connector-specific code.
 - Updated `InterestRateSwap.reset_curve(...)` to accept a
   `YieldTermStructureHandle` directly so prepared scenario handles work for swap
   repricing as well as bond repricing.
