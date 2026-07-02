@@ -213,6 +213,8 @@ context = PricingValuationContext.prepare_for_position(
     curve_quote_side="mid",
 )
 portfolio_value = position.price(context=context)
+prepared_bond = context.prepare_instrument(bond)
+observed_z_spread = prepared_bond.z_spread(target_dirty_ccy)
 
 scenario = price_scenario(
     position=position,
@@ -221,6 +223,10 @@ scenario = price_scenario(
     scenario_curve_handles=scenario_handles_by_line,
 )
 ```
+
+`PreparedInstrument.z_spread(...)` expects the target dirty price as a currency
+amount. Source-specific quote normalization, such as converting dirty price per
+100 notional into currency, should happen before calling the prepared method.
 
 User-facing persistence starts from instruments:
 

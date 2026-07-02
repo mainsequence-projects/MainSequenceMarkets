@@ -115,6 +115,30 @@ class CurveOverrideInstrument(FakePricedInstrument):
         return super().price(market_data_set=market_data_set) + self._curve_bump
 
 
+class ZSpreadInstrument(FakePricedInstrument):
+    _z_spread_calls: list[dict[str, Any]] = PrivateAttr(default_factory=list)
+
+    def z_spread(
+        self,
+        target_dirty_ccy: float,
+        *,
+        market_data_set=None,
+        curve_quote_side: str | None = None,
+        discount_curve: Any = None,
+    ) -> float:
+        if self.valuation_date is None:
+            raise ValueError("valuation date was not set")
+        self._z_spread_calls.append(
+            {
+                "target_dirty_ccy": target_dirty_ccy,
+                "market_data_set": market_data_set,
+                "curve_quote_side": curve_quote_side,
+                "discount_curve": discount_curve,
+            }
+        )
+        return (float(target_dirty_ccy) - self.price_value) / 100.0
+
+
 def test_valuation_position_prices_lines_with_context_and_units() -> None:
     valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
     market_data_set_uid = uuid.uuid4()
@@ -262,6 +286,73 @@ def test_pricing_valuation_context_prepares_distinct_instrument_copy() -> None:
     assert instrument._market_data_sets == []
     assert prepared.price() == 12.0
     assert instrument._price_calls == 0
+
+
+def test_prepared_instrument_z_spread_uses_pricing_context() -> None:
+    valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    instrument = ZSpreadInstrument(price_value=100.0)
+    context = PricingValuationContext.prepare(
+        valuation_date=valuation_date,
+        market_data_set="eod",
+        instruments=[instrument],
+        curve_quote_side="MID",
+        resolve_market_data_set=False,
+    )
+    discount_curve = object()
+
+    prepared = context.prepare_instrument(instrument)
+
+    assert prepared.z_spread(99.25, discount_curve=discount_curve) == pytest.approx(-0.0075)
+    assert prepared.instrument._z_spread_calls == [
+        {
+            "target_dirty_ccy": 99.25,
+            "market_data_set": "eod",
+            "curve_quote_side": "mid",
+            "discount_curve": discount_curve,
+        }
+    ]
+    assert instrument._z_spread_calls == []
+
+
+def test_prepared_instrument_z_spread_preserves_explicit_context_overrides() -> None:
+    valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    instrument = ZSpreadInstrument(price_value=100.0)
+    context = PricingValuationContext.prepare(
+        valuation_date=valuation_date,
+        market_data_set="eod",
+        instruments=[instrument],
+        curve_quote_side="mid",
+        resolve_market_data_set=False,
+    )
+    discount_curve = object()
+
+    prepared = context.prepare_instrument(instrument)
+
+    assert prepared.z_spread(
+        100.5,
+        market_data_set="live",
+        curve_quote_side="offer",
+        discount_curve=discount_curve,
+    ) == pytest.approx(0.005)
+    assert prepared.instrument._z_spread_calls == [
+        {
+            "target_dirty_ccy": 100.5,
+            "market_data_set": "live",
+            "curve_quote_side": "offer",
+            "discount_curve": discount_curve,
+        }
+    ]
+
+
+def test_prepared_instrument_z_spread_rejects_unsupported_instruments() -> None:
+    instrument = NoAnalyticsInstrument()
+    context = PricingValuationContext.prepare(
+        valuation_date=dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+        instruments=[instrument],
+    )
+
+    with pytest.raises(TypeError, match="does not support z_spread"):
+        context.prepare_instrument(instrument).z_spread(100.0)
 
 
 def test_pricing_valuation_context_freezes_prepared_input_contract() -> None:

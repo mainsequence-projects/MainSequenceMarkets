@@ -300,6 +300,7 @@ For a full floating-rate bond workflow, use
        curve_quote_side="mid",
    )
    total_market_value = position.price(context=context)
+   observed_z_spread = context.prepare_instrument(bond).z_spread(target_dirty_ccy)
    ```
 
    `PricingValuationContext` returns copied or wrapped prepared instruments; it
@@ -307,6 +308,9 @@ For a full floating-rate bond workflow, use
    lines. The prepared context is fixed to the instrument universe submitted to
    `prepare(...)` or `prepare_for_position(...)`; build a new context when the
    valuation date, market-data set, quote side, or instrument universe changes.
+   Prepared `z_spread(...)` calls expect `target_dirty_ccy` to already be a
+   currency dirty price; convert source quotes such as dirty price per 100
+   before calling the prepared instrument.
    Scenario runs use the public `msm_pricing.price_scenario(...)` helper with
    explicit line-scoped base and scenario curve handles, so scenario state is
    applied to prepared copies instead of caller-owned instruments.

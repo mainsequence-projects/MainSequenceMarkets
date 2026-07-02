@@ -90,6 +90,22 @@ class MockCurvePricedInstrument(Instrument):
             "fixing_rows": float(len(self.mock_fixing_rows)),
         }
 
+    def z_spread(
+        self,
+        target_dirty_ccy: float,
+        *,
+        market_data_set: uuid.UUID | None = None,
+        curve_quote_side: str | None = None,
+        discount_curve: Any = None,
+    ) -> float:
+        if discount_curve is not None:
+            raise RuntimeError("mock example does not use explicit discount_curve overrides")
+        model_dirty_ccy = self.price(
+            market_data_set=market_data_set,
+            curve_quote_side=curve_quote_side,
+        )
+        return (model_dirty_ccy - float(target_dirty_ccy)) / self.notional
+
 
 def build_mock_context_workflow() -> dict[str, Any]:
     valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
@@ -132,10 +148,13 @@ def build_mock_context_workflow() -> dict[str, Any]:
             raise RuntimeError("caller-owned instrument was mutated")
 
         unit_price = prepared.price()
+        observed_dirty_ccy = unit_price - 0.25
         return {
             "market_value": position.price(context=context),
             "unit_price": unit_price,
             "prepared_analytics": prepared.analytics(),
+            "prepared_z_spread": prepared.z_spread(observed_dirty_ccy),
+            "z_spread_target_dirty_ccy": observed_dirty_ccy,
             "original_valuation_date": instrument.valuation_date,
             "prepared_valuation_date": prepared.instrument.valuation_date.isoformat(),
             "cached_curve_identifier": context.get_curve(

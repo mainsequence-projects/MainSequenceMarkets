@@ -846,6 +846,9 @@ class PreparedInstrument:
     def get_net_cashflows(self, *args: Any, **kwargs: Any) -> Any:
         return self._call("get_net_cashflows", *args, **kwargs)
 
+    def z_spread(self, target_dirty_ccy: float, *args: Any, **kwargs: Any) -> Any:
+        return self._call("z_spread", target_dirty_ccy, *args, **kwargs)
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self.instrument, name)
 

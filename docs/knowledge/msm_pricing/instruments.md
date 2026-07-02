@@ -187,7 +187,15 @@ per_line = position.price_breakdown(context=context)
 prepared = context.prepare_instrument(position.lines[0].instrument)
 assert prepared.instrument is not position.lines[0].instrument
 unit_price = prepared.price()
+observed_z_spread = prepared.z_spread(target_dirty_ccy)
 ```
+
+`PreparedInstrument.z_spread(...)` uses the same prepared context injection path
+as `price()`: the context supplies the selected market-data set and curve quote
+side when the underlying instrument supports those arguments. Callers must pass
+`target_dirty_ccy` as a normalized currency dirty price; source-specific quote
+parsing, such as dirty price per 100 notional, remains outside the core
+valuation context.
 
 For scenario runs, use `msm_pricing.price_scenario(...)` with explicit
 line-scoped base and scenario curve handles. The helper prepares separate

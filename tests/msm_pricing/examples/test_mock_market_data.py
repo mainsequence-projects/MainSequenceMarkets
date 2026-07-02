@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(_PROJECT_ROOT)]
@@ -72,5 +73,7 @@ def test_pricing_valuation_context_example_runs_with_mock_market_data() -> None:
     assert result["prepared_valuation_date"] == "2026-05-27T00:00:00+00:00"
     assert result["unit_price"] > 0
     assert result["market_value"] == result["unit_price"] * 4.0
+    assert result["z_spread_target_dirty_ccy"] == result["unit_price"] - 0.25
+    assert result["prepared_z_spread"] == pytest.approx(0.0025)
     assert result["prepared_analytics"]["unit_price"] == result["unit_price"]
     assert result["prepared_analytics"]["one_year_zero_rate"] > 0
