@@ -105,6 +105,54 @@ Additional generic candidates observed around the listed code:
 
 ## Target Architecture
 
+### Primitive-First Layering Contract
+
+The core implementation must be QuantLib-primitive first. The persisted
+`CurveBuildingDetails` path is only an adapter for resolving stored curves.
+
+Layer 1 is the reusable primitive API. It has no MetaTable, DataNode, connector,
+or source dependency:
+
+```python
+helpers = build_rate_helper_vector(rate_helpers)
+handle = reconstruct_curve_handle(
+    valuation_date=valuation_date,
+    helpers=helpers,
+    method="piecewise_log_linear_discount",
+    day_counter=ql.Actual360(),
+    extrapolation=True,
+)
+nodes = export_curve_observation_nodes(
+    handle,
+    valuation_date=valuation_date,
+    quote_convention="zero_rate",
+    rate_unit="decimal",
+    day_counter=ql.Actual360(),
+    compounding=ql.Compounded,
+    frequency=ql.Annual,
+)
+```
+
+Layer 2 is the persistence adapter. It converts stored
+`CurveBuildingDetails` plus `DiscountCurvesNode.key_nodes` into the primitive
+API above. It exists because QuantLib helpers, handles, indexes, calendars, and
+global evaluation-date state are runtime objects and cannot be persisted
+directly.
+
+The dependency direction is strict:
+
+```text
+CurveBuildingDetails + key_nodes
+  -> adapter parsing and validation
+  -> QuantLib helper specs
+  -> QuantLib RateHelper objects
+  -> reconstruct_curve_handle(...)
+  -> optional export_curve_observation_nodes(...)
+```
+
+No primitive API may accept `CurveBuildingDetails`. No generic helper builder
+may read DataNodes or connector payloads.
+
 ### Concrete File And Model Placement
 
 Create these new files in ms-markets:
@@ -113,7 +161,7 @@ Create these new files in ms-markets:
 | --- | --- | --- |
 | `src/msm_pricing/pricing_engine/curves/__init__.py` | Curve-pricing subpackage import surface. Keeps curve mechanics grouped instead of adding more flat files to `pricing_engine`. | Lazy exports for stable curve-helper, reconstruction, and observation-export functions. |
 | `src/msm_pricing/pricing_engine/curves/helpers.py` | Generic QuantLib rate-helper construction. Runtime-only, no persistence and no connector imports. | Runtime dataclasses: `OISRateHelperSpec`, `OvernightDepositHelperSpec`, deferred `InterestRateFutureHelperSpec`. Functions: `ql_period_from_tenor(...)`, `build_ois_rate_helper(...)`, `build_overnight_deposit_helper(...)`, `build_rate_helper_vector(...)`. |
-| `src/msm_pricing/pricing_engine/curves/helper_key_nodes.py` | Convert generic helper-style `key_nodes` dictionaries into runtime helper specs. No source repair or vendor defaults. | Pydantic models: `OISRateHelperKeyNode`, deferred `InterestRateFutureHelperKeyNode`. Functions: `parse_ois_helper_key_node(...)`, `ois_helper_specs_from_key_nodes(...)`, `helper_specs_from_key_nodes(...)`. |
+| `src/msm_pricing/pricing_engine/curves/helper_key_nodes.py` | Convert generic helper-style `key_nodes` dictionaries into runtime helper specs. No source repair or vendor defaults. | Pydantic models: `OISRateHelperKeyNode`, `OvernightDepositHelperKeyNode`, deferred `InterestRateFutureHelperKeyNode`. Functions: `parse_ois_helper_key_node(...)`, `parse_overnight_deposit_helper_key_node(...)`, `helper_specs_from_key_nodes(...)`. |
 | `src/msm_pricing/pricing_engine/curves/reconstruction.py` | Generic curve-handle reconstruction dispatch. Initial input family is rate helpers, but the module boundary is not rate-helper-specific. | Pydantic model: `CurveReconstructionConfig`. Functions: `reconstruct_curve_handle(...)`, `build_curve_from_helper_key_nodes(...)`. |
 | `src/msm_pricing/pricing_engine/curves/observations.py` | Generic export from runtime curve handles to normalized observation nodes. No source, currency, index, or single-convention-specific names. | Pydantic model: `CurveObservationExportConfig`. Functions: `export_curve_observation_nodes(...)`, `curve_observation_value(...)`. |
 | `tests/msm_pricing/pricing_engine/curves/test_helpers.py` | Unit coverage for helper specs and QuantLib helper construction. | Tests for tenor parsing, OIS helper construction, deposit helper construction, helper vector order, and no connector imports. |
@@ -129,7 +177,7 @@ Update these existing files:
 | `src/msm_pricing/pricing_engine/resolvers.py` | Dispatch generic curve reconstruction builders to `pricing_engine.curves.reconstruction`; keep existing node-based construction unchanged. |
 | `src/msm_pricing/scenarios/curves/key_node_bumps.py` | Stop owning generic rate normalization if it is needed by pricing-engine helper parsing; import promoted helpers instead. |
 | `src/msm_pricing/scenarios/curves/engine.py` | For helper-reconstructed curves, bump copied key nodes and delegate reconstruction to `pricing_engine.curves.reconstruction`. |
-| `docs/knowledge/msm_pricing/curves.md` | Document helper-style key-node fields and builder-payload contract. |
+| `docs/knowledge/msm_pricing/curves.md` | Document the primitive API, persistence adapter boundary, helper-style key-node fields, and builder-payload contract. |
 | `docs/knowledge/msm_pricing/runtime_resolution.md` | Document resolver dispatch between node-built and reconstructed curves. |
 | `docs/tutorial/05-pricing.md` | Add the user workflow note after the API is implemented. |
 | `CHANGELOG.md` | Add a public change entry when code is implemented. |
@@ -141,10 +189,11 @@ Model placement rules:
   `pricing_engine/curves/helpers.py`. They may hold QuantLib runtime objects
   such as indexes, calendars, handles, day counters, and enum values. They are
   not serialized and are not stored in DataNodes.
-- `OISRateHelperKeyNode` and future `InterestRateFutureHelperKeyNode` are
-  Pydantic models in `pricing_engine/curves/helper_key_nodes.py`. They validate
-  generic key-node dictionaries from `DiscountCurvesNode.key_nodes`. They must
-  contain only JSON-compatible fields.
+- `OISRateHelperKeyNode`, `OvernightDepositHelperKeyNode`, and future
+  `InterestRateFutureHelperKeyNode` are Pydantic models in
+  `pricing_engine/curves/helper_key_nodes.py`. They validate generic key-node
+  dictionaries from `DiscountCurvesNode.key_nodes`. They must contain only
+  JSON-compatible fields.
 - `CurveReconstructionConfig` is an internal Pydantic model in
   `pricing_engine/curves/reconstruction.py`. It is derived from
   `CurveBuildingDetails` plus `CurveBuildingDetails.builder_payload`; callers
@@ -171,6 +220,7 @@ Initial model contracts:
 | `OvernightDepositHelperSpec` | `pricing_engine/curves/helpers.py` | frozen dataclass | `quote_decimal: float`, `tenor: str`, `settlement_days: int`, `calendar: ql.Calendar`, `business_day_convention: int`, `day_counter: ql.DayCounter` | `end_of_month: bool` |
 | `InterestRateFutureHelperSpec` | `pricing_engine/curves/helpers.py` | frozen dataclass, deferred | To be defined only when futures are implemented generically. | To be defined only when futures are implemented generically. |
 | `OISRateHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model | `helper_type: Literal["ois_rate_helper", "overnight_indexed_swap_helper"]`, `tenor: str`, `quote: float`, `quote_type: str`, `quote_unit: str` | `quote_side`, `settlement_days`, `payment_frequency`, `payment_calendar_code`, `payment_convention`, `day_counter_code`, `rate_averaging`, `telescopic_value_dates`, `payment_lag`, `forward_start`, `spread_decimal`, `pillar`, `custom_pillar_date`, source metadata fields |
+| `OvernightDepositHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model | `helper_type: Literal["overnight_deposit_helper"]`, `tenor: str`, `quote: float`, `quote_type: Literal["deposit_rate"]`, `quote_unit: str` | `settlement_days`, `calendar_code`, `business_day_convention`, `day_counter_code`, `end_of_month`, source metadata fields |
 | `InterestRateFutureHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model, deferred | To be defined only when futures are implemented generically. | To be defined only when futures are implemented generically. |
 | `CurveReconstructionConfig` | `pricing_engine/curves/reconstruction.py` | Pydantic model | `builder_type: str`, `reconstruction_method: str`, `observation_export: CurveObservationExportConfig` | `input_schema`, `input_options`, `method_options`, `metadata_json` |
 | `CurveObservationExportConfig` | `pricing_engine/curves/observations.py` | Pydantic model | `quote_convention: str`, `rate_unit: str` | `node_days`, `include_pillar_dates`, `day_counter_code`, `compounding`, `frequency`, `calendar_code`, `metadata_json` |
@@ -209,18 +259,19 @@ directly under `src/msm_pricing/pricing_engine/`.
   - `InterestRateFutureHelperSpec` only when futures are implemented
   - `build_overnight_deposit_helper(spec: OvernightDepositHelperSpec) -> ql.RateHelper`
   - `build_ois_rate_helper(spec: OISRateHelperSpec) -> ql.RateHelper`
-  - `build_rate_helper_vector(helpers: Sequence[ql.RateHelper], *, front_helper: ql.RateHelper | None = None) -> ql.RateHelperVector`
+  - `build_rate_helper_vector(helpers: Sequence[ql.RateHelper]) -> ql.RateHelperVector`
 
 - `helper_key_nodes.py`
   - `OISRateHelperKeyNode`
+  - `OvernightDepositHelperKeyNode`
   - `InterestRateFutureHelperKeyNode` only when futures are implemented
   - `parse_ois_helper_key_node(node: Mapping[str, object]) -> OISRateHelperKeyNode`
-  - `ois_helper_specs_from_key_nodes(...) -> tuple[OISRateHelperSpec, ...]`
-  - `helper_specs_from_key_nodes(...) -> tuple[OISRateHelperSpec, ...]`
+  - `parse_overnight_deposit_helper_key_node(node: Mapping[str, object]) -> OvernightDepositHelperKeyNode`
+  - `helper_specs_from_key_nodes(...) -> tuple[OvernightDepositHelperSpec | OISRateHelperSpec, ...]`
 
 - `reconstruction.py`
   - `CurveReconstructionConfig`
-  - `reconstruct_curve_handle(...) -> ql.YieldTermStructureHandle`
+  - `reconstruct_curve_handle(*, valuation_date: ql.Date, helpers: Sequence[ql.RateHelper] | ql.RateHelperVector, method: Literal["piecewise_log_linear_discount"], day_counter: ql.DayCounter, extrapolation: bool = True) -> ql.YieldTermStructureHandle`
   - `build_curve_from_helper_key_nodes(...) -> ql.YieldTermStructureHandle`
 
 - `observations.py`
@@ -260,25 +311,26 @@ CurveBuildingDetails(
     extrapolation_policy="enabled",
     bootstrap_method="piecewise_log_linear_discount",
     builder_payload={
-        "helper_schema": "ois_rate_helper@v1",
-        "front_helper": {"enabled": True, "tenor": "1D"},
+        "helper_schema": "rate_helpers@v1",
     },
 )
 ```
 
-The exact token names should be finalized during implementation, but the
-contract should preserve this split:
+The v1 token contract is fixed:
 
-- `builder_type` says which public builder path is used. The first new value
-  should be `rate_helper_curve`, not a vague `curve_reconstruction` umbrella.
-- `bootstrap_method` says which QuantLib reconstruction method is used.
+- `builder_type="rate_helper_curve"` means the stored `key_nodes` are converted
+  into QuantLib `RateHelper` objects and reconstructed through the primitive
+  curve API.
+- `bootstrap_method="piecewise_log_linear_discount"` is the only v1
+  reconstruction method for `rate_helper_curve`.
 - `quote_convention`, `rate_unit`, `day_counter_code`, `calendar_code`,
   `compounding`, and `compounding_frequency` describe the exported observation
   convention.
-- `builder_payload.helper_schema` identifies the helper input schema version,
-  not a vendor source.
-- `builder_payload` carries only input-family-specific defaults such as a front
-  helper, helper quote-side policy, or helper parsing defaults.
+- `builder_payload.helper_schema="rate_helpers@v1"` is the only v1 helper input
+  schema. It is not a vendor source.
+- `builder_payload` must not contain market-data quotes. A front overnight
+  deposit helper is represented as a `key_nodes` item with
+  `helper_type="overnight_deposit_helper"`.
 - The published `curve` column remains normalized exported observation nodes
   for storage/API use.
 - `key_nodes` carries source helper provenance sufficient to rebuild runtime
@@ -334,11 +386,55 @@ helper-based reconstruction:
 - optional `settlement_days`, `payment_lag`, `payment_calendar`,
   `payment_frequency`, `rate_averaging`, `pillar`, and source quote fields
 
+The v1 helper key-node adapter must accept exactly these helper types:
+
+- `overnight_deposit_helper`
+- `ois_rate_helper`
+- `overnight_indexed_swap_helper`
+
 Generic rate normalization should reuse the current key-node rate machinery.
 If that helper is needed outside scenarios, promote it to a pricing-engine
 key-node utility and have `scenarios.curves.key_node_bumps` import from there.
 
 ## Implementation Stages
+
+### Documentation Gate: Canonical Pricing Docs
+
+This plan is not the final documentation. The implementation is not complete
+until the primitive-first architecture is documented in the canonical pricing
+documentation.
+
+Files to update:
+
+- `docs/knowledge/msm_pricing/curves.md`
+- `docs/knowledge/msm_pricing/runtime_resolution.md`
+- `docs/tutorial/05-pricing.md`
+- `examples/msm_pricing/` with a focused curve reconstruction example once the
+  public API exists
+
+Tasks:
+
+- [ ] Add a canonical `Primitive QuantLib API` section to
+  `docs/knowledge/msm_pricing/curves.md` showing
+  `build_rate_helper_vector(...)`, `reconstruct_curve_handle(...)`, and
+  `export_curve_observation_nodes(...)` without `CurveBuildingDetails`.
+- [ ] Add a canonical `Persistence Adapter` section explaining that
+  `CurveBuildingDetails + key_nodes` is only a resolver/scenario bridge into
+  the primitive API, not the core abstraction.
+- [ ] Document the exact v1 tokens accepted by the adapter:
+  `builder_type="rate_helper_curve"`,
+  `bootstrap_method="piecewise_log_linear_discount"`,
+  `builder_payload.helper_schema="rate_helpers@v1"`, and supported helper
+  node `helper_type` values.
+- [ ] Document that market-data front helpers are represented as helper key
+  nodes, not as a magic `builder_payload.front_helper` flag.
+- [ ] Update `runtime_resolution.md` with the resolution flow from
+  `CurveBuildingDetails + key_nodes` to QuantLib helpers to the reconstructed
+  handle.
+- [ ] Update `docs/tutorial/05-pricing.md` and add an `examples/msm_pricing/`
+  example after the public API is implemented.
+- [ ] Add documentation validation to the implementation PR:
+  `uv run --extra dev mkdocs build --strict --site-dir /private/tmp/msmarkets-docs-site`.
 
 ### Stage 1: Tenor And Rate Helper Primitives
 
@@ -359,8 +455,8 @@ Tasks:
   source/currency calendar defaults.
 - [ ] Add `build_rate_helper_vector(...)`.
 - [ ] Add tests proving no connector imports, strict tenor parsing,
-  decimal/percent quote handling, helper vector ordering, and explicit front
-  helper behavior.
+  decimal/percent quote handling, helper vector ordering, and overnight deposit
+  helpers represented as normal QuantLib helpers.
 
 ### Stage 2: Helper-Key-Node Adapter
 
@@ -377,8 +473,8 @@ Tasks:
   `_key_node_decimal_rate(...)`.
 - [ ] Require explicit units; do not infer percent versus decimal from source.
 - [ ] Keep connector-specific source repair outside this adapter.
-- [ ] Support `helper_type="ois_rate_helper"` and
-  `"overnight_indexed_swap_helper"` first.
+- [ ] Support `helper_type="overnight_deposit_helper"`,
+  `"ois_rate_helper"`, and `"overnight_indexed_swap_helper"` in v1.
 - [ ] Defer futures helper key nodes to a separate stage unless the
   implementation can define a clean generic interest-rate futures spec.
 
