@@ -114,7 +114,7 @@ nav:
   - Planning:
       - Implementation Tasks:
           - Benchmark Curve Resolution: planning/implementation_tasks/benchmark_curve_resolution_plan.md
-          - Generic Curve Helper Bootstrap: planning/implementation_tasks/generic_curve_helper_bootstrap_upstream_plan.md
+          - Generic Curve Reconstruction: planning/implementation_tasks/generic_curve_reconstruction_upstream_plan.md
           - Reusable Valuation Portfolio Scenario And Analytics: planning/implementation_tasks/reusable_valuation_portfolio_scenario_analytics_plan.md
   - Changelog: changelog.md
   - Reference:
