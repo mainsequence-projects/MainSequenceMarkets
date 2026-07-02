@@ -62,8 +62,8 @@ Main package areas:
   registration order
 - `msm_portfolios`: portfolio configuration, signal weights, rebalance
   strategies, virtual funds, and portfolio construction workflows
-- `msm_pricing`: optional QuantLib-backed instruments, curves, fixings, and
-  pricing helpers installed with the `pricing` extra
+- `msm_pricing`: optional QuantLib-backed instruments, curves, fixings, pricing
+  helpers, and pure-data analytics installed with pricing or analytics extras
 - `msm.repositories`: compiled persistence operations over market-domain models
 - `msm.services`: application-level orchestration over repositories, including
   asset lookup and OpenFIGI service helpers
@@ -119,6 +119,12 @@ Install pricing support only when needed:
 
 ```bash
 uv sync --extra pricing
+```
+
+Install the named analytics surface when working with optional spread analytics:
+
+```bash
+uv sync --extra analytics
 ```
 
 Install portfolio workflow support only when needed:
@@ -212,11 +218,14 @@ The core stack starts with:
 - `pydantic` for typed configuration and serialized row contracts
 - `pandas` and `numpy` for tabular market data
 
-Optional extras provide documentation, development, portfolio, public API, and
-pricing tooling. The `portfolios` extra installs portfolio-only helpers such as
-`pandas-market-calendars`. The `public_api` extra installs FastAPI and Uvicorn
-for the project-level `apps/v1` surface. The `pricing` extra installs QuantLib
-and the optional pricing runtime exposed as `msm_pricing`.
+Optional extras provide analytics, documentation, development, portfolio,
+public API, and pricing tooling. The `analytics` and `pricing-analytics` extras
+reserve the dependency boundary for optional analytics helpers; the current
+spread helpers use the core `numpy` and `pandas` dependencies. The `portfolios`
+extra installs portfolio-only helpers such as `pandas-market-calendars`. The
+`public_api` extra installs FastAPI and Uvicorn for the project-level `apps/v1`
+surface. The `pricing` extra installs QuantLib and the optional pricing runtime
+exposed as `msm_pricing`.
 
 ## Package Metadata
 

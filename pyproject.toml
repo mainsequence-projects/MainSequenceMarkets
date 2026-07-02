@@ -50,6 +50,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+analytics = []
 dev = [
   "fastapi>=0.136.3",
   "mkdocs>=1.6",
@@ -84,6 +85,7 @@ pricing = [
   "matplotlib",
   "QuantLib",
 ]
+pricing-analytics = []
 
 [project.urls]
 Changelog = "https://github.com/mainsequence-projects/MainSequenceMarkets/blob/main/CHANGELOG.md"

@@ -300,6 +300,41 @@ def test_swap_resolver_receives_curve_quote_side(monkeypatch) -> None:
     assert calls[0][1]["quote_side"] == "offer"
 
 
+def test_swap_reset_curve_accepts_yield_term_structure_handle(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    swap = _swap(index_uid)
+    valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    handle = ql.YieldTermStructureHandle(
+        ql.FlatForward(ql.Date(27, 5, 2026), 0.05, ql.Actual360())
+    )
+    calls = []
+
+    class FakeIndex:
+        pass
+
+    monkeypatch.setattr(
+        "msm_pricing.instruments.interest_rate_swap.resolve_quantlib_index",
+        lambda backend_index_uid, **kwargs: (
+            calls.append((backend_index_uid, kwargs)) or FakeIndex()
+        ),
+    )
+
+    swap.set_valuation_date(valuation_date)
+    swap.reset_curve(handle)
+
+    assert calls == [
+        (
+            index_uid,
+            {
+                "valuation_date": valuation_date,
+                "market_data_set": None,
+                "forwarding_curve": handle,
+                "hydrate_fixings": True,
+            },
+        )
+    ]
+
+
 def test_attach_load_round_trip_preserves_bond_index_uid(monkeypatch) -> None:
     asset = _asset()
     index_uid = uuid.uuid4()

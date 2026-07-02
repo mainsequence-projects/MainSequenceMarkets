@@ -235,6 +235,67 @@ The helper expects the decimal spread returned by `Bond.z_spread(...)`, quoted
 as a continuous zero-rate spread. It does not change the persisted curve nodes,
 `key_nodes`, `CurveTable`, or `CurveBuildingDetails`.
 
+## Curve Scenarios
+
+Curve scenarios live under `msm_pricing.scenarios.curves`. They shock curves by
+`Curve.unique_identifier`, not by backend curve UID, index UID, role key, quote
+side, or provider-local curve name. A curve that is selected by several roles
+or lines is rebuilt once for the scenario and reused wherever that same curve
+identity is resolved.
+
+```python
+from msm_pricing.scenarios.curves import CurveBumpSpec, CurveScenario
+
+scenario = CurveScenario(
+    name="parallel-up-25bp",
+    shocks_by_curve_identifier={
+        "USD-SOFR-3M-PROJECTION": CurveBumpSpec(parallel_bp=25.0),
+    },
+)
+```
+
+`CurveBumpSpec` supports:
+
+- `parallel_bp`: a basis-point shift applied to every usable source key-node
+  rate or yield;
+- `keyrate_bp`: tenor labels such as `"3M"` or positive day counts mapped to
+  basis-point shifts; key-rate values are linearly interpolated and flat
+  extrapolated;
+- `metadata_json`: caller-owned scenario metadata.
+
+The bump helpers operate on copied `key_nodes` dictionaries. They never mutate
+the submitted observation, the persisted `DiscountCurvesNode` row, or the
+prepared valuation context. Supported key-node rate sources are:
+
+- `yield` or `yield_value` with an explicit decimal or percent unit;
+- rate-like `quote` values when `quote_type` is a rate convention such as
+  `zero_rate`, `forward_rate`, `par_rate`, or `swap_rate`;
+- `implied_rate` with an explicit decimal or percent unit.
+
+Unsupported source quote conversions, such as `clean_price` or
+`price_per_100` to a rate, stay outside core `msm_pricing`. Those conversions
+depend on vendor/source interpretation and belong in the producer or connector
+adapter that understands the source instrument.
+
+Scenario runtime nodes are built from the bumped key nodes and the runtime
+`CurveBuildingDetails` output convention:
+
+```text
+quote_convention = zero_rate    -> {"days_to_maturity": ..., "zero": ...}
+quote_convention = forward_rate -> {"days_to_maturity": ..., "forward": ...}
+```
+
+If persisted build details use source placeholders such as
+`quote_convention="key_node_quote"` or `rate_unit="key_node_unit"`, the
+`builder_payload` must explicitly declare the runtime output convention and
+unit. The scenario helper fails instead of guessing.
+
+Connector-specific curve rebuilds remain connector-owned. For example, a
+Valmer-specific TIIE/OIS reconstruction that imports `valmer_connectors` should
+not be moved into core `msm_pricing`; the connector can either publish generic
+key nodes that this API can convert or build connector-owned scenario handles
+before calling lower-level pricing helpers.
+
 ## Curve Observations
 
 `DiscountCurvesNode` publishes timestamped curve observations. Its storage key

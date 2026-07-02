@@ -211,10 +211,49 @@ side when the underlying instrument supports those arguments. Callers must pass
 parsing, such as dirty price per 100 notional, remains outside the core
 valuation context.
 
-For scenario runs, use `msm_pricing.price_scenario(...)` with explicit
-line-scoped base and scenario curve handles. The helper prepares separate
-copies for override cases, so mutable scenario curve state does not leak into
-the caller-owned instruments or the cached base prepared instrument.
+For curve scenario runs, use
+`msm_pricing.scenarios.curves.price_curve_scenario(...)` when shocks can be
+expressed as basis-point bumps to source curve key nodes. The workflow is:
+
+1. Build a `ValuationPosition` from already normalized instrument/unit rows.
+2. Prepare a `PricingValuationContext` once, or let the scenario helper prepare
+   one from the position.
+3. Create a `CurveScenario` keyed by `Curve.unique_identifier`.
+4. Call `price_curve_scenario(...)`.
+5. Read `CurveScenarioResult.base_market_value`,
+   `scenario_market_value`, `market_value_delta`, `line_impacts`,
+   `curve_shocks`, and optional diagnostics.
+
+```python
+from msm_pricing.scenarios.curves import (
+    CurveBumpSpec,
+    CurveScenario,
+    price_curve_scenario,
+)
+from msm_pricing.valuation import PricingValuationContext
+
+context = PricingValuationContext.prepare_for_position(
+    position,
+    curve_quote_side="mid",
+)
+result = price_curve_scenario(
+    position,
+    CurveScenario(
+        name="parallel-up-25bp",
+        shocks_by_curve_identifier={
+            "USD-SOFR-3M-PROJECTION": CurveBumpSpec(parallel_bp=25.0),
+        },
+    ),
+    context=context,
+)
+```
+
+The helper delegates line pricing to `msm_pricing.price_scenario(...)` after it
+has constructed line-scoped base and scenario curve handles. Use
+`price_scenario(...)` directly only when the caller already owns the exact
+line-scoped handles. In both paths, mutable scenario curve state is applied to
+prepared copies instead of caller-owned instruments or cached base prepared
+instruments.
 
 The prepared context is intentionally not expandable. Its spec records the
 valuation date, market-data set, quote side, valuation-role requirements, and

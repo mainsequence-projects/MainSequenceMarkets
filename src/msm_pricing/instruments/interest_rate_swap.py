@@ -93,14 +93,22 @@ class InterestRateSwap(InstrumentModel):
         self._reset_runtime()
 
     # Optional: allow injecting a custom curve for the float leg
-    def reset_curve(self, curve: ql.YieldTermStructure) -> None:
+    def reset_curve(
+        self,
+        curve: ql.YieldTermStructureHandle | ql.YieldTermStructure,
+    ) -> None:
         if self.valuation_date is None:
             raise ValueError("Set valuation_date before reset_curve().")
+        forwarding_curve = (
+            curve
+            if isinstance(curve, ql.YieldTermStructureHandle)
+            else ql.YieldTermStructureHandle(curve)
+        )
         self._float_leg_index = resolve_quantlib_index(
             self.float_leg_index_uid,
             valuation_date=self.valuation_date,
             market_data_set=self._market_data_set_uid,
-            forwarding_curve=ql.YieldTermStructureHandle(curve),
+            forwarding_curve=forwarding_curve,
             hydrate_fixings=True,
         )
         self._swap = None

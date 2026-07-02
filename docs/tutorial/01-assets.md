@@ -130,6 +130,9 @@ btc = Asset.upsert(
 btc_by_identifier = Asset.get_by_unique_identifier(
     unique_identifier="example-asset-btc",
 )
+assets_by_identifier = Asset.get_many_by_unique_identifier(
+    ["example-asset-btc", "example-asset-eth"],
+)
 btc_by_uid = Asset.get_by_uid(btc.uid)
 crypto_assets = Asset.filter(
     unique_identifier_contains="example-asset-",

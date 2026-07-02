@@ -17,6 +17,8 @@ from msm_pricing.pricing_engine import (
     resolve_quantlib_index,
     resolve_pricing_curve,
 )
+from msm_pricing.analytics.spreads import fixed_income_spread_metrics
+from msm_pricing.scenarios.curves import CurveBumpSpec, CurveScenario, price_curve_scenario
 from msm_pricing.valuation import ValuationLine, ValuationPosition, build_valuation_position
 ```
 
@@ -24,6 +26,7 @@ from msm_pricing.valuation import ValuationLine, ValuationPosition, build_valuat
 
 ```text
 src/msm_pricing/
+├── analytics/           # Pure-data spread and relative-value analytics
 ├── api/                 # User-facing pricing persistence workflows
 ├── data_interface/      # Main Sequence market-data reads for curves/index fixings
 ├── data_nodes/          # Pricing DataNodes and curve/index-fixing codecs
@@ -31,6 +34,7 @@ src/msm_pricing/
 ├── meta_tables.py       # Pricing MetaTable discovery and registration
 ├── models/              # SQLAlchemy MetaTable declarations
 ├── pricing_engine/      # QuantLib curve, index, bond, and swap helpers
+├── scenarios/           # Transient scenario helpers layered on valuation contexts
 ├── settings.py
 └── utils.py
 ```
@@ -50,11 +54,31 @@ The current package exports:
 - `ValuationLine`
 - `ValuationPosition`
 - `build_valuation_position`
+- `CurveBumpSpec`
+- `CurveScenario`
+- `CurveScenarioResult`
+- `price_curve_scenario`
 
 `ValuationPosition` is an in-memory valuation basket. It links priceable
 instrument instances to unit multipliers for one explicit valuation context. It
 is not a persisted pricing MetaTable and does not own account or portfolio
 position state.
+
+Curve scenarios live under `msm_pricing.scenarios.curves`. Use
+`price_curve_scenario(...)` when a position should be repriced by applying
+parallel or key-rate basis-point bumps to resolved curve key nodes. The helper
+builds transient scenario handles from copied observation provenance, applies
+runtime z-spread overlays when present, and delegates line valuation to
+`price_scenario(...)`. Use `price_scenario(...)` directly only when the caller
+already owns the exact line-scoped base and scenario handles.
+
+Spread analytics live under `msm_pricing.analytics.spreads`. The cross-asset
+`base` module owns aligned spread construction, z-score matrices, pair metrics,
+hedge-ratio estimation, and forecast cones from caller-supplied data. The
+`fixed_income` module adds DV01, carry, roll-down, and downside interpretation
+without reading curves, portfolios, assets, or backend rows. Future equity,
+index, commodity, and option spread analytics should be sibling modules under
+the same namespace.
 
 ## Runtime Responsibilities
 

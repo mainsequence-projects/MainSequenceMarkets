@@ -66,14 +66,85 @@ helpers into core API contracts.
 
 Implement this work as four independent promotion tracks.
 
+## Target File Locations
+
+The work should stay inside the owning package folders. Do not create generic
+library code under downstream project-local adapter folders such as
+`src/fundcompetition/local_ms_markets`.
+
+Planned and implemented locations:
+
+```text
+Track 1: Normalized valuation inputs
+  src/msm_pricing/valuation.py
+  src/msm_pricing/__init__.py
+  tests/msm_pricing/test_valuation.py
+  examples/msm_pricing/valuation_inputs.py
+  docs/knowledge/msm_pricing/instruments.md
+  docs/tutorial/05-pricing.md
+  src/msm_pricing/README.md
+
+Track 2: Portfolio and asset read services
+  src/msm_portfolios/services/portfolio_reads.py
+  src/msm_portfolios/services/__init__.py
+  src/msm/services/assets/reference_details.py
+  src/msm/services/assets/__init__.py
+  src/msm/services/__init__.py
+  tests/msm_portfolios/services/test_portfolio_reads.py
+  tests/msm/services/assets/test_reference_details.py
+  examples/msm_portfolios/portfolio_read_services.py
+  docs/knowledge/msm_portfolios/portfolios/index.md
+  docs/knowledge/msm/assets/index.md
+
+Track 3: Curve-keyed scenario pricing
+  src/msm_pricing/scenarios/__init__.py
+  src/msm_pricing/scenarios/curves/__init__.py
+  src/msm_pricing/scenarios/curves/models.py
+  src/msm_pricing/scenarios/curves/key_node_bumps.py
+  src/msm_pricing/scenarios/curves/engine.py
+  src/msm_pricing/__init__.py
+  tests/msm_pricing/scenarios/curves/test_key_node_bumps.py
+  tests/msm_pricing/scenarios/curves/test_curve_scenarios.py
+  examples/msm_pricing/curve_scenario.py
+  docs/knowledge/msm_pricing/instruments.md
+  docs/knowledge/msm_pricing/curves.md
+  docs/knowledge/msm_pricing/runtime_resolution.md
+
+Track 4: Optional spread analytics namespace
+  src/msm_pricing/analytics/__init__.py
+  src/msm_pricing/analytics/spreads/__init__.py
+  src/msm_pricing/analytics/spreads/base.py
+  src/msm_pricing/analytics/spreads/fixed_income.py
+  tests/msm_pricing/analytics/spreads/test_base.py
+  tests/msm_pricing/analytics/spreads/test_fixed_income.py
+  examples/msm_pricing/fixed_income_spread_analytics.py
+  docs/knowledge/msm_pricing/analytics.md
+  pyproject.toml
+```
+
+When implementation discovers that an existing module is the better home, use
+the existing module only if it keeps the same package boundary. For example,
+portfolio read helpers may extend an existing `msm_portfolios.services` module
+instead of creating `portfolio_reads.py`, but they must not be placed in a
+dashboard, FastAPI route, or project-local adapter as the only reusable
+implementation.
+
 ### 1. Normalized Valuation Inputs
 
 Add a public helper for building `ValuationPosition` from normalized valuation
 rows.
 
-The public surface should live with the valuation basket API, for example under
-`msm_pricing.valuation` and re-exported from `msm_pricing` only if the import
-remains clear.
+Implementation location:
+
+```text
+src/msm_pricing/valuation.py
+src/msm_pricing/__init__.py
+tests/msm_pricing/test_valuation.py
+examples/msm_pricing/valuation_inputs.py
+```
+
+The public surface lives with the valuation basket API under
+`msm_pricing.valuation` and is re-exported from `msm_pricing`.
 
 Target usage:
 
@@ -123,6 +194,19 @@ Rejected behavior:
 
 Promote reusable portfolio and asset lookup queries into package-owned services
 or repositories.
+
+Planned implementation location:
+
+```text
+  src/msm_portfolios/services/portfolio_reads.py
+  src/msm_portfolios/services/__init__.py
+  src/msm/services/assets/reference_details.py
+  src/msm/services/assets/__init__.py
+  src/msm/services/__init__.py
+  tests/msm_portfolios/services/test_portfolio_reads.py
+  tests/msm/services/assets/test_reference_details.py
+  examples/msm_portfolios/portfolio_read_services.py
+```
 
 Portfolio-owned read services belong under `msm_portfolios`, because portfolio
 weights and portfolio values are portfolio workflow outputs. Core asset
@@ -191,6 +275,46 @@ Rejected behavior:
 Promote curve scenario machinery by extending the existing prepared-context
 scenario path.
 
+Planned implementation location:
+
+```text
+src/msm_pricing/scenarios/__init__.py
+src/msm_pricing/scenarios/curves/__init__.py
+src/msm_pricing/scenarios/curves/models.py
+src/msm_pricing/scenarios/curves/key_node_bumps.py
+src/msm_pricing/scenarios/curves/engine.py
+src/msm_pricing/__init__.py
+tests/msm_pricing/scenarios/curves/test_key_node_bumps.py
+tests/msm_pricing/scenarios/curves/test_curve_scenarios.py
+examples/msm_pricing/curve_scenario.py
+```
+
+`msm_pricing.scenarios` is a namespace, not the implementation module for this
+track. Curve-keyed scenarios belong under `msm_pricing.scenarios.curves` so
+future scenario families, such as equities, volatility, commodities, or credit,
+can be added as sibling packages without turning one flat module into a mixed
+risk-factor API.
+
+Additional donor analysis:
+
+- `local_valmer/curve_bumps.py` contains generic curve bump semantics:
+  `CurveBumpSpec`, tenor parsing, key-rate interpolation, and empty-shock
+  detection. These are not Valmer-specific and belong in `msm_pricing`.
+- `local_valmer/curve_key_nodes.py` contains generic key-node mechanics:
+  deriving days-to-maturity from explicit days, maturity/pillar dates, or
+  tenor labels; normalizing decimal and percent rate units; bumping supported
+  rate/yield fields; and converting rate/yield key nodes to runtime curve
+  observation nodes. These mechanics align with existing `CurveKeyNode`
+  construction provenance in `msm_pricing.data_nodes.curves.key_nodes`.
+- `local_ms_markets/curve_scenario.py` contains engine-level curve-keyed
+  scenario behavior that should be adapted into `msm_pricing`, but not copied
+  as-is because it imports a project default quote side and contains permissive
+  diagnostic fallback behavior.
+- `local_valmer/curve_scenarios.py` contains both a generic runtime conversion
+  shape and a Valmer TIIE/OIS special rebuild. The generic conversion belongs
+  in `msm_pricing`; the TIIE/OIS branch that imports
+  `valmer_connectors.instruments.rates_curves` remains connector-owned.
+
 The implementation must build on:
 
 ```python
@@ -203,7 +327,7 @@ It must not introduce a second pricing loop that bypasses
 The public model should represent these concepts:
 
 ```text
-CurveShock
+CurveBumpSpec / CurveShock
   parallel_bp
   keyrate_bp
   metadata_json
@@ -239,9 +363,43 @@ that derives those descriptors from `PricingValuationContext` and
 `PricingMarketDataSetCurveBinding`, but that resolver must preserve the
 set-based preparation guarantees from ADR 0036.
 
+Generic key-node bump helpers must:
+
+- operate on copies of source key-node dictionaries and never mutate submitted
+  `key_nodes`;
+- parse tenor labels such as `28D`, `2W`, `3M`, and `5Y` into approximate
+  days only for bump interpolation, not for persisted curve identity;
+- determine days-to-maturity from `days_to_maturity`, `maturity_date`,
+  `pillar_date`, or `tenor`, using the effective curve date when dates are
+  present;
+- normalize rate units explicitly, supporting decimal and percent values and
+  rejecting missing or unsupported units;
+- bump only supported rate/yield fields, such as `yield`, rate-like `quote`
+  values, and `implied_rate`; price quotes such as clean prices must stay
+  source-specific unless a producer provides a separate semantic adapter;
+- convert bumped rate/yield key nodes into runtime curve observation nodes that
+  match `CurveBuildingDetails.quote_convention` and `rate_unit`. Do not
+  hardcode `zero` nodes when the runtime build details require `forward`
+  quotes.
+
+Generic scenario curve-handle construction must:
+
+- build scenario handles from bumped key nodes through
+  `build_curve_from_curve_observation(...)` or the same resolver-backed
+  observation contract used by `PricingValuationContext`;
+- preserve the source observation's `curve_identifier`, effective timestamp,
+  `key_nodes`, and optional metadata as derived runtime state only;
+- support source build details whose persisted `quote_convention` or
+  `rate_unit` point at source key-node conventions only when the output
+  runtime convention is explicit in `builder_payload`;
+- rebuild each shocked `Curve.unique_identifier` at most once per scenario and
+  reuse the handle for every line/role that selected the shared curve;
+- produce line-scoped base and scenario handle maps for
+  `price_scenario(...)`, instead of pricing lines in a parallel loop.
+
 The scenario helper must:
 
-- apply shocks to derived runtime handles only;
+- apply shocks to derived runtime handles and scenario key-node copies only;
 - keep `CurveTable`, `CurveBuildingDetails`, `DiscountCurvesNode`
   observations, and `key_nodes` immutable;
 - use `Curve.unique_identifier` as the scenario shock key;
@@ -259,41 +417,90 @@ logic.
 Rejected behavior:
 
 - do not import project settings such as a local default curve quote side;
+- do not import `valmer_connectors` or any connector package from
+  `msm_pricing`;
+- do not promote Valmer-specific TIIE/OIS reconstruction into the core pricing
+  library;
 - do not silently fall back to latest observations unless the caller selects an
   explicit latest-observation policy;
 - do not allow default empty shocks to be treated as objects with missing
   `parallel_bp` or `keyrate_bp` fields;
 - do not catch context preparation failures and continue in normal strict
   pricing mode;
+- do not hardcode zero-rate observation nodes when `CurveBuildingDetails`
+  requires forward-rate nodes;
 - do not mutate submitted instruments or prepared context state across
   scenarios.
 
-### 4. Optional Fixed-Income Spread Analytics
+### 4. Optional Spread Analytics Namespace
 
-Promote generic spread analytics as optional analytics, not core pricing
-runtime.
+Promote reusable spread analytics as optional analytics, not core pricing
+runtime. `spreads` must be a namespace, not one flat fixed-income module,
+because spread analytics can later cover equity pairs, index spreads,
+commodity/calendar spreads, and option volatility or skew spreads.
+
+Planned implementation location:
+
+```text
+src/msm_pricing/analytics/__init__.py
+src/msm_pricing/analytics/spreads/__init__.py
+src/msm_pricing/analytics/spreads/base.py
+src/msm_pricing/analytics/spreads/fixed_income.py
+tests/msm_pricing/analytics/spreads/test_base.py
+tests/msm_pricing/analytics/spreads/test_fixed_income.py
+examples/msm_pricing/fixed_income_spread_analytics.py
+docs/knowledge/msm_pricing/analytics.md
+pyproject.toml
+```
 
 The target package area is:
 
 ```text
 msm_pricing.analytics.spreads
+msm_pricing.analytics.spreads.base
+msm_pricing.analytics.spreads.fixed_income
 ```
 
-The initial helper set may include:
+`base.py` is for cross-asset primitives only:
 
-- spread z-score matrix construction;
+- aligned spread series construction from caller-supplied arrays/Series;
+- z-score and rolling z-score matrices;
 - pair history frame construction;
-- pair-level spread metrics;
+- pair-level statistical metrics;
+- generic hedge-ratio estimation from price/return series;
+- generic mean-reversion or forecast-cone helpers when the required optional
+  dependencies are installed.
+
+`fixed_income.py` is for fixed-income-specific spread analytics:
+
 - leg-level carry/roll/downside metrics;
 - DV01 and hedge-ratio calculations;
-- Ornstein-Uhlenbeck style forecast cones;
-- optional AR(1)/GARCH forecast cones when optional dependencies are present.
+- curve-spread or z-spread relative-value metrics that depend on duration,
+  DV01, yield, or curve-specific concepts.
+
+Future modules should be siblings, not additions to `fixed_income.py`, for
+example:
+
+```text
+src/msm_pricing/analytics/spreads/equity.py
+src/msm_pricing/analytics/spreads/index.py
+src/msm_pricing/analytics/spreads/commodities.py
+src/msm_pricing/analytics/spreads/options.py
+```
+
+Option spread analytics should be asset-agnostic when possible. A commodity
+option spread is still an option spread if the analytics only need option
+prices, implied volatilities, deltas, expiries, and strikes; commodity-specific
+convenience logic can live in a future `commodities.py` adapter if it needs
+calendar, contract-roll, or underlier-specific semantics.
 
 The helpers must:
 
 - operate on caller-supplied pandas or numpy data;
 - avoid backend row reads;
 - avoid project-specific asset, curve, or vendor assumptions;
+- keep cross-asset statistical primitives separate from asset-class-specific
+  spread interpretation;
 - keep dependency-heavy functionality behind an optional extra such as
   `ms-markets[pricing-analytics]` or `ms-markets[analytics]`;
 - degrade clearly when an optional dependency such as `arch` is not installed.
@@ -316,7 +523,12 @@ library APIs:
 - a separate one-line wrapper over `PreparedInstrument.z_spread(...)`;
 - Command Center `core.tabular_frame@v1` normalization from arbitrary JSON into
   pandas DataFrames as part of financial market logic;
-- project-specific dirty-price, quote-side, or vendor translation assumptions.
+- project-specific dirty-price, quote-side, or vendor translation assumptions;
+- connector-specific curve rebuilds such as Valmer TIIE/OIS construction that
+  import connector packages;
+- source-specific clean-price-to-rate or vendor quote translation for curve
+  key nodes unless expressed as an explicit producer adapter outside core
+  `msm_pricing`.
 
 Those helpers can remain in downstream projects or be replaced by existing
 library APIs. If Command Center needs generic tabular-frame parsing, that
@@ -331,7 +543,7 @@ belongs in the SDK or Command Center helper layer, not in `msm_pricing` or
 - [ ] Confirm final public names for valuation-row construction, portfolio read
   services, asset reference details, curve scenario models, and analytics
   package extras before implementation begins.
-- [ ] Identify existing internal or public helpers that will be consolidated to
+- [x] Identify existing internal or public helpers that will be consolidated to
   avoid duplicate implementations.
 
 ### Stage 2: Valuation Inputs
@@ -346,35 +558,288 @@ belongs in the SDK or Command Center helper layer, not in `msm_pricing` or
 
 ### Stage 3: Portfolio And Asset Reads
 
-- [ ] Add portfolio read services for latest weights and portfolio values.
-- [ ] Add asset reference detail reads for canonical asset identity plus latest
+- [x] Add portfolio read services for latest weights and portfolio values.
+- [x] Add asset reference detail reads for canonical asset identity plus latest
   snapshot details.
-- [ ] Consolidate overlapping private account allocation or public API query
+- [x] Consolidate overlapping private account allocation or public API query
   logic onto the new services where appropriate.
-- [ ] Add tests for exact-date and latest-at-or-before policies,
+- [x] Add tests for exact-date and latest-at-or-before policies,
   multi-portfolio isolation, identifier handling, and explicit repository
   context usage.
-- [ ] Document the service boundaries in portfolio and asset docs.
+- [x] Document the service boundaries in portfolio and asset docs.
 
 ### Stage 4: Curve Scenarios
 
-- [ ] Add typed curve scenario and result models.
-- [ ] Add a curve scenario helper that delegates line pricing to the existing
-  prepared-context and `price_scenario(...)` path.
-- [ ] Add shock application helpers for parallel and key-rate bumps without
-  mutating persisted curve data.
-- [ ] Add strict preflight and explicit diagnostic behavior tests.
-- [ ] Add tests proving scenario handles and z-spread overlays do not leak
-  across lines, scenarios, or submitted instruments.
-- [ ] Document the scenario workflow in pricing docs and examples.
+This is a large refactor and must be implemented as separate, reviewable
+sub-stages. Do not land it as one opaque port from the downstream project.
+
+#### Stage 4.1: Public Scenario Models And Import Surface
+
+- [x] Create `src/msm_pricing/scenarios/` as a scenario namespace package, with
+  `src/msm_pricing/scenarios/curves/` owning curve-specific scenario models.
+  Do not put these models in a connector package, a flat catch-all module, or a
+  FastAPI/dashboard layer.
+- [x] Keep `src/msm_pricing/scenarios/__init__.py` domain-neutral. It may
+  expose stable namespace-level conveniences later, but it must not become a
+  dumping ground for equity, curve, volatility, and commodity scenario models.
+- [x] Create `src/msm_pricing/scenarios/curves/models.py` for public
+  curve-scenario models and lightweight result shaping.
+- [x] Add `CurveBumpSpec` with fields `parallel_bp: float = 0.0`,
+  `keyrate_bp: Mapping[str | int, float] = {}`, and
+  `metadata_json: dict[str, Any] = {}`.
+- [x] Add `CurveBumpSpec.keyrate_days_bp()` to normalize tenor/int keys to
+  positive integer day keys, preserving only usable keys and rejecting invalid
+  non-empty key-rate inputs with actionable errors.
+- [x] Add `CurveBumpSpec.total_bp_for_days(days_to_maturity)` with linear
+  interpolation across key-rate nodes and flat extrapolation outside the first
+  and last key-rate maturities.
+- [x] Add `CurveBumpSpec.is_empty()` with an explicit zero-basis-point
+  tolerance so default/empty shocks are real no-op objects, not missing fields.
+- [x] Add `CurveScenario` with `name`, `shocks_by_curve_identifier`, and
+  `default_shock`. `shock_for(curve_identifier)` must key by
+  `Curve.unique_identifier`, never by `Curve.uid`, index UID, role key, or
+  provider-local curve name.
+- [x] Add `ResolvedLineCurve` / `LineCurveResolution` with `line_index`,
+  `role_key`, `selector_type`, `selector_key`, `quote_side`,
+  `curve_uid`, `curve_identifier`, `base_handle`, optional
+  `scenario_handle`, and optional `observed_z_spread_decimal`.
+- [x] Add `CurveScenarioResult` with `base_market_value`,
+  `scenario_market_value`, `market_value_delta`, `line_impacts`,
+  `curve_shocks`, `errors`, and the raw `price_scenario(...)` result payload.
+- [x] Re-export only stable public names from `src/msm_pricing/__init__.py`.
+  Keep lower-level key-node helpers available through their owning submodule
+  unless there is a clear public-user reason to re-export them.
+
+#### Stage 4.2: Typing, Docstrings, And Public API Quality Gate
+
+- [x] Add module docstrings to every new public module under
+  `src/msm_pricing/scenarios/curves/`. The docstrings must explain the package
+  boundary: `msm_pricing.scenarios.curves` owns transient curve-scenario
+  runtime mechanics; `msm_pricing.data_nodes.curves` owns persisted curve data
+  and key-node provenance; connector-specific curve rebuilds stay outside core.
+- [x] Give every public class, method, and function exported from
+  `src/msm_pricing/scenarios/curves/__init__.py` explicit typed signatures and
+  return annotations. Do not expose untyped public callables.
+- [x] Avoid `Any` in public signatures. If `Any` is unavoidable for QuantLib
+  handles, backend row objects, or duck-typed observations, keep it at the
+  boundary and document the accepted object shape in the docstring.
+- [x] Add class docstrings for `CurveBumpSpec`, `CurveScenario`,
+  `ResolvedLineCurve` / `LineCurveResolution`, and `CurveScenarioResult` that
+  state identity rules, units, mutability expectations, and whether the model is
+  an input, an internal resolution record, or an output.
+- [x] Add method/function docstrings for `is_empty()`,
+  `keyrate_days_bp()`, `total_bp_for_days(...)`, `shock_for(...)`,
+  `tenor_to_days(...)`, `bump_key_nodes(...)`,
+  `key_nodes_to_curve_observation_nodes(...)`, scenario-handle construction,
+  and `price_curve_scenario(...)`.
+- [x] In those docstrings, state units explicitly: bumps are basis points,
+  output curve rates are decimal rates, percent key-node inputs are normalized
+  to decimals, and tenor-to-day conversion is approximate runtime support rather
+  than a persisted convention.
+- [x] In those docstrings, state mutation behavior explicitly: submitted
+  instruments, prepared valuation contexts, persisted curve observations, and
+  submitted key-node dictionaries must not be mutated.
+- [x] Public result models must document which fields are base valuation,
+  scenario valuation, diagnostics, and raw delegated `price_scenario(...)`
+  payloads.
+- [x] Treat docstring, typing, and public export review as a blocking
+  acceptance gate for Stage 4. The implementation is not complete if the
+  behavior works but the public API is undocumented or partially typed.
+
+#### Stage 4.3: Generic Key-Node Bump Mechanics
+
+- [x] Create `src/msm_pricing/scenarios/curves/key_node_bumps.py` for
+  source-key-node bump mechanics that are generic across curve producers and
+  specific to curve-scenario construction.
+- [x] Implement `tenor_to_days(tenor)` for labels like `28D`, `2W`, `3M`, and
+  `5Y`. The conversion is approximate and must be documented as scenario
+  interpolation support only, not a persisted curve convention.
+- [x] Implement `key_node_maturity_date(node)` to read `maturity_date` or
+  `pillar_date` and normalize timestamp-like values to UTC datetimes.
+- [x] Implement `key_node_days_to_maturity(node, effective_curve_date=...)`
+  with this precedence: explicit `days_to_maturity`, maturity/pillar date
+  minus effective curve date, then tenor label.
+- [x] Implement rate-unit helpers that accept only explicit `decimal` /
+  `decimals` and `percent` / `percentage` units. Missing units must fail
+  instead of silently assuming decimals.
+- [x] Implement `key_node_decimal_rate(node)` for supported rate/yield fields:
+  `yield`, rate-like `quote` values where `quote_type` is a rate convention,
+  and `implied_rate`.
+- [x] Implement `bump_key_node_rate(node, bump_bp=...)` and
+  `bump_key_nodes(key_nodes, bump_spec, effective_curve_date=...)` as copy-based
+  transforms. They must return new dictionaries and leave submitted key-node
+  objects unchanged.
+- [x] Reject unsupported quote shapes such as clean prices in the generic
+  helper. Clean-price-to-rate conversion is source/vendor interpretation and
+  belongs in a producer or connector adapter.
+- [x] Implement `key_nodes_to_curve_observation_nodes(...)` that converts
+  bumped rate/yield key nodes into resolver-compatible observation nodes using
+  the runtime `CurveBuildingDetails.quote_convention`:
+  `zero_rate` produces `{"days_to_maturity": ..., "zero": ...}` and
+  `forward_rate` produces `{"days_to_maturity": ..., "forward": ...}`.
+- [x] Implement a small helper to derive runtime build details when persisted
+  build details use source placeholders such as `quote_convention="key_node_quote"`
+  or `rate_unit="key_node_unit"`. Runtime output convention/unit must come from
+  explicit `builder_payload` keys; missing output convention/unit must fail.
+- [x] Export key-node bump helpers from
+  `src/msm_pricing/scenarios/curves/__init__.py` only after the helper contract
+  is tested. Do not export them from `msm_pricing.data_nodes.curves`; they are
+  scenario mechanics, not DataNode storage contracts.
+
+#### Stage 4.4: Scenario Curve Handle Construction
+
+- [x] Create `src/msm_pricing/scenarios/curves/engine.py` for handle
+  construction and prepared-context integration. This module may import
+  QuantLib, `CurveBumpSpec`, `PricingValuationContext`,
+  `build_curve_from_curve_observation(...)`, and `apply_z_spread_to_curve(...)`.
+  It must not import project settings or connector packages.
+- [x] Add a helper that builds one scenario curve handle from a `Curve` row,
+  `CurveBuildingDetails`, one curve observation, a `CurveBumpSpec`, and an
+  effective curve date.
+- [x] For empty shocks, reuse the base handle rather than rebuilding an
+  equivalent curve.
+- [x] For non-empty shocks, read source `key_nodes` from the already prepared
+  curve observation, apply copy-based key-node bumps, convert the bumped
+  key nodes to runtime observation `nodes`, then call
+  `build_curve_from_curve_observation(...)`.
+- [x] Preserve base observation data as immutable input. The scenario
+  observation object may include copied bumped `key_nodes`, runtime `nodes`,
+  original `curve_identifier`, original/effective timestamp, and copied
+  metadata, but it must not be written back to storage.
+- [x] Build each distinct shocked `Curve.unique_identifier` at most once per
+  scenario. Multiple lines, roles, or selectors that resolve to the same curve
+  must share the same scenario handle.
+- [x] Leave connector-specific rebuilds, including Valmer TIIE/OIS curve
+  construction, outside `msm_pricing`. If a connector needs that behavior, it
+  should call the generic scenario API with connector-built scenario handles or
+  a connector-owned handle builder.
+- [x] Export stable curve-scenario helpers from
+  `src/msm_pricing/scenarios/curves/__init__.py` after naming is finalized.
+  Package-level `msm_pricing` exports are optional conveniences and should be
+  limited to the user-facing entry point.
+
+#### Stage 4.5: Integration With Prepared Valuation Context
+
+- [x] Add a public helper, tentatively `price_curve_scenario(...)`, that accepts
+  a `ValuationPosition`, a `CurveScenario`, and either a prepared
+  `PricingValuationContext` or enough arguments to prepare one once.
+- [x] The helper must call `PricingValuationContext.prepare_for_position(...)`
+  at most once when no context is provided.
+- [x] The helper must validate a provided context with
+  `context.validate_position_compatibility(position)` before constructing
+  scenario handles.
+- [x] The helper must derive or accept line-curve resolutions and produce the
+  two maps required by existing `price_scenario(...)`:
+  `line_curve_handles={line_index: ...}` and
+  `scenario_curve_handles={line_index: ...}`.
+- [x] The helper must delegate actual base/scenario line pricing to
+  `msm_pricing.valuation.price_scenario(...)`. It must not duplicate the
+  pricing loop from the downstream donor module.
+- [x] If only one reset curve can be applied to a line with the current
+  `price_scenario(...)` override contract, selection must be explicit and
+  deterministic, for example role preference
+  `projection`, `floating`, `discount`, `z_spread_base` for floating/indexed
+  instruments and `z_spread_base`, `discount`, `projection`, `floating` for
+  fixed-rate instruments.
+- [x] Do not silently drop a non-empty shocked related curve that cannot be
+  applied to a line. Strict mode must raise; diagnostic mode may collect a
+  structured warning/error.
+- [x] Apply `apply_z_spread_to_curve(...)` only to runtime handles when a line
+  provides an observed decimal continuous z-spread. Do not modify persisted
+  curve observations or submitted instruments.
+
+#### Stage 4.6: Strict Preflight And Diagnostic Mode
+
+- [x] Strict mode is the default. It must fail before pricing when a non-empty
+  curve shock has no matching curve resolution, no base handle, no curve row,
+  no build details, no prepared observation, no usable `key_nodes`, unsupported
+  rate units, unsupported quote types, or missing output runtime
+  quote-convention/unit.
+- [x] Add an explicit diagnostic mode, for example
+  `diagnostic_mode="collect"` or `strict=False`, only if needed. Diagnostic
+  mode must be visible at the call site and must return structured `errors`
+  with `stage`, `line_index`, `curve_identifier`, `role_key`, `severity`, and
+  `message`.
+- [x] Context preparation failures must not be swallowed in normal strict mode.
+  The downstream donor behavior that continues after a pricing-context error is
+  acceptable only as explicit diagnostic behavior.
+- [x] Missing latest observations must not silently fall back to another date.
+  Any latest-at-or-before policy must be explicit and must report the effective
+  curve date used for each scenario handle.
+
+#### Stage 4.7: Test Plan
+
+- [x] Add `tests/msm_pricing/scenarios/curves/test_key_node_bumps.py` covering:
+  tenor parsing; positive-day validation; maturity-date and pillar-date
+  resolution; UTC date normalization; decimal and percent normalization;
+  missing/unsupported unit failures; parallel bumps; interpolated key-rate
+  bumps; copy/no-mutation behavior; supported `yield`, rate-like `quote`, and
+  `implied_rate` fields; rejected clean-price quote fields; zero-rate node
+  output; and forward-rate node output.
+- [x] Add `tests/msm_pricing/scenarios/curves/test_curve_scenarios.py`
+  covering: empty scenario no-op behavior; one shocked curve shared across
+  multiple lines/roles; missing scenario handle strict failure;
+  connector-import exclusion; project-setting import exclusion; z-spread
+  overlay applied only to runtime handles; no mutation of submitted
+  instruments; no mutation of prepared context caches; no mutation of submitted
+  key nodes; and delegation to `price_scenario(...)`.
+- [x] Add a regression test that proves a non-empty shock for a curve resolved
+  by multiple line roles rebuilds one scenario handle and reuses it by
+  `Curve.unique_identifier`.
+- [x] Add a regression test that proves the helper does not hardcode `zero`
+  observation nodes when build details require `forward_rate`.
+- [x] Add a regression test that proves Valmer-specific TIIE/OIS reconstruction
+  is not imported or referenced from `msm_pricing`.
+- [x] Keep tests offline where possible by using fake `Curve`,
+  `CurveBuildingDetails`, observations, and simple instruments. Use platform
+  integration tests only if the implementation truly needs backend resolution.
+
+#### Stage 4.8: Documentation, Example, And Changelog
+
+- [x] Document the user-facing curve scenario workflow primarily in
+  `docs/knowledge/msm_pricing/curves.md`. Add a dedicated section for curve
+  scenario inputs, `Curve.unique_identifier` shock lookup, supported key-node
+  rate fields, supported rate units, unsupported source quote conversions,
+  parallel bumps, key-rate interpolation, runtime output nodes, and the
+  connector boundary.
+- [x] Document prepared-context integration in
+  `docs/knowledge/msm_pricing/runtime_resolution.md`: curve scenarios create
+  transient runtime handles layered on top of `PricingValuationContext`, do not
+  mutate market-data-set bindings, and delegate line pricing to
+  `price_scenario(...)`.
+- [x] Document the instrument/user workflow in
+  `docs/knowledge/msm_pricing/instruments.md`: build a `ValuationPosition`,
+  prepare or pass a `PricingValuationContext`, create a `CurveScenario`, call
+  `price_curve_scenario(...)`, and interpret `CurveScenarioResult`.
+- [x] Add a short package-level pointer in `src/msm_pricing/README.md` showing
+  the public import path under `msm_pricing.scenarios.curves` and explaining
+  when to use it instead of calling `price_scenario(...)` directly.
+- [x] Update `docs/tutorial/05-pricing.md` with the minimal user workflow once
+  the API names are final, linking to the concept docs and example.
+- [x] Add `examples/msm_pricing/curve_scenario.py` showing a small offline
+  scenario with a prepared position, one curve keyed by
+  `Curve.unique_identifier`, a parallel bump, generated scenario handles, and a
+  call that ultimately delegates to `price_scenario(...)`.
+- [x] Keep public docstrings as the API-reference source for the new models and
+  helpers. The prose docs should explain workflows and boundaries; docstrings
+  should explain signatures, argument units, return values, mutation behavior,
+  and failure modes.
+- [x] Add a changelog entry only when the public code is implemented, not for
+  this planning expansion alone.
 
 ### Stage 5: Optional Spread Analytics
 
-- [ ] Add the optional analytics package and packaging extra.
-- [ ] Add pure-data tests for z-score matrices, pair metrics, DV01/hedge
-  ratios, and forecast-cone behavior.
-- [ ] Add tests for missing optional dependencies.
-- [ ] Document the optional dependency boundary and add a focused example.
+- [x] Add the optional analytics package, spread namespace, and packaging extra.
+- [x] Add cross-asset spread primitives under
+  `src/msm_pricing/analytics/spreads/base.py`.
+- [x] Add fixed-income-specific spread analytics under
+  `src/msm_pricing/analytics/spreads/fixed_income.py`.
+- [x] Add pure-data tests for z-score matrices, pair metrics, generic hedge
+  ratios, fixed-income DV01 hedge ratios, and forecast-cone behavior.
+- [x] Add tests for missing optional dependencies.
+- [x] Document the optional dependency boundary, cross-asset spread namespace,
+  fixed-income module boundary, and future sibling module policy.
+- [x] Add a focused fixed-income spread analytics example.
 
 ## Validation Requirements
 
@@ -382,6 +847,9 @@ Each implementation stage must run validation scaled to the touched code:
 
 - `git diff --check`;
 - focused ruff checks for touched Python modules;
+- explicit review that new public functions, classes, methods, and exports have
+  typed signatures, return annotations, and docstrings covering units,
+  mutation behavior, failure modes, and connector boundaries;
 - focused pytest coverage for the implemented behavior;
 - `mkdocs build --strict --site-dir /private/tmp/msmarkets-docs-site` when docs
   or MkDocs navigation change;

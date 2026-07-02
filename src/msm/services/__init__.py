@@ -9,6 +9,7 @@ _EXPORTS = {
     "add_account_holdings_snapshot_response": ".accounts",
     "add_account_target_positions_snapshot_response": ".target_positions",
     "append_asset_category_membership": ".asset_categories",
+    "asset_reference_details": ".assets",
     "build_always_open_calendar_materialization": ".calendars",
     "bulk_delete_asset_category_records": ".asset_master_lists",
     "bulk_delete_portfolio_group_memberships": ".portfolios",

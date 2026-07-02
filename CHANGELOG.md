@@ -18,6 +18,21 @@ and this project follows versioned releases.
 - Added `msm_pricing.valuation.build_valuation_position(...)` for strict
   construction of transient valuation baskets from normalized instrument/unit
   rows.
+- Added reusable `latest_portfolio_weights(...)`, `portfolio_values(...)`, and
+  `asset_reference_details(...)` services for package-owned portfolio output
+  and asset reference reads.
+- Added `msm_pricing.scenarios.curves` with typed curve scenario models,
+  key-node basis-point bump helpers, runtime scenario curve-handle construction,
+  and `price_curve_scenario(...)` delegation to the prepared
+  `price_scenario(...)` path.
+- Added `msm_pricing.analytics.spreads` with cross-asset spread primitives,
+  fixed-income DV01 spread metrics, optional dependency diagnostics, and an
+  offline fixed-income spread analytics example.
+- Updated `InterestRateSwap.reset_curve(...)` to accept a
+  `YieldTermStructureHandle` directly so prepared scenario handles work for swap
+  repricing as well as bond repricing.
+- Added `get_many_by_unique_identifier(...)` on typed row APIs such as
+  `Asset` for batch canonical-identifier resolution.
 - Added reusable `command_center` helpers for ms-markets Command Center
   tabular frames and Asset Monitor workspace documents, plus the
   `apps/v1` `getAssetMonitorFrame` reference endpoint.

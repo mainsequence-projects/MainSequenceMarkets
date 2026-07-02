@@ -45,6 +45,9 @@ hides per-line resolver loops does not satisfy that decision.
   (`CurveBuildingDetailsTable`), market-data-set curve bindings, and curve
   observations (`DiscountCurvesNode`).
 - [Fixings](fixings.md): index fixing observations (`FixingRatesNode`).
+- [Analytics](analytics.md): pure-data spread analytics, cross-asset spread
+  primitives, fixed-income DV01 spread metrics, optional dependency boundaries,
+  and future sibling module policy.
 - [Runtime Resolution](runtime_resolution.md): the persisted-graph resolution
   chain that `price()` follows, plus the end-to-end fixed-income user workflow.
 
@@ -80,12 +83,14 @@ msm_pricing/
   models/          SQLAlchemy MetaTable declarations owned by pricing
   data_nodes/      pricing DataNodes and storage-facing publishing helpers
   pricing_engine/  QuantLib builders, resolvers, pricers, and analytics
+  analytics/       pure-data analytics such as spread z-scores and pair metrics
   data_interface/  platform reads for curves and index fixings
   utils/           shared date and serialization utilities
 ```
 
 `msm_pricing.models` must mean pricing-owned SQLAlchemy MetaTables. Runtime
-pricing helpers belong in `msm_pricing.pricing_engine`.
+pricing helpers belong in `msm_pricing.pricing_engine`. Pure-data analytics
+that operate on caller-supplied marks belong in `msm_pricing.analytics`.
 
 ## Persisted Graph
 
@@ -240,6 +245,7 @@ The persistent contract is now explicit:
 - [Instruments](instruments.md)
 - [Curves](curves.md)
 - [Fixings](fixings.md)
+- [Analytics](analytics.md)
 - [Runtime Resolution](runtime_resolution.md)
 - [Assets](../msm/assets/index.md)
 - [Derivatives](../msm/derivatives/index.md)

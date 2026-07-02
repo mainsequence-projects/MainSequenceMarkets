@@ -86,12 +86,19 @@ def create_query_assets(
         ),
     )
     snapshot_frame = asset_snapshot_node.run(debug_mode=True, force_update=True)
-    created_asset_listing = [
-        Asset.get_by_unique_identifier(unique_identifier=payload["unique_identifier"])
+    created_asset_identifiers = [
+        payload["unique_identifier"]
         for payload in [
             *EXAMPLE_CRYPTO_ASSETS,
             {"unique_identifier": normalized_openfigi["unique_identifier"]},
         ]
+    ]
+    created_assets_by_identifier = Asset.get_many_by_unique_identifier(
+        created_asset_identifiers
+    )
+    created_asset_listing = [
+        created_assets_by_identifier.get(identifier)
+        for identifier in created_asset_identifiers
     ]
     deleted_assets = []
     if delete_temporary_assets:

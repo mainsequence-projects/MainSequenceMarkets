@@ -66,6 +66,7 @@ nav:
       - Instruments: knowledge/msm_pricing/instruments.md
       - Curves: knowledge/msm_pricing/curves.md
       - Fixings: knowledge/msm_pricing/fixings.md
+      - Analytics: knowledge/msm_pricing/analytics.md
       - Runtime Resolution: knowledge/msm_pricing/runtime_resolution.md
   - FastAPI:
       - Overview: fast_api/v1/index.md

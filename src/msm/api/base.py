@@ -121,6 +121,29 @@ class MarketsMetaTableRow(BaseModel):
         return cls._from_operation_result(result, required=False)
 
     @classmethod
+    def get_many_by_unique_identifier(
+        cls: type[RowT],
+        unique_identifiers: Sequence[str],
+    ) -> dict[str, RowT]:
+        """Return rows keyed by `unique_identifier` for the requested identifiers."""
+
+        from msm.repositories.crud import search_model
+
+        cls._require_column("unique_identifier")
+        identifiers = _unique_non_empty_strings(unique_identifiers)
+        if not identifiers:
+            return {}
+
+        result = search_model(
+            cls._active_context(),
+            model=cls.__table__,
+            in_filters={"unique_identifier": identifiers},
+            limit=len(identifiers),
+        )
+        rows = [cls.model_validate(row) for row in operation_result_rows(result)]
+        return {str(getattr(row, "unique_identifier")): row for row in rows}
+
+    @classmethod
     def filter(cls: type[RowT], *, limit: int = 500, **filters: Any) -> list[RowT]:
         """Filter rows through the active markets runtime.
 
@@ -225,6 +248,20 @@ def _payload_values(payload: Payload, kwargs: Mapping[str, Any]) -> dict[str, An
     if isinstance(payload, Mapping):
         return dict(payload)
     raise TypeError("Payload must be a Pydantic model, mapping, or None.")
+
+
+def _unique_non_empty_strings(values: Sequence[str]) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in (None, ""):
+            continue
+        normalized = str(value).strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique.append(normalized)
+    return unique
 
 
 def _dedupe_models(models: Sequence[Any]) -> list[Any]:

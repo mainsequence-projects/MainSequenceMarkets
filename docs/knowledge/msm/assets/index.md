@@ -290,6 +290,9 @@ Assets answer these questions:
 - `msm.data_nodes.assets`: asset-indexed DataNodes such as `AssetSnapshot`.
 - `msm.services.assets`: application-facing asset service helpers over
   repositories.
+- `msm.services.assets.reference_details`: canonical asset identity plus latest
+  snapshot read service for applications that need display details alongside
+  asset identifiers.
 - `msm.services.assets.openfigi`: OpenFIGI query, normalization, and row-building
   helpers.
 - `msm.models.assets.categories`: category and membership models.
@@ -341,6 +344,14 @@ asset = Asset.upsert(
 asset_by_identifier = Asset.get_by_unique_identifier(
     unique_identifier="example-asset-btc",
 )
+assets_by_identifier = Asset.get_many_by_unique_identifier(
+    ["example-asset-btc", "example-asset-eth"],
+)
+missing_identifiers = {
+    identifier
+    for identifier in ["example-asset-btc", "example-asset-eth"]
+    if identifier not in assets_by_identifier
+}
 asset_by_uid = Asset.get_by_uid(asset.uid)
 crypto_assets = Asset.filter(
     unique_identifier_contains="example-asset-",
@@ -453,6 +464,34 @@ See `examples/msm/assets/currency_spot_workflow.py` for a focused currency examp
 that creates `EUR` and `USD` assets, resolves `BBG0013HGRV5` through OpenFIGI,
 uses `CurrencySpot.upsert(...)` to create the `EUR/USD` pair, and writes
 matching `AssetSnapshot` rows.
+
+## Asset Reference Read Service
+
+Reusable asset reference detail reads live under
+`src/msm/services/assets/reference_details.py` and are exported from both
+`msm.services.assets` and `msm.services`:
+
+```python
+from msm.services.assets import asset_reference_details
+
+assets = asset_reference_details(
+    ["BBG000B9XRY4", "BBG000BVPV84"],
+    repository_context=runtime.context,
+)
+```
+
+`asset_reference_details(...)` reads `AssetTable` by canonical
+`unique_identifier` and, by default, joins the latest
+`AssetSnapshotsStorage` row for the same storage-facing `asset_identifier`. The
+returned rows include `asset_uid`, `asset_identifier`, `asset_type`,
+`snapshot_time`, `name`, `ticker`, `exchange_code`, and
+`asset_ticker_group_id`.
+
+Set `latest_snapshot=False` when a consumer needs only canonical asset identity.
+Use an explicit `repository_context` for live platform reads or pass an
+`executor` callable in tests and adapters. The helper returns market-domain row
+dictionaries; dashboard-specific or Command Center-specific response envelopes
+belong at the application boundary.
 
 ## Asset-Indexed DataNodes
 

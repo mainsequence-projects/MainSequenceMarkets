@@ -1225,7 +1225,7 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'dev'", specifier = ">=0.48.0" },
     { name = "uvicorn", marker = "extra == 'public-api'", specifier = ">=0.48.0" },
 ]
-provides-extras = ["dev", "docs", "portfolios", "public-api", "pricing"]
+provides-extras = ["analytics", "dev", "docs", "portfolios", "public-api", "pricing", "pricing-analytics"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "httpx", specifier = ">=0.28.1" }]

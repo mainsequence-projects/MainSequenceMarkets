@@ -39,6 +39,16 @@ def test_pricing_engine_owns_runtime_helpers() -> None:
     assert find_spec("msm_pricing.pricing_engine.swap_pricer") is not None
 
 
+def test_spread_analytics_live_outside_runtime_pricing_engine() -> None:
+    import msm_pricing
+    import msm_pricing.pricing_engine as pricing_engine
+
+    assert find_spec("msm_pricing.analytics.spreads.base") is not None
+    assert find_spec("msm_pricing.analytics.spreads.fixed_income") is not None
+    assert "fixed_income_spread_metrics" not in msm_pricing.__all__
+    assert "fixed_income_spread_metrics" not in pricing_engine.__all__
+
+
 def test_obsolete_interest_rates_package_is_removed() -> None:
     assert find_spec("msm_pricing.interest_rates") is None
 

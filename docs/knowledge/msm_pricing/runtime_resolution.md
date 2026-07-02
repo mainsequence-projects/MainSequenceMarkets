@@ -191,6 +191,42 @@ The overlay helper uses the same continuous/no-frequency convention as
 `key_nodes`, or `CurveBuildingDetails`; it wraps a resolved QuantLib curve
 handle for the current valuation calculation only.
 
+## Curve scenario resolution
+
+`msm_pricing.scenarios.curves.price_curve_scenario(...)` uses the prepared
+valuation context as its runtime graph. The helper prepares a
+`PricingValuationContext` once when the caller does not pass one, or validates
+that the supplied context matches the `ValuationPosition`. It then reads the
+already cached curve bindings, curve rows, curve-building details, observations,
+effective observation dates, and base QuantLib handles from that context.
+
+Scenario shocks are keyed by `Curve.unique_identifier`. Non-empty shocks rebuild
+transient scenario handles from copied `key_nodes` and runtime observation
+nodes, then line pricing is delegated to `msm_pricing.valuation.price_scenario(...)`.
+The scenario helper does not run a second pricing loop and does not mutate:
+
+- submitted instruments;
+- prepared context caches;
+- persisted market-data-set bindings;
+- persisted `DiscountCurvesNode` observations;
+- submitted source key-node dictionaries.
+
+Strict mode is the default. A non-empty shock fails before pricing when the
+curve is not resolved by the position, the prepared context is missing a curve
+row/build-details/observation/base handle, the observation has no usable
+`key_nodes`, a key node has unsupported units or quote type, or placeholder
+build details do not declare runtime output convention/unit. Use `strict=False`
+only when the caller wants structured diagnostics in
+`CurveScenarioResult.errors`.
+
+When a line resolves multiple curve roles but the current instrument only
+supports one `reset_curve(...)` override, selection is deterministic. Floating
+and swap-style instruments prefer `projection`, then `floating`, then
+`discount`, then `z_spread_base`. Fixed-rate instruments prefer
+`z_spread_base`, then `discount`, then `projection`, then `floating`. A
+non-empty shock on an unselected related curve is not silently dropped in
+strict mode.
+
 ## User Workflow
 
 The fixed-income workflow is:

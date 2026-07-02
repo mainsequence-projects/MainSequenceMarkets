@@ -319,14 +319,84 @@ For a full floating-rate bond workflow, use
    Prepared `z_spread(...)` calls expect `target_dirty_ccy` to already be a
    currency dirty price; convert source quotes such as dirty price per 100
    before calling the prepared instrument.
-   Scenario runs use the public `msm_pricing.price_scenario(...)` helper with
-   explicit line-scoped base and scenario curve handles, so scenario state is
-   applied to prepared copies instead of caller-owned instruments.
+   Curve scenario runs use
+   `msm_pricing.scenarios.curves.price_curve_scenario(...)` when shocks can be
+   expressed as basis-point bumps to source curve key nodes. Shock maps are
+   keyed by `Curve.unique_identifier`, and the helper delegates line pricing to
+   `msm_pricing.price_scenario(...)` after building runtime scenario handles
+   from copied key-node provenance:
+
+   ```python
+   from msm_pricing.scenarios.curves import (
+       CurveBumpSpec,
+       CurveScenario,
+       price_curve_scenario,
+   )
+
+   result = price_curve_scenario(
+       position,
+       CurveScenario(
+           name="parallel-up-25bp",
+           shocks_by_curve_identifier={
+               "USD-SOFR-3M-PROJECTION": CurveBumpSpec(parallel_bp=25.0),
+           },
+       ),
+       context=context,
+   )
+   ```
+
+   Use `msm_pricing.price_scenario(...)` directly only when the caller already
+   has exact line-scoped base and scenario curve handles. In both cases,
+   scenario state is applied to prepared copies instead of caller-owned
+   instruments.
    For a fast local smoke test of that workflow, run
    `examples/msm_pricing/valuation_inputs.py` for normalized valuation rows or
    `examples/msm_pricing/pricing_valuation_context.py` for prepared
-   fixed-income context behavior. Both examples avoid live platform
+   fixed-income context behavior. Run `examples/msm_pricing/curve_scenario.py`
+   for an offline curve-scenario example. These examples avoid live platform
    market-data setup.
+
+## Optional spread analytics
+
+Use `msm_pricing.analytics.spreads` when a workflow already has leg marks,
+spread histories, or leg-level analytics in memory and needs reusable
+relative-value statistics. This namespace is pure-data; it does not read
+assets, portfolios, curves, pricing details, or platform storage.
+
+Cross-asset helpers live in `msm_pricing.analytics.spreads.base` and are
+re-exported from `msm_pricing.analytics.spreads`:
+
+```python
+from msm_pricing.analytics.spreads import build_spread_series, spread_zscore_matrix
+
+spread = build_spread_series(asset_marks, hedge_marks, hedge_ratio=1.25)
+matrix = spread_zscore_matrix({"asset_vs_hedge": spread.values})
+```
+
+Fixed-income interpretation lives in
+`msm_pricing.analytics.spreads.fixed_income`:
+
+```python
+from msm_pricing.analytics.spreads import fixed_income_spread_metrics
+
+metrics = fixed_income_spread_metrics(
+    base_values=asset_bond_marks,
+    hedge_values=benchmark_bond_marks,
+    base_dv01=100_000.0,
+    hedge_dv01=80_000.0,
+)
+```
+
+The default fixed-income hedge ratio is `base_dv01 / hedge_dv01`, matching the
+spread formula `base - hedge_ratio * hedge`. Future equity, index, commodity,
+and option spread helpers should be added as sibling modules under
+`msm_pricing.analytics.spreads`; fixed-income concepts should not be pushed
+into the cross-asset base module.
+
+Run `examples/msm_pricing/fixed_income_spread_analytics.py` for an offline
+example that computes a DV01-neutral spread, z-score matrix, and forecast cone.
+See [Pricing Analytics](../knowledge/msm_pricing/analytics.md) for the package
+boundary and optional dependency policy.
 
 The reusable mock market-data components live in `examples/msm_pricing/utils/` so
 the same curve and fixing DataNode extension pattern can be reused by swap

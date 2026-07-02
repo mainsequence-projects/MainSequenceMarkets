@@ -91,6 +91,48 @@ running the portfolio graph.
 constituents, weights, values, and optional index publication are separate
 portfolio workflows.
 
+## Portfolio Read Services
+
+Reusable portfolio output reads live under
+`src/msm_portfolios/services/portfolio_reads.py` and are exported from
+`msm_portfolios.services`:
+
+```python
+from msm_portfolios.services import latest_portfolio_weights, portfolio_values
+
+weights = latest_portfolio_weights(
+    ["btc-eth-target"],
+    weights_date="2026-05-25T00:00:00Z",
+    as_of=True,
+    repository_context=runtime.context,
+)
+values = portfolio_values(
+    ["btc-eth-target"],
+    start="2026-05-01T00:00:00Z",
+    end="2026-05-31T00:00:00Z",
+    repository_context=runtime.context,
+)
+```
+
+`latest_portfolio_weights(...)` reads `PortfolioWeightsStorage` by
+`PortfolioTable.unique_identifier`, which is the storage-facing
+`portfolio_identifier`. It keeps `PortfolioTable.uid` in the returned
+`portfolio_uid` field so consumers can retain canonical row identity while
+reading historical storage rows. Pass `as_of=True` for latest-at-or-before
+snapshot selection or `as_of=False` for exact timestamp matching.
+
+`portfolio_values(...)` reads canonical portfolio value rows from
+`PortfoliosStorage` for one or more portfolio identifiers, with optional
+`start`, `end`, `latest_only`, and `limit` filters. These helpers return
+market-domain row dictionaries. Command Center tabular frames, dashboard
+formatting, and valuation-position construction are separate consumer concerns.
+
+Use an explicit `repository_context` for live platform reads. Tests and
+downstream adapters may pass an `executor` callable when they need to inspect or
+control execution without relying on hidden row-class active context. See
+`examples/msm_portfolios/portfolio_read_services.py` for an offline example that
+uses injected executors.
+
 ## Portfolio Registry Tables
 
 Portfolio registry tables are regular platform-managed MetaTables. They describe

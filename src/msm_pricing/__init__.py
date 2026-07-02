@@ -28,9 +28,13 @@ __all__ = [
     "PricingValuationContextSpec",
     "PricingValuationInstrumentKey",
     "PreparedInstrument",
+    "CurveBumpSpec",
+    "CurveScenario",
+    "CurveScenarioResult",
     "ValuationLine",
     "ValuationPosition",
     "build_valuation_position",
+    "price_curve_scenario",
     "price_scenario",
 ]
 
@@ -41,9 +45,13 @@ _ATTR_TO_MODULE["PricingValuationContext"] = ".valuation"
 _ATTR_TO_MODULE["PricingValuationContextSpec"] = ".valuation"
 _ATTR_TO_MODULE["PricingValuationInstrumentKey"] = ".valuation"
 _ATTR_TO_MODULE["PreparedInstrument"] = ".valuation"
+_ATTR_TO_MODULE["CurveBumpSpec"] = ".scenarios.curves"
+_ATTR_TO_MODULE["CurveScenario"] = ".scenarios.curves"
+_ATTR_TO_MODULE["CurveScenarioResult"] = ".scenarios.curves"
 _ATTR_TO_MODULE["ValuationLine"] = ".valuation"
 _ATTR_TO_MODULE["ValuationPosition"] = ".valuation"
 _ATTR_TO_MODULE["build_valuation_position"] = ".valuation"
+_ATTR_TO_MODULE["price_curve_scenario"] = ".scenarios.curves"
 _ATTR_TO_MODULE["price_scenario"] = ".valuation"
 for _name in (
     "PRICING_CONCEPT_DISCOUNT_CURVES",
