@@ -23,6 +23,7 @@ def test_models_package_is_metatable_only() -> None:
 def test_pricing_engine_owns_runtime_helpers() -> None:
     import msm_pricing.pricing_engine as pricing_engine
 
+    assert "apply_z_spread_to_curve" in pricing_engine.__all__
     assert "resolve_quantlib_index" in pricing_engine.__all__
     assert "resolve_pricing_curve" in pricing_engine.__all__
     assert "resolve_curve_for_index_binding" in pricing_engine.__all__

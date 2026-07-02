@@ -9,6 +9,9 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Added `msm_pricing.pricing_engine.apply_z_spread_to_curve(...)` for strict
+  runtime z-spread overlays that match `Bond.z_spread(...)`'s continuous
+  decimal spread convention without mutating persisted curve observations.
 - Added reusable `command_center` helpers for ms-markets Command Center
   tabular frames and Asset Monitor workspace documents, plus the
   `apps/v1` `getAssetMonitorFrame` reference endpoint.

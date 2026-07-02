@@ -12,7 +12,11 @@ pricing extra:
 ```python
 import msm_pricing as pricing
 from msm_pricing import FixedRateBond, FloatingRateBond, InterestRateSwap
-from msm_pricing.pricing_engine import resolve_quantlib_index, resolve_pricing_curve
+from msm_pricing.pricing_engine import (
+    apply_z_spread_to_curve,
+    resolve_quantlib_index,
+    resolve_pricing_curve,
+)
 from msm_pricing.valuation import ValuationLine, ValuationPosition
 ```
 

@@ -68,6 +68,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
     from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
     from msm_pricing.instruments import FloatingRateBond, Instrument
+    from msm_pricing.pricing_engine import apply_z_spread_to_curve
     from msm_pricing.settings import (
         PRICING_CONCEPT_DISCOUNT_CURVES,
         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
@@ -357,6 +358,31 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
 
     price = loaded_instrument.price(market_data_set=market_data_set.set_key)
     _print_step("Computed bond price", price=price)
+    z_spread = loaded_instrument.z_spread(
+        target_dirty_ccy=price,
+        market_data_set=market_data_set.set_key,
+    )
+    base_index_curve = loaded_instrument.get_index_curve()
+    z_spreaded_curve = apply_z_spread_to_curve(base_index_curve, z_spread)
+    one_year_date = ql.Date(27, 5, 2027)
+    base_one_year_zero_rate = base_index_curve.zeroRate(
+        one_year_date,
+        ql.Actual360(),
+        ql.Continuous,
+        ql.NoFrequency,
+    ).rate()
+    z_spreaded_one_year_zero_rate = z_spreaded_curve.zeroRate(
+        one_year_date,
+        ql.Actual360(),
+        ql.Continuous,
+        ql.NoFrequency,
+    ).rate()
+    _print_step(
+        "Applied z-spread overlay to the resolved index curve",
+        z_spread=z_spread,
+        base_one_year_zero_rate=base_one_year_zero_rate,
+        z_spreaded_one_year_zero_rate=z_spreaded_one_year_zero_rate,
+    )
     analytics = loaded_instrument.analytics()
     _print_step("Computed bond analytics", fields=len(analytics))
     cashflows = loaded_instrument.get_cashflows()
@@ -406,6 +432,9 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         "loaded_instrument_type": type(loaded_instrument).__name__,
         "floating_rate_index_uid": str(loaded_instrument.floating_rate_index_uid),
         "price": price,
+        "z_spread": z_spread,
+        "base_one_year_zero_rate": base_one_year_zero_rate,
+        "z_spreaded_one_year_zero_rate": z_spreaded_one_year_zero_rate,
         "analytics": analytics,
         "cashflows": _preview_cashflows(cashflows),
         "carry_roll_down": carry_roll_down,

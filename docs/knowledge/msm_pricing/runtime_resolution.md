@@ -172,6 +172,25 @@ benchmark index UID, market-data set, role, and quote side in the error. The
 runtime does not swallow that failure and fall back to an unrelated default
 curve.
 
+`Bond.z_spread(...)` returns a decimal continuous zero-rate spread. To reuse
+that result as a derived runtime curve, use the pricing-engine overlay helper:
+
+```python
+from msm_pricing.pricing_engine import apply_z_spread_to_curve
+
+spread = bond.z_spread(
+    target_dirty_ccy=target_dirty_ccy,
+    market_data_set="eod",
+    benchmark_curve_quote_side="mid",
+)
+spreaded_curve = apply_z_spread_to_curve(benchmark_curve, spread)
+```
+
+The overlay helper uses the same continuous/no-frequency convention as
+`Bond.z_spread(...)`. It does not mutate persisted `DiscountCurvesNode` rows,
+`key_nodes`, or `CurveBuildingDetails`; it wraps a resolved QuantLib curve
+handle for the current valuation calculation only.
+
 ## User Workflow
 
 The fixed-income workflow is:

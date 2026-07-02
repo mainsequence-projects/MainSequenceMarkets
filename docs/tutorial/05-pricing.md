@@ -240,6 +240,19 @@ If the binding is written with `quote_side="mid"`, the runtime call must also
 request `"mid"`. Omitted quote side means the `default` binding key, not an
 implicit mid quote.
 
+When the computed spread must be applied to a resolved curve handle, keep that
+as a runtime overlay:
+
+```python
+from msm_pricing.pricing_engine import apply_z_spread_to_curve
+
+spreaded_curve = apply_z_spread_to_curve(benchmark_curve_handle, spread)
+```
+
+The helper expects the decimal continuous spread returned by `z_spread(...)`.
+It does not modify the published curve observation, `key_nodes`, or curve build
+metadata.
+
 ## Bond pricing workflow
 
 For a full floating-rate bond workflow, use

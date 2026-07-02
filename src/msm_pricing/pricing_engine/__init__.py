@@ -6,6 +6,7 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS = {
+    "apply_z_spread_to_curve": ".curve_overlays",
     "compare_bond_to_market_quote": ".bond_analytics",
     "compute_coupon_schedule_force_match": ".coupon_schedules",
     "add_historical_fixings": ".resolvers",
@@ -36,6 +37,7 @@ def __dir__() -> list[str]:
 
 __all__ = [
     "add_historical_fixings",
+    "apply_z_spread_to_curve",
     "build_curve_from_curve_row",
     "compare_bond_to_market_quote",
     "compute_coupon_schedule_force_match",

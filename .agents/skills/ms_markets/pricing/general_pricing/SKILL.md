@@ -219,3 +219,11 @@ position = ValuationPosition(..., market_data_set="risk_manager")
 
 Do not use legacy context constants or storage identifiers as authoritative
 runtime pointers.
+
+## Runtime Curve Overlays
+
+Use `msm_pricing.pricing_engine.apply_z_spread_to_curve(...)` when a computed
+`Bond.z_spread(...)` value must be applied back to a resolved QuantLib curve
+handle. The helper expects the decimal continuous spread returned by
+`Bond.z_spread(...)`; it is not a curve builder and it must not mutate persisted
+curve observations, `key_nodes`, `CurveTable`, or `CurveBuildingDetails`.

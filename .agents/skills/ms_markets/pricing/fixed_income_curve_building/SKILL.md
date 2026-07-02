@@ -500,6 +500,12 @@ Resolver expectations:
 - There is no implicit `mid` fallback. If a binding is written with
   `quote_side="mid"`, runtime calls must request that quote side; omitted quote
   side means the default binding key.
+- Apply observed z-spread results with
+  `msm_pricing.pricing_engine.apply_z_spread_to_curve(...)`. This helper
+  accepts the decimal continuous spread returned by `Bond.z_spread(...)` and
+  returns a derived QuantLib handle. It must not be treated as curve
+  construction, node bumping, or a mutation of `DiscountCurvesNode`,
+  `key_nodes`, `CurveTable`, or `CurveBuildingDetails`.
 
 For instrument payloads:
 

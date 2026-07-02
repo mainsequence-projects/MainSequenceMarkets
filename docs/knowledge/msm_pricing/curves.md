@@ -222,6 +222,19 @@ selection above. The helper writes `selector_type="index"` and
 internally; callers should not pass those selector fields in normal
 index-based workflows.
 
+When an observed z-spread should be applied back to a curve handle for scenario
+or line valuation, keep that as derived runtime state:
+
+```python
+from msm_pricing.pricing_engine import apply_z_spread_to_curve
+
+spreaded_curve = apply_z_spread_to_curve(base_curve_handle, z_spread_decimal)
+```
+
+The helper expects the decimal spread returned by `Bond.z_spread(...)`, quoted
+as a continuous zero-rate spread. It does not change the persisted curve nodes,
+`key_nodes`, `CurveTable`, or `CurveBuildingDetails`.
+
 ## Curve Observations
 
 `DiscountCurvesNode` publishes timestamped curve observations. Its storage key
