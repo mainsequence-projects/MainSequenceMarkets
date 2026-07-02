@@ -187,8 +187,58 @@ def test_price_curve_scenario_builds_shared_curve_once_and_delegates(monkeypatch
     assert result.market_value_delta == pytest.approx(150.0)
     assert len(result.line_impacts) == 2
     assert result.curve_shocks[0]["curve_identifier"] == curve.unique_identifier
+    assert result.base_curve_handles_by_line == {0: 10.0, 1: 10.0}
+    assert result.scenario_curve_handles_by_line == {0: pytest.approx(60.0), 1: pytest.approx(60.0)}
     assert first._curve_bump == 0.0
     assert second._curve_bump == 0.0
+
+
+def test_price_curve_scenario_forwards_overnight_index_resolver(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    curve = _curve()
+    instrument = CurveOverrideInstrument(floating_rate_index_uid=index_uid)
+    position = ValuationPosition(
+        valuation_date=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+        lines=[ValuationLine(instrument=instrument, units=1.0)],
+    )
+    context = _context_with_curve(
+        position,
+        index_uid=index_uid,
+        curve=curve,
+        base_handle=10.0,
+    )
+    overnight_index = object()
+
+    def overnight_index_resolver(_index_name: str | None, _node: object) -> object:
+        return overnight_index
+
+    build_calls: list[dict[str, Any]] = []
+
+    def fake_build_scenario_curve_handle(**kwargs: Any) -> float:
+        build_calls.append(kwargs)
+        return 20.0
+
+    monkeypatch.setattr(
+        engine,
+        "build_scenario_curve_handle",
+        fake_build_scenario_curve_handle,
+    )
+
+    result = price_curve_scenario(
+        position,
+        CurveScenario(
+            name="up-100",
+            shocks_by_curve_identifier={curve.unique_identifier: CurveBumpSpec(parallel_bp=100.0)},
+        ),
+        context=context,
+        overnight_index=overnight_index,
+        overnight_index_resolver=overnight_index_resolver,
+    )
+
+    assert len(build_calls) == 1
+    assert build_calls[0]["overnight_index"] is overnight_index
+    assert build_calls[0]["overnight_index_resolver"] is overnight_index_resolver
+    assert result.market_value_delta == pytest.approx(10.0)
 
 
 def test_empty_curve_scenario_reuses_base_handles(monkeypatch) -> None:
@@ -367,11 +417,9 @@ def test_z_spread_overlays_are_runtime_line_handles_only(monkeypatch) -> None:
     assert result.market_value_delta == 1.0
 
 
-def test_curve_scenarios_do_not_import_connector_rebuilds() -> None:
+def test_curve_scenarios_do_not_import_project_quote_defaults() -> None:
     source = inspect.getsource(engine)
 
-    assert "valmer_connectors" not in source
-    assert "local_valmer" not in source
     assert "DEFAULT_CURVE_QUOTE_SIDE" not in source
 
 

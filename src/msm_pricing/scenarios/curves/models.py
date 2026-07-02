@@ -194,6 +194,8 @@ class CurveScenarioResult:
     errors: tuple[CurveScenarioDiagnostic, ...]
     raw_price_scenario_result: Mapping[str, object]
     line_curve_resolutions: tuple[ResolvedLineCurve, ...] = ()
+    base_curve_handles_by_line: Mapping[int, object] = field(default_factory=dict)
+    scenario_curve_handles_by_line: Mapping[int, object] = field(default_factory=dict)
 
     @classmethod
     def from_price_scenario_payload(
@@ -204,6 +206,8 @@ class CurveScenarioResult:
         curve_shocks: tuple[Mapping[str, object], ...],
         errors: tuple[CurveScenarioDiagnostic, ...] = (),
         line_curve_resolutions: tuple[ResolvedLineCurve, ...] = (),
+        base_curve_handles_by_line: Mapping[int, object] | None = None,
+        scenario_curve_handles_by_line: Mapping[int, object] | None = None,
     ) -> CurveScenarioResult:
         """Build a result model from delegated ``price_scenario(...)`` output."""
 
@@ -217,6 +221,8 @@ class CurveScenarioResult:
             errors=errors,
             raw_price_scenario_result=dict(payload),
             line_curve_resolutions=line_curve_resolutions,
+            base_curve_handles_by_line=dict(base_curve_handles_by_line or {}),
+            scenario_curve_handles_by_line=dict(scenario_curve_handles_by_line or {}),
         )
 
 

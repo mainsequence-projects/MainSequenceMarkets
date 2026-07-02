@@ -109,6 +109,59 @@ It reads `AssetCurrentPricingDetailsTable` with chunked `asset_uid IN (...)`
 searches, rebuilds concrete instrument classes, validates each instrument
 against the corresponding asset, and returns a mapping keyed by `Asset.uid`.
 
+## Provider-Neutral Bond Terms
+
+Use `BondInstrumentTerms` when an adapter already normalized source rows into
+generic bond terms and only needs to construct an ms-markets instrument model.
+This helper is not a source parser and is not a persistence API. It builds the
+existing `ZeroCouponBond`, `FixedRateBond`, or `FloatingRateBond` classes, then
+callers persist those instruments through the normal `attach_to_asset(...)`,
+`add_pricing_details(...)`, or `add_many_pricing_details(...)` paths.
+
+```python
+import datetime as dt
+import uuid
+
+import QuantLib as ql
+
+from msm_pricing.instruments import (
+    BondInstrumentTerms,
+    build_bond_instrument_from_terms,
+)
+
+terms = BondInstrumentTerms(
+    instrument_type="fixed_rate_bond",
+    valuation_date=dt.date(2026, 1, 2),
+    issue_date=dt.date(2025, 1, 2),
+    maturity_date=dt.date(2027, 1, 2),
+    face_value=100.0,
+    day_count=ql.Actual360(),
+    calendar=ql.TARGET(),
+    business_day_convention=ql.Following,
+    settlement_days=2,
+    benchmark_rate_index_uid=uuid.uuid4(),
+    coupon_rate=0.05,
+    coupon_frequency=ql.Period(6, ql.Months),
+)
+instrument = build_bond_instrument_from_terms(terms)
+```
+
+Rules:
+
+- `benchmark_rate_index_uid` is optional for zero-coupon and fixed-rate bonds;
+  it is benchmark analytics metadata, not a cashflow requirement.
+- `floating_rate_index_uid` is required for floating-rate bonds.
+- When a floating-rate bond omits `benchmark_rate_index_uid`, the builder uses
+  `floating_rate_index_uid` as the benchmark UID by default.
+- The helper does not resolve indexes, bootstrap reference rows, infer source
+  classifications, repair schedules, or read assets.
+- `quantlib_evaluation_settings(...)` temporarily sets QuantLib global
+  evaluation settings during construction and restores the previous settings
+  afterward.
+
+Run `examples/msm_pricing/bond_terms.py` for a fully offline construction
+smoke test.
+
 ## Account And Portfolio Valuation Inputs
 
 `msm_pricing` does not query account holdings, target positions, or portfolio

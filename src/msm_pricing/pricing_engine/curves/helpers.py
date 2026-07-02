@@ -15,6 +15,12 @@ from msm_pricing.instruments.json_codec import (
     calendar_from_json,
     daycount_from_json,
 )
+from msm_pricing.pricing_engine.curves.bond_helpers import (
+    BondHelperSpec,
+    FixedRateBondHelperSpec,
+    ZeroCouponBondHelperSpec,
+    build_bond_helper,
+)
 
 _TENOR_RE = re.compile(r"^\s*(?P<count>[1-9][0-9]*)\s*(?P<unit>[DWMY])\s*$", re.IGNORECASE)
 
@@ -63,7 +69,26 @@ class OISRateHelperSpec:
     date_generation_convention: int | str = ql.ModifiedFollowing
 
 
-RateHelperSpec = OvernightDepositHelperSpec | OISRateHelperSpec
+@dataclass(frozen=True, slots=True)
+class InterestRateFutureHelperSpec:
+    """Inputs required to build a QuantLib interest-rate futures helper."""
+
+    quote: float
+    reference_month: int | str
+    reference_year: int
+    reference_frequency: int | str
+    future_family: str = "sofr"
+    convexity_adjustment: float = 0.0
+    pillar: int | str = ql.Pillar.LastRelevantDate
+    custom_pillar_date: ql.Date | dt.date | dt.datetime | str | None = None
+
+
+RateHelperSpec = (
+    OvernightDepositHelperSpec
+    | OISRateHelperSpec
+    | InterestRateFutureHelperSpec
+    | BondHelperSpec
+)
 
 
 def ql_period_from_tenor(tenor: str | ql.Period) -> ql.Period:
@@ -142,6 +167,25 @@ def build_ois_rate_helper(spec: OISRateHelperSpec) -> ql.RateHelper:
     return ql.OISRateHelper(*args)
 
 
+def build_interest_rate_future_helper(spec: InterestRateFutureHelperSpec) -> ql.RateHelper:
+    """Build a QuantLib interest-rate futures helper from primitive inputs."""
+
+    family = _normalize_token(spec.future_family)
+    if family not in {"sofr", "sofr_future", "sofr_future_rate_helper"}:
+        raise ValueError(
+            f"Unsupported interest-rate futures helper family {spec.future_family!r}."
+        )
+    return ql.SofrFutureRateHelper(
+        float(spec.quote),
+        _month(spec.reference_month),
+        int(spec.reference_year),
+        _frequency(spec.reference_frequency),
+        float(spec.convexity_adjustment),
+        _pillar(spec.pillar),
+        _date(spec.custom_pillar_date),
+    )
+
+
 def build_rate_helper(spec: RateHelperSpec) -> ql.RateHelper:
     """Build a QuantLib helper for one supported primitive helper spec."""
 
@@ -149,6 +193,10 @@ def build_rate_helper(spec: RateHelperSpec) -> ql.RateHelper:
         return build_overnight_deposit_helper(spec)
     if isinstance(spec, OISRateHelperSpec):
         return build_ois_rate_helper(spec)
+    if isinstance(spec, InterestRateFutureHelperSpec):
+        return build_interest_rate_future_helper(spec)
+    if isinstance(spec, ZeroCouponBondHelperSpec | FixedRateBondHelperSpec):
+        return build_bond_helper(spec)
     raise TypeError(f"Unsupported rate helper spec type: {type(spec).__name__}.")
 
 
@@ -238,6 +286,46 @@ def _frequency(value: int | str) -> int:
         return int(frequency_by_token[token])
     except KeyError as exc:
         raise ValueError(f"Unsupported QuantLib frequency {value!r}.") from exc
+
+
+def _month(value: int | str) -> int:
+    if isinstance(value, int):
+        if 1 <= value <= 12:
+            return int(value)
+        raise ValueError(f"Unsupported QuantLib month {value!r}.")
+    token = _normalize_token(value).replace("_", "")
+    if token.isdigit():
+        return _month(int(token))
+    month_by_token = {
+        "jan": ql.January,
+        "january": ql.January,
+        "feb": ql.February,
+        "february": ql.February,
+        "mar": ql.March,
+        "march": ql.March,
+        "apr": ql.April,
+        "april": ql.April,
+        "may": ql.May,
+        "jun": ql.June,
+        "june": ql.June,
+        "jul": ql.July,
+        "july": ql.July,
+        "aug": ql.August,
+        "august": ql.August,
+        "sep": ql.September,
+        "sept": ql.September,
+        "september": ql.September,
+        "oct": ql.October,
+        "october": ql.October,
+        "nov": ql.November,
+        "november": ql.November,
+        "dec": ql.December,
+        "december": ql.December,
+    }
+    try:
+        return int(month_by_token[token])
+    except KeyError as exc:
+        raise ValueError(f"Unsupported QuantLib month {value!r}.") from exc
 
 
 def _optional_frequency(value: int | str | None) -> int | None:
@@ -338,9 +426,15 @@ def _uses_observation_shift_overload(spec: OISRateHelperSpec) -> bool:
 
 
 __all__ = [
+    "BondHelperSpec",
+    "FixedRateBondHelperSpec",
+    "InterestRateFutureHelperSpec",
     "OISRateHelperSpec",
     "OvernightDepositHelperSpec",
     "RateHelperSpec",
+    "ZeroCouponBondHelperSpec",
+    "build_bond_helper",
+    "build_interest_rate_future_helper",
     "build_ois_rate_helper",
     "build_overnight_deposit_helper",
     "build_rate_helper",

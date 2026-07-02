@@ -166,15 +166,26 @@ vendor, currency, or index-name dependency:
 import QuantLib as ql
 
 from msm_pricing.pricing_engine.curves import (
+    CurveObservationExportConfig,
+    FixedRateBondHelperSpec,
+    InterestRateFutureHelperSpec,
     OISRateHelperSpec,
     OvernightDepositHelperSpec,
+    ZeroCouponBondHelperSpec,
     export_curve_observation_nodes,
     reconstruct_curve_handle_from_helper_specs,
+    reconstruct_curve_term_structure_from_helper_specs,
 )
 
 handle = reconstruct_curve_handle_from_helper_specs(
     (
         OvernightDepositHelperSpec(quote=0.0475, tenor="1D"),
+        InterestRateFutureHelperSpec(
+            quote=95.25,
+            reference_month="JUN",
+            reference_year=2026,
+            reference_frequency="Monthly",
+        ),
         OISRateHelperSpec(
             quote=0.0480,
             tenor="1Y",
@@ -196,7 +207,73 @@ nodes = export_curve_observation_nodes(
     valuation_date=valuation_date,
     node_days=[7, 30, 90, 180, 365],
 )
+
+bond_handle = reconstruct_curve_handle_from_helper_specs(
+    (
+        ZeroCouponBondHelperSpec(
+            quote=97.5,
+            quote_type="clean_price",
+            quote_unit="price_per_100",
+            settlement_days=0,
+            face_value=100.0,
+            maturity_date="2026-07-02",
+            issue_date="2026-01-02",
+        ),
+        FixedRateBondHelperSpec(
+            quote=99.0,
+            quote_type="clean_price",
+            quote_unit="price_per_100",
+            coupon_rate=0.05,
+            issue_date="2026-01-02",
+            maturity_date="2027-01-02",
+            tenor="6M",
+            settlement_days=0,
+            face_value=100.0,
+            day_counter=ql.Actual360(),
+        ),
+    ),
+    valuation_date=valuation_date,
+    day_counter=ql.Actual360(),
+)
+bond_nodes = export_curve_observation_nodes(
+    bond_handle,
+    valuation_date=valuation_date,
+    node_days=[181, 365],
+)
 ```
+
+For helper-built curves that must be exported back into resolver-compatible
+curve observations, derive the export convention from `CurveBuildingDetails`
+instead of hardcoding it beside the connector. Use the term-structure
+reconstruction primitive when exporting QuantLib pillar dates; handles are the
+right output for pricing but may not expose `dates()` through every QuantLib
+Python binding. The exporter supports pillar dates plus explicit front nodes:
+
+```python
+term_structure = reconstruct_curve_term_structure_from_helper_specs(
+    helper_specs,
+    valuation_date=valuation_date,
+    day_counter=ql.Actual360(),
+)
+export_config = CurveObservationExportConfig.from_curve_building_details(
+    curve_building_details
+)
+nodes = export_curve_observation_nodes(
+    term_structure,
+    valuation_date=valuation_date,
+    node_days=[1],
+    include_pillar_dates=True,
+    config=export_config,
+)
+```
+
+If the persisted build details use source-helper placeholders such as
+`quote_convention="helper_quote"` or `rate_unit="helper_unit"`, the
+`builder_payload` must include explicit output keys such as
+`output_quote_convention="zero_rate"` and `output_rate_unit="decimal"`. Export
+compounding comes from the normal build-detail fields, so compounded annual
+zero output is represented by
+`compounding="compounded_annual"`.
 
 The persistence adapter is narrower. Persisted helper curves use
 `CurveBuildingDetails.builder_type="rate_helper_curve"` and publish generic
@@ -234,6 +311,41 @@ Supported v1 helper key-node types are:
     "fixed_payment_frequency": "Annual",
     "fixed_calendar_code": "TARGET",
     "averaging_method": "Compound"
+  },
+  {
+    "helper_type": "sofr_future_rate_helper",
+    "quote": 95.25,
+    "quote_type": "futures_price",
+    "quote_unit": "price",
+    "reference_month": "JUN",
+    "reference_year": 2026,
+    "reference_frequency": "Monthly",
+    "convexity_adjustment": 0.0
+  },
+  {
+    "helper_type": "zero_coupon_bond_helper",
+    "quote": 97.5,
+    "quote_type": "clean_price",
+    "quote_unit": "price_per_100",
+    "maturity_date": "2026-07-02",
+    "issue_date": "2026-01-02",
+    "settlement_days": 0,
+    "calendar_code": "TARGET",
+    "face_value": 100.0
+  },
+  {
+    "helper_type": "fixed_rate_bond_helper",
+    "quote": 99.0,
+    "quote_type": "clean_price",
+    "quote_unit": "price_per_100",
+    "coupon_rate": 0.05,
+    "issue_date": "2026-01-02",
+    "maturity_date": "2027-01-02",
+    "tenor": "6M",
+    "settlement_days": 0,
+    "calendar_code": "TARGET",
+    "face_value": 100.0,
+    "day_counter_code": "Actual360"
   }
 ]
 ```
@@ -251,6 +363,26 @@ end-of-month flag, fixed-leg frequency/calendar, and observation-shift fields.
 Those fields exist for parity with market conventions; callers should pass
 them explicitly when the source curve depends on them instead of rebuilding
 curves through connector-local helper constructors.
+
+Interest-rate future helpers consume futures prices, not rates. Future key
+nodes therefore require `quote_type="futures_price"` and `quote_unit="price"`.
+The v1 schema supports `helper_type="sofr_future_rate_helper"` through the
+generic `InterestRateFutureHelperSpec` with explicit reference month, year,
+frequency, convexity adjustment, pillar choice, and custom pillar date fields.
+Source-specific contract-code parsing stays in the connector or publisher that
+creates the generic key node.
+
+Bond helpers consume clean or dirty prices, not rates. The v1 schema supports
+`helper_type="zero_coupon_bond_helper"` and
+`helper_type="fixed_rate_bond_helper"` with explicit `quote_type`,
+`quote_unit`, face value, dates, calendars, day counters, and schedule fields.
+Generic price units are `price`, `price_per_face`, and `price_per_100`.
+Source-specific scales must be normalized by the connector before publication.
+Fixed-rate helpers can use `tenor`, `coupon_period_days`, `coupon_frequency`,
+explicit `schedule_dates`, or a serialized `schedule`. These helpers are still
+QuantLib `RateHelper` objects, so they use the same
+`builder_type="rate_helper_curve"` and `helper_schema="rate_helpers@v1"`
+adapter as OIS, deposit, and futures helpers.
 
 Observation export is also generic. `export_curve_observation_nodes(...)`
 exports resolver-compatible nodes from a QuantLib handle or term structure on
@@ -400,16 +532,28 @@ unit. The scenario helper fails instead of guessing.
 Connector-specific curve rebuilds remain connector-owned when they interpret
 source files, source identifiers, or vendor quote policy. Once a connector has
 generic helper key nodes, `builder_type="rate_helper_curve"` can be shocked and
-rebuilt by core `msm_pricing` without importing connector code. If a connector
-needs source-only interpretation before generic helper key nodes exist, it can
-build connector-owned scenario handles and then call lower-level pricing
-helpers.
+rebuilt by core `msm_pricing` without importing connector code. OIS helper
+curves still need a QuantLib overnight index at runtime; callers can pass
+`overnight_index` or `overnight_index_resolver` to
+`price_curve_scenario(...)`, and the high-level scenario loop forwards that
+resolver to `build_scenario_curve_handle(...)`. If a connector needs
+source-only interpretation before generic helper key nodes exist, it can build
+connector-owned scenario handles and then call lower-level pricing helpers.
+For bond helper curves, no-op scenario reconstruction is supported, but
+non-empty yield shocks on price-quoted bond helpers raise a diagnostic until
+generic yield-to-price conversion is implemented with explicit bond
+conventions. The scenario engine does not bump a stored clean or dirty price as
+though it were a rate.
 
 When the caller already has exact base and scenario curve handles, use
 `price_resolved_curve_scenario(...)` instead of rebuilding handles from
 `key_nodes`. That workflow accepts typed `LineCurveResolution` records, applies
 the same deterministic line-role selection and observed z-spread overlays, and
 returns the same `CurveScenarioResult` shape as `price_curve_scenario(...)`.
+`CurveScenarioResult` also exposes the selected
+`base_curve_handles_by_line` and `scenario_curve_handles_by_line` maps so
+callers can reuse the exact scenario handles for local analytics or reporting
+without duplicating curve-selection logic.
 See [Runtime Resolution](runtime_resolution.md#curve-scenario-resolution) and
 `examples/msm_pricing/resolved_curve_scenario.py`.
 
@@ -460,7 +604,7 @@ recommended helper when the standard fields fit the source:
 [
   {
     "maturity_date": "2031-05-27",
-    "asset_identifier": "MXN_BONO_2031",
+    "asset_identifier": "EXAMPLE_BOND_2031",
     "instrument_type": "fixed_rate_bond",
     "quote": 99.25,
     "quote_type": "clean_price",

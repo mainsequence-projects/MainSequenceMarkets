@@ -27,7 +27,8 @@ and this project follows versioned releases.
   `price_scenario(...)` path.
 - Added `price_resolved_curve_scenario(...)` and `LineCurveResolutionInput` for
   caller-resolved curve scenarios that already have explicit base/scenario
-  handles per valuation line.
+  handles per valuation line, with selected base/scenario handle maps exposed
+  on `CurveScenarioResult` for downstream analytics/reporting reuse.
 - Added `msm_pricing.analytics.spreads` with cross-asset spread primitives,
   fixed-income DV01 spread metrics, optional dependency diagnostics, and an
   offline fixed-income spread analytics example.
@@ -39,6 +40,23 @@ and this project follows versioned releases.
   schedule/convention fields and to require persisted
   `builder_payload.helper_schema="rate_helpers@v1"` for helper-based curve
   adapters.
+- Added generic interest-rate futures helper reconstruction with
+  `sofr_future_rate_helper` key-node support and explicit futures price-unit
+  validation.
+- Added generic zero-coupon and fixed-rate bond helper reconstruction under
+  `msm_pricing.pricing_engine.curves`, including bond-helper key-node parsing,
+  `rate_helpers@v1` reconstruction support, observation export tests, and
+  strict diagnostics for unsupported yield shocks on price-quoted bond helpers.
+- Added `BondInstrumentTerms` and
+  `build_bond_instrument_from_terms(...)` for provider-neutral construction of
+  existing zero-coupon, fixed-rate, and floating-rate bond instrument models
+  without source-row parsing or connector dependencies.
+- Added `CurveObservationExportConfig.from_curve_building_details(...)` so
+  helper-reconstructed curves can export compounded annual zero-rate nodes with
+  explicit front-node days and pillar-date inclusion, using term-structure
+  reconstruction functions when QuantLib pillar dates are required.
+- Extended `price_curve_scenario(...)` to forward `overnight_index` and
+  `overnight_index_resolver` into helper-reconstructed scenario curve builds.
 - Updated `InterestRateSwap.reset_curve(...)` to accept a
   `YieldTermStructureHandle` directly so prepared scenario handles work for swap
   repricing as well as bond repricing.

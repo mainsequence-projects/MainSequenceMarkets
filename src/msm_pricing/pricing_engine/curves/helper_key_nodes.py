@@ -8,17 +8,35 @@ from typing import Any, Literal
 import QuantLib as ql
 from pydantic import BaseModel, ConfigDict, Field
 
+from msm_pricing.pricing_engine.curves.bond_helper_key_nodes import (
+    BOND_HELPER_TYPES,
+    BondHelperKeyNode,
+    FixedRateBondHelperKeyNode,
+    ZeroCouponBondHelperKeyNode,
+    bond_helper_spec_from_key_node,
+    parse_bond_helper_key_node,
+)
 from msm_pricing.pricing_engine.curves.helpers import (
+    InterestRateFutureHelperSpec,
     OISRateHelperSpec,
     OvernightDepositHelperSpec,
     RateHelperSpec,
 )
-from msm_pricing.pricing_engine.curves.quote_units import key_node_decimal_rate
+from msm_pricing.pricing_engine.curves.quote_units import key_node_decimal_rate, key_node_price
 
 OIS_HELPER_TYPES = frozenset({"ois_rate_helper", "overnight_indexed_swap_helper"})
 OVERNIGHT_DEPOSIT_HELPER_TYPE = "overnight_deposit_helper"
+SOFR_FUTURE_HELPER_TYPE = "sofr_future_rate_helper"
+INTEREST_RATE_FUTURE_HELPER_TYPES = frozenset(
+    {"interest_rate_future_helper", SOFR_FUTURE_HELPER_TYPE}
+)
 SUPPORTED_RATE_HELPER_TYPES = frozenset(
-    {*OIS_HELPER_TYPES, OVERNIGHT_DEPOSIT_HELPER_TYPE}
+    {
+        *OIS_HELPER_TYPES,
+        OVERNIGHT_DEPOSIT_HELPER_TYPE,
+        *INTEREST_RATE_FUTURE_HELPER_TYPES,
+        *BOND_HELPER_TYPES,
+    }
 )
 OvernightIndexResolver = Callable[[str | None, Mapping[str, Any]], ql.OvernightIndex]
 
@@ -73,7 +91,30 @@ class OISRateHelperKeyNode(BaseModel):
     date_generation_convention: int | str = Field(default="ModifiedFollowing")
 
 
-RateHelperKeyNode = OvernightDepositHelperKeyNode | OISRateHelperKeyNode
+class InterestRateFutureHelperKeyNode(BaseModel):
+    """Generic key-node schema for a QuantLib interest-rate futures helper."""
+
+    model_config = ConfigDict(extra="allow")
+
+    helper_type: Literal["interest_rate_future_helper", "sofr_future_rate_helper"]
+    quote: float
+    quote_type: str
+    quote_unit: str
+    reference_month: int | str
+    reference_year: int
+    reference_frequency: int | str
+    future_family: str | None = None
+    convexity_adjustment: float = 0.0
+    pillar: int | str = Field(default="LastRelevantDate")
+    custom_pillar_date: str | None = None
+
+
+RateHelperKeyNode = (
+    OvernightDepositHelperKeyNode
+    | OISRateHelperKeyNode
+    | InterestRateFutureHelperKeyNode
+    | BondHelperKeyNode
+)
 
 
 def normalize_helper_type(value: object) -> str:
@@ -94,8 +135,12 @@ def parse_rate_helper_key_node(node: Mapping[str, Any]) -> RateHelperKeyNode:
     helper_type = normalize_helper_type(node.get("helper_type"))
     payload = dict(node)
     payload["helper_type"] = helper_type
+    if helper_type in BOND_HELPER_TYPES:
+        return parse_bond_helper_key_node(payload)
     if helper_type == OVERNIGHT_DEPOSIT_HELPER_TYPE:
         return OvernightDepositHelperKeyNode.model_validate(payload)
+    if helper_type in INTEREST_RATE_FUTURE_HELPER_TYPES:
+        return InterestRateFutureHelperKeyNode.model_validate(payload)
     return OISRateHelperKeyNode.model_validate(payload)
 
 
@@ -120,8 +165,8 @@ def helper_specs_from_key_nodes(
         if not isinstance(raw_node, Mapping):
             raise TypeError("Each rate-helper key node must be a mapping.")
         node = parse_rate_helper_key_node(raw_node)
-        decimal_quote = key_node_decimal_rate(node.model_dump())
         if isinstance(node, OvernightDepositHelperKeyNode):
+            decimal_quote = key_node_decimal_rate(node.model_dump())
             specs.append(
                 OvernightDepositHelperSpec(
                     quote=decimal_quote,
@@ -134,6 +179,25 @@ def helper_specs_from_key_nodes(
                 )
             )
             continue
+        if isinstance(node, InterestRateFutureHelperKeyNode):
+            price_quote = key_node_price(node.model_dump())
+            specs.append(
+                InterestRateFutureHelperSpec(
+                    quote=price_quote,
+                    reference_month=node.reference_month,
+                    reference_year=node.reference_year,
+                    reference_frequency=node.reference_frequency,
+                    future_family=_future_family(node),
+                    convexity_adjustment=node.convexity_adjustment,
+                    pillar=node.pillar,
+                    custom_pillar_date=node.custom_pillar_date,
+                )
+            )
+            continue
+        if isinstance(node, ZeroCouponBondHelperKeyNode | FixedRateBondHelperKeyNode):
+            specs.append(bond_helper_spec_from_key_node(node))
+            continue
+        decimal_quote = key_node_decimal_rate(node.model_dump())
         specs.append(
             OISRateHelperSpec(
                 quote=decimal_quote,
@@ -222,14 +286,29 @@ def _payment_calendar(node: OISRateHelperKeyNode) -> str | dict[str, Any] | None
     return node.fixed_calendar_code
 
 
+def _future_family(node: InterestRateFutureHelperKeyNode) -> str:
+    if node.future_family not in (None, ""):
+        return str(node.future_family)
+    if node.helper_type == SOFR_FUTURE_HELPER_TYPE:
+        return "sofr"
+    raise ValueError("interest_rate_future_helper key nodes require future_family.")
+
+
 __all__ = [
+    "BOND_HELPER_TYPES",
+    "BondHelperKeyNode",
+    "FixedRateBondHelperKeyNode",
+    "INTEREST_RATE_FUTURE_HELPER_TYPES",
+    "InterestRateFutureHelperKeyNode",
     "OIS_HELPER_TYPES",
     "OISRateHelperKeyNode",
     "OVERNIGHT_DEPOSIT_HELPER_TYPE",
     "OvernightDepositHelperKeyNode",
     "OvernightIndexResolver",
     "RateHelperKeyNode",
+    "SOFR_FUTURE_HELPER_TYPE",
     "SUPPORTED_RATE_HELPER_TYPES",
+    "ZeroCouponBondHelperKeyNode",
     "helper_specs_from_key_nodes",
     "key_nodes_contain_rate_helpers",
     "normalize_helper_type",

@@ -789,6 +789,9 @@ sub-stages. Do not land it as one opaque port from the downstream project.
   two maps required by existing `price_scenario(...)`:
   `line_curve_handles={line_index: ...}` and
   `scenario_curve_handles={line_index: ...}`.
+- [x] The helper must forward generic OIS helper reconstruction context such as
+  `overnight_index` and `overnight_index_resolver` into scenario handle
+  construction instead of forcing connectors to use a local scenario workaround.
 - [x] The helper must delegate actual base/scenario line pricing to
   `msm_pricing.valuation.price_scenario(...)`. It must not duplicate the
   pricing loop from the downstream donor module.

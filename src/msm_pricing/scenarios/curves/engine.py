@@ -164,6 +164,8 @@ def price_curve_scenario(
     *,
     context: PricingValuationContext | None = None,
     curve_quote_side: str | None = None,
+    overnight_index: ql.OvernightIndex | None = None,
+    overnight_index_resolver: OvernightIndexResolver | None = None,
     strict: bool = True,
 ) -> CurveScenarioResult:
     """Price a valuation position under a curve scenario.
@@ -174,7 +176,9 @@ def price_curve_scenario(
     line-local z-spread overlays to runtime handles only, and delegates pricing
     to ``price_scenario(...)``. ``strict=True`` raises before pricing when
     required curve data is missing. ``strict=False`` collects structured
-    diagnostics in the result.
+    diagnostics in the result. Helper-reconstructed OIS curves can supply an
+    explicit ``overnight_index`` or ``overnight_index_resolver`` for scenario
+    handle construction.
     """
 
     diagnostics: list[CurveScenarioDiagnostic] = []
@@ -196,6 +200,8 @@ def price_curve_scenario(
         scenario=scenario,
         context=context,
         resolutions=resolutions,
+        overnight_index=overnight_index,
+        overnight_index_resolver=overnight_index_resolver,
         diagnostics=diagnostics,
         strict=strict,
     )
@@ -234,6 +240,8 @@ def price_curve_scenario(
         curve_shocks=_curve_shock_rows(scenario=scenario, resolutions=resolutions),
         errors=tuple(diagnostics),
         line_curve_resolutions=resolutions,
+        base_curve_handles_by_line=base_handles_by_line,
+        scenario_curve_handles_by_line=scenario_handles_by_line,
     )
 
 
@@ -297,6 +305,8 @@ def price_resolved_curve_scenario(
         curve_shocks=_curve_shock_rows(scenario=scenario, resolutions=resolutions),
         errors=tuple(diagnostics),
         line_curve_resolutions=resolutions,
+        base_curve_handles_by_line=base_handles_by_line,
+        scenario_curve_handles_by_line=scenario_handles_by_line,
     )
 
 
@@ -305,6 +315,8 @@ def _build_scenario_handles_by_identifier(
     scenario: CurveScenario,
     context: PricingValuationContext,
     resolutions: Sequence[ResolvedLineCurve],
+    overnight_index: ql.OvernightIndex | None = None,
+    overnight_index_resolver: OvernightIndexResolver | None = None,
     diagnostics: list[CurveScenarioDiagnostic],
     strict: bool,
 ) -> dict[str, object]:
@@ -328,6 +340,8 @@ def _build_scenario_handles_by_identifier(
                 ),
                 bump_spec=shock,
                 effective_curve_date=_effective_curve_date(context, resolution),
+                overnight_index=overnight_index,
+                overnight_index_resolver=overnight_index_resolver,
             ),
             diagnostics=diagnostics,
             strict=strict,

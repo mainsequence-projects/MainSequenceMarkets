@@ -55,6 +55,25 @@ instruments_by_asset_uid = load_instruments_from_assets(assets, batch_size=1000)
 Account and portfolio packages still own snapshot selection and unit
 normalization. Pricing receives only the normalized valuation lines.
 
+When a vendor or application has already normalized source data into generic
+bond terms, build the ms-markets instrument first and then use the same
+persistence path:
+
+```python
+from msm_pricing.instruments import (
+    BondInstrumentTerms,
+    build_bond_instrument_from_terms,
+)
+
+instrument = build_bond_instrument_from_terms(terms)
+instrument.attach_to_asset(asset)
+```
+
+`BondInstrumentTerms` is provider-neutral. It constructs zero-coupon,
+fixed-rate, or floating-rate bond instrument models without resolving assets,
+mapping source identifiers, or bootstrapping reference indexes. Run
+`examples/msm_pricing/bond_terms.py` for an offline construction example.
+
 When the pricing persistence tables are needed, attach them through
 `msm_pricing.bootstrap.attach_pricing_schemas(...)`. That startup flow includes
 the core asset and index tables first, then pricing extension tables, and uses
@@ -204,21 +223,38 @@ connector-local curve builder. Persist
 `CurveBuildingDetails.builder_type="rate_helper_curve"`, publish generic helper
 key nodes with `helper_type` values such as `overnight_deposit_helper` and
 `ois_rate_helper`, and provide the required runtime overnight index to the
-resolver or scenario builder. The primitive API also works fully in memory:
+resolver or scenario builder. Futures price helpers use explicit price quotes
+such as `helper_type="sofr_future_rate_helper"` with
+`quote_type="futures_price"` and `quote_unit="price"`. Bond-helper curves use
+`helper_type="zero_coupon_bond_helper"` or
+`helper_type="fixed_rate_bond_helper"` with clean or dirty price quotes and
+generic price units such as `price_per_100`. The primitive API also works
+fully in memory:
 
 ```python
 import QuantLib as ql
 
 from msm_pricing.pricing_engine.curves import (
+    CurveObservationExportConfig,
+    FixedRateBondHelperSpec,
+    InterestRateFutureHelperSpec,
     OISRateHelperSpec,
     OvernightDepositHelperSpec,
+    ZeroCouponBondHelperSpec,
     export_curve_observation_nodes,
     reconstruct_curve_handle_from_helper_specs,
+    reconstruct_curve_term_structure_from_helper_specs,
 )
 
 handle = reconstruct_curve_handle_from_helper_specs(
     (
         OvernightDepositHelperSpec(quote=0.0475, tenor="1D"),
+        InterestRateFutureHelperSpec(
+            quote=95.25,
+            reference_month="JUN",
+            reference_year=2026,
+            reference_frequency="Monthly",
+        ),
         OISRateHelperSpec(
             quote=0.0480,
             tenor="1Y",
@@ -240,6 +276,34 @@ nodes = export_curve_observation_nodes(
     valuation_date=valuation_date,
     node_days=[7, 30, 90, 180, 365],
 )
+
+bond_handle = reconstruct_curve_handle_from_helper_specs(
+    (
+        ZeroCouponBondHelperSpec(
+            quote=97.5,
+            quote_type="clean_price",
+            quote_unit="price_per_100",
+            settlement_days=0,
+            face_value=100.0,
+            maturity_date="2026-07-02",
+            issue_date="2026-01-02",
+        ),
+        FixedRateBondHelperSpec(
+            quote=99.0,
+            quote_type="clean_price",
+            quote_unit="price_per_100",
+            coupon_rate=0.05,
+            issue_date="2026-01-02",
+            maturity_date="2027-01-02",
+            tenor="6M",
+            settlement_days=0,
+            face_value=100.0,
+            day_counter=ql.Actual360(),
+        ),
+    ),
+    valuation_date=valuation_date,
+    day_counter=ql.Actual360(),
+)
 ```
 
 Run `examples/msm_pricing/curve_reconstruction.py` for the offline helper
@@ -248,6 +312,32 @@ For curves whose OIS helpers require non-default payment schedules, pass the
 generic OIS schedule fields explicitly in `OISRateHelperSpec` or in helper key
 nodes; do not keep a connector-local constructor only because the payment
 frequency, payment calendar, or averaging method is non-default.
+For bond-helper scenario curves, core ms-markets currently supports no-op
+reconstruction and strict diagnostics for non-empty yield shocks. A future
+yield-to-price conversion layer must explicitly price the bond from the bumped
+yield before clean or dirty price helper quotes can be shocked generically.
+For helper-built curves that need a persisted observation output such as
+compounded annual zero rates, derive the export config from build details and
+combine explicit front nodes with pillar export. Use a term structure, not only
+a handle, when exporting QuantLib pillar dates:
+
+```python
+term_structure = reconstruct_curve_term_structure_from_helper_specs(
+    helper_specs,
+    valuation_date=valuation_date,
+    day_counter=ql.Actual360(),
+)
+export_config = CurveObservationExportConfig.from_curve_building_details(
+    curve_building_details
+)
+nodes = export_curve_observation_nodes(
+    term_structure,
+    valuation_date=valuation_date,
+    node_days=[1],
+    include_pillar_dates=True,
+    config=export_config,
+)
+```
 
 Serialized pricing instruments should reference these rows by UUID, not by
 mutable names. Use `floating_rate_index_uid` on floating-rate bonds and
@@ -396,12 +486,19 @@ For a full floating-rate bond workflow, use
    )
    ```
 
+   When the shocked curve is helper-reconstructed from OIS key nodes, pass
+   `overnight_index` or `overnight_index_resolver` to
+   `price_curve_scenario(...)`; the high-level loop forwards it to scenario
+   handle construction.
+
    Use `msm_pricing.scenarios.curves.price_resolved_curve_scenario(...)` when
    the caller already has exact line-scoped base and scenario curve handles.
    That resolved workflow accepts typed `LineCurveResolution` records and still
-   delegates line pricing to `msm_pricing.price_scenario(...)`. In both cases,
-   scenario state is applied to prepared copies instead of caller-owned
-   instruments.
+   delegates line pricing to `msm_pricing.price_scenario(...)`. The returned
+   `CurveScenarioResult` includes selected base and scenario handle maps by
+   line so application-owned analytics can reuse the same curve selection. In
+   both cases, scenario state is applied to prepared copies instead of
+   caller-owned instruments.
    For a fast local smoke test of that workflow, run
    `examples/msm_pricing/valuation_inputs.py` for normalized valuation rows or
    `examples/msm_pricing/pricing_valuation_context.py` for prepared

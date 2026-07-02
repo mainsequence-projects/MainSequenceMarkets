@@ -18,6 +18,7 @@ from typing import Any
 import pandas as pd
 
 from msm_pricing.pricing_engine.curves.quote_units import (
+    PRICE_QUOTE_TYPES,
     RATE_QUOTE_TYPES,
     key_node_decimal_rate,
     normalize_rate_value,
@@ -137,6 +138,12 @@ def bump_key_node_rate(node: Mapping[str, Any], *, bump_bp: float) -> dict[str, 
     """
 
     out = dict(node)
+    if _is_price_quoted_bond_helper(out):
+        raise ValueError(
+            "Bond-helper scenario yield shocks require explicit yield-to-price "
+            "conversion. Generic key-node bumping does not shock price-quoted "
+            "bond helpers."
+        )
     if _has_value(out.get("yield")):
         out["yield"] = bumped_raw_rate(
             out.get("yield"),
@@ -368,6 +375,14 @@ def _normalize_rate_unit(unit: object) -> str:
         f"Unsupported or missing key-node rate unit {unit!r}. "
         "Supported units: decimal, percent."
     )
+
+
+def _is_price_quoted_bond_helper(node: Mapping[str, Any]) -> bool:
+    helper_type = _normalized_token(node.get("helper_type"))
+    if helper_type not in {"zero_coupon_bond_helper", "fixed_rate_bond_helper"}:
+        return False
+    quote_type = _normalized_token(node.get("quote_type"))
+    return quote_type in PRICE_QUOTE_TYPES or quote_type in {"clean_price", "dirty_price"}
 
 
 def _finite_float(value: object, *, field_name: str) -> float:

@@ -6,23 +6,34 @@ from typing import Any
 _EXPORTS: dict[str, tuple[str, str]] = {
     "AmortizingFixedRateBond": (".bond", "AmortizingFixedRateBond"),
     "AmortizingFloatingRateBond": (".bond", "AmortizingFloatingRateBond"),
+    "BondInstrumentTerms": (".bond_terms", "BondInstrumentTerms"),
+    "BondInstrumentType": (".bond_terms", "BondInstrumentType"),
     "CallableFixedRateBond": (".bond", "CallableFixedRateBond"),
     "FixedRateBond": (".bond", "FixedRateBond"),
     "FloatingRateBond": (".bond", "FloatingRateBond"),
     "Instrument": (".base_instrument", "InstrumentModel"),
     "InterestRateSwap": (".interest_rate_swap", "InterestRateSwap"),
     "ZeroCouponBond": (".bond", "ZeroCouponBond"),
+    "build_bond_instrument_from_terms": (
+        ".bond_terms",
+        "build_bond_instrument_from_terms",
+    ),
+    "quantlib_evaluation_settings": (".bond_terms", "quantlib_evaluation_settings"),
 }
 
 __all__ = [
     "AmortizingFixedRateBond",
     "AmortizingFloatingRateBond",
+    "BondInstrumentTerms",
+    "BondInstrumentType",
     "CallableFixedRateBond",
     "FixedRateBond",
     "FloatingRateBond",
     "Instrument",
     "InterestRateSwap",
     "ZeroCouponBond",
+    "build_bond_instrument_from_terms",
+    "quantlib_evaluation_settings",
 ]
 
 

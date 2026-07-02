@@ -1,4 +1,4 @@
-"""Rate quote normalization shared by curve reconstruction and scenarios."""
+"""Curve quote normalization shared by reconstruction and scenarios."""
 
 from __future__ import annotations
 
@@ -20,6 +20,13 @@ RATE_QUOTE_TYPES = frozenset(
         "yield_to_maturity",
         "zero",
         "zero_rate",
+    }
+)
+PRICE_QUOTE_TYPES = frozenset(
+    {
+        "future_price",
+        "futures_price",
+        "price",
     }
 )
 
@@ -64,6 +71,23 @@ def key_node_decimal_rate(node: Mapping[str, Any]) -> float:
     raise ValueError(f"Curve key node has no supported explicit rate/yield field: {node!r}.")
 
 
+def key_node_price(node: Mapping[str, Any]) -> float:
+    """Return a supported key-node price quote.
+
+    Futures helpers consume futures prices directly. They must not reuse rate
+    normalization because a price such as ``95.25`` is not a percent rate.
+    """
+
+    quote_type = _normalized_token(node.get("quote_type"))
+    if quote_type in PRICE_QUOTE_TYPES and _has_value(node.get("quote")):
+        return normalize_price_value(
+            node.get("quote"),
+            _first_present(node, "quote_unit", "price_unit"),
+            field_name="quote",
+        )
+    raise ValueError(f"Curve key node has no supported explicit price field: {node!r}.")
+
+
 def normalize_rate_value(value: object, unit: object, *, field_name: str = "rate") -> float:
     """Normalize a raw key-node rate/yield to decimal units.
 
@@ -78,6 +102,21 @@ def normalize_rate_value(value: object, unit: object, *, field_name: str = "rate
         return raw
     if unit_text == "percent":
         return raw * 0.01
+    raise AssertionError(f"Unhandled normalized unit {unit_text!r}.")
+
+
+def normalize_price_value(value: object, unit: object, *, field_name: str = "price") -> float:
+    """Normalize a raw key-node price to price units.
+
+    Only explicit ``price`` units are accepted. Generic curve reconstruction
+    must not infer whether a numeric quote is a price, rate, index level, or
+    other source-specific convention.
+    """
+
+    raw = _finite_float(value, field_name=field_name)
+    unit_text = _normalize_price_unit(unit)
+    if unit_text == "price":
+        return raw
     raise AssertionError(f"Unhandled normalized unit {unit_text!r}.")
 
 
@@ -109,6 +148,15 @@ def _normalize_rate_unit(unit: object) -> str:
     )
 
 
+def _normalize_price_unit(unit: object) -> str:
+    token = _normalized_token(unit)
+    if token == "price":
+        return "price"
+    raise ValueError(
+        f"Unsupported or missing key-node price unit {unit!r}. Supported units: price."
+    )
+
+
 def _finite_float(value: object, *, field_name: str) -> float:
     try:
         out = float(value)
@@ -120,7 +168,10 @@ def _finite_float(value: object, *, field_name: str) -> float:
 
 
 __all__ = [
+    "PRICE_QUOTE_TYPES",
     "RATE_QUOTE_TYPES",
     "key_node_decimal_rate",
+    "key_node_price",
+    "normalize_price_value",
     "normalize_rate_value",
 ]

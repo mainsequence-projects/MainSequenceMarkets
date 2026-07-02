@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import contextlib
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
@@ -55,6 +56,28 @@ class CurveObservationExportConfig(BaseModel):
         "no_frequency",
     ] = "no_frequency"
 
+    @classmethod
+    def from_curve_building_details(
+        cls,
+        building_details: object,
+    ) -> CurveObservationExportConfig:
+        """Build export config from persisted curve build details.
+
+        Helper-based curves may use source/input placeholders such as
+        ``quote_convention="helper_quote"``. In that case the persisted
+        ``builder_payload`` must provide explicit runtime/output keys such as
+        ``output_quote_convention`` and ``output_rate_unit``.
+        """
+
+        compounding, frequency = _export_compounding_and_frequency(building_details)
+        return cls(
+            quote_convention=_export_quote_convention(building_details),
+            rate_unit=_export_rate_unit(building_details),
+            day_counter_code=str(getattr(building_details, "day_counter_code")),
+            compounding=compounding,
+            compounding_frequency=frequency,
+        )
+
 
 def export_curve_observation_nodes(
     curve: ql.YieldTermStructureHandle | ql.YieldTermStructure,
@@ -75,21 +98,22 @@ def export_curve_observation_nodes(
     export_config = _export_config(config)
     term_structure = _term_structure(curve)
     base = _reference_date(term_structure, valuation_date=valuation_date)
-    ql_dates = _export_dates(
-        term_structure,
-        base=base,
-        node_days=node_days,
-        include_pillar_dates=include_pillar_dates,
-    )
-    nodes = [
-        _export_node(
+    with _temporary_evaluation_date(base):
+        ql_dates = _export_dates(
             term_structure,
             base=base,
-            ql_date=ql_date,
-            config=export_config,
+            node_days=node_days,
+            include_pillar_dates=include_pillar_dates,
         )
-        for ql_date in ql_dates
-    ]
+        nodes = [
+            _export_node(
+                term_structure,
+                base=base,
+                ql_date=ql_date,
+                config=export_config,
+            )
+            for ql_date in ql_dates
+        ]
     return [node.to_curve_node() for node in nodes]
 
 
@@ -97,6 +121,7 @@ def curve_observation_value(
     curve: ql.YieldTermStructureHandle | ql.YieldTermStructure,
     *,
     maturity_date: dt.date | dt.datetime | ql.Date,
+    valuation_date: dt.date | dt.datetime | ql.Date | None = None,
     config: CurveObservationExportConfig | Mapping[str, Any] | None = None,
 ) -> float:
     """Return one configured observation value from a QuantLib curve."""
@@ -104,6 +129,26 @@ def curve_observation_value(
     export_config = _export_config(config)
     term_structure = _term_structure(curve)
     ql_date = _ql_date(maturity_date)
+    if valuation_date is not None:
+        with _temporary_evaluation_date(_ql_date(valuation_date)):
+            return _curve_observation_value(
+                term_structure,
+                ql_date=ql_date,
+                export_config=export_config,
+            )
+    return _curve_observation_value(
+        term_structure,
+        ql_date=ql_date,
+        export_config=export_config,
+    )
+
+
+def _curve_observation_value(
+    term_structure: ql.YieldTermStructure,
+    *,
+    ql_date: ql.Date,
+    export_config: CurveObservationExportConfig,
+) -> float:
     if export_config.quote_convention == "discount_factor":
         return float(term_structure.discount(ql_date))
     day_counter = daycount_from_json(export_config.day_counter_code)
@@ -214,6 +259,17 @@ def _ql_date(value: dt.date | dt.datetime | ql.Date) -> ql.Date:
     return to_ql_date(dt.datetime.combine(value, dt.time()))
 
 
+@contextlib.contextmanager
+def _temporary_evaluation_date(value: ql.Date):
+    settings = ql.Settings.instance()
+    previous = settings.evaluationDate
+    settings.evaluationDate = value
+    try:
+        yield
+    finally:
+        settings.evaluationDate = previous
+
+
 def _export_config(
     value: CurveObservationExportConfig | Mapping[str, Any] | None,
 ) -> CurveObservationExportConfig:
@@ -222,6 +278,154 @@ def _export_config(
     if isinstance(value, CurveObservationExportConfig):
         return value
     return CurveObservationExportConfig.model_validate(dict(value))
+
+
+def _export_quote_convention(building_details: object) -> Literal["zero_rate", "discount_factor"]:
+    quote_convention = _normalized_token(getattr(building_details, "quote_convention", None))
+    if quote_convention in {"helper_quote", "key_node_quote"}:
+        quote_convention = _first_payload_token(
+            _builder_payload(building_details),
+            "output_quote_convention",
+            "output_quote_type",
+            "runtime_quote_convention",
+            "runtime_quote_type",
+            "observation_quote_convention",
+            "observation_quote_type",
+        )
+    if quote_convention in {"zero", "zero_rate"}:
+        return "zero_rate"
+    if quote_convention in {"discount_factor", "discount"}:
+        return "discount_factor"
+    raise ValueError(
+        "Curve observation export requires quote_convention zero_rate or "
+        f"discount_factor, got {quote_convention!r}."
+    )
+
+
+def _export_rate_unit(building_details: object) -> Literal["decimal", "percent"]:
+    rate_unit = _normalized_token(getattr(building_details, "rate_unit", None))
+    if rate_unit in {"helper_unit", "key_node_unit"}:
+        rate_unit = _first_payload_token(
+            _builder_payload(building_details),
+            "output_rate_unit",
+            "output_quote_unit",
+            "runtime_rate_unit",
+            "runtime_quote_unit",
+            "observation_rate_unit",
+            "observation_quote_unit",
+        )
+    if rate_unit in {"decimal", "decimals"}:
+        return "decimal"
+    if rate_unit in {"percent", "percentage"}:
+        return "percent"
+    raise ValueError(
+        f"Curve observation export requires rate_unit decimal or percent, got {rate_unit!r}."
+    )
+
+
+def _export_compounding_and_frequency(
+    building_details: object,
+) -> tuple[Literal["simple", "continuous", "compounded"], str]:
+    compounding = _normalized_token(getattr(building_details, "compounding", None))
+    explicit_frequency = _frequency_token(
+        getattr(building_details, "compounding_frequency", None),
+        required=False,
+    )
+    if compounding in {"simple", "simple_compounding"}:
+        if explicit_frequency not in {None, "no_frequency"}:
+            raise ValueError(
+                "compounding_frequency is not supported when compounding='simple'."
+            )
+        return "simple", "no_frequency"
+    if compounding in {"continuous", "continuous_compounding"}:
+        if explicit_frequency not in {None, "no_frequency"}:
+            raise ValueError(
+                "compounding_frequency is not supported when compounding='continuous'."
+            )
+        return "continuous", "no_frequency"
+
+    implied_frequency: str | None = None
+    if compounding in {"compounded", "compound"}:
+        pass
+    elif compounding in {"compounded_annual", "annual", "annually"}:
+        implied_frequency = "annual"
+    elif compounding in {"compounded_semiannual", "semiannual", "semi_annual"}:
+        implied_frequency = "semiannual"
+    elif compounding in {"compounded_quarterly", "quarterly"}:
+        implied_frequency = "quarterly"
+    elif compounding in {"compounded_monthly", "monthly"}:
+        implied_frequency = "monthly"
+    else:
+        raise ValueError(
+            f"Unsupported compounding={getattr(building_details, 'compounding', None)!r}. "
+            "Supported values: simple, continuous, compounded, compounded_annual, "
+            "compounded_semiannual, compounded_quarterly, compounded_monthly."
+        )
+
+    if explicit_frequency is not None and implied_frequency is not None:
+        if explicit_frequency != implied_frequency:
+            raise ValueError(
+                f"compounding={getattr(building_details, 'compounding', None)!r} conflicts "
+                f"with compounding_frequency="
+                f"{getattr(building_details, 'compounding_frequency', None)!r}."
+            )
+        frequency = implied_frequency
+    else:
+        frequency = explicit_frequency or implied_frequency
+    if frequency in {None, "no_frequency"}:
+        raise ValueError(
+            "compounded curve observation export requires compounding_frequency unless "
+            "the compounding value encodes one, such as 'compounded_annual'."
+        )
+    return "compounded", frequency
+
+
+def _frequency_token(value: object, *, required: bool) -> str | None:
+    token = _normalized_token(value)
+    if not token:
+        if required:
+            raise ValueError("compounding_frequency is required.")
+        return None
+    frequency_by_token = {
+        "nofrequency": "no_frequency",
+        "no_frequency": "no_frequency",
+        "none": "no_frequency",
+        "annual": "annual",
+        "annually": "annual",
+        "semiannual": "semiannual",
+        "semi_annual": "semiannual",
+        "quarterly": "quarterly",
+        "monthly": "monthly",
+        "daily": "daily",
+    }
+    try:
+        return frequency_by_token[token]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported compounding_frequency={value!r}.") from exc
+
+
+def _builder_payload(building_details: object) -> Mapping[str, Any]:
+    payload = getattr(building_details, "builder_payload", None)
+    if payload is None:
+        return {}
+    if not isinstance(payload, Mapping):
+        raise ValueError("CurveBuildingDetails.builder_payload must be a mapping.")
+    return payload
+
+
+def _first_payload_token(payload: Mapping[str, Any], *keys: str) -> str:
+    for key in keys:
+        token = _normalized_token(payload.get(key))
+        if token:
+            return token
+    raise ValueError(
+        "Curve observation export requires explicit output/runtime convention metadata "
+        f"in builder_payload; checked keys: {', '.join(keys)}."
+    )
+
+
+def _normalized_token(value: object) -> str:
+    return str(value or "").strip().lower()
 
 
 def _compounding(value: str) -> int:

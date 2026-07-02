@@ -68,6 +68,31 @@ def reconstruct_curve_handle(
     function.
     """
 
+    term_structure = reconstruct_curve_term_structure(
+        helpers,
+        valuation_date=valuation_date,
+        day_counter=day_counter,
+        bootstrap_method=bootstrap_method,
+        extrapolation=extrapolation,
+    )
+    return ql.YieldTermStructureHandle(term_structure)
+
+
+def reconstruct_curve_term_structure(
+    helpers: Sequence[ql.RateHelper] | ql.RateHelperVector,
+    *,
+    valuation_date: dt.date | dt.datetime | ql.Date,
+    day_counter: ql.DayCounter,
+    bootstrap_method: str = "piecewise_log_linear_discount",
+    extrapolation: bool = True,
+) -> ql.YieldTermStructure:
+    """Bootstrap a QuantLib curve object from already-built rate helpers.
+
+    Use this when callers need QuantLib methods such as ``dates()`` for
+    pillar-date observation export. Use ``reconstruct_curve_handle(...)`` for
+    pricing paths that only need a handle.
+    """
+
     method = _normalize_bootstrap_method(bootstrap_method)
     helper_vector = build_rate_helper_vector(helpers)
     ql_valuation_date = _ql_valuation_date(valuation_date)
@@ -83,7 +108,10 @@ def reconstruct_curve_handle(
         term_structure.recalculate()
         if extrapolation:
             term_structure.enableExtrapolation()
-        return ql.YieldTermStructureHandle(term_structure)
+        maybe_freeze = getattr(term_structure, "freeze", None)
+        if callable(maybe_freeze):
+            maybe_freeze()
+        return term_structure
 
 
 def reconstruct_curve_handle_from_helper_specs(
@@ -96,10 +124,32 @@ def reconstruct_curve_handle_from_helper_specs(
 ) -> ql.YieldTermStructureHandle:
     """Build rate helpers from specs and bootstrap a QuantLib curve handle."""
 
-    helpers = build_rate_helpers(helper_specs)
-    return reconstruct_curve_handle(
-        helpers,
+    term_structure = reconstruct_curve_term_structure_from_helper_specs(
+        helper_specs,
         valuation_date=valuation_date,
+        day_counter=day_counter,
+        bootstrap_method=bootstrap_method,
+        extrapolation=extrapolation,
+    )
+    return ql.YieldTermStructureHandle(term_structure)
+
+
+def reconstruct_curve_term_structure_from_helper_specs(
+    helper_specs: Sequence[RateHelperSpec],
+    *,
+    valuation_date: dt.date | dt.datetime | ql.Date,
+    day_counter: ql.DayCounter,
+    bootstrap_method: str = "piecewise_log_linear_discount",
+    extrapolation: bool = True,
+) -> ql.YieldTermStructure:
+    """Build rate helpers from specs and bootstrap a QuantLib curve object."""
+
+    ql_valuation_date = _ql_valuation_date(valuation_date)
+    with _temporary_evaluation_date(ql_valuation_date):
+        helpers = build_rate_helpers(helper_specs)
+    return reconstruct_curve_term_structure(
+        helpers,
+        valuation_date=ql_valuation_date,
         day_counter=day_counter,
         bootstrap_method=bootstrap_method,
         extrapolation=extrapolation,
@@ -118,12 +168,36 @@ def reconstruct_curve_handle_from_key_nodes(
 ) -> ql.YieldTermStructureHandle:
     """Build helper specs from key nodes and bootstrap a QuantLib curve handle."""
 
+    term_structure = reconstruct_curve_term_structure_from_key_nodes(
+        key_nodes,
+        valuation_date=valuation_date,
+        day_counter=day_counter,
+        bootstrap_method=bootstrap_method,
+        extrapolation=extrapolation,
+        overnight_index=overnight_index,
+        overnight_index_resolver=overnight_index_resolver,
+    )
+    return ql.YieldTermStructureHandle(term_structure)
+
+
+def reconstruct_curve_term_structure_from_key_nodes(
+    key_nodes: Sequence[Mapping[str, Any]],
+    *,
+    valuation_date: dt.date | dt.datetime | ql.Date,
+    day_counter: ql.DayCounter | str | Mapping[str, Any],
+    bootstrap_method: str = "piecewise_log_linear_discount",
+    extrapolation: bool = True,
+    overnight_index: ql.OvernightIndex | None = None,
+    overnight_index_resolver: OvernightIndexResolver | None = None,
+) -> ql.YieldTermStructure:
+    """Build helper specs from key nodes and bootstrap a QuantLib curve object."""
+
     helper_specs = helper_specs_from_key_nodes(
         key_nodes,
         overnight_index=overnight_index,
         overnight_index_resolver=overnight_index_resolver,
     )
-    return reconstruct_curve_handle_from_helper_specs(
+    return reconstruct_curve_term_structure_from_helper_specs(
         helper_specs,
         valuation_date=valuation_date,
         day_counter=_day_counter(day_counter),
@@ -211,4 +285,7 @@ __all__ = [
     "reconstruct_curve_handle",
     "reconstruct_curve_handle_from_helper_specs",
     "reconstruct_curve_handle_from_key_nodes",
+    "reconstruct_curve_term_structure",
+    "reconstruct_curve_term_structure_from_helper_specs",
+    "reconstruct_curve_term_structure_from_key_nodes",
 ]
