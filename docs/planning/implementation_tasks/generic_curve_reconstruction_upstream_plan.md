@@ -145,13 +145,15 @@ Model placement rules:
   Pydantic models in `pricing_engine/curves/helper_key_nodes.py`. They validate
   generic key-node dictionaries from `DiscountCurvesNode.key_nodes`. They must
   contain only JSON-compatible fields.
-- `CurveReconstructionConfig` is a Pydantic model in
-  `pricing_engine/curves/reconstruction.py`. It validates the generic
-  reconstruction portion of `CurveBuildingDetails` plus
-  `CurveBuildingDetails.builder_payload`.
+- `CurveReconstructionConfig` is an internal Pydantic model in
+  `pricing_engine/curves/reconstruction.py`. It is derived from
+  `CurveBuildingDetails` plus `CurveBuildingDetails.builder_payload`; callers
+  should not have to author the fully normalized dispatch object by hand.
 - `CurveObservationExportConfig` is a Pydantic model in
-  `pricing_engine/curves/observations.py`. It validates the observation-export
-  portion of `CurveBuildingDetails.builder_payload`.
+  `pricing_engine/curves/observations.py`. It is derived primarily from
+  top-level `CurveBuildingDetails` fields such as `quote_convention`,
+  `rate_unit`, `day_counter_code`, `compounding`, and
+  `compounding_frequency`.
 - `CurveBuildingDetails` remains the persisted curve build specification. Do
   not create a new MetaTable for curve reconstruction.
 - `CurveKeyNode` remains the broad optional producer helper in
@@ -170,7 +172,7 @@ Initial model contracts:
 | `InterestRateFutureHelperSpec` | `pricing_engine/curves/helpers.py` | frozen dataclass, deferred | To be defined only when futures are implemented generically. | To be defined only when futures are implemented generically. |
 | `OISRateHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model | `helper_type: Literal["ois_rate_helper", "overnight_indexed_swap_helper"]`, `tenor: str`, `quote: float`, `quote_type: str`, `quote_unit: str` | `quote_side`, `settlement_days`, `payment_frequency`, `payment_calendar_code`, `payment_convention`, `day_counter_code`, `rate_averaging`, `telescopic_value_dates`, `payment_lag`, `forward_start`, `spread_decimal`, `pillar`, `custom_pillar_date`, source metadata fields |
 | `InterestRateFutureHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model, deferred | To be defined only when futures are implemented generically. | To be defined only when futures are implemented generically. |
-| `CurveReconstructionConfig` | `pricing_engine/curves/reconstruction.py` | Pydantic model | `input_family: str`, `input_schema: str`, `reconstruction_method: str`, `observation_export: CurveObservationExportConfig` | `input_options`, `method_options`, `helper_defaults`, `metadata_json` |
+| `CurveReconstructionConfig` | `pricing_engine/curves/reconstruction.py` | Pydantic model | `builder_type: str`, `reconstruction_method: str`, `observation_export: CurveObservationExportConfig` | `input_schema`, `input_options`, `method_options`, `metadata_json` |
 | `CurveObservationExportConfig` | `pricing_engine/curves/observations.py` | Pydantic model | `quote_convention: str`, `rate_unit: str` | `node_days`, `include_pillar_dates`, `day_counter_code`, `compounding`, `frequency`, `calendar_code`, `metadata_json` |
 
 Conversion ownership:
@@ -183,10 +185,10 @@ Conversion ownership:
   It never reads DataNodes, `CurveBuildingDetails`, connector files, or source
   identifiers.
 - `pricing_engine.curves.reconstruction` reads `CurveBuildingDetails` and
-  `CurveBuildingDetails.builder_payload`, dispatches by input family and
+  `CurveBuildingDetails.builder_payload`, dispatches by `builder_type` and
   reconstruction method, asks the relevant adapter for runtime specs, asks
-  `pricing_engine.curves.helpers` for QuantLib helpers when the input family is
-  `rate_helpers`, and builds the runtime curve handle.
+  `pricing_engine.curves.helpers` for QuantLib helpers when the builder type is
+  `rate_helper_curve`, and builds the runtime curve handle.
 - `pricing_engine.curves.observations` exports normalized observation nodes
   according to `CurveObservationExportConfig`. It should not know how the curve
   was reconstructed.
@@ -238,29 +240,28 @@ nodes. Helper-style curves are different: they reconstruct runtime curves from
 market helpers and then export observation nodes using an explicit output
 configuration.
 
-Use `CurveBuildingDetails` and `builder_payload` for curve reconstruction. The
-existing `bootstrap_method` field can carry the first QuantLib method token for
-schema compatibility, but the in-memory API should normalize it into
+Use `CurveBuildingDetails` for the public persisted contract. Top-level columns
+describe the output curve that is published and priced from. `builder_payload`
+should contain only input-family details that do not deserve stable columns.
+The existing `bootstrap_method` field can carry the first QuantLib method token
+for schema compatibility, but the in-memory API should normalize it into
 `CurveReconstructionConfig.reconstruction_method`. Do not name modules or
 public functions after bootstrap.
 
 ```python
 CurveBuildingDetails(
-    builder_type="curve_reconstruction",
-    quote_convention="helper_quote",
+    builder_type="rate_helper_curve",
+    quote_convention="zero_rate",
     rate_unit="decimal",
+    day_counter_code="Actual360",
+    calendar_code="TARGET",
     interpolation_method="log_linear_discount",
+    compounding="simple",
+    extrapolation_policy="enabled",
     bootstrap_method="piecewise_log_linear_discount",
     builder_payload={
-        "input_family": "rate_helpers",
-        "input_schema": "ois_rate_helper@v1",
-        "observation_export": {
-            "quote_convention": "zero_rate",
-            "rate_unit": "decimal",
-        },
-        "input_options": {
-            "front_helper": {"enabled": True, "tenor": "1D"},
-        },
+        "helper_schema": "ois_rate_helper@v1",
+        "front_helper": {"enabled": True, "tenor": "1D"},
     },
 )
 ```
@@ -268,16 +269,16 @@ CurveBuildingDetails(
 The exact token names should be finalized during implementation, but the
 contract should preserve this split:
 
-- `builder_type` says whether the curve is node-built or reconstructed from
-  another input family.
+- `builder_type` says which public builder path is used. The first new value
+  should be `rate_helper_curve`, not a vague `curve_reconstruction` umbrella.
 - `bootstrap_method` says which QuantLib reconstruction method is used.
-- `builder_payload.input_family` says whether inputs are rate helpers,
-  materialized observations, parametric curve terms, or a future curve-family
-  input.
-- `builder_payload.input_schema` identifies the input schema version, not a
-  vendor source.
-- `builder_payload.input_options` carries input-family-specific defaults.
-- `builder_payload.observation_export` carries export conventions.
+- `quote_convention`, `rate_unit`, `day_counter_code`, `calendar_code`,
+  `compounding`, and `compounding_frequency` describe the exported observation
+  convention.
+- `builder_payload.helper_schema` identifies the helper input schema version,
+  not a vendor source.
+- `builder_payload` carries only input-family-specific defaults such as a front
+  helper, helper quote-side policy, or helper parsing defaults.
 - The published `curve` column remains normalized exported observation nodes
   for storage/API use.
 - `key_nodes` carries source helper provenance sufficient to rebuild runtime
@@ -288,6 +289,16 @@ convention. The design must allow additional conventions such as
 `discount_factor`, `forward_rate`, spread/basis observations, or other future
 curve-family outputs without renaming the module or the public reconstruction
 function.
+
+The generic layer should still normalize this persisted row internally:
+
+```python
+config = CurveReconstructionConfig.from_building_details(building_details)
+```
+
+That normalized object may contain `builder_type`, `reconstruction_method`,
+`observation_export`, and input options. It is an implementation convenience,
+not the row shape users should have to hand-author.
 
 ### Scenario Layer
 
@@ -385,9 +396,9 @@ Files to create or update:
 
 Tasks:
 
-- [ ] Add `reconstruct_curve_handle(...)` with explicit `input_family` and
+- [ ] Add `reconstruct_curve_handle(...)` with explicit `builder_type` and
   `reconstruction_method` dispatch.
-- [ ] Add the first reconstruction method for `input_family="rate_helpers"` and
+- [ ] Add the first reconstruction method for `builder_type="rate_helper_curve"` and
   `reconstruction_method="piecewise_log_linear_discount"` without exposing that
   method as the module or top-level public API name.
 - [ ] Preserve and restore `ql.Settings.instance().evaluationDate` around
@@ -399,12 +410,11 @@ Tasks:
   and frequency.
 - [ ] Add `build_curve_from_helper_key_nodes(...)` as the generic replacement
   for the donor key-node rebuild behavior.
-- [ ] Extend resolver dispatch so `builder_type="curve_reconstruction"` uses
-  the generic reconstruction path and existing node-based curves remain
-  unchanged.
+- [ ] Extend resolver dispatch so `builder_type="rate_helper_curve"` uses the
+  generic reconstruction path and existing node-based curves remain unchanged.
 - [ ] If existing rows require `builder_type="rate_helper_bootstrap"`, accept it
   only as a compatibility alias that maps to
-  `builder_type="curve_reconstruction"` and `input_family="rate_helpers"`.
+  `builder_type="rate_helper_curve"`.
 
 ### Stage 4: Scenario Integration
 
