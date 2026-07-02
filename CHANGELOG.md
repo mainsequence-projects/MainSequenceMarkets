@@ -66,6 +66,9 @@ and this project follows versioned releases.
   portfolio and asset read services, curve-keyed scenario pricing, and optional
   fixed-income spread analytics without copying project-local adapter code into
   the library.
+- Added an implementation task plan for upstreaming generic helper-based curve
+  construction and bootstrap machinery from Valmer connector code into
+  `msm_pricing.pricing_engine`.
 - Implemented `PricingValuationContext` with a public `PreparedInstrument`
   wrapper, frozen `PricingValuationContextSpec` input contract, fixed
   prepared-instrument universe, package-level exports, context-aware
