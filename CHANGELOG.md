@@ -9,6 +9,9 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Changed `MSDataInterface.get_historical_discount_curve_observations(...)` to
+  read multi-curve latest-as-of observations through a backend window query
+  instead of scanning full curve history into pandas.
 - Added `msm_pricing.pricing_engine.apply_z_spread_to_curve(...)` for strict
   runtime z-spread overlays that match `Bond.z_spread(...)`'s continuous
   decimal spread convention without mutating persisted curve observations.

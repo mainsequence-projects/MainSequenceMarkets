@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 import uuid
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -20,6 +21,7 @@ from msm_pricing.data_interface.data_interface import (
 )
 from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER
 from msm_pricing.data_nodes.curves.key_nodes import compress_key_nodes_to_string
+from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from msm_pricing.config import reset_pricing_market_data_configuration
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
@@ -317,41 +319,59 @@ def test_get_historical_discount_curve_observations_reads_many_curves_once(monke
     calls = []
     curves_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000205")
     target_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
-    older_date = dt.datetime(2026, 5, 26, tzinfo=dt.UTC)
 
     class FakeAPIDataNode:
+        storage_table = SimpleNamespace(uid=str(curves_data_node_uid))
+
         @classmethod
         def build_from_table_uid(cls, table_uid):
             calls.append(("table_uid", table_uid))
             return cls()
 
         def get_df_between_dates(self, *, dimension_range_map):
-            calls.append(("range", dimension_range_map))
-            from msm_pricing.data_nodes.curve_codec import compress_curve_to_string
+            raise AssertionError("latest-as-of curve reads must not scan historical ranges")
 
-            return pd.DataFrame(
-                [
-                    {
-                        "time_index": older_date,
-                        "curve_identifier": "USD-SOFR",
-                        "curve": compress_curve_to_string({365: 0.045}),
-                    },
-                    {
-                        "time_index": target_date,
-                        "curve_identifier": "USD-SOFR",
-                        "curve": compress_curve_to_string({365: 0.05}),
-                    },
-                    {
-                        "time_index": target_date,
-                        "curve_identifier": "MXN-TIIE",
-                        "curve": compress_curve_to_string({365: 0.095}),
-                    },
-                ]
-            ).set_index(["time_index", "curve_identifier"])
+    from msm_pricing.data_nodes.curve_codec import compress_curve_to_string
+
+    def bind_meta_table(cls, storage_table):
+        calls.append(("bind", storage_table.uid))
+
+    def compile_statement(statement, *, context, operation, models, access):
+        calls.append(
+            (
+                "compiled_sql",
+                str(statement.compile(compile_kwargs={"literal_binds": True})).lower(),
+                context.limits,
+                operation,
+                models,
+                access,
+            )
+        )
+        return {"compiled": True}
+
+    def execute_operation(operation, *, context):
+        calls.append(("execute", operation, context.limits))
+        return {
+            "rows": [
+                {
+                    "time_index": target_date,
+                    "curve_identifier": "USD-SOFR",
+                    "curve": compress_curve_to_string({365: 0.05}),
+                },
+                {
+                    "time_index": target_date,
+                    "curve_identifier": "MXN-TIIE",
+                    "curve": compress_curve_to_string({365: 0.095}),
+                },
+            ]
+        }
 
     import mainsequence.meta_tables as meta_tables
 
     monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
+    monkeypatch.setattr(DiscountCurvesStorage, "_bind_meta_table", classmethod(bind_meta_table))
+    monkeypatch.setattr("msm.repositories.base.compile_markets_statement", compile_statement)
+    monkeypatch.setattr("msm.repositories.base.execute_markets_operation", execute_operation)
     interface = MSDataInterface(
         market_data_configuration={
             "data_node_uids": {PRICING_CONCEPT_DISCOUNT_CURVES: curves_data_node_uid}
@@ -366,28 +386,18 @@ def test_get_historical_discount_curve_observations_reads_many_curves_once(monke
     assert observations["USD-SOFR"][0]["nodes"] == [{"days_to_maturity": 365, "zero": 0.05}]
     assert observations["USD-SOFR"][1] == target_date
     assert observations["MXN-TIIE"][0]["nodes"] == [{"days_to_maturity": 365, "zero": 0.095}]
-    assert calls == [
-        ("table_uid", str(curves_data_node_uid)),
-        (
-            "range",
-            [
-                {
-                    "coordinate": {CURVE_IDENTIFIER: "USD-SOFR"},
-                    "start_date": dt.datetime(1900, 1, 1, tzinfo=dt.UTC),
-                    "start_date_operand": ">=",
-                    "end_date": target_date,
-                    "end_date_operand": "<=",
-                },
-                {
-                    "coordinate": {CURVE_IDENTIFIER: "MXN-TIIE"},
-                    "start_date": dt.datetime(1900, 1, 1, tzinfo=dt.UTC),
-                    "start_date_operand": ">=",
-                    "end_date": target_date,
-                    "end_date_operand": "<=",
-                },
-            ],
-        ),
-    ]
+    assert calls[0] == ("table_uid", str(curves_data_node_uid))
+    assert calls[1] == ("bind", str(curves_data_node_uid))
+    compiled_sql = calls[2][1]
+    assert "row_number()" in compiled_sql
+    assert "partition by" in compiled_sql
+    assert "curve_identifier" in compiled_sql
+    assert "<=" in compiled_sql
+    assert calls[2][2] == {"max_rows": 2}
+    assert calls[2][3] == "select"
+    assert calls[2][4] == [DiscountCurvesStorage]
+    assert calls[2][5] == "read"
+    assert calls[3] == ("execute", {"compiled": True}, {"max_rows": 2})
 
 
 def test_get_historical_fixings_for_identifiers_reads_many_indexes_once(monkeypatch) -> None:

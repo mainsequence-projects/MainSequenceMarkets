@@ -110,6 +110,10 @@ fields when those describe the raw source inputs. Source publishers may add
 their own extensions and enforce them through the DataNode validation hook.
 Runtime pricing does not infer the final curve interpretation from `key_nodes`;
 `CurveBuildingDetails` remains the source for the constructed curve convention.
+Prepared valuation contexts that need many curve observations load the latest
+row at or before the valuation date with a backend window query over
+`DiscountCurvesStorage`, partitioned by `curve_identifier`. They do not scan the
+full curve history into pandas before selecting the final observation.
 
 Curve selection must be strict:
 

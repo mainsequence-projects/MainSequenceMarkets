@@ -8,6 +8,7 @@ from typing import Any, Callable, TypedDict
 
 import pandas as pd
 from cachetools import LRUCache, cachedmethod
+from sqlalchemy import func, select
 
 from msm.settings import INDEX_IDENTIFIER_DIMENSION
 from msm_pricing.config import (
@@ -18,6 +19,7 @@ from msm_pricing.data_nodes.curve_codec import (
     decompress_string_to_curve as _decompress_string_to_curve,
 )
 from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER
+from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 from msm_pricing.data_nodes.curves.key_nodes import (
     decompress_key_nodes_from_string as _decompress_key_nodes_from_string,
     normalize_curve_key_nodes as _normalize_curve_key_nodes,
@@ -231,43 +233,84 @@ class MSDataInterface:
             return {}
 
         target_dt = _ensure_datetime(target_date)
-        start_dt = datetime.datetime(1900, 1, 1, tzinfo=target_dt.tzinfo)
         data_node = self._data_node_for_concept(
             PRICING_CONCEPT_DISCOUNT_CURVES,
             market_data_set=market_data_set,
         )
-        curve_df = data_node.get_df_between_dates(
-            dimension_range_map=[
-                dimension_range_for_identity(
-                    identity_dimension=CURVE_IDENTIFIER,
-                    identity=curve_name,
-                    date_info={
-                        "start_date": start_dt,
-                        "start_date_operand": ">=",
-                        "end_date": target_dt,
-                        "end_date_operand": "<=",
-                    },
-                )[0]
-                for curve_name in requested_curve_names
-            ]
+        rows = self._read_latest_discount_curve_observation_rows(
+            data_node=data_node,
+            curve_names=requested_curve_names,
+            target_dt=target_dt,
         )
-        if curve_df.empty:
-            return {}
-
-        rows = curve_df.reset_index()
         observations: dict[str, tuple[DiscountCurveObservation, datetime.datetime]] = {}
-        for curve_name in requested_curve_names:
-            identity_rows = rows[rows[CURVE_IDENTIFIER] == curve_name]
-            if identity_rows.empty:
-                continue
-            identity_rows = identity_rows.sort_values("time_index")
-            row = identity_rows.iloc[-1].to_dict()
+        rows_by_curve = {str(row[CURVE_IDENTIFIER]): row for row in rows}
+        for curve_name, row in rows_by_curve.items():
             effective_date = _ensure_datetime(row["time_index"])
             observations[curve_name] = (
                 self._discount_curve_observation_from_row(row=row, curve_name=curve_name),
                 effective_date,
             )
         return observations
+
+    @staticmethod
+    def _read_latest_discount_curve_observation_rows(
+        *,
+        data_node,
+        curve_names: list[str],
+        target_dt: datetime.datetime,
+    ) -> list[dict[str, Any]]:
+        from msm.api.base import operation_result_rows
+        from msm.repositories.base import (
+            MarketsRepositoryContext,
+            compile_markets_statement,
+            execute_markets_operation,
+        )
+
+        storage_table = getattr(data_node, "storage_table", None)
+        if storage_table is None:
+            raise RuntimeError(
+                "Discount curve latest-as-of query requires APIDataNode.storage_table. "
+                "Resolve curve storage with APIDataNode.build_from_table_uid(...)."
+            )
+
+        DiscountCurvesStorage._bind_meta_table(storage_table)
+        ranked = (
+            select(
+                DiscountCurvesStorage.time_index.label("time_index"),
+                DiscountCurvesStorage.curve_identifier.label(CURVE_IDENTIFIER),
+                DiscountCurvesStorage.curve.label("curve"),
+                DiscountCurvesStorage.key_nodes.label("key_nodes"),
+                DiscountCurvesStorage.metadata_json.label("metadata_json"),
+                func.row_number()
+                .over(
+                    partition_by=DiscountCurvesStorage.curve_identifier,
+                    order_by=DiscountCurvesStorage.time_index.desc(),
+                )
+                .label("observation_rank"),
+            )
+            .where(
+                DiscountCurvesStorage.curve_identifier.in_(curve_names),
+                DiscountCurvesStorage.time_index <= target_dt,
+            )
+            .subquery("ranked_discount_curve_observations")
+        )
+        statement = select(
+            ranked.c.time_index,
+            ranked.c.curve_identifier,
+            ranked.c.curve,
+            ranked.c.key_nodes,
+            ranked.c.metadata_json,
+        ).where(ranked.c.observation_rank == 1)
+
+        context = MarketsRepositoryContext(limits={"max_rows": len(curve_names)})
+        operation = compile_markets_statement(
+            statement,
+            context=context,
+            operation="select",
+            models=[DiscountCurvesStorage],
+            access="read",
+        )
+        return operation_result_rows(execute_markets_operation(operation, context=context))
 
     def get_latest_discount_curve(self, curve_name, *, market_data_set=None):
         observation, target_date = self.get_latest_discount_curve_observation(
@@ -525,6 +568,8 @@ def _optional_datetime(value: Any) -> datetime.datetime | None:
         return value.to_pydatetime()
     if isinstance(value, datetime.datetime):
         return value
+    if isinstance(value, str):
+        return pd.Timestamp(value).to_pydatetime()
     return None
 
 
@@ -559,7 +604,11 @@ def _is_missing_optional(value: Any) -> bool:
     return False
 
 
-def _ensure_datetime(value: datetime.date | datetime.datetime) -> datetime.datetime:
+def _ensure_datetime(value: datetime.date | datetime.datetime | pd.Timestamp | str) -> datetime.datetime:
+    if isinstance(value, pd.Timestamp):
+        return value.to_pydatetime()
     if isinstance(value, datetime.datetime):
         return value
+    if isinstance(value, str):
+        return pd.Timestamp(value).to_pydatetime()
     return datetime.datetime.combine(value, datetime.time())

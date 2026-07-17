@@ -111,6 +111,10 @@ Curve identity rules:
 - `CurveTable.uid` is the canonical row identity for MetaTable operations.
 - `CurveTable.unique_identifier` is the stable curve row key. Curve DataNode
   storage publishes that value in the `curve_identifier` column.
+- Bulk latest-as-of reads for multiple curve identifiers are executed by the
+  backend against `DiscountCurvesStorage` with one ranked row per
+  `curve_identifier`; callers should not materialize full historical ranges
+  just to find the latest row.
 - `CurveBuildingDetailsTable.curve_uid` stores how observations are turned into
   a QuantLib term structure.
 - `PricingMarketDataSetCurveBindingTable` stores valuation-policy selection:
