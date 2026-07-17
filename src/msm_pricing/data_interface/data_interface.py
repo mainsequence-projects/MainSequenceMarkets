@@ -1,5 +1,4 @@
 import datetime
-import os
 import uuid
 from collections.abc import Mapping
 from operator import attrgetter
@@ -24,7 +23,6 @@ from msm_pricing.data_nodes.curves.key_nodes import (
     decompress_key_nodes_from_string as _decompress_key_nodes_from_string,
     normalize_curve_key_nodes as _normalize_curve_key_nodes,
 )
-from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
@@ -192,31 +190,16 @@ class MSDataInterface:
         *,
         market_data_set=None,
     ):
-        from mainsequence.logconf import logger
-
         data_node = self._data_node_for_concept(
             PRICING_CONCEPT_DISCOUNT_CURVES,
             market_data_set=market_data_set,
         )
-
-        # for test purposes only get lats observations
-        use_last_observation = (
-            os.environ.get("USE_LAST_OBSERVATION_MS_INSTRUMENT", "false").lower() == "true"
-        )
-        if use_last_observation:
-            original_request_date = target_date
-            update_statistics = data_node.get_update_statistics()
-            target_date = update_statistics.get_last_update_for_identity(curve_name)
-            logger.warning("Curve is using last observation")
 
         observation = self._read_discount_curve_observation(
             data_node=data_node,
             curve_name=curve_name,
             target_date=target_date,
         )
-
-        if use_last_observation:
-            target_date = original_request_date
 
         return observation, target_date
 
@@ -363,9 +346,7 @@ class MSDataInterface:
         )
 
         if curve.empty:
-            raise Exception(
-                f"{target_date} is empty. If you want to  use the latest curve available set USE_LAST_OBSERVATION_MS_INSTRUMENT=true"
-            )
+            raise Exception(f"{target_date} is empty for curve {curve_name!r}.")
 
         row = curve.reset_index().iloc[0].to_dict()
         return MSDataInterface._discount_curve_observation_from_row(
@@ -413,8 +394,6 @@ class MSDataInterface:
         :param end_date:
         :return:
         """
-        from mainsequence.logconf import logger
-
         data_node = self._data_node_for_concept(
             PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
             market_data_set=market_data_set,
@@ -433,74 +412,12 @@ class MSDataInterface:
             )
         )
         if fixings_df.empty:
-            use_last_observation = (
-                os.environ.get("USE_LAST_OBSERVATION_MS_INSTRUMENT", "false").lower() == "true"
+            raise Exception(
+                f"{reference_rate_uid} has not data between {start_date} and {end_date}."
             )
-            if use_last_observation:
-                logger.warning("Fixings are using last observation and filled forward")
-                latest_row = self._read_latest_index_fixing_row(
-                    data_node=data_node,
-                    reference_rate_uid=reference_rate_uid,
-                    target_dt=_ensure_datetime(end_date),
-                )
-                if latest_row is not None:
-                    fixings_df = pd.DataFrame([latest_row]).set_index(
-                        ["time_index", INDEX_IDENTIFIER_DIMENSION]
-                    )
-
-            if fixings_df.empty:
-                raise Exception(
-                    f"{reference_rate_uid} has not data between {start_date} and {end_date}."
-                )
         fixings_df = fixings_df.reset_index().rename(columns={"time_index": "date"})
         fixings_df["date"] = pd.to_datetime(fixings_df["date"], utc=True).dt.date
         return fixings_df.set_index("date")["rate"].to_dict()
-
-    @staticmethod
-    def _read_latest_index_fixing_row(
-        *,
-        data_node,
-        reference_rate_uid: str,
-        target_dt: datetime.datetime,
-    ) -> dict[str, Any] | None:
-        from msm.api.base import operation_result_rows
-        from msm.repositories.base import (
-            MarketsRepositoryContext,
-            compile_markets_statement,
-            execute_markets_operation,
-        )
-
-        storage_table = getattr(data_node, "storage_table", None)
-        if storage_table is None:
-            raise RuntimeError(
-                "Index fixing latest-as-of query requires APIDataNode.storage_table. "
-                "Resolve fixing storage with APIDataNode.build_from_table_uid(...)."
-            )
-
-        IndexFixingsStorage._bind_meta_table(storage_table)
-        statement = (
-            select(
-                IndexFixingsStorage.time_index.label("time_index"),
-                IndexFixingsStorage.index_identifier.label(INDEX_IDENTIFIER_DIMENSION),
-                IndexFixingsStorage.rate.label("rate"),
-            )
-            .where(
-                IndexFixingsStorage.index_identifier == reference_rate_uid,
-                IndexFixingsStorage.time_index <= target_dt,
-            )
-            .order_by(IndexFixingsStorage.time_index.desc())
-            .limit(1)
-        )
-        context = MarketsRepositoryContext(limits={"max_rows": 1})
-        operation = compile_markets_statement(
-            statement,
-            context=context,
-            operation="select",
-            models=[IndexFixingsStorage],
-            access="read",
-        )
-        rows = operation_result_rows(execute_markets_operation(operation, context=context))
-        return rows[0] if rows else None
 
     def get_index_fixing_observations(
         self,

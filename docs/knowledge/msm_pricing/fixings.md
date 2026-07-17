@@ -35,11 +35,9 @@ The EOD pricing storage tables declare `__cadence__ = "1d"` on the
 time-indexed table metadata and participates in SDK storage identity, so it
 does not belong on `IndexFixingConfiguration`.
 
-When `MSDataInterface.get_historical_fixings(...)` is asked to use the legacy
-`USE_LAST_OBSERVATION_MS_INSTRUMENT=true` fallback and the requested fixing
-window is empty, it resolves one latest fixing at or before the requested end
-date through the backend `IndexFixingsStorage` query. It must not read fixing
-history from an epoch start date and choose the latest row locally.
+`MSDataInterface.get_historical_fixings(...)` reads only the requested bounded
+fixing window and raises when the required observations are missing. It does
+not silently fill missing fixings with a prior observation.
 
 ## Related Concepts
 

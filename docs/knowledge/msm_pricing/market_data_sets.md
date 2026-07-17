@@ -230,8 +230,7 @@ persisted binding row for `(market_data_set_uid, concept_key)`. The final read
 always uses `APIDataNode.build_from_table_uid(...)`.
 
 Curve consumers that need the latest available curve snapshot for one curve
-identity should use `MSDataInterface.get_latest_discount_curve(...)` instead of
-setting a process-wide fallback environment variable:
+identity should use `MSDataInterface.get_latest_discount_curve(...)` explicitly:
 
 ```python
 from msm_pricing.data_interface import MSDataInterface

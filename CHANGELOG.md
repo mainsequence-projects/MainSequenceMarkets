@@ -12,10 +12,12 @@ and this project follows versioned releases.
 - Changed `MSDataInterface.get_historical_discount_curve_observations(...)` to
   read multi-curve latest-as-of observations through a backend window query
   instead of scanning full curve history into pandas.
-- Changed asset snapshot enrichment services and the
-  `USE_LAST_OBSERVATION_MS_INSTRUMENT` fixing fallback to resolve latest rows
-  through backend queries instead of scanning history and choosing the latest
-  row in Python.
+- Changed asset snapshot enrichment services to resolve latest rows through
+  backend queries instead of scanning history and choosing the latest row in
+  Python.
+- Removed the legacy `MSDataInterface` process-wide latest-observation
+  environment flag; callers must use explicit latest-curve APIs or bounded
+  historical reads.
 - Added `msm_pricing.pricing_engine.apply_z_spread_to_curve(...)` for strict
   runtime z-spread overlays that match `Bond.z_spread(...)`'s continuous
   decimal spread convention without mutating persisted curve observations.
@@ -133,8 +135,7 @@ and this project follows versioned releases.
   current-instrument loading from asset rows, and documented the account and
   portfolio normalization boundary for valuation baskets.
 - Added `MSDataInterface.get_latest_discount_curve(...)` for explicit latest
-  discount-curve lookup by curve identity without using the global
-  `USE_LAST_OBSERVATION_MS_INSTRUMENT` fallback.
+  discount-curve lookup by curve identity.
 - Added `DiscountCurvesStorage.key_nodes` and row `metadata_json` columns, with
   `key_nodes` treated as producer-owned JSON construction provenance at
   publisher/API boundaries and compressed text at rest.
