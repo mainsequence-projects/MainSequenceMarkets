@@ -21,6 +21,12 @@ from msm_pricing.pricing_engine.curves.bond_helpers import (
     ZeroCouponBondHelperSpec,
     build_bond_helper,
 )
+from msm_pricing.pricing_engine.curves.cross_currency_helpers import (
+    ConstNotionalCrossCurrencyBasisSwapRateHelperSpec,
+    CrossCurrencyRateHelperSpec,
+    FxSwapRateHelperSpec,
+    build_cross_currency_rate_helper,
+)
 
 _TENOR_RE = re.compile(r"^\s*(?P<count>[1-9][0-9]*)\s*(?P<unit>[DWMY])\s*$", re.IGNORECASE)
 
@@ -88,6 +94,7 @@ RateHelperSpec = (
     | OISRateHelperSpec
     | InterestRateFutureHelperSpec
     | BondHelperSpec
+    | CrossCurrencyRateHelperSpec
 )
 
 
@@ -197,6 +204,11 @@ def build_rate_helper(spec: RateHelperSpec) -> ql.RateHelper:
         return build_interest_rate_future_helper(spec)
     if isinstance(spec, ZeroCouponBondHelperSpec | FixedRateBondHelperSpec):
         return build_bond_helper(spec)
+    if isinstance(
+        spec,
+        FxSwapRateHelperSpec | ConstNotionalCrossCurrencyBasisSwapRateHelperSpec,
+    ):
+        return build_cross_currency_rate_helper(spec)
     raise TypeError(f"Unsupported rate helper spec type: {type(spec).__name__}.")
 
 
@@ -427,13 +439,17 @@ def _uses_observation_shift_overload(spec: OISRateHelperSpec) -> bool:
 
 __all__ = [
     "BondHelperSpec",
+    "ConstNotionalCrossCurrencyBasisSwapRateHelperSpec",
+    "CrossCurrencyRateHelperSpec",
     "FixedRateBondHelperSpec",
+    "FxSwapRateHelperSpec",
     "InterestRateFutureHelperSpec",
     "OISRateHelperSpec",
     "OvernightDepositHelperSpec",
     "RateHelperSpec",
     "ZeroCouponBondHelperSpec",
     "build_bond_helper",
+    "build_cross_currency_rate_helper",
     "build_interest_rate_future_helper",
     "build_ois_rate_helper",
     "build_overnight_deposit_helper",

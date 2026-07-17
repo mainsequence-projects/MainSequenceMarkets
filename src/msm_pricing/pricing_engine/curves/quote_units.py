@@ -29,6 +29,8 @@ PRICE_QUOTE_TYPES = frozenset(
         "price",
     }
 )
+FX_FORWARD_POINT_QUOTE_TYPES = frozenset({"fx_forward_points"})
+BASIS_SPREAD_QUOTE_TYPES = frozenset({"basis_spread"})
 
 
 def key_node_decimal_rate(node: Mapping[str, Any]) -> float:
@@ -88,6 +90,36 @@ def key_node_price(node: Mapping[str, Any]) -> float:
     raise ValueError(f"Curve key node has no supported explicit price field: {node!r}.")
 
 
+def key_node_fx_forward_points(node: Mapping[str, Any]) -> float:
+    """Return a supported FX forward-points quote.
+
+    FX forward points are not rates. Direct FX-pair units such as
+    ``quote_per_base`` or provider-normalized units are returned unchanged.
+    Raw point/pip units require an explicit ``point_scale``.
+    """
+
+    quote_type = _normalized_token(node.get("quote_type"))
+    if quote_type in FX_FORWARD_POINT_QUOTE_TYPES and _has_value(node.get("quote")):
+        return normalize_fx_forward_points_value(
+            node.get("quote"),
+            _first_present(node, "quote_unit", "fx_forward_points_unit"),
+            point_scale=node.get("point_scale"),
+        )
+    raise ValueError(f"Curve key node has no supported FX forward-points field: {node!r}.")
+
+
+def key_node_basis_spread(node: Mapping[str, Any]) -> float:
+    """Return a supported cross-currency basis spread normalized to decimal units."""
+
+    quote_type = _normalized_token(node.get("quote_type"))
+    if quote_type in BASIS_SPREAD_QUOTE_TYPES and _has_value(node.get("quote")):
+        return normalize_basis_spread_value(
+            node.get("quote"),
+            _first_present(node, "quote_unit", "rate_unit"),
+        )
+    raise ValueError(f"Curve key node has no supported basis-spread field: {node!r}.")
+
+
 def normalize_rate_value(value: object, unit: object, *, field_name: str = "rate") -> float:
     """Normalize a raw key-node rate/yield to decimal units.
 
@@ -103,6 +135,48 @@ def normalize_rate_value(value: object, unit: object, *, field_name: str = "rate
     if unit_text == "percent":
         return raw * 0.01
     raise AssertionError(f"Unhandled normalized unit {unit_text!r}.")
+
+
+def normalize_fx_forward_points_value(
+    value: object,
+    unit: object,
+    *,
+    point_scale: object | None = None,
+) -> float:
+    """Normalize an FX forward-points quote.
+
+    Raw points and pips require an explicit positive ``point_scale`` because
+    generic reconstruction must not infer point scale from source names or
+    currency pairs.
+    """
+
+    raw = _finite_float(value, field_name="fx_forward_points")
+    unit_text = _normalized_token(unit)
+    if not unit_text:
+        raise ValueError("Unsupported or missing FX forward-points unit.")
+    if unit_text in {"raw_point", "raw_points", "point", "points", "pip", "pips"}:
+        scale = _finite_float(point_scale, field_name="point_scale")
+        if scale <= 0:
+            raise ValueError("point_scale must be positive.")
+        return raw / scale
+    return raw
+
+
+def normalize_basis_spread_value(value: object, unit: object) -> float:
+    """Normalize a cross-currency basis spread to decimal units."""
+
+    raw = _finite_float(value, field_name="basis_spread")
+    unit_text = _normalized_token(unit)
+    if unit_text in {"decimal", "decimals"}:
+        return raw
+    if unit_text in {"percent", "percentage"}:
+        return raw * 0.01
+    if unit_text in {"bp", "bps", "basis_point", "basis_points"}:
+        return raw * 0.0001
+    raise ValueError(
+        f"Unsupported or missing key-node basis-spread unit {unit!r}. "
+        "Supported units: decimal, percent, basis_points."
+    )
 
 
 def normalize_price_value(value: object, unit: object, *, field_name: str = "price") -> float:
@@ -168,10 +242,16 @@ def _finite_float(value: object, *, field_name: str) -> float:
 
 
 __all__ = [
+    "BASIS_SPREAD_QUOTE_TYPES",
+    "FX_FORWARD_POINT_QUOTE_TYPES",
     "PRICE_QUOTE_TYPES",
     "RATE_QUOTE_TYPES",
+    "key_node_basis_spread",
     "key_node_decimal_rate",
+    "key_node_fx_forward_points",
     "key_node_price",
+    "normalize_basis_spread_value",
+    "normalize_fx_forward_points_value",
     "normalize_price_value",
     "normalize_rate_value",
 ]

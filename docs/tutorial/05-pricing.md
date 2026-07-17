@@ -228,8 +228,12 @@ such as `helper_type="sofr_future_rate_helper"` with
 `quote_type="futures_price"` and `quote_unit="price"`. Bond-helper curves use
 `helper_type="zero_coupon_bond_helper"` or
 `helper_type="fixed_rate_bond_helper"` with clean or dirty price quotes and
-generic price units such as `price_per_100`. The primitive API also works
-fully in memory:
+generic price units such as `price_per_100`. Cross-currency helper curves use
+the same `helper_schema="rate_helpers@v1"` while carrying FX spot as
+context/provenance rather than a QuantLib helper; FX swap and constant-notional
+cross-currency basis helpers resolve collateral curves and base/quote indexes
+through `RateHelperRuntimeResolver`. The primitive API also works fully in
+memory:
 
 ```python
 import QuantLib as ql
@@ -307,7 +311,8 @@ bond_handle = reconstruct_curve_handle_from_helper_specs(
 ```
 
 Run `examples/msm_pricing/curve_reconstruction.py` for the offline helper
-reconstruction and observation-export smoke test.
+reconstruction and observation-export smoke test, including the neutral
+cross-currency helper-key-node workflow.
 For curves whose OIS helpers require non-default payment schedules, pass the
 generic OIS schedule fields explicitly in `OISRateHelperSpec` or in helper key
 nodes; do not keep a connector-local constructor only because the payment
@@ -489,7 +494,9 @@ For a full floating-rate bond workflow, use
    When the shocked curve is helper-reconstructed from OIS key nodes, pass
    `overnight_index` or `overnight_index_resolver` to
    `price_curve_scenario(...)`; the high-level loop forwards it to scenario
-   handle construction.
+   handle construction. When the shocked curve is helper-reconstructed from
+   cross-currency key nodes, pass `helper_runtime_resolver` so collateral
+   curves and base/quote indexes are resolved explicitly.
 
    Use `msm_pricing.scenarios.curves.price_resolved_curve_scenario(...)` when
    the caller already has exact line-scoped base and scenario curve handles.
@@ -499,13 +506,30 @@ For a full floating-rate bond workflow, use
    line so application-owned analytics can reuse the same curve selection. In
    both cases, scenario state is applied to prepared copies instead of
    caller-owned instruments.
+
+   Use `msm_pricing.scenarios.valuation.run_valuation_scenario_workflow(...)`
+   when the caller needs the broader valuation workflow rather than only the
+   strict curve-scenario price delta. The valuation workflow prepares or reuses
+   the context once, delegates curve runtime override construction to
+   `msm_pricing.scenarios.curves`, prices base and scenario runs with
+   partial-success diagnostics, returns typed line prices, analytics,
+   cashflows, line impacts, carry impacts, and exposes observed dirty-price
+   z-spread overlays without mutating line metadata. Dashboard and API code
+   should convert those typed records to the required table shape outside core
+   `msm_pricing`.
+
    For a fast local smoke test of that workflow, run
    `examples/msm_pricing/valuation_inputs.py` for normalized valuation rows or
    `examples/msm_pricing/pricing_valuation_context.py` for prepared
    fixed-income context behavior. Run `examples/msm_pricing/curve_scenario.py`
    for the context-resolved offline curve-scenario example, or
    `examples/msm_pricing/resolved_curve_scenario.py` for the explicit-handle
-   workflow. These examples avoid live platform market-data setup.
+   workflow. Run `examples/msm_pricing/valuation_scenario_workflow.py` for the
+   generic base/scenario valuation workflow with typed impacts, carry, and
+   observed z-spread overlay output. These examples avoid live platform
+   market-data setup. See
+   [Pricing Scenarios](../knowledge/msm_pricing/scenarios/index.md) for the
+   canonical scenario documentation.
 
 ## Optional spread analytics
 

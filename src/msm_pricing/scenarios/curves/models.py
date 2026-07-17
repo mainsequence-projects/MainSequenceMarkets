@@ -226,6 +226,24 @@ class CurveScenarioResult:
         )
 
 
+@dataclass(frozen=True)
+class CurveScenarioRuntimeOverrides:
+    """Runtime curve handles prepared for one curve scenario.
+
+    This model is returned before pricing. It lets higher-level valuation
+    workflows reuse curve resolution, scenario handle construction, diagnostics,
+    z-spread overlay handling, and shared-handle caching without forcing the
+    strict ``price_scenario(...)`` loop.
+    """
+
+    scenario_name: str
+    curve_shocks: tuple[Mapping[str, object], ...]
+    errors: tuple[CurveScenarioDiagnostic, ...] = ()
+    line_curve_resolutions: tuple[ResolvedLineCurve, ...] = ()
+    base_curve_handles_by_line: Mapping[int, object] = field(default_factory=dict)
+    scenario_curve_handles_by_line: Mapping[int, object] = field(default_factory=dict)
+
+
 def _finite_float(value: object, *, field_name: str) -> float:
     try:
         out = float(value)
@@ -275,6 +293,7 @@ __all__ = [
     "CurveScenario",
     "CurveScenarioDiagnostic",
     "CurveScenarioResult",
+    "CurveScenarioRuntimeOverrides",
     "LineCurveResolution",
     "LineCurveResolutionInput",
     "ResolvedLineCurve",

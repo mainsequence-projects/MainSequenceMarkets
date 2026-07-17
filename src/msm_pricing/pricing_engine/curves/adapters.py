@@ -9,6 +9,7 @@ from typing import Any
 import QuantLib as ql
 
 from msm_pricing.pricing_engine.curves.helper_key_nodes import OvernightIndexResolver
+from msm_pricing.pricing_engine.curves.helper_resolution import RateHelperRuntimeResolver
 from msm_pricing.pricing_engine.curves.reconstruction import (
     CurveReconstructionConfig,
     reconstruct_curve_handle_from_key_nodes,
@@ -30,6 +31,7 @@ def reconstruct_curve_from_curve_building_details(
     effective_curve_date: dt.date | dt.datetime | ql.Date,
     overnight_index: ql.OvernightIndex | None = None,
     overnight_index_resolver: OvernightIndexResolver | None = None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None = None,
 ) -> ql.YieldTermStructureHandle:
     """Reconstruct a curve from ``CurveBuildingDetails`` and helper key nodes.
 
@@ -38,7 +40,7 @@ def reconstruct_curve_from_curve_building_details(
     QuantLib helper builders.
     """
 
-    _validate_rate_helper_payload(building_details)
+    helper_schema = _validate_rate_helper_payload(building_details)
     key_nodes = observation.get("key_nodes")
     if isinstance(key_nodes, str | bytes) or not isinstance(key_nodes, list):
         raise ValueError("Rate-helper curve reconstruction requires observation['key_nodes'].")
@@ -49,12 +51,14 @@ def reconstruct_curve_from_curve_building_details(
         day_counter=config.day_counter(),
         bootstrap_method=config.bootstrap_method,
         extrapolation=config.extrapolation,
+        helper_schema=helper_schema,
         overnight_index=overnight_index,
         overnight_index_resolver=overnight_index_resolver,
+        helper_runtime_resolver=helper_runtime_resolver,
     )
 
 
-def _validate_rate_helper_payload(building_details: object) -> None:
+def _validate_rate_helper_payload(building_details: object) -> str:
     payload = getattr(building_details, "builder_payload", None)
     if not isinstance(payload, Mapping):
         raise ValueError(
@@ -66,6 +70,7 @@ def _validate_rate_helper_payload(building_details: object) -> None:
         raise ValueError(
             "Rate-helper curve reconstruction supports helper_schema='rate_helpers@v1' only."
         )
+    return helper_schema
 
 
 def _token(value: object) -> str:

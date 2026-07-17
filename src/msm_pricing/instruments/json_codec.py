@@ -217,6 +217,28 @@ def _calendar_from_class_and_market(name: str, market: int | None) -> ql.Calenda
     return cls()
 
 
+def _calendar_from_joint_payload(payload: dict[str, Any]) -> ql.Calendar:
+    calendars_payload = payload.get("calendars")
+    if not isinstance(calendars_payload, list) or len(calendars_payload) < 2:
+        raise ValueError("JointCalendar payload must contain at least two calendars.")
+    calendars = ql.CalendarVector()
+    for child in calendars_payload:
+        calendars.push_back(calendar_from_json(child))
+    return ql.JointCalendar(calendars, _joint_calendar_rule(payload.get("rule")))
+
+
+def _joint_calendar_rule(value: object) -> int:
+    token = str(value or "JoinHolidays").strip().lower().replace("-", "_").replace(" ", "_")
+    if token in {"joinholidays", "join_holidays"}:
+        return int(ql.JoinHolidays)
+    if token in {"joinbusinessdays", "join_business_days"}:
+        return int(ql.JoinBusinessDays)
+    raise ValueError(
+        f"Unsupported JointCalendar rule {value!r}. "
+        "Supported values: JoinHolidays, JoinBusinessDays."
+    )
+
+
 def calendar_from_json(v: dict[str, Any] | str | ql.Calendar) -> ql.Calendar:
     """
     Decode dict or string into a Calendar instance. Accepts:
@@ -242,6 +264,8 @@ def calendar_from_json(v: dict[str, Any] | str | ql.Calendar) -> ql.Calendar:
         name = v.get("name")
         if not name:
             raise ValueError("Calendar dict must contain 'name'.")
+        if str(name).strip().lower() == "jointcalendar":
+            return _calendar_from_joint_payload(v)
         market = v.get("market", None)
 
         # Prefer class name path; if that fails, treat 'name' as display name.

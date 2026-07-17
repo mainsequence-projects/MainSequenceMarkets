@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import QuantLib as ql
@@ -13,8 +14,9 @@ from pydantic import BaseModel, ConfigDict
 from msm_pricing.instruments.json_codec import daycount_from_json
 from msm_pricing.pricing_engine.curves.helper_key_nodes import (
     OvernightIndexResolver,
-    helper_specs_from_key_nodes,
+    parse_rate_helper_key_nodes,
 )
+from msm_pricing.pricing_engine.curves.helper_resolution import RateHelperRuntimeResolver
 from msm_pricing.pricing_engine.curves.helpers import (
     RateHelperSpec,
     build_rate_helper_vector,
@@ -23,6 +25,17 @@ from msm_pricing.pricing_engine.curves.helpers import (
 from msm_pricing.utils import to_ql_date
 
 SUPPORTED_BOOTSTRAP_METHODS = frozenset({"piecewise_log_linear_discount"})
+
+
+@dataclass(frozen=True, slots=True)
+class CurveReconstructionResult:
+    """Runtime curve reconstruction result with helper diagnostics attached."""
+
+    term_structure: ql.YieldTermStructure
+    helpers: tuple[ql.RateHelper, ...]
+    helper_specs: tuple[RateHelperSpec, ...]
+    context_nodes: tuple[Mapping[str, Any], ...] = ()
+    helper_quote_errors: tuple[float, ...] = ()
 
 
 class CurveReconstructionConfig(BaseModel):
@@ -124,14 +137,14 @@ def reconstruct_curve_handle_from_helper_specs(
 ) -> ql.YieldTermStructureHandle:
     """Build rate helpers from specs and bootstrap a QuantLib curve handle."""
 
-    term_structure = reconstruct_curve_term_structure_from_helper_specs(
+    result = reconstruct_curve_result_from_helper_specs(
         helper_specs,
         valuation_date=valuation_date,
         day_counter=day_counter,
         bootstrap_method=bootstrap_method,
         extrapolation=extrapolation,
     )
-    return ql.YieldTermStructureHandle(term_structure)
+    return ql.YieldTermStructureHandle(result.term_structure)
 
 
 def reconstruct_curve_term_structure_from_helper_specs(
@@ -144,15 +157,44 @@ def reconstruct_curve_term_structure_from_helper_specs(
 ) -> ql.YieldTermStructure:
     """Build rate helpers from specs and bootstrap a QuantLib curve object."""
 
+    return reconstruct_curve_result_from_helper_specs(
+        helper_specs,
+        valuation_date=valuation_date,
+        day_counter=day_counter,
+        bootstrap_method=bootstrap_method,
+        extrapolation=extrapolation,
+    ).term_structure
+
+
+def reconstruct_curve_result_from_helper_specs(
+    helper_specs: Sequence[RateHelperSpec],
+    *,
+    valuation_date: dt.date | dt.datetime | ql.Date,
+    day_counter: ql.DayCounter,
+    bootstrap_method: str = "piecewise_log_linear_discount",
+    extrapolation: bool = True,
+    context_nodes: Sequence[Mapping[str, Any]] = (),
+) -> CurveReconstructionResult:
+    """Build helpers, bootstrap a curve, and return helper diagnostics."""
+
     ql_valuation_date = _ql_valuation_date(valuation_date)
     with _temporary_evaluation_date(ql_valuation_date):
         helpers = build_rate_helpers(helper_specs)
-    return reconstruct_curve_term_structure(
+    term_structure = reconstruct_curve_term_structure(
         helpers,
         valuation_date=ql_valuation_date,
         day_counter=day_counter,
         bootstrap_method=bootstrap_method,
         extrapolation=extrapolation,
+    )
+    with _temporary_evaluation_date(ql_valuation_date):
+        helper_quote_errors = tuple(float(helper.quoteError()) for helper in helpers)
+    return CurveReconstructionResult(
+        term_structure=term_structure,
+        helpers=helpers,
+        helper_specs=tuple(helper_specs),
+        context_nodes=tuple(context_nodes),
+        helper_quote_errors=helper_quote_errors,
     )
 
 
@@ -163,21 +205,25 @@ def reconstruct_curve_handle_from_key_nodes(
     day_counter: ql.DayCounter | str | Mapping[str, Any],
     bootstrap_method: str = "piecewise_log_linear_discount",
     extrapolation: bool = True,
+    helper_schema: str = "rate_helpers@v1",
     overnight_index: ql.OvernightIndex | None = None,
     overnight_index_resolver: OvernightIndexResolver | None = None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None = None,
 ) -> ql.YieldTermStructureHandle:
     """Build helper specs from key nodes and bootstrap a QuantLib curve handle."""
 
-    term_structure = reconstruct_curve_term_structure_from_key_nodes(
+    result = reconstruct_curve_result_from_key_nodes(
         key_nodes,
         valuation_date=valuation_date,
         day_counter=day_counter,
         bootstrap_method=bootstrap_method,
         extrapolation=extrapolation,
+        helper_schema=helper_schema,
         overnight_index=overnight_index,
         overnight_index_resolver=overnight_index_resolver,
+        helper_runtime_resolver=helper_runtime_resolver,
     )
-    return ql.YieldTermStructureHandle(term_structure)
+    return ql.YieldTermStructureHandle(result.term_structure)
 
 
 def reconstruct_curve_term_structure_from_key_nodes(
@@ -187,22 +233,54 @@ def reconstruct_curve_term_structure_from_key_nodes(
     day_counter: ql.DayCounter | str | Mapping[str, Any],
     bootstrap_method: str = "piecewise_log_linear_discount",
     extrapolation: bool = True,
+    helper_schema: str = "rate_helpers@v1",
     overnight_index: ql.OvernightIndex | None = None,
     overnight_index_resolver: OvernightIndexResolver | None = None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None = None,
 ) -> ql.YieldTermStructure:
     """Build helper specs from key nodes and bootstrap a QuantLib curve object."""
 
-    helper_specs = helper_specs_from_key_nodes(
+    return reconstruct_curve_result_from_key_nodes(
         key_nodes,
+        valuation_date=valuation_date,
+        day_counter=day_counter,
+        bootstrap_method=bootstrap_method,
+        extrapolation=extrapolation,
+        helper_schema=helper_schema,
         overnight_index=overnight_index,
         overnight_index_resolver=overnight_index_resolver,
+        helper_runtime_resolver=helper_runtime_resolver,
+    ).term_structure
+
+
+def reconstruct_curve_result_from_key_nodes(
+    key_nodes: Sequence[Mapping[str, Any]],
+    *,
+    valuation_date: dt.date | dt.datetime | ql.Date,
+    day_counter: ql.DayCounter | str | Mapping[str, Any],
+    bootstrap_method: str = "piecewise_log_linear_discount",
+    extrapolation: bool = True,
+    helper_schema: str = "rate_helpers@v1",
+    overnight_index: ql.OvernightIndex | None = None,
+    overnight_index_resolver: OvernightIndexResolver | None = None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None = None,
+) -> CurveReconstructionResult:
+    """Build helper specs from key nodes and return a diagnostic reconstruction."""
+
+    parsed = parse_rate_helper_key_nodes(
+        key_nodes,
+        helper_schema=helper_schema,
+        overnight_index=overnight_index,
+        overnight_index_resolver=overnight_index_resolver,
+        helper_runtime_resolver=helper_runtime_resolver,
     )
-    return reconstruct_curve_term_structure_from_helper_specs(
-        helper_specs,
+    return reconstruct_curve_result_from_helper_specs(
+        parsed.helper_specs,
         valuation_date=valuation_date,
         day_counter=_day_counter(day_counter),
         bootstrap_method=bootstrap_method,
         extrapolation=extrapolation,
+        context_nodes=parsed.context_nodes,
     )
 
 
@@ -213,8 +291,10 @@ def build_curve_from_helper_key_nodes(
     day_counter: ql.DayCounter | str | Mapping[str, Any],
     bootstrap_method: str = "piecewise_log_linear_discount",
     extrapolation: bool = True,
+    helper_schema: str = "rate_helpers@v1",
     overnight_index: ql.OvernightIndex | None = None,
     overnight_index_resolver: OvernightIndexResolver | None = None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None = None,
 ) -> ql.YieldTermStructureHandle:
     """Alias for helper-key-node reconstruction with an explicit public name."""
 
@@ -224,8 +304,10 @@ def build_curve_from_helper_key_nodes(
         day_counter=day_counter,
         bootstrap_method=bootstrap_method,
         extrapolation=extrapolation,
+        helper_schema=helper_schema,
         overnight_index=overnight_index,
         overnight_index_resolver=overnight_index_resolver,
+        helper_runtime_resolver=helper_runtime_resolver,
     )
 
 
@@ -280,11 +362,14 @@ def _temporary_evaluation_date(value: ql.Date):
 
 __all__ = [
     "CurveReconstructionConfig",
+    "CurveReconstructionResult",
     "SUPPORTED_BOOTSTRAP_METHODS",
     "build_curve_from_helper_key_nodes",
     "reconstruct_curve_handle",
     "reconstruct_curve_handle_from_helper_specs",
     "reconstruct_curve_handle_from_key_nodes",
+    "reconstruct_curve_result_from_helper_specs",
+    "reconstruct_curve_result_from_key_nodes",
     "reconstruct_curve_term_structure",
     "reconstruct_curve_term_structure_from_helper_specs",
     "reconstruct_curve_term_structure_from_key_nodes",

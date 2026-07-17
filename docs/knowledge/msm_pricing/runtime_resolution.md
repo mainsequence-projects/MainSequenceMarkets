@@ -148,6 +148,12 @@ builds QuantLib rate helpers through `msm_pricing.pricing_engine.curves`, and
 bootstraps the curve with `reconstruct_curve_handle(...)`. OIS helper key nodes
 require a caller-supplied QuantLib overnight index or resolver callable; the
 library does not infer indexes from curve names or connector-specific labels.
+`builder_payload.helper_schema="rate_helpers@v1"` is the canonical helper
+schema. It supports helper nodes plus context/provenance nodes such as
+`helper_type="fx_spot"` for FX swap helpers. Cross-currency helper curves also
+require a `RateHelperRuntimeResolver` so collateral curve identifiers and
+base/quote currency index identifiers resolve to QuantLib handles and indexes
+explicitly.
 
 The primitive reconstruction API never accepts `CurveBuildingDetails` directly.
 The dependency flow is:
@@ -314,6 +320,20 @@ should adapt their local handle-resolution output into `LineCurveResolution`
 records and then call `price_resolved_curve_scenario(...)`; connector-specific
 curve construction remains outside core `msm_pricing`.
 
+For the canonical curve scenario contract, package boundary, and examples, see
+[Curve Scenarios](scenarios/curves.md).
+
+## Valuation scenario workflow
+
+`msm_pricing.scenarios.valuation.run_valuation_scenario_workflow(...)` sits
+above this runtime graph. It reuses `PricingValuationContext`, delegates curve
+runtime override preparation to `msm_pricing.scenarios.curves`, and returns
+typed base/scenario valuation outputs for downstream table adapters.
+
+For the canonical valuation workflow contract, result models, observed
+dirty-price z-spread overlay behavior, and example, see
+[Valuation Scenario Workflow](scenarios/valuation.md).
+
 ## User Workflow
 
 The fixed-income workflow is:
@@ -345,6 +365,7 @@ curve and one-month fixing publishers.
 - [msm_pricing overview](index.md)
 - [Market Data Sets](market_data_sets.md)
 - [Instruments](instruments.md)
+- [Scenarios](scenarios/index.md)
 - [Curves](curves.md)
 - [Fixings](fixings.md)
 - [Indexes](../msm/indices/index.md)

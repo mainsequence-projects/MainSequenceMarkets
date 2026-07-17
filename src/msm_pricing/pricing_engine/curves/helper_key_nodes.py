@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import QuantLib as ql
@@ -16,6 +17,17 @@ from msm_pricing.pricing_engine.curves.bond_helper_key_nodes import (
     bond_helper_spec_from_key_node,
     parse_bond_helper_key_node,
 )
+from msm_pricing.pricing_engine.curves.cross_currency_key_nodes import (
+    CROSS_CURRENCY_CONTEXT_TYPES,
+    CROSS_CURRENCY_HELPER_TYPES,
+    CrossCurrencyHelperKeyNode,
+    FxSwapRateHelperKeyNode,
+    ConstNotionalCrossCurrencyBasisSwapRateHelperKeyNode,
+    cross_currency_context_from_key_nodes,
+    cross_currency_helper_spec_from_key_node,
+    parse_cross_currency_key_node,
+)
+from msm_pricing.pricing_engine.curves.helper_resolution import RateHelperRuntimeResolver
 from msm_pricing.pricing_engine.curves.helpers import (
     InterestRateFutureHelperSpec,
     OISRateHelperSpec,
@@ -36,7 +48,11 @@ SUPPORTED_RATE_HELPER_TYPES = frozenset(
         OVERNIGHT_DEPOSIT_HELPER_TYPE,
         *INTEREST_RATE_FUTURE_HELPER_TYPES,
         *BOND_HELPER_TYPES,
+        *CROSS_CURRENCY_HELPER_TYPES,
     }
+)
+SUPPORTED_RATE_HELPER_KEY_NODE_TYPES = frozenset(
+    {*SUPPORTED_RATE_HELPER_TYPES, *CROSS_CURRENCY_CONTEXT_TYPES}
 )
 OvernightIndexResolver = Callable[[str | None, Mapping[str, Any]], ql.OvernightIndex]
 
@@ -114,7 +130,17 @@ RateHelperKeyNode = (
     | OISRateHelperKeyNode
     | InterestRateFutureHelperKeyNode
     | BondHelperKeyNode
+    | CrossCurrencyHelperKeyNode
 )
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedRateHelperKeyNodes:
+    """Parsed helper specs plus original helper/context key-node payloads."""
+
+    helper_specs: tuple[RateHelperSpec, ...]
+    helper_nodes: tuple[Mapping[str, Any], ...]
+    context_nodes: tuple[Mapping[str, Any], ...]
 
 
 def normalize_helper_type(value: object) -> str:
@@ -137,6 +163,15 @@ def parse_rate_helper_key_node(node: Mapping[str, Any]) -> RateHelperKeyNode:
     payload["helper_type"] = helper_type
     if helper_type in BOND_HELPER_TYPES:
         return parse_bond_helper_key_node(payload)
+    if helper_type in CROSS_CURRENCY_HELPER_TYPES:
+        parsed = parse_cross_currency_key_node(payload)
+        if isinstance(
+            parsed,
+            FxSwapRateHelperKeyNode
+            | ConstNotionalCrossCurrencyBasisSwapRateHelperKeyNode,
+        ):
+            return parsed
+        raise AssertionError(f"Unhandled cross-currency helper type {helper_type!r}.")
     if helper_type == OVERNIGHT_DEPOSIT_HELPER_TYPE:
         return OvernightDepositHelperKeyNode.model_validate(payload)
     if helper_type in INTEREST_RATE_FUTURE_HELPER_TYPES:
@@ -147,8 +182,10 @@ def parse_rate_helper_key_node(node: Mapping[str, Any]) -> RateHelperKeyNode:
 def helper_specs_from_key_nodes(
     key_nodes: Sequence[Mapping[str, Any]],
     *,
+    helper_schema: str = "rate_helpers@v1",
     overnight_index: ql.OvernightIndex | None = None,
     overnight_index_resolver: OvernightIndexResolver | None = None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None = None,
 ) -> tuple[RateHelperSpec, ...]:
     """Convert helper-shaped key nodes to primitive QuantLib helper specs.
 
@@ -158,13 +195,41 @@ def helper_specs_from_key_nodes(
     ``OvernightIndex``. No index is inferred from vendor or product names.
     """
 
+    return parse_rate_helper_key_nodes(
+        key_nodes,
+        helper_schema=helper_schema,
+        overnight_index=overnight_index,
+        overnight_index_resolver=overnight_index_resolver,
+        helper_runtime_resolver=helper_runtime_resolver,
+    ).helper_specs
+
+
+def parse_rate_helper_key_nodes(
+    key_nodes: Sequence[Mapping[str, Any]],
+    *,
+    helper_schema: str = "rate_helpers@v1",
+    overnight_index: ql.OvernightIndex | None = None,
+    overnight_index_resolver: OvernightIndexResolver | None = None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None = None,
+) -> ParsedRateHelperKeyNodes:
+    """Parse helper-shaped key nodes into specs and original node groups."""
+
     if isinstance(key_nodes, str | bytes) or not isinstance(key_nodes, Sequence):
         raise TypeError("key_nodes must be a sequence of mapping objects.")
+    _normalize_helper_schema(helper_schema)
+    context_node_models = cross_currency_context_from_key_nodes(key_nodes)
     specs: list[RateHelperSpec] = []
+    helper_nodes: list[Mapping[str, Any]] = []
+    context_nodes: list[Mapping[str, Any]] = []
     for raw_node in key_nodes:
         if not isinstance(raw_node, Mapping):
             raise TypeError("Each rate-helper key node must be a mapping.")
+        raw_helper_type = str(raw_node.get("helper_type") or "").strip().lower()
+        if raw_helper_type in CROSS_CURRENCY_CONTEXT_TYPES:
+            context_nodes.append(raw_node)
+            continue
         node = parse_rate_helper_key_node(raw_node)
+        helper_nodes.append(raw_node)
         if isinstance(node, OvernightDepositHelperKeyNode):
             decimal_quote = key_node_decimal_rate(node.model_dump())
             specs.append(
@@ -197,6 +262,19 @@ def helper_specs_from_key_nodes(
         if isinstance(node, ZeroCouponBondHelperKeyNode | FixedRateBondHelperKeyNode):
             specs.append(bond_helper_spec_from_key_node(node))
             continue
+        if isinstance(
+            node,
+            FxSwapRateHelperKeyNode
+            | ConstNotionalCrossCurrencyBasisSwapRateHelperKeyNode,
+        ):
+            specs.append(
+                cross_currency_helper_spec_from_key_node(
+                    node,
+                    context_nodes=context_node_models,
+                    helper_runtime_resolver=helper_runtime_resolver,
+                )
+            )
+            continue
         decimal_quote = key_node_decimal_rate(node.model_dump())
         specs.append(
             OISRateHelperSpec(
@@ -208,6 +286,7 @@ def helper_specs_from_key_nodes(
                     raw_node=raw_node,
                     overnight_index=overnight_index,
                     overnight_index_resolver=overnight_index_resolver,
+                    helper_runtime_resolver=helper_runtime_resolver,
                 ),
                 telescopic_value_dates=node.telescopic_value_dates,
                 payment_lag=node.payment_lag,
@@ -232,24 +311,33 @@ def helper_specs_from_key_nodes(
         )
     if not specs:
         raise ValueError("At least one rate-helper key node is required.")
-    return tuple(specs)
+    return ParsedRateHelperKeyNodes(
+        helper_specs=tuple(specs),
+        helper_nodes=tuple(helper_nodes),
+        context_nodes=tuple(context_nodes),
+    )
 
 
 def key_nodes_contain_rate_helpers(key_nodes: object) -> bool:
-    """Return whether every submitted key node declares a supported helper type."""
+    """Return whether every submitted key node declares a supported helper/context type."""
 
     if isinstance(key_nodes, str | bytes) or not isinstance(key_nodes, Sequence):
         return False
     if not key_nodes:
         return False
+    contains_helper = False
     for node in key_nodes:
         if not isinstance(node, Mapping):
             return False
+        helper_type = str(node.get("helper_type") or "").strip().lower()
+        if helper_type in CROSS_CURRENCY_CONTEXT_TYPES:
+            continue
         try:
             normalize_helper_type(node.get("helper_type"))
         except ValueError:
             return False
-    return True
+        contains_helper = True
+    return contains_helper
 
 
 def _resolve_overnight_index(
@@ -258,9 +346,18 @@ def _resolve_overnight_index(
     raw_node: Mapping[str, Any],
     overnight_index: ql.OvernightIndex | None,
     overnight_index_resolver: OvernightIndexResolver | None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None,
 ) -> ql.OvernightIndex:
     if overnight_index is not None:
         return overnight_index
+    if helper_runtime_resolver is not None:
+        resolved = helper_runtime_resolver.resolve_overnight_index(node.floating_index, raw_node)
+        if not isinstance(resolved, ql.OvernightIndex):
+            raise TypeError(
+                "helper_runtime_resolver.resolve_overnight_index must return a "
+                "QuantLib OvernightIndex."
+            )
+        return resolved
     if overnight_index_resolver is not None:
         resolved = overnight_index_resolver(node.floating_index, raw_node)
         if not isinstance(resolved, ql.OvernightIndex):
@@ -294,10 +391,24 @@ def _future_family(node: InterestRateFutureHelperKeyNode) -> str:
     raise ValueError("interest_rate_future_helper key nodes require future_family.")
 
 
+def _normalize_helper_schema(value: str) -> str:
+    schema = str(value or "rate_helpers@v1").strip().lower()
+    if schema != "rate_helpers@v1":
+        raise ValueError(
+            "Rate-helper curve reconstruction supports helper_schema='rate_helpers@v1' only."
+        )
+    return schema
+
+
 __all__ = [
     "BOND_HELPER_TYPES",
+    "CROSS_CURRENCY_CONTEXT_TYPES",
+    "CROSS_CURRENCY_HELPER_TYPES",
+    "ConstNotionalCrossCurrencyBasisSwapRateHelperKeyNode",
+    "CrossCurrencyHelperKeyNode",
     "BondHelperKeyNode",
     "FixedRateBondHelperKeyNode",
+    "FxSwapRateHelperKeyNode",
     "INTEREST_RATE_FUTURE_HELPER_TYPES",
     "InterestRateFutureHelperKeyNode",
     "OIS_HELPER_TYPES",
@@ -305,6 +416,7 @@ __all__ = [
     "OVERNIGHT_DEPOSIT_HELPER_TYPE",
     "OvernightDepositHelperKeyNode",
     "OvernightIndexResolver",
+    "ParsedRateHelperKeyNodes",
     "RateHelperKeyNode",
     "SOFR_FUTURE_HELPER_TYPE",
     "SUPPORTED_RATE_HELPER_TYPES",
@@ -312,5 +424,6 @@ __all__ = [
     "helper_specs_from_key_nodes",
     "key_nodes_contain_rate_helpers",
     "normalize_helper_type",
+    "parse_rate_helper_key_nodes",
     "parse_rate_helper_key_node",
 ]

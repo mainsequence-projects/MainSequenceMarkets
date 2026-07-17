@@ -18,6 +18,7 @@ from msm_pricing.scenarios.curves import (
     CurveBumpSpec,
     CurveScenario,
     LineCurveResolution,
+    prepare_resolved_curve_scenario_runtime_overrides,
     price_curve_scenario,
     price_resolved_curve_scenario,
 )
@@ -219,6 +220,33 @@ def test_resolved_shocked_curve_uses_supplied_scenario_handle(monkeypatch) -> No
     assert result.base_market_value == pytest.approx(110.0)
     assert result.scenario_market_value == pytest.approx(120.0)
     assert result.market_value_delta == pytest.approx(10.0)
+
+
+def test_prepare_resolved_runtime_overrides_returns_selected_handle_maps() -> None:
+    curve_identifier = "USD-SOFR"
+    position = _position(CurveOverrideInstrument(floating_rate_index_uid=uuid.uuid4()))
+
+    runtime_overrides = prepare_resolved_curve_scenario_runtime_overrides(
+        position,
+        CurveScenario(
+            name="up",
+            shocks_by_curve_identifier={curve_identifier: CurveBumpSpec(parallel_bp=25.0)},
+        ),
+        line_curve_resolutions=[
+            _resolution(
+                line_index=0,
+                curve_identifier=curve_identifier,
+                base_handle=10.0,
+                scenario_handle=20.0,
+            )
+        ],
+    )
+
+    assert runtime_overrides.scenario_name == "up"
+    assert runtime_overrides.base_curve_handles_by_line == {0: 10.0}
+    assert runtime_overrides.scenario_curve_handles_by_line == {0: 20.0}
+    assert runtime_overrides.curve_shocks[0]["curve_identifier"] == curve_identifier
+    assert runtime_overrides.errors == ()
 
 
 def test_resolved_shared_curve_reuses_supplied_handles_across_lines() -> None:

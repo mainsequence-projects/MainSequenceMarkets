@@ -25,10 +25,15 @@ and this project follows versioned releases.
   key-node basis-point bump helpers, runtime scenario curve-handle construction,
   and `price_curve_scenario(...)` delegation to the prepared
   `price_scenario(...)` path.
-- Added `price_resolved_curve_scenario(...)` and `LineCurveResolutionInput` for
-  caller-resolved curve scenarios that already have explicit base/scenario
-  handles per valuation line, with selected base/scenario handle maps exposed
-  on `CurveScenarioResult` for downstream analytics/reporting reuse.
+- Added `price_resolved_curve_scenario(...)`,
+  `prepare_resolved_curve_scenario_runtime_overrides(...)`, and
+  `LineCurveResolutionInput` for caller-resolved curve scenarios that already
+  have explicit base/scenario handles per valuation line, with selected
+  base/scenario handle maps exposed for downstream analytics/reporting reuse.
+- Added `msm_pricing.scenarios.valuation` with typed valuation scenario
+  workflow orchestration, partial-success line pricing, line/carry impacts,
+  optional analytics and cashflows, observed dirty-price z-spread overlays, and
+  an offline workflow example.
 - Added `msm_pricing.analytics.spreads` with cross-asset spread primitives,
   fixed-income DV01 spread metrics, optional dependency diagnostics, and an
   offline fixed-income spread analytics example.
@@ -47,6 +52,12 @@ and this project follows versioned releases.
   `msm_pricing.pricing_engine.curves`, including bond-helper key-node parsing,
   `rate_helpers@v1` reconstruction support, observation export tests, and
   strict diagnostics for unsupported yield shocks on price-quoted bond helpers.
+- Added generic cross-currency helper reconstruction under
+  `msm_pricing.pricing_engine.curves`, including FX swap helpers,
+  constant-notional cross-currency basis helpers, context/provenance nodes
+  under the existing `rate_helpers@v1` schema, explicit FX forward-points and
+  basis-spread normalization, `JointCalendar` decoding, runtime dependency
+  resolvers, and stable helper quote-error diagnostics.
 - Added `BondInstrumentTerms` and
   `build_bond_instrument_from_terms(...)` for provider-neutral construction of
   existing zero-coupon, fixed-rate, and floating-rate bond instrument models

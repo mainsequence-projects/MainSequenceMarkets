@@ -117,7 +117,7 @@ Update these existing files:
 | `src/msm_pricing/pricing_engine/curves/__init__.py` | Re-export stable bond-helper specs and parser functions from the curve subpackage. |
 | `src/msm_pricing/pricing_engine/curves/helpers.py` | Broaden `RateHelperSpec` and `build_rate_helper(...)` dispatch to include bond helper specs, or delegate to `bond_helpers.py` without creating circular imports. |
 | `src/msm_pricing/pricing_engine/curves/helper_key_nodes.py` | Dispatch bond helper key nodes alongside OIS, deposit, and future helper key nodes. |
-| `src/msm_pricing/pricing_engine/curves/adapters.py` | Keep `helper_schema="rate_helpers@v1"` and validate the new helper types through the generic parser. |
+| `src/msm_pricing/pricing_engine/curves/adapters.py` | Keep bond helpers under `helper_schema="rate_helpers@v1"` and validate the new helper types through the generic parser. |
 | `src/msm_pricing/pricing_engine/curves/reconstruction.py` | Reuse existing helper-vector and bootstrap functions; avoid adding bond-specific bootstrap functions. |
 | `src/msm_pricing/pricing_engine/curves/observations.py` | Reuse existing zero/discount observation export; add only generic observation options if the bond use case proves a missing primitive. |
 | `src/msm_pricing/scenarios/curves/key_node_bumps.py` | Add explicit behavior for bond-helper scenario inputs. Do not silently treat price quotes as rates. |

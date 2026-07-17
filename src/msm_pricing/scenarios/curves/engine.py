@@ -21,7 +21,11 @@ import QuantLib as ql
 from msm_pricing.api.curve_building_details import CurveBuildingDetails
 from msm_pricing.api.curves import Curve
 from msm_pricing.instruments.base_instrument import InstrumentModel
-from msm_pricing.pricing_engine.curves import OvernightIndexResolver, is_rate_helper_curve_build
+from msm_pricing.pricing_engine.curves import (
+    OvernightIndexResolver,
+    RateHelperRuntimeResolver,
+    is_rate_helper_curve_build,
+)
 from msm_pricing.pricing_engine.curve_overlays import apply_z_spread_to_curve
 from msm_pricing.pricing_engine.resolvers import build_curve_from_curve_observation
 from msm_pricing.scenarios.curves.key_node_bumps import (
@@ -34,6 +38,7 @@ from msm_pricing.scenarios.curves.models import (
     CurveScenario,
     CurveScenarioDiagnostic,
     CurveScenarioResult,
+    CurveScenarioRuntimeOverrides,
     LineCurveResolutionInput,
     ResolvedLineCurve,
 )
@@ -62,6 +67,7 @@ def build_scenario_curve_handle(
     effective_curve_date: object,
     overnight_index: ql.OvernightIndex | None = None,
     overnight_index_resolver: OvernightIndexResolver | None = None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None = None,
 ) -> object:
     """Build one runtime curve handle from copied, bumped source key nodes.
 
@@ -94,6 +100,7 @@ def build_scenario_curve_handle(
             effective_curve_date=effective_curve_date,
             overnight_index=overnight_index,
             overnight_index_resolver=overnight_index_resolver,
+            helper_runtime_resolver=helper_runtime_resolver,
         )
 
     runtime_details = runtime_observation_building_details(building_details)
@@ -166,6 +173,7 @@ def price_curve_scenario(
     curve_quote_side: str | None = None,
     overnight_index: ql.OvernightIndex | None = None,
     overnight_index_resolver: OvernightIndexResolver | None = None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None = None,
     strict: bool = True,
 ) -> CurveScenarioResult:
     """Price a valuation position under a curve scenario.
@@ -181,6 +189,59 @@ def price_curve_scenario(
     handle construction.
     """
 
+    pricing_context = context
+    if pricing_context is None:
+        pricing_context = PricingValuationContext.prepare_for_position(
+            position,
+            curve_quote_side=curve_quote_side,
+        )
+    runtime_overrides = prepare_curve_scenario_runtime_overrides(
+        position,
+        scenario,
+        context=pricing_context,
+        curve_quote_side=curve_quote_side,
+        overnight_index=overnight_index,
+        overnight_index_resolver=overnight_index_resolver,
+        helper_runtime_resolver=helper_runtime_resolver,
+        strict=strict,
+    )
+    payload = price_scenario(
+        position=position,
+        context=pricing_context,
+        line_curve_handles=runtime_overrides.base_curve_handles_by_line,
+        scenario_curve_handles=runtime_overrides.scenario_curve_handles_by_line,
+    )
+    return CurveScenarioResult.from_price_scenario_payload(
+        scenario_name=scenario.name,
+        payload=payload,
+        curve_shocks=runtime_overrides.curve_shocks,
+        errors=runtime_overrides.errors,
+        line_curve_resolutions=runtime_overrides.line_curve_resolutions,
+        base_curve_handles_by_line=runtime_overrides.base_curve_handles_by_line,
+        scenario_curve_handles_by_line=runtime_overrides.scenario_curve_handles_by_line,
+    )
+
+
+def prepare_curve_scenario_runtime_overrides(
+    position: ValuationPosition,
+    scenario: CurveScenario,
+    *,
+    context: PricingValuationContext | None = None,
+    curve_quote_side: str | None = None,
+    overnight_index: ql.OvernightIndex | None = None,
+    overnight_index_resolver: OvernightIndexResolver | None = None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None = None,
+    strict: bool = True,
+) -> CurveScenarioRuntimeOverrides:
+    """Prepare line-scoped runtime curve handles without pricing the position.
+
+    This helper is the reusable pre-pricing part of ``price_curve_scenario``.
+    It resolves line curves from the prepared valuation context, builds
+    non-empty scenario handles from copied key-node provenance, applies
+    line-local z-spread overlays already present on line metadata, and returns
+    the base/scenario handle maps needed by higher-level valuation workflows.
+    """
+
     diagnostics: list[CurveScenarioDiagnostic] = []
     if context is None:
         context = PricingValuationContext.prepare_for_position(
@@ -190,11 +251,14 @@ def price_curve_scenario(
     else:
         context.validate_position_compatibility(position)
 
-    resolutions = _collect_or_raise(
-        lambda: resolve_line_curve_resolutions(position, context),
-        diagnostics=diagnostics,
-        strict=strict,
-        stage="curve_resolution",
+    resolutions = (
+        _collect_or_raise(
+            lambda: resolve_line_curve_resolutions(position, context),
+            diagnostics=diagnostics,
+            strict=strict,
+            stage="curve_resolution",
+        )
+        or ()
     )
     scenario_handles = _build_scenario_handles_by_identifier(
         scenario=scenario,
@@ -202,6 +266,7 @@ def price_curve_scenario(
         resolutions=resolutions,
         overnight_index=overnight_index,
         overnight_index_resolver=overnight_index_resolver,
+        helper_runtime_resolver=helper_runtime_resolver,
         diagnostics=diagnostics,
         strict=strict,
     )
@@ -228,15 +293,8 @@ def price_curve_scenario(
         diagnostics=diagnostics,
         strict=strict,
     )
-    payload = price_scenario(
-        position=position,
-        context=context,
-        line_curve_handles=base_handles_by_line,
-        scenario_curve_handles=scenario_handles_by_line,
-    )
-    return CurveScenarioResult.from_price_scenario_payload(
+    return CurveScenarioRuntimeOverrides(
         scenario_name=scenario.name,
-        payload=payload,
         curve_shocks=_curve_shock_rows(scenario=scenario, resolutions=resolutions),
         errors=tuple(diagnostics),
         line_curve_resolutions=resolutions,
@@ -271,12 +329,51 @@ def price_resolved_curve_scenario(
     cached index conventions or fixings should pass a prepared context.
     """
 
-    diagnostics: list[CurveScenarioDiagnostic] = []
     context = _resolved_curve_scenario_context(
         position=position,
         context=context,
         curve_quote_side=curve_quote_side,
     )
+    runtime_overrides = prepare_resolved_curve_scenario_runtime_overrides(
+        position,
+        scenario,
+        line_curve_resolutions=line_curve_resolutions,
+        strict=strict,
+    )
+    payload = price_scenario(
+        position=position,
+        context=context,
+        line_curve_handles=runtime_overrides.base_curve_handles_by_line,
+        scenario_curve_handles=runtime_overrides.scenario_curve_handles_by_line,
+    )
+    return CurveScenarioResult.from_price_scenario_payload(
+        scenario_name=scenario.name,
+        payload=payload,
+        curve_shocks=runtime_overrides.curve_shocks,
+        errors=runtime_overrides.errors,
+        line_curve_resolutions=runtime_overrides.line_curve_resolutions,
+        base_curve_handles_by_line=runtime_overrides.base_curve_handles_by_line,
+        scenario_curve_handles_by_line=runtime_overrides.scenario_curve_handles_by_line,
+    )
+
+
+def prepare_resolved_curve_scenario_runtime_overrides(
+    position: ValuationPosition,
+    scenario: CurveScenario,
+    *,
+    line_curve_resolutions: LineCurveResolutionInput,
+    strict: bool = True,
+) -> CurveScenarioRuntimeOverrides:
+    """Prepare base/scenario line handles from caller-resolved curve handles.
+
+    Use this helper when an adapter has already resolved each valuation line to
+    explicit base and optional scenario curve handles. The helper applies the
+    same resolution normalization, shock preflight, deterministic line-role
+    selection, and line-local z-spread overlay behavior as
+    ``price_resolved_curve_scenario(...)``, but it does not price the position.
+    """
+
+    diagnostics: list[CurveScenarioDiagnostic] = []
     resolutions = _normalize_line_curve_resolutions(line_curve_resolutions)
     _validate_resolution_line_indices(position=position, resolutions=resolutions)
     resolutions = _with_position_z_spread_defaults(position=position, resolutions=resolutions)
@@ -293,15 +390,8 @@ def price_resolved_curve_scenario(
         diagnostics=diagnostics,
         strict=strict,
     )
-    payload = price_scenario(
-        position=position,
-        context=context,
-        line_curve_handles=base_handles_by_line,
-        scenario_curve_handles=scenario_handles_by_line,
-    )
-    return CurveScenarioResult.from_price_scenario_payload(
+    return CurveScenarioRuntimeOverrides(
         scenario_name=scenario.name,
-        payload=payload,
         curve_shocks=_curve_shock_rows(scenario=scenario, resolutions=resolutions),
         errors=tuple(diagnostics),
         line_curve_resolutions=resolutions,
@@ -317,6 +407,7 @@ def _build_scenario_handles_by_identifier(
     resolutions: Sequence[ResolvedLineCurve],
     overnight_index: ql.OvernightIndex | None = None,
     overnight_index_resolver: OvernightIndexResolver | None = None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None = None,
     diagnostics: list[CurveScenarioDiagnostic],
     strict: bool,
 ) -> dict[str, object]:
@@ -342,6 +433,7 @@ def _build_scenario_handles_by_identifier(
                 effective_curve_date=_effective_curve_date(context, resolution),
                 overnight_index=overnight_index,
                 overnight_index_resolver=overnight_index_resolver,
+                helper_runtime_resolver=helper_runtime_resolver,
             ),
             diagnostics=diagnostics,
             strict=strict,
@@ -806,6 +898,8 @@ def _coerce_uuid(value: object, *, field_name: str) -> uuid.UUID:
 
 __all__ = [
     "build_scenario_curve_handle",
+    "prepare_curve_scenario_runtime_overrides",
+    "prepare_resolved_curve_scenario_runtime_overrides",
     "price_curve_scenario",
     "price_resolved_curve_scenario",
     "resolve_line_curve_resolutions",

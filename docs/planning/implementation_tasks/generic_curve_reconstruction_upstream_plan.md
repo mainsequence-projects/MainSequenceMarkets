@@ -339,6 +339,12 @@ The v1 token contract is fixed:
 - `key_nodes` carries source helper provenance sufficient to rebuild runtime
   helpers.
 
+Extension note: context/provenance nodes, such as FX spot context for
+cross-currency helpers, are additive under the canonical
+`rate_helpers@v1` helper schema. Do not bump helper schema names unless the
+project explicitly approves a breaking contract change. The extension keeps the
+same `builder_type="rate_helper_curve"` and primitive reconstruction path.
+
 `quote_convention="zero_rate"` is only one supported observation export
 convention. The design must allow additional conventions such as
 `discount_factor`, `forward_rate`, spread/basis observations, or other future
@@ -432,6 +438,9 @@ Tasks:
   `bootstrap_method="piecewise_log_linear_discount"`,
   `builder_payload.helper_schema="rate_helpers@v1"`, and supported helper
   node `helper_type` values.
+- [x] Document that context-aware helper nodes extend the same
+  `rate_helpers@v1` adapter path instead of creating a separate curve builder
+  or schema name.
 - [x] Document that market-data front helpers are represented as helper key
   nodes, not as a magic `builder_payload.front_helper` flag.
 - [x] Update `runtime_resolution.md` with the resolution flow from
@@ -526,9 +535,10 @@ Tasks:
 - [x] If existing rows require `builder_type="rate_helper_bootstrap"`, accept it
   only as a compatibility alias that maps to
   `builder_type="rate_helper_curve"`.
-- [x] Require persisted `builder_payload.helper_schema="rate_helpers@v1"` for
-  helper-based curve reconstruction instead of treating the schema marker as
-  optional documentation.
+- [x] Require persisted `builder_payload.helper_schema` for helper-based curve
+  reconstruction instead of treating the schema marker as optional
+  documentation; `rate_helpers@v1` covers helper key nodes plus additive
+  context/provenance key nodes.
 
 ### Stage 4: Scenario Integration
 

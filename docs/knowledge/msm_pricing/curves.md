@@ -171,9 +171,11 @@ from msm_pricing.pricing_engine.curves import (
     InterestRateFutureHelperSpec,
     OISRateHelperSpec,
     OvernightDepositHelperSpec,
+    StaticRateHelperRuntimeResolver,
     ZeroCouponBondHelperSpec,
     export_curve_observation_nodes,
     reconstruct_curve_handle_from_helper_specs,
+    reconstruct_curve_result_from_key_nodes,
     reconstruct_curve_term_structure_from_helper_specs,
 )
 
@@ -240,7 +242,32 @@ bond_nodes = export_curve_observation_nodes(
     valuation_date=valuation_date,
     node_days=[181, 365],
 )
+
+collateral_handle = ql.YieldTermStructureHandle(
+    ql.FlatForward(ql.Date(2, 1, 2026), 0.03, ql.Actual360())
+)
+resolver = StaticRateHelperRuntimeResolver(
+    yield_curves={"GENERIC-COLLATERAL": collateral_handle},
+    indexes={
+        "BASE-OVERNIGHT": ql.OvernightIndex(
+            "BASE-ON", 0, ql.USDCurrency(), ql.TARGET(), ql.Actual360(), collateral_handle
+        ),
+        "QUOTE-OVERNIGHT": ql.OvernightIndex(
+            "QUOTE-ON", 0, ql.EURCurrency(), ql.TARGET(), ql.Actual360(), collateral_handle
+        ),
+    },
+)
+xccy_result = reconstruct_curve_result_from_key_nodes(
+    cross_currency_key_nodes,
+    valuation_date=valuation_date,
+    day_counter=ql.Actual360(),
+    helper_runtime_resolver=resolver,
+)
 ```
+
+In this example, `cross_currency_key_nodes` is a `rate_helpers@v1` payload with
+generic context/provenance nodes plus helper nodes, as shown later in this
+section.
 
 For helper-built curves that must be exported back into resolver-compatible
 curve observations, derive the export convention from `CurveBuildingDetails`
@@ -282,7 +309,9 @@ the build details, requires `builder_payload.helper_schema="rate_helpers@v1"`,
 converts key nodes into runtime helper specs, builds QuantLib rate helpers, and
 delegates to `reconstruct_curve_handle(...)`.
 
-Supported v1 helper key-node types are:
+`rate_helpers@v1` is the canonical helper schema. It supports helper nodes and
+generic context/provenance nodes that are needed to build those helpers.
+Supported helper key-node types include:
 
 ```json
 [
@@ -350,6 +379,58 @@ Supported v1 helper key-node types are:
 ]
 ```
 
+The same `rate_helpers@v1` reconstruction path accepts context nodes. It does
+not introduce a new schema, builder type, or bootstrap path. The first context
+node is `helper_type="fx_spot"`, which supplies construction provenance for FX
+swap helpers but is not itself a QuantLib `RateHelper`.
+
+```json
+[
+  {
+    "helper_type": "fx_spot",
+    "quote": 1.1,
+    "quote_type": "fx_spot",
+    "quote_unit": "quote_per_base",
+    "fx_pair": "BASE/QUOTE",
+    "fx_base_currency": "BASE",
+    "fx_quote_currency": "QUOTE"
+  },
+  {
+    "helper_type": "fx_swap_rate_helper",
+    "quote": 0.001,
+    "quote_type": "fx_forward_points",
+    "quote_unit": "quote_per_base",
+    "tenor": "1M",
+    "fixing_days": 2,
+    "calendar_code": "TARGET",
+    "business_day_convention": "ModifiedFollowing",
+    "end_of_month": false,
+    "fx_pair": "BASE/QUOTE",
+    "fx_base_currency": "BASE",
+    "fx_quote_currency": "QUOTE",
+    "is_fx_base_currency_collateral_currency": true,
+    "collateral_curve": "GENERIC-COLLATERAL"
+  },
+  {
+    "helper_type": "const_notional_cross_currency_basis_swap_rate_helper",
+    "quote": 1.0,
+    "quote_type": "basis_spread",
+    "quote_unit": "basis_points",
+    "tenor": "1Y",
+    "fixing_days": 2,
+    "calendar_code": "TARGET",
+    "business_day_convention": "ModifiedFollowing",
+    "end_of_month": false,
+    "base_currency_index": "BASE-OVERNIGHT",
+    "quote_currency_index": "QUOTE-OVERNIGHT",
+    "collateral_curve": "GENERIC-COLLATERAL",
+    "is_fx_base_currency_collateral_currency": true,
+    "is_basis_on_fx_base_currency_leg": true,
+    "payment_frequency": "Annual"
+  }
+]
+```
+
 OIS key nodes require the caller to supply a QuantLib overnight index or a
 resolver callable at runtime. `msm_pricing` does not infer an index from curve
 names, currencies, vendors, or local product names. Source-specific file
@@ -383,6 +464,20 @@ explicit `schedule_dates`, or a serialized `schedule`. These helpers are still
 QuantLib `RateHelper` objects, so they use the same
 `builder_type="rate_helper_curve"` and `helper_schema="rate_helpers@v1"`
 adapter as OIS, deposit, and futures helpers.
+
+Cross-currency helpers still use `helper_schema="rate_helpers@v1"` even though
+they mix helper nodes and context nodes. FX forward points use explicit
+`quote_type="fx_forward_points"` and are not normalized as rates. Raw
+point/pip source quotes require a `point_scale`; already normalized FX-pair
+units are consumed directly. Constant-notional cross-currency basis helpers use
+`quote_type="basis_spread"` and accept explicit decimal, percent, or basis
+point units. Collateral curves and base/quote currency indexes are resolved by
+a `RateHelperRuntimeResolver`; the static mapping resolver is useful for
+offline examples and connector-owned tests, while application/runtime adapters
+can resolve those identifiers from their prepared curve/index context.
+`reconstruct_curve_result_from_key_nodes(...)` returns the term structure,
+built helpers, parsed specs, context nodes, and captured helper quote errors
+for diagnostics.
 
 Observation export is also generic. `export_curve_observation_nodes(...)`
 exports resolver-compatible nodes from a QuantLib handle or term structure on
@@ -536,9 +631,12 @@ rebuilt by core `msm_pricing` without importing connector code. OIS helper
 curves still need a QuantLib overnight index at runtime; callers can pass
 `overnight_index` or `overnight_index_resolver` to
 `price_curve_scenario(...)`, and the high-level scenario loop forwards that
-resolver to `build_scenario_curve_handle(...)`. If a connector needs
-source-only interpretation before generic helper key nodes exist, it can build
-connector-owned scenario handles and then call lower-level pricing helpers.
+resolver to `build_scenario_curve_handle(...)`. Cross-currency helper curves
+also need `helper_runtime_resolver` so copied scenario key nodes can resolve
+collateral curves and base/quote currency indexes while staying on the generic
+helper-reconstruction path. If a connector needs source-only interpretation
+before generic helper key nodes exist, it can build connector-owned scenario
+handles and then call lower-level pricing helpers.
 For bond helper curves, no-op scenario reconstruction is supported, but
 non-empty yield shocks on price-quoted bond helpers raise a diagnostic until
 generic yield-to-price conversion is implemented with explicit bond
@@ -554,7 +652,14 @@ returns the same `CurveScenarioResult` shape as `price_curve_scenario(...)`.
 `base_curve_handles_by_line` and `scenario_curve_handles_by_line` maps so
 callers can reuse the exact scenario handles for local analytics or reporting
 without duplicating curve-selection logic.
-See [Runtime Resolution](runtime_resolution.md#curve-scenario-resolution) and
+For broader dashboard or API workflows that need base valuation, multiple
+scenario runs, partial-success line diagnostics, analytics, cashflows, carry
+impacts, and observed dirty-price z-spread overlay records, use
+`msm_pricing.scenarios.valuation.run_valuation_scenario_workflow(...)`. That
+valuation workflow delegates its curve runtime override preparation back to
+`msm_pricing.scenarios.curves`; it does not duplicate curve construction.
+See [Curve Scenarios](scenarios/curves.md),
+[Valuation Scenario Workflow](scenarios/valuation.md), and
 `examples/msm_pricing/resolved_curve_scenario.py`.
 
 ## Curve Observations
@@ -724,6 +829,7 @@ identity.
 - [msm_pricing overview](index.md)
 - [Market Data Sets](market_data_sets.md)
 - [Fixings](fixings.md)
+- [Pricing Scenarios](scenarios/index.md)
 - [Runtime Resolution](runtime_resolution.md)
 - [Indexes](../msm/indices/index.md)
 - [Models](../msm/models/index.md)

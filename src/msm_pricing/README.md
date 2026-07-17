@@ -19,6 +19,10 @@ from msm_pricing.pricing_engine import (
 )
 from msm_pricing.analytics.spreads import fixed_income_spread_metrics
 from msm_pricing.scenarios.curves import CurveBumpSpec, CurveScenario, price_curve_scenario
+from msm_pricing.scenarios.valuation import (
+    ValuationScenario,
+    run_valuation_scenario_workflow,
+)
 from msm_pricing.valuation import ValuationLine, ValuationPosition, build_valuation_position
 ```
 
@@ -58,6 +62,10 @@ The current package exports:
 - `CurveScenario`
 - `CurveScenarioResult`
 - `price_curve_scenario`
+- `ValuationScenario`
+- `ValuationScenarioWorkflowResult`
+- `price_valuation_lines`
+- `run_valuation_scenario_workflow`
 
 `ValuationPosition` is an in-memory valuation basket. It links priceable
 instrument instances to unit multipliers for one explicit valuation context. It
@@ -71,6 +79,15 @@ builds transient scenario handles from copied observation provenance, applies
 runtime z-spread overlays when present, and delegates line valuation to
 `price_scenario(...)`. Use `price_scenario(...)` directly only when the caller
 already owns the exact line-scoped base and scenario handles.
+
+Generic valuation workflows live under `msm_pricing.scenarios.valuation`. Use
+`run_valuation_scenario_workflow(...)` when a dashboard, API, or service needs
+base valuation, one or more scenario runs, partial-success diagnostics, line
+impacts, optional analytics/cashflows, carry impacts, and explicit observed
+dirty-price z-spread overlays. The workflow returns typed in-memory records,
+not pandas or Command Center table payloads; application wrappers own table
+formatting. The canonical documentation is under
+`docs/knowledge/msm_pricing/scenarios/`, mirroring the package folder.
 
 Spread analytics live under `msm_pricing.analytics.spreads`. The cross-asset
 `base` module owns aligned spread construction, z-score matrices, pair metrics,
@@ -118,6 +135,14 @@ describes how the final stored curve is built and interpreted by pricing.
 Source-specific builders can enforce stricter provenance semantics by overriding
 `DiscountCurvesNode.normalize_key_nodes(...)` or by attaching a runtime callable
 with `set_key_nodes_validator(...)`.
+
+Helper-based curves use `builder_type="rate_helper_curve"` and generic helper
+key nodes. `rate_helpers@v1` is the canonical helper schema for deposit, OIS,
+futures, bond, FX swap, and constant-notional cross-currency basis helpers. It
+also accepts context/provenance nodes such as FX spot when a helper needs
+runtime construction context. Runtime dependencies such as collateral curves
+and base/quote indexes are resolved explicitly through helper runtime
+resolvers; connector-owned schema names are not part of core `msm_pricing`.
 
 Curve construction is strict. `CurveBuildingDetails.interpolation_method` must
 be one of `log_linear_discount`, `log_cubic_discount`, `linear_zero`,

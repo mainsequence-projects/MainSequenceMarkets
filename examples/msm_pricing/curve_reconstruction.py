@@ -11,9 +11,11 @@ from msm_pricing.pricing_engine.curves import (
     InterestRateFutureHelperSpec,
     OISRateHelperSpec,
     OvernightDepositHelperSpec,
+    StaticRateHelperRuntimeResolver,
     ZeroCouponBondHelperSpec,
     export_curve_observation_nodes,
     reconstruct_curve_handle_from_helper_specs,
+    reconstruct_curve_result_from_key_nodes,
 )
 
 
@@ -90,6 +92,90 @@ def main() -> None:
     )
     for node in bond_nodes:
         print("bond-helper", node)
+
+    collateral_handle = ql.YieldTermStructureHandle(
+        ql.FlatForward(ql.Date(2, 1, 2026), 0.03, ql.Actual360())
+    )
+    runtime_resolver = StaticRateHelperRuntimeResolver(
+        yield_curves={"GENERIC-COLLATERAL": collateral_handle},
+        indexes={
+            "BASE-OVERNIGHT": ql.OvernightIndex(
+                "BASE-ON",
+                0,
+                ql.USDCurrency(),
+                ql.TARGET(),
+                ql.Actual360(),
+                collateral_handle,
+            ),
+            "QUOTE-OVERNIGHT": ql.OvernightIndex(
+                "QUOTE-ON",
+                0,
+                ql.EURCurrency(),
+                ql.TARGET(),
+                ql.Actual360(),
+                collateral_handle,
+            ),
+        },
+    )
+    xccy_result = reconstruct_curve_result_from_key_nodes(
+        [
+            {
+                "helper_type": "fx_spot",
+                "quote": 1.1,
+                "quote_type": "fx_spot",
+                "quote_unit": "quote_per_base",
+                "fx_pair": "BASE/QUOTE",
+                "fx_base_currency": "BASE",
+                "fx_quote_currency": "QUOTE",
+            },
+            {
+                "helper_type": "fx_swap_rate_helper",
+                "quote": 0.001,
+                "quote_type": "fx_forward_points",
+                "quote_unit": "quote_per_base",
+                "tenor": "1M",
+                "fixing_days": 2,
+                "calendar_code": "TARGET",
+                "business_day_convention": "ModifiedFollowing",
+                "end_of_month": False,
+                "fx_pair": "BASE/QUOTE",
+                "fx_base_currency": "BASE",
+                "fx_quote_currency": "QUOTE",
+                "is_fx_base_currency_collateral_currency": True,
+                "collateral_curve": "GENERIC-COLLATERAL",
+            },
+            {
+                "helper_type": "const_notional_cross_currency_basis_swap_rate_helper",
+                "quote": 1.0,
+                "quote_type": "basis_spread",
+                "quote_unit": "basis_points",
+                "tenor": "1Y",
+                "fixing_days": 2,
+                "calendar_code": "TARGET",
+                "business_day_convention": "ModifiedFollowing",
+                "end_of_month": False,
+                "base_currency_index": "BASE-OVERNIGHT",
+                "quote_currency_index": "QUOTE-OVERNIGHT",
+                "collateral_curve": "GENERIC-COLLATERAL",
+                "is_fx_base_currency_collateral_currency": True,
+                "is_basis_on_fx_base_currency_leg": True,
+                "payment_frequency": "Annual",
+            },
+        ],
+        valuation_date=valuation_date,
+        day_counter=ql.Actual360(),
+        helper_runtime_resolver=runtime_resolver,
+    )
+    xccy_nodes = export_curve_observation_nodes(
+        xccy_result.term_structure,
+        valuation_date=valuation_date,
+        node_days=[30, 365],
+        include_pillar_dates=False,
+    )
+    for node in xccy_nodes:
+        print("cross-currency-helper", node)
+    for quote_error in xccy_result.helper_quote_errors:
+        print("cross-currency-helper quote-error", quote_error)
 
 
 if __name__ == "__main__":

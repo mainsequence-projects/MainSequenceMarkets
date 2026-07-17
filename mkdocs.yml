@@ -66,6 +66,10 @@ nav:
       - Instruments: knowledge/msm_pricing/instruments.md
       - Curves: knowledge/msm_pricing/curves.md
       - Fixings: knowledge/msm_pricing/fixings.md
+      - Scenarios:
+          - Overview: knowledge/msm_pricing/scenarios/index.md
+          - Curve Scenarios: knowledge/msm_pricing/scenarios/curves.md
+          - Valuation Workflow: knowledge/msm_pricing/scenarios/valuation.md
       - Analytics: knowledge/msm_pricing/analytics.md
       - Runtime Resolution: knowledge/msm_pricing/runtime_resolution.md
   - FastAPI:
@@ -115,7 +119,9 @@ nav:
       - Implementation Tasks:
           - Benchmark Curve Resolution: planning/implementation_tasks/benchmark_curve_resolution_plan.md
           - Bond Helper Curve Reconstruction: planning/implementation_tasks/bond_helper_curve_reconstruction_upstream_plan.md
+          - Cross-Currency Helper Curve Reconstruction: planning/implementation_tasks/cross_currency_helper_curve_reconstruction_upstream_plan.md
           - Generic Curve Reconstruction: planning/implementation_tasks/generic_curve_reconstruction_upstream_plan.md
+          - Generic Valuation Scenario Workflow: planning/implementation_tasks/generic_valuation_scenario_workflow_plan.md
           - Reusable Valuation Portfolio Scenario And Analytics: planning/implementation_tasks/reusable_valuation_portfolio_scenario_analytics_plan.md
   - Changelog: changelog.md
   - Reference:

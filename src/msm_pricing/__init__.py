@@ -31,11 +31,26 @@ __all__ = [
     "CurveBumpSpec",
     "CurveScenario",
     "CurveScenarioResult",
+    "ObservedZSpreadOverlay",
+    "ScenarioRunResult",
+    "ScenarioRuntimeOverrides",
+    "ValuationCarryImpact",
+    "ValuationCashflow",
     "ValuationLine",
+    "ValuationLineAnalytics",
+    "ValuationLineImpact",
+    "ValuationLinePrice",
     "ValuationPosition",
+    "ValuationRunResult",
+    "ValuationScenario",
+    "ValuationScenarioWorkflowResult",
+    "ValuationWorkflowDiagnostic",
     "build_valuation_position",
+    "compute_observed_z_spread_overlays",
     "price_curve_scenario",
     "price_scenario",
+    "price_valuation_lines",
+    "run_valuation_scenario_workflow",
 ]
 
 _ATTR_TO_MODULE = {name: ".instruments" for name in _INSTRUMENT_EXPORTS}
@@ -48,11 +63,26 @@ _ATTR_TO_MODULE["PreparedInstrument"] = ".valuation"
 _ATTR_TO_MODULE["CurveBumpSpec"] = ".scenarios.curves"
 _ATTR_TO_MODULE["CurveScenario"] = ".scenarios.curves"
 _ATTR_TO_MODULE["CurveScenarioResult"] = ".scenarios.curves"
+_ATTR_TO_MODULE["ObservedZSpreadOverlay"] = ".scenarios.valuation"
+_ATTR_TO_MODULE["ScenarioRunResult"] = ".scenarios.valuation"
+_ATTR_TO_MODULE["ScenarioRuntimeOverrides"] = ".scenarios.valuation"
+_ATTR_TO_MODULE["ValuationCarryImpact"] = ".scenarios.valuation"
+_ATTR_TO_MODULE["ValuationCashflow"] = ".scenarios.valuation"
 _ATTR_TO_MODULE["ValuationLine"] = ".valuation"
+_ATTR_TO_MODULE["ValuationLineAnalytics"] = ".scenarios.valuation"
+_ATTR_TO_MODULE["ValuationLineImpact"] = ".scenarios.valuation"
+_ATTR_TO_MODULE["ValuationLinePrice"] = ".scenarios.valuation"
 _ATTR_TO_MODULE["ValuationPosition"] = ".valuation"
+_ATTR_TO_MODULE["ValuationRunResult"] = ".scenarios.valuation"
+_ATTR_TO_MODULE["ValuationScenario"] = ".scenarios.valuation"
+_ATTR_TO_MODULE["ValuationScenarioWorkflowResult"] = ".scenarios.valuation"
+_ATTR_TO_MODULE["ValuationWorkflowDiagnostic"] = ".scenarios.valuation"
 _ATTR_TO_MODULE["build_valuation_position"] = ".valuation"
+_ATTR_TO_MODULE["compute_observed_z_spread_overlays"] = ".scenarios.valuation"
 _ATTR_TO_MODULE["price_curve_scenario"] = ".scenarios.curves"
 _ATTR_TO_MODULE["price_scenario"] = ".valuation"
+_ATTR_TO_MODULE["price_valuation_lines"] = ".scenarios.valuation"
+_ATTR_TO_MODULE["run_valuation_scenario_workflow"] = ".scenarios.valuation"
 for _name in (
     "PRICING_CONCEPT_DISCOUNT_CURVES",
     "PRICING_CONCEPT_EQUITY_VOL_CURVES",

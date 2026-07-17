@@ -308,6 +308,18 @@ line-scoped handles. In both paths, mutable scenario curve state is applied to
 prepared copies instead of caller-owned instruments or cached base prepared
 instruments.
 
+Use `msm_pricing.scenarios.valuation.run_valuation_scenario_workflow(...)` when
+the caller needs the broader orchestration layer around the same prepared
+context: base valuation, one or more scenario runs, line-level partial-success
+diagnostics, typed analytics and cashflows, line impacts, carry impacts, and
+explicit observed dirty-price z-spread overlays. That workflow still delegates
+curve shock mechanics to `msm_pricing.scenarios.curves`; it returns typed
+records for downstream table adapters instead of producing pandas or dashboard
+payloads inside core `msm_pricing`. See
+[Pricing Scenarios](scenarios/index.md) for the scenario package layout and
+[Valuation Scenario Workflow](scenarios/valuation.md) for the workflow
+contract.
+
 The prepared context is intentionally not expandable. Its spec records the
 valuation date, market-data set, quote side, valuation-role requirements, and
 submitted instrument universe. Calling `prepare_instrument(...)` with an
@@ -332,6 +344,7 @@ live platform market data.
 - [msm_pricing overview](index.md)
 - [Market Data Sets](market_data_sets.md)
 - [Curves](curves.md)
+- [Pricing Scenarios](scenarios/index.md)
 - [Runtime Resolution](runtime_resolution.md)
 - [Assets](../msm/assets/index.md)
 - [Derivatives](../msm/derivatives/index.md)

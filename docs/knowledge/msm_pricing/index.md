@@ -45,11 +45,13 @@ hides per-line resolver loops does not satisfy that decision.
   (`CurveBuildingDetailsTable`), market-data-set curve bindings, and curve
   observations (`DiscountCurvesNode`).
 - [Fixings](fixings.md): index fixing observations (`FixingRatesNode`).
+- [Scenarios](scenarios/index.md): transient curve scenario and generic
+  valuation workflow orchestration under `msm_pricing.scenarios`.
 - [Analytics](analytics.md): pure-data spread analytics, cross-asset spread
   primitives, fixed-income DV01 spread metrics, optional dependency boundaries,
   and future sibling module policy.
 - [Runtime Resolution](runtime_resolution.md): the persisted-graph resolution
-  chain that `price()` follows, plus the end-to-end fixed-income user workflow.
+  chain that `price()` follows and the end-to-end fixed-income user workflow.
 
 ## What Pricing Owns
 
@@ -83,6 +85,9 @@ msm_pricing/
   models/          SQLAlchemy MetaTable declarations owned by pricing
   data_nodes/      pricing DataNodes and storage-facing publishing helpers
   pricing_engine/  QuantLib builders, resolvers, pricers, and analytics
+  scenarios/       transient scenario workflows
+    curves/        curve shocks, key-node bumps, runtime curve handles
+    valuation/     base/scenario valuation workflow orchestration
   analytics/       pure-data analytics such as spread z-scores and pair metrics
   data_interface/  platform reads for curves and index fixings
   utils/           shared date and serialization utilities

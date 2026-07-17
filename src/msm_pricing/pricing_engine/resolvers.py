@@ -27,6 +27,7 @@ from msm_pricing.instruments.json_codec import (
 )
 from msm_pricing.pricing_engine.curves import (
     OvernightIndexResolver,
+    RateHelperRuntimeResolver,
     is_rate_helper_curve_build,
     reconstruct_curve_from_curve_building_details,
 )
@@ -384,6 +385,7 @@ def build_curve_from_curve_row(
     market_data_set: Any | None = None,
     overnight_index: ql.OvernightIndex | None = None,
     overnight_index_resolver: OvernightIndexResolver | None = None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None = None,
 ) -> ql.YieldTermStructureHandle:
     """Build a QuantLib curve from a curve row and curve-owned build details."""
 
@@ -409,6 +411,7 @@ def build_curve_from_curve_row(
         effective_curve_date=effective_curve_date,
         overnight_index=overnight_index,
         overnight_index_resolver=overnight_index_resolver,
+        helper_runtime_resolver=helper_runtime_resolver,
     )
 
 
@@ -420,6 +423,7 @@ def build_curve_from_curve_observation(
     effective_curve_date: datetime.date | datetime.datetime | ql.Date | None = None,
     overnight_index: ql.OvernightIndex | None = None,
     overnight_index_resolver: OvernightIndexResolver | None = None,
+    helper_runtime_resolver: RateHelperRuntimeResolver | None = None,
 ) -> ql.YieldTermStructureHandle:
     """Build a QuantLib curve from cached curve rows, build details, and observations."""
 
@@ -436,6 +440,7 @@ def build_curve_from_curve_observation(
             effective_curve_date=effective_curve_date,
             overnight_index=overnight_index,
             overnight_index_resolver=overnight_index_resolver,
+            helper_runtime_resolver=helper_runtime_resolver,
         )
 
     _validate_supported_curve_build(curve=curve, building_details=building_details)
