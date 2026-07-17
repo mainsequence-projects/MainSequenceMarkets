@@ -24,6 +24,7 @@ from msm_pricing.data_nodes.curves.key_nodes import (
     decompress_key_nodes_from_string as _decompress_key_nodes_from_string,
     normalize_curve_key_nodes as _normalize_curve_key_nodes,
 )
+from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
@@ -412,8 +413,6 @@ class MSDataInterface:
         :param end_date:
         :return:
         """
-        import pytz  # patch
-
         from mainsequence.logconf import logger
 
         data_node = self._data_node_for_concept(
@@ -439,24 +438,69 @@ class MSDataInterface:
             )
             if use_last_observation:
                 logger.warning("Fixings are using last observation and filled forward")
-                fixings_df = data_node.get_df_between_dates(
-                    dimension_range_map=dimension_range_for_identity(
-                        identity_dimension=INDEX_IDENTIFIER_DIMENSION,
-                        identity=reference_rate_uid,
-                        date_info={
-                            "start_date": datetime.datetime(1900, 1, 1, tzinfo=pytz.utc),
-                            "start_date_operand": ">=",
-                        },
-                    )
+                latest_row = self._read_latest_index_fixing_row(
+                    data_node=data_node,
+                    reference_rate_uid=reference_rate_uid,
+                    target_dt=_ensure_datetime(end_date),
                 )
+                if latest_row is not None:
+                    fixings_df = pd.DataFrame([latest_row]).set_index(
+                        ["time_index", INDEX_IDENTIFIER_DIMENSION]
+                    )
 
             if fixings_df.empty:
                 raise Exception(
                     f"{reference_rate_uid} has not data between {start_date} and {end_date}."
                 )
         fixings_df = fixings_df.reset_index().rename(columns={"time_index": "date"})
-        fixings_df["date"] = fixings_df["date"].dt.date
+        fixings_df["date"] = pd.to_datetime(fixings_df["date"], utc=True).dt.date
         return fixings_df.set_index("date")["rate"].to_dict()
+
+    @staticmethod
+    def _read_latest_index_fixing_row(
+        *,
+        data_node,
+        reference_rate_uid: str,
+        target_dt: datetime.datetime,
+    ) -> dict[str, Any] | None:
+        from msm.api.base import operation_result_rows
+        from msm.repositories.base import (
+            MarketsRepositoryContext,
+            compile_markets_statement,
+            execute_markets_operation,
+        )
+
+        storage_table = getattr(data_node, "storage_table", None)
+        if storage_table is None:
+            raise RuntimeError(
+                "Index fixing latest-as-of query requires APIDataNode.storage_table. "
+                "Resolve fixing storage with APIDataNode.build_from_table_uid(...)."
+            )
+
+        IndexFixingsStorage._bind_meta_table(storage_table)
+        statement = (
+            select(
+                IndexFixingsStorage.time_index.label("time_index"),
+                IndexFixingsStorage.index_identifier.label(INDEX_IDENTIFIER_DIMENSION),
+                IndexFixingsStorage.rate.label("rate"),
+            )
+            .where(
+                IndexFixingsStorage.index_identifier == reference_rate_uid,
+                IndexFixingsStorage.time_index <= target_dt,
+            )
+            .order_by(IndexFixingsStorage.time_index.desc())
+            .limit(1)
+        )
+        context = MarketsRepositoryContext(limits={"max_rows": 1})
+        operation = compile_markets_statement(
+            statement,
+            context=context,
+            operation="select",
+            models=[IndexFixingsStorage],
+            access="read",
+        )
+        rows = operation_result_rows(execute_markets_operation(operation, context=context))
+        return rows[0] if rows else None
 
     def get_index_fixing_observations(
         self,
@@ -488,7 +532,7 @@ class MSDataInterface:
             return {}
 
         fixings_df = fixings_df.reset_index().rename(columns={"time_index": "date"})
-        fixings_df["date"] = fixings_df["date"].dt.date
+        fixings_df["date"] = pd.to_datetime(fixings_df["date"], utc=True).dt.date
         return fixings_df.set_index("date")["rate"].to_dict()
 
     def get_historical_fixings_for_identifiers(
@@ -528,7 +572,7 @@ class MSDataInterface:
             return {reference_rate_uid: {} for reference_rate_uid in requested_identifiers}
 
         fixings_df = fixings_df.reset_index().rename(columns={"time_index": "date"})
-        fixings_df["date"] = fixings_df["date"].dt.date
+        fixings_df["date"] = pd.to_datetime(fixings_df["date"], utc=True).dt.date
         result: dict[str, dict[datetime.date, float]] = {
             reference_rate_uid: {} for reference_rate_uid in requested_identifiers
         }
@@ -604,7 +648,9 @@ def _is_missing_optional(value: Any) -> bool:
     return False
 
 
-def _ensure_datetime(value: datetime.date | datetime.datetime | pd.Timestamp | str) -> datetime.datetime:
+def _ensure_datetime(
+    value: datetime.date | datetime.datetime | pd.Timestamp | str,
+) -> datetime.datetime:
     if isinstance(value, pd.Timestamp):
         return value.to_pydatetime()
     if isinstance(value, datetime.datetime):

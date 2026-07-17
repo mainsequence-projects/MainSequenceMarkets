@@ -42,6 +42,12 @@ Services should be thin until there is a real workflow to orchestrate. They
 should not duplicate repository query construction, DataNode normalization, or
 pricing runtime logic.
 
+When services need the current asset display snapshot for account holdings,
+target positions, virtual funds, or asset detail responses, use the shared
+asset reference read service. It resolves the latest `AssetSnapshotsStorage`
+row per asset in the backend instead of scanning snapshot rows and selecting
+the newest timestamp in Python.
+
 Provider services may compose table declarations and DataNodes when the provider response
 needs to produce multiple library-owned objects. For example, the OpenFIGI
 service builds `msm.models.AssetTable`, `msm.models.OpenFigiAssetDetailsTable`, and an

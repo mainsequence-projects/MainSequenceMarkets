@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -50,6 +51,29 @@ def asset_reference_details(
     return _order_rows_by_identifier(rows, identifiers=identifiers)
 
 
+def asset_reference_details_by_uids(
+    asset_uids: str | uuid.UUID | Sequence[str | uuid.UUID],
+    *,
+    latest_snapshot: bool = True,
+    repository_context: MarketsOperationContext | None = None,
+    executor: AssetReferenceExecutor | None = None,
+) -> list[dict[str, Any]]:
+    """Return asset reference rows for canonical ``AssetTable.uid`` values."""
+
+    requested_uids = _normalize_uids(asset_uids, field_name="asset_uids")
+    if not requested_uids:
+        return []
+
+    statement = _asset_reference_select_by_uids(requested_uids, latest_snapshot=latest_snapshot)
+    rows = _execute_statement(
+        repository_context=repository_context,
+        statement=statement,
+        models=(AssetTable, AssetSnapshotsStorage) if latest_snapshot else (AssetTable,),
+        executor=executor,
+    )
+    return _order_rows_by_key(rows, values=requested_uids, key="asset_uid")
+
+
 def _asset_reference_select(identifiers: Sequence[str], *, latest_snapshot: bool):
     if not latest_snapshot:
         return (
@@ -58,6 +82,7 @@ def _asset_reference_select(identifiers: Sequence[str], *, latest_snapshot: bool
                 AssetTable.unique_identifier.label("asset_identifier"),
                 AssetTable.asset_type.label("asset_type"),
                 literal(None).label("snapshot_time"),
+                literal(None).label("time_index"),
                 literal(None).label("name"),
                 literal(None).label("ticker"),
                 literal(None).label("exchange_code"),
@@ -84,6 +109,7 @@ def _asset_reference_select(identifiers: Sequence[str], *, latest_snapshot: bool
             AssetTable.unique_identifier.label("asset_identifier"),
             AssetTable.asset_type.label("asset_type"),
             AssetSnapshotsStorage.time_index.label("snapshot_time"),
+            AssetSnapshotsStorage.time_index.label("time_index"),
             AssetSnapshotsStorage.name.label("name"),
             AssetSnapshotsStorage.ticker.label("ticker"),
             AssetSnapshotsStorage.exchange_code.label("exchange_code"),
@@ -103,6 +129,76 @@ def _asset_reference_select(identifiers: Sequence[str], *, latest_snapshot: bool
         )
         .where(AssetTable.unique_identifier.in_(identifiers))
         .order_by(AssetTable.unique_identifier.asc())
+    )
+
+
+def _asset_reference_select_by_uids(asset_uids: Sequence[uuid.UUID], *, latest_snapshot: bool):
+    if not latest_snapshot:
+        return (
+            select(
+                AssetTable.uid.label("asset_uid"),
+                AssetTable.unique_identifier.label("asset_identifier"),
+                AssetTable.asset_type.label("asset_type"),
+                literal(None).label("snapshot_time"),
+                literal(None).label("time_index"),
+                literal(None).label("name"),
+                literal(None).label("ticker"),
+                literal(None).label("exchange_code"),
+                literal(None).label("asset_ticker_group_id"),
+            )
+            .select_from(AssetTable)
+            .where(AssetTable.uid.in_(asset_uids))
+            .order_by(AssetTable.uid.asc())
+        )
+
+    requested_assets = (
+        select(
+            AssetTable.uid.label("asset_uid"),
+            AssetTable.unique_identifier.label("asset_identifier"),
+        )
+        .where(AssetTable.uid.in_(asset_uids))
+        .subquery("requested_assets")
+    )
+    latest_snapshots = (
+        select(
+            AssetSnapshotsStorage.asset_identifier.label("asset_identifier"),
+            func.max(AssetSnapshotsStorage.time_index).label("snapshot_time"),
+        )
+        .select_from(AssetSnapshotsStorage)
+        .join(
+            requested_assets,
+            requested_assets.c.asset_identifier == AssetSnapshotsStorage.asset_identifier,
+        )
+        .group_by(AssetSnapshotsStorage.asset_identifier)
+        .subquery()
+    )
+
+    return (
+        select(
+            AssetTable.uid.label("asset_uid"),
+            AssetTable.unique_identifier.label("asset_identifier"),
+            AssetTable.asset_type.label("asset_type"),
+            AssetSnapshotsStorage.time_index.label("snapshot_time"),
+            AssetSnapshotsStorage.time_index.label("time_index"),
+            AssetSnapshotsStorage.name.label("name"),
+            AssetSnapshotsStorage.ticker.label("ticker"),
+            AssetSnapshotsStorage.exchange_code.label("exchange_code"),
+            AssetSnapshotsStorage.asset_ticker_group_id.label("asset_ticker_group_id"),
+        )
+        .select_from(AssetTable)
+        .outerjoin(
+            latest_snapshots,
+            latest_snapshots.c.asset_identifier == AssetTable.unique_identifier,
+        )
+        .outerjoin(
+            AssetSnapshotsStorage,
+            and_(
+                AssetSnapshotsStorage.asset_identifier == latest_snapshots.c.asset_identifier,
+                AssetSnapshotsStorage.time_index == latest_snapshots.c.snapshot_time,
+            ),
+        )
+        .where(AssetTable.uid.in_(asset_uids))
+        .order_by(AssetTable.uid.asc())
     )
 
 
@@ -156,6 +252,31 @@ def _normalize_identifiers(
     return tuple(normalized)
 
 
+def _normalize_uids(
+    identifiers: str | uuid.UUID | Sequence[str | uuid.UUID],
+    *,
+    field_name: str,
+) -> tuple[uuid.UUID, ...]:
+    raw_values: Sequence[str | uuid.UUID]
+    if isinstance(identifiers, str | uuid.UUID):
+        raw_values = [identifiers]
+    else:
+        raw_values = identifiers
+
+    normalized: list[uuid.UUID] = []
+    seen: set[uuid.UUID] = set()
+    for raw_value in raw_values:
+        try:
+            value = raw_value if isinstance(raw_value, uuid.UUID) else uuid.UUID(str(raw_value))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name} entries must be valid UUIDs.") from exc
+        if value in seen:
+            continue
+        normalized.append(value)
+        seen.add(value)
+    return tuple(normalized)
+
+
 def _order_rows_by_identifier(
     rows: Sequence[Mapping[str, Any]],
     *,
@@ -167,6 +288,22 @@ def _order_rows_by_identifier(
         key=lambda row: (
             identifier_order.get(str(row.get("asset_identifier")), len(identifier_order)),
             str(row.get("asset_identifier") or ""),
+        ),
+    )
+
+
+def _order_rows_by_key(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    values: Sequence[Any],
+    key: str,
+) -> list[dict[str, Any]]:
+    value_order = {str(value): index for index, value in enumerate(values)}
+    return sorted(
+        [dict(row) for row in rows],
+        key=lambda row: (
+            value_order.get(str(row.get(key)), len(value_order)),
+            str(row.get(key) or ""),
         ),
     )
 
@@ -194,4 +331,5 @@ def _operation_result_rows(result: Mapping[str, Any] | list[Any] | None) -> list
 __all__ = [
     "AssetReferenceExecutor",
     "asset_reference_details",
+    "asset_reference_details_by_uids",
 ]

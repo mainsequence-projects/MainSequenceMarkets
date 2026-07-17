@@ -12,7 +12,7 @@ os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
 from msm.data_nodes.assets.storage import AssetSnapshotsStorage
 from msm.models import AssetTable
-from msm.services import asset_reference_details
+from msm.services import asset_reference_details, asset_reference_details_by_uids
 
 
 def _compiled_sql(statement: Any) -> str:
@@ -59,8 +59,57 @@ def test_asset_reference_details_builds_latest_snapshot_join() -> None:
     sql = calls[0]["sql"].lower()
     assert "max(" in sql
     assert "outer join" in sql
+    assert "time_index" in sql
     assert "asset-a" in calls[0]["sql"]
     assert "asset-b" in calls[0]["sql"]
+
+
+def test_asset_reference_details_by_uids_builds_latest_snapshot_join() -> None:
+    asset_a_uid = "00000000-0000-0000-0000-0000000000aa"
+    asset_b_uid = "00000000-0000-0000-0000-0000000000bb"
+    calls: list[dict[str, Any]] = []
+
+    def executor(statement: Any, models: tuple[type[Any], ...]) -> dict[str, Any]:
+        calls.append(
+            {
+                "sql": _compiled_sql(statement),
+                "models": models,
+            }
+        )
+        return {
+            "rows": [
+                {
+                    "asset_uid": asset_b_uid,
+                    "asset_identifier": "asset-b",
+                    "asset_type": "bond",
+                    "snapshot_time": "2026-01-03T00:00:00Z",
+                    "time_index": "2026-01-03T00:00:00Z",
+                    "ticker": "BBB",
+                },
+                {
+                    "asset_uid": asset_a_uid,
+                    "asset_identifier": "asset-a",
+                    "asset_type": "equity",
+                    "snapshot_time": "2026-01-02T00:00:00Z",
+                    "time_index": "2026-01-02T00:00:00Z",
+                    "ticker": "AAA",
+                },
+            ]
+        }
+
+    rows = asset_reference_details_by_uids(
+        [asset_a_uid, asset_b_uid, asset_a_uid],
+        executor=executor,
+    )
+
+    assert [row["asset_uid"] for row in rows] == [asset_a_uid, asset_b_uid]
+    assert rows[0]["ticker"] == "AAA"
+    assert calls[0]["models"] == (AssetTable, AssetSnapshotsStorage)
+    sql = calls[0]["sql"].lower()
+    assert "requested_assets" in sql
+    assert "max(" in sql
+    assert "snapshot_time" in sql
+    assert "time_index" in sql
 
 
 def test_asset_reference_details_can_read_identity_without_snapshots() -> None:

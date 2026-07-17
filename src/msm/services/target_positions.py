@@ -16,7 +16,6 @@ from msm.data_nodes.accounts.constants import (
     TARGET_TYPE_PORTFOLIO,
 )
 from msm.data_nodes.accounts.storage import TargetPositionsStorage
-from msm.data_nodes.assets.storage import AssetSnapshotsStorage
 from msm.data_nodes.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,
@@ -28,7 +27,7 @@ from msm.services.accounts import (
     search_account_target_allocations,
     search_position_sets,
 )
-from msm.services.assets import search_assets
+from msm.services.assets import asset_reference_details_by_uids
 from msm.services.portfolios import search_portfolios
 
 TARGET_POSITION_EXPOSURE_FIELDS = (
@@ -636,27 +635,18 @@ def _asset_references_by_uid(
     if not asset_uids:
         return {}
 
-    asset_rows = operation_result_rows(
-        search_assets(context, limit=DEFAULT_TARGET_POSITION_SCAN_LIMIT)
-    )
-    asset_rows_by_uid = {
-        str(row["uid"]): row
-        for row in asset_rows
-        if isinstance(row, Mapping) and row.get("uid") not in (None, "")
+    details_by_uid = {
+        str(row["asset_uid"]): row
+        for row in asset_reference_details_by_uids(
+            sorted(asset_uids),
+            repository_context=context,
+        )
+        if isinstance(row, Mapping) and row.get("asset_uid") not in (None, "")
     }
-    identifiers_by_uid = {
-        uid: str(row["unique_identifier"])
-        for uid, row in asset_rows_by_uid.items()
-        if row.get("unique_identifier") not in (None, "")
-    }
-    snapshots_by_identifier = _latest_asset_snapshots_by_unique_identifier(
-        context,
-        identifiers=set(identifiers_by_uid.values()),
-    )
     return {
         uid: _build_asset_snapshot_reference(
-            asset_row=asset_rows_by_uid.get(uid),
-            snapshot_row=snapshots_by_identifier.get(identifiers_by_uid.get(uid, "")),
+            asset_row=_asset_row_from_reference_detail(details_by_uid.get(uid)),
+            snapshot_row=details_by_uid.get(uid),
         )
         for uid in sorted(asset_uids)
     }
@@ -690,39 +680,6 @@ def _portfolio_references_by_uid(
     return references
 
 
-def _latest_asset_snapshots_by_unique_identifier(
-    context: MarketsRepositoryContext,
-    *,
-    identifiers: set[str],
-) -> dict[str, dict[str, Any]]:
-    if not identifiers:
-        return {}
-    rows = operation_result_rows(
-        search_model(
-            context,
-            model=AssetSnapshotsStorage,
-            filters={},
-            in_filters={"asset_identifier": sorted(identifiers)},
-            limit=DEFAULT_TARGET_POSITION_SCAN_LIMIT,
-        )
-    )
-    latest_by_identifier: dict[str, dict[str, Any]] = {}
-    latest_time_by_identifier: dict[str, dt.datetime] = {}
-    for row in rows:
-        if not isinstance(row, Mapping):
-            continue
-        unique_identifier = _string_or_none(row.get("asset_identifier"))
-        snapshot_time = _datetime_or_none(row.get("time_index"))
-        if unique_identifier is None or snapshot_time is None:
-            continue
-        current_time = latest_time_by_identifier.get(unique_identifier)
-        if current_time is not None and snapshot_time <= current_time:
-            continue
-        latest_by_identifier[unique_identifier] = dict(row)
-        latest_time_by_identifier[unique_identifier] = snapshot_time
-    return latest_by_identifier
-
-
 def _build_asset_snapshot_reference(
     *,
     asset_row: Mapping[str, Any] | None,
@@ -741,6 +698,15 @@ def _build_asset_snapshot_reference(
                 _string_or_none(snapshot_row.get("ticker")) if snapshot_row is not None else None
             ),
         },
+    }
+
+
+def _asset_row_from_reference_detail(row: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    return {
+        "uid": row.get("asset_uid"),
+        "unique_identifier": row.get("asset_identifier"),
     }
 
 

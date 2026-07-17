@@ -59,8 +59,17 @@ def asset_reference_details(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
     return read_details(*args, **kwargs)
 
 
+def asset_reference_details_by_uids(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+    from msm.services.assets.reference_details import (
+        asset_reference_details_by_uids as read_details,
+    )
+
+    return read_details(*args, **kwargs)
+
+
 __all__ = [
     "asset_reference_details",
+    "asset_reference_details_by_uids",
     "create_asset",
     "delete_asset",
     "get_asset_by_uid",

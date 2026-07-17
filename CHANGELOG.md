@@ -12,6 +12,10 @@ and this project follows versioned releases.
 - Changed `MSDataInterface.get_historical_discount_curve_observations(...)` to
   read multi-curve latest-as-of observations through a backend window query
   instead of scanning full curve history into pandas.
+- Changed asset snapshot enrichment services and the
+  `USE_LAST_OBSERVATION_MS_INSTRUMENT` fixing fallback to resolve latest rows
+  through backend queries instead of scanning history and choosing the latest
+  row in Python.
 - Added `msm_pricing.pricing_engine.apply_z_spread_to_curve(...)` for strict
   runtime z-spread overlays that match `Bond.z_spread(...)`'s continuous
   decimal spread convention without mutating persisted curve observations.

@@ -22,6 +22,7 @@ from msm_pricing.data_interface.data_interface import (
 from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER
 from msm_pricing.data_nodes.curves.key_nodes import compress_key_nodes_to_string
 from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
 from msm_pricing.config import reset_pricing_market_data_configuration
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
@@ -163,6 +164,98 @@ def test_get_historical_fixings_uses_persisted_pricing_market_data_binding(
 
     assert fixings == {dt.date(2026, 5, 26): 0.0525}
     assert calls[0] == ("table_uid", str(data_node_uid))
+
+
+def test_get_historical_fixings_fallback_uses_backend_latest_as_of(monkeypatch) -> None:
+    MSDataInterface.clear_caches()
+    calls = []
+    fixings_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000103")
+    start_date = dt.datetime(2026, 5, 1, tzinfo=dt.UTC)
+    end_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+
+    class FakeAPIDataNode:
+        storage_table = SimpleNamespace(uid=str(fixings_data_node_uid))
+
+        @classmethod
+        def build_from_table_uid(cls, table_uid):
+            calls.append(("table_uid", table_uid))
+            return cls()
+
+        def get_df_between_dates(self, *, dimension_range_map):
+            calls.append(("range", dimension_range_map))
+            return pd.DataFrame()
+
+    def bind_meta_table(cls, storage_table):
+        calls.append(("bind", storage_table.uid))
+
+    def compile_statement(statement, *, context, operation, models, access):
+        calls.append(
+            (
+                "compiled_sql",
+                str(statement.compile(compile_kwargs={"literal_binds": True})).lower(),
+                context.limits,
+                operation,
+                models,
+                access,
+            )
+        )
+        return {"compiled": True}
+
+    def execute_operation(operation, *, context):
+        calls.append(("execute", operation, context.limits))
+        return {
+            "rows": [
+                {
+                    "time_index": "2026-04-30T00:00:00+00:00",
+                    "index_identifier": "SOFR",
+                    "rate": 0.051,
+                }
+            ]
+        }
+
+    import mainsequence.meta_tables as meta_tables
+
+    monkeypatch.setenv("USE_LAST_OBSERVATION_MS_INSTRUMENT", "true")
+    monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
+    monkeypatch.setattr(IndexFixingsStorage, "_bind_meta_table", classmethod(bind_meta_table))
+    monkeypatch.setattr("msm.repositories.base.compile_markets_statement", compile_statement)
+    monkeypatch.setattr("msm.repositories.base.execute_markets_operation", execute_operation)
+
+    interface = MSDataInterface(
+        market_data_configuration={
+            "data_node_uids": {
+                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_data_node_uid,
+            },
+        }
+    )
+
+    fixings = interface.get_historical_fixings("SOFR", start_date, end_date)
+
+    assert fixings == {dt.date(2026, 4, 30): 0.051}
+    assert calls[0] == ("table_uid", str(fixings_data_node_uid))
+    assert calls[1] == (
+        "range",
+        [
+            {
+                "coordinate": {INDEX_IDENTIFIER_DIMENSION: "SOFR"},
+                "start_date": start_date,
+                "start_date_operand": ">=",
+                "end_date": end_date,
+                "end_date_operand": "<=",
+            }
+        ],
+    )
+    assert calls[2] == ("bind", str(fixings_data_node_uid))
+    compiled_sql = calls[3][1]
+    assert "1900" not in compiled_sql
+    assert "index_identifier" in compiled_sql
+    assert "<=" in compiled_sql
+    assert "order by" in compiled_sql
+    assert calls[3][2] == {"max_rows": 1}
+    assert calls[3][3] == "select"
+    assert calls[3][4] == [IndexFixingsStorage]
+    assert calls[3][5] == "read"
+    assert calls[4] == ("execute", {"compiled": True}, {"max_rows": 1})
 
 
 def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> None:
@@ -435,9 +528,7 @@ def test_get_historical_fixings_for_identifiers_reads_many_indexes_once(monkeypa
     monkeypatch.setattr(meta_tables, "APIDataNode", FakeAPIDataNode)
     interface = MSDataInterface(
         market_data_configuration={
-            "data_node_uids": {
-                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_data_node_uid
-            }
+            "data_node_uids": {PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_data_node_uid}
         }
     )
 

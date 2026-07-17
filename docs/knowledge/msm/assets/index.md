@@ -482,10 +482,15 @@ assets = asset_reference_details(
 
 `asset_reference_details(...)` reads `AssetTable` by canonical
 `unique_identifier` and, by default, joins the latest
-`AssetSnapshotsStorage` row for the same storage-facing `asset_identifier`. The
-returned rows include `asset_uid`, `asset_identifier`, `asset_type`,
-`snapshot_time`, `name`, `ticker`, `exchange_code`, and
-`asset_ticker_group_id`.
+`AssetSnapshotsStorage` row for the same storage-facing `asset_identifier`.
+`asset_reference_details_by_uids(...)` provides the same latest-snapshot row
+shape when a caller already has `AssetTable.uid` values. Both helpers resolve
+the current snapshot in the backend with a grouped latest-time subquery instead
+of fetching snapshot history and choosing the latest row locally.
+
+The returned rows include `asset_uid`, `asset_identifier`, `asset_type`,
+`snapshot_time`, the `time_index` alias used by snapshot consumers, `name`,
+`ticker`, `exchange_code`, and `asset_ticker_group_id`.
 
 Set `latest_snapshot=False` when a consumer needs only canonical asset identity.
 Use an explicit `repository_context` for live platform reads or pass an

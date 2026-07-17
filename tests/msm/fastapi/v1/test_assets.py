@@ -490,30 +490,26 @@ def test_core_get_asset_record_includes_latest_asset_snapshot(monkeypatch) -> No
         },
     )
 
-    def fake_search_model(context, *, model, filters, limit):
-        assert filters == {"asset_identifier": "example-asset-btc"}
-        return {
-            "rows": [
-                {
-                    "time_index": "2026-06-03T15:45:57+00:00",
-                    "asset_identifier": "example-asset-btc",
-                    "name": "Old Bitcoin",
-                    "ticker": "BTC",
-                    "exchange_code": "CRYPTO",
-                    "asset_ticker_group_id": "BTC",
-                },
-                {
-                    "time_index": "2026-06-04T15:45:57+00:00",
-                    "asset_identifier": "example-asset-btc",
-                    "name": "Bitcoin",
-                    "ticker": "BTC",
-                    "exchange_code": "CRYPTO",
-                    "asset_ticker_group_id": "BTC",
-                },
-            ]
-        }
+    def fake_asset_reference_details(asset_identifiers, *, repository_context):
+        assert asset_identifiers == "example-asset-btc"
+        assert repository_context is context
+        return [
+            {
+                "asset_uid": str(asset_uid),
+                "time_index": "2026-06-04T15:45:57+00:00",
+                "asset_identifier": "example-asset-btc",
+                "name": "Bitcoin",
+                "ticker": "BTC",
+                "exchange_code": "CRYPTO",
+                "asset_ticker_group_id": "BTC",
+            }
+        ]
 
-    monkeypatch.setattr(asset_master_service, "search_model", fake_search_model)
+    monkeypatch.setattr(
+        asset_master_service,
+        "asset_reference_details",
+        fake_asset_reference_details,
+    )
 
     detail = asset_master_service.get_asset_record(context, uid=str(asset_uid))
 

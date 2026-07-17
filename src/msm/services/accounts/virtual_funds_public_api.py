@@ -10,11 +10,9 @@ from sqlalchemy import String, cast, func, or_, select
 
 from msm.data_nodes.accounts.storage import AccountHoldingsStorage
 from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
-from msm.data_nodes.assets.storage import AssetSnapshotsStorage
 from msm.models import (
     AccountHoldingsSetTable,
     AccountTable,
-    AssetTable,
     VirtualFundHoldingsSetTable,
     VirtualFundTable,
 )
@@ -572,62 +570,29 @@ def _asset_references_by_unique_identifier(
     if not unique_identifiers:
         return {}
 
-    asset_rows = _operation_result_rows(
-        search_model(
-            context,
-            model=AssetTable,
-            in_filters={"unique_identifier": sorted(unique_identifiers)},
-            limit=MAX_VIRTUAL_FUND_SCAN_LIMIT,
+    from msm.services.assets import asset_reference_details
+
+    details_by_identifier = {
+        str(row["asset_identifier"]): row
+        for row in asset_reference_details(
+            sorted(unique_identifiers),
+            repository_context=context,
         )
-    )
-    assets_by_identifier = {
-        str(row["unique_identifier"]): row
-        for row in asset_rows
-        if isinstance(row, Mapping) and row.get("unique_identifier") not in (None, "")
+        if isinstance(row, Mapping) and row.get("asset_identifier") not in (None, "")
     }
-    snapshot_rows = _operation_result_rows(
-        search_model(
-            context,
-            model=AssetSnapshotsStorage,
-            in_filters={"asset_identifier": sorted(unique_identifiers)},
-            limit=MAX_VIRTUAL_FUND_SCAN_LIMIT,
-        )
-    )
-    snapshots = _latest_asset_snapshots_by_unique_identifier(snapshot_rows)
 
     references: dict[str, dict[str, Any]] = {}
     for unique_identifier in unique_identifiers:
-        asset_row = assets_by_identifier.get(unique_identifier)
-        snapshot_row = snapshots.get(unique_identifier)
+        detail_row = details_by_identifier.get(unique_identifier)
         references[unique_identifier] = {
-            "uid": _string_or_none(asset_row.get("uid")) if asset_row else None,
+            "uid": _string_or_none(detail_row.get("asset_uid")) if detail_row else None,
             "asset_identifier": unique_identifier,
             "current_snapshot": {
-                "name": _string_or_none(snapshot_row.get("name")) if snapshot_row else None,
-                "ticker": _string_or_none(snapshot_row.get("ticker")) if snapshot_row else None,
+                "name": _string_or_none(detail_row.get("name")) if detail_row else None,
+                "ticker": _string_or_none(detail_row.get("ticker")) if detail_row else None,
             },
         }
     return references
-
-
-def _latest_asset_snapshots_by_unique_identifier(
-    rows: Sequence[Mapping[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    latest_rows: dict[str, dict[str, Any]] = {}
-    latest_times: dict[str, dt.datetime] = {}
-    for row in rows:
-        if not isinstance(row, Mapping):
-            continue
-        unique_identifier = _string_or_none(row.get("asset_identifier"))
-        snapshot_time = _datetime_or_none(row.get("time_index"))
-        if unique_identifier is None or snapshot_time is None:
-            continue
-        current_time = latest_times.get(unique_identifier)
-        if current_time is not None and snapshot_time <= current_time:
-            continue
-        latest_rows[unique_identifier] = dict(row)
-        latest_times[unique_identifier] = snapshot_time
-    return latest_rows
 
 
 def _empty_account_holdings_by_fund(*, account_uid: str) -> dict[str, Any]:

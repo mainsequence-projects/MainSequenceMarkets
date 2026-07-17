@@ -22,8 +22,10 @@ from msm.services.asset_categories import (
     update_asset_category as service_update_asset_category,
 )
 from msm.services.assets import (
+    asset_reference_details,
     delete_asset as service_delete_asset,
     get_asset_by_uid as service_get_asset_by_uid,
+    get_asset_by_unique_identifier as service_get_asset_by_unique_identifier,
     search_assets as service_search_assets,
 )
 from msm.services.provider_details import search_openfigi_details as service_search_openfigi_details
@@ -176,13 +178,14 @@ def list_asset_rows(
             )
         ]
         normalized_rows = [
-            _build_asset_record(asset_row)
-            for asset_row in _deduplicate_rows_by_uid(asset_rows)
+            _build_asset_record(asset_row) for asset_row in _deduplicate_rows_by_uid(asset_rows)
         ]
         normalized_rows.sort(
-            key=lambda row: normalized_unique_identifiers.index(row["unique_identifier"])
-            if row["unique_identifier"] in normalized_unique_identifiers
-            else len(normalized_unique_identifiers)
+            key=lambda row: (
+                normalized_unique_identifiers.index(row["unique_identifier"])
+                if row["unique_identifier"] in normalized_unique_identifiers
+                else len(normalized_unique_identifiers)
+            )
         )
         return normalized_rows[offset : offset + limit]
 
@@ -245,8 +248,7 @@ def list_asset_rows(
             )
 
     normalized_rows = [
-        _build_asset_record(asset_row)
-        for asset_row in _deduplicate_rows_by_uid(asset_rows)
+        _build_asset_record(asset_row) for asset_row in _deduplicate_rows_by_uid(asset_rows)
     ]
     normalized_rows.sort(key=lambda row: (str(row["unique_identifier"]).lower(), str(row["uid"])))
 
@@ -256,12 +258,12 @@ def list_asset_rows(
             for row in normalized_rows
             if row["uid"] in ticker_matched_asset_uids
             or _matches_search(
-                    values=(
-                        row["uid"],
-                        row["unique_identifier"],
-                        row.get("asset_type"),
-                    ),
-                    normalized_search=normalized_search,
+                values=(
+                    row["uid"],
+                    row["unique_identifier"],
+                    row.get("asset_type"),
+                ),
+                normalized_search=normalized_search,
             )
         ]
 
@@ -277,9 +279,15 @@ def get_asset_record(
     if asset_row is None:
         return None
     unique_identifier = _string_or_empty(asset_row.get("unique_identifier"))
-    snapshot_row = _latest_asset_snapshot_by_unique_identifier(
-        context,
-        unique_identifier=unique_identifier,
+    snapshot_row = (
+        _first_operation_row(
+            asset_reference_details(
+                unique_identifier,
+                repository_context=context,
+            )
+        )
+        if unique_identifier
+        else None
     )
     return _build_asset_detail_record(
         asset_row=asset_row,
@@ -870,39 +878,6 @@ def _build_asset_current_snapshot(
             else None
         ),
     }
-
-
-def _latest_asset_snapshot_by_unique_identifier(
-    context: MarketsRepositoryContext,
-    *,
-    unique_identifier: str,
-) -> dict[str, Any] | None:
-    if not unique_identifier:
-        return None
-
-    from msm.data_nodes.assets.storage import AssetSnapshotsStorage
-
-    rows = _operation_result_rows(
-        search_model(
-            context,
-            model=AssetSnapshotsStorage,
-            filters={"asset_identifier": unique_identifier},
-            limit=MAX_SCAN_LIMIT,
-        )
-    )
-    latest_row: dict[str, Any] | None = None
-    latest_time: dt.datetime | None = None
-    for row in rows:
-        if not isinstance(row, Mapping):
-            continue
-        snapshot_time = _datetime_or_none(row.get("time_index"))
-        if snapshot_time is None:
-            continue
-        if latest_time is not None and snapshot_time <= latest_time:
-            continue
-        latest_row = dict(row)
-        latest_time = snapshot_time
-    return latest_row
 
 
 def _build_index_list_row(index_row: Mapping[str, Any]) -> dict[str, Any]:
