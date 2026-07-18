@@ -16,8 +16,9 @@ from examples.msm.platform.bootstrap import (
     EXAMPLE_METATABLE_NAMESPACE,
 )
 from examples.msm_pricing.utils import (
-    EXAMPLE_CURVE_UNIQUE_IDENTIFIER,
+    EXAMPLE_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
     EXAMPLE_INDEX_UNIQUE_IDENTIFIER,
+    EXAMPLE_PROJECTION_CURVE_UNIQUE_IDENTIFIER,
     MockFlatForwardDiscountCurvesNode,
     MockIndexFixingsNode,
     example_index_convention_dump,
@@ -227,22 +228,33 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         index_uid=convention_details.index_uid,
         index_family=convention_details.index_family,
     )
-    curve = Curve.upsert(
-        unique_identifier=EXAMPLE_CURVE_UNIQUE_IDENTIFIER,
+    projection_curve = Curve.upsert(
+        unique_identifier=EXAMPLE_PROJECTION_CURVE_UNIQUE_IDENTIFIER,
         display_name="USD SOFR Example Projection Curve",
         curve_type="projection",
         currency_code="USD",
         quote_side="mid",
         source="example",
-        metadata_json={"example": "flat-forward zero curve"},
+        metadata_json={"example": "flat-forward projection zero curve"},
+    )
+    discount_curve = Curve.upsert(
+        unique_identifier=EXAMPLE_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+        display_name="USD OIS Example Discount Curve",
+        curve_type="discount",
+        currency_code="USD",
+        quote_side="mid",
+        source="example",
+        metadata_json={"example": "flat-forward discount zero curve"},
     )
     _print_step(
-        "Upserted projection curve",
-        curve_uid=curve.uid,
-        unique_identifier=curve.unique_identifier,
+        "Upserted projection and discount curves",
+        projection_curve_uid=projection_curve.uid,
+        projection_curve_identifier=projection_curve.unique_identifier,
+        discount_curve_uid=discount_curve.uid,
+        discount_curve_identifier=discount_curve.unique_identifier,
     )
-    curve_building_details = CurveBuildingDetails.upsert(
-        curve_uid=curve.uid,
+    projection_curve_building_details = CurveBuildingDetails.upsert(
+        curve_uid=projection_curve.uid,
         builder_type="zero_rate_curve",
         quote_convention="zero_rate",
         rate_unit="decimal",
@@ -252,34 +264,69 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         compounding="simple",
         extrapolation_policy="enabled",
         source="example",
-        metadata_json={"example": "flat-forward zero curve"},
+        metadata_json={"example": "flat-forward projection zero curve"},
     )
-    curve_selection = PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
+    discount_curve_building_details = CurveBuildingDetails.upsert(
+        curve_uid=discount_curve.uid,
+        builder_type="zero_rate_curve",
+        quote_convention="zero_rate",
+        rate_unit="decimal",
+        day_counter_code="Actual360",
+        calendar_code="TARGET",
+        interpolation_method="log_linear_discount",
+        compounding="simple",
+        extrapolation_policy="enabled",
+        source="example",
+        metadata_json={"example": "flat-forward discount zero curve"},
+    )
+    projection_curve_selection = PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
         market_data_set_uid=market_data_set.uid,
         role_key="projection",
         index_uid=index.uid,
         quote_side=None,
-        curve_uid=curve.uid,
+        curve_uid=projection_curve.uid,
+        source="examples/msm_pricing/bond_pricing_example",
+        metadata_json={"workflow": "floating-rate-bond-pricing-example"},
+    )
+    discount_curve_selection = PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
+        market_data_set_uid=market_data_set.uid,
+        role_key="discount",
+        index_uid=index.uid,
+        quote_side=None,
+        curve_uid=discount_curve.uid,
         source="examples/msm_pricing/bond_pricing_example",
         metadata_json={"workflow": "floating-rate-bond-pricing-example"},
     )
     _print_step(
-        "Upserted curve build details and selection binding",
-        curve_uid=curve_building_details.curve_uid,
-        index_uid=curve_selection.index_uid,
-        selected_curve_uid=curve_selection.curve_uid,
+        "Upserted curve build details and selection bindings",
+        projection_curve_uid=projection_curve_building_details.curve_uid,
+        discount_curve_uid=discount_curve_building_details.curve_uid,
+        index_uid=projection_curve_selection.index_uid,
+        projection_selected_curve_uid=projection_curve_selection.curve_uid,
+        discount_selected_curve_uid=discount_curve_selection.curve_uid,
     )
 
-    curve_node = MockFlatForwardDiscountCurvesNode(
-        CurveConfig(curve_unique_identifier=curve.unique_identifier),
+    projection_curve_node = MockFlatForwardDiscountCurvesNode(
+        CurveConfig(curve_unique_identifier=projection_curve.unique_identifier),
         valuation_date=valuation_date,
-        zero_rate=0.05,
+        zero_rate=0.0525,
     )
-    curve_frame = _run_data_node_frame(curve_node, label="discount curve")
+    projection_curve_frame = _run_data_node_frame(
+        projection_curve_node,
+        label="projection curve",
+    )
+    discount_curve_node = MockFlatForwardDiscountCurvesNode(
+        CurveConfig(curve_unique_identifier=discount_curve.unique_identifier),
+        valuation_date=valuation_date,
+        zero_rate=0.0475,
+    )
+    discount_curve_frame = _run_data_node_frame(discount_curve_node, label="discount curve")
     _print_step(
-        "Published mock discount curve rows",
-        rows=len(curve_frame),
-        key_nodes=_count_curve_key_nodes(curve_frame),
+        "Published mock projection and discount curve rows",
+        projection_rows=len(projection_curve_frame),
+        projection_key_nodes=_count_curve_key_nodes(projection_curve_frame),
+        discount_rows=len(discount_curve_frame),
+        discount_key_nodes=_count_curve_key_nodes(discount_curve_frame),
         data_node_uid=curve_data_node_uid,
         storage_table_identifier=curve_storage_table_identifier,
     )
@@ -328,7 +375,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         source="example",
         metadata_json={
             "workflow": "floating-rate-bond-pricing-example",
-            "curve_identifier": curve.unique_identifier,
+            "projection_curve_identifier": projection_curve.unique_identifier,
+            "discount_curve_identifier": discount_curve.unique_identifier,
             "index_identifier": index.unique_identifier,
         },
     )
@@ -362,10 +410,17 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         target_dirty_ccy=price,
         market_data_set=market_data_set.set_key,
     )
-    base_index_curve = loaded_instrument.get_index_curve()
-    z_spreaded_curve = apply_z_spread_to_curve(base_index_curve, z_spread)
+    base_projection_curve = loaded_instrument.get_index_curve()
+    base_discount_curve = loaded_instrument.get_discount_curve()
+    z_spreaded_curve = apply_z_spread_to_curve(base_discount_curve, z_spread)
     one_year_date = ql.Date(27, 5, 2027)
-    base_one_year_zero_rate = base_index_curve.zeroRate(
+    projection_one_year_zero_rate = base_projection_curve.zeroRate(
+        one_year_date,
+        ql.Actual360(),
+        ql.Continuous,
+        ql.NoFrequency,
+    ).rate()
+    discount_one_year_zero_rate = base_discount_curve.zeroRate(
         one_year_date,
         ql.Actual360(),
         ql.Continuous,
@@ -378,9 +433,10 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         ql.NoFrequency,
     ).rate()
     _print_step(
-        "Applied z-spread overlay to the resolved index curve",
+        "Applied z-spread overlay to the resolved discount curve",
         z_spread=z_spread,
-        base_one_year_zero_rate=base_one_year_zero_rate,
+        projection_one_year_zero_rate=projection_one_year_zero_rate,
+        discount_one_year_zero_rate=discount_one_year_zero_rate,
         z_spreaded_one_year_zero_rate=z_spreaded_one_year_zero_rate,
     )
     analytics = loaded_instrument.analytics()
@@ -421,19 +477,22 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         "bond_asset": bond_asset,
         "index": index,
         "index_convention_details": convention_details,
-        "curve": curve,
+        "projection_curve": projection_curve,
+        "discount_curve": discount_curve,
         "curve_data_node_uid": curve_data_node_uid,
         "fixing_data_node_uid": fixing_data_node_uid,
         "curve_storage_table_identifier": curve_storage_table_identifier,
         "fixing_storage_table_identifier": fixing_storage_table_identifier,
-        "curve_rows": len(curve_frame),
+        "projection_curve_rows": len(projection_curve_frame),
+        "discount_curve_rows": len(discount_curve_frame),
         "fixing_rows": len(fixing_frame),
         "stored_pricing_details": stored_pricing_details,
         "loaded_instrument_type": type(loaded_instrument).__name__,
         "floating_rate_index_uid": str(loaded_instrument.floating_rate_index_uid),
         "price": price,
         "z_spread": z_spread,
-        "base_one_year_zero_rate": base_one_year_zero_rate,
+        "projection_one_year_zero_rate": projection_one_year_zero_rate,
+        "discount_one_year_zero_rate": discount_one_year_zero_rate,
         "z_spreaded_one_year_zero_rate": z_spreaded_one_year_zero_rate,
         "analytics": analytics,
         "cashflows": _preview_cashflows(cashflows),

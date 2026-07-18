@@ -78,6 +78,7 @@ V1_PRICING_RUNTIME_MODELS = [
     "PricingMarketDataSet",
     "PricingMarketDataSetBinding",
     "PricingMarketDataSetCurveBinding",
+    "DiscountCurvesStorage",
 ]
 _BOOTSTRAP_COMPLETE = False
 _PORTFOLIO_BOOTSTRAP_COMPLETE = False

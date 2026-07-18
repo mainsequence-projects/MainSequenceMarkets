@@ -291,7 +291,7 @@ def select_curve(
         curve_type=_curve_type_validation_target(
             curve_type=curve_type,
             expected_curve_type=expected_curve_type,
-            validate_curve_type=validate_curve_type,
+            validate_curve_type=validate_curve_type and expected_curve_type is not None,
         ),
         source=source,
     )
@@ -518,6 +518,7 @@ def resolve_quantlib_index(
             valuation_date=valuation_date,
             market_data_set=market_data_set,
             curve_type=selection_role,
+            validate_curve_type=False,
             role_key=selection_role,
             quote_side=quote_side,
             source=source,

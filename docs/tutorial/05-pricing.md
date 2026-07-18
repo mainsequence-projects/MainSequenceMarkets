@@ -408,19 +408,23 @@ For a full floating-rate bond workflow, use
    asset through `msm.api.assets` and `msm.api.issuers`.
 2. Register the `interest_rate` index type through `msm.api.indices.IndexType`,
    then register the canonical index through `msm.api.indices.Index`.
-3. Upsert `IndexConventionDetails`, `Curve`, `CurveBuildingDetails`, and
+3. Upsert `IndexConventionDetails`, separate projection and discount `Curve`
+   rows, matching `CurveBuildingDetails`, and
    `PricingMarketDataSetCurveBinding.upsert_index_curve_selection(...)` rows
-   under `msm_pricing.api`. The helper persists the generic selector fields
-   internally, so index-based workflows should pass `index_uid`, not
-   `selector_type` and `selector_key`.
+   under `msm_pricing.api`. Floating instruments need both
+   `role_key="projection"` and `role_key="discount"` bindings for the floating
+   index UID. The helper persists the generic selector fields internally, so
+   index-based workflows should pass `index_uid`, not `selector_type` and
+   `selector_key`.
 4. Publish one month of mock fixings through a `FixingRatesNode` subclass and a
-   sampled flat-forward curve through a `DiscountCurvesNode` subclass. The curve
-   storage row stores both the compressed pricing `curve` and compressed
-   source-owned `key_nodes` provenance. The publisher emits `key_nodes` as JSON,
-   and read/API helpers return decompressed JSON. The mock example uses the
-   recommended yield-aware `CurveKeyNode` shape, while `CurveBuildingDetails`
-   remains the source for final curve construction rules. The pricing storage
-   classes declare their EOD cadence as `__cadence__ = "1d"`.
+   sampled flat-forward projection curve plus a sampled flat-forward discount
+   curve through `DiscountCurvesNode` subclasses. Each curve storage row stores
+   both the compressed pricing `curve` and compressed source-owned `key_nodes`
+   provenance. The publisher emits `key_nodes` as JSON, and read/API helpers
+   return decompressed JSON. The mock example uses the recommended yield-aware
+   `CurveKeyNode` shape, while `CurveBuildingDetails` remains the source for
+   final curve construction rules. The pricing storage classes declare their
+   EOD cadence as `__cadence__ = "1d"`.
 5. Attach pricing storage tables, then upsert the `default` market-data set and
    its concept bindings with `PricingMarketDataSet` and
    `PricingMarketDataSetBinding`.
@@ -429,7 +433,10 @@ For a full floating-rate bond workflow, use
    explicit timestamp this creates the current loadable instrument definition.
 8. Reload it generically with `Instrument.load_from_asset(asset)`, set the
    valuation date, then call `price(market_data_set="default")`,
-   `analytics()`, `get_cashflows()`, and `carry_roll_down(...)`.
+   `analytics()`, `get_cashflows()`, and `carry_roll_down(...)`. Pricing uses
+   the projection binding for coupon forecasting and the discount binding for
+   discounting. Binding one curve to both roles is allowed only when both
+   binding rows explicitly point at the same curve.
 9. Use `build_valuation_position(...)` when the valuation input is already
    normalized to instrument plus unit rows. For account or portfolio sources,
    the owning package still selects the source snapshot and resolves assets;

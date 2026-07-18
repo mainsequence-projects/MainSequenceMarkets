@@ -198,7 +198,7 @@ def compute_observed_z_spread_overlays(
             continue
         if target_dirty is None:
             continue
-        curve_handle = curves_by_line.get(line_index)
+        curve_handle = _discount_curve_handle(curves_by_line.get(line_index))
         curve_identifier = identifiers_by_line.get(line_index)
         if curve_handle is None:
             overlays.append(
@@ -348,9 +348,10 @@ def _apply_spreads_to_handles(
     out: dict[int, object] = {}
     for line_index, handle in handles_by_line.items():
         spread = spreads_by_line.get(line_index)
-        out[int(line_index)] = (
-            handle if spread is None else apply_z_spread_to_curve(handle, spread)
-        )
+        if spread is None:
+            out[int(line_index)] = handle
+            continue
+        out[int(line_index)] = _apply_spread_to_discount_handle(handle, spread)
     return out
 
 
@@ -376,12 +377,49 @@ def _overlay_diagnostics(
 
 def _curve_identifiers_by_line(curve_resolutions: Sequence[object]) -> dict[int, str]:
     identifiers: dict[int, str] = {}
+    role_rank_by_line: dict[int, int] = {}
     for resolution in curve_resolutions:
         line_index = getattr(resolution, "line_index", None)
         curve_identifier = getattr(resolution, "curve_identifier", None)
         if isinstance(line_index, int) and curve_identifier is not None:
-            identifiers.setdefault(line_index, str(curve_identifier))
+            rank = _discount_role_rank(getattr(resolution, "role_key", None))
+            current_rank = role_rank_by_line.get(line_index)
+            if current_rank is None or rank < current_rank:
+                identifiers[line_index] = str(curve_identifier)
+                role_rank_by_line[line_index] = rank
     return identifiers
+
+
+def _discount_curve_handle(handle: object) -> object | None:
+    if not isinstance(handle, Mapping):
+        return handle
+    for key in ("discount", "default", "projection", "forwarding", "floating"):
+        value = handle.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _apply_spread_to_discount_handle(handle: object, spread: float) -> object:
+    if not isinstance(handle, Mapping):
+        return apply_z_spread_to_curve(handle, spread)
+    out = dict(handle)
+    for key in ("discount", "default", "projection", "forwarding", "floating"):
+        value = out.get(key)
+        if value is None:
+            continue
+        out[key] = apply_z_spread_to_curve(value, spread)
+        return out
+    return out
+
+
+def _discount_role_rank(role_key: object) -> int:
+    role = None if role_key is None else str(role_key)
+    if role == "discount":
+        return 0
+    if role in {"default", "projection", "forwarding", "floating"}:
+        return 1
+    return 2
 
 
 def _target_dirty_price(metadata: Mapping[str, object]) -> float | None:

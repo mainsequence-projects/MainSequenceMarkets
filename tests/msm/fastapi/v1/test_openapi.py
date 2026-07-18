@@ -759,6 +759,37 @@ def test_openapi_json_documents_pricing_curve_routes() -> None:
         "schema"
     ] == {"$ref": "#/components/schemas/ErrorResponse"}
 
+    curve_delete_impact_operation = payload["paths"][
+        "/api/v1/pricing/curves/{uid}/delete-impact/"
+    ]["get"]
+    assert curve_delete_impact_operation["summary"] == "Preview pricing curve delete impact"
+    assert curve_delete_impact_operation["operationId"] == "getPricingCurveDeleteImpact"
+    assert {"delete_values", "delete_curve_selections"}.issubset(
+        {parameter["name"] for parameter in curve_delete_impact_operation["parameters"]}
+    )
+    assert curve_delete_impact_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/DeleteImpactResponse"}
+    assert curve_delete_impact_operation["responses"]["404"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ErrorResponse"}
+
+    curve_delete_operation = payload["paths"]["/api/v1/pricing/curves/{uid}/"]["delete"]
+    assert curve_delete_operation["summary"] == "Delete pricing curve"
+    assert curve_delete_operation["operationId"] == "deletePricingCurve"
+    assert {"delete_values", "delete_curve_selections"}.issubset(
+        {parameter["name"] for parameter in curve_delete_operation["parameters"]}
+    )
+    assert curve_delete_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/CurveDeleteResponse"}
+    assert curve_delete_operation["responses"]["404"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ErrorResponse"}
+    assert curve_delete_operation["responses"]["409"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ErrorResponse"}
+
     discount_curve_operation = payload["paths"]["/api/v1/pricing/curves/{uid}/discount-curve/"][
         "get"
     ]

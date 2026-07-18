@@ -214,6 +214,39 @@ def test_bond_resolver_receives_curve_quote_side(monkeypatch) -> None:
     assert calls[0][1]["quote_side"] == "mid"
 
 
+def test_floating_bond_default_discount_curve_uses_discount_role(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    market_data_set_uid = uuid.uuid4()
+    bond = _floating_bond(index_uid)
+    valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    discount_handle = object()
+    calls = []
+
+    monkeypatch.setattr(
+        "msm_pricing.instruments.bond.PricingMarketDataSet.resolve_uid",
+        staticmethod(lambda selector: market_data_set_uid if selector == "eod" else None),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.instruments.bond.resolve_curve_for_index_binding",
+        lambda **kwargs: calls.append(kwargs) or discount_handle,
+    )
+
+    bond._apply_market_data_set("eod")
+    bond._apply_curve_quote_side(" MID ")
+    bond.set_valuation_date(valuation_date)
+
+    assert bond.get_discount_curve() is discount_handle
+    assert calls == [
+        {
+            "index_uid": index_uid,
+            "valuation_date": valuation_date,
+            "market_data_set": market_data_set_uid,
+            "role_key": "discount",
+            "quote_side": "mid",
+        }
+    ]
+
+
 def test_swap_resolver_receives_backend_index_uid(monkeypatch) -> None:
     index_uid = uuid.uuid4()
     swap = _swap(index_uid)
@@ -300,7 +333,60 @@ def test_swap_resolver_receives_curve_quote_side(monkeypatch) -> None:
     assert calls[0][1]["quote_side"] == "offer"
 
 
-def test_swap_reset_curve_accepts_yield_term_structure_handle(monkeypatch) -> None:
+def test_swap_builder_receives_projection_and_discount_curves(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    market_data_set_uid = uuid.uuid4()
+    swap = _swap(index_uid)
+    valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    projection_handle = object()
+    discount_handle = object()
+    resolver_calls = []
+    builder_calls = []
+
+    class FakeIndex:
+        def forwardingTermStructure(self):
+            return projection_handle
+
+        def fixingCalendar(self):
+            return ql.TARGET()
+
+    monkeypatch.setattr(
+        "msm_pricing.instruments.interest_rate_swap.PricingMarketDataSet.resolve_uid",
+        staticmethod(lambda selector: market_data_set_uid if selector == "eod" else None),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.instruments.interest_rate_swap.resolve_quantlib_index",
+        lambda backend_index_uid, **kwargs: FakeIndex(),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.instruments.interest_rate_swap.resolve_curve_for_index_binding",
+        lambda **kwargs: resolver_calls.append(kwargs) or discount_handle,
+    )
+    monkeypatch.setattr(
+        "msm_pricing.instruments.interest_rate_swap.price_vanilla_swap_with_curve",
+        lambda **kwargs: builder_calls.append(kwargs) or object(),
+    )
+
+    swap._apply_market_data_set("eod")
+    swap._apply_curve_quote_side(" MID ")
+    swap.set_valuation_date(valuation_date)
+    swap._setup_pricer()
+
+    assert resolver_calls == [
+        {
+            "index_uid": index_uid,
+            "valuation_date": valuation_date,
+            "market_data_set": market_data_set_uid,
+            "role_key": "discount",
+            "quote_side": "mid",
+        }
+    ]
+    assert builder_calls[0]["projection_curve"] is projection_handle
+    assert builder_calls[0]["discount_curve"] is discount_handle
+    assert "curve" not in builder_calls[0]
+
+
+def test_swap_reset_projection_curve_accepts_yield_term_structure_handle(monkeypatch) -> None:
     index_uid = uuid.uuid4()
     swap = _swap(index_uid)
     valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
@@ -320,7 +406,7 @@ def test_swap_reset_curve_accepts_yield_term_structure_handle(monkeypatch) -> No
     )
 
     swap.set_valuation_date(valuation_date)
-    swap.reset_curve(handle)
+    swap.reset_projection_curve(handle)
 
     assert calls == [
         (

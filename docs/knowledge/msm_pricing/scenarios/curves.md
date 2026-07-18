@@ -109,11 +109,10 @@ yield-to-price conversion layer exists with explicit bond conventions.
 
 ## Selection And Diagnostics
 
-When a line resolves multiple curve roles but the current instrument only
-supports one `reset_curve(...)` override, selection is deterministic. Floating
-and swap-style instruments prefer `projection`, then `floating`, then
-`discount`, then `z_spread_base`. Fixed-rate instruments prefer
-`z_spread_base`, then `discount`, then `projection`, then `floating`.
+Floating-rate instruments must expose `reset_curves(...)` so scenario pricing
+can pass both projection and discount handles. A floating line that only
+supports a single curve override fails instead of selecting projection as a
+mono-curve shortcut.
 
 A non-empty shock on an unselected related curve is not silently dropped in
 strict mode. Use `strict=False` only when the caller wants structured

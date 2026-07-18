@@ -202,7 +202,10 @@ concepts such as `discount_curves` and `interest_rate_index_fixings`.
 
 Use `PricingMarketDataSetCurveBinding` for curve-identity selection inside the
 chosen source. It maps a valuation role and selector, such as
-`projection:index:<IndexTable.uid>:mid`, to `CurveTable.uid`.
+`projection:index:<IndexTable.uid>:mid` or
+`discount:index:<IndexTable.uid>:mid`, to `CurveTable.uid`. Floating-rate
+pricing uses projection and discount bindings separately; sharing one physical
+curve across both roles must be explicit in the binding table.
 
 For active curves intended for runtime pricing, a `Curve` row by itself is not
 enough. The curve must also have `CurveBuildingDetails`, at least one

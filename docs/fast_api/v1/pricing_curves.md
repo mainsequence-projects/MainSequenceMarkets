@@ -196,6 +196,141 @@ Response:
 
 Returns `404` when the curve `uid` does not exist.
 
+## Delete Impact
+
+```text
+GET /api/v1/pricing/curves/{uid}/delete-impact/?delete_values=false&delete_curve_selections=false
+```
+
+Previews whether one pricing curve can be deleted and which related rows would
+block or be affected.
+
+Query parameters:
+
+- `delete_values`: when `true`, preview deletion of timestamped
+  `DiscountCurvesStorage` observations whose `curve_identifier` matches the
+  curve.
+- `delete_curve_selections`: when `true`, preview deletion of
+  `PricingMarketDataSetCurveBindingTable` rows that point to the curve.
+
+Response model: `DeleteImpactResponse`
+
+Response:
+
+```json
+{
+  "resource_type": "pricing_curve",
+  "uid": "curve-uid",
+  "identifier": "USD-SOFR-3M-DISCOUNT",
+  "display_name": "USD SOFR 3M Discount Curve",
+  "can_delete": false,
+  "blocking_count": 12,
+  "affected_count": 14,
+  "delete_endpoint": "/api/v1/pricing/curves/curve-uid/",
+  "relationships": [
+    {
+      "key": "curve_building_details",
+      "label": "Curve building details",
+      "model": "CurveBuildingDetailsTable",
+      "column": "curve_uid",
+      "relationship_type": "direct",
+      "on_delete": "CASCADE",
+      "count": 1,
+      "effect": "cascade_delete",
+      "severity": "destructive",
+      "blocks_delete": false,
+      "description": "Curve-owned build details are keyed by this curve and cascade when the curve row is deleted."
+    },
+    {
+      "key": "pricing_curve_selections",
+      "label": "Pricing curve selections",
+      "model": "PricingMarketDataSetCurveBindingTable",
+      "column": "curve_uid",
+      "relationship_type": "direct",
+      "on_delete": "RESTRICT",
+      "count": 2,
+      "effect": "blocks_delete",
+      "severity": "blocking",
+      "blocks_delete": true,
+      "description": "Market-data-set curve-selection rows point at this curve. They must be removed or explicitly deleted before deleting the curve."
+    },
+    {
+      "key": "discount_curve_observations",
+      "label": "Discount curve observations",
+      "model": "DiscountCurvesStorage",
+      "column": "curve_identifier",
+      "relationship_type": "direct",
+      "on_delete": "RESTRICT",
+      "count": 10,
+      "effect": "blocks_delete",
+      "severity": "blocking",
+      "blocks_delete": true,
+      "description": "Timestamped discount-curve rows reference this curve by curve_identifier. Cleanup uses TimeIndexMetaTable.delete_after_date with a scoped curve_identifier dimension filter."
+    }
+  ],
+  "warnings": [
+    "Delete is blocked while pricing curve-selection rows point at this curve.",
+    "Delete is blocked while discount-curve observations reference this curve.",
+    "Curve building details will be deleted by database cascade."
+  ]
+}
+```
+
+Returns `404` when the curve `uid` does not exist.
+
+## Delete Curve
+
+```text
+DELETE /api/v1/pricing/curves/{uid}/?delete_values=false&delete_curve_selections=false
+```
+
+Deletes one pricing curve registry row.
+
+Cleanup semantics:
+
+- `CurveBuildingDetailsTable` rows are deleted by the database cascade on
+  `curve_uid`.
+- `PricingMarketDataSetCurveBindingTable` rows are deleted only when
+  `delete_curve_selections=true`.
+- `DiscountCurvesStorage` observations are deleted only when
+  `delete_values=true`.
+- Discount-curve value cleanup must remain scoped to the curve identifier:
+  `TimeIndexMetaTable.delete_after_date(None, dimension_filters={"curve_identifier": [curve_identifier]})`.
+- `PricingMarketDataSetBindingTable` source bindings are not deleted by this
+  endpoint.
+
+Response model: `CurveDeleteResponse`
+
+Response:
+
+```json
+{
+  "detail": "Pricing curve deleted.",
+  "uid": "curve-uid",
+  "curve_identifier": "USD-SOFR-3M-DISCOUNT",
+  "deleted_count": 1,
+  "deleted_values_count": 10,
+  "deleted_curve_selections_count": 2,
+  "deleted_curve_building_details_count": 1,
+  "delete_values": true,
+  "delete_curve_selections": true,
+  "storage_cleanups": [
+    {
+      "data_node_uid": "discount-curves-data-node-uid",
+      "storage_table_identifier": "DiscountCurvesStorage",
+      "deleted_count": 10,
+      "table_empty": false
+    }
+  ]
+}
+```
+
+Returns:
+
+- `404` when the curve `uid` does not exist.
+- `409` when dependent rows still block deletion because the requested cleanup
+  flags do not cover them.
+
 ## Discount Curve Nodes
 
 ```text

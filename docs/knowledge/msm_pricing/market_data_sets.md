@@ -162,7 +162,14 @@ PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
     role_key="projection",
     index_uid=index.uid,
     quote_side="mid",
-    curve_uid=curve.uid,
+    curve_uid=projection_curve.uid,
+)
+PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
+    market_data_set_uid=market_data_set.uid,
+    role_key="discount",
+    index_uid=index.uid,
+    quote_side="mid",
+    curve_uid=discount_curve.uid,
 )
 ```
 
@@ -181,6 +188,7 @@ resolves to exactly one curve:
 
 ```text
 default + projection:index:<SOFR index uid>:mid -> SOFR projection curve
+default + discount:index:<SOFR index uid>:mid   -> USD discount curve
 ```
 
 `curve_uid` is deliberately not unique in `PricingMarketDataSetCurveBinding`.
@@ -189,9 +197,22 @@ may point to the same curve when that is the correct market-data policy:
 
 ```text
 default + projection:index:<SOFR index uid>:mid     -> USD OIS curve
+default + discount:index:<SOFR index uid>:mid       -> USD OIS curve
 default + z_spread_base:index:<SOFR index uid>:mid  -> USD OIS curve
 default + projection:index:<FedFunds index uid>:mid -> USD OIS curve
 ```
+
+Floating-rate bonds and swaps consume the projection and discount roles
+separately. The projection binding builds the floating index and forecasts the
+floating leg; the discount binding supplies the QuantLib discounting engine.
+Binding both roles to the same `curve_uid` is an explicit market-data policy.
+If the discount binding is absent, runtime pricing fails instead of reusing the
+projection curve.
+
+`Curve.curve_type` is not the same field as `role_key`. The role chooses the
+market-data binding. The curve type classifies the physical curve row and is
+validated only when a resolver caller supplies an explicit
+`expected_curve_type`.
 
 What is not allowed inside the same market-data set is two rows with the same
 `binding_key` pointing to different curves. To inspect every selector that uses

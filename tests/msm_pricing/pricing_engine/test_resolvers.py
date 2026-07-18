@@ -341,6 +341,97 @@ def test_select_curve_decouples_binding_role_from_expected_curve_type(monkeypatc
     ]
 
 
+def test_resolve_pricing_curve_does_not_validate_role_as_curve_type(monkeypatch) -> None:
+    index_uid = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    curve_uid = uuid.uuid4()
+    curve = Curve(
+        uid=curve_uid,
+        unique_identifier="USD-SOFR-PROJECTION-AS-DISCOUNT",
+        display_name="USD SOFR Projection Bound To Discount Role",
+        curve_type="projection",
+    )
+    calls = []
+
+    monkeypatch.setattr(
+        PricingMarketDataSetCurveBinding,
+        "resolve_index_curve_uid",
+        staticmethod(
+            lambda **kwargs: calls.append(("binding", kwargs)) or curve_uid
+        ),
+    )
+    monkeypatch.setattr(
+        Curve,
+        "get_by_uid",
+        staticmethod(lambda uid: calls.append(("curve", uid)) or curve),
+    )
+    monkeypatch.setattr(
+        CurveBuildingDetails,
+        "get_by_curve_uid",
+        staticmethod(
+            lambda uid: calls.append(("build_details", uid)) or _building_details(uid)
+        ),
+    )
+    monkeypatch.setattr(
+        resolvers.data_interface,
+        "get_historical_discount_curve",
+        lambda curve_unique_identifier, target_date, *, market_data_set=None: (
+            calls.append(("curve_data", curve_unique_identifier, target_date, market_data_set))
+            or ([{"days_to_maturity": 1, "zero": 0.05}], target_date)
+        ),
+    )
+
+    valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    handle = resolvers.resolve_pricing_curve(
+        index_uid=index_uid,
+        valuation_date=valuation_date,
+        curve_type="discount",
+        market_data_set="eod",
+        role_key="discount",
+    )
+
+    assert isinstance(handle, ql.YieldTermStructureHandle)
+    assert calls[:2] == [
+        (
+            "binding",
+            {
+                "market_data_set": "eod",
+                "role_key": "discount",
+                "index_uid": str(index_uid),
+                "quote_side": None,
+            },
+        ),
+        ("curve", curve_uid),
+    ]
+
+
+def test_resolve_pricing_curve_validates_explicit_expected_curve_type(monkeypatch) -> None:
+    index_uid = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    curve_uid = uuid.uuid4()
+    curve = Curve(
+        uid=curve_uid,
+        unique_identifier="USD-SOFR-PROJECTION-AS-DISCOUNT",
+        display_name="USD SOFR Projection Bound To Discount Role",
+        curve_type="projection",
+    )
+
+    monkeypatch.setattr(
+        PricingMarketDataSetCurveBinding,
+        "resolve_index_curve_uid",
+        staticmethod(lambda **_kwargs: curve_uid),
+    )
+    monkeypatch.setattr(Curve, "get_by_uid", staticmethod(lambda _uid: curve))
+
+    with pytest.raises(ValueError, match="curve_type='projection'.*not 'discount'"):
+        resolvers.resolve_pricing_curve(
+            index_uid=index_uid,
+            valuation_date=dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+            curve_type="discount",
+            expected_curve_type="discount",
+            market_data_set="eod",
+            role_key="discount",
+        )
+
+
 def test_resolve_curve_for_index_binding_uses_index_selector_without_curve_index_fk(
     monkeypatch,
 ) -> None:

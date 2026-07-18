@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from apps.v1.main import app
 from apps.v1.schemas.pricing_curves import Curve
+from msm_pricing.api import CurveDeleteConflictError
 
 
 def _curve_row(
@@ -23,6 +24,41 @@ def _curve_row(
         source="unit-test",
         metadata_json={"provider": "test"},
     )
+
+
+def _delete_impact_payload(
+    curve_uid: uuid.UUID,
+    *,
+    can_delete: bool = True,
+) -> dict[str, object]:
+    return {
+        "resource_type": "pricing_curve",
+        "uid": str(curve_uid),
+        "identifier": "USD-SOFR-DISCOUNT",
+        "display_name": "USD SOFR Discount Curve",
+        "can_delete": can_delete,
+        "blocking_count": 0 if can_delete else 2,
+        "affected_count": 2,
+        "delete_endpoint": f"/api/v1/pricing/curves/{curve_uid}/",
+        "relationships": [
+            {
+                "key": "pricing_curve_selections",
+                "label": "Pricing curve selections",
+                "model": "PricingMarketDataSetCurveBindingTable",
+                "column": "curve_uid",
+                "relationship_type": "direct",
+                "on_delete": "RESTRICT",
+                "count": 2,
+                "effect": "delete_cleanup" if can_delete else "blocks_delete",
+                "severity": "destructive" if can_delete else "blocking",
+                "blocks_delete": not can_delete,
+                "description": "Curve-selection rows point at this curve.",
+            }
+        ],
+        "warnings": ["Pricing curve-selection rows will be deleted."]
+        if can_delete
+        else ["Delete is blocked while pricing curve-selection rows point at this curve."],
+    }
 
 
 def test_pricing_curve_list_uses_paginated_source_list(monkeypatch) -> None:
@@ -323,6 +359,149 @@ def test_list_pricing_curve_selections_returns_404_when_missing(monkeypatch) -> 
     assert "missing-curve" in response.json()["detail"]
 
 
+def test_get_pricing_curve_delete_impact_returns_preflight(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_delete_impact(**kwargs):
+        captured.update(kwargs)
+        return _delete_impact_payload(curve_uid)
+
+    monkeypatch.setattr(
+        "apps.v1.routers.pricing_curves.get_pricing_curve_delete_impact",
+        fake_delete_impact,
+    )
+
+    client = TestClient(app)
+    response = client.get(
+        f"/api/v1/pricing/curves/{curve_uid}/delete-impact/",
+        params={
+            "delete_values": "true",
+            "delete_curve_selections": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["uid"] == str(curve_uid)
+    assert response.json()["can_delete"] is True
+    assert response.json()["relationships"][0]["effect"] == "delete_cleanup"
+    assert captured == {
+        "uid": str(curve_uid),
+        "delete_values": True,
+        "delete_curve_selections": True,
+    }
+
+
+def test_get_pricing_curve_delete_impact_returns_404_when_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.pricing_curves.get_pricing_curve_delete_impact",
+        lambda **kwargs: None,
+    )
+
+    client = TestClient(app)
+    response = client.get("/api/v1/pricing/curves/missing-curve/delete-impact/")
+
+    assert response.status_code == 404
+    assert "missing-curve" in response.json()["detail"]
+
+
+def test_delete_pricing_curve_deletes_with_explicit_cleanup_flags(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    data_node_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_delete_curve(**kwargs):
+        captured.update(kwargs)
+        return {
+            "detail": "Pricing curve deleted.",
+            "uid": str(curve_uid),
+            "curve_identifier": "USD-SOFR-DISCOUNT",
+            "deleted_count": 1,
+            "deleted_values_count": 4,
+            "deleted_curve_selections_count": 2,
+            "deleted_curve_building_details_count": 1,
+            "delete_values": True,
+            "delete_curve_selections": True,
+            "storage_cleanups": [
+                {
+                    "data_node_uid": str(data_node_uid),
+                    "storage_table_identifier": "DiscountCurvesStorage",
+                    "deleted_count": 4,
+                    "table_empty": False,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.routers.pricing_curves.delete_pricing_curve",
+        fake_delete_curve,
+    )
+
+    client = TestClient(app)
+    response = client.delete(
+        f"/api/v1/pricing/curves/{curve_uid}/",
+        params={
+            "delete_values": "true",
+            "delete_curve_selections": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "detail": "Pricing curve deleted.",
+        "uid": str(curve_uid),
+        "curve_identifier": "USD-SOFR-DISCOUNT",
+        "deleted_count": 1,
+        "deleted_values_count": 4,
+        "deleted_curve_selections_count": 2,
+        "deleted_curve_building_details_count": 1,
+        "delete_values": True,
+        "delete_curve_selections": True,
+        "storage_cleanups": [
+            {
+                "data_node_uid": str(data_node_uid),
+                "storage_table_identifier": "DiscountCurvesStorage",
+                "deleted_count": 4,
+                "table_empty": False,
+            }
+        ],
+    }
+    assert captured == {
+        "uid": str(curve_uid),
+        "delete_values": True,
+        "delete_curve_selections": True,
+    }
+
+
+def test_delete_pricing_curve_returns_404_when_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.pricing_curves.delete_pricing_curve",
+        lambda **kwargs: None,
+    )
+
+    client = TestClient(app)
+    response = client.delete("/api/v1/pricing/curves/missing-curve/")
+
+    assert response.status_code == 404
+    assert "missing-curve" in response.json()["detail"]
+
+
+def test_delete_pricing_curve_returns_409_for_delete_conflict(monkeypatch) -> None:
+    def fake_delete_curve(**kwargs):
+        raise CurveDeleteConflictError("Pricing curve deletion is blocked.")
+
+    monkeypatch.setattr(
+        "apps.v1.routers.pricing_curves.delete_pricing_curve",
+        fake_delete_curve,
+    )
+
+    client = TestClient(app)
+    response = client.delete("/api/v1/pricing/curves/blocked-curve/")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Pricing curve deletion is blocked."}
+
+
 def test_get_pricing_discount_curve_returns_latest_nodes(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
     market_data_set_uid = uuid.uuid4()
@@ -605,3 +784,92 @@ def test_pricing_curve_selection_service_uses_pricing_api(monkeypatch) -> None:
     assert response is not None
     assert response.count == 1
     assert response.results[0].selector.index_identifier == "USD-SOFR"
+
+
+def test_pricing_curve_delete_impact_service_uses_pricing_api(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "apps.v1.services.pricing_curves.ensure_apps_v1_pricing_runtime",
+        lambda: None,
+    )
+
+    def fake_delete_impact(**kwargs):
+        captured.update(kwargs)
+        return _delete_impact_payload(curve_uid)
+
+    monkeypatch.setattr(
+        "apps.v1.services.pricing_curves._get_curve_delete_impact",
+        fake_delete_impact,
+    )
+
+    from apps.v1.services.pricing_curves import get_pricing_curve_delete_impact
+
+    response = get_pricing_curve_delete_impact(
+        uid=str(curve_uid),
+        delete_values=True,
+        delete_curve_selections=True,
+    )
+
+    assert captured == {
+        "uid": str(curve_uid),
+        "delete_values": True,
+        "delete_curve_selections": True,
+    }
+    assert response is not None
+    assert response.can_delete is True
+
+
+def test_pricing_curve_delete_service_uses_pricing_api(monkeypatch) -> None:
+    curve_uid = uuid.uuid4()
+    data_node_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "apps.v1.services.pricing_curves.ensure_apps_v1_pricing_runtime",
+        lambda: None,
+    )
+
+    def fake_delete_curve(**kwargs):
+        captured.update(kwargs)
+        return {
+            "detail": "Pricing curve deleted.",
+            "uid": str(curve_uid),
+            "curve_identifier": "USD-SOFR-DISCOUNT",
+            "deleted_count": 1,
+            "deleted_values_count": 4,
+            "deleted_curve_selections_count": 2,
+            "deleted_curve_building_details_count": 1,
+            "delete_values": True,
+            "delete_curve_selections": True,
+            "storage_cleanups": [
+                {
+                    "data_node_uid": str(data_node_uid),
+                    "storage_table_identifier": "DiscountCurvesStorage",
+                    "deleted_count": 4,
+                    "table_empty": False,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.services.pricing_curves._delete_curve",
+        fake_delete_curve,
+    )
+
+    from apps.v1.services.pricing_curves import delete_pricing_curve
+
+    response = delete_pricing_curve(
+        uid=str(curve_uid),
+        delete_values=True,
+        delete_curve_selections=True,
+    )
+
+    assert captured == {
+        "uid": str(curve_uid),
+        "delete_values": True,
+        "delete_curve_selections": True,
+    }
+    assert response is not None
+    assert response.deleted_values_count == 4

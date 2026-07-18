@@ -12,7 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import math
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -53,9 +53,12 @@ from msm_pricing.valuation import (
 
 _FLOATING_ROLE_ATTRIBUTES = (
     ("floating_rate_index_uid", "projection"),
+    ("floating_rate_index_uid", "discount"),
     ("float_leg_index_uid", "projection"),
+    ("float_leg_index_uid", "discount"),
 )
 _BENCHMARK_ROLE_ATTRIBUTES = (("benchmark_rate_index_uid", "z_spread_base"),)
+_ROLE_OVERRIDE_KEYS = {"projection", "forwarding", "floating", "discount"}
 
 
 def build_scenario_curve_handle(
@@ -516,8 +519,53 @@ def _line_curve_handle_maps_from_resolutions(
     base_handles: dict[int, object] = {}
     scenario_handles_by_line: dict[int, object] = {}
     for line_index, line in enumerate(position.lines):
-        candidates = _dedupe_line_resolutions(by_line.get(line_index, ()))
+        line_resolutions = by_line.get(line_index, ())
+        candidates = _dedupe_line_resolutions(line_resolutions)
         if not candidates:
+            continue
+        role_override_candidates = _dedupe_line_role_resolutions(
+            candidate
+            for candidate in line_resolutions
+            if _override_role_key(candidate.role_key) in _ROLE_OVERRIDE_KEYS
+        )
+        if _requires_role_curve_overrides(line.instrument):
+            if not _supports_role_curve_overrides(line.instrument):
+                _record_or_raise(
+                    CurveScenarioDiagnostic(
+                        stage="line_curve_selection",
+                        line_index=line_index,
+                        message=(
+                            f"{type(line.instrument).__name__} must implement "
+                            "reset_curves(...) for projection and discount curve roles."
+                        ),
+                    ),
+                    diagnostics=diagnostics,
+                    strict=strict,
+                )
+                continue
+            if not _validate_required_role_overrides(
+                instrument=line.instrument,
+                candidates=role_override_candidates,
+                line_index=line_index,
+                diagnostics=diagnostics,
+                strict=strict,
+            ):
+                continue
+            _validate_unapplied_shocks(
+                applied=role_override_candidates,
+                candidates=candidates,
+                scenario=scenario,
+                diagnostics=diagnostics,
+                strict=strict,
+            )
+            base_handles[line_index], scenario_handles_by_line[line_index] = (
+                _role_curve_handle_maps_for_line(
+                    scenario=scenario,
+                    candidates=role_override_candidates,
+                    diagnostics=diagnostics,
+                    strict=strict,
+                )
+            )
             continue
         selected = _preferred_resolution(line.instrument, candidates)
         _validate_unselected_shocks(
@@ -553,6 +601,42 @@ def _line_curve_handle_maps_from_resolutions(
             selected.observed_z_spread_decimal,
         )
     return base_handles, scenario_handles_by_line
+
+
+def _role_curve_handle_maps_for_line(
+    *,
+    scenario: CurveScenario,
+    candidates: Sequence[ResolvedLineCurve],
+    diagnostics: list[CurveScenarioDiagnostic],
+    strict: bool,
+) -> tuple[dict[str, object], dict[str, object]]:
+    base_handles: dict[str, object] = {}
+    scenario_handles: dict[str, object] = {}
+    for candidate in candidates:
+        role_key = _override_role_key(candidate.role_key)
+        base_handles[role_key] = _apply_line_z_spread(
+            candidate.base_handle,
+            candidate,
+        )
+        selected_shock = scenario.shock_for(candidate.curve_identifier)
+        scenario_handle = (
+            candidate.base_handle if selected_shock.is_empty() else candidate.scenario_handle
+        )
+        if scenario_handle is None:
+            _record_or_raise(
+                CurveScenarioDiagnostic(
+                    stage="scenario_curve_selection",
+                    line_index=candidate.line_index,
+                    curve_identifier=candidate.curve_identifier,
+                    role_key=candidate.role_key,
+                    message="Non-empty curve shock has no scenario handle for selected line curve.",
+                ),
+                diagnostics=diagnostics,
+                strict=strict,
+            )
+            scenario_handle = candidate.base_handle
+        scenario_handles[role_key] = _apply_line_z_spread(scenario_handle, candidate)
+    return base_handles, scenario_handles
 
 
 def _normalize_line_curve_resolutions(
@@ -708,7 +792,7 @@ def _validate_unselected_shocks(
                 role_key=candidate.role_key,
                 message=(
                     "A non-empty shock was resolved for a related curve that cannot "
-                    "be applied through the current single reset_curve(...) override."
+                    "be applied through the current scalar curve override."
                 ),
             ),
             diagnostics=diagnostics,
@@ -716,15 +800,89 @@ def _validate_unselected_shocks(
         )
 
 
+def _validate_unapplied_shocks(
+    *,
+    applied: Sequence[ResolvedLineCurve],
+    candidates: Sequence[ResolvedLineCurve],
+    scenario: CurveScenario,
+    diagnostics: list[CurveScenarioDiagnostic],
+    strict: bool,
+) -> None:
+    applied_identifiers = {candidate.curve_identifier for candidate in applied}
+    for candidate in candidates:
+        if candidate.curve_identifier in applied_identifiers:
+            continue
+        if scenario.shock_for(candidate.curve_identifier).is_empty():
+            continue
+        _record_or_raise(
+            CurveScenarioDiagnostic(
+                stage="line_curve_selection",
+                line_index=candidate.line_index,
+                curve_identifier=candidate.curve_identifier,
+                role_key=candidate.role_key,
+                message=(
+                    "A non-empty shock was resolved for a related curve role that "
+                    "cannot be applied by the instrument's role-specific curve override."
+                ),
+            ),
+            diagnostics=diagnostics,
+            strict=strict,
+        )
+
+
+def _validate_required_role_overrides(
+    *,
+    instrument: InstrumentModel,
+    candidates: Sequence[ResolvedLineCurve],
+    line_index: int,
+    diagnostics: list[CurveScenarioDiagnostic],
+    strict: bool,
+) -> bool:
+    required_roles = _required_curve_override_roles(instrument)
+    present_roles = {_override_role_key(candidate.role_key) for candidate in candidates}
+    missing_roles = sorted(required_roles - present_roles)
+    if not missing_roles:
+        return True
+    _record_or_raise(
+        CurveScenarioDiagnostic(
+            stage="line_curve_selection",
+            line_index=line_index,
+            message=(
+                f"{type(instrument).__name__} requires curve handles for roles: "
+                f"{', '.join(missing_roles)}."
+            ),
+        ),
+        diagnostics=diagnostics,
+        strict=strict,
+    )
+    return False
+
+
 def _instrument_curve_requirements(
     instrument: InstrumentModel,
 ) -> tuple[tuple[uuid.UUID, str], ...]:
     requirements: list[tuple[uuid.UUID, str]] = []
-    for attribute_name, role_key in (*_FLOATING_ROLE_ATTRIBUTES, *_BENCHMARK_ROLE_ATTRIBUTES):
+    seen: set[tuple[uuid.UUID, str]] = set()
+    for attribute_name in ("floating_rate_index_uid", "float_leg_index_uid"):
         value = getattr(instrument, attribute_name, None)
         if value in (None, ""):
             continue
-        requirements.append((_coerce_uuid(value, field_name=attribute_name), role_key))
+        index_uid = _coerce_uuid(value, field_name=attribute_name)
+        for role_key in ("projection", "discount"):
+            key = (index_uid, role_key)
+            if key in seen:
+                continue
+            seen.add(key)
+            requirements.append(key)
+    for attribute_name, role_key in _BENCHMARK_ROLE_ATTRIBUTES:
+        value = getattr(instrument, attribute_name, None)
+        if value in (None, ""):
+            continue
+        key = (_coerce_uuid(value, field_name=attribute_name), role_key)
+        if key in seen:
+            continue
+        seen.add(key)
+        requirements.append(key)
     return tuple(requirements)
 
 
@@ -761,12 +919,48 @@ def _dedupe_line_resolutions(
     return tuple(out)
 
 
+def _dedupe_line_role_resolutions(
+    candidates: Iterable[ResolvedLineCurve],
+) -> tuple[ResolvedLineCurve, ...]:
+    out: list[ResolvedLineCurve] = []
+    seen_roles: set[str] = set()
+    for candidate in candidates:
+        role_key = _override_role_key(candidate.role_key)
+        if role_key in seen_roles:
+            continue
+        seen_roles.add(role_key)
+        out.append(candidate)
+    return tuple(out)
+
+
+def _supports_role_curve_overrides(instrument: InstrumentModel) -> bool:
+    return callable(getattr(instrument, "reset_curves", None))
+
+
+def _requires_role_curve_overrides(instrument: InstrumentModel) -> bool:
+    return any(
+        getattr(instrument, attribute_name, None) not in (None, "")
+        for attribute_name in ("floating_rate_index_uid", "float_leg_index_uid")
+    )
+
+
+def _required_curve_override_roles(instrument: InstrumentModel) -> set[str]:
+    if _requires_role_curve_overrides(instrument):
+        return {"projection", "discount"}
+    return set()
+
+
+def _override_role_key(role_key: str) -> str:
+    return "forwarding" if role_key == "floating" else role_key
+
+
 def _curve_shock_rows(
     *,
     scenario: CurveScenario,
     resolutions: Sequence[ResolvedLineCurve],
 ) -> tuple[Mapping[str, object], ...]:
     rows: dict[str, dict[str, object]] = {}
+    seen_lines: dict[str, set[int]] = {}
     for resolution in resolutions:
         row = rows.setdefault(
             resolution.curve_identifier,
@@ -777,7 +971,9 @@ def _curve_shock_rows(
                 "line_count": 0,
             },
         )
-        row["line_count"] = int(row["line_count"]) + 1
+        lines = seen_lines.setdefault(resolution.curve_identifier, set())
+        lines.add(resolution.line_index)
+        row["line_count"] = len(lines)
     return tuple(rows.values())
 
 
@@ -785,6 +981,12 @@ def _apply_observed_z_spread(handle: object, z_spread_decimal: float | None) -> 
     if z_spread_decimal is None or abs(z_spread_decimal) < 1e-15:
         return handle
     return apply_z_spread_to_curve(handle, z_spread_decimal)
+
+
+def _apply_line_z_spread(handle: object, resolution: ResolvedLineCurve) -> object:
+    if _override_role_key(resolution.role_key) != "discount":
+        return handle
+    return _apply_observed_z_spread(handle, resolution.observed_z_spread_decimal)
 
 
 def _observed_z_spread_decimal(metadata_json: Mapping[str, Any]) -> float | None:

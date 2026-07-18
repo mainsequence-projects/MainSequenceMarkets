@@ -29,7 +29,7 @@ from msm_pricing.valuation import (
 )
 
 
-class CurveOverrideInstrument(Instrument):
+class CurveScenarioInstrument(Instrument):
     price_value: float = 100.0
     floating_rate_index_uid: uuid.UUID | None = None
     float_leg_index_uid: uuid.UUID | None = None
@@ -37,8 +37,19 @@ class CurveOverrideInstrument(Instrument):
 
     _curve_bump: float = PrivateAttr(default=0.0)
 
-    def reset_curve(self, curve_handle: object) -> None:
-        self._curve_bump = float(curve_handle)
+    def reset_curves(
+        self,
+        *,
+        projection_curve: object | None = None,
+        forwarding_curve: object | None = None,
+        discount_curve: object | None = None,
+    ) -> None:
+        projection = projection_curve if projection_curve is not None else forwarding_curve
+        if projection is None:
+            raise ValueError("projection_curve is required")
+        if discount_curve is None:
+            raise ValueError("discount_curve is required")
+        self._curve_bump = float(discount_curve)
 
     def price(
         self, *, market_data_set: object = None, curve_quote_side: str | None = None
@@ -130,6 +141,9 @@ def _context_with_curve(
     )
     binding = _binding(index_uid=index_uid, curve_uid=curve.uid, role_key=role_key)
     context.curve_bindings[binding.binding_key] = binding
+    if role_key == "projection":
+        discount_binding = _binding(index_uid=index_uid, curve_uid=curve.uid, role_key="discount")
+        context.curve_bindings[discount_binding.binding_key] = discount_binding
     context.curves[curve.uid] = curve
     context.curve_building_details[curve.uid] = _details(curve.uid)
     context.curve_observations[curve.uid] = _observation(curve.unique_identifier)
@@ -141,8 +155,8 @@ def _context_with_curve(
 def test_price_curve_scenario_builds_shared_curve_once_and_delegates(monkeypatch) -> None:
     index_uid = uuid.uuid4()
     curve = _curve()
-    first = CurveOverrideInstrument(floating_rate_index_uid=index_uid)
-    second = CurveOverrideInstrument(floating_rate_index_uid=index_uid)
+    first = CurveScenarioInstrument(floating_rate_index_uid=index_uid)
+    second = CurveScenarioInstrument(floating_rate_index_uid=index_uid)
     position = ValuationPosition(
         valuation_date=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
         lines=[
@@ -187,8 +201,14 @@ def test_price_curve_scenario_builds_shared_curve_once_and_delegates(monkeypatch
     assert result.market_value_delta == pytest.approx(150.0)
     assert len(result.line_impacts) == 2
     assert result.curve_shocks[0]["curve_identifier"] == curve.unique_identifier
-    assert result.base_curve_handles_by_line == {0: 10.0, 1: 10.0}
-    assert result.scenario_curve_handles_by_line == {0: pytest.approx(60.0), 1: pytest.approx(60.0)}
+    assert result.base_curve_handles_by_line == {
+        0: {"projection": 10.0, "discount": 10.0},
+        1: {"projection": 10.0, "discount": 10.0},
+    }
+    assert result.scenario_curve_handles_by_line == {
+        0: {"projection": pytest.approx(60.0), "discount": pytest.approx(60.0)},
+        1: {"projection": pytest.approx(60.0), "discount": pytest.approx(60.0)},
+    }
     assert first._curve_bump == 0.0
     assert second._curve_bump == 0.0
 
@@ -196,7 +216,7 @@ def test_price_curve_scenario_builds_shared_curve_once_and_delegates(monkeypatch
 def test_price_curve_scenario_forwards_overnight_index_resolver(monkeypatch) -> None:
     index_uid = uuid.uuid4()
     curve = _curve()
-    instrument = CurveOverrideInstrument(floating_rate_index_uid=index_uid)
+    instrument = CurveScenarioInstrument(floating_rate_index_uid=index_uid)
     position = ValuationPosition(
         valuation_date=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
         lines=[ValuationLine(instrument=instrument, units=1.0)],
@@ -244,7 +264,7 @@ def test_price_curve_scenario_forwards_overnight_index_resolver(monkeypatch) -> 
 def test_empty_curve_scenario_reuses_base_handles(monkeypatch) -> None:
     index_uid = uuid.uuid4()
     curve = _curve()
-    instrument = CurveOverrideInstrument(floating_rate_index_uid=index_uid)
+    instrument = CurveScenarioInstrument(floating_rate_index_uid=index_uid)
     position = ValuationPosition(
         valuation_date=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
         lines=[ValuationLine(instrument=instrument, units=1.0)],
@@ -271,7 +291,7 @@ def test_empty_curve_scenario_reuses_base_handles(monkeypatch) -> None:
 def test_non_empty_unmatched_curve_shock_is_strict_preflight_failure() -> None:
     position = ValuationPosition(
         valuation_date=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
-        lines=[ValuationLine(instrument=CurveOverrideInstrument(), units=1.0)],
+        lines=[ValuationLine(instrument=CurveScenarioInstrument(), units=1.0)],
     )
     context = PricingValuationContext.prepare_for_position(position)
 
@@ -290,7 +310,7 @@ def test_unselected_related_curve_shock_is_not_silently_dropped(monkeypatch) -> 
     benchmark_index_uid = uuid.uuid4()
     projection_curve = _curve(unique_identifier="USD-PROJECTION")
     benchmark_curve = _curve(unique_identifier="USD-BENCHMARK")
-    instrument = CurveOverrideInstrument(
+    instrument = CurveScenarioInstrument(
         floating_rate_index_uid=projection_index_uid,
         benchmark_rate_index_uid=benchmark_index_uid,
     )
@@ -328,7 +348,7 @@ def test_unselected_related_curve_shock_is_not_silently_dropped(monkeypatch) -> 
         lambda **kwargs: float(kwargs["observation"]["nodes"][0]["zero"]) * 1000.0,
     )
 
-    with pytest.raises(RuntimeError, match="single reset_curve"):
+    with pytest.raises(RuntimeError, match="role-specific curve override"):
         price_curve_scenario(
             position,
             CurveScenario(
@@ -343,7 +363,7 @@ def test_unselected_related_curve_shock_is_not_silently_dropped(monkeypatch) -> 
 def test_diagnostic_mode_collects_unmatched_shock_errors() -> None:
     position = ValuationPosition(
         valuation_date=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
-        lines=[ValuationLine(instrument=CurveOverrideInstrument(), units=1.0)],
+        lines=[ValuationLine(instrument=CurveScenarioInstrument(), units=1.0)],
     )
     context = PricingValuationContext.prepare_for_position(position)
 
@@ -362,7 +382,7 @@ def test_diagnostic_mode_collects_unmatched_shock_errors() -> None:
 def test_z_spread_overlays_are_runtime_line_handles_only(monkeypatch) -> None:
     index_uid = uuid.uuid4()
     curve = _curve()
-    instrument = CurveOverrideInstrument(floating_rate_index_uid=index_uid)
+    instrument = CurveScenarioInstrument(floating_rate_index_uid=index_uid)
     position = ValuationPosition(
         valuation_date=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
         lines=[
@@ -411,8 +431,12 @@ def test_z_spread_overlays_are_runtime_line_handles_only(monkeypatch) -> None:
         context=context,
     )
 
-    assert captured["line_curve_handles"] == {0: "overlay:10.0:0.0025"}
-    assert captured["scenario_curve_handles"] == {0: "overlay:60.0:0.0025"}
+    assert captured["line_curve_handles"] == {
+        0: {"projection": 10.0, "discount": "overlay:10.0:0.0025"}
+    }
+    assert captured["scenario_curve_handles"] == {
+        0: {"projection": pytest.approx(60.0), "discount": "overlay:60.0:0.0025"}
+    }
     assert context.curve_handles[curve.uid] == 10.0
     assert result.market_value_delta == 1.0
 

@@ -83,9 +83,9 @@ def create_floating_rate_bond_with_curve(
     calendar: ql.Calendar | None = None,
     business_day_convention: int = ql.Following,
     settlement_days: int = 2,
-    curve: ql.YieldTermStructureHandle,
+    projection_curve: ql.YieldTermStructureHandle,
     seed_past_fixings_from_curve: bool = True,
-    discount_curve: ql.YieldTermStructureHandle | None = None,
+    discount_curve: ql.YieldTermStructureHandle,
     schedule: ql.Schedule | None = None,
     fixing_days: int | None = None,
     gearings: list[float] | None = None,
@@ -101,11 +101,11 @@ def create_floating_rate_bond_with_curve(
     ex_coupon_end_of_month: bool | None = None,
 ) -> ql.FloatingRateBond:
     """
-    Build/prices a floating-rate bond like your swap-with-curve:
-      - clone index to 'curve'
+    Build a floating-rate bond from explicit projection and discount curves:
+      - clone index to the projection curve
       - spot-start safeguard
-      - seed past/today fixings from the same curve
-      - discount with the same curve
+      - seed past/today fixings from the projection curve
+      - attach no engine here; callers attach a discount engine separately
     """
 
     # --- evaluation settings (match swap) ---
@@ -113,20 +113,22 @@ def create_floating_rate_bond_with_curve(
     ql.Settings.instance().includeReferenceDateEvents = False
     ql.Settings.instance().enforceTodaysHistoricFixings = False
 
-    if curve is None:
-        raise ValueError("create_floating_rate_bond_with_curve: 'curve' is None")
+    if projection_curve is None:
+        raise ValueError("create_floating_rate_bond_with_curve: projection_curve is None")
+    if discount_curve is None:
+        raise ValueError("create_floating_rate_bond_with_curve: discount_curve is None")
     # Probe the handle by attempting a discount on calculation_date.
     # If the handle is unlinked/invalid this will raise; we convert it to a clear message.
     try:
-        _ = curve.discount(calculation_date)
+        _ = projection_curve.discount(calculation_date)
     except Exception as e:
         raise ValueError(
-            "create_floating_rate_bond_with_curve: provided curve handle "
+            "create_floating_rate_bond_with_curve: provided projection curve handle "
             "is not linked or cannot discount on calculation_date"
         ) from e
 
     # --- index & calendars ---
-    pricing_index = floating_rate_index.clone(curve)  # forecast on the provided curve
+    pricing_index = floating_rate_index.clone(projection_curve)
     cal = calendar or pricing_index.fixingCalendar()
     freq = coupon_frequency or pricing_index.tenor()
     dc = day_count or pricing_index.dayCounter()
@@ -171,7 +173,7 @@ def create_floating_rate_bond_with_curve(
                 100.0,  # redemption (% of face)
                 issue_date,  # issue date
             )
-            zcb.setPricingEngine(ql.DiscountingBondEngine(curve))
+            zcb.setPricingEngine(ql.DiscountingBondEngine(discount_curve))
             return zcb
 
     # --------- Instrument ----------
@@ -203,7 +205,6 @@ def create_floating_rate_bond_with_curve(
     try:
         bond = ql.FloatingRateBond(**kwargs)
     except TypeError:
-        # fallback: keep your old positional call as the compat path
         bond = ql.FloatingRateBond(
             settlement_days,
             face,

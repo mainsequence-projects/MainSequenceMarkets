@@ -104,15 +104,21 @@ def price_vanilla_swap_with_curve(
     float_leg_tenor: ql.Period,
     float_leg_spread: float,
     ibor_index: ql.IborIndex,
-    curve: ql.YieldTermStructureHandle,
+    projection_curve: ql.YieldTermStructureHandle,
+    discount_curve: ql.YieldTermStructureHandle,
 ) -> ql.VanillaSwap:
     # --- evaluation settings ---
     ql.Settings.instance().evaluationDate = calculation_date
     ql.Settings.instance().includeReferenceDateEvents = False
     ql.Settings.instance().enforceTodaysHistoricFixings = False
 
+    if projection_curve is None:
+        raise ValueError("price_vanilla_swap_with_curve: projection_curve is None")
+    if discount_curve is None:
+        raise ValueError("price_vanilla_swap_with_curve: discount_curve is None")
+
     # index linked to the provided curve
-    pricing_ibor_index = ibor_index.clone(curve)
+    pricing_ibor_index = ibor_index.clone(projection_curve)
     calendar = pricing_ibor_index.fixingCalendar()
 
     # --------- EFFECTIVE DATES (spot start safeguard) ----------
@@ -176,12 +182,12 @@ def price_vanilla_swap_with_curve(
                 start = cup.accrualStartDate()
                 end = cup.accrualEndDate()
                 tau = dc.yearFraction(start, end)
-                df0 = curve.discount(start)
-                df1 = curve.discount(end)
+                df0 = projection_curve.discount(start)
+                df1 = projection_curve.discount(end)
                 fwd = (df0 / df1 - 1.0) / tau  # simple ACT/360
                 pricing_ibor_index.addFixing(fix, fwd)
 
-    swap.setPricingEngine(ql.DiscountingSwapEngine(curve))
+    swap.setPricingEngine(ql.DiscountingSwapEngine(discount_curve))
     return swap
 
 

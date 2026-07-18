@@ -692,11 +692,11 @@ class Bond(InstrumentModel):
         else:
             h = None
 
-            # 1) Index curve (floaters)
+            # 1) Default discount curve (floaters resolve role_key="discount")
             if h is None and getattr(self, "floating_rate_index_uid", None) is not None:
-                h = self.get_index_curve()
+                h = self._get_default_discount_curve()
                 selection_key = (
-                    "curve_source:floating|role:projection|"
+                    "curve_source:floating|role:discount|"
                     f"index:{getattr(self, 'floating_rate_index_uid')}|"
                     f"side:{self._curve_quote_side or 'default'}"
                 )
@@ -744,7 +744,7 @@ class Bond(InstrumentModel):
             if h is None:
                 raise ValueError(
                     "No discount curve available for z-spread. "
-                    "Pass `discount_curve=...`, implement get_index_curve(), "
+                    "Pass `discount_curve=...`, implement a default discount curve, "
                     "or set benchmark_rate_index_uid / default curve."
                 )
 
@@ -2061,6 +2061,7 @@ class _FloatingRateBondCommon(Bond):
 
     _index: ql.IborIndex | None = PrivateAttr(default=None)
     _index_observer: ql.Observer | None = PrivateAttr(default=None)
+    _discount_curve: ql.YieldTermStructureHandle | None = PrivateAttr(default=None)
 
     def _ensure_index(self) -> None:
         if self._index is not None:
@@ -2109,6 +2110,7 @@ class _FloatingRateBondCommon(Bond):
         self._flat_compounding = None
         self._flat_frequency = None
         self._index = None
+        self._discount_curve = None
 
         if old_observer is not None and old_handle is not None:
             try:
@@ -2130,37 +2132,96 @@ class _FloatingRateBondCommon(Bond):
     def _on_curve_selection_changed(self) -> None:
         self._on_valuation_date_set()
 
-    def reset_curve(self, curve: ql.YieldTermStructureHandle) -> None:
+    def reset_projection_curve(
+        self,
+        curve: ql.YieldTermStructureHandle | ql.YieldTermStructure,
+    ) -> None:
         if self.valuation_date is None:
-            raise ValueError("Set valuation_date before reset_curve().")
+            raise ValueError("Set valuation_date before reset_projection_curve().")
+
+        forwarding_curve = self._as_curve_handle(curve)
 
         self._index = self._get_index_by_uid(
             self.floating_rate_index_uid,
-            forwarding_curve=curve,
+            forwarding_curve=forwarding_curve,
             hydrate_fixings=True,
         )
 
         private = ql.RelinkableYieldTermStructureHandle()
-        link = curve.currentLink() if hasattr(curve, "currentLink") else curve
+        link = (
+            forwarding_curve.currentLink()
+            if hasattr(forwarding_curve, "currentLink")
+            else forwarding_curve
+        )
         private.linkTo(link)
         self._index = self._index.clone(private)
         self._register_index_observer()
+        self._invalidate_pricer()
 
-        self._bond = None
-        self._with_yield = None
-        self._flat_compounding = None
-        self._flat_frequency = None
+    def reset_discount_curve(
+        self,
+        curve: ql.YieldTermStructureHandle | ql.YieldTermStructure,
+    ) -> None:
+        self._discount_curve = self._as_curve_handle(curve)
+        self._invalidate_pricer()
+
+    def reset_curves(
+        self,
+        *,
+        projection_curve: ql.YieldTermStructureHandle | ql.YieldTermStructure | None = None,
+        forwarding_curve: ql.YieldTermStructureHandle | ql.YieldTermStructure | None = None,
+        discount_curve: ql.YieldTermStructureHandle | ql.YieldTermStructure | None = None,
+    ) -> None:
+        if projection_curve is not None and forwarding_curve is not None:
+            raise ValueError("Pass either projection_curve or forwarding_curve, not both.")
+        projection = projection_curve if projection_curve is not None else forwarding_curve
+        if projection is None:
+            raise ValueError("reset_curves requires projection_curve or forwarding_curve.")
+        if discount_curve is None:
+            raise ValueError("reset_curves requires discount_curve.")
+        self.reset_projection_curve(projection)
+        self.reset_discount_curve(discount_curve)
 
     def _fixings_version(self) -> int:
         return _INDEX_VERSION.get(id(self._index), 0) if self._index is not None else 0
 
     def _get_default_discount_curve(self) -> ql.YieldTermStructureHandle | None:
-        self._ensure_index()
-        return self._index.forwardingTermStructure()
+        if self._discount_curve is None:
+            self._discount_curve = self._resolve_curve_for_index_binding(role_key="discount")
+        return self._discount_curve
+
+    def get_discount_curve(self):
+        return self._get_default_discount_curve()
 
     def get_index_curve(self):
         self._ensure_index()
         return self._index.forwardingTermStructure()
+
+    def _resolve_curve_for_index_binding(self, *, role_key: str) -> ql.YieldTermStructureHandle:
+        if self.valuation_date is None:
+            raise ValueError("Set valuation_date before resolving index curve bindings.")
+        context = getattr(self, "_pricing_valuation_context", None)
+        if context is not None:
+            return context.resolve_curve_for_index_binding(
+                index_uid=self.floating_rate_index_uid,
+                role_key=role_key,
+                quote_side=self._curve_quote_side,
+            )
+        return resolve_curve_for_index_binding(
+            index_uid=self.floating_rate_index_uid,
+            valuation_date=self.valuation_date,
+            market_data_set=self._market_data_set_uid,
+            role_key=role_key,
+            quote_side=self._curve_quote_side,
+        )
+
+    def _as_curve_handle(
+        self,
+        curve: ql.YieldTermStructureHandle | ql.YieldTermStructure,
+    ) -> ql.YieldTermStructureHandle:
+        if isinstance(curve, ql.YieldTermStructureHandle):
+            return curve
+        return ql.YieldTermStructureHandle(curve)
 
     def _build_schedule(self) -> ql.Schedule:
         if self.schedule is not None:
@@ -2178,7 +2239,7 @@ class _FloatingRateBondCommon(Bond):
 
 
 class FloatingRateBond(_FloatingRateBondCommon):
-    """Floating-rate bond with specified floating rate index (backward compatible)."""
+    """Floating-rate bond with a backend index UID and explicit curve roles."""
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -2203,7 +2264,7 @@ class FloatingRateBond(_FloatingRateBondCommon):
             calendar=self.calendar,
             business_day_convention=self.business_day_convention,
             settlement_days=self.settlement_days,
-            curve=forecasting,
+            projection_curve=forecasting,
             discount_curve=discount_curve,
             seed_past_fixings_from_curve=True,
             schedule=self.schedule,

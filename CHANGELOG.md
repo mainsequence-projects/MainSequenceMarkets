@@ -9,6 +9,11 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Changed floating-rate bond and swap pricing to resolve projection and
+  discount curves independently through market-data-set curve bindings.
+  Projection curves build floating indexes and forecast coupons; discount
+  curves feed QuantLib discounting engines. The floating bond example, tutorial,
+  and pricing docs now demonstrate separate projection and discount curves.
 - Changed `MSDataInterface.get_historical_discount_curve_observations(...)` to
   read multi-curve latest-as-of observations through a backend window query
   instead of scanning full curve history into pandas.
@@ -77,9 +82,8 @@ and this project follows versioned releases.
   reconstruction functions when QuantLib pillar dates are required.
 - Extended `price_curve_scenario(...)` to forward `overnight_index` and
   `overnight_index_resolver` into helper-reconstructed scenario curve builds.
-- Updated `InterestRateSwap.reset_curve(...)` to accept a
-  `YieldTermStructureHandle` directly so prepared scenario handles work for swap
-  repricing as well as bond repricing.
+- Updated swap and floating-bond scenario repricing to use explicit
+  `reset_curves(projection_curve=..., discount_curve=...)` role handles.
 - Added `get_many_by_unique_identifier(...)` on typed row APIs such as
   `Asset` for batch canonical-identifier resolution.
 - Added reusable `command_center` helpers for ms-markets Command Center

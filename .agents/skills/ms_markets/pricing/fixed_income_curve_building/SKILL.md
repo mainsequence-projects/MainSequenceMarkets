@@ -130,6 +130,13 @@ The binding uniqueness boundary is `(market_data_set_uid, binding_key)`, where
 or selector types may deliberately select the same curve. Do not infer a single
 owning index or selector from a `Curve` row.
 
+Floating-rate bonds and swaps are non-mono-curve by default. Resolve the
+floating index with `role_key="projection"` or `role_key="forwarding"`, and
+resolve discounting with a separate `role_key="discount"` binding. It is valid
+to use one physical curve for both roles only when both role bindings explicitly
+point to the same `curve_uid`. Do not use `Curve.curve_type` as a role check
+unless the caller supplied an explicit `expected_curve_type`.
+
 ## Runtime Usability Invariant
 
 An active `Curve` row intended for runtime pricing is incomplete unless the
@@ -224,9 +231,19 @@ IndexConventionDetails.upsert(
     source="example",
 )
 
-curve = Curve.upsert(
-    unique_identifier="USD-SOFR-3M-DISCOUNT",
-    display_name="USD SOFR 3M Discount Curve",
+projection_curve = Curve.upsert(
+    unique_identifier="USD-SOFR-3M-PROJECTION",
+    display_name="USD SOFR 3M Projection Curve",
+    curve_type="projection",
+    currency_code="USD",
+    quote_side="mid",
+    interpolation_method="log_linear_discount",
+    compounding="compounded_annual",
+    source="example",
+)
+discount_curve = Curve.upsert(
+    unique_identifier="USD-OIS-DISCOUNT",
+    display_name="USD OIS Discount Curve",
     curve_type="discount",
     currency_code="USD",
     quote_side="mid",
@@ -240,7 +257,19 @@ market_data_set = PricingMarketDataSet.upsert(
     display_name="Default pricing market data",
 )
 CurveBuildingDetails.upsert(
-    curve_uid=curve.uid,
+    curve_uid=projection_curve.uid,
+    builder_type="zero_rate_curve",
+    quote_convention="zero_rate",
+    rate_unit="decimal",
+    day_counter_code="Actual360",
+    calendar_code="TARGET",
+    interpolation_method="log_linear_discount",
+    compounding="simple",
+    extrapolation_policy="enabled",
+    source="example",
+)
+CurveBuildingDetails.upsert(
+    curve_uid=discount_curve.uid,
     builder_type="zero_rate_curve",
     quote_convention="zero_rate",
     rate_unit="decimal",
@@ -256,7 +285,15 @@ PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
     role_key="projection",
     index_uid=index.uid,
     quote_side="mid",
-    curve_uid=curve.uid,
+    curve_uid=projection_curve.uid,
+    source="example",
+)
+PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
+    market_data_set_uid=market_data_set.uid,
+    role_key="discount",
+    index_uid=index.uid,
+    quote_side="mid",
+    curve_uid=discount_curve.uid,
     source="example",
 )
 PricingMarketDataSetBinding.upsert(
@@ -524,12 +561,13 @@ An example should print or otherwise expose each step:
 
 1. Register asset/index/reference rows.
 2. Upsert `IndexConventionDetails`.
-3. Upsert `Curve`.
-4. Upsert `CurveBuildingDetails`.
+3. Upsert projection and discount `Curve` rows.
+4. Upsert `CurveBuildingDetails` for both curves.
 5. Upsert `PricingMarketDataSetCurveBinding` through
-   `upsert_index_curve_selection(...)` for index-scoped selections.
+   `upsert_index_curve_selection(...)` for `projection` and `discount`
+   index-scoped selections.
 6. Publish fixings.
-7. Publish discount curves.
+7. Publish projection and discount curve observations.
 8. Attach pricing storage tables and upsert the pricing market-data set plus
    `PricingMarketDataSetBinding` rows explicitly.
 9. Attach/load the instrument by asset.

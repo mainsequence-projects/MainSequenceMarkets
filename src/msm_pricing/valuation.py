@@ -847,6 +847,8 @@ class PricingValuationContext:
         requirements: tuple[IndexCurveRequirement, ...],
     ) -> None:
         for requirement in requirements:
+            if requirement.role_key not in {"projection", "forwarding", "floating"}:
+                continue
             self.quantlib_indexes[requirement.binding_key] = self.resolve_quantlib_index(
                 requirement.index_uid,
                 role_key=requirement.role_key,
@@ -983,13 +985,8 @@ def _instrument_index_curve_requirements(
 
     requirements: list[IndexCurveRequirement] = []
     seen: set[str] = set()
-    role_attributes = (
-        ("floating_rate_index_uid", "projection"),
-        ("float_leg_index_uid", "projection"),
-        ("benchmark_rate_index_uid", "z_spread_base"),
-    )
     for instrument in instruments:
-        for attribute_name, role_key in role_attributes:
+        for attribute_name, role_key in _instrument_curve_role_attributes(instrument):
             value = getattr(instrument, attribute_name, None)
             if value is None:
                 continue
@@ -1012,6 +1009,20 @@ def _instrument_index_curve_requirements(
                 )
             )
     return tuple(requirements)
+
+
+def _instrument_curve_role_attributes(
+    instrument: InstrumentModel,
+) -> tuple[tuple[str, str], ...]:
+    role_attributes: list[tuple[str, str]] = []
+    for attribute_name in ("floating_rate_index_uid", "float_leg_index_uid"):
+        if getattr(instrument, attribute_name, None) is None:
+            continue
+        role_attributes.append((attribute_name, "projection"))
+        role_attributes.append((attribute_name, "discount"))
+    if getattr(instrument, "benchmark_rate_index_uid", None) is not None:
+        role_attributes.append(("benchmark_rate_index_uid", "z_spread_base"))
+    return tuple(role_attributes)
 
 
 def _instrument_keys(
@@ -1054,26 +1065,32 @@ def _apply_curve_handle_overrides(
 ) -> None:
     if curve_handles is None:
         return
+    if isinstance(curve_handles, Mapping):
+        reset_curves = getattr(instrument, "reset_curves", None)
+        if not callable(reset_curves):
+            raise TypeError(
+                f"{type(instrument).__name__} must implement reset_curves(...) "
+                "to consume role-specific curve handles."
+            )
+        if not any(value is not None for value in curve_handles.values()):
+            raise ValueError("curve_handles mapping must contain at least one non-null handle.")
+        reset_curves(
+            projection_curve=curve_handles.get("projection"),
+            forwarding_curve=curve_handles.get("forwarding") or curve_handles.get("floating"),
+            discount_curve=curve_handles.get("discount"),
+        )
+        return
+    reset_curves = getattr(instrument, "reset_curves", None)
+    if callable(reset_curves):
+        raise TypeError(
+            f"{type(instrument).__name__} requires role-specific curve handles."
+        )
     reset_curve = getattr(instrument, "reset_curve", None)
     if not callable(reset_curve):
         raise TypeError(
             f"{type(instrument).__name__} does not support scenario curve-handle overrides."
         )
-    curve_handle = _first_curve_handle(curve_handles)
-    reset_curve(curve_handle)
-
-
-def _first_curve_handle(curve_handles: Mapping[str, Any] | Any) -> Any:
-    if not isinstance(curve_handles, Mapping):
-        return curve_handles
-    for key in ("default", "discount", "projection", "forwarding"):
-        value = curve_handles.get(key)
-        if value is not None:
-            return value
-    for value in curve_handles.values():
-        if value is not None:
-            return value
-    raise ValueError("curve_handles mapping must contain at least one non-null handle.")
+    reset_curve(curve_handles)
 
 
 def _normalize_quote_side(value: str | None) -> str | None:

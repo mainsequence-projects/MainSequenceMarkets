@@ -4,19 +4,25 @@ import datetime as dt
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from starlette import status as http_status
 
 from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary, build_paginated_response
+from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.pricing_curves import (
+    CurveDeleteResponse,
     CurveListResponse,
     CurveSelectionsResponse,
     DiscountCurveResponse,
 )
 from apps.v1.services.pricing_curves import (
+    delete_pricing_curve,
+    get_pricing_curve_delete_impact,
     get_pricing_curve_discount_curve,
     get_pricing_curve_summary,
     list_pricing_curve_selections,
     list_pricing_curves,
 )
+from msm_pricing.api import CurveDeleteConflictError
 
 router = APIRouter(prefix="/pricing/curves", tags=["pricing-curve"])
 
@@ -132,6 +138,117 @@ def get_pricing_curve_summary_by_uid(uid: str) -> FrontEndDetailSummary:
 )
 def list_pricing_curve_selections_by_uid(uid: str) -> CurveSelectionsResponse:
     response = list_pricing_curve_selections(uid=uid)
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"Pricing curve {uid!r} was not found.")
+    return response
+
+
+@router.get(
+    "/{uid}/delete-impact/",
+    response_model=DeleteImpactResponse,
+    summary="Preview pricing curve delete impact",
+    description=(
+        "Return the rows and storage observations that would block or be affected by "
+        "deleting one pricing curve. Set `delete_values=true` to include scoped "
+        "discount-curve observation cleanup in the preview, and "
+        "`delete_curve_selections=true` to include market-data-set curve-selection cleanup."
+    ),
+    operation_id="getPricingCurveDeleteImpact",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested pricing curve uid was not found.",
+        }
+    },
+)
+def get_pricing_curve_delete_impact_by_uid(
+    uid: str,
+    delete_values: Annotated[
+        bool,
+        Query(
+            description=(
+                "When true, preview deletion of timestamped discount-curve observations "
+                "for this curve_identifier."
+            ),
+        ),
+    ] = False,
+    delete_curve_selections: Annotated[
+        bool,
+        Query(
+            description=(
+                "When true, preview deletion of market-data-set curve-selection rows "
+                "that point at this curve."
+            ),
+        ),
+    ] = False,
+) -> DeleteImpactResponse:
+    response = get_pricing_curve_delete_impact(
+        uid=uid,
+        delete_values=delete_values,
+        delete_curve_selections=delete_curve_selections,
+    )
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"Pricing curve {uid!r} was not found.")
+    return response
+
+
+@router.delete(
+    "/{uid}/",
+    response_model=CurveDeleteResponse,
+    summary="Delete pricing curve",
+    description=(
+        "Delete one pricing curve registry row. Curve-building details cascade by database "
+        "foreign key. Discount-curve observations and market-data-set curve selections are "
+        "deleted only when their explicit cleanup flags are true."
+    ),
+    operation_id="deletePricingCurve",
+    status_code=http_status.HTTP_200_OK,
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "Invalid pricing curve delete request.",
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested pricing curve uid was not found.",
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "The pricing curve has dependent rows not covered by flags.",
+        },
+    },
+)
+def delete_pricing_curve_by_uid(
+    uid: str,
+    delete_values: Annotated[
+        bool,
+        Query(
+            description=(
+                "Delete timestamped discount-curve observations for this curve_identifier "
+                "before deleting the curve."
+            ),
+        ),
+    ] = False,
+    delete_curve_selections: Annotated[
+        bool,
+        Query(
+            description=(
+                "Delete market-data-set curve-selection rows that point at this curve "
+                "before deleting the curve."
+            ),
+        ),
+    ] = False,
+) -> CurveDeleteResponse:
+    try:
+        response = delete_pricing_curve(
+            uid=uid,
+            delete_values=delete_values,
+            delete_curve_selections=delete_curve_selections,
+        )
+    except CurveDeleteConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if response is None:
         raise HTTPException(status_code=404, detail=f"Pricing curve {uid!r} was not found.")
     return response

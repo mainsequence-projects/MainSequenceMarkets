@@ -40,23 +40,34 @@ class ThirtyDayDiscountInstrument(Instrument):
     notional: float
     floating_rate_index_uid: uuid.UUID
 
-    _curve_handle: ql.YieldTermStructureHandle | None = PrivateAttr(default=None)
+    _discount_curve_handle: ql.YieldTermStructureHandle | None = PrivateAttr(default=None)
 
-    def reset_curve(self, curve_handle: ql.YieldTermStructureHandle) -> None:
-        self._curve_handle = curve_handle
+    def reset_curves(
+        self,
+        *,
+        projection_curve: ql.YieldTermStructureHandle | None = None,
+        forwarding_curve: ql.YieldTermStructureHandle | None = None,
+        discount_curve: ql.YieldTermStructureHandle | None = None,
+    ) -> None:
+        projection = projection_curve if projection_curve is not None else forwarding_curve
+        if projection is None:
+            raise RuntimeError("projection curve was not injected")
+        if discount_curve is None:
+            raise RuntimeError("discount curve was not injected")
+        self._discount_curve_handle = discount_curve
 
     def price(self, *, market_data_set: object = None, curve_quote_side: str | None = None) -> float:
         if self.valuation_date is None:
             raise RuntimeError("valuation_date was not prepared")
-        if self._curve_handle is None:
-            raise RuntimeError("curve handle was not injected")
+        if self._discount_curve_handle is None:
+            raise RuntimeError("discount curve handle was not injected")
         ql.Settings.instance().evaluationDate = ql.Date(
             self.valuation_date.day,
             self.valuation_date.month,
             self.valuation_date.year,
         )
         target = ql.Settings.instance().evaluationDate + 30
-        return self.notional * float(self._curve_handle.discount(target))
+        return self.notional * float(self._discount_curve_handle.discount(target))
 
 
 def build_curve_scenario_example() -> dict[str, Any]:
@@ -144,6 +155,21 @@ def build_curve_scenario_example() -> dict[str, Any]:
         curve_uid=curve.uid,
     )
     context.curve_bindings[binding.binding_key] = binding
+    discount_binding = PricingMarketDataSetCurveBinding(
+        uid=uuid.UUID("00000000-0000-4000-8000-000000000402"),
+        market_data_set_uid=uuid.UUID("00000000-0000-4000-8000-000000000501"),
+        binding_key=curve_binding_key(
+            role_key="discount",
+            selector_type="index",
+            selector_key=str(index_uid),
+            quote_side=None,
+        ),
+        role_key="discount",
+        selector_type="index",
+        selector_key=str(index_uid),
+        curve_uid=curve.uid,
+    )
+    context.curve_bindings[discount_binding.binding_key] = discount_binding
     context.curves[curve.uid] = curve
     context.curve_building_details[curve.uid] = building_details
     context.curve_observations[curve.uid] = observation

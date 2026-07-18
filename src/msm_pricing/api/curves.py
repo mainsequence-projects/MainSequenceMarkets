@@ -11,6 +11,7 @@ from msm.api.base import _warn_deprecated_create_schemas, operation_result_rows
 from msm.repositories.crud import (
     count_model,
     create_model,
+    delete_model,
     get_model_by_uid,
     get_model_by_unique_identifier,
     search_model,
@@ -19,6 +20,7 @@ from msm.repositories.crud import (
 )
 
 from msm_pricing.bootstrap import attach_pricing_schemas, resolve_pricing_runtime
+from msm_pricing.data_nodes.curves.storage import CURVE_IDENTIFIER_DIMENSION
 from msm_pricing.models.curves import CurveTable
 from msm_pricing.settings import PRICING_CONCEPT_DISCOUNT_CURVES
 
@@ -122,6 +124,113 @@ class Curve(BaseModel):
             values=values,
         )
         return cls._from_operation_result(result)
+
+    @classmethod
+    def get_delete_impact(
+        cls,
+        *,
+        uid: uuid.UUID | str,
+        delete_values: bool = False,
+        delete_curve_selections: bool = False,
+    ) -> dict[str, Any] | None:
+        curve = cls.get_by_uid(uid)
+        if curve is None:
+            return None
+
+        context = _active_curve_delete_context()
+        relationships = _curve_delete_relationships(
+            context=context,
+            curve=curve,
+            delete_values=delete_values,
+            delete_curve_selections=delete_curve_selections,
+        )
+        blocking_count = sum(item["count"] for item in relationships if item["blocks_delete"])
+        affected_count = sum(item["count"] for item in relationships)
+
+        return {
+            "resource_type": "pricing_curve",
+            "uid": curve.uid,
+            "identifier": curve.unique_identifier,
+            "display_name": curve.display_name,
+            "can_delete": blocking_count == 0,
+            "blocking_count": blocking_count,
+            "affected_count": affected_count,
+            "delete_endpoint": f"/api/v1/pricing/curves/{curve.uid}/",
+            "relationships": relationships,
+            "warnings": _curve_delete_warnings(
+                relationships=relationships,
+                delete_values=delete_values,
+                delete_curve_selections=delete_curve_selections,
+            ),
+        }
+
+    @classmethod
+    def delete(
+        cls,
+        uid: uuid.UUID | str,
+        *,
+        delete_values: bool = False,
+        delete_curve_selections: bool = False,
+    ) -> dict[str, Any] | None:
+        curve = cls.get_by_uid(uid)
+        if curve is None:
+            return None
+
+        impact = cls.get_delete_impact(
+            uid=curve.uid,
+            delete_values=delete_values,
+            delete_curve_selections=delete_curve_selections,
+        )
+        if impact is None:
+            return None
+        if not impact["can_delete"]:
+            raise CurveDeleteConflictError(_format_curve_delete_blockers(impact))
+
+        context = _active_curve_delete_context()
+        storage_cleanups = (
+            _delete_discount_curve_values(
+                context=context,
+                curve_identifier=curve.unique_identifier,
+            )
+            if delete_values
+            else []
+        )
+        deleted_curve_selections_count = (
+            _delete_curve_selection_rows(curve_uid=curve.uid)
+            if delete_curve_selections
+            else 0
+        )
+        try:
+            result = delete_model(context, model=cls.__table__, uid=curve.uid)
+        except Exception as exc:
+            if _is_delete_conflict(exc):
+                raise CurveDeleteConflictError(
+                    "Pricing curve deletion was blocked by a database foreign-key "
+                    f"reference not covered by preflight checks. Backend error: {exc}"
+                ) from exc
+            raise
+
+        deleted_count = _deleted_count(result)
+        if deleted_count == 0:
+            raise CurveDeleteConflictError(
+                "Pricing curve deletion was blocked by a concurrent state change."
+            )
+
+        return {
+            "detail": "Pricing curve deleted.",
+            "uid": curve.uid,
+            "curve_identifier": curve.unique_identifier,
+            "deleted_count": deleted_count,
+            "deleted_values_count": sum(item["deleted_count"] for item in storage_cleanups),
+            "deleted_curve_selections_count": deleted_curve_selections_count,
+            "deleted_curve_building_details_count": _relationship_count(
+                impact,
+                key="curve_building_details",
+            ),
+            "delete_values": delete_values,
+            "delete_curve_selections": delete_curve_selections,
+            "storage_cleanups": storage_cleanups,
+        }
 
     @classmethod
     def get_by_uid(cls, uid: uuid.UUID | str) -> Curve | None:
@@ -604,6 +713,439 @@ def _count_from_operation_result(result: Mapping[str, Any] | list[Any] | None) -
     return int(rows[0].get("count") or 0)
 
 
+class CurveDeleteConflictError(ValueError):
+    """Raised when a curve cannot be deleted with the requested cleanup flags."""
+
+
+def _active_curve_delete_context():
+    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+    from msm_pricing.models.curve_building_details import CurveBuildingDetailsTable
+    from msm_pricing.models.market_data_bindings import (
+        PricingMarketDataSetBindingTable,
+        PricingMarketDataSetCurveBindingTable,
+        PricingMarketDataSetTable,
+    )
+
+    runtime = resolve_pricing_runtime(
+        models=[
+            CurveTable,
+            CurveBuildingDetailsTable,
+            PricingMarketDataSetTable,
+            PricingMarketDataSetBindingTable,
+            PricingMarketDataSetCurveBindingTable,
+            DiscountCurvesStorage,
+        ],
+        row_model_name="Curve delete",
+    )
+    return runtime.context
+
+
+def _curve_delete_relationships(
+    *,
+    context: Any,
+    curve: Curve,
+    delete_values: bool,
+    delete_curve_selections: bool,
+) -> list[dict[str, Any]]:
+    from msm_pricing.models.curve_building_details import CurveBuildingDetailsTable
+    from msm_pricing.models.market_data_bindings import PricingMarketDataSetCurveBindingTable
+
+    curve_building_details_count = _count_model_rows(
+        context,
+        model=CurveBuildingDetailsTable,
+        filters={"curve_uid": curve.uid},
+    )
+    curve_selection_count = _count_model_rows(
+        context,
+        model=PricingMarketDataSetCurveBindingTable,
+        filters={"curve_uid": curve.uid},
+    )
+    observation_count, unsupported_storage_count, storage_scope_count = (
+        _discount_curve_observation_impact_counts(
+            context=context,
+            curve_identifier=curve.unique_identifier,
+        )
+    )
+    observation_relationship_count = observation_count + unsupported_storage_count
+
+    return [
+        {
+            "key": "curve_building_details",
+            "label": "Curve building details",
+            "model": "CurveBuildingDetailsTable",
+            "column": "curve_uid",
+            "relationship_type": "direct",
+            "on_delete": "CASCADE",
+            "count": curve_building_details_count,
+            "effect": "cascade_delete",
+            "severity": "destructive",
+            "blocks_delete": False,
+            "description": (
+                "Curve-owned build details are keyed by this curve and cascade "
+                "when the curve row is deleted."
+            ),
+        },
+        {
+            "key": "pricing_curve_selections",
+            "label": "Pricing curve selections",
+            "model": "PricingMarketDataSetCurveBindingTable",
+            "column": "curve_uid",
+            "relationship_type": "direct",
+            "on_delete": "RESTRICT",
+            "count": curve_selection_count,
+            "effect": "delete_cleanup" if delete_curve_selections else "blocks_delete",
+            "severity": "destructive" if delete_curve_selections else "blocking",
+            "blocks_delete": curve_selection_count > 0 and not delete_curve_selections,
+            "description": (
+                "Market-data-set curve-selection rows point at this curve. They "
+                "must be removed or explicitly deleted before deleting the curve."
+            ),
+        },
+        {
+            "key": "discount_curve_observations",
+            "label": "Discount curve observations",
+            "model": "DiscountCurvesStorage",
+            "column": CURVE_IDENTIFIER_DIMENSION,
+            "relationship_type": "direct",
+            "on_delete": "RESTRICT",
+            "count": observation_relationship_count,
+            "effect": "delete_cleanup"
+            if delete_values and unsupported_storage_count == 0
+            else "blocks_delete",
+            "severity": "destructive"
+            if delete_values and unsupported_storage_count == 0
+            else "blocking",
+            "blocks_delete": observation_relationship_count > 0
+            and (not delete_values or unsupported_storage_count > 0),
+            "description": (
+                "Timestamped discount-curve rows reference this curve by "
+                "curve_identifier. Cleanup uses TimeIndexMetaTable.delete_after_date "
+                "with a scoped curve_identifier dimension filter."
+            ),
+        },
+        {
+            "key": "discount_curve_storage_sources",
+            "label": "Discount curve storage sources",
+            "model": "PricingMarketDataSetBindingTable",
+            "column": "data_node_uid",
+            "relationship_type": "indirect",
+            "on_delete": "NO ACTION",
+            "count": storage_scope_count,
+            "effect": "informational",
+            "severity": "info",
+            "blocks_delete": False,
+            "description": (
+                "Unique discount_curves storage tables checked for curve observations. "
+                "Market-data-set source bindings are not deleted with the curve."
+            ),
+        },
+    ]
+
+
+def _discount_curve_observation_impact_counts(
+    *,
+    context: Any,
+    curve_identifier: str,
+) -> tuple[int, int, int]:
+    observation_count = 0
+    unsupported_storage_count = 0
+    storage_scopes = _discount_curve_storage_scopes(context=context)
+    for scope in storage_scopes:
+        if not _storage_scope_supports_curve_identifier(scope):
+            unsupported_storage_count += 1
+            continue
+        observation_count += _count_discount_curve_storage_scope(
+            scope,
+            curve_identifier=curve_identifier,
+            timeout=context.timeout,
+        )
+    return observation_count, unsupported_storage_count, len(storage_scopes)
+
+
+def _count_model_rows(context: Any, *, model: type[Any], filters: dict[str, Any]) -> int:
+    return _count_from_operation_result(
+        count_model(
+            context,
+            model=model,
+            filters=filters,
+        )
+    )
+
+
+def _discount_curve_storage_scopes(*, context: Any) -> list[dict[str, Any]]:
+    from mainsequence.client.metatables import TimeIndexMetaTable
+    from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
+    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+
+    scopes: dict[str, dict[str, Any]] = {}
+    canonical_storage = DiscountCurvesStorage.get_time_index_meta_table()
+    if canonical_storage is not None:
+        _add_discount_curve_storage_scope(
+            scopes,
+            time_index_meta_table=canonical_storage,
+            data_node_uid=str(canonical_storage.uid),
+            storage_table_identifier=_storage_identifier(canonical_storage),
+            source="canonical",
+        )
+
+    bindings = PricingMarketDataSetBinding.filter(
+        limit=5000,
+        concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
+    )
+    for binding in bindings:
+        data_node_uid = str(binding.data_node_uid)
+        if data_node_uid in scopes:
+            scopes[data_node_uid]["market_data_binding_count"] += 1
+            continue
+        try:
+            storage = TimeIndexMetaTable.get_by_uid(
+                data_node_uid,
+                timeout=context.timeout,
+            )
+        except Exception as exc:
+            scopes[data_node_uid] = {
+                "data_node_uid": data_node_uid,
+                "storage_table_identifier": binding.storage_table_identifier,
+                "time_index_meta_table": None,
+                "market_data_binding_count": 1,
+                "source": "market_data_set_binding",
+                "unsupported_reason": str(exc),
+            }
+            continue
+        _add_discount_curve_storage_scope(
+            scopes,
+            time_index_meta_table=storage,
+            data_node_uid=data_node_uid,
+            storage_table_identifier=binding.storage_table_identifier
+            or _storage_identifier(storage),
+            source="market_data_set_binding",
+        )
+    return list(scopes.values())
+
+
+def _add_discount_curve_storage_scope(
+    scopes: dict[str, dict[str, Any]],
+    *,
+    time_index_meta_table: Any,
+    data_node_uid: str,
+    storage_table_identifier: str | None,
+    source: str,
+) -> None:
+    scopes[data_node_uid] = {
+        "data_node_uid": data_node_uid,
+        "storage_table_identifier": storage_table_identifier,
+        "time_index_meta_table": time_index_meta_table,
+        "market_data_binding_count": 0 if source == "canonical" else 1,
+        "source": source,
+        "unsupported_reason": None,
+    }
+
+
+def _storage_scope_supports_curve_identifier(scope: Mapping[str, Any]) -> bool:
+    table = scope.get("time_index_meta_table")
+    if table is None:
+        return False
+    if CURVE_IDENTIFIER_DIMENSION not in _storage_column_names(table):
+        scope["unsupported_reason"] = "Storage table has no curve_identifier column."
+        return False
+    table_index_names = set(getattr(table, "table_index_names", None) or [])
+    if CURVE_IDENTIFIER_DIMENSION not in table_index_names:
+        scope["unsupported_reason"] = (
+            "Storage table does not declare curve_identifier as an index dimension."
+        )
+        return False
+    return True
+
+
+def _storage_column_names(table: Any) -> set[str]:
+    names: set[str] = set()
+    for column in getattr(table, "columns", None) or []:
+        if isinstance(column, Mapping):
+            name = column.get("name")
+        else:
+            name = getattr(column, "name", None)
+        if name not in (None, ""):
+            names.add(str(name))
+    return names
+
+
+def _count_discount_curve_storage_scope(
+    scope: Mapping[str, Any],
+    *,
+    curve_identifier: str,
+    timeout: int | None,
+) -> int:
+    table = scope["time_index_meta_table"]
+    result = table.run_query(
+        _curve_observation_count_sql(
+            table=table,
+            curve_identifier=curve_identifier,
+        ),
+        timeout=timeout,
+    )
+    return _count_from_operation_result(result)
+
+
+def _curve_observation_count_sql(*, table: Any, curve_identifier: str) -> str:
+    table_name = _qualified_table_name(
+        schema=getattr(table, "physical_schema", None),
+        table=getattr(table, "physical_table_name", None),
+    )
+    return (
+        f"SELECT COUNT(*) AS count FROM {table_name} "
+        f"WHERE {_quote_identifier(CURVE_IDENTIFIER_DIMENSION)} = "
+        f"{_quote_literal(curve_identifier)}"
+    )
+
+
+def _qualified_table_name(*, schema: str | None, table: str | None) -> str:
+    if table in (None, ""):
+        raise RuntimeError("TimeIndexMetaTable is missing physical_table_name.")
+    if schema in (None, ""):
+        return _quote_identifier(str(table))
+    return f"{_quote_identifier(str(schema))}.{_quote_identifier(str(table))}"
+
+
+def _quote_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
+
+
+def _quote_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _storage_identifier(table: Any) -> str | None:
+    identifier = getattr(table, "identifier", None)
+    if identifier in (None, ""):
+        return None
+    return str(identifier)
+
+
+def _curve_delete_warnings(
+    *,
+    relationships: list[dict[str, Any]],
+    delete_values: bool,
+    delete_curve_selections: bool,
+) -> list[str]:
+    warnings: list[str] = []
+    relationship_by_key = {item["key"]: item for item in relationships}
+    curve_selections = relationship_by_key["pricing_curve_selections"]
+    observations = relationship_by_key["discount_curve_observations"]
+    build_details = relationship_by_key["curve_building_details"]
+
+    if curve_selections["count"] > 0 and not delete_curve_selections:
+        warnings.append(
+            "Delete is blocked while pricing curve-selection rows point at this curve."
+        )
+    elif curve_selections["count"] > 0:
+        warnings.append("Pricing curve-selection rows will be deleted.")
+
+    if observations["count"] > 0 and not delete_values:
+        warnings.append(
+            "Delete is blocked while discount-curve observations reference this curve."
+        )
+    elif observations["count"] > 0 and observations["blocks_delete"]:
+        warnings.append(
+            "Delete is blocked because at least one discount-curve storage table "
+            "cannot be safely cleaned for this curve_identifier."
+        )
+    elif observations["count"] > 0:
+        warnings.append("Discount-curve observations will be deleted.")
+
+    if build_details["count"] > 0:
+        warnings.append("Curve building details will be deleted by database cascade.")
+
+    if not warnings:
+        warnings.append("No dependent rows were found for this pricing curve.")
+    return warnings
+
+
+def _format_curve_delete_blockers(impact: Mapping[str, Any]) -> str:
+    blockers = [
+        relationship
+        for relationship in impact.get("relationships", [])
+        if relationship.get("blocks_delete")
+    ]
+    if not blockers:
+        return "Pricing curve deletion is blocked."
+    details = "; ".join(
+        f"{item['label']} ({item['count']})" for item in blockers if item.get("count", 0) > 0
+    )
+    return f"Pricing curve deletion is blocked by dependent rows: {details}."
+
+
+def _delete_discount_curve_values(
+    *,
+    context: Any,
+    curve_identifier: str,
+) -> list[dict[str, Any]]:
+    cleanups: list[dict[str, Any]] = []
+    for scope in _discount_curve_storage_scopes(context=context):
+        if not _storage_scope_supports_curve_identifier(scope):
+            reason = scope.get("unsupported_reason") or "storage scope is unsupported"
+            raise CurveDeleteConflictError(
+                "Cannot delete discount-curve observations from storage "
+                f"{scope.get('data_node_uid')}: {reason}"
+            )
+        table = scope["time_index_meta_table"]
+        result = table.delete_after_date(
+            None,
+            dimension_filters={CURVE_IDENTIFIER_DIMENSION: [curve_identifier]},
+            timeout=context.timeout,
+        )
+        cleanups.append(
+            {
+                "data_node_uid": scope["data_node_uid"],
+                "storage_table_identifier": scope.get("storage_table_identifier"),
+                "deleted_count": _deleted_count(result),
+                "table_empty": result.get("table_empty") if isinstance(result, Mapping) else None,
+            }
+        )
+    return cleanups
+
+
+def _delete_curve_selection_rows(*, curve_uid: uuid.UUID) -> int:
+    from msm_pricing.api.market_data_bindings import PricingMarketDataSetCurveBinding
+
+    count = PricingMarketDataSetCurveBinding.count_for_curve(curve_uid=curve_uid)
+    if count <= 0:
+        return 0
+    deleted_count = 0
+    for binding in PricingMarketDataSetCurveBinding.filter_for_curve(
+        curve_uid=curve_uid,
+        limit=count,
+    ):
+        deleted_count += _deleted_count(PricingMarketDataSetCurveBinding.delete(binding.uid))
+    return deleted_count
+
+
+def _relationship_count(impact: Mapping[str, Any], *, key: str) -> int:
+    for relationship in impact.get("relationships", []):
+        if relationship.get("key") == key:
+            return int(relationship.get("count") or 0)
+    return 0
+
+
+def _deleted_count(result: Mapping[str, Any] | None) -> int:
+    if not result:
+        return 0
+    return int(result.get("deleted_count") or 0)
+
+
+def _is_delete_conflict(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "foreign key",
+            "violates",
+            "referenced",
+            "restrict",
+            "constraint",
+        )
+    )
+
+
 def _read_discount_curve_observation(
     *,
     interface: Any,
@@ -735,6 +1277,7 @@ def _coerce_uuid(value: uuid.UUID | str) -> uuid.UUID:
 __all__ = [
     "Curve",
     "CurveCreate",
+    "CurveDeleteConflictError",
     "CurveUpdate",
     "CurveUpsert",
 ]

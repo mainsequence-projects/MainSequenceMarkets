@@ -3,8 +3,8 @@
 This example shows the complete pricing workflow for a bond asset:
 
 1. upsert the bond asset type, issuer, currency asset, and bond asset rows
-2. upsert the `interest_rate` index type, a canonical index, its pricing convention details, a curve identity, curve build details, and a market-data-set curve binding
-3. publish one month of mock index fixings and a flat-forward discount curve through pricing DataNodes
+2. upsert the `interest_rate` index type, a canonical index, its pricing convention details, separate projection and discount curve identities, curve build details, and market-data-set curve bindings
+3. publish one month of mock index fixings plus distinct flat-forward projection and discount curves through pricing DataNodes
 4. use explicit `default` pricing market-data bindings for `discount_curves`
    and `interest_rate_index_fixings`
 5. attach a serialized `FloatingRateBond` to the bond asset
@@ -34,7 +34,10 @@ final constructed curve convention. Real source publishers that need stricter
 checks should override `DiscountCurvesNode.normalize_key_nodes(...)` or attach
 `set_key_nodes_validator(...)` instead of changing the shared storage schema.
 
-The example writes the projection curve selection as the default quote-side
-binding (`quote_side=None`) because the valuation basket passes only
-`market_data_set`. If a workflow writes `quote_side="mid"` instead, runtime calls
-must pass the same quote side, for example `price(curve_quote_side="mid")`.
+The example writes both projection and discount curve selections as default
+quote-side bindings (`quote_side=None`) because the valuation basket passes
+only `market_data_set`. The projection curve builds the floating index and
+forecasts coupons; the discount curve is passed to the bond discounting engine
+and to z-spread overlay examples. If a workflow writes `quote_side="mid"`
+instead, runtime calls must pass the same quote side, for example
+`price(curve_quote_side="mid")`.

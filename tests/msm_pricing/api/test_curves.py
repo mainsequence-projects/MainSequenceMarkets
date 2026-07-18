@@ -7,8 +7,17 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from msm_pricing.api.curves import Curve, CurveUpsert
+from msm_pricing.api.curves import Curve, CurveDeleteConflictError, CurveUpsert
 from msm_pricing.models import CurveTable
+
+
+def _pricing_curve(*, uid: uuid.UUID | None = None) -> Curve:
+    return Curve(
+        uid=uid or uuid.uuid4(),
+        unique_identifier="USD-SOFR-DISCOUNT",
+        display_name="USD SOFR Discount Curve",
+        curve_type="discount",
+    )
 
 
 def test_curve_api_declares_table_contract() -> None:
@@ -970,3 +979,234 @@ def test_curve_list_validates_pagination() -> None:
 
     with pytest.raises(ValueError, match="offset"):
         Curve.list(offset=-1)
+
+
+def test_curve_delete_impact_blocks_until_explicit_cleanup_flags(monkeypatch) -> None:
+    curve = _pricing_curve()
+    context = SimpleNamespace(timeout=30)
+    calls: list[object] = []
+
+    monkeypatch.setattr(
+        Curve,
+        "get_by_uid",
+        classmethod(lambda cls, uid: curve),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.curves._active_curve_delete_context",
+        lambda: context,
+    )
+
+    def fake_count_model_rows(active_context, *, model, filters):
+        calls.append(("count", active_context, model.__name__, filters))
+        if model.__name__ == "CurveBuildingDetailsTable":
+            return 1
+        if model.__name__ == "PricingMarketDataSetCurveBindingTable":
+            return 2
+        raise AssertionError(model.__name__)
+
+    def fake_observation_counts(**kwargs):
+        calls.append(("observations", kwargs))
+        return 3, 0, 1
+
+    monkeypatch.setattr(
+        "msm_pricing.api.curves._count_model_rows",
+        fake_count_model_rows,
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.curves._discount_curve_observation_impact_counts",
+        fake_observation_counts,
+    )
+
+    blocked = Curve.get_delete_impact(uid=curve.uid)
+    allowed = Curve.get_delete_impact(
+        uid=curve.uid,
+        delete_values=True,
+        delete_curve_selections=True,
+    )
+
+    assert blocked is not None
+    assert blocked["can_delete"] is False
+    assert blocked["blocking_count"] == 5
+    assert {
+        relationship["key"]: relationship["blocks_delete"]
+        for relationship in blocked["relationships"]
+    } == {
+        "curve_building_details": False,
+        "pricing_curve_selections": True,
+        "discount_curve_observations": True,
+        "discount_curve_storage_sources": False,
+    }
+
+    assert allowed is not None
+    assert allowed["can_delete"] is True
+    assert allowed["blocking_count"] == 0
+    assert {
+        relationship["key"]: relationship["effect"]
+        for relationship in allowed["relationships"]
+    }["discount_curve_observations"] == "delete_cleanup"
+    assert calls[0] == (
+        "count",
+        context,
+        "CurveBuildingDetailsTable",
+        {"curve_uid": curve.uid},
+    )
+
+
+def test_curve_delete_runs_value_and_selection_cleanup_before_row_delete(monkeypatch) -> None:
+    curve = _pricing_curve()
+    context = SimpleNamespace(timeout=30)
+    calls: list[object] = []
+
+    monkeypatch.setattr(
+        Curve,
+        "get_by_uid",
+        classmethod(lambda cls, uid: curve),
+    )
+
+    def fake_delete_impact(cls, *, uid, delete_values, delete_curve_selections):
+        calls.append(("impact", uid, delete_values, delete_curve_selections))
+        return {
+            "can_delete": True,
+            "relationships": [
+                {
+                    "key": "curve_building_details",
+                    "label": "Curve building details",
+                    "count": 1,
+                    "blocks_delete": False,
+                }
+            ],
+        }
+
+    def fake_delete_values(**kwargs):
+        calls.append(("values", kwargs["context"], kwargs["curve_identifier"]))
+        return [
+            {
+                "data_node_uid": str(uuid.uuid4()),
+                "storage_table_identifier": "DiscountCurvesStorage",
+                "deleted_count": 3,
+                "table_empty": False,
+            }
+        ]
+
+    def fake_delete_selections(*, curve_uid):
+        calls.append(("selections", curve_uid))
+        return 2
+
+    def fake_delete_model(active_context, *, model, uid):
+        calls.append(("delete", active_context, model, uid))
+        return {"deleted_count": 1}
+
+    monkeypatch.setattr(Curve, "get_delete_impact", classmethod(fake_delete_impact))
+    monkeypatch.setattr(
+        "msm_pricing.api.curves._active_curve_delete_context",
+        lambda: context,
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.curves._delete_discount_curve_values",
+        fake_delete_values,
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.curves._delete_curve_selection_rows",
+        fake_delete_selections,
+    )
+    monkeypatch.setattr("msm_pricing.api.curves.delete_model", fake_delete_model)
+
+    response = Curve.delete(
+        curve.uid,
+        delete_values=True,
+        delete_curve_selections=True,
+    )
+
+    assert response is not None
+    assert response["deleted_count"] == 1
+    assert response["deleted_values_count"] == 3
+    assert response["deleted_curve_selections_count"] == 2
+    assert response["deleted_curve_building_details_count"] == 1
+    assert calls == [
+        ("impact", curve.uid, True, True),
+        ("values", context, "USD-SOFR-DISCOUNT"),
+        ("selections", curve.uid),
+        ("delete", context, CurveTable, curve.uid),
+    ]
+
+
+def test_curve_delete_raises_conflict_when_preflight_blocks(monkeypatch) -> None:
+    curve = _pricing_curve()
+
+    monkeypatch.setattr(
+        Curve,
+        "get_by_uid",
+        classmethod(lambda cls, uid: curve),
+    )
+    monkeypatch.setattr(
+        Curve,
+        "get_delete_impact",
+        classmethod(
+            lambda cls, **kwargs: {
+                "can_delete": False,
+                "relationships": [
+                    {
+                        "key": "pricing_curve_selections",
+                        "label": "Pricing curve selections",
+                        "count": 2,
+                        "blocks_delete": True,
+                    }
+                ],
+            }
+        ),
+    )
+
+    with pytest.raises(CurveDeleteConflictError, match="Pricing curve selections"):
+        Curve.delete(curve.uid)
+
+
+def test_curve_value_cleanup_uses_scoped_time_index_delete(monkeypatch) -> None:
+    import msm_pricing.api.curves as curves_api
+
+    data_node_uid = uuid.uuid4()
+    calls: list[object] = []
+
+    class FakeDiscountCurveTable:
+        uid = data_node_uid
+        identifier = "DiscountCurvesStorage"
+        columns = [SimpleNamespace(name="curve_identifier")]
+        table_index_names = ["curve_identifier"]
+
+        def delete_after_date(self, after_date, *, dimension_filters, timeout):
+            calls.append((after_date, dimension_filters, timeout))
+            return {"deleted_count": 3, "table_empty": False}
+
+    table = FakeDiscountCurveTable()
+    monkeypatch.setattr(
+        curves_api,
+        "_discount_curve_storage_scopes",
+        lambda *, context: [
+            {
+                "data_node_uid": str(data_node_uid),
+                "storage_table_identifier": "DiscountCurvesStorage",
+                "time_index_meta_table": table,
+                "unsupported_reason": None,
+            }
+        ],
+    )
+
+    response = curves_api._delete_discount_curve_values(
+        context=SimpleNamespace(timeout=99),
+        curve_identifier="USD'SOFR",
+    )
+
+    assert calls == [
+        (
+            None,
+            {"curve_identifier": ["USD'SOFR"]},
+            99,
+        )
+    ]
+    assert response == [
+        {
+            "data_node_uid": str(data_node_uid),
+            "storage_table_identifier": "DiscountCurvesStorage",
+            "deleted_count": 3,
+            "table_empty": False,
+        }
+    ]

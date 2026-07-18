@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted - implemented
+Accepted - implemented for curve identity, market-data curve bindings, and
+non-mono-curve floating-rate pricing.
 
 ## Context
 
@@ -565,6 +566,65 @@ Negative consequences:
 - [x] Remove public docs and packaged-skill guidance for curve-owned index
       selection.
 
+### Non-Mono-Curve Runtime Completion
+
+The floating-rate bond and swap runtime now separates projection and discount
+curve roles. Completed work:
+
+- [x] Separate valuation role selection from physical curve classification in
+      resolver APIs. `role_key` must select `PricingMarketDataSetCurveBinding`
+      rows, while `Curve.curve_type` validation must happen only through an
+      explicit `expected_curve_type` assertion.
+- [x] Add explicit discount-curve resolution for floating-rate bonds. Floating
+      coupons must use the `projection` or `forwarding` index curve, while the
+      pricing engine must use the curve selected by the discount role.
+- [x] Add explicit discount-curve resolution for interest-rate swaps. The float
+      leg index must be cloned with the projection curve, while
+      `DiscountingSwapEngine` must receive the independently resolved discount
+      curve.
+- [x] Define and persist the discount selector used by floating-rate instruments
+      and swaps. The implemented runtime uses
+      `discount:index:<floating_index_uid>:<quote_side>` so the selector is
+      explicit and does not infer the discount curve from the projection
+      binding. Currency or global selectors can be added later as additional
+      policy selectors when required.
+- [x] Refactor pricing helper APIs so their parameter names distinguish
+      `projection_curve` or `forwarding_curve` from `discount_curve`; helper
+      APIs must not accept a generic `curve` alias for floating discounting.
+- [x] Extend `PricingValuationContext` preparation so floating-rate instruments
+      request and cache both projection/forwarding curve requirements and
+      discount curve requirements, including their curve rows, build details,
+      observations, and QuantLib handles.
+- [x] Extend scenario and override workflows so a line can receive role-specific
+      curve handles. Floating instruments must expose `reset_curves(...)` for
+      projection and discount handles; there is no projection-only
+      compatibility path.
+- [~] Update pricing API, FastAPI, and adapter-facing response metadata where
+      they report selected curves so consumers can see both projection and
+      discount curve bindings when both are used. Existing curve-selection list
+      surfaces expose all bindings for a curve; no instrument-pricing endpoint
+      currently emits a selected-curve summary that needed this change.
+- [x] Enhance `examples/msm_pricing/bond_pricing_example/main.py` and
+      `examples/msm_pricing/utils/mock_market_data.py` to create distinct
+      projection and discount curves, publish both sets of observations, bind
+      `projection:index:<index_uid>` and `discount:index:<index_uid>`,
+      and price through the two-curve path.
+- [x] Update `docs/knowledge/msm_pricing/`, packaged pricing skills, tutorial
+      material, and `CHANGELOG.md` to document the non-mono-curve contract,
+      including the fact that using one curve for both roles is allowed only
+      when the market-data set explicitly binds both roles to the same curve.
+- [x] Add focused tests proving that floating-rate bond and swap pricing use
+      distinct projection and discount `curve_uid` values, that explicit
+      same-curve bindings remain valid, and that missing discount bindings fail
+      with actionable role/selector diagnostics for floaters and swaps.
+- [x] Add regression tests for resolver role/type decoupling so a role binding
+      can select a curve whose `Curve.curve_type` differs from the valuation
+      role unless `expected_curve_type` is explicitly supplied.
+- [x] Run focused pricing tests, safe enhanced-example smoke coverage
+      (`tests/msm_pricing/test_bond_pricing_example.py` plus the mock prepared
+      context example), `git diff --check`, and strict MkDocs validation before
+      marking these tasks complete.
+
 ## Success Criteria
 
 This ADR is complete only when:
@@ -573,6 +633,10 @@ This ADR is complete only when:
 - each persisted curve used for pricing has one `CurveBuildingDetailsTable` row;
 - market-data-set curve bindings select curve identity for discount,
   projection, forwarding, and z-spread-base roles;
+- floating-rate bond and swap workflows document the non-mono-curve contract:
+  projection or forwarding curves are resolved independently from discount
+  curves, and sharing one curve across both roles is an explicit
+  market-data-set binding policy rather than a runtime default;
 - pricing resolution never reads an index selector from the curve row;
 - index resolution still uses `IndexConventionDetailsTable` for QuantLib index
   construction and fixings;
@@ -580,4 +644,7 @@ This ADR is complete only when:
   loudly with role, selector, market-data-set, and curve identifiers in the
   error message;
 - docs and examples describe the two market-data-set layers:
-  source binding and curve-identity binding.
+  source binding and curve-identity binding;
+- the fixed-income pricing example has been enhanced to demonstrate distinct
+  projection and discount curve bindings, and the documentation describes that
+  success condition explicitly.

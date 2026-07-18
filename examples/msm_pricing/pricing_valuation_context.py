@@ -14,8 +14,9 @@ if __package__ in {None, ""}:
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from examples.msm_pricing.utils import (  # noqa: E402
-    EXAMPLE_CURVE_UNIQUE_IDENTIFIER,
+    EXAMPLE_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
     EXAMPLE_INDEX_UNIQUE_IDENTIFIER,
+    EXAMPLE_PROJECTION_CURVE_UNIQUE_IDENTIFIER,
     build_flat_forward_zero_curve,
     build_mock_fixings_frame,
     example_index_convention_dump,
@@ -39,7 +40,9 @@ from msm_pricing.valuation import PricingValuationContext, ValuationLine, Valuat
 
 MOCK_MARKET_DATA_SET_UID = uuid.UUID("00000000-0000-4000-8000-000000000001")
 MOCK_INDEX_UID = uuid.UUID("00000000-0000-4000-8000-000000000002")
-MOCK_CURVE_UID = uuid.UUID("00000000-0000-4000-8000-000000000003")
+MOCK_PROJECTION_CURVE_UID = uuid.UUID("00000000-0000-4000-8000-000000000003")
+MOCK_DISCOUNT_CURVE_UID = uuid.UUID("00000000-0000-4000-8000-000000000009")
+MOCK_CURVE_UID = MOCK_PROJECTION_CURVE_UID
 MOCK_DISCOUNT_CURVES_NODE_UID = uuid.UUID("00000000-0000-4000-8000-000000000004")
 MOCK_FIXINGS_NODE_UID = uuid.UUID("00000000-0000-4000-8000-000000000005")
 
@@ -157,8 +160,11 @@ def build_mock_context_workflow() -> dict[str, Any]:
             "z_spread_target_dirty_ccy": observed_dirty_ccy,
             "original_valuation_date": instrument.valuation_date,
             "prepared_valuation_date": prepared.instrument.valuation_date.isoformat(),
-            "cached_curve_identifier": context.get_curve(
-                MOCK_CURVE_UID
+            "cached_projection_curve_identifier": context.get_curve(
+                MOCK_PROJECTION_CURVE_UID
+            ).unique_identifier,
+            "cached_discount_curve_identifier": context.get_curve(
+                MOCK_DISCOUNT_CURVE_UID
             ).unique_identifier,
             "cached_index_family": context.get_index_convention(
                 MOCK_INDEX_UID
@@ -170,8 +176,14 @@ def build_mock_context_workflow() -> dict[str, Any]:
 
 @contextmanager
 def mock_pricing_row_apis():
-    binding_key = curve_binding_key(
+    projection_binding_key = curve_binding_key(
         role_key="projection",
+        selector_type="index",
+        selector_key=str(MOCK_INDEX_UID),
+        quote_side="mid",
+    )
+    discount_binding_key = curve_binding_key(
+        role_key="discount",
         selector_type="index",
         selector_key=str(MOCK_INDEX_UID),
         quote_side="mid",
@@ -247,12 +259,22 @@ def mock_pricing_row_apis():
                         PricingMarketDataSetCurveBinding(
                             uid=uuid.UUID("00000000-0000-4000-8000-000000000008"),
                             market_data_set_uid=MOCK_MARKET_DATA_SET_UID,
-                            binding_key=binding_key,
+                            binding_key=projection_binding_key,
                             role_key="projection",
                             selector_type="index",
                             selector_key=str(MOCK_INDEX_UID),
                             quote_side="mid",
-                            curve_uid=MOCK_CURVE_UID,
+                            curve_uid=MOCK_PROJECTION_CURVE_UID,
+                        ),
+                        PricingMarketDataSetCurveBinding(
+                            uid=uuid.UUID("00000000-0000-4000-8000-000000000010"),
+                            market_data_set_uid=MOCK_MARKET_DATA_SET_UID,
+                            binding_key=discount_binding_key,
+                            role_key="discount",
+                            selector_type="index",
+                            selector_key=str(MOCK_INDEX_UID),
+                            quote_side="mid",
+                            curve_uid=MOCK_DISCOUNT_CURVE_UID,
                         )
                     ]
                 ),
@@ -264,14 +286,23 @@ def mock_pricing_row_apis():
                 staticmethod(
                     lambda _curve_uids: [
                         Curve(
-                            uid=MOCK_CURVE_UID,
-                            unique_identifier=EXAMPLE_CURVE_UNIQUE_IDENTIFIER,
+                            uid=MOCK_PROJECTION_CURVE_UID,
+                            unique_identifier=EXAMPLE_PROJECTION_CURVE_UNIQUE_IDENTIFIER,
                             display_name="Mock flat-forward projection curve",
                             curve_type="projection",
                             currency_code="USD",
                             quote_side="mid",
                             source="mock",
-                        )
+                        ),
+                        Curve(
+                            uid=MOCK_DISCOUNT_CURVE_UID,
+                            unique_identifier=EXAMPLE_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+                            display_name="Mock flat-forward discount curve",
+                            curve_type="discount",
+                            currency_code="USD",
+                            quote_side="mid",
+                            source="mock",
+                        ),
                     ]
                 ),
             )
@@ -282,7 +313,7 @@ def mock_pricing_row_apis():
                 staticmethod(
                     lambda _curve_uids: [
                         CurveBuildingDetails(
-                            curve_uid=MOCK_CURVE_UID,
+                            curve_uid=MOCK_PROJECTION_CURVE_UID,
                             builder_type="zero_rate_curve",
                             quote_convention="zero_rate",
                             rate_unit="decimal",
@@ -292,7 +323,19 @@ def mock_pricing_row_apis():
                             compounding="simple",
                             extrapolation_policy="enabled",
                             source="mock",
-                        )
+                        ),
+                        CurveBuildingDetails(
+                            curve_uid=MOCK_DISCOUNT_CURVE_UID,
+                            builder_type="zero_rate_curve",
+                            quote_convention="zero_rate",
+                            rate_unit="decimal",
+                            day_counter_code="Actual360",
+                            calendar_code="TARGET",
+                            interpolation_method="log_linear_discount",
+                            compounding="simple",
+                            extrapolation_policy="enabled",
+                            source="mock",
+                        ),
                     ]
                 ),
             )
@@ -302,9 +345,9 @@ def mock_pricing_row_apis():
                 MSDataInterface,
                 "get_historical_discount_curve_observations",
                 lambda self, curve_names, target_date, *, market_data_set=None: {
-                    EXAMPLE_CURVE_UNIQUE_IDENTIFIER: (
+                    EXAMPLE_PROJECTION_CURVE_UNIQUE_IDENTIFIER: (
                         {
-                            "curve_identifier": EXAMPLE_CURVE_UNIQUE_IDENTIFIER,
+                            "curve_identifier": EXAMPLE_PROJECTION_CURVE_UNIQUE_IDENTIFIER,
                             "time_index": target_date,
                             "nodes": [
                                 {"days_to_maturity": days, "zero": zero}
@@ -317,7 +360,23 @@ def mock_pricing_row_apis():
                             "metadata_json": {"source": "mock"},
                         },
                         target_date,
-                    )
+                    ),
+                    EXAMPLE_DISCOUNT_CURVE_UNIQUE_IDENTIFIER: (
+                        {
+                            "curve_identifier": EXAMPLE_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
+                            "time_index": target_date,
+                            "nodes": [
+                                {"days_to_maturity": days, "zero": zero}
+                                for days, zero in build_flat_forward_zero_curve(
+                                    valuation_date=target_date,
+                                    zero_rate=0.0475,
+                                ).items()
+                            ],
+                            "key_nodes": None,
+                            "metadata_json": {"source": "mock"},
+                        },
+                        target_date,
+                    ),
                 },
             )
         )

@@ -4,7 +4,7 @@ import datetime as dt
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic import ConfigDict
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
@@ -23,6 +23,30 @@ Curve = _curve_contract()
 
 class CurveListResponse(PaginatedResponse[Curve]):
     model_config = ConfigDict(extra="ignore")
+
+
+class CurveDeleteStorageCleanup(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    data_node_uid: UUID
+    storage_table_identifier: str | None = None
+    deleted_count: int = 0
+    table_empty: bool | None = None
+
+
+class CurveDeleteResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    detail: str
+    uid: UUID
+    curve_identifier: str
+    deleted_count: int = 0
+    deleted_values_count: int = 0
+    deleted_curve_selections_count: int = 0
+    deleted_curve_building_details_count: int = 0
+    delete_values: bool = False
+    delete_curve_selections: bool = False
+    storage_cleanups: list[CurveDeleteStorageCleanup] = Field(default_factory=list)
 
 
 class CurveSelectionCurve(BaseModel):

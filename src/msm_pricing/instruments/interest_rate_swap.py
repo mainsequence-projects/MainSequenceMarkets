@@ -10,6 +10,7 @@ from pydantic import Field, PrivateAttr
 
 from msm_pricing.api.market_data_bindings import PricingMarketDataSet, PricingMarketDataSetSelector
 from msm_pricing.pricing_engine.resolvers import normalize_curve_quote_side
+from msm_pricing.pricing_engine.resolvers import resolve_curve_for_index_binding
 from msm_pricing.pricing_engine.resolvers import resolve_quantlib_index
 from msm_pricing.pricing_engine.swap_pricer import (
     get_swap_cashflows,
@@ -62,6 +63,7 @@ class InterestRateSwap(InstrumentModel):
     # runtime-only
     _swap: ql.VanillaSwap | None = PrivateAttr(default=None)
     _float_leg_index: ql.IborIndex | None = PrivateAttr(default=None)
+    _discount_curve: ql.YieldTermStructureHandle | None = PrivateAttr(default=None)
     _market_data_set_uid: uuid.UUID | None = PrivateAttr(default=None)
     _curve_quote_side: str | None = PrivateAttr(default=None)
 
@@ -90,20 +92,16 @@ class InterestRateSwap(InstrumentModel):
 
     def _on_valuation_date_set(self) -> None:
         self._float_leg_index = None
+        self._discount_curve = None
         self._reset_runtime()
 
-    # Optional: allow injecting a custom curve for the float leg
-    def reset_curve(
+    def reset_projection_curve(
         self,
         curve: ql.YieldTermStructureHandle | ql.YieldTermStructure,
     ) -> None:
         if self.valuation_date is None:
-            raise ValueError("Set valuation_date before reset_curve().")
-        forwarding_curve = (
-            curve
-            if isinstance(curve, ql.YieldTermStructureHandle)
-            else ql.YieldTermStructureHandle(curve)
-        )
+            raise ValueError("Set valuation_date before reset_projection_curve().")
+        forwarding_curve = self._as_curve_handle(curve)
         self._float_leg_index = resolve_quantlib_index(
             self.float_leg_index_uid,
             valuation_date=self.valuation_date,
@@ -113,6 +111,30 @@ class InterestRateSwap(InstrumentModel):
         )
         self._swap = None
 
+    def reset_discount_curve(
+        self,
+        curve: ql.YieldTermStructureHandle | ql.YieldTermStructure,
+    ) -> None:
+        self._discount_curve = self._as_curve_handle(curve)
+        self._swap = None
+
+    def reset_curves(
+        self,
+        *,
+        projection_curve: ql.YieldTermStructureHandle | ql.YieldTermStructure | None = None,
+        forwarding_curve: ql.YieldTermStructureHandle | ql.YieldTermStructure | None = None,
+        discount_curve: ql.YieldTermStructureHandle | ql.YieldTermStructure | None = None,
+    ) -> None:
+        if projection_curve is not None and forwarding_curve is not None:
+            raise ValueError("Pass either projection_curve or forwarding_curve, not both.")
+        projection = projection_curve if projection_curve is not None else forwarding_curve
+        if projection is None:
+            raise ValueError("reset_curves requires projection_curve or forwarding_curve.")
+        if discount_curve is None:
+            raise ValueError("reset_curves requires discount_curve.")
+        self.reset_projection_curve(projection)
+        self.reset_discount_curve(discount_curve)
+
     def _apply_market_data_set(self, market_data_set: PricingMarketDataSetSelector = None) -> None:
         if market_data_set is None:
             return
@@ -120,6 +142,7 @@ class InterestRateSwap(InstrumentModel):
         if self._market_data_set_uid != resolved_uid:
             self._market_data_set_uid = resolved_uid
             self._float_leg_index = None
+            self._discount_curve = None
             self._reset_runtime()
 
     def _apply_curve_quote_side(self, curve_quote_side: str | None = None) -> None:
@@ -129,6 +152,7 @@ class InterestRateSwap(InstrumentModel):
         if self._curve_quote_side != normalized:
             self._curve_quote_side = normalized
             self._float_leg_index = None
+            self._discount_curve = None
             self._reset_runtime()
 
     # ---------- pricing ----------
@@ -138,10 +162,11 @@ class InterestRateSwap(InstrumentModel):
             return
         assert self.valuation_date is not None
         self._ensure_index()
-        default_curve = self._float_leg_index.forwardingTermStructure()
+        projection_curve = self._float_leg_index.forwardingTermStructure()
+        discount_curve = self._resolve_discount_curve()
 
         # Call the common swap construction logic.
-        self._build_swap(default_curve)
+        self._build_swap(projection_curve, discount_curve)
 
     def price(
         self,
@@ -184,7 +209,41 @@ class InterestRateSwap(InstrumentModel):
         net.name = "net_cashflow"
         return net
 
-    def _build_swap(self, curve: ql.YieldTermStructure) -> None:
+    def _resolve_discount_curve(self) -> ql.YieldTermStructureHandle:
+        if self._discount_curve is not None:
+            return self._discount_curve
+        if self.valuation_date is None:
+            raise ValueError("Set valuation_date before resolving the swap discount curve.")
+        context = getattr(self, "_pricing_valuation_context", None)
+        if context is not None:
+            self._discount_curve = context.resolve_curve_for_index_binding(
+                index_uid=self.float_leg_index_uid,
+                role_key="discount",
+                quote_side=self._curve_quote_side,
+            )
+            return self._discount_curve
+        self._discount_curve = resolve_curve_for_index_binding(
+            index_uid=self.float_leg_index_uid,
+            valuation_date=self.valuation_date,
+            market_data_set=self._market_data_set_uid,
+            role_key="discount",
+            quote_side=self._curve_quote_side,
+        )
+        return self._discount_curve
+
+    def _as_curve_handle(
+        self,
+        curve: ql.YieldTermStructureHandle | ql.YieldTermStructure,
+    ) -> ql.YieldTermStructureHandle:
+        if isinstance(curve, ql.YieldTermStructureHandle):
+            return curve
+        return ql.YieldTermStructureHandle(curve)
+
+    def _build_swap(
+        self,
+        projection_curve: ql.YieldTermStructureHandle,
+        discount_curve: ql.YieldTermStructureHandle,
+    ) -> None:
         """
         Private helper method to construct the QuantLib swap object.
         This contains the common logic previously duplicated in _setup_pricer and reset_curve.
@@ -215,7 +274,8 @@ class InterestRateSwap(InstrumentModel):
             float_leg_tenor=self.float_leg_tenor,
             float_leg_spread=self.float_leg_spread,
             ibor_index=self.float_leg_ibor_index,
-            curve=curve,
+            projection_curve=projection_curve,
+            discount_curve=discount_curve,
         )
 
     # ---------- FACTORY: TIIE(28D) swap --------------------------------------

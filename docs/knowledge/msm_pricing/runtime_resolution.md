@@ -133,6 +133,31 @@ Index-based user workflows should create those rows with
 `PricingMarketDataSetCurveBinding.upsert_index_curve_selection(...)`; the raw
 `selector_type` and `selector_key` fields are the persisted generic selector
 format.
+
+Floating-rate bonds, swaps, and other floating instruments use separate
+market-data roles and must implement `reset_curves(...)`. `projection` selects
+the curve used to build the QuantLib index, forecast floating coupons, and seed
+missing same-day or historical fixings when needed. `discount` selects the
+curve passed to `DiscountingBondEngine` or `DiscountingSwapEngine`. The current
+runtime resolves both roles with an index-scoped selector:
+
+```text
+projection:index:<floating index uid>:<quote side> -> projection curve
+discount:index:<floating index uid>:<quote side>   -> discount curve
+```
+
+Using one curve for both roles is still valid, but only when the market-data
+set explicitly binds both role keys to the same `curve_uid`. For floating-rate
+instruments, a missing discount binding is an error; the runtime no longer
+falls back to the projection curve as a hidden mono-curve default.
+
+`Curve.curve_type` is physical curve classification, not the valuation role.
+Role-based resolution validates `Curve.curve_type` only when the caller passes
+an explicit `expected_curve_type`. This lets a market-data set bind, for
+example, a projection-classified curve to a discount role when that is the
+published policy for the set, while still allowing strict callers to assert a
+physical curve type.
+
 Fixed-rate and zero-coupon `price()` still use `with_yield`, an explicitly reset
 curve, or another explicit pricing policy. They do not automatically turn
 `benchmark_rate_index_uid` into a discount curve.
@@ -254,13 +279,14 @@ build details do not declare runtime output convention/unit. Use `strict=False`
 only when the caller wants structured diagnostics in
 `CurveScenarioResult.errors`.
 
-When a line resolves multiple curve roles but the current instrument only
-supports one `reset_curve(...)` override, selection is deterministic. Floating
-and swap-style instruments prefer `projection`, then `floating`, then
-`discount`, then `z_spread_base`. Fixed-rate instruments prefer
-`z_spread_base`, then `discount`, then `projection`, then `floating`. A
-non-empty shock on an unselected related curve is not silently dropped in
-strict mode.
+When a line resolves multiple curve roles and the instrument supports
+`reset_curves(...)`, scenario pricing passes role-specific handles such as
+`{"projection": projection_handle, "discount": discount_handle}` into the
+prepared instrument copy. Floating-rate bonds and swaps use those handles to
+shock projection and discount curves independently. Floating-rate instruments
+without `reset_curves(...)` fail instead of falling back to a projection-only
+override. A non-empty shock on an unselected related curve is not silently
+dropped in strict mode.
 
 There are two curve-scenario entry points:
 

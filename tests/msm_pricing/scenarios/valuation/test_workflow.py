@@ -38,8 +38,19 @@ class WorkflowInstrument(Instrument):
 
     _curve_bump: float = PrivateAttr(default=0.0)
 
-    def reset_curve(self, curve_handle: object) -> None:
-        self._curve_bump = float(curve_handle)
+    def reset_curves(
+        self,
+        *,
+        projection_curve: object | None = None,
+        forwarding_curve: object | None = None,
+        discount_curve: object | None = None,
+    ) -> None:
+        projection = projection_curve if projection_curve is not None else forwarding_curve
+        if projection is None:
+            raise ValueError("projection_curve is required")
+        if discount_curve is None:
+            raise ValueError("discount_curve is required")
+        self._curve_bump = float(discount_curve)
 
     def price(self, *, market_data_set: object = None) -> float:
         if self.valuation_date is None:
@@ -143,6 +154,8 @@ def _context_with_curve(
     )
     binding = _binding(index_uid=index_uid, curve_uid=curve.uid)
     context.curve_bindings[binding.binding_key] = binding
+    discount_binding = _binding(index_uid=index_uid, curve_uid=curve.uid, role_key="discount")
+    context.curve_bindings[discount_binding.binding_key] = discount_binding
     context.curves[curve.uid] = curve
     context.curve_building_details[curve.uid] = _details(curve.uid)
     context.curve_observations[curve.uid] = _observation(curve.unique_identifier)
@@ -204,7 +217,7 @@ def test_workflow_prices_base_scenario_impacts_and_carry(monkeypatch) -> None:
     assert result.runtime_resolutions[0].curve_identifier == curve.unique_identifier
     assert result.scenarios[0].runtime_overrides is not None
     assert result.scenarios[0].runtime_overrides.scenario_curve_handles == {
-        0: pytest.approx(60.0)
+        0: {"projection": pytest.approx(60.0), "discount": pytest.approx(60.0)}
     }
     assert instrument._curve_bump == 0.0
 

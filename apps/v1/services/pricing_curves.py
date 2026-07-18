@@ -4,8 +4,10 @@ import datetime as dt
 
 from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime
 from apps.v1.schemas.common import FrontEndDetailSummary
+from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.pricing_curves import (
     Curve,
+    CurveDeleteResponse,
     CurveSelectionsResponse,
     DiscountCurveResponse,
 )
@@ -45,6 +47,40 @@ def list_pricing_curve_selections(*, uid: str) -> CurveSelectionsResponse | None
     return CurveSelectionsResponse.model_validate(response)
 
 
+def get_pricing_curve_delete_impact(
+    *,
+    uid: str,
+    delete_values: bool = False,
+    delete_curve_selections: bool = False,
+) -> DeleteImpactResponse | None:
+    ensure_apps_v1_pricing_runtime()
+    response = _get_curve_delete_impact(
+        uid=uid,
+        delete_values=delete_values,
+        delete_curve_selections=delete_curve_selections,
+    )
+    if response is None:
+        return None
+    return DeleteImpactResponse.model_validate(response)
+
+
+def delete_pricing_curve(
+    *,
+    uid: str,
+    delete_values: bool = False,
+    delete_curve_selections: bool = False,
+) -> CurveDeleteResponse | None:
+    ensure_apps_v1_pricing_runtime()
+    response = _delete_curve(
+        uid=uid,
+        delete_values=delete_values,
+        delete_curve_selections=delete_curve_selections,
+    )
+    if response is None:
+        return None
+    return CurveDeleteResponse.model_validate(response)
+
+
 def get_pricing_curve_discount_curve(
     *,
     uid: str,
@@ -68,6 +104,14 @@ def _get_curve_frontend_detail_summary(uid: str):
 
 def _list_curve_selections(uid: str):
     return Curve.list_curve_selections(uid)
+
+
+def _get_curve_delete_impact(**kwargs):
+    return Curve.get_delete_impact(**kwargs)
+
+
+def _delete_curve(**kwargs):
+    return Curve.delete(**kwargs)
 
 
 def _get_curve_discount_curve_nodes(**kwargs):

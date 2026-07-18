@@ -8,7 +8,7 @@ from .asset_pricing_operations import (
     build_asset_pricing_support,
     execute_asset_pricing_operation,
 )
-from .curves import Curve, CurveCreate, CurveUpdate, CurveUpsert
+from .curves import Curve, CurveCreate, CurveDeleteConflictError, CurveUpdate, CurveUpsert
 from .curve_building_details import (
     CurveBuildingDetails,
     CurveBuildingDetailsCreate,
@@ -76,6 +76,7 @@ __all__ = [
     "CurveBuildingDetailsUpdate",
     "CurveBuildingDetailsUpsert",
     "CurveCreate",
+    "CurveDeleteConflictError",
     "CurveUpdate",
     "CurveUpsert",
     "DEFAULT_INDEX_CONVENTION_SERIALIZATION_FORMAT",

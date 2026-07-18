@@ -106,6 +106,17 @@ class IndexedFakePricedInstrument(FakePricedInstrument):
     benchmark_rate_index_uid: uuid.UUID | None = None
 
 
+class RoleIndexedFakePricedInstrument(IndexedFakePricedInstrument):
+    def reset_curves(
+        self,
+        *,
+        projection_curve=None,
+        forwarding_curve=None,
+        discount_curve=None,
+    ) -> None:
+        return None
+
+
 class CurveOverrideInstrument(FakePricedInstrument):
     _curve_bump: float = PrivateAttr(default=0.0)
 
@@ -114,6 +125,35 @@ class CurveOverrideInstrument(FakePricedInstrument):
 
     def price(self, *, market_data_set=None) -> float:
         return super().price(market_data_set=market_data_set) + self._curve_bump
+
+
+class RoleCurveOverrideInstrument(FakePricedInstrument):
+    _projection_bump: float = PrivateAttr(default=0.0)
+    _discount_bump: float = PrivateAttr(default=0.0)
+
+    def reset_curves(
+        self,
+        *,
+        projection_curve=None,
+        forwarding_curve=None,
+        discount_curve=None,
+    ) -> None:
+        projection = projection_curve if projection_curve is not None else forwarding_curve
+        if projection is None:
+            raise ValueError("projection_curve is required")
+        if projection is not None:
+            self._projection_bump = float(projection)
+        if discount_curve is None:
+            raise ValueError("discount_curve is required")
+        if discount_curve is not None:
+            self._discount_bump = float(discount_curve)
+
+    def price(self, *, market_data_set=None) -> float:
+        return (
+            super().price(market_data_set=market_data_set)
+            + self._projection_bump
+            + self._discount_bump
+        )
 
 
 class ZSpreadInstrument(FakePricedInstrument):
@@ -602,13 +642,22 @@ def test_pricing_valuation_context_resolves_market_data_set_once(monkeypatch) ->
 def test_pricing_valuation_context_bulk_resolves_fixed_income_rows(monkeypatch) -> None:
     market_data_set_uid = uuid.uuid4()
     index_uid = uuid.uuid4()
-    curve_uid = uuid.uuid4()
-    binding_key = curve_binding_key(
+    projection_curve_uid = uuid.uuid4()
+    discount_curve_uid = uuid.uuid4()
+    projection_binding_key = curve_binding_key(
         role_key="projection",
         selector_type="index",
         selector_key=str(index_uid),
         quote_side="mid",
     )
+    discount_binding_key = curve_binding_key(
+        role_key="discount",
+        selector_type="index",
+        selector_key=str(index_uid),
+        quote_side="mid",
+    )
+    expected_curve_uids = {projection_curve_uid, discount_curve_uid}
+    expected_curve_identifiers = {"USD-SOFR-PROJECTION", "USD-SOFR-DISCOUNT"}
     calls: list[tuple[str, Any]] = []
 
     monkeypatch.setattr(
@@ -687,12 +736,22 @@ def test_pricing_valuation_context_bulk_resolves_fixed_income_rows(monkeypatch) 
                     PricingMarketDataSetCurveBinding(
                         uid=uuid.uuid4(),
                         market_data_set_uid=market_data_set_uid,
-                        binding_key=binding_key,
+                        binding_key=projection_binding_key,
                         role_key="projection",
                         selector_type="index",
                         selector_key=str(index_uid),
                         quote_side="mid",
-                        curve_uid=curve_uid,
+                        curve_uid=projection_curve_uid,
+                    ),
+                    PricingMarketDataSetCurveBinding(
+                        uid=uuid.uuid4(),
+                        market_data_set_uid=market_data_set_uid,
+                        binding_key=discount_binding_key,
+                        role_key="discount",
+                        selector_type="index",
+                        selector_key=str(index_uid),
+                        quote_side="mid",
+                        curve_uid=discount_curve_uid,
                     )
                 ]
             )
@@ -705,10 +764,16 @@ def test_pricing_valuation_context_bulk_resolves_fixed_income_rows(monkeypatch) 
                 calls.append(("curves", curve_uids))
                 or [
                     Curve(
-                        uid=curve_uid,
+                        uid=projection_curve_uid,
                         unique_identifier="USD-SOFR-PROJECTION",
                         display_name="USD SOFR Projection",
                         curve_type="projection",
+                    ),
+                    Curve(
+                        uid=discount_curve_uid,
+                        unique_identifier="USD-SOFR-DISCOUNT",
+                        display_name="USD SOFR Discount",
+                        curve_type="discount",
                     )
                 ]
             )
@@ -721,7 +786,18 @@ def test_pricing_valuation_context_bulk_resolves_fixed_income_rows(monkeypatch) 
                 calls.append(("curve_building_details", curve_uids))
                 or [
                     CurveBuildingDetails(
-                        curve_uid=curve_uid,
+                        curve_uid=projection_curve_uid,
+                        builder_type="zero_rate_curve",
+                        quote_convention="zero_rate",
+                        rate_unit="decimal",
+                        day_counter_code="Actual360",
+                        calendar_code="TARGET",
+                        interpolation_method="linear_zero",
+                        compounding="simple",
+                        extrapolation_policy="enabled",
+                    ),
+                    CurveBuildingDetails(
+                        curve_uid=discount_curve_uid,
                         builder_type="zero_rate_curve",
                         quote_convention="zero_rate",
                         rate_unit="decimal",
@@ -750,7 +826,17 @@ def test_pricing_valuation_context_bulk_resolves_fixed_income_rows(monkeypatch) 
                         "metadata_json": None,
                     },
                     target_date,
-                )
+                ),
+                "USD-SOFR-DISCOUNT": (
+                    {
+                        "curve_identifier": "USD-SOFR-DISCOUNT",
+                        "time_index": target_date,
+                        "nodes": [{"days_to_maturity": 365, "zero": 0.0475}],
+                        "key_nodes": None,
+                        "metadata_json": None,
+                    },
+                    target_date,
+                ),
             }
         ),
     )
@@ -766,7 +852,7 @@ def test_pricing_valuation_context_bulk_resolves_fixed_income_rows(monkeypatch) 
     context = PricingValuationContext.prepare(
         valuation_date=dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
         market_data_set="eod",
-        instruments=[IndexedFakePricedInstrument(floating_rate_index_uid=index_uid)],
+        instruments=[RoleIndexedFakePricedInstrument(floating_rate_index_uid=index_uid)],
         curve_quote_side="mid",
     )
 
@@ -778,13 +864,22 @@ def test_pricing_valuation_context_bulk_resolves_fixed_income_rows(monkeypatch) 
     assert context.get_index_convention(index_uid).index_family == "ibor"
     assert (
         context.get_index_curve_binding(role_key="projection", index_uid=index_uid).curve_uid
-        == curve_uid
+        == projection_curve_uid
     )
-    assert context.get_curve(curve_uid).unique_identifier == "USD-SOFR-PROJECTION"
-    assert context.get_curve_building_details(curve_uid).curve_uid == curve_uid
-    assert context.spec.requested_roles == ("projection",)
-    assert context.spec.requirements[0].binding_key == binding_key
-    assert calls == [
+    assert (
+        context.get_index_curve_binding(role_key="discount", index_uid=index_uid).curve_uid
+        == discount_curve_uid
+    )
+    assert context.get_curve(projection_curve_uid).unique_identifier == "USD-SOFR-PROJECTION"
+    assert context.get_curve(discount_curve_uid).unique_identifier == "USD-SOFR-DISCOUNT"
+    assert context.get_curve_building_details(projection_curve_uid).curve_uid == projection_curve_uid
+    assert context.get_curve_building_details(discount_curve_uid).curve_uid == discount_curve_uid
+    assert context.spec.requested_roles == ("projection", "discount")
+    assert {requirement.binding_key for requirement in context.spec.requirements} == {
+        projection_binding_key,
+        discount_binding_key,
+    }
+    assert calls[:5] == [
         ("market_data_set", "eod"),
         (
             "concept_bindings",
@@ -802,18 +897,19 @@ def test_pricing_valuation_context_bulk_resolves_fixed_income_rows(monkeypatch) 
             "curve_bindings",
             {
                 "market_data_set_uid": market_data_set_uid,
-                "binding_keys": (binding_key,),
+                "binding_keys": (projection_binding_key, discount_binding_key),
                 "status": "ACTIVE",
             },
         ),
-        ("curves", (curve_uid,)),
-        ("curve_building_details", (curve_uid,)),
-        (
-            "curve_observations",
-            ("USD-SOFR-PROJECTION",),
-            dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
-            None,
-        ),
+    ]
+    assert calls[5][0] == "curves"
+    assert set(calls[5][1]) == expected_curve_uids
+    assert calls[6][0] == "curve_building_details"
+    assert set(calls[6][1]) == expected_curve_uids
+    assert calls[7][0] == "curve_observations"
+    assert set(calls[7][1]) == expected_curve_identifiers
+    assert calls[7][2:] == (dt.datetime(2026, 5, 27, tzinfo=dt.UTC), None)
+    assert calls[8:] == [
         (
             "fixings",
             ("USD-SOFR",),
@@ -894,11 +990,18 @@ def test_prepared_floating_bond_hot_loop_uses_context_without_backend_resolution
     valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
     market_data_set_uid = uuid.uuid4()
     index_uid = uuid.uuid4()
-    curve_uid = uuid.uuid4()
+    projection_curve_uid = uuid.uuid4()
+    discount_curve_uid = uuid.uuid4()
     discount_curves_uid = uuid.uuid4()
     fixings_uid = uuid.uuid4()
-    binding_key = curve_binding_key(
+    projection_binding_key = curve_binding_key(
         role_key="projection",
+        selector_type="index",
+        selector_key=str(index_uid),
+        quote_side="mid",
+    )
+    discount_binding_key = curve_binding_key(
+        role_key="discount",
         selector_type="index",
         selector_key=str(index_uid),
         quote_side="mid",
@@ -967,12 +1070,22 @@ def test_prepared_floating_bond_hot_loop_uses_context_without_backend_resolution
                 PricingMarketDataSetCurveBinding(
                     uid=uuid.uuid4(),
                     market_data_set_uid=market_data_set_uid,
-                    binding_key=binding_key,
+                    binding_key=projection_binding_key,
                     role_key="projection",
                     selector_type="index",
                     selector_key=str(index_uid),
                     quote_side="mid",
-                    curve_uid=curve_uid,
+                    curve_uid=projection_curve_uid,
+                ),
+                PricingMarketDataSetCurveBinding(
+                    uid=uuid.uuid4(),
+                    market_data_set_uid=market_data_set_uid,
+                    binding_key=discount_binding_key,
+                    role_key="discount",
+                    selector_type="index",
+                    selector_key=str(index_uid),
+                    quote_side="mid",
+                    curve_uid=discount_curve_uid,
                 )
             ]
         ),
@@ -982,11 +1095,17 @@ def test_prepared_floating_bond_hot_loop_uses_context_without_backend_resolution
         staticmethod(
             lambda curve_uids: [
                 Curve(
-                    uid=curve_uids[0],
+                    uid=projection_curve_uid,
                     unique_identifier="USD-SOFR-PROJECTION",
                     display_name="USD SOFR Projection",
                     curve_type="projection",
-                )
+                ),
+                Curve(
+                    uid=discount_curve_uid,
+                    unique_identifier="USD-SOFR-DISCOUNT",
+                    display_name="USD SOFR Discount",
+                    curve_type="discount",
+                ),
             ]
         ),
     )
@@ -995,7 +1114,7 @@ def test_prepared_floating_bond_hot_loop_uses_context_without_backend_resolution
         staticmethod(
             lambda curve_uids: [
                 CurveBuildingDetails(
-                    curve_uid=curve_uids[0],
+                    curve_uid=projection_curve_uid,
                     builder_type="zero_rate_curve",
                     quote_convention="zero_rate",
                     rate_unit="decimal",
@@ -1004,7 +1123,18 @@ def test_prepared_floating_bond_hot_loop_uses_context_without_backend_resolution
                     interpolation_method="linear_zero",
                     compounding="simple",
                     extrapolation_policy="enabled",
-                )
+                ),
+                CurveBuildingDetails(
+                    curve_uid=discount_curve_uid,
+                    builder_type="zero_rate_curve",
+                    quote_convention="zero_rate",
+                    rate_unit="decimal",
+                    day_counter_code="Actual360",
+                    calendar_code="TARGET",
+                    interpolation_method="linear_zero",
+                    compounding="simple",
+                    extrapolation_policy="enabled",
+                ),
             ]
         ),
     )
@@ -1024,7 +1154,20 @@ def test_prepared_floating_bond_hot_loop_uses_context_without_backend_resolution
                     "metadata_json": None,
                 },
                 target_date,
-            )
+            ),
+            "USD-SOFR-DISCOUNT": (
+                {
+                    "curve_identifier": "USD-SOFR-DISCOUNT",
+                    "time_index": target_date,
+                    "nodes": [
+                        {"days_to_maturity": 365, "zero": 0.0475},
+                        {"days_to_maturity": 3650, "zero": 0.0495},
+                    ],
+                    "key_nodes": None,
+                    "metadata_json": None,
+                },
+                target_date,
+            ),
         },
     )
     monkeypatch.setattr(
@@ -1102,17 +1245,32 @@ def test_prepared_floating_bond_hot_loop_uses_context_without_backend_resolution
     monkeypatch.setattr(
         PricingMarketDataSetCurveBinding,
         "resolve_index_curve_uid",
-        staticmethod(lambda **_kwargs: curve_uid),
+        staticmethod(
+            lambda **kwargs: (
+                projection_curve_uid
+                if kwargs["role_key"] == "projection"
+                else discount_curve_uid
+            )
+        ),
     )
     monkeypatch.setattr(
         Curve,
         "get_by_uid",
         staticmethod(
-            lambda uid: Curve(
-                uid=uid,
-                unique_identifier="USD-SOFR-PROJECTION",
-                display_name="USD SOFR Projection",
-                curve_type="projection",
+            lambda uid: (
+                Curve(
+                    uid=projection_curve_uid,
+                    unique_identifier="USD-SOFR-PROJECTION",
+                    display_name="USD SOFR Projection",
+                    curve_type="projection",
+                )
+                if uid == projection_curve_uid
+                else Curve(
+                    uid=discount_curve_uid,
+                    unique_identifier="USD-SOFR-DISCOUNT",
+                    display_name="USD SOFR Discount",
+                    curve_type="discount",
+                )
             )
         ),
     )
@@ -1137,10 +1295,17 @@ def test_prepared_floating_bond_hot_loop_uses_context_without_backend_resolution
         resolvers.data_interface,
         "get_historical_discount_curve",
         lambda curve_name, target_date, *, market_data_set=None: (
-            [
-                {"days_to_maturity": 365, "zero": 0.05},
-                {"days_to_maturity": 3650, "zero": 0.052},
-            ],
+            (
+                [
+                    {"days_to_maturity": 365, "zero": 0.05},
+                    {"days_to_maturity": 3650, "zero": 0.052},
+                ]
+                if curve_name == "USD-SOFR-PROJECTION"
+                else [
+                    {"days_to_maturity": 365, "zero": 0.0475},
+                    {"days_to_maturity": 3650, "zero": 0.0495},
+                ]
+            ),
             target_date,
         ),
     )
@@ -1215,6 +1380,32 @@ def test_price_scenario_uses_line_scoped_curve_handle_copies() -> None:
     assert result["market_value_delta"] == 4.0
     assert instrument.valuation_date is None
     assert instrument._curve_bump == 0.0
+    assert context.prepare_instrument(instrument).price() == 100.0
+
+
+def test_price_scenario_passes_role_specific_curve_handles() -> None:
+    valuation_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
+    instrument = RoleCurveOverrideInstrument(price_value=100.0)
+    position = ValuationPosition(
+        valuation_date=valuation_date,
+        market_data_set=uuid.uuid4(),
+        lines=[ValuationLine(instrument=instrument, units=2.0)],
+    )
+    context = PricingValuationContext.prepare_for_position(position)
+
+    result = price_scenario(
+        position=position,
+        context=context,
+        line_curve_handles={0: {"projection": 1.0, "discount": 2.0}},
+        scenario_curve_handles={0: {"projection": 3.0, "discount": 5.0}},
+    )
+
+    assert result["base_market_value"] == 206.0
+    assert result["scenario_market_value"] == 216.0
+    assert result["market_value_delta"] == 10.0
+    assert instrument.valuation_date is None
+    assert instrument._projection_bump == 0.0
+    assert instrument._discount_bump == 0.0
     assert context.prepare_instrument(instrument).price() == 100.0
 
 

@@ -12,8 +12,9 @@ sys.path[:0] = [str(_PROJECT_ROOT)]
 
 from examples.msm_pricing.utils import (  # noqa: E402
     DEFAULT_FIXING_LOOKBACK_DAYS,
-    EXAMPLE_CURVE_UNIQUE_IDENTIFIER,
+    EXAMPLE_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
     EXAMPLE_INDEX_UNIQUE_IDENTIFIER,
+    EXAMPLE_PROJECTION_CURVE_UNIQUE_IDENTIFIER,
     build_flat_forward_key_nodes,
     build_mock_fixings_frame,
 )
@@ -68,7 +69,11 @@ def test_mock_curve_key_nodes_use_recommended_yield_shape() -> None:
 def test_pricing_valuation_context_example_runs_with_mock_market_data() -> None:
     result = build_mock_context_workflow()
 
-    assert result["cached_curve_identifier"] == EXAMPLE_CURVE_UNIQUE_IDENTIFIER
+    assert (
+        result["cached_projection_curve_identifier"]
+        == EXAMPLE_PROJECTION_CURVE_UNIQUE_IDENTIFIER
+    )
+    assert result["cached_discount_curve_identifier"] == EXAMPLE_DISCOUNT_CURVE_UNIQUE_IDENTIFIER
     assert result["cached_index_family"] == "ibor"
     assert result["mock_curve_nodes"] > 1
     assert result["mock_fixing_rows"] > 1

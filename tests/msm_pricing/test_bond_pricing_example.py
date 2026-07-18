@@ -40,6 +40,7 @@ def test_bond_pricing_example_uses_storage_uids_for_bindings() -> None:
     assert "data_node_uid=curve_data_node_uid" in source
     assert "data_node_uid=fixing_data_node_uid" in source
     assert 'role_key="projection"' in source
+    assert 'role_key="discount"' in source
     assert "index_uid=index.uid" in source
     assert "quote_side=None" in source
     assert "curve_node._default_identifier()" not in source
@@ -77,7 +78,8 @@ def test_bond_pricing_example_reports_curve_key_node_count() -> None:
     source = example_path.read_text()
 
     assert "_count_curve_key_nodes(" in source
-    assert "key_nodes=_count_curve_key_nodes(curve_frame)" in source
+    assert "projection_key_nodes=_count_curve_key_nodes(projection_curve_frame)" in source
+    assert "discount_key_nodes=_count_curve_key_nodes(discount_curve_frame)" in source
 
 
 def _has_false_keyword(call: ast.Call, keyword_name: str) -> bool:
