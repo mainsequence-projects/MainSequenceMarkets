@@ -63,12 +63,13 @@ def _curve(
     *,
     curve_uid: uuid.UUID | None = None,
     unique_identifier: str = "USD-SOFR-DISCOUNT",
+    curve_type: str = "discount",
 ) -> Curve:
     return Curve(
         uid=curve_uid or uuid.uuid4(),
         unique_identifier=unique_identifier,
         display_name=unique_identifier,
-        curve_type="discount",
+        curve_type=curve_type,
     )
 
 
@@ -139,16 +140,36 @@ def _context_with_curve(
         position,
         resolve_market_data_set=False,
     )
-    binding = _binding(index_uid=index_uid, curve_uid=curve.uid, role_key=role_key)
-    context.curve_bindings[binding.binding_key] = binding
     if role_key == "projection":
-        discount_binding = _binding(index_uid=index_uid, curve_uid=curve.uid, role_key="discount")
+        projection_curve = _curve(
+            unique_identifier=f"{curve.unique_identifier}-PROJECTION",
+            curve_type="projection",
+        )
+        projection_binding = _binding(
+            index_uid=index_uid,
+            curve_uid=projection_curve.uid,
+            role_key="projection",
+        )
+        context.curve_bindings[projection_binding.binding_key] = projection_binding
+        discount_binding = _binding(
+            index_uid=index_uid,
+            curve_uid=curve.uid,
+            role_key="discount",
+        )
         context.curve_bindings[discount_binding.binding_key] = discount_binding
-    context.curves[curve.uid] = curve
-    context.curve_building_details[curve.uid] = _details(curve.uid)
-    context.curve_observations[curve.uid] = _observation(curve.unique_identifier)
-    context.curve_observation_dates[curve.uid] = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
-    context.curve_handles[curve.uid] = base_handle
+        curves_to_cache = (projection_curve, curve)
+    else:
+        binding = _binding(index_uid=index_uid, curve_uid=curve.uid, role_key=role_key)
+        context.curve_bindings[binding.binding_key] = binding
+        curves_to_cache = (curve,)
+    for cached_curve in curves_to_cache:
+        context.curves[cached_curve.uid] = cached_curve
+        context.curve_building_details[cached_curve.uid] = _details(cached_curve.uid)
+        context.curve_observations[cached_curve.uid] = _observation(cached_curve.unique_identifier)
+        context.curve_observation_dates[cached_curve.uid] = dt.datetime(
+            2026, 1, 1, tzinfo=dt.UTC
+        )
+        context.curve_handles[cached_curve.uid] = base_handle
     return context
 
 
@@ -200,14 +221,27 @@ def test_price_curve_scenario_builds_shared_curve_once_and_delegates(monkeypatch
     assert result.scenario_market_value == pytest.approx(480.0)
     assert result.market_value_delta == pytest.approx(150.0)
     assert len(result.line_impacts) == 2
-    assert result.curve_shocks[0]["curve_identifier"] == curve.unique_identifier
+    assert result.curve_shocks == (
+        {
+            "curve_identifier": f"{curve.unique_identifier}-PROJECTION",
+            "parallel_bp": 0.0,
+            "keyrate_bp": {},
+            "line_count": 2,
+        },
+        {
+            "curve_identifier": curve.unique_identifier,
+            "parallel_bp": 100.0,
+            "keyrate_bp": {},
+            "line_count": 2,
+        },
+    )
     assert result.base_curve_handles_by_line == {
         0: {"projection": 10.0, "discount": 10.0},
         1: {"projection": 10.0, "discount": 10.0},
     }
     assert result.scenario_curve_handles_by_line == {
-        0: {"projection": pytest.approx(60.0), "discount": pytest.approx(60.0)},
-        1: {"projection": pytest.approx(60.0), "discount": pytest.approx(60.0)},
+        0: {"projection": 10.0, "discount": pytest.approx(60.0)},
+        1: {"projection": 10.0, "discount": pytest.approx(60.0)},
     }
     assert first._curve_bump == 0.0
     assert second._curve_bump == 0.0
@@ -435,7 +469,7 @@ def test_z_spread_overlays_are_runtime_line_handles_only(monkeypatch) -> None:
         0: {"projection": 10.0, "discount": "overlay:10.0:0.0025"}
     }
     assert captured["scenario_curve_handles"] == {
-        0: {"projection": pytest.approx(60.0), "discount": "overlay:60.0:0.0025"}
+        0: {"projection": 10.0, "discount": "overlay:60.0:0.0025"}
     }
     assert context.curve_handles[curve.uid] == 10.0
     assert result.market_value_delta == 1.0

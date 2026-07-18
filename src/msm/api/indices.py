@@ -230,6 +230,12 @@ class IndexUpdate(BaseModel):
 
 
 __all__ = [
+    "DerivedIndex",
+    "IncompleteObservationsError",
+    "IndexCalculationDefinition",
+    "IndexCalculationError",
+    "IndexCalculationLeg",
+    "IndexCalculationResult",
     "Index",
     "IndexCreate",
     "IndexType",
@@ -238,5 +244,26 @@ __all__ = [
     "IndexTypeUpsert",
     "IndexUpdate",
     "IndexUpsert",
+    "LookAheadError",
+    "ResolvedIndexLeg",
+    "calculate_index",
+    "compute_definition_hash",
     "normalize_index_type",
 ]
+
+
+# Imported after the canonical Index row APIs are defined to avoid a module cycle.
+from msm.analytics.indices import (  # noqa: E402
+    IncompleteObservationsError,
+    IndexCalculationDefinition,
+    IndexCalculationError,
+    IndexCalculationLeg,
+    IndexCalculationResult,
+    LookAheadError,
+    ResolvedIndexLeg,
+    calculate_index,
+    compute_definition_hash,
+)
+from msm.api.derived_indices import DerivedIndex  # noqa: E402
+
+DerivedIndex.model_rebuild(_types_namespace={"Index": Index})

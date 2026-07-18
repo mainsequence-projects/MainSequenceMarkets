@@ -23,6 +23,11 @@ Use the fixed-income curve-building skill when the task is specifically about:
 Use the asset model extension skill when the task changes canonical asset rows
 or bond asset detail tables.
 
+Use the derived-index workflow skill when pricing-produced observations such
+as option delta, bond DV01, yield, or z-spread are combined into a persisted
+spread, basket, ratio, or hedged Index. Pricing owns production of those input
+facts; core Index owns methodology, resolution, coefficients, and publication.
+
 ## This Skill Owns
 
 - `msm_pricing.bootstrap.attach_pricing_schemas(...)` as the attach-only pricing
@@ -204,8 +209,9 @@ Use `PricingMarketDataSetCurveBinding` for curve-identity selection inside the
 chosen source. It maps a valuation role and selector, such as
 `projection:index:<IndexTable.uid>:mid` or
 `discount:index:<IndexTable.uid>:mid`, to `CurveTable.uid`. Floating-rate
-pricing uses projection and discount bindings separately; sharing one physical
-curve across both roles must be explicit in the binding table.
+pricing uses projection and discount bindings separately. Those two bindings
+may point to the same `curve_uid`, but both role bindings must exist; there is
+no scalar curve shortcut or hidden projection-as-discount fallback.
 
 For active curves intended for runtime pricing, a `Curve` row by itself is not
 enough. The curve must also have `CurveBuildingDetails`, at least one

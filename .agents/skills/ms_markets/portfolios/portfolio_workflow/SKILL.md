@@ -11,6 +11,11 @@ sources, and portfolio classification workflows. Core `msm` owns
 `PortfolioTable` identity, `PortfolioGroupTable` classification rows, account
 target-position exposure rows, and virtual-fund allocation state.
 
+Route theoretical spreads, baskets, ratios, butterflies, and hedged market
+indexes to the derived-index workflow skill. A Portfolio may reference one as
+a benchmark or signal input, but must not reuse portfolio weights or holdings
+as calculation legs or resolved-index provenance.
+
 ## Read First
 
 Before changing portfolio workflow code, inspect:

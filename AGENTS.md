@@ -8,8 +8,12 @@ operate within the Main Sequence platform and must follow Main Sequence platform
 
 ## Project-Specific Instructions
 
-[ HERE SHOULD BE THE PROJECT-SPECIFIC ACTIONS, RULES, CONTEXT, AND LOCAL NOTES. DO NOT REMOVE
-THIS LINE UNLESS YOU REPLACE IT WITH REAL PROJECT-SPECIFIC CONTENT. ]
+- This project does not use `.agents/brief.md`, `.agents/status.md`, `.agents/tasks.md`, or
+  `.agents/record.md`.
+- Do not expect, create, update, or report missing project-state files under `.agents/`.
+- Use repository documentation, tests, git state, task context, and verified platform evidence for
+  status and handoff information. The `.agents/` directory is reserved for managed skills and
+  explicitly documented tooling configuration.
 
 
 
@@ -69,8 +73,8 @@ Core responsibilities:
 - translate user business logic into reusable code under `src/` so it can be reused by APIs,
   dashboards, jobs, and other project components instead of duplicating logic in integration
   layers
-- maintain the repository through explicit `.agents/` project-state files and the bug auditor skill
-  for blocker and SDK/platform issue assessment
+- keep repository documentation, tests, git state, and bug-auditor evidence aligned for blocker
+  and SDK/platform issue assessment
 
 Typical outcomes include:
 
@@ -82,7 +86,8 @@ Typical outcomes include:
   Center surface before building or deploying it
 - build reusable business logic in `src/` and keep thin integration layers in APIs, jobs, and
   dashboards
-- keep the repository auditable through project-state records, blocker tracking, and bug reporting
+- keep the repository auditable through documentation, test evidence, blocker tracking, and bug
+  reporting
 
 Working rules for this role:
 
@@ -110,9 +115,7 @@ User-resolution rule for agents:
 
 Delegation rules:
 
-- when work is delegated or queued for later, write the task in `.agents/tasks.md` according to
-  the skill that should execute it
-- each delegated or queued task in `.agents/tasks.md` must state:
+- each delegated task declaration must state:
   - the exact task scope
   - the owning skill
   - the expected output, decision, or artifact
@@ -224,26 +227,24 @@ For any non-trivial Main Sequence task:
 1. Read the latest relevant Main Sequence documentation.
 2. Compare the implementation against the latest documented behavior.
 
-4. Check `.agents/tasks.md` for current priorities.
-
-7. Confirm you are in the correct project checkout, or use `--path` explicitly.
-8. Confirm platform context with:
+3. Confirm you are in the correct project checkout, or use `--path` explicitly.
+4. Confirm platform context with:
    `mainsequence project current --debug`
-9. Before validations or live checks, run:
+5. Before validations or live checks, run:
    `mainsequence project refresh_token --path .`
-10. If git push or pull is required, use:
+6. If git push or pull is required, use:
     `mainsequence project open-signed-terminal <PROJECT_ID>`
-11. Before proceeding with non-trivial Main Sequence work, update the project SDK:
+7. Before proceeding with non-trivial Main Sequence work, update the project SDK:
     `mainsequence project update-sdk --path .`
-12. After updating the SDK, compare `mainsequence --version` with
+8. After updating the SDK, compare `mainsequence --version` with
     `.agents/skills/mainsequence/PINNED_FROM.txt` field `pinned_version=...`.
-13. If `PINNED_FROM.txt` is missing or `pinned_version` differs from the installed
+9. If `PINNED_FROM.txt` is missing or `pinned_version` differs from the installed
     SDK version, refresh the managed scaffold files:
     `mainsequence project update AGENTS.md --path .`
     `mainsequence project update_agent_skills --path .`
-14. If `pinned_version` already matches the installed SDK version, do not refresh
+10. If `pinned_version` already matches the installed SDK version, do not refresh
     `AGENTS.md` or `.agents/skills/mainsequence/` as a startup ritual.
-15. Verify platform state with the CLI or platform tooling instead of guessing.
+11. Verify platform state with the CLI or platform tooling instead of guessing.
 
 ## Orchestrator Rule
 
@@ -254,10 +255,9 @@ Default pattern:
 1. `.agents/skills/mainsequence/project_builder/SKILL.md`
 2. the relevant domain skill
 
-Before the final response:
-
-- update the relevant `.agents/` project-state files whenever project understanding, verified
-  state, open tasks, blockers, or historical record changed during the turn
+Before the final response, make sure repository documentation and the reported verification
+evidence reflect any material project understanding, open work, or blockers changed during the
+turn. Do not create project-state files under `.agents/`.
 
 Always use `.agents/skills/mainsequence/project_builder/SKILL.md` as the source of truth for project
 scaffolding, folder structure, and standard repository layout.
@@ -347,9 +347,10 @@ If something may be a Main Sequence SDK, documentation, or platform issue:
 - surface failures early
 - distinguish verified facts from assumptions
 
-## Project-State Files Under `.agents/`
+## No Project-State Files Under `.agents/`
 
-
-Do not improvise their meaning in domain skills. Use the project bootstrap skill rules to reconcile
-them after material work.
+This project does not use `.agents/brief.md`, `.agents/status.md`, `.agents/tasks.md`, or
+`.agents/record.md`. Their absence is expected and must not be reported as a checkout problem.
+Do not create or maintain them. Preserve evidence in normal repository documentation, tests, git
+state, the active task context, and verified platform output.
 <!-- mainsequence-agent-scaffold:end -->

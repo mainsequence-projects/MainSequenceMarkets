@@ -130,12 +130,13 @@ The binding uniqueness boundary is `(market_data_set_uid, binding_key)`, where
 or selector types may deliberately select the same curve. Do not infer a single
 owning index or selector from a `Curve` row.
 
-Floating-rate bonds and swaps are non-mono-curve by default. Resolve the
-floating index with `role_key="projection"` or `role_key="forwarding"`, and
-resolve discounting with a separate `role_key="discount"` binding. It is valid
-to use one physical curve for both roles only when both role bindings explicitly
-point to the same `curve_uid`. Do not use `Curve.curve_type` as a role check
-unless the caller supplied an explicit `expected_curve_type`.
+Floating-rate bonds and swaps use an explicit two-role curve contract. Resolve
+the floating index with `role_key="projection"` or `role_key="forwarding"`,
+and resolve discounting with a separate `role_key="discount"` binding. Those
+two role bindings may point to the same physical `curve_uid`, but both bindings
+must exist. There is no scalar curve shortcut and no hidden default that reuses
+projection as discounting. Do not use `Curve.curve_type` as a role check unless
+the caller supplied an explicit `expected_curve_type`.
 
 ## Runtime Usability Invariant
 
@@ -589,7 +590,9 @@ Before finishing a change:
 - Curve-binding reviews distinguish selector uniqueness from curve sharing:
   duplicate `(market_data_set_uid, binding_key)` rows are invalid, but multiple
   bindings pointing at the same `curve_uid` are valid when the policy calls for
-  shared curve identity.
+  shared physical curve identity. Floating-rate projection and discount require
+  two explicit role bindings even when both bindings point to the same
+  `curve_uid`.
 - Runtime curve reads have a `PricingMarketDataSetBinding` for
   `PRICING_CONCEPT_DISCOUNT_CURVES`.
 - Fixing DataNode rows use `time_index`, `index_identifier`, and `rate`.

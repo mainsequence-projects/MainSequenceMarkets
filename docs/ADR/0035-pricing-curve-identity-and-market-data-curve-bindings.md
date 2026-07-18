@@ -3,7 +3,7 @@
 ## Status
 
 Accepted - implemented for curve identity, market-data curve bindings, and
-non-mono-curve floating-rate pricing.
+explicit two-role floating-rate pricing.
 
 ## Context
 
@@ -610,13 +610,14 @@ curve roles. Completed work:
       `projection:index:<index_uid>` and `discount:index:<index_uid>`,
       and price through the two-curve path.
 - [x] Update `docs/knowledge/msm_pricing/`, packaged pricing skills, tutorial
-      material, and `CHANGELOG.md` to document the non-mono-curve contract,
-      including the fact that using one curve for both roles is allowed only
-      when the market-data set explicitly binds both roles to the same curve.
+      material, and `CHANGELOG.md` to document the explicit two-role contract:
+      floating projection and discount roles must both be resolved explicitly,
+      with no projection-only compatibility path or scalar curve shortcut.
 - [x] Add focused tests proving that floating-rate bond and swap pricing use
-      distinct projection and discount `curve_uid` values, that explicit
-      same-curve bindings remain valid, and that missing discount bindings fail
-      with actionable role/selector diagnostics for floaters and swaps.
+      projection and discount role bindings explicitly, that both roles may
+      point to the same physical `curve_uid`, and that missing discount
+      bindings fail with actionable role/selector diagnostics for floaters and
+      swaps.
 - [x] Add regression tests for resolver role/type decoupling so a role binding
       can select a curve whose `Curve.curve_type` differs from the valuation
       role unless `expected_curve_type` is explicitly supplied.
@@ -633,10 +634,10 @@ This ADR is complete only when:
 - each persisted curve used for pricing has one `CurveBuildingDetailsTable` row;
 - market-data-set curve bindings select curve identity for discount,
   projection, forwarding, and z-spread-base roles;
-- floating-rate bond and swap workflows document the non-mono-curve contract:
+- floating-rate bond and swap workflows document the explicit two-role contract:
   projection or forwarding curves are resolved independently from discount
-  curves, and sharing one curve across both roles is an explicit
-  market-data-set binding policy rather than a runtime default;
+  curves, and both role bindings must exist even when they point to the same
+  physical curve identity;
 - pricing resolution never reads an index selector from the curve row;
 - index resolution still uses `IndexConventionDetailsTable` for QuantLib index
   construction and fixings;

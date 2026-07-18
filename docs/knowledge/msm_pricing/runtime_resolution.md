@@ -146,10 +146,10 @@ projection:index:<floating index uid>:<quote side> -> projection curve
 discount:index:<floating index uid>:<quote side>   -> discount curve
 ```
 
-Using one curve for both roles is still valid, but only when the market-data
-set explicitly binds both role keys to the same `curve_uid`. For floating-rate
-instruments, a missing discount binding is an error; the runtime no longer
-falls back to the projection curve as a hidden mono-curve default.
+Using one physical curve for both roles is valid when the market-data set
+explicitly binds both role keys to the same `curve_uid`. For floating-rate
+instruments, a missing discount binding is an error; the runtime does not fall
+back to the projection curve as a hidden mono-curve default.
 
 `Curve.curve_type` is physical curve classification, not the valuation role.
 Role-based resolution validates `Curve.curve_type` only when the caller passes

@@ -1,6 +1,8 @@
 # Indexes
 
-Indexes are reference data, not assets.
+Indexes are canonical market observables, not assets. An Index may be an
+externally supplied reference or a calculated observable with a versioned
+derived-index methodology.
 
 Use `Index` when a workflow needs a canonical row for an index that may be used
 as a derivative underlying. Do not create fake `Asset` rows for indexes just to
@@ -15,6 +17,8 @@ Indexes answer these questions:
 - What human-readable name should users see?
 - Which optional provider namespace owns or supplied the reference row?
 - Which derivative contracts reference this index as an underlying?
+- If the type is `derived`, which immutable definition and ordered legs give
+  the index its meaning at a timestamp?
 
 Indexes do not represent tradable instruments. A tradable future on an index is
 an `Asset(asset_type="future")` plus a `FutureAssetDetailsTable` row that references
@@ -157,6 +161,18 @@ timestamps to `datetime64[ns, UTC]`, sets the
 uses the active markets namespace for default DataNode identifiers and
 `hash_namespace`.
 
+## Derived Indexes
+
+Use `index_type="derived"` when an Index owns a calculated methodology such as
+a yield spread, commodity calendar spread, curve butterfly, ratio, rebased
+basket, or self-financing hedged series. The small `IndexTable` remains the
+stable identity; effective-dated definition and leg tables carry calculation
+meaning, and generic Index storage carries published history.
+
+See [Derived Index Workflow](derived_indexes.md) for the complete typed API,
+operators, unit and timing policies, dynamic resolution, publication workflow,
+examples, and the Index/Portfolio/Signal boundaries.
+
 ## Boundaries
 
 Do not widen `AssetTable` with index fields. Do not put index reference rows in
@@ -168,3 +184,4 @@ other derivative detail tables to link tradable contracts back to indexes.
 - [Assets](../assets/index.md)
 - [Futures](../derivatives/futures.md)
 - [Models](../models/index.md)
+- [Derived Index Workflow](derived_indexes.md)

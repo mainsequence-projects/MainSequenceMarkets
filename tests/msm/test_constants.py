@@ -8,6 +8,7 @@ from msm import (
     ASSET_TYPE_EQUITY,
     ASSET_TYPE_FUTURE,
     INDEX_TYPE_CRYPTO,
+    INDEX_TYPE_DERIVED,
     INDEX_TYPE_EQUITY,
     INDEX_TYPE_INTEREST_RATE,
 )
@@ -27,6 +28,7 @@ from msm.constants import (
     BUILT_IN_INDEX_TYPE_DEFINITIONS,
     BUILT_IN_INDEX_TYPES,
     INDEX_TYPE_CRYPTO_DEFINITION,
+    INDEX_TYPE_DERIVED_DEFINITION,
     INDEX_TYPE_EQUITY_DEFINITION,
     INDEX_TYPE_INTEREST_RATE_DEFINITION,
 )
@@ -50,7 +52,8 @@ def test_asset_type_constants_are_canonical_values() -> None:
     assert INDEX_TYPE_INTEREST_RATE == "interest_rate"
     assert INDEX_TYPE_EQUITY == "equity"
     assert INDEX_TYPE_CRYPTO == "crypto"
-    assert BUILT_IN_INDEX_TYPES == ("interest_rate", "equity", "crypto")
+    assert INDEX_TYPE_DERIVED == "derived"
+    assert BUILT_IN_INDEX_TYPES == ("interest_rate", "equity", "crypto", "derived")
 
 
 def test_legacy_api_asset_type_names_alias_static_constants() -> None:
@@ -101,8 +104,17 @@ def test_index_type_definitions_build_upsert_payloads() -> None:
         "display_name": "Crypto",
         "description": "Crypto venue reference indexes used as derivative underlyings.",
     }
+    assert INDEX_TYPE_DERIVED_DEFINITION.as_payload() == {
+        "index_type": "derived",
+        "display_name": "Derived",
+        "description": (
+            "Calculated market indexes with an owned, versioned methodology and canonical "
+            "published value history."
+        ),
+    }
     assert [definition.index_type for definition in BUILT_IN_INDEX_TYPE_DEFINITIONS] == [
         "interest_rate",
         "equity",
         "crypto",
+        "derived",
     ]

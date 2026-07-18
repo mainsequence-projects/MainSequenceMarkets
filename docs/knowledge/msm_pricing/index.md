@@ -177,8 +177,11 @@ Cardinalities that matter:
   (`asset_uid`, `index_uid`, `curve_uid` is both PK and FK).
 - A curve binding is **many-to-one** onto `CurveTable`: `curve_uid` is *not*
   unique in `PricingMarketDataSetCurveBindingTable`, so the same curve can be
-  selected by many roles, selectors, sides, and sets. To find every selector
-  that uses a curve, query the binding table by `curve_uid`.
+  selected by many roles, selectors, sides, and sets. Floating indexes still
+  require separate projection and discount binding rows; those rows may point
+  to the same `curve_uid` when that is the intended physical curve policy. To
+  find every selector that uses a curve, query the binding table by
+  `curve_uid`.
 - An index participates in curve selection only as `selector_key` (its UID
   stored as a string) — there is no foreign key from a curve to an index.
 

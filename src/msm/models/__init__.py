@@ -29,6 +29,10 @@ from .derivatives import FutureAssetDetailsTable
 from .execution import OrderManagerTable
 from .issuers import IssuerTable
 from .indices import IndexTable, IndexTypeTable
+from .index_calculations import (
+    IndexCalculationDefinitionTable,
+    IndexCalculationLegTable,
+)
 from .portfolios import PortfolioGroupMembershipTable, PortfolioGroupTable, PortfolioTable
 from .portfolios import SignalMetadataTable
 
@@ -46,6 +50,8 @@ def markets_sqlalchemy_models() -> list[type]:
         AssetTable,
         IndexTypeTable,
         IndexTable,
+        IndexCalculationDefinitionTable,
+        IndexCalculationLegTable,
         IssuerTable,
         CurrencySpotAssetDetailsTable,
         BondAssetDetailsTable,
@@ -90,9 +96,12 @@ def _markets_data_node_storage_models() -> list[type]:
         OrdersStorage,
         TradesStorage,
     )
+    from msm.data_nodes.indices.storage import IndexResolvedLegsStorage, IndexValuesStorage
 
     return [
         AssetSnapshotsStorage,
+        IndexValuesStorage,
+        IndexResolvedLegsStorage,
         AccountHoldingsStorage,
         VirtualFundHoldingsStorage,
         TargetPositionsStorage,
@@ -121,6 +130,8 @@ __all__ = [
     "FutureAssetDetailsTable",
     "IndexTable",
     "IndexTypeTable",
+    "IndexCalculationDefinitionTable",
+    "IndexCalculationLegTable",
     "IssuerTable",
     "OpenFigiAssetDetailsTable",
     "OrderManagerTable",

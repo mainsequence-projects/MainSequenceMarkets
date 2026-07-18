@@ -108,19 +108,45 @@ def _projection_discount_resolutions(
     base_handle: object,
     scenario_handle: object | None = None,
     curve_uid: uuid.UUID | None = None,
+    projection_curve_identifier: str | None = None,
+    projection_base_handle: object | None = None,
+    projection_scenario_handle: object | None = None,
+    projection_curve_uid: uuid.UUID | None = None,
+    discount_base_handle: object | None = None,
+    discount_scenario_handle: object | None = None,
+    discount_curve_uid: uuid.UUID | None = None,
     selector_key: str | None = None,
 ) -> list[LineCurveResolution]:
+    discount_curve_identifier = curve_identifier
+    projection_curve_identifier = projection_curve_identifier or f"{curve_identifier}-PROJECTION"
+    projection_base = base_handle if projection_base_handle is None else projection_base_handle
+    discount_base = base_handle if discount_base_handle is None else discount_base_handle
+    projection_scenario = (
+        scenario_handle if projection_scenario_handle is None else projection_scenario_handle
+    )
+    discount_scenario = (
+        scenario_handle if discount_scenario_handle is None else discount_scenario_handle
+    )
+    discount_uid = discount_curve_uid or curve_uid
     return [
         _resolution(
             line_index=line_index,
-            curve_identifier=curve_identifier,
-            base_handle=base_handle,
-            scenario_handle=scenario_handle,
-            role_key=role_key,
-            curve_uid=curve_uid,
+            curve_identifier=projection_curve_identifier,
+            base_handle=projection_base,
+            scenario_handle=projection_scenario,
+            role_key="projection",
+            curve_uid=projection_curve_uid,
             selector_key=selector_key,
-        )
-        for role_key in ("projection", "discount")
+        ),
+        _resolution(
+            line_index=line_index,
+            curve_identifier=discount_curve_identifier,
+            base_handle=discount_base,
+            scenario_handle=discount_scenario,
+            role_key="discount",
+            curve_uid=discount_uid,
+            selector_key=selector_key,
+        ),
     ]
 
 
@@ -194,22 +220,32 @@ def _context_with_curve(
     position: ValuationPosition,
     *,
     index_uid: uuid.UUID,
-    curve: Curve,
-    base_handle: object,
+    projection_curve: Curve,
+    discount_curve: Curve,
+    projection_base_handle: object,
+    discount_base_handle: object,
 ) -> PricingValuationContext:
     context = PricingValuationContext.prepare_for_position(
         position,
         resolve_market_data_set=False,
     )
-    binding = _binding(index_uid=index_uid, curve_uid=curve.uid)
+    binding = _binding(index_uid=index_uid, curve_uid=projection_curve.uid)
     context.curve_bindings[binding.binding_key] = binding
-    discount_binding = _binding(index_uid=index_uid, curve_uid=curve.uid, role_key="discount")
+    discount_binding = _binding(
+        index_uid=index_uid,
+        curve_uid=discount_curve.uid,
+        role_key="discount",
+    )
     context.curve_bindings[discount_binding.binding_key] = discount_binding
-    context.curves[curve.uid] = curve
-    context.curve_building_details[curve.uid] = _details(curve.uid)
-    context.curve_observations[curve.uid] = _observation(curve.unique_identifier)
-    context.curve_observation_dates[curve.uid] = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
-    context.curve_handles[curve.uid] = base_handle
+    for curve, base_handle in (
+        (projection_curve, projection_base_handle),
+        (discount_curve, discount_base_handle),
+    ):
+        context.curves[curve.uid] = curve
+        context.curve_building_details[curve.uid] = _details(curve.uid)
+        context.curve_observations[curve.uid] = _observation(curve.unique_identifier)
+        context.curve_observation_dates[curve.uid] = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+        context.curve_handles[curve.uid] = base_handle
     return context
 
 
@@ -288,9 +324,22 @@ def test_prepare_resolved_runtime_overrides_returns_selected_handle_maps() -> No
         0: {"projection": 10.0, "discount": 10.0}
     }
     assert runtime_overrides.scenario_curve_handles_by_line == {
-        0: {"projection": 20.0, "discount": 20.0}
+        0: {"projection": 10.0, "discount": 20.0}
     }
-    assert runtime_overrides.curve_shocks[0]["curve_identifier"] == curve_identifier
+    assert runtime_overrides.curve_shocks == (
+        {
+            "curve_identifier": f"{curve_identifier}-PROJECTION",
+            "parallel_bp": 0.0,
+            "keyrate_bp": {},
+            "line_count": 1,
+        },
+        {
+            "curve_identifier": curve_identifier,
+            "parallel_bp": 25.0,
+            "keyrate_bp": {},
+            "line_count": 1,
+        },
+    )
     assert runtime_overrides.errors == ()
 
 
@@ -344,7 +393,7 @@ def test_prepare_resolved_runtime_overrides_keeps_projection_and_discount_roles(
     assert runtime_overrides.errors == ()
 
 
-def test_resolved_shared_curve_reuses_supplied_handles_across_lines() -> None:
+def test_resolved_shared_discount_curve_reuses_supplied_handles_across_lines() -> None:
     curve_identifier = "USD-SOFR"
     curve_uid = uuid.uuid4()
     position = _position(
@@ -378,6 +427,12 @@ def test_resolved_shared_curve_reuses_supplied_handles_across_lines() -> None:
     assert result.base_market_value == pytest.approx(330.0)
     assert result.scenario_market_value == pytest.approx(360.0)
     assert result.curve_shocks == (
+        {
+            "curve_identifier": f"{curve_identifier}-PROJECTION",
+            "parallel_bp": 0.0,
+            "keyrate_bp": {},
+            "line_count": 2,
+        },
         {
             "curve_identifier": curve_identifier,
             "parallel_bp": 25.0,
@@ -427,6 +482,8 @@ def test_resolved_mapping_input_requires_discount_for_floating_lines() -> None:
 def test_resolved_missing_scenario_handle_is_strict_failure() -> None:
     curve_identifier = "USD-SOFR"
     position = _position(ResolvedCurveScenarioInstrument(floating_rate_index_uid=uuid.uuid4()))
+    projection_curve_uid = uuid.uuid4()
+    discount_curve_uid = uuid.uuid4()
 
     with pytest.raises(RuntimeError, match="no scenario handle"):
         price_resolved_curve_scenario(
@@ -437,10 +494,11 @@ def test_resolved_missing_scenario_handle_is_strict_failure() -> None:
             line_curve_resolutions=[
                 _resolution(
                     line_index=0,
-                    curve_identifier=curve_identifier,
+                    curve_identifier=f"{curve_identifier}-PROJECTION",
                     base_handle=10.0,
                     scenario_handle=10.0,
                     role_key="projection",
+                    curve_uid=projection_curve_uid,
                 ),
                 _resolution(
                     line_index=0,
@@ -448,9 +506,46 @@ def test_resolved_missing_scenario_handle_is_strict_failure() -> None:
                     base_handle=10.0,
                     scenario_handle=None,
                     role_key="discount",
+                    curve_uid=discount_curve_uid,
                 )
             ],
         )
+
+
+def test_resolved_same_curve_uid_for_explicit_floating_roles_is_allowed() -> None:
+    curve_identifier = "USD-SOFR"
+    curve_uid = uuid.uuid4()
+    position = _position(ResolvedCurveScenarioInstrument(floating_rate_index_uid=uuid.uuid4()))
+
+    result = price_resolved_curve_scenario(
+        position,
+        CurveScenario(
+            shocks_by_curve_identifier={curve_identifier: CurveBumpSpec(parallel_bp=25.0)}
+        ),
+        line_curve_resolutions=[
+            _resolution(
+                line_index=0,
+                curve_identifier=curve_identifier,
+                base_handle=10.0,
+                scenario_handle=20.0,
+                role_key="projection",
+                curve_uid=curve_uid,
+            ),
+            _resolution(
+                line_index=0,
+                curve_identifier=curve_identifier,
+                base_handle=10.0,
+                scenario_handle=20.0,
+                role_key="discount",
+                curve_uid=curve_uid,
+            ),
+        ],
+    )
+
+    assert result.base_market_value == pytest.approx(110.0)
+    assert result.scenario_market_value == pytest.approx(120.0)
+    assert result.base_curve_handles_by_line == {0: {"projection": 10.0, "discount": 10.0}}
+    assert result.scenario_curve_handles_by_line == {0: {"projection": 20.0, "discount": 20.0}}
 
 
 def test_resolved_unselected_shock_is_structured_diagnostic() -> None:
@@ -550,8 +645,8 @@ def test_resolved_observed_z_spread_overlay_is_line_local(monkeypatch) -> None:
         1: {"projection": 30.0, "discount": 30.0},
     }
     assert captured["scenario_curve_handles"] == {
-        0: {"projection": 20.0, "discount": "overlay:20.0:0.0025"},
-        1: {"projection": 40.0, "discount": 40.0},
+        0: {"projection": 10.0, "discount": "overlay:20.0:0.0025"},
+        1: {"projection": 30.0, "discount": 40.0},
     }
     assert result.market_value_delta == 1.0
 
@@ -598,15 +693,22 @@ def test_resolved_path_does_not_prepare_backend_curve_observations(monkeypatch) 
 def test_resolved_and_context_workflows_delegate_equivalent_inputs(monkeypatch) -> None:
     curve_identifier = "USD-SOFR"
     index_uid = uuid.uuid4()
-    curve_uid = uuid.uuid4()
-    curve = _curve(curve_uid=curve_uid, unique_identifier=curve_identifier)
+    projection_curve_uid = uuid.uuid4()
+    discount_curve_uid = uuid.uuid4()
+    projection_curve = _curve(
+        curve_uid=projection_curve_uid,
+        unique_identifier=f"{curve_identifier}-PROJECTION",
+    )
+    discount_curve = _curve(curve_uid=discount_curve_uid, unique_identifier=curve_identifier)
     instrument = ResolvedCurveScenarioInstrument(floating_rate_index_uid=index_uid)
     position = _position(instrument)
     context = _context_with_curve(
         position,
         index_uid=index_uid,
-        curve=curve,
-        base_handle=10.0,
+        projection_curve=projection_curve,
+        discount_curve=discount_curve,
+        projection_base_handle=10.0,
+        discount_base_handle=10.0,
     )
     captured: list[tuple[object, object]] = []
     monkeypatch.setattr(engine, "build_scenario_curve_handle", lambda **_kwargs: 20.0)
@@ -634,7 +736,8 @@ def test_resolved_and_context_workflows_delegate_equivalent_inputs(monkeypatch) 
             *_projection_discount_resolutions(
                 line_index=0,
                 curve_identifier=curve_identifier,
-                curve_uid=curve_uid,
+                projection_curve_uid=projection_curve_uid,
+                discount_curve_uid=discount_curve_uid,
                 selector_key=str(index_uid),
                 base_handle=10.0,
                 scenario_handle=20.0,
@@ -645,10 +748,10 @@ def test_resolved_and_context_workflows_delegate_equivalent_inputs(monkeypatch) 
     assert captured == [
         (
             {0: {"projection": 10.0, "discount": 10.0}},
-            {0: {"projection": 20.0, "discount": 20.0}},
+            {0: {"projection": 10.0, "discount": 20.0}},
         ),
         (
             {0: {"projection": 10.0, "discount": 10.0}},
-            {0: {"projection": 20.0, "discount": 20.0}},
+            {0: {"projection": 10.0, "discount": 20.0}},
         ),
     ]

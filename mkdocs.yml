@@ -32,6 +32,7 @@ nav:
       - Accounts And Holdings: tutorial/03-accounts.md
       - Portfolios: tutorial/04-portfolios.md
       - Pricing Instruments: tutorial/05-pricing.md
+      - Derived Indexes: tutorial/06-derived-indexes.md
   - msm:
       - Overview: knowledge/msm/index.md
       - Accounts:
@@ -48,7 +49,9 @@ nav:
           - Overview: knowledge/msm/derivatives/index.md
           - Futures: knowledge/msm/derivatives/futures.md
       - Execution: knowledge/msm/execution/index.md
-      - Indexes: knowledge/msm/indices/index.md
+      - Indexes:
+          - Overview: knowledge/msm/indices/index.md
+          - Derived Index Workflow: knowledge/msm/indices/derived_indexes.md
       - Migrations: knowledge/msm/migrations/index.md
       - Models: knowledge/msm/models/index.md
       - Platform:
@@ -109,6 +112,7 @@ nav:
       - Pricing Valuation Position Boundary: ADR/0033-pricing-valuation-position-boundary.md
       - Pricing Curve Identity And Market-Data Curve Bindings: ADR/0035-pricing-curve-identity-and-market-data-curve-bindings.md
       - Prepared Pricing Valuation Context: ADR/0036-prepared-pricing-valuation-context.md
+      - Core Derived Index Definition And Calculation Framework: ADR/0037-core-derived-index-definition-and-calculation-framework.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - FastAPI v1:
           - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md
@@ -126,6 +130,7 @@ nav:
   - Changelog: changelog.md
   - Reference:
       - API Reference: reference/index.md
+      - Index API: reference/indices.md
 
 plugins:
   - search

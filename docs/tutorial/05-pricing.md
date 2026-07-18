@@ -435,8 +435,8 @@ For a full floating-rate bond workflow, use
    valuation date, then call `price(market_data_set="default")`,
    `analytics()`, `get_cashflows()`, and `carry_roll_down(...)`. Pricing uses
    the projection binding for coupon forecasting and the discount binding for
-   discounting. Binding one curve to both roles is allowed only when both
-   binding rows explicitly point at the same curve.
+   discounting. Binding one physical curve to both roles is valid only when
+   both role rows explicitly point to that curve.
 9. Use `build_valuation_position(...)` when the valuation input is already
    normalized to instrument plus unit rows. For account or portfolio sources,
    the owning package still selects the source snapshot and resolves assets;

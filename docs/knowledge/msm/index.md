@@ -25,8 +25,8 @@ integration live in `msm_pricing`.
   extend canonical assets and may reference non-asset underlyings.
 - [Execution](execution/index.md): order-manager intent rows and timestamped
   order, event, and trade DataNodes.
-- [Indexes](indices/index.md): non-tradable index reference data used by
-  derivative underlyings and pricing workflows.
+- [Indexes](indices/index.md): canonical index identity, derived-index
+  methodologies, publication, derivative underlyings, and pricing references.
 - [Migrations](migrations/index.md): admin-owned schema evolution through the SDK
   Alembic provider and automatic catalog finalization.
 - [Models](models/index.md): SQLAlchemy MetaTable declarations and registration

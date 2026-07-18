@@ -20,8 +20,8 @@ This skill is for diagnosis and assessment. Default behavior is read-only unless
 ## This Skill Can Do
 
 - inspect project state and summarize completion status
-- read `.agents/tasks.md` and `.agents/status.md` first when they exist
-- use repo state, logs, test output, stderr, and task files as evidence
+- use repository state, documentation, logs, test output, stderr, git state, and platform output as
+  evidence
 - classify failures into:
   - target-project issue
   - environment or credentials issue
@@ -69,11 +69,9 @@ Streamlit dashboard design and implementation failures are target-project applic
 
 1. `AGENTS.md`
 2. `.agents/skills/mainsequence/project_builder/SKILL.md`
-3. `.agents/tasks.md` when it exists
-4. `.agents/status.md` when it exists
-5. `.agents/record.md` when stable references or project ids matter
-6. `.agents/journal.md` when repeated failures or prior investigations may be relevant
-7. the latest relevant Main Sequence docs for the failing workflow
+3. the latest relevant Main Sequence docs for the failing workflow
+4. relevant repository documentation, tests, implementation, and git state
+5. live platform evidence when the audit makes platform-state claims
 
 ## Inputs This Skill Needs
 
@@ -101,17 +99,20 @@ For every audit, decide:
 
 ### 1. Stay read-only unless edits were explicitly requested
 
-Do not modify code, docs, or project-state files unless the task explicitly asks for edits.
+Do not modify code, docs, or other repository files unless the task explicitly asks for edits.
 
-### 2. Start with project-state files
+### 2. Start with owned evidence
 
-Read `.agents/tasks.md` and `.agents/status.md` first when they exist.
+Do not expect or create `.agents/brief.md`, `.agents/status.md`, `.agents/tasks.md`,
+`.agents/record.md`, or equivalent project-state files. Their absence is normal.
 
-Use them as hypotheses, not as proof.
+Start with the repository sources that own the claimed behavior, then use logs, tests, git state,
+and platform output as evidence.
 
 ### 3. Use evidence, not impressions
 
-Use repo state, logs, test output, stderr, and task files as evidence.
+Use repository state, documentation, logs, test output, stderr, git state, and platform output as
+evidence.
 
 When reporting a blocker or failure, include:
 
@@ -127,7 +128,7 @@ Before each major investigation step, emit a short progress update that says wha
 
 Especially announce when you are:
 
-- reading `.agents/tasks.md` or `.agents/status.md`
+- inspecting repository documentation, tests, git state, or platform output
 - inspecting a failing command, traceback, or stderr excerpt
 - checking the local `mainsequence` package or version
 - inspecting or cloning the public `mainsequence-sdk` repository
@@ -184,7 +185,7 @@ When reviewing an audit, look for:
 
 Do not claim audit completion until you have checked:
 
-- `.agents/tasks.md` and `.agents/status.md` first when they exist
+- project-state files under `.agents/` were neither expected nor created
 - the overall state is one of:
   - `finished`
   - `in_progress`

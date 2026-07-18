@@ -8,6 +8,10 @@ description: Use this skill when extending or reviewing the ms-markets Asset mod
 Use this skill when an agent needs to add, review, or document asset identity
 extensions in `ms-markets`.
 
+If Assets are only component subjects for a calculated spread, basket, ratio,
+or hedged market observable, route the methodology to the derived-index
+workflow skill. Keep only Asset identity and detail-table changes here.
+
 ## Core Rule
 
 `AssetTable` is the canonical asset registry. Keep it small.

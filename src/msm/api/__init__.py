@@ -89,7 +89,13 @@ from .execution import (
     OrderManagerUpsert,
 )
 from .indices import (
+    DerivedIndex,
+    IncompleteObservationsError,
     Index,
+    IndexCalculationDefinition,
+    IndexCalculationError,
+    IndexCalculationLeg,
+    IndexCalculationResult,
     IndexCreate,
     IndexType,
     IndexTypeCreate,
@@ -97,6 +103,10 @@ from .indices import (
     IndexTypeUpsert,
     IndexUpdate,
     IndexUpsert,
+    LookAheadError,
+    ResolvedIndexLeg,
+    calculate_index,
+    compute_definition_hash,
 )
 from .issuers import Issuer, IssuerCreate, IssuerUpdate, IssuerUpsert
 from .portfolios import Portfolio, PortfolioCreate, PortfolioUpdate, PortfolioUpsert
@@ -177,7 +187,13 @@ __all__ = [
     "FutureSettlementMethod",
     "FutureSettlementModel",
     "FutureUpsert",
+    "DerivedIndex",
+    "IncompleteObservationsError",
     "Index",
+    "IndexCalculationDefinition",
+    "IndexCalculationError",
+    "IndexCalculationLeg",
+    "IndexCalculationResult",
     "IndexCreate",
     "IndexType",
     "IndexTypeCreate",
@@ -185,6 +201,8 @@ __all__ = [
     "IndexTypeUpsert",
     "IndexUpdate",
     "IndexUpsert",
+    "LookAheadError",
+    "ResolvedIndexLeg",
     "Issuer",
     "IssuerCreate",
     "IssuerUpdate",
@@ -215,4 +233,6 @@ __all__ = [
     "VirtualFundHoldingsSetUpsert",
     "VirtualFundUpdate",
     "VirtualFundUpsert",
+    "calculate_index",
+    "compute_definition_hash",
 ]

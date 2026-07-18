@@ -205,9 +205,9 @@ default + projection:index:<FedFunds index uid>:mid -> USD OIS curve
 Floating-rate bonds and swaps consume the projection and discount roles
 separately. The projection binding builds the floating index and forecasts the
 floating leg; the discount binding supplies the QuantLib discounting engine.
-Binding both roles to the same `curve_uid` is an explicit market-data policy.
-If the discount binding is absent, runtime pricing fails instead of reusing the
-projection curve.
+Those two bindings may point to the same `curve_uid`, but both role rows must
+exist. If the discount binding is absent, runtime pricing fails instead of
+reusing the projection curve.
 
 `Curve.curve_type` is not the same field as `role_key`. The role chooses the
 market-data binding. The curve type classifies the physical curve row and is

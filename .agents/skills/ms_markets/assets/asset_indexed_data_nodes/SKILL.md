@@ -5,6 +5,11 @@ description: Use this skill when creating, extending, reviewing, or documenting 
 
 # Main Sequence Markets Asset-Indexed DataNodes
 
+When an asset-indexed DataNode supplies prices, yields, returns, DV01, delta, or
+other facts to a calculated Index, this skill owns only the source publication
+contract. Route derived-index definitions, coefficients, selectors, resolved
+legs, and canonical Index values to the derived-index workflow skill.
+
 Use this skill for the ms-markets layer on top of Main Sequence `DataNode`s.
 
 An `AssetIndexedDataNode` is still a Main Sequence `DataNode`. The base SDK owns

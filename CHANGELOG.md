@@ -9,11 +9,25 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Implemented the core derived-index framework from ADR 0037: the built-in
+  `derived` Index type, immutable effective-dated definition and ordered leg
+  models, canonical value and resolved-leg storage, typed `DerivedIndex` API,
+  pure operators and strict unit/alignment/missing/coefficient/selector
+  registries, incremental publication DataNodes, SDK-managed revision `0011`,
+  five executable examples, concept/tutorial/API documentation, and the
+  packaged derived-index workflow skill. Generic pair-spread primitives now
+  live in `msm.analytics.indices.spreads`; existing
+  `msm_pricing.analytics.spreads` imports are compatibility delegates while
+  pricing-specific analytics remain pricing-owned. The concept documentation
+  and packaged skill now include the canonical relationship diagram and an
+  explicit Index-versus-Portfolio ownership decision table.
 - Changed floating-rate bond and swap pricing to resolve projection and
   discount curves independently through market-data-set curve bindings.
   Projection curves build floating indexes and forecast coupons; discount
   curves feed QuantLib discounting engines. The floating bond example, tutorial,
   and pricing docs now demonstrate separate projection and discount curves.
+  Both role bindings must exist even when they point to the same physical
+  `curve_uid`.
 - Changed `MSDataInterface.get_historical_discount_curve_observations(...)` to
   read multi-curve latest-as-of observations through a backend window query
   instead of scanning full curve history into pandas.

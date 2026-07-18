@@ -46,6 +46,7 @@ ASSET_TYPE_EQUITY: Final[str] = "equity"
 INDEX_TYPE_INTEREST_RATE: Final[str] = "interest_rate"
 INDEX_TYPE_EQUITY: Final[str] = "equity"
 INDEX_TYPE_CRYPTO: Final[str] = "crypto"
+INDEX_TYPE_DERIVED: Final[str] = "derived"
 
 # Compatibility aliases for the older API-module naming style.
 CURRENCY_ASSET_TYPE: Final[str] = ASSET_TYPE_CURRENCY
@@ -100,6 +101,14 @@ INDEX_TYPE_CRYPTO_DEFINITION: Final[IndexTypeDefinition] = IndexTypeDefinition(
     display_name="Crypto",
     description="Crypto venue reference indexes used as derivative underlyings.",
 )
+INDEX_TYPE_DERIVED_DEFINITION: Final[IndexTypeDefinition] = IndexTypeDefinition(
+    index_type=INDEX_TYPE_DERIVED,
+    display_name="Derived",
+    description=(
+        "Calculated market indexes with an owned, versioned methodology and canonical "
+        "published value history."
+    ),
+)
 
 BUILT_IN_ASSET_TYPE_DEFINITIONS: Final[tuple[AssetTypeDefinition, ...]] = (
     ASSET_TYPE_CURRENCY_DEFINITION,
@@ -116,6 +125,7 @@ BUILT_IN_INDEX_TYPE_DEFINITIONS: Final[tuple[IndexTypeDefinition, ...]] = (
     INDEX_TYPE_INTEREST_RATE_DEFINITION,
     INDEX_TYPE_EQUITY_DEFINITION,
     INDEX_TYPE_CRYPTO_DEFINITION,
+    INDEX_TYPE_DERIVED_DEFINITION,
 )
 BUILT_IN_INDEX_TYPES: Final[tuple[str, ...]] = tuple(
     definition.index_type for definition in BUILT_IN_INDEX_TYPE_DEFINITIONS
@@ -152,5 +162,7 @@ __all__ = [
     "INDEX_TYPE_EQUITY_DEFINITION",
     "INDEX_TYPE_INTEREST_RATE",
     "INDEX_TYPE_INTEREST_RATE_DEFINITION",
+    "INDEX_TYPE_DERIVED",
+    "INDEX_TYPE_DERIVED_DEFINITION",
     "IndexTypeDefinition",
 ]

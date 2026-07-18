@@ -59,6 +59,10 @@ def test_msm_skills_source_of_truth_is_root_agents() -> None:
     assert not (repo_root / "src" / "msm" / ".agents").exists()
 
 
+def test_derived_index_workflow_skill_is_in_packaged_bundle() -> None:
+    assert "indices/derived_index_workflow" in _bundled_skill_paths()
+
+
 def test_copy_msm_skills_dry_run_writes_nothing(tmp_path, capsys) -> None:
     exit_code = main(["copy-msm-skills", "--path", str(tmp_path), "--dry-run", "--json"])
 

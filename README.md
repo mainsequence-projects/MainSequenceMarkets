@@ -74,7 +74,8 @@ Repository areas:
 
 - `docs/`: MkDocs documentation, tutorials, knowledge guides, ADRs, and API
   reference scaffold
-- `examples/msm/`: core assets, accounts, calendars, platform, and row-workflow examples
+- `examples/msm/`: core assets, accounts, calendars, derived indexes, platform,
+  and row-workflow examples
 - `examples/msm_portfolios/`: single portfolio construction example with
   index linkage and canonical portfolio DataNodes
 - `examples/msm_pricing/`: optional pricing and QuantLib-backed examples

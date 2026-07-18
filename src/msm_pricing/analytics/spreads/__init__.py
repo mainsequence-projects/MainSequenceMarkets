@@ -1,9 +1,9 @@
 """Cross-asset and asset-class-specific spread analytics.
 
-`msm_pricing.analytics.spreads.base` owns cross-asset spread primitives such as
-spread construction, z-scores, pair metrics, hedge-ratio estimation, and
-forecast cones. Asset-class modules such as `fixed_income` add interpretation
-that depends on domain units like DV01, carry, roll-down, or downside.
+`msm.analytics.indices.spreads` owns the generic primitives. This namespace
+preserves compatibility and adds pricing-specific interpretation in modules
+such as `fixed_income`, where concepts like DV01, carry, roll-down, and
+downside belong.
 """
 
 from __future__ import annotations

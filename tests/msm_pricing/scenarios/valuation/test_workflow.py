@@ -78,12 +78,13 @@ def _curve(
     *,
     curve_uid: uuid.UUID | None = None,
     unique_identifier: str = "GENERIC-DISCOUNT",
+    curve_type: str = "discount",
 ) -> Curve:
     return Curve(
         uid=curve_uid or uuid.uuid4(),
         unique_identifier=unique_identifier,
         display_name=unique_identifier,
-        curve_type="discount",
+        curve_type=curve_type,
     )
 
 
@@ -152,15 +153,22 @@ def _context_with_curve(
         position,
         resolve_market_data_set=False,
     )
-    binding = _binding(index_uid=index_uid, curve_uid=curve.uid)
-    context.curve_bindings[binding.binding_key] = binding
+    projection_curve = _curve(
+        unique_identifier=f"{curve.unique_identifier}-PROJECTION",
+        curve_type="projection",
+    )
+    projection_binding = _binding(index_uid=index_uid, curve_uid=projection_curve.uid)
+    context.curve_bindings[projection_binding.binding_key] = projection_binding
     discount_binding = _binding(index_uid=index_uid, curve_uid=curve.uid, role_key="discount")
     context.curve_bindings[discount_binding.binding_key] = discount_binding
-    context.curves[curve.uid] = curve
-    context.curve_building_details[curve.uid] = _details(curve.uid)
-    context.curve_observations[curve.uid] = _observation(curve.unique_identifier)
-    context.curve_observation_dates[curve.uid] = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
-    context.curve_handles[curve.uid] = base_handle
+    for cached_curve in (projection_curve, curve):
+        context.curves[cached_curve.uid] = cached_curve
+        context.curve_building_details[cached_curve.uid] = _details(cached_curve.uid)
+        context.curve_observations[cached_curve.uid] = _observation(cached_curve.unique_identifier)
+        context.curve_observation_dates[cached_curve.uid] = dt.datetime(
+            2026, 1, 1, tzinfo=dt.UTC
+        )
+        context.curve_handles[cached_curve.uid] = base_handle
     return context
 
 
@@ -214,10 +222,14 @@ def test_workflow_prices_base_scenario_impacts_and_carry(monkeypatch) -> None:
     assert result.scenarios[0].impacts[0].market_value_delta == pytest.approx(100.0)
     assert result.scenarios[0].carry_impacts[0].base_carry == pytest.approx(26.0)
     assert result.scenarios[0].carry_impacts[0].scenario_carry == pytest.approx(126.0)
-    assert result.runtime_resolutions[0].curve_identifier == curve.unique_identifier
+    assert [resolution.role_key for resolution in result.runtime_resolutions[:2]] == [
+        "projection",
+        "discount",
+    ]
+    assert result.runtime_resolutions[1].curve_identifier == curve.unique_identifier
     assert result.scenarios[0].runtime_overrides is not None
     assert result.scenarios[0].runtime_overrides.scenario_curve_handles == {
-        0: {"projection": pytest.approx(60.0), "discount": pytest.approx(60.0)}
+        0: {"projection": 10.0, "discount": pytest.approx(60.0)}
     }
     assert instrument._curve_bump == 0.0
 

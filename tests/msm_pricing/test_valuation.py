@@ -920,6 +920,203 @@ def test_pricing_valuation_context_bulk_resolves_fixed_income_rows(monkeypatch) 
     ]
 
 
+def test_pricing_valuation_context_allows_explicit_same_curve_role_bindings(
+    monkeypatch,
+) -> None:
+    market_data_set_uid = uuid.uuid4()
+    index_uid = uuid.uuid4()
+    curve_uid = uuid.uuid4()
+    curve_identifier = "USD-SOFR-SINGLE-PHYSICAL-CURVE"
+    calls: list[tuple[str, Any]] = []
+    projection_binding_key = curve_binding_key(
+        role_key="projection",
+        selector_type="index",
+        selector_key=str(index_uid),
+        quote_side="mid",
+    )
+    discount_binding_key = curve_binding_key(
+        role_key="discount",
+        selector_type="index",
+        selector_key=str(index_uid),
+        quote_side="mid",
+    )
+
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.PricingMarketDataSet.resolve_uid",
+        staticmethod(lambda _selector: market_data_set_uid),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.PricingMarketDataSetBinding.filter_for_set_and_concepts",
+        staticmethod(
+            lambda **kwargs: (
+                calls.append(("concept_bindings", kwargs))
+                or [
+                    PricingMarketDataSetBinding(
+                        uid=uuid.uuid4(),
+                        market_data_set_uid=market_data_set_uid,
+                        concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
+                        data_node_uid=uuid.uuid4(),
+                    ),
+                    PricingMarketDataSetBinding(
+                        uid=uuid.uuid4(),
+                        market_data_set_uid=market_data_set_uid,
+                        concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
+                        data_node_uid=uuid.uuid4(),
+                    ),
+                ]
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        Index,
+        "filter_by_uids",
+        staticmethod(
+            lambda _index_uids: [
+                Index(
+                    uid=index_uid,
+                    unique_identifier="USD-SOFR",
+                    index_type="interest_rate",
+                    display_name="USD SOFR",
+                )
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.index_convention_details.IndexConventionDetails.filter_by_index_uids",
+        staticmethod(
+            lambda _index_uids: [
+                IndexConventionDetails(
+                    index_uid=index_uid,
+                    index_family="ibor",
+                    convention_dump={
+                        "currency_code": "USD",
+                        "day_counter_code": "Actual360",
+                        "calendar_code": "TARGET",
+                        "business_day_convention": "ModifiedFollowing",
+                        "settlement_days": 2,
+                        "period": "3M",
+                    },
+                )
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.PricingMarketDataSetCurveBinding.filter_by_binding_keys",
+        staticmethod(
+            lambda **kwargs: (
+                calls.append(("curve_bindings", kwargs))
+                or [
+                    PricingMarketDataSetCurveBinding(
+                        uid=uuid.uuid4(),
+                        market_data_set_uid=market_data_set_uid,
+                        binding_key=projection_binding_key,
+                        role_key="projection",
+                        selector_type="index",
+                        selector_key=str(index_uid),
+                        quote_side="mid",
+                        curve_uid=curve_uid,
+                    ),
+                    PricingMarketDataSetCurveBinding(
+                        uid=uuid.uuid4(),
+                        market_data_set_uid=market_data_set_uid,
+                        binding_key=discount_binding_key,
+                        role_key="discount",
+                        selector_type="index",
+                        selector_key=str(index_uid),
+                        quote_side="mid",
+                        curve_uid=curve_uid,
+                    ),
+                ]
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.curves.Curve.filter_by_uids",
+        staticmethod(
+            lambda curve_uids: (
+                calls.append(("curves", curve_uids))
+                or [
+                    Curve(
+                        uid=curve_uid,
+                        unique_identifier=curve_identifier,
+                        display_name="USD SOFR Physical Curve",
+                        curve_type="projection",
+                    )
+                ]
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.curve_building_details.CurveBuildingDetails.filter_by_curve_uids",
+        staticmethod(
+            lambda curve_uids: (
+                calls.append(("curve_building_details", curve_uids))
+                or [
+                    CurveBuildingDetails(
+                        curve_uid=curve_uid,
+                        builder_type="zero_rate_curve",
+                        quote_convention="zero_rate",
+                        rate_unit="decimal",
+                        day_counter_code="Actual360",
+                        calendar_code="TARGET",
+                        interpolation_method="linear_zero",
+                        compounding="simple",
+                        extrapolation_policy="enabled",
+                    )
+                ]
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        MSDataInterface,
+        "get_historical_discount_curve_observations",
+        lambda self, curve_names, target_date, *, market_data_set=None: (
+            calls.append(("curve_observations", curve_names, target_date, market_data_set))
+            or {
+                curve_identifier: (
+                    {
+                        "curve_identifier": curve_identifier,
+                        "time_index": target_date,
+                        "nodes": [{"days_to_maturity": 365, "zero": 0.05}],
+                        "key_nodes": None,
+                        "metadata_json": None,
+                    },
+                    target_date,
+                )
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        MSDataInterface,
+        "get_historical_fixings_for_identifiers",
+        lambda self, identifiers, start_date, end_date, *, market_data_set=None: (
+            calls.append(("fixings", identifiers, start_date, end_date, market_data_set))
+            or {"USD-SOFR": {dt.date(2026, 5, 26): 0.0525}}
+        ),
+    )
+
+    context = PricingValuationContext.prepare(
+        valuation_date=dt.datetime(2026, 5, 27, tzinfo=dt.UTC),
+        market_data_set="eod",
+        instruments=[RoleIndexedFakePricedInstrument(floating_rate_index_uid=index_uid)],
+        curve_quote_side="mid",
+    )
+
+    assert context.spec.requested_roles == ("projection", "discount")
+    assert (
+        context.get_index_curve_binding(role_key="projection", index_uid=index_uid).curve_uid
+        == curve_uid
+    )
+    assert (
+        context.get_index_curve_binding(role_key="discount", index_uid=index_uid).curve_uid
+        == curve_uid
+    )
+    assert set(context.curves) == {curve_uid}
+    assert set(context.curve_handles) == {curve_uid}
+    assert ("curves", (curve_uid,)) in calls
+    assert ("curve_building_details", (curve_uid,)) in calls
+
+
 def test_pricing_valuation_context_fails_before_mutating_original_on_missing_rows(
     monkeypatch,
 ) -> None:

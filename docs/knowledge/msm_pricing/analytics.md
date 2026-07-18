@@ -5,12 +5,14 @@ the pricing runtime. These helpers operate on caller-supplied pandas or numpy
 data and do not resolve assets, portfolios, curves, vendors, DataNodes, or
 pricing contexts.
 
-The current implementation is focused on spread analytics:
+Generic spread primitives are owned by core Index analytics. Pricing retains a
+compatibility namespace and pricing-specific specialization:
 
 ```text
 src/msm_pricing/analytics/__init__.py
 src/msm_pricing/analytics/spreads/__init__.py
-src/msm_pricing/analytics/spreads/base.py
+src/msm/analytics/indices/spreads.py
+src/msm_pricing/analytics/spreads/base.py  # compatibility delegates
 src/msm_pricing/analytics/spreads/fixed_income.py
 ```
 
@@ -31,7 +33,8 @@ from msm_pricing.analytics.spreads import (
 )
 ```
 
-`base.py` owns only cross-asset primitives:
+`msm.analytics.indices.spreads` owns the cross-asset primitives; the pricing
+`base.py` path re-exports the same objects for compatibility:
 
 - aligned spread construction from arrays or pandas Series;
 - stable pair history frames with `leg_a`, `leg_b`, and `spread` columns;
@@ -78,15 +81,14 @@ metrics = fixed_income_spread_metrics(
 The default hedge ratio is `base_dv01 / hedge_dv01`, matching the base spread
 formula `base - hedge_ratio * hedge`.
 
-## Future Sibling Modules
+## Extension Ownership
 
-Future spread analytics must be added as siblings under
-`msm_pricing.analytics.spreads`, not as additions to the fixed-income module:
+Generic index calculation, units, selectors, coefficient resolution, and
+published histories belong under `msm.analytics.indices`. Add a pricing sibling
+only when its meaning depends on pricing-domain inputs or interpretation:
 
 ```text
 src/msm_pricing/analytics/spreads/equity.py
-src/msm_pricing/analytics/spreads/index.py
-src/msm_pricing/analytics/spreads/commodities.py
 src/msm_pricing/analytics/spreads/options.py
 ```
 

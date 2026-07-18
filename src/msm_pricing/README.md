@@ -380,8 +380,8 @@ instrument or position for an explicit valuation date.
 See `examples/msm_pricing/bond_pricing_example/` for a complete floating-rate bond
 workflow using the public asset, pricing registry, DataNode, attach/load, and
 pricing APIs. The example binds separate projection and discount curves for the
-floating index; using one curve for both roles requires two explicit binding
-rows that point to the same curve.
+floating index. A market-data set may bind both roles to one physical curve
+only by writing both role bindings explicitly.
 
 ## Extending
 
