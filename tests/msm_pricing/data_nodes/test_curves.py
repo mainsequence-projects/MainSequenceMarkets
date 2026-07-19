@@ -24,6 +24,7 @@ from msm_pricing.data_nodes.curves import (
     CurveConfig,
     CurveDataNodeConfiguration,
     CurveKeyNode,
+    CurveKeyNodeSourceReference,
     DiscountCurvesNode,
 )
 from msm_pricing.data_nodes.curves.key_nodes import (
@@ -103,9 +104,9 @@ def test_discount_curves_storage_declares_key_nodes_and_metadata_columns() -> No
         columns["key_nodes"].info["description"]
         == "Compressed source-owned JSON construction provenance for this curve "
         "observation. Producers pass JSON object/list values and may use the "
-        "recommended CurveKeyNode shape, including quote_type, quote_unit, "
-        "quote_side, and optional yield fields, plus source-specific extensions "
-        "validated by the producer DataNode."
+        "recommended CurveKeyNode shape, including a typed asset or index "
+        "source_reference, quote_type, quote_unit, quote_side, and optional yield "
+        "fields, plus source-specific extensions validated by the producer DataNode."
     )
     assert (
         columns["metadata_json"].info["description"]
@@ -144,7 +145,10 @@ def test_discount_curves_node_validate_frame_normalizes_curve_frame() -> None:
                         [
                             {
                                 "maturity_date": "2026-06-24",
-                                "asset_identifier": "MXN_TIIE_SWAP_28D",
+                                "source_reference": {
+                                    "type": "index",
+                                    "identifier": "MXN_TIIE_SWAP_28D",
+                                },
                                 "quote": 0.11,
                             }
                         ]
@@ -171,7 +175,10 @@ def test_discount_curves_node_normalizes_curve_identifier_builder_name() -> None
                 "key_nodes": [
                     {
                         "maturity_date": dt.date(2026, 6, 24),
-                        "asset_identifier": " MXN_TIIE_SWAP_28D ",
+                        "source_reference": {
+                            "type": "index",
+                            "identifier": "MXN_TIIE_SWAP_28D",
+                        },
                         "quote": "0.11",
                         "quote_type": "yield",
                         "quote_unit": "decimal",
@@ -193,7 +200,10 @@ def test_discount_curves_node_normalizes_curve_identifier_builder_name() -> None
         [
             {
                 "maturity_date": "2026-06-24",
-                "asset_identifier": " MXN_TIIE_SWAP_28D ",
+                "source_reference": {
+                    "type": "index",
+                    "identifier": "MXN_TIIE_SWAP_28D",
+                },
                 "quote": "0.11",
                 "quote_type": "yield",
                 "quote_unit": "decimal",
@@ -315,7 +325,10 @@ def test_discount_curve_key_nodes_accept_source_owned_schema() -> None:
         [
             {
                 "maturity_date": dt.date(2026, 6, 24),
-                "asset_identifier": "MXN_BONO_2031",
+                "source_reference": {
+                    "type": "asset",
+                    "identifier": "MXN_BONO_2031",
+                },
                 "instrument_type": "fixed_rate_bond",
                 "quote": 99.25,
                 "quote_type": "clean_price",
@@ -336,7 +349,10 @@ def test_discount_curve_key_nodes_accept_source_owned_schema() -> None:
     assert key_nodes == [
         {
             "maturity_date": "2026-06-24",
-            "asset_identifier": "MXN_BONO_2031",
+            "source_reference": {
+                "type": "asset",
+                "identifier": "MXN_BONO_2031",
+            },
             "instrument_type": "fixed_rate_bond",
             "quote": 99.25,
             "quote_type": "clean_price",
@@ -356,6 +372,10 @@ def test_discount_curve_key_nodes_accept_source_owned_schema() -> None:
 
 def test_curve_key_node_helper_serializes_recommended_yield_shape() -> None:
     node = CurveKeyNode(
+        source_reference=CurveKeyNodeSourceReference(
+            type="asset",
+            identifier=" EXAMPLE_BOND_2031 ",
+        ),
         maturity_date=dt.date(2027, 5, 27),
         instrument_type="direct_zero_rate",
         quote=0.105,
@@ -366,6 +386,10 @@ def test_curve_key_node_helper_serializes_recommended_yield_shape() -> None:
     )
 
     assert node.model_dump(mode="json", by_alias=True, exclude_none=True) == {
+        "source_reference": {
+            "type": "asset",
+            "identifier": "EXAMPLE_BOND_2031",
+        },
         "maturity_date": "2027-05-27",
         "instrument_type": "direct_zero_rate",
         "quote": 0.105,
@@ -392,6 +416,75 @@ def test_curve_key_node_helper_accepts_yield_alias() -> None:
     assert node.model_dump(mode="json", by_alias=True, exclude_none=True)["yield"] == 0.105
 
 
+def test_curve_key_node_helper_accepts_index_source_reference() -> None:
+    node = CurveKeyNode.model_validate(
+        {
+            "source_reference": {
+                "type": "index",
+                "identifier": "MXN-TIIE-SWAP-28D",
+            },
+            "instrument_type": "ois_swap",
+            "quote": 0.1095,
+            "quote_type": "par_swap_rate",
+            "quote_unit": "decimal",
+        }
+    )
+
+    assert node.source_reference == CurveKeyNodeSourceReference(
+        type="index",
+        identifier="MXN-TIIE-SWAP-28D",
+    )
+
+
+def test_curve_key_nodes_normalize_typed_source_reference() -> None:
+    key_nodes = normalize_curve_key_nodes(
+        [
+            {
+                "source_reference": {
+                    "type": "index",
+                    "identifier": " MXN-TIIE-SWAP-28D ",
+                },
+                "quote": 0.1095,
+            }
+        ]
+    )
+
+    assert key_nodes[0]["source_reference"] == {
+        "type": "index",
+        "identifier": "MXN-TIIE-SWAP-28D",
+    }
+
+
+def test_curve_key_nodes_reject_unsupported_source_reference_type() -> None:
+    with pytest.raises(ValueError, match="asset.*index"):
+        normalize_curve_key_nodes(
+            [
+                {
+                    "source_reference": {
+                        "type": "curve",
+                        "identifier": "NOT-A-SOURCE",
+                    },
+                    "quote": 0.1095,
+                }
+            ]
+        )
+
+
+@pytest.mark.parametrize("legacy_field", ["asset_identifier", "index_identifier"])
+def test_curve_key_nodes_reject_legacy_scalar_source_fields(legacy_field: str) -> None:
+    payload = {
+        legacy_field: "LEGACY-SOURCE",
+        "quote": 0.1095,
+        "quote_type": "par_swap_rate",
+        "quote_unit": "decimal",
+    }
+
+    with pytest.raises(ValueError, match="use source_reference"):
+        CurveKeyNode.model_validate(payload)
+    with pytest.raises(ValueError, match="use source_reference"):
+        normalize_curve_key_nodes([payload])
+
+
 def test_discount_curves_node_supports_runtime_key_nodes_validator() -> None:
     def validate_valmer_key_nodes(value, *, row, curve_identifier):
         assert curve_identifier == "mxn_tiie_discount"
@@ -416,7 +509,10 @@ def test_discount_curves_node_supports_runtime_key_nodes_validator() -> None:
                     "key_nodes": [
                         {
                             "maturity_date": "2031-05-27",
-                            "asset_identifier": "MXN_BONO_2031",
+                            "source_reference": {
+                                "type": "asset",
+                                "identifier": "MXN_BONO_2031",
+                            },
                             "instrument_type": "fixed_rate_bond",
                             "quote": 99.25,
                             "quote_type": "clean_price",
@@ -434,7 +530,10 @@ def test_discount_curves_node_supports_runtime_key_nodes_validator() -> None:
         [
             {
                 "maturity_date": "2031-05-27",
-                "asset_identifier": "MXN_BONO_2031",
+                "source_reference": {
+                    "type": "asset",
+                    "identifier": "MXN_BONO_2031",
+                },
                 "instrument_type": "fixed_rate_bond",
                 "quote": 99.25,
                 "quote_type": "clean_price",

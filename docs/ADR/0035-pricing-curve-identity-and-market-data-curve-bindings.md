@@ -53,6 +53,15 @@ input quotes used to build the specific observation row. Producers should use
 the recommended `CurveKeyNode` fields when they fit, including per-node raw
 input fields such as `quote_type`, `quote_unit`, and yield-native values, and
 may add source-specific extensions validated by their `DiscountCurvesNode`.
+When a key node has canonical market identity, it uses
+`source_reference={"type": "asset" | "index", "identifier": "..."}`.
+Asset-backed bonds and other registered instruments use asset references;
+swap, futures, deposit, FX, or basis quote series may use index references.
+This is observation provenance only: it does not restore curve ownership to an
+index and does not select a projection or discount valuation role. Typed
+fixed-income helper models inherit this shared source contract while retaining
+their own helper-specific fields. Top-level `asset_identifier` and
+`index_identifier` key-node fields are not supported.
 `CurveBuildingDetails` remains the source for interpreting the final
 constructed curve.
 
@@ -565,6 +574,10 @@ Negative consequences:
       added.)
 - [x] Remove public docs and packaged-skill guidance for curve-owned index
       selection.
+- [x] Replace asset-biased key-node provenance with typed `source_reference`
+      values supporting both `AssetTable.unique_identifier` and
+      `IndexTable.unique_identifier`; route fixed-income helper models through
+      `FixedIncomeCurveKeyNode` and reject top-level scalar source fields.
 
 ### Non-Mono-Curve Runtime Completion
 
@@ -639,6 +652,8 @@ This ADR is complete only when:
   curves, and both role bindings must exist even when they point to the same
   physical curve identity;
 - pricing resolution never reads an index selector from the curve row;
+- curve key-node provenance can identify either an asset-backed input or an
+  index-backed quote series without implying that the source owns the curve;
 - index resolution still uses `IndexConventionDetailsTable` for QuantLib index
   construction and fixings;
 - missing source bindings, curve bindings, build details, and observations fail

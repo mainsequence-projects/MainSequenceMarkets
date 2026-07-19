@@ -189,7 +189,10 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
                             [
                                 {
                                     "maturity_date": "2026-06-24",
-                                    "asset_identifier": "MXN_TIIE_SWAP_28D",
+                                    "source_reference": {
+                                        "type": "index",
+                                        "identifier": "MXN_TIIE_SWAP_28D",
+                                    },
                                     "quote": 0.11,
                                 }
                             ]
@@ -240,7 +243,10 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
         "key_nodes": [
             {
                 "maturity_date": "2026-06-24",
-                "asset_identifier": "MXN_TIIE_SWAP_28D",
+                "source_reference": {
+                    "type": "index",
+                    "identifier": "MXN_TIIE_SWAP_28D",
+                },
                 "quote": 0.11,
             }
         ],

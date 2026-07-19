@@ -5,13 +5,14 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 from msm_pricing.pricing_engine.curves.cross_currency_helpers import (
     ConstNotionalCrossCurrencyBasisSwapRateHelperSpec,
     CrossCurrencyRateHelperSpec,
     FxSwapRateHelperSpec,
 )
+from msm_pricing.pricing_engine.curves.fixed_income_key_nodes import FixedIncomeCurveKeyNode
 from msm_pricing.pricing_engine.curves.helper_resolution import (
     MissingRateHelperDependencyError,
     RateHelperRuntimeResolver,
@@ -38,19 +39,15 @@ CROSS_CURRENCY_KEY_NODE_TYPES = frozenset(
 )
 
 
-class FxSpotContextKeyNode(BaseModel):
+class FxSpotContextKeyNode(FixedIncomeCurveKeyNode):
     """Generic context key-node schema for an FX spot quote."""
 
-    model_config = ConfigDict(extra="allow")
-
     helper_type: Literal["fx_spot"]
-    quote: float
     quote_type: Literal["fx_spot"]
     quote_unit: str
     fx_pair: str
     fx_base_currency: str
     fx_quote_currency: str
-    asset_identifier: str | None = None
     maturity_date: str | None = None
     quote_side: str | None = None
     quote_source: str | None = None
@@ -58,13 +55,10 @@ class FxSpotContextKeyNode(BaseModel):
     source_quote_unit: str | None = None
 
 
-class FxSwapRateHelperKeyNode(BaseModel):
+class FxSwapRateHelperKeyNode(FixedIncomeCurveKeyNode):
     """Generic key-node schema for a QuantLib FX swap helper."""
 
-    model_config = ConfigDict(extra="allow")
-
     helper_type: Literal["fx_swap_rate_helper"]
-    quote: float
     quote_type: Literal["fx_forward_points"]
     quote_unit: str
     tenor: str
@@ -86,13 +80,10 @@ class FxSwapRateHelperKeyNode(BaseModel):
     market_forward: float | None = None
 
 
-class ConstNotionalCrossCurrencyBasisSwapRateHelperKeyNode(BaseModel):
+class ConstNotionalCrossCurrencyBasisSwapRateHelperKeyNode(FixedIncomeCurveKeyNode):
     """Generic key-node schema for a constant-notional cross-currency basis helper."""
 
-    model_config = ConfigDict(extra="allow")
-
     helper_type: Literal["const_notional_cross_currency_basis_swap_rate_helper"]
-    quote: float
     quote_type: Literal["basis_spread"]
     quote_unit: str
     tenor: str
@@ -184,9 +175,7 @@ def cross_currency_helper_spec_from_key_node(
             calendar=node.calendar_code,
             convention=node.business_day_convention,
             end_of_month=node.end_of_month,
-            is_fx_base_currency_collateral_currency=(
-                node.is_fx_base_currency_collateral_currency
-            ),
+            is_fx_base_currency_collateral_currency=(node.is_fx_base_currency_collateral_currency),
             collateral_curve=resolver.resolve_yield_curve(node.collateral_curve, node_dump),
             trading_calendar=node.trading_calendar_code,
         )
@@ -224,8 +213,7 @@ def cross_currency_helper_specs_from_key_nodes(
         node = parse_cross_currency_key_node(raw_node)
         if not isinstance(
             node,
-            FxSwapRateHelperKeyNode
-            | ConstNotionalCrossCurrencyBasisSwapRateHelperKeyNode,
+            FxSwapRateHelperKeyNode | ConstNotionalCrossCurrencyBasisSwapRateHelperKeyNode,
         ):
             continue
         specs.append(
@@ -245,8 +233,7 @@ def key_nodes_contain_cross_currency_helpers(key_nodes: object) -> bool:
         return False
     return any(
         isinstance(node, Mapping)
-        and str(node.get("helper_type") or "").strip().lower()
-        in CROSS_CURRENCY_HELPER_TYPES
+        and str(node.get("helper_type") or "").strip().lower() in CROSS_CURRENCY_HELPER_TYPES
         for node in key_nodes
     )
 
@@ -291,8 +278,8 @@ def _spot_context_lookup(
 
 def _spot_context_lookup_keys(context: FxSpotContextKeyNode) -> tuple[str, ...]:
     keys = [context.fx_pair]
-    if context.asset_identifier not in (None, ""):
-        keys.append(str(context.asset_identifier))
+    if context.source_reference is not None:
+        keys.append(context.source_reference.identifier)
     return tuple(keys)
 
 

@@ -227,8 +227,10 @@ storage tables, disables automatic default seeding, creates
 `PricingMarketDataSet(set_key="default")`, binds discount curves and
 interest-rate fixings by storage table UID, publishes separate projection and
 discount curve rows with both the pricing `curve` and source-owned JSON
-`key_nodes` that storage compresses at rest, binds both roles for the floating
-index, and then calls
+`key_nodes` that storage compresses at rest. Canonical key-node inputs use a
+typed asset or index `source_reference`; the source is provenance and does not
+own the curve or select its valuation role. The example binds both roles for
+the floating index and then calls
 `loaded_instrument.price(market_data_set=market_data_set.set_key)`.
 
 ## Rejected Patterns

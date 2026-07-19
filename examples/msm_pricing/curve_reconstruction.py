@@ -7,14 +7,13 @@ import datetime as dt
 import QuantLib as ql
 
 from msm_pricing.pricing_engine.curves import (
-    FixedRateBondHelperSpec,
     InterestRateFutureHelperSpec,
     OISRateHelperSpec,
     OvernightDepositHelperSpec,
     StaticRateHelperRuntimeResolver,
-    ZeroCouponBondHelperSpec,
     export_curve_observation_nodes,
     reconstruct_curve_handle_from_helper_specs,
+    reconstruct_curve_handle_from_key_nodes,
     reconstruct_curve_result_from_key_nodes,
 )
 
@@ -57,30 +56,40 @@ def main() -> None:
     for node in nodes:
         print("rate-helper", node)
 
-    bond_handle = reconstruct_curve_handle_from_helper_specs(
-        (
-            ZeroCouponBondHelperSpec(
-                quote=97.5,
-                quote_type="clean_price",
-                quote_unit="price_per_100",
-                settlement_days=0,
-                face_value=100.0,
-                maturity_date=dt.date(2026, 7, 2),
-                issue_date=dt.date(2026, 1, 2),
-            ),
-            FixedRateBondHelperSpec(
-                quote=99.0,
-                quote_type="clean_price",
-                quote_unit="price_per_100",
-                coupon_rate=0.05,
-                issue_date=dt.date(2026, 1, 2),
-                maturity_date=dt.date(2027, 1, 2),
-                tenor="6M",
-                settlement_days=0,
-                face_value=100.0,
-                day_counter=ql.Actual360(),
-            ),
-        ),
+    bond_handle = reconstruct_curve_handle_from_key_nodes(
+        [
+            {
+                "source_reference": {
+                    "type": "asset",
+                    "identifier": "EXAMPLE-ZERO-COUPON-BOND-2026",
+                },
+                "helper_type": "zero_coupon_bond_helper",
+                "quote": 97.5,
+                "quote_type": "clean_price",
+                "quote_unit": "price_per_100",
+                "settlement_days": 0,
+                "face_value": 100.0,
+                "maturity_date": "2026-07-02",
+                "issue_date": "2026-01-02",
+            },
+            {
+                "source_reference": {
+                    "type": "asset",
+                    "identifier": "EXAMPLE-FIXED-RATE-BOND-2027",
+                },
+                "helper_type": "fixed_rate_bond_helper",
+                "quote": 99.0,
+                "quote_type": "clean_price",
+                "quote_unit": "price_per_100",
+                "coupon_rate": 0.05,
+                "issue_date": "2026-01-02",
+                "maturity_date": "2027-01-02",
+                "tenor": "6M",
+                "settlement_days": 0,
+                "face_value": 100.0,
+                "day_counter_code": "Actual360",
+            },
+        ],
         valuation_date=valuation_date,
         day_counter=ql.Actual360(),
     )
@@ -120,6 +129,10 @@ def main() -> None:
     xccy_result = reconstruct_curve_result_from_key_nodes(
         [
             {
+                "source_reference": {
+                    "type": "index",
+                    "identifier": "BASE-QUOTE-SPOT",
+                },
                 "helper_type": "fx_spot",
                 "quote": 1.1,
                 "quote_type": "fx_spot",
@@ -129,6 +142,10 @@ def main() -> None:
                 "fx_quote_currency": "QUOTE",
             },
             {
+                "source_reference": {
+                    "type": "index",
+                    "identifier": "BASE-QUOTE-FX-SWAP-1M",
+                },
                 "helper_type": "fx_swap_rate_helper",
                 "quote": 0.001,
                 "quote_type": "fx_forward_points",
@@ -145,6 +162,10 @@ def main() -> None:
                 "collateral_curve": "GENERIC-COLLATERAL",
             },
             {
+                "source_reference": {
+                    "type": "index",
+                    "identifier": "BASE-QUOTE-XCCY-BASIS-1Y",
+                },
                 "helper_type": "const_notional_cross_currency_basis_swap_rate_helper",
                 "quote": 1.0,
                 "quote_type": "basis_spread",

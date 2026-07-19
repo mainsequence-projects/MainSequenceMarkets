@@ -320,6 +320,10 @@ Supported helper key-node types include:
 ```json
 [
   {
+    "source_reference": {
+      "type": "index",
+      "identifier": "USD-OVERNIGHT-DEPOSIT-1D"
+    },
     "helper_type": "overnight_deposit_helper",
     "quote": 4.75,
     "quote_type": "deposit_rate",
@@ -331,6 +335,10 @@ Supported helper key-node types include:
     "day_counter_code": "Actual360"
   },
   {
+    "source_reference": {
+      "type": "index",
+      "identifier": "USD-OVERNIGHT-OIS-1Y"
+    },
     "helper_type": "ois_rate_helper",
     "quote": 4.80,
     "quote_type": "par_swap_rate",
@@ -346,6 +354,10 @@ Supported helper key-node types include:
     "averaging_method": "Compound"
   },
   {
+    "source_reference": {
+      "type": "index",
+      "identifier": "CME-SOFR-JUN-2026"
+    },
     "helper_type": "sofr_future_rate_helper",
     "quote": 95.25,
     "quote_type": "futures_price",
@@ -356,6 +368,10 @@ Supported helper key-node types include:
     "convexity_adjustment": 0.0
   },
   {
+    "source_reference": {
+      "type": "asset",
+      "identifier": "EXAMPLE-ZERO-COUPON-BOND-2026"
+    },
     "helper_type": "zero_coupon_bond_helper",
     "quote": 97.5,
     "quote_type": "clean_price",
@@ -367,6 +383,10 @@ Supported helper key-node types include:
     "face_value": 100.0
   },
   {
+    "source_reference": {
+      "type": "asset",
+      "identifier": "EXAMPLE-FIXED-RATE-BOND-2027"
+    },
     "helper_type": "fixed_rate_bond_helper",
     "quote": 99.0,
     "quote_type": "clean_price",
@@ -382,6 +402,13 @@ Supported helper key-node types include:
   }
 ]
 ```
+
+Every typed fixed-income helper key node inherits `FixedIncomeCurveKeyNode`.
+Its `source_reference` is independent of helper construction: bonds can point
+to `AssetTable.unique_identifier`, while deposit, swap, futures, FX, and basis
+quotes can point to `IndexTable.unique_identifier`. Helper-specific fields stay
+on their discriminated model, so a futures helper does not carry OIS fields.
+The old top-level `asset_identifier` and `index_identifier` forms are rejected.
 
 The same `rate_helpers@v1` reconstruction path accepts context nodes. It does
 not introduce a new schema, builder type, or bootstrap path. The first context
@@ -713,7 +740,10 @@ recommended helper when the standard fields fit the source:
 [
   {
     "maturity_date": "2031-05-27",
-    "asset_identifier": "EXAMPLE_BOND_2031",
+    "source_reference": {
+      "type": "asset",
+      "identifier": "EXAMPLE_BOND_2031"
+    },
     "instrument_type": "fixed_rate_bond",
     "quote": 99.25,
     "quote_type": "clean_price",
@@ -740,10 +770,14 @@ Rules:
 - The shared storage layer does not enforce one fixed per-node financial schema
   because mixed curves may combine bonds, zero-coupon instruments, swaps,
   deposits, direct zero rates, and source-specific payloads.
-- Prefer the standard fields `maturity_date`, `asset_identifier`,
+- Prefer the standard fields `source_reference`, `maturity_date`,
   `instrument_type`, `quote`, `quote_type`, `quote_unit`, and `quote_side` when
   they fit the source. Discount-curve producers that think in yields may also
   include the optional `yield` field.
+- `source_reference.type="asset"` selects an `AssetTable.unique_identifier`;
+  `source_reference.type="index"` selects an `IndexTable.unique_identifier`.
+  This is quote provenance and does not create curve ownership or select a
+  projection/discount valuation role.
 - Source publishers that need more structure should encode that structure in
   their own `CurveKeyNode`-compatible extensions or enforce it through
   `normalize_key_nodes(...)` / `set_key_nodes_validator(...)`.
@@ -808,7 +842,11 @@ return pd.DataFrame(
                 },
                 {
                     "maturity_date": "2026-08-25",
-                    "asset_identifier": "USD_SOFR_SWAP_3M",
+                    "source_reference": {
+                        "type": "index",
+                        "identifier": "USD_SOFR_SWAP_3M",
+                    },
+                    "instrument_type": "ois_swap",
                     "quote": 0.0508,
                     "quote_type": "par_rate",
                     "quote_unit": "decimal",

@@ -280,6 +280,9 @@ metadata_json = observation["metadata_json"]
 JSON provenance returned decompressed by the interface even though the storage
 column is compressed text. It may use the recommended `CurveKeyNode` fields or
 a source-specific extension enforced by the publisher's DataNode validation.
+Canonical market identity is nested under `source_reference`, with
+`type="asset"` or `type="index"` and the corresponding unique identifier.
+That provenance does not affect market-data-set curve-role selection.
 
 Instrument pricing chooses the set explicitly when the caller needs more than
 one source set in the same process:

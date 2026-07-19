@@ -11,6 +11,8 @@ ql = pytest.importorskip("QuantLib")
 
 from msm_pricing.api import Curve, CurveBuildingDetails
 from msm_pricing.pricing_engine.curves import (
+    CurveKeyNodeSourceReference,
+    FixedRateBondHelperKeyNode,
     export_curve_observation_nodes,
     reconstruct_curve_handle_from_key_nodes,
 )
@@ -47,6 +49,10 @@ def _rate_helper_details(curve_uid: uuid.UUID) -> CurveBuildingDetails:
 def _bond_key_nodes() -> list[dict[str, object]]:
     return [
         {
+            "source_reference": {
+                "type": "asset",
+                "identifier": "GENERIC-ZERO-COUPON-BOND-2026",
+            },
             "helper_type": "zero_coupon_bond_helper",
             "quote": 97.5,
             "quote_type": "clean_price",
@@ -60,6 +66,10 @@ def _bond_key_nodes() -> list[dict[str, object]]:
             "yield_unit": "decimal",
         },
         {
+            "source_reference": {
+                "type": "asset",
+                "identifier": "GENERIC-FIXED-RATE-BOND-2027",
+            },
             "helper_type": "fixed_rate_bond_helper",
             "quote": 99.0,
             "quote_type": "clean_price",
@@ -88,6 +98,15 @@ def test_reconstruct_curve_handle_from_bond_helper_key_nodes() -> None:
     )
 
     assert handle.discount(ql.Date(2, 1, 2027)) > 0.0
+
+
+def test_fixed_income_bond_key_nodes_accept_asset_sources() -> None:
+    node = FixedRateBondHelperKeyNode.model_validate(_bond_key_nodes()[1])
+
+    assert node.source_reference == CurveKeyNodeSourceReference(
+        type="asset",
+        identifier="GENERIC-FIXED-RATE-BOND-2027",
+    )
 
 
 def test_build_curve_from_observation_supports_bond_helper_build_details() -> None:
@@ -153,4 +172,3 @@ def test_bond_helper_scenario_yield_shock_requires_price_conversion() -> None:
             bump_spec=CurveBumpSpec(parallel_bp=10.0),
             effective_curve_date=valuation_date,
         )
-

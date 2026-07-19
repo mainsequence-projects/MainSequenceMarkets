@@ -197,7 +197,11 @@ before publishing curve observations:
                    },
                    {
                        "maturity_date": "2026-08-25",
-                       "asset_identifier": "USD_SOFR_SWAP_3M",
+                       "source_reference": {
+                           "type": "index",
+                           "identifier": "USD_SOFR_SWAP_3M",
+                       },
+                       "instrument_type": "ois_swap",
                        "quote": 0.0508,
                        "quote_type": "par_rate",
                        "quote_unit": "decimal",
@@ -208,6 +212,13 @@ before publishing curve observations:
        ]
    )
    ```
+
+   `source_reference` identifies the market input behind a key node. Use
+   `type="asset"` for a registered bond or other asset and `type="index"` for
+   a swap, futures, deposit, or other quote series registered in `IndexTable`.
+   The source reference is independent of `helper_type`; futures do not inherit
+   OIS-only construction fields. Do not publish the old top-level
+   `asset_identifier` or `index_identifier` key-node fields.
 
 See `examples/msm_pricing/pricing_registry_rows.py` for the row API workflow.
 
@@ -422,9 +433,11 @@ For a full floating-rate bond workflow, use
    both the compressed pricing `curve` and compressed source-owned `key_nodes`
    provenance. The publisher emits `key_nodes` as JSON, and read/API helpers
    return decompressed JSON. The mock example uses the recommended yield-aware
-   `CurveKeyNode` shape, while `CurveBuildingDetails` remains the source for
-   final curve construction rules. The pricing storage classes declare their
-   EOD cadence as `__cadence__ = "1d"`.
+   `CurveKeyNode` shape and intentionally omits `source_reference` because its
+   flat-forward inputs are synthetic. Real publishers use an asset or index
+   source reference as shown above. `CurveBuildingDetails` remains the source
+   for final curve construction rules. The pricing storage classes declare
+   their EOD cadence as `__cadence__ = "1d"`.
 5. Attach pricing storage tables, then upsert the `default` market-data set and
    its concept bindings with `PricingMarketDataSet` and
    `PricingMarketDataSetBinding`.

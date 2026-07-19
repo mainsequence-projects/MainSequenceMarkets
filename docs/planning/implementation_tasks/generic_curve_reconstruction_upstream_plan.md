@@ -208,7 +208,13 @@ Model placement rules:
   not create a new MetaTable for curve reconstruction.
 - `CurveKeyNode` remains the broad optional producer helper in
   `src/msm_pricing/data_nodes/curves/key_nodes.py`. Do not make helper-specific
-  fields required for all curve publishers.
+  fields required for all curve publishers. Its canonical source identity is
+  `source_reference={"type": "asset" | "index", "identifier": "..."}`;
+  top-level `asset_identifier` and `index_identifier` key-node fields are
+  rejected.
+- `FixedIncomeCurveKeyNode` is the typed fixed-income base for quote fields and
+  the shared source reference. Deposit, OIS, futures, bond, FX, and basis helper
+  models inherit it while retaining only their own helper-specific fields.
 
 No model or function created in these files may use source-specific names.
 Source-specific names remain only in connector adapters and migration notes.
@@ -220,9 +226,10 @@ Initial model contracts:
 | `OISRateHelperSpec` | `pricing_engine/curves/helpers.py` | frozen dataclass | `quote: float`, `tenor: str | ql.Period`, `overnight_index: ql.OvernightIndex` | Generic QuantLib OIS fields: `settlement_days`, `discounting_curve`, `telescopic_value_dates`, `payment_lag`, `payment_convention`, `payment_frequency`, `payment_calendar`, `forward_start`, `overnight_spread`, `pillar`, `custom_pillar_date`, `averaging_method`, `end_of_month`, `fixed_payment_frequency`, `fixed_calendar`, `lookback_days`, `lockout_days`, `apply_observation_shift`, `pricer`, `rule`, `overnight_calendar`, and `date_generation_convention`. |
 | `OvernightDepositHelperSpec` | `pricing_engine/curves/helpers.py` | frozen dataclass | `quote: float` | `tenor: str | ql.Period`, `fixing_days`, `calendar`, `convention`, `end_of_month`, `day_counter` |
 | `InterestRateFutureHelperSpec` | `pricing_engine/curves/helpers.py` | frozen dataclass | `quote: float`, `reference_month: int \| str`, `reference_year: int`, `reference_frequency: int \| str` | `future_family`, `convexity_adjustment`, `pillar`, `custom_pillar_date`. The first supported concrete family is SOFR because QuantLib exposes `SofrFutureRateHelper`; the model remains the generic interest-rate futures runtime contract. |
-| `OISRateHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model | `helper_type: Literal["ois_rate_helper", "overnight_indexed_swap_helper"]`, `quote: float`, `quote_type: str`, `quote_unit: str`, `tenor: str` | `settlement_days`, `floating_index`, generic OIS schedule/convention fields mirroring `OISRateHelperSpec`, and source metadata fields |
-| `OvernightDepositHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model | `helper_type: Literal["overnight_deposit_helper"]`, `quote: float`, `quote_type: str`, `quote_unit: str` | `tenor`, `fixing_days`, `calendar_code`, `business_day_convention`, `day_counter_code`, `end_of_month`, source metadata fields |
-| `InterestRateFutureHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model | `helper_type: Literal["interest_rate_future_helper", "sofr_future_rate_helper"]`, `quote: float`, `quote_type: str`, `quote_unit: str`, `reference_month`, `reference_year`, `reference_frequency` | `future_family`, `convexity_adjustment`, `pillar`, `custom_pillar_date`, source metadata fields. `sofr_future_rate_helper` defaults `future_family` to `sofr`. |
+| `FixedIncomeCurveKeyNode` | `pricing_engine/curves/fixed_income_key_nodes.py` | Pydantic base model | `quote: float`, `quote_type: str`, `quote_unit: str` | typed asset/index `source_reference`, `instrument_type`, and `quote_side` |
+| `OISRateHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model | `helper_type: Literal["ois_rate_helper", "overnight_indexed_swap_helper"]`, `quote: float`, `quote_type: str`, `quote_unit: str`, `tenor: str` | shared source fields, `settlement_days`, OIS-only index/runtime dependencies, generic OIS schedule/convention fields mirroring `OISRateHelperSpec`, and source metadata fields |
+| `OvernightDepositHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model | `helper_type: Literal["overnight_deposit_helper"]`, `quote: float`, `quote_type: str`, `quote_unit: str` | shared source fields, `tenor`, `fixing_days`, `calendar_code`, `business_day_convention`, `day_counter_code`, `end_of_month`, source metadata fields |
+| `InterestRateFutureHelperKeyNode` | `pricing_engine/curves/helper_key_nodes.py` | Pydantic model | `helper_type: Literal["interest_rate_future_helper", "sofr_future_rate_helper"]`, `quote: float`, `quote_type: str`, `quote_unit: str`, `reference_month`, `reference_year`, `reference_frequency` | shared source fields, `future_family`, `convexity_adjustment`, `pillar`, `custom_pillar_date`, source metadata fields. It has no OIS-only fields. `sofr_future_rate_helper` defaults `future_family` to `sofr`. |
 | `CurveReconstructionConfig` | `pricing_engine/curves/reconstruction.py` | Pydantic model | none beyond defaults | `bootstrap_method`, `day_counter_code`, `extrapolation`; derived from `CurveBuildingDetails` by the adapter. |
 | `CurveObservationExportConfig` | `pricing_engine/curves/observations.py` | Pydantic model | none beyond defaults | `quote_convention`, `rate_unit`, `day_counter_code`, `compounding`, `compounding_frequency`; `from_curve_building_details(...)` derives these from persisted build details and requires explicit output/runtime payload keys when source-helper placeholders are used. |
 
@@ -391,18 +398,31 @@ fields. Do not make helper-key-node fields mandatory for all curves. Instead,
 document and optionally validate helper-style fields when a producer chooses
 helper-based reconstruction:
 
+- `source_reference` with `type="asset"` or `type="index"` and a canonical
+  unique identifier
 - `helper_type`
 - `tenor`
 - `quote`, `quote_type`, `quote_unit`
-- `floating_index` or a structured index convention reference
 - optional `settlement_days`, calendar/day-count fields for deposit helpers,
-  and source metadata fields
+  helper-specific runtime dependencies, and source metadata fields
 
-The v1 helper key-node adapter must accept exactly these helper types:
+Source identity is independent from helper construction. A fixed-income bond
+helper may reference an asset, while swap, futures, deposit, FX, and basis
+quotes may reference Index rows. Futures helpers do not carry OIS-specific
+fields. Do not infer helper dependencies from `source_reference`.
+
+The v1 helper key-node adapter accepts these helper and context types:
 
 - `overnight_deposit_helper`
 - `ois_rate_helper`
 - `overnight_indexed_swap_helper`
+- `interest_rate_future_helper`
+- `sofr_future_rate_helper`
+- `zero_coupon_bond_helper`
+- `fixed_rate_bond_helper`
+- `fx_spot`
+- `fx_swap_rate_helper`
+- `const_notional_cross_currency_basis_swap_rate_helper`
 
 Generic rate normalization should reuse the current key-node rate machinery.
 If that helper is needed outside scenarios, promote it to a pricing-engine
@@ -486,6 +506,8 @@ Tasks:
 - [x] Promote rate normalization into `pricing_engine.curves.quote_units` and
   have scenario key-node bumps import it.
 - [x] Require explicit units; do not infer percent versus decimal from source.
+- [x] Add typed asset/index `source_reference` provenance shared by every
+      fixed-income helper model, with no scalar identity compatibility fields.
 - [x] Keep connector-specific source repair outside this adapter.
 - [x] Support `helper_type="overnight_deposit_helper"`,
   `"ois_rate_helper"`, and `"overnight_indexed_swap_helper"` in v1.

@@ -266,7 +266,8 @@ Update these existing files:
   - `fx_base_currency: str`;
   - `fx_quote_currency: str`.
 - Optional fields:
-  - `asset_identifier`;
+  - optional `source_reference` with `type="asset"` or `type="index"` and the
+    canonical source identifier;
   - `maturity_date`;
   - `quote_side`;
   - `quote_source`;

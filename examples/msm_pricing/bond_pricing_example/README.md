@@ -28,10 +28,14 @@ Publishers pass `key_nodes` as source-owned JSON; storage compresses it at rest
 and read/API helpers return decompressed JSON. The mock flat-forward publisher
 uses the recommended `CurveKeyNode` shape with `maturity_date`,
 `instrument_type`, `quote`, `quote_type`, `quote_unit`, `quote_side`, and
-yield-native `yield` values. Producers may add source-specific extensions when
-that is needed to audit the source build; `CurveBuildingDetails` still owns the
-final constructed curve convention. Real source publishers that need stricter
-checks should override `DiscountCurvesNode.normalize_key_nodes(...)` or attach
+yield-native `yield` values. Real market inputs may also carry a typed
+`source_reference`: `type="asset"` for asset-backed instruments or
+`type="index"` for registered quote series such as swaps or futures. The mock
+flat-forward inputs are synthetic, so they intentionally omit a source
+reference. Producers may add source-specific extensions when that is needed to
+audit the source build; `CurveBuildingDetails` still owns the final constructed
+curve convention. Real source publishers that need stricter checks should
+override `DiscountCurvesNode.normalize_key_nodes(...)` or attach
 `set_key_nodes_validator(...)` instead of changing the shared storage schema.
 
 The example writes both projection and discount curve selections as default

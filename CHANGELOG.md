@@ -9,6 +9,12 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Replaced asset-biased curve key-node identity with typed
+  `source_reference={"type": "asset" | "index", "identifier": "..."}`
+  provenance. Added the shared `FixedIncomeCurveKeyNode` base across deposit,
+  OIS, futures, bond, FX, and cross-currency basis helper models, updated the
+  reconstruction example to demonstrate asset- and index-sourced inputs, and
+  rejected top-level `asset_identifier`/`index_identifier` key-node fields.
 - Revised ADR 0037 so the cadence-configured `IndexValuesTS.<cadence>` family
   is the domain-neutral canonical value contract for plain and calculated
   Indexes, with `IndexValuesStorage` retained as its column-schema anchor and

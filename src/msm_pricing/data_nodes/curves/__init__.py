@@ -16,6 +16,7 @@ from msm.data_nodes.utils.stamped import (
 from ..curve_codec import compress_curve_to_string
 from .key_nodes import (
     CurveKeyNode,
+    CurveKeyNodeSourceReference,
     compress_key_nodes_to_string,
     normalize_curve_key_nodes,
     normalize_curve_metadata,
@@ -274,6 +275,7 @@ __all__ = [
     "CurveConfig",
     "CurveDataNodeConfiguration",
     "CurveKeyNode",
+    "CurveKeyNodeSourceReference",
     "CurveKeyNodesValidator",
     "CurveTimestampedDataNode",
     "DiscountCurvesNode",

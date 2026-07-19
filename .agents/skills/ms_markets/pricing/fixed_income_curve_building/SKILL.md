@@ -456,11 +456,18 @@ Rules:
 - The builder also returns `key_nodes` construction provenance. `key_nodes` is
   source-owned JSON object/list provenance. The node compresses it before
   persistence and read/API helpers return decompressed JSON. Prefer the
-  optional `CurveKeyNode` helper when the standard fields fit: `maturity_date`,
-  `asset_identifier`, `instrument_type`, `quote`, `quote_type`, `quote_unit`,
-  `quote_side`, and optional yield-native `yield` via the Python field
-  `yield_value`. Producers may add source-specific extensions and enforce them
-  through `normalize_key_nodes(...)` or `set_key_nodes_validator(...)`.
+  optional `CurveKeyNode` helper when the standard fields fit:
+  `source_reference`, `maturity_date`, `instrument_type`, `quote`,
+  `quote_type`, `quote_unit`, `quote_side`, and optional yield-native `yield`
+  via the Python field `yield_value`. `source_reference` contains `type`
+  (`asset` or `index`) plus the corresponding canonical unique identifier.
+  Fixed-income helper key nodes inherit `FixedIncomeCurveKeyNode`, so bond
+  quotes may use asset sources while swap, futures, deposit, FX, and basis quote
+  series may use index sources. Source identity is independent of helper type;
+  do not add OIS fields to futures or other helper models. Top-level
+  `asset_identifier` and `index_identifier` key-node fields are rejected.
+  Producers may add source-specific extensions and enforce them through
+  `normalize_key_nodes(...)` or `set_key_nodes_validator(...)`.
   Per-node `quote_type` and `quote_unit` describe raw source inputs;
   `CurveBuildingDetails` describes the final stored curve.
 - When a producer needs stricter source-specific semantics, override

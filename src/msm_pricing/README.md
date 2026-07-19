@@ -128,10 +128,13 @@ Constants into curve identity. EOD curve observations declare daily cadence on
 `key_nodes` compressed at rest, while read/API helpers return decompressed JSON.
 Key nodes are source-owned JSON object/list provenance with JSON-serializable
 nested values. Producers may use the optional `CurveKeyNode` helper and
-recommended fields such as `maturity_date`, `asset_identifier`,
+recommended fields such as `source_reference`, `maturity_date`,
 `instrument_type`, `quote`, `quote_type`, `quote_unit`, `quote_side`, and
-`yield`, and may add source-specific extensions. `CurveBuildingDetails` still
-describes how the final stored curve is built and interpreted by pricing.
+`yield`, and may add source-specific extensions. `source_reference.type` is
+`asset` or `index`, and its identifier is the corresponding canonical unique
+identifier. Top-level `asset_identifier` and `index_identifier` key-node fields
+are rejected. `CurveBuildingDetails` still describes how the final stored
+curve is built and interpreted by pricing.
 Source-specific builders can enforce stricter provenance semantics by overriding
 `DiscountCurvesNode.normalize_key_nodes(...)` or by attaching a runtime callable
 with `set_key_nodes_validator(...)`.
@@ -140,9 +143,13 @@ Helper-based curves use `builder_type="rate_helper_curve"` and generic helper
 key nodes. `rate_helpers@v1` is the canonical helper schema for deposit, OIS,
 futures, bond, FX swap, and constant-notional cross-currency basis helpers. It
 also accepts context/provenance nodes such as FX spot when a helper needs
-runtime construction context. Runtime dependencies such as collateral curves
-and base/quote indexes are resolved explicitly through helper runtime
-resolvers; connector-owned schema names are not part of core `msm_pricing`.
+runtime construction context. All fixed-income helper key-node models inherit
+the typed `FixedIncomeCurveKeyNode` quote/source contract; bond inputs may use
+asset sources while swap, futures, deposit, FX, or basis quote series may use
+index sources. Runtime dependencies such as collateral curves and base/quote
+indexes remain helper-specific and are resolved explicitly through helper
+runtime resolvers; connector-owned schema names are not part of core
+`msm_pricing`.
 
 Curve construction is strict. `CurveBuildingDetails.interpolation_method` must
 be one of `log_linear_discount`, `log_cubic_discount`, `linear_zero`,

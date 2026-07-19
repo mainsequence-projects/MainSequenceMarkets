@@ -76,9 +76,10 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             "description": (
                 "Compressed source-owned JSON construction provenance for this "
                 "curve observation. Producers pass JSON object/list values and may "
-                "use the recommended CurveKeyNode shape, including quote_type, "
-                "quote_unit, quote_side, and optional yield fields, plus "
-                "source-specific extensions validated by the producer DataNode."
+                "use the recommended CurveKeyNode shape, including a typed asset or "
+                "index source_reference, quote_type, quote_unit, quote_side, and "
+                "optional yield fields, plus source-specific extensions validated "
+                "by the producer DataNode."
             ),
         },
     )

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import QuantLib as ql
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 from msm_pricing.pricing_engine.curves.bond_helper_key_nodes import (
     BOND_HELPER_TYPES,
@@ -27,6 +27,7 @@ from msm_pricing.pricing_engine.curves.cross_currency_key_nodes import (
     cross_currency_helper_spec_from_key_node,
     parse_cross_currency_key_node,
 )
+from msm_pricing.pricing_engine.curves.fixed_income_key_nodes import FixedIncomeCurveKeyNode
 from msm_pricing.pricing_engine.curves.helper_resolution import RateHelperRuntimeResolver
 from msm_pricing.pricing_engine.curves.helpers import (
     InterestRateFutureHelperSpec,
@@ -57,15 +58,10 @@ SUPPORTED_RATE_HELPER_KEY_NODE_TYPES = frozenset(
 OvernightIndexResolver = Callable[[str | None, Mapping[str, Any]], ql.OvernightIndex]
 
 
-class OvernightDepositHelperKeyNode(BaseModel):
+class OvernightDepositHelperKeyNode(FixedIncomeCurveKeyNode):
     """Generic key-node schema for a QuantLib overnight deposit helper."""
 
-    model_config = ConfigDict(extra="allow")
-
     helper_type: Literal["overnight_deposit_helper"]
-    quote: float
-    quote_type: str
-    quote_unit: str
     tenor: str = "1D"
     fixing_days: int = 0
     calendar_code: str = "TARGET"
@@ -74,15 +70,10 @@ class OvernightDepositHelperKeyNode(BaseModel):
     day_counter_code: str = "Actual360"
 
 
-class OISRateHelperKeyNode(BaseModel):
+class OISRateHelperKeyNode(FixedIncomeCurveKeyNode):
     """Generic key-node schema for a QuantLib overnight-indexed swap helper."""
 
-    model_config = ConfigDict(extra="allow")
-
     helper_type: Literal["ois_rate_helper", "overnight_indexed_swap_helper"]
-    quote: float
-    quote_type: str
-    quote_unit: str
     tenor: str
     settlement_days: int = 0
     floating_index: str | None = None
@@ -107,15 +98,10 @@ class OISRateHelperKeyNode(BaseModel):
     date_generation_convention: int | str = Field(default="ModifiedFollowing")
 
 
-class InterestRateFutureHelperKeyNode(BaseModel):
+class InterestRateFutureHelperKeyNode(FixedIncomeCurveKeyNode):
     """Generic key-node schema for a QuantLib interest-rate futures helper."""
 
-    model_config = ConfigDict(extra="allow")
-
     helper_type: Literal["interest_rate_future_helper", "sofr_future_rate_helper"]
-    quote: float
-    quote_type: str
-    quote_unit: str
     reference_month: int | str
     reference_year: int
     reference_frequency: int | str
@@ -167,8 +153,7 @@ def parse_rate_helper_key_node(node: Mapping[str, Any]) -> RateHelperKeyNode:
         parsed = parse_cross_currency_key_node(payload)
         if isinstance(
             parsed,
-            FxSwapRateHelperKeyNode
-            | ConstNotionalCrossCurrencyBasisSwapRateHelperKeyNode,
+            FxSwapRateHelperKeyNode | ConstNotionalCrossCurrencyBasisSwapRateHelperKeyNode,
         ):
             return parsed
         raise AssertionError(f"Unhandled cross-currency helper type {helper_type!r}.")
@@ -264,8 +249,7 @@ def parse_rate_helper_key_nodes(
             continue
         if isinstance(
             node,
-            FxSwapRateHelperKeyNode
-            | ConstNotionalCrossCurrencyBasisSwapRateHelperKeyNode,
+            FxSwapRateHelperKeyNode | ConstNotionalCrossCurrencyBasisSwapRateHelperKeyNode,
         ):
             specs.append(
                 cross_currency_helper_spec_from_key_node(

@@ -36,9 +36,7 @@ def _valuation_date() -> dt.datetime:
 
 def _collateral_handle() -> ql.YieldTermStructureHandle:
     valuation_date = ql.Date(2, 1, 2026)
-    return ql.YieldTermStructureHandle(
-        ql.FlatForward(valuation_date, 0.03, ql.Actual360())
-    )
+    return ql.YieldTermStructureHandle(ql.FlatForward(valuation_date, 0.03, ql.Actual360()))
 
 
 def _runtime_resolver() -> StaticRateHelperRuntimeResolver:
@@ -69,6 +67,10 @@ def _runtime_resolver() -> StaticRateHelperRuntimeResolver:
 def _cross_currency_key_nodes() -> list[dict[str, object]]:
     return [
         {
+            "source_reference": {
+                "type": "index",
+                "identifier": "BASE-QUOTE-SPOT",
+            },
             "helper_type": "fx_spot",
             "quote": 1.1,
             "quote_type": "fx_spot",
@@ -78,6 +80,10 @@ def _cross_currency_key_nodes() -> list[dict[str, object]]:
             "fx_quote_currency": "QUOTE",
         },
         {
+            "source_reference": {
+                "type": "index",
+                "identifier": "BASE-QUOTE-FX-SWAP-1M",
+            },
             "helper_type": "fx_swap_rate_helper",
             "quote": 0.001,
             "quote_type": "fx_forward_points",
@@ -94,6 +100,10 @@ def _cross_currency_key_nodes() -> list[dict[str, object]]:
             "collateral_curve": "GENERIC-COLLATERAL",
         },
         {
+            "source_reference": {
+                "type": "index",
+                "identifier": "BASE-QUOTE-XCCY-BASIS-1Y",
+            },
             "helper_type": "const_notional_cross_currency_basis_swap_rate_helper",
             "quote": 1.0,
             "quote_type": "basis_spread",

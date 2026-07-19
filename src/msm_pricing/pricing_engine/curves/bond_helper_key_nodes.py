@@ -5,26 +5,24 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 from msm_pricing.pricing_engine.curves.bond_helpers import (
     BondHelperSpec,
     FixedRateBondHelperSpec,
     ZeroCouponBondHelperSpec,
 )
+from msm_pricing.pricing_engine.curves.fixed_income_key_nodes import FixedIncomeCurveKeyNode
 
 ZERO_COUPON_BOND_HELPER_TYPE = "zero_coupon_bond_helper"
 FIXED_RATE_BOND_HELPER_TYPE = "fixed_rate_bond_helper"
 BOND_HELPER_TYPES = frozenset({ZERO_COUPON_BOND_HELPER_TYPE, FIXED_RATE_BOND_HELPER_TYPE})
 
 
-class ZeroCouponBondHelperKeyNode(BaseModel):
+class ZeroCouponBondHelperKeyNode(FixedIncomeCurveKeyNode):
     """Generic key-node schema for a QuantLib zero-coupon bond helper."""
 
-    model_config = ConfigDict(extra="allow")
-
     helper_type: Literal["zero_coupon_bond_helper"]
-    quote: float
     quote_type: Literal["clean_price", "dirty_price"]
     quote_unit: Literal["price", "price_per_face", "price_per_100"]
     maturity_date: str
@@ -36,13 +34,10 @@ class ZeroCouponBondHelperKeyNode(BaseModel):
     issue_date: str | None = None
 
 
-class FixedRateBondHelperKeyNode(BaseModel):
+class FixedRateBondHelperKeyNode(FixedIncomeCurveKeyNode):
     """Generic key-node schema for a QuantLib fixed-rate bond helper."""
 
-    model_config = ConfigDict(extra="allow")
-
     helper_type: Literal["fixed_rate_bond_helper"]
-    quote: float
     quote_type: Literal["clean_price", "dirty_price"]
     quote_unit: Literal["price", "price_per_face", "price_per_100"]
     coupon_rate: float

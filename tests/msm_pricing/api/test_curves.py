@@ -619,7 +619,10 @@ def test_curve_discount_curve_nodes_use_market_data_binding(monkeypatch) -> None
                 "key_nodes": [
                     {
                         "maturity_date": "2026-06-29",
-                        "asset_identifier": "USD_SOFR_SWAP_1M",
+                        "source_reference": {
+                            "type": "index",
+                            "identifier": "USD_SOFR_SWAP_1M",
+                        },
                         "quote": 0.11,
                     }
                 ],
@@ -668,7 +671,10 @@ def test_curve_discount_curve_nodes_use_market_data_binding(monkeypatch) -> None
         "key_nodes": [
             {
                 "maturity_date": "2026-06-29",
-                "asset_identifier": "USD_SOFR_SWAP_1M",
+                "source_reference": {
+                    "type": "index",
+                    "identifier": "USD_SOFR_SWAP_1M",
+                },
                 "quote": 0.11,
             }
         ],
@@ -1041,8 +1047,7 @@ def test_curve_delete_impact_blocks_until_explicit_cleanup_flags(monkeypatch) ->
     assert allowed["can_delete"] is True
     assert allowed["blocking_count"] == 0
     assert {
-        relationship["key"]: relationship["effect"]
-        for relationship in allowed["relationships"]
+        relationship["key"]: relationship["effect"] for relationship in allowed["relationships"]
     }["discount_curve_observations"] == "delete_cleanup"
     assert calls[0] == (
         "count",

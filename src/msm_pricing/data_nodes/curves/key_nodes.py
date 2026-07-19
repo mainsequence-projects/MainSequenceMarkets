@@ -9,14 +9,60 @@ import json
 import math
 import zlib
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 KEY_NODES_CODEC_PREFIX = "msm_pricing.key_nodes.zlib+base64.v1:"
+_LEGACY_SOURCE_REFERENCE_FIELDS = frozenset({"asset_identifier", "index_identifier"})
 
 
-class CurveKeyNode(BaseModel):
+class CurveKeyNodeSourceReference(BaseModel):
+    """Canonical identity of the asset or index that supplied a curve input."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["asset", "index"]
+    identifier: str = Field(min_length=1)
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def _normalize_identifier(cls, value: object) -> str:
+        identifier = str(value or "").strip()
+        if not identifier:
+            raise ValueError("source_reference.identifier cannot be empty.")
+        return identifier
+
+
+class CurveKeyNodeBase(BaseModel):
+    """Shared source-reference contract for typed curve key nodes."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    source_reference: CurveKeyNodeSourceReference | None = Field(
+        default=None,
+        description=(
+            "Optional canonical AssetTable or IndexTable unique identifier for the "
+            "market input represented by this key node."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_source_reference_fields(cls, value: Any) -> Any:
+        if isinstance(value, Mapping):
+            _raise_for_legacy_source_reference_fields(value, path=cls.__name__)
+        return value
+
+
+class CurveKeyNode(CurveKeyNodeBase):
     """Recommended, optional shape for discount-curve construction provenance.
 
     The base storage contract accepts JSON object/list provenance. Producers
@@ -24,15 +70,9 @@ class CurveKeyNode(BaseModel):
     source-specific fields through Pydantic ``extra="allow"``.
     """
 
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-
     maturity_date: dt.date | None = Field(
         default=None,
         description="Maturity date for the source input when the input is maturity-based.",
-    )
-    asset_identifier: str | None = Field(
-        default=None,
-        description="Optional registered source-instrument identifier for this key node.",
     )
     instrument_type: str | None = Field(
         default=None,
@@ -86,6 +126,8 @@ def normalize_curve_key_nodes(value: Any) -> Any:
     normalized = _normalize_json_value(value, path="key_nodes")
     if not isinstance(normalized, list | dict):
         raise ValueError("Discount curve key_nodes must be a JSON object or list when present.")
+    _reject_legacy_source_reference_fields(normalized)
+    _normalize_curve_key_node_source_references(normalized)
     return normalized
 
 
@@ -183,8 +225,45 @@ def _normalize_json_object(value: Mapping[str, Any], *, path: str) -> dict[str, 
     return normalized
 
 
+def _reject_legacy_source_reference_fields(value: list[Any] | dict[str, Any]) -> None:
+    if isinstance(value, list):
+        for index, node in enumerate(value):
+            if isinstance(node, Mapping):
+                _raise_for_legacy_source_reference_fields(node, path=f"key_nodes[{index}]")
+        return
+    _raise_for_legacy_source_reference_fields(value, path="key_nodes")
+
+
+def _normalize_curve_key_node_source_references(value: list[Any] | dict[str, Any]) -> None:
+    nodes = value if isinstance(value, list) else [value]
+    for node in nodes:
+        if not isinstance(node, dict) or "source_reference" not in node:
+            continue
+        source_reference = node["source_reference"]
+        if source_reference is None:
+            continue
+        node["source_reference"] = CurveKeyNodeSourceReference.model_validate(
+            source_reference
+        ).model_dump(mode="json")
+
+
+def _raise_for_legacy_source_reference_fields(
+    value: Mapping[str, Any],
+    *,
+    path: str,
+) -> None:
+    stale_fields = sorted(_LEGACY_SOURCE_REFERENCE_FIELDS.intersection(value))
+    if stale_fields:
+        raise ValueError(
+            f"{path} uses unsupported top-level source fields "
+            f"{', '.join(stale_fields)}; use source_reference with type and identifier."
+        )
+
+
 __all__ = [
     "CurveKeyNode",
+    "CurveKeyNodeBase",
+    "CurveKeyNodeSourceReference",
     "KEY_NODES_CODEC_PREFIX",
     "compress_key_nodes_to_string",
     "decompress_key_nodes_from_string",

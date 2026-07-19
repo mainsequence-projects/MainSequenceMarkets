@@ -11,8 +11,11 @@ ql = pytest.importorskip("QuantLib")
 
 from msm_pricing.api import Curve, CurveBuildingDetails
 from msm_pricing.pricing_engine.curves import (
+    CurveKeyNodeSourceReference,
     CurveObservationExportConfig,
+    InterestRateFutureHelperKeyNode,
     InterestRateFutureHelperSpec,
+    OISRateHelperKeyNode,
     OISRateHelperSpec,
     OvernightDepositHelperSpec,
     build_interest_rate_future_helper,
@@ -57,6 +60,10 @@ def _rate_helper_details(curve_uid: uuid.UUID) -> CurveBuildingDetails:
 def _key_nodes() -> list[dict[str, object]]:
     return [
         {
+            "source_reference": {
+                "type": "index",
+                "identifier": "USD-OVERNIGHT-DEPOSIT-1D",
+            },
             "helper_type": "overnight_deposit_helper",
             "quote": 4.75,
             "quote_type": "deposit_rate",
@@ -68,6 +75,10 @@ def _key_nodes() -> list[dict[str, object]]:
             "day_counter_code": "Actual360",
         },
         {
+            "source_reference": {
+                "type": "index",
+                "identifier": "USD-OVERNIGHT-OIS-1Y",
+            },
             "helper_type": "ois_rate_helper",
             "quote": 4.80,
             "quote_type": "par_swap_rate",
@@ -84,6 +95,35 @@ def test_ql_period_from_tenor_is_strict() -> None:
 
     with pytest.raises(ValueError, match="Unsupported tenor"):
         ql_period_from_tenor("bad")
+
+
+def test_fixed_income_rate_key_nodes_accept_index_sources() -> None:
+    ois_node = OISRateHelperKeyNode.model_validate(_key_nodes()[1])
+    future_node = InterestRateFutureHelperKeyNode.model_validate(
+        {
+            "source_reference": {
+                "type": "index",
+                "identifier": "CME-SOFR-JUN-2026",
+            },
+            "helper_type": "sofr_future_rate_helper",
+            "quote": 95.25,
+            "quote_type": "futures_price",
+            "quote_unit": "price",
+            "reference_month": "JUN",
+            "reference_year": 2026,
+            "reference_frequency": "Monthly",
+        }
+    )
+
+    assert ois_node.source_reference == CurveKeyNodeSourceReference(
+        type="index",
+        identifier="USD-OVERNIGHT-OIS-1Y",
+    )
+    assert future_node.source_reference == CurveKeyNodeSourceReference(
+        type="index",
+        identifier="CME-SOFR-JUN-2026",
+    )
+    assert "floating_index" not in InterestRateFutureHelperKeyNode.model_fields
 
 
 def test_helper_specs_from_key_nodes_require_explicit_overnight_index() -> None:
