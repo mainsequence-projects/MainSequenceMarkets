@@ -1,8 +1,10 @@
 # Derived Index Workflow
 
-Core `msm` owns generic calculated indexes. A provider, connector, or pricing
-package may publish source facts, but applications do not need `msm_pricing` to
-define, calculate, inspect, or publish a derived Index.
+Core `msm` owns generic calculated indexes. The canonical value table also
+accepts plain Index observations that have no core calculation definition. A
+provider, connector, or pricing package may publish source facts, but
+applications do not need `msm_pricing` to define, calculate, inspect, or
+publish a derived Index.
 
 ## Domain Model
 
@@ -11,9 +13,15 @@ flowchart LR
     I["IndexTable<br/>canonical observable identity"] --> D["IndexCalculationDefinitionTable<br/>immutable, effective-dated methodology"]
     D --> L["IndexCalculationLegTable × N<br/>subjects, observables, units, transforms, coefficients"]
     D --> R["IndexResolvedLegsStorage<br/>dynamic membership and coefficient provenance"]
-    D --> V["IndexValuesStorage<br/>canonical published observations"]
-    R -. "required dependency for dynamic methodologies" .-> V
-    V --> S["Signal / analytics<br/>interpretation, z-score, or action"]
+    I --> F{"Publication frequency"}
+    F --> V1["IndexValuesTS.1m<br/>...__index_values__t_1m"]
+    F --> V2["IndexValuesTS.1d<br/>...__index_values__t_1d"]
+    D -. "definition_uid for calculated rows" .-> V1
+    D -. "definition_uid for calculated rows" .-> V2
+    R -. "required dependency for dynamic methodologies" .-> V1
+    R -. "required dependency for dynamic methodologies" .-> V2
+    V1 --> S["Signal / analytics<br/>interpretation, z-score, or action"]
+    V2 --> S
     I -. "benchmark or observable" .-> P["Portfolio<br/>capital, quantities, cash, execution, realized P&L"]
     D -. "optional theoretical replication target" .-> P
 ```
@@ -55,8 +63,9 @@ owned quantities, cash, orders, fills, execution constraints, or realized P&L.
 | Does performance depend on what a specific account actually executed? | No | Yes |
 
 Use both when a Portfolio tracks or replicates an Index: publish the theoretical
-benchmark through `IndexValuesStorage`, then let the Portfolio reference it and
-store actual holdings and execution state separately. Never use
+benchmark through the cadence-specific Index-value table, then let the
+Portfolio reference it and store actual holdings and execution state
+separately. Never use
 `PortfolioWeightsStorage` as an Index definition or resolved-leg audit table.
 
 ## Public API
@@ -152,7 +161,8 @@ Alignment happens before the operator:
 
 Missing-data policies are `drop`, `fail`, and `forward_fill`. Forward fill is
 available only when the definition declares `max_age_seconds`; there is no
-implicit fill. As-of or filled observations publish `calculation_status="stale"`.
+implicit fill. As-of or filled observations publish
+`observation_status="stale"`.
 
 ## Pure Calculation
 
@@ -171,7 +181,7 @@ values = result.values
 ```
 
 The output is indexed by `(time_index, index_identifier)`, with UTC nanosecond
-timestamps and `value`, `unit`, `definition_uid`, `calculation_status`,
+timestamps and `value`, `unit`, `definition_uid`, `observation_status`,
 `source_as_of`, and bounded `metadata_json` columns.
 
 Dynamic resolved coefficients supplied to the pure engine must include source
@@ -181,14 +191,33 @@ risk-observation time. Equal timestamps are resolved deterministically.
 
 ## Storage And Provenance
 
-`IndexValuesStorage` has canonical grain:
+Every cadence-configured Index-value table has canonical grain:
 
 ```text
 (time_index, index_identifier)
 ```
 
-Each row points to the exact immutable `definition_uid`. Shared storage has no
-invented cadence; cadence belongs to the individual updater and schedule.
+Every row requires `value` and `unit`. `definition_uid` is nullable in the
+general storage contract: a plain observation such as `USD_SWAP_10Y` has no
+core definition, while `DerivedIndexDataNode` rejects a calculated row without
+the exact immutable `definition_uid` and an `observation_status`.
+
+`IndexValuesStorage` is the reusable SQLAlchemy schema anchor. Call
+`configured_index_values_storage(cadence="1m")`, `(... cadence="1d")`, or the
+appropriate canonical interval to construct a production table. Frequency is
+part of the MetaTable identifier, `__cadence__`, storage hash, and physical
+table suffix. It is not a column, schedule-only setting, DataNode runtime
+option, or `hash_namespace`. Therefore one-minute and daily histories for the
+same Index require separate storage classes and separate DataNode producers.
+
+`IndexValuesDataNode` is the convenience producer/normalizer for plain or
+otherwise caller-supplied canonical values. Extension libraries may own richer
+Index-indexed tables and their own DataNode implementations; they are not
+required to inherit `IndexTimestampedDataNode` or write all source-native
+fields into the canonical table. Their own stable-frequency tables must also
+encode cadence in dataset and physical-table identity. They may map a selected
+value into the matching cadence-configured canonical table for generic
+downstream consumption.
 
 `IndexResolvedLegsStorage` is required whenever component identity or a
 coefficient varies. Its grain is:
@@ -207,8 +236,10 @@ facts, not positions or holdings.
 source storage classes. Source bindings are part of hashed configuration and
 dependencies are built deterministically before update execution.
 
-For fixed definitions, construct `DerivedIndexDataNode` with
-`IndexValuesStorage`. For a selector or dynamic coefficient, set
+For fixed definitions, construct `DerivedIndexDataNode` with an explicit
+cadence-configured output such as
+`configured_index_values_storage(cadence="1d")`. The cadence-less schema
+anchor is rejected. For a selector or dynamic coefficient, set
 `requires_resolved_legs=True` and bind `IndexResolvedLegsStorage`; the value
 node declares `DerivedIndexResolvedLegsDataNode` as a dependency and refuses to
 publish a value without the required provenance.
@@ -240,6 +271,11 @@ Index; neither is required to define it.
 
 Executable examples live under `examples/msm/indices/`:
 
+- `plain_index_values.py` for `USD_SWAP_10Y` at one-minute and daily frequency;
+- `index_values_frequency_migration.py` for including both configured storage
+  models in an SDK migration provider;
+- `extension_owned_index_storage.py` for a separately owned bid/ask/mid table
+  and optional canonical normalization;
 - `m_bond_2s5s_yield_spread.py`;
 - `commodity_calendar_spread.py`;
 - `weighted_multi_leg_spreads.py`;
@@ -253,6 +289,6 @@ from `msm.analytics.indices`. Existing
 for compatibility. Pricing-only fixed-income interpretation remains in
 `msm_pricing`.
 
-See [Derived Indexes tutorial](../../../tutorial/06-derived-indexes.md) for the
+See [Index Values And Derived Indexes tutorial](../../../tutorial/06-derived-indexes.md) for the
 ordered migration, registration, source-binding, backfill, and consumption
 workflow.

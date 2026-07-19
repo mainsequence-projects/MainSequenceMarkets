@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -791,13 +790,13 @@ def calculate_index(
     ).any(axis=1)
     statuses = pd.Series("ready", index=aligned.index, dtype="string")
     statuses.loc[stale_rows] = "stale"
-    definition_uid = definition.uid or uuid.UUID(int=0)
+    definition_uid = definition.uid
     frame = pd.DataFrame(
         {
             "value": result_values.astype(float),
             "unit": definition.output_unit,
             "definition_uid": definition_uid,
-            "calculation_status": statuses,
+            "observation_status": statuses,
             "source_as_of": pd.to_datetime(latest_sources, utc=True),
             "metadata_json": [
                 {"definition_hash": definition_hash} for _ in range(len(result_values))
@@ -824,7 +823,7 @@ def _empty_result_frame() -> pd.DataFrame:
             "value",
             "unit",
             "definition_uid",
-            "calculation_status",
+            "observation_status",
             "source_as_of",
             "metadata_json",
         ],

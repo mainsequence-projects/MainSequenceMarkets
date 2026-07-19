@@ -32,7 +32,7 @@ nav:
       - Accounts And Holdings: tutorial/03-accounts.md
       - Portfolios: tutorial/04-portfolios.md
       - Pricing Instruments: tutorial/05-pricing.md
-      - Derived Indexes: tutorial/06-derived-indexes.md
+      - Index Values And Derived Indexes: tutorial/06-derived-indexes.md
   - msm:
       - Overview: knowledge/msm/index.md
       - Accounts:
@@ -112,7 +112,7 @@ nav:
       - Pricing Valuation Position Boundary: ADR/0033-pricing-valuation-position-boundary.md
       - Pricing Curve Identity And Market-Data Curve Bindings: ADR/0035-pricing-curve-identity-and-market-data-curve-bindings.md
       - Prepared Pricing Valuation Context: ADR/0036-prepared-pricing-valuation-context.md
-      - Core Derived Index Definition And Calculation Framework: ADR/0037-core-derived-index-definition-and-calculation-framework.md
+      - Core Index Value, Definition, And Calculation Framework: ADR/0037-core-derived-index-definition-and-calculation-framework.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - FastAPI v1:
           - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md

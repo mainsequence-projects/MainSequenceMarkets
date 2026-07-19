@@ -21,7 +21,10 @@ from msm.analytics.indices import (
 )
 from msm.api.derived_indices import DerivedIndex
 from msm.api.indices import Index
-from msm.data_nodes.indices.storage import IndexResolvedLegsStorage, IndexValuesStorage
+from msm.data_nodes.indices.storage import (
+    IndexResolvedLegsStorage,
+    require_cadenced_index_values_storage,
+)
 from msm.data_nodes.indices.timestamped import (
     IndexDataNodeConfiguration,
     IndexTimestampedDataNode,
@@ -315,10 +318,11 @@ class DerivedIndexDataNode(_DerivedIndexSourceMixin, IndexTimestampedDataNode):
     def __init__(
         self,
         config: DerivedIndexDataNodeConfiguration,
-        storage_table: type[PlatformTimeIndexMetaTable] = IndexValuesStorage,
+        storage_table: type[PlatformTimeIndexMetaTable],
         *,
         hash_namespace: str | None = None,
     ):
+        require_cadenced_index_values_storage(storage_table)
         self.config = config
         self._source_dependencies = self._build_source_dependencies(config)
         self._resolved_legs_dependency: DerivedIndexResolvedLegsDataNode | None = None
@@ -375,11 +379,12 @@ class DerivedIndexDataNode(_DerivedIndexSourceMixin, IndexTimestampedDataNode):
                 )
                 outputs.append(result.values)
         frame = pd.concat(outputs).sort_index() if outputs else _empty_values_frame()
-        return normalize_stamped_frame(
+        normalized = normalize_stamped_frame(
             frame,
             storage_table=self.storage_table,
             frame_label=self.frame_label,
         )
+        return _validate_derived_values_frame(normalized)
 
     def _load_resolved_coefficients(
         self,
@@ -567,11 +572,24 @@ def _empty_values_frame() -> pd.DataFrame:
             "value",
             "unit",
             "definition_uid",
-            "calculation_status",
+            "observation_status",
             "source_as_of",
             "metadata_json",
         ]
     )
+
+
+def _validate_derived_values_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+    values = frame.reset_index()
+    if values["definition_uid"].isna().any():
+        raise IndexCalculationError(
+            "derived Index values require the exact effective definition_uid"
+        )
+    if values["observation_status"].isna().any():
+        raise IndexCalculationError("derived Index values require an observation_status")
+    return frame
 
 
 def _empty_resolved_frame() -> pd.DataFrame:

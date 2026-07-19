@@ -219,7 +219,7 @@ def test_alignment_missing_and_staleness_policies_are_explicit() -> None:
     ).values.reset_index()
 
     assert asof["value"].tolist() == pytest.approx([9.0, 9.0, 11.0])
-    assert asof["calculation_status"].tolist() == ["ready", "stale", "ready"]
+    assert asof["observation_status"].tolist() == ["ready", "stale", "ready"]
 
     with pytest.raises(IncompleteObservationsError, match="incomplete required observations"):
         calculate_index(

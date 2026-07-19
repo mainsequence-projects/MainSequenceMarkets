@@ -1,57 +1,98 @@
-# 0037. Core Derived Index Definition And Calculation Framework
+# 0037. Core Index Value, Definition, And Calculation Framework
 
 ## Status
 
-Accepted - library implementation verified; operational publication pending.
+Accepted - general Index-value implementation and migration verified;
+operational publication and release pending.
 
 This ADR is not considered implemented merely because the SQLAlchemy models or
 calculation functions exist. The complete definition in this document includes
 the public API, migrations, storage contracts, DataNodes, tests, examples,
 concept documentation, tutorial coverage, changelog, and packaged agent skill.
 
-As of 2026-07-18, the library implementation, SDK-managed migration, shared
-catalog binding, runtime attachment, focused tests, executable examples,
-documentation, changelog, and packaged skill are complete. The two unchecked
-operational gates below remain: the first real shared-backend DataNode
-publication under an explicit hash namespace, and publication of a library
-release containing the work.
+As of 2026-07-18, the derived-index implementation, SDK-managed migration,
+shared catalog binding, runtime attachment, focused tests, executable examples,
+documentation, changelog, and packaged skill are complete.
+
+This ADR was revised and implemented on 2026-07-19 to make the canonical value
+contract apply to every Index, not only to an Index with an
+`IndexCalculationDefinitionTable` row. Revision `0012` is applied at the
+verified shared migration head; it preserves the table and existing rows while
+making `definition_uid` nullable and renaming the nullable generic status field
+to `observation_status`. Cadence-configured storage generation, rejection of
+cadence-less publication, separate 1-minute/daily DataNodes and tables, and the
+selected migration-provider contract are verified locally. The original
+operational gates remain: migration/registration of selected cadence tables,
+the first real shared-backend DataNode publication under an explicit hash
+namespace, and publication of a library release containing the work.
 
 ## Decision Summary
 
-`msm` core owns the complete generic derived-index domain under the existing
-Index abstraction.
+`msm` core owns canonical Index identity, a domain-neutral canonical Index
+value contract, and the optional generic derived-index methodology domain.
 
-The core model is:
+An Index is first a stable observable identity with values over time. A
+calculation definition is optional. It is attached only when `msm` owns a
+versioned methodology that calculates the observable.
+
+The core model separates stable Index identity from cadence-specific datasets:
 
 ```mermaid
 flowchart LR
-    I["IndexTable<br/>canonical observable identity"] --> D["IndexCalculationDefinitionTable<br/>versioned methodology"]
+    I["IndexTable<br/>canonical observable identity"] --> F{"Canonical value datasets<br/>frequency is storage identity"}
+    F --> V1["IndexValuesTS.1m<br/>table suffix: 1m"]
+    F --> V2["IndexValuesTS.1d<br/>table suffix: 1d"]
+    I -. "only when calculated" .-> D["IndexCalculationDefinitionTable<br/>optional versioned methodology"]
     D --> L["IndexCalculationLegTable × N<br/>ordered calculation algebra"]
     D --> R["IndexResolvedLegsStorage<br/>dynamic constituents and coefficients only"]
-    D --> V["IndexValuesStorage<br/>published observations"]
-    R -. "provenance dependency" .-> V
-    V --> S["Signal analytics<br/>z-score, interpretation, or action"]
+    D -. "optional calculation provenance" .-> F
+    R -. "required for dynamic methodology" .-> F
+    E["Extension library"] --> X["Extension-owned Index storage<br/>source-native schema"]
+    X -. "Index FK" .-> I
+    X -. "optional frequency-matched normalization" .-> F
+    V1 --> S["Signal analytics<br/>z-score, interpretation, or action"]
+    V2 --> S
     I -. "benchmark or observable" .-> P["Portfolio<br/>capital, holdings, execution, realized P&L"]
     D -. "optional theoretical replication target" .-> P
 ```
 
 The implementation must not introduce a parallel `SignalIndex` identity, must
-not model a derived index as a `PortfolioTable`, and must not place the generic
+not model an Index as a `PortfolioTable`, and must not place the generic
 definition or calculation engine in `msm_pricing` or an application project.
 
-`msm_pricing`, data connectors, and project code may produce observations used
-by index legs, but they are input providers and consumers. They do not own the
-derived-index definition, calculation, resolution, or published-value model.
+Data connectors, extension libraries, and project code may create Index rows
+and publish Index-indexed source-native observations. They are not forced to
+write directly into a core concrete storage table or inherit one concrete
+DataNode implementation. When they need cross-library interoperability, they
+may normalize a selected value into the cadence-matched storage returned by
+`configured_index_values_storage(cadence=...)`.
+
+Providers may also produce observations used by calculation legs, but they do
+not own the core derived-index definition, calculation, resolution, or
+canonical derived-value semantics.
 
 ## Context
 
 `IndexTable` already provides canonical identity for market indexes. It has a
 stable `unique_identifier`, registered `index_type`, display metadata, provider,
-and extension metadata. `IndexTimestampedDataNode` already provides the shared
+and extension metadata. `IndexTimestampedDataNode` already provides a reusable
 base for time-varying facts keyed by `IndexTable.unique_identifier`.
 
-What is missing is a generic persisted methodology for indexes calculated from
-other observations.
+An Index does not need to be calculated from other observations. For example,
+`USD_SWAP_10Y` is the observable 10-year swap rate. It is not an Asset or a
+Portfolio, and it does not need to be represented as a spread. It may have
+intraday and daily histories, but each stable observation frequency is a
+separate timestamped dataset, storage table, and DataNode update process.
+
+Two gaps are addressed by this ADR:
+
+1. a domain-neutral canonical value contract for plain and calculated Indexes;
+2. a generic persisted methodology for the subset of Indexes calculated from
+   other observations.
+
+The canonical contract is an interoperability surface, not the only permitted
+Index storage. An extension library may own a richer source-native Index-indexed
+storage contract while reusing canonical `IndexTable` identity.
 
 Applications currently tend to hardcode derived observables such as:
 
@@ -138,7 +179,8 @@ a leg uses a selector or dynamic coefficient method.
 
 ### Index value
 
-The canonical calculated observation published for one index and timestamp.
+The canonical observation published for one Index and timestamp. It may be a
+plain observed value or the output of a versioned calculation definition.
 
 ### Calculation coefficient
 
@@ -147,10 +189,11 @@ portfolio allocation weight, quantity, market value, or position.
 
 ## Core Ownership Rule
 
-All generic derived-index behavior belongs to `msm` core under the Index
-domain:
+The shared Index contracts belong to `msm` core under the Index domain:
 
 - canonical identity and index-type registration;
+- the domain-neutral canonical Index-value storage contract;
+- the reusable Index-stamped DataNode behavior;
 - calculation definition and leg MetaTables;
 - typed public definition and leg APIs;
 - operator and unit semantics;
@@ -158,10 +201,15 @@ domain:
 - fixed and dynamic coefficient contracts;
 - selector and resolver protocols;
 - resolved-leg audit storage;
-- canonical index-value storage;
 - derived-index DataNode configuration and update process;
 - validation and error contracts;
 - examples, documentation, tutorials, and packaged skills.
+
+Extension libraries own their source-native Index storage and production logic.
+They may reuse the core `IndexTimestampedDataNode` convenience base, use another
+DataNode base while satisfying the same storage invariants, or normalize their
+output into the canonical core value contract. Core ownership of the canonical
+contract does not imply exclusive ownership of every Index observation table.
 
 The source tree may remain layer-oriented, as the current repository is, while
 keeping ownership inside the Index domain:
@@ -207,6 +255,107 @@ constant pattern.
 methodology. More specific classification such as `yield_spread`,
 `calendar_spread`, `ratio`, or `strategy_index` belongs on the calculation
 definition rather than multiplying top-level index types.
+
+An Index without an owned calculation uses the type that describes the
+observable. For example, `USD_SWAP_10Y` uses `index_type="interest_rate"` and
+does not require a calculation definition merely because it has historical
+values.
+
+## Plain Index Example: 10-Year Swap Rate
+
+`USD_SWAP_10Y` represents the value of the 10-year swap rate through time:
+
+```text
+IndexTable
+  unique_identifier = USD_SWAP_10Y
+  index_type         = interest_rate
+  display_name       = USD 10-Year Swap Rate
+```
+
+Its canonical observations reuse the same Index row but live in separate
+frequency-defined datasets:
+
+```text
+IndexValuesTS.1m / ms_markets__index_values__t_1m
+  2026-07-19T10:01:00Z  USD_SWAP_10Y  0.04217  decimal  NULL
+  2026-07-19T10:02:00Z  USD_SWAP_10Y  0.04219  decimal  NULL
+
+IndexValuesTS.1d / ms_markets__index_values__t_1d
+  2026-07-19T23:59:59Z  USD_SWAP_10Y  0.04205  decimal  NULL
+```
+
+### Diagram 1 - One Index At Different Observation Frequencies
+
+```mermaid
+flowchart LR
+    I["IndexTable<br/>USD_SWAP_10Y<br/>one stable observable identity"] --> N1["Swap10YOneMinuteDataNode<br/>update process A"]
+    I --> N2["Swap10YDailyDataNode<br/>update process B"]
+    N1 --> T1["IndexValuesTS.1m<br/>__cadence__ = 1m<br/>ms_markets__index_values__t_1m"]
+    N2 --> T2["IndexValuesTS.1d<br/>__cadence__ = 1d<br/>ms_markets__index_values__t_1d"]
+    T1 --> R1["10:01 and 10:02 UTC<br/>USD_SWAP_10Y"]
+    T2 --> R2["23:59:59 UTC<br/>USD_SWAP_10Y daily close"]
+```
+
+The two DataNodes have different update identities, schedules, storage
+contracts, and incremental progress. Their storage tables have different
+logical identifiers, `__cadence__` metadata, storage hash components, and
+physical names. They still publish observations for the same
+`IndexTable.unique_identifier`: frequency changes dataset identity, not the
+meaning of `USD_SWAP_10Y` itself.
+
+Frequency must never be only a runtime field or an extra column in one mixed
+table. It is a storage-defining input to
+`configured_index_values_storage(cadence=...)`.
+
+If an official daily close and an intraday indicative rate have materially
+different meanings, they must not collide at one canonical coordinate. Model
+them as distinct stable Index identities or retain the source-native dimensions
+in an extension-owned storage contract and normalize only the selected
+canonical series.
+
+### Diagram 2 - Different Calculation Methods
+
+Different calculation methods require an explicit historical-meaning decision.
+They must never be hidden as frequency settings or untracked DataNode changes.
+
+```mermaid
+flowchart TB
+    M1["Calculation method A"] --> Q{"How do the method histories relate?"}
+    M2["Calculation method B"] --> Q
+
+    Q -- "Same semantics; implementation only changes" --> S["Same Index identity<br/>same definition semantics<br/>new updater identity if needed"]
+
+    Q -- "Method B replaces A prospectively" --> I["One calculated Index identity"]
+    I --> D1["Definition v1<br/>method A<br/>effective: t0 to t1"]
+    I --> D2["Definition v2<br/>method B<br/>effective: t1 onward"]
+    D1 --> V1["Cadence-specific IndexValuesTS<br/>definition_uid = v1"]
+    D2 --> V2["Same cadence-specific IndexValuesTS<br/>definition_uid = v2"]
+
+    Q -- "Both complete histories must coexist" --> IA["USD_SWAP_10Y_METHOD_A<br/>distinct Index identity"]
+    Q -- "Both complete histories must coexist" --> IB["USD_SWAP_10Y_METHOD_B<br/>distinct Index identity"]
+    IA --> VA["Cadence-specific IndexValuesTS<br/>method A history"]
+    IB --> VB["Cadence-specific IndexValuesTS<br/>method B history"]
+
+    O["Plain source observation<br/>no core-owned calculation"] --> P["USD_SWAP_10Y<br/>definition_uid = NULL"]
+```
+
+The rules are:
+
+1. If only the producer implementation changes and the observable methodology
+   is unchanged, keep the same Index identity and definition semantics. The
+   DataNode update identity may change.
+2. If an output-affecting method replaces another method prospectively, keep
+   one stable calculated Index identity and create non-overlapping definition
+   versions.
+3. If two method histories must be available for the same timestamps, give
+   each method a distinct Index identity. The canonical
+   `(time_index, index_identifier)` grain cannot contain both values under one
+   identity.
+4. If the Index is source-observed and has no core-owned calculation, publish
+   it with `definition_uid = NULL`; do not invent a calculation definition.
+5. Apply the frequency-storage decision independently from the methodology
+   decision. Every method history still publishes through a storage table whose
+   cadence is explicit in its logical and physical identity.
 
 ## Relational Definition Model
 
@@ -505,10 +654,23 @@ policy.
 
 ## Time-Series Storage Contracts
 
-### IndexValuesStorage
+### Cadence-configured IndexValuesStorage family
 
-`IndexValuesStorage` is the canonical published history for calculated index
-observations.
+`IndexValuesStorage` owns the reusable SQLAlchemy column schema. Canonical
+publication targets the concrete storage class returned by
+`configured_index_values_storage(cadence=...)`, not one mixed-frequency table.
+Each cadence produces a distinct dataset identity:
+
+```text
+cadence  logical identifier  physical table
+1m       IndexValuesTS.1m    ms_markets__index_values__t_1m
+1d       IndexValuesTS.1d    ms_markets__index_values__t_1d
+```
+
+The configured class carries `__cadence__`, includes cadence in
+`__metatable_extra_hash_components__`, and uses cadence as the bounded physical
+table-name suffix. A second core `IndexObservationsStorage` with the same value
+semantics must not be introduced.
 
 Target row grain:
 
@@ -522,24 +684,98 @@ Target fields:
 | --- | --- |
 | `time_index` | UTC observation timestamp. |
 | `index_identifier` | FK to `IndexTable.unique_identifier`. |
-| `value` | Calculated canonical index value. |
-| `unit` | Unit code matching the active definition output unit. |
-| `definition_uid` | Definition version used for this observation. |
-| `calculation_status` | `ready`, `partial`, `stale`, or another registered status. |
+| `value` | Canonical Index value at the observation timestamp. |
+| `unit` | Canonical unit code for the published value. |
+| `definition_uid` | Nullable definition version used when the value is calculated by the core methodology framework. |
+| `observation_status` | Optional state such as `ready`, `preliminary`, `partial`, `stale`, or `corrected`. |
 | `source_as_of` | Latest source timestamp contributing to the observation, when meaningful. |
-| `metadata_json` | Bounded calculation provenance not represented by core fields. |
+| `metadata_json` | Bounded observation or calculation provenance not represented by core fields. |
 
-The table must inherit the normal markets time-index MetaTable mixin, declare
-the canonical index foreign key, and document every column. A generic table may
-contain indexes with different cadences, so cadence must not be invented at the
-shared table level. Update-process cadence belongs to the individual DataNode
-configuration and scheduling surface.
+`definition_uid` is conditionally required:
+
+- it is `NULL` for a plain Index observation such as `USD_SWAP_10Y`;
+- it is required when a value is published from an
+  `IndexCalculationDefinitionTable` methodology;
+- a derived publisher must reject a row that omits the exact effective
+  definition version.
+
+The database column is nullable because the table serves both cases. The
+derived publication API and `DerivedIndexDataNode` enforce the stronger
+calculated-value rule.
+
+`observation_status` is deliberately not named `calculation_status`. Status
+describes the published observation whether it was externally observed,
+normalized from an extension table, or calculated by the core engine.
+
+Every concrete table must inherit the normal markets time-index MetaTable
+contract, declare the canonical Index foreign key, document every column, and
+declare exactly one stable `__cadence__`. Different frequencies must not share
+a physical table even when they contain the same Index identifiers and value
+columns. Update scope and scheduling remain producer concerns, but frequency is
+dataset meaning and therefore storage identity—not an arbitrary runtime label.
 
 The canonical value grain intentionally allows one value per index and time.
 A methodology change applies through non-overlapping effective definition
 intervals. A material retroactive restatement that must coexist with the old
 history requires a new index identity rather than duplicate canonical values at
 the same coordinate.
+
+### Extension-Owned Index Observation Storage
+
+The cadence-configured core family is canonical, but it is not mandatory as
+the only storage for every connector, provider, or extension package. Extension libraries may
+need richer source-native contracts containing fields such as bid, ask, mid,
+publication code, valuation basis, quality flags, or provider revision data.
+
+Extension is contract-based, not forced concrete-class inheritance:
+
+- an extension must reuse `IndexTable` as the canonical observable identity;
+- its time-indexed storage must use a UTC `time_index` and an
+  `index_identifier` foreign key to `IndexTable.unique_identifier`;
+- its declared grain must prevent duplicate facts at the same full coordinate;
+- it may add stable identity dimensions and source-native value columns when
+  those dimensions are part of the dataset meaning;
+- it may inherit `IndexTimestampedDataNode` as a convenience, but inheritance
+  from that DataNode base is not an interoperability requirement;
+- it must not subclass the concrete `IndexValuesStorage` merely to obtain a new
+  physical schema; it should declare its own registered
+  `PlatformTimeIndexMetaTable` storage contract;
+- it must declare one cadence per stable-frequency table and include that
+  cadence in the table's identity and physical name;
+- it may publish or normalize one selected canonical value into the matching
+  `configured_index_values_storage(cadence=...)` table when generic downstream
+  consumption is required.
+
+For example, an extension library may register provider-owned Index identities
+and publish a source-native contract:
+
+```text
+ExtensionIndexObservationsTS.1m
+  time_index
+  index_identifier -> IndexTable.unique_identifier
+  bid
+  ask
+  mid
+  valuation_basis
+  publication_code
+  quality_status
+  provider_revision
+```
+
+An extension-owned DataNode may use `IndexTimestampedDataNode`, or another valid
+DataNode implementation, to write this table. An optional normalization
+DataNode can select the field that represents the canonical value and publish:
+
+```text
+ExtensionIndexObservationsTS.1m
+    -> optional normalization policy
+    -> IndexValuesTS.1m
+```
+
+The extension therefore owns its source-native schema and production lifecycle
+while the core Index registry preserves shared identity and the
+cadence-configured `IndexValuesTS.<cadence>` family provides an optional
+cross-library consumption surface.
 
 ### IndexResolvedLegsStorage
 
@@ -605,7 +841,9 @@ Its responsibilities are:
 6. Persist resolved-leg audit rows when the definition requires them.
 7. Execute the pure core calculation engine.
 8. Return a `datetime64[ns, UTC]` indexed frame matching
-   `IndexValuesStorage`.
+   the explicitly selected cadence-configured Index value storage, including
+   the exact non-null `definition_uid` and an observation status for every
+   calculated row.
 
 The output storage contract is passed explicitly as
 `storage_table: type[PlatformTimeIndexMetaTable]`; it is not hidden in the
@@ -634,7 +872,8 @@ The canonical rules are:
 2. A material output-affecting change creates a new definition version.
 3. Effective intervals for one index do not overlap.
 4. `definition_hash` includes all ordered leg and operator semantics.
-5. An observation records the exact `definition_uid` used.
+5. A calculated observation records the exact `definition_uid` used; a plain
+   observation has no calculation definition and stores `NULL`.
 6. Historical values before a new version's `effective_from` retain their old
    definition.
 7. A retroactive methodology rewrite that must coexist with existing history
@@ -660,6 +899,12 @@ Examples not requiring a new version:
 ## Index And Portfolio Boundary
 
 An Index describes a market observable or a theoretical methodology.
+
+`USD_SWAP_10Y` is an Index because it is a named observable with a value
+through time. A particular swap contract may be represented by the appropriate
+instrument model, and an account holding swap positions belongs to Portfolio
+or account state. Neither fact turns the observable itself into an Asset or a
+Portfolio.
 
 A Portfolio describes capital allocation and execution-aware state:
 
@@ -708,6 +953,46 @@ conviction, or action labels in the spread index definition unless those values
 are themselves the explicitly published index methodology.
 
 ## Required Examples
+
+### Plain 10-year swap-rate Index
+
+Identity:
+
+```text
+unique_identifier = USD_SWAP_10Y
+index_type         = interest_rate
+```
+
+The example uses two distinct DataNodes and two distinct storage tables:
+
+```text
+Swap10YOneMinuteDataNode -> IndexValuesTS.1m -> ...__index_values__t_1m
+Swap10YDailyDataNode     -> IndexValuesTS.1d -> ...__index_values__t_1d
+```
+
+Neither creates an `IndexCalculationDefinitionTable` row. Every row has a
+canonical `value` and `unit`; `definition_uid` is `NULL`. The example must
+demonstrate that frequency changes DataNode and storage identity while both
+datasets retain the same `USD_SWAP_10Y` Index identity.
+
+### Extension-owned Index observations
+
+The example registers provider-owned identities in `IndexTable`, publishes an
+extension-owned Index-indexed storage schema with provider-specific fields, and
+does not require that source-native table to inherit the core Index value
+schema anchor.
+
+It must show both valid consumption paths:
+
+1. consumers read the extension-specific storage directly when they need its
+   richer fields;
+2. an optional normalization producer publishes the selected canonical value
+   into the cadence-matched configured Index value storage for generic Index
+   consumers.
+
+The example may reuse `IndexTimestampedDataNode`, but it must state that the
+interoperability requirement is the storage/identity contract rather than one
+mandatory DataNode inheritance hierarchy.
 
 ### M-Bond 2s5s yield spread
 
@@ -878,11 +1163,30 @@ surface and documented in the generated API reference where applicable.
 
 ## Migration And Registration
 
-The new relational and time-index models are built-in `msm` models.
+The relational definition, leg, schema-anchor, and resolved-leg models are
+built-in `msm` models. Cadence-specific Index-value models are generated for
+the frequencies selected by the publishing library or project.
+
+The 2026-07-19 generalization changes the existing `IndexValuesStorage`
+contract through SDK-managed Alembic revision `0012`, on top of `0011`.
+Revision `0012` does not edit the applied predecessor or recreate the table. It
+preserves existing rows, renames `calculation_status` to
+`observation_status`, makes that status nullable, and makes `definition_uid`
+nullable. Its downgrade refuses to impose the old non-null contract while
+incompatible plain rows exist.
+
+Cadence-specific Index value tables are distinct platform-managed storage
+models. Build each class before constructing the selected SDK migration
+provider, include it in that provider's `metatable_models`, and use the normal
+`mainsequence migrations revision/upgrade` lifecycle. Do not add frequency as
+a column, a DataNode runtime-only option, or a hash namespace. The frequency
+drives `__cadence__`, MetaTable identifier, storage hash components, and the
+physical table-name suffix.
 
 Implementation must:
 
-1. Add the models to the built-in markets model registry in dependency order.
+1. Add static models to the built-in markets model registry in dependency
+   order and configured frequency models to the selected migration provider.
 2. Author all foreign keys, indexes, checks, and descriptions in SQLAlchemy
    metadata.
 3. Use the SDK-managed Alembic MetaTable migration provider and CLI lifecycle.
@@ -899,7 +1203,8 @@ IndexTypeTable
 IndexTable
 IndexCalculationDefinitionTable
 IndexCalculationLegTable
-IndexValuesStorage
+IndexValuesStorage schema anchor
+configured IndexValuesTS.<cadence> storage models
 IndexResolvedLegsStorage
 ```
 
@@ -924,6 +1229,8 @@ coefficient belongs to the core Index engine.
 
 ### Positive
 
+- Plain observables such as `USD_SWAP_10Y` use the same canonical Index-value
+  consumption contract as calculated Indexes without inventing a methodology.
 - Applications register new spreads and derived indexes as data instead of
   changing Python constants.
 - The same model supports fixed income, equities, commodities, options, rates,
@@ -937,10 +1244,18 @@ coefficient belongs to the core Index engine.
 - Methodology versions can evolve without silently changing old meaning.
 - Connectors and pricing remain input providers instead of owning index
   semantics.
+- Extension libraries retain source-native schemas while sharing canonical
+  Index identity and optionally publishing normalized values for generic
+  consumers.
 
 ### Costs
 
 - The core Index domain gains multiple relational and time-index contracts.
+- Generic publication requires conditional validation: calculated values must
+  carry a definition while plain values must not invent one.
+- Consumers that need provider-specific fields may need to read an
+  extension-owned table instead of assuming every fact is flattened into the
+  canonical value table.
 - Dynamic indexes require explicit provenance storage.
 - Operator, selector, transform, and coefficient registries need strict
   validation and documentation.
@@ -954,6 +1269,27 @@ coefficient belongs to the core Index engine.
 
 Rejected because the semantics are cross-asset and reusable. Project-local
 tables would create incompatible definitions and force later migration.
+
+### Add a second core IndexObservationsStorage
+
+Rejected because it would duplicate the `(time_index, index_identifier)`,
+`value`, and `unit` semantics of the Index value storage family and force
+consumers to choose between two equivalent canonical contracts. The existing
+schema is generalized and configured by cadence instead.
+
+### Force every extension into the core Index value storage family
+
+Rejected because provider and domain libraries may need source-native columns,
+additional stable dimensions, independent cadence, and their own publication
+lifecycle. The cadence-configured core family is an optional canonical
+interoperability surface, not the only allowed Index-indexed table.
+
+### Require every extension producer to inherit IndexTimestampedDataNode
+
+Rejected because interoperability is defined by canonical Index identity and
+the registered time-indexed storage contract, not by one Python inheritance
+tree. `IndexTimestampedDataNode` remains the recommended convenience base for
+the common `(time_index, index_identifier)` frame behavior.
 
 ### SignalIndexTable
 
@@ -981,7 +1317,7 @@ documentation, version constraints, and safe leg lifecycle management.
 
 Rejected as the canonical workflow because repeated consumers would duplicate
 resolution, alignment, and calculation. Request-time preview remains useful,
-but production histories belong in `IndexValuesStorage`.
+but production histories belong in cadence-specific Index value storage.
 
 ### Use portfolio weights as dynamic composition history
 
@@ -992,6 +1328,7 @@ coefficients without any invested capital or executed position.
 
 This ADR does not require:
 
+- every Index to have a calculation definition;
 - every derived index to be tradable;
 - every index to have dynamic resolved-leg storage;
 - the Index engine to calculate option Greeks or bond DV01 itself;
@@ -999,9 +1336,36 @@ This ADR does not require:
 - execution, orders, holdings, cash, or realized P&L to move out of portfolios;
 - signal entry/exit rules to become part of index methodology;
 - one universal data source for every observable;
+- one universal physical observation table for every extension library;
+- extension-owned Index producers to inherit one mandatory DataNode base;
 - implicit forward filling or silent unit coercion.
 
 ## Implementation Plan
+
+### Revision phase 0 - General Index values and extension boundary
+
+- Generalize `IndexValuesStorage` from calculated-only output to canonical
+  values for every Index.
+- Make `definition_uid` nullable at the storage level and conditionally
+  required by derived publication APIs.
+- Replace `calculation_status` with the generic `observation_status` contract.
+- Add a new SDK-managed Alembic revision; do not modify the existing applied
+  revision.
+- Add `configured_index_values_storage(cadence=...)` so each stable frequency
+  owns a distinct MetaTable identifier, cadence, storage hash, and physical
+  table suffix.
+- Require plain and derived publishers to bind a cadence-specific output
+  storage instead of defaulting to the schema anchor.
+- Add a plain `USD_SWAP_10Y` publication example with separate 1-minute and
+  daily DataNodes/storage tables and no calculation definition.
+- Document and test a provider-neutral extension-owned Index storage contract.
+- Keep `IndexTimestampedDataNode` as a reusable convenience base without making
+  Python inheritance from it mandatory for interoperability.
+- Add an optional normalization path from an extension-owned storage table to
+  the matching cadence-configured canonical storage.
+- Update the Index concept docs, derived-index docs, tutorial, changelog, public
+  API documentation, examples, tests, and packaged Index skill together with
+  the implementation.
 
 ### Phase 1 - Core identity extensions and fixed calculations
 
@@ -1010,7 +1374,8 @@ This ADR does not require:
 - Add registered operator, transform, unit, alignment, and missing-policy
   contracts.
 - Implement fixed-leg linear combinations and ratios in the pure core engine.
-- Add `IndexValuesStorage` and a fixed-leg `DerivedIndexDataNode` path.
+- Add the Index value storage schema and a fixed-leg `DerivedIndexDataNode`
+  path with explicit cadence-specific output storage.
 - Migrate generic pair-spread calculation ownership from `msm_pricing` to
   `msm` core.
 
@@ -1031,7 +1396,7 @@ This ADR does not require:
 ### Phase 4 - Consumer migration
 
 - Replace application hardcoded spread tuples with persisted index definitions.
-- Publish canonical histories through `IndexValuesStorage`.
+- Publish canonical histories through cadence-specific Index value tables.
 - Keep statistical signals and application display logic downstream.
 - Remove application-owned duplicate calculation code after parity validation.
 
@@ -1040,6 +1405,38 @@ This ADR does not require:
 This ADR may change to `Accepted - implemented` only when every mandatory item
 below is complete.
 
+### General Index-value revision
+
+- [x] Generalize `IndexValuesStorage` and its MetaTable description from
+  calculated derived values to canonical values for every Index.
+- [x] Make `definition_uid` nullable in SQLAlchemy and conditionally required
+  by the derived publication API and DataNode.
+- [x] Replace `calculation_status` with the generic `observation_status`
+  contract and migrate existing rows through a new revision.
+- [x] Add and export a cadence-configured Index value storage factory whose
+  `__cadence__`, MetaTable identifier, storage hash, and physical table name are
+  frequency-specific.
+- [x] Reject direct plain or derived publication into an unspecified-cadence
+  storage target.
+- [x] Add plain-Index API/DataNode tests proving that a value can publish
+  without a calculation definition.
+- [x] Add storage-contract tests proving that a calculated value still requires
+  the exact effective `definition_uid`.
+- [x] Add extension-contract tests proving that a library-owned Index storage
+  may use its own schema and DataNode implementation while retaining the
+  `IndexTable` foreign key.
+- [x] Add optional normalization tests from an extension-owned storage contract
+  into the matching cadence-configured canonical storage.
+- [x] Add and smoke-test the `USD_SWAP_10Y` and provider-neutral extension
+  examples.
+- [x] Prove the `USD_SWAP_10Y` example uses two DataNode classes and two
+  different storage tables for `1m` and `1d`, while retaining one Index
+  identity.
+- [x] Align the Index concept docs, derived-index docs, tutorial, changelog,
+  public API documentation, and packaged Index skill with this revision.
+- [x] Run focused and full relevant tests, `git diff --check`, and strict MkDocs
+  validation for the revision.
+
 ### Models and migrations
 
 - [x] Add `INDEX_TYPE_DERIVED` and its public type definition.
@@ -1047,7 +1444,8 @@ below is complete.
   constraints, indexes, effective dating, and immutable activation rules.
 - [x] Add `IndexCalculationLegTable` with ordered legs, component exclusivity,
   coefficient validation, and cycle prevention.
-- [x] Add `IndexValuesStorage` with canonical index FK and documented grain.
+- [x] Add the initial calculated-value `IndexValuesStorage` with canonical index
+  FK and documented grain; generalization is tracked above.
 - [x] Add `IndexResolvedLegsStorage` with documented dynamic provenance grain.
 - [x] Add all models to the built-in model registry and minimal attachment
   dependency graph.
@@ -1096,6 +1494,15 @@ below is complete.
 
 ### Examples
 
+- [x] Add `examples/msm/indices/plain_index_values.py` covering one
+  `USD_SWAP_10Y` identity through separate 1-minute and daily DataNodes/storage
+  tables and the calculation-method identity rules.
+- [x] Add `examples/msm/indices/index_values_frequency_migration.py` proving
+  both cadence-configured models are built before and included in the selected
+  migration provider.
+- [x] Add `examples/msm/indices/extension_owned_index_storage.py` covering an
+  extension-owned bid/ask/mid contract, its independent producer base, and
+  optional normalization into the cadence-matched canonical value table.
 - [x] Add `examples/msm/indices/m_bond_2s5s_yield_spread.py` covering rolling
   benchmark selection, basis-point output, resolved legs, and published values.
 - [x] Add `examples/msm/indices/commodity_calendar_spread.py` covering fixed
@@ -1160,20 +1567,29 @@ below is complete.
 The implementation is not complete until all of these scenarios work without
 application-specific calculation code:
 
-1. Add a new M-Bond 5s30s spread by persisting an Index, definition, and legs;
+1. Register `USD_SWAP_10Y` as `index_type="interest_rate"`; publish 1-minute
+   and daily values without a calculation definition through two DataNodes and
+   two physical tables whose names and MetaTable identities include cadence.
+2. Publish provider-specific Index observations into an extension-owned storage
+   contract while reusing canonical `IndexTable` identities and without
+   inheriting the concrete core storage table.
+3. Optionally normalize a selected extension value into the matching
+   cadence-configured Index value storage and consume it through the generic
+   Index-value contract.
+4. Add a new M-Bond 5s30s spread by persisting an Index, definition, and legs;
    no Python spread constant changes.
-2. Publish a rolling front/second commodity spread with reproducible contract
+5. Publish a rolling front/second commodity spread with reproducible contract
    rolls.
-3. Publish a three-leg curve butterfly with explicit coefficients.
-4. Publish a crack spread with correct physical-unit normalization.
-5. Publish a beta-neutral equity spread with lagged estimated coefficients and
+6. Publish a three-leg curve butterfly with explicit coefficients.
+7. Publish a crack spread with correct physical-unit normalization.
+8. Publish a beta-neutral equity spread with lagged estimated coefficients and
    no look-ahead.
-6. Publish a delta-hedged option mark with resolved delta provenance.
-7. Publish a self-financing delta-hedged performance index whose rebalance
+9. Publish a delta-hedged option mark with resolved delta provenance.
+10. Publish a self-financing delta-hedged performance index whose rebalance
    timing, financing, and costs are explicit.
-8. Consume each published series through the generic Index DataNode storage
+11. Consume each canonical published series through the generic Index value
    contract.
-9. Build an optional portfolio that references one derived index without the
+12. Build an optional portfolio that references one derived index without the
    index depending on portfolio identity or portfolio weights.
-10. Install the packaged ms-markets skills into a separate host project and use
+13. Install the packaged ms-markets skills into a separate host project and use
     the derived-index skill to reproduce the documented workflow.

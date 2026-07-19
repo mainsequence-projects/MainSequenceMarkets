@@ -1,7 +1,8 @@
-# Derived Indexes
+# Index Values And Derived Indexes
 
-This chapter registers a versioned derived Index, previews it in memory, binds
-source storage, publishes a backfill, and consumes the canonical history.
+This chapter publishes a plain Index observation, then registers a versioned
+derived Index, previews it in memory, binds source storage, publishes a
+backfill, and consumes the canonical history.
 
 ## Before You Start: Index Or Portfolio?
 
@@ -24,10 +25,104 @@ mainsequence migrations upgrade --provider migrations:migration head
 ```
 
 Revision `0011` creates the definition, leg, canonical value, and resolved-leg
-tables and finalizes their MetaTable catalog bindings. Runtime startup attaches
-those already-migrated tables; it does not create them.
+tables. Revision `0012` generalizes the value table: `definition_uid` becomes
+nullable and `calculation_status` is renamed to nullable
+`observation_status` without replacing the table or discarding existing rows.
+The migration flow finalizes the MetaTable catalog bindings. Runtime startup
+attaches those already-migrated tables; it does not create them.
 
-## 2. Attach The Minimal Runtime
+`IndexValuesStorage` is the schema anchor. A real value history must use a
+cadence-configured model created before its migration provider. The executable
+`examples/msm/indices/index_values_frequency_migration.py` provider includes
+both models from this tutorial:
+
+```text
+IndexValuesTS.1m -> ms_markets__index_values__t_1m
+IndexValuesTS.1d -> ms_markets__index_values__t_1d
+```
+
+Use the normal SDK migration revision and upgrade lifecycle for the selected
+provider. Do not expect runtime startup to create these tables.
+
+## 2. Publish A Plain Index Value
+
+An Index does not need a calculation definition. `USD_SWAP_10Y` is one
+observable identity, but its one-minute and daily histories are two datasets:
+
+```python
+import pandas as pd
+
+from msm.data_nodes.indices import (
+    IndexValuesDataNode,
+    configured_index_values_storage,
+)
+
+ONE_MINUTE_VALUES = configured_index_values_storage(cadence="1m")
+DAILY_VALUES = configured_index_values_storage(cadence="1d")
+
+
+class Swap10YOneMinuteDataNode(IndexValuesDataNode):
+    @classmethod
+    def _required_storage_table(cls):
+        return ONE_MINUTE_VALUES
+
+
+class Swap10YDailyDataNode(IndexValuesDataNode):
+    @classmethod
+    def _required_storage_table(cls):
+        return DAILY_VALUES
+
+one_minute_values = Swap10YOneMinuteDataNode.validate_frame(
+    pd.DataFrame(
+        [
+            {
+                "time_index": "2026-07-17T14:00:00Z",
+                "index_identifier": "USD_SWAP_10Y",
+                "value": 0.04192,
+                "unit": "decimal",
+                "observation_status": "preliminary",
+            },
+        ]
+    )
+)
+
+daily_values = Swap10YDailyDataNode.validate_frame(
+    pd.DataFrame(
+        [
+            {
+                "time_index": "2026-07-17T23:59:59Z",
+                "index_identifier": "USD_SWAP_10Y",
+                "value": 0.04205,
+                "unit": "decimal",
+                "observation_status": "final",
+            }
+        ]
+    )
+)
+
+assert ONE_MINUTE_VALUES.__table__.name == "ms_markets__index_values__t_1m"
+assert DAILY_VALUES.__table__.name == "ms_markets__index_values__t_1d"
+assert ONE_MINUTE_VALUES is not DAILY_VALUES
+assert one_minute_values.reset_index()["definition_uid"].isna().all()
+assert daily_values.reset_index()["definition_uid"].isna().all()
+```
+
+Frequency is not a property of Index identity, but it is a unique definer of
+the storage dataset. It therefore drives a different DataNode, MetaTable
+identifier, `__cadence__`, storage hash, and physical table name. If core owns
+a prospective calculation-method change, add a new effective definition
+version. If two complete method histories must coexist, assign them distinct
+Index identities.
+
+An extension may own a richer Index-indexed storage, its own update process,
+and fields such as bid, ask, source, or quality. It is not required to inherit
+`IndexTimestampedDataNode`. Keep the foreign key to
+`IndexTable.unique_identifier`, then optionally map one selected value into
+the cadence-matched canonical Index-value table for generic consumers. The
+executable
+`extension_owned_index_storage.py` example demonstrates that boundary.
+
+## 3. Attach The Minimal Runtime
 
 ```python
 from msm.api.indices import DerivedIndex
@@ -40,7 +135,7 @@ This attaches `IndexTypeTable`, `IndexTable`,
 or output storage models to the explicit `models=[...]` list when the same
 runtime will use them.
 
-## 3. Persist Identity, Definition, And Legs
+## 4. Persist Identity, Definition, And Legs
 
 ```python
 import datetime
@@ -97,7 +192,7 @@ idempotent by semantic hash. Change a coefficient, selector, unit, alignment,
 or other output-affecting field by inserting the next version with a new
 effective start; do not edit the activated row.
 
-## 4. Preview Without Platform Reads
+## 5. Preview Without Platform Reads
 
 ```python
 import pandas as pd
@@ -116,7 +211,7 @@ assert preview.values["value"].tolist() == [117.0, 120.0]
 The preview uses the same unit, alignment, missing-data, transform, and
 coefficient contracts as production publication.
 
-## 5. Bind Source Storage Explicitly
+## 6. Bind Source Storage Explicitly
 
 Assume `BondAnalyticsStorage` is an already migrated and registered
 `PlatformTimeIndexMetaTable` that contains Asset identity, UTC time, yield, and
@@ -126,8 +221,10 @@ any risk observables required by the legs.
 from msm.data_nodes.indices import (
     DerivedIndexDataNode,
     DerivedIndexDataNodeConfiguration,
-    IndexValuesStorage,
+    configured_index_values_storage,
 )
+
+DAILY_INDEX_VALUES = configured_index_values_storage(cadence="1d")
 
 config = DerivedIndexDataNodeConfiguration(
     index_identifiers=("EXAMPLE_2S5S_YIELD_SPREAD",),
@@ -137,7 +234,7 @@ config = DerivedIndexDataNodeConfiguration(
 
 node = DerivedIndexDataNode(
     config=config,
-    storage_table=IndexValuesStorage,
+    storage_table=DAILY_INDEX_VALUES,
     hash_namespace="tutorial.derived-indexes.v1",
 )
 ```
@@ -164,7 +261,7 @@ dynamic_config = DerivedIndexDataNodeConfiguration(
 The value node then declares a resolved-leg producer dependency and fails if
 dynamic provenance is absent.
 
-## 6. Backfill And Repair
+## 7. Backfill And Repair
 
 Run the graph with the explicit namespace:
 
@@ -189,17 +286,19 @@ node.repair_after(
 Do not use this to make a retroactive methodology with coexisting historical
 meaning. That requires a new Index identity.
 
-## 7. Consume Canonical History
+## 8. Consume Canonical History
 
 Downstream DataNodes and APIs consume the generic storage contract instead of
 recalculating the formula:
 
 ```python
 from mainsequence.meta_tables import APIDataNode
-from msm.data_nodes.indices import IndexValuesStorage
+from msm.data_nodes.indices import configured_index_values_storage
+
+DAILY_INDEX_VALUES = configured_index_values_storage(cadence="1d")
 
 source = APIDataNode.build_from_meta_table(
-    IndexValuesStorage.get_time_index_meta_table()
+    DAILY_INDEX_VALUES.get_time_index_meta_table()
 )
 history = source.get_df_between_dates(
     start_date="2025-01-01T00:00:00Z",
@@ -215,9 +314,11 @@ execution state downstream from this canonical observable.
 
 ## Complete Examples
 
-Run the five offline examples from the source checkout:
+Run the seven offline examples from the source checkout:
 
 ```bash
+python examples/msm/indices/plain_index_values.py
+python examples/msm/indices/extension_owned_index_storage.py
 python examples/msm/indices/m_bond_2s5s_yield_spread.py
 python examples/msm/indices/commodity_calendar_spread.py
 python examples/msm/indices/weighted_multi_leg_spreads.py

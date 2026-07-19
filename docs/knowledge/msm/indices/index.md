@@ -130,14 +130,58 @@ Examples and development scripts can set `MSM_AUTO_REGISTER_NAMESPACE` before
 importing the API classes when they need an example namespace, but they still
 must call `msm.start_engine(...)` during startup before row operations.
 
-## Timestamped Index DataNodes
+## Canonical Index Values
 
-Use `msm.data_nodes.indices.IndexTimestampedDataNode` when a table stores
-time-varying facts keyed to `IndexTable.unique_identifier`. The implementation
-lives in `msm.data_nodes.indices.timestamped` and is re-exported by the
-`msm.data_nodes.indices` package for normal user imports. It is the IndexTable
-counterpart to the asset timestamped base and reuses the shared
-`msm.data_nodes.utils.stamped` frame/config implementation.
+`IndexValuesStorage` is the domain-neutral column-schema anchor for plain and
+calculated Index observations. Stable-frequency publication uses
+`configured_index_values_storage(cadence=...)`, which creates one concrete
+MetaTable per frequency with canonical grain:
+
+```text
+(time_index, index_identifier)
+```
+
+Every row requires `value` and `unit`. `definition_uid`,
+`observation_status`, `source_as_of`, and `metadata_json` are nullable
+provenance. `definition_uid` is null for a plain observation and is required by
+the derived-index publication path.
+
+Frequency does not change the Index identity, but it does change the dataset
+identity. For example, `USD_SWAP_10Y` is one Index identity representing the
+observable 10-year swap yield. Its one-minute and daily histories require two
+DataNodes and two storage tables:
+
+```text
+Swap10YOneMinuteDataNode -> IndexValuesTS.1m -> ms_markets__index_values__t_1m
+Swap10YDailyDataNode     -> IndexValuesTS.1d -> ms_markets__index_values__t_1d
+                              |
+                              +-- both rows use index_identifier = USD_SWAP_10Y
+```
+
+The generated class declares `__cadence__`, includes cadence in its storage
+hash components and MetaTable identifier, and uses the frequency in its
+physical table suffix. Do not mix stable frequencies in one table or express
+frequency only through a schedule, runtime option, or `hash_namespace`.
+
+Use `IndexValuesDataNode.validate_frame(..., storage_table=...)` to normalize
+caller-supplied rows. A concrete producer should override
+`_required_storage_table()` with exactly one configured storage. The cadence-
+less schema anchor is rejected as a publication target. Omitted nullable
+provenance columns are supplied automatically.
+
+Calculation-method changes are identity decisions, not frequency settings. A
+software-only implementation change preserves the identity. A prospective
+economic-method change uses a new effective definition version when core owns
+the calculation. If two complete method histories must coexist, use distinct
+Index identifiers such as `USD_SWAP_10Y_METHOD_A` and
+`USD_SWAP_10Y_METHOD_B`.
+
+## Timestamped Index Storage And DataNodes
+
+`msm.data_nodes.indices.IndexTimestampedDataNode` is a reusable convenience
+base for a table containing time-varying facts keyed to
+`IndexTable.unique_identifier`. It is not a mandatory inheritance contract for
+extension libraries.
 
 An index-stamped table should use this shape:
 
@@ -151,15 +195,28 @@ An index-stamped table should use this shape:
 +-----------------------------+                            +-----------------------------+
 ```
 
-DataNode classes should inherit `IndexTimestampedDataNode` and use a registered
-`PlatformTimeIndexMetaTable` storage class through `_required_storage_table()`.
-That storage class declares the output schema and the canonical
-`index_identifier -> IndexTable.unique_identifier` foreign key. The shared
-stamped base validates required columns against the storage contract, normalizes
-timestamps to `datetime64[ns, UTC]`, sets the
-`["time_index", "index_identifier"]` MultiIndex, rejects duplicate keys, and
-uses the active markets namespace for default DataNode identifiers and
-`hash_namespace`.
+Core or extension DataNode classes may inherit `IndexTimestampedDataNode` and
+bind a registered `PlatformTimeIndexMetaTable` through
+`_required_storage_table()`. The shared base validates the table-owned schema,
+normalizes timestamps to `datetime64[ns, UTC]`, sets the declared MultiIndex,
+and rejects duplicate keys.
+
+An extension may instead define its own Index-indexed storage and producer
+implementation. The interoperability rules are structural:
+
+- use canonical `IndexTable` identity;
+- retain an `index_identifier -> IndexTable.unique_identifier` foreign key;
+- declare the table's own UTC time and identity grain;
+- own any source-specific fields and lifecycle;
+- declare one stable cadence per physical source table and encode that cadence
+  in its MetaTable and table identity;
+- optionally publish a selected value into the matching cadence-configured
+  canonical Index-value table when generic consumers need that contract.
+
+The extension must not subclass concrete `IndexValuesStorage` merely to obtain
+a different physical table. See
+`examples/msm/indices/extension_owned_index_storage.py` for a separate
+bid/ask/mid schema normalized without using the core Index DataNode base.
 
 ## Derived Indexes
 

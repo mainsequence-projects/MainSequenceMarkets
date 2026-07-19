@@ -9,12 +9,32 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Revised ADR 0037 so the cadence-configured `IndexValuesTS.<cadence>` family
+  is the domain-neutral canonical value contract for plain and calculated
+  Indexes, with `IndexValuesStorage` retained as its column-schema anchor and
+  nullable calculation-definition and observation-status provenance.
+  Revision `0012` preserves existing rows while renaming
+  `calculation_status` to `observation_status` and making `definition_uid`
+  nullable. Added `configured_index_values_storage(cadence=...)`, rejection of
+  cadence-less publication, and a `USD_SWAP_10Y` example proving that one
+  Index identity uses separate 1-minute and daily DataNodes, MetaTables, and
+  physical tables (`...__t_1m` and `...__t_1d`). Also added an example dynamic
+  migration provider, plain/derived publication validation, and a general
+  example proving that extensions may own richer Index-indexed storage and
+  producer implementations without inheriting the core Index DataNode base.
+  The ADR includes diagrams distinguishing observation frequency from Index
+  identity and prospective definition versioning from coexisting calculation
+  methods. The packaged Index skill now defines the complete classification,
+  identity, cadence, methodology-lifecycle, calculation, provenance,
+  publication, extension, migration, and validation workflow, including the
+  strict Index-versus-Asset-versus-Portfolio boundary.
 - Implemented the core derived-index framework from ADR 0037: the built-in
   `derived` Index type, immutable effective-dated definition and ordered leg
   models, canonical value and resolved-leg storage, typed `DerivedIndex` API,
   pure operators and strict unit/alignment/missing/coefficient/selector
   registries, incremental publication DataNodes, SDK-managed revision `0011`,
-  five executable examples, concept/tutorial/API documentation, and the
+  the original five derived-methodology examples, concept/tutorial/API
+  documentation, and the
   packaged derived-index workflow skill. Generic pair-spread primitives now
   live in `msm.analytics.indices.spreads`; existing
   `msm_pricing.analytics.spreads` imports are compatibility delegates while
