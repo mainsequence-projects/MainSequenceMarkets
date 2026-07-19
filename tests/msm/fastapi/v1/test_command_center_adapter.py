@@ -146,6 +146,46 @@ def test_command_center_contract_exposes_portfolio_group_operations() -> None:
         assert operations[operation_id]["capabilities"] == ["mutation"]
 
 
+def test_command_center_contract_exposes_complete_index_operations() -> None:
+    operations = _operation_by_id(_contract_payload())
+    query_operations = {
+        "listIndexTypes": "GET",
+        "getIndexType": "GET",
+        "listIndexes": "GET",
+        "getIndex": "GET",
+        "getIndexSummary": "GET",
+        "listIndexMethodologies": "GET",
+        "getIndexMethodology": "GET",
+        "listIndexDatasets": "GET",
+        "getIndexDatasetSummary": "GET",
+        "getIndexDatasetValuesFrame": "GET",
+        "listIndexRelatedMetaTables": "GET",
+        "getIndexDeleteImpact": "GET",
+        "previewBulkDeleteIndexes": "POST",
+    }
+    mutation_operations = {
+        "createIndex": "POST",
+        "updateIndex": "PATCH",
+        "bulkDeleteIndexes": "POST",
+        "deleteIndex": "DELETE",
+    }
+
+    for operation_id, method in query_operations.items():
+        assert operations[operation_id]["method"] == method
+        assert operations[operation_id]["kind"] == "query"
+    for operation_id, method in mutation_operations.items():
+        assert operations[operation_id]["method"] == method
+        assert operations[operation_id]["kind"] == "mutation"
+
+    values = operations["getIndexDatasetValuesFrame"]
+    assert values["responseContract"] == DIRECT_FRAME_CONTRACT
+    assert values["responseModel"] == "TabularFrameResponse"
+    assert operations["previewBulkDeleteIndexes"]["cache"] == {
+        "enabled": False,
+        "ttlSeconds": None,
+    }
+
+
 def test_command_center_contract_documents_response_contract_boundaries() -> None:
     payload = _contract_payload()
     operations = _operation_by_id(payload)

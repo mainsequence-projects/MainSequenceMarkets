@@ -14,6 +14,7 @@ from msm.data_nodes.indices import (
 from msm.models import (
     IndexCalculationDefinitionTable,
     IndexCalculationLegTable,
+    IndexDeletionExecutionTable,
     IndexTable,
     IndexTypeTable,
     markets_sqlalchemy_models,
@@ -36,6 +37,7 @@ def test_derived_index_models_are_registered_in_dependency_order() -> None:
     assert positions[IndexTypeTable] < positions[IndexTable]
     assert positions[IndexTable] < positions[IndexCalculationDefinitionTable]
     assert positions[IndexCalculationDefinitionTable] < positions[IndexCalculationLegTable]
+    assert positions[IndexCalculationLegTable] < positions[IndexDeletionExecutionTable]
     assert positions[IndexCalculationDefinitionTable] < positions[IndexValuesStorage]
     assert positions[IndexCalculationDefinitionTable] < positions[IndexResolvedLegsStorage]
     assert {
@@ -43,7 +45,25 @@ def test_derived_index_models_are_registered_in_dependency_order() -> None:
         IndexCalculationLegTable,
         IndexValuesStorage,
         IndexResolvedLegsStorage,
+        IndexDeletionExecutionTable,
     }.issubset(set(metatable_provider_models()))
+
+
+def test_index_deletion_journal_has_durable_idempotency_contract() -> None:
+    table = IndexDeletionExecutionTable.__table__
+    checks = {
+        str(constraint.sqltext)
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    indexes = {tuple(column.name for column in index.columns): index for index in table.indexes}
+
+    assert "status IN ('pending', 'running', 'completed', 'partial', 'failed')" in checks
+    assert indexes[("plan_id",)].unique is True
+    assert indexes[("actor_user_uid", "idempotency_key")].unique is True
+    assert ("status",) in indexes
+    assert table.c.step_results_json.nullable is False
+    assert not table.foreign_keys
 
 
 def test_definition_constraints_and_indexes_cover_versioned_effective_semantics() -> None:

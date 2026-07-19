@@ -192,7 +192,7 @@ class DerivedIndex(BaseModel):
             if index_created:
                 current = Index.get_by_unique_identifier(unique_identifier)
                 if current is not None:
-                    Index.delete(current.uid)
+                    Index._delete_repository(current.uid)
             elif existing_snapshot is not None:
                 restore = {key: value for key, value in existing_snapshot.items() if key != "uid"}
                 update_model(

@@ -28,6 +28,9 @@ Revision `0011` creates the definition, leg, canonical value, and resolved-leg
 tables. Revision `0012` generalizes the value table: `definition_uid` becomes
 nullable and `calculation_status` is renamed to nullable
 `observation_status` without replacing the table or discarding existing rows.
+The guarded deletion API also requires the
+`IndexDeletionExecutionTable` migration. Do not deploy its destructive routes
+until the SDK-generated revision for that journal has been reviewed and applied.
 The migration flow finalizes the MetaTable catalog bindings. Runtime startup
 attaches those already-migrated tables; it does not create them.
 
@@ -312,12 +315,90 @@ history = source.get_df_between_dates(
 Keep z-score interpretation, long/short decisions, portfolio quantities, and
 execution state downstream from this canonical observable.
 
+## 9. Explore Identity, Methodology, And Frequency Datasets
+
+The typed user API composes Index exploration without moving calculation or
+storage logic into FastAPI:
+
+```python
+from msm.api.indices import Index
+
+page = Index.list_page(
+    search="USD_SWAP_10Y",
+    has_canonical_values=True,
+    limit=20,
+)
+swap_10y = page.results[0]
+
+detail = Index.get_detail(swap_10y.uid)
+methodologies = Index.list_methodologies(swap_10y.uid)
+datasets = Index.list_datasets(swap_10y.uid)
+
+one_minute = next(item for item in datasets if item.cadence == "1m")
+daily = next(item for item in datasets if item.cadence == "1d")
+```
+
+The two descriptors have different MetaTable UIDs and physical tables. Their
+canonical relationship is proven by the SQLAlchemy/Alembic foreign key from
+`index_identifier` to `IndexTable.unique_identifier`; a column with a matching
+name is not enough.
+
+The FastAPI exploration sequence is:
+
+```text
+GET /api/v1/index/?search=USD_SWAP_10Y
+GET /api/v1/index/{uid}/summary/
+GET /api/v1/index/{uid}/methodologies/
+GET /api/v1/index/{uid}/datasets/
+GET /api/v1/index/{uid}/datasets/{one_minute_meta_table_uid}/values/?start=...&end=...
+GET /api/v1/index/{uid}/datasets/{daily_meta_table_uid}/values/?start=...&end=...
+```
+
+Values require a bounded timezone-aware window and server-side limit. The
+response uses `core.tabular_frame@v1` for direct Command Center table or chart
+consumption.
+
+## 10. Preview Cleanup Without Deleting Anything
+
+Build a preview from explicit UIDs. Preview is read-only:
+
+```python
+from msm.services.indices import IndexBulkDeletePreviewRequest
+
+preview = Index.preview_bulk_delete(
+    IndexBulkDeletePreviewRequest(
+        index_uids=(swap_10y.uid,),
+        mode="identity_and_values",
+    )
+)
+
+for dataset in preview.datasets:
+    print(dataset.identifier, dataset.affected_row_count)
+for warning in preview.warnings:
+    print(warning.code, warning.message)
+
+assert {item.cadence for item in preview.datasets} >= {"1m", "1d"}
+```
+
+For `USD_SWAP_10Y`, identity-and-values must select both frequency tables. The
+preview warns that all timestamps for only that Index stream will be removed,
+that DataNode state is not reset, that producers may republish values, and that
+cross-table execution is not atomic.
+
+Execution is deliberately a separate call. It requires the short-lived token,
+the exact `confirmation_phrase`, every required acknowledgement code, and a
+caller-generated idempotency key. Do not add execution to shared-data examples.
+The non-destructive
+`examples/msm/indices/index_api_exploration_preview.py` example builds and can
+optionally submit the preview request, but never calls a deletion endpoint.
+
 ## Complete Examples
 
-Run the seven offline examples from the source checkout:
+Run the eight offline examples from the source checkout:
 
 ```bash
 python examples/msm/indices/plain_index_values.py
+python examples/msm/indices/index_api_exploration_preview.py
 python examples/msm/indices/extension_owned_index_storage.py
 python examples/msm/indices/m_bond_2s5s_yield_spread.py
 python examples/msm/indices/commodity_calendar_spread.py

@@ -363,6 +363,85 @@ into the matching cadence-specific canonical Index-values table only when a
 generic consumer needs the common contract. Do not introduce another core
 `IndexObservationsStorage` abstraction.
 
+## Index Catalog, Exploration, And Lifecycle API
+
+Use the typed `Index` catalog methods when a caller needs to manage or inspect
+the observable rather than author a new calculation engine:
+
+```python
+Index.list_page(...)
+Index.get_detail(uid)
+Index.get_summary(uid)
+Index.list_methodologies(uid)
+Index.get_methodology(uid, definition_uid)
+Index.list_datasets(uid)
+Index.get_dataset_summary(uid, meta_table_uid)
+Index.get_values(uid, meta_table_uid, start=..., end=...)
+Index.list_related_meta_tables(uid)
+Index.preview_bulk_delete(...)
+Index.bulk_delete(...)
+```
+
+`DerivedIndex` remains the methodology-authoring API. Do not duplicate its
+upsert, activation, retirement, or pure-calculation behavior in HTTP routes.
+
+Canonical dataset discovery must prove all of the following together:
+
+- registered identifier `IndexValuesTS.<cadence>`;
+- cadence matching the identifier and configured storage identity;
+- frequency-specific physical table;
+- grain containing `time_index` and `index_identifier`;
+- required `value` and `unit` columns;
+- an actual SQLAlchemy/Alembic foreign key from `index_identifier` to
+  `IndexTable.unique_identifier`;
+- caller view access.
+
+Never promote a table based on an `index_identifier` column name, description,
+or physical-name prefix. Extension relationship providers must supply the same
+authoritative FK proof, but their producer does not have to inherit a core
+Index DataNode.
+
+For HTTP value browsing, require a selected Index UID, selected registered
+MetaTable UID, timezone-aware start/end, stable order, and server-enforced row
+limit. Always resolve the UID to `Index.unique_identifier` and apply that
+dimension filter. Return the SDK `TabularFrameResponse` for Command Center
+table/chart consumers. If the installed `APIDataNode` read method cannot
+enforce a server page limit, use a governed bounded compiled SELECT; never load
+full history and truncate in memory.
+
+Interactive deletion is preview-first. Public `Index.delete(...)`, FastAPI
+bulk deletion, and compatibility DELETE routes require a signed, short-lived,
+actor- and scope-bound confirmation from `Index.preview_bulk_delete(...)`.
+Preview must report Indexes, every cadence table, declared extension tables,
+inferred informational candidates, affected counts/time bounds, access,
+relationships, warnings, exact phrase, and executable status before mutation.
+
+For value deletion, use only:
+
+```python
+time_index_meta_table.delete_after_date(
+    None,
+    dimension_filters={"index_identifier": selected_identifiers},
+)
+```
+
+Never call `delete_after_date(None)` without Index scope. Never raw-delete,
+compiled-SQL-delete, or truncate DataNode storage. Deletion does not reset
+DataNode hashes, checkpoints, update statistics, schedules, jobs, or producer
+configuration, and producers may republish rows. Cross-MetaTable deletion is a
+journaled saga with partial-result and idempotent-retry semantics, not one
+transaction.
+
+Resolve actors by surface: FastAPI binds request headers and uses
+`User.get_logged_user()`; standalone typed Python calls use
+`User.get_authenticated_user_details()`. Reusable Index services receive an
+explicit actor and never assume request context.
+
+This lifecycle surface does not change the Index-versus-Portfolio decision.
+Browsing or deleting an Index's benchmark history is Index work. Managing the
+actual positions, notional, cash, orders, fills, transaction costs, or realized
+P&L of a replication remains Portfolio work.
+
 ## Migration Contract
 
 Build every configured storage class before constructing its SDK migration
@@ -379,14 +458,16 @@ table contracts, use the Main Sequence MetaTable skill.
 Inspect the current contracts before changing behavior:
 
 1. `docs/ADR/0037-core-derived-index-definition-and-calculation-framework.md`
-2. `docs/knowledge/msm/indices/index.md`
-3. `docs/knowledge/msm/indices/derived_indexes.md`
-4. `src/msm/models/index_calculations.py`
-5. `src/msm/api/derived_indices.py`
-6. `src/msm/analytics/indices/`
-7. `src/msm/data_nodes/indices/values.py`
-8. `src/msm/data_nodes/indices/derived.py`
-9. `src/msm/data_nodes/indices/storage.py`
+2. `docs/ADR/0038-index-user-api-fastapi-exploration-and-safe-deletion.md`
+3. `docs/knowledge/msm/indices/index.md`
+4. `docs/knowledge/msm/indices/derived_indexes.md`
+5. `src/msm/models/index_calculations.py`
+6. `src/msm/api/derived_indices.py`
+7. `src/msm/services/indices/`
+8. `src/msm/analytics/indices/`
+9. `src/msm/data_nodes/indices/values.py`
+10. `src/msm/data_nodes/indices/derived.py`
+11. `src/msm/data_nodes/indices/storage.py`
 
 Also verify current Main Sequence behavior against:
 
@@ -396,6 +477,7 @@ Also verify current Main Sequence behavior against:
 Inspect these examples for executable patterns:
 
 - `examples/msm/indices/plain_index_values.py`
+- `examples/msm/indices/index_api_exploration_preview.py`
 - `examples/msm/indices/index_values_frequency_migration.py`
 - `examples/msm/indices/extension_owned_index_storage.py`
 - the fixed, ratio, dynamic OLS, selector, and self-financing examples under
@@ -464,3 +546,10 @@ Before marking work complete, prove all applicable items:
     pass as applicable.
 15. ADR, concept docs, tutorial, changelog, examples, and packaged skill remain
     aligned with implemented behavior.
+16. Catalog discovery proves real foreign keys and never treats matching column
+    names as relationship authority.
+17. Value browsing applies one explicit Index dimension, bounded timestamps,
+    deterministic ordering, and a server-enforced row limit.
+18. Destructive workflows require actor-bound preview confirmation, explicit
+    warnings, scoped DataNode deletion, durable idempotency, and partial-result
+    reporting.

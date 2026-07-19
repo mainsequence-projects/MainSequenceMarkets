@@ -13,7 +13,7 @@ from apps.v1.routers.asset_categories import router as asset_categories_router
 from apps.v1.routers.assets import router as assets_router
 from apps.v1.routers.calendars import router as calendars_router
 from apps.v1.routers.command_center import router as command_center_router
-from apps.v1.routers.indices import router as indices_router
+from apps.v1.routers.indices import index_type_router, router as indices_router
 from apps.v1.routers.portfolio_groups import router as portfolio_groups_router
 from apps.v1.routers.portfolio_signals import router as portfolio_signals_router
 from apps.v1.routers.portfolios import router as portfolios_router
@@ -134,6 +134,7 @@ def create_app() -> FastAPI:
     app.include_router(assets_router, prefix="/api/v1")
     app.include_router(asset_categories_router, prefix="/api/v1")
     app.include_router(indices_router, prefix="/api/v1")
+    app.include_router(index_type_router, prefix="/api/v1")
     app.include_router(portfolio_groups_router, prefix="/api/v1")
     app.include_router(portfolio_signals_router, prefix="/api/v1")
     app.include_router(portfolios_router, prefix="/api/v1")

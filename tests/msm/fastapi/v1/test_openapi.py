@@ -97,6 +97,7 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
         "/api/v1/calendar/{calendar_uid}/events/",
         "/api/v1/calendar/{calendar_uid}/sessions/",
         "/api/v1/index/",
+        "/api/v1/index-type/",
         "/api/v1/portfolio/",
         "/api/v1/portfolio-group/",
         "/api/v1/portfolio-group/by-portfolio/{portfolio_uid}/",
@@ -468,10 +469,49 @@ def test_openapi_json_documents_index_routes() -> None:
     ] == {"$ref": "#/components/schemas/DeleteImpactResponse"}
 
     index_delete_operation = payload["paths"]["/api/v1/index/{uid}/"]["delete"]
-    assert index_delete_operation["summary"] == "Delete index"
+    assert index_delete_operation["summary"] == "Delete one reviewed Index"
     assert index_delete_operation["operationId"] == "deleteIndex"
-    assert index_delete_operation["responses"]["404"]["content"]["application/json"]["schema"] == {
+    assert index_delete_operation["deprecated"] is True
+    assert index_delete_operation["responses"]["428"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/ErrorResponse"
+    }
+
+    expected_operations = {
+        ("get", "/api/v1/index-type/"): "listIndexTypes",
+        ("get", "/api/v1/index-type/{index_type}/"): "getIndexType",
+        ("post", "/api/v1/index/"): "createIndex",
+        ("patch", "/api/v1/index/{uid}/"): "updateIndex",
+        ("get", "/api/v1/index/{uid}/summary/"): "getIndexSummary",
+        ("get", "/api/v1/index/{uid}/methodologies/"): "listIndexMethodologies",
+        (
+            "get",
+            "/api/v1/index/{uid}/methodologies/{definition_uid}/",
+        ): "getIndexMethodology",
+        ("get", "/api/v1/index/{uid}/datasets/"): "listIndexDatasets",
+        (
+            "get",
+            "/api/v1/index/{uid}/datasets/{meta_table_uid}/",
+        ): "getIndexDatasetSummary",
+        (
+            "get",
+            "/api/v1/index/{uid}/datasets/{meta_table_uid}/values/",
+        ): "getIndexDatasetValuesFrame",
+        (
+            "get",
+            "/api/v1/index/{uid}/related-meta-tables/",
+        ): "listIndexRelatedMetaTables",
+        ("post", "/api/v1/index/bulk-delete/preview/"): "previewBulkDeleteIndexes",
+        ("post", "/api/v1/index/bulk-delete/"): "bulkDeleteIndexes",
+    }
+    for (method, path), operation_id in expected_operations.items():
+        assert payload["paths"][path][method]["operationId"] == operation_id
+
+    values_operation = payload["paths"]["/api/v1/index/{uid}/datasets/{meta_table_uid}/values/"][
+        "get"
+    ]
+    assert values_operation["x-ui-contract"] == "core.tabular_frame@v1"
+    assert values_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/TabularFrameResponse"
     }
 
 
@@ -759,9 +799,9 @@ def test_openapi_json_documents_pricing_curve_routes() -> None:
         "schema"
     ] == {"$ref": "#/components/schemas/ErrorResponse"}
 
-    curve_delete_impact_operation = payload["paths"][
-        "/api/v1/pricing/curves/{uid}/delete-impact/"
-    ]["get"]
+    curve_delete_impact_operation = payload["paths"]["/api/v1/pricing/curves/{uid}/delete-impact/"][
+        "get"
+    ]
     assert curve_delete_impact_operation["summary"] == "Preview pricing curve delete impact"
     assert curve_delete_impact_operation["operationId"] == "getPricingCurveDeleteImpact"
     assert {"delete_values", "delete_curve_selections"}.issubset(
@@ -780,15 +820,15 @@ def test_openapi_json_documents_pricing_curve_routes() -> None:
     assert {"delete_values", "delete_curve_selections"}.issubset(
         {parameter["name"] for parameter in curve_delete_operation["parameters"]}
     )
-    assert curve_delete_operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/CurveDeleteResponse"}
-    assert curve_delete_operation["responses"]["404"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/ErrorResponse"}
-    assert curve_delete_operation["responses"]["409"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/ErrorResponse"}
+    assert curve_delete_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/CurveDeleteResponse"
+    }
+    assert curve_delete_operation["responses"]["404"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorResponse"
+    }
+    assert curve_delete_operation["responses"]["409"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorResponse"
+    }
 
     discount_curve_operation = payload["paths"]["/api/v1/pricing/curves/{uid}/discount-curve/"][
         "get"

@@ -4,9 +4,11 @@ Indexes are canonical market observables, not assets. An Index may be an
 externally supplied reference or a calculated observable with a versioned
 derived-index methodology.
 
-Use `Index` when a workflow needs a canonical row for an index that may be used
-as a derivative underlying. Do not create fake `Asset` rows for indexes just to
-make a foreign key work.
+Use `Index` when a workflow needs a reusable observable whose meaning is
+independent of a particular holder. It may also be used as a derivative
+underlying, but tradability is not required: `USD_SWAP_10Y` is an Index because
+it identifies the 10-year swap-rate observation through time. Do not create
+fake `Asset` rows for indexes just to make a foreign key work.
 
 ## Scope
 
@@ -71,7 +73,19 @@ spx = register_index_from_figi("BBG000KKFC45", index_type=INDEX_TYPE_EQUITY)
 - `Index.get_by_unique_identifier(...)`
 - `Index.filter(...)`
 - `Index.update(...)`
-- `Index.delete(...)`
+- `Index.list_page(...)`
+- `Index.get_detail(...)` and `Index.get_summary(...)`
+- `Index.list_methodologies(...)` and `Index.get_methodology(...)`
+- `Index.list_datasets(...)`, `Index.get_dataset_summary(...)`, and bounded
+  `Index.get_values(...)`
+- `Index.list_related_meta_tables(...)`
+- `Index.preview_bulk_delete(...)` and `Index.bulk_delete(...)`
+
+`Index.delete(...)` is guarded compatibility behavior, not a direct row-delete
+shortcut. It requires the token, exact phrase, warning acknowledgements, and
+idempotency key returned by a single-Index preview. See the
+[Index FastAPI and lifecycle contract](../../../fast_api/v1/indexes.md) for the
+matching HTTP surface and pre-delete consequences.
 
 ## Schema
 
