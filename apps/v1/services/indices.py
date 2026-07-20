@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+
 from mainsequence.client.command_center.contracts.tabular import (
     TabularFrameResponse,
     build_tabular_field,
@@ -11,12 +12,9 @@ from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.indices import (
     Index,
-    IndexBulkDeleteExecuteRequest,
-    IndexBulkDeletePreview,
-    IndexBulkDeletePreviewRequest,
-    IndexBulkDeleteResult,
     IndexCreate,
     IndexDatasetDescriptor,
+    IndexDatasetState,
     IndexDatasetSummary,
     IndexMethodologyDetail,
     IndexMethodologySummary,
@@ -26,21 +24,22 @@ from apps.v1.schemas.indices import (
 )
 from msm.api.base import operation_result_rows
 from msm.models import IndexTable, IndexTypeTable
-from msm.repositories.crud import count_model, get_model_by_uid, search_model
+from msm.repositories.crud import get_model_by_uid, search_model
 from msm.services.indices import (
     IndexActor,
     IndexListRequest,
     IndexValueRow,
     dataset_summary,
     discover_canonical_datasets,
-    execute_bulk_delete,
     get_canonical_dataset,
     get_index_summary as get_core_index_summary,
+    get_index_delete_impact as get_core_index_delete_impact,
     get_methodology as get_core_methodology,
     list_indexes as list_core_indexes,
+    list_index_types as list_core_index_types,
+    list_dataset_states,
     list_methodologies as list_core_methodologies,
     list_related_meta_tables as list_core_related_meta_tables,
-    preview_bulk_delete,
     read_index_values,
 )
 
@@ -75,20 +74,8 @@ def list_indices(
 
 def list_index_types(*, limit: int = 50, offset: int = 0) -> tuple[int, list[IndexType]]:
     runtime = _get_runtime()
-    count_rows = operation_result_rows(count_model(runtime.context, model=IndexTypeTable))
-    rows = operation_result_rows(
-        search_model(
-            runtime.context,
-            model=IndexTypeTable,
-            limit=limit,
-            offset=offset,
-        )
-    )
-    rows.sort(key=lambda item: (str(item["index_type"]), str(item["uid"])))
-    return (
-        int(count_rows[0].get("count") or 0) if count_rows else 0,
-        [IndexType.model_validate(row) for row in rows],
-    )
+    count, rows = list_core_index_types(runtime.context, limit=limit, offset=offset)
+    return count, list(rows)
 
 
 def get_index_type(*, index_type: str) -> IndexType | None:
@@ -120,6 +107,12 @@ def get_index(*, uid: str) -> Index | None:
     return Index.model_validate(rows[0]) if rows else None
 
 
+def delete_index(*, uid: str) -> bool:
+    from msm.services import delete_index_record
+
+    return delete_index_record(_get_runtime().context, uid=uid)
+
+
 def get_index_summary(*, uid: str, actor: IndexActor | None) -> FrontEndDetailSummary | None:
     runtime = _get_runtime()
     index = get_index(uid=uid)
@@ -127,9 +120,7 @@ def get_index_summary(*, uid: str, actor: IndexActor | None) -> FrontEndDetailSu
         return None
     summary = get_core_index_summary(runtime.context, index=index, actor=actor)
     active = summary.active_definition
-    latest_values = [
-        item for item in summary.dataset_summaries if item.latest_time_index is not None
-    ]
+    latest_values = [item for item in summary.dataset_states if item.latest_time_index is not None]
     latest_values.sort(
         key=lambda item: item.latest_time_index or dt.datetime.min.replace(tzinfo=dt.UTC)
     )
@@ -174,7 +165,7 @@ def get_index_summary(*, uid: str, actor: IndexActor | None) -> FrontEndDetailSu
                 {
                     "key": "latest_value",
                     "label": "Latest value",
-                    "value": latest.latest_value if latest else None,
+                    "value": None,
                     "kind": "number",
                     "link_url": f"/api/v1/index/{uid}/datasets/",
                 },
@@ -207,13 +198,13 @@ def get_index_summary(*, uid: str, actor: IndexActor | None) -> FrontEndDetailSu
             "summary_warning": "; ".join(summary.warnings) or None,
             "extensions": {
                 "cadences": list(summary.cadences),
-                "dataset_summaries": [
-                    item.model_dump(mode="json") for item in summary.dataset_summaries
+                "dataset_states": [
+                    item.model_dump(mode="json") for item in summary.dataset_states
                 ],
                 "authoritative_relationship_count": summary.authoritative_relationship_count,
                 "inferred_relationship_count": summary.inferred_relationship_count,
                 "related_meta_tables_url": f"/api/v1/index/{uid}/related-meta-tables/",
-                "delete_preview_url": "/api/v1/index/bulk-delete/preview/",
+                "delete_preview_url": f"/api/v1/index/{uid}/delete-impact/",
                 "update_url": f"/api/v1/index/{uid}/",
             },
         }
@@ -237,11 +228,17 @@ def get_index_methodology(*, uid: str, definition_uid: str) -> IndexMethodologyD
 
 
 def list_index_datasets(
-    *, uid: str, actor: IndexActor | None
-) -> tuple[IndexDatasetDescriptor, ...] | None:
-    if get_index(uid=uid) is None:
+    *, uid: str, actor: IndexActor | None, include_empty: bool = False
+) -> tuple[IndexDatasetState, ...] | None:
+    index = get_index(uid=uid)
+    if index is None:
         return None
-    return discover_canonical_datasets(actor=actor)
+    return list_dataset_states(
+        _get_runtime().context,
+        index=index,
+        actor=actor,
+        include_empty=include_empty,
+    )
 
 
 def get_index_dataset_summary(
@@ -355,86 +352,12 @@ def list_index_related_meta_tables(*, uid: str) -> tuple[IndexRelatedMetaTable, 
     return list_core_related_meta_tables(_get_runtime().context, index=index)
 
 
-def preview_index_bulk_delete(
-    *,
-    payload: IndexBulkDeletePreviewRequest,
-    actor: IndexActor,
-) -> IndexBulkDeletePreview:
-    return preview_bulk_delete(_get_runtime().context, actor=actor, request=payload)
-
-
-def execute_index_bulk_delete(
-    *,
-    payload: IndexBulkDeleteExecuteRequest,
-    actor: IndexActor,
-    expected_single_index_uid: str | None = None,
-) -> IndexBulkDeleteResult:
-    return execute_bulk_delete(
-        _get_runtime().context,
-        actor=actor,
-        request=payload,
-        expected_single_index_uid=expected_single_index_uid,
-    )
-
-
 def get_index_delete_impact(*, uid: str) -> DeleteImpactResponse | None:
     index = get_index(uid=uid)
     if index is None:
         return None
-    relationships = list_core_related_meta_tables(_get_runtime().context, index=index)
-    relationship_rows = [
-        {
-            "key": item.key,
-            "label": item.label,
-            "model": item.identifier,
-            "column": item.join_column or "indirect",
-            "relationship_type": item.relationship_type,
-            "on_delete": item.on_delete,
-            "count": int(item.count or 0),
-            "effect": _delete_effect(item),
-            "severity": "blocking" if item.blocks_delete else "informational",
-            "blocks_delete": item.blocks_delete,
-            "description": (
-                "Authoritative declared Index relationship. Preview the reviewed bulk plan "
-                "for cadence-specific value impacts."
-            ),
-        }
-        for item in relationships
-    ]
-    blocking_count = sum(item["count"] for item in relationship_rows if item["blocks_delete"])
-    warnings = [
-        "This compatibility view does not authorize deletion; use bulk-delete preview and execution."
-    ]
-    if blocking_count:
-        warnings.append(
-            "Delete is blocked while authoritative dependent rows reference this Index."
-        )
-    return DeleteImpactResponse.model_validate(
-        {
-            "resource_type": "index",
-            "uid": index.uid,
-            "identifier": index.unique_identifier,
-            "display_name": index.display_name,
-            "can_delete": blocking_count == 0,
-            "blocking_count": blocking_count,
-            "affected_count": sum(item["count"] for item in relationship_rows),
-            "delete_endpoint": "/api/v1/index/bulk-delete/",
-            "relationships": relationship_rows,
-            "warnings": warnings,
-        }
-    )
-
-
-def _delete_effect(item: IndexRelatedMetaTable) -> str:
-    if item.blocks_delete:
-        return "blocks_cascade"
-    if item.delete_capability == "cascade":
-        return "cascade_delete"
-    if item.delete_capability == "set_null":
-        return "set_null"
-    if item.delete_capability == "manual":
-        return "manual_cleanup_required"
-    return "none"
+    impact = get_core_index_delete_impact(_get_runtime().context, index=index)
+    return DeleteImpactResponse.model_validate(impact.model_dump())
 
 
 def _get_runtime():
@@ -446,7 +369,7 @@ def _get_runtime():
             "Index",
             "IndexCalculationDefinition",
             "IndexCalculationLeg",
-            "IndexDeletionExecution",
+            "IndexDatasetAvailability",
             "IndexResolvedLegsStorage",
         ],
         row_model_name="Index apps/v1",

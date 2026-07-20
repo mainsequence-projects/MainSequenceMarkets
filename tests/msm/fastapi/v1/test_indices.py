@@ -251,61 +251,29 @@ def test_index_delete_impact_service_uses_domain_neutral_relationships(monkeypat
     assert "pricing" not in response.model_dump_json().lower()
 
 
-def test_delete_index_requires_request_bound_actor() -> None:
-    client = TestClient(app)
-    response = client.delete(f"/api/v1/index/{uuid.uuid4()}/")
-
-    assert response.status_code == 401
-
-
-def test_delete_index_requires_preview_confirmation() -> None:
-    client = TestClient(app)
-    response = client.delete(
-        f"/api/v1/index/{uuid.uuid4()}/",
-        headers={"X-User-UID": str(uuid.uuid4())},
-    )
-
-    assert response.status_code == 428
-    assert "preview" in response.json()["detail"].lower()
-
-
-def test_bulk_preview_uses_request_bound_actor(monkeypatch) -> None:
+def test_delete_index_returns_null_on_success(monkeypatch) -> None:
     index_uid = uuid.uuid4()
-    user_uid = uuid.uuid4()
-    captured = {}
     monkeypatch.setattr(
-        "apps.v1.routers.indices.preview_index_bulk_delete",
-        lambda payload, actor: (
-            captured.update(payload=payload, actor=actor)
-            or {
-                "plan_id": str(uuid.uuid4()),
-                "requested_mode": "values_only",
-                "normalized_request": payload.model_dump(mode="json"),
-                "created_at": "2026-07-19T12:00:00Z",
-                "expires_at": "2026-07-19T12:05:00Z",
-                "created_by_user_uid": actor.user_uid,
-                "scope_hash": "a" * 64,
-                "confirmation_token": "payload.signature",
-                "executable": True,
-                "indexes": [],
-                "datasets": [],
-                "relationships": [],
-                "warnings": [],
-                "required_acknowledgement_codes": [],
-                "confirmation_phrase": "DELETE ALL SELECTED INDEX VALUES FOR 1 INDEX",
-            }
-        ),
+        "apps.v1.routers.indices.delete_index",
+        lambda uid: True,
     )
 
-    response = TestClient(app).post(
-        "/api/v1/index/bulk-delete/preview/",
-        headers={"X-User-UID": str(user_uid)},
-        json={"index_uids": [str(index_uid)], "mode": "values_only"},
-    )
+    response = TestClient(app).delete(f"/api/v1/index/{index_uid}/")
 
     assert response.status_code == 200
-    assert captured["actor"].user_uid == str(user_uid)
-    assert captured["actor"].team_uids == ()
+    assert response.json() is None
+
+
+def test_delete_index_returns_404_when_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.indices.delete_index",
+        lambda uid: False,
+    )
+
+    response = TestClient(app).delete("/api/v1/index/missing-index/")
+
+    assert response.status_code == 404
+    assert "missing-index" in response.json()["detail"]
 
 
 def test_index_values_frame_uses_canonical_time_series_contract(monkeypatch) -> None:
@@ -331,7 +299,6 @@ def test_index_values_frame_uses_canonical_time_series_contract(monkeypatch) -> 
         storage_kind="canonical_index_values",
         discovery_source="core_model",
         access=IndexDatasetAccess(can_view=True),
-        scoped_delete_supported=True,
     )
     values = IndexValuesResult(
         dataset=dataset,

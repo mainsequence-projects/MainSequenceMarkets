@@ -15,25 +15,14 @@ and this project follows versioned releases.
   OIS, futures, bond, FX, and cross-currency basis helper models, updated the
   reconstruction example to demonstrate asset- and index-sourced inputs, and
   rejected top-level `asset_identifier`/`index_identifier` key-node fields.
-- Implemented the repository-side ADR 0038 typed Index catalog/lifecycle service
-  and thin FastAPI surface: Index-type reads, counted list filters,
-  create/update/detail/summary, methodology history, cadence-specific dataset
-  discovery, bounded value frames, declared and inferred related MetaTables,
-  non-mutating deletion preview, and reviewed bulk execution. Canonical
-  datasets are accepted only when identifier, cadence, physical table, grain,
-  required columns, and the actual SQLAlchemy/Alembic
-  `index_identifier -> IndexTable.unique_identifier` foreign key agree. Added
-  extension relationship providers without DataNode inheritance, signed
-  five-minute actor/scope tokens, exact phrases and warning acknowledgements,
-  scoped `delete_after_date(...)` value removal, stale-scope protection,
-  request-bound FastAPI actors, durable idempotency/partial-step journal model,
-  Adapter from API operation registration, tests, a non-destructive example,
-  tutorial/API documentation, and the expanded Index workflow skill. Direct
-  public `Index.delete(...)` and compatibility HTTP deletion no longer provide
-  an unreviewed bypass; `DerivedIndex.upsert(...)` compensation uses the
-  private repository primitive. The execution-journal model is registered, but
-  its SDK-generated migration and deployed-resource verification remain pending
-  because the configured local Main Sequence migration service was unavailable.
+- Implemented the ADR 0038 typed Index catalog and thin FastAPI surface:
+  Index-type reads, counted identity lists, create/update/detail/summary,
+  reproducible methodology history, canonical dataset discovery, bounded value
+  frames, and declared or inferred related MetaTables. Canonical datasets
+  require matching identifier, cadence, physical table, grain, required
+  columns, and the actual `index_identifier -> IndexTable.unique_identifier`
+  foreign key. Index deletion follows the normal direct row API and database
+  foreign-key actions.
 - Revised ADR 0037 so the cadence-configured `IndexValuesTS.<cadence>` family
   is the domain-neutral canonical value contract for plain and calculated
   Indexes, with `IndexValuesStorage` retained as its column-schema anchor and

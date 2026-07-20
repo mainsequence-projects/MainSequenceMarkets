@@ -7,11 +7,8 @@ def _contracts():
     prepare_apps_v1_import_namespace()
     from msm.api.indices import Index, IndexCreate, IndexType, IndexUpdate
     from msm.services.indices.contracts import (
-        IndexBulkDeleteExecuteRequest,
-        IndexBulkDeletePreview,
-        IndexBulkDeletePreviewRequest,
-        IndexBulkDeleteResult,
         IndexDatasetDescriptor,
+        IndexDatasetState,
         IndexDatasetSummary,
         IndexMethodologyDetail,
         IndexMethodologySummary,
@@ -26,12 +23,9 @@ def _contracts():
         IndexMethodologySummary,
         IndexMethodologyDetail,
         IndexDatasetDescriptor,
+        IndexDatasetState,
         IndexDatasetSummary,
         IndexRelatedMetaTable,
-        IndexBulkDeletePreviewRequest,
-        IndexBulkDeletePreview,
-        IndexBulkDeleteExecuteRequest,
-        IndexBulkDeleteResult,
     )
 
 
@@ -43,10 +37,7 @@ def _contracts():
     IndexMethodologySummary,
     IndexMethodologyDetail,
     IndexDatasetDescriptor,
+    IndexDatasetState,
     IndexDatasetSummary,
     IndexRelatedMetaTable,
-    IndexBulkDeletePreviewRequest,
-    IndexBulkDeletePreview,
-    IndexBulkDeleteExecuteRequest,
-    IndexBulkDeleteResult,
 ) = _contracts()

@@ -8,21 +8,15 @@ from .catalog import (
     get_index_detail,
     get_index_summary,
     get_methodology,
+    list_index_types,
     list_indexes,
     list_methodologies,
     list_related_meta_tables,
     read_index_values,
 )
 from .contracts import *  # noqa: F403
-from .deletion import (
-    IndexDeletionAccessDenied,
-    IndexDeletionConfirmationRequired,
-    IndexDeletionError,
-    IndexDeletionScopeChanged,
-    IndexDeletionTokenExpired,
-    execute_bulk_delete,
-    preview_bulk_delete,
-)
+from .availability import list_dataset_states, reconcile_index_dataset_availability
+from .delete_impact import get_index_delete_impact
 from .relationships import (
     IndexRelationshipProvider,
     list_index_relationship_providers,

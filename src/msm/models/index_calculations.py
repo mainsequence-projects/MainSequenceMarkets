@@ -5,6 +5,7 @@ import uuid
 
 from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index as SqlIndex
 from sqlalchemy import Integer, String
+from sqlalchemy.sql import text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
@@ -44,6 +45,12 @@ class IndexCalculationDefinitionTable(MarketsMetaTableMixin, MarketsBase):
         SqlIndex(None, "effective_from"),
         SqlIndex(None, "calculation_family"),
         SqlIndex(None, "index_uid", "definition_hash", unique=True),
+        SqlIndex(
+            None,
+            "index_uid",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
     )
 
     uid: Mapped[uuid.UUID] = mapped_column(

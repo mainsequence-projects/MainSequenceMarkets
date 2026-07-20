@@ -9,6 +9,7 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ImplementationT = TypeVar("ImplementationT")
+HistoryMode = Literal["none", "prior_observation", "effective_start", "stateful"]
 
 
 def normalize_code(value: str) -> str:
@@ -106,6 +107,7 @@ class NearestTenorParameters(BaseModel):
     tenor_column: str = "tenor_years"
     component_column: str = "component_key"
     liquidity_column: str | None = None
+    component_identifiers: tuple[str, ...] | None = Field(default=None, min_length=1)
 
 
 class FuturesRankParameters(BaseModel):
@@ -113,6 +115,7 @@ class FuturesRankParameters(BaseModel):
     rank: int = Field(ge=1)
     rank_column: str = "rank"
     component_column: str = "component_key"
+    component_identifiers: tuple[str, ...] | None = Field(default=None, min_length=1)
 
 
 class ScheduleParameters(BaseModel):
@@ -143,13 +146,15 @@ class EventRebalanceParameters(BaseModel):
 class RegistryEntry(Generic[ImplementationT]):
     implementation: ImplementationT
     parameters_model: type[BaseModel]
+    history_mode: HistoryMode
 
 
 class TypedRegistry(Generic[ImplementationT]):
     """Extensible named implementation registry with strict parameter validation."""
 
-    def __init__(self, label: str):
+    def __init__(self, label: str, *, default_history_mode: HistoryMode = "none"):
         self.label = label
+        self.default_history_mode = default_history_mode
         self._entries: dict[str, RegistryEntry[ImplementationT]] = {}
 
     def register(
@@ -158,6 +163,7 @@ class TypedRegistry(Generic[ImplementationT]):
         implementation: ImplementationT,
         *,
         parameters_model: type[BaseModel] = NoParameters,
+        history_mode: HistoryMode | None = None,
         replace: bool = False,
     ) -> None:
         key = normalize_code(code)
@@ -166,6 +172,7 @@ class TypedRegistry(Generic[ImplementationT]):
         self._entries[key] = RegistryEntry(
             implementation=implementation,
             parameters_model=parameters_model,
+            history_mode=history_mode or self.default_history_mode,
         )
 
     def get(self, code: str) -> ImplementationT:
@@ -185,6 +192,13 @@ class TypedRegistry(Generic[ImplementationT]):
 
     def codes(self) -> tuple[str, ...]:
         return tuple(self._entries)
+
+    def history_mode(self, code: str) -> HistoryMode:
+        key = normalize_code(code)
+        try:
+            return self._entries[key].history_mode
+        except KeyError as exc:
+            raise ValueError(f"unknown {self.label} {key!r}") from exc
 
 
 @dataclass(frozen=True)
@@ -259,11 +273,15 @@ CoefficientFunction = Callable[..., pd.Series]
 
 CALCULATION_REGISTRY: TypedRegistry[CalculationFunction] = TypedRegistry("calculation kind")
 TRANSFORM_REGISTRY: TypedRegistry[TransformFunction] = TypedRegistry("transform")
-SELECTOR_REGISTRY: TypedRegistry[SelectorFunction] = TypedRegistry("selector")
+SELECTOR_REGISTRY: TypedRegistry[SelectorFunction] = TypedRegistry(
+    "selector", default_history_mode="effective_start"
+)
 COEFFICIENT_REGISTRY: TypedRegistry[CoefficientFunction] = TypedRegistry("coefficient method")
 ALIGNMENT_REGISTRY: TypedRegistry[str] = TypedRegistry("alignment policy")
 MISSING_DATA_REGISTRY: TypedRegistry[str] = TypedRegistry("missing-data policy")
-REBALANCE_REGISTRY: TypedRegistry[str] = TypedRegistry("rebalance policy")
+REBALANCE_REGISTRY: TypedRegistry[str] = TypedRegistry(
+    "rebalance policy", default_history_mode="effective_start"
+)
 UNIT_REGISTRY = UnitRegistry()
 
 
@@ -293,6 +311,7 @@ __all__ = [
     "COEFFICIENT_REGISTRY",
     "ChainedReturnParameters",
     "ForwardFillParameters",
+    "HistoryMode",
     "FuturesRankParameters",
     "EventRebalanceParameters",
     "LaggedCoefficientParameters",

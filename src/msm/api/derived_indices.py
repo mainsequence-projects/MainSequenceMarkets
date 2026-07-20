@@ -20,10 +20,10 @@ from msm.constants import INDEX_TYPE_DERIVED, INDEX_TYPE_DERIVED_DEFINITION
 from msm.models import (
     IndexCalculationDefinitionTable,
     IndexCalculationLegTable,
-    IndexTable,
+    IndexDatasetAvailabilityTable,
     IndexTypeTable,
 )
-from msm.repositories.crud import delete_model, update_model
+from msm.repositories.crud import delete_model
 from msm.repositories.indices import (
     activate_definition,
     create_definition_and_legs,
@@ -60,6 +60,7 @@ class DerivedIndex(BaseModel):
                 IndexTable,
                 IndexCalculationDefinitionTable,
                 IndexCalculationLegTable,
+                IndexDatasetAvailabilityTable,
                 *requested,
             ],
             **kwargs,
@@ -75,6 +76,7 @@ class DerivedIndex(BaseModel):
                 IndexTable,
                 IndexCalculationDefinitionTable,
                 IndexCalculationLegTable,
+                IndexDatasetAvailabilityTable,
             ],
             row_model_name=cls.__name__,
         ).context
@@ -107,10 +109,8 @@ class DerivedIndex(BaseModel):
         validate_calculation_contract(typed_definition, typed_legs)
 
         context = cls._active_context()
-        existing_index = Index.get_by_unique_identifier(unique_identifier)
-        existing_snapshot = existing_index.model_dump(mode="python") if existing_index else None
-        index_created = existing_index is None
         persisted_definition: IndexCalculationDefinition | None = None
+        owned_leg_uids: tuple[uuid.UUID, ...] = ()
         try:
             IndexType.upsert(INDEX_TYPE_DERIVED_DEFINITION.as_payload())
             index = Index.upsert(
@@ -158,11 +158,37 @@ class DerivedIndex(BaseModel):
                     "definition_hash": definition_hash,
                 }
             )
-            persisted_definition, persisted_legs = create_definition_and_legs(
-                context,
-                definition=draft_definition,
-                legs=typed_legs,
+            owned_legs = tuple(
+                leg.model_copy(
+                    update={
+                        "uid": leg.uid or uuid.uuid4(),
+                        "definition_uid": definition_uid,
+                    }
+                )
+                for leg in typed_legs
             )
+            owned_leg_uids = tuple(leg.uid for leg in owned_legs if leg.uid is not None)
+            try:
+                persisted_definition, persisted_legs = create_definition_and_legs(
+                    context,
+                    definition=draft_definition,
+                    legs=owned_legs,
+                )
+            except Exception:
+                concurrent_winner = find_definition_by_hash(
+                    context,
+                    index_uid=index.uid,
+                    definition_hash=definition_hash,
+                )
+                if concurrent_winner is not None:
+                    return cls(
+                        index=index,
+                        definition=concurrent_winner,
+                        legs=tuple(
+                            definition_legs(context, definition_uid=concurrent_winner.uid)
+                        ),
+                    )
+                raise
             if typed_definition.status == "active":
                 persisted_definition = activate_definition(
                     context,
@@ -181,25 +207,12 @@ class DerivedIndex(BaseModel):
             )
         except Exception:
             if persisted_definition is not None and persisted_definition.uid is not None:
-                for leg in definition_legs(context, definition_uid=persisted_definition.uid):
-                    if leg.uid is not None:
-                        delete_model(context, model=IndexCalculationLegTable, uid=leg.uid)
+                for leg_uid in owned_leg_uids:
+                    delete_model(context, model=IndexCalculationLegTable, uid=leg_uid)
                 delete_model(
                     context,
                     model=IndexCalculationDefinitionTable,
                     uid=persisted_definition.uid,
-                )
-            if index_created:
-                current = Index.get_by_unique_identifier(unique_identifier)
-                if current is not None:
-                    Index._delete_repository(current.uid)
-            elif existing_snapshot is not None:
-                restore = {key: value for key, value in existing_snapshot.items() if key != "uid"}
-                update_model(
-                    context,
-                    model=IndexTable,
-                    uid=existing_snapshot["uid"],
-                    values=restore,
                 )
             raise
 

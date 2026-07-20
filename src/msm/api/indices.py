@@ -12,7 +12,7 @@ from msm.api.base import MarketsMetaTableRow, operation_result_rows
 from msm.models import (
     IndexCalculationDefinitionTable,
     IndexCalculationLegTable,
-    IndexDeletionExecutionTable,
+    IndexDatasetAvailabilityTable,
     IndexTable,
     IndexTypeTable,
 )
@@ -22,11 +22,8 @@ if TYPE_CHECKING:
     from msm.repositories.base import MarketsOperationContext
     from msm.services.indices import (
         IndexActor,
-        IndexBulkDeleteExecuteRequest,
-        IndexBulkDeletePreview,
-        IndexBulkDeletePreviewRequest,
-        IndexBulkDeleteResult,
-        IndexDatasetDescriptor,
+        IndexDatasetReconciliationResult,
+        IndexDatasetState,
         IndexDatasetSummary,
         IndexDetail,
         IndexListRequest,
@@ -152,7 +149,11 @@ class Index(MarketsMetaTableRow):
     """User-facing market index reference row."""
 
     __table__: ClassVar[type[IndexTable]] = IndexTable
-    __required_tables__: ClassVar[list[type[Any]]] = [IndexTypeTable, IndexTable]
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        IndexTypeTable,
+        IndexTable,
+        IndexDatasetAvailabilityTable,
+    ]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
 
     unique_identifier: str
@@ -286,12 +287,36 @@ class Index(MarketsMetaTableRow):
         uid: uuid.UUID | str,
         *,
         actor: IndexActor | None = None,
-    ) -> tuple[IndexDatasetDescriptor, ...]:
-        from msm.services.indices import discover_canonical_datasets
+        include_empty: bool = False,
+    ) -> tuple[IndexDatasetState, ...]:
+        from msm.services.indices import list_dataset_states
 
-        if cls.get_by_uid(uid) is None:
+        index = cls.get_by_uid(uid)
+        if index is None:
             raise LookupError(f"Index {uid!s} was not found")
-        return discover_canonical_datasets(actor=actor)
+        return list_dataset_states(
+            cls._service_context(),
+            index=index,
+            actor=actor,
+            include_empty=include_empty,
+        )
+
+    @classmethod
+    def reconcile_dataset_availability(
+        cls,
+        *,
+        index_uids: tuple[uuid.UUID | str, ...] = (),
+        index_identifiers: tuple[str, ...] = (),
+        actor: IndexActor | None = None,
+    ) -> IndexDatasetReconciliationResult:
+        from msm.services.indices import reconcile_index_dataset_availability
+
+        return reconcile_index_dataset_availability(
+            cls._service_context(),
+            index_uids=index_uids,
+            index_identifiers=index_identifiers,
+            actor=actor,
+        )
 
     @classmethod
     def get_dataset_summary(
@@ -351,99 +376,6 @@ class Index(MarketsMetaTableRow):
         return list_related_meta_tables(cls._service_context(), index=index)
 
     @classmethod
-    def preview_bulk_delete(
-        cls,
-        request: IndexBulkDeletePreviewRequest | Mapping[str, Any],
-        *,
-        actor: IndexActor | None = None,
-    ) -> IndexBulkDeletePreview:
-        from msm.services.indices import (
-            IndexBulkDeletePreviewRequest,
-            preview_bulk_delete,
-            resolve_authenticated_index_actor,
-        )
-
-        resolved_request = (
-            request
-            if isinstance(request, IndexBulkDeletePreviewRequest)
-            else IndexBulkDeletePreviewRequest.model_validate(request)
-        )
-        return preview_bulk_delete(
-            cls._service_context(),
-            actor=actor or resolve_authenticated_index_actor(),
-            request=resolved_request,
-        )
-
-    @classmethod
-    def bulk_delete(
-        cls,
-        request: IndexBulkDeleteExecuteRequest | Mapping[str, Any],
-        *,
-        actor: IndexActor | None = None,
-        expected_single_index_uid: uuid.UUID | str | None = None,
-    ) -> IndexBulkDeleteResult:
-        from msm.services.indices import (
-            IndexBulkDeleteExecuteRequest,
-            execute_bulk_delete,
-            resolve_authenticated_index_actor,
-        )
-
-        resolved_request = (
-            request
-            if isinstance(request, IndexBulkDeleteExecuteRequest)
-            else IndexBulkDeleteExecuteRequest.model_validate(request)
-        )
-        return execute_bulk_delete(
-            cls._service_context(),
-            actor=actor or resolve_authenticated_index_actor(),
-            request=resolved_request,
-            expected_single_index_uid=expected_single_index_uid,
-        )
-
-    @classmethod
-    def delete(
-        cls,
-        uid: uuid.UUID | str,
-        *,
-        confirmation_token: str | None = None,
-        confirmation_phrase: str | None = None,
-        acknowledged_warning_codes=(),
-        idempotency_key: str | None = None,
-        actor: IndexActor | None = None,
-    ) -> IndexBulkDeleteResult:
-        """Delete one Index only through the reviewed bulk-deletion contract."""
-
-        from msm.services.indices import (
-            IndexBulkDeleteExecuteRequest,
-            IndexDeletionConfirmationRequired,
-        )
-
-        if not confirmation_token or not confirmation_phrase or not idempotency_key:
-            raise IndexDeletionConfirmationRequired(
-                "Index.delete requires a preview token, exact phrase, warning acknowledgements, "
-                "and idempotency key. Use Index.preview_bulk_delete first."
-            )
-        result = cls.bulk_delete(
-            IndexBulkDeleteExecuteRequest(
-                confirmation_token=confirmation_token,
-                confirmation_phrase=confirmation_phrase,
-                acknowledged_warning_codes=tuple(acknowledged_warning_codes),
-                idempotency_key=idempotency_key,
-            ),
-            actor=actor,
-            expected_single_index_uid=uid,
-        )
-        return result
-
-    @classmethod
-    def _delete_repository(cls, uid: uuid.UUID | str) -> dict[str, Any]:
-        """Private compensation primitive; not an interactive deletion workflow."""
-
-        from msm.repositories.crud import delete_model
-
-        return delete_model(cls._active_context(), model=cls.__table__, uid=uid)
-
-    @classmethod
     def _service_context(cls) -> MarketsOperationContext:
         """Resolve the broader Index exploration/lifecycle runtime on demand."""
 
@@ -456,7 +388,6 @@ class Index(MarketsMetaTableRow):
                 IndexTable,
                 IndexCalculationDefinitionTable,
                 IndexCalculationLegTable,
-                IndexDeletionExecutionTable,
                 IndexResolvedLegsStorage,
             ],
             row_model_name="Index catalog and lifecycle services",

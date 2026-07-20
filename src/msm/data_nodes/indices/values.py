@@ -62,11 +62,22 @@ class IndexValuesDataNode(IndexTimestampedDataNode):
         )
 
     def update(self) -> pd.DataFrame:
-        return normalize_index_values_frame(
+        frame = normalize_index_values_frame(
             self.get_frame(),
             storage_table=self.storage_table,
             frame_label=self.frame_label,
         )
+        self._published_index_identifiers = index_identifiers_in_frame(frame)
+        return frame
+
+    def run_post_update_routines(self, error_on_last_update: bool) -> None:
+        if error_on_last_update:
+            return
+        identifiers = getattr(self, "_published_index_identifiers", ())
+        if identifiers:
+            from msm.api.indices import Index
+
+            Index.reconcile_dataset_availability(index_identifiers=identifiers)
 
     @classmethod
     def validate_frame(
@@ -82,4 +93,19 @@ class IndexValuesDataNode(IndexTimestampedDataNode):
         )
 
 
-__all__ = ["IndexValuesDataNode", "normalize_index_values_frame"]
+def index_identifiers_in_frame(frame: pd.DataFrame) -> tuple[str, ...]:
+    if frame.empty:
+        return ()
+    values = (
+        frame.index.get_level_values("index_identifier")
+        if "index_identifier" in frame.index.names
+        else frame["index_identifier"]
+    )
+    return tuple(sorted({str(item) for item in values}))
+
+
+__all__ = [
+    "IndexValuesDataNode",
+    "index_identifiers_in_frame",
+    "normalize_index_values_frame",
+]

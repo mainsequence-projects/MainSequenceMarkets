@@ -19,7 +19,6 @@ V1_RUNTIME_MODELS = [
     "Index",
     "IndexCalculationDefinition",
     "IndexCalculationLeg",
-    "IndexDeletionExecution",
     "IndexResolvedLegsStorage",
     "FutureAssetDetails",
     "AccountAllocationModel",

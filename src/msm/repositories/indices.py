@@ -6,10 +6,12 @@ from collections.abc import Sequence
 from typing import Any
 
 import pandas as pd
+from sqlalchemy import and_, case, exists, or_, select, update
 
 from msm.analytics.indices import IndexCalculationDefinition, IndexCalculationLeg
 from msm.api.base import operation_result_rows
 from msm.models import IndexCalculationDefinitionTable, IndexCalculationLegTable
+from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm.repositories.crud import (
     create_model,
     delete_model,
@@ -183,6 +185,7 @@ def activate_definition(
     if definition.status == "retired":
         raise ValueError("retired derived-index definitions cannot be reactivated")
     history = definition_history(context, index_uid=definition.index_uid)
+    previous_active: IndexCalculationDefinition | None = None
     for existing in history:
         if existing.uid == definition.uid or existing.status == "draft":
             continue
@@ -192,29 +195,86 @@ def activate_definition(
                 and existing.effective_from < definition.effective_from
                 and existing.effective_to is None
             ):
-                update_model(
-                    context,
-                    model=IndexCalculationDefinitionTable,
-                    uid=existing.uid,
-                    values={
-                        "status": "retired",
-                        "effective_to": definition.effective_from,
-                    },
-                )
+                if previous_active is not None:
+                    raise ValueError("multiple active derived-index definitions were found")
+                previous_active = existing
                 continue
             raise ValueError(
                 "definition effective interval overlaps another activated methodology version"
             )
-    result = update_model(
-        context,
-        model=IndexCalculationDefinitionTable,
-        uid=definition.uid,
-        values={"status": "active"},
+    table = IndexCalculationDefinitionTable.__table__
+    target = table.alias("target_definition")
+    target_ready = exists(
+        select(target.c.uid).where(
+            target.c.uid == definition.uid,
+            target.c.index_uid == definition.index_uid,
+            target.c.status == "draft",
+        )
+    )
+    row_conditions = [
+        and_(
+            IndexCalculationDefinitionTable.uid == definition.uid,
+            IndexCalculationDefinitionTable.status == "draft",
+        )
+    ]
+    readiness = [target_ready]
+    if previous_active is not None:
+        prior = table.alias("previous_active_definition")
+        readiness.append(
+            exists(
+                select(prior.c.uid).where(
+                    prior.c.uid == previous_active.uid,
+                    prior.c.index_uid == definition.index_uid,
+                    prior.c.status == "active",
+                    prior.c.effective_to.is_(None),
+                )
+            )
+        )
+        row_conditions.append(
+            and_(
+                IndexCalculationDefinitionTable.uid == previous_active.uid,
+                IndexCalculationDefinitionTable.status == "active",
+                IndexCalculationDefinitionTable.effective_to.is_(None),
+            )
+        )
+    statement = (
+        update(IndexCalculationDefinitionTable)
+        .where(
+            IndexCalculationDefinitionTable.index_uid == definition.index_uid,
+            *readiness,
+            or_(*row_conditions),
+        )
+        .values(
+            status=case(
+                (IndexCalculationDefinitionTable.uid == definition.uid, "active"),
+                else_="retired",
+            ),
+            effective_to=case(
+                (IndexCalculationDefinitionTable.uid == definition.uid, definition.effective_to),
+                else_=definition.effective_from,
+            ),
+        )
+        .returning(IndexCalculationDefinitionTable)
+    )
+    result = execute_markets_operation(
+        compile_markets_statement(
+            statement,
+            context=context,
+            operation="update",
+            models=[IndexCalculationDefinitionTable],
+            access="write",
+        ),
+        context=context,
     )
     rows = operation_result_rows(result)
-    if not rows:
-        raise LookupError("definition activation did not return a row")
-    return IndexCalculationDefinition.model_validate(rows[0])
+    expected_uids = {definition.uid}
+    if previous_active is not None:
+        expected_uids.add(previous_active.uid)
+    returned_uids = {uuid.UUID(str(row["uid"])) for row in rows}
+    if returned_uids != expected_uids:
+        raise RuntimeError("definition activation preconditions changed concurrently")
+    activated = next(row for row in rows if str(row["uid"]) == str(definition.uid))
+    return IndexCalculationDefinition.model_validate(activated)
 
 
 def retire_definition(

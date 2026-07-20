@@ -10,7 +10,7 @@ from sqlalchemy import String, and_, cast, exists, func, or_, select
 from mainsequence.client.metatables import MetaTable, TimeIndexMetaTable
 
 from msm.api.base import operation_result_rows
-from msm.api.indices import Index
+from msm.api.indices import Index, IndexType
 from msm.data_nodes.indices.storage import (
     INDEX_VALUES_CADENCE_COMPONENT,
     INDEX_VALUES_STORAGE_NAME_COMPONENT,
@@ -20,7 +20,9 @@ from msm.data_nodes.indices.storage import (
 from msm.models import (
     IndexCalculationDefinitionTable,
     IndexCalculationLegTable,
+    IndexDatasetAvailabilityTable,
     IndexTable,
+    IndexTypeTable,
 )
 from msm.repositories.base import (
     MarketsMetaTableHandle,
@@ -34,6 +36,7 @@ from .contracts import (
     IndexActor,
     IndexDatasetAccess,
     IndexDatasetDescriptor,
+    IndexDatasetState,
     IndexDatasetSummary,
     IndexDetail,
     IndexForeignKeyDescriptor,
@@ -85,14 +88,21 @@ def list_indexes(context: MarketsOperationContext, request: IndexListRequest) ->
         conditions.append(definition_exists if request.has_definition else ~definition_exists)
 
     if request.has_canonical_values is not None or request.cadence:
-        identifiers = _identifiers_with_canonical_values(
-            context,
-            cadence=request.cadence,
+        models.append(IndexDatasetAvailabilityTable)
+        availability_conditions = [
+            IndexDatasetAvailabilityTable.index_uid == IndexTable.uid,
+            IndexDatasetAvailabilityTable.population_state == "populated",
+        ]
+        if request.cadence:
+            availability_conditions.append(
+                IndexDatasetAvailabilityTable.cadence == request.cadence.strip().lower()
+            )
+        populated_exists = exists(
+            select(IndexDatasetAvailabilityTable.uid).where(*availability_conditions)
         )
-        value_condition = IndexTable.unique_identifier.in_(identifiers)
-        if request.has_canonical_values is False:
-            value_condition = ~value_condition
-        conditions.append(value_condition)
+        conditions.append(
+            ~populated_exists if request.has_canonical_values is False else populated_exists
+        )
     if conditions:
         statement = statement.where(and_(*conditions))
 
@@ -138,6 +148,50 @@ def list_indexes(context: MarketsOperationContext, request: IndexListRequest) ->
     )
 
 
+def list_index_types(
+    context: MarketsOperationContext,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[int, tuple[IndexType, ...]]:
+    """Return Index types with deterministic ordering applied before pagination."""
+
+    if not 1 <= limit <= 500:
+        raise ValueError("limit must be between 1 and 500")
+    if offset < 0:
+        raise ValueError("offset must be nonnegative")
+    base = select(IndexTypeTable).order_by(IndexTypeTable.index_type, IndexTypeTable.uid)
+    count_statement = select(func.count().label("count")).select_from(base.subquery())
+    count_rows = operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                count_statement,
+                context=context,
+                operation="select",
+                models=[IndexTypeTable],
+                access="read",
+            ),
+            context=context,
+        )
+    )
+    page_rows = operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                base.limit(limit).offset(offset),
+                context=context,
+                operation="select",
+                models=[IndexTypeTable],
+                access="read",
+            ),
+            context=context,
+        )
+    )
+    return (
+        int(count_rows[0].get("count") or 0) if count_rows else 0,
+        tuple(IndexType.model_validate(row) for row in page_rows),
+    )
+
+
 def list_methodologies(
     context: MarketsOperationContext,
     *,
@@ -151,8 +205,34 @@ def list_methodologies(
             limit=500,
         )
     )
+    definition_uids = [row["uid"] for row in definition_rows]
+    leg_counts: dict[str, int] = {}
+    if definition_uids:
+        count_statement = (
+            select(
+                IndexCalculationLegTable.definition_uid,
+                func.count().label("leg_count"),
+            )
+            .where(IndexCalculationLegTable.definition_uid.in_(definition_uids))
+            .group_by(IndexCalculationLegTable.definition_uid)
+        )
+        count_rows = operation_result_rows(
+            execute_markets_operation(
+                compile_markets_statement(
+                    count_statement,
+                    context=context,
+                    operation="select",
+                    models=[IndexCalculationLegTable],
+                    access="read",
+                ),
+                context=context,
+            )
+        )
+        leg_counts = {
+            str(row["definition_uid"]): int(row.get("leg_count") or 0) for row in count_rows
+        }
     summaries = [
-        _methodology_summary(context, row)
+        _methodology_summary(row, leg_count=leg_counts.get(str(row["uid"]), 0))
         for row in sorted(
             definition_rows,
             key=lambda item: (int(item["definition_version"]), str(item["uid"])),
@@ -189,7 +269,7 @@ def get_methodology(
         _methodology_leg(row)
         for row in sorted(leg_rows, key=lambda item: (int(item["leg_order"]), str(item["uid"])))
     )
-    summary = _methodology_summary(context, definition, leg_count=len(legs))
+    summary = _methodology_summary(definition, leg_count=len(legs))
     return IndexMethodologyDetail(
         **summary.model_dump(),
         calculation_parameters_json=definition.get("calculation_parameters_json"),
@@ -471,7 +551,7 @@ def list_related_meta_tables(
             authoritative=True,
             discovery_source="core_model",
             exploration_capability="count",
-            delete_capability="scoped",
+            delete_capability="none",
             count=resolved_leg_count,
             blocks_delete=bool(resolved_leg_count),
             confidence_reason=(
@@ -529,12 +609,10 @@ def list_related_meta_tables(
                 authoritative=True,
                 discovery_source="declared_provider",
                 exploration_capability=provider.exploration_capability,
-                delete_capability=provider.delete_capability,
+                delete_capability=_delete_capability(provider.on_delete),
                 count=count,
                 blocks_delete=(
-                    provider.blocks_delete
-                    or str(provider.on_delete).upper().replace("_", " ")
-                    in {"RESTRICT", "NO ACTION"}
+                    str(provider.on_delete).upper().replace("_", " ") in {"RESTRICT", "NO ACTION"}
                 )
                 and bool(count),
                 confidence_reason=(
@@ -556,7 +634,9 @@ def get_index_detail(
 ) -> IndexDetail:
     warnings: list[str] = []
     try:
-        datasets = discover_canonical_datasets(actor=actor)
+        from .availability import list_dataset_states
+
+        datasets = list_dataset_states(context, index=index, actor=actor)
     except Exception as exc:
         datasets = ()
         warnings.append(f"Canonical dataset discovery unavailable: {type(exc).__name__}: {exc}")
@@ -576,11 +656,8 @@ def get_index_summary(
     actor: IndexActor | None = None,
 ) -> IndexSummary:
     detail = get_index_detail(context, index=index, actor=actor)
-    summaries = tuple(
-        dataset_summary(context, index=index, dataset=item) for item in detail.datasets
-    )
     warnings = [*detail.warnings]
-    warnings.extend(item.error for item in summaries if item.error)
+    warnings.extend(item.error for item in detail.datasets if item.error)
     methodologies = detail.methodologies
     active = next((item for item in methodologies if item.status == "active"), None)
     relationships = detail.related_meta_tables
@@ -589,9 +666,18 @@ def get_index_summary(
         definition_count=len(methodologies),
         leg_count=sum(item.leg_count for item in methodologies),
         active_definition=active,
-        dataset_count=len(detail.datasets),
-        cadences=tuple(item.cadence for item in detail.datasets),
-        dataset_summaries=summaries,
+        dataset_count=sum(item.population_state == "populated" for item in detail.datasets),
+        cadences=tuple(
+            sorted(
+                {
+                    item.dataset.cadence
+                    for item in detail.datasets
+                    if item.population_state == "populated"
+                },
+                key=_cadence_sort_key,
+            )
+        ),
+        dataset_states=detail.datasets,
         authoritative_relationship_count=sum(item.authoritative for item in relationships),
         inferred_relationship_count=sum(not item.authoritative for item in relationships),
         warnings=tuple(str(item) for item in warnings if item),
@@ -676,7 +762,6 @@ def _canonical_descriptor(
             else "Edit access is rechecked by the platform at mutation time.",
         ),
         producer_identifiers=_producer_identifiers(meta_table),
-        scoped_delete_supported=True,
     )
 
 
@@ -706,47 +791,11 @@ def _dataset_model_and_handle(
     return model, handle
 
 
-def _identifiers_with_canonical_values(
-    context: MarketsOperationContext,
-    *,
-    cadence: str | None,
-) -> tuple[str, ...]:
-    identifiers: set[str] = set()
-    for dataset in discover_canonical_datasets():
-        if cadence and dataset.cadence != cadence:
-            continue
-        model, handle = _dataset_model_and_handle(context, dataset)
-        statement = select(model.index_identifier).distinct().limit(100_000)
-        rows = operation_result_rows(
-            execute_markets_operation(
-                compile_markets_statement(
-                    statement,
-                    context=handle,
-                    operation="select",
-                    models=[model],
-                    access="read",
-                ),
-                context=handle,
-            )
-        )
-        identifiers.update(str(row["index_identifier"]) for row in rows)
-    return tuple(sorted(identifiers))
-
-
 def _methodology_summary(
-    context: MarketsOperationContext,
     row: dict[str, Any],
     *,
-    leg_count: int | None = None,
+    leg_count: int,
 ) -> IndexMethodologySummary:
-    if leg_count is None:
-        leg_count = _count(
-            count_model(
-                context,
-                model=IndexCalculationLegTable,
-                filters={"definition_uid": row["uid"]},
-            )
-        )
     return IndexMethodologySummary(
         uid=row["uid"],
         index_uid=row["index_uid"],
@@ -769,15 +818,19 @@ def _methodology_leg(row: dict[str, Any]) -> IndexMethodologyLeg:
         definition_uid=row["definition_uid"],
         leg_key=row["leg_key"],
         leg_order=row["leg_order"],
+        leg_role=row.get("leg_role"),
         component_kind=row["component_kind"],
         asset_uid=row.get("asset_uid"),
         component_index_uid=row.get("component_index_uid"),
         selector_code=row.get("selector_code"),
-        observable=row["observable_code"],
+        selector_parameters_json=row.get("selector_parameters_json"),
+        observable_code=row["observable_code"],
         input_unit=row["input_unit"],
-        transform_kind=row["transform_code"],
+        transform_code=row["transform_code"],
+        transform_parameters_json=row.get("transform_parameters_json"),
         coefficient_method=row["coefficient_method"],
         coefficient=row.get("coefficient"),
+        coefficient_parameters_json=row.get("coefficient_parameters_json"),
         metadata_json=row.get("metadata_json"),
     )
 
@@ -785,6 +838,15 @@ def _methodology_leg(row: dict[str, Any]) -> IndexMethodologyLeg:
 def _count(result: dict[str, Any] | list[Any] | None) -> int:
     rows = operation_result_rows(result)
     return int(rows[0].get("count") or 0) if rows else 0
+
+
+def _delete_capability(on_delete: str) -> str:
+    action = str(on_delete).upper().replace("_", " ")
+    if action == "CASCADE":
+        return "cascade"
+    if action == "SET NULL":
+        return "set_null"
+    return "none"
 
 
 def _bound_uid(model: type[Any]) -> str | None:
@@ -892,6 +954,7 @@ __all__ = [
     "get_canonical_dataset",
     "get_index_detail",
     "get_index_summary",
+    "list_index_types",
     "get_methodology",
     "list_indexes",
     "list_methodologies",

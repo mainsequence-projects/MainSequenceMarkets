@@ -469,12 +469,20 @@ def test_openapi_json_documents_index_routes() -> None:
     ] == {"$ref": "#/components/schemas/DeleteImpactResponse"}
 
     index_delete_operation = payload["paths"]["/api/v1/index/{uid}/"]["delete"]
-    assert index_delete_operation["summary"] == "Delete one reviewed Index"
+    assert index_delete_operation["summary"] == "Delete Index"
     assert index_delete_operation["operationId"] == "deleteIndex"
-    assert index_delete_operation["deprecated"] is True
-    assert index_delete_operation["responses"]["428"]["content"]["application/json"]["schema"] == {
+    assert "deprecated" not in index_delete_operation
+    assert index_delete_operation["responses"]["404"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/ErrorResponse"
     }
+
+    index_list_operation = payload["paths"]["/api/v1/index/"]["get"]
+    index_list_parameters = {
+        parameter["name"] for parameter in index_list_operation["parameters"]
+    }
+    assert {"response_format", "has_canonical_values", "cadence"}.issubset(
+        index_list_parameters
+    )
 
     expected_operations = {
         ("get", "/api/v1/index-type/"): "listIndexTypes",
@@ -500,11 +508,21 @@ def test_openapi_json_documents_index_routes() -> None:
             "get",
             "/api/v1/index/{uid}/related-meta-tables/",
         ): "listIndexRelatedMetaTables",
-        ("post", "/api/v1/index/bulk-delete/preview/"): "previewBulkDeleteIndexes",
-        ("post", "/api/v1/index/bulk-delete/"): "bulkDeleteIndexes",
     }
     for (method, path), operation_id in expected_operations.items():
         assert payload["paths"][path][method]["operationId"] == operation_id
+
+    methodology_leg_schema = payload["components"]["schemas"]["IndexMethodologyLeg"]
+    assert {
+        "leg_role",
+        "selector_parameters_json",
+        "observable_code",
+        "transform_code",
+        "transform_parameters_json",
+        "coefficient_parameters_json",
+    }.issubset(methodology_leg_schema["properties"])
+    assert "observable" not in methodology_leg_schema["properties"]
+    assert "transform_kind" not in methodology_leg_schema["properties"]
 
     values_operation = payload["paths"]["/api/v1/index/{uid}/datasets/{meta_table_uid}/values/"][
         "get"

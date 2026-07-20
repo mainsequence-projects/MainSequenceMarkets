@@ -166,6 +166,26 @@ def test_index_filter_by_uids_uses_single_in_filter(monkeypatch) -> None:
     ]
 
 
+def test_index_delete_uses_standard_row_api(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    context = object()
+    runtime = SimpleNamespace(context=context)
+    calls = []
+
+    monkeypatch.setattr("msm.bootstrap.resolve_runtime", lambda **_kwargs: runtime)
+
+    def fake_delete_model(active_context, *, model, uid):
+        calls.append((active_context, model, uid))
+        return {"deleted_count": 1}
+
+    monkeypatch.setattr("msm.repositories.crud.delete_model", fake_delete_model)
+
+    result = Index.delete(index_uid)
+
+    assert result == {"deleted_count": 1}
+    assert calls == [(context, IndexTable, index_uid)]
+
+
 def test_index_payloads_reject_constant_name_field() -> None:
     removed_constant_name_field = "legacy_" + "constant_name"
 

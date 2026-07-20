@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from mainsequence.client.models_user import (
     User,
     _CURRENT_AUTH_HEADERS,
@@ -20,12 +20,9 @@ from apps.v1.schemas.common import (
 from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.indices import (
     Index,
-    IndexBulkDeleteExecuteRequest,
-    IndexBulkDeletePreview,
-    IndexBulkDeletePreviewRequest,
-    IndexBulkDeleteResult,
     IndexCreate,
     IndexDatasetDescriptor,
+    IndexDatasetState,
     IndexDatasetSummary,
     IndexMethodologyDetail,
     IndexMethodologySummary,
@@ -35,7 +32,7 @@ from apps.v1.schemas.indices import (
 )
 from apps.v1.services.indices import (
     create_index,
-    execute_index_bulk_delete,
+    delete_index,
     get_index,
     get_index_dataset_summary,
     get_index_delete_impact,
@@ -48,17 +45,9 @@ from apps.v1.services.indices import (
     list_index_related_meta_tables,
     list_index_types,
     list_indices,
-    preview_index_bulk_delete,
     update_index,
 )
-from msm.services.indices import (
-    IndexActor,
-    IndexDeletionAccessDenied,
-    IndexDeletionConfirmationRequired,
-    IndexDeletionScopeChanged,
-    IndexDeletionTokenExpired,
-    actor_from_user,
-)
+from msm.services.indices import IndexActor, actor_from_user
 
 router = APIRouter(prefix="/index", tags=["index"])
 index_type_router = APIRouter(prefix="/index-type", tags=["index"])
@@ -80,15 +69,6 @@ def _request_actor(request: Request) -> IndexActor | None:
     finally:
         _CURRENT_USER.reset(user_token)
         _CURRENT_AUTH_HEADERS.reset(headers_token)
-
-
-def _required_actor(actor: Annotated[IndexActor | None, Depends(_request_actor)]) -> IndexActor:
-    if actor is None:
-        raise HTTPException(
-            status_code=401,
-            detail="An authenticated request-bound platform user is required.",
-        )
-    return actor
 
 
 @index_type_router.get(
@@ -196,45 +176,6 @@ def create_index_record(payload: IndexCreate) -> Index:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@router.post(
-    "/bulk-delete/preview/",
-    response_model=IndexBulkDeletePreview,
-    summary="Preview bulk Index deletion",
-    description="Return exact impacts, warnings, acknowledgement requirements, and an actor-bound token without mutating data.",
-    operation_id="previewBulkDeleteIndexes",
-    responses={401: {"model": ErrorResponse}, 503: {"model": ErrorResponse}},
-)
-def preview_bulk_index_deletion(
-    payload: IndexBulkDeletePreviewRequest,
-    actor: Annotated[IndexActor, Depends(_required_actor)],
-) -> IndexBulkDeletePreview:
-    try:
-        return preview_index_bulk_delete(payload=payload, actor=actor)
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@router.post(
-    "/bulk-delete/",
-    response_model=IndexBulkDeleteResult,
-    summary="Execute reviewed bulk Index deletion",
-    operation_id="bulkDeleteIndexes",
-    responses={
-        400: {"model": ErrorResponse},
-        401: {"model": ErrorResponse},
-        403: {"model": ErrorResponse},
-        409: {"model": ErrorResponse},
-        410: {"model": ErrorResponse},
-        428: {"model": ErrorResponse},
-    },
-)
-def execute_bulk_index_deletion(
-    payload: IndexBulkDeleteExecuteRequest,
-    actor: Annotated[IndexActor, Depends(_required_actor)],
-) -> IndexBulkDeleteResult:
-    return _execute_bulk_delete(payload=payload, actor=actor)
-
-
 @router.get(
     "/{uid}/",
     response_model=Index,
@@ -313,7 +254,7 @@ def get_index_methodology_by_uid(uid: str, definition_uid: str) -> IndexMethodol
 
 @router.get(
     "/{uid}/datasets/",
-    response_model=list[IndexDatasetDescriptor],
+    response_model=list[IndexDatasetState],
     summary="List Index datasets",
     description="List cadence-specific canonical datasets verified by an actual foreign key to Index.unique_identifier.",
     operation_id="listIndexDatasets",
@@ -322,8 +263,12 @@ def get_index_methodology_by_uid(uid: str, definition_uid: str) -> IndexMethodol
 def get_index_datasets(
     uid: str,
     actor: Annotated[IndexActor | None, Depends(_request_actor)],
-) -> list[IndexDatasetDescriptor]:
-    result = list_index_datasets(uid=uid, actor=actor)
+    include_empty: Annotated[
+        bool,
+        Query(description="Include compatible canonical datasets with no reconciled rows."),
+    ] = False,
+) -> list[IndexDatasetState]:
+    result = list_index_datasets(uid=uid, actor=actor, include_empty=include_empty)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")
     return list(result)
@@ -411,7 +356,10 @@ def get_related_index_meta_tables(uid: str) -> list[IndexRelatedMetaTable]:
     "/{uid}/delete-impact/",
     response_model=DeleteImpactResponse,
     summary="Preview index delete impact",
-    description="Compatibility impact view only. It does not authorize deletion; use bulk-delete preview and execution.",
+    description=(
+        "Read-only impact metadata for the standard direct Index delete route. "
+        "This response does not authorize deletion."
+    ),
     operation_id="getIndexDeleteImpact",
     responses={404: {"model": ErrorResponse}},
 )
@@ -424,61 +372,20 @@ def get_index_delete_impact_by_uid(uid: str) -> DeleteImpactResponse:
 
 @router.delete(
     "/{uid}/",
-    response_model=IndexBulkDeleteResult,
-    summary="Delete one reviewed Index",
-    description="Deprecated compatibility route. The request must contain the token and acknowledgements from a single-item bulk-delete preview.",
+    response_model=Index | None,
+    summary="Delete Index",
+    description=(
+        "Delete one Index identity row by uid. This route returns `null` on success. "
+        "Related rows are governed by the backend table constraints."
+    ),
     operation_id="deleteIndex",
-    deprecated=True,
-    responses={
-        401: {"model": ErrorResponse},
-        404: {"model": ErrorResponse},
-        409: {"model": ErrorResponse},
-        428: {"model": ErrorResponse},
-    },
+    status_code=status.HTTP_200_OK,
+    responses={404: {"model": ErrorResponse}},
 )
-def remove_index(
-    uid: str,
-    actor: Annotated[IndexActor, Depends(_required_actor)],
-    payload: Annotated[IndexBulkDeleteExecuteRequest | None, Body()] = None,
-) -> IndexBulkDeleteResult:
-    if payload is None:
-        raise HTTPException(
-            status_code=428,
-            detail="Preview confirmation is required. Use POST /api/v1/index/bulk-delete/preview/ first.",
-        )
-    return _execute_bulk_delete(
-        payload=payload,
-        actor=actor,
-        expected_single_index_uid=uid,
-    )
-
-
-def _execute_bulk_delete(
-    *,
-    payload: IndexBulkDeleteExecuteRequest,
-    actor: IndexActor,
-    expected_single_index_uid: str | None = None,
-) -> IndexBulkDeleteResult:
-    try:
-        result = execute_index_bulk_delete(
-            payload=payload,
-            actor=actor,
-            expected_single_index_uid=expected_single_index_uid,
-        )
-    except IndexDeletionTokenExpired as exc:
-        raise HTTPException(status_code=410, detail=str(exc)) from exc
-    except IndexDeletionAccessDenied as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except IndexDeletionConfirmationRequired as exc:
-        raise HTTPException(status_code=428, detail=str(exc)) from exc
-    except IndexDeletionScopeChanged as exc:
-        detail = {"message": str(exc)}
-        if exc.fresh_preview is not None:
-            detail["fresh_preview"] = exc.fresh_preview.model_dump(mode="json")
-        raise HTTPException(status_code=409, detail=detail) from exc
-    if result.status != "completed":
-        raise HTTPException(status_code=409, detail=result.model_dump(mode="json"))
-    return result
+def remove_index(uid: str) -> Index | None:
+    if not delete_index(uid=uid):
+        raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")
+    return None
 
 
 __all__ = ["index_type_router", "router"]

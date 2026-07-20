@@ -21,6 +21,7 @@ _EXPORTS = {
     "DerivedIndexDataNode": ".indices",
     "DerivedIndexDataNodeConfiguration": ".indices",
     "DerivedIndexResolvedLegsDataNode": ".indices",
+    "DerivedIndexSourceBinding": ".indices",
     "IndexResolvedLegsStorage": ".indices",
     "IndexTimestampedDataNode": ".indices",
     "IndexTimestampedFrameMixin": ".indices",

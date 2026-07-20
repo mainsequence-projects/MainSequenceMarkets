@@ -28,6 +28,7 @@ __all__ = [
     "DerivedIndexDataNode",
     "DerivedIndexDataNodeConfiguration",
     "DerivedIndexResolvedLegsDataNode",
+    "DerivedIndexSourceBinding",
 ]
 
 
@@ -36,6 +37,7 @@ def __getattr__(name: str):
         "DerivedIndexDataNode",
         "DerivedIndexDataNodeConfiguration",
         "DerivedIndexResolvedLegsDataNode",
+        "DerivedIndexSourceBinding",
     }:
         from msm.data_nodes.indices import derived
 

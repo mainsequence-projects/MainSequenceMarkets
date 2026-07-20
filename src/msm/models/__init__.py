@@ -29,11 +29,11 @@ from .derivatives import FutureAssetDetailsTable
 from .execution import OrderManagerTable
 from .issuers import IssuerTable
 from .indices import IndexTable, IndexTypeTable
+from .index_dataset_availability import IndexDatasetAvailabilityTable
 from .index_calculations import (
     IndexCalculationDefinitionTable,
     IndexCalculationLegTable,
 )
-from .index_deletions import IndexDeletionExecutionTable
 from .portfolios import PortfolioGroupMembershipTable, PortfolioGroupTable, PortfolioTable
 from .portfolios import SignalMetadataTable
 
@@ -51,9 +51,9 @@ def markets_sqlalchemy_models() -> list[type]:
         AssetTable,
         IndexTypeTable,
         IndexTable,
+        IndexDatasetAvailabilityTable,
         IndexCalculationDefinitionTable,
         IndexCalculationLegTable,
-        IndexDeletionExecutionTable,
         IssuerTable,
         CurrencySpotAssetDetailsTable,
         BondAssetDetailsTable,
@@ -132,9 +132,9 @@ __all__ = [
     "FutureAssetDetailsTable",
     "IndexTable",
     "IndexTypeTable",
+    "IndexDatasetAvailabilityTable",
     "IndexCalculationDefinitionTable",
     "IndexCalculationLegTable",
-    "IndexDeletionExecutionTable",
     "IssuerTable",
     "OpenFigiAssetDetailsTable",
     "OrderManagerTable",

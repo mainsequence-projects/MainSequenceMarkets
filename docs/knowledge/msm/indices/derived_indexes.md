@@ -272,8 +272,6 @@ Index; neither is required to define it.
 Executable examples live under `examples/msm/indices/`:
 
 - `plain_index_values.py` for `USD_SWAP_10Y` at one-minute and daily frequency;
-- `index_api_exploration_preview.py` for typed catalog exploration and a
-  non-mutating deletion preview;
 - `index_values_frequency_migration.py` for including both configured storage
   models in an SDK migration provider;
 - `extension_owned_index_storage.py` for a separately owned bid/ask/mid table

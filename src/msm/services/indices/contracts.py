@@ -4,7 +4,7 @@ import datetime as dt
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from msm.api.indices import Index
 
@@ -60,15 +60,19 @@ class IndexMethodologyLeg(IndexServiceModel):
     definition_uid: uuid.UUID
     leg_key: str
     leg_order: int
+    leg_role: str | None = None
     component_kind: str
     asset_uid: uuid.UUID | None = None
     component_index_uid: uuid.UUID | None = None
     selector_code: str | None = None
-    observable: str
+    selector_parameters_json: dict[str, Any] | None = None
+    observable_code: str
     input_unit: str
-    transform_kind: str
+    transform_code: str
+    transform_parameters_json: dict[str, Any] | None = None
     coefficient_method: str
     coefficient: float | None = None
+    coefficient_parameters_json: dict[str, Any] | None = None
     metadata_json: dict[str, Any] | None = None
 
 
@@ -119,7 +123,31 @@ class IndexDatasetDescriptor(IndexServiceModel):
     discovery_source: Literal["core_model", "declared_provider", "inferred"]
     access: IndexDatasetAccess
     producer_identifiers: tuple[str, ...] = ()
-    scoped_delete_supported: bool = False
+
+
+IndexDatasetPopulationState = Literal[
+    "populated",
+    "compatible_empty",
+    "unavailable",
+]
+
+
+class IndexDatasetState(IndexServiceModel):
+    dataset: IndexDatasetDescriptor
+    index_uid: uuid.UUID
+    index_identifier: str
+    population_state: IndexDatasetPopulationState
+    row_count: int | None = Field(default=None, ge=0)
+    earliest_time_index: dt.datetime | None = None
+    latest_time_index: dt.datetime | None = None
+    reconciled_at: dt.datetime
+    error: str | None = None
+
+
+class IndexDatasetReconciliationResult(IndexServiceModel):
+    index_uids: tuple[uuid.UUID, ...]
+    dataset_count: int = Field(ge=0)
+    states: tuple[IndexDatasetState, ...]
 
 
 class IndexDatasetSummary(IndexServiceModel):
@@ -173,16 +201,59 @@ class IndexRelatedMetaTable(IndexServiceModel):
     authoritative: bool
     discovery_source: Literal["core_model", "declared_provider", "inferred"]
     exploration_capability: Literal["none", "count", "summary", "values"]
-    delete_capability: Literal["none", "scoped", "cascade", "set_null", "manual"]
+    delete_capability: Literal["none", "cascade", "set_null"]
     count: int | None = Field(default=None, ge=0)
     blocks_delete: bool = False
     confidence_reason: str | None = None
 
 
+class IndexDeleteImpactRelationship(IndexServiceModel):
+    key: str
+    label: str
+    model: str
+    column: str
+    relationship_type: Literal["direct", "indirect", "derived"]
+    on_delete: Literal[
+        "RESTRICT",
+        "NO ACTION",
+        "CASCADE",
+        "SET NULL",
+        "APPLICATION",
+        "UNKNOWN",
+    ]
+    count: int | None = Field(default=None, ge=0)
+    count_accuracy: Literal["exact", "unavailable"]
+    effect: Literal[
+        "blocks_delete",
+        "blocks_cascade",
+        "cascade_delete",
+        "set_null",
+        "delete_cleanup",
+        "manual_cleanup_required",
+        "informational",
+    ]
+    severity: Literal["blocking", "destructive", "mutating", "warning", "info"]
+    blocks_delete: bool
+    description: str
+
+
+class IndexDeleteImpact(IndexServiceModel):
+    resource_type: Literal["index"] = "index"
+    uid: uuid.UUID
+    identifier: str
+    display_name: str
+    can_delete: bool
+    blocking_count: int = Field(ge=0)
+    affected_count: int = Field(ge=0)
+    delete_endpoint: str
+    relationships: tuple[IndexDeleteImpactRelationship, ...]
+    warnings: tuple[str, ...] = ()
+
+
 class IndexDetail(IndexServiceModel):
     index: Index
     methodologies: tuple[IndexMethodologySummary, ...]
-    datasets: tuple[IndexDatasetDescriptor, ...]
+    datasets: tuple[IndexDatasetState, ...]
     related_meta_tables: tuple[IndexRelatedMetaTable, ...]
     warnings: tuple[str, ...] = ()
 
@@ -194,136 +265,10 @@ class IndexSummary(IndexServiceModel):
     active_definition: IndexMethodologySummary | None = None
     dataset_count: int = Field(ge=0)
     cadences: tuple[str, ...]
-    dataset_summaries: tuple[IndexDatasetSummary, ...]
+    dataset_states: tuple[IndexDatasetState, ...]
     authoritative_relationship_count: int = Field(ge=0)
     inferred_relationship_count: int = Field(ge=0)
     warnings: tuple[str, ...] = ()
-
-
-IndexDeleteMode = Literal["values_only", "identity_only", "identity_and_values"]
-
-
-class IndexBulkDeletePreviewRequest(IndexServiceModel):
-    index_uids: tuple[uuid.UUID, ...] = Field(min_length=1, max_length=100)
-    mode: IndexDeleteMode
-    canonical_dataset_uids: tuple[str, ...] | None = None
-    declared_extension_dataset_uids: tuple[str, ...] = ()
-    failure_policy: Literal["stop_on_error"] = "stop_on_error"
-
-    @field_validator("index_uids")
-    @classmethod
-    def _unique_uids(cls, value: tuple[uuid.UUID, ...]) -> tuple[uuid.UUID, ...]:
-        return tuple(dict.fromkeys(value))
-
-    @field_validator("canonical_dataset_uids", "declared_extension_dataset_uids")
-    @classmethod
-    def _unique_dataset_uids(cls, value: tuple[str, ...] | None):
-        if value is None:
-            return None
-        normalized = tuple(str(item).strip() for item in value)
-        if any(not item for item in normalized) or len(set(normalized)) != len(normalized):
-            raise ValueError("dataset UIDs must be non-empty and unique")
-        return normalized
-
-    @model_validator(mode="after")
-    def _validate_mode_options(self):
-        if self.mode == "identity_only" and (
-            self.canonical_dataset_uids is not None or self.declared_extension_dataset_uids
-        ):
-            raise ValueError("identity_only cannot select value datasets")
-        return self
-
-
-class IndexDeleteWarning(IndexServiceModel):
-    code: str
-    severity: Literal["info", "warning", "blocking", "destructive"]
-    title: str
-    message: str
-    affected_index_uids: tuple[uuid.UUID, ...] = ()
-    affected_meta_table_uids: tuple[str, ...] = ()
-    requires_acknowledgement: bool
-
-
-class IndexDeleteItemImpact(IndexServiceModel):
-    uid: uuid.UUID
-    exists: bool
-    unique_identifier: str | None = None
-    display_name: str | None = None
-    index_type: str | None = None
-    definition_count: int | None = None
-    leg_count: int | None = None
-    component_dependency_count: int | None = None
-    can_delete_identity: bool
-
-
-class IndexDatasetDeleteImpact(IndexServiceModel):
-    meta_table_uid: str
-    identifier: str
-    cadence: str | None = None
-    storage_kind: str
-    provider_key: str | None = None
-    selected: bool
-    affected_index_uids: tuple[uuid.UUID, ...]
-    affected_row_count: int | None = Field(default=None, ge=0)
-    count_accuracy: Literal["exact", "estimated", "unavailable"]
-    earliest_time_index: dt.datetime | None = None
-    latest_time_index: dt.datetime | None = None
-    access: IndexDatasetAccess
-    scoped_delete_supported: bool
-
-
-class IndexBulkDeletePreview(IndexServiceModel):
-    plan_id: uuid.UUID
-    requested_mode: IndexDeleteMode
-    normalized_request: IndexBulkDeletePreviewRequest
-    created_at: dt.datetime
-    expires_at: dt.datetime
-    created_by_user_uid: str
-    scope_hash: str
-    confirmation_token: str
-    executable: bool
-    indexes: tuple[IndexDeleteItemImpact, ...]
-    datasets: tuple[IndexDatasetDeleteImpact, ...]
-    relationships: tuple[IndexRelatedMetaTable, ...]
-    warnings: tuple[IndexDeleteWarning, ...]
-    required_acknowledgement_codes: tuple[str, ...]
-    confirmation_phrase: str
-
-
-class IndexBulkDeleteExecuteRequest(IndexServiceModel):
-    confirmation_token: str = Field(min_length=1)
-    confirmation_phrase: str = Field(min_length=1)
-    acknowledged_warning_codes: tuple[str, ...]
-    idempotency_key: str = Field(min_length=1, max_length=255)
-
-
-class IndexDeleteItemResult(IndexServiceModel):
-    index_uid: uuid.UUID
-    unique_identifier: str | None = None
-    status: Literal["deleted", "kept", "already_absent", "failed", "not_started"]
-    error: str | None = None
-
-
-class IndexDatasetDeleteResult(IndexServiceModel):
-    meta_table_uid: str
-    identifier: str
-    status: Literal["deleted", "already_empty", "failed", "not_started"]
-    deleted_count: int | None = Field(default=None, ge=0)
-    error: str | None = None
-
-
-class IndexBulkDeleteResult(IndexServiceModel):
-    status: Literal["completed", "partial", "failed"]
-    plan_id: uuid.UUID
-    idempotency_key: str
-    requested_mode: IndexDeleteMode
-    requested_index_count: int = Field(ge=0)
-    deleted_index_count: int = Field(ge=0)
-    deleted_value_count: int = Field(ge=0)
-    deleted_resolved_leg_count: int = Field(ge=0)
-    index_results: tuple[IndexDeleteItemResult, ...]
-    dataset_results: tuple[IndexDatasetDeleteResult, ...]
-    warnings: tuple[IndexDeleteWarning, ...]
 
 
 __all__ = [name for name in globals() if name.startswith("Index")]

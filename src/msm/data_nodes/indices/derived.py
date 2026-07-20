@@ -7,11 +7,18 @@ from collections.abc import Sequence
 from typing import Any, ClassVar
 
 import pandas as pd
-from pydantic import Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from mainsequence.meta_tables import APIDataNode, PlatformTimeIndexMetaTable
 
 from msm.analytics.indices import (
+    ALIGNMENT_REGISTRY,
+    CALCULATION_REGISTRY,
+    COEFFICIENT_REGISTRY,
+    MISSING_DATA_REGISTRY,
+    REBALANCE_REGISTRY,
+    SELECTOR_REGISTRY,
+    TRANSFORM_REGISTRY,
     IndexCalculationDefinition,
     IndexCalculationError,
     IndexCalculationLeg,
@@ -29,8 +36,36 @@ from msm.data_nodes.indices.timestamped import (
     IndexDataNodeConfiguration,
     IndexTimestampedDataNode,
 )
+from msm.data_nodes.indices.values import index_identifiers_in_frame
 from msm.data_nodes.utils.stamped import normalize_stamped_frame
 from msm.repositories.indices import definition_history, definition_legs
+
+
+class DerivedIndexSourceBinding(BaseModel):
+    """One bounded, dimension-aware source dependency for derived publication."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
+
+    storage_table: type[PlatformTimeIndexMetaTable]
+    component_dimension: str = Field(min_length=1)
+    static_dimension_filters: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+
+    @field_validator("component_dimension")
+    @classmethod
+    def _validate_component_dimension(cls, value: str) -> str:
+        normalized = str(value).strip()
+        if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", normalized):
+            raise ValueError("component_dimension must be a valid column name")
+        return normalized
+
+    @field_validator("static_dimension_filters")
+    @classmethod
+    def _validate_static_filters(
+        cls, value: dict[str, tuple[str, ...]]
+    ) -> dict[str, tuple[str, ...]]:
+        if any(not str(key).strip() or not values for key, values in value.items()):
+            raise ValueError("static dimension filters require non-empty names and values")
+        return value
 
 
 class DerivedIndexDataNodeConfiguration(IndexDataNodeConfiguration):
@@ -42,7 +77,7 @@ class DerivedIndexDataNodeConfiguration(IndexDataNodeConfiguration):
         description="Canonical derived Index identifiers published by this updater.",
         examples=[("MX_MBONOS_2S5S_YIELD_SPREAD",)],
     )
-    source_bindings: dict[str, type[PlatformTimeIndexMetaTable]] = Field(
+    source_bindings: dict[str, DerivedIndexSourceBinding] = Field(
         ...,
         min_length=1,
         description=(
@@ -92,8 +127,8 @@ class _DerivedIndexSourceMixin:
         config: DerivedIndexDataNodeConfiguration,
     ) -> dict[str, APIDataNode]:
         dependencies: dict[str, APIDataNode] = {}
-        for binding_key, storage_class in sorted(config.source_bindings.items()):
-            meta_table = storage_class.get_time_index_meta_table()
+        for binding_key, binding in sorted(config.source_bindings.items()):
+            meta_table = binding.storage_table.get_time_index_meta_table()
             dependencies[f"source_{_dependency_key(binding_key)}"] = (
                 APIDataNode.build_from_meta_table(meta_table)
             )
@@ -111,6 +146,17 @@ class _DerivedIndexSourceMixin:
                 f"no source binding for leg {leg.leg_key!r} or observable {leg.observable_code!r}"
             ) from exc
 
+    def _source_binding_for_leg(self, leg: IndexCalculationLeg) -> DerivedIndexSourceBinding:
+        binding_key = (
+            leg.leg_key if leg.leg_key in self.config.source_bindings else leg.observable_code
+        )
+        try:
+            return self.config.source_bindings[binding_key]
+        except KeyError as exc:
+            raise IndexCalculationError(
+                f"no source binding for leg {leg.leg_key!r} or observable {leg.observable_code!r}"
+            ) from exc
+
     def _source_frame(
         self,
         leg: IndexCalculationLeg,
@@ -118,9 +164,27 @@ class _DerivedIndexSourceMixin:
         start: datetime.datetime | None,
         end: datetime.datetime | None,
     ) -> pd.DataFrame:
+        binding = self._source_binding_for_leg(leg)
+        dimension_filters = {
+            key: list(values) for key, values in binding.static_dimension_filters.items()
+        }
+        if leg.selector_code is None:
+            dimension_filters[binding.component_dimension] = [_fixed_component_identifier(leg)]
+        elif binding.component_dimension not in dimension_filters:
+            selector_universe = (leg.selector_parameters_json or {}).get(
+                "component_identifiers"
+            )
+            if not selector_universe:
+                raise IndexCalculationError(
+                    f"selector leg {leg.leg_key!r} requires a bounded component universe"
+                )
+            dimension_filters[binding.component_dimension] = [
+                str(item) for item in selector_universe
+            ]
         return self._source_dependency_for_leg(leg).get_df_between_dates(
             start_date=start,
             end_date=end,
+            dimension_filters=dimension_filters,
         )
 
     def _methodologies(self, index_identifier: str) -> list[DerivedIndex]:
@@ -152,6 +216,41 @@ class _DerivedIndexSourceMixin:
                     timestamp = timestamp.tz_convert("UTC")
                 return (timestamp + pd.Timedelta(microseconds=1)).to_pydatetime()
         return self.config.offset_start
+
+    def _calculation_start(
+        self,
+        methodology: DerivedIndex,
+        publication_start: datetime.datetime | None,
+    ) -> datetime.datetime | None:
+        if publication_start is None:
+            return self.config.offset_start
+        definition = methodology.definition
+        history_modes = {
+            CALCULATION_REGISTRY.history_mode(definition.calculation_kind),
+            ALIGNMENT_REGISTRY.history_mode(definition.alignment_policy),
+            MISSING_DATA_REGISTRY.history_mode(definition.missing_data_policy),
+            *(
+                TRANSFORM_REGISTRY.history_mode(leg.transform_code)
+                for leg in methodology.legs
+            ),
+            *(
+                COEFFICIENT_REGISTRY.history_mode(leg.coefficient_method)
+                for leg in methodology.legs
+            ),
+        }
+        history_modes.update(
+            SELECTOR_REGISTRY.history_mode(leg.selector_code)
+            for leg in methodology.legs
+            if leg.selector_code is not None
+        )
+        if definition.rebalance_policy is not None:
+            history_modes.add(REBALANCE_REGISTRY.history_mode(definition.rebalance_policy))
+        if history_modes == {"none"}:
+            return publication_start
+        lower = definition.effective_from
+        if self.config.offset_start is not None:
+            lower = max(lower, self.config.offset_start)
+        return lower
 
     def _load_version_inputs(
         self,
@@ -275,20 +374,26 @@ class DerivedIndexResolvedLegsDataNode(_DerivedIndexSourceMixin, IndexTimestampe
     def update(self) -> pd.DataFrame:
         outputs: list[pd.DataFrame] = []
         for index_identifier in self.config.index_identifiers:
-            start = self._incremental_start(index_identifier)
+            publication_start = self._incremental_start(index_identifier)
             for methodology in self._methodologies(index_identifier):
+                if _definition_completed_before(
+                    methodology.definition, publication_start=publication_start
+                ):
+                    continue
+                calculation_start = self._calculation_start(methodology, publication_start)
                 inputs = self._load_version_inputs(
                     methodology,
-                    start=start,
+                    start=calculation_start,
                     end=methodology.definition.effective_to,
                 )
                 observations, candidates, identifiers, coefficient_inputs = inputs
                 times = _calculation_times_from_series(observations.values())
-                times = _times_for_definition(times, methodology.definition, start=start)
+                times = _times_for_definition(
+                    times, methodology.definition, start=calculation_start
+                )
                 if times.empty:
                     continue
-                outputs.append(
-                    resolve_index_legs(
+                resolved = resolve_index_legs(
                         methodology.definition,
                         methodology.legs,
                         observations,
@@ -298,7 +403,7 @@ class DerivedIndexResolvedLegsDataNode(_DerivedIndexSourceMixin, IndexTimestampe
                         component_identifiers=identifiers,
                         coefficient_inputs=coefficient_inputs,
                     )
-                )
+                outputs.append(_trim_publication_frame(resolved, publication_start))
         frame = pd.concat(outputs).sort_index() if outputs else _empty_resolved_frame()
         return normalize_stamped_frame(
             frame,
@@ -347,23 +452,30 @@ class DerivedIndexDataNode(_DerivedIndexSourceMixin, IndexTimestampedDataNode):
     def update(self) -> pd.DataFrame:
         outputs: list[pd.DataFrame] = []
         for index_identifier in self.config.index_identifiers:
-            start = self._incremental_start(index_identifier)
+            publication_start = self._incremental_start(index_identifier)
             for methodology in self._methodologies(index_identifier):
+                if _definition_completed_before(
+                    methodology.definition, publication_start=publication_start
+                ):
+                    continue
+                calculation_start = self._calculation_start(methodology, publication_start)
                 observations, _candidates, _identifiers, coefficient_inputs = (
                     self._load_version_inputs(
                         methodology,
-                        start=start,
+                        start=calculation_start,
                         end=methodology.definition.effective_to,
                     )
                 )
                 times = _calculation_times_from_series(observations.values())
-                times = _times_for_definition(times, methodology.definition, start=start)
+                times = _times_for_definition(
+                    times, methodology.definition, start=calculation_start
+                )
                 if times.empty:
                     continue
                 resolved_coefficients, resolved_coefficient_source_times = (
                     self._load_resolved_coefficients(
                         methodology,
-                        start=start,
+                        start=calculation_start,
                         end=methodology.definition.effective_to,
                     )
                 )
@@ -377,14 +489,23 @@ class DerivedIndexDataNode(_DerivedIndexSourceMixin, IndexTimestampedDataNode):
                     resolved_coefficient_source_times=resolved_coefficient_source_times,
                     coefficient_inputs=coefficient_inputs,
                 )
-                outputs.append(result.values)
+                outputs.append(_trim_publication_frame(result.values, publication_start))
         frame = pd.concat(outputs).sort_index() if outputs else _empty_values_frame()
         normalized = normalize_stamped_frame(
             frame,
             storage_table=self.storage_table,
             frame_label=self.frame_label,
         )
-        return _validate_derived_values_frame(normalized)
+        validated = _validate_derived_values_frame(normalized)
+        self._published_index_identifiers = index_identifiers_in_frame(validated)
+        return validated
+
+    def run_post_update_routines(self, error_on_last_update: bool) -> None:
+        if error_on_last_update:
+            return
+        identifiers = getattr(self, "_published_index_identifiers", ())
+        if identifiers:
+            Index.reconcile_dataset_availability(index_identifiers=identifiers)
 
     def _load_resolved_coefficients(
         self,
@@ -562,6 +683,32 @@ def _times_for_definition(
     if definition.effective_to is not None:
         selected = selected[selected < pd.Timestamp(definition.effective_to)]
     return selected
+
+
+def _definition_completed_before(
+    definition: IndexCalculationDefinition,
+    *,
+    publication_start: datetime.datetime | None,
+) -> bool:
+    return (
+        publication_start is not None
+        and definition.effective_to is not None
+        and definition.effective_to <= publication_start
+    )
+
+
+def _trim_publication_frame(
+    frame: pd.DataFrame,
+    publication_start: datetime.datetime | None,
+) -> pd.DataFrame:
+    if frame.empty or publication_start is None:
+        return frame
+    if "time_index" in frame.index.names:
+        times = pd.DatetimeIndex(frame.index.get_level_values("time_index"))
+        return frame.loc[times >= pd.Timestamp(publication_start)]
+    if "time_index" in frame:
+        return frame.loc[pd.to_datetime(frame["time_index"], utc=True) >= publication_start]
+    raise IndexCalculationError("calculation output is missing time_index")
 
 
 def _empty_values_frame() -> pd.DataFrame:

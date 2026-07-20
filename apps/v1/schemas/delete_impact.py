@@ -35,7 +35,8 @@ class DeleteImpactRelationship(BaseModel):
     column: str
     relationship_type: RelationshipType
     on_delete: OnDeleteAction
-    count: int = Field(ge=0)
+    count: int | None = Field(default=None, ge=0)
+    count_accuracy: Literal["exact", "unavailable"] = "exact"
     effect: DeleteImpactEffect
     severity: DeleteImpactSeverity
     blocks_delete: bool

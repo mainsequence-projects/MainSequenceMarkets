@@ -378,8 +378,7 @@ Index.list_datasets(uid)
 Index.get_dataset_summary(uid, meta_table_uid)
 Index.get_values(uid, meta_table_uid, start=..., end=...)
 Index.list_related_meta_tables(uid)
-Index.preview_bulk_delete(...)
-Index.bulk_delete(...)
+Index.delete(uid)
 ```
 
 `DerivedIndex` remains the methodology-authoring API. Do not duplicate its
@@ -409,33 +408,10 @@ table/chart consumers. If the installed `APIDataNode` read method cannot
 enforce a server page limit, use a governed bounded compiled SELECT; never load
 full history and truncate in memory.
 
-Interactive deletion is preview-first. Public `Index.delete(...)`, FastAPI
-bulk deletion, and compatibility DELETE routes require a signed, short-lived,
-actor- and scope-bound confirmation from `Index.preview_bulk_delete(...)`.
-Preview must report Indexes, every cadence table, declared extension tables,
-inferred informational candidates, affected counts/time bounds, access,
-relationships, warnings, exact phrase, and executable status before mutation.
-
-For value deletion, use only:
-
-```python
-time_index_meta_table.delete_after_date(
-    None,
-    dimension_filters={"index_identifier": selected_identifiers},
-)
-```
-
-Never call `delete_after_date(None)` without Index scope. Never raw-delete,
-compiled-SQL-delete, or truncate DataNode storage. Deletion does not reset
-DataNode hashes, checkpoints, update statistics, schedules, jobs, or producer
-configuration, and producers may republish rows. Cross-MetaTable deletion is a
-journaled saga with partial-result and idempotent-retry semantics, not one
-transaction.
-
-Resolve actors by surface: FastAPI binds request headers and uses
-`User.get_logged_user()`; standalone typed Python calls use
-`User.get_authenticated_user_details()`. Reusable Index services receive an
-explicit actor and never assume request context.
+Index deletion uses the standard direct row API. Database `CASCADE`,
+`SET NULL`, `RESTRICT`, and `NO ACTION` constraints govern related rows.
+Identity deletion does not imply deletion of canonical timestamped values or
+extension-owned storage.
 
 This lifecycle surface does not change the Index-versus-Portfolio decision.
 Browsing or deleting an Index's benchmark history is Index work. Managing the
@@ -477,7 +453,6 @@ Also verify current Main Sequence behavior against:
 Inspect these examples for executable patterns:
 
 - `examples/msm/indices/plain_index_values.py`
-- `examples/msm/indices/index_api_exploration_preview.py`
 - `examples/msm/indices/index_values_frequency_migration.py`
 - `examples/msm/indices/extension_owned_index_storage.py`
 - the fixed, ratio, dynamic OLS, selector, and self-financing examples under
@@ -550,6 +525,5 @@ Before marking work complete, prove all applicable items:
     names as relationship authority.
 17. Value browsing applies one explicit Index dimension, bounded timestamps,
     deterministic ordering, and a server-enforced row limit.
-18. Destructive workflows require actor-bound preview confirmation, explicit
-    warnings, scoped DataNode deletion, durable idempotency, and partial-result
-    reporting.
+18. Index identity deletion uses the standard direct row API and leaves
+    related-row behavior to declared database foreign-key actions.

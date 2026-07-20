@@ -79,13 +79,11 @@ spx = register_index_from_figi("BBG000KKFC45", index_type=INDEX_TYPE_EQUITY)
 - `Index.list_datasets(...)`, `Index.get_dataset_summary(...)`, and bounded
   `Index.get_values(...)`
 - `Index.list_related_meta_tables(...)`
-- `Index.preview_bulk_delete(...)` and `Index.bulk_delete(...)`
+- `Index.delete(...)`
 
-`Index.delete(...)` is guarded compatibility behavior, not a direct row-delete
-shortcut. It requires the token, exact phrase, warning acknowledgements, and
-idempotency key returned by a single-Index preview. See the
-[Index FastAPI and lifecycle contract](../../../fast_api/v1/indexes.md) for the
-matching HTTP surface and pre-delete consequences.
+`Index.delete(...)` uses the standard direct row API. Database foreign-key
+actions govern related rows. See the [Index FastAPI contract](../../../fast_api/v1/indexes.md)
+for the matching HTTP surface.
 
 ## Schema
 

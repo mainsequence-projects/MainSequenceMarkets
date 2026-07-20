@@ -305,48 +305,84 @@ def _bounded(values: pd.Series, lower: float | None, upper: float | None) -> pd.
 def _register_builtins() -> None:
     if not TRANSFORM_REGISTRY.codes():
         TRANSFORM_REGISTRY.register("identity", _identity)
-        TRANSFORM_REGISTRY.register("rebase", _rebase, parameters_model=RebaseParameters)
+        TRANSFORM_REGISTRY.register(
+            "rebase",
+            _rebase,
+            parameters_model=RebaseParameters,
+            history_mode="effective_start",
+        )
         TRANSFORM_REGISTRY.register("log", _log)
-        TRANSFORM_REGISTRY.register("simple_return", _simple_return)
-        TRANSFORM_REGISTRY.register("log_return", _log_return)
+        TRANSFORM_REGISTRY.register(
+            "simple_return", _simple_return, history_mode="prior_observation"
+        )
+        TRANSFORM_REGISTRY.register(
+            "log_return", _log_return, history_mode="prior_observation"
+        )
 
     if not CALCULATION_REGISTRY.codes():
         CALCULATION_REGISTRY.register("linear_combination", _linear_combination)
         CALCULATION_REGISTRY.register("ratio", _ratio)
         CALCULATION_REGISTRY.register(
-            "rebased_basket", _rebased_basket, parameters_model=RebaseParameters
+            "rebased_basket",
+            _rebased_basket,
+            parameters_model=RebaseParameters,
+            history_mode="effective_start",
         )
         CALCULATION_REGISTRY.register(
-            "chained_return", _chained_return, parameters_model=ChainedReturnParameters
+            "chained_return",
+            _chained_return,
+            parameters_model=ChainedReturnParameters,
+            history_mode="stateful",
         )
         CALCULATION_REGISTRY.register(
-            "self_financing", _self_financing, parameters_model=SelfFinancingParameters
+            "self_financing",
+            _self_financing,
+            parameters_model=SelfFinancingParameters,
+            history_mode="stateful",
         )
 
     if not COEFFICIENT_REGISTRY.codes():
         COEFFICIENT_REGISTRY.register("fixed", _fixed_coefficient)
         COEFFICIENT_REGISTRY.register("equal_weight", _equal_weight_coefficient)
         COEFFICIENT_REGISTRY.register(
-            "price_ols", _price_ols_coefficient, parameters_model=RollingCoefficientParameters
+            "price_ols",
+            _price_ols_coefficient,
+            parameters_model=RollingCoefficientParameters,
+            history_mode="effective_start",
         )
         COEFFICIENT_REGISTRY.register(
-            "return_ols", _return_ols_coefficient, parameters_model=RollingCoefficientParameters
+            "return_ols",
+            _return_ols_coefficient,
+            parameters_model=RollingCoefficientParameters,
+            history_mode="effective_start",
         )
         COEFFICIENT_REGISTRY.register(
-            "beta_neutral", _return_ols_coefficient, parameters_model=RollingCoefficientParameters
+            "beta_neutral",
+            _return_ols_coefficient,
+            parameters_model=RollingCoefficientParameters,
+            history_mode="effective_start",
         )
         COEFFICIENT_REGISTRY.register(
             "dv01_neutral",
             _dv01_neutral_coefficient,
             parameters_model=LaggedCoefficientParameters,
+            history_mode="effective_start",
         )
         COEFFICIENT_REGISTRY.register(
-            "delta", _lagged_parameter_coefficient, parameters_model=LaggedCoefficientParameters
+            "delta",
+            _lagged_parameter_coefficient,
+            parameters_model=LaggedCoefficientParameters,
+            history_mode="effective_start",
         )
 
     if not ALIGNMENT_REGISTRY.codes():
         ALIGNMENT_REGISTRY.register("inner", "inner")
-        ALIGNMENT_REGISTRY.register("asof", "asof", parameters_model=AsOfParameters)
+        ALIGNMENT_REGISTRY.register(
+            "asof",
+            "asof",
+            parameters_model=AsOfParameters,
+            history_mode="effective_start",
+        )
         ALIGNMENT_REGISTRY.register(
             "calendar_aligned", "calendar_aligned", parameters_model=ScheduleParameters
         )
@@ -354,7 +390,10 @@ def _register_builtins() -> None:
         MISSING_DATA_REGISTRY.register("drop", "drop")
         MISSING_DATA_REGISTRY.register("fail", "fail")
         MISSING_DATA_REGISTRY.register(
-            "forward_fill", "forward_fill", parameters_model=ForwardFillParameters
+            "forward_fill",
+            "forward_fill",
+            parameters_model=ForwardFillParameters,
+            history_mode="effective_start",
         )
     if not REBALANCE_REGISTRY.codes():
         REBALANCE_REGISTRY.register("daily", "daily", parameters_model=ScheduleParameters)

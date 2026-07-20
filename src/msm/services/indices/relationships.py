@@ -9,7 +9,6 @@ from msm.models import IndexTable
 
 
 IndexJoinKind = Literal["uid", "unique_identifier"]
-IndexDeleteCapability = Literal["none", "scoped", "cascade", "set_null", "manual"]
 
 
 @dataclass(frozen=True)
@@ -26,10 +25,7 @@ class IndexRelationshipProvider:
     relationship_type: str = "direct"
     on_delete: str = "RESTRICT"
     exploration_capability: Literal["none", "count", "summary", "values"] = "count"
-    delete_capability: IndexDeleteCapability = "none"
-    blocks_delete: bool = False
     meta_table_resolver: Callable[[], Any | None] | None = None
-    delete_implementation: Callable[..., dict[str, Any]] | None = None
 
     def __post_init__(self) -> None:
         for field_name in ("key", "label", "owning_package", "storage_kind", "join_column"):
@@ -47,8 +43,6 @@ class IndexRelationshipProvider:
                 f"Index relationship provider on_delete={self.on_delete!r} does not match "
                 f"the actual foreign key action {foreign_key.ondelete or 'RESTRICT'!r}"
             )
-        if self.delete_capability == "scoped" and self.delete_implementation is None:
-            raise ValueError("scoped Index relationship providers require delete_implementation")
 
     def resolve_meta_table(self) -> Any | None:
         if self.meta_table_resolver is not None:

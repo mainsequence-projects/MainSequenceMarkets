@@ -55,6 +55,7 @@ class IndexValuesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __index_names__: ClassVar[list[str]] = ["time_index", INDEX_IDENTIFIER_DIMENSION]
     __metatable_extra_hash_components__ = {"storage_name": "index_values"}
     __table_args__ = (
+        SqlIndex(None, INDEX_IDENTIFIER_DIMENSION, "time_index"),
         SqlIndex(None, "definition_uid"),
         SqlIndex(None, "observation_status"),
     )
@@ -262,6 +263,15 @@ def _copy_index_values_table(table_name: str) -> Table:
         schema_index_name(table_name, IndexValuesStorage.__index_names__, unique=True),
         *(table.c[column_name] for column_name in IndexValuesStorage.__index_names__),
         unique=True,
+    )
+    SqlIndex(
+        schema_index_name(
+            table_name,
+            [INDEX_IDENTIFIER_DIMENSION, "time_index"],
+            unique=False,
+        ),
+        table.c.index_identifier,
+        table.c.time_index,
     )
     SqlIndex(
         schema_index_name(table_name, ["definition_uid"], unique=False),

@@ -161,12 +161,10 @@ def test_command_center_contract_exposes_complete_index_operations() -> None:
         "getIndexDatasetValuesFrame": "GET",
         "listIndexRelatedMetaTables": "GET",
         "getIndexDeleteImpact": "GET",
-        "previewBulkDeleteIndexes": "POST",
     }
     mutation_operations = {
         "createIndex": "POST",
         "updateIndex": "PATCH",
-        "bulkDeleteIndexes": "POST",
         "deleteIndex": "DELETE",
     }
 
@@ -180,10 +178,6 @@ def test_command_center_contract_exposes_complete_index_operations() -> None:
     values = operations["getIndexDatasetValuesFrame"]
     assert values["responseContract"] == DIRECT_FRAME_CONTRACT
     assert values["responseModel"] == "TabularFrameResponse"
-    assert operations["previewBulkDeleteIndexes"]["cache"] == {
-        "enabled": False,
-        "ttlSeconds": None,
-    }
 
 
 def test_command_center_contract_documents_response_contract_boundaries() -> None:

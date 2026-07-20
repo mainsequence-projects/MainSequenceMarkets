@@ -113,7 +113,7 @@ nav:
       - Pricing Curve Identity And Market-Data Curve Bindings: ADR/0035-pricing-curve-identity-and-market-data-curve-bindings.md
       - Prepared Pricing Valuation Context: ADR/0036-prepared-pricing-valuation-context.md
       - Core Index Value, Definition, And Calculation Framework: ADR/0037-core-derived-index-definition-and-calculation-framework.md
-      - Index User API, FastAPI Exploration, And Safe Bulk Deletion: ADR/0038-index-user-api-fastapi-exploration-and-safe-deletion.md
+      - Index User API And FastAPI Exploration: ADR/0038-index-user-api-and-fastapi-exploration.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - FastAPI v1:
           - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md
@@ -127,6 +127,7 @@ nav:
           - Cross-Currency Helper Curve Reconstruction: planning/implementation_tasks/cross_currency_helper_curve_reconstruction_upstream_plan.md
           - Generic Curve Reconstruction: planning/implementation_tasks/generic_curve_reconstruction_upstream_plan.md
           - Generic Valuation Scenario Workflow: planning/implementation_tasks/generic_valuation_scenario_workflow_plan.md
+          - Index Catalog, Lifecycle, And Publication Hardening: planning/implementation_tasks/index_catalog_lifecycle_and_publication_hardening_plan.md
           - Reusable Valuation Portfolio Scenario And Analytics: planning/implementation_tasks/reusable_valuation_portfolio_scenario_analytics_plan.md
   - Changelog: changelog.md
   - Reference:
