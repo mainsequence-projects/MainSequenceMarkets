@@ -2,108 +2,107 @@
 
 ## Status
 
-Accepted and implemented. Identity, methodology, relationship, bounded
-value-read, filtered listing, and direct identity-deletion surfaces are
-available through the typed API and FastAPI adapter.
+Accepted and implemented. This ADR describes the catalog and HTTP surfaces
+after the formula/custom replacement in ADR 0037.
 
 ## Context
 
-ADR 0037 defines an Index as one stable observable identity whose values may be
-published to separate cadence-specific `IndexValuesTS.<cadence>` tables. The
-library needs a typed user API and a thin FastAPI surface for managing that
-identity and inspecting its methodology and observations.
-
-The API must preserve these boundaries:
-
-- `IndexTable` owns identity and mutable display metadata;
-- `DerivedIndex` owns calculation-definition authoring and lifecycle;
-- registered cadence tables are global storage contracts;
-- rows in those tables establish whether a particular Index is populated;
-- database foreign keys govern ordinary identity deletion.
+Index identity, formula history, canonical datasets, bounded observations,
+related MetaTables, and deletion impact must be inspectable without mixing
+those concerns into formula authoring or DataNode execution.
 
 ## Decision
 
-### Typed User API
+### Typed API
 
-The public `Index` row exposes typed catalog operations:
+`Index` exposes:
 
 ```python
 Index.list_page(...)
 Index.get_detail(uid)
 Index.get_summary(uid)
-Index.list_methodologies(uid)
-Index.get_methodology(uid, definition_uid)
+Index.list_formulas(uid)
+Index.get_formula(uid, definition_uid)
 Index.list_datasets(uid)
 Index.get_dataset_summary(uid, meta_table_uid)
 Index.get_values(uid, meta_table_uid, start=..., end=...)
-Index.list_related_meta_tables(uid)
+Index.list_related_meta_tables(uid, numeric=True, timestamped=True)
+Index.reconcile_dataset_availability(...)
 Index.delete(uid)
 ```
 
-`DerivedIndex` remains the methodology-authoring API. FastAPI routes do not
-duplicate definition upsert, activation, retirement, or calculation behavior.
+`FormulaIndex` owns formula creation, lifecycle, preview, and publication
+configuration. Catalog routes do not duplicate formula mutation.
 
-### Methodology Fidelity
+### Formula Fidelity
 
-`IndexMethodologyDetail` returns the exact ordered leg configuration. A leg
-preserves canonical model names and all reproducibility fields, including:
+Formula detail returns the expression, validity, alignment and missing-data
+policies, semantic hash, and exact public inputs:
 
 ```text
-leg_role
-selector_parameters_json
-observable_code
-transform_code
-transform_parameters_json
-coefficient_parameters_json
+source_reference
+meta_table_uid
+observable
 ```
 
-The service must not collapse or discard selector, transform, rolling hedge,
-delta, beta, or DV01 parameters.
+It does not synthesize aliases or expose removed operator, selector,
+transform, coefficient, composition, or unit fields.
 
-### Dataset Contracts And Relevance
+### Dataset Relevance
 
-Global dataset discovery proves that a registered table is a canonical Index
-value contract. It verifies identifier, cadence, physical table, grain,
-required columns, and the actual foreign key to
-`IndexTable.unique_identifier`.
+Registered cadence tables are global contracts. Per-Index dataset listing
+uses `IndexDatasetAvailabilityTable` and returns:
 
-`Index.list_datasets(uid)` returns the compatible global contracts available
-for querying that Index. `Index.get_dataset_summary(...)` and
-`Index.get_values(...)` then scope reads to the selected Index identifier.
+- `populated`;
+- `compatible_empty`;
+- `unavailable`.
 
-### Interactive Availability Filters
+The default excludes compatible-empty rows and retains unavailable rows.
+`include_empty=true` includes compatible-empty contracts. An unavailable
+query is not reported as zero rows.
 
-`listIndexes` supports `has_canonical_values` and `cadence`. These filters
-resolve identifiers present in the registered canonical cadence contracts and
-apply that set to the authoritative Index query. `response_format=frontend_list`
-remains the supported compatibility format on the FastAPI list route.
+`has_canonical_values` and `cadence` use indexed availability metadata. They
+do not enumerate distinct Index identifiers from every canonical dataset.
+Producers reconcile only identifiers from successful persistence; bounded
+backfill is explicit.
+
+### Related MetaTables
+
+Index and Asset related-table routes accept independent filters:
+
+```text
+numeric=true
+timestamped=true
+```
+
+Both default to true. Passing false disables only that filter. Discovery uses
+registered schema and authoritative FK metadata, walks the complete visible
+catalog in pages, and never scans table values.
+
+### Bounded Values
+
+Value reads require timezone-aware `start` and `end`, an `asc` or `desc`
+order, and a server-side limit from 1 through 5,000. The selected Index's
+`unique_identifier` is always applied as a dimension filter. Responses use
+`core.tabular_frame@v1` and do not repeat display formatting on every row.
 
 ### Standard Deletion
 
-Index deletion follows the same direct row-deletion contract as other core
-reference resources:
-
-```python
-Index.delete(uid)
-```
+Index deletion uses the ordinary direct row API:
 
 ```text
 DELETE /api/v1/index/{uid}/
 ```
 
-The HTTP route returns `null` on success and `404` when the UID does not exist.
-Database foreign keys define the result for related rows:
+It returns `null` on success and `404` when missing. Database FK actions govern
+related rows. There is no deletion secret, signing token, execution journal,
+or custom executor.
 
-- `CASCADE` relationships are deleted by the database;
-- `SET NULL` relationships are cleared by the database;
-- `RESTRICT` or `NO ACTION` relationships block deletion.
+Delete impact is a read-only preflight for the same direct operation. Service
+permission, validation, and missing-resource errors retain their documented
+HTTP meaning rather than being collapsed into a generic availability error.
 
-Deleting canonical time-series values is a separate explicit storage operation
-and is not implied by deleting an Index identity.
-
-### FastAPI Routes
-
-The Index surface includes:
+## FastAPI Contract
 
 | Method | Path | Operation ID |
 | --- | --- | --- |
@@ -115,37 +114,23 @@ The Index surface includes:
 | `PATCH` | `/api/v1/index/{uid}/` | `updateIndex` |
 | `DELETE` | `/api/v1/index/{uid}/` | `deleteIndex` |
 | `GET` | `/api/v1/index/{uid}/summary/` | `getIndexSummary` |
-| `GET` | `/api/v1/index/{uid}/methodologies/` | `listIndexMethodologies` |
-| `GET` | `/api/v1/index/{uid}/methodologies/{definition_uid}/` | `getIndexMethodology` |
+| `GET` | `/api/v1/index/{uid}/formulas/` | `listIndexFormulas` |
+| `GET` | `/api/v1/index/{uid}/formulas/{definition_uid}/` | `getIndexFormula` |
 | `GET` | `/api/v1/index/{uid}/datasets/` | `listIndexDatasets` |
 | `GET` | `/api/v1/index/{uid}/datasets/{meta_table_uid}/` | `getIndexDatasetSummary` |
 | `GET` | `/api/v1/index/{uid}/datasets/{meta_table_uid}/values/` | `getIndexDatasetValuesFrame` |
 | `GET` | `/api/v1/index/{uid}/related-meta-tables/` | `listIndexRelatedMetaTables` |
 | `GET` | `/api/v1/index/{uid}/delete-impact/` | `getIndexDeleteImpact` |
+| `GET` | `/api/v1/asset/{uid}/related-meta-tables/` | `listAssetRelatedMetaTables` |
 
-Value reads always resolve the selected UID to `Index.unique_identifier`,
-apply that dimension filter, require bounded timezone-aware dates and a
-server-side limit, and return `core.tabular_frame@v1`.
+Every operation is included in the Adapter from API contract. Index create,
+update, and delete are mutations; exploration operations are queries.
 
 ## Consequences
 
-- Index identity deletion remains small and consistent with other resources.
-- Foreign-key definitions remain the source of truth for deletion effects.
-- Value cleanup is never hidden inside identity deletion.
-- Methodology inspection remains reproducible.
-- Dataset descriptors identify compatible canonical contracts; population is
-  evaluated by Index-scoped summary and values queries.
-
-## Validation
-
-The implementation is complete only when tests prove:
-
-- create, update, lookup, and direct delete behavior;
-- direct delete returns `null` or `404` through FastAPI;
-- restrictive foreign keys prevent invalid deletion;
-- methodology legs retain every semantic parameter field;
-- list filtering preserves `response_format=frontend_list`,
-  `has_canonical_values`, and `cadence`;
-- dataset summary and value reads remain scoped to the selected Index;
-- value reads remain dimension-scoped and bounded;
-- OpenAPI and Adapter operation lists match the implemented routes.
+- Clients can distinguish global dataset compatibility from per-Index
+  population.
+- Interactive catalog filters avoid full canonical-table scans.
+- Formula detail is sufficient to reproduce the source binding.
+- Asset and Index source-table selection use one schema contract.
+- Destructive behavior remains consistent with other core resources.

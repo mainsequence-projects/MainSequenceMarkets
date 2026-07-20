@@ -5,7 +5,7 @@ import re
 import uuid
 from collections.abc import Mapping
 from enum import Enum
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import (
     AliasChoices,
@@ -42,6 +42,9 @@ from msm.models import (
     OpenFigiAssetDetailsTable,
 )
 from msm.repositories.crud import get_model_by_uid, upsert_model
+
+if TYPE_CHECKING:
+    from msm.services.indices import RelatedMetaTable
 
 _operation_result_rows = operation_result_rows
 CURRENCY_ASSET_TYPE = ASSET_TYPE_CURRENCY
@@ -116,6 +119,26 @@ class Asset(MarketsMetaTableRow):
         **kwargs: Any,
     ) -> Asset:
         return super().update(uid, _validate_payload(AssetUpdate, payload, kwargs))
+
+    @classmethod
+    def list_related_meta_tables(
+        cls,
+        uid: uuid.UUID | str,
+        *,
+        numeric: bool = True,
+        timestamped: bool = True,
+    ) -> tuple[RelatedMetaTable, ...]:
+        """List MetaTables whose registered FK targets Asset.unique_identifier."""
+
+        if cls.get_by_uid(uid) is None:
+            raise LookupError(f"Asset {uid!s} was not found")
+        from msm.services.related_meta_tables import list_reference_meta_tables
+
+        return list_reference_meta_tables(
+            reference_type="asset",
+            numeric=numeric,
+            timestamped=timestamped,
+        )
 
 
 class AssetCreate(BaseModel):

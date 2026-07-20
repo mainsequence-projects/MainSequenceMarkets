@@ -194,11 +194,13 @@ def test_get_account_summary_returns_frontend_detail_summary(monkeypatch) -> Non
                 "key": "account_is_active",
                 "label": "Active",
                 "tone": "success",
+                "link_url": None,
             },
             {
                 "key": "is_paper",
                 "label": "Live",
                 "tone": "success",
+                "link_url": None,
             },
         ],
         "inline_fields": [
@@ -208,6 +210,7 @@ def test_get_account_summary_returns_frontend_detail_summary(monkeypatch) -> Non
                 "value": str(account_uid),
                 "kind": "code",
                 "icon": None,
+                "link_url": None,
             }
         ],
         "highlight_fields": [
@@ -217,6 +220,7 @@ def test_get_account_summary_returns_frontend_detail_summary(monkeypatch) -> Non
                 "value": "Some account",
                 "kind": "text",
                 "icon": "database",
+                "link_url": None,
             }
         ],
         "stats": [],

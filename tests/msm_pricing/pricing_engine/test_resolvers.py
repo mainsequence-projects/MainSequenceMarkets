@@ -545,6 +545,8 @@ def test_resolve_quantlib_index_uses_curve_binding_and_build_details(monkeypatch
                     unique_identifier="USD-SOFR",
                     index_type="interest_rate",
                     display_name="USD SOFR",
+                    calculation_method="custom",
+                    value_format="percent",
                 )
             )
         ),

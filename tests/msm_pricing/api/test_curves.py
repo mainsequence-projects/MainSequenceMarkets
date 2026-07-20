@@ -469,6 +469,8 @@ def test_curve_list_curve_selections_returns_reverse_binding_view(monkeypatch) -
                         "unique_identifier": "USD-SOFR",
                         "index_type": "interest_rate",
                         "display_name": "USD SOFR",
+                        "calculation_method": "custom",
+                        "value_format": "percent",
                     }
                 ]
             }

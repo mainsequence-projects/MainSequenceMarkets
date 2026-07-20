@@ -170,6 +170,16 @@ def test_openapi_json_documents_asset_list_endpoint() -> None:
         "$ref": "#/components/schemas/FrontEndDetailSummary"
     }
 
+    related_operation = payload["paths"][
+        "/api/v1/asset/{uid}/related-meta-tables/"
+    ]["get"]
+    assert related_operation["operationId"] == "listAssetRelatedMetaTables"
+    related_parameters = {
+        parameter["name"]: parameter for parameter in related_operation["parameters"]
+    }
+    assert related_parameters["numeric"]["schema"]["default"] is True
+    assert related_parameters["timestamped"]["schema"]["default"] is True
+
     asset_pricing_details_operation = payload["paths"]["/api/v1/asset/{uid}/get_pricing_details/"][
         "get"
     ]
@@ -477,12 +487,12 @@ def test_openapi_json_documents_index_routes() -> None:
     }
 
     index_list_operation = payload["paths"]["/api/v1/index/"]["get"]
-    index_list_parameters = {
-        parameter["name"] for parameter in index_list_operation["parameters"]
-    }
-    assert {"response_format", "has_canonical_values", "cadence"}.issubset(
-        index_list_parameters
-    )
+    index_list_parameters = {parameter["name"] for parameter in index_list_operation["parameters"]}
+    assert {"response_format", "has_canonical_values", "cadence"}.issubset(index_list_parameters)
+    assert "provider" not in index_list_parameters
+    assert "provider" not in payload["components"]["schemas"]["Index"]["properties"]
+    assert "provider" not in payload["components"]["schemas"]["IndexCreate"]["properties"]
+    assert "provider" not in payload["components"]["schemas"]["IndexUpdate"]["properties"]
 
     expected_operations = {
         ("get", "/api/v1/index-type/"): "listIndexTypes",
@@ -490,11 +500,11 @@ def test_openapi_json_documents_index_routes() -> None:
         ("post", "/api/v1/index/"): "createIndex",
         ("patch", "/api/v1/index/{uid}/"): "updateIndex",
         ("get", "/api/v1/index/{uid}/summary/"): "getIndexSummary",
-        ("get", "/api/v1/index/{uid}/methodologies/"): "listIndexMethodologies",
+        ("get", "/api/v1/index/{uid}/formulas/"): "listIndexFormulas",
         (
             "get",
-            "/api/v1/index/{uid}/methodologies/{definition_uid}/",
-        ): "getIndexMethodology",
+            "/api/v1/index/{uid}/formulas/{definition_uid}/",
+        ): "getIndexFormula",
         ("get", "/api/v1/index/{uid}/datasets/"): "listIndexDatasets",
         (
             "get",
@@ -512,17 +522,26 @@ def test_openapi_json_documents_index_routes() -> None:
     for (method, path), operation_id in expected_operations.items():
         assert payload["paths"][path][method]["operationId"] == operation_id
 
-    methodology_leg_schema = payload["components"]["schemas"]["IndexMethodologyLeg"]
-    assert {
-        "leg_role",
-        "selector_parameters_json",
-        "observable_code",
-        "transform_code",
-        "transform_parameters_json",
-        "coefficient_parameters_json",
-    }.issubset(methodology_leg_schema["properties"])
-    assert "observable" not in methodology_leg_schema["properties"]
-    assert "transform_kind" not in methodology_leg_schema["properties"]
+    related_meta_tables_operation = payload["paths"][
+        "/api/v1/index/{uid}/related-meta-tables/"
+    ]["get"]
+    related_parameters = {
+        parameter["name"]: parameter for parameter in related_meta_tables_operation["parameters"]
+    }
+    assert related_parameters["numeric"]["schema"]["default"] is True
+    assert related_parameters["timestamped"]["schema"]["default"] is True
+
+    formula_input_schema = payload["components"]["schemas"]["IndexFormulaInput"]
+    assert set(formula_input_schema["properties"]) == {
+        "source_reference",
+        "meta_table_uid",
+        "observable",
+    }
+    assert set(formula_input_schema["required"]) == {
+        "source_reference",
+        "meta_table_uid",
+        "observable",
+    }
 
     values_operation = payload["paths"]["/api/v1/index/{uid}/datasets/{meta_table_uid}/values/"][
         "get"

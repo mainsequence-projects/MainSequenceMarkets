@@ -29,7 +29,7 @@ def test_issuer_upsert_uses_active_runtime(monkeypatch) -> None:
         return {"row": {"uid": str(issuer_uid), **values}}
 
     monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
-    monkeypatch.setattr("msm.api.base.upsert_model", fake_upsert_model)
+    monkeypatch.setattr("msm.repositories.crud.upsert_model", fake_upsert_model)
 
     issuer = Issuer.upsert(
         IssuerUpsert(

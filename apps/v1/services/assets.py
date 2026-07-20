@@ -86,6 +86,25 @@ def get_asset_summary(*, uid: str) -> FrontEndDetailSummary | None:
     return FrontEndDetailSummary.model_validate(summary)
 
 
+def list_asset_related_meta_tables(
+    *,
+    uid: str,
+    numeric: bool = True,
+    timestamped: bool = True,
+):
+    _get_runtime()
+    from msm.api.assets import Asset
+
+    try:
+        return Asset.list_related_meta_tables(
+            uid,
+            numeric=numeric,
+            timestamped=timestamped,
+        )
+    except LookupError:
+        return None
+
+
 def get_asset_pricing_details(*, uid: str) -> AssetCurrentPricingDetailsResponse | None:
     _ensure_pricing_runtime()
     details = _get_asset_current_pricing_details(uid)

@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from msm.analytics.indices import IndexFormulaInput
 from msm.api.indices import Index
 
 
@@ -24,13 +25,17 @@ class IndexListRequest(IndexServiceModel):
     uids: tuple[uuid.UUID, ...] = ()
     unique_identifiers: tuple[str, ...] = ()
     index_type: str | None = None
-    provider: str | None = None
-    has_definition: bool | None = None
+    has_formula: bool | None = None
     has_canonical_values: bool | None = None
     cadence: str | None = None
     limit: int = Field(default=50, ge=1, le=500)
     offset: int = Field(default=0, ge=0)
-    order: Literal["display_name", "unique_identifier", "index_type", "provider"] = "display_name"
+    order: Literal[
+        "display_name",
+        "unique_identifier",
+        "index_type",
+        "calculation_method",
+    ] = "display_name"
 
 
 class IndexPage(IndexServiceModel):
@@ -40,53 +45,24 @@ class IndexPage(IndexServiceModel):
     results: tuple[Index, ...]
 
 
-class IndexMethodologySummary(IndexServiceModel):
+class IndexFormulaSummary(IndexServiceModel):
     uid: uuid.UUID
     index_uid: uuid.UUID
-    definition_version: int
+    version: int
     status: str
-    effective_from: dt.datetime
-    effective_to: dt.datetime | None = None
-    calculation_kind: str
-    calculation_family: str
-    output_unit: str
-    composition_mode: str
-    definition_hash: str
-    leg_count: int = Field(ge=0)
-
-
-class IndexMethodologyLeg(IndexServiceModel):
-    uid: uuid.UUID
-    definition_uid: uuid.UUID
-    leg_key: str
-    leg_order: int
-    leg_role: str | None = None
-    component_kind: str
-    asset_uid: uuid.UUID | None = None
-    component_index_uid: uuid.UUID | None = None
-    selector_code: str | None = None
-    selector_parameters_json: dict[str, Any] | None = None
-    observable_code: str
-    input_unit: str
-    transform_code: str
-    transform_parameters_json: dict[str, Any] | None = None
-    coefficient_method: str
-    coefficient: float | None = None
-    coefficient_parameters_json: dict[str, Any] | None = None
-    metadata_json: dict[str, Any] | None = None
-
-
-class IndexMethodologyDetail(IndexMethodologySummary):
-    calculation_parameters_json: dict[str, Any] | None = None
+    valid_from: dt.datetime
+    valid_to: dt.datetime | None = None
+    formula: str
     alignment_policy: str
-    alignment_parameters_json: dict[str, Any] | None = None
     missing_data_policy: str
-    missing_data_parameters_json: dict[str, Any] | None = None
-    rebalance_policy: str | None = None
-    rebalance_parameters_json: dict[str, Any] | None = None
-    source: str | None = None
+    definition_hash: str
+    input_count: int = Field(ge=0)
+
+
+class IndexFormulaDetail(IndexFormulaSummary):
+    alignment_parameters_json: dict[str, Any] | None = None
     metadata_json: dict[str, Any] | None = None
-    legs: tuple[IndexMethodologyLeg, ...]
+    inputs: tuple[IndexFormulaInput, ...]
 
 
 class IndexDatasetAccess(IndexServiceModel):
@@ -115,7 +91,6 @@ class IndexDatasetDescriptor(IndexServiceModel):
     description: str | None = None
     storage_kind: Literal[
         "canonical_index_values",
-        "resolved_index_legs",
         "declared_extension_values",
         "related_reference_table",
         "inferred_candidate",
@@ -159,7 +134,6 @@ class IndexDatasetSummary(IndexServiceModel):
     earliest_time_index: dt.datetime | None = None
     latest_time_index: dt.datetime | None = None
     latest_value: float | None = None
-    latest_unit: str | None = None
     latest_status: str | None = None
     latest_source_as_of: dt.datetime | None = None
     error: str | None = None
@@ -169,7 +143,6 @@ class IndexValueRow(IndexServiceModel):
     time_index: dt.datetime
     index_identifier: str
     value: float
-    unit: str
     definition_uid: uuid.UUID | None = None
     observation_status: str | None = None
     source_as_of: dt.datetime | None = None
@@ -187,7 +160,7 @@ class IndexValuesResult(IndexServiceModel):
     rows: tuple[IndexValueRow, ...]
 
 
-class IndexRelatedMetaTable(IndexServiceModel):
+class RelatedMetaTable(IndexServiceModel):
     key: str
     label: str
     owning_package: str
@@ -252,17 +225,17 @@ class IndexDeleteImpact(IndexServiceModel):
 
 class IndexDetail(IndexServiceModel):
     index: Index
-    methodologies: tuple[IndexMethodologySummary, ...]
+    formulas: tuple[IndexFormulaSummary, ...]
     datasets: tuple[IndexDatasetState, ...]
-    related_meta_tables: tuple[IndexRelatedMetaTable, ...]
+    related_meta_tables: tuple[RelatedMetaTable, ...]
     warnings: tuple[str, ...] = ()
 
 
 class IndexSummary(IndexServiceModel):
     index: Index
-    definition_count: int = Field(ge=0)
-    leg_count: int = Field(ge=0)
-    active_definition: IndexMethodologySummary | None = None
+    formula_count: int = Field(ge=0)
+    input_count: int = Field(ge=0)
+    active_formula: IndexFormulaSummary | None = None
     dataset_count: int = Field(ge=0)
     cadences: tuple[str, ...]
     dataset_states: tuple[IndexDatasetState, ...]
@@ -271,4 +244,4 @@ class IndexSummary(IndexServiceModel):
     warnings: tuple[str, ...] = ()
 
 
-__all__ = [name for name in globals() if name.startswith("Index")]
+__all__ = [name for name in globals() if name.startswith("Index")] + ["RelatedMetaTable"]

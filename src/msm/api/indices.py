@@ -10,9 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from msm.api.base import MarketsMetaTableRow, operation_result_rows
 from msm.models import (
-    IndexCalculationDefinitionTable,
-    IndexCalculationLegTable,
     IndexDatasetAvailabilityTable,
+    IndexFormulaDefinitionTable,
+    IndexFormulaInputTable,
     IndexTable,
     IndexTypeTable,
 )
@@ -27,10 +27,10 @@ if TYPE_CHECKING:
         IndexDatasetSummary,
         IndexDetail,
         IndexListRequest,
-        IndexMethodologyDetail,
-        IndexMethodologySummary,
+        IndexFormulaDetail,
+        IndexFormulaSummary,
         IndexPage,
-        IndexRelatedMetaTable,
+        RelatedMetaTable,
         IndexSummary,
         IndexValuesResult,
     )
@@ -153,14 +153,18 @@ class Index(MarketsMetaTableRow):
         IndexTypeTable,
         IndexTable,
         IndexDatasetAvailabilityTable,
+        IndexFormulaDefinitionTable,
+        IndexFormulaInputTable,
     ]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
 
     unique_identifier: str
     index_type: str
     display_name: str
+    calculation_method: str
+    value_format: str
+    value_suffix: str | None = None
     description: str | None = None
-    provider: str | None = None
     metadata_json: dict[str, Any] | None = None
 
     @field_validator("index_type", mode="before")
@@ -181,7 +185,14 @@ class Index(MarketsMetaTableRow):
         payload: IndexUpsert | Mapping[str, Any] | None = None,
         **kwargs: Any,
     ) -> Index:
-        return super().upsert(_validate_payload(IndexUpsert, payload, kwargs))
+        validated = _validate_payload(IndexUpsert, payload, kwargs)
+        existing = cls.get_by_unique_identifier(validated.unique_identifier)
+        if existing is not None:
+            cls._validate_calculation_method_change(
+                existing,
+                calculation_method=validated.calculation_method,
+            )
+        return super().upsert(validated)
 
     @classmethod
     def update(
@@ -190,7 +201,47 @@ class Index(MarketsMetaTableRow):
         payload: IndexUpdate | Mapping[str, Any] | None = None,
         **kwargs: Any,
     ) -> Index:
-        return super().update(uid, _validate_payload(IndexUpdate, payload, kwargs))
+        validated = _validate_payload(IndexUpdate, payload, kwargs)
+        existing = cls.get_by_uid(uid)
+        if existing is None:
+            raise LookupError(f"Index {uid!s} was not found")
+        if validated.calculation_method is not None:
+            cls._validate_calculation_method_change(
+                existing,
+                calculation_method=validated.calculation_method,
+            )
+        return super().update(uid, validated)
+
+    @classmethod
+    def _validate_calculation_method_change(
+        cls,
+        existing: Index,
+        *,
+        calculation_method: str,
+    ) -> None:
+        if existing.calculation_method == calculation_method:
+            return
+        from msm.repositories.crud import count_model
+
+        context = cls._active_context()
+        formula_count = _count_result(
+            count_model(
+                context,
+                model=IndexFormulaDefinitionTable,
+                filters={"index_uid": existing.uid},
+            )
+        )
+        value_count = _count_result(
+            count_model(
+                context,
+                model=IndexDatasetAvailabilityTable,
+                filters={"index_uid": existing.uid, "population_state": "populated"},
+            )
+        )
+        if formula_count or value_count:
+            raise ValueError(
+                "calculation_method cannot change after formulas or canonical observations exist"
+            )
 
     @classmethod
     def filter_by_uids(
@@ -258,24 +309,24 @@ class Index(MarketsMetaTableRow):
         )
 
     @classmethod
-    def list_methodologies(cls, uid: uuid.UUID | str) -> tuple[IndexMethodologySummary, ...]:
-        from msm.services.indices import list_methodologies
+    def list_formulas(cls, uid: uuid.UUID | str) -> tuple[IndexFormulaSummary, ...]:
+        from msm.services.indices import list_formulas
 
         if cls.get_by_uid(uid) is None:
             raise LookupError(f"Index {uid!s} was not found")
-        return list_methodologies(cls._service_context(), index_uid=uid)
+        return list_formulas(cls._service_context(), index_uid=uid)
 
     @classmethod
-    def get_methodology(
+    def get_formula(
         cls,
         uid: uuid.UUID | str,
         definition_uid: uuid.UUID | str,
-    ) -> IndexMethodologyDetail | None:
-        from msm.services.indices import get_methodology
+    ) -> IndexFormulaDetail | None:
+        from msm.services.indices import get_formula
 
         if cls.get_by_uid(uid) is None:
             raise LookupError(f"Index {uid!s} was not found")
-        return get_methodology(
+        return get_formula(
             cls._service_context(),
             index_uid=uid,
             definition_uid=definition_uid,
@@ -367,28 +418,39 @@ class Index(MarketsMetaTableRow):
         )
 
     @classmethod
-    def list_related_meta_tables(cls, uid: uuid.UUID | str) -> tuple[IndexRelatedMetaTable, ...]:
+    def list_related_meta_tables(
+        cls,
+        uid: uuid.UUID | str,
+        *,
+        numeric: bool = True,
+        timestamped: bool = True,
+    ) -> tuple[RelatedMetaTable, ...]:
+        """List related MetaTables, defaulting to numeric time-series contracts."""
+
         from msm.services.indices import list_related_meta_tables
 
         index = cls.get_by_uid(uid)
         if index is None:
             raise LookupError(f"Index {uid!s} was not found")
-        return list_related_meta_tables(cls._service_context(), index=index)
+        return list_related_meta_tables(
+            cls._service_context(),
+            index=index,
+            numeric=numeric,
+            timestamped=timestamped,
+        )
 
     @classmethod
     def _service_context(cls) -> MarketsOperationContext:
         """Resolve the broader Index exploration/lifecycle runtime on demand."""
 
         from msm.bootstrap import resolve_runtime
-        from msm.data_nodes.indices.storage import IndexResolvedLegsStorage
-
         return resolve_runtime(
             models=[
                 IndexTypeTable,
                 IndexTable,
-                IndexCalculationDefinitionTable,
-                IndexCalculationLegTable,
-                IndexResolvedLegsStorage,
+                IndexDatasetAvailabilityTable,
+                IndexFormulaDefinitionTable,
+                IndexFormulaInputTable,
             ],
             row_model_name="Index catalog and lifecycle services",
         ).context
@@ -402,8 +464,10 @@ class IndexCreate(BaseModel):
     unique_identifier: str = Field(min_length=1, max_length=255)
     index_type: str = Field(min_length=1, max_length=64)
     display_name: str = Field(min_length=1, max_length=255)
+    calculation_method: str
+    value_format: str
+    value_suffix: str | None = Field(default=None, max_length=32)
     description: str | None = None
-    provider: str | None = Field(default=None, max_length=255)
     metadata_json: dict[str, Any] | None = None
 
     @field_validator("index_type", mode="before")
@@ -413,6 +477,30 @@ class IndexCreate(BaseModel):
         if normalized is None:
             raise ValueError("index_type is required.")
         return normalized
+
+    @field_validator("calculation_method")
+    @classmethod
+    def _validate_calculation_method(cls, value: str) -> str:
+        normalized = str(value).strip().lower()
+        if normalized not in {"formula", "custom"}:
+            raise ValueError("calculation_method must be 'formula' or 'custom'")
+        return normalized
+
+    @field_validator("value_format")
+    @classmethod
+    def _validate_value_format(cls, value: str) -> str:
+        normalized = str(value).strip().lower()
+        if normalized not in {"decimal", "percent"}:
+            raise ValueError("value_format must be 'decimal' or 'percent'")
+        return normalized
+
+    @field_validator("value_suffix")
+    @classmethod
+    def _normalize_value_suffix(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class IndexUpsert(IndexCreate):
@@ -426,8 +514,10 @@ class IndexUpdate(BaseModel):
 
     index_type: str | None = Field(default=None, max_length=64)
     display_name: str | None = Field(default=None, max_length=255)
+    calculation_method: str | None = None
+    value_format: str | None = None
+    value_suffix: str | None = Field(default=None, max_length=32)
     description: str | None = None
-    provider: str | None = Field(default=None, max_length=255)
     metadata_json: dict[str, Any] | None = None
 
     @field_validator("index_type", mode="before")
@@ -435,20 +525,45 @@ class IndexUpdate(BaseModel):
     def _normalize_index_type(cls, value: str | None) -> str | None:
         return normalize_index_type(value)
 
+    @field_validator("calculation_method")
+    @classmethod
+    def _validate_calculation_method(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        if normalized not in {"formula", "custom"}:
+            raise ValueError("calculation_method must be 'formula' or 'custom'")
+        return normalized
+
+    @field_validator("value_format")
+    @classmethod
+    def _validate_value_format(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        if normalized not in {"decimal", "percent"}:
+            raise ValueError("value_format must be 'decimal' or 'percent'")
+        return normalized
+
+    @field_validator("value_suffix")
+    @classmethod
+    def _normalize_value_suffix(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
     @model_validator(mode="after")
-    def _reject_explicit_null_index_type(self) -> IndexUpdate:
-        if "index_type" in self.model_fields_set and self.index_type is None:
-            raise ValueError("index_type cannot be null.")
+    def _reject_explicit_null_required_fields(self) -> IndexUpdate:
+        for field in ("index_type", "calculation_method", "value_format"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null.")
         return self
 
 
 __all__ = [
-    "DerivedIndex",
-    "IncompleteObservationsError",
-    "IndexCalculationDefinition",
-    "IndexCalculationError",
-    "IndexCalculationLeg",
-    "IndexCalculationResult",
+    "FormulaIndex",
+    "IncompleteFormulaObservationsError",
     "Index",
     "IndexCreate",
     "IndexType",
@@ -457,26 +572,37 @@ __all__ = [
     "IndexTypeUpsert",
     "IndexUpdate",
     "IndexUpsert",
-    "LookAheadError",
-    "ResolvedIndexLeg",
-    "calculate_index",
-    "compute_definition_hash",
+    "IndexFormula",
+    "IndexFormulaDefinition",
+    "IndexFormulaError",
+    "IndexFormulaEvaluation",
+    "IndexFormulaInput",
+    "IndexFormulaResult",
+    "IndexFormulaSourceReference",
+    "calculate_formula_index",
+    "compute_formula_definition_hash",
     "normalize_index_type",
 ]
 
 
 # Imported after the canonical Index row APIs are defined to avoid a module cycle.
 from msm.analytics.indices import (  # noqa: E402
-    IncompleteObservationsError,
-    IndexCalculationDefinition,
-    IndexCalculationError,
-    IndexCalculationLeg,
-    IndexCalculationResult,
-    LookAheadError,
-    ResolvedIndexLeg,
-    calculate_index,
-    compute_definition_hash,
+    IncompleteFormulaObservationsError,
+    IndexFormula,
+    IndexFormulaDefinition,
+    IndexFormulaError,
+    IndexFormulaEvaluation,
+    IndexFormulaInput,
+    IndexFormulaResult,
+    IndexFormulaSourceReference,
+    calculate_formula_index,
+    compute_formula_definition_hash,
 )
-from msm.api.derived_indices import DerivedIndex  # noqa: E402
+from msm.api.formula_indices import FormulaIndex  # noqa: E402
 
-DerivedIndex.model_rebuild(_types_namespace={"Index": Index})
+FormulaIndex.model_rebuild(_types_namespace={"Index": Index})
+
+
+def _count_result(result: dict[str, Any] | list[Any] | None) -> int:
+    rows = operation_result_rows(result)
+    return int(rows[0].get("count") or 0) if rows else 0

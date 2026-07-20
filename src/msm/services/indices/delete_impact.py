@@ -4,7 +4,7 @@ from msm.api.indices import Index
 from msm.repositories.base import MarketsOperationContext
 
 from .catalog import list_related_meta_tables
-from .contracts import IndexDeleteImpact, IndexDeleteImpactRelationship, IndexRelatedMetaTable
+from .contracts import IndexDeleteImpact, IndexDeleteImpactRelationship, RelatedMetaTable
 
 
 def get_index_delete_impact(
@@ -15,7 +15,13 @@ def get_index_delete_impact(
     """Describe the effects of ordinary direct deletion without authorizing it."""
 
     relationships = tuple(
-        _normalize_relationship(item) for item in list_related_meta_tables(context, index=index)
+        _normalize_relationship(item)
+        for item in list_related_meta_tables(
+            context,
+            index=index,
+            numeric=False,
+            timestamped=False,
+        )
     )
     unavailable_blockers = [
         item for item in relationships if item.blocks_delete and item.count is None
@@ -42,7 +48,7 @@ def get_index_delete_impact(
     )
 
 
-def _normalize_relationship(item: IndexRelatedMetaTable) -> IndexDeleteImpactRelationship:
+def _normalize_relationship(item: RelatedMetaTable) -> IndexDeleteImpactRelationship:
     action = str(item.on_delete).upper().replace("_", " ")
     if action not in {"RESTRICT", "NO ACTION", "CASCADE", "SET NULL", "APPLICATION"}:
         action = "UNKNOWN"

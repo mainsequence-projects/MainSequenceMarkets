@@ -21,12 +21,11 @@ from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.indices import (
     Index,
     IndexCreate,
-    IndexDatasetDescriptor,
     IndexDatasetState,
     IndexDatasetSummary,
-    IndexMethodologyDetail,
-    IndexMethodologySummary,
-    IndexRelatedMetaTable,
+    IndexFormulaDetail,
+    IndexFormulaSummary,
+    RelatedMetaTable,
     IndexType,
     IndexUpdate,
 )
@@ -36,12 +35,12 @@ from apps.v1.services.indices import (
     get_index,
     get_index_dataset_summary,
     get_index_delete_impact,
-    get_index_methodology,
+    get_index_formula,
     get_index_summary,
     get_index_type,
     get_index_values_frame,
     list_index_datasets,
-    list_index_methodologies,
+    list_index_formulas,
     list_index_related_meta_tables,
     list_index_types,
     list_indices,
@@ -116,13 +115,12 @@ def get_index_type_by_key(index_type: str) -> IndexType:
 def get_indexes(
     request: Request,
     response_format: Annotated[
-        str, Query(description="Compatibility value; only frontend_list is accepted.")
+        str, Query(description="Response format; only frontend_list is accepted.")
     ] = "frontend_list",
     search: Annotated[str, Query(description="Case-insensitive Index catalog search.")] = "",
     index_type: Annotated[str | None, Query(description="Exact Index type filter.")] = None,
-    provider: Annotated[str | None, Query(description="Exact provider filter.")] = None,
-    has_definition: Annotated[
-        bool | None, Query(description="Filter by presence of core methodology definitions.")
+    has_formula: Annotated[
+        bool | None, Query(description="Filter by presence of formula definitions.")
     ] = None,
     has_canonical_values: Annotated[
         bool | None, Query(description="Filter by canonical Index value availability.")
@@ -140,18 +138,13 @@ def get_indexes(
     result = list_indices(
         search=search,
         index_type=index_type,
-        provider=provider,
-        has_definition=has_definition,
+        has_formula=has_formula,
         has_canonical_values=has_canonical_values,
         cadence=cadence,
         limit=limit,
         offset=offset,
     )
-    if isinstance(result, tuple) and len(result) == 2 and isinstance(result[0], int):
-        count, rows = result
-    else:  # Compatibility for callers monkeypatching the pre-ADR list service.
-        rows = list(result)
-        count = offset + len(rows)
+    count, rows = result
     return build_paginated_response(
         request_url=str(request.url),
         results=rows,
@@ -225,30 +218,30 @@ def get_index_summary_by_uid(
 
 
 @router.get(
-    "/{uid}/methodologies/",
-    response_model=list[IndexMethodologySummary],
-    summary="List Index methodologies",
-    operation_id="listIndexMethodologies",
+    "/{uid}/formulas/",
+    response_model=list[IndexFormulaSummary],
+    summary="List Index formulas",
+    operation_id="listIndexFormulas",
     responses={404: {"model": ErrorResponse}},
 )
-def get_index_methodologies(uid: str) -> list[IndexMethodologySummary]:
-    result = list_index_methodologies(uid=uid)
+def get_index_formulas(uid: str) -> list[IndexFormulaSummary]:
+    result = list_index_formulas(uid=uid)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")
     return list(result)
 
 
 @router.get(
-    "/{uid}/methodologies/{definition_uid}/",
-    response_model=IndexMethodologyDetail,
-    summary="Get Index methodology",
-    operation_id="getIndexMethodology",
+    "/{uid}/formulas/{definition_uid}/",
+    response_model=IndexFormulaDetail,
+    summary="Get Index formula",
+    operation_id="getIndexFormula",
     responses={404: {"model": ErrorResponse}},
 )
-def get_index_methodology_by_uid(uid: str, definition_uid: str) -> IndexMethodologyDetail:
-    result = get_index_methodology(uid=uid, definition_uid=definition_uid)
+def get_index_formula_by_uid(uid: str, definition_uid: str) -> IndexFormulaDetail:
+    result = get_index_formula(uid=uid, definition_uid=definition_uid)
     if result is None:
-        raise HTTPException(status_code=404, detail="Index methodology was not found.")
+        raise HTTPException(status_code=404, detail="Index formula was not found.")
     return result
 
 
@@ -340,13 +333,31 @@ def get_index_dataset_values(
 
 @router.get(
     "/{uid}/related-meta-tables/",
-    response_model=list[IndexRelatedMetaTable],
+    response_model=list[RelatedMetaTable],
     summary="List related Index MetaTables",
+    description=(
+        "List MetaTables related to the Index. By default, return only time-indexed "
+        "tables that expose at least one non-identity numeric data column."
+    ),
     operation_id="listIndexRelatedMetaTables",
     responses={404: {"model": ErrorResponse}},
 )
-def get_related_index_meta_tables(uid: str) -> list[IndexRelatedMetaTable]:
-    result = list_index_related_meta_tables(uid=uid)
+def get_related_index_meta_tables(
+    uid: str,
+    numeric: Annotated[
+        bool,
+        Query(description="Require at least one non-identity numeric data column."),
+    ] = True,
+    timestamped: Annotated[
+        bool,
+        Query(description="Require a registered time-indexed MetaTable contract."),
+    ] = True,
+) -> list[RelatedMetaTable]:
+    result = list_index_related_meta_tables(
+        uid=uid,
+        numeric=numeric,
+        timestamped=timestamped,
+    )
     if result is None:
         raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")
     return list(result)

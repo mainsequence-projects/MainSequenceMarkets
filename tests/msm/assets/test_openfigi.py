@@ -93,7 +93,6 @@ def test_upsert_index_from_openfigi_result_requires_index_market_sector(
             "index_type": INDEX_TYPE_EQUITY,
             "display_name": "Example Index",
             "description": "Example Index Description",
-            "provider": "OpenFIGI",
             "metadata_json": {
                 "openfigi": {
                     "figi": "BBG000KKFC45",

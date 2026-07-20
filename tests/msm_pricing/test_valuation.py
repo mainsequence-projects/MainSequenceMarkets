@@ -700,6 +700,8 @@ def test_pricing_valuation_context_bulk_resolves_fixed_income_rows(monkeypatch) 
                         unique_identifier="USD-SOFR",
                         index_type="interest_rate",
                         display_name="USD SOFR",
+                        calculation_method="custom",
+                        value_format="percent",
                     )
                 ]
             )
@@ -977,6 +979,8 @@ def test_pricing_valuation_context_allows_explicit_same_curve_role_bindings(
                     unique_identifier="USD-SOFR",
                     index_type="interest_rate",
                     display_name="USD SOFR",
+                    calculation_method="custom",
+                    value_format="percent",
                 )
             ]
         ),
@@ -1157,6 +1161,8 @@ def test_pricing_valuation_context_fails_before_mutating_original_on_missing_row
                     unique_identifier="USD-SOFR",
                     index_type="interest_rate",
                     display_name="USD SOFR",
+                    calculation_method="custom",
+                    value_format="percent",
                 )
             ]
         ),
@@ -1237,6 +1243,8 @@ def test_prepared_floating_bond_hot_loop_uses_context_without_backend_resolution
                     unique_identifier="USD-SOFR",
                     index_type="interest_rate",
                     display_name="USD SOFR",
+                    calculation_method="custom",
+                    value_format="percent",
                 )
             ]
         ),
@@ -1418,6 +1426,8 @@ def test_prepared_floating_bond_hot_loop_uses_context_without_backend_resolution
                 unique_identifier="USD-SOFR",
                 index_type="interest_rate",
                 display_name="USD SOFR",
+                calculation_method="custom",
+                value_format="percent",
             )
         ),
     )

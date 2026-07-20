@@ -15,12 +15,24 @@ from msm.api.indices import (
     normalize_index_type,
 )
 from msm.constants import INDEX_TYPE_EQUITY, INDEX_TYPE_INTEREST_RATE
-from msm.models import IndexTable, IndexTypeTable
+from msm.models import (
+    IndexDatasetAvailabilityTable,
+    IndexFormulaDefinitionTable,
+    IndexFormulaInputTable,
+    IndexTable,
+    IndexTypeTable,
+)
 
 
 def test_index_api_declares_table_contract() -> None:
     assert Index.__table__ is IndexTable
-    assert Index.__required_tables__ == [IndexTypeTable, IndexTable]
+    assert Index.__required_tables__ == [
+        IndexTypeTable,
+        IndexTable,
+        IndexDatasetAvailabilityTable,
+        IndexFormulaDefinitionTable,
+        IndexFormulaInputTable,
+    ]
     assert Index.__upsert_keys__ == ("unique_identifier",)
 
 
@@ -38,6 +50,8 @@ def test_index_type_normalization_for_typed_payloads() -> None:
             unique_identifier="USD-SOFR-3M",
             index_type="Interest Rate",
             display_name="USD SOFR 3M",
+            calculation_method="formula",
+            value_format="decimal",
         ).index_type
         == INDEX_TYPE_INTEREST_RATE
     )
@@ -61,7 +75,13 @@ def test_index_create_schemas_delegates_to_required_table(monkeypatch) -> None:
     assert Index.start_engine(namespace="mainsequence.examples") is runtime
     assert calls == [
         {
-            "models": [IndexTypeTable, IndexTable],
+            "models": [
+                IndexTypeTable,
+                IndexTable,
+                IndexDatasetAvailabilityTable,
+                IndexFormulaDefinitionTable,
+                IndexFormulaInputTable,
+            ],
             "namespace": "mainsequence.examples",
         }
     ]
@@ -91,13 +111,19 @@ def test_index_upsert_uses_active_runtime(monkeypatch) -> None:
 
     monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
     monkeypatch.setattr("msm.repositories.crud.upsert_model", fake_upsert_model)
+    monkeypatch.setattr(
+        Index,
+        "get_by_unique_identifier",
+        classmethod(lambda _cls, _identifier: None),
+    )
 
     index = Index.upsert(
         IndexUpsert(
             unique_identifier="SPX",
             index_type=INDEX_TYPE_EQUITY,
             display_name="S&P 500 Index",
-            provider="example",
+            calculation_method="custom",
+            value_format="decimal",
         )
     )
 
@@ -106,7 +132,8 @@ def test_index_upsert_uses_active_runtime(monkeypatch) -> None:
         unique_identifier="SPX",
         index_type=INDEX_TYPE_EQUITY,
         display_name="S&P 500 Index",
-        provider="example",
+        calculation_method="custom",
+        value_format="decimal",
     )
     assert calls == [
         (
@@ -116,7 +143,8 @@ def test_index_upsert_uses_active_runtime(monkeypatch) -> None:
                 "unique_identifier": "SPX",
                 "index_type": INDEX_TYPE_EQUITY,
                 "display_name": "S&P 500 Index",
-                "provider": "example",
+                "calculation_method": "custom",
+                "value_format": "decimal",
             },
             ("unique_identifier",),
         )
@@ -141,12 +169,16 @@ def test_index_filter_by_uids_uses_single_in_filter(monkeypatch) -> None:
                     "unique_identifier": "USD-SOFR",
                     "index_type": INDEX_TYPE_INTEREST_RATE,
                     "display_name": "USD SOFR",
+                    "calculation_method": "custom",
+                    "value_format": "decimal",
                 },
                 {
                     "uid": second_uid,
                     "unique_identifier": "MXN-TIIE",
                     "index_type": INDEX_TYPE_INTEREST_RATE,
                     "display_name": "MXN TIIE",
+                    "calculation_method": "custom",
+                    "value_format": "percent",
                 },
             ]
         }
@@ -186,6 +218,49 @@ def test_index_delete_uses_standard_row_api(monkeypatch) -> None:
     assert calls == [(context, IndexTable, index_uid)]
 
 
+def test_index_related_meta_tables_forwards_optional_filters(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    index = Index(
+        uid=index_uid,
+        unique_identifier="USD-SOFR-3M",
+        index_type=INDEX_TYPE_INTEREST_RATE,
+        display_name="USD SOFR 3M",
+        calculation_method="custom",
+        value_format="decimal",
+    )
+    context = object()
+    calls = []
+
+    monkeypatch.setattr(Index, "get_by_uid", classmethod(lambda _cls, _uid: index))
+    monkeypatch.setattr(Index, "_service_context", classmethod(lambda _cls: context))
+
+    def fake_list_related_meta_tables(
+        active_context,
+        *,
+        index,
+        numeric,
+        timestamped,
+    ):
+        calls.append((active_context, index.uid, numeric, timestamped))
+        return ()
+
+    monkeypatch.setattr(
+        "msm.services.indices.list_related_meta_tables",
+        fake_list_related_meta_tables,
+    )
+
+    assert Index.list_related_meta_tables(index_uid) == ()
+    assert Index.list_related_meta_tables(
+        index_uid,
+        numeric=False,
+        timestamped=False,
+    ) == ()
+    assert calls == [
+        (context, index_uid, True, True),
+        (context, index_uid, False, False),
+    ]
+
+
 def test_index_payloads_reject_constant_name_field() -> None:
     removed_constant_name_field = "legacy_" + "constant_name"
 
@@ -199,6 +274,19 @@ def test_index_payloads_reject_constant_name_field() -> None:
 
     with pytest.raises(ValidationError, match=removed_constant_name_field):
         IndexUpdate(**{removed_constant_name_field: "INDEX__SPX"})
+
+
+def test_index_payloads_reject_removed_provider_field() -> None:
+    with pytest.raises(ValidationError, match="provider"):
+        IndexUpsert(
+            unique_identifier="SPX",
+            index_type=INDEX_TYPE_EQUITY,
+            display_name="S&P 500 Index",
+            provider="example",
+        )
+
+    with pytest.raises(ValidationError, match="provider"):
+        IndexUpdate(provider="example")
 
 
 def test_index_create_payload_requires_index_type() -> None:

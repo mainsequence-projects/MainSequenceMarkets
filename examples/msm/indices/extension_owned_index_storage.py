@@ -111,7 +111,6 @@ def run() -> dict[str, object]:
                 "time_index",
                 "index_identifier",
                 "value",
-                "unit",
                 "observation_status",
                 "metadata_json",
             ]

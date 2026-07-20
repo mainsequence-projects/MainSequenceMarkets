@@ -238,6 +238,34 @@ def test_asset_upsert_uses_active_runtime(monkeypatch) -> None:
     ]
 
 
+def test_asset_related_meta_tables_forwards_optional_filters(monkeypatch) -> None:
+    asset_uid = uuid.uuid4()
+    asset = Asset(uid=asset_uid, unique_identifier="BOND-1", asset_type="bond")
+    calls = []
+
+    monkeypatch.setattr(Asset, "get_by_uid", classmethod(lambda _cls, _uid: asset))
+
+    def fake_list_reference_meta_tables(*, reference_type, numeric, timestamped):
+        calls.append((reference_type, numeric, timestamped))
+        return ()
+
+    monkeypatch.setattr(
+        "msm.services.related_meta_tables.list_reference_meta_tables",
+        fake_list_reference_meta_tables,
+    )
+
+    assert Asset.list_related_meta_tables(asset_uid) == ()
+    assert Asset.list_related_meta_tables(
+        asset_uid,
+        numeric=False,
+        timestamped=False,
+    ) == ()
+    assert calls == [
+        ("asset", True, True),
+        ("asset", False, False),
+    ]
+
+
 def test_currency_spot_upsert_owns_multitable_workflow(monkeypatch) -> None:
     pair_uid = uuid.uuid4()
     base_uid = uuid.uuid4()

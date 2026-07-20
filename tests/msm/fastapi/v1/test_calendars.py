@@ -190,6 +190,7 @@ def test_get_calendar_summary_returns_frontend_detail_summary(monkeypatch) -> No
         "key": "calendar_type",
         "label": "TRADING",
         "tone": "success",
+        "link_url": None,
     }
     assert response.json()["stats"] == [
         {
@@ -198,6 +199,7 @@ def test_get_calendar_summary_returns_frontend_detail_summary(monkeypatch) -> No
             "display": "365",
             "value": 365,
             "kind": "number",
+            "link_url": None,
         }
     ]
 

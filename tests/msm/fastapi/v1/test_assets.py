@@ -64,6 +64,36 @@ def test_get_assets_rejects_unknown_response_format() -> None:
     assert "frontend_list" in response.json()["detail"]
 
 
+def test_related_asset_meta_tables_forwards_optional_filters(monkeypatch) -> None:
+    asset_uid = uuid.uuid4()
+    calls = []
+
+    def fake_list_asset_related_meta_tables(*, uid, numeric, timestamped):
+        calls.append((uid, numeric, timestamped))
+        return ()
+
+    monkeypatch.setattr(
+        "apps.v1.routers.assets.list_asset_related_meta_tables",
+        fake_list_asset_related_meta_tables,
+    )
+    client = TestClient(app)
+
+    default_response = client.get(f"/api/v1/asset/{asset_uid}/related-meta-tables/")
+    unfiltered_response = client.get(
+        f"/api/v1/asset/{asset_uid}/related-meta-tables/",
+        params={"numeric": "false", "timestamped": "false"},
+    )
+
+    assert default_response.status_code == 200
+    assert default_response.json() == []
+    assert unfiltered_response.status_code == 200
+    assert unfiltered_response.json() == []
+    assert calls == [
+        (str(asset_uid), True, True),
+        (str(asset_uid), False, False),
+    ]
+
+
 def test_get_assets_passes_category_filter(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -143,6 +173,7 @@ def test_get_asset_monitor_frame_returns_tabular_asset_frame(monkeypatch) -> Non
         "limit": 25,
         "offset": 0,
         "category_uid": None,
+        "unique_identifiers": None,
     }
 
 
@@ -594,6 +625,7 @@ def test_get_asset_summary_returns_frontend_detail_summary(monkeypatch) -> None:
                     "key": "status",
                     "label": "Active",
                     "tone": "success",
+                    "link_url": None,
                 }
             ],
             "inline_fields": [
@@ -647,6 +679,7 @@ def test_get_asset_summary_returns_frontend_detail_summary(monkeypatch) -> None:
                 "key": "status",
                 "label": "Active",
                 "tone": "success",
+                "link_url": None,
             }
         ],
         "inline_fields": [
@@ -656,6 +689,7 @@ def test_get_asset_summary_returns_frontend_detail_summary(monkeypatch) -> None:
                 "value": str(asset_uid),
                 "kind": "code",
                 "icon": None,
+                "link_url": None,
             }
         ],
         "highlight_fields": [
@@ -665,6 +699,7 @@ def test_get_asset_summary_returns_frontend_detail_summary(monkeypatch) -> None:
                 "value": "NASDAQ 100",
                 "kind": "text",
                 "icon": "database",
+                "link_url": None,
             }
         ],
         "stats": [
@@ -674,6 +709,7 @@ def test_get_asset_summary_returns_frontend_detail_summary(monkeypatch) -> None:
                 "display": "25",
                 "value": 25,
                 "kind": "number",
+                "link_url": None,
             }
         ],
         "label_management": {

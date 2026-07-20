@@ -32,7 +32,7 @@ nav:
       - Accounts And Holdings: tutorial/03-accounts.md
       - Portfolios: tutorial/04-portfolios.md
       - Pricing Instruments: tutorial/05-pricing.md
-      - Index Values And Derived Indexes: tutorial/06-derived-indexes.md
+      - Formula And Custom Indexes: tutorial/06-index-formulas.md
   - msm:
       - Overview: knowledge/msm/index.md
       - Accounts:
@@ -51,7 +51,7 @@ nav:
       - Execution: knowledge/msm/execution/index.md
       - Indexes:
           - Overview: knowledge/msm/indices/index.md
-          - Derived Index Workflow: knowledge/msm/indices/derived_indexes.md
+          - Formula And Custom Indexes: knowledge/msm/indices/formula_indexes.md
       - Migrations: knowledge/msm/migrations/index.md
       - Models: knowledge/msm/models/index.md
       - Platform:
@@ -112,7 +112,7 @@ nav:
       - Pricing Valuation Position Boundary: ADR/0033-pricing-valuation-position-boundary.md
       - Pricing Curve Identity And Market-Data Curve Bindings: ADR/0035-pricing-curve-identity-and-market-data-curve-bindings.md
       - Prepared Pricing Valuation Context: ADR/0036-prepared-pricing-valuation-context.md
-      - Core Index Value, Definition, And Calculation Framework: ADR/0037-core-derived-index-definition-and-calculation-framework.md
+      - Index Formula And Custom Calculation Framework: ADR/0037-index-formula-and-custom-calculation-framework.md
       - Index User API And FastAPI Exploration: ADR/0038-index-user-api-and-fastapi-exploration.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - FastAPI v1:
@@ -127,7 +127,7 @@ nav:
           - Cross-Currency Helper Curve Reconstruction: planning/implementation_tasks/cross_currency_helper_curve_reconstruction_upstream_plan.md
           - Generic Curve Reconstruction: planning/implementation_tasks/generic_curve_reconstruction_upstream_plan.md
           - Generic Valuation Scenario Workflow: planning/implementation_tasks/generic_valuation_scenario_workflow_plan.md
-          - Index Catalog, Lifecycle, And Publication Hardening: planning/implementation_tasks/index_catalog_lifecycle_and_publication_hardening_plan.md
+          - Index Formula And Custom Calculation Redesign: planning/implementation_tasks/index_formula_and_custom_calculation_plan.md
           - Reusable Valuation Portfolio Scenario And Analytics: planning/implementation_tasks/reusable_valuation_portfolio_scenario_analytics_plan.md
   - Changelog: changelog.md
   - Reference:

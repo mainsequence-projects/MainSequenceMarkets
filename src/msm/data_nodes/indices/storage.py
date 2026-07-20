@@ -1,4 +1,4 @@
-"""Canonical Index values and dynamic derived-methodology provenance."""
+"""Canonical Index value storage."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from functools import lru_cache
 from typing import ClassVar
 
 from sqlalchemy import (
-    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -29,7 +28,7 @@ from msm.base import (
     MarketsTimeIndexMetaTableMixin,
     markets_table_name,
 )
-from msm.models.index_calculations import IndexCalculationDefinitionTable
+from msm.models.index_formulas import IndexFormulaDefinitionTable
 from msm.models.indices import IndexTable
 from msm.settings import INDEX_IDENTIFIER_DIMENSION
 
@@ -85,26 +84,18 @@ class IndexValuesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             "description": "Canonical value of the Index at the observation timestamp.",
         },
     )
-    unit: Mapped[str] = mapped_column(
-        String(64),
-        nullable=False,
-        info={
-            "label": "Unit",
-            "description": "Canonical unit code used to interpret the published Index value.",
-        },
-    )
     definition_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
-            f"{IndexCalculationDefinitionTable.__table__.fullname}.uid",
+            f"{IndexFormulaDefinitionTable.__table__.fullname}.uid",
             ondelete="RESTRICT",
         ),
         nullable=True,
         info={
             "label": "Definition UID",
             "description": (
-                "Exact immutable methodology version used for a core-calculated observation; "
-                "null when the Index value has no core-owned calculation definition."
+                "Exact immutable formula version used for a formula observation; "
+                "null when custom code publishes the Index value."
             ),
         },
     )
@@ -195,7 +186,7 @@ def _configured_index_values_storage(
             "__metatable_description__": (
                 "Canonical Index value history at "
                 f"{normalized_cadence} cadence, keyed by "
-                "(time_index, index_identifier), for plain and calculated observables."
+                "(time_index, index_identifier), for custom and formula observables."
             ),
             "__metatable_extra_hash_components__": components,
             "__time_index_name__": IndexValuesStorage.__time_index_name__,
@@ -253,7 +244,7 @@ def _copy_index_values_table(table_name: str) -> Table:
         ),
         ForeignKeyConstraint(
             ["definition_uid"],
-            [f"{IndexCalculationDefinitionTable.__table__.fullname}.uid"],
+            [f"{IndexFormulaDefinitionTable.__table__.fullname}.uid"],
             ondelete="RESTRICT",
         ),
         schema=IndexValuesStorage.__table__.schema,
@@ -284,139 +275,9 @@ def _copy_index_values_table(table_name: str) -> Table:
     return table
 
 
-class IndexResolvedLegsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
-    """Effective dynamic component and coefficient history for derived indexes."""
-
-    __metatable_identifier__ = "IndexResolvedLegsTS"
-    __metatable_description__ = (
-        "Dynamic derived-index methodology audit facts keyed by effective UTC time, index, "
-        "leg key, and resolved component. Rows preserve selector-resolved membership and "
-        "time-varying algebraic coefficients without representing holdings or positions."
-    )
-    __time_index_name__: ClassVar[str] = "time_index"
-    __index_names__: ClassVar[list[str]] = [
-        "time_index",
-        INDEX_IDENTIFIER_DIMENSION,
-        "leg_key",
-        "resolved_component_key",
-    ]
-    __metatable_extra_hash_components__ = {"storage_name": "index_resolved_legs"}
-    __table_args__ = (
-        CheckConstraint(
-            "component_kind IN ('asset', 'index')",
-            name="resolved_component_kind_valid",
-        ),
-        SqlIndex(None, "definition_uid"),
-        SqlIndex(None, "resolution_status"),
-    )
-
-    time_index: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        info={
-            "label": "Effective Time",
-            "description": "UTC timestamp from which this component and coefficient resolution applies.",
-        },
-    )
-    index_identifier: Mapped[str] = mapped_column(
-        String(255),
-        ForeignKey(f"{IndexTable.__table__.fullname}.unique_identifier", ondelete="RESTRICT"),
-        nullable=False,
-        info={
-            "label": "Index Identifier",
-            "description": "Canonical derived-index identifier whose methodology was resolved.",
-        },
-    )
-    definition_uid: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True),
-        ForeignKey(
-            f"{IndexCalculationDefinitionTable.__table__.fullname}.uid",
-            ondelete="RESTRICT",
-        ),
-        nullable=False,
-        info={
-            "label": "Definition UID",
-            "description": "Immutable methodology version that produced this resolution.",
-        },
-    )
-    leg_key: Mapped[str] = mapped_column(
-        String(64),
-        nullable=False,
-        info={
-            "label": "Leg Key",
-            "description": "Stable semantic key of the resolved definition leg.",
-        },
-    )
-    resolved_component_key: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        info={
-            "label": "Resolved Component",
-            "description": "Stable Asset or Index identifier selected for this effective time.",
-        },
-    )
-    component_kind: Mapped[str] = mapped_column(
-        String(32),
-        nullable=False,
-        info={
-            "label": "Component Kind",
-            "description": "Identity registry containing the resolved key: asset or index.",
-        },
-    )
-    resolved_coefficient: Mapped[float] = mapped_column(
-        Float,
-        nullable=False,
-        info={
-            "label": "Resolved Coefficient",
-            "description": "Effective algebraic multiplier produced by the configured method.",
-        },
-    )
-    coefficient_method: Mapped[str] = mapped_column(
-        String(64),
-        nullable=False,
-        info={
-            "label": "Coefficient Method",
-            "description": "Registered method that produced the effective coefficient.",
-        },
-    )
-    observable_code: Mapped[str] = mapped_column(
-        String(64),
-        nullable=False,
-        info={
-            "label": "Observable Code",
-            "description": "Semantic observation requested from the resolved component.",
-        },
-    )
-    source_observation_time: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-        info={
-            "label": "Source Observation Time",
-            "description": "UTC timestamp of the fact used to select or estimate the resolution.",
-        },
-    )
-    resolution_status: Mapped[str] = mapped_column(
-        String(32),
-        nullable=False,
-        info={
-            "label": "Resolution Status",
-            "description": "Structured state describing whether component and coefficient resolution succeeded.",
-        },
-    )
-    metadata_json: Mapped[dict | None] = mapped_column(
-        JSON,
-        nullable=True,
-        info={
-            "label": "Metadata JSON",
-            "description": "Selector or estimator diagnostics used to audit this resolution.",
-        },
-    )
-
-
 __all__ = [
     "INDEX_VALUES_CADENCE_COMPONENT",
     "INDEX_VALUES_STORAGE_NAME_COMPONENT",
-    "IndexResolvedLegsStorage",
     "IndexValuesStorage",
     "configured_index_values_storage",
     "index_values_storage_identity_components",

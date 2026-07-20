@@ -96,13 +96,13 @@ of relying on memory.
 - `index_type`
 - `display_name`
 - `description`
-- `provider`
 - `metadata_json`
 
 `IndexTypeTable` is the core index type registry. For fixed-income indexes,
 register `interest_rate` through `IndexType` before creating the index row.
 
-Do not add legacy Constant-name fields to `IndexTable`.
+Do not add provider, methodology-owner, or legacy Constant-name fields to
+`IndexTable`.
 
 `IndexConventionDetailsTable` is pricing-owned convention metadata keyed
 one-to-one by `index_uid`. It stores the convention dump needed to reconstruct
@@ -213,7 +213,6 @@ index = Index.upsert(
     unique_identifier="USD-SOFR-3M",
     index_type=INDEX_TYPE_INTEREST_RATE,
     display_name="USD SOFR 3M",
-    provider="example",
 )
 
 IndexConventionDetails.upsert(

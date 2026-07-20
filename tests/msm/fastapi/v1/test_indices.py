@@ -10,7 +10,10 @@ from msm.api.indices import Index
 from msm.services.indices import (
     IndexDatasetAccess,
     IndexDatasetDescriptor,
-    IndexRelatedMetaTable,
+    IndexDatasetState,
+    IndexDeleteImpact,
+    IndexDeleteImpactRelationship,
+    IndexSummary,
     IndexValueRow,
     IndexValuesResult,
 )
@@ -20,17 +23,22 @@ def test_get_indexes_returns_core_index_rows(monkeypatch) -> None:
     index_uid = uuid.uuid4()
     monkeypatch.setattr(
         "apps.v1.routers.indices.list_indices",
-        lambda **kwargs: [
-            {
-                "uid": str(index_uid),
-                "unique_identifier": "SPX",
-                "index_type": "equity",
-                "display_name": "S&P 500 Index",
-                "description": "Large-cap US equity index",
-                "provider": "example",
-                "metadata_json": {"currency": "USD"},
-            }
-        ],
+        lambda **kwargs: (
+            1,
+            [
+                {
+                    "uid": str(index_uid),
+                    "unique_identifier": "SPX",
+                    "index_type": "equity",
+                    "display_name": "S&P 500 Index",
+                    "calculation_method": "custom",
+                    "value_format": "decimal",
+                    "value_suffix": None,
+                    "description": "Large-cap US equity index",
+                    "metadata_json": {"currency": "USD"},
+                }
+            ],
+        ),
     )
 
     client = TestClient(app)
@@ -55,8 +63,10 @@ def test_get_indexes_returns_core_index_rows(monkeypatch) -> None:
                 "unique_identifier": "SPX",
                 "index_type": "equity",
                 "display_name": "S&P 500 Index",
+                "calculation_method": "custom",
+                "value_format": "decimal",
+                "value_suffix": None,
                 "description": "Large-cap US equity index",
-                "provider": "example",
                 "metadata_json": {"currency": "USD"},
             }
         ],
@@ -83,8 +93,10 @@ def test_get_index_returns_record(monkeypatch) -> None:
             "unique_identifier": "SPX",
             "index_type": "equity",
             "display_name": "S&P 500 Index",
+            "calculation_method": "custom",
+            "value_format": "decimal",
+            "value_suffix": None,
             "description": "Large-cap US equity index",
-            "provider": "example",
             "metadata_json": {"currency": "USD"},
         },
     )
@@ -98,10 +110,88 @@ def test_get_index_returns_record(monkeypatch) -> None:
         "unique_identifier": "SPX",
         "index_type": "equity",
         "display_name": "S&P 500 Index",
+        "calculation_method": "custom",
+        "value_format": "decimal",
+        "value_suffix": None,
         "description": "Large-cap US equity index",
-        "provider": "example",
         "metadata_json": {"currency": "USD"},
     }
+
+
+def test_related_index_meta_tables_forwards_optional_filters(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    calls = []
+
+    def fake_list_index_related_meta_tables(*, uid, numeric, timestamped):
+        calls.append((uid, numeric, timestamped))
+        return ()
+
+    monkeypatch.setattr(
+        "apps.v1.routers.indices.list_index_related_meta_tables",
+        fake_list_index_related_meta_tables,
+    )
+    client = TestClient(app)
+
+    default_response = client.get(f"/api/v1/index/{index_uid}/related-meta-tables/")
+    unfiltered_response = client.get(
+        f"/api/v1/index/{index_uid}/related-meta-tables/",
+        params={"numeric": "false", "timestamped": "false"},
+    )
+
+    assert default_response.status_code == 200
+    assert default_response.json() == []
+    assert unfiltered_response.status_code == 200
+    assert unfiltered_response.json() == []
+    assert calls == [
+        (str(index_uid), True, True),
+        (str(index_uid), False, False),
+    ]
+
+
+def test_related_index_meta_tables_service_forwards_optional_filters(monkeypatch) -> None:
+    index_uid = uuid.uuid4()
+    index = Index(
+        uid=index_uid,
+        unique_identifier="USD-SOFR-3M",
+        index_type="interest_rate",
+        display_name="USD SOFR 3M",
+        calculation_method="custom",
+        value_format="decimal",
+    )
+    context = object()
+    calls = []
+
+    monkeypatch.setattr("apps.v1.services.indices.get_index", lambda uid: index)
+    monkeypatch.setattr(
+        "apps.v1.services.indices._get_runtime",
+        lambda: type("Runtime", (), {"context": context})(),
+    )
+
+    def fake_list_core_related_meta_tables(
+        active_context,
+        *,
+        index,
+        numeric,
+        timestamped,
+    ):
+        calls.append((active_context, index.uid, numeric, timestamped))
+        return ()
+
+    monkeypatch.setattr(
+        "apps.v1.services.indices.list_core_related_meta_tables",
+        fake_list_core_related_meta_tables,
+    )
+
+    from apps.v1.services.indices import list_index_related_meta_tables
+
+    result = list_index_related_meta_tables(
+        uid=str(index_uid),
+        numeric=False,
+        timestamped=True,
+    )
+
+    assert result == ()
+    assert calls == [(context, index_uid, False, True)]
 
 
 def test_get_index_returns_404_when_missing(monkeypatch) -> None:
@@ -202,6 +292,8 @@ def test_index_delete_impact_service_uses_domain_neutral_relationships(monkeypat
             unique_identifier="MX-TIIE",
             index_type="interest_rate",
             display_name="TIIE",
+            calculation_method="formula",
+            value_format="percent",
         ),
     )
     monkeypatch.setattr(
@@ -209,30 +301,32 @@ def test_index_delete_impact_service_uses_domain_neutral_relationships(monkeypat
         lambda: type("Runtime", (), {"context": "core-context"})(),
     )
     monkeypatch.setattr(
-        "apps.v1.services.indices.list_core_related_meta_tables",
-        lambda context, index: [
-            IndexRelatedMetaTable.model_validate(
-                {
-                    "key": "component_index_dependencies",
-                    "label": "Methodologies using this component Index",
-                    "owning_package": "msm",
-                    "storage_kind": "related_reference_table",
-                    "meta_table_uid": None,
-                    "identifier": "IndexCalculationLeg",
-                    "relationship_type": "direct",
-                    "join_kind": "uid",
-                    "join_column": "component_index_uid",
-                    "on_delete": "RESTRICT",
-                    "authoritative": True,
-                    "discovery_source": "core_model",
-                    "exploration_capability": "count",
-                    "delete_capability": "none",
-                    "count": 2,
-                    "blocks_delete": True,
-                    "confidence_reason": None,
-                }
-            )
-        ],
+        "apps.v1.services.indices.get_core_index_delete_impact",
+        lambda context, index: IndexDeleteImpact(
+            uid=index_uid,
+            identifier="MX-TIIE",
+            display_name="TIIE",
+            can_delete=False,
+            blocking_count=2,
+            affected_count=2,
+            delete_endpoint=f"/api/v1/index/{index_uid}/",
+            relationships=(
+                IndexDeleteImpactRelationship(
+                    key="component_index_dependencies",
+                    label="Formulas using this component Index",
+                    model="IndexFormulaInput",
+                    column="component_index_uid",
+                    relationship_type="direct",
+                    on_delete="RESTRICT",
+                    count=2,
+                    count_accuracy="exact",
+                    effect="blocks_delete",
+                    severity="blocking",
+                    blocks_delete=True,
+                    description="Authoritative declared Index relationship.",
+                ),
+            ),
+        ),
     )
 
     from apps.v1.services.indices import get_index_delete_impact
@@ -245,10 +339,80 @@ def test_index_delete_impact_service_uses_domain_neutral_relationships(monkeypat
     assert response.can_delete is False
     assert response.blocking_count == 2
     assert response.affected_count == 2
+    assert response.delete_endpoint == f"/api/v1/index/{index_uid}/"
     assert [relationship.key for relationship in response.relationships] == [
         "component_index_dependencies"
     ]
     assert "pricing" not in response.model_dump_json().lower()
+
+
+def test_index_summary_uses_reconciled_latest_observation_without_value_scan(
+    monkeypatch,
+) -> None:
+    index_uid = uuid.uuid4()
+    dataset_uid = str(uuid.uuid4())
+    reconciled_at = dt.datetime(2026, 7, 19, 13, tzinfo=dt.UTC)
+    latest_time = dt.datetime(2026, 7, 19, 12, tzinfo=dt.UTC)
+    index = Index(
+        uid=index_uid,
+        unique_identifier="USD_SWAP_10Y",
+        index_type="interest_rate",
+        display_name="USD 10Y Swap Rate",
+        calculation_method="custom",
+        value_format="percent",
+    )
+    dataset = IndexDatasetDescriptor(
+        meta_table_uid=dataset_uid,
+        identifier="IndexValuesTS.1m",
+        cadence="1m",
+        physical_table_name="ms_markets__index_values__t_1m",
+        time_index_name="time_index",
+        index_names=("time_index", "index_identifier"),
+        columns=("time_index", "index_identifier", "value"),
+        foreign_keys=(),
+        storage_kind="canonical_index_values",
+        discovery_source="core_model",
+        access=IndexDatasetAccess(can_view=True),
+    )
+    summary = IndexSummary(
+        index=index,
+        formula_count=0,
+        input_count=0,
+        dataset_count=1,
+        cadences=("1m",),
+        dataset_states=(
+            IndexDatasetState(
+                dataset=dataset,
+                index_uid=index_uid,
+                index_identifier=index.unique_identifier,
+                population_state="populated",
+                row_count=2,
+                earliest_time_index=latest_time - dt.timedelta(minutes=1),
+                latest_time_index=latest_time,
+                reconciled_at=reconciled_at,
+            ),
+        ),
+        authoritative_relationship_count=0,
+        inferred_relationship_count=0,
+    )
+    monkeypatch.setattr("apps.v1.services.indices.get_index", lambda uid: index)
+    monkeypatch.setattr(
+        "apps.v1.services.indices._get_runtime",
+        lambda: type("Runtime", (), {"context": object()})(),
+    )
+    monkeypatch.setattr(
+        "apps.v1.services.indices.get_core_index_summary",
+        lambda context, *, index, actor: summary,
+    )
+
+    from apps.v1.services.indices import get_index_summary
+
+    response = get_index_summary(uid=str(index_uid), actor=None)
+
+    assert response is not None
+    latest = next(field for field in response.highlight_fields if field.key == "latest_observation")
+    assert latest.value == latest_time.isoformat()
+    assert latest.kind == "datetime"
 
 
 def test_delete_index_returns_null_on_success(monkeypatch) -> None:
@@ -285,6 +449,8 @@ def test_index_values_frame_uses_canonical_time_series_contract(monkeypatch) -> 
         unique_identifier="USD_SWAP_10Y",
         index_type="interest_rate",
         display_name="USD 10Y Swap Rate",
+        calculation_method="custom",
+        value_format="percent",
     )
     dataset = IndexDatasetDescriptor(
         meta_table_uid=dataset_uid,
@@ -294,7 +460,7 @@ def test_index_values_frame_uses_canonical_time_series_contract(monkeypatch) -> 
         physical_table_name="ms_markets__index_values__t_1m",
         time_index_name="time_index",
         index_names=("time_index", "index_identifier"),
-        columns=("time_index", "index_identifier", "value", "unit"),
+        columns=("time_index", "index_identifier", "value"),
         foreign_keys=(),
         storage_kind="canonical_index_values",
         discovery_source="core_model",
@@ -313,7 +479,6 @@ def test_index_values_frame_uses_canonical_time_series_contract(monkeypatch) -> 
                 time_index=timestamp,
                 index_identifier=index.unique_identifier,
                 value=0.04192,
-                unit="decimal",
             ),
         ),
     )

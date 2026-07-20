@@ -7,10 +7,10 @@ from .catalog import (
     get_canonical_dataset,
     get_index_detail,
     get_index_summary,
-    get_methodology,
+    get_formula,
     list_index_types,
     list_indexes,
-    list_methodologies,
+    list_formulas,
     list_related_meta_tables,
     read_index_values,
 )

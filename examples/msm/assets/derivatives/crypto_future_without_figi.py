@@ -70,8 +70,8 @@ def create_crypto_future_without_figi() -> dict[str, Any]:
             "Local crypto venue reference index used as the underlying for a "
             "BTC/USDT perpetual future."
         ),
-        provider=EXAMPLE_VENUE,
         metadata_json={
+            "venue": EXAMPLE_VENUE,
             "base_asset_uid": str(btc.uid),
             "base_asset_unique_identifier": btc.unique_identifier,
             "quote_asset_uid": str(usdt.uid),

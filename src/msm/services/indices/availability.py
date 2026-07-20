@@ -107,9 +107,16 @@ def reconcile_index_dataset_availability(
         )
     )
     indexes = tuple(Index.model_validate(row) for row in rows)
-    expected = len(set(normalized_uids)) + len(set(normalized_identifiers))
-    if len(indexes) > expected:
-        raise RuntimeError("availability selector unexpectedly resolved duplicate Index rows")
+    resolved_uids = {index.uid for index in indexes}
+    resolved_identifiers = {index.unique_identifier for index in indexes}
+    missing_uids = set(normalized_uids) - resolved_uids
+    missing_identifiers = set(normalized_identifiers) - resolved_identifiers
+    if missing_uids or missing_identifiers:
+        raise LookupError(
+            "availability reconciliation selectors were not found: "
+            f"uids={sorted(map(str, missing_uids))}, "
+            f"identifiers={sorted(missing_identifiers)}"
+        )
 
     datasets = discover_canonical_datasets(actor=actor)
     reconciled: list[IndexDatasetState] = []
@@ -127,14 +134,52 @@ def reconcile_index_dataset_availability(
                     )
                 )
             continue
+        statement = (
+            select(
+                model.index_identifier,
+                func.count().label("row_count"),
+                func.min(model.time_index).label("earliest_time_index"),
+                func.max(model.time_index).label("latest_time_index"),
+            )
+            .where(
+                model.index_identifier.in_(
+                    [index.unique_identifier for index in indexes]
+                )
+            )
+            .group_by(model.index_identifier)
+        )
+        try:
+            aggregate_rows = operation_result_rows(
+                execute_markets_operation(
+                    compile_markets_statement(
+                        statement,
+                        context=handle,
+                        operation="select",
+                        models=[model],
+                        access="read",
+                    ),
+                    context=handle,
+                )
+            )
+        except Exception as exc:
+            for index in indexes:
+                reconciled.append(
+                    _write_unavailable(
+                        context,
+                        index=index,
+                        dataset=dataset,
+                        error=exc,
+                    )
+                )
+            continue
+        aggregates = {str(row["index_identifier"]): row for row in aggregate_rows}
         for index in indexes:
             reconciled.append(
-                _reconcile_one(
+                _write_population(
                     context,
                     index=index,
                     dataset=dataset,
-                    model=model,
-                    handle=handle,
+                    aggregate=aggregates.get(index.unique_identifier, {}),
                 )
             )
     return IndexDatasetReconciliationResult(
@@ -144,59 +189,36 @@ def reconcile_index_dataset_availability(
     )
 
 
-def _reconcile_one(
+def _write_population(
     context: MarketsOperationContext,
     *,
     index: Index,
     dataset: IndexDatasetDescriptor,
-    model,
-    handle,
+    aggregate: dict,
 ) -> IndexDatasetState:
-    statement = select(
-        func.count().label("row_count"),
-        func.min(model.time_index).label("earliest_time_index"),
-        func.max(model.time_index).label("latest_time_index"),
-    ).where(model.index_identifier == index.unique_identifier)
-    try:
-        rows = operation_result_rows(
-            execute_markets_operation(
-                compile_markets_statement(
-                    statement,
-                    context=handle,
-                    operation="select",
-                    models=[model],
-                    access="read",
-                ),
-                context=handle,
-            )
-        )
-        aggregate = rows[0] if rows else {}
-        row_count = int(aggregate.get("row_count") or 0)
-        now = dt.datetime.now(dt.UTC)
-        values = {
-            "uid": uuid.uuid4(),
-            "index_uid": index.uid,
-            "meta_table_uid": dataset.meta_table_uid,
-            "cadence": dataset.cadence,
-            "population_state": "populated" if row_count else "compatible_empty",
-            "row_count": row_count,
-            "earliest_time_index": aggregate.get("earliest_time_index"),
-            "latest_time_index": aggregate.get("latest_time_index"),
-            "reconciled_at": now,
-            "error_code": None,
-            "error_message": None,
-        }
-        result = upsert_model(
-            context,
-            model=IndexDatasetAvailabilityTable,
-            values=values,
-            conflict_columns=("index_uid", "meta_table_uid"),
-        )
-        persisted = operation_result_rows(result)
-        row = persisted[0] if persisted else values
-        return _state_from_row(index=index, dataset=dataset, row=row)
-    except Exception as exc:
-        return _write_unavailable(context, index=index, dataset=dataset, error=exc)
+    row_count = int(aggregate.get("row_count") or 0)
+    values = {
+        "uid": uuid.uuid4(),
+        "index_uid": index.uid,
+        "meta_table_uid": dataset.meta_table_uid,
+        "cadence": dataset.cadence,
+        "population_state": "populated" if row_count else "compatible_empty",
+        "row_count": row_count,
+        "earliest_time_index": aggregate.get("earliest_time_index"),
+        "latest_time_index": aggregate.get("latest_time_index"),
+        "reconciled_at": dt.datetime.now(dt.UTC),
+        "error_code": None,
+        "error_message": None,
+    }
+    result = upsert_model(
+        context,
+        model=IndexDatasetAvailabilityTable,
+        values=values,
+        conflict_columns=("index_uid", "meta_table_uid"),
+    )
+    persisted = operation_result_rows(result)
+    row = persisted[0] if persisted else values
+    return _state_from_row(index=index, dataset=dataset, row=row)
 
 
 def _write_unavailable(

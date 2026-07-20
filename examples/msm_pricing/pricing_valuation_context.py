@@ -166,9 +166,7 @@ def build_mock_context_workflow() -> dict[str, Any]:
             "cached_discount_curve_identifier": context.get_curve(
                 MOCK_DISCOUNT_CURVE_UID
             ).unique_identifier,
-            "cached_index_family": context.get_index_convention(
-                MOCK_INDEX_UID
-            ).index_family,
+            "cached_index_family": context.get_index_convention(MOCK_INDEX_UID).index_family,
             "mock_curve_nodes": len(mock_curve_nodes),
             "mock_fixing_rows": len(mock_fixing_rows),
         }
@@ -230,7 +228,8 @@ def mock_pricing_row_apis():
                             unique_identifier=EXAMPLE_INDEX_UNIQUE_IDENTIFIER,
                             index_type="interest_rate",
                             display_name="Example SOFR index",
-                            provider="mock",
+                            calculation_method="custom",
+                            value_format="percent",
                         )
                     ]
                 ),
@@ -275,7 +274,7 @@ def mock_pricing_row_apis():
                             selector_key=str(MOCK_INDEX_UID),
                             quote_side="mid",
                             curve_uid=MOCK_DISCOUNT_CURVE_UID,
-                        )
+                        ),
                     ]
                 ),
             )

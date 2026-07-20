@@ -59,43 +59,39 @@ def test_msm_skills_source_of_truth_is_root_agents() -> None:
     assert not (repo_root / "src" / "msm" / ".agents").exists()
 
 
-def test_derived_index_workflow_skill_is_in_packaged_bundle() -> None:
-    assert "indices/derived_index_workflow" in _bundled_skill_paths()
+def test_index_workflow_skill_is_in_packaged_bundle() -> None:
+    assert "indices/index_workflow" in _bundled_skill_paths()
 
 
-def test_derived_index_workflow_skill_defines_full_index_methodology() -> None:
+def test_index_workflow_skill_defines_formula_and_custom_contract() -> None:
     skill_path = (
         bundled_msm_skills_root()
         / "indices"
-        / "derived_index_workflow"
+        / "index_workflow"
         / "SKILL.md"
     )
     content = skill_path.read_text(encoding="utf-8")
 
     required_sections = (
-        "## Scope Contract",
-        "## Mandatory Index Versus Asset Versus Portfolio Decision",
-        "## Mandatory Workflow",
-        "## Identity, Frequency, And Methodology History",
-        "## Plain And Caller-Calculated Observations",
-        "## Core-Derived Methodology",
-        "## Calculation Pipeline And Registered Capabilities",
-        "## Dynamic Resolution And No Look-Ahead",
-        "## DataNode Publication",
-        "## Extension-Owned Index Storage",
-        "## Migration Contract",
+        "## Scope",
+        "## Required Architecture",
+        "## Formula Contract",
+        "## Formula Lifecycle",
+        "## Source Discovery",
+        "## Publication",
+        "## Custom And Portfolio Boundary",
+        "## Catalog And API",
+        "## Migration Rules",
         "## Validation Checklist",
     )
     for section in required_sections:
         assert section in content
 
-    assert "one-minute and daily frequencies" in content
-    assert "two DataNodes and two physical storage tables" in content
-    assert "`ms_markets__index_values__t_1m`" in content
-    assert "`ms_markets__index_values__t_1d`" in content
-    assert "coefficients are formula inputs, not holdings" in content
-    assert "Do not introduce another core" in content
-    assert "`IndexObservationsStorage` abstraction" in content
+    assert '`Index.calculation_method` is exactly' in content
+    assert "MetaTable UID and observable are immutable formula semantics" in content
+    assert "Custom publication uses `IndexValuesDataNode`" in content
+    assert "Self-financing and chained performance are stateful" in content
+    assert "Do not add compatibility aliases" in content
 
 
 def test_copy_msm_skills_dry_run_writes_nothing(tmp_path, capsys) -> None:

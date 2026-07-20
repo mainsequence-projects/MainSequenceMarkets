@@ -35,7 +35,7 @@ Recommended sections:
 - [0033. Pricing Valuation Position Boundary](0033-pricing-valuation-position-boundary.md)
 - [0035. Pricing Curve Identity And Market-Data Curve Bindings](0035-pricing-curve-identity-and-market-data-curve-bindings.md)
 - [0036. Prepared Pricing Valuation Context](0036-prepared-pricing-valuation-context.md)
-- [0037. Core Index Value, Definition, And Calculation Framework](0037-core-derived-index-definition-and-calculation-framework.md)
+- [0037. Index Formula And Custom Calculation Framework](0037-index-formula-and-custom-calculation-framework.md)
 - [0038. Index User API And FastAPI Exploration](0038-index-user-api-and-fastapi-exploration.md)
 
 ## Command Center Decisions

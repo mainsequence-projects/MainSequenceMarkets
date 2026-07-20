@@ -59,7 +59,6 @@ spx = Index.upsert(
     unique_identifier="SPX",
     index_type=INDEX_TYPE_EQUITY,
     display_name="S&P 500 Index",
-    provider="example",
 )
 usd = Asset.upsert(unique_identifier="USD", asset_type=ASSET_TYPE_CURRENCY)
 

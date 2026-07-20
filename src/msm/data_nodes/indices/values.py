@@ -37,6 +37,10 @@ def normalize_index_values_frame(
         index_names=index_names,
         frame_label=frame_label,
     )
+    if "definition_uid" in normalized and normalized["definition_uid"].notna().any():
+        raise ValueError(
+            f"{frame_label} custom publication must not provide definition_uid"
+        )
     storage_columns = set(storage_table.__table__.columns.keys())
     for column_name in _OPTIONAL_VALUE_COLUMNS:
         if column_name in storage_columns and column_name not in normalized:

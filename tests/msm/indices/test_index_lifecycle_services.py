@@ -15,33 +15,23 @@ from msm.services.indices import IndexRelationshipProvider, discover_canonical_d
 from msm.services.indices import catalog as catalog_service
 
 
-def test_methodology_leg_mapper_preserves_reproducible_methodology_fields() -> None:
-    leg_uid = uuid.uuid4()
-    definition_uid = uuid.uuid4()
-    row = {
-        "uid": leg_uid,
-        "definition_uid": definition_uid,
-        "leg_key": "front_contract",
-        "leg_order": 0,
-        "leg_role": "hedge",
-        "component_kind": "selector",
-        "asset_uid": None,
-        "component_index_uid": None,
-        "selector_code": "futures_rank",
-        "selector_parameters_json": {"rank": 1, "roll_days": 5},
-        "observable_code": "settlement_price",
-        "input_unit": "currency",
-        "transform_code": "simple_return",
-        "transform_parameters_json": {"periods": 1},
-        "coefficient_method": "rolling_dv01_neutral",
-        "coefficient": None,
-        "coefficient_parameters_json": {"window": 20, "lag": 1},
-        "metadata_json": {"label": "Front futures hedge"},
-    }
+def test_formula_input_mapper_exposes_exact_public_source_binding() -> None:
+    asset_uid = uuid.uuid4()
+    result = catalog_service._formula_input(
+        {
+            "uid": uuid.uuid4(),
+            "asset_uid": asset_uid,
+            "component_index_uid": None,
+            "meta_table_uid": uuid.uuid4(),
+            "observable": "settlement_price",
+        },
+        asset_identifiers={str(asset_uid): "FUTURE-1"},
+        index_identifiers={},
+    )
 
-    leg = catalog_service._methodology_leg(row)
-
-    assert leg.model_dump() == row
+    assert result.source_reference.type == "asset"
+    assert result.source_reference.identifier == "FUTURE-1"
+    assert result.observable == "settlement_price"
 
 
 def test_canonical_dataset_discovery_requires_registered_cadence_and_real_fk(monkeypatch) -> None:
@@ -60,7 +50,6 @@ def test_canonical_dataset_discovery_requires_registered_cadence_and_real_fk(mon
                 "time_index",
                 "index_identifier",
                 "value",
-                "unit",
                 "definition_uid",
                 "observation_status",
                 "source_as_of",
@@ -149,3 +138,67 @@ def test_extension_provider_requires_no_core_datanode_inheritance() -> None:
             join_column="extension_index_key",
             on_delete="CASCADE",
         )
+
+
+@pytest.mark.parametrize(
+    ("time_indexed", "data_type", "numeric", "timestamped", "expected"),
+    [
+        (True, "float64", True, True, True),
+        (True, "string", True, True, False),
+        (True, "string", False, True, True),
+        (False, "float64", True, True, False),
+        (False, "float64", True, False, True),
+    ],
+)
+def test_related_meta_table_filters_use_catalog_schema(
+    time_indexed: bool,
+    data_type: str,
+    numeric: bool,
+    timestamped: bool,
+    expected: bool,
+) -> None:
+    meta_table = SimpleNamespace(
+        time_indexed=time_indexed,
+        columns=[
+            SimpleNamespace(
+                name="index_identifier",
+                data_type="string",
+                primary_key=True,
+            ),
+            SimpleNamespace(name="value", data_type=data_type, primary_key=False),
+        ],
+        foreign_keys=[SimpleNamespace(source_columns=("index_identifier",))],
+    )
+
+    assert (
+        catalog_service._matches_related_meta_table_filters(
+            storage_model=None,
+            meta_table=meta_table,
+            join_column="index_identifier",
+            numeric=numeric,
+            timestamped=timestamped,
+        )
+        is expected
+    )
+
+
+def test_related_meta_table_numeric_filter_ignores_relationship_columns() -> None:
+    meta_table = SimpleNamespace(
+        time_indexed=True,
+        columns=[
+            SimpleNamespace(
+                name="index_identifier",
+                data_type="int64",
+                primary_key=False,
+            )
+        ],
+        foreign_keys=[SimpleNamespace(source_columns=("index_identifier",))],
+    )
+
+    assert not catalog_service._matches_related_meta_table_filters(
+        storage_model=None,
+        meta_table=meta_table,
+        join_column="index_identifier",
+        numeric=True,
+        timestamped=True,
+    )

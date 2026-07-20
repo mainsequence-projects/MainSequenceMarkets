@@ -263,6 +263,7 @@ def test_public_planner_uses_required_service_inputs(monkeypatch) -> None:
             "valuation_resolver": _spot_valuation_resolver,
             "holdings_selection_policy": HoldingsSelectionPolicy(),
             "allocation_policy": AllocationPolicy(),
+            "portfolio_target_expander": None,
         }
         return inputs
 
@@ -365,6 +366,8 @@ def test_portfolio_target_requires_expander() -> None:
 
 
 def test_portfolio_expansion_uses_latest_weights_at_or_before_valuation_time(monkeypatch) -> None:
+    from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage
+
     context = object()
 
     def fake_resolve_runtime(**kwargs):
@@ -430,6 +433,7 @@ def test_portfolio_expansion_uses_latest_weights_at_or_before_valuation_time(mon
             }
         ],
         valuation_time=VALUATION_TIME,
+        portfolio_weights_storage=PortfolioWeightsStorage,
     )
 
     assert [row["asset_identifier"] for row in expanded] == [

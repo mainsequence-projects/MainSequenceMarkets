@@ -731,7 +731,7 @@ def test_index_model_is_reference_table() -> None:
     assert table.c.index_type.nullable is False
     assert "display_name" in table.c
     assert "description" in table.c
-    assert "provider" in table.c
+    assert "provider" not in table.c
     assert "metadata_json" in table.c
     assert removed_constant_name_field not in table.c
     assert not hasattr(IndexTable, removed_constant_name_field)
@@ -741,6 +741,9 @@ def test_index_model_is_reference_table() -> None:
     )
     assert any(
         [column.name for column in index.columns] == ["index_type"] for index in table.indexes
+    )
+    assert not any(
+        "provider" in [column.name for column in index.columns] for index in table.indexes
     )
 
 

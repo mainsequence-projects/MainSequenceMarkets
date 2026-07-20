@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Index as SqlIndex
+from sqlalchemy import CheckConstraint, Index as SqlIndex
 from sqlalchemy import String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
@@ -75,7 +75,7 @@ class IndexTypeTable(MarketsMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Metadata JSON",
-            "description": "Structured metadata JSON for provider, application, or workflow-specific attributes.",
+            "description": "Structured metadata JSON for source, application, or workflow-specific attributes.",
         },
     )
 
@@ -86,11 +86,19 @@ class IndexTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "Index"
     __metatable_description__ = (
         "Canonical market index identity table keyed by uid and unique_identifier. "
-        "Stores index type, display metadata, provider, and metadata used by "
+        "Stores index type, display metadata, and structured metadata used by "
         "derivative contracts, fixings, conventions, and curves."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
+        CheckConstraint(
+            "calculation_method IN ('formula', 'custom')",
+            name="index_calculation_method_valid",
+        ),
+        CheckConstraint(
+            "value_format IN ('decimal', 'percent')",
+            name="index_value_format_valid",
+        ),
         SqlIndex(
             None,
             "unique_identifier",
@@ -99,10 +107,6 @@ class IndexTable(MarketsMetaTableMixin, MarketsBase):
         SqlIndex(
             None,
             "display_name",
-        ),
-        SqlIndex(
-            None,
-            "provider",
         ),
         SqlIndex(
             None,
@@ -143,6 +147,30 @@ class IndexTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Human-readable display name for UI, logs, and operator workflows.",
         },
     )
+    calculation_method: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        info={
+            "label": "Calculation Method",
+            "description": "Formula when core calculates values; custom when code supplies them.",
+        },
+    )
+    value_format: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        info={
+            "label": "Value Format",
+            "description": "Decimal or percent presentation without changing stored values.",
+        },
+    )
+    value_suffix: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        info={
+            "label": "Value Suffix",
+            "description": "Optional display suffix such as bp or USD.",
+        },
+    )
     description: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
@@ -151,20 +179,12 @@ class IndexTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Human-readable description of the registry row and its intended use.",
         },
     )
-    provider: Mapped[str | None] = mapped_column(
-        String(255),
-        nullable=True,
-        info={
-            "label": "Provider",
-            "description": "External provider or vendor that supplied the reference row.",
-        },
-    )
     metadata_json: Mapped[dict | None] = mapped_column(
         JSON,
         nullable=True,
         info={
             "label": "Metadata JSON",
-            "description": "Structured metadata JSON for provider, application, or workflow-specific attributes.",
+            "description": "Structured metadata JSON for source, application, or workflow-specific attributes.",
         },
     )
 

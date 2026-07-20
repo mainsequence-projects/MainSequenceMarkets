@@ -48,6 +48,6 @@ not copy skills into the current working tree.
    construction workflow.
 5. [Pricing Instruments](05-pricing.md) — pricing instrument identity, bond
    pricing, and extending the schema.
-6. [Index Values And Derived Indexes](06-derived-indexes.md) — plain Index
-   observations, extension-owned storage, versioned calculated definitions,
-   publication, repair, and canonical consumption.
+6. [Formula And Custom Indexes](06-index-formulas.md) — custom publication,
+   mixed Asset/Index formulas, exact source bindings, preview, lifecycle, and
+   deterministic publication.

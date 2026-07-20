@@ -18,6 +18,8 @@ def execute_pricing_asset_operation(
     market_data_set: str | None,
     parameters: dict[str, Any],
 ) -> dict[str, Any]:
+    if market_data_set in (None, ""):
+        raise ValueError(f"market_data_set is required for {operation}.")
     _ensure_pricing_runtime()
     return _execute_asset_pricing_operation(
         asset_uid=asset_uid,

@@ -17,8 +17,6 @@ from examples.msm.platform.bootstrap import (  # noqa: E402
     EXAMPLE_NAMESPACE_ENV,
 )
 
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
-
 from examples.msm.assets.utils import EXAMPLE_CRYPTO_ASSETS  # noqa: E402
 from msm_portfolios.data_nodes.prices.storage import (  # noqa: E402
     ExternalPricesStorage,

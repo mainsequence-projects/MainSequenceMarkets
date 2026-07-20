@@ -47,7 +47,6 @@ def main() -> None:
         unique_identifier="USD-SOFR",
         index_type=INDEX_TYPE_INTEREST_RATE,
         display_name="USD SOFR",
-        provider="example",
     )
 
     IndexConventionDetails.upsert(
@@ -74,8 +73,7 @@ def main() -> None:
     )
 
     print(
-        "registered index convention "
-        f"{index.unique_identifier} and curve {curve.unique_identifier}"
+        f"registered index convention {index.unique_identifier} and curve {curve.unique_identifier}"
     )
 
 

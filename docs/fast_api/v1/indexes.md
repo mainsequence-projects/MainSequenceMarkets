@@ -1,13 +1,8 @@
 # Indexes
 
-The Index API exposes identity management, methodology exploration,
-cadence-specific canonical history, declared related MetaTables, and standard
-identity deletion. Business behavior lives under `msm.services.indices`;
-`apps/v1` is a typed HTTP adapter.
-
-An Index is a reusable observable. It is not automatically an Asset, pricing
-instrument, or Portfolio. One Index identity may publish observations to
-multiple cadence-specific canonical datasets.
+The FastAPI Index surface manages identity and explores formulas, canonical
+datasets, values, relationships, and delete impact. Formula mutation remains a
+typed-library operation through `FormulaIndex`.
 
 ## Routes
 
@@ -18,95 +13,121 @@ multiple cadence-specific canonical datasets.
 | `GET` | `/api/v1/index/` | `listIndexes` | Counted Index page |
 | `POST` | `/api/v1/index/` | `createIndex` | New Index identity |
 | `GET` | `/api/v1/index/{uid}/` | `getIndex` | One Index |
-| `PATCH` | `/api/v1/index/{uid}/` | `updateIndex` | Updated mutable identity fields |
-| `DELETE` | `/api/v1/index/{uid}/` | `deleteIndex` | Delete one identity row |
-| `GET` | `/api/v1/index/{uid}/summary/` | `getIndexSummary` | `FrontEndDetailSummary` |
-| `GET` | `/api/v1/index/{uid}/methodologies/` | `listIndexMethodologies` | Definition history |
-| `GET` | `/api/v1/index/{uid}/methodologies/{definition_uid}/` | `getIndexMethodology` | Exact definition and ordered legs |
-| `GET` | `/api/v1/index/{uid}/datasets/` | `listIndexDatasets` | Canonical cadence descriptors |
-| `GET` | `/api/v1/index/{uid}/datasets/{meta_table_uid}/` | `getIndexDatasetSummary` | Bounded aggregate summary |
-| `GET` | `/api/v1/index/{uid}/datasets/{meta_table_uid}/values/` | `getIndexDatasetValuesFrame` | `core.tabular_frame@v1` |
-| `GET` | `/api/v1/index/{uid}/related-meta-tables/` | `listIndexRelatedMetaTables` | Core and extension declarations |
-| `GET` | `/api/v1/index/{uid}/delete-impact/` | `getIndexDeleteImpact` | Foreign-key impact summary |
+| `PATCH` | `/api/v1/index/{uid}/` | `updateIndex` | Updated identity metadata |
+| `DELETE` | `/api/v1/index/{uid}/` | `deleteIndex` | Direct row deletion |
+| `GET` | `/api/v1/index/{uid}/summary/` | `getIndexSummary` | Detail summary |
+| `GET` | `/api/v1/index/{uid}/formulas/` | `listIndexFormulas` | Formula history |
+| `GET` | `/api/v1/index/{uid}/formulas/{definition_uid}/` | `getIndexFormula` | Formula and exact inputs |
+| `GET` | `/api/v1/index/{uid}/datasets/` | `listIndexDatasets` | Per-Index dataset states |
+| `GET` | `/api/v1/index/{uid}/datasets/{meta_table_uid}/` | `getIndexDatasetSummary` | Selected dataset summary |
+| `GET` | `/api/v1/index/{uid}/datasets/{meta_table_uid}/values/` | `getIndexDatasetValuesFrame` | Bounded tabular frame |
+| `GET` | `/api/v1/index/{uid}/related-meta-tables/` | `listIndexRelatedMetaTables` | Filtered related MetaTables |
+| `GET` | `/api/v1/index/{uid}/delete-impact/` | `getIndexDeleteImpact` | FK impact summary |
+| `GET` | `/api/v1/asset/{uid}/related-meta-tables/` | `listAssetRelatedMetaTables` | Asset source-table discovery |
 
-Every operation is included in the Adapter from API connection contract.
-Create, update, and delete are mutations.
+All operations are present in the Adapter from API contract. Create, update,
+and delete are mutations.
 
-## Methodology Fidelity
+## Identity Payload
 
-The methodology-detail response preserves the canonical leg contract. It
-returns `leg_role`, `selector_parameters_json`, `observable_code`,
-`transform_code`, `transform_parameters_json`, and
-`coefficient_parameters_json` without collapsing or renaming their semantics.
+Create requires:
+
+```json
+{
+  "unique_identifier": "USD-SWAP-10Y",
+  "index_type": "interest_rate",
+  "display_name": "USD 10Y Swap Rate",
+  "calculation_method": "custom",
+  "value_format": "percent",
+  "value_suffix": null
+}
+```
+
+`calculation_method` is `formula` or `custom`. `value_format` is `decimal` or
+`percent`; the optional suffix is presentation text. No provider, methodology
+owner, result-unit registry, or effective-date field exists on identity.
 
 ## Listing
 
-`GET /api/v1/index/` supports `search`, `index_type`, `provider`,
-`has_definition`, `has_canonical_values`, `cadence`, `limit`, and `offset`.
-The response count is authoritative for the complete filter, and ordering is
-stable.
-
-Creating an Index does not create methodology or storage. Use
-`DerivedIndex.upsert(...)` when core owns a reproducible methodology. Register
-cadence storage through the migration workflow before a producer writes
-values.
-
-## Dataset Contracts
-
-`GET /api/v1/index/{uid}/datasets/` returns typed canonical table descriptors.
-A table qualifies only when its registered cadence contract maps to the
-authoritative `configured_index_values_storage(cadence=...)` model and the
-model contains the real foreign key:
+`GET /api/v1/index/` supports:
 
 ```text
-index_identifier -> IndexTable.unique_identifier
+search, index_type, has_formula, has_canonical_values, cadence
+limit, offset, order, response_format
 ```
 
-The resolver also verifies identifier, cadence, physical table, grain, and the
-required `value` and `unit` columns. A matching column name or physical-name
-prefix is not sufficient.
+`response_format=frontend_list` is the standard list contract.
+`has_canonical_values` and `cadence` query indexed availability metadata; they
+do not scan each canonical table for distinct identifiers.
 
-The 1m and 1d descriptors for `USD_SWAP_10Y` therefore identify different
-MetaTable UIDs and physical tables even though both are filtered with the same
-Index business identifier.
+## Formula Responses
+
+Formula history returns version, status, validity, formula, policies, hash,
+and input count. Detail adds alignment parameters, metadata, and exact inputs:
+
+```json
+{
+  "source_reference": {
+    "type": "index",
+    "identifier": "MXN-TIIE-28D"
+  },
+  "meta_table_uid": "11111111-1111-1111-1111-111111111111",
+  "observable": "price"
+}
+```
+
+The response has no source key, resolver object, configurable identity/value
+columns, selectors, transforms, coefficients, or units.
+
+## Related MetaTables
+
+Asset and Index related-table routes accept:
+
+- `numeric=true`: require a numeric non-identity column;
+- `timestamped=true`: require a registered time-indexed table.
+
+Both default to true. False disables only that filter. Responses use the same
+`RelatedMetaTable` schema. Relationships are proven by registered FK metadata;
+column names alone are not accepted. Catalog discovery is paginated and does
+not read source values.
+
+## Dataset States
+
+Per-Index dataset listing returns:
+
+- `populated` when reconciliation found rows;
+- `compatible_empty` when a compatible query found none;
+- `unavailable` when access or query failure prevented a count.
+
+Compatible-empty rows are hidden unless `include_empty=true`. Unavailable rows
+remain visible and are not represented as empty.
 
 ## Bounded Values
 
-The values route requires timezone-aware `start` and `end`, an `asc` or `desc`
-order, and a limit from 1 through 5,000. It resolves the selected Index UID and
-always applies:
+Value requests require timezone-aware `start` and `end`, `order=asc|desc`, and
+a limit from 1 to 5,000. The selected Index identifier is always applied as a
+server-side dimension filter. The response is `core.tabular_frame@v1`.
 
-```text
-index_identifier = selected Index.unique_identifier
-```
-
-The implementation uses a governed compiled `SELECT` with time bounds and a
-server-side limit. The response is the SDK `TabularFrameResponse` and can feed
-generic Command Center tables and charts.
-
-## Extension Relationships
-
-Extensions may register an `IndexRelationshipProvider` with an authoritative
-SQLAlchemy model and a real foreign key to `IndexTable.uid` or
-`IndexTable.unique_identifier`. The producer does not have to inherit a core
-Index DataNode. Inferred relationships remain informational.
+Rows contain numeric value and optional provenance. Observation `unit` is not
+part of the response; display formatting belongs to the Index identity.
 
 ## Deletion
 
-Index deletion follows the same direct row-deletion contract as other core
-reference resources:
+Deletion uses the same direct row API as other core resources:
 
 ```http
 DELETE /api/v1/index/{uid}/
 ```
 
-The route returns `null` on success and `404` when the UID does not exist.
-Database `CASCADE`, `SET NULL`, `RESTRICT`, and `NO ACTION` constraints govern
-related rows. Identity deletion does not delete canonical timestamped value
-streams or perform extension-owned cleanup.
+It returns `null` on success and `404` when missing. Database `CASCADE`,
+`SET NULL`, `RESTRICT`, and `NO ACTION` constraints govern relationships.
+There is no signing secret, confirmation token, or deletion executor.
 
-## Related Concepts
+`GET /delete-impact/` is read-only preflight metadata. It does not change the
+delete operation.
 
-- [Index values and derived Indexes tutorial](../../tutorial/06-derived-indexes.md)
-- [Derived Index workflow](../../knowledge/msm/indices/derived_indexes.md)
+## Related Documentation
+
+- [Formula and custom Index tutorial](../../tutorial/06-index-formulas.md)
+- [Formula and custom Index workflow](../../knowledge/msm/indices/formula_indexes.md)
 - [ADR 0038](../../ADR/0038-index-user-api-and-fastapi-exploration.md)

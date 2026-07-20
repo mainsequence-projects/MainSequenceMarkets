@@ -115,7 +115,6 @@ def downgrade() -> None:
     op.drop_index(
         op.f("uix__ms_markets__indexcalculationdefinition__index_uid"),
         table_name="ms_markets__indexcalculationdefinition",
-        postgresql_where=sa.text("status = 'active'"),
     )
     op.drop_index(
         op.f("ix__ms_markets__indexdatasetavailability__population_149bb7907d"),

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 from collections.abc import Sequence
@@ -12,13 +11,6 @@ import pandas as pd
 if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
-
-from examples.msm.platform.bootstrap import (  # noqa: E402
-    EXAMPLE_METATABLE_NAMESPACE,
-    EXAMPLE_NAMESPACE_ENV,
-)
-
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
 from examples.msm.assets.utils import (  # noqa: E402
     EXAMPLE_CRYPTO_ASSETS,

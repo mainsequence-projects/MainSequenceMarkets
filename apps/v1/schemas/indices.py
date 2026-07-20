@@ -10,9 +10,9 @@ def _contracts():
         IndexDatasetDescriptor,
         IndexDatasetState,
         IndexDatasetSummary,
-        IndexMethodologyDetail,
-        IndexMethodologySummary,
-        IndexRelatedMetaTable,
+        IndexFormulaDetail,
+        IndexFormulaSummary,
+        RelatedMetaTable,
     )
 
     return (
@@ -20,12 +20,12 @@ def _contracts():
         IndexCreate,
         IndexUpdate,
         IndexType,
-        IndexMethodologySummary,
-        IndexMethodologyDetail,
+        IndexFormulaSummary,
+        IndexFormulaDetail,
         IndexDatasetDescriptor,
         IndexDatasetState,
         IndexDatasetSummary,
-        IndexRelatedMetaTable,
+        RelatedMetaTable,
     )
 
 
@@ -34,10 +34,10 @@ def _contracts():
     IndexCreate,
     IndexUpdate,
     IndexType,
-    IndexMethodologySummary,
-    IndexMethodologyDetail,
+    IndexFormulaSummary,
+    IndexFormulaDetail,
     IndexDatasetDescriptor,
     IndexDatasetState,
     IndexDatasetSummary,
-    IndexRelatedMetaTable,
+    RelatedMetaTable,
 ) = _contracts()

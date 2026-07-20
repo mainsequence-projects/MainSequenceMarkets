@@ -271,6 +271,7 @@ def plan_account_virtual_fund_allocations(
     holdings_selection_policy: HoldingsSelectionPolicy,
     valuation_resolver: ValuationResolver,
     allocation_policy: AllocationPolicy,
+    portfolio_target_expander: PortfolioTargetExpander | None = None,
 ) -> AccountVirtualFundAllocationPlan:
     """Plan account-to-virtual-fund attribution from one PositionSet."""
 
@@ -282,6 +283,7 @@ def plan_account_virtual_fund_allocations(
         valuation_resolver=valuation_resolver,
         holdings_selection_policy=holdings_selection_policy,
         allocation_policy=allocation_policy,
+        portfolio_target_expander=portfolio_target_expander,
     )
     return _plan_account_virtual_fund_allocations_from_resolved_inputs(
         position_set_uid=position_set_uid,
@@ -604,6 +606,7 @@ def resolve_account_virtual_fund_allocation_inputs(
     holdings_selection_policy: HoldingsSelectionPolicy,
     valuation_resolver: ValuationResolver,
     allocation_policy: AllocationPolicy,
+    portfolio_target_expander: PortfolioTargetExpander | None = None,
 ) -> AccountVirtualFundAllocationInputs:
     """Resolve planner inputs through the account MetaTable relationship graph."""
 
@@ -707,9 +710,15 @@ def resolve_account_virtual_fund_allocation_inputs(
             f"position_set_uid={position_set_uid!s} and valuation_time={normalized_time.isoformat()}."
         )
 
-    expanded_portfolio_rows = _expand_portfolio_target_rows(
-        target_position_rows,
-        valuation_time=normalized_time,
+    portfolio_rows = [
+        row for row in target_position_rows if row.get("target_type") == TARGET_TYPE_PORTFOLIO
+    ]
+    if portfolio_rows and portfolio_target_expander is None:
+        raise ValueError("Portfolio target rows require portfolio_target_expander.")
+    expanded_portfolio_rows = (
+        _expanded_target_rows(portfolio_target_expander(portfolio_rows))
+        if portfolio_rows and portfolio_target_expander is not None
+        else []
     )
     asset_identifiers = {
         str(row[ASSET_IDENTIFIER_DIMENSION])
@@ -1208,6 +1217,7 @@ def _expand_portfolio_target_rows(
     target_position_rows: Sequence[Mapping[str, Any]],
     *,
     valuation_time: dt.datetime,
+    portfolio_weights_storage: Any,
 ) -> list[dict[str, Any]]:
     portfolio_rows = [
         dict(row) for row in target_position_rows if row.get("target_type") == TARGET_TYPE_PORTFOLIO
@@ -1219,10 +1229,9 @@ def _expand_portfolio_target_rows(
     from msm.bootstrap import resolve_runtime
     from msm.models.portfolios import PortfolioTable
     from msm.repositories.crud import search_model
-    from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage
 
     runtime = resolve_runtime(
-        models=[PortfolioTable, PortfolioWeightsStorage],
+        models=[PortfolioTable, portfolio_weights_storage],
         row_model_name="Account virtual-fund allocation portfolio expansion",
     )
     context = runtime.context
@@ -1248,7 +1257,7 @@ def _expand_portfolio_target_rows(
     }
     weight_records = _latest_portfolio_weight_records(
         context,
-        portfolio_weights_storage=PortfolioWeightsStorage,
+        portfolio_weights_storage=portfolio_weights_storage,
         portfolio_identifiers=sorted(set(portfolio_identifier_by_uid.values())),
         valuation_time=valuation_time,
     )

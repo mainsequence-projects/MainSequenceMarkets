@@ -5,22 +5,23 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import String, and_, cast, exists, func, or_, select
+from sqlalchemy import Float, Integer, Numeric, String, and_, cast, exists, func, or_, select
 
 from mainsequence.client.metatables import MetaTable, TimeIndexMetaTable
 
 from msm.api.base import operation_result_rows
 from msm.api.indices import Index, IndexType
+from msm.analytics.indices import IndexFormulaInput
 from msm.data_nodes.indices.storage import (
     INDEX_VALUES_CADENCE_COMPONENT,
     INDEX_VALUES_STORAGE_NAME_COMPONENT,
-    IndexResolvedLegsStorage,
     configured_index_values_storage,
 )
 from msm.models import (
-    IndexCalculationDefinitionTable,
-    IndexCalculationLegTable,
+    AssetTable,
     IndexDatasetAvailabilityTable,
+    IndexFormulaDefinitionTable,
+    IndexFormulaInputTable,
     IndexTable,
     IndexTypeTable,
 )
@@ -36,16 +37,14 @@ from .contracts import (
     IndexActor,
     IndexDatasetAccess,
     IndexDatasetDescriptor,
-    IndexDatasetState,
     IndexDatasetSummary,
     IndexDetail,
     IndexForeignKeyDescriptor,
     IndexListRequest,
-    IndexMethodologyDetail,
-    IndexMethodologyLeg,
-    IndexMethodologySummary,
+    IndexFormulaDetail,
+    IndexFormulaSummary,
     IndexPage,
-    IndexRelatedMetaTable,
+    RelatedMetaTable,
     IndexSummary,
     IndexValueRow,
     IndexValuesResult,
@@ -67,7 +66,6 @@ def list_indexes(context: MarketsOperationContext, request: IndexListRequest) ->
                 func.lower(IndexTable.unique_identifier).like(needle),
                 func.lower(IndexTable.display_name).like(needle),
                 func.lower(func.coalesce(IndexTable.description, "")).like(needle),
-                func.lower(func.coalesce(IndexTable.provider, "")).like(needle),
             )
         )
     if request.uids:
@@ -76,16 +74,14 @@ def list_indexes(context: MarketsOperationContext, request: IndexListRequest) ->
         conditions.append(IndexTable.unique_identifier.in_(request.unique_identifiers))
     if request.index_type:
         conditions.append(IndexTable.index_type == request.index_type)
-    if request.provider:
-        conditions.append(IndexTable.provider == request.provider)
-    if request.has_definition is not None:
-        models.append(IndexCalculationDefinitionTable)
-        definition_exists = exists(
-            select(IndexCalculationDefinitionTable.uid).where(
-                IndexCalculationDefinitionTable.index_uid == IndexTable.uid
+    if request.has_formula is not None:
+        models.append(IndexFormulaDefinitionTable)
+        formula_exists = exists(
+            select(IndexFormulaDefinitionTable.uid).where(
+                IndexFormulaDefinitionTable.index_uid == IndexTable.uid
             )
         )
-        conditions.append(definition_exists if request.has_definition else ~definition_exists)
+        conditions.append(formula_exists if request.has_formula else ~formula_exists)
 
     if request.has_canonical_values is not None or request.cadence:
         models.append(IndexDatasetAvailabilityTable)
@@ -110,7 +106,7 @@ def list_indexes(context: MarketsOperationContext, request: IndexListRequest) ->
         "display_name": IndexTable.display_name,
         "unique_identifier": IndexTable.unique_identifier,
         "index_type": IndexTable.index_type,
-        "provider": IndexTable.provider,
+        "calculation_method": IndexTable.calculation_method,
     }[request.order]
     statement = statement.order_by(
         func.lower(func.coalesce(order_column, "")),
@@ -160,7 +156,10 @@ def list_index_types(
         raise ValueError("limit must be between 1 and 500")
     if offset < 0:
         raise ValueError("offset must be nonnegative")
-    base = select(IndexTypeTable).order_by(IndexTypeTable.index_type, IndexTypeTable.uid)
+    base = select(IndexTypeTable).order_by(
+        func.lower(IndexTypeTable.index_type),
+        IndexTypeTable.uid,
+    )
     count_statement = select(func.count().label("count")).select_from(base.subquery())
     count_rows = operation_result_rows(
         execute_markets_operation(
@@ -192,29 +191,29 @@ def list_index_types(
     )
 
 
-def list_methodologies(
+def list_formulas(
     context: MarketsOperationContext,
     *,
     index_uid: uuid.UUID | str,
-) -> tuple[IndexMethodologySummary, ...]:
+) -> tuple[IndexFormulaSummary, ...]:
     definition_rows = operation_result_rows(
         search_model(
             context,
-            model=IndexCalculationDefinitionTable,
+            model=IndexFormulaDefinitionTable,
             filters={"index_uid": uuid.UUID(str(index_uid))},
             limit=500,
         )
     )
     definition_uids = [row["uid"] for row in definition_rows]
-    leg_counts: dict[str, int] = {}
+    input_counts: dict[str, int] = {}
     if definition_uids:
         count_statement = (
             select(
-                IndexCalculationLegTable.definition_uid,
-                func.count().label("leg_count"),
+                IndexFormulaInputTable.definition_uid,
+                func.count().label("input_count"),
             )
-            .where(IndexCalculationLegTable.definition_uid.in_(definition_uids))
-            .group_by(IndexCalculationLegTable.definition_uid)
+            .where(IndexFormulaInputTable.definition_uid.in_(definition_uids))
+            .group_by(IndexFormulaInputTable.definition_uid)
         )
         count_rows = operation_result_rows(
             execute_markets_operation(
@@ -222,66 +221,71 @@ def list_methodologies(
                     count_statement,
                     context=context,
                     operation="select",
-                    models=[IndexCalculationLegTable],
+                    models=[IndexFormulaInputTable],
                     access="read",
                 ),
                 context=context,
             )
         )
-        leg_counts = {
-            str(row["definition_uid"]): int(row.get("leg_count") or 0) for row in count_rows
+        input_counts = {
+            str(row["definition_uid"]): int(row.get("input_count") or 0) for row in count_rows
         }
     summaries = [
-        _methodology_summary(row, leg_count=leg_counts.get(str(row["uid"]), 0))
+        _formula_summary(row, input_count=input_counts.get(str(row["uid"]), 0))
         for row in sorted(
             definition_rows,
-            key=lambda item: (int(item["definition_version"]), str(item["uid"])),
+            key=lambda item: (int(item["version"]), str(item["uid"])),
             reverse=True,
         )
     ]
     return tuple(summaries)
 
 
-def get_methodology(
+def get_formula(
     context: MarketsOperationContext,
     *,
     index_uid: uuid.UUID | str,
     definition_uid: uuid.UUID | str,
-) -> IndexMethodologyDetail | None:
+) -> IndexFormulaDetail | None:
     row_result = get_model_by_uid(
         context,
-        model=IndexCalculationDefinitionTable,
+        model=IndexFormulaDefinitionTable,
         uid=definition_uid,
     )
     rows = operation_result_rows(row_result)
     if not rows or str(rows[0]["index_uid"]) != str(index_uid):
         return None
     definition = rows[0]
-    leg_rows = operation_result_rows(
+    input_rows = operation_result_rows(
         search_model(
             context,
-            model=IndexCalculationLegTable,
+            model=IndexFormulaInputTable,
             filters={"definition_uid": uuid.UUID(str(definition_uid))},
             limit=500,
         )
     )
-    legs = tuple(
-        _methodology_leg(row)
-        for row in sorted(leg_rows, key=lambda item: (int(item["leg_order"]), str(item["uid"])))
+    asset_uids = [row["asset_uid"] for row in input_rows if row.get("asset_uid") is not None]
+    index_uids = [
+        row["component_index_uid"]
+        for row in input_rows
+        if row.get("component_index_uid") is not None
+    ]
+    asset_identifiers = _identifiers_by_uid(context, model=AssetTable, uids=asset_uids)
+    index_identifiers = _identifiers_by_uid(context, model=IndexTable, uids=index_uids)
+    inputs = tuple(
+        _formula_input(
+            row,
+            asset_identifiers=asset_identifiers,
+            index_identifiers=index_identifiers,
+        )
+        for row in sorted(input_rows, key=lambda item: str(item["uid"]))
     )
-    summary = _methodology_summary(definition, leg_count=len(legs))
-    return IndexMethodologyDetail(
+    summary = _formula_summary(definition, input_count=len(inputs))
+    return IndexFormulaDetail(
         **summary.model_dump(),
-        calculation_parameters_json=definition.get("calculation_parameters_json"),
-        alignment_policy=str(definition["alignment_policy"]),
         alignment_parameters_json=definition.get("alignment_parameters_json"),
-        missing_data_policy=str(definition["missing_data_policy"]),
-        missing_data_parameters_json=definition.get("missing_data_parameters_json"),
-        rebalance_policy=definition.get("rebalance_policy"),
-        rebalance_parameters_json=definition.get("rebalance_parameters_json"),
-        source=definition.get("source"),
         metadata_json=definition.get("metadata_json"),
-        legs=legs,
+        inputs=inputs,
     )
 
 
@@ -349,7 +353,6 @@ def dataset_summary(
         latest_statement = (
             select(
                 model.value,
-                model.unit,
                 model.observation_status,
                 model.source_as_of,
             )
@@ -379,7 +382,6 @@ def dataset_summary(
             earliest_time_index=aggregate_row.get("earliest_time_index"),
             latest_time_index=aggregate_row.get("latest_time_index"),
             latest_value=latest.get("value"),
-            latest_unit=latest.get("unit"),
             latest_status=latest.get("observation_status"),
             latest_source_as_of=latest.get("source_as_of"),
         )
@@ -417,7 +419,6 @@ def read_index_values(
             model.time_index,
             model.index_identifier,
             model.value,
-            model.unit,
             model.definition_uid,
             model.observation_status,
             model.source_as_of,
@@ -457,52 +458,33 @@ def list_related_meta_tables(
     context: MarketsOperationContext,
     *,
     index: Index,
-) -> tuple[IndexRelatedMetaTable, ...]:
+    numeric: bool = True,
+    timestamped: bool = True,
+) -> tuple[RelatedMetaTable, ...]:
+    """Return Index relationships filtered by registered table schema."""
+
     definitions = _count(
         count_model(
             context,
-            model=IndexCalculationDefinitionTable,
+            model=IndexFormulaDefinitionTable,
             filters={"index_uid": index.uid},
         )
     )
     component_dependencies = _count(
         count_model(
             context,
-            model=IndexCalculationLegTable,
+            model=IndexFormulaInputTable,
             filters={"component_index_uid": index.uid},
         )
     )
-    resolved_meta_table = None
-    resolved_leg_count: int | None = None
-    try:
-        resolved_meta_table = IndexResolvedLegsStorage.get_time_index_meta_table()
-        if resolved_meta_table is not None:
-            resolved_handle = MarketsMetaTableHandle(
-                model=IndexResolvedLegsStorage,
-                meta_table=resolved_meta_table,
-                limits=context.limits,
-                data_source_uid=context.data_source_uid,
-                timeout=context.timeout,
-                namespace=context.namespace,
-                reserved_policy=context.reserved_policy,
-            )
-            resolved_leg_count = _count(
-                count_model(
-                    resolved_handle,
-                    model=IndexResolvedLegsStorage,
-                    filters={"index_identifier": index.unique_identifier},
-                )
-            )
-    except Exception:
-        resolved_meta_table = None
     results = [
-        IndexRelatedMetaTable(
-            key="calculation_definitions",
-            label="Calculation definitions",
+        RelatedMetaTable(
+            key="formula_definitions",
+            label="Formula definitions",
             owning_package="msm",
             storage_kind="related_reference_table",
-            meta_table_uid=_bound_uid(IndexCalculationDefinitionTable),
-            identifier=str(IndexCalculationDefinitionTable.__metatable_identifier__),
+            meta_table_uid=_bound_uid(IndexFormulaDefinitionTable),
+            identifier=str(IndexFormulaDefinitionTable.__metatable_identifier__),
             relationship_type="direct",
             join_kind="uid",
             join_column="index_uid",
@@ -513,13 +495,13 @@ def list_related_meta_tables(
             delete_capability="cascade",
             count=definitions,
         ),
-        IndexRelatedMetaTable(
+        RelatedMetaTable(
             key="component_index_dependencies",
-            label="Methodologies using this component Index",
+            label="Formulas using this component Index",
             owning_package="msm",
             storage_kind="related_reference_table",
-            meta_table_uid=_bound_uid(IndexCalculationLegTable),
-            identifier=str(IndexCalculationLegTable.__metatable_identifier__),
+            meta_table_uid=_bound_uid(IndexFormulaInputTable),
+            identifier=str(IndexFormulaInputTable.__metatable_identifier__),
             relationship_type="direct",
             join_kind="uid",
             join_column="component_index_uid",
@@ -531,36 +513,11 @@ def list_related_meta_tables(
             count=component_dependencies,
             blocks_delete=component_dependencies > 0,
         ),
-        IndexRelatedMetaTable(
-            key="resolved_index_legs",
-            label="Resolved methodology legs",
-            owning_package="msm",
-            storage_kind="resolved_index_legs",
-            meta_table_uid=str(getattr(resolved_meta_table, "uid", "")) or None,
-            identifier=str(
-                getattr(
-                    resolved_meta_table,
-                    "identifier",
-                    IndexResolvedLegsStorage.__metatable_identifier__,
-                )
-            ),
-            relationship_type="direct",
-            join_kind="unique_identifier",
-            join_column="index_identifier",
-            on_delete="RESTRICT",
-            authoritative=True,
-            discovery_source="core_model",
-            exploration_capability="count",
-            delete_capability="none",
-            count=resolved_leg_count,
-            blocks_delete=bool(resolved_leg_count),
-            confidence_reason=(
-                None
-                if resolved_meta_table is not None
-                else "The resolved-leg MetaTable binding or count is unavailable."
-            ),
-        ),
     ]
+    schema_sources: dict[str, tuple[type[Any] | None, Any | None]] = {
+        "formula_definitions": (IndexFormulaDefinitionTable, None),
+        "component_index_dependencies": (IndexFormulaInputTable, None),
+    }
     for provider in list_index_relationship_providers():
         count: int | None = None
         count_error: str | None = None
@@ -591,7 +548,7 @@ def list_related_meta_tables(
             except Exception as exc:
                 count_error = f"{type(exc).__name__}: {exc}"
         results.append(
-            IndexRelatedMetaTable(
+            RelatedMetaTable(
                 key=provider.key,
                 label=provider.label,
                 owning_package=provider.owning_package,
@@ -622,8 +579,25 @@ def list_related_meta_tables(
                 ),
             )
         )
-    results.extend(_inferred_index_relationships(results))
-    return tuple(sorted(results, key=lambda item: item.key))
+        schema_sources[provider.key] = (provider.storage_model, meta_table)
+    inferred = _inferred_index_relationships(
+        results,
+        numeric=numeric,
+        timestamped=timestamped,
+    )
+    filtered = [
+        item
+        for item in results
+        if _matches_related_meta_table_filters(
+            storage_model=schema_sources[item.key][0],
+            meta_table=schema_sources[item.key][1],
+            join_column=item.join_column,
+            numeric=numeric,
+            timestamped=timestamped,
+        )
+    ]
+    filtered.extend(inferred)
+    return tuple(sorted(filtered, key=lambda item: item.key))
 
 
 def get_index_detail(
@@ -642,9 +616,14 @@ def get_index_detail(
         warnings.append(f"Canonical dataset discovery unavailable: {type(exc).__name__}: {exc}")
     return IndexDetail(
         index=index,
-        methodologies=list_methodologies(context, index_uid=index.uid),
+        formulas=list_formulas(context, index_uid=index.uid),
         datasets=datasets,
-        related_meta_tables=list_related_meta_tables(context, index=index),
+        related_meta_tables=list_related_meta_tables(
+            context,
+            index=index,
+            numeric=False,
+            timestamped=False,
+        ),
         warnings=tuple(warnings),
     )
 
@@ -658,14 +637,14 @@ def get_index_summary(
     detail = get_index_detail(context, index=index, actor=actor)
     warnings = [*detail.warnings]
     warnings.extend(item.error for item in detail.datasets if item.error)
-    methodologies = detail.methodologies
-    active = next((item for item in methodologies if item.status == "active"), None)
+    formulas = detail.formulas
+    active = next((item for item in formulas if item.status == "active"), None)
     relationships = detail.related_meta_tables
     return IndexSummary(
         index=index,
-        definition_count=len(methodologies),
-        leg_count=sum(item.leg_count for item in methodologies),
-        active_definition=active,
+        formula_count=len(formulas),
+        input_count=sum(item.input_count for item in formulas),
+        active_formula=active,
         dataset_count=sum(item.population_state == "populated" for item in detail.datasets),
         cadences=tuple(
             sorted(
@@ -714,7 +693,7 @@ def _canonical_descriptor(
     if physical_table_name != model.__table__.name:
         return None
     columns = tuple(_column_names(meta_table))
-    if not {"time_index", "index_identifier", "value", "unit"}.issubset(columns):
+    if not {"time_index", "index_identifier", "value"}.issubset(columns):
         return None
     index_names = tuple(
         str(item) for item in (getattr(meta_table, "table_index_names", None) or ())
@@ -791,48 +770,61 @@ def _dataset_model_and_handle(
     return model, handle
 
 
-def _methodology_summary(
+def _formula_summary(
     row: dict[str, Any],
     *,
-    leg_count: int,
-) -> IndexMethodologySummary:
-    return IndexMethodologySummary(
+    input_count: int,
+) -> IndexFormulaSummary:
+    return IndexFormulaSummary(
         uid=row["uid"],
         index_uid=row["index_uid"],
-        definition_version=row["definition_version"],
+        version=row["version"],
         status=row["status"],
-        effective_from=row["effective_from"],
-        effective_to=row.get("effective_to"),
-        calculation_kind=row["calculation_kind"],
-        calculation_family=row["calculation_family"],
-        output_unit=row["output_unit"],
-        composition_mode=row["composition_mode"],
+        valid_from=row["valid_from"],
+        valid_to=row.get("valid_to"),
+        formula=row["formula"],
+        alignment_policy=row["alignment_policy"],
+        missing_data_policy=row["missing_data_policy"],
         definition_hash=row["definition_hash"],
-        leg_count=leg_count,
+        input_count=input_count,
     )
 
 
-def _methodology_leg(row: dict[str, Any]) -> IndexMethodologyLeg:
-    return IndexMethodologyLeg(
-        uid=row["uid"],
-        definition_uid=row["definition_uid"],
-        leg_key=row["leg_key"],
-        leg_order=row["leg_order"],
-        leg_role=row.get("leg_role"),
-        component_kind=row["component_kind"],
-        asset_uid=row.get("asset_uid"),
-        component_index_uid=row.get("component_index_uid"),
-        selector_code=row.get("selector_code"),
-        selector_parameters_json=row.get("selector_parameters_json"),
-        observable_code=row["observable_code"],
-        input_unit=row["input_unit"],
-        transform_code=row["transform_code"],
-        transform_parameters_json=row.get("transform_parameters_json"),
-        coefficient_method=row["coefficient_method"],
-        coefficient=row.get("coefficient"),
-        coefficient_parameters_json=row.get("coefficient_parameters_json"),
-        metadata_json=row.get("metadata_json"),
+def _formula_input(
+    row: dict[str, Any],
+    *,
+    asset_identifiers: dict[str, str],
+    index_identifiers: dict[str, str],
+) -> IndexFormulaInput:
+    asset_uid = row.get("asset_uid")
+    component_index_uid = row.get("component_index_uid")
+    source_type = "asset" if asset_uid is not None else "index"
+    source_uid = asset_uid if asset_uid is not None else component_index_uid
+    identifiers = asset_identifiers if source_type == "asset" else index_identifiers
+    identifier = identifiers.get(str(source_uid))
+    if identifier is None:
+        raise LookupError(f"formula input {row['uid']} references a missing {source_type}")
+    return IndexFormulaInput.model_validate(
+        {
+            "source_reference": {"type": source_type, "identifier": identifier},
+            "meta_table_uid": row["meta_table_uid"],
+            "observable": row["observable"],
+        }
     )
+
+
+def _identifiers_by_uid(
+    context: MarketsOperationContext,
+    *,
+    model: type[Any],
+    uids: Sequence[Any],
+) -> dict[str, str]:
+    if not uids:
+        return {}
+    rows = operation_result_rows(
+        search_model(context, model=model, in_filters={"uid": list(uids)}, limit=len(uids))
+    )
+    return {str(row["uid"]): str(row["unique_identifier"]) for row in rows}
 
 
 def _count(result: dict[str, Any] | list[Any] | None) -> int:
@@ -876,14 +868,24 @@ def _producer_identifiers(meta_table: Any) -> tuple[str, ...]:
 
 
 def _inferred_index_relationships(
-    declared: Sequence[IndexRelatedMetaTable],
-) -> list[IndexRelatedMetaTable]:
+    declared: Sequence[RelatedMetaTable],
+    *,
+    numeric: bool,
+    timestamped: bool,
+) -> list[RelatedMetaTable]:
     declared_identifiers = {item.identifier for item in declared}
     try:
-        meta_tables = MetaTable.filter_by_body(limit=500, offset=0)
+        meta_tables = []
+        offset = 0
+        while True:
+            page = list(MetaTable.filter_by_body(limit=500, offset=offset))
+            meta_tables.extend(page)
+            if len(page) < 500:
+                break
+            offset += len(page)
     except Exception:
         return []
-    inferred: list[IndexRelatedMetaTable] = []
+    inferred: list[RelatedMetaTable] = []
     for meta_table in meta_tables:
         identifier = str(getattr(meta_table, "identifier", ""))
         if not identifier or identifier in declared_identifiers:
@@ -897,8 +899,16 @@ def _inferred_index_relationships(
                 continue
             target_columns = tuple(getattr(foreign_key, "target_columns", None) or ())
             target_column = str(target_columns[0])
+            if not _matches_related_meta_table_filters(
+                storage_model=None,
+                meta_table=meta_table,
+                join_column=str(source_columns[0]),
+                numeric=numeric,
+                timestamped=timestamped,
+            ):
+                continue
             inferred.append(
-                IndexRelatedMetaTable(
+                RelatedMetaTable(
                     key=f"inferred:{getattr(meta_table, 'uid', identifier)}:{source_columns[0]}",
                     label=getattr(meta_table, "description", None) or identifier,
                     owning_package="unknown",
@@ -922,6 +932,125 @@ def _inferred_index_relationships(
                 )
             )
     return inferred
+
+
+def _matches_related_meta_table_filters(
+    *,
+    storage_model: type[Any] | None,
+    meta_table: Any | None,
+    join_column: str | None,
+    numeric: bool,
+    timestamped: bool,
+) -> bool:
+    if timestamped and not _is_timestamped_meta_table(meta_table):
+        return False
+    if numeric and not _has_numeric_data_column(
+        storage_model=storage_model,
+        meta_table=meta_table,
+        join_column=join_column,
+    ):
+        return False
+    return True
+
+
+def _is_timestamped_meta_table(meta_table: Any | None) -> bool:
+    if meta_table is None:
+        return False
+    time_indexed = getattr(meta_table, "time_indexed", None)
+    if time_indexed is not None:
+        return bool(time_indexed)
+    return getattr(meta_table, "time_indexed_profile", None) is not None or isinstance(
+        meta_table, TimeIndexMetaTable
+    )
+
+
+def _has_numeric_data_column(
+    *,
+    storage_model: type[Any] | None,
+    meta_table: Any | None,
+    join_column: str | None,
+) -> bool:
+    excluded_columns = _relationship_column_names(
+        storage_model=storage_model,
+        meta_table=meta_table,
+    )
+    if join_column:
+        excluded_columns.add(join_column)
+
+    catalog_columns = getattr(meta_table, "columns", None) if meta_table is not None else None
+    catalog_has_typed_columns = False
+    for column in catalog_columns or ():
+        name = column.get("name") if isinstance(column, dict) else getattr(column, "name", None)
+        data_type = (
+            column.get("data_type")
+            if isinstance(column, dict)
+            else getattr(column, "data_type", None)
+        )
+        primary_key = (
+            column.get("primary_key", False)
+            if isinstance(column, dict)
+            else getattr(column, "primary_key", False)
+        )
+        if data_type not in (None, ""):
+            catalog_has_typed_columns = True
+        if (
+            name not in (None, "")
+            and str(name) not in excluded_columns
+            and not primary_key
+            and _is_numeric_dtype(data_type)
+        ):
+            return True
+    if catalog_has_typed_columns:
+        return False
+
+    table = getattr(storage_model, "__table__", None) if storage_model is not None else None
+    if table is None:
+        return False
+    return any(
+        column.name not in excluded_columns
+        and not column.primary_key
+        and isinstance(column.type, (Integer, Float, Numeric))
+        for column in table.columns
+    )
+
+
+def _relationship_column_names(
+    *,
+    storage_model: type[Any] | None,
+    meta_table: Any | None,
+) -> set[str]:
+    names: set[str] = set()
+    for foreign_key in getattr(meta_table, "foreign_keys", None) or ():
+        source_columns = (
+            foreign_key.get("source_columns")
+            if isinstance(foreign_key, dict)
+            else getattr(foreign_key, "source_columns", None)
+        )
+        names.update(str(name) for name in source_columns or ())
+    table = getattr(storage_model, "__table__", None) if storage_model is not None else None
+    if table is not None:
+        names.update(str(foreign_key.parent.name) for foreign_key in table.foreign_keys)
+    return names
+
+
+def _is_numeric_dtype(data_type: Any) -> bool:
+    normalized = " ".join(str(data_type or "").strip().lower().replace("_", " ").split())
+    return normalized in {
+        "int16",
+        "int32",
+        "int64",
+        "smallint",
+        "integer",
+        "bigint",
+        "float32",
+        "float64",
+        "float",
+        "real",
+        "double",
+        "double precision",
+        "numeric",
+        "decimal",
+    } or normalized.startswith(("numeric(", "decimal("))
 
 
 def _catalog_fk_matches_index(foreign_key: Any, *, source_column: str) -> bool:
@@ -955,9 +1084,9 @@ __all__ = [
     "get_index_detail",
     "get_index_summary",
     "list_index_types",
-    "get_methodology",
+    "get_formula",
     "list_indexes",
-    "list_methodologies",
+    "list_formulas",
     "list_related_meta_tables",
     "read_index_values",
 ]

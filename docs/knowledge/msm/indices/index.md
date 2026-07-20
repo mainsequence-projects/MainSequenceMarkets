@@ -1,256 +1,206 @@
 # Indexes
 
-Indexes are canonical market observables, not assets. An Index may be an
-externally supplied reference or a calculated observable with a versioned
-derived-index methodology.
+An Index is a canonical observable identity, not necessarily a tradable Asset.
+Examples include a published market benchmark, an interest-rate fixing, a
+swap-quote series, a formula spread, or a Portfolio benchmark.
 
-Use `Index` when a workflow needs a reusable observable whose meaning is
-independent of a particular holder. It may also be used as a derivative
-underlying, but tradability is not required: `USD_SWAP_10Y` is an Index because
-it identifies the 10-year swap-rate observation through time. Do not create
-fake `Asset` rows for indexes just to make a foreign key work.
+A tradable future on an Index is an Asset whose future details reference the
+Index. Do not create a fake Asset merely to store Index observations.
 
-## Scope
+## Identity And Calculation
 
-Indexes answer these questions:
+`IndexTable` separates three concerns:
 
-- What is the stable `unique_identifier` for this index?
-- What type of index is it, such as `interest_rate`?
-- What human-readable name should users see?
-- Which optional provider namespace owns or supplied the reference row?
-- Which derivative contracts reference this index as an underlying?
-- If the type is `derived`, which immutable definition and ordered legs give
-  the index its meaning at a timestamp?
+- `index_type`: business classification such as `interest_rate`;
+- `calculation_method`: exactly `formula` or `custom`;
+- `value_format` and optional `value_suffix`: display only.
 
-Indexes do not represent tradable instruments. A tradable future on an index is
-an `Asset(asset_type="future")` plus a `FutureAssetDetailsTable` row that references
-`IndexTable.uid`.
-
-Do not store platform Constant names on `IndexTable`. Constant aliases are not
-part of the schema or the typed `Index` payloads; project-specific aliases
-belong in `metadata_json` only when they are reference metadata rather than
-canonical identity.
-
-## API
-
-Application code should use `msm.api.indices.IndexType` to register index type
-keys and `msm.api.indices.Index` to register canonical index rows.
+`formula` means ms-markets owns a versioned point-in-time expression. `custom`
+means project or extension code publishes the values. Both can use the same
+Index type.
 
 ```python
-from msm.api.indices import Index, IndexType
-from msm.constants import (
-    INDEX_TYPE_INTEREST_RATE,
-    INDEX_TYPE_INTEREST_RATE_DEFINITION,
-)
+from msm.api import Index
 
-IndexType.upsert(**INDEX_TYPE_INTEREST_RATE_DEFINITION.as_payload())
-
-sofr = Index.upsert(
-    unique_identifier="USD-SOFR-3M",
-    index_type=INDEX_TYPE_INTEREST_RATE,
-    display_name="USD SOFR 3M",
-    provider="example",
+swap_rate = Index.upsert(
+    unique_identifier="USD-SWAP-10Y",
+    index_type="interest_rate",
+    display_name="USD 10Y Swap Rate",
+    calculation_method="custom",
+    value_format="percent",
 )
 ```
 
-OpenFIGI-backed workflows can register index reference rows with the provider
-helper. The helper rejects rows whose OpenFIGI `marketSector` is not `Index`.
+`value_format` does not change the stored value. A percent Index still stores
+a decimal ratio. `value_suffix` is arbitrary display text such as `" bp"` or
+`" USD"`.
 
-```python
-from msm.api.indices import IndexType
-from msm.services import register_index_from_figi
-from msm.constants import INDEX_TYPE_EQUITY, INDEX_TYPE_EQUITY_DEFINITION
+The calculation method cannot change once the Index owns formulas or populated
+canonical observations.
 
-IndexType.upsert(**INDEX_TYPE_EQUITY_DEFINITION.as_payload())
-spx = register_index_from_figi("BBG000KKFC45", index_type=INDEX_TYPE_EQUITY)
-```
+## Typed API
 
-`Index` exposes the same typed row API style as the rest of `msm.api`:
-
-- `IndexType.upsert(...)`
-- `Index.upsert(...)`
-- `Index.get_by_uid(...)`
-- `Index.get_by_unique_identifier(...)`
-- `Index.filter(...)`
-- `Index.update(...)`
-- `Index.list_page(...)`
-- `Index.get_detail(...)` and `Index.get_summary(...)`
-- `Index.list_methodologies(...)` and `Index.get_methodology(...)`
-- `Index.list_datasets(...)`, `Index.get_dataset_summary(...)`, and bounded
-  `Index.get_values(...)`
-- `Index.list_related_meta_tables(...)`
-- `Index.delete(...)`
-
-`Index.delete(...)` uses the standard direct row API. Database foreign-key
-actions govern related rows. See the [Index FastAPI contract](../../../fast_api/v1/indexes.md)
-for the matching HTTP surface.
-
-## Schema
-
-`IndexTypeTable` and `IndexTable` are declared under `msm.models.indices` and
-exported through `msm.models`. `IndexTypeTable` mirrors the `AssetTypeTable`
-pattern: it registers what an `Index.index_type` string means. In the current
-schema, `Index.index_type` is a required string classification field whose values should
-match rows in `IndexType`; it is not a database foreign key in this release.
-
-`IndexTypeTable` fields:
-
-| Field | Meaning |
-| --- | --- |
-| `uid` | Internal row identity. |
-| `index_type` | Stable type key, unique within the registered table. |
-| `display_name` | Human-readable type name. |
-| `description` | Optional explanation of the type. |
-| `metadata_json` | Optional type metadata. |
-
-`IndexTable` fields:
-
-| Field | Meaning |
-| --- | --- |
-| `uid` | Internal row identity. |
-| `unique_identifier` | Stable index key, unique within the registered table. |
-| `index_type` | Required classification key, such as `interest_rate`. |
-| `display_name` | Human-readable name. |
-| `description` | Optional explanation of the index. |
-| `provider` | Optional provider or source namespace. |
-| `metadata_json` | Provider-specific reference fields that are not yet part of the canonical schema. |
-
-`IndexType.index_type` and `Index.unique_identifier` are indexed uniquely.
-`Index.index_type`, `display_name`, and `provider` are indexed for lookup workflows.
-There is no Constant-name column.
-
-## Registration
-
-`Index.__required_tables__` declares the minimum schema set:
+The public identity and exploration methods include:
 
 ```text
-IndexTypeTable
-IndexTable
+Index.create / Index.upsert / Index.update / Index.delete
+Index.get_by_uid / Index.get_by_unique_identifier / Index.filter_by_uids
+Index.list_page / Index.get_detail / Index.get_summary
+Index.list_formulas / Index.get_formula
+Index.list_datasets / Index.get_dataset_summary / Index.get_values
+Index.list_related_meta_tables
+Index.reconcile_dataset_availability
 ```
 
-Production code normally assumes this MetaTable already exists and the catalog
-has been finalized by the SDK migration upgrade flow. Application startup can
-attach only this dependency set explicitly:
+Pure historical evaluation uses the self-contained Pydantic contract:
+
+```text
+IndexFormula.evaluate_historical
+```
+
+Persisted formula authoring uses `FormulaIndex`, not `Index`:
+
+```text
+FormulaIndex.upsert
+FormulaIndex.get_by_identifier / get_by_index_uid / get_by_definition_uid
+FormulaIndex.history
+FormulaIndex.calculate / calculate_from_sources
+FormulaIndex.activate / retire
+```
+
+There are no aliases for removed calculation-definition or leg APIs.
+
+## Formula Sources
+
+Formula inputs may mix Assets and Indexes:
+
+```text
+index["MXN-TIIE-28D"].price * 5 + asset["MX-GOVT-5Y"].yield
+```
+
+Every reference pins one exact source MetaTable UID and numeric observable.
+Asset and Index source discovery use the same method and filters:
 
 ```python
-import msm
-
-msm.start_engine(models=["IndexType", "Index"])
+Asset.list_related_meta_tables(asset_uid, numeric=True, timestamped=True)
+Index.list_related_meta_tables(index_uid, numeric=True, timestamped=True)
 ```
 
-Examples and development scripts can set `MSM_AUTO_REGISTER_NAMESPACE` before
-importing the API classes when they need an example namespace, but they still
-must call `msm.start_engine(...)` during startup before row operations.
+Only authoritative FKs to the corresponding `unique_identifier` establish the
+relationship. Matching `asset_identifier` or `index_identifier` text is not
+enough. Discovery inspects schema only and does not claim that a specific
+identity has data in a table.
 
-## Canonical Index Values
+See [Formula And Custom Indexes](formula_indexes.md) for the full workflow.
 
-`IndexValuesStorage` is the domain-neutral column-schema anchor for plain and
-calculated Index observations. Stable-frequency publication uses
-`configured_index_values_storage(cadence=...)`, which creates one concrete
-MetaTable per frequency with canonical grain:
+## Canonical Values
+
+Stable-frequency publication uses
+`configured_index_values_storage(cadence=...)`. Each cadence has a separate
+MetaTable and physical table with grain:
 
 ```text
 (time_index, index_identifier)
 ```
 
-Every row requires `value` and `unit`. `definition_uid`,
-`observation_status`, `source_as_of`, and `metadata_json` are nullable
-provenance. `definition_uid` is null for a plain observation and is required by
-the derived-index publication path.
+Canonical columns are:
 
-Frequency does not change the Index identity, but it does change the dataset
-identity. For example, `USD_SWAP_10Y` is one Index identity representing the
-observable 10-year swap yield. Its one-minute and daily histories require two
-DataNodes and two storage tables:
+| Field | Contract |
+| --- | --- |
+| `time_index` | UTC observation timestamp. |
+| `index_identifier` | FK to `IndexTable.unique_identifier`. |
+| `value` | Stored numeric observation. |
+| `definition_uid` | Formula version, or null for custom publication. |
+| `observation_status` | Optional quality/readiness state. |
+| `source_as_of` | Optional latest contributing source timestamp. |
+| `metadata_json` | Optional bounded provenance. |
 
-```text
-Swap10YOneMinuteDataNode -> IndexValuesTS.1m -> ms_markets__index_values__t_1m
-Swap10YDailyDataNode     -> IndexValuesTS.1d -> ms_markets__index_values__t_1d
-                              |
-                              +-- both rows use index_identifier = USD_SWAP_10Y
-```
+There is no observation `unit`. Presentation comes from the Index identity.
 
-The generated class declares `__cadence__`, includes cadence in its storage
-hash components and MetaTable identifier, and uses the frequency in its
-physical table suffix. Do not mix stable frequencies in one table or express
-frequency only through a schedule, runtime option, or `hash_namespace`.
-
-Use `IndexValuesDataNode.validate_frame(..., storage_table=...)` to normalize
-caller-supplied rows. A concrete producer should override
-`_required_storage_table()` with exactly one configured storage. The cadence-
-less schema anchor is rejected as a publication target. Omitted nullable
-provenance columns are supplied automatically.
-
-Calculation-method changes are identity decisions, not frequency settings. A
-software-only implementation change preserves the identity. A prospective
-economic-method change uses a new effective definition version when core owns
-the calculation. If two complete method histories must coexist, use distinct
-Index identifiers such as `USD_SWAP_10Y_METHOD_A` and
-`USD_SWAP_10Y_METHOD_B`.
-
-## Timestamped Index Storage And DataNodes
-
-`msm.data_nodes.indices.IndexTimestampedDataNode` is a reusable convenience
-base for a table containing time-varying facts keyed to
-`IndexTable.unique_identifier`. It is not a mandatory inheritance contract for
-extension libraries.
-
-An index-stamped table should use this shape:
+One identity can publish at several cadences:
 
 ```text
-+-----------------------------+      source-table FK       +-----------------------------+
-| IndexTimestampedDataNode   |--------------------------->| IndexTable                  |
-|-----------------------------| index_identifier           |-----------------------------|
-| time_index           index  |                            | unique_identifier unique    |
-| index_identifier     index  |                            | display_name                |
-| value columns               |                            | provider                    |
-+-----------------------------+                            +-----------------------------+
+IndexValuesTS.1m -> ms_markets__index_values__t_1m
+IndexValuesTS.1d -> ms_markets__index_values__t_1d
 ```
 
-Core or extension DataNode classes may inherit `IndexTimestampedDataNode` and
-bind a registered `PlatformTimeIndexMetaTable` through
-`_required_storage_table()`. The shared base validates the table-owned schema,
-normalizes timestamps to `datetime64[ns, UTC]`, sets the declared MultiIndex,
-and rejects duplicate keys.
+Frequency is part of dataset identity, not Index identity.
 
-An extension may instead define its own Index-indexed storage and producer
-implementation. The interoperability rules are structural:
+## Custom Publication
 
-- use canonical `IndexTable` identity;
-- retain an `index_identifier -> IndexTable.unique_identifier` foreign key;
-- declare the table's own UTC time and identity grain;
-- own any source-specific fields and lifecycle;
-- declare one stable cadence per physical source table and encode that cadence
-  in its MetaTable and table identity;
-- optionally publish a selected value into the matching cadence-configured
-  canonical Index-value table when generic consumers need that contract.
+Custom producers use `IndexValuesDataNode` or
+`normalize_index_values_frame(...)`. Nullable provenance is supplied when
+omitted. Custom publication rejects a non-null `definition_uid`.
 
-The extension must not subclass concrete `IndexValuesStorage` merely to obtain
-a different physical table. See
-`examples/msm/indices/extension_owned_index_storage.py` for a separate
-bid/ask/mid schema normalized without using the core Index DataNode base.
+```python
+from msm.data_nodes.indices import (
+    configured_index_values_storage,
+    normalize_index_values_frame,
+)
 
-## Derived Indexes
+DailyValues = configured_index_values_storage(cadence="1d")
+normalized = normalize_index_values_frame(frame, storage_table=DailyValues)
+```
 
-Use `index_type="derived"` when an Index owns a calculated methodology such as
-a yield spread, commodity calendar spread, curve butterfly, ratio, rebased
-basket, or self-financing hedged series. The small `IndexTable` remains the
-stable identity; effective-dated definition and leg tables carry calculation
-meaning, and generic Index storage carries published history.
+Self-financing and chained performance are custom from the Index perspective.
+Portfolio owns holdings and state; a custom Index may publish the resulting NAV
+or performance series.
 
-See [Derived Index Workflow](derived_indexes.md) for the complete typed API,
-operators, unit and timing policies, dynamic resolution, publication workflow,
-examples, and the Index/Portfolio/Signal boundaries.
+## Formula Publication
 
-## Boundaries
+`FormulaIndexDataNode` loads immutable formula versions and reads only their
+pinned source storage classes. Construction requires the configured storage
+UID set to equal the persisted formula-input MetaTable UID set and validates
+the source grain and observable types.
 
-Do not widen `AssetTable` with index fields. Do not put index reference rows in
-asset categories. Use `IndexTable` for the reference identity and use futures or
-other derivative detail tables to link tradable contracts back to indexes.
+Formula results always contain their exact `definition_uid`. Exact or bounded
+backward as-of alignment and the definition's missing-data policy determine
+which timestamps publish.
 
-## Related Concepts
+## Dataset Availability
 
-- [Assets](../assets/index.md)
-- [Futures](../derivatives/futures.md)
-- [Models](../models/index.md)
-- [Derived Index Workflow](derived_indexes.md)
+Global canonical dataset descriptors answer which cadence contracts exist.
+`Index.list_datasets(uid)` answers which are relevant to one Index through
+reconciled population state:
+
+- `populated`;
+- `compatible_empty`;
+- `unavailable`.
+
+The default hides compatible-empty rows and retains unavailable rows. Listing
+filters `has_canonical_values` and `cadence` use indexed availability metadata,
+not distinct scans of every value table.
+
+Producers reconcile identifiers after successful persistence. Deployment
+backfills use the explicit bounded reconciliation API.
+
+## Registration And Migration
+
+Production startup attaches to already-migrated MetaTables. The core runtime
+set includes Index type, Index identity, availability, formula definition, and
+formula input tables.
+
+```python
+import msm
+
+msm.start_engine(
+    models=[
+        "IndexType",
+        "Index",
+        "IndexDatasetAvailability",
+        "IndexFormulaDefinition",
+        "IndexFormulaInput",
+    ]
+)
+```
+
+Revision `0015` is a one-way formula/custom replacement. It refuses to infer
+source MetaTable UIDs from old calculation rows. Remediate those rows before
+applying it; no runtime compatibility layer exists.
+
+## Related Documentation
+
+- [Formula and custom Index tutorial](../../../tutorial/06-index-formulas.md)
+- [Index FastAPI](../../../fast_api/v1/indexes.md)
+- [ADR 0037](../../../ADR/0037-index-formula-and-custom-calculation-framework.md)
+- [ADR 0038](../../../ADR/0038-index-user-api-and-fastapi-exploration.md)

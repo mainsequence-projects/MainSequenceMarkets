@@ -263,7 +263,6 @@ def upsert_index_from_openfigi_result(item: Mapping[str, Any], *, index_type: st
             or str(unique_identifier)
         ),
         description=normalized.get("security_description"),
-        provider=OPENFIGI_PROVIDER_NAME,
         metadata_json=_openfigi_reference_metadata(normalized),
     )
 

@@ -209,7 +209,6 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         index_type=INDEX_TYPE_INTEREST_RATE,
         display_name="USD SOFR Example 3M",
         description="Example USD SOFR-style 3M floating-rate index.",
-        provider="example",
     )
     _print_step(
         "Upserted floating-rate index",

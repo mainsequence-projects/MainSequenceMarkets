@@ -9,52 +9,38 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Replaced the Index calculation architecture with strict `formula` and
+  `custom` methods. Formula expressions use typed Asset/Index identifiers,
+  exact source MetaTable UIDs and observables, an allow-listed arithmetic
+  parser, immutable validity versions, exact or bounded backward as-of
+  alignment, and deterministic DataNode dependencies. Added `FormulaIndex`,
+  formula catalog routes, mixed-source and Portfolio-to-custom examples, and
+  revision `0015`; removed operator/leg/resolved-leg registries, observation
+  units, stateful Index performance operators, and all compatibility aliases.
+  Asset and Index now share `list_related_meta_tables(uid, numeric=True,
+  timestamped=True)` and equivalent FastAPI routes backed by paginated,
+  authoritative-FK catalog discovery. Added the immutable Pydantic
+  `IndexFormula` contract for historical evaluation of caller-supplied Series
+  or DataFrames without a persisted Index or formula-definition UID.
+- Removed the untyped `Index.provider` attribute and its database index through
+  revision `0014`. Index create/update payloads, catalog search,
+  ordering, FastAPI filtering, detail badges, examples, and OpenAPI no longer
+  expose it, and legacy payloads containing `provider` are rejected rather
+  than accepted through a compatibility shim. Source-native facts such as
+  OpenFIGI details remain in their structured metadata payloads.
+- Hardened the Index catalog and publication path.
+  Revision `0013` adds rebuildable per-Index dataset availability metadata, a
+  historical one-active-definition invariant, and identifier-first canonical
+  lookup indexes. List filters use indexed availability predicates; dataset
+  lists expose populated, compatible-empty, and unavailable states; direct
+  delete impact is typed without a custom deletion workflow; and producers use
+  post-persistence reconciliation.
 - Replaced asset-biased curve key-node identity with typed
   `source_reference={"type": "asset" | "index", "identifier": "..."}`
   provenance. Added the shared `FixedIncomeCurveKeyNode` base across deposit,
   OIS, futures, bond, FX, and cross-currency basis helper models, updated the
   reconstruction example to demonstrate asset- and index-sourced inputs, and
   rejected top-level `asset_identifier`/`index_identifier` key-node fields.
-- Implemented the ADR 0038 typed Index catalog and thin FastAPI surface:
-  Index-type reads, counted identity lists, create/update/detail/summary,
-  reproducible methodology history, canonical dataset discovery, bounded value
-  frames, and declared or inferred related MetaTables. Canonical datasets
-  require matching identifier, cadence, physical table, grain, required
-  columns, and the actual `index_identifier -> IndexTable.unique_identifier`
-  foreign key. Index deletion follows the normal direct row API and database
-  foreign-key actions.
-- Revised ADR 0037 so the cadence-configured `IndexValuesTS.<cadence>` family
-  is the domain-neutral canonical value contract for plain and calculated
-  Indexes, with `IndexValuesStorage` retained as its column-schema anchor and
-  nullable calculation-definition and observation-status provenance.
-  Revision `0012` preserves existing rows while renaming
-  `calculation_status` to `observation_status` and making `definition_uid`
-  nullable. Added `configured_index_values_storage(cadence=...)`, rejection of
-  cadence-less publication, and a `USD_SWAP_10Y` example proving that one
-  Index identity uses separate 1-minute and daily DataNodes, MetaTables, and
-  physical tables (`...__t_1m` and `...__t_1d`). Also added an example dynamic
-  migration provider, plain/derived publication validation, and a general
-  example proving that extensions may own richer Index-indexed storage and
-  producer implementations without inheriting the core Index DataNode base.
-  The ADR includes diagrams distinguishing observation frequency from Index
-  identity and prospective definition versioning from coexisting calculation
-  methods. The packaged Index skill now defines the complete classification,
-  identity, cadence, methodology-lifecycle, calculation, provenance,
-  publication, extension, migration, and validation workflow, including the
-  strict Index-versus-Asset-versus-Portfolio boundary.
-- Implemented the core derived-index framework from ADR 0037: the built-in
-  `derived` Index type, immutable effective-dated definition and ordered leg
-  models, canonical value and resolved-leg storage, typed `DerivedIndex` API,
-  pure operators and strict unit/alignment/missing/coefficient/selector
-  registries, incremental publication DataNodes, SDK-managed revision `0011`,
-  the original five derived-methodology examples, concept/tutorial/API
-  documentation, and the
-  packaged derived-index workflow skill. Generic pair-spread primitives now
-  live in `msm.analytics.indices.spreads`; existing
-  `msm_pricing.analytics.spreads` imports are compatibility delegates while
-  pricing-specific analytics remain pricing-owned. The concept documentation
-  and packaged skill now include the canonical relationship diagram and an
-  explicit Index-versus-Portfolio ownership decision table.
 - Changed floating-rate bond and swap pricing to resolve projection and
   discount curves independently through market-data-set curve bindings.
   Projection curves build floating indexes and forecast coupons; discount

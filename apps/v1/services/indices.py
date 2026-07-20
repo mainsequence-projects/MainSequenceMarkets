@@ -13,12 +13,11 @@ from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.indices import (
     Index,
     IndexCreate,
-    IndexDatasetDescriptor,
     IndexDatasetState,
     IndexDatasetSummary,
-    IndexMethodologyDetail,
-    IndexMethodologySummary,
-    IndexRelatedMetaTable,
+    IndexFormulaDetail,
+    IndexFormulaSummary,
+    RelatedMetaTable,
     IndexType,
     IndexUpdate,
 )
@@ -30,15 +29,14 @@ from msm.services.indices import (
     IndexListRequest,
     IndexValueRow,
     dataset_summary,
-    discover_canonical_datasets,
     get_canonical_dataset,
     get_index_summary as get_core_index_summary,
     get_index_delete_impact as get_core_index_delete_impact,
-    get_methodology as get_core_methodology,
+    get_formula as get_core_formula,
     list_indexes as list_core_indexes,
     list_index_types as list_core_index_types,
     list_dataset_states,
-    list_methodologies as list_core_methodologies,
+    list_formulas as list_core_formulas,
     list_related_meta_tables as list_core_related_meta_tables,
     read_index_values,
 )
@@ -50,8 +48,7 @@ def list_indices(
     limit: int = 50,
     offset: int = 0,
     index_type: str | None = None,
-    provider: str | None = None,
-    has_definition: bool | None = None,
+    has_formula: bool | None = None,
     has_canonical_values: bool | None = None,
     cadence: str | None = None,
 ) -> tuple[int, list[Index]]:
@@ -61,8 +58,7 @@ def list_indices(
         IndexListRequest(
             search=search,
             index_type=index_type,
-            provider=provider,
-            has_definition=has_definition,
+            has_formula=has_formula,
             has_canonical_values=has_canonical_values,
             cadence=cadence,
             limit=limit,
@@ -119,12 +115,15 @@ def get_index_summary(*, uid: str, actor: IndexActor | None) -> FrontEndDetailSu
     if index is None:
         return None
     summary = get_core_index_summary(runtime.context, index=index, actor=actor)
-    active = summary.active_definition
-    latest_values = [item for item in summary.dataset_states if item.latest_time_index is not None]
-    latest_values.sort(
-        key=lambda item: item.latest_time_index or dt.datetime.min.replace(tzinfo=dt.UTC)
+    active = summary.active_formula
+    latest_observation = max(
+        (
+            state.latest_time_index
+            for state in summary.dataset_states
+            if state.population_state == "populated" and state.latest_time_index is not None
+        ),
+        default=None,
     )
-    latest = latest_values[-1] if latest_values else None
     return FrontEndDetailSummary.model_validate(
         {
             "entity": {
@@ -135,15 +134,10 @@ def get_index_summary(*, uid: str, actor: IndexActor | None) -> FrontEndDetailSu
             "badges": [
                 {"key": "index_type", "label": index.index_type, "tone": "info"},
                 {
-                    "key": "methodology",
-                    "label": "core-derived" if summary.definition_count else "plain",
-                    "tone": "success" if summary.definition_count else "neutral",
+                    "key": "calculation_method",
+                    "label": index.calculation_method,
+                    "tone": "success" if index.calculation_method == "formula" else "neutral",
                 },
-                *(
-                    [{"key": "provider", "label": index.provider, "tone": "neutral"}]
-                    if index.provider
-                    else []
-                ),
             ],
             "inline_fields": [
                 {"key": "uid", "label": "UID", "value": str(index.uid), "kind": "text"},
@@ -156,34 +150,34 @@ def get_index_summary(*, uid: str, actor: IndexActor | None) -> FrontEndDetailSu
             ],
             "highlight_fields": [
                 {
-                    "key": "active_definition",
-                    "label": "Active definition",
-                    "value": active.definition_version if active else None,
+                    "key": "active_formula",
+                    "label": "Active formula",
+                    "value": active.version if active else None,
                     "kind": "number",
-                    "link_url": f"/api/v1/index/{uid}/methodologies/",
+                    "link_url": f"/api/v1/index/{uid}/formulas/",
                 },
                 {
-                    "key": "latest_value",
-                    "label": "Latest value",
-                    "value": None,
-                    "kind": "number",
+                    "key": "latest_observation",
+                    "label": "Latest observation",
+                    "value": latest_observation.isoformat() if latest_observation else None,
+                    "kind": "datetime",
                     "link_url": f"/api/v1/index/{uid}/datasets/",
                 },
             ],
             "stats": [
                 {
-                    "key": "definitions",
-                    "label": "Definitions",
-                    "display": str(summary.definition_count),
-                    "value": summary.definition_count,
+                    "key": "formulas",
+                    "label": "Formulas",
+                    "display": str(summary.formula_count),
+                    "value": summary.formula_count,
                     "kind": "number",
-                    "link_url": f"/api/v1/index/{uid}/methodologies/",
+                    "link_url": f"/api/v1/index/{uid}/formulas/",
                 },
                 {
-                    "key": "legs",
-                    "label": "Legs",
-                    "display": str(summary.leg_count),
-                    "value": summary.leg_count,
+                    "key": "inputs",
+                    "label": "Inputs",
+                    "display": str(summary.input_count),
+                    "value": summary.input_count,
                     "kind": "number",
                 },
                 {
@@ -198,9 +192,7 @@ def get_index_summary(*, uid: str, actor: IndexActor | None) -> FrontEndDetailSu
             "summary_warning": "; ".join(summary.warnings) or None,
             "extensions": {
                 "cadences": list(summary.cadences),
-                "dataset_states": [
-                    item.model_dump(mode="json") for item in summary.dataset_states
-                ],
+                "dataset_states": [item.model_dump(mode="json") for item in summary.dataset_states],
                 "authoritative_relationship_count": summary.authoritative_relationship_count,
                 "inferred_relationship_count": summary.inferred_relationship_count,
                 "related_meta_tables_url": f"/api/v1/index/{uid}/related-meta-tables/",
@@ -211,16 +203,16 @@ def get_index_summary(*, uid: str, actor: IndexActor | None) -> FrontEndDetailSu
     )
 
 
-def list_index_methodologies(*, uid: str) -> tuple[IndexMethodologySummary, ...] | None:
+def list_index_formulas(*, uid: str) -> tuple[IndexFormulaSummary, ...] | None:
     if get_index(uid=uid) is None:
         return None
-    return list_core_methodologies(_get_runtime().context, index_uid=uid)
+    return list_core_formulas(_get_runtime().context, index_uid=uid)
 
 
-def get_index_methodology(*, uid: str, definition_uid: str) -> IndexMethodologyDetail | None:
+def get_index_formula(*, uid: str, definition_uid: str) -> IndexFormulaDetail | None:
     if get_index(uid=uid) is None:
         return None
-    return get_core_methodology(
+    return get_core_formula(
         _get_runtime().context,
         index_uid=uid,
         definition_uid=definition_uid,
@@ -285,7 +277,6 @@ def get_index_values_frame(
         "time_index",
         "index_identifier",
         "value",
-        "unit",
         "definition_uid",
         "observation_status",
         "source_as_of",
@@ -295,7 +286,6 @@ def get_index_values_frame(
         "time_index": "datetime",
         "index_identifier": "string",
         "value": "number",
-        "unit": "string",
         "definition_uid": "string",
         "observation_status": "string",
         "source_as_of": "datetime",
@@ -309,7 +299,7 @@ def get_index_values_frame(
                 key=column,
                 label=column.replace("_", " ").title(),
                 field_type=field_types[column],
-                nullable=column not in {"time_index", "index_identifier", "value", "unit"},
+                nullable=column not in {"time_index", "index_identifier", "value"},
             )
             for column in columns
         ],
@@ -332,6 +322,8 @@ def get_index_values_frame(
                 "index_identifier": index.unique_identifier,
                 "meta_table_uid": dataset.meta_table_uid,
                 "cadence": dataset.cadence,
+                "value_format": index.value_format,
+                "value_suffix": index.value_suffix,
             },
         },
     )
@@ -345,11 +337,21 @@ def _index_value_tabular_row(row: IndexValueRow) -> dict[str, object]:
     return payload
 
 
-def list_index_related_meta_tables(*, uid: str) -> tuple[IndexRelatedMetaTable, ...] | None:
+def list_index_related_meta_tables(
+    *,
+    uid: str,
+    numeric: bool = True,
+    timestamped: bool = True,
+) -> tuple[RelatedMetaTable, ...] | None:
     index = get_index(uid=uid)
     if index is None:
         return None
-    return list_core_related_meta_tables(_get_runtime().context, index=index)
+    return list_core_related_meta_tables(
+        _get_runtime().context,
+        index=index,
+        numeric=numeric,
+        timestamped=timestamped,
+    )
 
 
 def get_index_delete_impact(*, uid: str) -> DeleteImpactResponse | None:
@@ -367,10 +369,10 @@ def _get_runtime():
         models=[
             "IndexType",
             "Index",
-            "IndexCalculationDefinition",
-            "IndexCalculationLeg",
+            "IndexFormulaDefinition",
+            "IndexFormulaInput",
             "IndexDatasetAvailability",
-            "IndexResolvedLegsStorage",
+            "Asset",
         ],
         row_model_name="Index apps/v1",
     )

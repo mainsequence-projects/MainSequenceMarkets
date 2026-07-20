@@ -1,1 +1,1 @@
-"""Executable derived-index examples built only from public ``msm`` APIs."""
+"""Executable formula and custom Index examples built from public ``msm`` APIs."""

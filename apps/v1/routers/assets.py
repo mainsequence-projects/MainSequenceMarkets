@@ -13,12 +13,14 @@ from apps.v1.schemas.common import (
     PaginatedResponse,
     build_paginated_response,
 )
+from apps.v1.schemas.indices import RelatedMetaTable
 from apps.v1.services.assets import (
     delete_asset,
     get_asset,
     get_asset_monitor_frame,
     get_asset_pricing_details,
     get_asset_summary,
+    list_asset_related_meta_tables,
     list_assets,
 )
 
@@ -232,6 +234,34 @@ def get_asset_summary_by_uid(uid: str) -> FrontEndDetailSummary:
     if summary is None:
         raise HTTPException(status_code=404, detail=f"Asset {uid!r} was not found.")
     return summary
+
+
+@router.get(
+    "/{uid}/related-meta-tables/",
+    response_model=list[RelatedMetaTable],
+    summary="List Asset related MetaTables",
+    operation_id="listAssetRelatedMetaTables",
+    responses={404: {"model": ErrorResponse}},
+)
+def get_asset_related_meta_tables(
+    uid: str,
+    numeric: Annotated[
+        bool,
+        Query(description="Require at least one numeric non-identity column."),
+    ] = True,
+    timestamped: Annotated[
+        bool,
+        Query(description="Require a registered time-indexed MetaTable."),
+    ] = True,
+) -> list[RelatedMetaTable]:
+    result = list_asset_related_meta_tables(
+        uid=uid,
+        numeric=numeric,
+        timestamped=timestamped,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Asset {uid!r} was not found.")
+    return list(result)
 
 
 @router.get(

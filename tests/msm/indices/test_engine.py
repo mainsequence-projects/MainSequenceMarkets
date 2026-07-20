@@ -7,467 +7,222 @@ import pandas as pd
 import pytest
 from pydantic import ValidationError
 
-from msm.api.indices import (
-    IncompleteObservationsError,
-    IndexCalculationDefinition,
-    IndexCalculationError,
-    IndexCalculationLeg,
-    LookAheadError,
-    calculate_index,
-    compute_definition_hash,
+from msm.analytics.indices import (
+    FormulaSyntaxError,
+    IncompleteFormulaObservationsError,
+    IndexFormula,
+    IndexFormulaDefinition,
+    IndexFormulaError,
+    IndexFormulaInput,
+    calculate_formula_index,
+    canonical_formula,
+    compute_formula_definition_hash,
+    formula_references,
+    validate_formula_contract,
 )
-from msm.analytics.indices import resolve_index_legs, validate_calculation_contract
 
 
-UTC_START = datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
+ASSET_TABLE_UID = uuid.UUID("11111111-1111-1111-1111-111111111111")
+INDEX_TABLE_UID = uuid.UUID("22222222-2222-2222-2222-222222222222")
+DEFINITION_UID = uuid.UUID("33333333-3333-3333-3333-333333333333")
 
 
-def _definition(**updates) -> IndexCalculationDefinition:
+def _definition(**changes) -> IndexFormulaDefinition:
     values = {
-        "uid": uuid.uuid4(),
-        "effective_from": UTC_START,
-        "calculation_kind": "linear_combination",
-        "calculation_family": "relative_value",
-        "output_unit": "usd",
-        "alignment_policy": "inner",
+        "uid": DEFINITION_UID,
+        "index_uid": uuid.uuid4(),
+        "version": 1,
+        "status": "active",
+        "valid_from": datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        "formula": 'index["RATE"].price * 5 + asset["BOND"].yield',
+        "alignment_policy": "exact",
         "missing_data_policy": "drop",
-        "composition_mode": "fixed",
     }
-    values.update(updates)
-    return IndexCalculationDefinition(**values)
+    values.update(changes)
+    return IndexFormulaDefinition.model_validate(values)
 
 
-def _asset_leg(key: str, order: int, **updates) -> IndexCalculationLeg:
-    values = {
-        "leg_key": key,
-        "leg_order": order,
-        "component_kind": "asset",
-        "asset_uid": uuid.uuid4(),
-        "observable_code": "price",
-        "input_unit": "usd",
-        "coefficient_method": "fixed",
-        "coefficient": 1.0,
-    }
-    values.update(updates)
-    return IndexCalculationLeg(**values)
-
-
-def _series(values, *, start: str = "2025-01-01") -> pd.Series:
-    return pd.Series(values, index=pd.date_range(start, periods=len(values), tz="UTC"), dtype=float)
-
-
-def test_linear_combination_normalizes_percent_and_decimal_to_basis_points() -> None:
-    definition = _definition(output_unit="basis_points", calculation_family="yield_spread")
-    legs = [
-        _asset_leg("long", 0, observable_code="yield", input_unit="percent"),
-        _asset_leg(
-            "short",
-            1,
-            observable_code="yield",
-            input_unit="decimal",
-            coefficient=-1.0,
-        ),
-    ]
-
-    result = calculate_index(
-        definition,
-        legs,
-        {"long": _series([8.41]), "short": _series([0.0724])},
-        index_identifier="MX_MBONOS_2S5S_YIELD_SPREAD",
-    ).values
-
-    assert result.iloc[0]["value"] == pytest.approx(117.0)
-    assert result.iloc[0]["unit"] == "basis_points"
-    assert result.index.names == ["time_index", "index_identifier"]
-    assert str(result.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
-
-
-def test_ratio_validates_units_and_zero_denominator() -> None:
-    definition = _definition(calculation_kind="ratio", output_unit="ratio")
-    compatible = [_asset_leg("a", 0), _asset_leg("b", 1)]
-
-    with pytest.raises(IndexCalculationError, match="denominator contains zero"):
-        calculate_index(definition, compatible, {"a": _series([2.0]), "b": _series([0.0])})
-
-    incompatible = [
-        _asset_leg("a", 0, input_unit="usd"),
-        _asset_leg("b", 1, input_unit="decimal"),
-    ]
-    with pytest.raises(ValueError, match="incompatible units"):
-        calculate_index(
-            definition,
-            incompatible,
-            {"a": _series([2.0]), "b": _series([1.0])},
-        )
-
-
-def test_rebased_basket_chained_return_and_self_financing_operators() -> None:
-    basket = calculate_index(
-        _definition(
-            calculation_kind="rebased_basket",
-            calculation_parameters_json={"base_value": 100.0},
-            output_unit="index_points",
-        ),
-        [_asset_leg("a", 0, coefficient=0.5), _asset_leg("b", 1, coefficient=0.5)],
-        {"a": _series([10.0, 11.0]), "b": _series([20.0, 18.0])},
-    ).values
-    assert basket["value"].tolist() == pytest.approx([100.0, 100.0])
-
-    chained = calculate_index(
-        _definition(
-            calculation_kind="chained_return",
-            calculation_parameters_json={"base_value": 100.0},
-            output_unit="index_points",
-        ),
-        [_asset_leg("return", 0, observable_code="simple_return", input_unit="decimal")],
-        {"return": _series([0.01, -0.02, 0.03])},
-    ).values
-    assert chained["value"].tolist() == pytest.approx([101.0, 98.98, 101.9494])
-
-    strategy = calculate_index(
-        _definition(
-            calculation_kind="self_financing",
-            calculation_parameters_json={
-                "base_value": 100.0,
-                "initial_capital": 100.0,
-                "position_lag": 1,
-                "financing_rate": 0.0,
-                "transaction_cost_bps": 0.0,
-            },
-            output_unit="index_points",
-        ),
-        [_asset_leg("option", 0), _asset_leg("spot", 1, coefficient=-0.5)],
-        {"option": _series([10.0, 12.0, 11.0]), "spot": _series([100.0, 102.0, 101.0])},
-    ).values
-    assert strategy["value"].tolist() == pytest.approx([100.0, 101.0, 100.5])
-
-
-def test_crack_spread_uses_registered_physical_unit_conversion() -> None:
-    result = calculate_index(
-        _definition(output_unit="usd_per_barrel", calculation_family="crack_spread"),
-        [
-            _asset_leg("gasoline", 0, input_unit="usd_per_gallon", coefficient=2.0),
-            _asset_leg("heating_oil", 1, input_unit="usd_per_gallon", coefficient=1.0),
-            _asset_leg("crude", 2, input_unit="usd_per_barrel", coefficient=-3.0),
-        ],
-        {
-            "gasoline": _series([2.0]),
-            "heating_oil": _series([2.5]),
-            "crude": _series([70.0]),
-        },
-    ).values
-
-    assert result.iloc[0]["value"] == pytest.approx(63.0)
-
-
-def test_hash_is_order_stable_and_changes_only_for_output_semantics() -> None:
-    definition = _definition(metadata_json={"label": "display only"}, source="desk-a")
-    legs = [_asset_leg("a", 0), _asset_leg("b", 1, coefficient=-1.0)]
-    expected = compute_definition_hash(definition, legs)
-
-    assert compute_definition_hash(definition, list(reversed(legs))) == expected
-    assert (
-        compute_definition_hash(
-            definition.model_copy(
-                update={"metadata_json": {"label": "renamed"}, "source": "desk-b"}
-            ),
-            legs,
-        )
-        == expected
-    )
-    assert (
-        compute_definition_hash(
-            definition, [legs[0], legs[1].model_copy(update={"coefficient": -2.0})]
-        )
-        != expected
-    )
-    assert (
-        compute_definition_hash(
-            definition.model_copy(
-                update={"effective_to": datetime.datetime(2025, 2, 1, tzinfo=datetime.UTC)}
-            ),
-            legs,
-        )
-        == expected
-    )
-    assert (
-        compute_definition_hash(
-            definition.model_copy(
-                update={"effective_from": datetime.datetime(2025, 1, 2, tzinfo=datetime.UTC)}
-            ),
-            legs,
-        )
-        != expected
-    )
-
-
-def test_alignment_missing_and_staleness_policies_are_explicit() -> None:
-    times = pd.date_range("2025-01-01", periods=3, tz="UTC")
-    observations = {
-        "a": pd.Series([10.0, 12.0], index=times[[0, 2]]),
-        "b": pd.Series([1.0, 1.0, 1.0], index=times),
-    }
-    legs = [_asset_leg("a", 0), _asset_leg("b", 1, coefficient=-1.0)]
-    asof = calculate_index(
-        _definition(
-            alignment_policy="asof",
-            alignment_parameters_json={"max_staleness_seconds": 172_800},
-        ),
-        legs,
-        observations,
-        calculation_times=times,
-    ).values.reset_index()
-
-    assert asof["value"].tolist() == pytest.approx([9.0, 9.0, 11.0])
-    assert asof["observation_status"].tolist() == ["ready", "stale", "ready"]
-
-    with pytest.raises(IncompleteObservationsError, match="incomplete required observations"):
-        calculate_index(
-            _definition(
-                alignment_policy="calendar_aligned",
-                missing_data_policy="fail",
-            ),
-            legs,
-            observations,
-            calculation_times=times,
-        )
-
-    filled = calculate_index(
-        _definition(
-            alignment_policy="calendar_aligned",
-            missing_data_policy="forward_fill",
-            missing_data_parameters_json={"max_age_seconds": 172_800},
-        ),
-        legs,
-        observations,
-        calculation_times=times,
-    ).values
-    assert filled["value"].tolist() == pytest.approx([9.0, 9.0, 11.0])
-
-
-def test_dynamic_parameter_contracts_validate_window_fallback_and_bounds() -> None:
-    with pytest.raises(ValidationError, match="min_observations cannot exceed window"):
-        validate_calculation_contract(
-            _definition(),
-            [
-                _asset_leg("reference", 0),
-                _asset_leg(
-                    "hedge",
-                    1,
-                    coefficient_method="beta_neutral",
-                    coefficient=None,
-                    coefficient_parameters_json={
-                        "window": 5,
-                        "min_observations": 6,
-                        "lag": 1,
-                    },
-                ),
-            ],
-        )
-
-    definition = _definition()
-    legs = [
-        _asset_leg("reference", 0),
-        _asset_leg(
-            "hedge",
-            1,
-            coefficient_method="beta_neutral",
-            coefficient=None,
-            coefficient_parameters_json={
-                "window": 3,
-                "min_observations": 3,
-                "lag": 1,
-                "fallback_policy": "fail",
-            },
-        ),
-    ]
-    with pytest.raises(IncompleteObservationsError, match="could not resolve every"):
-        calculate_index(
-            definition,
-            legs,
-            {"reference": _series([1.0, 2.0, 3.0]), "hedge": _series([1.0, 2.0, 3.0])},
-        )
-
-
-@pytest.mark.parametrize("method", ["price_ols", "return_ols", "beta_neutral"])
-def test_rolling_estimated_coefficients_do_not_use_future_observations(method: str) -> None:
-    times = pd.date_range("2025-01-01", periods=8, tz="UTC")
-    hedge = pd.Series([10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0], index=times)
-    reference = hedge * 2.0 + 1.0
-    definition = _definition()
-    legs = [
-        _asset_leg("reference", 0),
-        _asset_leg(
-            "hedge",
-            1,
-            coefficient_method=method,
-            coefficient=None,
-            coefficient_parameters_json={"window": 4, "min_observations": 3, "lag": 1},
-        ),
-    ]
-    baseline = resolve_index_legs(
-        definition,
-        legs,
-        {"reference": reference, "hedge": hedge},
-        index_identifier="TEST",
-        calculation_times=times,
-        component_identifiers={legs[1].asset_uid: "HEDGE"},
-    ).reset_index()
-    changed_reference = reference.copy()
-    changed_reference.iloc[-1] = 10_000.0
-    changed = resolve_index_legs(
-        definition,
-        legs,
-        {"reference": changed_reference, "hedge": hedge},
-        index_identifier="TEST",
-        calculation_times=times,
-        component_identifiers={legs[1].asset_uid: "HEDGE"},
-    ).reset_index()
-
-    pd.testing.assert_series_equal(
-        baseline["resolved_coefficient"],
-        changed["resolved_coefficient"],
-        check_names=False,
-    )
-    assert (baseline["source_observation_time"] < baseline["time_index"]).all()
-
-
-@pytest.mark.parametrize("method", ["delta", "dv01_neutral"])
-def test_risk_coefficients_are_lagged_and_preserve_source_provenance(method: str) -> None:
-    times = pd.date_range("2025-01-01", periods=4, tz="UTC")
-    definition = _definition()
-    legs = [
-        _asset_leg("reference", 0),
-        _asset_leg(
-            "hedge",
-            1,
-            coefficient_method=method,
-            coefficient=None,
-            coefficient_parameters_json={"lag": 1, "observable_code": method},
-        ),
-    ]
-    inputs = {"hedge": pd.Series([0.5, 0.6, 0.7, 0.8], index=times)}
-    if method == "dv01_neutral":
-        inputs["reference"] = pd.Series([2.0, 2.0, 2.0, 2.0], index=times)
-        inputs["hedge"] = pd.Series([1.0, 1.0, 1.0, 1.0], index=times)
-    resolved = resolve_index_legs(
-        definition,
-        legs,
-        {
-            "reference": pd.Series([10.0, 11.0, 12.0, 13.0], index=times),
-            "hedge": pd.Series([20.0, 21.0, 22.0, 23.0], index=times),
-        },
-        index_identifier="TEST",
-        calculation_times=times,
-        component_identifiers={legs[1].asset_uid: "HEDGE"},
-        coefficient_inputs=inputs,
-    ).reset_index()
-
-    expected = [-0.5, -0.6, -0.7] if method == "delta" else [-2.0, -2.0, -2.0]
-    assert resolved["resolved_coefficient"].tolist() == pytest.approx(expected)
-    assert (resolved["source_observation_time"] < resolved["time_index"]).all()
-
-
-def test_external_dynamic_coefficient_rejects_future_source_timestamp() -> None:
-    times = pd.date_range("2025-01-01", periods=2, tz="UTC")
-    definition = _definition()
-    legs = [
-        _asset_leg("reference", 0),
-        _asset_leg(
-            "hedge",
-            1,
-            coefficient_method="delta",
-            coefficient=None,
-            coefficient_parameters_json={"lag": 1},
-        ),
-    ]
-
-    with pytest.raises(LookAheadError, match="future source observation"):
-        calculate_index(
-            definition,
-            legs,
+def _inputs() -> tuple[IndexFormulaInput, ...]:
+    return (
+        IndexFormulaInput.model_validate(
             {
-                "reference": pd.Series([10.0, 11.0], index=times),
-                "hedge": pd.Series([20.0, 21.0], index=times),
-            },
-            resolved_coefficients={"hedge": pd.Series([-0.5, -0.6], index=times)},
-            resolved_coefficient_source_times={
-                "hedge": pd.Series([times[1], times[1] + pd.Timedelta(days=1)], index=times)
+                "source_reference": {"type": "index", "identifier": "RATE"},
+                "meta_table_uid": INDEX_TABLE_UID,
+                "observable": "price",
+            }
+        ),
+        IndexFormulaInput.model_validate(
+            {
+                "source_reference": {"type": "asset", "identifier": "BOND"},
+                "meta_table_uid": ASSET_TABLE_UID,
+                "observable": "yield",
+            }
+        ),
+    )
+
+
+def _series(values: list[float], dates: list[str] | None = None) -> pd.Series:
+    return pd.Series(
+        values,
+        index=pd.to_datetime(dates or ["2026-01-01", "2026-01-02"], utc=True),
+    )
+
+
+def test_formula_grammar_accepts_mixed_asset_index_and_keyword_observable() -> None:
+    expression = 'index["RATE"].price * 5 + asset["BOND"].yield'
+
+    assert canonical_formula(expression) == '((index["RATE"].price*5)+asset["BOND"].yield)'
+    assert {item.expression for item in formula_references(expression)} == {
+        'index["RATE"].price',
+        'asset["BOND"].yield',
+    }
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        'sum(asset["BOND"].price)',
+        'asset["BOND"].price.__class__',
+        'asset["BOND"].price if 1 else 0',
+        'asset["BOND"].price[0]',
+        "asset['BOND'].price",
+    ],
+)
+def test_formula_grammar_rejects_non_arithmetic_syntax(expression: str) -> None:
+    with pytest.raises((FormulaSyntaxError, ValidationError)):
+        _definition(formula=expression)
+
+
+def test_formula_inputs_must_exactly_match_references() -> None:
+    with pytest.raises(ValueError, match="missing inputs"):
+        validate_formula_contract(_definition(), _inputs()[:1])
+    with pytest.raises(ValueError, match="duplicate"):
+        validate_formula_contract(_definition(), (*_inputs(), _inputs()[0]))
+
+
+def test_exact_formula_calculation_is_unit_free() -> None:
+    definition = _definition()
+    inputs = _inputs()
+    result = calculate_formula_index(
+        index_identifier="MIXED",
+        definition=definition,
+        inputs=inputs,
+        observations={
+            inputs[0].reference: _series([2.0, 3.0]),
+            inputs[1].reference: _series([0.1, 0.2]),
+        },
+    ).values
+
+    assert result["value"].tolist() == pytest.approx([10.1, 15.2])
+    assert "unit" not in result.columns
+    assert result["definition_uid"].tolist() == [DEFINITION_UID, DEFINITION_UID]
+
+
+def test_pydantic_formula_evaluates_historical_without_persistence_identity() -> None:
+    inputs = _inputs()
+    formula = IndexFormula(
+        formula='index["RATE"].price * 5 + asset["BOND"].yield',
+        inputs=inputs,
+        alignment_policy="exact",
+        missing_data_policy="fail",
+    )
+
+    result = formula.evaluate_historical(
+        {
+            inputs[0].reference.expression: pd.DataFrame(
+                {"price": [2.0, 3.0]},
+                index=pd.to_datetime(["2026-01-01", "2026-01-02"], utc=True),
+            ),
+            inputs[1].reference.expression: _series([0.1, 0.2]),
+        }
+    ).values
+
+    assert result.index.name == "time_index"
+    assert result.index.tolist() == list(
+        pd.to_datetime(["2026-01-01", "2026-01-02"], utc=True)
+    )
+    assert result.columns.tolist() == ["value", "source_as_of"]
+    assert result["value"].tolist() == pytest.approx([10.1, 15.2])
+    assert result["source_as_of"].tolist() == result.index.tolist()
+
+
+def test_pydantic_formula_validates_reference_input_equality() -> None:
+    with pytest.raises(ValidationError, match="missing inputs"):
+        IndexFormula(
+            formula='index["RATE"].price * 5 + asset["BOND"].yield',
+            inputs=_inputs()[:1],
+        )
+
+
+def test_pydantic_formula_builds_from_persisted_definition() -> None:
+    definition = _definition(
+        alignment_policy="asof",
+        alignment_parameters_json={"max_staleness_seconds": 86_400},
+    )
+
+    formula = IndexFormula.from_definition(definition, _inputs())
+
+    assert formula.formula == definition.formula
+    assert formula.alignment_policy == "asof"
+    assert formula.alignment_parameters_json == {"max_staleness_seconds": 86_400}
+    assert "uid" not in formula.model_dump()
+
+
+def test_asof_alignment_is_backward_and_bounded() -> None:
+    definition = _definition(
+        alignment_policy="asof",
+        alignment_parameters_json={"max_staleness_seconds": 86_400},
+    )
+    inputs = _inputs()
+    result = calculate_formula_index(
+        index_identifier="MIXED",
+        definition=definition,
+        inputs=inputs,
+        observations={
+            inputs[0].reference: _series([2.0], ["2026-01-01"]),
+            inputs[1].reference: _series([0.2], ["2026-01-02"]),
+        },
+    ).values
+
+    assert result["time_index"].tolist() == [pd.Timestamp("2026-01-02", tz="UTC")]
+    assert result["value"].tolist() == pytest.approx([10.2])
+
+
+def test_missing_policy_fail_rejects_incomplete_values() -> None:
+    definition = _definition(missing_data_policy="fail")
+    inputs = _inputs()
+    with pytest.raises(IncompleteFormulaObservationsError):
+        calculate_formula_index(
+            index_identifier="MIXED",
+            definition=definition,
+            inputs=inputs,
+            observations={
+                inputs[0].reference: _series([2.0, float("nan")]),
+                inputs[1].reference: _series([0.1, 0.2]),
             },
         )
 
 
-def test_external_dynamic_coefficients_preserve_values_when_input_is_unsorted() -> None:
-    times = pd.date_range("2025-01-01", periods=3, tz="UTC")
+def test_formula_rejects_zero_denominator() -> None:
+    definition = _definition(formula='asset["BOND"].yield / index["RATE"].price')
+    inputs = _inputs()
+    with pytest.raises(IndexFormulaError, match="denominator"):
+        calculate_formula_index(
+            index_identifier="MIXED",
+            definition=definition,
+            inputs=inputs,
+            observations={
+                inputs[0].reference: _series([0.0, 1.0]),
+                inputs[1].reference: _series([0.1, 0.2]),
+            },
+        )
+
+
+def test_formula_hash_is_stable_and_includes_exact_source_table() -> None:
     definition = _definition()
-    legs = [
-        _asset_leg("reference", 0),
-        _asset_leg(
-            "hedge",
-            1,
-            coefficient_method="delta",
-            coefficient=None,
-            coefficient_parameters_json={"lag": 1},
-        ),
-    ]
-    unsorted = times[[2, 0, 1]]
+    inputs = _inputs()
+    digest = compute_formula_definition_hash(definition, inputs)
+    changed = inputs[0].model_copy(update={"meta_table_uid": uuid.uuid4()})
 
-    result = calculate_index(
-        definition,
-        legs,
-        {
-            "reference": pd.Series([10.0, 10.0, 10.0], index=times),
-            "hedge": pd.Series([2.0, 2.0, 2.0], index=times),
-        },
-        resolved_coefficients={
-            "hedge": pd.Series([-3.0, -1.0, -2.0], index=unsorted),
-        },
-        resolved_coefficient_source_times={
-            "hedge": pd.Series(unsorted, index=unsorted),
-        },
-    ).values
-
-    assert result["value"].tolist() == pytest.approx([8.0, 6.0, 4.0])
-
-
-def test_monthly_rebalance_holds_dynamic_coefficients_within_each_period() -> None:
-    times = pd.DatetimeIndex(
-        [
-            "2025-01-30T00:00:00Z",
-            "2025-01-31T00:00:00Z",
-            "2025-02-01T00:00:00Z",
-            "2025-02-02T00:00:00Z",
-        ]
-    )
-    definition = _definition(
-        composition_mode="rebalanced",
-        rebalance_policy="monthly",
-        rebalance_parameters_json={"timezone": "UTC"},
-    )
-    legs = [
-        _asset_leg("reference", 0),
-        _asset_leg(
-            "hedge",
-            1,
-            coefficient_method="delta",
-            coefficient=None,
-            coefficient_parameters_json={"lag": 1},
-        ),
-    ]
-
-    result = calculate_index(
-        definition,
-        legs,
-        {
-            "reference": pd.Series(10.0, index=times),
-            "hedge": pd.Series(2.0, index=times),
-        },
-        resolved_coefficients={
-            "hedge": pd.Series([-1.0, -2.0, -3.0, -4.0], index=times),
-        },
-        resolved_coefficient_source_times={
-            "hedge": pd.Series(times, index=times),
-        },
-    ).values
-
-    assert result["value"].tolist() == pytest.approx([8.0, 8.0, 4.0, 4.0])
+    assert digest == compute_formula_definition_hash(definition, tuple(reversed(inputs)))
+    assert digest != compute_formula_definition_hash(definition, (changed, inputs[1]))
