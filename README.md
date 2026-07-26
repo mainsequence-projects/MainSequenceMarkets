@@ -6,7 +6,7 @@
 
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://mainsequence-projects.github.io/MainSequenceMarkets/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/mainsequence-projects/MainSequenceMarkets/blob/main/LICENSE)
-[![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue.svg)](pyproject.toml)
+[![Python](https://img.shields.io/badge/python-3.13-blue.svg)](pyproject.toml)
 [![Package](https://img.shields.io/badge/package-ms--markets-black.svg)](pyproject.toml)
 [![Open Issues](https://img.shields.io/github/issues/mainsequence-projects/MainSequenceMarkets)](https://github.com/mainsequence-projects/MainSequenceMarkets/issues)
 [![Last Commit](https://img.shields.io/github/last-commit/mainsequence-projects/MainSequenceMarkets)](https://github.com/mainsequence-projects/MainSequenceMarkets/commits/main/)
@@ -232,7 +232,7 @@ exposed as `msm_pricing`.
 
 - Distribution name: `ms-markets`
 - Import packages: `msm`, `msm_portfolios`, and optional `msm_pricing`
-- Python: `>=3.11`
+- Python: `>=3.13,<3.14`
 - License: Apache-2.0
 - Repository: <https://github.com/mainsequence-projects/MainSequenceMarkets>
 

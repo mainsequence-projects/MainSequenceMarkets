@@ -128,6 +128,7 @@ nav:
           - Generic Curve Reconstruction: planning/implementation_tasks/generic_curve_reconstruction_upstream_plan.md
           - Generic Valuation Scenario Workflow: planning/implementation_tasks/generic_valuation_scenario_workflow_plan.md
           - Index Formula And Custom Calculation Redesign: planning/implementation_tasks/index_formula_and_custom_calculation_plan.md
+          - Python 3.13 And MainSequence 5 Upgrade: planning/implementation_tasks/python_3_13_mainsequence_5_upgrade_plan.md
           - Reusable Valuation Portfolio Scenario And Analytics: planning/implementation_tasks/reusable_valuation_portfolio_scenario_analytics_plan.md
   - Changelog: changelog.md
   - Reference:

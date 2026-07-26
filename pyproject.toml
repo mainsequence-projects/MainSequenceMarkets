@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ms-markets"
-version = "0.0.98"
+version = "0.0.99"
 description = "Financial markets ORM, engines, and application management extensions for Main Sequence."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13,<3.14"
 license = { file = "LICENSE" }
 authors = [
   { name = "Main Sequence GmbH", email = "dev@main-sequence.io" },
@@ -28,7 +28,7 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Office/Business :: Financial",
   "Typing :: Typed",
 ]
@@ -36,7 +36,7 @@ dependencies = [
   "alembic>=1.18.4",
   "cachetools",
   "fastapi>=0.136.3",
-  "mainsequence>=4.4.8",
+  "mainsequence>=5.0.0,<6",
   "numpy",
   "pandas",
   "pip>=26.1.1",
@@ -127,11 +127,14 @@ include = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py313"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.uv.sources]
+mainsequence = { path = "../../../../code/MainSequenceClientSide/mainsequence-sdk" }
 
 [dependency-groups]
 dev = [

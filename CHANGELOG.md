@@ -9,6 +9,9 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Restricted the project runtime to Python 3.13, upgraded the Main Sequence SDK
+  contract to `>=5.0.0,<6`, rebuilt the uv lock and local environment on Python
+  3.13, and moved documentation and package-publish workflows to Python 3.13.
 - Replaced the Index calculation architecture with strict `formula` and
   `custom` methods. Formula expressions use typed Asset/Index identifiers,
   exact source MetaTable UIDs and observables, an allow-listed arithmetic
