@@ -8,8 +8,8 @@ from apps.v1.services.command_center_adapter import (
     DIRECT_FRAME_CONTRACT,
     HEALTH_OPERATION_ID,
     MUTATION_OPERATION_IDS,
-    PROVIDER_NATIVE_CONTRACT,
     QUERY_OPERATION_IDS,
+    RESOURCE_OPERATION_IDS,
 )
 
 
@@ -77,6 +77,7 @@ def test_command_center_registry_matches_current_public_openapi_operations() -> 
 
     assert public_operation_ids <= contract_operation_ids
     assert QUERY_OPERATION_IDS <= public_operation_ids
+    assert RESOURCE_OPERATION_IDS <= public_operation_ids
     assert MUTATION_OPERATION_IDS <= public_operation_ids
     assert HEALTH_OPERATION_ID in public_operation_ids
     assert CONTRACT_OPERATION_ID not in contract_operation_ids
@@ -91,10 +92,13 @@ def test_command_center_contract_classifies_mutations_as_non_query_operations() 
         assert operation["kind"] == "mutation", operation_id
         assert operation["capabilities"] == ["mutation"], operation_id
         assert "query" not in operation["capabilities"], operation_id
-        assert operation["cache"] == {"enabled": False, "ttlSeconds": None}, operation_id
+        assert operation["cache"] == {
+            "policy": "disabled",
+            "dedupeInFlight": False,
+        }, operation_id
 
 
-def test_command_center_contract_classifies_read_operations_as_query_operations() -> None:
+def test_command_center_contract_only_classifies_canonical_frames_as_queries() -> None:
     payload = _contract_payload()
     operations = _operation_by_id(payload)
 
@@ -102,16 +106,23 @@ def test_command_center_contract_classifies_read_operations_as_query_operations(
         operation = operations[operation_id]
         assert operation["kind"] == "query", operation_id
         assert operation["capabilities"] == ["query"], operation_id
+        assert operation["responseContract"] == DIRECT_FRAME_CONTRACT, operation_id
+
+    for operation_id in sorted(RESOURCE_OPERATION_IDS | {HEALTH_OPERATION_ID}):
+        operation = operations[operation_id]
+        assert operation["kind"] == "resource", operation_id
+        assert operation["capabilities"] == ["resource"], operation_id
+        assert "responseContract" not in operation, operation_id
 
     assert operations["listAssets"]["supportsMaxRows"] is True
     assert operations["getAsset"]["supportsMaxRows"] is False
     assert operations["priceFixedIncomeAsset"]["method"] == "POST"
-    assert operations["priceFixedIncomeAsset"]["requestBody"]["schemaRef"] == (
-        "AssetPricingOperationRequest"
-    )
+    assert operations["priceFixedIncomeAsset"]["requestBody"]["schema"] == {
+        "$ref": "#/components/schemas/AssetPricingOperationRequest"
+    }
     assert operations["priceFixedIncomeAsset"]["cache"] == {
-        "enabled": False,
-        "ttlSeconds": None,
+        "policy": "disabled",
+        "dedupeInFlight": False,
     }
 
 
@@ -119,7 +130,7 @@ def test_command_center_contract_exposes_portfolio_group_operations() -> None:
     payload = _contract_payload()
     operations = _operation_by_id(payload)
 
-    expected_query_operations = {
+    expected_resource_operations = {
         "listPortfolioGroups": "GET",
         "getPortfolioGroup": "GET",
         "listGroupsForPortfolio": "GET",
@@ -135,10 +146,10 @@ def test_command_center_contract_exposes_portfolio_group_operations() -> None:
         "bulkDeletePortfolioGroupMemberships": "POST",
     }
 
-    for operation_id, method in expected_query_operations.items():
+    for operation_id, method in expected_resource_operations.items():
         assert operations[operation_id]["method"] == method
-        assert operations[operation_id]["kind"] == "query"
-        assert operations[operation_id]["capabilities"] == ["query"]
+        assert operations[operation_id]["kind"] == "resource"
+        assert operations[operation_id]["capabilities"] == ["resource"]
 
     for operation_id, method in expected_mutation_operations.items():
         assert operations[operation_id]["method"] == method
@@ -148,7 +159,7 @@ def test_command_center_contract_exposes_portfolio_group_operations() -> None:
 
 def test_command_center_contract_exposes_complete_index_operations() -> None:
     operations = _operation_by_id(_contract_payload())
-    query_operations = {
+    resource_operations = {
         "listIndexTypes": "GET",
         "getIndexType": "GET",
         "listIndexes": "GET",
@@ -158,7 +169,6 @@ def test_command_center_contract_exposes_complete_index_operations() -> None:
         "getIndexFormula": "GET",
         "listIndexDatasets": "GET",
         "getIndexDatasetSummary": "GET",
-        "getIndexDatasetValuesFrame": "GET",
         "listIndexRelatedMetaTables": "GET",
         "getIndexDeleteImpact": "GET",
     }
@@ -168,14 +178,15 @@ def test_command_center_contract_exposes_complete_index_operations() -> None:
         "deleteIndex": "DELETE",
     }
 
-    for operation_id, method in query_operations.items():
+    for operation_id, method in resource_operations.items():
         assert operations[operation_id]["method"] == method
-        assert operations[operation_id]["kind"] == "query"
+        assert operations[operation_id]["kind"] == "resource"
     for operation_id, method in mutation_operations.items():
         assert operations[operation_id]["method"] == method
         assert operations[operation_id]["kind"] == "mutation"
 
     values = operations["getIndexDatasetValuesFrame"]
+    assert values["kind"] == "query"
     assert values["responseContract"] == DIRECT_FRAME_CONTRACT
     assert values["responseModel"] == "TabularFrameResponse"
 
@@ -200,11 +211,11 @@ def test_command_center_contract_documents_response_contract_boundaries() -> Non
     assert asset_monitor["responseContract"] == DIRECT_FRAME_CONTRACT
     assert asset_monitor["responseModel"] == "TabularFrameResponse"
 
-    provider_native = operations["getFixedIncomeAssetCashflows"]
-    assert provider_native["responseContract"] == PROVIDER_NATIVE_CONTRACT
-    assert provider_native["responseModel"] == "BondCashflowsResponse"
-    assert provider_native["responseMappings"][0]["contract"] == DIRECT_FRAME_CONTRACT
-    assert provider_native["responseMappings"][0]["rowsPath"] == "$.legs.*[*]"
+    application_owned = operations["getFixedIncomeAssetCashflows"]
+    assert application_owned["kind"] == "resource"
+    assert application_owned["responseModel"] == "BondCashflowsResponse"
+    assert "responseContract" not in application_owned
+    assert "responseMappings" not in application_owned
 
 
 def test_command_center_contract_includes_parameter_and_body_metadata() -> None:
@@ -212,12 +223,26 @@ def test_command_center_contract_includes_parameter_and_body_metadata() -> None:
     operations = _operation_by_id(payload)
 
     list_assets_parameters = {
-        parameter["name"]: parameter for parameter in operations["listAssets"]["parameters"]
+        parameter["name"]: parameter
+        for parameter in operations["listAssets"]["parameters"]["query"]
     }
-    assert list_assets_parameters["limit"]["in"] == "query"
-    assert list_assets_parameters["limit"]["type"] == "integer"
-    assert list_assets_parameters["offset"]["type"] == "integer"
+    assert list_assets_parameters["limit"]["key"] == "limit"
+    assert list_assets_parameters["limit"]["type"] == "number"
+    assert list_assets_parameters["offset"]["type"] == "number"
 
     add_holdings = operations["addAccountHoldings"]
-    assert add_holdings["requestBody"]["contentTypes"] == ["application/json"]
-    assert add_holdings["requestBody"]["schemaRef"] == "AccountAddHoldingsRequest"
+    assert add_holdings["requestBody"]["contentType"] == "application/json"
+    assert add_holdings["requestBody"]["schema"] == {
+        "$ref": "#/components/schemas/AccountAddHoldingsRequest"
+    }
+
+
+def test_command_center_contract_omits_retired_discovery_fields() -> None:
+    payload = _contract_payload()
+
+    for operation in payload["availableOperations"]:
+        assert "responseMappings" not in operation
+        parameters = operation.get("parameters", {})
+        assert set(parameters) <= {"path", "query", "headers"}
+        assert "enabled" not in operation.get("cache", {})
+        assert "ttlSeconds" not in operation.get("cache", {})

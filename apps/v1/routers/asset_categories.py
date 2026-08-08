@@ -7,10 +7,14 @@ from fastapi import APIRouter, Body, HTTPException, Query, Request, status
 from apps.v1.schemas.asset_categories import (
     AssetCategory,
     AssetCategoryDetailResponse,
-    BulkDeleteAssetCategoriesRequest,
     BulkDeleteAssetCategoriesResponse,
     CreateAssetCategoryRequest,
     PatchAssetCategoryRequest,
+)
+from apps.v1.schemas.bulk_actions import (
+    BulkActionDiscoveryResponse,
+    BulkActionExecutionRequest,
+    BulkActionPreflightResponse,
 )
 from apps.v1.schemas.common import ErrorResponse, PaginatedResponse, build_paginated_response
 from apps.v1.services.asset_categories import (
@@ -19,7 +23,13 @@ from apps.v1.services.asset_categories import (
     delete_asset_category,
     get_asset_category_detail,
     list_asset_categories,
+    preflight_bulk_delete_asset_categories,
     update_asset_category,
+)
+from apps.v1.services.bulk_actions import (
+    blocked_preflight_detail,
+    build_bulk_delete_discovery,
+    explicit_uuid_selection,
 )
 
 router = APIRouter(prefix="/asset-category", tags=["asset-category"])
@@ -106,20 +116,73 @@ def post_asset_category(
     "/bulk-delete/",
     response_model=BulkDeleteAssetCategoriesResponse,
     summary="Bulk delete asset categories",
-    description=(
-        "Delete asset categories by explicit uid selection or, when `select_all=true`, "
-        "by the compatibility filter set from the current list view."
-    ),
+    description="Execute the discovered explicit-selection asset-category delete action.",
     operation_id="bulkDeleteAssetCategories",
 )
 def post_asset_category_bulk_delete(
     request: Annotated[
-        BulkDeleteAssetCategoriesRequest,
-        Body(description="Bulk delete request for asset categories."),
+        BulkActionExecutionRequest,
+        Body(description="Command Center bulk-action execution request."),
     ],
 ) -> BulkDeleteAssetCategoriesResponse:
-    return bulk_delete_asset_categories(
-        payload=request.model_dump(by_alias=False, exclude_none=True)
+    try:
+        uids = explicit_uuid_selection(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    preflight = BulkActionPreflightResponse.model_validate(
+        preflight_bulk_delete_asset_categories(uids=uids)
+    )
+    if not preflight.allowed:
+        raise HTTPException(status_code=409, detail=blocked_preflight_detail(preflight))
+    return bulk_delete_asset_categories(payload={"uids": uids})
+
+
+@router.get(
+    "/bulk-actions/",
+    response_model=BulkActionDiscoveryResponse,
+    summary="Discover asset-category bulk actions",
+    description=(
+        "Return the caller-visible Command Center bulk actions for the asset-category "
+        "collection. Only explicit UID selection is currently advertised."
+    ),
+    operation_id="listAssetCategoryBulkActions",
+)
+def get_asset_category_bulk_actions(
+    search: Annotated[
+        str,
+        Query(description="Normalized collection search forwarded by the resource adapter."),
+    ] = "",
+) -> BulkActionDiscoveryResponse:
+    return build_bulk_delete_discovery(
+        action_id="bulk-delete-asset-categories",
+        label="Delete selected",
+        endpoint="/api/v1/asset-category/bulk-delete/",
+        preflight_endpoint="/api/v1/asset-category/bulk-delete/preflight/",
+        confirmation_title="Delete asset categories",
+        confirmation_warning="Deleted asset categories cannot be restored.",
+    )
+
+
+@router.post(
+    "/bulk-delete/preflight/",
+    response_model=BulkActionPreflightResponse,
+    summary="Preflight asset-category bulk deletion",
+    description="Reauthorize and resolve an explicit category selection without deleting rows.",
+    operation_id="preflightBulkDeleteAssetCategories",
+    responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
+def preflight_asset_category_bulk_delete(
+    request: Annotated[
+        BulkActionExecutionRequest,
+        Body(description="Command Center bulk-action execution request to preflight."),
+    ],
+) -> BulkActionPreflightResponse:
+    try:
+        uids = explicit_uuid_selection(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return BulkActionPreflightResponse.model_validate(
+        preflight_bulk_delete_asset_categories(uids=uids)
     )
 
 

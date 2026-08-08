@@ -224,14 +224,8 @@ def test_cashflows_frame_route_returns_command_center_tabular_contract(monkeypat
     assert payload["fields"][0] == {
         "key": "leg",
         "label": "Leg",
-        "description": None,
         "type": "string",
-        "nullable": None,
-        "nativeType": None,
         "provenance": "manual",
-        "reason": None,
-        "derivedFrom": None,
-        "warnings": None,
     }
     assert payload["source"]["kind"] == "api"
     assert payload["source"]["context"]["operation"] == "cashflows"

@@ -196,11 +196,23 @@ def test_bulk_delete_portfolio_groups_returns_deleted_count(monkeypatch) -> None
         "apps.v1.routers.portfolio_groups.bulk_delete_portfolio_groups",
         fake_bulk_delete_portfolio_groups,
     )
+    monkeypatch.setattr(
+        "apps.v1.routers.portfolio_groups.preflight_bulk_delete_portfolio_groups",
+        lambda **kwargs: {
+            "allowed": True,
+            "matched_count": len(kwargs["uids"]),
+            "blockers": [],
+            "warnings": [],
+        },
+    )
 
     client = TestClient(app)
     response = client.post(
         "/api/v1/portfolio-group/bulk-delete/",
-        json={"uids": [str(group_uid)]},
+        json={
+            "selection": {"mode": "explicit", "uids": [str(group_uid)]},
+            "options": {},
+        },
     )
 
     assert response.status_code == 200

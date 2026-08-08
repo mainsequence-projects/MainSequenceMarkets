@@ -5,9 +5,13 @@ from typing import Annotated
 from fastapi import APIRouter, Body, HTTPException, Query, Request, status
 
 from apps.v1.schemas.common import ErrorResponse, build_paginated_response
+from apps.v1.schemas.bulk_actions import (
+    BulkActionDiscoveryResponse,
+    BulkActionExecutionRequest,
+    BulkActionPreflightResponse,
+)
 from apps.v1.schemas.portfolio_groups import (
     PortfolioGroup,
-    PortfolioGroupBulkDeleteRequest,
     PortfolioGroupDeleteResponse,
     PortfolioGroupListResponse,
     PortfolioGroupMembership,
@@ -28,8 +32,14 @@ from apps.v1.services.portfolio_groups import (
     list_groups_for_portfolio,
     list_portfolio_groups,
     list_portfolios_in_group,
+    preflight_bulk_delete_portfolio_groups,
     remove_portfolio_from_group,
     update_portfolio_group,
+)
+from apps.v1.services.bulk_actions import (
+    blocked_preflight_detail,
+    build_bulk_delete_discovery,
+    explicit_uuid_selection,
 )
 
 router = APIRouter(prefix="/portfolio-group", tags=["portfolio-group"])
@@ -122,11 +132,77 @@ def post_portfolio_group(
 )
 def post_portfolio_group_bulk_delete(
     request: Annotated[
-        PortfolioGroupBulkDeleteRequest,
-        Body(description="Bulk delete request for portfolio groups."),
+        BulkActionExecutionRequest,
+        Body(description="Command Center bulk-action execution request."),
     ],
 ) -> PortfolioGroupDeleteResponse:
-    return bulk_delete_portfolio_groups(payload=request.model_dump(mode="json"))
+    try:
+        uids = explicit_uuid_selection(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    preflight = BulkActionPreflightResponse.model_validate(
+        preflight_bulk_delete_portfolio_groups(uids=uids)
+    )
+    if not preflight.allowed:
+        raise HTTPException(status_code=409, detail=blocked_preflight_detail(preflight))
+    return bulk_delete_portfolio_groups(payload={"uids": uids})
+
+
+@router.get(
+    "/bulk-actions/",
+    response_model=BulkActionDiscoveryResponse,
+    summary="Discover portfolio-group bulk actions",
+    description=(
+        "Return the caller-visible Command Center bulk actions for the portfolio-group "
+        "collection. Only explicit UID selection is currently advertised."
+    ),
+    operation_id="listPortfolioGroupBulkActions",
+)
+def get_portfolio_group_bulk_actions(
+    search: Annotated[
+        str,
+        Query(description="Normalized collection search forwarded by the resource adapter."),
+    ] = "",
+    unique_identifier: Annotated[
+        str | None,
+        Query(description="Optional normalized unique-identifier filter."),
+    ] = None,
+    display_name: Annotated[
+        str | None,
+        Query(description="Optional normalized display-name filter."),
+    ] = None,
+) -> BulkActionDiscoveryResponse:
+    return build_bulk_delete_discovery(
+        action_id="bulk-delete-portfolio-groups",
+        label="Delete selected",
+        endpoint="/api/v1/portfolio-group/bulk-delete/",
+        preflight_endpoint="/api/v1/portfolio-group/bulk-delete/preflight/",
+        confirmation_title="Delete portfolio groups",
+        confirmation_warning="Deleted portfolio groups cannot be restored.",
+    )
+
+
+@router.post(
+    "/bulk-delete/preflight/",
+    response_model=BulkActionPreflightResponse,
+    summary="Preflight portfolio-group bulk deletion",
+    description="Reauthorize and resolve an explicit group selection without deleting rows.",
+    operation_id="preflightBulkDeletePortfolioGroups",
+    responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
+def preflight_portfolio_group_bulk_delete(
+    request: Annotated[
+        BulkActionExecutionRequest,
+        Body(description="Command Center bulk-action execution request to preflight."),
+    ],
+) -> BulkActionPreflightResponse:
+    try:
+        uids = explicit_uuid_selection(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return BulkActionPreflightResponse.model_validate(
+        preflight_bulk_delete_portfolio_groups(uids=uids)
+    )
 
 
 @router.post(

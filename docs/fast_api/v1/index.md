@@ -46,6 +46,8 @@ This API is intentionally thin:
   storage cleanup.
 - [Virtual Fund Routes](virtualfund.md): route group for account-owned
   virtual-fund identity and holdings snapshots.
+- [Command Center Bulk Actions](command_center_bulk_actions.md): SDK-contract
+  discovery, preflight, and execution for destructive collection actions.
 
 ## Design Decisions (ADRs)
 

@@ -162,6 +162,7 @@ def get_fixed_income_asset_cashflows(
         "the result as the SDK `core.tabular_frame@v1` contract."
     ),
     operation_id="getFixedIncomeAssetCashflowsFrame",
+    response_model_exclude_none=True,
     responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
     openapi_extra={
         "x-ui-contract": "core.tabular_frame@v1",
@@ -212,6 +213,7 @@ def get_fixed_income_asset_net_cashflows(
         "the result as the SDK `core.tabular_frame@v1` contract."
     ),
     operation_id="getFixedIncomeAssetNetCashflowsFrame",
+    response_model_exclude_none=True,
     responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
     openapi_extra={
         "x-ui-contract": "core.tabular_frame@v1",

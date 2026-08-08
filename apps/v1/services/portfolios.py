@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 from collections.abc import Mapping
 
+from apps.v1.schemas.bulk_actions import BulkActionPreflightResponse
 from apps.v1.schemas.command_center import TabularFrameResponse
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
@@ -160,6 +162,34 @@ def bulk_delete_portfolios(*, uids: list[str]) -> PortfolioBulkDeleteResponse:
     return PortfolioBulkDeleteResponse.model_validate(response)
 
 
+def preflight_bulk_delete_portfolios(*, uids: list[str]) -> BulkActionPreflightResponse:
+    runtime = _get_runtime()
+    target_uids = list(dict.fromkeys(uids))
+    matched_count = 0
+    blockers: list[str] = []
+    for uid in target_uids:
+        exists, resource_blockers = _portfolio_delete_preflight_item(runtime.context, uid=uid)
+        if not exists:
+            blockers.append(f"Portfolio {uid} was not found.")
+            continue
+        matched_count += 1
+        blockers.extend(f"Portfolio {uid}: {blocker}" for blocker in resource_blockers)
+
+    allowed = bool(target_uids) and not blockers
+    detail = (
+        f"{matched_count} portfolio{' is' if matched_count == 1 else 's are'} ready for deletion."
+        if allowed
+        else "The portfolio selection cannot be deleted as submitted."
+    )
+    return BulkActionPreflightResponse(
+        allowed=allowed,
+        detail=detail,
+        matched_count=matched_count,
+        blockers=blockers,
+        warnings=[],
+    )
+
+
 def bulk_cascade_delete_portfolios(*, uids: list[str]) -> PortfolioBulkCascadeDeleteResponse:
     runtime = _get_runtime()
     response = _bulk_cascade_delete_portfolio_records(runtime.context, uids=uids)
@@ -247,6 +277,17 @@ def _bulk_delete_portfolio_records(context, **kwargs):
     from msm_portfolios.services import bulk_delete_portfolio_records
 
     return bulk_delete_portfolio_records(context, **kwargs)
+
+
+def _portfolio_delete_preflight_item(context, *, uid: str) -> tuple[bool, list[str]]:
+    from msm_portfolios.services import public_api
+
+    existing = public_api._get_portfolio_row(context, uid=uid)
+    if existing is None:
+        return False, []
+    portfolio_uid = uuid.UUID(str(public_api._build_portfolio_row(existing)["uid"]))
+    blockers = public_api._portfolio_delete_blockers(context, portfolio_uid=portfolio_uid)
+    return True, blockers
 
 
 def _bulk_cascade_delete_portfolio_records(context, **kwargs):

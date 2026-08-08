@@ -719,11 +719,26 @@ def test_bulk_delete_portfolios_reports_failures(monkeypatch) -> None:
         "apps.v1.routers.portfolios.bulk_delete_portfolios",
         fake_bulk_delete_portfolios,
     )
+    monkeypatch.setattr(
+        "apps.v1.routers.portfolios.preflight_bulk_delete_portfolios",
+        lambda **kwargs: {
+            "allowed": True,
+            "matched_count": len(kwargs["uids"]),
+            "blockers": [],
+            "warnings": [],
+        },
+    )
 
     client = TestClient(app)
     response = client.post(
         "/api/v1/portfolio/bulk-delete/",
-        json={"uids": [str(deleted_uid), str(failed_uid)]},
+        json={
+            "selection": {
+                "mode": "explicit",
+                "uids": [str(deleted_uid), str(failed_uid)],
+            },
+            "options": {},
+        },
     )
 
     assert response.status_code == 409
@@ -756,11 +771,23 @@ def test_bulk_delete_portfolios_returns_success_when_all_deleted(monkeypatch) ->
         "apps.v1.routers.portfolios.bulk_delete_portfolios",
         fake_bulk_delete_portfolios,
     )
+    monkeypatch.setattr(
+        "apps.v1.routers.portfolios.preflight_bulk_delete_portfolios",
+        lambda **kwargs: {
+            "allowed": True,
+            "matched_count": len(kwargs["uids"]),
+            "blockers": [],
+            "warnings": [],
+        },
+    )
 
     client = TestClient(app)
     response = client.post(
         "/api/v1/portfolio/bulk-delete/",
-        json={"uids": [str(deleted_uid)]},
+        json={
+            "selection": {"mode": "explicit", "uids": [str(deleted_uid)]},
+            "options": {},
+        },
     )
 
     assert response.status_code == 200
@@ -891,11 +918,23 @@ def test_bulk_delete_portfolios_returns_409_with_not_found_reason(monkeypatch) -
         "apps.v1.routers.portfolios.bulk_delete_portfolios",
         fake_bulk_delete_portfolios,
     )
+    monkeypatch.setattr(
+        "apps.v1.routers.portfolios.preflight_bulk_delete_portfolios",
+        lambda **kwargs: {
+            "allowed": True,
+            "matched_count": len(kwargs["uids"]),
+            "blockers": [],
+            "warnings": [],
+        },
+    )
 
     client = TestClient(app)
     response = client.post(
         "/api/v1/portfolio/bulk-delete/",
-        json={"uids": [str(failed_uid)]},
+        json={
+            "selection": {"mode": "explicit", "uids": [str(failed_uid)]},
+            "options": {},
+        },
     )
 
     assert response.status_code == 409

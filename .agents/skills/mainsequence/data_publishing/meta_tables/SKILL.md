@@ -28,8 +28,7 @@ This skill is for schema-driven application tables registered through TS Manager
 This skill must not claim ownership of:
 
 - DataNode producer contracts
-- FastAPI route contracts
-- widget response contracts
+- Command Center FastAPI wire contracts
 - workspace payloads
 - job scheduling, image pinning, or releases
 - RBAC or sharing policy
@@ -44,12 +43,8 @@ If the user is still in the discovery process and does not yet know what data ex
   `.agents/skills/mainsequence/data_publishing/meta_table_migrations/SKILL.md`
 - DataNodes:
   `.agents/skills/mainsequence/data_publishing/data_nodes/SKILL.md`
-- APIs and FastAPI:
+- Command Center-serving FastAPI providers:
   `.agents/skills/mainsequence/application_surfaces/api_surfaces/SKILL.md`
-- Command Center workspaces:
-  `.agents/skills/mainsequence/command_center/workspace_builder/SKILL.md`
-- AppComponents and custom forms:
-  `.agents/skills/mainsequence/command_center/widgets/app_components/SKILL.md`
 - Jobs, images, resources, and releases:
   `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
 
@@ -75,7 +70,7 @@ Before changing code, collect or infer:
 - expected read patterns
 - expected mutation patterns
 - whether TS Manager should create the physical table
-- for `external_registered`, the target `DynamicTableDataSource` UID
+- for `external_registered`, the target canonical `DataSource` UID
 - for contract changes, the selected `AlembicMetaTableMigration` provider or provider module path
 - for contract changes, the provider's `AlembicVersionMetaTable` binding and whether it has been registered
 - for contract changes, the intended Alembic revision, parent/current revision, target revision, and updated SQLAlchemy declarations

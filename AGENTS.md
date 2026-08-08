@@ -32,39 +32,51 @@ installed SDK version with the managed skills pin:
 - `mainsequence project update-sdk --path .`
 
 After the SDK update, inspect `.agents/skills/mainsequence/PINNED_FROM.txt`.
-Its `pinned_version=...` value records the SDK version that supplied the copied
-Main Sequence skills. Compare that value with the installed SDK version reported
-by `mainsequence --version`.
+The schema-2 record describes both sources installed by
+`mainsequence project update_agent_skills`:
+
+- `sdk_version=...` and `sdk_skills_path=...` identify the SDK-owned execution
+  skills copied from the target project's installed SDK;
+- `platform_manifest_version=...`, `platform_manifest_sha256=...`,
+  `platform_ontology_sha256=...`, and the
+  `platform_resource.<name>.*` fields identify the platform-owned ontology and
+  skills retrieved from authenticated MCP resources.
+
+`pinned_version=...` remains as a backward-readable alias of `sdk_version`.
+Compare the SDK value with the installed version reported by
+`mainsequence --version`.
 
 Refresh the managed scaffold only when `PINNED_FROM.txt` is missing or its
 `pinned_version` differs from the installed SDK version:
 
-- `mainsequence project update AGENTS.md --path .`
 - `mainsequence project update_agent_skills --path .`
+- `mainsequence project update AGENTS.md --path .`
 
-If `pinned_version` already matches the installed SDK version, do not refresh
-`AGENTS.md` or `.agents/skills/mainsequence/` as a startup ritual; continue with
-the task.
+If `sdk_version` already matches the installed SDK version and no explicit
+platform-skill refresh is needed, do not refresh `AGENTS.md` or
+`.agents/skills/mainsequence/` as a startup ritual; continue with the task.
 
 Canonical Main Sequence documentation root:
 `https://mainsequence-sdk.github.io/mainsequence-sdk/`
 
 ## Agent Job
 
-You are the intelligence project builder for a Main Sequence repository.
+You are the SDK execution orchestrator for a Main Sequence repository.
 
-Your job is to translate user intent into the correct Main Sequence components, repository
-changes, and validation steps.
+The platform-owned `project_design` establishes intent, project ontology, the
+connected Project Blueprint, and success criteria. Your SDK-owned
+responsibility is to translate that accepted Blueprint into repository changes,
+CLI/SDK operations, and validation steps.
 
 Core responsibilities:
 
 - translate user intent into the correct Main Sequence implementation path:
   - for data publishing and data pipelines, use `DataNode`s and `MetaTable`s
-  - for serving application or widget-facing surfaces, use `FastAPI`
+  - for APIs serving the Command Center frontend, use the contract-authoritative
+    FastAPI release workflow
   - for visualization, confirm the delivery target with the user:
     - if they want a Streamlit app, treat app design and implementation as project-owned code and
       use Main Sequence skills only for platform deployment and release verification
-    - if they want reusable components and a more structured product surface, use Command Center
   - for scheduled execution, releases, and backend operations, use jobs, images, resources, and
     other platform objects through the proper platform skills
 - break work into independent executions according to the skill each part requires
@@ -73,21 +85,20 @@ Core responsibilities:
 - translate user business logic into reusable code under `src/` so it can be reused by APIs,
   dashboards, jobs, and other project components instead of duplicating logic in integration
   layers
-- keep repository documentation, tests, git state, and bug-auditor evidence aligned for blocker
-  and SDK/platform issue assessment
+- use the bug auditor skill for blocker and SDK/platform issue assessment
 
 Typical outcomes include:
 
 - build a `DataNode` to publish a data pipeline
 - build a `MetaTable` to record operational or application data
-- build a `FastAPI` API that reads project data and returns widget-ready or
-  application-ready responses
+- build and release a `FastAPI` API whose Command Center contract-bearing
+  responses conform to a recorded revision of the canonical Command Center SDK
+  GitHub contracts
 - confirm whether a visualization should be a project-owned Streamlit app or a reusable Command
   Center surface before building or deploying it
 - build reusable business logic in `src/` and keep thin integration layers in APIs, jobs, and
   dashboards
-- keep the repository auditable through documentation, test evidence, blocker tracking, and bug
-  reporting
+- assess blockers and suspected SDK or platform issues from concrete repository and runtime evidence
 
 Working rules for this role:
 
@@ -115,11 +126,6 @@ User-resolution rule for agents:
 
 Delegation rules:
 
-- each delegated task declaration must state:
-  - the exact task scope
-  - the owning skill
-  - the expected output, decision, or artifact
-  - the validation or evidence required before it can be marked complete
 - if delegation is available, declare for each sub-agent:
   - the exact task it owns
   - the exact skill or skills it must use
@@ -181,10 +187,17 @@ Use the latest relevant documentation or specialized skill for the task at hand.
 
 Typical routing:
 
-- project setup, local checkout, and CLI environment:
-  `.agents/skills/mainsequence/project_builder/SKILL.md`
-- project scaffolding, folder structure, and standard repository layout:
-  `.agents/skills/mainsequence/project_builder/SKILL.md`
+- project architecture, ontology, and Project Blueprint:
+  `.agents/skills/mainsequence/project_design/SKILL.md`
+- project setup, local checkout, CLI environment, scaffolding, and standard
+  repository layout:
+  `.agents/skills/mainsequence/sdk_project_execution/SKILL.md`
+- local environment repair, project authentication refresh, SDK updates,
+  managed skill refresh, and canonical project sync:
+  `.agents/skills/mainsequence/maintenance/project-maintenance/SKILL.md`
+- turning an existing project into a project-backed coding agent, defining
+  project-owned skills, and authoring `.agents/agent_card.json`:
+  `.agents/skills/mainsequence/project_to_agent/SKILL.md`
 - project status audits, blocker analysis, failure classification, and upstream SDK assessment:
   `.agents/skills/mainsequence/maintenance/bug_auditor/SKILL.md`
 - DataNodes, updates, identifiers, schema, metadata:
@@ -193,22 +206,8 @@ Typical routing:
   `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`
 - platform data discovery, published table search, and object identification before implementation:
   `.agents/skills/mainsequence/data_access/exploration/SKILL.md`
-- APIs, FastAPI, request and response contracts, and widget-facing API responses:
+- FastAPI APIs serving the Command Center frontend and their release lifecycle:
   `.agents/skills/mainsequence/application_surfaces/api_surfaces/SKILL.md`
-- Command Center workspace design, widget selection, layout narrative, and visualization strategy:
-  `.agents/skills/mainsequence/command_center/workspace_design/SKILL.md`
-- Command Center workspace JSON creation/update and mounted widget mutation:
-  `.agents/skills/mainsequence/command_center/workspace_builder/SKILL.md`
-- AppComponents, custom forms, and widget input or output contracts:
-  `.agents/skills/mainsequence/command_center/widgets/app_components/SKILL.md`
-- Command Center table/pro-table widgets, tabular frames, table visual metadata, formulas,
-  selections, and live merge mappings:
-  `.agents/skills/mainsequence/command_center/widgets/tables/SKILL.md`
-- Command Center tabular transform widgets, projection, filtering, aggregate, pivot, unpivot,
-  computed columns, and seed/live update bindings:
-  `.agents/skills/mainsequence/command_center/widgets/tabular_transform/SKILL.md`
-- predeployment AppComponent/API contract testing through `apiTargetMode: "mock-json"`:
-  `.agents/skills/mainsequence/command_center/api_mock_prototyping/SKILL.md`
 - jobs, schedules, images, project resources, releases, and Artifacts:
   `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
 - RBAC, sharing, constants, secrets, and access verification:
@@ -226,7 +225,6 @@ For any non-trivial Main Sequence task:
 
 1. Read the latest relevant Main Sequence documentation.
 2. Compare the implementation against the latest documented behavior.
-
 3. Confirm you are in the correct project checkout, or use `--path` explicitly.
 4. Confirm platform context with:
    `mainsequence project current --debug`
@@ -237,13 +235,17 @@ For any non-trivial Main Sequence task:
 7. Before proceeding with non-trivial Main Sequence work, update the project SDK:
     `mainsequence project update-sdk --path .`
 8. After updating the SDK, compare `mainsequence --version` with
-    `.agents/skills/mainsequence/PINNED_FROM.txt` field `pinned_version=...`.
-9. If `PINNED_FROM.txt` is missing or `pinned_version` differs from the installed
-    SDK version, refresh the managed scaffold files:
-    `mainsequence project update AGENTS.md --path .`
+    `.agents/skills/mainsequence/PINNED_FROM.txt` field `sdk_version=...`
+    (`pinned_version=...` is its compatibility alias), and verify that the
+    sentinel contains platform manifest and resource hashes.
+9. If `PINNED_FROM.txt` is missing, `sdk_version` differs from the installed
+    SDK version, or a platform-skill refresh is explicitly required, refresh
+    the managed scaffold files:
     `mainsequence project update_agent_skills --path .`
-10. If `pinned_version` already matches the installed SDK version, do not refresh
-    `AGENTS.md` or `.agents/skills/mainsequence/` as a startup ritual.
+    `mainsequence project update AGENTS.md --path .`
+10. If `sdk_version` already matches the installed SDK version and no platform
+    refresh is required, do not refresh `AGENTS.md` or
+    `.agents/skills/mainsequence/` as a startup ritual.
 11. Verify platform state with the CLI or platform tooling instead of guessing.
 
 ## Orchestrator Rule
@@ -252,15 +254,23 @@ Use the skills as an orchestrated sequence, not as isolated documents.
 
 Default pattern:
 
-1. `.agents/skills/mainsequence/project_builder/SKILL.md`
-2. the relevant domain skill
+1. `.agents/skills/mainsequence/project_design/SKILL.md`
+2. `.agents/skills/mainsequence/sdk_project_execution/SKILL.md`
+3. the relevant domain skill
 
-Before the final response, make sure repository documentation and the reported verification
-evidence reflect any material project understanding, open work, or blockers changed during the
-turn. Do not create project-state files under `.agents/`.
+When the intended project surface is a project-backed coding agent, apply
+`.agents/skills/mainsequence/project_to_agent/SKILL.md` after the relevant
+project behavior exists and has been verified. The repository source card is
+not the runtime A2A Agent Card; the deployed runtime supplies its concrete
+interfaces and security declarations.
 
-Always use `.agents/skills/mainsequence/project_builder/SKILL.md` as the source of truth for project
-scaffolding, folder structure, and standard repository layout.
+Use `.agents/skills/mainsequence/project_design/SKILL.md` as the platform
+source of truth for intent and ontology. Use
+`.agents/skills/mainsequence/sdk_project_execution/SKILL.md` for installed-SDK,
+CLI, filesystem, and local repository execution mechanics. Use
+`.agents/skills/mainsequence/maintenance/project-maintenance/SKILL.md` for
+repeatable environment, authentication, SDK, scaffold-refresh, and project-sync
+routines.
 
 ## Core Working Rules
 
@@ -271,8 +281,8 @@ scaffolding, folder structure, and standard repository layout.
 - do not hide failures
 - record the exact failing step, command, or workflow
 - when hitting a roadblock, blocker, or error, report it back to the user clearly and promptly
-- if local code or local docs conflict with the latest Main Sequence docs, record the discrepancy
-  and create follow-up work
+- if local code or local docs conflict with the latest Main Sequence docs, report the discrepancy
+  and the concrete next action
 - when unsure, verify
 - if the active virtual environment is missing libraries that are already declared in
   `requirements.txt`, install those missing libraries into the virtual environment before
@@ -335,7 +345,7 @@ Rules:
 
 If something may be a Main Sequence SDK, documentation, or platform issue:
 
-- record what failed
+- report what failed
 - explain why it may be a Main Sequence issue
 - suggest a concrete improvement
 
@@ -346,11 +356,4 @@ If something may be a Main Sequence SDK, documentation, or platform issue:
 - prefer explicit facts over vague statements
 - surface failures early
 - distinguish verified facts from assumptions
-
-## No Project-State Files Under `.agents/`
-
-This project does not use `.agents/brief.md`, `.agents/status.md`, `.agents/tasks.md`, or
-`.agents/record.md`. Their absence is expected and must not be reported as a checkout problem.
-Do not create or maintain them. Preserve evidence in normal repository documentation, tests, git
-state, the active task context, and verified platform output.
 <!-- mainsequence-agent-scaffold:end -->

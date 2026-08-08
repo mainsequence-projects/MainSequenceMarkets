@@ -122,39 +122,6 @@ class AssetCategoryDetailResponse(BaseModel):
     assets_list: AssetCategoryDetailAssetsList
 
 
-class BulkDeleteAssetCategoriesRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    uids: list[UUID] | None = None
-    select_all: bool = False
-    current_url: str | None = None
-    search: str | None = None
-    display_name: str | None = None
-    display_name_contains: str | None = Field(default=None, alias="display_name__contains")
-    unique_identifier: str | None = None
-    unique_identifier_contains: str | None = Field(default=None, alias="unique_identifier__contains")
-    description: str | None = None
-    description_contains: str | None = Field(default=None, alias="description__contains")
-    organization_owner_uid: UUID | None = Field(default=None, alias="organization_owner__uid")
-
-    @field_validator(
-        "current_url",
-        "search",
-        "display_name",
-        "display_name_contains",
-        "unique_identifier",
-        "unique_identifier_contains",
-        "description",
-        "description_contains",
-    )
-    @classmethod
-    def _normalize_optional_strings(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = value.strip()
-        return normalized or None
-
-
 class BulkDeleteAssetCategoriesResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 

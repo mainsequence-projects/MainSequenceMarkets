@@ -5,9 +5,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from mainsequence.client.models_user import (
-    User,
     _CURRENT_AUTH_HEADERS,
     _CURRENT_USER,
+    User,
 )
 
 from apps.v1.schemas.command_center import TabularFrameResponse
@@ -25,9 +25,9 @@ from apps.v1.schemas.indices import (
     IndexDatasetSummary,
     IndexFormulaDetail,
     IndexFormulaSummary,
-    RelatedMetaTable,
     IndexType,
     IndexUpdate,
+    RelatedMetaTable,
 )
 from apps.v1.services.indices import (
     create_index,
@@ -297,6 +297,7 @@ def get_index_dataset_summary_by_uid(
     response_model=TabularFrameResponse,
     summary="Get Index dataset values frame",
     operation_id="getIndexDatasetValuesFrame",
+    response_model_exclude_none=True,
     responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
     openapi_extra={
         "x-ui-contract": "core.tabular_frame@v1",

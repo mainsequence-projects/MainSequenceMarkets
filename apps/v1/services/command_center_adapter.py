@@ -5,9 +5,6 @@ import json
 from importlib.metadata import version
 from typing import Any
 
-from mainsequence.client.command_center.contracts.tabular import CORE_TABULAR_FRAME_CONTRACT
-from mainsequence.client.command_center.providers.adapter_from_api import PROVIDER_NATIVE_CONTRACT
-
 from apps.v1.schemas.command_center_adapter import (
     ApiHealthResponse,
     CommandCenterAdapterInfo,
@@ -17,9 +14,10 @@ from apps.v1.schemas.command_center_adapter import (
     CommandCenterOperation,
     CommandCenterOperationCache,
     CommandCenterOperationParameter,
+    CommandCenterOperationParameters,
     CommandCenterOperationRequestBody,
-    CommandCenterResponseMapping,
 )
+from command_center.contracts import CORE_TABULAR_FRAME_CONTRACT
 
 ADAPTER_ID = "ms-markets.apps-v1"
 ADAPTER_TITLE = "MainSequence Markets API"
@@ -29,7 +27,7 @@ HEALTH_OPERATION_ID = "getApiHealth"
 CONTRACT_OPERATION_ID = "getCommandCenterConnectionContract"
 DIRECT_FRAME_CONTRACT = CORE_TABULAR_FRAME_CONTRACT
 
-QUERY_OPERATION_IDS = frozenset(
+READ_OPERATION_IDS = frozenset(
     {
         "getApiSettings",
         "listAssets",
@@ -39,6 +37,8 @@ QUERY_OPERATION_IDS = frozenset(
         "getAssetPricingDetails",
         "listAssetRelatedMetaTables",
         "listAssetCategories",
+        "listAssetCategoryBulkActions",
+        "preflightBulkDeleteAssetCategories",
         "getAssetCategoryDetail",
         "listAccounts",
         "getAccountSummary",
@@ -59,6 +59,8 @@ QUERY_OPERATION_IDS = frozenset(
         "listIndexRelatedMetaTables",
         "getIndexDeleteImpact",
         "listPortfolios",
+        "listPortfolioBulkActions",
+        "preflightBulkDeletePortfolios",
         "getPortfolio",
         "getPortfolioSummary",
         "getPortfolioGroup",
@@ -67,6 +69,8 @@ QUERY_OPERATION_IDS = frozenset(
         "getPortfolioWeights",
         "listGroupsForPortfolio",
         "listPortfolioGroups",
+        "listPortfolioGroupBulkActions",
+        "preflightBulkDeletePortfolioGroups",
         "listPortfoliosInGroup",
         "getPortfolioSignal",
         "listPortfolioSignals",
@@ -110,6 +114,18 @@ QUERY_OPERATION_IDS = frozenset(
         "checkFixedIncomeAssetFixingsAvailability",
     }
 )
+
+QUERY_OPERATION_IDS = frozenset(
+    {
+        "getAssetMonitorFrame",
+        "getFixedIncomeAssetCashflowsFrame",
+        "getFixedIncomeAssetNetCashflowsFrame",
+        "getIndexDatasetValuesFrame",
+        "getPortfolioSignalWeightsFrame",
+        "getPortfolioValuesFrame",
+    }
+)
+RESOURCE_OPERATION_IDS = READ_OPERATION_IDS - QUERY_OPERATION_IDS
 
 MUTATION_OPERATION_IDS = frozenset(
     {
@@ -168,6 +184,7 @@ MUTATION_OPERATION_IDS = frozenset(
 REGISTERED_OPERATION_IDS = (
     (HEALTH_OPERATION_ID,)
     + tuple(sorted(QUERY_OPERATION_IDS))
+    + tuple(sorted(RESOURCE_OPERATION_IDS))
     + tuple(sorted(MUTATION_OPERATION_IDS))
 )
 
@@ -186,18 +203,16 @@ def build_command_center_connection_contract(
     openapi_url: str,
 ) -> CommandCenterConnectionContract:
     operation_lookup = _build_operation_lookup(openapi_schema)
-    schemas = openapi_schema.get("components", {}).get("schemas", {})
     available_operations = [
         _build_operation(
             operation_id=operation_id,
             operation_lookup=operation_lookup,
-            schemas=schemas,
         )
         for operation_id in REGISTERED_OPERATION_IDS
     ]
 
     return CommandCenterConnectionContract(
-        contract_version=CONTRACT_VERSION,
+        contractVersion=CONTRACT_VERSION,
         adapter=CommandCenterAdapterInfo(
             type="adapter-from-api",
             id=ADAPTER_ID,
@@ -209,13 +224,13 @@ def build_command_center_connection_contract(
             version=str(openapi_schema.get("openapi", "")),
             checksum=_openapi_checksum(openapi_schema),
         ),
-        config_variables=[],
-        secret_variables=[],
-        available_operations=available_operations,
+        configVariables=[],
+        secretVariables=[],
+        availableOperations=available_operations,
         health=CommandCenterHealthOperation(
-            operation_id=HEALTH_OPERATION_ID,
-            expected_status=200,
-            timeout_ms=5000,
+            operationId=HEALTH_OPERATION_ID,
+            expectedStatus=200,
+            timeoutMs=5000,
         ),
     )
 
@@ -239,7 +254,6 @@ def _build_operation(
     *,
     operation_id: str,
     operation_lookup: dict[str, tuple[str, str, dict[str, Any]]],
-    schemas: dict[str, Any],
 ) -> CommandCenterOperation:
     try:
         path, method, openapi_operation = operation_lookup[operation_id]
@@ -251,12 +265,10 @@ def _build_operation(
     kind = _operation_kind(operation_id)
     response_model = _response_model_name(openapi_operation)
     response_contract = _response_contract(openapi_operation, response_model)
-    parameters = [
-        _build_parameter(parameter) for parameter in openapi_operation.get("parameters", [])
-    ]
+    parameters = _build_parameters(openapi_operation.get("parameters", []))
 
     return CommandCenterOperation(
-        operation_id=operation_id,
+        operationId=operation_id,
         label=str(openapi_operation.get("summary") or operation_id),
         description=str(
             openapi_operation.get("description") or openapi_operation.get("summary") or operation_id
@@ -265,48 +277,75 @@ def _build_operation(
         path=path,
         kind=kind,
         capabilities=_operation_capabilities(kind),
-        requires_time_range=False,
-        supports_variables=True,
-        supports_max_rows=any(parameter.name == "limit" for parameter in parameters),
+        requiresTimeRange=False,
+        supportsVariables=True,
+        supportsMaxRows=any(parameter.key == "limit" for parameter in parameters.query),
         parameters=parameters,
-        request_body=_build_request_body(openapi_operation),
-        response_mappings=_response_mappings(
-            openapi_operation,
-            response_contract,
-            schemas,
-        ),
+        requestBody=_build_request_body(openapi_operation),
         cache=_operation_cache(kind=kind, method=method),
-        response_contract=response_contract,
-        response_model=response_model,
+        responseContract=response_contract,
+        responseModel=response_model,
     )
 
 
 def _operation_kind(operation_id: str) -> str:
-    if operation_id == HEALTH_OPERATION_ID:
-        return "health"
     if operation_id in QUERY_OPERATION_IDS:
         return "query"
+    if operation_id == HEALTH_OPERATION_ID or operation_id in RESOURCE_OPERATION_IDS:
+        return "resource"
     if operation_id in MUTATION_OPERATION_IDS:
         return "mutation"
     raise RuntimeError(f"Command Center operation {operation_id!r} is not registered.")
 
 
 def _operation_capabilities(kind: str) -> list[str]:
-    if kind == "query":
-        return ["query"]
     return [kind]
+
+
+def _build_parameters(parameters: list[dict[str, Any]]) -> CommandCenterOperationParameters:
+    grouped: dict[str, list[CommandCenterOperationParameter]] = {
+        "path": [],
+        "query": [],
+        "headers": [],
+    }
+    for parameter in parameters:
+        location = str(parameter.get("in"))
+        group = "headers" if location == "header" else location
+        if group in grouped:
+            grouped[group].append(_build_parameter(parameter))
+    return CommandCenterOperationParameters(**grouped)
 
 
 def _build_parameter(parameter: dict[str, Any]) -> CommandCenterOperationParameter:
     schema = parameter.get("schema") or {}
+    name = str(parameter.get("name"))
+    field_type, options = _parameter_type_and_options(schema)
     return CommandCenterOperationParameter(
-        name=str(parameter.get("name")),
-        in_=str(parameter.get("in")),
+        key=name,
+        name=name,
+        label=name.replace("_", " ").title(),
+        type=field_type,
         required=bool(parameter.get("required", False)),
-        type=schema.get("type"),
         description=parameter.get("description"),
-        schema_=schema,
+        defaultValue=schema.get("default"),
+        options=options,
     )
+
+
+def _parameter_type_and_options(
+    schema: dict[str, Any],
+) -> tuple[str, list[dict[str, str]] | None]:
+    enum = [value for value in schema.get("enum", []) if isinstance(value, str) and value]
+    if enum:
+        return "select", [{"label": value, "value": value} for value in enum]
+    openapi_type = schema.get("type")
+    if openapi_type in {"integer", "number"}:
+        return "number", None
+    if openapi_type == "boolean":
+        return "boolean", None
+    if openapi_type in {"array", "object"}:
+        return "json", None
+    return "string", None
 
 
 def _build_request_body(
@@ -317,20 +356,22 @@ def _build_request_body(
         return None
 
     content = request_body.get("content") or {}
-    json_schema = (content.get("application/json") or {}).get("schema")
+    content_type = "application/json" if "application/json" in content else next(iter(content), None)
+    json_schema = (content.get(content_type) or {}).get("schema") if content_type else None
     return CommandCenterOperationRequestBody(
         required=bool(request_body.get("required", False)),
-        content_types=sorted(content),
-        schema_=json_schema,
-        schema_ref=_schema_ref_name(json_schema),
+        contentType=content_type,
+        schema=json_schema,
+        description=request_body.get("description"),
     )
 
 
 def _operation_cache(*, kind: str, method: str) -> CommandCenterOperationCache:
     enabled = kind == "query" and method == "GET"
     return CommandCenterOperationCache(
-        enabled=enabled,
-        ttl_seconds=30 if enabled else None,
+        policy="safe" if enabled else "disabled",
+        ttlMs=30_000 if enabled else None,
+        dedupeInFlight=enabled,
     )
 
 
@@ -342,113 +383,13 @@ def _response_model_name(openapi_operation: dict[str, Any]) -> str | None:
 def _response_contract(
     openapi_operation: dict[str, Any],
     response_model: str | None,
-) -> str:
+) -> str | None:
     if (
         response_model == "TabularFrameResponse"
         or openapi_operation.get("x-ui-contract") == DIRECT_FRAME_CONTRACT
     ):
         return DIRECT_FRAME_CONTRACT
-    return PROVIDER_NATIVE_CONTRACT
-
-
-def _response_mappings(
-    openapi_operation: dict[str, Any],
-    response_contract: str,
-    schemas: dict[str, Any],
-) -> list[CommandCenterResponseMapping]:
-    mappings = [
-        CommandCenterResponseMapping.model_validate(mapping)
-        for mapping in openapi_operation.get("x-response-mappings", [])
-    ]
-    if response_contract == DIRECT_FRAME_CONTRACT:
-        return mappings
-
-    response_schema = _success_json_schema(openapi_operation)
-    response_ref = _schema_ref_name(response_schema)
-    if response_ref is not None:
-        schema = schemas.get(response_ref, {})
-        mappings.extend(
-            CommandCenterResponseMapping.model_validate(mapping)
-            for mapping in schema.get("x-response-mappings", [])
-        )
-        mappings.extend(_provider_native_mappings_for_schema(response_ref, schema))
-    return mappings
-
-
-def _provider_native_mappings_for_schema(
-    response_ref: str,
-    schema: dict[str, Any],
-) -> list[CommandCenterResponseMapping]:
-    schema_properties = schema.get("properties", {})
-    if {"count", "results"}.issubset(schema_properties):
-        return [
-            CommandCenterResponseMapping(
-                id="results",
-                label="Results",
-                contract=DIRECT_FRAME_CONTRACT,
-                status_code="200",
-                content_type="application/json",
-                rows_path="$.results",
-                field_types=None,
-            )
-        ]
-
-    mapping_by_schema = {
-        "AccountHoldingsSnapshotResponse": [
-            CommandCenterResponseMapping(
-                id="holdings",
-                label="Holdings",
-                contract=DIRECT_FRAME_CONTRACT,
-                status_code="200",
-                content_type="application/json",
-                rows_path="$.holdings",
-                field_types=None,
-            )
-        ],
-        "AccountTargetPositionsSnapshotResponse": [
-            CommandCenterResponseMapping(
-                id="positions",
-                label="Positions",
-                contract=DIRECT_FRAME_CONTRACT,
-                status_code="200",
-                content_type="application/json",
-                rows_path="$.positions",
-                field_types=None,
-            )
-        ],
-        "AccountHoldingsByFundResponse": [
-            CommandCenterResponseMapping(
-                id="funds",
-                label="Funds",
-                contract=DIRECT_FRAME_CONTRACT,
-                status_code="200",
-                content_type="application/json",
-                rows_path="$.funds",
-                field_types=None,
-            ),
-            CommandCenterResponseMapping(
-                id="residuals",
-                label="Residuals",
-                contract=DIRECT_FRAME_CONTRACT,
-                status_code="200",
-                content_type="application/json",
-                rows_path="$.residuals",
-                field_types=None,
-            ),
-        ],
-        "VirtualFundHoldingsSnapshotResponse": [
-            CommandCenterResponseMapping(
-                id="holdings",
-                label="Holdings",
-                contract=DIRECT_FRAME_CONTRACT,
-                status_code="200",
-                content_type="application/json",
-                rows_path="$.holdings",
-                field_types=None,
-            )
-        ],
-    }
-    return mapping_by_schema.get(response_ref, [])
+    return None
 
 
 def _success_json_schema(openapi_operation: dict[str, Any]) -> dict[str, Any] | None:

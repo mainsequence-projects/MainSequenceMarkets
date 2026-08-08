@@ -1,236 +1,162 @@
 ---
 name: command-center-connections
-description: Use this skill when the task is about selecting, creating, validating, or documenting Command Center connections before workspace widgets consume data. This skill owns connection type discovery, connection instance readiness, query model/output-contract checks, connection-first workspace dataflow, and routing backend adapter gaps. Use this before creating data-consuming widgets. It does not own workspace layout, widget JSON mutation, AppComponent form contracts, or generic FastAPI implementation.
+description: Design and operate Main Sequence Command Center connections by selecting a registered ConnectionType, configuring a ConnectionInstance, validating it, and using its declared query models and resources through canonical MCP operations.
 ---
 
 # Command Center Connections
 
-## Overview
+Use this skill when work requires connecting Command Center to a platform or
+external data source. Treat DRF as canonical for persisted behavior,
+validation, authorization, adapter dispatch, and responses. MCP is the
+language-neutral operation surface; it does not reimplement connection logic.
 
-Use this skill when a Command Center workspace needs backend-owned data access.
+## Understand The Two Objects
 
-Connections are resources, not presentation widgets. A workspace should resolve data through:
+`ConnectionType` is the registered adapter contract. It describes:
 
-```text
-Connection instance
-  -> Connection Query widget
-  -> Tabular Transform widget when reshaping is needed
-  -> table, chart, statistic, curve, or other consumer widget
-```
+- the stable `id` and registered `version`;
+- public and secure configuration schemas;
+- technical `capabilities` such as query, resource, health check, or stream;
+- `queryModels` and their standard output contracts;
+- `usageGuidance` and examples; and
+- physical-data-source eligibility owned by the backend.
 
-Do not create table, chart, statistic, curve, or other data-consuming widgets until the required
-connection instance and query model are known.
+`ConnectionInstance`, exposed by MCP as `connection.*`, is an
+organization-owned configured use of one ConnectionType. It has a public UID,
+public configuration, write-only secure configuration, health state, optional
+Workspace association, and sharing permissions.
 
-## This Skill Can Do
+Type capabilities describe what the adapter implementation supports. They do
+not prove that the current caller can execute an operation. The canonical DRF
+action performs the caller and object authorization check at call time.
 
-- discover connection types and instances through `mainsequence.client.command_center.connections`
-- use `mainsequence.client.command_center.widgets.connection_query` for connection-query source
-  widget payload drafts
-- use `mainsequence.client.command_center.contracts.*` and
-  `mainsequence.client.command_center.providers.*` when validating Adapter from API provider
-  contracts
-- decide whether an existing connection instance can support the requested workspace data
-- inspect `ConnectionType.queryModels` and `usageGuidance`
-- verify that a query model can publish the required output contract
-- require generic tabular consumers to receive `core.tabular_frame@v1`
-- identify missing backend adapter, query model, permission, cache, or response-normalization work
-- route workspace mutation to `workspace_builder` after connection requirements are resolved
+## Follow The Connection-First Workflow
 
-## This Skill Must Not Claim
+1. Use `connection_type.list` to discover active types.
+2. Use `connection_type.get` and read `publicConfigSchema`,
+   `secureConfigSchema`, `capabilities`, `queryModels`, `usageGuidance`, and
+   `examples` before composing configuration or a request.
+3. Use `connection.list` to find a suitable existing instance. Use
+   `connection.get` before changing or executing it.
+4. If no suitable instance exists, ask for missing configuration and create it
+   with `connection.create`. Do not guess credentials or secret values.
+5. Use `connection.update` for an intentional partial configuration change.
+6. Use `connection.test` when the caller wants to validate connectivity. A
+   test contacts the configured backend and records connection health state.
+7. Select an advertised `queryModels` entry or documented resource. Use
+   `connection.query` or `connection.resource` with the exact payload required
+   by that ConnectionType.
+8. Check the returned warnings, trace identifier, frame contracts, and updated
+   connection state before reporting success.
 
-This skill must not claim ownership of:
+Do not substitute a widget type, Workspace, physical DataSource, or Python SDK
+model for either connection object.
 
-- workspace layout or narrative design
-- writing workspace JSON or mounted widget payloads
-- AppComponent custom forms or action contracts
-- generic FastAPI endpoint design
-- backend resource and release creation
-- Streamlit dashboard design or implementation
+## Use The Exact MCP Operations
 
-## Route Adjacent Work
+Catalog and instance discovery:
 
-- Workspace design and widget selection:
-  `.agents/skills/mainsequence/command_center/workspace_design/SKILL.md`
-- Workspace JSON creation and widget mutation:
-  `.agents/skills/mainsequence/command_center/workspace_builder/SKILL.md`
-- Table/pro-table consumer contracts, table visual metadata, selection, and live update behavior:
-  `.agents/skills/mainsequence/command_center/widgets/tables/SKILL.md`
-- Tabular transform consumer contracts and source/live update bindings:
-  `.agents/skills/mainsequence/command_center/widgets/tabular_transform/SKILL.md`
-- Adapter from API connection workflow:
-  `.agents/skills/mainsequence/command_center/adapter_from_api/SKILL.md`
-- AppComponent forms and action API contracts:
-  `.agents/skills/mainsequence/command_center/widgets/app_components/SKILL.md`
-- API implementation:
-  `.agents/skills/mainsequence/application_surfaces/api_surfaces/SKILL.md`
-- Jobs, images, resources, and releases:
-  `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
+- `connection_type.list`
+- `connection_type.get`
+- `connection.list`
+- `connection.get`
 
-## Read First
+Connection lifecycle:
 
-1. SDK connection models:
-   - `mainsequence/client/command_center/connections.py`
-   - `mainsequence/client/command_center/data_models.py` when validating `core.tabular_frame@v1`
-     output shape
-   - `mainsequence/client/command_center/contracts/adapter_from_api.py` when validating provider
-     discovery contracts
-   - `mainsequence/client/command_center/contracts/response_mapping.py` when validating
-     response-mapping metadata
-   - `mainsequence/client/command_center/contracts/tabular.py` when building or checking canonical
-     tabular frames
-   - `mainsequence/client/command_center/contracts/table_visuals.py` when table-specific visual
-     defaults travel with `meta.tableVisuals`
-   - `mainsequence/client/command_center/providers/adapter_from_api.py` when a provider should use
-     SDK contract builders
-   - `mainsequence/client/command_center/widgets/connection_query.py` when creating
-     connection-query source widget payloads
-   - `mainsequence/client/command_center/widgets/tabular_transform.py` when a connection-backed
-     flow needs a `core__tabular-transform` widget
-   - `mainsequence/client/command_center/widgets/bindings.py` when binding seed data or live updates
-     into the transform
-2. Widget registry detail for the source and consumer widgets:
-   - `mainsequence cc registered_widget_type list --json`
-   - `mainsequence cc registered_widget_type detail <WIDGET_ID> --json`
-3. Connection type catalog data:
-   - `ConnectionType`
-   - `ConnectionInstance`
-   - connection `usageGuidance`
-   - connection `queryModels`
-   - connection examples and required permissions
-4. Command Center workspace docs only when the task is ready to mount widgets.
+- `connection.create`
+- `connection.update`
+- `connection.delete`
+- `connection.test`
 
-## Inputs This Skill Needs
+Adapter execution:
 
-Before recommending or using a connection, collect or infer:
+- `connection.query`
+- `connection.resource`
 
-- target data source or backend system
-- existing `ConnectionInstance` id or lookup filters
-- target `ConnectionType.type_id`
-- connection status and scope
-- relevant `queryModelId`
-- typed query payload shape
-- advertised output contracts for the query model
-- whether a time range, variables, or row limit are supported
-- whether downstream consumers need raw records, a canonical tabular frame, or a specialized widget contract
+Always inspect the connected server's live tool catalog. Do not invent a
+generic API proxy, type synchronization call, caller-action discovery call, or
+streaming MCP tool.
 
-## Required Decisions
+## Configure Instances Safely
 
-For every connection-backed workspace task, decide:
+For create and update, derive `publicConfig` and `secureConfig` from the live
+ConnectionType schemas. `secureConfig` is a write-only input. Successful
+responses expose only `secureFields`, which records whether named secure values
+are present; they never return encrypted or decrypted values.
 
-1. Does an appropriate connection instance already exist?
-2. Which connection type and query model owns the requested data access?
-3. Is the connection status usable, or does health/configuration need attention first?
-4. Does the query model publish `core.tabular_frame@v1` for generic tabular consumers?
-5. Is a Tabular Transform widget needed for aggregate, pivot, unpivot, projection, or other analytical reshaping?
-6. Which downstream widgets consume the source or transform `dataset` output?
-7. Is any backend adapter, permission, cache, or response-normalization work missing?
+On update, sending a secure field as `null` requests the existing canonical
+clear behavior. Do not resend unchanged credentials merely because
+`secureFields` reports that they exist. Never place secrets in public config,
+skill files, source control, logs, or result summaries.
 
-## Build Rules
+MCP does not expose `openForEveryone`, internal status mutation,
+`statusMessage`, `lastHealthCheckAt`, `isSystem`, or direct `secureFields`
+mutation. Do not infer or manufacture those inputs.
 
-### 1. Connection first
+`connection.delete` performs the existing hard-delete operation. Inspect the
+instance and its consumers first, obtain clear user intent, and do not retry an
+ambiguous delete. Backend dependency protection remains authoritative.
 
-Before creating a data-consuming widget, identify the connection path:
+## Query By Declared Model
 
-1. connection type
-2. connection instance
-3. query model
-4. typed query payload
-5. output contract
+Choose the query model from `ConnectionType.queryModels`; do not infer payload
+fields from the connection name. Preserve the query model's query kind,
+parameters, time range, variables, limits, cache controls, and requested output
+contract exactly as documented by the type.
 
-Do not store endpoint URLs, credentials, route fragments, provider ids, or mutable display labels as
-authoritative widget props.
+Widget-bound queries return a normalized `ConnectionQueryResponse`. Frames use
+only the standard contracts advertised by the query model:
 
-### 2. Use the connection query source widget for workspace data
+- `core.tabular_frame@v1`; or
+- `core.chart_data@v1`.
 
-The workspace source node should be a Connection Query widget. It should persist stable connection
-and query references, then publish the selected response frame as `dataset`.
+If `requestedOutputContract` is supplied, every returned frame must use that
+contract. A resource/detail JSON response is not a widget frame.
 
-Downstream table, chart, statistic, curve, and similar widgets must bind to a published dataset.
-They should not query connection instances directly.
+Do not assume `connection.query` is read-only. The selected query model remains
+authoritative, and the Main Sequence MetaTable connection can execute governed
+insert, update, delete, or upsert operations. Obtain explicit intent before a
+mutating query and do not retry it automatically after an ambiguous failure.
 
-### 3. Use Tabular Transform for analytical reshaping
+## Read Allowlisted Resources
 
-Use a Tabular Transform widget when the workspace needs:
+Use `connection.resource` only for a resource documented by the selected
+ConnectionType. Pass its canonical adapter payload inside the tool's `payload`
+object. Resources may return adapter-specific JSON because they are discovery
+or detail operations rather than widget-bound queries.
 
-- aggregate
-- pivot
-- unpivot
-- projection
-- other inspectable tabular reshaping
+Resource capability does not mean every resource name is accepted. The
+backend adapter allowlist and canonical object permissions decide the result.
 
-Do not hide analytical reshaping inside binding transforms or consumer widgets.
+## Keep Streaming On Its Existing Transport
 
-### 4. Generic consumers need the canonical tabular frame
+The backend may advertise streaming for a ConnectionType, but stateless MCP
+does not proxy SSE or WebSocket streams. A streaming consumer must use the
+existing Command Center streaming transport and its documented authentication
+contract. Do not emulate a stream by repeatedly calling `connection.query`.
 
-For generic table, chart, statistic, curve, and agent-facing data consumers, the final bound value
-must match `core.tabular_frame@v1`:
+## Delegate Frontend Implementation
 
-- `status`
-- `columns`
-- `rows`
-- optional `fields`
-- optional `meta`
-- optional `source`
+This skill owns platform connection meaning and MCP operation selection. It
+does not own React controls, entity summaries, resource-list normalization,
+bulk selection/preflight UX, widgets, themes, or iframe integration. For those
+tasks, use the complete version-matched skill bundle installed from the
+project's `@dev-mainsequence/command-center-sdk` package.
 
-If an API returns raw arrays, paginated JSON, nested provider payloads, or other ad hoc records,
-first create, or select an existing, connection instance of type Adapter from API. That adapter owns
-normalization into `core.tabular_frame@v1` before any generic tabular consumer is bound.
+The frontend may derive configuration controls from the ConnectionType schemas
+and normalize canonical DRF pagination. Do not create duplicate backend DTOs
+inside this skill.
 
-When an API operation already returns the full canonical frame, validate it against
-`mainsequence.client.command_center.data_models.TabularFrameResponse`. If it returns
-provider-native JSON, the Adapter from API contract must declare the exact response mapping into
-`core.tabular_frame@v1`.
+## Report Truthfully
 
-### 5. Treat `usageGuidance` as agent-facing contract
+Distinguish:
 
-When choosing a connection, read the connection type `usageGuidance`. It should explain:
+1. a discovered ConnectionType contract;
+2. a visible configured ConnectionInstance;
+3. a successful canonical connection mutation;
+4. an adapter test, query, or resource result; and
+5. frontend composition performed with Command Center SDK skills.
 
-- when to use the connection
-- when not to use it
-- public and secure configuration fields
-- query models and payloads
-- output contracts
-- backend adapter ownership
-- important constraints and permissions
-
-If `usageGuidance` is vague or contradicts `queryModels`, stop and surface the mismatch.
-
-## Review Rules
-
-When reviewing connection-backed workspace work, look for:
-
-- data-consuming widgets created before a connection instance was resolved
-- consumer widgets querying backend systems directly
-- endpoint URLs, tokens, route fragments, or provider ids stored in widget props
-- missing `ConnectionType.queryModels` validation
-- missing `usageGuidance` review
-- raw JSON bound into generic tabular consumers
-- API operations claiming canonical tabular output without matching `TabularFrameResponse`
-- analytical reshaping hidden in binding transforms
-- missing backend adapter or response normalization work
-
-## Validation Checklist
-
-Do not claim the connection flow is ready until you have checked:
-
-- connection type exists
-- connection instance exists and is in a usable status
-- connection type `usageGuidance` and `queryModels` were reviewed
-- selected `queryModelId` is valid for the connection type
-- typed query payload matches the selected query model
-- output contract is compatible with downstream widgets
-- generic tabular consumers receive `core.tabular_frame@v1`
-- full canonical tabular frames match `TabularFrameResponse`
-- missing backend adapter work is explicitly documented
-- workspace handoff identifies the Connection Query widget, optional Tabular Transform widget, and downstream consumers
-
-## This Skill Must Stop And Escalate When
-
-- no suitable connection instance exists
-- the required query model does not exist
-- the query model output contract does not match downstream needs
-- connection metadata and registry details disagree
-- backend adapter support is required but unavailable
-- the task has moved from connection selection into workspace JSON mutation
-
-Do not guess through connection boundaries.
+Report validation, permission, capability, provider, and dependency failures
+as returned by the platform. Never convert a failed adapter operation into a
+successful connection claim.

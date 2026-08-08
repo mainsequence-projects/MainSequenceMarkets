@@ -1,9 +1,13 @@
-# Python 3.13 And MainSequence 5 Upgrade Plan
+# Python 3.13 And MainSequence SDK Upgrade Record
 
 ## Status
 
-The local runtime upgrade was implemented on 2026-07-25. Compatibility was
-established before rebuilding the project environment:
+The original Python 3.13 and MainSequence 5 runtime upgrade was implemented on
+2026-07-25. Its MainSequence version contract was superseded on 2026-08-07:
+the project now uses the current local SDK without an upper-version cap, and
+the installed SDK is MainSequence `6.0.5`.
+
+Compatibility was established before the original environment rebuild:
 
 - Python `3.13.11` is installed locally;
 - the existing dependency graph installed on Python 3.13, including a local
@@ -14,11 +18,11 @@ established before rebuilding the project environment:
 - the full suite also passed on Python 3.13 with that exact SDK tag:
   `1170 passed, 3 skipped`.
 
-The rebuilt project `.venv` reports Python `3.13.11` and MainSequence `5.0.0`.
+The current project `.venv` reports Python `3.13.11` and MainSequence `6.0.5`.
 The selected MainSequence source is the local SDK checkout at
-`/Users/jose/code/MainSequenceClientSide/mainsequence-sdk`; its HEAD is the
-official `v5.0.0` commit, but the SDK working tree contains uncommitted changes.
-The package's publishable dependency remains `mainsequence>=5.0.0,<6`.
+`/Users/jose/code/MainSequenceClientSide/mainsequence-sdk`. The package depends
+on `mainsequence` without an obsolete major-version ceiling; the local path is
+selected through `tool.uv.sources` for this checkout.
 
 Verification evidence from the rebuilt environment:
 
@@ -28,23 +32,14 @@ Verification evidence from the rebuilt environment:
 - `.venv/bin/mkdocs build --strict`: passed;
 - `uv build`: built the wheel and source distribution;
 - locked full-environment audit: no changes required;
-- wheel metadata: `Requires-Python: <3.14,>=3.13` and
-  `Requires-Dist: mainsequence<6,>=5.0.0`;
+- wheel metadata: `Requires-Python: <3.14,>=3.13` and a MainSequence SDK
+  dependency without a major-version ceiling;
 - package, native dependency, CLI, and FastAPI application import smoke tests:
   passed.
 
-Two follow-ups remain:
-
-- MainSequence 5.0.0 is tagged but not yet available from PyPI, so the local
-  path source must be removed before a portable release lock is accepted;
-- `mainsequence project update_agent_skills --path .` requires authenticated
-  platform resources and could not run because this machine is not logged in.
-  The partial `AGENTS.md` refresh was rolled back so it does not reference
-  skills that were not installed. The existing scaffold and managed-skill pin
-  remain consistently paired at 4.4.32 until both can refresh together.
-
-Full-repository Ruff still reports the pre-existing wildcard re-export in
-`src/command_center/contracts/tabular.py`. The Python-upgrade-owned paths pass.
+The current SDK and managed-skill pin both report `6.0.5`. A portable package
+release still requires replacing or validating the repository-local SDK source
+against the intended package-index distribution.
 
 ## Success Condition
 
@@ -53,15 +48,15 @@ The upgrade is complete when:
 - `ms-markets` declares `>=3.13,<3.14`, with no Python 3.11 or 3.12
   compatibility contract;
 - Ruff, CI documentation builds, and package publishing target Python 3.13;
-- `mainsequence>=5.0.0,<6` is the package dependency contract;
+- `mainsequence` has no obsolete major-version ceiling in the package contract;
 - `uv.lock` resolves only the Python 3.13 project contract;
-- the local `.venv` reports Python 3.13 and MainSequence 5.0.0;
+- the local `.venv` reports Python 3.13 and the current selected MainSequence SDK;
 - core, portfolio, pricing, public API, CLI, migration, and documentation
   imports work from the rebuilt environment;
 - the complete test suite, scoped Ruff baseline, strict MkDocs build, and
   package build pass;
-- built wheel metadata contains `Requires-Python: <3.14,>=3.13` and
-  `Requires-Dist: mainsequence<6,>=5.0.0`;
+- built wheel metadata contains `Requires-Python: <3.14,>=3.13` and a
+  MainSequence dependency without a major-version ceiling;
 - a fresh locked sync can reproduce the environment on a checkout where the
   configured local MainSequence SDK path exists.
 
@@ -81,18 +76,18 @@ environment task.
 
 Gate: repository search finds no active Python 3.11 or 3.12 runtime target.
 
-### 2. MainSequence 5 And Dependency Lock
+### 2. MainSequence SDK And Dependency Lock
 
-- Set the publishable dependency to `mainsequence>=5.0.0,<6`.
-- Resolve the local MainSequence checkout through `tool.uv.sources` while its
-  PyPI distribution is unavailable.
+- Declare the publishable `mainsequence` dependency without a stale major-version
+  ceiling.
+- Resolve the local MainSequence checkout through `tool.uv.sources` for local
+  development.
 - Regenerate `uv.lock` with Python 3.13.
-- Remove the local path source override as soon as `mainsequence==5.0.0` is
-  available from the package index, then run `uv lock --no-sources` to prove
-  registry-only reproducibility.
+- Before a portable release, validate the intended package-index distribution
+  with `uv lock --no-sources`.
 
-Gate: uv resolves MainSequence 5.0.0 and all optional dependency groups for
-Python 3.13.
+Gate: uv resolves the selected current MainSequence SDK and all optional
+dependency groups for Python 3.13.
 
 ### 3. Local Environment Rebuild
 
@@ -110,7 +105,7 @@ authenticated platform-skill retrieval fails, do not retain only half of the
 scaffold refresh.
 
 Gate: `.venv/bin/python --version` reports 3.13 and
-`.venv/bin/mainsequence --version` reports 5.0.0.
+`.venv/bin/mainsequence --version` matches the managed-skill pin.
 
 ### 4. Repository And Distribution Verification
 
@@ -136,11 +131,13 @@ Gate: all checks pass from the rebuilt `.venv`.
 
 ### 5. Release Follow-Up
 
-- Confirm MainSequence 5.0.0 is published to the configured package index.
+- Confirm the intended MainSequence release is published to the configured
+  package index.
 - Remove the temporary local path source override and regenerate the lock from the
   registry.
 - Authenticate the CLI and refresh the dual-source managed Main Sequence
-  skills so `PINNED_FROM.txt` records SDK 5.0.0 and platform resource hashes.
+  skills so `PINNED_FROM.txt` records the installed SDK version and platform
+  resource hashes.
 - Build a project image and run a canary job under the platform's Python 3.13
   runtime before a production release.
 - Publish `ms-markets` only after registry-only resolution and canary

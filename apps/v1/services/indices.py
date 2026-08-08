@@ -2,12 +2,6 @@ from __future__ import annotations
 
 import datetime as dt
 
-from mainsequence.client.command_center.contracts.tabular import (
-    TabularFrameResponse,
-    build_tabular_field,
-    build_tabular_frame,
-)
-
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.indices import (
@@ -17,9 +11,14 @@ from apps.v1.schemas.indices import (
     IndexDatasetSummary,
     IndexFormulaDetail,
     IndexFormulaSummary,
-    RelatedMetaTable,
     IndexType,
     IndexUpdate,
+    RelatedMetaTable,
+)
+from command_center.contracts import (
+    TabularFrameResponse,
+    build_tabular_field,
+    build_tabular_frame,
 )
 from msm.api.base import operation_result_rows
 from msm.models import IndexTable, IndexTypeTable
@@ -30,15 +29,29 @@ from msm.services.indices import (
     IndexValueRow,
     dataset_summary,
     get_canonical_dataset,
-    get_index_summary as get_core_index_summary,
-    get_index_delete_impact as get_core_index_delete_impact,
-    get_formula as get_core_formula,
-    list_indexes as list_core_indexes,
-    list_index_types as list_core_index_types,
     list_dataset_states,
-    list_formulas as list_core_formulas,
-    list_related_meta_tables as list_core_related_meta_tables,
     read_index_values,
+)
+from msm.services.indices import (
+    get_formula as get_core_formula,
+)
+from msm.services.indices import (
+    get_index_delete_impact as get_core_index_delete_impact,
+)
+from msm.services.indices import (
+    get_index_summary as get_core_index_summary,
+)
+from msm.services.indices import (
+    list_formulas as list_core_formulas,
+)
+from msm.services.indices import (
+    list_index_types as list_core_index_types,
+)
+from msm.services.indices import (
+    list_indexes as list_core_indexes,
+)
+from msm.services.indices import (
+    list_related_meta_tables as list_core_related_meta_tables,
 )
 
 

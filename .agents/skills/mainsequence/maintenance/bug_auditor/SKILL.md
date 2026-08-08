@@ -20,8 +20,7 @@ This skill is for diagnosis and assessment. Default behavior is read-only unless
 ## This Skill Can Do
 
 - inspect project state and summarize completion status
-- use repository state, documentation, logs, test output, stderr, git state, and platform output as
-  evidence
+- use repo state, logs, test output, and stderr as evidence
 - classify failures into:
   - target-project issue
   - environment or credentials issue
@@ -49,12 +48,12 @@ This skill audits. It does not implement by default.
 ## Route Adjacent Work
 
 - bootstrap, routing, and repo structure:
-  `.agents/skills/mainsequence/project_builder/SKILL.md`
+  `.agents/skills/mainsequence/project_design/SKILL.md`
 - DataNode implementation issues:
   `.agents/skills/mainsequence/data_publishing/data_nodes/SKILL.md`
 - MetaTable implementation issues:
   `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`
-- API implementation issues:
+- Command Center FastAPI contract or release issues:
   `.agents/skills/mainsequence/application_surfaces/api_surfaces/SKILL.md`
 - jobs, images, releases, and runtime environment issues:
   `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
@@ -62,16 +61,17 @@ This skill audits. It does not implement by default.
   `.agents/skills/mainsequence/platform_operations/access_control_and_sharing/SKILL.md`
 - Streamlit dashboard deployment or release issues:
   `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
+- environment repair, authentication refresh, SDK updates, managed skill
+  refresh, and project sync after the failure is classified:
+  `.agents/skills/mainsequence/maintenance/project-maintenance/SKILL.md`
 
 Streamlit dashboard design and implementation failures are target-project application code issues unless the evidence points to Main Sequence deployment, resource discovery, image selection, release creation, or platform runtime behavior.
 
 ## Read First
 
 1. `AGENTS.md`
-2. `.agents/skills/mainsequence/project_builder/SKILL.md`
+2. `.agents/skills/mainsequence/project_design/SKILL.md`
 3. the latest relevant Main Sequence docs for the failing workflow
-4. relevant repository documentation, tests, implementation, and git state
-5. live platform evidence when the audit makes platform-state claims
 
 ## Inputs This Skill Needs
 
@@ -99,20 +99,15 @@ For every audit, decide:
 
 ### 1. Stay read-only unless edits were explicitly requested
 
-Do not modify code, docs, or other repository files unless the task explicitly asks for edits.
+Do not modify code or docs unless the task explicitly asks for edits.
 
-### 2. Start with owned evidence
+### 2. Start with current evidence
 
-Do not expect or create `.agents/brief.md`, `.agents/status.md`, `.agents/tasks.md`,
-`.agents/record.md`, or equivalent project-state files. Their absence is normal.
-
-Start with the repository sources that own the claimed behavior, then use logs, tests, git state,
-and platform output as evidence.
+Inspect the repository state, available logs, failing commands, stderr, and test output.
 
 ### 3. Use evidence, not impressions
 
-Use repository state, documentation, logs, test output, stderr, git state, and platform output as
-evidence.
+Use repo state, logs, test output, and stderr as evidence.
 
 When reporting a blocker or failure, include:
 
@@ -128,7 +123,6 @@ Before each major investigation step, emit a short progress update that says wha
 
 Especially announce when you are:
 
-- inspecting repository documentation, tests, git state, or platform output
 - inspecting a failing command, traceback, or stderr excerpt
 - checking the local `mainsequence` package or version
 - inspecting or cloning the public `mainsequence-sdk` repository
@@ -185,7 +179,6 @@ When reviewing an audit, look for:
 
 Do not claim audit completion until you have checked:
 
-- project-state files under `.agents/` were neither expected nor created
 - the overall state is one of:
   - `finished`
   - `in_progress`

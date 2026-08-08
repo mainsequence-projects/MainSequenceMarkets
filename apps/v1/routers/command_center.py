@@ -34,6 +34,7 @@ def get_health() -> ApiHealthResponse:
         "FastAPI operations."
     ),
     operation_id="getCommandCenterConnectionContract",
+    response_model_exclude_none=True,
 )
 def get_command_center_connection_contract(
     request: Request,

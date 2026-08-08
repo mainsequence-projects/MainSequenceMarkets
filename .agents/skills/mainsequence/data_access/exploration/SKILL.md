@@ -44,17 +44,15 @@ This skill discovers and identifies data. It does not publish, redesign, or defi
 ## Route Adjacent Work
 
 - project bootstrap, scaffolding, and routing:
-  `.agents/skills/mainsequence/project_builder/SKILL.md`
+  `.agents/skills/mainsequence/project_design/SKILL.md`
 - `DataNode` creation or modification:
   `.agents/skills/mainsequence/data_publishing/data_nodes/SKILL.md`
 - `MetaTable` registration or operation work:
   `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`
-- FastAPI or application-facing implementation:
+- FastAPI providers serving the Command Center frontend:
   `.agents/skills/mainsequence/application_surfaces/api_surfaces/SKILL.md`
 - Streamlit dashboard deployment:
   `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
-- Command Center surfaces:
-  `.agents/skills/mainsequence/command_center/workspace_builder/SKILL.md`
 - blocker and failure analysis:
   `.agents/skills/mainsequence/maintenance/bug_auditor/SKILL.md`
 

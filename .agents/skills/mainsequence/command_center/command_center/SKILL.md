@@ -1,0 +1,145 @@
+---
+name: command-center
+description: Discover and use the Main Sequence Command Center backend resources exposed through MCP. Use as the top-level operation map for Workspaces, RegisteredWidgetTypes, ConnectionTypes, and ConnectionInstances, then use the dedicated Command Center connections skill for connection lifecycle and adapter execution.
+---
+
+# Main Sequence Command Center
+
+Use the Command Center backend through the exact MCP tools advertised by the
+connected server. Treat DRF as canonical for persisted behavior,
+authorization, validation, and responses.
+
+## Preserve The Boundary
+
+This skill owns the language-neutral backend resource and operation map for:
+
+- `Workspace`;
+- `RegisteredWidgetType`;
+- `ConnectionType`; and
+- `ConnectionInstance`, exposed by MCP as `connection.*`.
+
+It does not own frontend architecture, React components, resource views,
+actions, widgets, workspaces, themes, embeds, or Command Center SDK extension
+contracts. Use the complete version-matched skill bundle installed from the
+project's `@dev-mainsequence/command-center-sdk` package for frontend work.
+
+Do not use the Python SDK model hierarchy as proof that an operation exists.
+Generic inherited methods such as `create`, `patch_by_uid`,
+`update_or_create`, or `destroy_by_uid` are client conveniences, not an
+authoritative backend or MCP capability declaration.
+
+## Use The Current MCP Catalog
+
+The approved discovery surface is eight read operations:
+
+| Resource | List | Detail |
+| --- | --- | --- |
+| Workspace | `workspace.list` | `workspace.get` |
+| RegisteredWidgetType | `registered_widget_type.list` | `registered_widget_type.get` |
+| ConnectionType | `connection_type.list` | `connection_type.get` |
+| ConnectionInstance | `connection.list` | `connection.get` |
+
+Always inspect the live `tools/list` result before relying on an operation.
+Do not invent an aggregate `command_center.get_context`, a generic API proxy,
+or an unadvertised mutation tool.
+
+ConnectionInstance lifecycle and adapter execution are additionally available
+through `connection.create`, `connection.update`, `connection.delete`,
+`connection.test`, `connection.query`, and `connection.resource`. Read the
+`mainsequence://platform/skills/command-center-connections` skill before using
+those operations.
+
+### Workspace reads
+
+Use `workspace.list` to enumerate visible Workspaces. Supported filters are:
+
+- `uid`, `uid__in`, and `exclude_uids`;
+- `title` and `title__contains`;
+- `type` and `type__in`;
+- `source` and `source__in`;
+- `labels`, `labels__contains`, and `labels__in`;
+- `search`; and
+- `limit` and `offset`.
+
+Use `workspace.get` with `workspace_uid` for one visible Workspace. The result
+is the canonical shared Workspace read representation. User-specific transient
+state is not part of that shared definition.
+
+### Registered widget type reads
+
+Use `registered_widget_type.list` with the supported `widget_id`, `category`,
+`kind`, `source`, `isActive`, `includeInactive`, `limit`, and `offset` fields.
+Use `registered_widget_type.get` with the stable `widget_id` natural key.
+
+RegisteredWidgetType is a synchronized catalog projection. Do not treat it as
+an arbitrary user-authored record or infer a registration mutation from a
+generic client method. Registry synchronization is not exposed through MCP.
+
+### Connection type reads
+
+Use `connection_type.list` with the supported `type_id`, `category`, `source`,
+`access_mode`, `isActive`, `includeInactive`, `limit`, and `offset` fields. Use
+`connection_type.get` with the stable `type_id` natural key; detail resolves
+the latest matching registered version.
+
+ConnectionType is a registered catalog definition. Creation, update, deletion,
+and registry synchronization are not exposed through MCP.
+
+### Connection instance reads
+
+Use `connection.list` with the supported `workspace_uid`, `type_id`, `status`,
+`is_active`, `is_default`, `limit`, and `offset` fields. Use `connection.get`
+with the public `connection_uid`.
+
+The safe read representation may describe public configuration and which
+secure fields are present. It never returns secure configuration values.
+
+Connection creation, partial update, hard delete, health test, query, and
+allowlisted resource reads use their dedicated `connection.*` tools. Streaming
+and ConnectionType registry synchronization remain outside MCP.
+
+## Understand Workspace Mutation Availability
+
+The canonical Workspace DRF surface and the current Python compatibility
+client support substantial mutations, including:
+
+- create, partial update, and delete;
+- add and remove labels;
+- user and team view/edit sharing changes; and
+- widget patch, delete, and move operations.
+
+Those capabilities do not become MCP operations merely because this skill
+describes them. The current MCP catalog exposes only `workspace.list` and
+`workspace.get`. An MCP-only agent must stop when a requested Workspace
+mutation has no advertised tool instead of attempting a generic request or
+claiming success.
+
+Removing the Python compatibility models requires separately approved MCP
+mutation parity, exact DRF-aligned schemas, permission-parity tests, and an SDK
+deprecation decision. This skill does not provide that parity by itself.
+
+## Authorization And Safety
+
+- Authenticate with the normal tracked platform JWT.
+- Let each canonical DRF operation resolve visible objects and permissions.
+- Treat an empty or not-found result as non-disclosure when the canonical
+  operation does so.
+- Never infer mutation authority from successful list or detail access.
+- Never return, log, or place connection secure configuration values into read
+  results. Accept them only as intentional write-only `secureConfig` input to
+  connection create or update.
+- Do not automatically retry an ambiguous mutation if future mutation tools
+  are added; inspect canonical state first.
+
+## Report Results Truthfully
+
+Name the exact MCP tool used and distinguish:
+
+1. catalog discovery;
+2. visible persisted state;
+3. an operation that is supported by the backend but absent from MCP; and
+4. frontend implementation work owned by the installed Command Center SDK
+   skills.
+
+Never describe a backend or Python-client method as completed through MCP when
+the corresponding MCP tool is not present.

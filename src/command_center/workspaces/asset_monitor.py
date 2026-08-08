@@ -3,16 +3,44 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from mainsequence.client.command_center.connections import CONNECTION_TYPE_ADAPTER_FROM_API
-from mainsequence.client.command_center.widgets.bindings import bind_tabular_seed_data
-from mainsequence.client.command_center.widgets.connection_query import make_connection_query_props
-
 from command_center.widgets.asset_monitor import (
     ASSET_MONITOR_OPERATION_ID,
     ASSET_MONITOR_WIDGET_ID,
 )
 
+CONNECTION_TYPE_ADAPTER_FROM_API = "command_center.adapter_from_api"
 CONNECTION_QUERY_WIDGET_ID = "connection-query"
+
+
+def _make_connection_query_props(
+    *,
+    connection_id: str | int,
+    connection_type_id: str,
+    operation_id: str,
+    query: dict[str, Any],
+    max_rows: int,
+) -> dict[str, Any]:
+    """Build the SDK's serializable Adapter From API query props."""
+
+    return {
+        "connectionRef": {"id": connection_id, "typeId": connection_type_id},
+        "queryModelId": "api-operation",
+        "query": {
+            "kind": "api-operation",
+            "operationId": operation_id,
+            "parameters": {"path": {}, "query": query, "headers": {}},
+            "body": None,
+        },
+        "timeRangeMode": "none",
+        "maxRows": max_rows,
+    }
+
+
+def _bind_tabular_seed_data(*, source_widget_id: str) -> dict[str, str]:
+    return {
+        "sourceWidgetId": source_widget_id,
+        "sourceOutputId": "dataset",
+    }
 
 
 def build_asset_monitor_workspace_document(
@@ -65,7 +93,7 @@ def build_asset_monitor_workspace_document(
                 "id": source_widget_id,
                 "widgetId": CONNECTION_QUERY_WIDGET_ID,
                 "title": "Asset source",
-                "props": make_connection_query_props(
+                "props": _make_connection_query_props(
                     connection_id=connection_id,
                     connection_type_id=connection_type_id,
                     operation_id=operation_id,
@@ -93,7 +121,7 @@ def build_asset_monitor_workspace_document(
                     "showDiagnostics": True,
                 },
                 "bindings": {
-                    "seedData": bind_tabular_seed_data(source_widget_id=source_widget_id),
+                    "seedData": _bind_tabular_seed_data(source_widget_id=source_widget_id),
                 },
                 "layout": {"cols": 48, "rows": 20},
                 "position": {"x": 0, "y": 0},

@@ -4,8 +4,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
-from mainsequence.client.command_center.contracts.tabular import TabularFrameResponse
-
 from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
 from apps.v1.schemas.common import (
     ErrorResponse,
@@ -23,6 +21,7 @@ from apps.v1.services.assets import (
     list_asset_related_meta_tables,
     list_assets,
 )
+from command_center.contracts import TabularFrameResponse
 
 router = APIRouter(prefix="/asset", tags=["asset"])
 
@@ -109,6 +108,7 @@ def get_assets(
         "adding a synthetic `Symbol` column."
     ),
     operation_id="getAssetMonitorFrame",
+    response_model_exclude_none=True,
     openapi_extra={
         "x-ui-contract": "core.tabular_frame@v1",
         "x-ui-output-root": "response:$",

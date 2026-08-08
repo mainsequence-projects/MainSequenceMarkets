@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from apps.v1.schemas.bulk_actions import BulkActionPreflightResponse
 from apps.v1.schemas.asset_categories import (
     AssetCategory,
     AssetCategoryDetailResponse,
@@ -57,6 +58,31 @@ def bulk_delete_asset_categories(*, payload: Mapping[str, Any]) -> BulkDeleteAss
     runtime = _get_runtime()
     result = _bulk_delete_asset_category_records(runtime.context, **dict(payload))
     return BulkDeleteAssetCategoriesResponse.model_validate(result)
+
+
+def preflight_bulk_delete_asset_categories(*, uids: list[str]) -> BulkActionPreflightResponse:
+    runtime = _get_runtime()
+    target_uids = list(dict.fromkeys(uids))
+    missing_uids = [
+        uid
+        for uid in target_uids
+        if _get_asset_category_frontend_detail(runtime.context, uid=uid) is None
+    ]
+    matched_count = len(target_uids) - len(missing_uids)
+    blockers = [f"Asset category {uid} was not found." for uid in missing_uids]
+    allowed = bool(target_uids) and not blockers
+    detail = (
+        f"{matched_count} asset categor{'y is' if matched_count == 1 else 'ies are'} ready for deletion."
+        if allowed
+        else "The asset-category selection cannot be deleted as submitted."
+    )
+    return BulkActionPreflightResponse(
+        allowed=allowed,
+        detail=detail,
+        matched_count=matched_count,
+        blockers=blockers,
+        warnings=[],
+    )
 
 
 def _get_runtime():

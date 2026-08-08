@@ -1,6 +1,6 @@
 """Reusable Command Center helpers for ms-markets extension projects."""
 
-from mainsequence.client.command_center.contracts.tabular import (
+from .contracts import (
     CORE_TABULAR_FRAME_CONTRACT,
     TabularFrameFieldResponse,
     TabularFrameMetaResponse,

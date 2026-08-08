@@ -52,13 +52,6 @@ class PortfolioGroupUpdateRequest(BaseModel):
     metadata_json: dict[str, Any] | None = None
 
 
-class PortfolioGroupBulkDeleteRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    uids: list[UUID] = Field(default_factory=list)
-    unique_identifiers: list[str] = Field(default_factory=list)
-
-
 class PortfolioGroupDeleteResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 

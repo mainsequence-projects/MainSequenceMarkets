@@ -1,6 +1,6 @@
 """Command Center contract helpers for ms-markets integrations."""
 
-from mainsequence.client.command_center.contracts.tabular import (
+from .tabular import (
     CORE_TABULAR_FRAME_CONTRACT,
     TabularFrameFieldResponse,
     TabularFrameMetaResponse,

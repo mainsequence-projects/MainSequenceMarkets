@@ -646,7 +646,10 @@ def test_openapi_json_documents_portfolio_routes() -> None:
     assert portfolio_bulk_delete_operation["operationId"] == "bulkDeletePortfolios"
     assert portfolio_bulk_delete_operation["requestBody"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/PortfolioDeleteRequest"}
+    ] == {
+        "$ref": "#/components/schemas/BulkActionExecutionRequest",
+        "description": "Command Center bulk-action execution request.",
+    }
     assert portfolio_bulk_delete_operation["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/PortfolioBulkDeleteResponse"}

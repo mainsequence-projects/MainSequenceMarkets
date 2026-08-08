@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from mainsequence.client.command_center.contracts.tabular import (
+from command_center.contracts import (
     CORE_TABULAR_FRAME_CONTRACT,
     TabularFrameFieldResponse,
     TabularFrameResponse,

@@ -4,8 +4,13 @@ import datetime as dt
 import logging
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, HTTPException, Query, Request, status
 
+from apps.v1.schemas.bulk_actions import (
+    BulkActionDiscoveryResponse,
+    BulkActionExecutionRequest,
+    BulkActionPreflightResponse,
+)
 from apps.v1.schemas.command_center import TabularFrameResponse
 from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary, build_paginated_response
 from apps.v1.schemas.portfolios import (
@@ -30,6 +35,12 @@ from apps.v1.services.portfolios import (
     get_portfolio_values_frame,
     get_portfolio_weights,
     list_portfolios,
+    preflight_bulk_delete_portfolios,
+)
+from apps.v1.services.bulk_actions import (
+    blocked_preflight_detail,
+    build_bulk_delete_discovery,
+    explicit_uuid_selection,
 )
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
@@ -134,12 +145,21 @@ def get_portfolios(
     },
 )
 def bulk_delete_portfolio_rows(
-    payload: PortfolioDeleteRequest,
+    payload: Annotated[
+        BulkActionExecutionRequest,
+        Body(description="Command Center bulk-action execution request."),
+    ],
 ) -> PortfolioBulkDeleteResponse:
     try:
-        response = bulk_delete_portfolios(uids=payload.uids)
+        uids = explicit_uuid_selection(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    preflight = BulkActionPreflightResponse.model_validate(
+        preflight_bulk_delete_portfolios(uids=uids)
+    )
+    if not preflight.allowed:
+        raise HTTPException(status_code=409, detail=blocked_preflight_detail(preflight))
+    response = bulk_delete_portfolios(uids=uids)
     if response.failed:
         detail = _portfolio_bulk_delete_error_detail(response)
         logger.warning(
@@ -153,6 +173,62 @@ def bulk_delete_portfolio_rows(
         )
         raise HTTPException(status_code=409, detail=detail)
     return response
+
+
+@router.get(
+    "/bulk-actions/",
+    response_model=BulkActionDiscoveryResponse,
+    summary="Discover portfolio bulk actions",
+    description=(
+        "Return the caller-visible Command Center bulk actions for the portfolio "
+        "collection. Only explicit UID selection is currently advertised."
+    ),
+    operation_id="listPortfolioBulkActions",
+)
+def get_portfolio_bulk_actions(
+    search: Annotated[
+        str,
+        Query(description="Normalized collection search forwarded by the resource adapter."),
+    ] = "",
+    calendar_uid: Annotated[
+        str | None,
+        Query(description="Optional normalized calendar UID filter from the collection."),
+    ] = None,
+) -> BulkActionDiscoveryResponse:
+    return build_bulk_delete_discovery(
+        action_id="bulk-delete-portfolios",
+        label="Delete selected",
+        endpoint="/api/v1/portfolio/bulk-delete/",
+        preflight_endpoint="/api/v1/portfolio/bulk-delete/preflight/",
+        confirmation_title="Delete portfolios",
+        confirmation_warning="Deleted portfolios cannot be restored.",
+    )
+
+
+@router.post(
+    "/bulk-delete/preflight/",
+    response_model=BulkActionPreflightResponse,
+    summary="Preflight portfolio bulk deletion",
+    description=(
+        "Reauthorize an explicit portfolio selection and report missing rows or protected "
+        "references without deleting data."
+    ),
+    operation_id="preflightBulkDeletePortfolios",
+    responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
+def preflight_portfolio_bulk_delete(
+    payload: Annotated[
+        BulkActionExecutionRequest,
+        Body(description="Command Center bulk-action execution request to preflight."),
+    ],
+) -> BulkActionPreflightResponse:
+    try:
+        uids = explicit_uuid_selection(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return BulkActionPreflightResponse.model_validate(
+        preflight_bulk_delete_portfolios(uids=uids)
+    )
 
 
 @router.post(
@@ -307,6 +383,7 @@ def get_portfolio_weights_by_uid(
         "portfolio row as a canonical Command Center tabular frame."
     ),
     operation_id="getPortfolioSignalWeightsFrame",
+    response_model_exclude_none=True,
     responses={
         400: {
             "model": ErrorResponse,
@@ -362,6 +439,7 @@ def get_portfolio_signal_weights_frame_by_uid(
         "a canonical Command Center tabular frame."
     ),
     operation_id="getPortfolioValuesFrame",
+    response_model_exclude_none=True,
     responses={
         400: {
             "model": ErrorResponse,

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from apps.v1.schemas.bulk_actions import BulkActionPreflightResponse
 from apps.v1.schemas.portfolio_groups import (
     Portfolio,
     PortfolioGroup,
@@ -73,6 +74,31 @@ def bulk_delete_portfolio_groups(*, payload: Mapping[str, Any]) -> PortfolioGrou
         unique_identifiers=list(payload.get("unique_identifiers", [])),
     )
     return PortfolioGroupDeleteResponse.model_validate(result)
+
+
+def preflight_bulk_delete_portfolio_groups(*, uids: list[str]) -> BulkActionPreflightResponse:
+    runtime = _get_runtime()
+    target_uids = list(dict.fromkeys(uids))
+    missing_uids = [
+        uid
+        for uid in target_uids
+        if not operation_result_rows(_get_portfolio_group_by_uid(runtime.context, uid=uid))
+    ]
+    matched_count = len(target_uids) - len(missing_uids)
+    blockers = [f"Portfolio group {uid} was not found." for uid in missing_uids]
+    allowed = bool(target_uids) and not blockers
+    detail = (
+        f"{matched_count} portfolio group{' is' if matched_count == 1 else 's are'} ready for deletion."
+        if allowed
+        else "The portfolio-group selection cannot be deleted as submitted."
+    )
+    return BulkActionPreflightResponse(
+        allowed=allowed,
+        detail=detail,
+        matched_count=matched_count,
+        blockers=blockers,
+        warnings=[],
+    )
 
 
 def add_portfolio_to_group(

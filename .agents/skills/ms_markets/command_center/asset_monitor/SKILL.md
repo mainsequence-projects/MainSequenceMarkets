@@ -40,10 +40,10 @@ Provider operations for this widget must return:
 core.tabular_frame@v1
 ```
 
-Use the SDK response model for provider APIs:
+Use the project-owned contract model for provider APIs:
 
 ```python
-from mainsequence.client.command_center.data_models import TabularFrameResponse
+from command_center.contracts import TabularFrameResponse
 ```
 
 Do not add synthetic columns unless the active widget registry explicitly

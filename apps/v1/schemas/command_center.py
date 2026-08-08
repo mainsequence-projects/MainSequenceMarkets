@@ -1,19 +1,13 @@
-from __future__ import annotations
+"""FastAPI-facing imports for the project-owned Command Center contracts."""
 
-from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-
-
-def _command_center_data_contracts():
-    prepare_apps_v1_import_namespace()
-    from mainsequence.client.command_center.contracts.tabular import (
-        TabularFrameFieldResponse,
-        TabularFrameResponse,
-        TabularFrameSourceResponse,
-    )
-
-    return TabularFrameFieldResponse, TabularFrameResponse, TabularFrameSourceResponse
-
-
-TabularFrameFieldResponse, TabularFrameResponse, TabularFrameSourceResponse = (
-    _command_center_data_contracts()
+from command_center.contracts import (
+    TabularFrameFieldResponse,
+    TabularFrameResponse,
+    TabularFrameSourceResponse,
 )
+
+__all__ = [
+    "TabularFrameFieldResponse",
+    "TabularFrameResponse",
+    "TabularFrameSourceResponse",
+]

@@ -284,6 +284,15 @@ def test_delete_asset_category_returns_404_when_missing(monkeypatch) -> None:
 
 def test_bulk_delete_asset_categories_returns_count(monkeypatch) -> None:
     monkeypatch.setattr(
+        "apps.v1.routers.asset_categories.preflight_bulk_delete_asset_categories",
+        lambda **kwargs: {
+            "allowed": True,
+            "matched_count": len(kwargs["uids"]),
+            "blockers": [],
+            "warnings": [],
+        },
+    )
+    monkeypatch.setattr(
         "apps.v1.routers.asset_categories.bulk_delete_asset_categories",
         lambda payload: {
             "detail": "Deleted 2 asset categories.",
@@ -295,8 +304,11 @@ def test_bulk_delete_asset_categories_returns_count(monkeypatch) -> None:
     response = client.post(
         "/api/v1/asset-category/bulk-delete/",
         json={
-            "uids": [str(uuid.uuid4()), str(uuid.uuid4())],
-            "select_all": False,
+            "selection": {
+                "mode": "explicit",
+                "uids": [str(uuid.uuid4()), str(uuid.uuid4())],
+            },
+            "options": {},
         },
     )
 
