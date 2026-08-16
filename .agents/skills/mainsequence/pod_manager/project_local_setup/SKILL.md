@@ -47,6 +47,12 @@ The skill owns the platform-aware sequence, readiness checks, safe repository
 identity rules, credential-materialization contract, verification, and
 handoff.
 
+Git branch discovery in this skill applies only to a genuine caller-owned local
+checkout. A deployed JobRun, Project Executor, or runtime ResourceRelease must
+use the backend-issued `runtime_project_context.project_branch_uid`; it must not
+inspect Git, infer a branch from its working directory, or persist a competing
+ProjectBranch selector.
+
 Do not:
 
 - ask the MCP server to read or write a caller-local path;
@@ -223,7 +229,9 @@ MAIN_SEQUENCE_PROJECT_UID
 
 For a Main Sequence coding-agent runtime, do not use the handoff to convert its
 access-only principal into a refresh-backed user session. Its deployment
-already injects the existing runtime-credential environment. Run ordinary
+already injects the existing runtime-credential environment. The user never
+authors that auth mode, credential, ProjectBranch UID, repository branch, or
+Organization Environment UID. Run ordinary
 `mainsequence login`, then `mainsequence project refresh_token --path
 <checkout>`; the CLI uses its current noninteractive runtime exchange and
 preserves these supported entries:
@@ -257,8 +265,10 @@ The existing `project refresh_token` render must:
 5. verify presence by key name only, never by printing values.
 
 Initial materialization and later authentication refresh use this same render
-contract. Refresh uses the CLI's established tracked session or the existing
-runtime-credential exchange, then rewrites the managed entries in `.env`.
+contract. Refresh uses the CLI's established tracked session or an already
+backend-injected runtime-credential exchange, then rewrites the managed entries
+in `.env`. It never turns user-authored environment variables into deployed
+runtime context; authenticated backend response state is required.
 Refresh is not an MCP tool and does not expose credential values to the model.
 
 Before materialization, verify that `.env` is ignored by the repository. If it

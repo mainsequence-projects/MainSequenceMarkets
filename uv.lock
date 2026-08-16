@@ -505,7 +505,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "6.0.5"
+version = "6.0.27"
 source = { directory = "../../../../code/MainSequenceClientSide/mainsequence-sdk" }
 dependencies = [
     { name = "alembic" },
@@ -577,7 +577,7 @@ dev = [
     { name = "mkdocstrings", extras = ["python"] },
     { name = "pipdeptree" },
     { name = "pre-commit" },
-    { name = "pymdown-extensions", specifier = ">=11.0.0" },
+    { name = "pymdown-extensions", specifier = ">=11.0.1" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "ruff", specifier = ">=0.14.0" },
     { name = "streamlit", specifier = ">=1.54.0" },
@@ -836,7 +836,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.99"
+version = "0.0.100"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },

@@ -1,6 +1,6 @@
 ---
 name: project-design
-description: Design, explain, review, and maintain a Main Sequence project architecture and its connected Project Blueprint. Use for initial project design, architectural changes, ontology maintenance, Blueprint review or reconciliation, and implementation handoff across MetaTables, TimeIndexMetaTables, DataNodes, jobs, APIs, CLI commands, project-to-agent skills, and static sites.
+description: Design, explain, review, and maintain a Main Sequence project architecture and its connected Project Blueprint. Use for initial project design, organization-environment architecture, architectural changes, ontology maintenance, Blueprint review or reconciliation, and implementation handoff across MetaTables, TimeIndexMetaTables, DataNodes, jobs, APIs, CLI commands, project-to-agent skills, and static sites.
 ---
 
 # Main Sequence Project Design
@@ -35,8 +35,9 @@ Do not own:
 Use the SDK and domain execution skills after the design is accepted. For a
 static-site frontend, the complete version-matched skill bundle shipped by the
 project's installed `@dev-mainsequence/command-center-sdk` package owns the
-frontend implementation; the MCP `static-site` skill owns only the platform
-release workflow.
+frontend implementation. The MCP `resource-release` skill owns shared release
+creation, configuration, deployment, and state observation; the `static-site`
+skill owns only the static-specific capability and frontend handoff.
 
 When accepted project intent requires financial-markets functionality, select
 `ms-markets`, record the selection and rationale in `decisions` and the
@@ -58,17 +59,27 @@ Keep these distinctions:
   context under a Project. Another provider branch gets a different
   ProjectBranch UID while retaining the same logical Project UID.
 - `project.create` establishes the logical Project and its initial `main`
-  ProjectBranch and never accepts a branch name. An existing provider branch is
-  linked later through the canonical GitRepository branch-import operation;
-  do not create a second logical Project for it. The import inherits the main
-  ProjectBranch `metatables_data_source` when omitted or may use another
-  caller-accessible DataSource as that branch context's MetaTable-oriented
-  default.
-- `DataSource` is the sole canonical database identity. There is no project
-  data-source wrapper or generic Project-to-DataSource membership.
+  ProjectBranch and never accepts a branch name. After bootstrap, a signed
+  provider push links an existing branch automatically only when the
+  Organization administrator has already created the exact matching
+  environment; do not create a second logical Project for it. Git never creates
+  the environment, and no manual branch-import workflow is accepted. The
+  backend assigns each branch to the same-Organization environment whose
+  immutable required branch exactly matches; the caller never supplies an
+  environment UID.
+- `OrganizationProjectEnvironment` is the Organization-owned execution, data,
+  and configuration boundary shared by exact compatible ProjectBranches. Its
+  DataSource is routing configuration, not environment identity.
+- `DataSource` is the sole canonical physical database identity. New
+  MetaTable work routes through the ProjectBranch's backend-derived
+  Organization Environment; there is no generic Project-to-DataSource
+  membership.
 - `MetaTable` is the platform catalog boundary for a physical relational
-  table and points directly to its canonical DataSource. Project-owned table
-  shapes are authored in SQLAlchemy metadata and bound to
+  table. Platform-managed rows belong directly to one Organization Environment
+  and use its canonical DataSource. External-registered rows, including
+  Connection/DataSource imports, may remain Organization-scoped or be attached
+  to an environment while retaining their selected DataSource. Project-owned
+  table shapes are authored in SQLAlchemy metadata and bound to
   PostgreSQL/TimescaleDB, MySQL, or SQL Server data sources.
 - `TimeIndexMetaTable` is the `MetaTable` specialization for time-indexed
   storage. It owns the time index, cadence, ordered identity dimensions,
@@ -78,15 +89,58 @@ Keep these distinctions:
   input and output MetaTables.
 - `Job` is a project-bound execution definition with a repository execution
   path or app target, runtime resources, optional image/commit pinning, and an
-  optional schedule. `JobRun` is one execution.
+  optional schedule. `JobRun` is one execution. A branch-owned Job,
+  Project Executor, or runtime ResourceRelease may execute only a
+  digest-pinned project image whose verified source provenance matches the
+  exact ProjectBranch and commit. The backend admits source only after proving
+  the full commit is reachable from that branch's exact remote ref and then
+  supplies every image provider one normalized checksummed archive; provider
+  recipes do not clone or choose Git state.
+- When a runtime ResourceRelease is declared in `.mainsequence/workflows` with
+  automatic deployment enabled, project design does not select or require an
+  image. The workflow ignores any image UID, the target may remain pending
+  without an attached image, and the backend evaluates the target policy before
+  building or reusing the eligible exact-commit image. Direct ResourceRelease
+  creation remains a separate image-backed contract.
+- A deployed branch-owned runtime receives a backend-derived public context
+  containing logical Project UID, exact ProjectBranch UID, descriptive branch
+  name, and Organization Environment UID. That authenticated target chain is
+  the runtime authority. Git is used only by a genuine local checkout to
+  discover a persisted ProjectBranch; a deployed image never requires `.git`
+  and cannot select another branch or environment.
+- SDK application code never supplies deployed runtime mode, ProjectBranch,
+  repository branch, or Organization Environment. The SDK installs context
+  only from an authenticated startup or credential-exchange response and omits
+  branch/environment selectors on deployed requests. Reserved process
+  environment values are backend-written transport and diagnostics, not a
+  context activation mechanism. Local Git selection remains repository
+  navigation; the SDK derives and inserts any required local wire context
+  internally.
 - An API is a consumer and composition surface, not hidden producer logic.
 - A project CLI command is an executable project interface, not the platform
   permission authority.
 - `project_to_agent` exposes verified project CLI workflows as truthful
   project-agent skills; it is not generic Agent administration.
+- `AutomaticRedeploymentPolicy` is target-owned and ProjectBranch-scoped. It
+  refines the automatic-deployment master switch for one ResourceRelease or
+  Project Coding Agent; it is never a shared ProjectBranch-wide rule.
 
 Use the platform ontology for global platform nouns. Define the project's own
 business concepts inside the Blueprint.
+
+## Preserve The Organization Environment Contract
+
+Read `mainsequence://platform/skills/organization-environments` whenever a
+design involves shared data or configuration, exact branch lanes, Project
+Executors, environment management, or promotion between environments. That
+skill owns the complete cross-platform ontology and lifecycle guidance; do not
+reconstruct it from individual Project, MetaTable, Secret, or release rules.
+
+When a Project Blueprint depends on this architecture, record the intended
+exact branch lane and environment assumptions in decisions, constraints,
+dependencies, and acceptance criteria. Do not add unapproved persisted fields
+or a second environment permission system to the Blueprint. Do not add a new
+top-level Blueprint environment domain without a separately approved contract.
 
 ## Choose The Interaction Mode
 
@@ -263,7 +317,7 @@ Record:
 - management mode: `platform_managed` or `external_registered`;
 - schema-management mode: `backend_managed`, `alembic_managed`, or
   `external_registered`;
-- SQLAlchemy table name;
+- physical schema and unqualified SQLAlchemy table name;
 - row grain in one precise sentence;
 - business key;
 - columns with SQLAlchemy/logical type, optional dialect-specific backend type,
@@ -355,6 +409,16 @@ Record:
 Do not rebuild producer logic in an API. Reference the DataNode or MetaTable
 that owns the data.
 
+When implementation produces a deployable FastAPI, Streamlit, agent-runtime,
+or static-site target, hand the accepted release intent to the
+`resource-release` execution skill. Do not copy the live ResourceRelease
+serializer into the Blueprint.
+
+If the accepted runtime release is implemented as an automatically managed
+repository workflow, also use `project-workflows`: record source and promotion
+intent, but do not design, prebuild, or select `related_image_uid`. The backend
+owns image resolution after policy eligibility.
+
 ## Design The Project CLI
 
 Use `cli` to define the project's executable human-, automation-, and
@@ -385,7 +449,11 @@ Record:
 - whether it is enabled;
 - a human-facing role name, purpose, and rationale;
 - explicit boundaries;
-- project-agent skills.
+- project-agent skills;
+- optional accepted deployment intent using `automatic_deployment` and the
+  nested `automatic_redeployment_policy.tag_regex`; omit the policy to request
+  the generated branch-specific SemVer rule, and use explicit null only when
+  every synchronized commit is intended.
 
 For every project-agent skill, record:
 
@@ -401,6 +469,10 @@ command contract, hide a mutation, or invent project behavior.
 Use the separate `project-to-agent` platform skill to prepare repository
 instructions, project-owned skill files, and the source card after the
 Blueprint is accepted and the referenced CLI behavior exists.
+
+Project Coding Agent deployment intent never includes a caller-built project
+image or Project Executor image. The backend owns both builds; its server-side
+target policy owns later automatic-redeployment eligibility.
 
 ## Design Static Sites
 
@@ -418,7 +490,10 @@ Record:
   `decision_refs` from the common component contract;
 - `deployment.root_directory`, `deployment.routing_mode`, and
   `deployment.automatic_deployment` only when those deployment choices are
-  already accepted; and
+  already accepted;
+- optional `deployment.automatic_redeployment_policy.tag_regex` only when the
+  promotion rule is accepted; omit it for the backend-generated branch SemVer
+  default or use null for every commit; and
 - observable acceptance criteria.
 
 Represent an API dependency through `depends_on`, using its `apis.<key>`
@@ -429,9 +504,9 @@ through the installed Command Center SDK skills.
 Do not put API URLs, environment values, tokens, credentials, provider state,
 framework versions, Node versions, output defaults, or a copy of the
 ResourceRelease serializer in the Blueprint. The complete installed Command
-Center SDK skill bundle owns frontend implementation. The separate MCP
-`static-site` skill reads the canonical live capabilities and owns release
-creation, deployment, and deployment-state observation only.
+Center SDK skill bundle owns frontend implementation. The MCP `static-site`
+skill reads the canonical live capabilities; the `resource-release` skill owns
+the shared creation, configuration, deployment, and deployment-state workflow.
 
 Use this compact shape:
 
@@ -457,6 +532,8 @@ static_sites:
       root_directory: frontend
       routing_mode: spa
       automatic_deployment: true
+      automatic_redeployment_policy:
+        tag_regex: null
     acceptance_criteria:
       - The supported production build succeeds.
       - Portfolio analysis is usable by the intended browser consumers.
@@ -479,8 +556,14 @@ Before handoff, verify:
 - every CLI command maps to real components and declares side effects;
 - every project-agent skill references at least one compatible CLI command;
 - every static-site dependency and consumer reference resolves;
+- every organization-environment assumption uses an Organization-owned
+  environment and backend-resolved ProjectBranch assignment;
+- every proposed shared environment requires the same exact repository branch
+  name across all participating ProjectBranches;
 - static-site deployment intent contains only currently approved canonical
   release fields;
+- automatic redeployment intent is target-specific, uses only the nested
+  `tag_regex`, and does not invent a trigger mode or client-side evaluator;
 - no static-site item duplicates frontend implementation or Command Center SDK
   contracts;
 - no secret, credential, provider location, numeric database ID, or transient
@@ -515,22 +598,29 @@ Resolve intent first, then call the typed operation only when action is
 requested.
 
 Do not send `repository_branch` to `project.create`; the server creates `main`.
-GitRepository branch discovery and import are not MCP tools in the current
-catalog, so do not claim that an MCP-only client can perform those workflows
-until a separately approved tool exists. Canonical DRF repository detail
-returns the owning logical Project UID; it never computes a branch UID. A
-client invoking canonical DRF branch import may select its optional accessible
-`metatables_data_source_uid`; if omitted, the server inherits the logical
-Project `default_metatables_data_source`.
+GitRepository branch discovery is not an MCP tool in the current catalog, and
+manual branch creation/import is retired by the accepted ADR-031 lifecycle.
+After bootstrap, only a signed provider push may create a missing ProjectBranch,
+and only when the Organization already owns the exact matching environment.
+Git does not create that environment or choose a DataSource. No MCP branch
+creation/import tool exists. Canonical DRF repository detail returns the owning
+logical Project UID; it never computes a branch UID.
+
+This Git-driven cutover is approved but not deployed yet. Current webhook
+processing synchronizes only existing ProjectBranches and the manual DRF
+`import-branch` action remains present. Treat that as a deployment gap: do not
+design new callers around the retiring action and do not claim automatic branch
+provisioning has shipped until runtime evidence confirms the cutover.
 
 Choose the public `project_type` deliberately when the design establishes the
 primary scaffold: `python` or `vite_react`. Omission means `python` for backward
 compatibility. Do not invent separate language, framework, profile, or scaffold
 version fields. The canonical response exposes the derived technology, the
 mandatory pinned framework image, and repository/commit-scoped SDK
-observations. A Vite ProjectBranch may omit `metatables_data_source_uid` and
-must keep browser build variables on its StaticSiteRelease rather than
-ProjectBranch `env_vars`. Project creation itself always requires
+observations. A Vite ProjectBranch keeps browser build variables on its
+StaticSiteRelease rather than ProjectBranch `env_vars`; its environment owns
+MetaTable DataSource routing like every other ProjectBranch. Project creation
+itself always requires
 `default_metatables_data_source_uid`, exposes the safe Project default
 projection, and assigns that DataSource to the initial main ProjectBranch.
 Do not infer framework-image paths, tags, or runtime versions: the physical

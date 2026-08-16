@@ -32,6 +32,37 @@ Do not:
   repository source card; or
 - claim deployment success from repository changes alone.
 
+The deployed Project Coding Agent owns a server-side, ProjectBranch-scoped
+automatic redeployment policy. Repository preparation does not implement or
+evaluate that rule. If deployment intent is part of an accepted Blueprint,
+preserve its nested `automatic_redeployment_policy.tag_regex` semantics for the
+later canonical deployment handoff: omission requests the generated
+branch-specific SemVer rule and explicit null selects every commit. Do not add
+`trigger_mode`, derive tags from branch text locally, or put runtime policy in
+`.agents/agent_card.json`.
+
+At runtime, the typed `UserProjectExecutorAgentService` derives its
+Organization Environment through its persisted ProjectBranch. That trusted
+chain scopes canonical MetaTable and configuration operations; the repository
+source card, branch text, request payload, human JWT, and other coding-agent
+service types cannot select or widen it. Use the `organization-environments`
+skill for the complete resource and promotion lifecycle.
+
+The Project Executor image inherits the exact verified source provenance of
+its digest-pinned ProjectBranch project image and adds the executor bundle and
+recipe identity. It must not clone the repository or independently select a
+branch. Runtime credential exchange supplies the same backend-derived public
+ProjectBranch context used by other branch-owned Kubernetes workloads. The SDK
+uses that authenticated context without inspecting Git; repository source-card
+metadata and container environment values are descriptive inputs, not the
+authorization root.
+
+A Project Coding Agent declaration does not need an image UID or a prebuilt
+image, regardless of its `automatic_deployment` setting. The backend owns the
+exact-commit project-image and Project Executor image builds, so
+`project_image.create` is not a prerequisite. The server-side target policy
+separately owns later automatic-redeployment eligibility.
+
 ## Required Repository Artifacts
 
 Prepare and verify these project-owned artifacts:
@@ -62,6 +93,10 @@ agent. Only project-owned skills outside that tree belong in the source card.
    state.
 7. Validate the instructions, skill files, source card, and all referenced
    paths together.
+8. When deployment is requested, use the `project-workflows` skill to add one
+   `project_coding_agent` declaration under `.mainsequence/workflows/`, validate
+   it through the backend, and inspect its deployment run after commit. No
+   ProjectBranch or Project Executor image input is needed for this declaration.
 
 When the user asks only for a plan, stop after presenting the plan.
 
@@ -155,6 +190,12 @@ The runtime:
 
 Never guess these runtime-owned fields while preparing the repository.
 
+The deployment declaration must not contain `harness`. A coding-agent
+deployment registers its resolved harness on the backend service and exposes it
+as read-only runtime identity. Repository authors select neither Pi nor Tau.
+The workflow is ProjectBranch-scoped and the backend fixes the agent type to
+`project-executor`.
+
 ## Validation
 
 Before claiming the repository is prepared:
@@ -178,4 +219,5 @@ Report:
 2. the project-owned files created or changed;
 3. the validation performed;
 4. unsupported or unresolved capability claims; and
-5. the separate deployment step, when applicable.
+5. the separate `project_coding_agent` workflow deployment and its observed
+   deployment-run state, when applicable.

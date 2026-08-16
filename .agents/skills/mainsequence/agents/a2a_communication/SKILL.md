@@ -30,6 +30,11 @@ The `AgentSession.uid` is the durable conversation context. Runtime locations
 and credentials are ephemeral and must be resolved again when they expire or
 the runtime changes.
 
+Treat the returned `rpc_url` as an opaque location. Do not construct it from a
+service name, tenancy, environment, numeric identifier, or remembered
+subdomain; the platform binds runtime access to the canonical coding-agent
+service UID.
+
 ## Discovery
 
 Build a concise discovery query from:

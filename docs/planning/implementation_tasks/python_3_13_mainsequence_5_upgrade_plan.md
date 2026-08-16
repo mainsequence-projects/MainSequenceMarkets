@@ -5,7 +5,7 @@
 The original Python 3.13 and MainSequence 5 runtime upgrade was implemented on
 2026-07-25. Its MainSequence version contract was superseded on 2026-08-07:
 the project now uses the current local SDK without an upper-version cap, and
-the installed SDK is MainSequence `6.0.5`.
+the installed SDK is MainSequence `6.0.27`.
 
 Compatibility was established before the original environment rebuild:
 
@@ -18,7 +18,7 @@ Compatibility was established before the original environment rebuild:
 - the full suite also passed on Python 3.13 with that exact SDK tag:
   `1170 passed, 3 skipped`.
 
-The current project `.venv` reports Python `3.13.11` and MainSequence `6.0.5`.
+The current project `.venv` reports Python `3.13.11` and MainSequence `6.0.27`.
 The selected MainSequence source is the local SDK checkout at
 `/Users/jose/code/MainSequenceClientSide/mainsequence-sdk`. The package depends
 on `mainsequence` without an obsolete major-version ceiling; the local path is
@@ -37,7 +37,9 @@ Verification evidence from the rebuilt environment:
 - package, native dependency, CLI, and FastAPI application import smoke tests:
   passed.
 
-The current SDK and managed-skill pin both report `6.0.5`. A portable package
+The current SDK and managed-skill pin both report `6.0.27`. The 2026-08-16 SDK
+refresh passed the complete suite with `1188 passed, 3 skipped`, Ruff, and the
+strict MkDocs build. A portable package
 release still requires replacing or validating the repository-local SDK source
 against the intended package-index distribution.
 

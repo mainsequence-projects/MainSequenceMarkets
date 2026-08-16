@@ -1,6 +1,6 @@
 ---
 name: mainsequence-orchestration-and-releases
-description: Use this skill when the task is about operational execution in a Main Sequence project. This skill owns jobs, schedules, batch scheduling files, project images, run inspection, project resources, releases, Streamlit dashboard deployment, and Artifacts as operational inputs. It does not own DataNode producer design, MetaTable schema design, API route contracts, Streamlit dashboard design, or RBAC policy.
+description: Use this skill for Main Sequence jobs, schedules, backend-managed project workflow files, project images, run inspection, resources, releases, Streamlit deployment, and operational Artifacts. It does not own DataNode behavior, MetaTable schemas, API contracts, Streamlit design, or RBAC policy.
 ---
 
 # Main Sequence Orchestration And Releases
@@ -24,9 +24,8 @@ This skill is for:
 
 - create or review manual jobs
 - create or review scheduled jobs
-- decide when to use `scheduled_jobs.yaml`
-- validate and submit batch job files
-- decide when strict batch sync is appropriate
+- author backend-managed declarations under `.mainsequence/workflows/`
+- validate workflow files through the ProjectBranch workflow endpoints
 - create or select project images
 - freeze jobs to a project image
 - inspect job runs and logs
@@ -88,7 +87,7 @@ Before changing orchestration or release behavior, collect or infer:
   - new image
 - whether the workflow is:
   - direct CLI/client job creation
-  - repository-managed batch scheduling
+  - backend-managed project workflow declarations
   - Streamlit dashboard release creation
 - whether a `ResourceRelease` should be manually pinned or opted into repository-sync automatic deployment
 - whether Artifact inputs or outputs are part of the run
@@ -102,26 +101,33 @@ If the execution target or image strategy is unclear, stop before scheduling any
 For every non-trivial orchestration task, decide:
 
 1. Is this a one-off/manual workflow or a repository-managed recurring workflow?
-2. Should the jobs live in `scheduled_jobs.yaml`?
+2. Should the jobs live in a `.mainsequence/workflows/*.yaml` declaration?
 3. Which pinned project image should the job use?
-4. Is strict batch sync appropriate or dangerous?
-5. Does the workflow depend on Artifacts?
-6. Is the task actually a release/resource problem instead of only a job problem?
-7. For Streamlit dashboard deployment, do the selected app resource, README resource, and project image all refer to the intended pushed commit?
-8. For a `ResourceRelease`, should repository sync be allowed to rotate the release automatically through `automatic_deployment`?
+4. Does the workflow depend on Artifacts?
+5. Is the task actually a release/resource problem instead of only a job problem?
+6. For Streamlit dashboard deployment, do the selected app resource, README resource, and project image all refer to the intended pushed commit?
+7. For a `ResourceRelease`, should repository sync be allowed to rotate the release automatically through `automatic_deployment`?
 
 ## Build Rules
 
 ### 1. Shared recurring jobs should be treated as code
 
-For shared recurring workflows, prefer:
+For shared recurring workflows, use direct `.yaml` or `.yml` children of
+`.mainsequence/workflows/`. Do not create `scheduled_jobs.yaml`; it is not a
+supported input.
 
-- `scheduled_jobs.yaml`
-- `mainsequence project schedule_batch_jobs ...`
+The backend owns workflow parsing, validation, defaults, permissions, and
+application. Retrieve the current template from
+`GET /api/v1/project-branches/{uid}/workflow-template/`, validate the proposed
+`path` and `content` with
+`POST /api/v1/project-branches/{uid}/validate-workflow/`, then commit the file.
+Do not reproduce the parser or construct an interpreted deployment payload in
+the SDK or project code.
 
-`scheduled_jobs.yaml` is the repository-managed input file for the bulk job sync/create flow. It is not a separate scheduling backend model.
-
-In reviewed batch files, set `spot` explicitly. `spot: true` means the job may use lower-cost interruptible capacity, similar to GCP Spot or legacy preemptible capacity. `spot: false` means standard capacity.
+Every file requires the backend-advertised `api_version`, a name, and resource
+declarations. Use the current template for accepted fields and resource kinds.
+There is no prune or strict-delete mode; removing a declaration does not delete
+an existing backend resource.
 
 Do not hide important recurring schedules in ad hoc shell history or one-off manual commands.
 
@@ -142,9 +148,9 @@ Do not stop at creation.
 Use the standard CLI execution loop when execution success matters:
 
 - `mainsequence project jobs list`
-- `mainsequence project jobs run <JOB_ID>`
-- `mainsequence project jobs runs list <JOB_ID>`
-- `mainsequence project jobs runs logs <JOB_RUN_ID> --max-wait-seconds 900`
+- `mainsequence project jobs run <JOB_UID>`
+- `mainsequence project jobs runs list <JOB_UID>`
+- `mainsequence project jobs runs logs <JOB_RUN_UID> --max-wait-seconds 900`
 
 Verify:
 
@@ -152,11 +158,12 @@ Verify:
 - the run was triggered manually when immediate validation matters, or has already been triggered by the scheduler
 - the logs and run status match expectations
 
-### 4. Batch scheduling is powerful and dangerous
+### 4. Workflow application is backend-owned
 
-Use `--strict` only when the batch file is intended to be the full desired state.
-
-Do not use strict mode casually in shared environments.
+Repository events apply valid workflow files independently. An invalid file is
+not applied and does not block another valid file. After pushing, inspect the
+repository-event action result and resulting deployment runs; a successful Git
+push alone does not prove deployment success.
 
 ### 5. Artifacts are operational file primitives
 
@@ -202,14 +209,14 @@ Validate the deployment path, not the Streamlit design.
 
 `automatic_deployment` is the automated deployment opt-in flag on a `ResourceRelease`. It means repository synchronization can rotate an existing release to the latest synced project commit for the same resource path.
 
-When `automatic_deployment=True`, repository-sync events may create a `ResourceReleaseAutomaticDeploymentRun` with source `repository_event`. That run:
+When `automatic_deployment=True`, repository-sync events may create a unified `DeploymentRun` with `target_type="resource_release"` and source `repository_event`. That run:
 
 - reads the project's current synced commit
 - resolves the current project resource at the release's existing resource path
 - resolves the current adjacent `README.md` when the release kind requires one, such as Streamlit dashboards
 - creates or resolves the project image for that commit
 - redeploys the existing release to the current resource, README, and project image
-- records status, current step, revision context, image/resource context, result, and errors on the deployment run
+- records state, phase, outcome, revision context, artifact context, steps, logs, result, and errors on the deployment run
 
 This is not a local development shortcut. It does not deploy unpushed local files. The repository must be pushed, the project repository must be synced, and project resource discovery must find the resource at the same path for the current commit.
 
@@ -240,28 +247,13 @@ The SDK surface also accepts:
 - `ProjectResource.create_dashboard(..., automatic_deployment=True)`
 - `ProjectResource.create_fastapi(..., automatic_deployment=True)`
 - `ResourceRelease.create(..., automatic_deployment=True)`
-- `ResourceRelease.deploy_current_version()` for an SDK-triggered manual deployment run
+- `ResourceRelease.deploy_current_version()` for an SDK-triggered manual deployment run; it returns `DeploymentRun`
+- `DeploymentRun.filter(target_type="resource_release", target_uid=release.uid)` to inspect runs for one release
 
 Do not claim there is a CLI command for `deploy_current_version` unless the local CLI actually exposes one. In this SDK, the manual detail action is available through the client model.
 
-Automatic deployment runs can have these statuses:
-
-- `pending`
-- `running`
-- `waiting_project_image`
-- `waiting_runtime_ready`
-- `no_action`
-- `deployed`
-- `skipped`
-- `blocked`
-- `failed`
-
-Important blocked/skipped cases include:
-
-- `automatic_deployment_disabled`: repository-event rotation skipped because the release is not opted in
-- `project_current_version_missing`: the project has no current synced version
-- `resource_missing_for_current_commit`: no resource exists at the release path for the latest synced commit
-- `readme_missing_for_current_commit`: a dashboard-style release needs an adjacent README for the current commit
+Inspect the unified run's `state`, `phase`, `outcome`, `steps`, `logs`, and `error` fields. Do not use legacy resource-release deployment status fields or filters.
+Detail responses also expose `builder_image` and `builder_runtime`; these are empty strings when the run has no static-site builder metadata.
 
 ## Review Rules
 
@@ -269,7 +261,7 @@ When reviewing an orchestration task, look for:
 
 - schedules that should have been version-controlled
 - direct job creation where a batch file should exist
-- missing or wrong `related_image_id`
+- missing or wrong `related_image_uid`
 - jobs tied to moving repository state instead of a pinned image
 - no run/log verification after creation
 - unsafe use of `--strict`
@@ -291,7 +283,7 @@ Do not claim success until you have checked:
   - crontab
   - one-off
 - the pinned image choice is intentional
-- the job exists after creation or sync
+- the job exists after direct creation or repository workflow application
 - runs and logs were inspected when execution success matters
 - resources and releases were verified when deployment success matters
 - Streamlit dashboard releases use the intended app resource, README resource, image, and `streamlit_dashboard` release kind
@@ -299,13 +291,12 @@ Do not claim success until you have checked:
 - automatic deployment runs were inspected when repository-sync rotation matters
 - automatic deployment results match the intended commit, resource, README, image, and terminal status
 
-If the workflow uses `scheduled_jobs.yaml`, also check:
+If the workflow uses `.mainsequence/workflows/`, also check:
 
-- the file shape is valid
-- the jobs list is intentional
-- strict mode is either intentionally on or intentionally off
-- the file is being treated as the reviewed input to the bulk job sync/create flow
-- `spot` is explicit and matches the job's interruption tolerance
+- the current backend template and supported `api_version` were used
+- backend validation succeeded before commit
+- the file is a direct `.yaml` or `.yml` child of the workflow directory
+- repository-event and deployment results were inspected after push
 
 If the workflow uses Artifacts, also check:
 
@@ -316,7 +307,7 @@ If the workflow uses Artifacts, also check:
 
 - the execution target is unclear
 - the image strategy is unclear but reproducibility matters
-- strict batch sync could delete jobs and the desired state is not explicit
+- the backend rejects the workflow version, resource kind, or requested field
 - the workflow depends on local file paths that should be platform Artifacts
 - automatic deployment is requested but the deployment source branch/current synced project version is unclear
 - automatic deployment is requested but the resource path or required README is not stable

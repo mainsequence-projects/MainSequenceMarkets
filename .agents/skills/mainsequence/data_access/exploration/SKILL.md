@@ -97,13 +97,13 @@ Discovery priority:
 - use column lookup only when the user is specifically searching for a schema or column name
 - use detail only after you have identified the candidate object you want to inspect
 
-Semantic description discovery searches `MetaTable` metadata rows through:
+Semantic description discovery for published DataNode storage searches
+`TimeIndexMetaTable` metadata rows through:
 
-- `GET /orm/api/ts_manager/meta_table/description-search/?q=<text>`
+- `GET /api/v1/time-index-meta-tables/description-search/?q=<text>`
 
-The same discovery surface applies to `MetaTable` metadata and to published
-`DataNode` storage tables, because `DataNode` storage is represented by
-`TimeIndexMetaTable` metadata.
+This is the DataNode discovery surface because published DataNode storage is
+represented by `TimeIndexMetaTable` metadata.
 
 Typical semantic discovery commands:
 
@@ -142,6 +142,9 @@ The response is paginated metadata:
   ]
 }
 ```
+
+When present, `time_indexed_profile.time_index_meta_table_uid` is the canonical
+profile-to-table identity and must match the parent `TimeIndexMetaTable.uid`.
 
 Structured filtering is a different path. Use it only when you already know the
 field to filter by:

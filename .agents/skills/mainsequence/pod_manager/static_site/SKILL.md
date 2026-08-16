@@ -1,13 +1,16 @@
 ---
 name: static-site
-description: Create, deploy, and inspect a Main Sequence static-site ResourceRelease through the canonical platform operations. Use after a project frontend exists or when an agent must discover the current static-site release fields, create the release for a ProjectBranch, deploy its current commit, or inspect deployment state.
+description: Apply the static-site specialization of the canonical Main Sequence ResourceRelease workflow. Use to discover live static creation fields, preserve the Command Center frontend ownership boundary, and prepare static-specific creation or configuration inputs for one ProjectBranch.
 ---
 
 # Main Sequence Static-Site Release
 
-Use Main Sequence MCP for the platform release workflow. Use the complete,
-version-matched skill bundle shipped by the project's installed Command Center
-SDK for frontend implementation.
+Read `mainsequence://platform/skills/resource-release` first. That skill owns
+the shared release discovery, creation, configuration, deployment, and
+DeploymentRun workflow. This skill adds only the static-site specialization.
+
+Use the complete, version-matched skill bundle shipped by the project's
+installed Command Center SDK for frontend implementation.
 
 The MCP server delivers this guidance and approved platform operations. The
 calling coding agent owns local repository inspection, dependency management,
@@ -18,9 +21,26 @@ source edits, builds, and tests.
 This skill owns only:
 
 - discovery of the canonical static-site creation contract;
-- creation of a static `ResourceRelease` for an existing `ProjectBranch`;
-- explicit deployment of the current ProjectBranch commit; and
-- observation of release and deployment state.
+- static-specific creation and configuration input preparation for an exact
+  `ProjectBranch`; and
+- the boundary between platform release behavior and frontend implementation.
+
+The general `resource-release` skill owns the shared `resource_release.list`,
+`resource_release.get`, `resource_release.create`, `resource_release.update`,
+`resource_release.deploy_current_version`, and DeploymentRun sequence.
+
+The static release UID is its sole public route target. The public location is
+tenant-free and has the canonical UID site hostname returned by the backend;
+there is no separate release subdomain or caller-selected tenancy route. The
+server-owned product namespace is `site-dev` in development and `site`
+in production; callers do not select or derive it. Treat `public_url` and
+signed launch URLs as opaque values.
+
+All site UIDs in one environment namespace use the same infrastructure-owned
+wildcard DNS, TLS certificate, and static gateway. Creating, deploying, or
+deleting a release does not create or remove a per-release edge resource. The
+gateway resolves the UID through Django, so artifact tenancy remains storage
+placement and is not encoded into edge lifecycle.
 
 This skill does not own:
 
@@ -76,6 +96,12 @@ constraints, and help text as authoritative. Do not infer them from this skill,
 an older project, framework documentation, or the installed Command Center
 SDK.
 
+The advertised nested `automatic_redeployment_policy.tag_regex` is the only
+promotion rule. Omit the policy to persist stable SemVer on `main` or
+branch-qualified SemVer on another branch, or send explicit null for every
+synchronized commit. Do not send a flat regex, `trigger_mode`, `rule_type`, or
+another legacy policy shape, and do not evaluate Git refs in the client.
+
 The capability operation is read-only. It does not inspect the local
 repository, test infrastructure readiness, or guarantee that a later create or
 deployment will succeed.
@@ -95,7 +121,7 @@ Build environment values are public browser build inputs, not secret storage.
 Send only accepted keys and values. Do not submit platform-reserved keys, and
 do not place credentials or secret values into the browser bundle.
 
-## Create The Static Release
+## Prepare Static Release Creation
 
 When the user requests creation:
 
@@ -108,27 +134,38 @@ When the user requests creation:
 5. Set `name` to the requested human-facing release name.
 6. Include optional configuration only when it is supported by the capability
    response and required by the accepted release intent.
-7. Call `resource_release.create` once.
+7. Hand the exact request to the general Resource Release workflow and call
+   `resource_release.create` once.
 
 Creation uses the canonical DRF authorization, validation, configuration, and
 asynchronous deployment behavior. Do not substitute the logical Project UID
 for `project_branch_uid`. Do not automatically retry an ambiguous create
 result.
 
-## Deploy And Observe
+## Configure, Deploy, And Observe
 
-Use `resource_release.get` to inspect the release. Use `deployment_run.list`
-and `deployment_run.get` for canonical deployment-run state when the relevant
-run identity or filters are available.
+Use `resource_release.update` only with fields advertised by the live
+capability response. The update changes static configuration and does not
+deploy it. Treat `build_environment` as a complete write-only browser-build
+map and never put secret material in it.
 
-The initial deployment and later deployments are asynchronous. A queued or
-accepted response is not proof that the site is ready or active. Report the
-release state and deployment state separately.
+Follow the general Resource Release skill for explicit deployment, ambiguous
+result handling, and `deployment_run.list/get` observation. Static deployment
+history uses `target_type=static_site`.
+
+Static build attempts expose the complete declared build pipeline under
+`pipeline.steps`; explicit activation/rollback attempts use the shorter
+`static_site.deploy` pipeline. Determine which workflow ran from
+`pipeline.key`, not from a phase string or the presence of only observed
+steps.
 
 Call `resource_release.deploy_current_version` only for an existing release
 when deployment is requested. It deploys the ProjectBranch's persisted current
-commit through the canonical DRF action. Do not automatically retry an
-ambiguous deployment result.
+commit through the canonical DRF action. Before materializing site source, the
+backend proves that full commit is reachable from the exact ProjectBranch ref
+and produces a normalized checksummed archive; it does not accept a commit
+merely because that object exists elsewhere in the repository. Do not
+automatically retry an ambiguous deployment result.
 
 ## Stop Conditions
 
