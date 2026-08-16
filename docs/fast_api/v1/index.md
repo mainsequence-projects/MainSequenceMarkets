@@ -104,6 +104,19 @@ Current local-dev behavior:
 - if the session cannot resolve a valid DynamicTable data source, startup
   should fail instead of redirecting writes into an ad hoc local store
 
+## Platform Deployment
+
+The application implementation remains under `apps/v1`. The thin
+`api/main.py` module re-exports the same FastAPI `app` object because Main
+Sequence discovers deployable FastAPI resources from `api/**/main.py` paths.
+It contains no route, schema, service, or runtime logic.
+
+The release is managed from a direct YAML child of
+`.mainsequence/workflows/`. Its automatic-redeployment policy follows every
+synchronized `main` commit, while the backend resolves the verified image for
+the exact eligible commit. The workflow therefore does not contain a project
+image UID.
+
 ## API Discoverability
 
 - `GET /openapi.json`
