@@ -1,0 +1,14 @@
+api_version: 1.1.0
+name: mainsequence-markets-fastapi
+resources:
+  - key: markets-api
+    kind: resource_release
+    spec:
+      release_kind: fastapi
+      resource_uid: c4dc69be-5ae6-4fbf-a00d-2703cf5b8036
+      cpu_request: "0.25"
+      memory_request: "0.5"
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null

@@ -12,6 +12,8 @@ and this project follows versioned releases.
 - Added the canonical `api/main.py` deployment entrypoint for the existing
   `apps/v1` application so the platform can discover and automatically deploy
   the FastAPI resource without moving application logic out of `apps/v1`.
+  Added `.mainsequence/workflows/fastapi.yaml` to redeploy that release on
+  every synchronized commit.
 - Added Command Center SDK bulk-action discovery, preflight, and canonical
   execution contracts for asset categories, portfolios, and portfolio groups.
   Execution now accepts `{selection, options}`, rejects the retired FastAPI
