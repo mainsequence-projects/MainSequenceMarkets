@@ -123,6 +123,10 @@ changes. A successful sync triggers the backend-owned image build and release
 rotation; use the project deployment-run interfaces to verify the terminal
 state and logs instead of treating the Git push alone as deployment success.
 
+Runtime dependencies must be resolvable from the backend build environment.
+The project therefore pins the published `mainsequence==6.0.27` package and
+must not replace it with a machine-local `[tool.uv.sources]` path override.
+
 ## API Discoverability
 
 - `GET /openapi.json`

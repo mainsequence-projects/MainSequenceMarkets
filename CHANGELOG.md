@@ -13,7 +13,9 @@ and this project follows versioned releases.
   `apps/v1` application so the platform can discover and automatically deploy
   the FastAPI resource without moving application logic out of `apps/v1`.
   Added `.mainsequence/workflows/fastapi.yaml` to redeploy that release on
-  every synchronized commit.
+  every synchronized commit, and replaced the machine-local Main Sequence SDK
+  source override with the published `mainsequence==6.0.27` package so remote
+  image builds can resolve the dependency.
 - Added Command Center SDK bulk-action discovery, preflight, and canonical
   execution contracts for asset categories, portfolios, and portfolio groups.
   Execution now accepts `{selection, options}`, rejects the retired FastAPI
