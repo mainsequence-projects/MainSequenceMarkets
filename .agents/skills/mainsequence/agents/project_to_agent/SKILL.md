@@ -52,9 +52,14 @@ The same derived environment scopes Project Coding Agent interaction. Agent
 list/search exposes only Project Coding Agents whose ProjectBranches belong to
 that environment, including compatible branches from other Projects. Astro Tau
 injects the backend-provided environment into MCP discovery and hides the
-selector from the model. Delegation remains provenance-bound: a target session
-must be created under a parent session owned by the calling Project Executor,
-and subagent bindings cannot cross environments or target an unscoped Agent.
+selector from the model. Delegation remains provenance-bound: the parent
+session's Agent must be the calling Project Executor, while the target session
+and handle inherit the parent session's `created_by_user`. That inherited User
+owns model-provider credentials across every A2A hop; each target runtime
+hydrates independently and never receives credentials in the A2A payload.
+The runtime credential's responsible User remains the acting principal, not a
+session-owner or credential fallback. Subagent bindings cannot cross
+environments or target an unscoped Agent.
 
 The Project Executor image inherits the exact verified source provenance of
 its digest-pinned ProjectBranch project image and adds the executor bundle and

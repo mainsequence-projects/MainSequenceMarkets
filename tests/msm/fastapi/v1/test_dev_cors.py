@@ -11,17 +11,18 @@ def test_dev_cors_wrapper_adds_cors_without_mutating_main_app() -> None:
     assert not any(middleware.cls is CORSMiddleware for middleware in main.app.user_middleware)
 
 
-def test_dev_cors_allows_delete_preflight() -> None:
+def test_dev_cors_allows_delete_preflight_from_local_frontend() -> None:
     client = TestClient(dev_cors.app)
 
     response = client.options(
         "/api/v1/portfolio/portfolio-uid/weights/",
         headers={
-            "Origin": "http://localhost:5173",
+            "Origin": "http://127.0.0.1:3010",
             "Access-Control-Request-Method": "DELETE",
         },
     )
 
     assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:3010"
+    assert response.headers["access-control-allow-credentials"] == "true"
     assert "DELETE" in response.headers["access-control-allow-methods"]

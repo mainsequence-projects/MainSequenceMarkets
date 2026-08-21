@@ -9,6 +9,8 @@ resources:
       cpu_request: "0.25"
       memory_request: "0.5"
       spot: false
+      cors_allowed_origins:
+        - "https://*.site-dev.main-sequence.app"
       automatic_redeployment:
         enabled: true
         tag_regex: null

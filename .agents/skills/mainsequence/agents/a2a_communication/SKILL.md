@@ -79,10 +79,20 @@ After a session is returned, reuse its public UID for later turns.
 If the request originates from an existing caller session, supply that
 authorized parent session UID when creating the target session. A Project
 Executor may target only a Project Coding Agent in its own Organization
-Environment, and the parent session must belong to the calling Project
-Executor. Parent linkage is the durable authorization provenance for later
-delegated runtime-access and task operations; it does not broaden the task or
-grant access outside that exact parent-child relationship.
+Environment, and the parent session's Agent must be the calling Project
+Executor. The backend copies `parent_session.created_by_user` into the child
+session and its handle. Never provide or infer a replacement User. Parent
+linkage proves the calling Agent, while the inherited owner preserves the User
+whose request the chain is serving. Parent linkage is durable authorization
+provenance for later delegated runtime-access and task operations; it does not
+broaden the task or grant access outside that exact parent-child relationship.
+
+Each target runtime independently asks Django for the child session owner's
+model-provider credential after exact runtime/session authorization. Never
+read, serialize, forward, log, or place provider credentials in A2A message
+parts, session metadata, handle metadata, or tool output. The runtime
+credential's responsible User remains the acting principal and does not become
+the session owner or a credential fallback.
 
 ## Runtime Access Is Sensitive
 

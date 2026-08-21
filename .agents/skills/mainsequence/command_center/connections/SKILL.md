@@ -89,7 +89,7 @@ clear behavior. Do not resend unchanged credentials merely because
 `secureFields` reports that they exist. Never place secrets in public config,
 skill files, source control, logs, or result summaries.
 
-MCP does not expose `openForEveryone`, internal status mutation,
+MCP does not expose generic global-sharing controls, internal status mutation,
 `statusMessage`, `lastHealthCheckAt`, `isSystem`, or direct `secureFields`
 mutation. Do not infer or manufacture those inputs.
 

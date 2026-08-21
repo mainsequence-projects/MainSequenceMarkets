@@ -9,6 +9,14 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Added port 3010 to the development-only FastAPI CORS wrapper so the static-site repository's VS
+  Code full-stack debugger can run the local API on port 8001 and frontend on port 3010 together
+  without changing production application middleware.
+- Linked the automatically deployed Markets static site to the stable `main`
+  FastAPI ResourceRelease identity and admitted the supported
+  `https://*.site-dev.main-sequence.app` browser origin. API redeployments now
+  rotate behind the same release UID while the Command Center SDK resolves the
+  current opaque RPC endpoint at request time.
 - Migrated the automatic `main` FastAPI deployment declaration to the current
   workflow API `2.0.0` contract and added regression coverage for every-commit
   redeployment without a caller-selected project image.
@@ -28,7 +36,7 @@ and this project follows versioned releases.
   removed the obsolete SDK upper-version cap, rebuilt the uv lock and local
   environment on Python 3.13, and moved documentation and package-publish
   workflows to Python 3.13. Refreshed the installed SDK, dependency lock, and
-  managed Main Sequence skills to `6.0.35`.
+  managed Main Sequence skills to `6.0.36`.
 - Replaced the Index calculation architecture with strict `formula` and
   `custom` methods. Formula expressions use typed Asset/Index identifiers,
   exact source MetaTable UIDs and observables, an allow-listed arithmetic

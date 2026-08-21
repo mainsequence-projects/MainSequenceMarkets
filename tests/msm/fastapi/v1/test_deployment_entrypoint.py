@@ -28,6 +28,9 @@ def test_main_fastapi_workflow_uses_current_automatic_deployment_contract() -> N
 
     spec = release["spec"]
     assert spec["release_kind"] == "fastapi"
+    assert spec["cors_allowed_origins"] == [
+        "https://*.site-dev.main-sequence.app"
+    ]
     assert spec["automatic_redeployment"] == {
         "enabled": True,
         "tag_regex": None,

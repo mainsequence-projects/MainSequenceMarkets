@@ -104,6 +104,16 @@ Current local-dev behavior:
 - if the session cannot resolve a valid DynamicTable data source, startup
   should fail instead of redirecting writes into an ad hoc local store
 
+### Local full-stack debugging
+
+The sibling `mainsequencemarketssite` repository owns the VS Code compound launcher for local
+frontend/API debugging. Its **Markets: Full Stack** configuration runs
+`apps.v1.dev_cors:app` with the project `.venv` under `debugpy` on
+`http://127.0.0.1:8001`, and runs the Vite frontend on `http://127.0.0.1:3010` with that exact API
+origin. The development wrapper admits ports 3010 and 5173 for both `localhost` and `127.0.0.1`;
+the deployed `api.main:app` surface is not mutated. The launcher leaves
+`MSM_AUTO_REGISTER_NAMESPACE` unset in accordance with the local runtime bootstrap contract.
+
 ## Platform Deployment
 
 The application implementation remains under `apps/v1`. The thin
@@ -117,7 +127,12 @@ The release is managed by
 `main` commit (`tag_regex: null`). The backend resolves the verified image for
 the exact eligible commit, so the workflow must not contain a
 `related_image_uid`. It requests the standard API capacity of `0.25` vCPU and
-`0.5` GiB on non-spot infrastructure.
+`0.5` GiB on non-spot infrastructure. The release admits the supported
+`https://*.site-dev.main-sequence.app` origin so the Main Sequence Markets
+static-site release can use the Command Center SDK delegated FastAPI transport.
+The frontend identifies this release by its stable ResourceRelease UID; the SDK
+resolves the current opaque RPC endpoint at request time after every automatic
+API redeployment.
 
 Use `mainsequence project sync --path . -m "<message>"` to publish repository
 changes. A successful sync triggers the backend-owned image build and release
@@ -125,7 +140,7 @@ rotation; use the project deployment-run interfaces to verify the terminal
 state and logs instead of treating the Git push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
-The project therefore pins the published `mainsequence==6.0.35` package and
+The project therefore pins the published `mainsequence==6.0.36` package and
 must not replace it with a machine-local `[tool.uv.sources]` path override.
 
 ## API Discoverability

@@ -162,6 +162,14 @@ Keep these distinctions:
   by a genuine local checkout to discover a persisted ProjectBranch; a
   deployed image never requires `.git` and cannot select another branch or
   environment.
+- For Agent execution, distinguish the runtime responsible User from the
+  AgentSession owner. The runtime responsible User authorizes and audits the
+  service action; `AgentSession.created_by_user` owns the invocation and its
+  model-provider credentials. An A2A child and handle inherit that User from
+  the exact immediate parent session, whose Agent proves the calling service.
+  Every target runtime hydrates independently after exact session
+  authorization; credentials never travel in A2A content and service ownership
+  is never a credential fallback.
 - SDK application code never supplies deployed runtime mode, ProjectBranch,
   repository branch, or Organization Environment. The SDK installs context
   only from an authenticated startup or credential-exchange response and omits
