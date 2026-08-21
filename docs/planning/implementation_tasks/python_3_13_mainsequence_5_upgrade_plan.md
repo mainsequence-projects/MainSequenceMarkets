@@ -4,8 +4,8 @@
 
 The original Python 3.13 and MainSequence 5 runtime upgrade was implemented on
 2026-07-25. Its MainSequence version contract was superseded on 2026-08-07:
-the project now uses the current local SDK without an upper-version cap, and
-the installed SDK is MainSequence `6.0.27`.
+the project now pins the published `mainsequence==6.0.35` package, and the
+installed SDK is MainSequence `6.0.35`.
 
 Compatibility was established before the original environment rebuild:
 
@@ -18,11 +18,10 @@ Compatibility was established before the original environment rebuild:
 - the full suite also passed on Python 3.13 with that exact SDK tag:
   `1170 passed, 3 skipped`.
 
-The current project `.venv` reports Python `3.13.11` and MainSequence `6.0.27`.
-The selected MainSequence source is the local SDK checkout at
-`/Users/jose/code/MainSequenceClientSide/mainsequence-sdk`. The package depends
-on `mainsequence` without an obsolete major-version ceiling; the local path is
-selected through `tool.uv.sources` for this checkout.
+The current project `.venv` reports Python `3.13.11` and MainSequence `6.0.35`.
+The package and lockfile resolve the published `mainsequence==6.0.35`
+distribution. There is no machine-local `tool.uv.sources` override, so the
+same dependency source is available to local and backend image builds.
 
 Verification evidence from the rebuilt environment:
 
@@ -32,16 +31,15 @@ Verification evidence from the rebuilt environment:
 - `.venv/bin/mkdocs build --strict`: passed;
 - `uv build`: built the wheel and source distribution;
 - locked full-environment audit: no changes required;
-- wheel metadata: `Requires-Python: <3.14,>=3.13` and a MainSequence SDK
-  dependency without a major-version ceiling;
+- wheel metadata: `Requires-Python: <3.14,>=3.13` and the pinned MainSequence
+  SDK dependency;
 - package, native dependency, CLI, and FastAPI application import smoke tests:
   passed.
 
-The current SDK and managed-skill pin both report `6.0.27`. The 2026-08-16 SDK
-refresh passed the complete suite with `1188 passed, 3 skipped`, Ruff, and the
-strict MkDocs build. A portable package
-release still requires replacing or validating the repository-local SDK source
-against the intended package-index distribution.
+The current SDK and managed-skill pin both report `6.0.35`. The 2026-08-21 SDK
+refresh passed the complete suite with `1186 passed, 6 skipped`, Ruff, and the
+strict MkDocs build. The lockfile resolves the published package-index
+distribution used by portable builds.
 
 ## Success Condition
 
@@ -50,17 +48,17 @@ The upgrade is complete when:
 - `ms-markets` declares `>=3.13,<3.14`, with no Python 3.11 or 3.12
   compatibility contract;
 - Ruff, CI documentation builds, and package publishing target Python 3.13;
-- `mainsequence` has no obsolete major-version ceiling in the package contract;
+- `mainsequence` is pinned to the verified published SDK version in the package
+  contract;
 - `uv.lock` resolves only the Python 3.13 project contract;
 - the local `.venv` reports Python 3.13 and the current selected MainSequence SDK;
 - core, portfolio, pricing, public API, CLI, migration, and documentation
   imports work from the rebuilt environment;
 - the complete test suite, scoped Ruff baseline, strict MkDocs build, and
   package build pass;
-- built wheel metadata contains `Requires-Python: <3.14,>=3.13` and a
-  MainSequence dependency without a major-version ceiling;
-- a fresh locked sync can reproduce the environment on a checkout where the
-  configured local MainSequence SDK path exists.
+- built wheel metadata contains `Requires-Python: <3.14,>=3.13` and the pinned
+  MainSequence dependency;
+- a fresh locked sync can reproduce the environment from the package index.
 
 No database schema change is required for this runtime upgrade. Applying
 MetaTable migrations or deploying a platform release is outside this local
@@ -80,13 +78,11 @@ Gate: repository search finds no active Python 3.11 or 3.12 runtime target.
 
 ### 2. MainSequence SDK And Dependency Lock
 
-- Declare the publishable `mainsequence` dependency without a stale major-version
-  ceiling.
-- Resolve the local MainSequence checkout through `tool.uv.sources` for local
-  development.
+- Pin the publishable `mainsequence` dependency to the verified SDK release.
+- Resolve MainSequence from the package index with no machine-local
+  `tool.uv.sources` override.
 - Regenerate `uv.lock` with Python 3.13.
-- Before a portable release, validate the intended package-index distribution
-  with `uv lock --no-sources`.
+- Validate the package-index distribution with a frozen full-environment sync.
 
 Gate: uv resolves the selected current MainSequence SDK and all optional
 dependency groups for Python 3.13.

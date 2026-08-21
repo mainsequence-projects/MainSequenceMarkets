@@ -9,12 +9,15 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Migrated the automatic `main` FastAPI deployment declaration to the current
+  workflow API `2.0.0` contract and added regression coverage for every-commit
+  redeployment without a caller-selected project image.
 - Added the canonical `api/main.py` deployment entrypoint for the existing
   `apps/v1` application so the platform can discover and automatically deploy
   the FastAPI resource without moving application logic out of `apps/v1`.
   Added `.mainsequence/workflows/fastapi.yaml` to redeploy that release on
   every synchronized commit, and replaced the machine-local Main Sequence SDK
-  source override with the published `mainsequence==6.0.27` package so remote
+  source override with the published `mainsequence==6.0.35` package so remote
   image builds can resolve the dependency.
 - Added Command Center SDK bulk-action discovery, preflight, and canonical
   execution contracts for asset categories, portfolios, and portfolio groups.
@@ -25,7 +28,7 @@ and this project follows versioned releases.
   removed the obsolete SDK upper-version cap, rebuilt the uv lock and local
   environment on Python 3.13, and moved documentation and package-publish
   workflows to Python 3.13. Refreshed the installed SDK, dependency lock, and
-  managed Main Sequence skills to `6.0.27`.
+  managed Main Sequence skills to `6.0.35`.
 - Replaced the Index calculation architecture with strict `formula` and
   `custom` methods. Formula expressions use typed Asset/Index identifiers,
   exact source MetaTable UIDs and observables, an allow-listed arithmetic

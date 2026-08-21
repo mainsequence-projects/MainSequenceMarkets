@@ -112,11 +112,12 @@ Sequence discovers deployable FastAPI resources from `api/**/main.py` paths.
 It contains no route, schema, service, or runtime logic.
 
 The release is managed by
-`.mainsequence/workflows/fastapi.yaml`. Its automatic-redeployment policy
-follows every synchronized `main` commit (`tag_regex: null`), while the backend
-resolves the verified image for the exact eligible commit. The workflow
-therefore does not contain a project image UID. It requests the standard API
-capacity of `0.25` vCPU and `0.5` GiB on non-spot infrastructure.
+`.mainsequence/workflows/fastapi.yaml`. The declaration uses workflow API
+`2.0.0` and its automatic-redeployment policy follows every synchronized
+`main` commit (`tag_regex: null`). The backend resolves the verified image for
+the exact eligible commit, so the workflow must not contain a
+`related_image_uid`. It requests the standard API capacity of `0.25` vCPU and
+`0.5` GiB on non-spot infrastructure.
 
 Use `mainsequence project sync --path . -m "<message>"` to publish repository
 changes. A successful sync triggers the backend-owned image build and release
@@ -124,7 +125,7 @@ rotation; use the project deployment-run interfaces to verify the terminal
 state and logs instead of treating the Git push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
-The project therefore pins the published `mainsequence==6.0.27` package and
+The project therefore pins the published `mainsequence==6.0.35` package and
 must not replace it with a machine-local `[tool.uv.sources]` path override.
 
 ## API Discoverability
