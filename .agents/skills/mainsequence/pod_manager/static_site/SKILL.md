@@ -85,6 +85,37 @@ this MCP skill as a substitute for those skills, summarize their contracts
 here, or assume that every static site uses every SDK capability. The local
 coding agent, not MCP, installs dependencies and refreshes project skills.
 
+## Use Narrow FastAPI Delegation When The Site Calls An API
+
+When a static site must call a platform FastAPI ResourceRelease, use the
+supported integration documented by the installed Command Center SDK skill
+bundle. That integration may consume Django's existing delegated exchange:
+
+```text
+GET /api/v1/resource-releases/<fastapi_release_uid>/exchange-launch/
+    ?static_site_release_uid=<static_site_release_uid>
+```
+
+The backend response supplies the exact `rpc_url` and a maximum-five-minute
+credential bound to this source StaticSiteRelease, its backend-derived origin,
+the authenticated user, and the exact FastAPI target. Project code must not
+receive, store, or forward the user's general platform JWT. Treat the delegated
+credential and `rpc_url` as opaque, short-lived values; do not decode them or
+derive a target host.
+
+The target FastAPI release must allow the site's exact origin, or a supported
+one-label wildcard that covers it, through `cors_allowed_origins`. CORS alone
+does not grant access. Django also rechecks the current user, both releases,
+same-Organization ownership, release serving state, exact request Origin,
+target identity, permissions, and target CORS policy on every delegated
+request. A source and target may belong to different Projects, ProjectBranches,
+or OrganizationProjectEnvironments; do not infer co-location. Both releases
+must belong to the same Organization.
+
+This skill records only the platform boundary. Read the installed Command
+Center SDK skills for the actual frontend API and transport; do not reproduce
+that SDK's message protocol here.
+
 ## Discover The Canonical Release Contract
 
 Call `resource_release.static_site_capabilities` before creating a static

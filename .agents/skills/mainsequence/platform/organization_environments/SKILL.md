@@ -1,6 +1,6 @@
 ---
 name: organization-environments
-description: Understand, design, and review Main Sequence Organization Environments and their lifecycle. Use to distinguish an Organization Environment from a Project, ProjectBranch, Git branch, DataSource, release, or deployment; reason about branch-owned runtime scope and shared MetaTables, Secrets, and Constants; and separate code promotion from configuration and data migration.
+description: Understand, enumerate, design, and review Main Sequence Organization Environments and their lifecycle. Use to resolve visible environment UIDs before human/local Agent discovery; distinguish an Organization Environment from a Project, ProjectBranch, Git branch, DataSource, release, or deployment; reason about branch-owned runtime scope and shared MetaTables, Secrets, and Constants; and separate code promotion from configuration and data migration.
 ---
 
 # Main Sequence Organization Environments
@@ -97,8 +97,10 @@ the same deployment.
 
 Established DataSource, branch, environment, and resource remapping remains
 blocked because no data-migration workflow has been designed or approved.
-There is no environment MCP operation. Never translate the presence of this
-skill or the DRF resource into an unregistered MCP tool.
+The registered read-only `organization_environment.list` MCP tool exposes the
+canonical DRF collection so a human or local agent can resolve visible
+environment names and public UIDs. It does not expose environment creation,
+mutation, deletion, branch assignment, or data migration.
 
 ## Place The Environment In The Platform Ontology
 
@@ -236,15 +238,29 @@ authorization; it never replaces those checks. Container environment values
 and image provenance assist SDK initialization and diagnostics but do not
 replace backend authentication as the authority.
 
+Every runtime JWT also authenticates one persisted responsible User. Normal
+DRF, role, service-identity, object, and operation policy decides which actions
+that User may perform regardless of token scope. The branch/environment chain
+narrows which resources compose the result; it does not maintain a parallel
+action allowlist.
+
 ### Human Or Local Coding Agent
 
 A human JWT or local coding agent has no implicit authenticated ProjectBranch.
-Authorized discovery may span the Organization's environments or use an
-explicit environment filter. A genuine local checkout may use its active Git
-branch only to discover a persisted ProjectBranch for an explicit operation;
-it cannot turn that discovery into a runtime credential or infer an
-environment directly. Do not infer an active environment from a Project,
-DataSource, production default, branch text alone, or request body.
+Before Agent list or search, call `organization_environment.list`, present the
+visible environment names, required repository branches, production role, and
+public UIDs, and ask the user which environment should bound the work. Continue
+limit/offset pagination until `next` is null before presenting the choice set.
+If the user already named one, still resolve it through the tool instead of
+guessing its UID. Do not default to production or silently choose the only
+row. Reuse the selected UID for the bounded workflow and pass it explicitly to
+every `agent.list` or `agent.search` call.
+
+A genuine local checkout may use its active Git branch only to discover a
+persisted ProjectBranch for an explicit operation; it cannot turn that
+discovery into a runtime credential or infer an environment directly. Do not
+infer an active environment from a Project, DataSource, production default,
+branch text alone, or request body.
 
 ### Organization-Scoped And Other Coding-Agent Services
 
@@ -299,6 +315,14 @@ Organization-global resources
 + resources scoped to E
 ```
 
+Do not confuse those platform configuration resources with workflow API
+`2.0.0` `env_vars`. A workflow literal is target-owned process configuration
+stored on one Job or one runtime target's backing Job. It does not perform
+global-plus-environment name resolution, create a Secret or Constant, select
+an Organization Environment, or change ProjectBranch assignment. The branch's
+backend-derived environment remains the authorization and discovery boundary;
+the literal only reaches the target process after its normal deployment path.
+
 Resources from another environment are not eligible. When a global and an
 environment row share the same logical `(namespace, name)` identity, the
 approved name-based resolution selects the environment row. Public-UID lookup
@@ -322,6 +346,33 @@ same warning metadata. No separate MCP preflight tool is approved or deployed.
 Availability is not Secret injection. Secret value access keeps its stronger
 authorization, and `ProjectSecret` remains the explicit branch assignment and
 alias used by injection workflows.
+
+### Project Coding Agents
+
+Agent list, quick-search, and semantic-search require one
+`organization_project_environment_uid`. Apply this boundary before filtering
+or ranking and return only typed Project Coding Agents whose persisted
+ProjectBranches belong to that environment. This permits discovery across
+Projects only when the exact branches share the same Organization Environment.
+Project Coding Agents from every other environment and unscoped Agent types are
+excluded.
+
+An authorized human or local caller first uses
+`organization_environment.list`, presents the visible choices to the user,
+and asks which environment should bound the work. The selected public UID is
+then required on `agent.list` and `agent.search`. A deployed Project Executor
+does not list or choose environments: Astro Tau injects the UID provided by
+the backend runtime context and removes it from the model-visible MCP schema.
+Never ask a deployed Project Executor user to select an environment, and never
+infer or widen scope from Organization membership, repository branch text,
+DataSource equality, or prompt input.
+
+Same-environment discovery does not grant arbitrary session access. Delegation
+to another Project Coding Agent requires a caller-owned parent session, and the
+persisted parent-child relationship authorizes subsequent delegated runtime-
+access and task operations. Project Executor subagent bindings require both
+endpoints to be Project Coding Agents in the same environment, and the calling
+runtime may manage only its own outbound bindings.
 
 ### DataSource
 
@@ -361,8 +412,9 @@ does not define full-replacement PUT.
 The route is deployed with the accepted serializer fields, filters,
 Organization-admin mutation permissions, and transition restrictions. Project
 Executor credentials can observe only their derived environment and cannot
-mutate this resource. No corresponding MCP operation exists merely because
-this static skill documents the DRF resource identity.
+mutate this resource. The read-only `organization_environment.list` MCP tool
+delegates to this exact list action and returns its canonical paginated
+serializer response. It adds no MCP-only visibility or permission rule.
 
 ## Follow The Environment Lifecycle
 
@@ -529,6 +581,9 @@ research data into production.
   and the source card for a Project Coding Agent.
 - Use `resource-release` to discover, configure, deploy, and observe a
   ProjectBranch-owned ResourceRelease.
+- Use `organization_environment.list` before human/local Agent discovery to
+  resolve visible environment names to public UIDs and obtain the user's
+  explicit environment selection.
 - Use `static-site` for the static-site specialization after the exact
   ProjectBranch is selected.
 - Stop for a separately approved data-migration workflow when the requested
@@ -553,8 +608,8 @@ Stop and ask for direction when:
 - code deployment is assumed to migrate data or configuration;
 - an established environment mapping would change without preflight and a
   migration policy;
-- the requested MCP environment operation is absent from the registered tool
-  catalog.
+- the request needs an environment mutation or detail operation that is absent
+  from the registered MCP catalog.
 
 ## Handoff
 

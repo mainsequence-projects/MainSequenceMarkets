@@ -92,9 +92,39 @@ Record:
 - whether the API uses backend transport or a contract-defined direct
   development transport
 
-Use `LoggedUserContextMiddleware` when the platform-authenticated request user
-must be available through `request.state`. This middleware binds request headers
-to the SDK request context; it is not an authorization policy by itself.
+FastAPI releases receive the authenticated human from the Main Sequence
+platform through injected request state. No SDK authentication setup is
+required in project code:
+
+```python
+from fastapi import FastAPI, Request
+
+
+app = FastAPI()
+
+
+@app.get("/me")
+def get_me(request: Request) -> dict[str, str | None]:
+    return {
+        "uid": request.state.user_uid,
+        "username": request.state.user.username,
+    }
+```
+
+Route code must not detect local versus deployed execution, parse
+authentication headers, or resolve the request user itself. Consume only the
+platform-injected human caller identity:
+
+- `request.state.user` contains canonical `uid` and optional `username`
+- `request.state.user_uid` is the canonical public user UUID
+- `request.state.user_id` does not exist
+
+This identity is the human making the current HTTP request. It is not the
+release creator, deployment owner, runtime workload principal, or runtime
+target. Pass request state explicitly to shared services; do not use
+`User.get_logged_user()` as a FastAPI entry point. Platform-injected identity is
+not resource authorization; use `request.state.user_uid` when applying the
+endpoint's authorization policy.
 
 ### 2. Implement the provider
 

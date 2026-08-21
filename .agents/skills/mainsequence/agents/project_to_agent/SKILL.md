@@ -48,6 +48,14 @@ source card, branch text, request payload, human JWT, and other coding-agent
 service types cannot select or widen it. Use the `organization-environments`
 skill for the complete resource and promotion lifecycle.
 
+The same derived environment scopes Project Coding Agent interaction. Agent
+list/search exposes only Project Coding Agents whose ProjectBranches belong to
+that environment, including compatible branches from other Projects. Astro Tau
+injects the backend-provided environment into MCP discovery and hides the
+selector from the model. Delegation remains provenance-bound: a target session
+must be created under a parent session owned by the calling Project Executor,
+and subagent bindings cannot cross environments or target an unscoped Agent.
+
 The Project Executor image inherits the exact verified source provenance of
 its digest-pinned ProjectBranch project image and adds the executor bundle and
 recipe identity. It must not clone the repository or independently select a
@@ -55,13 +63,29 @@ branch. Runtime credential exchange supplies the same backend-derived public
 ProjectBranch context used by other branch-owned Kubernetes workloads. The SDK
 uses that authenticated context without inspecting Git; repository source-card
 metadata and container environment values are descriptive inputs, not the
-authorization root.
+action-authorization root. The runtime credential authenticates its persisted
+responsible User, whose normal DRF, role, service-identity, object, and
+operation policy applies without a token-scope action allowlist. The target
+chain remains authoritative only for the agent's object namespace,
+ProjectBranch, Organization Environment, and resource composition.
 
 A Project Coding Agent declaration does not need an image UID or a prebuilt
 image, regardless of its `automatic_deployment` setting. The backend owns the
 exact-commit project-image and Project Executor image builds, so
 `project_image.create` is not a prerequisite. The server-side target policy
 separately owns later automatic-redeployment eligibility.
+
+Both image stages use the shared durable orchestration contract. The
+ProjectExecutorRun attaches typed project-image and runtime-image dependencies;
+active relations block deletion, while terminal history may retain typed
+tombstones without retaining the image row. Each provider attempt is a complete `ProjectImageBuildRun`
+prepared before submission. Reserved image build arguments are derived from
+those relations at submission and are never persisted as image UIDs or URIs in
+generic build-argument JSON. Multiple deployment entry points converge on the
+same exact build identity. Celery is only a wake-up, ambiguous submission is
+never blindly retried, and neither project instructions nor project-owned
+skills may encode image UIDs, provider handles, transient tags, or a `latest`
+runtime selector.
 
 ## Required Repository Artifacts
 
@@ -97,6 +121,10 @@ agent. Only project-owned skills outside that tree belong in the source card.
    `project_coding_agent` declaration under `.mainsequence/workflows/`, validate
    it through the backend, and inspect its deployment run after commit. No
    ProjectBranch or Project Executor image input is needed for this declaration.
+   API `2.0.0` may include non-secret target-owned `env_vars`; retrieve the live
+   template for their exact shape. Those literals configure only the service
+   backing Job and cannot create platform Secrets/Constants or select branch,
+   environment, harness, image, or runtime credentials.
 
 When the user asks only for a plan, stop after presenting the plan.
 

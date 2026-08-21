@@ -505,7 +505,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "6.0.27"
+version = "6.0.35"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -526,15 +526,14 @@ dependencies = [
     { name = "pyyaml" },
     { name = "requests" },
     { name = "sqlalchemy" },
-    { name = "starlette" },
     { name = "structlog" },
     { name = "tqdm" },
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/7d/9ee0c207e685f905229df5af1fd405a0b8276a8ade401a01234f05fa860d/mainsequence-6.0.27.tar.gz", hash = "sha256:42f3cf730ba6bc87d0b568e7f40e19f2cb3afcc301599707f22d490b8ca0fc90", size = 497248, upload-time = "2026-08-12T21:36:39.569Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8a/3f/868d2e96b1e31aeea3e8ca0e4d63c95233d731b77b9e76437373015c3949/mainsequence-6.0.35.tar.gz", hash = "sha256:37aebd05a43b9cd7c20c67addcadfdd6eb19b5380b0ea2fd941e0c9f3a0da82b", size = 500878, upload-time = "2026-08-20T21:45:41.235Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/99/97/3b62dbf22dc84b1f4f66b7764fb855bd8c9a73d7066c35698aa3eb1af6cd/mainsequence-6.0.27-py3-none-any.whl", hash = "sha256:f221eb73e9ccb8112488b37a831598f469edc46aa099206dc120d6ea1e91569a", size = 395384, upload-time = "2026-08-12T21:36:38.01Z" },
+    { url = "https://files.pythonhosted.org/packages/78/d2/b043cad197ae68577d049fc7f45f5fd621a87c4fccabbf776b2b3f986a58/mainsequence-6.0.35-py3-none-any.whl", hash = "sha256:d8076e05712d89b78c92a6e13ddc15e1e362502f46ee73a932d2313da2dabdb8", size = 396413, upload-time = "2026-08-20T21:45:39.715Z" },
 ]
 
 [[package]]
@@ -789,7 +788,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.104"
+version = "0.0.105"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -858,7 +857,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.136.3" },
     { name = "fastapi", marker = "extra == 'public-api'", specifier = ">=0.136.3" },
     { name = "joblib", marker = "extra == 'portfolios'" },
-    { name = "mainsequence", specifier = "==6.0.27" },
+    { name = "mainsequence", specifier = "==6.0.35" },
     { name = "matplotlib", marker = "extra == 'pricing'" },
     { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6" },

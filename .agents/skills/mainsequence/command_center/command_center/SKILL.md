@@ -1,6 +1,6 @@
 ---
 name: command-center
-description: Discover and use the Main Sequence Command Center backend resources exposed through MCP. Use as the top-level operation map for Workspaces, RegisteredWidgetTypes, ConnectionTypes, and ConnectionInstances, then use the dedicated Command Center connections skill for connection lifecycle and adapter execution.
+description: Discover and use the Main Sequence Command Center backend resources exposed through MCP. Use as the top-level operation map for normalized Workspaces, immutable-revision-backed RegisteredWidgetTypes, ConnectionTypes, and ConnectionInstances, then use the dedicated Command Center connections skill for connection lifecycle and adapter execution.
 ---
 
 # Main Sequence Command Center
@@ -62,18 +62,24 @@ Use `workspace.list` to enumerate visible Workspaces. Supported filters are:
 - `limit` and `offset`.
 
 Use `workspace.get` with `workspace_uid` for one visible Workspace. The result
-is the canonical shared Workspace read representation. User-specific transient
-state is not part of that shared definition.
+is the canonical composable Workspace read representation reconstructed from
+normalized instance rows. Its executable identity is
+`widgets[*].widgetRevisionUid`; `widgetId` and `widgetVersion` are read-only
+projections. Only the requesting user's transient runtime state may be merged
+into that response; it is never shared workspace content.
 
 ### Registered widget type reads
 
-Use `registered_widget_type.list` with the supported `widget_id`, `category`,
-`kind`, `source`, `isActive`, `includeInactive`, `limit`, and `offset` fields.
+Use `registered_widget_type.list` with only `widget_id`, `limit`, and `offset`.
 Use `registered_widget_type.get` with the stable `widget_id` natural key.
 
-RegisteredWidgetType is a synchronized catalog projection. Do not treat it as
-an arbitrary user-authored record or infer a registration mutation from a
-generic client method. Registry synchronization is not exposed through MCP.
+RegisteredWidgetType is stable `(widget-extension release, widget_id)` identity,
+not a mutable metadata mirror. Each catalog response selects an immutable
+`RegisteredWidgetRevision` and returns its `widgetRevisionUid`, version,
+release UID, publication UID, and manifest-projected metadata. The mutable
+registry synchronization service no longer exists. Successful
+WidgetExtensionRelease publication is the only registration path, including
+for first-party widgets.
 
 ### Connection type reads
 
@@ -114,9 +120,9 @@ describes them. The current MCP catalog exposes only `workspace.list` and
 mutation has no advertised tool instead of attempting a generic request or
 claiming success.
 
-Removing the Python compatibility models requires separately approved MCP
-mutation parity, exact DRF-aligned schemas, permission-parity tests, and an SDK
-deprecation decision. This skill does not provide that parity by itself.
+Workspace mutation parity still requires separately approved MCP tools with
+exact DRF-aligned schemas and permission-parity tests. This skill does not
+provide that parity by itself.
 
 ## Authorization And Safety
 

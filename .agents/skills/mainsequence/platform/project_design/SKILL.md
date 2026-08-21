@@ -58,6 +58,15 @@ Keep these distinctions:
 - `ProjectBranch` is one durable branch-specific configuration and execution
   context under a Project. Another provider branch gets a different
   ProjectBranch UID while retaining the same logical Project UID.
+- A Project Coding `Agent` derives its ProjectBranch and Organization
+  Environment from the typed Project Executor policy. Agent list/search always
+  selects one Organization Environment and returns only Project Coding Agents
+  in that boundary. Human and local callers resolve the visible environments
+  with `organization_environment.list` and ask the user to select one before
+  discovery; deployed Project Executors use the backend-injected environment
+  and never ask. Same-environment delegation additionally requires persisted
+  parent-session provenance; environment membership is not blanket session or
+  task authorization.
 - `project.create` establishes the logical Project and its initial `main`
   ProjectBranch and never accepts a branch name. After bootstrap, a signed
   provider push links an existing branch automatically only when the
@@ -88,26 +97,71 @@ Keep these distinctions:
   `TimeIndexMetaTable` data; its database identities are derived from its
   input and output MetaTables.
 - `Job` is a project-bound execution definition with a repository execution
-  path or app target, runtime resources, optional image/commit pinning, and an
-  optional schedule. `JobRun` is one execution. A branch-owned Job,
+  path or app target, runtime resources, exactly one ownership-typed image
+  identity through the exclusive public/Organization relation pair, an exact
+  full commit for project code, optional future exact-event image promotion,
+  and an optional schedule. `JobRun` is one execution and freezes that image,
+  digest, and commit before launch. A branch-owned Job,
   Project Executor, or runtime ResourceRelease may execute only a
   digest-pinned project image whose verified source provenance matches the
   exact ProjectBranch and commit. The backend admits source only after proving
   the full commit is reachable from that branch's exact remote ref and then
-  supplies every image provider one normalized checksummed archive; provider
-  recipes do not clone or choose Git state.
+  stages one normalized checksummed compressed context in the output tenancy.
+  Every image-build run protects that immutable relational artifact; GCP and
+  Azure derive request locations from it, and retries never reclone Git,
+  reinterpret provider strings, or choose branch state. Project authors and
+  MCP callers never provide a bucket, object key, source URI, or signed token.
+- Image ownership is explicit: public bases, tools, and bundles are
+  `PublicCatalogImage`; Organization build outputs are
+  `ProjectJobImage` descendants of `OrganizationImage`. There is no generic
+  persisted `Image`, generic UID resolver, or cross-root discovery path.
+- Every image-dependent `DeploymentRun` binds its exact image roles through
+  typed `DeploymentRunImageDependency` rows. Active runs retain the live
+  relation; terminal history may retain a typed tombstone after canonical
+  image deletion. One complete
+  `ProjectImageBuildRun` owns immutable build identity, provider request and
+  operation state, a protected exact build-context artifact, reconciliation
+  deadlines, and failure. Preparation commits before provider submission;
+  database state is the durable queue and Celery is only a wake-up. Generic
+  JSON never owns image UIDs, build-context artifact identities, source URIs,
+  digests, provider handles, or readiness.
+- Concurrent target services requesting the same exact image build converge on
+  one canonical attempt and attach independent parent dependencies. Ambiguous
+  submission remains on that attempt and is never blindly retried. Execution
+  accepts only verified digest-pinned dependencies and never a `latest` tag.
 - When a runtime ResourceRelease is declared in `.mainsequence/workflows` with
   automatic deployment enabled, project design does not select or require an
-  image. The workflow ignores any image UID, the target may remain pending
-  without an attached image, and the backend evaluates the target policy before
-  building or reusing the eligible exact-commit image. Direct ResourceRelease
-  creation remains a separate image-backed contract.
+  image. The workflow ignores any image UID and validation accepts the
+  declaration without one. On first application the backend resolves the exact
+  repository-event image identity before materializing the backing Job; the
+  target remains non-runnable until that image is verified and digest-pinned.
+  Initial application owns one `source=create`, `operation=build_and_deploy`
+  run and waits for that image when necessary. Later repository events own
+  policy evaluation and use `source=repository_event` runs. Direct
+  ResourceRelease creation remains a separate ready-image-backed
+  `source=create`, `operation=deploy` contract.
+- A widget extension is a `resource_release` deployment specialization, not a
+  new Blueprint design domain. Handoff uses `release_kind: widget_extension`
+  with only `name` and optional `root_directory`; automatic deployment and the
+  fixed SDK workload build are backend-owned. Never design an `extension_id`,
+  image selector, build command, environment, active deployment, or a second
+  publication-attempt system.
+- Workflow API `2.0.0` can carry non-secret target-owned `env_vars` for Jobs,
+  runtime ResourceReleases, and Project Coding Agents. Static sites use
+  `build_environment`; widget extensions accept neither. These literals configure only the declared target or
+  its backing Job: they do not create or resolve platform Secrets/Constants,
+  select an Organization Environment, write branch-wide configuration, or
+  enter project-image builds.
 - A deployed branch-owned runtime receives a backend-derived public context
   containing logical Project UID, exact ProjectBranch UID, descriptive branch
   name, and Organization Environment UID. That authenticated target chain is
-  the runtime authority. Git is used only by a genuine local checkout to
-  discover a persisted ProjectBranch; a deployed image never requires `.git`
-  and cannot select another branch or environment.
+  the resource-composition and routing authority, not the action principal.
+  Every runtime credential authenticates one persisted responsible User, and
+  normal DRF, role, service-identity, object, and operation authorization
+  applies to that User without a token-scope action allowlist. Git is used only
+  by a genuine local checkout to discover a persisted ProjectBranch; a
+  deployed image never requires `.git` and cannot select another branch or
+  environment.
 - SDK application code never supplies deployed runtime mode, ProjectBranch,
   repository branch, or Organization Environment. The SDK installs context
   only from an authenticated startup or credential-exchange response and omits
@@ -122,8 +176,10 @@ Keep these distinctions:
 - `project_to_agent` exposes verified project CLI workflows as truthful
   project-agent skills; it is not generic Agent administration.
 - `AutomaticRedeploymentPolicy` is target-owned and ProjectBranch-scoped. It
-  refines the automatic-deployment master switch for one ResourceRelease or
-  Project Coding Agent; it is never a shared ProjectBranch-wide rule.
+  refines the automatic-deployment master switch for one standalone Job,
+  ResourceRelease, or Project Coding Agent; it is never a shared
+  ProjectBranch-wide rule. A Job policy controls only future qualifying exact
+  repository-event promotions and never means a mutable latest image.
 
 Use the platform ontology for global platform nouns. Define the project's own
 business concepts inside the Blueprint.
@@ -296,6 +352,13 @@ For every MetaTable, DataNode, Job, API, CLI command, and static site, record:
 Reject orphan components that support no outcome or have no meaningful
 consumer.
 
+When a component requires process configuration, record the required variable
+names, non-secret value intent, target ownership, and secret exclusions in its
+existing constraints, decisions, dependencies, and acceptance criteria. The
+implementation handoff uses the live `project-workflows` API `2.0.0` template.
+Do not add a second Blueprint environment-variable domain or represent a
+workflow literal as a platform Secret/Constant resource.
+
 `depends_on`, `consumers`, and acceptance criteria are Blueprint architecture
 links. Do not misrepresent them as persisted fields on a MetaTable, DataNode,
 Job, API, or CLI record.
@@ -368,7 +431,10 @@ Record:
   - repository-relative `execution_path` for a `.py`, `.ipynb`, or `.yaml`
     project file; or
   - `app_name` for the existing app target;
-- optional project commit and project-image pinning intent;
+- image ownership intent: a caller-selected exact ready image for manual
+  pinning, or backend-derived exact image for automatic deployment;
+- whether future qualifying repository events may promote the Job to another
+  exact image, plus the optional exact-tag regex policy;
 - `cpu_request` and `memory_request`;
 - optional `gpu_request` and `gpu_type`;
 - `spot`;
@@ -379,6 +445,14 @@ Record:
 The canonical creation flow infers the Job type from `execution_path` or
 `app_name`. Do not declare an independent type or command contract in the
 Blueprint.
+
+Direct manual Job creation selects one already-ready exact project image.
+Direct automatic Job creation does not accept an image selector: the backend
+derives one exact initial image from the ProjectBranch's persisted synchronized
+commit and owns its preparation. Workflow Job declarations likewise carry no
+image or commit selectors: workflow API `2.0.0` derives the exact image from
+the immutable repository event. Neither automatic path resolves branch HEAD at
+runtime or persists an image-less Job.
 
 Explain why the workload is a Job rather than a DataNode, API request, or local
 developer command.
@@ -410,9 +484,31 @@ Do not rebuild producer logic in an API. Reference the DataNode or MetaTable
 that owns the data.
 
 When implementation produces a deployable FastAPI, Streamlit, agent-runtime,
-or static-site target, hand the accepted release intent to the
+static-site, or widget-extension target, hand the accepted release intent to the
 `resource-release` execution skill. Do not copy the live ResourceRelease
 serializer into the Blueprint.
+
+For a widget-extension deliverable, record only why the project needs the
+extension and the repository-relative source ownership needed for
+implementation handoff. Do not add a `widgets` top-level Blueprint domain or
+copy SDK manifest/instance contracts into project design. The installed
+Command Center SDK skill bundle owns the manifest and executable module; the
+`project-workflows` and `resource-release` skills own deployment.
+
+For a browser-called FastAPI, record the intended exact or wildcard browser
+origins as API deployment intent. The execution handoff uses the FastAPI
+release's canonical `cors_allowed_origins`; project code and workflow
+`env_vars` do not install or configure platform CORS middleware.
+
+When an accepted static site calls an accepted FastAPI release through
+platform delegation, record the exact source StaticSiteRelease UID, exact
+target FastAPI ResourceRelease UID, required target CORS origin policy, and
+same-Organization requirement in the connected API/static-site design and
+implementation handoff. Do not infer or require a common ProjectBranch,
+repository branch, or OrganizationProjectEnvironment. These UIDs are deployed
+release identities, not a new persistent Blueprint relationship model; if the
+releases do not yet exist, make their later UID resolution an explicit handoff
+condition rather than inventing values.
 
 If the accepted runtime release is implemented as an automatically managed
 repository workflow, also use `project-workflows`: record source and promotion
@@ -501,6 +597,15 @@ reference. Do not invent a build-environment variable name in project design;
 transport configuration belongs to the frontend implementation selected
 through the installed Command Center SDK skills.
 
+If the static site will call that API through platform delegation, its API
+dependency and constraints must state that implementation resolves the exact
+source StaticSiteRelease UID and target FastAPI ResourceRelease UID, configures
+the target CORS policy for the source origin, and preserves same-Organization
+ownership. Do not add a ProjectBranch or OrganizationProjectEnvironment
+co-location constraint. The installed Command Center SDK skills own frontend
+credential transport; the Blueprint must not contain tokens or reproduce that
+protocol.
+
 Do not put API URLs, environment values, tokens, credentials, provider state,
 framework versions, Node versions, output defaults, or a copy of the
 ResourceRelease serializer in the Blueprint. The complete installed Command
@@ -556,6 +661,10 @@ Before handoff, verify:
 - every CLI command maps to real components and declares side effects;
 - every project-agent skill references at least one compatible CLI command;
 - every static-site dependency and consumer reference resolves;
+- every delegated static-site-to-FastAPI composition records exact deployed
+  source and target release identity resolution, target CORS intent, and
+  same-Organization ownership without inventing an environment co-location
+  rule;
 - every organization-environment assumption uses an Organization-owned
   environment and backend-resolved ProjectBranch assignment;
 - every proposed shared environment requires the same exact repository branch

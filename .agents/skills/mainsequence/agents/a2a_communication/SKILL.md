@@ -1,6 +1,6 @@
 ---
 name: a2a-communication
-description: Discover a target Main Sequence Agent, establish a stable AgentSession, resolve ephemeral runtime access, and communicate directly with the runtime using standard A2A semantics.
+description: Resolve an explicit Organization Environment for human/local discovery, discover a target Main Sequence Agent, establish a stable AgentSession, resolve ephemeral runtime access, and communicate directly with the runtime using standard A2A semantics.
 ---
 
 # A2A Communication
@@ -18,13 +18,18 @@ the standard A2A protocol and the runtime contract documented by
 
 ## Canonical Flow
 
-1. Discover a bounded set of candidates with `agent.search`.
-2. Inspect the selected Agent with `agent.get` when more detail is needed.
-3. Create or reuse its session with `agent.get_or_create_session`.
-4. Resolve the session's current runtime endpoint and short-lived credential
+1. For a human or local caller, call `organization_environment.list`, present
+   the visible choices, and ask which environment should bound the work. Skip
+   this step only when the user already selected an environment or the deployed
+   Project Executor host injects its backend-derived environment.
+2. Discover a bounded set of candidates with `agent.search`, passing the
+   selected environment UID when it is model-visible.
+3. Inspect the selected Agent with `agent.get` when more detail is needed.
+4. Create or reuse its session with `agent.get_or_create_session`.
+5. Resolve the session's current runtime endpoint and short-lived credential
    with `agent_session.resolve_runtime_access`.
-5. Send the message directly to that runtime using the returned access data.
-6. Consume standard response message parts.
+6. Send the message directly to that runtime using the returned access data.
+7. Consume standard response message parts.
 
 The `AgentSession.uid` is the durable conversation context. Runtime locations
 and credentials are ephemeral and must be resolved again when they expire or
@@ -36,6 +41,20 @@ subdomain; the platform binds runtime access to the canonical coding-agent
 service UID.
 
 ## Discovery
+
+Agent discovery always has one Organization Environment boundary. The
+canonical `agent.list` and `agent.search` contracts require
+`organization_project_environment_uid` and return only Project Coding Agents
+whose persisted ProjectBranches belong to that environment. For a human or
+local MCP caller, call `organization_environment.list`, present each visible
+name, required branch, production role, and public UID, and ask the user which
+environment should bound the work. Continue limit/offset pagination until
+`next` is null before presenting the choices. Resolve a user-supplied name
+through that tool; never guess the UID or default to production. In a deployed
+Astro Tau Project Executor, the host injects the backend-derived environment
+and removes the argument from the model-visible tool schema; never call the
+environment selector workflow, ask the user for it, infer it from a branch
+name, or try to override it.
 
 Build a concise discovery query from:
 
@@ -58,8 +77,12 @@ conversation. A retry of the same get-or-create request reuses the same handle.
 After a session is returned, reuse its public UID for later turns.
 
 If the request originates from an existing caller session, supply that
-authorized parent session UID when creating the target session. Parent linkage
-records provenance; it does not broaden the task or grant access.
+authorized parent session UID when creating the target session. A Project
+Executor may target only a Project Coding Agent in its own Organization
+Environment, and the parent session must belong to the calling Project
+Executor. Parent linkage is the durable authorization provenance for later
+delegated runtime-access and task operations; it does not broaden the task or
+grant access outside that exact parent-child relationship.
 
 ## Runtime Access Is Sensitive
 
