@@ -3,16 +3,19 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Query, status
 
-from apps.v1.schemas.common import ErrorResponse, build_paginated_response
+from apps.v1.schemas.common import ErrorResponse
 from apps.v1.schemas.portfolio_signals import (
     PortfolioSignalDeleteResponse,
-    PortfolioSignalListResponse,
     PortfolioSignalWeightsDeleteResponse,
     SignalMetadata,
     SignalMetadataCreate,
     SignalMetadataUpdate,
+)
+from apps.v1.schemas.resource_contracts import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ResourceCollection,
 )
 from apps.v1.services.portfolio_signals import (
     PortfolioSignalDeleteConflictError,
@@ -23,19 +26,21 @@ from apps.v1.services.portfolio_signals import (
     list_portfolio_signals,
     update_portfolio_signal,
 )
+from apps.v1.services.resource_collections import resource_collection_response
 
 router = APIRouter(prefix="/portfolio-signal", tags=["portfolio-signal"])
 
 
 @router.get(
     "/",
-    response_model=PortfolioSignalListResponse,
+    response_model=ResourceCollection[SignalMetadata],
     summary="List portfolio signals",
     description=(
         "Return SignalMetadata rows in the reusable limit-offset pagination envelope. "
         "`search` is a contains filter over signal_uid; `signal_uid` is an exact filter."
     ),
     operation_id="listPortfolioSignals",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         400: {
             "model": ErrorResponse,
@@ -44,7 +49,6 @@ router = APIRouter(prefix="/portfolio-signal", tags=["portfolio-signal"])
     },
 )
 def get_portfolio_signals(
-    request: Request,
     search: Annotated[
         str,
         Query(description="Optional contains search over signal_uid."),
@@ -61,7 +65,7 @@ def get_portfolio_signals(
         int,
         Query(ge=0, description="Zero-based starting offset into the filtered signal list."),
     ] = 0,
-) -> PortfolioSignalListResponse:
+) -> ResourceCollection[SignalMetadata]:
     try:
         response = list_portfolio_signals(
             search=search,
@@ -72,14 +76,11 @@ def get_portfolio_signals(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return PortfolioSignalListResponse.model_validate(
-        build_paginated_response(
-            request_url=str(request.url),
-            results=response.results,
-            count=response.count,
-            limit=limit,
-            offset=offset,
-        ).model_dump()
+    return resource_collection_response(
+        items=response["results"],
+        total_items=int(response["count"]),
+        limit=limit,
+        offset=offset,
     )
 
 

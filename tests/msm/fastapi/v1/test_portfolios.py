@@ -38,7 +38,6 @@ def test_get_portfolios_returns_core_portfolio_rows(monkeypatch) -> None:
     response = client.get(
         "/api/v1/portfolio/",
         params={
-            "response_format": "frontend_list",
             "search": "sleeve",
             "limit": 10,
             "offset": 0,
@@ -47,10 +46,14 @@ def test_get_portfolios_returns_core_portfolio_rows(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json() == {
-        "count": 1,
-        "next": None,
-        "previous": None,
-        "results": [portfolio],
+        "items": [portfolio],
+        "pageInfo": {
+            "pageIndex": 0,
+            "pageSize": 10,
+            "totalItems": 1,
+            "hasNextPage": False,
+            "hasPreviousPage": False,
+        },
     }
     assert captured == {
         "search": "sleeve",
@@ -60,12 +63,10 @@ def test_get_portfolios_returns_core_portfolio_rows(monkeypatch) -> None:
     }
 
 
-def test_get_portfolios_rejects_unknown_response_format() -> None:
-    client = TestClient(app)
-    response = client.get("/api/v1/portfolio/", params={"response_format": "detail"})
+def test_get_portfolios_does_not_publish_response_format() -> None:
+    parameters = app.openapi()["paths"]["/api/v1/portfolio/"]["get"]["parameters"]
 
-    assert response.status_code == 400
-    assert "frontend_list" in response.json()["detail"]
+    assert "response_format" not in {parameter["name"] for parameter in parameters}
 
 
 def test_portfolio_service_rejects_null_calendar_uid_in_list(monkeypatch) -> None:

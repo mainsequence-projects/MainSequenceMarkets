@@ -5,10 +5,10 @@ import datetime as dt
 from apps.v1.schemas.accounts import (
     AccountAddHoldingsRequest,
     AccountAddTargetPositionsRequest,
+    Account,
     AccountHoldingsByFundResponse,
     AccountHoldingsSnapshotResponse,
-    AccountListResponse,
-    AccountTargetAllocationCandidateResponse,
+    AccountTargetAllocationCandidate,
     AccountTargetAllocationTargetSearchType,
     AccountTargetPositionsSnapshotResponse,
 )
@@ -20,7 +20,7 @@ def list_accounts(
     search: str = "",
     limit: int = 25,
     offset: int = 0,
-) -> AccountListResponse:
+) -> dict[str, object]:
     runtime = _get_runtime()
     response = _list_account_rows_response(
         runtime.context,
@@ -28,7 +28,18 @@ def list_accounts(
         limit=limit,
         offset=offset,
     )
-    return AccountListResponse.model_validate(response)
+    return {
+        "count": int(response["count"]),
+        "results": [Account.model_validate(row) for row in response["results"]],
+    }
+
+
+def get_account(*, uid: str) -> Account | None:
+    runtime = _get_runtime()
+    rows = _operation_result_rows(_get_account_by_uid(runtime.context, uid=uid))
+    if not rows:
+        return None
+    return Account.model_validate(rows[0])
 
 
 def get_account_summary(*, uid: str) -> FrontEndDetailSummary | None:
@@ -149,7 +160,7 @@ def search_account_target_allocation_targets(
     target_type: AccountTargetAllocationTargetSearchType = "all",
     limit: int = 25,
     offset: int = 0,
-) -> AccountTargetAllocationCandidateResponse:
+) -> dict[str, object]:
     runtime = _get_target_allocation_candidates_runtime()
     response = _search_account_target_allocation_candidates(
         runtime.context,
@@ -158,7 +169,12 @@ def search_account_target_allocation_targets(
         limit=limit,
         offset=offset,
     )
-    return AccountTargetAllocationCandidateResponse.model_validate(response)
+    return {
+        "count": int(response["count"]),
+        "results": [
+            AccountTargetAllocationCandidate.model_validate(row) for row in response["results"]
+        ],
+    }
 
 
 def _get_runtime():
@@ -244,6 +260,18 @@ def _get_account_frontend_detail_summary(context, **kwargs):
     from msm.services import get_account_frontend_detail_summary
 
     return get_account_frontend_detail_summary(context, **kwargs)
+
+
+def _get_account_by_uid(context, **kwargs):
+    from msm.services import get_account_by_uid
+
+    return get_account_by_uid(context, **kwargs)
+
+
+def _operation_result_rows(value):
+    from msm.api.base import operation_result_rows
+
+    return operation_result_rows(value)
 
 
 def _get_account_holdings_snapshot_response(context, **kwargs):

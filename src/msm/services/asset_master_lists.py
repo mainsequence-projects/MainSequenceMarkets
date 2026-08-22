@@ -7,9 +7,17 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from mainsequence.meta_tables import slugify_identifier
+from sqlalchemy import String, cast, func, or_, select
 
-from msm.models import IndexTable
+from msm.models import (
+    AssetCategoryMembershipTable,
+    AssetCategoryTable,
+    AssetTable,
+    IndexTable,
+    OpenFigiAssetDetailsTable,
+)
 from msm.repositories import MarketsRepositoryContext
+from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm.repositories.crud import delete_model, get_model_by_uid, search_model
 from msm.services.asset_categories import (
     create_asset_category as service_create_asset_category,
@@ -270,6 +278,75 @@ def list_asset_rows(
     return normalized_rows[offset : offset + limit]
 
 
+def list_asset_rows_response(
+    context: MarketsRepositoryContext,
+    *,
+    search: str = "",
+    limit: int = DEFAULT_FRONTEND_PAGE_SIZE,
+    offset: int = 0,
+    category_uid: str | None = None,
+) -> dict[str, Any]:
+    """Return an authoritative page from the canonical asset registry."""
+
+    statement = select(AssetTable)
+    models: list[type[Any]] = [AssetTable]
+    if category_uid not in (None, ""):
+        statement = statement.join(
+            AssetCategoryMembershipTable,
+            AssetCategoryMembershipTable.asset_uid == AssetTable.uid,
+        ).where(AssetCategoryMembershipTable.category_uid == str(category_uid))
+        models.append(AssetCategoryMembershipTable)
+    normalized_search = search.strip().lower()
+    if normalized_search:
+        statement = statement.outerjoin(
+            OpenFigiAssetDetailsTable,
+            OpenFigiAssetDetailsTable.asset_uid == AssetTable.uid,
+        )
+        models.append(OpenFigiAssetDetailsTable)
+        needle = f"%{normalized_search}%"
+        statement = statement.where(
+            or_(
+                func.lower(cast(AssetTable.uid, String)).like(needle),
+                func.lower(AssetTable.unique_identifier).like(needle),
+                func.lower(func.coalesce(AssetTable.asset_type, "")).like(needle),
+                func.lower(func.coalesce(OpenFigiAssetDetailsTable.ticker, "")).like(needle),
+            )
+        )
+    statement = statement.order_by(
+        func.lower(AssetTable.unique_identifier),
+        AssetTable.uid,
+    )
+    count_statement = select(func.count().label("count")).select_from(statement.subquery())
+    count_rows = _operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                count_statement,
+                context=context,
+                operation="select",
+                models=models,
+                access="read",
+            ),
+            context=context,
+        )
+    )
+    rows = _operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                statement.limit(limit).offset(offset),
+                context=context,
+                operation="select",
+                models=models,
+                access="read",
+            ),
+            context=context,
+        )
+    )
+    return {
+        "count": int(count_rows[0]["count"]) if count_rows else 0,
+        "results": [_build_asset_record(row) for row in rows],
+    }
+
+
 def get_asset_record(
     context: MarketsRepositoryContext,
     *,
@@ -522,6 +599,63 @@ def list_asset_category_rows(
     return normalized_rows[offset : offset + limit]
 
 
+def list_asset_category_rows_page(
+    context: MarketsRepositoryContext,
+    *,
+    search: str = "",
+    limit: int = DEFAULT_FRONTEND_PAGE_SIZE,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Return an authoritative page from the canonical category registry."""
+
+    statement = select(AssetCategoryTable)
+    normalized_search = search.strip().lower()
+    if normalized_search:
+        needle = f"%{normalized_search}%"
+        statement = statement.where(
+            or_(
+                func.lower(cast(AssetCategoryTable.uid, String)).like(needle),
+                func.lower(AssetCategoryTable.unique_identifier).like(needle),
+                func.lower(AssetCategoryTable.display_name).like(needle),
+                func.lower(func.coalesce(AssetCategoryTable.description, "")).like(needle),
+            )
+        )
+    statement = statement.order_by(
+        func.lower(AssetCategoryTable.display_name),
+        func.lower(AssetCategoryTable.unique_identifier),
+        AssetCategoryTable.uid,
+    )
+    count_statement = select(func.count().label("count")).select_from(statement.subquery())
+    count_rows = _operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                count_statement,
+                context=context,
+                operation="select",
+                models=[AssetCategoryTable],
+                access="read",
+            ),
+            context=context,
+        )
+    )
+    rows = _operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                statement.limit(limit).offset(offset),
+                context=context,
+                operation="select",
+                models=[AssetCategoryTable],
+                access="read",
+            ),
+            context=context,
+        )
+    )
+    return {
+        "count": int(count_rows[0]["count"]) if count_rows else 0,
+        "results": [_build_asset_category_record(row) for row in rows],
+    }
+
+
 def get_asset_category_row(
     context: MarketsRepositoryContext,
     *,
@@ -592,7 +726,6 @@ def get_asset_category_frontend_detail(
         "assets_list": {
             "list_endpoint": "/api/v1/asset/",
             "query_endpoint": "/api/v1/asset/query/",
-            "response_format": "frontend_list",
             "default_filters": {
                 "categories__uid": category_uid,
             },

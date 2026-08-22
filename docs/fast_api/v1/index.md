@@ -48,6 +48,8 @@ This API is intentionally thin:
   virtual-fund identity and holdings snapshots.
 - [Command Center Bulk Actions](command_center_bulk_actions.md): SDK-contract
   discovery, preflight, and execution for destructive collection actions.
+- [Command Center Resource Contracts](resource_contracts.md): the canonical
+  collection, discovery, detail, summary, and action boundaries for all lists.
 
 ## Design Decisions (ADRs)
 
@@ -173,11 +175,12 @@ must not replace it with a machine-local `[tool.uv.sources]` path override.
     `core.tabular_frame@v1` query operation for Command Center Asset Monitor
     workspaces
 
-## Compatibility Notes
+## Resource contract cutover
 
-The `response_format=frontend_list` and `response_format=frontend_detail`
-query parameters are still accepted on migrated legacy routes, but list and
-direct detail rows now prefer core library API models over frontend projections.
+All list operations return `command-center.resource_collection@v1`, and each
+has an authoritative sibling `/discovery/` operation. The retired
+`response_format` selectors, DRF-style pagination envelopes, and standalone
+`/bulk-actions/` discovery endpoints are not part of the API.
 
 The nested category asset table should use `GET /api/v1/asset/` with
 `categories__uid`. The dedicated `POST /api/v1/asset/query/` route is still

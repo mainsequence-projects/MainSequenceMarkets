@@ -5,7 +5,6 @@ import datetime as dt
 from pydantic import BaseModel, ConfigDict, Field
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-from apps.v1.schemas.common import PaginatedResponse
 
 
 def _portfolio_contract():
@@ -140,6 +139,3 @@ class PortfolioWeightsDeleteResponse(BaseModel):
     portfolio_identifier: str | None = None
     weights_date: dt.datetime | None = None
     deleted_count: int = 0
-
-
-PortfolioListResponse = PaginatedResponse[Portfolio]

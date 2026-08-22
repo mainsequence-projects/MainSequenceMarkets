@@ -1,0 +1,8 @@
+{
+  "contract": "command-center.tabular_transform_authoring@v1",
+  "widgetId": "core__tabular-transform",
+  "props": {
+    "transformMode": "none",
+    "rowMergeMode": "latest"
+  }
+}

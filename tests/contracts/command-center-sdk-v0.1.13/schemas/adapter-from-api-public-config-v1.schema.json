@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:adapter-from-api-public-config:v1",
+  "title": "Command Center Adapter From API public config v1",
+  "description": "Canonical persisted non-secret configuration for command_center.adapter_from_api. Form drafts are not instances of this wire contract.",
+  "type": "object",
+  "required": [
+    "transportMode",
+    "contractDefinitionUrl",
+    "openApiUrl",
+    "configValues",
+    "compiledContract",
+    "compiledContractSource",
+    "compiledContractSourceUrl"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "transportMode": { "enum": ["backend", "direct"] },
+    "contractDefinitionUrl": { "type": "string", "pattern": "^https?://" },
+    "openApiUrl": { "type": "string", "pattern": "^https?://" },
+    "apiBaseUrl": { "type": "string", "pattern": "^https?://" },
+    "debugApiBaseUrl": { "type": "string", "pattern": "^https?://" },
+    "contractVersion": { "type": "string", "pattern": ".*\\S.*" },
+    "configValues": { "type": "object", "additionalProperties": true },
+    "compiledContract": {
+      "$ref": "urn:mainsequence:command-center-sdk:schema:adapter-from-api-discovery:v1"
+    },
+    "compiledContractSource": { "enum": ["backend", "direct"] },
+    "compiledContractSourceUrl": { "type": "string", "pattern": "^https?://" },
+    "requestTimeoutMs": { "type": "integer", "minimum": 1 },
+    "queryCachePolicy": { "enum": ["safe", "disabled"] },
+    "queryCacheTtlMs": { "type": "integer", "minimum": 0 },
+    "dedupeInFlight": { "type": "boolean" }
+  },
+  "oneOf": [
+    {
+      "required": ["apiBaseUrl"],
+      "properties": {
+        "transportMode": { "const": "backend" },
+        "apiBaseUrl": true,
+        "debugApiBaseUrl": false,
+        "compiledContractSource": { "const": "backend" }
+      }
+    },
+    {
+      "required": ["debugApiBaseUrl"],
+      "properties": {
+        "transportMode": { "const": "direct" },
+        "apiBaseUrl": false,
+        "debugApiBaseUrl": true,
+        "compiledContractSource": { "const": "direct" }
+      }
+    }
+  ]
+}

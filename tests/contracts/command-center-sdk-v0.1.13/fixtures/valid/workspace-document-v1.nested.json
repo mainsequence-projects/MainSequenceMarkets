@@ -1,0 +1,47 @@
+{
+  "id": "workspace-nested",
+  "title": "Nested workspace",
+  "description": "Demonstrates unknown widgets, bindings, rows, and forward metadata.",
+  "schemaVersion": 1,
+  "source": "user",
+  "layoutKind": "custom",
+  "futureWorkspaceMetadata": { "preserve": true },
+  "widgets": [
+    {
+      "id": "source",
+      "widgetId": "acme__future-source",
+      "props": { "query": "risk" },
+      "layout": { "w": 4, "h": 3 },
+      "pluginMetadata": { "package": "@acme/future" }
+    },
+    {
+      "id": "row",
+      "widgetId": "core__workspace-row",
+      "layout": { "cols": 8, "rows": 5 },
+      "row": {
+        "collapsed": false,
+        "children": [
+          {
+            "id": "table",
+            "widgetId": "core__table",
+            "props": { "tableSourceMode": "bound" },
+            "bindings": {
+              "seedData": {
+                "sourceWidgetId": "source",
+                "sourceOutputId": "dataset",
+                "transformSteps": [
+                  { "id": "extract-path", "path": ["payload"] }
+                ]
+              }
+            },
+            "presentation": { "surfaceMode": "default", "placementMode": "canvas" },
+            "layout": { "w": 4, "h": 3 },
+            "propsVersion": 1,
+            "userStateVersion": 1,
+            "authoredWithWidgetVersion": "2.0.0"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -9,6 +9,15 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Replaced every FastAPI v1 list response with the strict Command Center SDK
+  `command-center.resource_collection@v1` contract and added authoritative
+  `command-center.resource_discovery@v1` siblings for all 25 collections.
+  Removed `response_format`, DRF-style pagination, and standalone
+  `/bulk-actions/` discovery paths; embedded authorized bulk actions in resource
+  discovery; added canonical account and pricing-curve detail operations; and
+  pinned conformance tests to the complete Command Center SDK `0.1.13` schema
+  and fixture bundle.
+- Updated the Main Sequence dependency and managed project guidance to `6.0.37`.
 - Added port 3010 to the development-only FastAPI CORS wrapper so the static-site repository's VS
   Code full-stack debugger can run the local API on port 8001 and frontend on port 3010 together
   without changing production application middleware.

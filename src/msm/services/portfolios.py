@@ -3,8 +3,12 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from sqlalchemy import String, cast, func, or_, select
+
 from msm.api.base import operation_result_rows
+from msm.models import PortfolioGroupMembershipTable, PortfolioGroupTable, PortfolioTable
 from msm.repositories import MarketsRepositoryContext
+from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm.repositories import portfolios as portfolio_repository
 
 
@@ -55,6 +59,129 @@ def get_portfolio_group_by_unique_identifier(
 
 def search_portfolio_groups(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
     return portfolio_repository.search_portfolio_groups(context, **kwargs)
+
+
+def list_portfolio_group_rows_response(
+    context: MarketsRepositoryContext,
+    *,
+    search: str = "",
+    unique_identifier: str | None = None,
+    display_name: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    statement = select(PortfolioGroupTable)
+    if unique_identifier not in (None, ""):
+        statement = statement.where(PortfolioGroupTable.unique_identifier == unique_identifier)
+    if display_name not in (None, ""):
+        statement = statement.where(PortfolioGroupTable.display_name == display_name)
+    normalized_search = search.strip().lower()
+    if normalized_search:
+        needle = f"%{normalized_search}%"
+        statement = statement.where(
+            or_(
+                func.lower(cast(PortfolioGroupTable.uid, String)).like(needle),
+                func.lower(PortfolioGroupTable.unique_identifier).like(needle),
+                func.lower(PortfolioGroupTable.display_name).like(needle),
+            )
+        )
+    statement = statement.order_by(
+        func.lower(PortfolioGroupTable.display_name),
+        func.lower(PortfolioGroupTable.unique_identifier),
+        PortfolioGroupTable.uid,
+    )
+    return _collection_page(
+        context,
+        statement=statement,
+        models=[PortfolioGroupTable],
+        limit=limit,
+        offset=offset,
+    )
+
+
+def list_portfolios_for_group_response(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_group_uid: str,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    statement = (
+        select(PortfolioTable)
+        .join(
+            PortfolioGroupMembershipTable,
+            PortfolioGroupMembershipTable.portfolio_uid == PortfolioTable.uid,
+        )
+        .where(PortfolioGroupMembershipTable.portfolio_group_uid == portfolio_group_uid)
+        .order_by(func.lower(PortfolioTable.unique_identifier), PortfolioTable.uid)
+    )
+    return _collection_page(
+        context,
+        statement=statement,
+        models=[PortfolioTable, PortfolioGroupMembershipTable],
+        limit=limit,
+        offset=offset,
+    )
+
+
+def list_portfolio_groups_for_portfolio_response(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_uid: str,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    statement = (
+        select(PortfolioGroupTable)
+        .join(
+            PortfolioGroupMembershipTable,
+            PortfolioGroupMembershipTable.portfolio_group_uid == PortfolioGroupTable.uid,
+        )
+        .where(PortfolioGroupMembershipTable.portfolio_uid == portfolio_uid)
+        .order_by(func.lower(PortfolioGroupTable.display_name), PortfolioGroupTable.uid)
+    )
+    return _collection_page(
+        context,
+        statement=statement,
+        models=[PortfolioGroupTable, PortfolioGroupMembershipTable],
+        limit=limit,
+        offset=offset,
+    )
+
+
+def _collection_page(
+    context: MarketsRepositoryContext,
+    *,
+    statement: Any,
+    models: list[type[Any]],
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    count_rows = operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                select(func.count().label("count")).select_from(statement.subquery()),
+                context=context,
+                operation="select",
+                models=models,
+                access="read",
+            ),
+            context=context,
+        )
+    )
+    rows = operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                statement.limit(limit).offset(offset),
+                context=context,
+                operation="select",
+                models=models,
+                access="read",
+            ),
+            context=context,
+        )
+    )
+    return {"count": int(count_rows[0]["count"]) if count_rows else 0, "results": rows}
 
 
 def update_portfolio_group(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
@@ -313,8 +440,11 @@ __all__ = [
     "get_portfolio_group_by_uid",
     "get_portfolio_group_by_unique_identifier",
     "list_portfolio_groups_for_portfolio",
+    "list_portfolio_groups_for_portfolio_response",
     "list_portfolio_groups_for_portfolio_unique_identifier",
+    "list_portfolio_group_rows_response",
     "list_portfolios_for_group",
+    "list_portfolios_for_group_response",
     "list_portfolios_for_group_unique_identifier",
     "search_portfolio_group_memberships",
     "search_portfolio_groups",

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:resource-discovery:v1",
+  "title": "Command Center resource-list discovery v1",
+  "description": "Caller-contextual resource identity, visible list controls, ordered columns, and authorized bulk actions.",
+  "type": "object",
+  "required": ["contract", "resource", "list", "bulk_actions"],
+  "additionalProperties": false,
+  "properties": {
+    "contract": { "const": "command-center.resource_discovery@v1" },
+    "resource": { "$ref": "#/$defs/resource" },
+    "list": { "$ref": "#/$defs/list" },
+    "bulk_actions": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:mainsequence:command-center-sdk:schema:bulk-action-discovery:v1#/$defs/action"
+      }
+    },
+    "extensions": { "type": "object" }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "pattern": ".*\\S.*"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "safePath": {
+      "$comment": "Runtime validation also rejects __proto__, prototype, and constructor path segments.",
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+      "not": {
+        "pattern": "(^|\\.)(__proto__|prototype|constructor)(\\.|$)"
+      }
+    },
+    "identity": {
+      "type": "object",
+      "required": ["fields"],
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/safePath" }
+        }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "required": ["id", "label", "item_label", "identity"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "item_label": { "$ref": "#/$defs/nonEmptyString" },
+        "identity": { "$ref": "#/$defs/identity" },
+        "extensions": { "type": "object" }
+      }
+    },
+    "column": {
+      "type": "object",
+      "required": ["id", "header", "default_visible", "hideable"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "header": { "$ref": "#/$defs/nonEmptyString" },
+        "value_path": { "$ref": "#/$defs/safePath" },
+        "data_type": {
+          "enum": ["text", "number", "boolean", "date", "datetime", "badge", "list", "json"]
+        },
+        "default_visible": { "type": "boolean" },
+        "hideable": { "type": "boolean" },
+        "sortable_key": { "type": "string" },
+        "filter_key": { "type": "string" },
+        "importance": { "enum": ["primary", "secondary", "tertiary"] },
+        "align": { "enum": ["start", "center", "end"] },
+        "extensions": { "type": "object" }
+      },
+      "dependentRequired": {
+        "value_path": ["data_type"],
+        "data_type": ["value_path"]
+      }
+    },
+    "list": {
+      "$comment": "Column IDs are unique and sortable/filter keys must reference controls; runtime parsing enforces those cross-field invariants.",
+      "type": "object",
+      "required": ["controls", "columns"],
+      "additionalProperties": false,
+      "properties": {
+        "controls": {
+          "$ref": "urn:mainsequence:command-center-sdk:schema:resource-collection:v1#/$defs/controls"
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/column" }
+        }
+      }
+    }
+  }
+}

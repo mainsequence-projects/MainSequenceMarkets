@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request, status as http_status
+from fastapi import APIRouter, HTTPException, Query, status as http_status
 
-from apps.v1.schemas.common import ErrorResponse, build_paginated_response
+from apps.v1.schemas.common import ErrorResponse
 from apps.v1.schemas.pricing_market_data import (
     PricingMarketDataBindingResolveResponse,
     PricingMarketDataCardResponse,
@@ -12,14 +12,16 @@ from apps.v1.schemas.pricing_market_data import (
     PricingMarketDataSetBinding,
     PricingMarketDataSetBindingCreate,
     PricingMarketDataSetBindingDeleteResponse,
-    PricingMarketDataSetBindingListResponse,
     PricingMarketDataSetBindingUpdate,
     PricingMarketDataSetBindingUpsert,
     PricingMarketDataSetCreate,
     PricingMarketDataSetDeleteResponse,
-    PricingMarketDataSetListResponse,
     PricingMarketDataSetUpdate,
     PricingMarketDataSetUpsert,
+)
+from apps.v1.schemas.resource_contracts import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ResourceCollection,
 )
 from apps.v1.services.pricing_market_data import (
     create_pricing_market_data_binding,
@@ -39,6 +41,7 @@ from apps.v1.services.pricing_market_data import (
     upsert_pricing_market_data_binding,
     upsert_pricing_market_data_set,
 )
+from apps.v1.services.resource_collections import resource_collection_response
 
 router = APIRouter(prefix="/pricing/market_data", tags=["pricing-market-data"])
 
@@ -48,8 +51,7 @@ router = APIRouter(prefix="/pricing/market_data", tags=["pricing-market-data"])
     response_model=PricingMarketDataCardResponse,
     summary="Get pricing market-data API card",
     description=(
-        "Return a small discoverability card for pricing market-data set and "
-        "binding operations."
+        "Return a small discoverability card for pricing market-data set and binding operations."
     ),
     operation_id="getPricingMarketDataCard",
     responses={
@@ -65,12 +67,11 @@ def get_pricing_market_data_card() -> PricingMarketDataCardResponse:
 
 @router.get(
     "/sets/",
-    response_model=PricingMarketDataSetListResponse,
+    response_model=ResourceCollection[PricingMarketDataSet],
     summary="List pricing market-data sets",
-    description=(
-        "Return paginated pricing market-data set rows from `msm_pricing.api`."
-    ),
+    description=("Return paginated pricing market-data set rows from `msm_pricing.api`."),
     operation_id="listPricingMarketDataSets",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         400: {
             "model": ErrorResponse,
@@ -79,7 +80,6 @@ def get_pricing_market_data_card() -> PricingMarketDataCardResponse:
     },
 )
 def get_pricing_market_data_sets(
-    request: Request,
     limit: Annotated[
         int,
         Query(
@@ -103,27 +103,22 @@ def get_pricing_market_data_sets(
         str | None,
         Query(description="Optional exact set_key filter."),
     ] = None,
-) -> PricingMarketDataSetListResponse:
+) -> ResourceCollection[PricingMarketDataSet]:
     try:
-        response = PricingMarketDataSetListResponse.model_validate(
-            list_pricing_market_data_sets(
-                limit=limit,
-                offset=offset,
-                status=status,
-                set_key=set_key,
-            )
+        response = list_pricing_market_data_sets(
+            limit=limit,
+            offset=offset,
+            status=status,
+            set_key=set_key,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return PricingMarketDataSetListResponse.model_validate(
-        build_paginated_response(
-            request_url=str(request.url),
-            results=response.results,
-            count=response.count,
-            limit=limit,
-            offset=offset,
-        ).model_dump()
+    return resource_collection_response(
+        items=[PricingMarketDataSet.model_validate(row) for row in response["results"]],
+        total_items=int(response["count"]),
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -215,8 +210,7 @@ def post_pricing_market_data_set(
     response_model=PricingMarketDataSet,
     summary="Upsert pricing market-data set",
     description=(
-        "Create or update one pricing market-data set by `set_key` through "
-        "`msm_pricing.api`."
+        "Create or update one pricing market-data set by `set_key` through `msm_pricing.api`."
     ),
     operation_id="upsertPricingMarketDataSet",
     responses={
@@ -302,13 +296,13 @@ def remove_pricing_market_data_set(uid: str) -> PricingMarketDataSetDeleteRespon
 
 @router.get(
     "/bindings/",
-    response_model=PricingMarketDataSetBindingListResponse,
+    response_model=ResourceCollection[PricingMarketDataSetBinding],
     summary="List pricing market-data bindings",
     description=(
-        "Return paginated pricing market-data concept binding rows from "
-        "`msm_pricing.api`."
+        "Return paginated pricing market-data concept binding rows from `msm_pricing.api`."
     ),
     operation_id="listPricingMarketDataBindings",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         400: {
             "model": ErrorResponse,
@@ -317,7 +311,6 @@ def remove_pricing_market_data_set(uid: str) -> PricingMarketDataSetDeleteRespon
     },
 )
 def get_pricing_market_data_bindings(
-    request: Request,
     limit: Annotated[
         int,
         Query(
@@ -341,36 +334,32 @@ def get_pricing_market_data_bindings(
         str | None,
         Query(description="Optional exact pricing concept key filter."),
     ] = None,
-) -> PricingMarketDataSetBindingListResponse:
+) -> ResourceCollection[PricingMarketDataSetBinding]:
     try:
-        response = PricingMarketDataSetBindingListResponse.model_validate(
-            list_pricing_market_data_bindings(
-                limit=limit,
-                offset=offset,
-                market_data_set_uid=market_data_set_uid,
-                concept_key=concept_key,
-            )
+        response = list_pricing_market_data_bindings(
+            limit=limit,
+            offset=offset,
+            market_data_set_uid=market_data_set_uid,
+            concept_key=concept_key,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return PricingMarketDataSetBindingListResponse.model_validate(
-        build_paginated_response(
-            request_url=str(request.url),
-            results=response.results,
-            count=response.count,
-            limit=limit,
-            offset=offset,
-        ).model_dump()
+    return resource_collection_response(
+        items=[PricingMarketDataSetBinding.model_validate(row) for row in response["results"]],
+        total_items=int(response["count"]),
+        limit=limit,
+        offset=offset,
     )
 
 
 @router.get(
     "/sets/{market_data_set_uid}/bindings/",
-    response_model=PricingMarketDataSetBindingListResponse,
+    response_model=ResourceCollection[PricingMarketDataSetBinding],
     summary="List pricing market-data set bindings",
     description="Return paginated concept bindings owned by one pricing market-data set.",
     operation_id="listPricingMarketDataSetBindings",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         400: {
             "model": ErrorResponse,
@@ -379,7 +368,6 @@ def get_pricing_market_data_bindings(
     },
 )
 def get_pricing_market_data_bindings_by_set(
-    request: Request,
     market_data_set_uid: str,
     limit: Annotated[
         int,
@@ -396,26 +384,21 @@ def get_pricing_market_data_bindings_by_set(
             description="Zero-based starting offset into the filtered binding list.",
         ),
     ] = 0,
-) -> PricingMarketDataSetBindingListResponse:
+) -> ResourceCollection[PricingMarketDataSetBinding]:
     try:
-        response = PricingMarketDataSetBindingListResponse.model_validate(
-            list_pricing_market_data_set_bindings(
-                market_data_set_uid=market_data_set_uid,
-                limit=limit,
-                offset=offset,
-            )
+        response = list_pricing_market_data_set_bindings(
+            market_data_set_uid=market_data_set_uid,
+            limit=limit,
+            offset=offset,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return PricingMarketDataSetBindingListResponse.model_validate(
-        build_paginated_response(
-            request_url=str(request.url),
-            results=response.results,
-            count=response.count,
-            limit=limit,
-            offset=offset,
-        ).model_dump()
+    return resource_collection_response(
+        items=[PricingMarketDataSetBinding.model_validate(row) for row in response["results"]],
+        total_items=int(response["count"]),
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -424,8 +407,7 @@ def get_pricing_market_data_bindings_by_set(
     response_model=PricingMarketDataBindingResolveResponse,
     summary="Resolve pricing market-data binding",
     description=(
-        "Resolve the DataNode storage uid used by one pricing concept in a "
-        "market-data set."
+        "Resolve the DataNode storage uid used by one pricing concept in a market-data set."
     ),
     operation_id="resolvePricingMarketDataBinding",
     responses={

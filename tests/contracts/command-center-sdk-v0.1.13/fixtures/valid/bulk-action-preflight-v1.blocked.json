@@ -1,0 +1,21 @@
+{
+  "allowed": false,
+  "detail": "One project is protected.",
+  "matched_count": 2,
+  "blockers": ["Protected projects cannot be archived."],
+  "warnings": ["One project would stop running."],
+  "data_sources": [
+    {
+      "uid": "project-1",
+      "display_name": "Protected project",
+      "blockers": [
+        {
+          "kind": "protected",
+          "count": 1,
+          "message": "This project is protected."
+        }
+      ],
+      "warnings": []
+    }
+  ]
+}

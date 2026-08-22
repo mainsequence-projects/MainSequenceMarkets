@@ -1,6 +1,6 @@
 ---
 name: project-workflows
-description: Create and validate backend-managed deployment declarations under .mainsequence/workflows. Use when a project should deploy or schedule Jobs, runtime/static/widget-extension ResourceReleases, or its Project Coding Agent from versioned repository files.
+description: Create and validate backend-managed deployment declarations under .mainsequence/workflows, including the active platform FastAPI browser-origin default. Use when a project should deploy or schedule Jobs, runtime/static/widget-extension ResourceReleases, or its Project Coding Agent from versioned repository files.
 ---
 
 # Main Sequence Project Workflows
@@ -35,6 +35,12 @@ the backend—not the workflow author—resolves that image after policy eligibi
 
 Always retrieve a fresh template when the backend's current or supported
 versions differ from the document version.
+
+The template also carries the active platform FastAPI browser-origin default.
+Development returns `https://*.site-dev.main-sequence.app`; production returns
+`https://*.site.main-sequence.app`. Copy the backend-provided value instead of
+hard-coding development. This platform deployment environment is not an
+`OrganizationProjectEnvironment`.
 
 ## Backend-Owned Image Orchestration
 
@@ -305,6 +311,8 @@ A runtime release may also carry target-owned process configuration:
     automatic_redeployment:
       enabled: true
       tag_regex: null
+    cors_allowed_origins:
+      - "https://*.site-dev.main-sequence.app"
     env_vars:
       - name: PUBLIC_MARKET
         value: XNYS
@@ -313,6 +321,14 @@ A runtime release may also carry target-owned process configuration:
 Deployment history records only sorted variable names, count, and a keyed
 HMAC digest. Repository-event action results do not retain normalized content
 or environment values.
+
+For a newly created FastAPI release, omitting `cors_allowed_origins` persists
+the active platform default. For an existing workflow-owned release, omission
+preserves its policy. An explicit `[]` denies all browser origins, and a
+non-empty list replaces the policy. A changed policy is persisted during
+reconciliation but requires a subsequent deployment before the running
+FastAPI launcher emits matching CORS headers. The workflow never sets the
+reserved `FASTAPI_CORS_ALLOW_ORIGINS` environment variable.
 
 ## Stop Conditions
 

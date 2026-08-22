@@ -5,18 +5,18 @@ maintenance of the calendar's date, session, and event rows. Child date,
 session, and event routes are scoped to a path calendar uid.
 
 - `GET /api/v1/calendar/`
-  - supports `response_format=frontend_list`
   - supports `search`, `limit`, and `offset`
   - supports exact filters for `unique_identifier`, `calendar_type`, `source`,
     and `source_identifier`
   - supports `unique_identifier_contains`
-  - returns the library `msm.api.calendars.Calendar` contract
+  - returns `command-center.resource_collection@v1` with library
+    `msm.api.calendars.Calendar` rows
+  - exposes `GET /api/v1/calendar/discovery/`
 - `POST /api/v1/calendar/`
   - creates one calendar identity row
   - request body uses the library `CalendarCreate` contract
   - returns the created `Calendar` row
 - `GET /api/v1/calendar/{uid}/`
-  - supports `response_format=frontend_detail`
   - returns one library `Calendar` row by uid
 - `GET /api/v1/calendar/{uid}/summary/`
   - returns the reusable `FrontEndDetailSummary` response for calendar detail
@@ -34,6 +34,8 @@ session, and event routes are scoped to a path calendar uid.
   - related date, session, and event rows are removed by database cascade
 - `GET /api/v1/calendar/{calendar_uid}/dates/`
   - lists `CalendarDate` rows for one calendar
+  - returns `command-center.resource_collection@v1` and exposes sibling
+    `/discovery/`
   - supports `start_date`, `end_date`, flag filters, `limit`, and `offset`
 - `POST /api/v1/calendar/{calendar_uid}/dates/`
   - creates one date row under the path calendar uid
@@ -43,6 +45,8 @@ session, and event routes are scoped to a path calendar uid.
   - manage one date row and require it to belong to the path calendar uid
 - `GET /api/v1/calendar/{calendar_uid}/sessions/`
   - lists `CalendarSession` rows for one calendar
+  - returns `command-center.resource_collection@v1` and exposes sibling
+    `/discovery/`
   - supports `start_date`, `end_date`, `session_label`, `is_primary`,
     `limit`, and `offset`
 - `POST /api/v1/calendar/{calendar_uid}/sessions/`
@@ -54,6 +58,8 @@ session, and event routes are scoped to a path calendar uid.
   - manage one session row and require it to belong to the path calendar uid
 - `GET /api/v1/calendar/{calendar_uid}/events/`
   - lists `CalendarEvent` rows for one calendar
+  - returns `command-center.resource_collection@v1` and exposes sibling
+    `/discovery/`
   - supports `start_date`, `end_date`, `event_type`, `event_label`,
     `target_type`, `target_uid`, `target_identifier`, `limit`, and `offset`
 - `POST /api/v1/calendar/{calendar_uid}/events/`

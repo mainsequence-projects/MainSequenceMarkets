@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, HTTPException, Query, status
 
 from apps.v1.schemas.asset_categories import (
     AssetCategory,
@@ -12,11 +12,15 @@ from apps.v1.schemas.asset_categories import (
     PatchAssetCategoryRequest,
 )
 from apps.v1.schemas.bulk_actions import (
-    BulkActionDiscoveryResponse,
+    BULK_ACTION_PREFLIGHT_CONTRACT,
     BulkActionExecutionRequest,
     BulkActionPreflightResponse,
 )
-from apps.v1.schemas.common import ErrorResponse, PaginatedResponse, build_paginated_response
+from apps.v1.schemas.common import ErrorResponse
+from apps.v1.schemas.resource_contracts import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ResourceCollection,
+)
 from apps.v1.services.asset_categories import (
     bulk_delete_asset_categories,
     create_asset_category,
@@ -26,9 +30,9 @@ from apps.v1.services.asset_categories import (
     preflight_bulk_delete_asset_categories,
     update_asset_category,
 )
+from apps.v1.services.resource_collections import resource_collection_response
 from apps.v1.services.bulk_actions import (
     blocked_preflight_detail,
-    build_bulk_delete_discovery,
     explicit_uuid_selection,
 )
 
@@ -37,29 +41,21 @@ router = APIRouter(prefix="/asset-category", tags=["asset-category"])
 
 @router.get(
     "/",
-    response_model=PaginatedResponse[AssetCategory],
+    response_model=ResourceCollection[AssetCategory],
     summary="List asset categories",
     description=(
-        "Return core library asset category rows. The `response_format` query "
-        "parameter is accepted for compatibility, but rows use the "
-        "`msm.api.assets.AssetCategory` contract."
+        "Return asset categories in the canonical Command Center resource collection contract."
     ),
     operation_id="listAssetCategories",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         400: {
             "model": ErrorResponse,
-            "description": "Unsupported response format or invalid request boundary input.",
+            "description": "Invalid resource collection request.",
         }
     },
 )
 def get_asset_categories(
-    request: Request,
-    response_format: Annotated[
-        str,
-        Query(
-            description="Supported value for this endpoint is `frontend_list`.",
-        ),
-    ] = "frontend_list",
     search: Annotated[
         str,
         Query(
@@ -81,16 +77,11 @@ def get_asset_categories(
             description="Zero-based starting offset into the filtered category list.",
         ),
     ] = 0,
-) -> PaginatedResponse[AssetCategory]:
-    if response_format != "frontend_list":
-        raise HTTPException(
-            status_code=400,
-            detail="Only response_format=frontend_list is implemented for GET /api/v1/asset-category/.",
-        )
-    rows = list_asset_categories(search=search, limit=limit + 1, offset=offset)
-    return build_paginated_response(
-        request_url=str(request.url),
-        results=rows,
+) -> ResourceCollection[AssetCategory]:
+    response = list_asset_categories(search=search, limit=limit, offset=offset)
+    return resource_collection_response(
+        items=response["results"],
+        total_items=response["count"],
         limit=limit,
         offset=offset,
     )
@@ -137,38 +128,13 @@ def post_asset_category_bulk_delete(
     return bulk_delete_asset_categories(payload={"uids": uids})
 
 
-@router.get(
-    "/bulk-actions/",
-    response_model=BulkActionDiscoveryResponse,
-    summary="Discover asset-category bulk actions",
-    description=(
-        "Return the caller-visible Command Center bulk actions for the asset-category "
-        "collection. Only explicit UID selection is currently advertised."
-    ),
-    operation_id="listAssetCategoryBulkActions",
-)
-def get_asset_category_bulk_actions(
-    search: Annotated[
-        str,
-        Query(description="Normalized collection search forwarded by the resource adapter."),
-    ] = "",
-) -> BulkActionDiscoveryResponse:
-    return build_bulk_delete_discovery(
-        action_id="bulk-delete-asset-categories",
-        label="Delete selected",
-        endpoint="/api/v1/asset-category/bulk-delete/",
-        preflight_endpoint="/api/v1/asset-category/bulk-delete/preflight/",
-        confirmation_title="Delete asset categories",
-        confirmation_warning="Deleted asset categories cannot be restored.",
-    )
-
-
 @router.post(
     "/bulk-delete/preflight/",
     response_model=BulkActionPreflightResponse,
     summary="Preflight asset-category bulk deletion",
     description="Reauthorize and resolve an explicit category selection without deleting rows.",
     operation_id="preflightBulkDeleteAssetCategories",
+    openapi_extra={"x-ui-contract": BULK_ACTION_PREFLIGHT_CONTRACT},
     responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
 )
 def preflight_asset_category_bulk_delete(
@@ -198,7 +164,7 @@ def preflight_asset_category_bulk_delete(
     responses={
         400: {
             "model": ErrorResponse,
-            "description": "Unsupported response format or invalid request boundary input.",
+            "description": "Invalid asset-category detail request.",
         },
         404: {
             "model": ErrorResponse,
@@ -208,18 +174,7 @@ def preflight_asset_category_bulk_delete(
 )
 def get_asset_category(
     uid: str,
-    response_format: Annotated[
-        str,
-        Query(
-            description="Supported value for this endpoint is `frontend_detail`.",
-        ),
-    ] = "frontend_detail",
 ) -> AssetCategoryDetailResponse:
-    if response_format != "frontend_detail":
-        raise HTTPException(
-            status_code=400,
-            detail="Only response_format=frontend_detail is implemented for GET /api/v1/asset-category/{uid}/.",
-        )
     payload = get_asset_category_detail(uid=uid)
     if payload is None:
         raise HTTPException(status_code=404, detail=f"Asset category {uid!r} was not found.")

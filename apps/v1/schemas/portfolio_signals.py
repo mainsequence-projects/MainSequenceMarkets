@@ -5,7 +5,6 @@ import datetime as dt
 from pydantic import BaseModel, ConfigDict
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-from apps.v1.schemas.common import PaginatedResponse
 
 
 def _signal_metadata_contracts():
@@ -40,6 +39,3 @@ class PortfolioSignalWeightsDeleteResponse(BaseModel):
     signal_uid: str | None = None
     weights_date: dt.datetime | None = None
     deleted_count: int = 0
-
-
-PortfolioSignalListResponse = PaginatedResponse[SignalMetadata]

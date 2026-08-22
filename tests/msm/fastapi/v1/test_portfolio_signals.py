@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 from apps.v1.main import app
 from apps.v1.schemas.portfolio_signals import (
     PortfolioSignalDeleteResponse,
-    PortfolioSignalListResponse,
     PortfolioSignalWeightsDeleteResponse,
     SignalMetadata,
 )
@@ -27,13 +26,13 @@ def _signal_row(
     )
 
 
-def test_list_portfolio_signals_returns_paginated_metadata(monkeypatch) -> None:
+def test_list_portfolio_signals_returns_canonical_collection(monkeypatch) -> None:
     row = _signal_row()
     captured: dict[str, object] = {}
 
     def fake_list_portfolio_signals(**kwargs):
         captured.update(kwargs)
-        return PortfolioSignalListResponse(count=2, results=[row])
+        return {"count": 2, "results": [row]}
 
     monkeypatch.setattr(
         "apps.v1.routers.portfolio_signals.list_portfolio_signals",
@@ -53,19 +52,20 @@ def test_list_portfolio_signals_returns_paginated_metadata(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json() == {
-        "count": 2,
-        "next": (
-            "http://testserver/api/v1/portfolio-signal/?search=example"
-            "&signal_uid=example-signal&limit=1&offset=1"
-        ),
-        "previous": None,
-        "results": [
+        "items": [
             {
                 "uid": str(row.uid),
                 "signal_uid": "example-signal",
                 "signal_description": "Example signal",
             }
         ],
+        "pageInfo": {
+            "pageIndex": 0,
+            "pageSize": 1,
+            "totalItems": 2,
+            "hasNextPage": True,
+            "hasPreviousPage": False,
+        },
     }
     assert captured == {
         "search": "example",

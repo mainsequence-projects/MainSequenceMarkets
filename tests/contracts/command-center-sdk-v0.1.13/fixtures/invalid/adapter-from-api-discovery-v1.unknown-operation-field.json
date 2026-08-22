@@ -1,0 +1,27 @@
+{
+  "contractVersion": 1,
+  "adapter": {
+    "type": "adapter-from-api",
+    "id": "orders-api",
+    "title": "Orders API",
+    "description": "Orders API contract."
+  },
+  "openapi": {
+    "url": "https://api.example.com/openapi.json"
+  },
+  "configVariables": [],
+  "secretVariables": [],
+  "availableOperations": [
+    {
+      "id": "listOrders",
+      "method": "GET",
+      "path": "/v1/orders",
+      "kind": "query",
+      "capabilities": ["query"],
+      "responseContract": "core.tabular_frame@v1"
+    }
+  ],
+  "health": {
+    "operationId": "listOrders"
+  }
+}

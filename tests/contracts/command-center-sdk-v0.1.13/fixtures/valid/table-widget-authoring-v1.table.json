@@ -1,0 +1,22 @@
+{
+  "contract": "command-center.table_widget_authoring@v1",
+  "widgetId": "core__table",
+  "props": {
+    "tableSourceMode": "manual",
+    "manualColumns": [
+      { "key": "symbol", "type": "string" },
+      { "key": "price", "type": "number" }
+    ],
+    "manualRows": [
+      { "symbol": "ALPHA", "price": 42.5 },
+      { "symbol": "BETA", "price": 17.25 }
+    ],
+    "schema": [
+      { "key": "symbol", "label": "Symbol", "format": "text" },
+      { "key": "price", "label": "Price", "format": "number", "decimals": 2 }
+    ],
+    "selectionMode": "single-row",
+    "selectionKeyFields": ["symbol"],
+    "publishSelectionOutputs": true
+  }
+}

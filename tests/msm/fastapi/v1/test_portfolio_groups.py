@@ -44,7 +44,7 @@ def test_list_portfolio_groups_returns_paginated_groups(monkeypatch) -> None:
 
     def fake_list_portfolio_groups(**kwargs):
         captured.update(kwargs)
-        return [group]
+        return {"count": 1, "results": [group]}
 
     monkeypatch.setattr(
         "apps.v1.routers.portfolio_groups.list_portfolio_groups",
@@ -58,15 +58,24 @@ def test_list_portfolio_groups_returns_paginated_groups(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["results"] == [
-        {
-            "uid": str(group.uid),
-            "unique_identifier": "core-portfolios",
-            "display_name": "Core Portfolios",
-            "description": "Core portfolio group",
-            "metadata_json": None,
-        }
-    ]
+    assert response.json() == {
+        "items": [
+            {
+                "uid": str(group.uid),
+                "unique_identifier": "core-portfolios",
+                "display_name": "Core Portfolios",
+                "description": "Core portfolio group",
+                "metadata_json": None,
+            }
+        ],
+        "pageInfo": {
+            "pageIndex": 0,
+            "pageSize": 50,
+            "totalItems": 1,
+            "hasNextPage": False,
+            "hasPreviousPage": False,
+        },
+    }
     assert captured["search"] == "core"
 
 
@@ -143,7 +152,7 @@ def test_list_portfolios_in_group_returns_paginated_portfolios(monkeypatch) -> N
 
     def fake_list_portfolios_in_group(**kwargs):
         captured.update(kwargs)
-        return [portfolio]
+        return {"count": 1, "results": [portfolio]}
 
     monkeypatch.setattr(
         "apps.v1.routers.portfolio_groups.list_portfolios_in_group",
@@ -155,7 +164,14 @@ def test_list_portfolios_in_group_returns_paginated_portfolios(monkeypatch) -> N
     response = client.get(f"/api/v1/portfolio-group/{group_uid}/portfolios/")
 
     assert response.status_code == 200
-    assert response.json()["results"][0]["unique_identifier"] == "portfolio-alpha"
+    assert response.json()["items"][0]["unique_identifier"] == "portfolio-alpha"
+    assert response.json()["pageInfo"] == {
+        "pageIndex": 0,
+        "pageSize": 50,
+        "totalItems": 1,
+        "hasNextPage": False,
+        "hasPreviousPage": False,
+    }
     assert captured["portfolio_group_uid"] == str(group_uid)
 
 
@@ -165,7 +181,7 @@ def test_list_groups_for_portfolio_returns_paginated_groups(monkeypatch) -> None
 
     def fake_list_groups_for_portfolio(**kwargs):
         captured.update(kwargs)
-        return [group]
+        return {"count": 1, "results": [group]}
 
     monkeypatch.setattr(
         "apps.v1.routers.portfolio_groups.list_groups_for_portfolio",
@@ -177,7 +193,14 @@ def test_list_groups_for_portfolio_returns_paginated_groups(monkeypatch) -> None
     response = client.get(f"/api/v1/portfolio-group/by-portfolio/{portfolio_uid}/")
 
     assert response.status_code == 200
-    assert response.json()["results"][0]["unique_identifier"] == "core-portfolios"
+    assert response.json()["items"][0]["unique_identifier"] == "core-portfolios"
+    assert response.json()["pageInfo"] == {
+        "pageIndex": 0,
+        "pageSize": 50,
+        "totalItems": 1,
+        "hasNextPage": False,
+        "hasPreviousPage": False,
+    }
     assert captured["portfolio_uid"] == str(portfolio_uid)
 
 

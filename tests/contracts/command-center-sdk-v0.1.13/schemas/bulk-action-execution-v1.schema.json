@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:bulk-action-execution:v1",
+  "title": "Command Center bulk-action execution request v1",
+  "description": "Request body sent to advertised bulk-action preflight and execution endpoints.",
+  "type": "object",
+  "required": ["selection", "options"],
+  "additionalProperties": false,
+  "properties": {
+    "selection": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/explicitSelection"
+        },
+        {
+          "$ref": "#/$defs/allMatchingSelection"
+        }
+      ]
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "resourceId": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": ".*\\S.*"
+        },
+        {
+          "type": "number"
+        }
+      ]
+    },
+    "explicitSelection": {
+      "type": "object",
+      "required": ["mode", "uids"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "const": "explicit"
+        },
+        "uids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/resourceId"
+          }
+        }
+      }
+    },
+    "allMatchingSelection": {
+      "type": "object",
+      "required": ["mode", "query"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "const": "all_matching"
+        },
+        "query": {
+          "$ref": "#/$defs/query"
+        }
+      }
+    },
+    "query": {
+      "$comment": "Filters are semantic resource filters. Pagination and presentation keys are forbidden.",
+      "type": "object",
+      "required": ["filters"],
+      "additionalProperties": false,
+      "properties": {
+        "search": {
+          "type": "string"
+        },
+        "filters": {
+          "type": "object",
+          "propertyNames": {
+            "not": {
+              "enum": ["light", "limit", "offset", "ordering", "page", "page_size", "search", "sort"]
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

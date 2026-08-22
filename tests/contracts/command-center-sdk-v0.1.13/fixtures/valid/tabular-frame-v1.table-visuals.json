@@ -1,0 +1,31 @@
+{
+  "status": "ready",
+  "columns": ["symbol", "pnl"],
+  "rows": [
+    { "symbol": "ALPHA", "pnl": 1250.5 },
+    { "symbol": "BETA", "pnl": -420.25 }
+  ],
+  "meta": {
+    "tableVisuals": {
+      "columns": {
+        "symbol": {
+          "label": "Symbol",
+          "width": 120
+        },
+        "pnl": {
+          "label": "PnL",
+          "format": "currency",
+          "decimals": 2,
+          "barMode": "fill",
+          "visualRangeMode": "fixed",
+          "visualMin": -2000,
+          "visualMax": 2000,
+          "thresholds": [
+            { "operator": "lt", "value": 0, "tone": "danger" },
+            { "operator": "gt", "value": 0, "tone": "success" }
+          ]
+        }
+      }
+    }
+  }
+}

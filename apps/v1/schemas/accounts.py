@@ -8,7 +8,6 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-from apps.v1.schemas.common import PaginatedResponse
 from apps.v1.schemas.holdings import (
     BaseHoldingRow,
     BaseHoldingsSnapshotResponse,
@@ -25,10 +24,6 @@ def _account_contract():
 
 
 Account = _account_contract()
-
-
-class AccountListResponse(PaginatedResponse[Account]):
-    model_config = ConfigDict(extra="ignore")
 
 
 class AccountHoldingRow(BaseHoldingRow):
@@ -233,7 +228,3 @@ class AccountTargetAllocationCandidate(BaseModel):
     secondary_label: str | None = None
     current_snapshot: AccountTargetAllocationCandidateCurrentSnapshot | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class AccountTargetAllocationCandidateResponse(PaginatedResponse[AccountTargetAllocationCandidate]):
-    model_config = ConfigDict(extra="ignore")

@@ -13,13 +13,10 @@ def _assert_paginated_schema(
 ) -> None:
     schema_name = schema_ref.removeprefix("#/components/schemas/")
     schema = payload["components"]["schemas"][schema_name]
-    assert schema["properties"]["count"]["type"] == "integer"
-    assert schema["properties"]["next"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
-    assert schema["properties"]["previous"]["anyOf"] == [
-        {"type": "string"},
-        {"type": "null"},
-    ]
-    assert schema["properties"]["results"]["items"] == {"$ref": result_ref}
+    assert schema["properties"]["items"]["items"] == {"$ref": result_ref}
+    assert schema["properties"]["pageInfo"] == {
+        "$ref": "#/components/schemas/ResourcePageInfo"
+    }
 
 
 def _resolve_schema_ref(payload: dict, schema: dict) -> dict:
@@ -80,9 +77,7 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
 
         schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
         resolved_schema = _resolve_schema_ref(payload, schema)
-        assert {"count", "next", "previous", "results"}.issubset(resolved_schema["properties"]), (
-            path
-        )
+        assert {"items", "pageInfo"}.issubset(resolved_schema["properties"]), path
         assert "limit" not in resolved_schema["properties"], path
         assert "offset" not in resolved_schema["properties"], path
         checked_paths.append(path)
@@ -91,12 +86,16 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
         "/api/v1/account/",
         "/api/v1/account/target-allocation/targets/",
         "/api/v1/asset/",
+        "/api/v1/asset/{uid}/related-meta-tables/",
         "/api/v1/asset-category/",
         "/api/v1/calendar/",
         "/api/v1/calendar/{calendar_uid}/dates/",
         "/api/v1/calendar/{calendar_uid}/events/",
         "/api/v1/calendar/{calendar_uid}/sessions/",
         "/api/v1/index/",
+        "/api/v1/index/{uid}/datasets/",
+        "/api/v1/index/{uid}/formulas/",
+        "/api/v1/index/{uid}/related-meta-tables/",
         "/api/v1/index-type/",
         "/api/v1/portfolio/",
         "/api/v1/portfolio-group/",
@@ -104,11 +103,44 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
         "/api/v1/portfolio-group/{uid}/portfolios/",
         "/api/v1/portfolio-signal/",
         "/api/v1/pricing/curves/",
+        "/api/v1/pricing/curves/{uid}/curve-selections/",
         "/api/v1/pricing/market_data/bindings/",
         "/api/v1/pricing/market_data/sets/",
         "/api/v1/pricing/market_data/sets/{market_data_set_uid}/bindings/",
         "/api/v1/virtualfund/",
     }
+
+
+def test_every_resource_collection_exposes_canonical_discovery() -> None:
+    payload = app.openapi()
+    collection_paths = {
+        path
+        for path, path_item in payload["paths"].items()
+        if path_item.get("get", {}).get("x-ui-contract")
+        == "command-center.resource_collection@v1"
+    }
+
+    assert len(collection_paths) == 25
+    for collection_path in collection_paths:
+        discovery_path = f"{collection_path.rstrip('/')}/discovery/"
+        discovery = payload["paths"][discovery_path]["get"]
+        assert discovery["x-ui-contract"] == "command-center.resource_discovery@v1"
+        assert discovery["responses"]["200"]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/ResourceDiscovery"
+        }
+
+
+def test_legacy_collection_contract_surface_is_absent() -> None:
+    payload = app.openapi()
+
+    assert not any(path.endswith("/bulk-actions/") for path in payload["paths"])
+    assert all(
+        parameter["name"] != "response_format"
+        for path_item in payload["paths"].values()
+        for operation in path_item.values()
+        if isinstance(operation, dict)
+        for parameter in operation.get("parameters", [])
+    )
 
 
 def test_openapi_json_documents_asset_list_endpoint() -> None:
@@ -122,13 +154,15 @@ def test_openapi_json_documents_asset_list_endpoint() -> None:
     assert asset_list_operation["summary"] == "List assets"
     assert asset_list_operation["operationId"] == "listAssets"
     assert asset_list_operation["tags"] == ["asset"]
-    assert asset_list_operation["parameters"][0]["name"] == "response_format"
+    assert "response_format" not in {
+        parameter["name"] for parameter in asset_list_operation["parameters"]
+    }
     assert asset_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/PaginatedResponse_Asset_"
+        "$ref": "#/components/schemas/ResourceCollection_Asset_"
     }
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/PaginatedResponse_Asset_",
+        schema_ref="#/components/schemas/ResourceCollection_Asset_",
         result_ref="#/components/schemas/Asset",
     )
     assert asset_list_operation["responses"]["400"]["content"]["application/json"]["schema"] == {
@@ -296,15 +330,15 @@ def test_openapi_json_documents_account_list_endpoint() -> None:
     assert account_list_operation["operationId"] == "listAccounts"
     assert account_list_operation["tags"] == ["account"]
     assert account_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/AccountListResponse"
+        "$ref": "#/components/schemas/ResourceCollection_Account_"
     }
-    account_list_schema = payload["components"]["schemas"]["AccountListResponse"]
-    assert account_list_schema["properties"]["results"]["items"] == {
+    account_list_schema = payload["components"]["schemas"]["ResourceCollection_Account_"]
+    assert account_list_schema["properties"]["items"]["items"] == {
         "$ref": "#/components/schemas/Account"
     }
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/AccountListResponse",
+        schema_ref="#/components/schemas/ResourceCollection_Account_",
         result_ref="#/components/schemas/Account",
     )
 
@@ -322,10 +356,10 @@ def test_openapi_json_documents_account_list_endpoint() -> None:
     assert target_candidates_operation["operationId"] == "searchAccountTargetAllocationTargets"
     assert target_candidates_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/AccountTargetAllocationCandidateResponse"}
+    ] == {"$ref": "#/components/schemas/ResourceCollection_AccountTargetAllocationCandidate_"}
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/AccountTargetAllocationCandidateResponse",
+        schema_ref="#/components/schemas/ResourceCollection_AccountTargetAllocationCandidate_",
         result_ref="#/components/schemas/AccountTargetAllocationCandidate",
     )
 
@@ -385,10 +419,10 @@ def test_openapi_json_documents_virtualfund_routes() -> None:
     assert virtualfund_list_operation["tags"] == ["virtualfund"]
     assert virtualfund_list_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/VirtualFundListResponse"}
+    ] == {"$ref": "#/components/schemas/ResourceCollection_VirtualFund_"}
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/VirtualFundListResponse",
+        schema_ref="#/components/schemas/ResourceCollection_VirtualFund_",
         result_ref="#/components/schemas/VirtualFund",
     )
 
@@ -420,10 +454,10 @@ def test_openapi_json_documents_asset_category_routes() -> None:
     assert asset_category_list_operation["tags"] == ["asset-category"]
     assert asset_category_list_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/PaginatedResponse_AssetCategory_"}
+    ] == {"$ref": "#/components/schemas/ResourceCollection_AssetCategory_"}
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/PaginatedResponse_AssetCategory_",
+        schema_ref="#/components/schemas/ResourceCollection_AssetCategory_",
         result_ref="#/components/schemas/AssetCategory",
     )
 
@@ -456,11 +490,11 @@ def test_openapi_json_documents_index_routes() -> None:
     assert index_list_operation["operationId"] == "listIndexes"
     assert index_list_operation["tags"] == ["index"]
     assert index_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/PaginatedResponse_Index_"
+        "$ref": "#/components/schemas/ResourceCollection_Index_"
     }
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/PaginatedResponse_Index_",
+        schema_ref="#/components/schemas/ResourceCollection_Index_",
         result_ref="#/components/schemas/Index",
     )
 
@@ -488,7 +522,8 @@ def test_openapi_json_documents_index_routes() -> None:
 
     index_list_operation = payload["paths"]["/api/v1/index/"]["get"]
     index_list_parameters = {parameter["name"] for parameter in index_list_operation["parameters"]}
-    assert {"response_format", "has_canonical_values", "cadence"}.issubset(index_list_parameters)
+    assert {"has_canonical_values", "cadence"}.issubset(index_list_parameters)
+    assert "response_format" not in index_list_parameters
     assert "provider" not in index_list_parameters
     assert "provider" not in payload["components"]["schemas"]["Index"]["properties"]
     assert "provider" not in payload["components"]["schemas"]["IndexCreate"]["properties"]
@@ -565,10 +600,10 @@ def test_openapi_json_documents_portfolio_routes() -> None:
     assert portfolio_list_operation["tags"] == ["portfolio"]
     assert portfolio_list_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/PaginatedResponse_Portfolio_"}
+    ] == {"$ref": "#/components/schemas/ResourceCollection_Portfolio_"}
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/PaginatedResponse_Portfolio_",
+        schema_ref="#/components/schemas/ResourceCollection_Portfolio_",
         result_ref="#/components/schemas/Portfolio",
     )
 
@@ -679,11 +714,11 @@ def test_openapi_json_documents_portfolio_signal_routes() -> None:
     assert signal_list_operation["operationId"] == "listPortfolioSignals"
     assert signal_list_operation["tags"] == ["portfolio-signal"]
     assert signal_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/PaginatedResponse_SignalMetadata_"
+        "$ref": "#/components/schemas/ResourceCollection_SignalMetadata_"
     }
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/PaginatedResponse_SignalMetadata_",
+        schema_ref="#/components/schemas/ResourceCollection_SignalMetadata_",
         result_ref="#/components/schemas/SignalMetadata",
     )
 
@@ -743,21 +778,21 @@ def test_openapi_json_documents_calendar_routes() -> None:
     assert calendar_list_operation["operationId"] == "listCalendars"
     assert calendar_list_operation["tags"] == ["calendar"]
     assert calendar_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/PaginatedResponse_Calendar_"
+        "$ref": "#/components/schemas/ResourceCollection_Calendar_"
     }
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/PaginatedResponse_Calendar_",
+        schema_ref="#/components/schemas/ResourceCollection_Calendar_",
         result_ref="#/components/schemas/Calendar",
     )
 
     calendar_dates_operation = payload["paths"]["/api/v1/calendar/{calendar_uid}/dates/"]["get"]
     assert calendar_dates_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/PaginatedResponse_CalendarDate_"}
+    ] == {"$ref": "#/components/schemas/ResourceCollection_CalendarDate_"}
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/PaginatedResponse_CalendarDate_",
+        schema_ref="#/components/schemas/ResourceCollection_CalendarDate_",
         result_ref="#/components/schemas/CalendarDate",
     )
 
@@ -766,20 +801,20 @@ def test_openapi_json_documents_calendar_routes() -> None:
     ]
     assert calendar_sessions_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/PaginatedResponse_CalendarSession_"}
+    ] == {"$ref": "#/components/schemas/ResourceCollection_CalendarSession_"}
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/PaginatedResponse_CalendarSession_",
+        schema_ref="#/components/schemas/ResourceCollection_CalendarSession_",
         result_ref="#/components/schemas/CalendarSession",
     )
 
     calendar_events_operation = payload["paths"]["/api/v1/calendar/{calendar_uid}/events/"]["get"]
     assert calendar_events_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/PaginatedResponse_CalendarEvent_"}
+    ] == {"$ref": "#/components/schemas/ResourceCollection_CalendarEvent_"}
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/PaginatedResponse_CalendarEvent_",
+        schema_ref="#/components/schemas/ResourceCollection_CalendarEvent_",
         result_ref="#/components/schemas/CalendarEvent",
     )
 
@@ -809,11 +844,11 @@ def test_openapi_json_documents_pricing_curve_routes() -> None:
         parameter["name"] for parameter in curve_list_operation["parameters"]
     }
     assert curve_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/CurveListResponse"
+        "$ref": "#/components/schemas/ResourceCollection_Curve_"
     }
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/CurveListResponse",
+        schema_ref="#/components/schemas/ResourceCollection_Curve_",
         result_ref="#/components/schemas/Curve",
     )
 
@@ -834,7 +869,12 @@ def test_openapi_json_documents_pricing_curve_routes() -> None:
     assert curve_selections_operation["operationId"] == "listPricingCurveSelections"
     assert curve_selections_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/CurveSelectionsResponse"}
+    ] == {"$ref": "#/components/schemas/ResourceCollection_CurveSelection_"}
+    _assert_paginated_schema(
+        payload,
+        schema_ref="#/components/schemas/ResourceCollection_CurveSelection_",
+        result_ref="#/components/schemas/CurveSelection",
+    )
     assert curve_selections_operation["responses"]["404"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/ErrorResponse"}
@@ -902,11 +942,11 @@ def test_openapi_json_documents_pricing_market_data_routes() -> None:
     assert set_list_operation["summary"] == "List pricing market-data sets"
     assert set_list_operation["operationId"] == "listPricingMarketDataSets"
     assert set_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/PricingMarketDataSetListResponse"
+        "$ref": "#/components/schemas/ResourceCollection_PricingMarketDataSet_"
     }
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/PricingMarketDataSetListResponse",
+        schema_ref="#/components/schemas/ResourceCollection_PricingMarketDataSet_",
         result_ref="#/components/schemas/PricingMarketDataSet",
     )
 
@@ -949,11 +989,11 @@ def test_openapi_json_documents_pricing_market_data_routes() -> None:
     assert binding_list_operation["summary"] == "List pricing market-data bindings"
     assert binding_list_operation["operationId"] == "listPricingMarketDataBindings"
     assert binding_list_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/PricingMarketDataSetBindingListResponse"
+        "$ref": "#/components/schemas/ResourceCollection_PricingMarketDataSetBinding_"
     }
     _assert_paginated_schema(
         payload,
-        schema_ref="#/components/schemas/PricingMarketDataSetBindingListResponse",
+        schema_ref="#/components/schemas/ResourceCollection_PricingMarketDataSetBinding_",
         result_ref="#/components/schemas/PricingMarketDataSetBinding",
     )
 
@@ -964,7 +1004,7 @@ def test_openapi_json_documents_pricing_market_data_routes() -> None:
     assert nested_binding_list_operation["operationId"] == ("listPricingMarketDataSetBindings")
     assert nested_binding_list_operation["responses"]["200"]["content"]["application/json"][
         "schema"
-    ] == {"$ref": "#/components/schemas/PricingMarketDataSetBindingListResponse"}
+    ] == {"$ref": "#/components/schemas/ResourceCollection_PricingMarketDataSetBinding_"}
 
     resolve_operation = payload["paths"]["/api/v1/pricing/market_data/bindings/resolve/"]["get"]
     assert resolve_operation["summary"] == "Resolve pricing market-data binding"

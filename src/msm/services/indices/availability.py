@@ -35,9 +35,7 @@ def list_dataset_states(
 
     from .catalog import discover_canonical_datasets
 
-    descriptors = {
-        item.meta_table_uid: item for item in discover_canonical_datasets(actor=actor)
-    }
+    descriptors = {item.meta_table_uid: item for item in discover_canonical_datasets(actor=actor)}
     rows = operation_result_rows(
         search_model(
             context,
@@ -141,11 +139,7 @@ def reconcile_index_dataset_availability(
                 func.min(model.time_index).label("earliest_time_index"),
                 func.max(model.time_index).label("latest_time_index"),
             )
-            .where(
-                model.index_identifier.in_(
-                    [index.unique_identifier for index in indexes]
-                )
-            )
+            .where(model.index_identifier.in_([index.unique_identifier for index in indexes]))
             .group_by(model.index_identifier)
         )
         try:

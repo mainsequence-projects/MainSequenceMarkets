@@ -2,25 +2,27 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, HTTPException, Query, status
 
-from apps.v1.schemas.common import ErrorResponse, build_paginated_response
+from apps.v1.schemas.common import ErrorResponse
 from apps.v1.schemas.bulk_actions import (
-    BulkActionDiscoveryResponse,
+    BULK_ACTION_PREFLIGHT_CONTRACT,
     BulkActionExecutionRequest,
     BulkActionPreflightResponse,
 )
 from apps.v1.schemas.portfolio_groups import (
     PortfolioGroup,
     PortfolioGroupDeleteResponse,
-    PortfolioGroupListResponse,
     PortfolioGroupMembership,
     PortfolioGroupMembershipBulkDeleteRequest,
     PortfolioGroupMembershipRequest,
-    PortfolioGroupPortfolioListResponse,
-    PortfolioGroupsForPortfolioResponse,
+    Portfolio,
     PortfolioGroupCreateRequest,
     PortfolioGroupUpdateRequest,
+)
+from apps.v1.schemas.resource_contracts import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ResourceCollection,
 )
 from apps.v1.services.portfolio_groups import (
     add_portfolio_to_group,
@@ -36,9 +38,9 @@ from apps.v1.services.portfolio_groups import (
     remove_portfolio_from_group,
     update_portfolio_group,
 )
+from apps.v1.services.resource_collections import resource_collection_response
 from apps.v1.services.bulk_actions import (
     blocked_preflight_detail,
-    build_bulk_delete_discovery,
     explicit_uuid_selection,
 )
 
@@ -47,22 +49,18 @@ router = APIRouter(prefix="/portfolio-group", tags=["portfolio-group"])
 
 @router.get(
     "/",
-    response_model=PortfolioGroupListResponse,
+    response_model=ResourceCollection[PortfolioGroup],
     summary="List portfolio groups",
     operation_id="listPortfolioGroups",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         400: {
             "model": ErrorResponse,
-            "description": "Unsupported response format or invalid portfolio group request.",
+            "description": "Invalid resource collection request.",
         }
     },
 )
 def get_portfolio_groups(
-    request: Request,
-    response_format: Annotated[
-        str,
-        Query(description="Supported value for this endpoint is `frontend_list`."),
-    ] = "frontend_list",
     search: Annotated[
         str,
         Query(description="Case-insensitive search across unique identifier and display name."),
@@ -83,29 +81,19 @@ def get_portfolio_groups(
         int,
         Query(ge=0, description="Zero-based starting offset into the filtered group list."),
     ] = 0,
-) -> PortfolioGroupListResponse:
-    if response_format != "frontend_list":
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Only response_format=frontend_list is implemented for "
-                "GET /api/v1/portfolio-group/."
-            ),
-        )
-    rows = list_portfolio_groups(
+) -> ResourceCollection[PortfolioGroup]:
+    response = list_portfolio_groups(
         search=search,
         unique_identifier=unique_identifier,
         display_name=display_name,
-        limit=limit + 1,
+        limit=limit,
         offset=offset,
     )
-    return PortfolioGroupListResponse.model_validate(
-        build_paginated_response(
-            request_url=str(request.url),
-            results=rows,
-            limit=limit,
-            offset=offset,
-        ).model_dump()
+    return resource_collection_response(
+        items=response["results"],
+        total_items=response["count"],
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -148,46 +136,13 @@ def post_portfolio_group_bulk_delete(
     return bulk_delete_portfolio_groups(payload={"uids": uids})
 
 
-@router.get(
-    "/bulk-actions/",
-    response_model=BulkActionDiscoveryResponse,
-    summary="Discover portfolio-group bulk actions",
-    description=(
-        "Return the caller-visible Command Center bulk actions for the portfolio-group "
-        "collection. Only explicit UID selection is currently advertised."
-    ),
-    operation_id="listPortfolioGroupBulkActions",
-)
-def get_portfolio_group_bulk_actions(
-    search: Annotated[
-        str,
-        Query(description="Normalized collection search forwarded by the resource adapter."),
-    ] = "",
-    unique_identifier: Annotated[
-        str | None,
-        Query(description="Optional normalized unique-identifier filter."),
-    ] = None,
-    display_name: Annotated[
-        str | None,
-        Query(description="Optional normalized display-name filter."),
-    ] = None,
-) -> BulkActionDiscoveryResponse:
-    return build_bulk_delete_discovery(
-        action_id="bulk-delete-portfolio-groups",
-        label="Delete selected",
-        endpoint="/api/v1/portfolio-group/bulk-delete/",
-        preflight_endpoint="/api/v1/portfolio-group/bulk-delete/preflight/",
-        confirmation_title="Delete portfolio groups",
-        confirmation_warning="Deleted portfolio groups cannot be restored.",
-    )
-
-
 @router.post(
     "/bulk-delete/preflight/",
     response_model=BulkActionPreflightResponse,
     summary="Preflight portfolio-group bulk deletion",
     description="Reauthorize and resolve an explicit group selection without deleting rows.",
     operation_id="preflightBulkDeletePortfolioGroups",
+    openapi_extra={"x-ui-contract": BULK_ACTION_PREFLIGHT_CONTRACT},
     responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
 )
 def preflight_portfolio_group_bulk_delete(
@@ -222,28 +177,26 @@ def post_portfolio_group_membership_bulk_delete(
 
 @router.get(
     "/by-portfolio/{portfolio_uid}/",
-    response_model=PortfolioGroupsForPortfolioResponse,
+    response_model=ResourceCollection[PortfolioGroup],
     summary="List groups for portfolio",
     operation_id="listGroupsForPortfolio",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
 )
 def get_groups_for_portfolio(
-    request: Request,
     portfolio_uid: str,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
-) -> PortfolioGroupsForPortfolioResponse:
-    rows = list_groups_for_portfolio(
+) -> ResourceCollection[PortfolioGroup]:
+    response = list_groups_for_portfolio(
         portfolio_uid=portfolio_uid,
-        limit=limit + 1,
+        limit=limit,
         offset=offset,
     )
-    return PortfolioGroupsForPortfolioResponse.model_validate(
-        build_paginated_response(
-            request_url=str(request.url),
-            results=rows,
-            limit=limit,
-            offset=offset,
-        ).model_dump()
+    return resource_collection_response(
+        items=response["results"],
+        total_items=response["count"],
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -307,28 +260,26 @@ def remove_portfolio_group(uid: str) -> PortfolioGroupDeleteResponse:
 
 @router.get(
     "/{uid}/portfolios/",
-    response_model=PortfolioGroupPortfolioListResponse,
+    response_model=ResourceCollection[Portfolio],
     summary="List portfolios in group",
     operation_id="listPortfoliosInGroup",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
 )
 def get_portfolios_in_group(
-    request: Request,
     uid: str,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
-) -> PortfolioGroupPortfolioListResponse:
-    rows = list_portfolios_in_group(
+) -> ResourceCollection[Portfolio]:
+    response = list_portfolios_in_group(
         portfolio_group_uid=uid,
-        limit=limit + 1,
+        limit=limit,
         offset=offset,
     )
-    return PortfolioGroupPortfolioListResponse.model_validate(
-        build_paginated_response(
-            request_url=str(request.url),
-            results=rows,
-            limit=limit,
-            offset=offset,
-        ).model_dump()
+    return resource_collection_response(
+        items=response["results"],
+        total_items=response["count"],
+        limit=limit,
+        offset=offset,
     )
 
 

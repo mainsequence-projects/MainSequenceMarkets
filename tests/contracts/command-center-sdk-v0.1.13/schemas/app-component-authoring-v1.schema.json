@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:app-component-authoring:v1",
+  "title": "Command Center AppComponent authoring v1",
+  "description": "Language-neutral authoring envelope for core__app-component, including its inline Mock JSON target.",
+  "type": "object",
+  "required": ["contract", "widgetId", "props"],
+  "additionalProperties": false,
+  "properties": {
+    "contract": { "const": "command-center.app_component_authoring@v1" },
+    "widgetId": { "const": "core__app-component" },
+    "props": { "$ref": "#/$defs/props" }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "pattern": ".*\\S.*" },
+    "contractId": { "type": "string", "pattern": "^.+@v[0-9]+$" },
+    "httpMethod": { "enum": ["get", "post", "put", "patch", "delete", "options", "head"] },
+    "fieldKind": { "enum": ["string", "number", "integer", "boolean", "date", "date-time", "enum", "json"] },
+    "openApiReference": {
+      "type": "object",
+      "required": ["$ref"],
+      "additionalProperties": false,
+      "properties": { "$ref": { "$ref": "#/$defs/nonEmptyString" } }
+    },
+    "openApiSchema": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "type": { "type": "string" },
+        "format": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "default": true,
+        "example": true,
+        "enum": { "type": "array" },
+        "nullable": { "type": "boolean" },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              { "$ref": "#/$defs/openApiSchema" },
+              { "$ref": "#/$defs/openApiReference" }
+            ]
+          }
+        },
+        "required": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" }, "uniqueItems": true },
+        "items": {
+          "anyOf": [
+            { "$ref": "#/$defs/openApiSchema" },
+            { "$ref": "#/$defs/openApiReference" }
+          ]
+        },
+        "additionalProperties": {
+          "anyOf": [
+            { "type": "boolean" },
+            { "$ref": "#/$defs/openApiSchema" },
+            { "$ref": "#/$defs/openApiReference" }
+          ]
+        }
+      }
+    },
+    "openApiParameter": {
+      "type": "object",
+      "required": ["name", "in"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "$ref": "#/$defs/nonEmptyString" },
+        "in": { "enum": ["path", "query", "header", "cookie"] },
+        "description": { "type": "string" },
+        "required": { "type": "boolean" },
+        "schema": {
+          "anyOf": [
+            { "$ref": "#/$defs/openApiSchema" },
+            { "$ref": "#/$defs/openApiReference" }
+          ]
+        },
+        "example": true
+      }
+    },
+    "mockJson": {
+      "type": "object",
+      "required": ["version", "operation", "response"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "const": 1 },
+        "operation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "method": { "$ref": "#/$defs/httpMethod" },
+            "path": { "type": "string", "pattern": "^/" },
+            "summary": { "type": "string" },
+            "description": { "type": "string" },
+            "ui": { "type": "object", "additionalProperties": true }
+          }
+        },
+        "request": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "parameters": { "type": "array", "items": { "$ref": "#/$defs/openApiParameter" } },
+            "bodySchema": { "$ref": "#/$defs/openApiSchema" },
+            "bodyRequired": { "type": "boolean" },
+            "bodyDescription": { "type": "string" },
+            "bodyContentType": { "$ref": "#/$defs/nonEmptyString" }
+          }
+        },
+        "response": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+            "description": { "type": "string" },
+            "contentType": { "$ref": "#/$defs/nonEmptyString" },
+            "body": true,
+            "schema": { "$ref": "#/$defs/openApiSchema" },
+            "ui": { "type": "object", "additionalProperties": true }
+          }
+        }
+      }
+    },
+    "inputPort": {
+      "type": "object",
+      "required": ["id", "fieldKey", "label", "required", "location", "kind", "accepts"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "fieldKey": { "$ref": "#/$defs/nonEmptyString" },
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "description": { "type": "string" },
+        "required": { "type": "boolean" },
+        "location": { "enum": ["path", "query", "header", "body"] },
+        "kind": { "$ref": "#/$defs/fieldKind" },
+        "accepts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/contractId" }, "uniqueItems": true }
+      }
+    },
+    "outputPort": {
+      "type": "object",
+      "required": ["id", "label", "kind", "contract", "responsePath", "statusCode", "contentType"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "description": { "type": "string" },
+        "kind": { "$ref": "#/$defs/fieldKind" },
+        "contract": { "$ref": "#/$defs/contractId" },
+        "responsePath": { "type": "array", "items": { "type": "string" } },
+        "statusCode": { "$ref": "#/$defs/nonEmptyString" },
+        "contentType": { "type": ["string", "null"] }
+      }
+    },
+    "bindingSpec": {
+      "type": "object",
+      "required": ["version", "operationKey", "requestPorts", "responsePorts"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "const": 1 },
+        "operationKey": { "$ref": "#/$defs/nonEmptyString" },
+        "requestPorts": { "type": "array", "items": { "$ref": "#/$defs/inputPort" } },
+        "responsePorts": { "type": "array", "items": { "$ref": "#/$defs/outputPort" } },
+        "requestForm": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "requestInputMap": {
+      "type": "object",
+      "required": ["version", "operationKey", "fields"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "const": 1 },
+        "operationKey": { "$ref": "#/$defs/nonEmptyString" },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "visibleOnCard": { "type": "boolean" },
+              "label": { "type": "string" },
+              "prefillValue": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "props": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "apiTargetMode": { "$ref": "#/$defs/nonEmptyString" },
+        "mockJson": { "$ref": "#/$defs/mockJson" },
+        "apiBaseUrl": { "$ref": "#/$defs/nonEmptyString" },
+        "serviceHeaders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "value"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "$ref": "#/$defs/nonEmptyString" },
+              "value": { "type": "string" }
+            }
+          }
+        },
+        "authMode": { "enum": ["session-jwt", "none"] },
+        "method": { "$ref": "#/$defs/httpMethod" },
+        "path": { "type": "string", "pattern": "^/" },
+        "requestBodyContentType": { "$ref": "#/$defs/nonEmptyString" },
+        "bindingSpec": { "$ref": "#/$defs/bindingSpec" },
+        "requestInputMap": { "$ref": "#/$defs/requestInputMap" },
+        "compactCardLayout": { "enum": ["one-column", "two-columns", "three-columns"] },
+        "showHeader": { "type": "boolean" },
+        "showResponse": { "type": "boolean" },
+        "hideRequestButton": { "type": "boolean" },
+        "requestButtonLabel": { "type": "string" },
+        "refreshOnDashboardRefresh": { "type": "boolean" }
+      }
+    }
+  }
+}

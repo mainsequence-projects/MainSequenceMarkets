@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:bulk-action-discovery:v1",
+  "title": "Command Center bulk-action discovery response v1",
+  "description": "Backend response advertising selection actions supported by a resource collection.",
+  "type": "object",
+  "required": ["actions"],
+  "additionalProperties": false,
+  "properties": {
+    "actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "pattern": ".*\\S.*"
+    },
+    "safeRelativePath": {
+      "type": "string",
+      "pattern": "^/(?!/)(?!.*[\\\\#?\\s]).+$"
+    },
+    "confirmation": {
+      "type": "object",
+      "required": ["title", "word", "button_label", "warning"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "word": {
+          "type": "string"
+        },
+        "button_label": {
+          "type": "string"
+        },
+        "warning": {
+          "type": "string"
+        }
+      }
+    },
+    "option": {
+      "type": "object",
+      "required": ["key", "type", "default", "label", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "type": {
+          "const": "boolean"
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "action": {
+      "$comment": "Action ids and option keys must also be unique within their containing arrays; runtime parsing enforces uniqueness by key.",
+      "type": "object",
+      "required": ["id", "label", "endpoint", "method", "selection_modes", "options"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "label": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "endpoint": {
+          "$ref": "#/$defs/safeRelativePath"
+        },
+        "method": {
+          "const": "POST"
+        },
+        "tone": {
+          "enum": ["default", "primary", "warning", "danger"]
+        },
+        "selection_modes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["explicit", "all_matching"]
+          }
+        },
+        "confirmation": {
+          "$ref": "#/$defs/confirmation"
+        },
+        "options": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/option"
+          }
+        },
+        "preflight_endpoint": {
+          "$ref": "#/$defs/safeRelativePath"
+        }
+      }
+    }
+  }
+}

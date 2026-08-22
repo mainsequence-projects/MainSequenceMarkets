@@ -1,0 +1,14 @@
+{
+  "channel": "mainsequence.portfolio-dashboard",
+  "version": 1,
+  "type": "initialize",
+  "payload": {
+    "theme": "dark",
+    "themeId": "main-sequence-space",
+    "user": {
+      "id": "user-public-uid",
+      "uid": "user-public-uid",
+      "user_uid": "user-public-uid"
+    }
+  }
+}

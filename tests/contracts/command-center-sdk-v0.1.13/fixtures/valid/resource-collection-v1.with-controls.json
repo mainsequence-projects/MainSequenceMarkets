@@ -1,0 +1,66 @@
+{
+  "items": [
+    {
+      "uid": "project-1",
+      "name": "Example project",
+      "status": "active"
+    }
+  ],
+  "pageInfo": {
+    "pageIndex": 0,
+    "pageSize": 25,
+    "totalItems": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false
+  },
+  "controls": {
+    "search": {
+      "placeholder": "Search projects",
+      "fields": ["uid", "name"]
+    },
+    "filters": [
+      {
+        "key": "status",
+        "label": "Status",
+        "type": "select",
+        "options": [
+          {
+            "value": "active",
+            "label": "Active"
+          },
+          {
+            "value": "paused",
+            "label": "Paused"
+          }
+        ]
+      }
+    ],
+    "ordering": ["name", "status"]
+  },
+  "bulkActions": [
+    {
+      "id": "archive",
+      "label": "Archive projects",
+      "endpoint": "/projects/actions/archive/",
+      "preflight_endpoint": "/projects/actions/archive/preflight/",
+      "method": "POST",
+      "tone": "danger",
+      "selection_modes": ["explicit", "all_matching"],
+      "confirmation": {
+        "title": "Archive projects",
+        "word": "ARCHIVE",
+        "button_label": "Archive",
+        "warning": "Archived projects stop running."
+      },
+      "options": [
+        {
+          "key": "delete_outputs",
+          "type": "boolean",
+          "default": false,
+          "label": "Delete outputs",
+          "description": "Also delete generated outputs."
+        }
+      ]
+    }
+  ]
+}

@@ -51,7 +51,6 @@ def _asset_category_detail_payload(category_uid: uuid.UUID) -> dict[str, object]
         "assets_list": {
             "list_endpoint": "/api/v1/asset/",
             "query_endpoint": "/api/v1/asset/query/",
-            "response_format": "frontend_list",
             "default_filters": {"categories__uid": str(category_uid)},
         },
     }
@@ -61,22 +60,22 @@ def test_get_asset_categories_returns_core_rows(monkeypatch) -> None:
     category_uid = uuid.uuid4()
     monkeypatch.setattr(
         "apps.v1.routers.asset_categories.list_asset_categories",
-        lambda **kwargs: [
-            {
+        lambda **kwargs: {
+            "count": 1,
+            "results": [{
                 "uid": str(category_uid),
                 "unique_identifier": "crypto_core",
                 "display_name": "Crypto Core",
                 "description": "Core digital assets",
                 "metadata_json": {"source": "test"},
-            }
-        ],
+            }],
+        },
     )
 
     client = TestClient(app)
     response = client.get(
         "/api/v1/asset-category/",
         params={
-            "response_format": "frontend_list",
             "search": "crypto",
             "limit": 50,
             "offset": 0,
@@ -85,10 +84,7 @@ def test_get_asset_categories_returns_core_rows(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json() == {
-        "count": 1,
-        "next": None,
-        "previous": None,
-        "results": [
+        "items": [
             {
                 "uid": str(category_uid),
                 "unique_identifier": "crypto_core",
@@ -97,18 +93,22 @@ def test_get_asset_categories_returns_core_rows(monkeypatch) -> None:
                 "metadata_json": {"source": "test"},
             }
         ],
+        "pageInfo": {
+            "pageIndex": 0,
+            "pageSize": 50,
+            "totalItems": 1,
+            "hasNextPage": False,
+            "hasPreviousPage": False,
+        },
     }
 
 
-def test_get_asset_categories_rejects_unknown_response_format() -> None:
+def test_get_asset_categories_does_not_expose_legacy_response_format() -> None:
     client = TestClient(app)
-    response = client.get(
-        "/api/v1/asset-category/",
-        params={"response_format": "frontend_detail"},
-    )
-
-    assert response.status_code == 400
-    assert "frontend_list" in response.json()["detail"]
+    operation = client.get("/openapi.json").json()["paths"]["/api/v1/asset-category/"]["get"]
+    assert "response_format" not in {
+        parameter["name"] for parameter in operation["parameters"]
+    }
 
 
 def test_get_asset_category_detail_returns_membership_detail(monkeypatch) -> None:
@@ -121,7 +121,6 @@ def test_get_asset_category_detail_returns_membership_detail(monkeypatch) -> Non
     client = TestClient(app)
     response = client.get(
         f"/api/v1/asset-category/{category_uid}/",
-        params={"response_format": "frontend_detail"},
     )
 
     assert response.status_code == 200
@@ -179,10 +178,7 @@ def test_get_asset_category_detail_returns_404_when_missing(monkeypatch) -> None
     )
 
     client = TestClient(app)
-    response = client.get(
-        "/api/v1/asset-category/missing-category/",
-        params={"response_format": "frontend_detail"},
-    )
+    response = client.get("/api/v1/asset-category/missing-category/")
 
     assert response.status_code == 404
     assert "missing-category" in response.json()["detail"]

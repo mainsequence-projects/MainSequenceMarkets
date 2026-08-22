@@ -1,0 +1,16 @@
+{
+  "status": "ready",
+  "columns": ["symbol", "pnl"],
+  "rows": [
+    { "symbol": "ALPHA", "pnl": 1250.5 }
+  ],
+  "meta": {
+    "tableVisuals": {
+      "columns": {
+        "pnl": {
+          "format": "sparkles"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "contract": "command-center.resource_discovery@v1",
+  "resource": {
+    "id": "records",
+    "label": "Records",
+    "item_label": "record",
+    "identity": { "fields": ["uid"] }
+  },
+  "list": {
+    "controls": {
+      "search": {
+        "placeholder": "Search by record name or UID",
+        "fields": ["name", "uid"]
+      },
+      "filters": [
+        { "key": "archived", "label": "Archived", "type": "boolean" }
+      ],
+      "ordering": ["name"]
+    },
+    "columns": [
+      {
+        "id": "name",
+        "header": "Record",
+        "default_visible": true,
+        "hideable": false,
+        "sortable_key": "name",
+        "importance": "primary"
+      },
+      {
+        "id": "uid",
+        "header": "UID",
+        "value_path": "uid",
+        "data_type": "text",
+        "default_visible": false,
+        "hideable": true,
+        "importance": "tertiary"
+      }
+    ]
+  },
+  "bulk_actions": []
+}

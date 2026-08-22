@@ -46,14 +46,12 @@ Response:
 GET /api/v1/pricing/market_data/sets/?limit=25&offset=0&status=ACTIVE&set_key=default
 ```
 
-Response uses the shared limit-offset pagination envelope:
+Response uses `command-center.resource_collection@v1`; discovery is available
+at `/api/v1/pricing/market_data/sets/discovery/`:
 
 ```json
 {
-  "count": 1,
-  "next": null,
-  "previous": null,
-  "results": [
+  "items": [
     {
       "uid": "7f958bbf-44cc-4cb9-ad19-b41b5aa28d60",
       "set_key": "default",
@@ -62,7 +60,14 @@ Response uses the shared limit-offset pagination envelope:
       "status": "ACTIVE",
       "metadata_json": null
     }
-  ]
+  ],
+  "pageInfo": {
+    "pageIndex": 0,
+    "pageSize": 25,
+    "totalItems": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false
+  }
 }
 ```
 
@@ -125,10 +130,7 @@ Response:
 
 ```json
 {
-  "count": 1,
-  "next": null,
-  "previous": null,
-  "results": [
+  "items": [
     {
       "uid": "6b8fd8e4-6748-423c-b9fb-fad522d6f150",
       "market_data_set_uid": "7f958bbf-44cc-4cb9-ad19-b41b5aa28d60",
@@ -138,9 +140,20 @@ Response:
       "source": "example",
       "metadata_json": null
     }
-  ]
+  ],
+  "pageInfo": {
+    "pageIndex": 0,
+    "pageSize": 25,
+    "totalItems": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false
+  }
 }
 ```
+
+The global and set-scoped binding lists declare
+`command-center.resource_collection@v1` and expose sibling `/discovery/`
+operations.
 
 ```text
 GET /api/v1/pricing/market_data/bindings/{uid}/
@@ -202,19 +215,24 @@ Response:
 }
 ```
 
-## Pagination
+## Collection contract
 
-All list endpoints in this route group use the shared FastAPI v1
-`PaginatedResponse[T]` contract:
+All list endpoints in this route group use
+`command-center.resource_collection@v1`:
 
 ```json
 {
-  "count": 123,
-  "next": "http://testserver/api/v1/pricing/market_data/sets/?limit=25&offset=25",
-  "previous": null,
-  "results": []
+  "items": [],
+  "pageInfo": {
+    "pageIndex": 0,
+    "pageSize": 25,
+    "totalItems": 123,
+    "hasNextPage": true,
+    "hasPreviousPage": false
+  }
 }
 ```
 
-`count` is the total number of rows matching the exact filters. `limit` and
-`offset` are request query parameters and are not included in the response body.
+`totalItems` is the exact number of rows matching the filters. `limit` and
+`offset` are request query parameters and are represented canonically by
+`pageSize` and `pageIndex`.

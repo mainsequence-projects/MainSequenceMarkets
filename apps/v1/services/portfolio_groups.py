@@ -20,9 +20,9 @@ def list_portfolio_groups(
     display_name: str | None = None,
     limit: int = 50,
     offset: int = 0,
-) -> list[PortfolioGroup]:
+) -> dict[str, Any]:
     runtime = _get_runtime()
-    result = _search_portfolio_groups(
+    response = _list_portfolio_group_rows_response(
         runtime.context,
         search=search,
         unique_identifier=unique_identifier,
@@ -30,7 +30,10 @@ def list_portfolio_groups(
         limit=limit,
         offset=offset,
     )
-    return [PortfolioGroup.model_validate(row) for row in operation_result_rows(result)]
+    return {
+        "count": int(response["count"]),
+        "results": [PortfolioGroup.model_validate(row) for row in response["results"]],
+    }
 
 
 def get_portfolio_group(*, uid: str) -> PortfolioGroup | None:
@@ -146,13 +149,18 @@ def list_portfolios_in_group(
     portfolio_group_uid: str,
     limit: int = 50,
     offset: int = 0,
-) -> list[Portfolio]:
-    _get_runtime()
-    return PortfolioGroup.get_portfolios(
+) -> dict[str, Any]:
+    runtime = _get_runtime()
+    response = _list_portfolios_for_group_response(
+        runtime.context,
         portfolio_group_uid=portfolio_group_uid,
         limit=limit,
         offset=offset,
     )
+    return {
+        "count": int(response["count"]),
+        "results": [Portfolio.model_validate(row) for row in response["results"]],
+    }
 
 
 def list_groups_for_portfolio(
@@ -160,13 +168,18 @@ def list_groups_for_portfolio(
     portfolio_uid: str,
     limit: int = 50,
     offset: int = 0,
-) -> list[PortfolioGroup]:
-    _get_runtime()
-    return PortfolioGroup.get_groups_for_portfolio(
+) -> dict[str, Any]:
+    runtime = _get_runtime()
+    response = _list_portfolio_groups_for_portfolio_response(
+        runtime.context,
         portfolio_uid=portfolio_uid,
         limit=limit,
         offset=offset,
     )
+    return {
+        "count": int(response["count"]),
+        "results": [PortfolioGroup.model_validate(row) for row in response["results"]],
+    }
 
 
 def _get_runtime():
@@ -190,6 +203,24 @@ def _search_portfolio_groups(context, **kwargs):
     from msm.services import search_portfolio_groups
 
     return search_portfolio_groups(context, **kwargs)
+
+
+def _list_portfolio_group_rows_response(context, **kwargs):
+    from msm.services import list_portfolio_group_rows_response
+
+    return list_portfolio_group_rows_response(context, **kwargs)
+
+
+def _list_portfolios_for_group_response(context, **kwargs):
+    from msm.services import list_portfolios_for_group_response
+
+    return list_portfolios_for_group_response(context, **kwargs)
+
+
+def _list_portfolio_groups_for_portfolio_response(context, **kwargs):
+    from msm.services import list_portfolio_groups_for_portfolio_response
+
+    return list_portfolio_groups_for_portfolio_response(context, **kwargs)
 
 
 def _get_portfolio_group_by_uid(context, **kwargs):

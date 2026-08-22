@@ -1,0 +1,9 @@
+{
+  "selection": {
+    "mode": "explicit",
+    "uids": ["project-1", "project-2"]
+  },
+  "options": {
+    "delete_outputs": false
+  }
+}

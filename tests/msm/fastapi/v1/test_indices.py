@@ -45,7 +45,6 @@ def test_get_indexes_returns_core_index_rows(monkeypatch) -> None:
     response = client.get(
         "/api/v1/index/",
         params={
-            "response_format": "frontend_list",
             "search": "spx",
             "limit": 10,
             "offset": 0,
@@ -54,10 +53,7 @@ def test_get_indexes_returns_core_index_rows(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json() == {
-        "count": 1,
-        "next": None,
-        "previous": None,
-        "results": [
+        "items": [
             {
                 "uid": str(index_uid),
                 "unique_identifier": "SPX",
@@ -70,18 +66,16 @@ def test_get_indexes_returns_core_index_rows(monkeypatch) -> None:
                 "metadata_json": {"currency": "USD"},
             }
         ],
+        "pageInfo": {"pageIndex": 0, "pageSize": 10, "totalItems": 1, "hasNextPage": False, "hasPreviousPage": False},
     }
 
 
-def test_get_indexes_rejects_unknown_response_format() -> None:
+def test_get_indexes_does_not_expose_legacy_response_format() -> None:
     client = TestClient(app)
-    response = client.get(
-        "/api/v1/index/",
-        params={"response_format": "frontend_detail"},
-    )
-
-    assert response.status_code == 400
-    assert "frontend_list" in response.json()["detail"]
+    operation = client.get("/openapi.json").json()["paths"]["/api/v1/index/"]["get"]
+    assert "response_format" not in {
+        parameter["name"] for parameter in operation["parameters"]
+    }
 
 
 def test_get_index_returns_record(monkeypatch) -> None:
@@ -139,9 +133,9 @@ def test_related_index_meta_tables_forwards_optional_filters(monkeypatch) -> Non
     )
 
     assert default_response.status_code == 200
-    assert default_response.json() == []
+    assert default_response.json() == {"items": [], "pageInfo": {"pageIndex": 0, "pageSize": 50, "totalItems": 0, "hasNextPage": False, "hasPreviousPage": False}}
     assert unfiltered_response.status_code == 200
-    assert unfiltered_response.json() == []
+    assert unfiltered_response.json() == {"items": [], "pageInfo": {"pageIndex": 0, "pageSize": 50, "totalItems": 0, "hasNextPage": False, "hasPreviousPage": False}}
     assert calls == [
         (str(index_uid), True, True),
         (str(index_uid), False, False),

@@ -87,10 +87,7 @@ def test_pricing_market_data_set_list_uses_paginated_source_list(monkeypatch) ->
 
     assert response.status_code == 200
     assert response.json() == {
-        "count": 2,
-        "next": "http://testserver/api/v1/pricing/market_data/sets/?limit=1&offset=1&status=ACTIVE&set_key=default",
-        "previous": None,
-        "results": [
+        "items": [
             {
                 "uid": str(row.uid),
                 "set_key": "default",
@@ -100,6 +97,13 @@ def test_pricing_market_data_set_list_uses_paginated_source_list(monkeypatch) ->
                 "metadata_json": None,
             }
         ],
+        "pageInfo": {
+            "pageIndex": 0,
+            "pageSize": 1,
+            "totalItems": 2,
+            "hasNextPage": True,
+            "hasPreviousPage": False,
+        },
     }
     assert captured == {
         "limit": 1,
@@ -290,8 +294,8 @@ def test_pricing_market_data_binding_global_list_uses_paginated_source_list(
     )
 
     assert response.status_code == 200
-    assert response.json()["count"] == 1
-    assert response.json()["results"][0]["uid"] == str(row.uid)
+    assert response.json()["items"][0]["uid"] == str(row.uid)
+    assert response.json()["pageInfo"]["totalItems"] == 1
     assert captured == {
         "limit": 25,
         "offset": 0,
@@ -321,7 +325,8 @@ def test_pricing_market_data_binding_nested_list_filters_by_set(monkeypatch) -> 
     )
 
     assert response.status_code == 200
-    assert response.json()["results"][0]["market_data_set_uid"] == str(market_data_set_uid)
+    assert response.json()["items"][0]["market_data_set_uid"] == str(market_data_set_uid)
+    assert response.json()["pageInfo"]["totalItems"] == 1
     assert captured == {
         "market_data_set_uid": str(market_data_set_uid),
         "limit": 10,

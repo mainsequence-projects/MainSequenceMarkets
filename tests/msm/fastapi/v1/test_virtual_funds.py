@@ -35,7 +35,6 @@ def test_get_virtualfund_list_returns_core_rows(monkeypatch) -> None:
     response = client.get(
         "/api/v1/virtualfund/",
         params={
-            "response_format": "frontend_list",
             "search": "alpha",
             "account_uid": virtual_fund["account_uid"],
             "portfolio_uid": virtual_fund["target_portfolio_uid"],
@@ -46,10 +45,14 @@ def test_get_virtualfund_list_returns_core_rows(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json() == {
-        "count": 1,
-        "next": None,
-        "previous": None,
-        "results": [virtual_fund],
+        "items": [virtual_fund],
+        "pageInfo": {
+            "pageIndex": 0,
+            "pageSize": 25,
+            "totalItems": 1,
+            "hasNextPage": False,
+            "hasPreviousPage": False,
+        },
     }
     assert captured == {
         "search": "alpha",
@@ -60,12 +63,10 @@ def test_get_virtualfund_list_returns_core_rows(monkeypatch) -> None:
     }
 
 
-def test_get_virtualfund_list_rejects_unknown_response_format() -> None:
-    client = TestClient(app)
-    response = client.get("/api/v1/virtualfund/", params={"response_format": "detail"})
+def test_get_virtualfund_list_does_not_publish_response_format() -> None:
+    parameters = app.openapi()["paths"]["/api/v1/virtualfund/"]["get"]["parameters"]
 
-    assert response.status_code == 400
-    assert "frontend_list" in response.json()["detail"]
+    assert "response_format" not in {parameter["name"] for parameter in parameters}
 
 
 def test_get_virtualfund_detail_returns_composed_payload(monkeypatch) -> None:
@@ -258,5 +259,5 @@ def test_virtualfund_service_maps_source_helpers(monkeypatch) -> None:
 
     response = list_virtual_funds(account_uid=virtual_fund["account_uid"], limit=25, offset=0)
 
-    assert response.count == 1
-    assert response.results[0].model_dump(mode="json") == virtual_fund
+    assert response["count"] == 1
+    assert response["results"][0].model_dump(mode="json") == virtual_fund

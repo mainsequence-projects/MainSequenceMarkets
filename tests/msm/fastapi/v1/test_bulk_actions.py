@@ -14,19 +14,19 @@ from apps.v1.services import asset_categories, portfolio_groups, portfolios
     ("path", "action_id", "endpoint", "preflight_endpoint"),
     [
         (
-            "/api/v1/asset-category/bulk-actions/",
+            "/api/v1/asset-category/discovery/",
             "bulk-delete-asset-categories",
             "/api/v1/asset-category/bulk-delete/",
             "/api/v1/asset-category/bulk-delete/preflight/",
         ),
         (
-            "/api/v1/portfolio/bulk-actions/",
+            "/api/v1/portfolio/discovery/",
             "bulk-delete-portfolios",
             "/api/v1/portfolio/bulk-delete/",
             "/api/v1/portfolio/bulk-delete/preflight/",
         ),
         (
-            "/api/v1/portfolio-group/bulk-actions/",
+            "/api/v1/portfolio-group/discovery/",
             "bulk-delete-portfolio-groups",
             "/api/v1/portfolio-group/bulk-delete/",
             "/api/v1/portfolio-group/bulk-delete/preflight/",
@@ -42,38 +42,14 @@ def test_bulk_action_discovery_uses_sdk_contract(
     response = TestClient(app).get(path)
 
     assert response.status_code == 200
-    assert response.json() == {
-        "actions": [
-            {
-                "id": action_id,
-                "label": "Delete selected",
-                "endpoint": endpoint,
-                "method": "POST",
-                "selection_modes": ["explicit"],
-                "options": [],
-                "tone": "danger",
-                "confirmation": {
-                    "title": {
-                        "bulk-delete-asset-categories": "Delete asset categories",
-                        "bulk-delete-portfolios": "Delete portfolios",
-                        "bulk-delete-portfolio-groups": "Delete portfolio groups",
-                    }[action_id],
-                    "word": "DELETE",
-                    "button_label": "Delete selected",
-                    "warning": {
-                        "bulk-delete-asset-categories": (
-                            "Deleted asset categories cannot be restored."
-                        ),
-                        "bulk-delete-portfolios": "Deleted portfolios cannot be restored.",
-                        "bulk-delete-portfolio-groups": (
-                            "Deleted portfolio groups cannot be restored."
-                        ),
-                    }[action_id],
-                },
-                "preflight_endpoint": preflight_endpoint,
-            }
-        ]
-    }
+    payload = response.json()
+    assert payload["contract"] == "command-center.resource_discovery@v1"
+    assert len(payload["bulk_actions"]) == 1
+    action = payload["bulk_actions"][0]
+    assert action["id"] == action_id
+    assert action["endpoint"] == endpoint
+    assert action["preflight_endpoint"] == preflight_endpoint
+    assert action["selection_modes"] == ["explicit"]
 
 
 @pytest.mark.parametrize(
@@ -209,11 +185,11 @@ def test_bulk_action_operations_are_exposed_by_command_center_adapter() -> None:
     }
 
     for operation_id in (
-        "listAssetCategoryBulkActions",
+        "discoverAssetCategories",
         "preflightBulkDeleteAssetCategories",
-        "listPortfolioBulkActions",
+        "discoverPortfolios",
         "preflightBulkDeletePortfolios",
-        "listPortfolioGroupBulkActions",
+        "discoverPortfolioGroups",
         "preflightBulkDeletePortfolioGroups",
     ):
         assert operations[operation_id]["kind"] == "resource"

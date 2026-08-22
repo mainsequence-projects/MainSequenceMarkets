@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:adapter-from-api-discovery:v1",
+  "title": "Command Center Adapter From API discovery contract v1",
+  "description": "Canonical provider-owned contract served from /.well-known/command-center/connection-contract. Each operation declares the exact contract implemented by its provider response body.",
+  "type": "object",
+  "required": [
+    "contractVersion",
+    "adapter",
+    "openapi",
+    "configVariables",
+    "secretVariables",
+    "availableOperations",
+    "health"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "adapter": { "$ref": "#/$defs/adapter" },
+    "openapi": { "$ref": "#/$defs/openapi" },
+    "configVariables": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/publicVariable" }
+    },
+    "secretVariables": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/secretVariable" }
+    },
+    "availableOperations": {
+      "$comment": "operationId values must be unique.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/operation" }
+    },
+    "health": { "$ref": "#/$defs/health" },
+    "apiBaseUrl": { "$ref": "#/$defs/httpUrl" },
+    "checksum": { "$ref": "#/$defs/nonEmptyString" }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "pattern": ".*\\S.*"
+    },
+    "httpUrl": {
+      "type": "string",
+      "pattern": "^https?://"
+    },
+    "adapter": {
+      "type": "object",
+      "required": ["type", "id", "title", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "adapter-from-api" },
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "title": { "$ref": "#/$defs/nonEmptyString" },
+        "description": { "$ref": "#/$defs/nonEmptyString" },
+        "logo": { "$ref": "#/$defs/logo" }
+      }
+    },
+    "logo": {
+      "type": "object",
+      "required": ["url"],
+      "additionalProperties": false,
+      "properties": {
+        "url": { "$ref": "#/$defs/httpUrl" },
+        "altText": { "$ref": "#/$defs/nonEmptyString" },
+        "backgroundColor": { "$ref": "#/$defs/nonEmptyString" },
+        "href": { "$ref": "#/$defs/httpUrl" },
+        "source": { "const": "openapi.info.x-logo" }
+      }
+    },
+    "openapi": {
+      "type": "object",
+      "required": ["url"],
+      "additionalProperties": false,
+      "properties": {
+        "url": { "oneOf": [{ "$ref": "#/$defs/httpUrl" }, { "type": "string", "pattern": "^/" }] },
+        "version": { "$ref": "#/$defs/nonEmptyString" },
+        "checksum": { "$ref": "#/$defs/nonEmptyString" },
+        "logo": { "$ref": "#/$defs/logo" }
+      }
+    },
+    "fieldOption": {
+      "type": "object",
+      "required": ["label", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "value": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pattern": { "type": "string" },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "minLength": { "type": "integer", "minimum": 0 },
+        "maxLength": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "publicVariable": {
+      "type": "object",
+      "required": ["key", "label", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "$ref": "#/$defs/nonEmptyString" },
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "description": { "type": "string" },
+        "type": { "enum": ["string", "number", "boolean", "select", "json"] },
+        "required": { "type": "boolean" },
+        "defaultValue": true,
+        "example": true,
+        "renderAs": { "$ref": "#/$defs/nonEmptyString" },
+        "options": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fieldOption" }
+        },
+        "validation": { "$ref": "#/$defs/validation" },
+        "name": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "secretVariable": {
+      "allOf": [
+        { "$ref": "#/$defs/publicVariableBase" },
+        {
+          "type": "object",
+          "required": ["type", "injection"],
+          "properties": {
+            "type": { "const": "secret" },
+            "injection": { "$ref": "#/$defs/injection" }
+          }
+        }
+      ]
+    },
+    "publicVariableBase": {
+      "type": "object",
+      "required": ["key", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "$ref": "#/$defs/nonEmptyString" },
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "description": { "type": "string" },
+        "type": { "const": "secret" },
+        "required": { "type": "boolean" },
+        "defaultValue": true,
+        "example": true,
+        "renderAs": { "$ref": "#/$defs/nonEmptyString" },
+        "options": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fieldOption" }
+        },
+        "validation": { "$ref": "#/$defs/validation" },
+        "injection": { "$ref": "#/$defs/injection" }
+      }
+    },
+    "injection": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["header", "query", "basic", "bearer"] },
+        "name": { "$ref": "#/$defs/nonEmptyString" },
+        "template": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "operationParameter": {
+      "type": "object",
+      "required": ["key", "label", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "$ref": "#/$defs/nonEmptyString" },
+        "name": { "$ref": "#/$defs/nonEmptyString" },
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "description": { "type": "string" },
+        "type": { "enum": ["string", "number", "boolean", "select", "json"] },
+        "required": { "type": "boolean" },
+        "defaultValue": true,
+        "example": true,
+        "renderAs": { "$ref": "#/$defs/nonEmptyString" },
+        "options": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fieldOption" }
+        },
+        "validation": { "$ref": "#/$defs/validation" }
+      }
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "array", "items": { "$ref": "#/$defs/operationParameter" } },
+        "query": { "type": "array", "items": { "$ref": "#/$defs/operationParameter" } },
+        "headers": { "type": "array", "items": { "$ref": "#/$defs/operationParameter" } }
+      }
+    },
+    "requestBody": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "required": { "type": "boolean" },
+        "contentType": { "$ref": "#/$defs/nonEmptyString" },
+        "schema": true,
+        "description": { "type": "string" }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy": { "enum": ["safe", "disabled"] },
+        "ttlMs": { "type": "integer", "minimum": 0 },
+        "dedupeInFlight": { "type": "boolean" }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "required": ["operationId", "method", "path", "kind", "capabilities"],
+      "additionalProperties": false,
+      "properties": {
+        "operationId": { "$ref": "#/$defs/nonEmptyString" },
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "description": { "type": "string" },
+        "method": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+        "path": { "type": "string", "pattern": "^/" },
+        "kind": { "enum": ["query", "resource", "mutation"] },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["query", "resource", "mutation"] }
+        },
+        "requiresTimeRange": { "type": "boolean" },
+        "supportsVariables": { "type": "boolean" },
+        "supportsMaxRows": { "type": "boolean" },
+        "parameters": { "$ref": "#/$defs/parameters" },
+        "requestBody": { "$ref": "#/$defs/requestBody" },
+        "responseContract": {
+          "description": "Exact value contract implemented by the provider response body. The connection performs no extraction or coercion.",
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "responseModel": { "type": ["string", "null"] },
+        "cache": { "$ref": "#/$defs/cache" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "anyOf": [
+              { "properties": { "kind": { "const": "query" } }, "required": ["kind"] },
+              {
+                "properties": {
+                  "capabilities": {
+                    "type": "array",
+                    "contains": { "const": "query" }
+                  }
+                },
+                "required": ["capabilities"]
+              }
+            ]
+          },
+          "then": {
+            "properties": { "responseContract": {} },
+            "required": ["responseContract"]
+          }
+        }
+      ]
+    },
+    "health": {
+      "type": "object",
+      "description": "Health-check declaration. operationId references an availableOperations entry; that operation supplies the endpoint method and path.",
+      "$comment": "health.operationId must resolve to exactly one declared operation. Runtime validators enforce this cross-reference.",
+      "required": ["operationId"],
+      "additionalProperties": false,
+      "properties": {
+        "operationId": {
+          "description": "Stable operationId of the declared health endpoint.",
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "expectedStatus": {
+          "description": "Exact healthy status. When omitted, any 2xx response is healthy.",
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "timeoutMs": {
+          "description": "Maximum provider-call duration in milliseconds.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

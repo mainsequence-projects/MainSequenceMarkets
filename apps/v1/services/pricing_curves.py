@@ -31,6 +31,11 @@ def list_pricing_curves(
     )
 
 
+def get_pricing_curve(*, uid: str) -> Curve | None:
+    ensure_apps_v1_pricing_runtime()
+    return Curve.get_by_uid(uid)
+
+
 def get_pricing_curve_summary(*, uid: str) -> FrontEndDetailSummary | None:
     ensure_apps_v1_pricing_runtime()
     summary = _get_curve_frontend_detail_summary(uid)
@@ -39,9 +44,11 @@ def get_pricing_curve_summary(*, uid: str) -> FrontEndDetailSummary | None:
     return FrontEndDetailSummary.model_validate(summary)
 
 
-def list_pricing_curve_selections(*, uid: str) -> CurveSelectionsResponse | None:
+def list_pricing_curve_selections(
+    *, uid: str, limit: int = 50, offset: int = 0
+) -> CurveSelectionsResponse | None:
     ensure_apps_v1_pricing_runtime()
-    response = _list_curve_selections(uid)
+    response = _list_curve_selections(uid, limit=limit, offset=offset)
     if response is None:
         return None
     return CurveSelectionsResponse.model_validate(response)
@@ -102,8 +109,8 @@ def _get_curve_frontend_detail_summary(uid: str):
     return Curve.get_frontend_detail_summary(uid)
 
 
-def _list_curve_selections(uid: str):
-    return Curve.list_curve_selections(uid)
+def _list_curve_selections(uid: str, **kwargs):
+    return Curve.list_curve_selections(uid, **kwargs)
 
 
 def _get_curve_delete_impact(**kwargs):

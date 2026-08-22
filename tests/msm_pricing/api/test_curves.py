@@ -394,9 +394,9 @@ def test_curve_list_curve_selections_returns_reverse_binding_view(monkeypatch) -
         PricingMarketDataSetCurveBinding,
     )
 
-    def fake_filter_for_curve(cls, *, curve_uid, limit, status=None):
-        calls.append(("filter_for_curve", curve_uid, limit, status))
-        return [
+    def fake_list(cls, *, curve_uid, limit, offset):
+        calls.append(("list", curve_uid, limit, offset))
+        rows = [
             PricingMarketDataSetCurveBinding(
                 uid=binding_uid_1,
                 market_data_set_uid=market_data_set_uid,
@@ -422,11 +422,12 @@ def test_curve_list_curve_selections_returns_reverse_binding_view(monkeypatch) -
                 source="example",
             ),
         ]
+        return {"count": 2, "limit": limit, "offset": offset, "results": rows}
 
     monkeypatch.setattr(
         PricingMarketDataSetCurveBinding,
-        "filter_for_curve",
-        classmethod(fake_filter_for_curve),
+        "list",
+        classmethod(fake_list),
     )
     monkeypatch.setattr(
         PricingMarketDataSet,
@@ -530,7 +531,7 @@ def test_curve_list_curve_selections_returns_reverse_binding_view(monkeypatch) -
         ],
     }
     assert calls == [
-        ("filter_for_curve", curve_uid, 5000, None),
+        ("list", curve_uid, 50, 0),
         (
             "search",
             "pricing-context",

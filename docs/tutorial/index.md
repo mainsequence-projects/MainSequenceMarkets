@@ -36,6 +36,16 @@ checkout to avoid deleting the package-owned skill bundle.
 Do not rely on `import msm` for this setup. Imports are side-effect free and do
 not copy skills into the current working tree.
 
+## Serving tutorial resources to Command Center
+
+When exposing the tutorial's assets, calendars, accounts, portfolios, indexes,
+or pricing resources through `apps/v1`, consume the canonical
+[Command Center resource contracts](../fast_api/v1/resource_contracts.md).
+Every collection returns `items` plus authoritative `pageInfo`, while its
+sibling `/discovery/` endpoint owns identity, controls, columns, and authorized
+bulk actions. Detail and summary operations remain distinct resource-specific
+boundaries.
+
 ## The path
 
 1. [Assets and Categories](01-assets.md) — runtime setup, asset types and

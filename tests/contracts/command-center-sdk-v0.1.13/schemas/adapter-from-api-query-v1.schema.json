@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:adapter-from-api-query:v1",
+  "title": "Command Center Adapter From API query v1",
+  "description": "Widget-authored query selection for one operation declared by the stored Adapter From API contract.",
+  "type": "object",
+  "required": ["kind", "operationId"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "api-operation" },
+    "operationId": { "type": "string", "pattern": ".*\\S.*" },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "object", "additionalProperties": true },
+        "query": { "type": "object", "additionalProperties": true },
+        "headers": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "body": true
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "contract": "command-center.app_component_authoring@v1",
+  "widgetId": "core__app-component",
+  "props": {
+    "apiTargetMode": "mock-json",
+    "mockJson": {
+      "version": 2,
+      "operation": { "method": "get", "path": "/mock" },
+      "response": { "status": 200, "body": { "ok": true } }
+    }
+  }
+}

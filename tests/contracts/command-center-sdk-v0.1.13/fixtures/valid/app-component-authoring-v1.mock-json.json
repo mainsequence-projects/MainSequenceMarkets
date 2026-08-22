@@ -1,0 +1,44 @@
+{
+  "contract": "command-center.app_component_authoring@v1",
+  "widgetId": "core__app-component",
+  "props": {
+    "apiTargetMode": "mock-json",
+    "method": "post",
+    "path": "/preview",
+    "mockJson": {
+      "version": 1,
+      "operation": {
+        "method": "post",
+        "path": "/preview",
+        "summary": "Preview an order"
+      },
+      "request": {
+        "bodyRequired": true,
+        "bodyContentType": "application/json",
+        "bodySchema": {
+          "type": "object",
+          "required": ["symbol"],
+          "properties": {
+            "symbol": { "type": "string", "title": "Symbol" },
+            "quantity": { "type": "number", "title": "Quantity" }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/json",
+        "body": { "accepted": true, "reference": "preview-1" },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "accepted": { "type": "boolean" },
+            "reference": { "type": "string" }
+          }
+        }
+      }
+    },
+    "showHeader": true,
+    "showResponse": true,
+    "requestButtonLabel": "Preview"
+  }
+}

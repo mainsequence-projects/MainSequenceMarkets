@@ -1,0 +1,60 @@
+{
+  "status": "ready",
+  "columns": ["timestamp", "symbol", "close"],
+  "rows": [
+    {
+      "timestamp": 1735689600000,
+      "symbol": "MSFT",
+      "close": 421.5
+    }
+  ],
+  "fields": [
+    {
+      "key": "timestamp",
+      "label": "Timestamp",
+      "type": "datetime",
+      "nullable": false,
+      "nativeType": "datetime64[ns, UTC]",
+      "provenance": "backend"
+    },
+    {
+      "key": "symbol",
+      "type": "string",
+      "nullable": false,
+      "provenance": "backend"
+    },
+    {
+      "key": "close",
+      "type": "number",
+      "nullable": true,
+      "provenance": "backend"
+    }
+  ],
+  "meta": {
+    "timeSeries": {
+      "shape": "long",
+      "timeField": "timestamp",
+      "timeUnit": "ms",
+      "timezone": "UTC",
+      "sorted": true,
+      "valueField": "close",
+      "seriesField": "symbol",
+      "frequency": "1d",
+      "gapPolicy": "preserve_nulls",
+      "duplicatePolicy": "latest",
+      "unitByField": {
+        "close": "USD"
+      }
+    },
+    "provider": "example-market-data"
+  },
+  "source": {
+    "kind": "connection-query",
+    "id": "daily-prices",
+    "label": "Daily prices",
+    "updatedAtMs": 1735689600000,
+    "context": {
+      "connectionUid": "connection-1"
+    }
+  }
+}

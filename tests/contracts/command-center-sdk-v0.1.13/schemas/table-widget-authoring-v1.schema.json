@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:table-widget-authoring:v1",
+  "title": "Command Center Table widget authoring v1",
+  "description": "Language-neutral authoring envelope shared by core__table and core__pro-table.",
+  "type": "object",
+  "required": ["contract", "widgetId", "props"],
+  "additionalProperties": false,
+  "properties": {
+    "contract": { "const": "command-center.table_widget_authoring@v1" },
+    "widgetId": { "enum": ["core__table", "core__pro-table"] },
+    "props": { "$ref": "#/$defs/props" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "widgetId": { "const": "core__table" } },
+        "required": ["widgetId"]
+      },
+      "then": {
+        "properties": {
+          "props": {
+            "type": "object",
+            "properties": {
+              "formulasEnabled": { "not": { "const": true } },
+              "schema": {
+                "type": "array",
+                "items": {
+                  "not": {
+                    "type": "object",
+                    "properties": { "format": { "const": "formula" } },
+                    "required": ["format"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nonEmptyString": { "type": "string", "pattern": ".*\\S.*" },
+    "stringArray": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nonEmptyString" }
+    },
+    "manualColumn": {
+      "type": "object",
+      "required": ["key", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "$ref": "#/$defs/nonEmptyString" },
+        "type": { "enum": ["string", "number", "integer", "boolean", "datetime", "date", "time", "json", "unknown"] }
+      }
+    },
+    "columnSchema": {
+      "type": "object",
+      "required": ["key", "label", "format"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "$ref": "#/$defs/nonEmptyString" },
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "description": { "type": "string" },
+        "format": { "enum": ["text", "datetime", "number", "currency", "percent", "bps", "formula"] },
+        "formulaExpression": { "$ref": "#/$defs/nonEmptyString" },
+        "formulaResultFormat": { "enum": ["text", "datetime", "number", "currency", "percent", "bps"] },
+        "minWidth": { "type": "number", "exclusiveMinimum": 0 },
+        "flex": { "type": "number", "exclusiveMinimum": 0 },
+        "pinned": { "enum": ["left", "right"] },
+        "decimals": { "type": "integer", "minimum": 0 },
+        "prefix": { "type": "string" },
+        "suffix": { "type": "string" },
+        "dateTimeInputFormat": { "type": "string" },
+        "dateTimeOutputFormat": { "type": "string" },
+        "categorical": { "type": "boolean" },
+        "heatmapEligible": { "type": "boolean" },
+        "compact": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "format": { "const": "formula" } }, "required": ["format"] },
+          "then": {
+            "properties": {
+              "formulaExpression": { "$ref": "#/$defs/nonEmptyString" }
+            },
+            "required": ["formulaExpression"]
+          }
+        }
+      ]
+    },
+    "columnOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "visible": { "type": "boolean" },
+        "label": { "type": "string" },
+        "format": { "enum": ["auto", "text", "datetime", "number", "currency", "percent", "bps", "formula"] },
+        "decimals": { "type": "integer", "minimum": 0 },
+        "prefix": { "type": "string" },
+        "suffix": { "type": "string" },
+        "dateTimeInputFormat": { "type": "string" },
+        "dateTimeOutputFormat": { "type": "string" },
+        "heatmap": { "type": "boolean" },
+        "compact": { "type": "boolean" },
+        "barMode": { "enum": ["none", "fill"] },
+        "gradientMode": { "enum": ["none", "fill"] },
+        "heatmapPalette": { "enum": ["auto", "viridis", "plasma", "inferno", "magma", "turbo", "jet", "blue-white-red", "red-yellow-green"] },
+        "gaugeMode": { "enum": ["none", "ring"] },
+        "visualRangeMode": { "enum": ["auto", "fixed"] },
+        "visualMin": { "type": "number" },
+        "visualMax": { "type": "number" },
+        "align": { "enum": ["auto", "left", "center", "right"] },
+        "pinned": { "enum": ["none", "left", "right"] }
+      }
+    },
+    "valueLabel": {
+      "type": "object",
+      "required": ["columnKey", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "columnKey": { "$ref": "#/$defs/nonEmptyString" },
+        "value": { "type": "string" },
+        "label": { "type": "string" },
+        "tone": { "enum": ["neutral", "primary", "success", "warning", "danger"] },
+        "textColor": { "type": "string" },
+        "backgroundColor": { "type": "string" }
+      }
+    },
+    "conditionalRule": {
+      "type": "object",
+      "required": ["id", "columnKey", "operator", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "columnKey": { "$ref": "#/$defs/nonEmptyString" },
+        "operator": { "enum": ["gt", "gte", "lt", "lte", "eq"] },
+        "value": { "type": "number" },
+        "tone": { "enum": ["neutral", "primary", "success", "warning", "danger"] },
+        "textColor": { "type": "string" },
+        "backgroundColor": { "type": "string" }
+      }
+    },
+    "mergeKeyMapping": {
+      "type": "object",
+      "required": ["seedField", "liveField"],
+      "additionalProperties": false,
+      "properties": {
+        "seedField": { "$ref": "#/$defs/nonEmptyString" },
+        "liveField": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "props": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "tableSourceMode": { "enum": ["bound", "connection", "connection-stream", "manual"] },
+        "sourceMode": { "enum": ["direct", "filter_widget", "manual"] },
+        "sourceWidgetId": { "$ref": "#/$defs/nonEmptyString" },
+        "embeddedConnectionPresentation": { "type": "object", "additionalProperties": true },
+        "embeddedConnectionQuery": { "type": "object", "additionalProperties": true },
+        "sourceId": { "type": "number" },
+        "dateRangeMode": { "enum": ["dashboard", "fixed"] },
+        "fixedEndMs": { "type": "integer" },
+        "fixedStartMs": { "type": "integer" },
+        "uniqueIdentifierList": { "$ref": "#/$defs/stringArray" },
+        "manualColumns": { "type": "array", "items": { "$ref": "#/$defs/manualColumn" } },
+        "manualRows": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "limit": { "type": "integer", "minimum": 1 },
+        "columns": { "$ref": "#/$defs/stringArray" },
+        "rows": { "type": "array", "items": { "type": "array", "items": { "type": ["string", "number", "boolean", "null"] } } },
+        "schema": { "type": "array", "items": { "$ref": "#/$defs/columnSchema" } },
+        "density": { "enum": ["compact", "comfortable"] },
+        "groupBy": { "$ref": "#/$defs/nonEmptyString" },
+        "showToolbar": { "type": "boolean" },
+        "showSearch": { "type": "boolean" },
+        "showColumnFilters": { "type": "boolean" },
+        "zebraRows": { "type": "boolean" },
+        "pagination": { "type": "boolean" },
+        "pageSize": { "type": "integer", "minimum": 1 },
+        "columnOverrides": { "type": "object", "additionalProperties": { "$ref": "#/$defs/columnOverride" } },
+        "valueLabels": { "type": "array", "items": { "$ref": "#/$defs/valueLabel" } },
+        "conditionalRules": { "type": "array", "items": { "$ref": "#/$defs/conditionalRule" } },
+        "formulasEnabled": { "type": "boolean" },
+        "liveMergeKeyMappings": { "type": "array", "items": { "$ref": "#/$defs/mergeKeyMapping" } },
+        "selectionMode": { "enum": ["none", "single-row", "multi-row", "cell"] },
+        "selectionKeyFields": { "$ref": "#/$defs/stringArray" },
+        "publishSelectionOutputs": { "type": "boolean" }
+      }
+    }
+  }
+}

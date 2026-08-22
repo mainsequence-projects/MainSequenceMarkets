@@ -1,0 +1,330 @@
+{
+  "format": "command-center-contract-manifest@v1",
+  "package": "@dev-mainsequence/command-center-sdk",
+  "npmPath": "@dev-mainsequence/command-center-sdk/contracts/manifest.json",
+  "schemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "schemas": [
+    {
+      "contract": "core.tabular_frame@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:tabular-frame:v1",
+      "file": "schemas/tabular-frame-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/tabular-frame-v1.schema.json",
+      "role": "shared-value",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/contracts",
+        "type": "TabularFrameSourceV1"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/tabular-frame-v1.minimal.json",
+          "fixtures/valid/tabular-frame-v1.time-series.json",
+          "fixtures/valid/tabular-frame-v1.table-visuals.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/tabular-frame-v1.missing-rows.json",
+          "fixtures/invalid/tabular-frame-v1.unknown-field-type.json",
+          "fixtures/invalid/tabular-frame-v1.long-with-value-fields.json",
+          "fixtures/invalid/tabular-frame-v1.invalid-table-visuals.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.table_widget_authoring@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:table-widget-authoring:v1",
+      "file": "schemas/table-widget-authoring-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/table-widget-authoring-v1.schema.json",
+      "role": "persisted-widget-authoring",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/contracts",
+        "type": "TableWidgetAuthoringContractV1"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/table-widget-authoring-v1.table.json",
+          "fixtures/valid/table-widget-authoring-v1.pro-table.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/table-widget-authoring-v1.unknown-widget.json",
+          "fixtures/invalid/table-widget-authoring-v1.invalid-selection.json",
+          "fixtures/invalid/table-widget-authoring-v1.community-formula.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.app_component_authoring@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:app-component-authoring:v1",
+      "file": "schemas/app-component-authoring-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/app-component-authoring-v1.schema.json",
+      "role": "persisted-widget-authoring",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/contracts",
+        "type": "AppComponentAuthoringContractV1"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/app-component-authoring-v1.mock-json.json",
+          "fixtures/valid/app-component-authoring-v1.manual.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/app-component-authoring-v1.invalid-mock-version.json",
+          "fixtures/invalid/app-component-authoring-v1.invalid-binding-port.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.tabular_transform_authoring@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:tabular-transform-authoring:v1",
+      "file": "schemas/tabular-transform-authoring-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/tabular-transform-authoring-v1.schema.json",
+      "role": "persisted-widget-authoring",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/contracts",
+        "type": "TabularTransformAuthoringContractV1"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/tabular-transform-authoring-v1.filter.json",
+          "fixtures/valid/tabular-transform-authoring-v1.pivot-latest.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/tabular-transform-authoring-v1.incomplete-pivot.json",
+          "fixtures/invalid/tabular-transform-authoring-v1.latest-without-keys.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.workspace_document@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:workspace-document:v1",
+      "file": "schemas/workspace-document-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/workspace-document-v1.schema.json",
+      "role": "persisted-workspace-document",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/workspace",
+        "type": "DashboardDefinition"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/workspace-document-v1.minimal.json",
+          "fixtures/valid/workspace-document-v1.nested.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/workspace-document-v1.missing-id.json",
+          "fixtures/invalid/workspace-document-v1.numeric-id.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.static_site_iframe@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:static-site-iframe:v1",
+      "file": "schemas/static-site-iframe-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/static-site-iframe-v1.schema.json",
+      "role": "iframe-protocol",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/embed",
+        "type": "StaticSiteIframeMessage"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/static-site-iframe-v1.ready.json",
+          "fixtures/valid/static-site-iframe-v1.initialize.json",
+          "fixtures/valid/static-site-iframe-v1.fastapi-credential-request.json",
+          "fixtures/valid/static-site-iframe-v1.fastapi-credential-response.json",
+          "fixtures/valid/static-site-iframe-v1.fastapi-credential-error.json",
+          "fixtures/valid/static-site-iframe-v1.fastapi-runtime-starting.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/static-site-iframe-v1.wrong-version.json",
+          "fixtures/invalid/static-site-iframe-v1.invalid-target-uid.json",
+          "fixtures/invalid/static-site-iframe-v1.missing-token.json",
+          "fixtures/invalid/static-site-iframe-v1.unrestricted-user-credential.json",
+          "fixtures/invalid/static-site-iframe-v1.unknown-credential-error.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.adapter_from_api.discovery@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:adapter-from-api-discovery:v1",
+      "file": "schemas/adapter-from-api-discovery-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/adapter-from-api-discovery-v1.schema.json",
+      "role": "provider-discovery-response",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/contracts",
+        "type": "AdapterFromApiDiscoveryContractV1"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/adapter-from-api-discovery-v1.orders.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/adapter-from-api-discovery-v1.unknown-operation-field.json",
+          "fixtures/invalid/adapter-from-api-discovery-v1.retired-response-mappings.json",
+          "fixtures/invalid/adapter-from-api-discovery-v1.inline-health-endpoint.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.adapter_from_api.query@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:adapter-from-api-query:v1",
+      "file": "schemas/adapter-from-api-query-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/adapter-from-api-query-v1.schema.json",
+      "role": "connection-query",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/contracts",
+        "type": "AdapterFromApiConnectionQueryV1"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/adapter-from-api-query-v1.operation.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/adapter-from-api-query-v1.unknown-field.json",
+          "fixtures/invalid/adapter-from-api-query-v1.retired-response-mapping-id.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.adapter_from_api.public_config@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:adapter-from-api-public-config:v1",
+      "file": "schemas/adapter-from-api-public-config-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/adapter-from-api-public-config-v1.schema.json",
+      "role": "persisted-public-config",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/contracts",
+        "type": "AdapterFromApiPublicConfigV1"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/adapter-from-api-public-config-v1.backend.json",
+          "fixtures/valid/adapter-from-api-public-config-v1.direct.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/adapter-from-api-public-config-v1.direct-source-mismatch.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.adapter_from_api.secure_config@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:adapter-from-api-secure-config:v1",
+      "file": "schemas/adapter-from-api-secure-config-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/adapter-from-api-secure-config-v1.schema.json",
+      "role": "write-only-secure-config",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/contracts",
+        "type": "AdapterFromApiSecureConfigV1"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/adapter-from-api-secure-config-v1.values.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/adapter-from-api-secure-config-v1.unknown-field.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.resource_collection@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:resource-collection:v1",
+      "file": "schemas/resource-collection-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/resource-collection-v1.schema.json",
+      "role": "normalized-adapter-response",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/resource",
+        "type": "ResourceListResult<T>"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/resource-collection-v1.minimal.json",
+          "fixtures/valid/resource-collection-v1.with-controls.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/resource-collection-v1.negative-total.json",
+          "fixtures/invalid/resource-collection-v1.select-without-options.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.bulk_action_discovery@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:bulk-action-discovery:v1",
+      "file": "schemas/bulk-action-discovery-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/bulk-action-discovery-v1.schema.json",
+      "role": "backend-response",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/resource",
+        "type": "ResourceBulkActionDiscoveryResponse"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/bulk-action-discovery-v1.empty.json",
+          "fixtures/valid/bulk-action-discovery-v1.archive.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/bulk-action-discovery-v1.unsafe-endpoint.json",
+          "fixtures/invalid/bulk-action-discovery-v1.duplicate-selection-mode.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.resource_discovery@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:resource-discovery:v1",
+      "file": "schemas/resource-discovery-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/resource-discovery-v1.schema.json",
+      "role": "backend-response",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/resource",
+        "type": "ResourceDiscoveryResponse"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/resource-discovery-v1.records.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/resource-discovery-v1.incomplete-generic-column.json",
+          "fixtures/invalid/resource-discovery-v1.unsafe-identity.json",
+          "fixtures/invalid/resource-discovery-v1.unknown-field.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.bulk_action_execution@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:bulk-action-execution:v1",
+      "file": "schemas/bulk-action-execution-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/bulk-action-execution-v1.schema.json",
+      "role": "backend-request",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/resource",
+        "type": "ResourceBulkActionExecutionPayload<Id>"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/bulk-action-execution-v1.explicit.json",
+          "fixtures/valid/bulk-action-execution-v1.all-matching.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/bulk-action-execution-v1.empty-explicit.json",
+          "fixtures/invalid/bulk-action-execution-v1.presentation-filter.json"
+        ]
+      }
+    },
+    {
+      "contract": "command-center.bulk_action_preflight@v1",
+      "id": "urn:mainsequence:command-center-sdk:schema:bulk-action-preflight:v1",
+      "file": "schemas/bulk-action-preflight-v1.schema.json",
+      "npmPath": "@dev-mainsequence/command-center-sdk/contracts/schemas/bulk-action-preflight-v1.schema.json",
+      "role": "backend-response",
+      "typescript": {
+        "entrypoint": "@dev-mainsequence/command-center-sdk/resource",
+        "type": "ResourceBulkActionPreflightResponse"
+      },
+      "fixtures": {
+        "valid": [
+          "fixtures/valid/bulk-action-preflight-v1.allowed.json",
+          "fixtures/valid/bulk-action-preflight-v1.blocked.json"
+        ],
+        "invalid": [
+          "fixtures/invalid/bulk-action-preflight-v1.missing-allowed.json",
+          "fixtures/invalid/bulk-action-preflight-v1.invalid-blockers.json"
+        ]
+      }
+    }
+  ]
+}

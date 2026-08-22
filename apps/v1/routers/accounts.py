@@ -3,41 +3,46 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query
 
 from apps.v1.schemas.accounts import (
     AccountAddHoldingsRequest,
     AccountAddTargetPositionsRequest,
+    Account,
     AccountHoldingsByFundResponse,
     AccountHoldingsSnapshotResponse,
-    AccountListResponse,
-    AccountTargetAllocationCandidateResponse,
+    AccountTargetAllocationCandidate,
     AccountTargetAllocationTargetSearchType,
     AccountTargetPositionsSnapshotResponse,
 )
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary, build_paginated_response
+from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
+from apps.v1.schemas.resource_contracts import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ResourceCollection,
+)
 from apps.v1.services.accounts import (
     add_account_holdings,
     add_account_target_positions,
     get_account_holdings,
     get_account_holdings_by_fund,
+    get_account,
     get_account_summary,
     get_account_target_positions,
     list_accounts,
     search_account_target_allocation_targets,
 )
+from apps.v1.services.resource_collections import resource_collection_response
 
 router = APIRouter(prefix="/account", tags=["account"])
 
 
 @router.get(
     "/",
-    response_model=AccountListResponse,
+    response_model=ResourceCollection[Account],
     summary="List accounts",
-    description=(
-        "Return accounts in a frontend list wrapper with total count and paginated results."
-    ),
+    description=("Return accounts in the canonical Command Center resource collection contract."),
     operation_id="listAccounts",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         400: {
             "model": ErrorResponse,
@@ -46,7 +51,6 @@ router = APIRouter(prefix="/account", tags=["account"])
     },
 )
 def get_accounts(
-    request: Request,
     search: Annotated[
         str,
         Query(
@@ -68,19 +72,29 @@ def get_accounts(
             description="Zero-based starting offset into the filtered account list.",
         ),
     ] = 0,
-) -> AccountListResponse:
-    response = AccountListResponse.model_validate(
-        list_accounts(search=search, limit=limit, offset=offset)
+) -> ResourceCollection[Account]:
+    response = list_accounts(search=search, limit=limit, offset=offset)
+    return resource_collection_response(
+        items=response["results"],
+        total_items=int(response["count"]),
+        limit=limit,
+        offset=offset,
     )
-    return AccountListResponse.model_validate(
-        build_paginated_response(
-            request_url=str(request.url),
-            results=response.results,
-            count=response.count,
-            limit=limit,
-            offset=offset,
-        ).model_dump()
-    )
+
+
+@router.get(
+    "/{uid}/",
+    response_model=Account,
+    summary="Get account",
+    description="Return one canonical account row by uid.",
+    operation_id="getAccount",
+    responses={404: {"model": ErrorResponse, "description": "Account not found."}},
+)
+def get_account_by_uid(uid: str) -> Account:
+    account = get_account(uid=uid)
+    if account is None:
+        raise HTTPException(status_code=404, detail=f"Account {uid!r} was not found.")
+    return account
 
 
 @router.get(
@@ -105,7 +119,7 @@ def get_account_summary_by_uid(uid: str) -> FrontEndDetailSummary:
 
 @router.get(
     "/target-allocation/targets/",
-    response_model=AccountTargetAllocationCandidateResponse,
+    response_model=ResourceCollection[AccountTargetAllocationCandidate],
     summary="Search account target-allocation targets",
     description=(
         "Search asset and portfolio rows that can be assigned as account target "
@@ -113,6 +127,7 @@ def get_account_summary_by_uid(uid: str) -> FrontEndDetailSummary:
         "TargetPositionsStorage."
     ),
     operation_id="searchAccountTargetAllocationTargets",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         400: {
             "model": ErrorResponse,
@@ -121,7 +136,6 @@ def get_account_summary_by_uid(uid: str) -> FrontEndDetailSummary:
     },
 )
 def search_account_target_allocation_target_rows(
-    request: Request,
     search: Annotated[
         str,
         Query(
@@ -143,27 +157,22 @@ def search_account_target_allocation_target_rows(
         int,
         Query(ge=0, description="Zero-based starting offset into the filtered candidate list."),
     ] = 0,
-) -> AccountTargetAllocationCandidateResponse:
+) -> ResourceCollection[AccountTargetAllocationCandidate]:
     try:
-        response = AccountTargetAllocationCandidateResponse.model_validate(
-            search_account_target_allocation_targets(
-                search=search,
-                target_type=target_type,
-                limit=limit,
-                offset=offset,
-            )
+        response = search_account_target_allocation_targets(
+            search=search,
+            target_type=target_type,
+            limit=limit,
+            offset=offset,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return AccountTargetAllocationCandidateResponse.model_validate(
-        build_paginated_response(
-            request_url=str(request.url),
-            results=response.results,
-            count=response.count,
-            limit=limit,
-            offset=offset,
-        ).model_dump()
+    return resource_collection_response(
+        items=response["results"],
+        total_items=int(response["count"]),
+        limit=limit,
+        offset=offset,
     )
 
 

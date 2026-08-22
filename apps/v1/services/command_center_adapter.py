@@ -30,6 +30,31 @@ DIRECT_FRAME_CONTRACT = CORE_TABULAR_FRAME_CONTRACT
 READ_OPERATION_IDS = frozenset(
     {
         "getApiSettings",
+        "discoverAccounts",
+        "discoverAccountTargetAllocationTargets",
+        "discoverAssets",
+        "discoverAssetRelatedMetaTables",
+        "discoverAssetCategories",
+        "discoverCalendars",
+        "discoverCalendarDates",
+        "discoverCalendarSessions",
+        "discoverCalendarEvents",
+        "discoverIndexTypes",
+        "discoverIndexes",
+        "discoverIndexFormulas",
+        "discoverIndexDatasets",
+        "discoverIndexRelatedMetaTables",
+        "discoverPortfolioGroups",
+        "discoverGroupsForPortfolio",
+        "discoverPortfoliosInGroup",
+        "discoverPortfolioSignals",
+        "discoverPortfolios",
+        "discoverVirtualFunds",
+        "discoverPricingCurves",
+        "discoverPricingCurveSelections",
+        "discoverPricingMarketDataSets",
+        "discoverPricingMarketDataBindings",
+        "discoverPricingMarketDataSetBindings",
         "listAssets",
         "getAssetMonitorFrame",
         "getAsset",
@@ -37,10 +62,10 @@ READ_OPERATION_IDS = frozenset(
         "getAssetPricingDetails",
         "listAssetRelatedMetaTables",
         "listAssetCategories",
-        "listAssetCategoryBulkActions",
         "preflightBulkDeleteAssetCategories",
         "getAssetCategoryDetail",
         "listAccounts",
+        "getAccount",
         "getAccountSummary",
         "searchAccountTargetAllocationTargets",
         "getAccountHoldings",
@@ -59,7 +84,6 @@ READ_OPERATION_IDS = frozenset(
         "listIndexRelatedMetaTables",
         "getIndexDeleteImpact",
         "listPortfolios",
-        "listPortfolioBulkActions",
         "preflightBulkDeletePortfolios",
         "getPortfolio",
         "getPortfolioSummary",
@@ -69,7 +93,6 @@ READ_OPERATION_IDS = frozenset(
         "getPortfolioWeights",
         "listGroupsForPortfolio",
         "listPortfolioGroups",
-        "listPortfolioGroupBulkActions",
         "preflightBulkDeletePortfolioGroups",
         "listPortfoliosInGroup",
         "getPortfolioSignal",
@@ -88,6 +111,7 @@ READ_OPERATION_IDS = frozenset(
         "listCalendarEvents",
         "getCalendarEvent",
         "listPricingCurves",
+        "getPricingCurve",
         "getPricingCurveSummary",
         "listPricingCurveSelections",
         "getPricingCurveDeleteImpact",
@@ -356,7 +380,9 @@ def _build_request_body(
         return None
 
     content = request_body.get("content") or {}
-    content_type = "application/json" if "application/json" in content else next(iter(content), None)
+    content_type = (
+        "application/json" if "application/json" in content else next(iter(content), None)
+    )
     json_schema = (content.get(content_type) or {}).get("schema") if content_type else None
     return CommandCenterOperationRequestBody(
         required=bool(request_body.get("required", False)),
@@ -384,10 +410,10 @@ def _response_contract(
     openapi_operation: dict[str, Any],
     response_model: str | None,
 ) -> str | None:
-    if (
-        response_model == "TabularFrameResponse"
-        or openapi_operation.get("x-ui-contract") == DIRECT_FRAME_CONTRACT
-    ):
+    declared_contract = openapi_operation.get("x-ui-contract")
+    if isinstance(declared_contract, str) and declared_contract:
+        return declared_contract
+    if response_model == "TabularFrameResponse":
         return DIRECT_FRAME_CONTRACT
     return None
 

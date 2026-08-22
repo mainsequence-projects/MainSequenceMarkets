@@ -1,0 +1,21 @@
+{
+  "contract": "command-center.tabular_transform_authoring@v1",
+  "widgetId": "core__tabular-transform",
+  "props": {
+    "transformMode": "filter",
+    "filterCombineMode": "all",
+    "filterRules": [
+      { "field": "status", "operator": "equals", "value": "active" },
+      { "field": "notional", "operator": "gte", "value": 1000000 }
+    ],
+    "computedColumns": [
+      {
+        "key": "exposure",
+        "label": "Exposure",
+        "type": "number",
+        "formulaExpression": "[quantity] * [price]"
+      }
+    ],
+    "projectFields": ["symbol", "status", "exposure"]
+  }
+}

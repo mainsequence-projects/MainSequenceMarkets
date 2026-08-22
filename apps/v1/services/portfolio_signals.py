@@ -4,7 +4,6 @@ import datetime as dt
 
 from apps.v1.schemas.portfolio_signals import (
     PortfolioSignalDeleteResponse,
-    PortfolioSignalListResponse,
     PortfolioSignalWeightsDeleteResponse,
     SignalMetadata,
     SignalMetadataCreate,
@@ -22,7 +21,7 @@ def list_portfolio_signals(
     signal_uid: str | None = None,
     limit: int = 25,
     offset: int = 0,
-) -> PortfolioSignalListResponse:
+) -> dict[str, object]:
     runtime = _get_runtime()
     response = _list_signal_metadata_response(
         runtime.context,
@@ -31,7 +30,10 @@ def list_portfolio_signals(
         limit=limit,
         offset=offset,
     )
-    return PortfolioSignalListResponse.model_validate(response)
+    return {
+        "count": int(response["count"]),
+        "results": [SignalMetadata.model_validate(row) for row in response["results"]],
+    }
 
 
 def get_portfolio_signal(*, uid: str) -> SignalMetadata | None:

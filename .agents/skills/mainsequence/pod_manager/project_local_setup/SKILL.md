@@ -136,10 +136,10 @@ profile, ask the user to identify it before constructing or confirming the
 path. Do not fall back to a `default` organization directory.
 
 The directory shape is a local convention, not a platform identifier. Use the
-logical Project UID for aggregate operations. During this remote setup flow,
-use the selected ProjectBranch UID only for explicit branch reads and deploy-key
-registration. After checkout, local CLI workflows derive branch context from
-Git and must not require users to manage or persist that UID.
+logical Project UID for aggregate operations and deploy-key registration. Use
+the selected ProjectBranch UID only for explicit branch reads and clone branch
+selection. After checkout, local CLI workflows derive branch context from Git
+and must not require users to manage or persist that UID.
 
 Before creating anything:
 
@@ -160,16 +160,16 @@ host supports it. The private key never leaves the host.
 Call:
 
 ```text
-project_branch.add_deploy_key
+project.add_deploy_key
 ```
 
 with:
 
-- `project_branch_uid`: the selected public ProjectBranch UID;
+- `project_uid`: the public logical Project UID;
 - `key_title`: a stable human-readable local host or harness identity; and
 - `public_key`: only the OpenSSH public key text.
 
-The tool delegates to the ProjectBranch DRF action and returns an empty
+The tool delegates to the Project DRF action and returns an empty
 object on canonical success. It does not return repository credentials or
 provider metadata. Treat any MCP/DRF error as an incomplete access step and
 surface it before cloning. Even after success, verify access by cloning or by a

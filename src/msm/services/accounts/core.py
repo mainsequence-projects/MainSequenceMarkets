@@ -7,8 +7,12 @@ from collections.abc import Iterable, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from sqlalchemy import String, cast, func, or_, select
+
 from msm.api.base import operation_result_rows
+from msm.models import AccountTable
 from msm.repositories import MarketsRepositoryContext
+from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm.repositories import account_allocation_models as allocation_model_repository
 from msm.repositories import accounts as account_repository
 
@@ -52,42 +56,51 @@ def list_account_rows_response(
     limit: int = DEFAULT_ACCOUNT_PAGE_SIZE,
     offset: int = 0,
 ) -> dict[str, Any]:
-    rows = operation_result_rows(
-        search_accounts(
-            context,
-            limit=_scan_limit(offset=offset, limit=limit),
-        )
-    )
-    normalized_rows = [
-        _build_account_row(row)
-        for row in rows
-        if isinstance(row, Mapping) and row.get("uid") not in (None, "")
-    ]
-    normalized_rows.sort(
-        key=lambda row: (
-            str(row["account_name"]).lower(),
-            str(row["uid"]),
-        )
-    )
-
+    statement = select(AccountTable)
     normalized_search = search.strip().lower()
     if normalized_search:
-        normalized_rows = [
-            row
-            for row in normalized_rows
-            if _matches_search(
-                values=(
-                    row["uid"],
-                    row["account_name"],
-                    row.get("unique_identifier"),
-                ),
-                normalized_search=normalized_search,
+        needle = f"%{normalized_search}%"
+        statement = statement.where(
+            or_(
+                func.lower(cast(AccountTable.uid, String)).like(needle),
+                func.lower(AccountTable.account_name).like(needle),
+                func.lower(AccountTable.unique_identifier).like(needle),
             )
-        ]
+        )
+    statement = statement.order_by(
+        func.lower(AccountTable.account_name),
+        AccountTable.uid,
+    )
+    count_statement = select(func.count().label("count")).select_from(statement.subquery())
+    count_rows = operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                count_statement,
+                context=context,
+                operation="select",
+                models=[AccountTable],
+                access="read",
+            ),
+            context=context,
+        )
+    )
+    rows = operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                statement.limit(limit).offset(offset),
+                context=context,
+                operation="select",
+                models=[AccountTable],
+                access="read",
+            ),
+            context=context,
+        )
+    )
+    normalized_rows = [_build_account_row(row) for row in rows]
 
     return {
-        "count": len(normalized_rows),
-        "results": normalized_rows[offset : offset + limit],
+        "count": int(count_rows[0]["count"]) if count_rows else 0,
+        "results": normalized_rows,
     }
 
 

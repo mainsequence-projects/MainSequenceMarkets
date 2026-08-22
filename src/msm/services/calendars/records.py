@@ -4,7 +4,7 @@ import datetime as dt
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import String, cast, func, or_, select
 
 from msm.api.base import operation_result_rows
 from msm.api.calendars import (
@@ -37,7 +37,6 @@ from msm.repositories.crud import (
     create_model,
     delete_model,
     get_model_by_uid,
-    search_model,
     update_model,
 )
 
@@ -56,51 +55,49 @@ def list_calendar_records(
     source: str | None = None,
     source_identifier: str | None = None,
 ) -> list[dict[str, Any]]:
-    filters = _calendar_filters(
+    statement = _calendar_list_statement(
+        search=search,
         unique_identifier=unique_identifier,
+        unique_identifier_contains=unique_identifier_contains,
         calendar_type=calendar_type,
         source=source,
         source_identifier=source_identifier,
     )
-    contains_filters = {}
-    if unique_identifier_contains not in (None, ""):
-        contains_filters["unique_identifier"] = str(unique_identifier_contains)
-
-    rows = operation_result_rows(
-        search_model(
-            context,
-            model=CalendarTable,
-            filters=filters,
-            contains_filters=contains_filters,
-            limit=_scan_limit(offset=offset, limit=limit),
-        )
-    )
-    rows.sort(
-        key=lambda row: (
-            str(row.get("unique_identifier", "")).lower(),
-            str(row.get("uid", "")),
-        )
+    return _execute_limited_select(
+        context,
+        statement=statement,
+        model=CalendarTable,
+        limit=limit,
+        offset=offset,
     )
 
-    normalized_search = search.strip().lower()
-    if normalized_search:
-        rows = [
-            row
-            for row in rows
-            if _matches_search(
-                values=(
-                    row.get("uid"),
-                    row.get("unique_identifier"),
-                    row.get("display_name"),
-                    row.get("calendar_type"),
-                    row.get("source"),
-                    row.get("source_identifier"),
-                ),
-                normalized_search=normalized_search,
-            )
-        ]
 
-    return rows[offset : offset + limit]
+def list_calendar_records_page(
+    context: MarketsRepositoryContext,
+    *,
+    search: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    unique_identifier: str | None = None,
+    unique_identifier_contains: str | None = None,
+    calendar_type: str | None = None,
+    source: str | None = None,
+    source_identifier: str | None = None,
+) -> dict[str, Any]:
+    return _execute_collection_page(
+        context,
+        statement=_calendar_list_statement(
+            search=search,
+            unique_identifier=unique_identifier,
+            unique_identifier_contains=unique_identifier_contains,
+            calendar_type=calendar_type,
+            source=source,
+            source_identifier=source_identifier,
+        ),
+        model=CalendarTable,
+        limit=limit,
+        offset=offset,
+    )
 
 
 def get_calendar_record(
@@ -279,26 +276,48 @@ def list_calendar_date_records(
     limit: int = 500,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
-    statement = select(CalendarDateTable).where(CalendarDateTable.calendar_uid == calendar_uid)
-    statement = _apply_date_window(
-        statement,
-        model=CalendarDateTable,
-        field_name="local_date",
+    statement = _calendar_date_list_statement(
+        calendar_uid=calendar_uid,
         start_date=start_date,
         end_date=end_date,
+        is_business_day=is_business_day,
+        is_holiday=is_holiday,
+        is_weekend=is_weekend,
+        is_early_close=is_early_close,
     )
-    for field_name, value in {
-        "is_business_day": is_business_day,
-        "is_holiday": is_holiday,
-        "is_weekend": is_weekend,
-        "is_early_close": is_early_close,
-    }.items():
-        if value is not None:
-            statement = statement.where(getattr(CalendarDateTable, field_name) == value)
-    statement = statement.order_by(CalendarDateTable.local_date, CalendarDateTable.uid)
     return _execute_limited_select(
         context,
         statement=statement,
+        model=CalendarDateTable,
+        limit=limit,
+        offset=offset,
+    )
+
+
+def list_calendar_date_records_page(
+    context: MarketsRepositoryContext,
+    *,
+    calendar_uid: str,
+    start_date: dt.date | str | None = None,
+    end_date: dt.date | str | None = None,
+    is_business_day: bool | None = None,
+    is_holiday: bool | None = None,
+    is_weekend: bool | None = None,
+    is_early_close: bool | None = None,
+    limit: int = 500,
+    offset: int = 0,
+) -> dict[str, Any]:
+    return _execute_collection_page(
+        context,
+        statement=_calendar_date_list_statement(
+            calendar_uid=calendar_uid,
+            start_date=start_date,
+            end_date=end_date,
+            is_business_day=is_business_day,
+            is_holiday=is_holiday,
+            is_weekend=is_weekend,
+            is_early_close=is_early_close,
+        ),
         model=CalendarDateTable,
         limit=limit,
         offset=offset,
@@ -398,28 +417,42 @@ def list_calendar_session_records(
     limit: int = 500,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
-    statement = select(CalendarSessionTable).where(
-        CalendarSessionTable.calendar_uid == calendar_uid
-    )
-    statement = _apply_date_window(
-        statement,
-        model=CalendarSessionTable,
-        field_name="local_date",
+    statement = _calendar_session_list_statement(
+        calendar_uid=calendar_uid,
         start_date=start_date,
         end_date=end_date,
-    )
-    if session_label not in (None, ""):
-        statement = statement.where(CalendarSessionTable.session_label == str(session_label))
-    if is_primary is not None:
-        statement = statement.where(CalendarSessionTable.is_primary == is_primary)
-    statement = statement.order_by(
-        CalendarSessionTable.local_date,
-        CalendarSessionTable.session_label,
-        CalendarSessionTable.uid,
+        session_label=session_label,
+        is_primary=is_primary,
     )
     return _execute_limited_select(
         context,
         statement=statement,
+        model=CalendarSessionTable,
+        limit=limit,
+        offset=offset,
+    )
+
+
+def list_calendar_session_records_page(
+    context: MarketsRepositoryContext,
+    *,
+    calendar_uid: str,
+    start_date: dt.date | str | None = None,
+    end_date: dt.date | str | None = None,
+    session_label: str | None = None,
+    is_primary: bool | None = None,
+    limit: int = 500,
+    offset: int = 0,
+) -> dict[str, Any]:
+    return _execute_collection_page(
+        context,
+        statement=_calendar_session_list_statement(
+            calendar_uid=calendar_uid,
+            start_date=start_date,
+            end_date=end_date,
+            session_label=session_label,
+            is_primary=is_primary,
+        ),
         model=CalendarSessionTable,
         limit=limit,
         offset=offset,
@@ -522,32 +555,51 @@ def list_calendar_event_records(
     limit: int = 500,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
-    statement = select(CalendarEventTable).where(CalendarEventTable.calendar_uid == calendar_uid)
-    statement = _apply_date_window(
-        statement,
-        model=CalendarEventTable,
-        field_name="event_date",
+    statement = _calendar_event_list_statement(
+        calendar_uid=calendar_uid,
         start_date=start_date,
         end_date=end_date,
-    )
-    for field_name, value in {
-        "event_type": event_type,
-        "event_label": event_label,
-        "target_type": target_type,
-        "target_uid": target_uid,
-        "target_identifier": target_identifier,
-    }.items():
-        if value not in (None, ""):
-            statement = statement.where(getattr(CalendarEventTable, field_name) == value)
-    statement = statement.order_by(
-        CalendarEventTable.event_date,
-        CalendarEventTable.event_type,
-        CalendarEventTable.event_label,
-        CalendarEventTable.uid,
+        event_type=event_type,
+        event_label=event_label,
+        target_type=target_type,
+        target_uid=target_uid,
+        target_identifier=target_identifier,
     )
     return _execute_limited_select(
         context,
         statement=statement,
+        model=CalendarEventTable,
+        limit=limit,
+        offset=offset,
+    )
+
+
+def list_calendar_event_records_page(
+    context: MarketsRepositoryContext,
+    *,
+    calendar_uid: str,
+    start_date: dt.date | str | None = None,
+    end_date: dt.date | str | None = None,
+    event_type: str | None = None,
+    event_label: str | None = None,
+    target_type: str | None = None,
+    target_uid: str | None = None,
+    target_identifier: str | None = None,
+    limit: int = 500,
+    offset: int = 0,
+) -> dict[str, Any]:
+    return _execute_collection_page(
+        context,
+        statement=_calendar_event_list_statement(
+            calendar_uid=calendar_uid,
+            start_date=start_date,
+            end_date=end_date,
+            event_type=event_type,
+            event_label=event_label,
+            target_type=target_type,
+            target_uid=target_uid,
+            target_identifier=target_identifier,
+        ),
         model=CalendarEventTable,
         limit=limit,
         offset=offset,
@@ -636,14 +688,16 @@ def bulk_upsert_calendar_event_records(
     return operation_result_rows(bulk_upsert_calendar_events(context, payloads))
 
 
-def _calendar_filters(
+def _calendar_list_statement(
     *,
+    search: str = "",
     unique_identifier: str | None,
+    unique_identifier_contains: str | None,
     calendar_type: str | None,
     source: str | None,
     source_identifier: str | None,
-) -> dict[str, Any]:
-    filters: dict[str, Any] = {}
+) -> Any:
+    statement = select(CalendarTable)
     for key, value in {
         "unique_identifier": unique_identifier,
         "calendar_type": calendar_type,
@@ -651,8 +705,124 @@ def _calendar_filters(
         "source_identifier": source_identifier,
     }.items():
         if value not in (None, ""):
-            filters[key] = value
-    return filters
+            statement = statement.where(getattr(CalendarTable, key) == value)
+    if unique_identifier_contains not in (None, ""):
+        statement = statement.where(
+            func.lower(CalendarTable.unique_identifier).like(
+                f"%{str(unique_identifier_contains).strip().lower()}%"
+            )
+        )
+    normalized_search = search.strip().lower()
+    if normalized_search:
+        needle = f"%{normalized_search}%"
+        statement = statement.where(
+            or_(
+                func.lower(cast(CalendarTable.uid, String)).like(needle),
+                func.lower(CalendarTable.unique_identifier).like(needle),
+                func.lower(CalendarTable.display_name).like(needle),
+                func.lower(CalendarTable.calendar_type).like(needle),
+                func.lower(func.coalesce(CalendarTable.source, "")).like(needle),
+                func.lower(func.coalesce(CalendarTable.source_identifier, "")).like(needle),
+            )
+        )
+    return statement.order_by(
+        func.lower(CalendarTable.unique_identifier),
+        CalendarTable.uid,
+    )
+
+
+def _calendar_date_list_statement(
+    *,
+    calendar_uid: str,
+    start_date: dt.date | str | None = None,
+    end_date: dt.date | str | None = None,
+    is_business_day: bool | None = None,
+    is_holiday: bool | None = None,
+    is_weekend: bool | None = None,
+    is_early_close: bool | None = None,
+) -> Any:
+    statement = select(CalendarDateTable).where(CalendarDateTable.calendar_uid == calendar_uid)
+    statement = _apply_date_window(
+        statement,
+        model=CalendarDateTable,
+        field_name="local_date",
+        start_date=start_date,
+        end_date=end_date,
+    )
+    for field_name, value in {
+        "is_business_day": is_business_day,
+        "is_holiday": is_holiday,
+        "is_weekend": is_weekend,
+        "is_early_close": is_early_close,
+    }.items():
+        if value is not None:
+            statement = statement.where(getattr(CalendarDateTable, field_name) == value)
+    return statement.order_by(CalendarDateTable.local_date, CalendarDateTable.uid)
+
+
+def _calendar_session_list_statement(
+    *,
+    calendar_uid: str,
+    start_date: dt.date | str | None = None,
+    end_date: dt.date | str | None = None,
+    session_label: str | None = None,
+    is_primary: bool | None = None,
+) -> Any:
+    statement = select(CalendarSessionTable).where(
+        CalendarSessionTable.calendar_uid == calendar_uid
+    )
+    statement = _apply_date_window(
+        statement,
+        model=CalendarSessionTable,
+        field_name="local_date",
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if session_label not in (None, ""):
+        statement = statement.where(CalendarSessionTable.session_label == str(session_label))
+    if is_primary is not None:
+        statement = statement.where(CalendarSessionTable.is_primary == is_primary)
+    return statement.order_by(
+        CalendarSessionTable.local_date,
+        CalendarSessionTable.session_label,
+        CalendarSessionTable.uid,
+    )
+
+
+def _calendar_event_list_statement(
+    *,
+    calendar_uid: str,
+    start_date: dt.date | str | None = None,
+    end_date: dt.date | str | None = None,
+    event_type: str | None = None,
+    event_label: str | None = None,
+    target_type: str | None = None,
+    target_uid: str | None = None,
+    target_identifier: str | None = None,
+) -> Any:
+    statement = select(CalendarEventTable).where(CalendarEventTable.calendar_uid == calendar_uid)
+    statement = _apply_date_window(
+        statement,
+        model=CalendarEventTable,
+        field_name="event_date",
+        start_date=start_date,
+        end_date=end_date,
+    )
+    for field_name, value in {
+        "event_type": event_type,
+        "event_label": event_label,
+        "target_type": target_type,
+        "target_uid": target_uid,
+        "target_identifier": target_identifier,
+    }.items():
+        if value not in (None, ""):
+            statement = statement.where(getattr(CalendarEventTable, field_name) == value)
+    return statement.order_by(
+        CalendarEventTable.event_date,
+        CalendarEventTable.event_type,
+        CalendarEventTable.event_label,
+        CalendarEventTable.uid,
+    )
 
 
 def _apply_date_window(
@@ -688,6 +858,39 @@ def _execute_limited_select(
         access="read",
     )
     return operation_result_rows(execute_markets_operation(operation, context=context))
+
+
+def _execute_collection_page(
+    context: MarketsRepositoryContext,
+    *,
+    statement: Any,
+    model: Any,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    count_statement = select(func.count().label("count")).select_from(statement.subquery())
+    count_rows = operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                count_statement,
+                context=context,
+                operation="select",
+                models=[model],
+                access="read",
+            ),
+            context=context,
+        )
+    )
+    return {
+        "count": int(count_rows[0]["count"]) if count_rows else 0,
+        "results": _execute_limited_select(
+            context,
+            statement=statement,
+            model=model,
+            limit=limit,
+            offset=offset,
+        ),
+    }
 
 
 def _first_operation_row(result: Mapping[str, Any] | list[Any] | None) -> dict[str, Any] | None:
@@ -796,9 +999,13 @@ __all__ = [
     "get_calendar_record",
     "get_calendar_session_record",
     "list_calendar_date_records",
+    "list_calendar_date_records_page",
     "list_calendar_event_records",
+    "list_calendar_event_records_page",
     "list_calendar_records",
+    "list_calendar_records_page",
     "list_calendar_session_records",
+    "list_calendar_session_records_page",
     "update_calendar_date_record",
     "update_calendar_event_record",
     "update_calendar_record",

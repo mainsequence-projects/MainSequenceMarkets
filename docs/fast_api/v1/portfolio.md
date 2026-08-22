@@ -33,20 +33,18 @@ resolution. It is publication metadata only.
 ## List Portfolios
 
 ```text
-GET /api/v1/portfolio/?response_format=frontend_list&search=&calendar_uid=&limit=50&offset=0
+GET /api/v1/portfolio/?search=&calendar_uid=&limit=50&offset=0
 ```
 
 Portfolio rows always include a non-null `calendar_uid` that references a
 persisted `CalendarTable` row.
 
-Returns `PaginatedResponse[Portfolio]`:
+Returns `command-center.resource_collection@v1` and exposes
+`GET /api/v1/portfolio/discovery/`:
 
 ```json
 {
-  "count": 1,
-  "next": null,
-  "previous": null,
-  "results": [
+  "items": [
     {
       "uid": "portfolio-uid",
       "unique_identifier": "example-sleeve",
@@ -58,7 +56,14 @@ Returns `PaginatedResponse[Portfolio]`:
       "portfolio_data_node_uid": null,
       "backtest_table_price_column_name": "close"
     }
-  ]
+  ],
+  "pageInfo": {
+    "pageIndex": 0,
+    "pageSize": 50,
+    "totalItems": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false
+  }
 }
 ```
 

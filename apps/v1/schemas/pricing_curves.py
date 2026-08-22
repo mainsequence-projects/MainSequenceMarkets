@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 from pydantic import ConfigDict
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-from apps.v1.schemas.common import PaginatedResponse
 
 
 def _curve_contract():
@@ -19,10 +18,6 @@ def _curve_contract():
 
 
 Curve = _curve_contract()
-
-
-class CurveListResponse(PaginatedResponse[Curve]):
-    model_config = ConfigDict(extra="ignore")
 
 
 class CurveDeleteStorageCleanup(BaseModel):

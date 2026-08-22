@@ -1,0 +1,12 @@
+{
+  "selection": {
+    "mode": "all_matching",
+    "query": {
+      "filters": {
+        "status": "active",
+        "page_size": 25
+      }
+    }
+  },
+  "options": {}
+}

@@ -9,9 +9,10 @@ and delete operations.
 ## Assets
 
 - `GET /api/v1/asset/`
-  - supports `response_format=frontend_list`
   - supports `search`, `limit`, `offset`
   - supports `categories__uid` for nested category asset tables
+  - returns `command-center.resource_collection@v1`
+  - exposes `GET /api/v1/asset/discovery/`
   - returns the library `msm.api.assets.Asset` contract:
     `uid`, `unique_identifier`, and `asset_type`
 - `GET /api/v1/asset/monitor/frame/`
@@ -23,7 +24,6 @@ and delete operations.
   - publishes `AssetTable.unique_identifier` as the ms-markets stable asset key
     without adding a synthetic `Symbol` column
 - `GET /api/v1/asset/{uid}/`
-  - supports `response_format=frontend_detail`
   - resolves the asset by `uid`
   - returns `AssetDetailResponse` with top-level `uid`, `unique_identifier`,
     `asset_type`, and `current_snapshot`
@@ -51,10 +51,11 @@ and delete operations.
 ## Asset Categories
 
 - `GET /api/v1/asset-category/`
-  - supports `response_format=frontend_list`
   - returns the library `msm.api.assets.AssetCategory` contract
+  - returns `command-center.resource_collection@v1`
+  - exposes `GET /api/v1/asset-category/discovery/`, including the authorized
+    bulk-delete action
 - `GET /api/v1/asset-category/{uid}/`
-  - supports `response_format=frontend_detail`
   - returns `AssetCategoryDetailResponse` with category display fields,
     membership-backed `number_of_assets`, and an `assets_list` configuration
     whose default filter is `categories__uid=<category_uid>`
@@ -71,8 +72,8 @@ and delete operations.
   - deletes a single category
   - returns `null` on success
 - `POST /api/v1/asset-category/bulk-delete/`
-  - deletes by explicit `uids`
-  - also supports compatibility filters with `select_all=true`
+  - accepts the discovered `command-center.bulk_action_execution@v1` request
+  - deletes an explicit UUID selection after re-running preflight
 
 ## Related Concepts
 

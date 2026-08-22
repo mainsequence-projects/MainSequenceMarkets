@@ -3,25 +3,31 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query
 from starlette import status as http_status
 
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary, build_paginated_response
+from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
 from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.pricing_curves import (
     CurveDeleteResponse,
-    CurveListResponse,
-    CurveSelectionsResponse,
+    CurveSelection,
+    Curve,
     DiscountCurveResponse,
+)
+from apps.v1.schemas.resource_contracts import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ResourceCollection,
 )
 from apps.v1.services.pricing_curves import (
     delete_pricing_curve,
+    get_pricing_curve,
     get_pricing_curve_delete_impact,
     get_pricing_curve_discount_curve,
     get_pricing_curve_summary,
     list_pricing_curve_selections,
     list_pricing_curves,
 )
+from apps.v1.services.resource_collections import resource_collection_response
 from msm_pricing.api import CurveDeleteConflictError
 
 router = APIRouter(prefix="/pricing/curves", tags=["pricing-curve"])
@@ -29,13 +35,14 @@ router = APIRouter(prefix="/pricing/curves", tags=["pricing-curve"])
 
 @router.get(
     "/",
-    response_model=CurveListResponse,
+    response_model=ResourceCollection[Curve],
     summary="List pricing curves",
     description=(
         "Return paginated pricing curve registry rows from `msm_pricing.api.Curve`. "
         "These are curve identity rows, not timestamped curve observations."
     ),
     operation_id="listPricingCurves",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         400: {
             "model": ErrorResponse,
@@ -44,7 +51,6 @@ router = APIRouter(prefix="/pricing/curves", tags=["pricing-curve"])
     },
 )
 def get_pricing_curves(
-    request: Request,
     limit: Annotated[
         int,
         Query(
@@ -72,29 +78,39 @@ def get_pricing_curves(
         str | None,
         Query(description="Optional exact source filter."),
     ] = None,
-) -> CurveListResponse:
+) -> ResourceCollection[Curve]:
     try:
-        response = CurveListResponse.model_validate(
-            list_pricing_curves(
-                limit=limit,
-                offset=offset,
-                search=search,
-                curve_type=curve_type,
-                source=source,
-            )
+        response = list_pricing_curves(
+            limit=limit,
+            offset=offset,
+            search=search,
+            curve_type=curve_type,
+            source=source,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return CurveListResponse.model_validate(
-        build_paginated_response(
-            request_url=str(request.url),
-            results=response.results,
-            count=response.count,
-            limit=limit,
-            offset=offset,
-        ).model_dump()
+    return resource_collection_response(
+        items=[Curve.model_validate(row) for row in response["results"]],
+        total_items=int(response["count"]),
+        limit=limit,
+        offset=offset,
     )
+
+
+@router.get(
+    "/{uid}/",
+    response_model=Curve,
+    summary="Get pricing curve",
+    description="Return one canonical pricing curve row by uid.",
+    operation_id="getPricingCurve",
+    responses={404: {"model": ErrorResponse, "description": "Pricing curve not found."}},
+)
+def get_pricing_curve_by_uid(uid: str) -> Curve:
+    curve = get_pricing_curve(uid=uid)
+    if curve is None:
+        raise HTTPException(status_code=404, detail=f"Pricing curve {uid!r} was not found.")
+    return curve
 
 
 @router.get(
@@ -122,13 +138,14 @@ def get_pricing_curve_summary_by_uid(uid: str) -> FrontEndDetailSummary:
 
 @router.get(
     "/{uid}/curve-selections/",
-    response_model=CurveSelectionsResponse,
+    response_model=ResourceCollection[CurveSelection],
     summary="List pricing curve selections",
     description=(
         "Return market-data-set curve-selection bindings that point to one pricing "
         "curve. This is a reverse lookup; the curve does not own the selector."
     ),
     operation_id="listPricingCurveSelections",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         404: {
             "model": ErrorResponse,
@@ -136,11 +153,20 @@ def get_pricing_curve_summary_by_uid(uid: str) -> FrontEndDetailSummary:
         }
     },
 )
-def list_pricing_curve_selections_by_uid(uid: str) -> CurveSelectionsResponse:
-    response = list_pricing_curve_selections(uid=uid)
+def list_pricing_curve_selections_by_uid(
+    uid: str,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ResourceCollection[CurveSelection]:
+    response = list_pricing_curve_selections(uid=uid, limit=limit, offset=offset)
     if response is None:
         raise HTTPException(status_code=404, detail=f"Pricing curve {uid!r} was not found.")
-    return response
+    return resource_collection_response(
+        items=response.results,
+        total_items=response.count,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get(

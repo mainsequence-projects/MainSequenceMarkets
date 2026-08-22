@@ -6,7 +6,7 @@ from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.virtual_funds import (
     VirtualFundDetailResponse,
     VirtualFundHoldingsSnapshotResponse,
-    VirtualFundListResponse,
+    VirtualFund,
 )
 
 
@@ -17,7 +17,7 @@ def list_virtual_funds(
     portfolio_uid: str | None = None,
     limit: int = 25,
     offset: int = 0,
-) -> VirtualFundListResponse:
+) -> dict[str, object]:
     runtime = _get_runtime()
     response = _list_virtual_fund_rows_response(
         runtime.context,
@@ -27,7 +27,10 @@ def list_virtual_funds(
         limit=limit,
         offset=offset,
     )
-    return VirtualFundListResponse.model_validate(response)
+    return {
+        "count": int(response["count"]),
+        "results": [VirtualFund.model_validate(row) for row in response["results"]],
+    }
 
 
 def get_virtual_fund_detail(*, uid: str) -> VirtualFundDetailResponse | None:

@@ -5,7 +5,6 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-from apps.v1.schemas.common import PaginatedResponse
 
 
 def _pricing_market_data_contracts():
@@ -60,16 +59,6 @@ class PricingMarketDataCardResponse(BaseModel):
     resource: str = "pricing_market_data"
     description: str
     resources: list[PricingMarketDataResourceLink]
-
-
-class PricingMarketDataSetListResponse(PaginatedResponse[PricingMarketDataSet]):
-    model_config = ConfigDict(extra="ignore")
-
-
-class PricingMarketDataSetBindingListResponse(
-    PaginatedResponse[PricingMarketDataSetBinding],
-):
-    model_config = ConfigDict(extra="ignore")
 
 
 class PricingMarketDataSetDeleteResponse(BaseModel):

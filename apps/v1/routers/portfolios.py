@@ -4,24 +4,28 @@ import datetime as dt
 import logging
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Body, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, HTTPException, Query, status
 
 from apps.v1.schemas.bulk_actions import (
-    BulkActionDiscoveryResponse,
+    BULK_ACTION_PREFLIGHT_CONTRACT,
     BulkActionExecutionRequest,
     BulkActionPreflightResponse,
 )
 from apps.v1.schemas.command_center import TabularFrameResponse
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary, build_paginated_response
+from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
     PortfolioBulkCascadeDeleteResponse,
     PortfolioBulkDeleteResponse,
     PortfolioDeleteRequest,
     PortfolioDeleteResponse,
     PortfolioDetailResponse,
-    PortfolioListResponse,
+    Portfolio,
     PortfolioWeightsDeleteResponse,
     PortfolioWeightsSnapshotResponse,
+)
+from apps.v1.schemas.resource_contracts import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ResourceCollection,
 )
 from apps.v1.services.portfolios import (
     PortfolioDataIntegrityError,
@@ -37,9 +41,9 @@ from apps.v1.services.portfolios import (
     list_portfolios,
     preflight_bulk_delete_portfolios,
 )
+from apps.v1.services.resource_collections import resource_collection_response
 from apps.v1.services.bulk_actions import (
     blocked_preflight_detail,
-    build_bulk_delete_discovery,
     explicit_uuid_selection,
 )
 
@@ -49,18 +53,15 @@ logger = logging.getLogger(__name__)
 
 @router.get(
     "/",
-    response_model=PortfolioListResponse,
+    response_model=ResourceCollection[Portfolio],
     summary="List portfolios",
-    description=(
-        "Return core library portfolio rows in the reusable limit-offset pagination "
-        "envelope. The `response_format` query parameter is accepted for frontend "
-        "compatibility, but rows use the `msm.api.portfolios.Portfolio` contract."
-    ),
+    description=("Return portfolios in the canonical Command Center resource collection contract."),
     operation_id="listPortfolios",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         400: {
             "model": ErrorResponse,
-            "description": "Unsupported response format or invalid portfolio list request.",
+            "description": "Invalid resource collection request.",
         },
         409: {
             "model": ErrorResponse,
@@ -69,11 +70,6 @@ logger = logging.getLogger(__name__)
     },
 )
 def get_portfolios(
-    request: Request,
-    response_format: Annotated[
-        str,
-        Query(description="Supported value for this endpoint is `frontend_list`."),
-    ] = "frontend_list",
     search: Annotated[
         str,
         Query(
@@ -95,12 +91,7 @@ def get_portfolios(
         int,
         Query(ge=0, description="Zero-based starting offset into the filtered portfolio list."),
     ] = 0,
-) -> PortfolioListResponse:
-    if response_format != "frontend_list":
-        raise HTTPException(
-            status_code=400,
-            detail="Only response_format=frontend_list is implemented for GET /api/v1/portfolio/.",
-        )
+) -> ResourceCollection[Portfolio]:
     try:
         response = list_portfolios(
             search=search,
@@ -113,14 +104,11 @@ def get_portfolios(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return PortfolioListResponse.model_validate(
-        build_paginated_response(
-            request_url=str(request.url),
-            results=response["results"],
-            count=int(response["count"]),
-            limit=limit,
-            offset=offset,
-        ).model_dump()
+    return resource_collection_response(
+        items=response["results"],
+        total_items=int(response["count"]),
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -175,36 +163,6 @@ def bulk_delete_portfolio_rows(
     return response
 
 
-@router.get(
-    "/bulk-actions/",
-    response_model=BulkActionDiscoveryResponse,
-    summary="Discover portfolio bulk actions",
-    description=(
-        "Return the caller-visible Command Center bulk actions for the portfolio "
-        "collection. Only explicit UID selection is currently advertised."
-    ),
-    operation_id="listPortfolioBulkActions",
-)
-def get_portfolio_bulk_actions(
-    search: Annotated[
-        str,
-        Query(description="Normalized collection search forwarded by the resource adapter."),
-    ] = "",
-    calendar_uid: Annotated[
-        str | None,
-        Query(description="Optional normalized calendar UID filter from the collection."),
-    ] = None,
-) -> BulkActionDiscoveryResponse:
-    return build_bulk_delete_discovery(
-        action_id="bulk-delete-portfolios",
-        label="Delete selected",
-        endpoint="/api/v1/portfolio/bulk-delete/",
-        preflight_endpoint="/api/v1/portfolio/bulk-delete/preflight/",
-        confirmation_title="Delete portfolios",
-        confirmation_warning="Deleted portfolios cannot be restored.",
-    )
-
-
 @router.post(
     "/bulk-delete/preflight/",
     response_model=BulkActionPreflightResponse,
@@ -214,6 +172,7 @@ def get_portfolio_bulk_actions(
         "references without deleting data."
     ),
     operation_id="preflightBulkDeletePortfolios",
+    openapi_extra={"x-ui-contract": BULK_ACTION_PREFLIGHT_CONTRACT},
     responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
 )
 def preflight_portfolio_bulk_delete(
@@ -226,9 +185,7 @@ def preflight_portfolio_bulk_delete(
         uids = explicit_uuid_selection(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return BulkActionPreflightResponse.model_validate(
-        preflight_bulk_delete_portfolios(uids=uids)
-    )
+    return BulkActionPreflightResponse.model_validate(preflight_bulk_delete_portfolios(uids=uids))
 
 
 @router.post(

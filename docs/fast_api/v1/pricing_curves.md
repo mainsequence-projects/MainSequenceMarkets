@@ -28,10 +28,7 @@ Response:
 
 ```json
 {
-  "count": 1,
-  "next": null,
-  "previous": null,
-  "results": [
+  "items": [
     {
       "uid": "curve-uid",
       "unique_identifier": "USD-SOFR-3M-DISCOUNT",
@@ -42,20 +39,28 @@ Response:
       "source": "example",
       "metadata_json": {}
     }
-  ]
+  ],
+  "pageInfo": {
+    "pageIndex": 0,
+    "pageSize": 25,
+    "totalItems": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false
+  }
 }
 ```
 
-The response uses the shared v1 limit-offset envelope:
+The response declares `command-center.resource_collection@v1`; discovery is
+available at `GET /api/v1/pricing/curves/discovery/`.
 
-```json
-{
-  "count": 0,
-  "next": null,
-  "previous": null,
-  "results": []
-}
+## Curve Detail
+
+```text
+GET /api/v1/pricing/curves/{uid}/
 ```
+
+Returns one canonical `Curve` registry row. This is distinct from the
+application-owned summary view below.
 
 ## Curve Summary
 

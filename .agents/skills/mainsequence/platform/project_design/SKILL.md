@@ -55,9 +55,18 @@ Keep these distinctions:
 - `GitRepository` is the provider/source-control record. Repository detail
   exposes its owning logical Project UID and never selects an entry, main,
   oldest, or current ProjectBranch.
-- `ProjectBranch` is one durable branch-specific configuration and execution
-  context under a Project. Another provider branch gets a different
-  ProjectBranch UID while retaining the same logical Project UID.
+- `OrganizationProjectEnvironment` is the canonical operational partition of
+  the platform. For Project-owned code and resources, the exact Git branch is
+  the repository-side partition marker and `ProjectBranch` is the durable
+  platform context that binds one logical Project to exactly one Environment.
+  Another provider branch gets a different ProjectBranch UID while retaining
+  the same logical Project UID, allowing one Project to participate in several
+  Environment partitions without duplicating the Project.
+- Never model a branch-owned object against `Project` alone and then infer an
+  active, default, main, or current branch. Resolve the exact persisted
+  `ProjectBranch`; all of its Jobs, images, releases, runtimes, Project Coding
+  Agents, and repository-derived resources stay in that branch's Environment.
+  A commit SHA shared by several branches does not merge their partitions.
 - A Project Coding `Agent` derives its ProjectBranch and Organization
   Environment from the typed Project Executor policy. Agent list/search always
   selects one Organization Environment and returns only Project Coding Agents
@@ -76,9 +85,9 @@ Keep these distinctions:
   backend assigns each branch to the same-Organization environment whose
   immutable required branch exactly matches; the caller never supplies an
   environment UID.
-- `OrganizationProjectEnvironment` is the Organization-owned execution, data,
-  and configuration boundary shared by exact compatible ProjectBranches. Its
-  DataSource is routing configuration, not environment identity.
+- `OrganizationProjectEnvironment` is shared by exact compatible
+  ProjectBranches from one or several Projects. Its DataSource is routing
+  configuration, not environment identity.
 - `DataSource` is the sole canonical physical database identity. New
   MetaTable work routes through the ProjectBranch's backend-derived
   Organization Environment; there is no generic Project-to-DataSource
@@ -504,9 +513,13 @@ Command Center SDK skill bundle owns the manifest and executable module; the
 `project-workflows` and `resource-release` skills own deployment.
 
 For a browser-called FastAPI, record the intended exact or wildcard browser
-origins as API deployment intent. The execution handoff uses the FastAPI
-release's canonical `cors_allowed_origins`; project code and workflow
-`env_vars` do not install or configure platform CORS middleware.
+origins as API deployment intent when the platform default is not sufficient.
+Omitted FastAPI creation uses the current platform deployment's static-site
+wildcard (`site-dev` in development and `site` in production); this is not an
+Organization Environment mapping. The execution handoff uses the FastAPI
+release's canonical persisted `cors_allowed_origins`; project code and workflow
+`env_vars` do not install or configure platform CORS middleware. A changed
+policy requires runtime redeployment before browser CORS headers change.
 
 When an accepted static site calls an accepted FastAPI release through
 platform delegation, record the exact source StaticSiteRelease UID, exact
@@ -642,7 +655,6 @@ static_sites:
     decision_refs:
       - decisions.browser_frontend
     deployment:
-      root_directory: frontend
       routing_mode: spa
       automatic_deployment: true
       automatic_redeployment_policy:
@@ -670,7 +682,8 @@ Before handoff, verify:
 - every project-agent skill references at least one compatible CLI command;
 - every static-site dependency and consumer reference resolves;
 - every delegated static-site-to-FastAPI composition records exact deployed
-  source and target release identity resolution, target CORS intent, and
+  source and target release identity resolution, whether the platform CORS
+  default or a custom override is intended, and
   same-Organization ownership without inventing an environment co-location
   rule;
 - every organization-environment assumption uses an Organization-owned
@@ -730,16 +743,19 @@ design new callers around the retiring action and do not claim automatic branch
 provisioning has shipped until runtime evidence confirms the cutover.
 
 Choose the public `project_type` deliberately when the design establishes the
-primary scaffold: `python` or `vite_react`. Omission means `python` for backward
-compatibility. Do not invent separate language, framework, profile, or scaffold
-version fields. The canonical response exposes the derived technology, the
+primary Project scaffold: `python` or `vite_react`. The immutable value belongs
+to the logical Project, and every ProjectBranch under it uses that one type;
+never design mixed branch types or a branch-level override. Omission during
+Project creation means `python`. Do not invent separate language, framework,
+profile, or scaffold version fields. The canonical Project response exposes the derived technology, the
 mandatory pinned framework image, and repository/commit-scoped SDK
-observations. A Vite ProjectBranch keeps browser build variables on its
+observations. A Vite Project keeps browser build variables on its
 StaticSiteRelease rather than ProjectBranch `env_vars`; its environment owns
 MetaTable DataSource routing like every other ProjectBranch. Project creation
-itself always requires
-`default_metatables_data_source_uid`, exposes the safe Project default
-projection, and assigns that DataSource to the initial main ProjectBranch.
+does not accept a DataSource selector. The backend resolves the Organization's
+canonical production environment, exposes its configured DataSource through
+the safe Project default projection, and assigns that DataSource to the initial
+main ProjectBranch.
 Do not infer framework-image paths, tags, or runtime versions: the physical
 infrastructure producer advertises those values, and Project creation resolves
 its advertised default when no image UID is supplied.

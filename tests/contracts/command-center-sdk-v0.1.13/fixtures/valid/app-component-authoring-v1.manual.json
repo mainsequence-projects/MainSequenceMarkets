@@ -1,0 +1,44 @@
+{
+  "contract": "command-center.app_component_authoring@v1",
+  "widgetId": "core__app-component",
+  "props": {
+    "apiTargetMode": "manual",
+    "apiBaseUrl": "https://api.example.com",
+    "authMode": "none",
+    "method": "get",
+    "path": "/quotes/{symbol}",
+    "bindingSpec": {
+      "version": 1,
+      "operationKey": "GET /quotes/{symbol}",
+      "requestPorts": [
+        {
+          "id": "request:path:symbol",
+          "fieldKey": "path:symbol",
+          "label": "Symbol",
+          "required": true,
+          "location": "path",
+          "kind": "string",
+          "accepts": ["core.value.string@v1"]
+        }
+      ],
+      "responsePorts": [
+        {
+          "id": "response:body",
+          "label": "Response body",
+          "kind": "json",
+          "contract": "core.value.json@v1",
+          "responsePath": [],
+          "statusCode": "200",
+          "contentType": "application/json"
+        }
+      ]
+    },
+    "requestInputMap": {
+      "version": 1,
+      "operationKey": "GET /quotes/{symbol}",
+      "fields": {
+        "path:symbol": { "visibleOnCard": true, "label": "Ticker" }
+      }
+    }
+  }
+}

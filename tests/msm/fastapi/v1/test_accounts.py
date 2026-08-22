@@ -36,10 +36,7 @@ def test_get_accounts_returns_count_and_results(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json() == {
-        "count": 1,
-        "next": None,
-        "previous": None,
-        "results": [
+        "items": [
             {
                 "uid": str(account_uid),
                 "unique_identifier": "some-account",
@@ -51,6 +48,13 @@ def test_get_accounts_returns_count_and_results(monkeypatch) -> None:
                 "metadata_json": None,
             }
         ],
+        "pageInfo": {
+            "pageIndex": 0,
+            "pageSize": 25,
+            "totalItems": 1,
+            "hasNextPage": False,
+            "hasPreviousPage": False,
+        },
     }
 
 
@@ -66,17 +70,21 @@ def test_get_accounts_passes_query_params(monkeypatch) -> None:
     client = TestClient(app)
     response = client.get(
         "/api/v1/account/",
-        params={"search": "some", "limit": 10, "offset": 5},
+        params={"search": "some", "limit": 10, "offset": 10},
     )
 
     assert response.status_code == 200
     assert response.json() == {
-        "count": 0,
-        "next": None,
-        "previous": "http://testserver/api/v1/account/?search=some&limit=10&offset=0",
-        "results": [],
+        "items": [],
+        "pageInfo": {
+            "pageIndex": 1,
+            "pageSize": 10,
+            "totalItems": 0,
+            "hasNextPage": False,
+            "hasPreviousPage": True,
+        },
     }
-    assert captured == {"search": "some", "limit": 10, "offset": 5}
+    assert captured == {"search": "some", "limit": 10, "offset": 10}
 
 
 def test_account_service_maps_account_rows(monkeypatch) -> None:
@@ -107,10 +115,11 @@ def test_account_service_maps_account_rows(monkeypatch) -> None:
 
     response = list_accounts(limit=25, offset=0)
 
-    assert response.model_dump(mode="json") == {
+    assert {
+        "count": response["count"],
+        "results": [row.model_dump(mode="json") for row in response["results"]],
+    } == {
         "count": 1,
-        "next": None,
-        "previous": None,
         "results": [
             {
                 "uid": str(account_uid),
@@ -257,7 +266,7 @@ def test_search_account_target_allocation_targets_returns_candidates(monkeypatch
 
     def fake_search_targets(**kwargs):
         captured.update(kwargs)
-        return {
+        response = {
             "count": 2,
             "results": [
                 {
@@ -288,6 +297,9 @@ def test_search_account_target_allocation_targets_returns_candidates(monkeypatch
             ],
         }
 
+        response["results"] = response["results"][: kwargs["limit"]]
+        return response
+
     monkeypatch.setattr(
         "apps.v1.routers.accounts.search_account_target_allocation_targets",
         fake_search_targets,
@@ -312,10 +324,7 @@ def test_search_account_target_allocation_targets_returns_candidates(monkeypatch
         "offset": 0,
     }
     assert response.json() == {
-        "count": 2,
-        "next": "http://testserver/api/v1/account/target-allocation/targets/?search=btc&target_type=all&limit=1&offset=1",
-        "previous": None,
-        "results": [
+        "items": [
             {
                 "target_type": "asset",
                 "target_uid": str(asset_uid),
@@ -331,6 +340,13 @@ def test_search_account_target_allocation_targets_returns_candidates(monkeypatch
                 "metadata": {"asset_type": "crypto"},
             }
         ],
+        "pageInfo": {
+            "pageIndex": 0,
+            "pageSize": 1,
+            "totalItems": 2,
+            "hasNextPage": True,
+            "hasPreviousPage": False,
+        },
     }
 
 
@@ -398,10 +414,11 @@ def test_account_target_allocation_targets_service_maps_candidates(monkeypatch) 
         "limit": 10,
         "offset": 5,
     }
-    assert response.model_dump(mode="json") == {
+    assert {
+        "count": response["count"],
+        "results": [row.model_dump(mode="json") for row in response["results"]],
+    } == {
         "count": 1,
-        "next": None,
-        "previous": None,
         "results": [
             {
                 "target_type": "asset",

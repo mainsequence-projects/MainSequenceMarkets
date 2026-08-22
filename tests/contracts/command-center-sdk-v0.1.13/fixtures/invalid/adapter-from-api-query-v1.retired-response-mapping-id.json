@@ -1,0 +1,5 @@
+{
+  "kind": "api-operation",
+  "operationId": "listOrders",
+  "responseMappingId": "orders_table"
+}

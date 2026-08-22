@@ -7,14 +7,13 @@ from uuid import UUID
 from apps.v1.schemas.bulk_actions import (
     BulkActionConfirmation,
     BulkActionDefinition,
-    BulkActionDiscoveryResponse,
     BulkActionExecutionRequest,
     BulkActionExplicitSelection,
     BulkActionPreflightResponse,
 )
 
 
-def build_bulk_delete_discovery(
+def build_bulk_delete_action(
     *,
     action_id: str,
     label: str,
@@ -22,26 +21,22 @@ def build_bulk_delete_discovery(
     preflight_endpoint: str,
     confirmation_title: str,
     confirmation_warning: str,
-) -> BulkActionDiscoveryResponse:
-    return BulkActionDiscoveryResponse(
-        actions=[
-            BulkActionDefinition(
-                id=action_id,
-                label=label,
-                endpoint=endpoint,
-                preflight_endpoint=preflight_endpoint,
-                method="POST",
-                tone="danger",
-                selection_modes=["explicit"],
-                confirmation=BulkActionConfirmation(
-                    title=confirmation_title,
-                    word="DELETE",
-                    button_label=label,
-                    warning=confirmation_warning,
-                ),
-                options=[],
-            )
-        ]
+) -> BulkActionDefinition:
+    return BulkActionDefinition(
+        id=action_id,
+        label=label,
+        endpoint=endpoint,
+        preflight_endpoint=preflight_endpoint,
+        method="POST",
+        tone="danger",
+        selection_modes=["explicit"],
+        confirmation=BulkActionConfirmation(
+            title=confirmation_title,
+            word="DELETE",
+            button_label=label,
+            warning=confirmation_warning,
+        ),
+        options=[],
     )
 
 
@@ -70,6 +65,6 @@ def blocked_preflight_detail(preflight: BulkActionPreflightResponse) -> str:
 
 __all__ = [
     "blocked_preflight_detail",
-    "build_bulk_delete_discovery",
+    "build_bulk_delete_action",
     "explicit_uuid_selection",
 ]

@@ -6,7 +6,6 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-from apps.v1.schemas.common import PaginatedResponse
 
 
 def _portfolio_contract():
@@ -80,8 +79,3 @@ class PortfolioGroupMembershipBulkDeleteRequest(BaseModel):
     uids: list[UUID] = Field(default_factory=list)
     portfolio_group_uids: list[UUID] = Field(default_factory=list)
     portfolio_uids: list[UUID] = Field(default_factory=list)
-
-
-PortfolioGroupListResponse = PaginatedResponse[PortfolioGroup]
-PortfolioGroupPortfolioListResponse = PaginatedResponse[Portfolio]
-PortfolioGroupsForPortfolioResponse = PaginatedResponse[PortfolioGroup]

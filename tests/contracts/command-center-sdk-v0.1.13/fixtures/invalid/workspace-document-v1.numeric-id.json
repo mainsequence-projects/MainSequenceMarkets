@@ -1,0 +1,7 @@
+{
+  "id": 42,
+  "title": "Invalid identity",
+  "description": "Workspace IDs are strings.",
+  "source": "user",
+  "widgets": []
+}

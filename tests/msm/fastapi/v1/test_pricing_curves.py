@@ -6,7 +6,7 @@ import uuid
 from fastapi.testclient import TestClient
 
 from apps.v1.main import app
-from apps.v1.schemas.pricing_curves import Curve
+from apps.v1.schemas.pricing_curves import Curve, CurveSelectionsResponse
 from msm_pricing.api import CurveDeleteConflictError
 
 
@@ -88,13 +88,7 @@ def test_pricing_curve_list_uses_paginated_source_list(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json() == {
-        "count": 2,
-        "next": (
-            "http://testserver/api/v1/pricing/curves/?limit=1&offset=1&search=SOFR"
-            "&curve_type=discount&source=unit-test"
-        ),
-        "previous": None,
-        "results": [
+        "items": [
             {
                 "uid": str(row.uid),
                 "unique_identifier": "USD-SOFR-DISCOUNT",
@@ -109,6 +103,13 @@ def test_pricing_curve_list_uses_paginated_source_list(monkeypatch) -> None:
                 "metadata_json": {"provider": "test"},
             }
         ],
+        "pageInfo": {
+            "pageIndex": 0,
+            "pageSize": 1,
+            "totalItems": 2,
+            "hasNextPage": True,
+            "hasPreviousPage": False,
+        },
     }
     assert captured == {
         "limit": 1,
@@ -141,7 +142,7 @@ def test_get_pricing_curve_summary_returns_standard_summary(monkeypatch) -> None
 
     monkeypatch.setattr(
         "apps.v1.routers.pricing_curves.get_pricing_curve_summary",
-        lambda uid: {
+        lambda uid, **kwargs: {
             "entity": {
                 "id": str(curve_uid),
                 "type": "pricing_curve",
@@ -278,36 +279,38 @@ def test_list_pricing_curve_selections_returns_reverse_bindings(monkeypatch) -> 
 
     monkeypatch.setattr(
         "apps.v1.routers.pricing_curves.list_pricing_curve_selections",
-        lambda uid: {
-            "curve": {
-                "uid": str(curve_uid),
-                "unique_identifier": "USD-SOFR-OFFER-BENCHMARK",
-                "display_name": "USD SOFR offer benchmark",
-                "curve_type": "discount",
-            },
-            "count": 1,
-            "results": [
-                {
-                    "binding_uid": str(binding_uid),
-                    "market_data_set": {
-                        "uid": str(market_data_set_uid),
-                        "set_key": "eod",
-                        "display_name": "End of day",
+        lambda uid, **kwargs: CurveSelectionsResponse.model_validate(
+            {
+                "curve": {
+                    "uid": str(curve_uid),
+                    "unique_identifier": "USD-SOFR-OFFER-BENCHMARK",
+                    "display_name": "USD SOFR offer benchmark",
+                    "curve_type": "discount",
+                },
+                "count": 1,
+                "results": [
+                    {
+                        "binding_uid": str(binding_uid),
+                        "market_data_set": {
+                            "uid": str(market_data_set_uid),
+                            "set_key": "eod",
+                            "display_name": "End of day",
+                        },
+                        "role_key": "z_spread_base",
+                        "quote_side": "offer",
+                        "selector": {
+                            "type": "index",
+                            "selector_key": str(index_uid),
+                            "index_uid": str(index_uid),
+                            "index_identifier": "USD-SOFR",
+                            "display_name": "USD SOFR",
+                        },
+                        "status": "ACTIVE",
+                        "source": "example",
                     },
-                    "role_key": "z_spread_base",
-                    "quote_side": "offer",
-                    "selector": {
-                        "type": "index",
-                        "selector_key": str(index_uid),
-                        "index_uid": str(index_uid),
-                        "index_identifier": "USD-SOFR",
-                        "display_name": "USD SOFR",
-                    },
-                    "status": "ACTIVE",
-                    "source": "example",
-                }
-            ],
-        },
+                ],
+            }
+        ),
     )
 
     client = TestClient(app)
@@ -315,14 +318,7 @@ def test_list_pricing_curve_selections_returns_reverse_bindings(monkeypatch) -> 
 
     assert response.status_code == 200
     assert response.json() == {
-        "curve": {
-            "uid": str(curve_uid),
-            "unique_identifier": "USD-SOFR-OFFER-BENCHMARK",
-            "display_name": "USD SOFR offer benchmark",
-            "curve_type": "discount",
-        },
-        "count": 1,
-        "results": [
+        "items": [
             {
                 "binding_uid": str(binding_uid),
                 "market_data_set": {
@@ -343,13 +339,20 @@ def test_list_pricing_curve_selections_returns_reverse_bindings(monkeypatch) -> 
                 "source": "example",
             }
         ],
+        "pageInfo": {
+            "pageIndex": 0,
+            "pageSize": 50,
+            "totalItems": 1,
+            "hasNextPage": False,
+            "hasPreviousPage": False,
+        },
     }
 
 
 def test_list_pricing_curve_selections_returns_404_when_missing(monkeypatch) -> None:
     monkeypatch.setattr(
         "apps.v1.routers.pricing_curves.list_pricing_curve_selections",
-        lambda uid: None,
+        lambda uid, **kwargs: None,
     )
 
     client = TestClient(app)
@@ -738,8 +741,9 @@ def test_pricing_curve_selection_service_uses_pricing_api(monkeypatch) -> None:
         "apps.v1.services.pricing_curves.ensure_apps_v1_pricing_runtime", lambda: None
     )
 
-    def fake_selections(uid):
+    def fake_selections(uid, **kwargs):
         captured["uid"] = uid
+        captured.update(kwargs)
         return {
             "curve": {
                 "uid": str(curve_uid),
@@ -780,7 +784,7 @@ def test_pricing_curve_selection_service_uses_pricing_api(monkeypatch) -> None:
 
     response = list_pricing_curve_selections(uid=str(curve_uid))
 
-    assert captured == {"uid": str(curve_uid)}
+    assert captured == {"uid": str(curve_uid), "limit": 50, "offset": 0}
     assert response is not None
     assert response.count == 1
     assert response.results[0].selector.index_identifier == "USD-SOFR"

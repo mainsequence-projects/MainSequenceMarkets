@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:resource-collection:v1",
+  "title": "Command Center normalized resource collection v1",
+  "description": "Backend-neutral collection result consumed by ResourceAdapter and ResourceListPage.",
+  "type": "object",
+  "required": ["items", "pageInfo"],
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "pageInfo": {
+      "$ref": "#/$defs/pageInfo"
+    },
+    "controls": {
+      "$ref": "#/$defs/controls"
+    },
+    "bulkActions": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:mainsequence:command-center-sdk:schema:bulk-action-discovery:v1#/$defs/action"
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "pattern": ".*\\S.*"
+    },
+    "pageInfo": {
+      "type": "object",
+      "required": ["pageIndex", "pageSize", "totalItems", "hasNextPage", "hasPreviousPage"],
+      "additionalProperties": false,
+      "properties": {
+        "pageIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "totalItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hasNextPage": {
+          "type": "boolean"
+        },
+        "hasPreviousPage": {
+          "type": "boolean"
+        }
+      }
+    },
+    "filterOption": {
+      "type": "object",
+      "required": ["value", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": ["string", "number", "boolean"]
+        },
+        "label": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "filter": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["key", "label", "type"],
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "$ref": "#/$defs/nonEmptyString"
+            },
+            "label": {
+              "$ref": "#/$defs/nonEmptyString"
+            },
+            "type": {
+              "enum": ["text", "boolean"]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["key", "label", "type", "options"],
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "$ref": "#/$defs/nonEmptyString"
+            },
+            "label": {
+              "$ref": "#/$defs/nonEmptyString"
+            },
+            "type": {
+              "const": "select"
+            },
+            "options": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/filterOption"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "controls": {
+      "$comment": "Filter keys and ordering values must also be unique; runtime parsing enforces uniqueness by value.",
+      "type": "object",
+      "required": ["search", "filters", "ordering"],
+      "additionalProperties": false,
+      "properties": {
+        "search": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": ["placeholder", "fields"],
+              "additionalProperties": false,
+              "properties": {
+                "placeholder": {
+                  "$ref": "#/$defs/nonEmptyString"
+                },
+                "fields": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/filter"
+          }
+        },
+        "ordering": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "workspace-1",
+  "title": "Operations overview",
+  "description": "Current operational signals",
+  "schemaVersion": 1,
+  "source": "user",
+  "grid": { "columns": 12, "rowHeight": 24, "gap": 8 },
+  "widgets": []
+}

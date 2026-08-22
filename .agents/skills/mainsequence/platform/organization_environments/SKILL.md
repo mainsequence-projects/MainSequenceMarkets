@@ -102,10 +102,95 @@ canonical DRF collection so a human or local agent can resolve visible
 environment names and public UIDs. It does not expose environment creation,
 mutation, deletion, branch assignment, or data migration.
 
+## Understand The Accepted Normalization Target
+
+Platform ADR-0036, `Normalization of Organization Environment Relation`, is
+accepted and implementation is pending. It extends the Environment ontology
+across the whole platform and supersedes ADR-031's operational global fallback
+rules. Do not mistake the target below for fully deployed behavior until the
+corresponding migration phase is present.
+
+The normalized ontology has one semantic relation:
+
+```text
+organization_project_environment
+organization_project_environment_uid
+?organization_project_environment_uid=<uid>
+```
+
+Every tenant-owned operational object resolves exactly one Environment under
+that name. The relation is implemented according to the object's role:
+
+- independently creatable operational roots store a required immutable FK;
+- descendants derive it through one mandatory normalized parent;
+- declared polymorphic/query boundaries store a backend-maintained read-only
+  projection;
+- retained history stores an immutable snapshot; and
+- identity, physical infrastructure, platform definitions, and deliberately
+  multi-environment aggregates explicitly report the relation as not
+  applicable rather than exposing a nullable fake Environment.
+
+Do not add the FK to every model and do not add it to `CreatedByMixin`.
+Creator/Organization ownership and Environment partitioning are different
+concerns. A descendant such as `MetaTableColumn` derives through `MetaTable`;
+an independently creatable root such as `Namespace` stores the relation.
+
+The target model by application is:
+
+```text
+pod_manager
+├── ProjectBranch -> exact Environment partition
+│   └── Jobs, images, releases, runtimes, and Project Coding Agents derive or
+│       carry declared read-only projections/snapshots
+├── Secret, Constant, Bucket, and PVCDisk -> direct Environment
+└── Project, DataSource, CloudTenancy, Cluster, registries -> not singular
+
+ts_manager
+├── MetaTable, Namespace, Scheduler, TableUpdateNode -> direct Environment
+└── columns, indexes, foreign keys, LocalTimeSerie updates -> derive through
+    their mandatory MetaTable/update-graph parent
+
+agents
+├── Agent, AgentCapability, CodingAgentDeploymentDefault -> direct Environment
+├── ProjectExecutorRuntimeImage and ProjectExecutorRun -> inherited projection
+    or snapshot from their Pod Manager parent
+└── sessions, tasks, messages, handles, and bindings -> derive and must match
+
+command_center
+├── Workspace and SavedWidgetGroup -> direct Environment
+├── workspace/widget/navigation/publication descendants -> derive and match
+└── ConnectionInstance and ConnectionHealthCheck -> Organization control-plane,
+    not a Secret fallback and not singular to one Environment
+```
+
+Every relation connecting two environment-related objects must resolve the
+same exact Environment, even when both objects belong to the same
+Organization. Organization equality is necessary but not sufficient.
+
+ADR-0036 removes the product concept of Organization-global operational
+Secrets, Constants, and MetaTables. In the target state each belongs to one
+exact Environment; there is no environment-over-global shadowing or effective
+union lookup. Existing ambiguous rows require an explicit migration choice and
+are never silently assigned to production.
+
+Until each phase is deployed, explain both states plainly: identify the
+currently supported behavior, identify the accepted ADR-0036 target, and never
+promise an undeployed field, filter, constraint, or removal. After deployment,
+remove the obsolete legacy guidance from this skill in the same change so an
+agent cannot continue teaching a contract the server no longer implements.
+
 ## Place The Environment In The Platform Ontology
 
-An Organization Environment is the Organization-wide data and configuration
-boundary used by compatible ProjectBranches. It is not a child of one Project.
+An Organization Environment is the canonical Organization-wide operational
+partition for data, configuration, execution, applications, and agents. It is
+not a child of one Project.
+
+For Project-owned resources, the exact Git branch is the repository-side
+partition marker and `ProjectBranch` is the durable platform marker that binds
+one logical Project to exactly one Environment. This is the platform's
+multi-environment composition model: a Project spans environments through
+sibling ProjectBranches, while every branch-owned descendant stays inside the
+partition resolved by its exact ProjectBranch.
 
 ```text
 Organization
@@ -133,11 +218,11 @@ membership row.
 | Concept | Stable meaning | It does not mean |
 | --- | --- | --- |
 | `Organization` | Tenant and owner of environments and Organization-scoped resources | One deployment stage |
-| `OrganizationProjectEnvironment` | Organization-wide resource and execution context | A Project, Git branch, DataSource, release, or deployment |
+| `OrganizationProjectEnvironment` | Canonical Organization-wide operational partition | A Project, Git branch, DataSource, release, or deployment |
 | `Project` | Logical project aggregate that owns its branches, source link, sharing, labels, and lifecycle | The active environment or execution branch |
 | `GitRepository` | Provider/source-control identity | An environment or selected ProjectBranch |
-| `ProjectBranch` | Durable configuration and execution context for one exact provider branch | A caller-selected environment mapping |
-| `repository_branch` | Exact, case-sensitive provider branch name | Environment identity or display name |
+| `ProjectBranch` | Durable Project participation marker and execution context for one exact provider branch and Environment partition | A caller-selected environment mapping |
+| `repository_branch` | Exact, case-sensitive repository-side partition marker used for backend assignment | Environment identity, authorization, or display name |
 | `DataSource` | Physical database connection identity | The logical environment or proof of data ownership |
 | `MetaTable` | Catalog identity for one physical table | A Project-owned environment selector |
 | `ResourceRelease` | Durable deployable target owned by one ProjectBranch | An environment, promotion lane, or deployment attempt |

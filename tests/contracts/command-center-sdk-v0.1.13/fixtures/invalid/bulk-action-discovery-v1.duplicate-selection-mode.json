@@ -1,0 +1,12 @@
+{
+  "actions": [
+    {
+      "id": "archive",
+      "label": "Archive projects",
+      "endpoint": "/projects/actions/archive/",
+      "method": "POST",
+      "selection_modes": ["explicit", "explicit"],
+      "options": []
+    }
+  ]
+}

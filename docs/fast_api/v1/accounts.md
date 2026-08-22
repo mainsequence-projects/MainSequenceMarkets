@@ -7,10 +7,13 @@ direct account snapshots and virtual-fund-grouped views.
 
 - `GET /api/v1/account/`
   - supports `search`, `limit`, and `offset`
-  - returns `{ count, results }`
-  - `results` contains the library `msm.api.accounts.Account` contract:
+  - returns `command-center.resource_collection@v1`
+  - exposes `GET /api/v1/account/discovery/`
+  - `items` contains the library `msm.api.accounts.Account` contract:
     `uid`, `unique_identifier`, `account_name`, `is_paper`,
     `account_is_active`, `holdings_data_node_uid`, and `metadata_json`
+- `GET /api/v1/account/{uid}/`
+  - returns one canonical `Account` row by uid
 - `GET /api/v1/account/{uid}/summary/`
   - returns the reusable `FrontEndDetailSummary` response for account detail
     pages
@@ -19,6 +22,8 @@ direct account snapshots and virtual-fund-grouped views.
   - supports `search`, `target_type=all|asset|portfolio`, `limit`, and
     `offset`
   - returns one paginated candidate list for target-position assignment
+  - returns `command-center.resource_collection@v1` and exposes
+    `GET /api/v1/account/target-allocation/targets/discovery/`
   - searches valid `TargetPositionsStorage` targets across `AssetTable` and
     `PortfolioTable`
   - backed by one compiled MetaTable `select` operation using `UNION ALL`

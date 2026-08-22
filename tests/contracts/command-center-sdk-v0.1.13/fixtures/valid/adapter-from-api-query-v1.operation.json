@@ -1,0 +1,12 @@
+{
+  "kind": "api-operation",
+  "operationId": "listOrders",
+  "parameters": {
+    "path": {},
+    "query": {
+      "status": "open"
+    },
+    "headers": {}
+  },
+  "body": null
+}

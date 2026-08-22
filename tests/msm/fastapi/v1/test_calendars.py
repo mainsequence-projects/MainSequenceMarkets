@@ -29,7 +29,7 @@ def test_get_calendars_returns_core_rows(monkeypatch) -> None:
 
     def fake_list_calendars(**kwargs):
         captured.update(kwargs)
-        return [_calendar_row(calendar_uid)]
+        return {"count": 11, "results": [_calendar_row(calendar_uid)]}
 
     monkeypatch.setattr("apps.v1.routers.calendars.list_calendars", fake_list_calendars)
 
@@ -37,10 +37,9 @@ def test_get_calendars_returns_core_rows(monkeypatch) -> None:
     response = client.get(
         "/api/v1/calendar/",
         params={
-            "response_format": "frontend_list",
             "search": "nyse",
             "limit": 10,
-            "offset": 2,
+            "offset": 10,
             "calendar_type": "TRADING",
             "source": "pandas_market_calendars",
         },
@@ -48,27 +47,22 @@ def test_get_calendars_returns_core_rows(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json() == {
-        "count": 3,
-        "next": None,
-        "previous": "http://testserver/api/v1/calendar/?response_format=frontend_list&search=nyse&limit=10&offset=0&calendar_type=TRADING&source=pandas_market_calendars",
-        "results": [_calendar_row(calendar_uid)],
+        "items": [_calendar_row(calendar_uid)],
+        "pageInfo": {"pageIndex": 1, "pageSize": 10, "totalItems": 11, "hasNextPage": False, "hasPreviousPage": True},
     }
     assert captured["search"] == "nyse"
-    assert captured["limit"] == 11
-    assert captured["offset"] == 2
+    assert captured["limit"] == 10
+    assert captured["offset"] == 10
     assert captured["calendar_type"] == "TRADING"
     assert captured["source"] == "pandas_market_calendars"
 
 
-def test_get_calendars_rejects_unknown_response_format() -> None:
+def test_get_calendars_does_not_expose_legacy_response_format() -> None:
     client = TestClient(app)
-    response = client.get(
-        "/api/v1/calendar/",
-        params={"response_format": "frontend_detail"},
-    )
-
-    assert response.status_code == 400
-    assert "frontend_list" in response.json()["detail"]
+    operation = client.get("/openapi.json").json()["paths"]["/api/v1/calendar/"]["get"]
+    assert "response_format" not in {
+        parameter["name"] for parameter in operation["parameters"]
+    }
 
 
 def test_post_calendar_returns_record(monkeypatch) -> None:
@@ -279,7 +273,7 @@ def test_calendar_dates_routes(monkeypatch) -> None:
         captured["patched"] = kwargs
         return row
 
-    monkeypatch.setattr("apps.v1.routers.calendars.list_calendar_dates", lambda **kwargs: [row])
+    monkeypatch.setattr("apps.v1.routers.calendars.list_calendar_dates", lambda **kwargs: {"count": 1, "results": [row]})
     monkeypatch.setattr(
         "apps.v1.routers.calendars.create_calendar_date",
         fake_create_calendar_date,
@@ -348,7 +342,7 @@ def test_calendar_sessions_routes(monkeypatch) -> None:
         captured["bulk"] = kwargs
         return [row]
 
-    monkeypatch.setattr("apps.v1.routers.calendars.list_calendar_sessions", lambda **kwargs: [row])
+    monkeypatch.setattr("apps.v1.routers.calendars.list_calendar_sessions", lambda **kwargs: {"count": 1, "results": [row]})
     monkeypatch.setattr(
         "apps.v1.routers.calendars.create_calendar_session",
         fake_create_calendar_session,
@@ -411,7 +405,7 @@ def test_calendar_events_routes(monkeypatch) -> None:
         captured["patched"] = kwargs
         return row
 
-    monkeypatch.setattr("apps.v1.routers.calendars.list_calendar_events", lambda **kwargs: [row])
+    monkeypatch.setattr("apps.v1.routers.calendars.list_calendar_events", lambda **kwargs: {"count": 1, "results": [row]})
     monkeypatch.setattr(
         "apps.v1.routers.calendars.create_calendar_event",
         fake_create_calendar_event,

@@ -1,0 +1,21 @@
+{
+  "items": [],
+  "pageInfo": {
+    "pageIndex": 0,
+    "pageSize": 25,
+    "totalItems": 0,
+    "hasNextPage": false,
+    "hasPreviousPage": false
+  },
+  "controls": {
+    "search": null,
+    "filters": [
+      {
+        "key": "status",
+        "label": "Status",
+        "type": "select"
+      }
+    ],
+    "ordering": []
+  }
+}

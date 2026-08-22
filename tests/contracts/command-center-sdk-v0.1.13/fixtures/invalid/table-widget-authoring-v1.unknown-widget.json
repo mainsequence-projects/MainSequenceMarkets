@@ -1,0 +1,5 @@
+{
+  "contract": "command-center.table_widget_authoring@v1",
+  "widgetId": "core__spreadsheet",
+  "props": {}
+}

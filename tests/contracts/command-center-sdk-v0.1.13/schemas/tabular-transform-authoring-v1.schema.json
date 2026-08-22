@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:tabular-transform-authoring:v1",
+  "title": "Command Center Tabular Transform authoring v1",
+  "description": "Language-neutral authoring envelope for core__tabular-transform.",
+  "type": "object",
+  "required": ["contract", "widgetId", "props"],
+  "additionalProperties": false,
+  "properties": {
+    "contract": { "const": "command-center.tabular_transform_authoring@v1" },
+    "widgetId": { "const": "core__tabular-transform" },
+    "props": { "$ref": "#/$defs/props" }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "pattern": ".*\\S.*" },
+    "stringArray": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nonEmptyString" },
+      "uniqueItems": true
+    },
+    "filterRule": {
+      "type": "object",
+      "required": ["field"],
+      "additionalProperties": false,
+      "properties": {
+        "field": { "$ref": "#/$defs/nonEmptyString" },
+        "operator": { "enum": ["equals", "not-equals", "in", "not-in", "gt", "gte", "lt", "lte", "is-empty", "is-not-empty"] },
+        "value": true
+      }
+    },
+    "computedColumn": {
+      "type": "object",
+      "required": ["key", "formulaExpression"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "$ref": "#/$defs/nonEmptyString" },
+        "label": { "type": "string" },
+        "type": { "enum": ["number", "string", "boolean", "json"] },
+        "formulaExpression": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "mergeKeyMapping": {
+      "type": "object",
+      "required": ["seedField", "liveField"],
+      "additionalProperties": false,
+      "properties": {
+        "seedField": { "$ref": "#/$defs/nonEmptyString" },
+        "liveField": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "props": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "transformMode": { "enum": ["none", "filter", "aggregate", "pivot", "unpivot"] },
+        "aggregateMode": { "enum": ["first", "last", "sum", "mean", "min", "max"] },
+        "computedColumns": { "type": "array", "items": { "$ref": "#/$defs/computedColumn" } },
+        "filterCombineMode": { "enum": ["all", "any"] },
+        "filterRules": { "type": "array", "items": { "$ref": "#/$defs/filterRule" } },
+        "keyFields": { "$ref": "#/$defs/stringArray" },
+        "pivotField": { "$ref": "#/$defs/nonEmptyString" },
+        "pivotValueField": { "$ref": "#/$defs/nonEmptyString" },
+        "projectFields": { "$ref": "#/$defs/stringArray" },
+        "rowMergeKeyFields": { "$ref": "#/$defs/stringArray" },
+        "rowMergeKeyMappings": { "type": "array", "items": { "$ref": "#/$defs/mergeKeyMapping" } },
+        "rowMergeMode": { "enum": ["passthrough", "latest"] },
+        "unpivotFieldName": { "$ref": "#/$defs/nonEmptyString" },
+        "unpivotValueFieldName": { "$ref": "#/$defs/nonEmptyString" },
+        "unpivotValueFields": { "$ref": "#/$defs/stringArray" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "transformMode": { "const": "pivot" } }, "required": ["transformMode"] },
+          "then": {
+            "required": ["pivotField", "pivotValueField"],
+            "properties": {
+              "pivotField": { "$ref": "#/$defs/nonEmptyString" },
+              "pivotValueField": { "$ref": "#/$defs/nonEmptyString" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "transformMode": { "const": "unpivot" } }, "required": ["transformMode"] },
+          "then": {
+            "required": ["unpivotValueFields"],
+            "properties": {
+              "unpivotValueFields": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/nonEmptyString" },
+                "uniqueItems": true
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "rowMergeMode": { "const": "latest" } }, "required": ["rowMergeMode"] },
+          "then": {
+            "anyOf": [
+              {
+                "required": ["rowMergeKeyFields"],
+                "properties": {
+                  "rowMergeKeyFields": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": { "$ref": "#/$defs/nonEmptyString" },
+                    "uniqueItems": true
+                  }
+                }
+              },
+              {
+                "required": ["rowMergeKeyMappings"],
+                "properties": {
+                  "rowMergeKeyMappings": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": { "$ref": "#/$defs/mergeKeyMapping" }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "contract": "command-center.table_widget_authoring@v1",
+  "widgetId": "core__table",
+  "props": {
+    "selectionMode": "range"
+  }
+}

@@ -42,10 +42,11 @@ groups, and a group can contain many portfolios.
 ## List Portfolio Groups
 
 ```text
-GET /api/v1/portfolio-group/?response_format=frontend_list&search=&limit=50&offset=0
+GET /api/v1/portfolio-group/?search=&limit=50&offset=0
 ```
 
-Returns `PaginatedResponse[PortfolioGroup]`.
+Returns `command-center.resource_collection@v1`. Discovery and the authorized
+bulk-delete action are exposed at `GET /api/v1/portfolio-group/discovery/`.
 
 ## Create Or Upsert Group
 
@@ -79,7 +80,8 @@ DELETE /api/v1/portfolio-group/{uid}/
 POST /api/v1/portfolio-group/bulk-delete/
 ```
 
-Bulk delete accepts explicit group `uids` and/or `unique_identifiers`.
+Bulk delete accepts the discovered `command-center.bulk_action_execution@v1`
+body with an explicit UUID selection and re-runs preflight before deletion.
 
 ## Add Portfolio To Group
 
@@ -110,6 +112,7 @@ GET /api/v1/portfolio-group/by-portfolio/{portfolio_uid}/
 ```
 
 The first route returns all portfolios in a group. The second route returns all
-groups containing one portfolio. `DELETE
+groups containing one portfolio. Both return canonical resource collections
+and expose sibling `/discovery/` routes. `DELETE
 /api/v1/portfolio-group/{uid}/portfolios/{portfolio_uid}/` removes only the
 membership row.

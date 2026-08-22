@@ -1,0 +1,9 @@
+{
+  "channel": "mainsequence.portfolio-dashboard",
+  "version": 1,
+  "type": "fastapi-credential-request",
+  "payload": {
+    "requestId": "request-1",
+    "resourceReleaseUid": "not-a-uuid"
+  }
+}

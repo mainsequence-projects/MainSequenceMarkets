@@ -3,13 +3,17 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query
 
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary, build_paginated_response
+from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
 from apps.v1.schemas.virtual_funds import (
     VirtualFundDetailResponse,
     VirtualFundHoldingsSnapshotResponse,
-    VirtualFundListResponse,
+    VirtualFund,
+)
+from apps.v1.schemas.resource_contracts import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ResourceCollection,
 )
 from apps.v1.services.virtual_funds import (
     get_virtual_fund_detail,
@@ -17,32 +21,28 @@ from apps.v1.services.virtual_funds import (
     get_virtual_fund_summary,
     list_virtual_funds,
 )
+from apps.v1.services.resource_collections import resource_collection_response
 
 router = APIRouter(prefix="/virtualfund", tags=["virtualfund"])
 
 
 @router.get(
     "/",
-    response_model=VirtualFundListResponse,
+    response_model=ResourceCollection[VirtualFund],
     summary="List virtual funds",
     description=(
-        "Return core library virtual-fund rows in the reusable limit-offset "
-        "pagination envelope. `portfolio_uid` filters VirtualFund.target_portfolio_uid."
+        "Return virtual funds in the canonical Command Center resource collection contract."
     ),
     operation_id="listVirtualFunds",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         400: {
             "model": ErrorResponse,
-            "description": "Unsupported response format or invalid virtual-fund list request.",
+            "description": "Invalid resource collection request.",
         }
     },
 )
 def get_virtual_funds(
-    request: Request,
-    response_format: Annotated[
-        str,
-        Query(description="Supported value for this endpoint is `frontend_list`."),
-    ] = "frontend_list",
     search: Annotated[
         str,
         Query(
@@ -68,36 +68,23 @@ def get_virtual_funds(
         int,
         Query(ge=0, description="Zero-based starting offset into the filtered virtual-fund list."),
     ] = 0,
-) -> VirtualFundListResponse:
-    if response_format != "frontend_list":
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Only response_format=frontend_list is implemented for "
-                "GET /api/v1/virtualfund/."
-            ),
-        )
+) -> ResourceCollection[VirtualFund]:
     try:
-        response = VirtualFundListResponse.model_validate(
-            list_virtual_funds(
-                search=search,
-                account_uid=account_uid,
-                portfolio_uid=portfolio_uid,
-                limit=limit,
-                offset=offset,
-            )
+        response = list_virtual_funds(
+            search=search,
+            account_uid=account_uid,
+            portfolio_uid=portfolio_uid,
+            limit=limit,
+            offset=offset,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return VirtualFundListResponse.model_validate(
-        build_paginated_response(
-            request_url=str(request.url),
-            results=response.results,
-            count=response.count,
-            limit=limit,
-            offset=offset,
-        ).model_dump()
+    return resource_collection_response(
+        items=response["results"],
+        total_items=int(response["count"]),
+        limit=limit,
+        offset=offset,
     )
 
 

@@ -1,0 +1,8 @@
+{
+  "allowed": false,
+  "blockers": [
+    {
+      "message": "Base blockers must be strings."
+    }
+  ]
+}

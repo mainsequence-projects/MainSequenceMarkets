@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:adapter-from-api-secure-config:v1",
+  "title": "Command Center Adapter From API secure config v1",
+  "description": "Write-only secret values for command_center.adapter_from_api backend mode.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "secretValues": { "type": "object", "additionalProperties": true }
+  }
+}

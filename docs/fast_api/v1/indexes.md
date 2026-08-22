@@ -53,10 +53,11 @@ owner, result-unit registry, or effective-date field exists on identity.
 
 ```text
 search, index_type, has_formula, has_canonical_values, cadence
-limit, offset, order, response_format
+limit, offset
 ```
 
-`response_format=frontend_list` is the standard list contract.
+The response is `command-center.resource_collection@v1`; UI metadata comes
+from `GET /api/v1/index/discovery/`.
 `has_canonical_values` and `cadence` query indexed availability metadata; they
 do not scan each canonical table for distinct identifiers.
 

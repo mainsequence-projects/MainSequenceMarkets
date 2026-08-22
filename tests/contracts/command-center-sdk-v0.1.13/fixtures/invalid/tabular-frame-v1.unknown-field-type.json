@@ -1,0 +1,11 @@
+{
+  "status": "ready",
+  "columns": ["symbol"],
+  "rows": [],
+  "fields": [
+    {
+      "key": "symbol",
+      "type": "varchar"
+    }
+  ]
+}

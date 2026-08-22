@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:static-site-iframe:v1",
+  "title": "Command Center Static-Site Iframe Protocol v1",
+  "description": "Language-neutral messages exchanged between a trusted host and one project-owned static-site iframe.",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/ready" },
+    { "$ref": "#/$defs/initialize" },
+    { "$ref": "#/$defs/fastApiCredentialRequest" },
+    { "$ref": "#/$defs/fastApiCredentialResponse" },
+    { "$ref": "#/$defs/fastApiCredentialError" }
+  ],
+  "$defs": {
+    "channel": {
+      "type": "string",
+      "pattern": "^mainsequence\\..+$"
+    },
+    "canonicalUuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "requestId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    },
+    "messageBase": {
+      "type": "object",
+      "required": ["channel", "version", "type", "payload"],
+      "properties": {
+        "channel": { "$ref": "#/$defs/channel" },
+        "version": { "const": 1 },
+        "type": { "type": "string" },
+        "payload": { "type": "object" }
+      }
+    },
+    "ready": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/messageBase" },
+        {
+          "properties": {
+            "type": { "const": "ready" },
+            "payload": { "type": "object" }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "initialize": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/messageBase" },
+        {
+          "properties": {
+            "type": { "const": "initialize" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["theme", "themeId", "user"],
+              "properties": {
+                "theme": { "enum": ["dark", "light"] },
+                "themeId": { "type": "string", "minLength": 1 },
+                "user": {
+                  "oneOf": [
+                    { "type": "null" },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["user_uid"],
+                      "properties": {
+                        "id": { "type": "string", "minLength": 1 },
+                        "uid": { "type": "string", "minLength": 1 },
+                        "user_uid": { "type": "string", "minLength": 1 }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "credentialBinding": {
+      "type": "object",
+      "required": ["requestId", "resourceReleaseUid"],
+      "properties": {
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "resourceReleaseUid": { "$ref": "#/$defs/canonicalUuid" }
+      }
+    },
+    "fastApiCredentialRequest": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/messageBase" },
+        {
+          "properties": {
+            "type": { "const": "fastapi-credential-request" },
+            "payload": {
+              "type": "object",
+              "allOf": [{ "$ref": "#/$defs/credentialBinding" }],
+              "unevaluatedProperties": false
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "fastApiCredentialResponse": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/messageBase" },
+        {
+          "properties": {
+            "type": { "const": "fastapi-credential-response" },
+            "payload": {
+              "type": "object",
+              "allOf": [
+                { "$ref": "#/$defs/credentialBinding" },
+                {
+                  "type": "object",
+                  "required": ["rpcUrl", "token", "expiresAt"],
+                  "properties": {
+                    "rpcUrl": {
+                      "type": "string",
+                      "pattern": "^https?://",
+                      "maxLength": 4096
+                    },
+                    "token": { "type": "string", "minLength": 1, "maxLength": 32768 },
+                    "expiresAt": { "type": "string", "format": "date-time" }
+                  }
+                }
+              ],
+              "unevaluatedProperties": false
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "fastApiCredentialError": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/messageBase" },
+        {
+          "properties": {
+            "type": { "const": "fastapi-credential-error" },
+            "payload": {
+              "type": "object",
+              "allOf": [
+                { "$ref": "#/$defs/credentialBinding" },
+                {
+                  "type": "object",
+                  "required": ["code"],
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "invalid_request",
+                        "access_denied",
+                        "origin_not_allowed",
+                        "release_unavailable",
+                        "runtime_starting",
+                        "temporarily_unavailable",
+                        "unsupported"
+                      ]
+                    }
+                  }
+                }
+              ],
+              "unevaluatedProperties": false
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

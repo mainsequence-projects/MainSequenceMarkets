@@ -1,0 +1,14 @@
+{
+  "contract": "command-center.tabular_transform_authoring@v1",
+  "widgetId": "core__tabular-transform",
+  "props": {
+    "transformMode": "pivot",
+    "keyFields": ["timestamp"],
+    "pivotField": "symbol",
+    "pivotValueField": "price",
+    "rowMergeMode": "latest",
+    "rowMergeKeyMappings": [
+      { "seedField": "timestamp", "liveField": "timestamp" }
+    ]
+  }
+}

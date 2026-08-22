@@ -1,0 +1,62 @@
+{
+  "contractVersion": 1,
+  "adapter": {
+    "type": "adapter-from-api",
+    "id": "orders-api",
+    "title": "Orders API",
+    "description": "Reads orders visible to the configured tenant."
+  },
+  "openapi": {
+    "url": "https://api.example.com/openapi.json",
+    "version": "3.1.0"
+  },
+  "configVariables": [
+    {
+      "key": "tenantId",
+      "label": "Tenant ID",
+      "type": "string",
+      "required": true,
+      "example": "tenant_123"
+    }
+  ],
+  "secretVariables": [
+    {
+      "key": "apiToken",
+      "label": "API token",
+      "type": "secret",
+      "required": true,
+      "injection": {
+        "type": "bearer"
+      }
+    }
+  ],
+  "availableOperations": [
+    {
+      "operationId": "listOrders",
+      "label": "List orders",
+      "description": "Returns orders for the configured tenant.",
+      "method": "GET",
+      "path": "/v1/orders",
+      "kind": "query",
+      "capabilities": ["query"],
+      "parameters": {
+        "path": [],
+        "query": [],
+        "headers": []
+      },
+      "requestBody": null,
+      "responseContract": "core.tabular_frame@v1",
+      "responseModel": "TabularFrameSourceV1",
+      "cache": {
+        "policy": "safe",
+        "ttlMs": 300000,
+        "dedupeInFlight": true
+      }
+    }
+  ],
+  "health": {
+    "operationId": "listOrders",
+    "expectedStatus": 200,
+    "timeoutMs": 5000
+  }
+}

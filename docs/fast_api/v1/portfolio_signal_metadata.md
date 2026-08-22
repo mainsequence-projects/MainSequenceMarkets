@@ -29,20 +29,25 @@ row.
 GET /api/v1/portfolio-signal/?search=&signal_uid=&limit=25&offset=0
 ```
 
-Returns `PaginatedResponse[SignalMetadata]`:
+Returns `command-center.resource_collection@v1` and exposes
+`GET /api/v1/portfolio-signal/discovery/`:
 
 ```json
 {
-  "count": 1,
-  "next": null,
-  "previous": null,
-  "results": [
+  "items": [
     {
       "uid": "signal-metadata-uid",
       "signal_uid": "canonical-signal-key",
       "signal_description": "Human-readable signal description"
     }
-  ]
+  ],
+  "pageInfo": {
+    "pageIndex": 0,
+    "pageSize": 25,
+    "totalItems": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false
+  }
 }
 ```
 

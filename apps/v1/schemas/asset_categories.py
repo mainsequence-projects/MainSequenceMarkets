@@ -107,7 +107,6 @@ class AssetCategoryDetailAssetsList(BaseModel):
 
     list_endpoint: str
     query_endpoint: str
-    response_format: str
     default_filters: dict[str, Any]
 
 

@@ -14,7 +14,6 @@ from pydantic import (
     model_validator,
 )
 
-BULK_ACTION_DISCOVERY_CONTRACT = "command-center.bulk_action_discovery@v1"
 BULK_ACTION_EXECUTION_CONTRACT = "command-center.bulk_action_execution@v1"
 BULK_ACTION_PREFLIGHT_CONTRACT = "command-center.bulk_action_preflight@v1"
 
@@ -133,17 +132,6 @@ class BulkActionDefinition(BulkActionContractModel):
         return self
 
 
-class BulkActionDiscoveryResponse(BulkActionContractModel):
-    actions: list[BulkActionDefinition]
-
-    @model_validator(mode="after")
-    def validate_unique_action_ids(self) -> BulkActionDiscoveryResponse:
-        action_ids = [action.id for action in self.actions]
-        if len(action_ids) != len(set(action_ids)):
-            raise ValueError("Bulk-action ids must be unique.")
-        return self
-
-
 class BulkActionPreflightResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -155,14 +143,12 @@ class BulkActionPreflightResponse(BaseModel):
 
 
 __all__ = [
-    "BULK_ACTION_DISCOVERY_CONTRACT",
     "BULK_ACTION_EXECUTION_CONTRACT",
     "BULK_ACTION_PREFLIGHT_CONTRACT",
     "BulkActionAllMatchingQuery",
     "BulkActionAllMatchingSelection",
     "BulkActionConfirmation",
     "BulkActionDefinition",
-    "BulkActionDiscoveryResponse",
     "BulkActionExecutionRequest",
     "BulkActionExplicitSelection",
     "BulkActionOption",

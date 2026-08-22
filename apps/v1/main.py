@@ -20,6 +20,7 @@ from apps.v1.routers.portfolios import router as portfolios_router
 from apps.v1.routers.pricing_curves import router as pricing_curves_router
 from apps.v1.routers.pricing_assets import router as pricing_assets_router
 from apps.v1.routers.pricing_market_data import router as pricing_market_data_router
+from apps.v1.routers.resource_discovery import router as resource_discovery_router
 from apps.v1.routers.settings import router as settings_router
 from apps.v1.routers.virtual_funds import router as virtual_funds_router
 from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime, ensure_apps_v1_runtime
@@ -130,6 +131,8 @@ def create_app() -> FastAPI:
         name="main-sequence-markets-static",
     )
     app.include_router(command_center_router)
+    # Discovery routes must precede parameterized resource-detail routes.
+    app.include_router(resource_discovery_router, prefix="/api/v1")
     app.include_router(accounts_router, prefix="/api/v1")
     app.include_router(assets_router, prefix="/api/v1")
     app.include_router(asset_categories_router, prefix="/api/v1")

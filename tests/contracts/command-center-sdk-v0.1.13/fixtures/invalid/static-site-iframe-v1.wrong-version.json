@@ -1,0 +1,6 @@
+{
+  "channel": "mainsequence.portfolio-dashboard",
+  "version": 2,
+  "type": "ready",
+  "payload": {}
+}

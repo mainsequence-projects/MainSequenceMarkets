@@ -1,0 +1,22 @@
+{
+  "contract": "command-center.app_component_authoring@v1",
+  "widgetId": "core__app-component",
+  "props": {
+    "bindingSpec": {
+      "version": 1,
+      "operationKey": "GET /quotes",
+      "requestPorts": [
+        {
+          "id": "request:query:symbol",
+          "fieldKey": "query:symbol",
+          "label": "Symbol",
+          "required": true,
+          "location": "route",
+          "kind": "string",
+          "accepts": ["core.value.string@v1"]
+        }
+      ],
+      "responsePorts": []
+    }
+  }
+}

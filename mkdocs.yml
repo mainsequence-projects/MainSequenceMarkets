@@ -77,6 +77,7 @@ nav:
       - Runtime Resolution: knowledge/msm_pricing/runtime_resolution.md
   - FastAPI:
       - Overview: fast_api/v1/index.md
+      - Command Center Resource Contracts: fast_api/v1/resource_contracts.md
       - Settings: fast_api/v1/settings.md
       - Account Routes: fast_api/v1/accounts.md
       - Asset Routes: fast_api/v1/assets.md

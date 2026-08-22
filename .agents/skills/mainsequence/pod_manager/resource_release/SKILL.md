@@ -1,6 +1,6 @@
 ---
 name: resource-release
-description: Create, configure, deploy, inspect, and delete Main Sequence ResourceReleases through the canonical MCP operations. Use for runtime, static-site, or fixed-profile widget-extension release discovery, creation, deployment, DeploymentRun observation, and explicit cleanup.
+description: Create, configure, deploy, inspect, and delete Main Sequence ResourceReleases through the canonical MCP operations, including FastAPI browser-origin preflight and the platform static-site wildcard default. Use for runtime, static-site, or fixed-profile widget-extension release discovery, creation, deployment, DeploymentRun observation, and explicit cleanup.
 ---
 
 # Main Sequence Resource Release
@@ -202,18 +202,30 @@ use the backend-provided API `2.0.0` template for the exact YAML shape.
 
 ## Configure FastAPI Browser Origins
 
-For one FastAPI release that should accept browser requests from every deployed
-static site in the development site domain, pass the canonical release field
-on create, partial update, or an API `2.0.0` project-workflow declaration:
+When FastAPI creation omits `cors_allowed_origins`, the backend persists the
+active platform static-site wildcard already selected by its deployment
+environment. Development resolves to:
 
 ```yaml
 cors_allowed_origins:
   - "https://*.site-dev.main-sequence.app"
 ```
 
+Production resolves to `https://*.site.main-sequence.app`. This platform
+deployment environment is not an Organization Environment, and callers must
+not derive the value from a ProjectBranch or
+`OrganizationProjectEnvironment`. Retrieve the backend workflow template when
+authoring a workflow; do not copy the development value into production.
+
+Pass the canonical field on create, partial update, or an API `2.0.0`
+project-workflow declaration only when an explicit override is intended.
+Creation omission uses the platform default. Update or workflow-reconciliation
+omission preserves the stored policy. An explicitly submitted `[]` denies all
+browser origins, while a non-empty list replaces the policy.
+
 The list accepts at most 32 exact HTTP(S) origins or a wildcard only as the
 complete leftmost hostname label. The backend normalizes and deduplicates the
-list, persists it on that FastAPI release, and supplies the platform-owned,
+effective list, persists it on that FastAPI release, and supplies the platform-owned,
 comma-separated `FASTAPI_CORS_ALLOW_ORIGINS` setting on the next deployment.
 Do not put that reserved setting in workflow `env_vars`.
 
@@ -250,6 +262,19 @@ release runtime and preserves its CORS headers. Normal requests remain
 Bearer-authenticated, and the gateway preserves the runtime's CORS response.
 
 ## Compose A Static Site With One FastAPI Release
+
+Before implementing the composition, call `resource_release.get` for the exact
+target FastAPI release and inspect its returned `cors_allowed_origins`. Compare
+that policy with the source release's backend-returned `public_url`; do not
+construct either hostname. An empty or non-matching target policy makes the
+delegated exchange return `403` with `code=origin_not_allowed`.
+
+If the accepted policy must change, call `resource_release.update`, retrieve
+the target again to verify the persisted value, and then call
+`resource_release.deploy_current_version`. The update changes Django's current
+delegation admission but does not update an already-running FastAPI launcher.
+Observe the DeploymentRun to terminal success before testing browser preflight
+or application requests.
 
 The existing authenticated ResourceRelease action supports a narrow delegated
 FastAPI exchange without adding another credential endpoint:
@@ -329,7 +354,8 @@ belong to that release kind.
 Runtime releases accept only:
 
 - `automatic_deployment`; and
-- `automatic_redeployment_policy`.
+- `automatic_redeployment_policy`; and
+- for FastAPI only, `cors_allowed_origins`.
 
 Static sites additionally accept the canonical static configuration fields
 advertised by `resource_release.static_site_capabilities`, including the
@@ -448,6 +474,8 @@ Stop and ask for direction when:
   commit;
 - a static field is not advertised by the live capability response;
 - a requested update field is not valid for the target release kind;
+- a delegated static-site origin is not admitted by the target FastAPI policy
+  and the intended exact or wildcard override is not known;
 - a build environment value would expose secret material;
 - a create, update, or deployment response is ambiguous; or
 - the requested bulk action, log read, arbitrary-commit deployment, or other

@@ -1,0 +1,36 @@
+{
+  "transportMode": "direct",
+  "debugApiBaseUrl": "http://127.0.0.1:9081",
+  "contractDefinitionUrl": "http://127.0.0.1:9081/.well-known/command-center/connection-contract",
+  "openApiUrl": "http://127.0.0.1:9081/openapi.json",
+  "configValues": {},
+  "compiledContract": {
+    "contractVersion": 1,
+    "adapter": {
+      "type": "adapter-from-api",
+      "id": "local-api",
+      "title": "Local API",
+      "description": "Local API contract."
+    },
+    "openapi": {
+      "url": "http://127.0.0.1:9081/openapi.json"
+    },
+    "configVariables": [],
+    "secretVariables": [],
+    "availableOperations": [
+      {
+        "operationId": "listRows",
+        "method": "GET",
+        "path": "/rows",
+        "kind": "query",
+        "capabilities": ["query"],
+        "responseContract": "core.tabular_frame@v1"
+      }
+    ],
+    "health": {
+      "operationId": "listRows"
+    }
+  },
+  "compiledContractSource": "backend",
+  "compiledContractSourceUrl": "http://127.0.0.1:9081/.well-known/command-center/connection-contract"
+}

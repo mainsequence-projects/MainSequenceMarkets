@@ -16,15 +16,18 @@ def list_asset_categories(
     search: str = "",
     limit: int = 50,
     offset: int = 0,
-) -> list[AssetCategory]:
+) -> dict[str, Any]:
     runtime = _get_runtime()
-    rows = _list_asset_category_rows(
+    response = _list_asset_category_rows_page(
         runtime.context,
         search=search,
         limit=limit,
         offset=offset,
     )
-    return [AssetCategory.model_validate(row) for row in rows]
+    return {
+        "count": int(response["count"]),
+        "results": [AssetCategory.model_validate(row) for row in response["results"]],
+    }
 
 
 def get_asset_category_detail(*, uid: str) -> AssetCategoryDetailResponse | None:
@@ -54,7 +57,9 @@ def delete_asset_category(*, uid: str) -> bool:
     return bool(_delete_asset_category_record(runtime.context, uid=uid))
 
 
-def bulk_delete_asset_categories(*, payload: Mapping[str, Any]) -> BulkDeleteAssetCategoriesResponse:
+def bulk_delete_asset_categories(
+    *, payload: Mapping[str, Any]
+) -> BulkDeleteAssetCategoriesResponse:
     runtime = _get_runtime()
     result = _bulk_delete_asset_category_records(runtime.context, **dict(payload))
     return BulkDeleteAssetCategoriesResponse.model_validate(result)
@@ -98,10 +103,10 @@ def _get_runtime():
     )
 
 
-def _list_asset_category_rows(context, **kwargs):
-    from msm.services import list_asset_category_rows
+def _list_asset_category_rows_page(context, **kwargs):
+    from msm.services import list_asset_category_rows_page
 
-    return list_asset_category_rows(context, **kwargs)
+    return list_asset_category_rows_page(context, **kwargs)
 
 
 def _get_asset_category_frontend_detail(context, **kwargs):

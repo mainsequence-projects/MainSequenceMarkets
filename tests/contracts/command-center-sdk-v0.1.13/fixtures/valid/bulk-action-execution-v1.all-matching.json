@@ -1,0 +1,13 @@
+{
+  "selection": {
+    "mode": "all_matching",
+    "query": {
+      "search": "risk",
+      "filters": {
+        "status": "active",
+        "organization_uid": "org-1"
+      }
+    }
+  },
+  "options": {}
+}

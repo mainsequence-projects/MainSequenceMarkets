@@ -1,0 +1,22 @@
+{
+  "contract": "command-center.table_widget_authoring@v1",
+  "widgetId": "core__pro-table",
+  "props": {
+    "tableSourceMode": "bound",
+    "formulasEnabled": true,
+    "density": "compact",
+    "schema": [
+      { "key": "symbol", "label": "Symbol", "format": "text" },
+      { "key": "last", "label": "Last", "format": "number", "decimals": 2 },
+      { "key": "open", "label": "Open", "format": "number", "decimals": 2 },
+      {
+        "key": "changePct",
+        "label": "Change %",
+        "format": "formula",
+        "formulaExpression": "PERCENT_CHANGE([last], [open])",
+        "formulaResultFormat": "percent",
+        "decimals": 2
+      }
+    ]
+  }
+}

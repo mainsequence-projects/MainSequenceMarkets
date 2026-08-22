@@ -112,7 +112,14 @@ def test_command_center_contract_only_classifies_canonical_frames_as_queries() -
         operation = operations[operation_id]
         assert operation["kind"] == "resource", operation_id
         assert operation["capabilities"] == ["resource"], operation_id
-        assert "responseContract" not in operation, operation_id
+        if operation_id.startswith("discover"):
+            assert operation["responseContract"] == "command-center.resource_discovery@v1"
+        elif operation_id.startswith(("list", "searchAccountTargetAllocationTargets")):
+            assert operation["responseContract"] == "command-center.resource_collection@v1"
+        elif operation_id.startswith("preflightBulkDelete"):
+            assert operation["responseContract"] == "command-center.bulk_action_preflight@v1"
+        else:
+            assert "responseContract" not in operation, operation_id
 
     assert operations["listAssets"]["supportsMaxRows"] is True
     assert operations["getAsset"]["supportsMaxRows"] is False

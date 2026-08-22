@@ -24,24 +24,29 @@ VirtualFundTable.target_portfolio_uid
 ## List Virtual Funds
 
 ```text
-GET /api/v1/virtualfund/?response_format=frontend_list&search=&account_uid=&portfolio_uid=&limit=25&offset=0
+GET /api/v1/virtualfund/?search=&account_uid=&portfolio_uid=&limit=25&offset=0
 ```
 
-Returns `PaginatedResponse[VirtualFund]`:
+Returns `command-center.resource_collection@v1` and exposes
+`GET /api/v1/virtualfund/discovery/`:
 
 ```json
 {
-  "count": 1,
-  "next": null,
-  "previous": null,
-  "results": [
+  "items": [
     {
       "uid": "virtual-fund-uid",
       "unique_identifier": "account-alpha__portfolio-sleeve",
       "account_uid": "account-uid",
       "target_portfolio_uid": "portfolio-uid"
     }
-  ]
+  ],
+  "pageInfo": {
+    "pageIndex": 0,
+    "pageSize": 25,
+    "totalItems": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false
+  }
 }
 ```
 

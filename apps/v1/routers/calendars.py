@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, HTTPException, Query, status
 
 from apps.v1.schemas.calendars import (
     BulkUpsertCalendarDatesRequest,
@@ -22,11 +22,10 @@ from apps.v1.schemas.calendars import (
     CalendarSessionUpdate,
     CalendarUpdate,
 )
-from apps.v1.schemas.common import (
-    ErrorResponse,
-    FrontEndDetailSummary,
-    PaginatedResponse,
-    build_paginated_response,
+from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
+from apps.v1.schemas.resource_contracts import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ResourceCollection,
 )
 from apps.v1.services.calendars import (
     bulk_upsert_calendar_dates,
@@ -54,32 +53,26 @@ from apps.v1.services.calendars import (
     update_calendar_event,
     update_calendar_session,
 )
+from apps.v1.services.resource_collections import resource_collection_response
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
 
 @router.get(
     "/",
-    response_model=PaginatedResponse[Calendar],
+    response_model=ResourceCollection[Calendar],
     summary="List calendars",
-    description=(
-        "Return core calendar identity rows. The `response_format` query parameter "
-        "is accepted for compatibility, but rows use the `msm.api.calendars.Calendar` contract."
-    ),
+    description=("Return calendars in the canonical Command Center resource collection contract."),
     operation_id="listCalendars",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         400: {
             "model": ErrorResponse,
-            "description": "Unsupported response format or invalid request boundary input.",
+            "description": "Invalid resource collection request.",
         }
     },
 )
 def get_calendars(
-    request: Request,
-    response_format: Annotated[
-        str,
-        Query(description="Supported value for this endpoint is `frontend_list`."),
-    ] = "frontend_list",
     search: Annotated[
         str,
         Query(
@@ -117,15 +110,10 @@ def get_calendars(
         str | None,
         Query(description="Optional exact source-specific calendar identifier filter."),
     ] = None,
-) -> PaginatedResponse[Calendar]:
-    _require_response_format(
-        response_format,
-        expected="frontend_list",
-        route="GET /api/v1/calendar/",
-    )
-    rows = list_calendars(
+) -> ResourceCollection[Calendar]:
+    response = list_calendars(
         search=search,
-        limit=limit + 1,
+        limit=limit,
         offset=offset,
         unique_identifier=unique_identifier,
         unique_identifier_contains=unique_identifier_contains,
@@ -133,9 +121,9 @@ def get_calendars(
         source=source,
         source_identifier=source_identifier,
     )
-    return build_paginated_response(
-        request_url=str(request.url),
-        results=rows,
+    return resource_collection_response(
+        items=response["results"],
+        total_items=response["count"],
         limit=limit,
         offset=offset,
     )
@@ -166,7 +154,7 @@ def post_calendar(
     responses={
         400: {
             "model": ErrorResponse,
-            "description": "Unsupported response format or invalid request boundary input.",
+            "description": "Invalid calendar detail request.",
         },
         404: {
             "model": ErrorResponse,
@@ -176,16 +164,7 @@ def post_calendar(
 )
 def get_calendar_by_uid(
     uid: str,
-    response_format: Annotated[
-        str,
-        Query(description="Supported value for this endpoint is `frontend_detail`."),
-    ] = "frontend_detail",
 ) -> Calendar:
-    _require_response_format(
-        response_format,
-        expected="frontend_detail",
-        route="GET /api/v1/calendar/{uid}/",
-    )
     record = get_calendar(uid=uid)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Calendar {uid!r} was not found.")
@@ -269,13 +248,13 @@ def remove_calendar(uid: str) -> Calendar | None:
 
 @router.get(
     "/{calendar_uid}/dates/",
-    response_model=PaginatedResponse[CalendarDate],
+    response_model=ResourceCollection[CalendarDate],
     summary="List calendar dates",
     description="Return bounded local-date facts for one calendar.",
     operation_id="listCalendarDates",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
 )
 def get_calendar_dates(
-    request: Request,
     calendar_uid: str,
     start_date: Annotated[
         dt.date | None,
@@ -309,8 +288,8 @@ def get_calendar_dates(
         int,
         Query(ge=0, description="Zero-based starting offset into the date row list."),
     ] = 0,
-) -> PaginatedResponse[CalendarDate]:
-    rows = list_calendar_dates(
+) -> ResourceCollection[CalendarDate]:
+    response = list_calendar_dates(
         calendar_uid=calendar_uid,
         start_date=start_date,
         end_date=end_date,
@@ -318,12 +297,12 @@ def get_calendar_dates(
         is_holiday=is_holiday,
         is_weekend=is_weekend,
         is_early_close=is_early_close,
-        limit=limit + 1,
+        limit=limit,
         offset=offset,
     )
-    return build_paginated_response(
-        request_url=str(request.url),
-        results=rows,
+    return resource_collection_response(
+        items=response["results"],
+        total_items=response["count"],
         limit=limit,
         offset=offset,
     )
@@ -452,13 +431,13 @@ def remove_calendar_date(calendar_uid: str, date_uid: str) -> CalendarDate | Non
 
 @router.get(
     "/{calendar_uid}/sessions/",
-    response_model=PaginatedResponse[CalendarSession],
+    response_model=ResourceCollection[CalendarSession],
     summary="List calendar sessions",
     description="Return session rows for one calendar, optionally bounded by local date.",
     operation_id="listCalendarSessions",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
 )
 def get_calendar_sessions(
-    request: Request,
     calendar_uid: str,
     start_date: Annotated[
         dt.date | None,
@@ -484,19 +463,19 @@ def get_calendar_sessions(
         int,
         Query(ge=0, description="Zero-based starting offset into the session row list."),
     ] = 0,
-) -> PaginatedResponse[CalendarSession]:
-    rows = list_calendar_sessions(
+) -> ResourceCollection[CalendarSession]:
+    response = list_calendar_sessions(
         calendar_uid=calendar_uid,
         start_date=start_date,
         end_date=end_date,
         session_label=session_label,
         is_primary=is_primary,
-        limit=limit + 1,
+        limit=limit,
         offset=offset,
     )
-    return build_paginated_response(
-        request_url=str(request.url),
-        results=rows,
+    return resource_collection_response(
+        items=response["results"],
+        total_items=response["count"],
         limit=limit,
         offset=offset,
     )
@@ -631,13 +610,13 @@ def remove_calendar_session(calendar_uid: str, session_uid: str) -> CalendarSess
 
 @router.get(
     "/{calendar_uid}/events/",
-    response_model=PaginatedResponse[CalendarEvent],
+    response_model=ResourceCollection[CalendarEvent],
     summary="List calendar events",
     description="Return event rows for one calendar, optionally bounded by event date.",
     operation_id="listCalendarEvents",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
 )
 def get_calendar_events(
-    request: Request,
     calendar_uid: str,
     start_date: Annotated[
         dt.date | None,
@@ -675,8 +654,8 @@ def get_calendar_events(
         int,
         Query(ge=0, description="Zero-based starting offset into the event row list."),
     ] = 0,
-) -> PaginatedResponse[CalendarEvent]:
-    rows = list_calendar_events(
+) -> ResourceCollection[CalendarEvent]:
+    response = list_calendar_events(
         calendar_uid=calendar_uid,
         start_date=start_date,
         end_date=end_date,
@@ -685,12 +664,12 @@ def get_calendar_events(
         target_type=target_type,
         target_uid=target_uid,
         target_identifier=target_identifier,
-        limit=limit + 1,
+        limit=limit,
         offset=offset,
     )
-    return build_paginated_response(
-        request_url=str(request.url),
-        results=rows,
+    return resource_collection_response(
+        items=response["results"],
+        total_items=response["count"],
         limit=limit,
         offset=offset,
     )
@@ -815,12 +794,3 @@ def remove_calendar_event(calendar_uid: str, event_uid: str) -> CalendarEvent | 
             detail=f"Calendar event {event_uid!r} was not found under calendar {calendar_uid!r}.",
         )
     return None
-
-
-def _require_response_format(value: str, *, expected: str, route: str) -> None:
-    if value == expected:
-        return
-    raise HTTPException(
-        status_code=400,
-        detail=f"Only response_format={expected} is implemented for {route}.",
-    )

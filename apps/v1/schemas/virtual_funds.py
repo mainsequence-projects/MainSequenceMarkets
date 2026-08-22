@@ -3,7 +3,6 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-from apps.v1.schemas.common import PaginatedResponse
 from apps.v1.schemas.holdings import BaseHoldingRow, BaseHoldingsSnapshotResponse
 
 
@@ -15,10 +14,6 @@ def _virtual_fund_contract():
 
 
 VirtualFund = _virtual_fund_contract()
-
-
-class VirtualFundListResponse(PaginatedResponse[VirtualFund]):
-    model_config = ConfigDict(extra="ignore")
 
 
 class VirtualFundDetailTab(BaseModel):

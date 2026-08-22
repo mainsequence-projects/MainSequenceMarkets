@@ -1,0 +1,15 @@
+{
+  "contract": "command-center.table_widget_authoring@v1",
+  "widgetId": "core__table",
+  "props": {
+    "formulasEnabled": true,
+    "schema": [
+      {
+        "key": "changePct",
+        "label": "Change %",
+        "format": "formula",
+        "formulaExpression": "PERCENT_CHANGE([last], [open])"
+      }
+    ]
+  }
+}

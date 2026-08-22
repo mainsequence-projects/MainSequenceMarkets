@@ -1,0 +1,16 @@
+{
+  "status": "ready",
+  "columns": ["timestamp", "close"],
+  "rows": [],
+  "meta": {
+    "timeSeries": {
+      "shape": "long",
+      "timeField": "timestamp",
+      "timeUnit": "ms",
+      "timezone": "UTC",
+      "sorted": true,
+      "valueField": "close",
+      "valueFields": ["close"]
+    }
+  }
+}

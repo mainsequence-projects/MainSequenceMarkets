@@ -1,0 +1,27 @@
+{
+  "contractVersion": 1,
+  "adapter": {
+    "type": "adapter-from-api",
+    "id": "orders-api",
+    "title": "Orders API",
+    "description": "Reads canonical orders."
+  },
+  "openapi": {
+    "url": "https://api.example.com/openapi.json"
+  },
+  "configVariables": [],
+  "secretVariables": [],
+  "availableOperations": [
+    {
+      "operationId": "health",
+      "method": "GET",
+      "path": "/health",
+      "kind": "resource",
+      "capabilities": ["resource"]
+    }
+  ],
+  "health": {
+    "operationId": "health",
+    "path": "/health"
+  }
+}

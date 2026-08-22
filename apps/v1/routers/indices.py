@@ -11,12 +11,7 @@ from mainsequence.client.models_user import (
 )
 
 from apps.v1.schemas.command_center import TabularFrameResponse
-from apps.v1.schemas.common import (
-    ErrorResponse,
-    FrontEndDetailSummary,
-    PaginatedResponse,
-    build_paginated_response,
-)
+from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
 from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.indices import (
     Index,
@@ -28,6 +23,10 @@ from apps.v1.schemas.indices import (
     IndexType,
     IndexUpdate,
     RelatedMetaTable,
+)
+from apps.v1.schemas.resource_contracts import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ResourceCollection,
 )
 from apps.v1.services.indices import (
     create_index,
@@ -46,6 +45,7 @@ from apps.v1.services.indices import (
     list_indices,
     update_index,
 )
+from apps.v1.services.resource_collections import resource_collection_response
 from msm.services.indices import IndexActor, actor_from_user
 
 router = APIRouter(prefix="/index", tags=["index"])
@@ -72,22 +72,21 @@ def _request_actor(request: Request) -> IndexActor | None:
 
 @index_type_router.get(
     "/",
-    response_model=PaginatedResponse[IndexType],
+    response_model=ResourceCollection[IndexType],
     summary="List Index types",
     operation_id="listIndexTypes",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
 )
 def get_index_types(
-    request: Request,
     limit: Annotated[int, Query(ge=1, le=500, description="Maximum rows per page.")] = 50,
     offset: Annotated[int, Query(ge=0, description="Zero-based page offset.")] = 0,
-) -> PaginatedResponse[IndexType]:
+) -> ResourceCollection[IndexType]:
     count, rows = list_index_types(limit=limit, offset=offset)
-    return build_paginated_response(
-        request_url=str(request.url),
-        results=rows,
+    return resource_collection_response(
+        items=rows,
+        total_items=count,
         limit=limit,
         offset=offset,
-        count=count,
     )
 
 
@@ -107,16 +106,13 @@ def get_index_type_by_key(index_type: str) -> IndexType:
 
 @router.get(
     "/",
-    response_model=PaginatedResponse[Index],
+    response_model=ResourceCollection[Index],
     summary="List indexes",
     operation_id="listIndexes",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={400: {"model": ErrorResponse}},
 )
 def get_indexes(
-    request: Request,
-    response_format: Annotated[
-        str, Query(description="Response format; only frontend_list is accepted.")
-    ] = "frontend_list",
     search: Annotated[str, Query(description="Case-insensitive Index catalog search.")] = "",
     index_type: Annotated[str | None, Query(description="Exact Index type filter.")] = None,
     has_formula: Annotated[
@@ -130,11 +126,7 @@ def get_indexes(
     ] = None,
     limit: Annotated[int, Query(ge=1, le=500, description="Maximum rows per page.")] = 50,
     offset: Annotated[int, Query(ge=0, description="Zero-based page offset.")] = 0,
-) -> PaginatedResponse[Index]:
-    if response_format != "frontend_list":
-        raise HTTPException(
-            status_code=400, detail="Only response_format=frontend_list is supported."
-        )
+) -> ResourceCollection[Index]:
     result = list_indices(
         search=search,
         index_type=index_type,
@@ -145,12 +137,11 @@ def get_indexes(
         offset=offset,
     )
     count, rows = result
-    return build_paginated_response(
-        request_url=str(request.url),
-        results=rows,
+    return resource_collection_response(
+        items=rows,
+        total_items=count,
         limit=limit,
         offset=offset,
-        count=count,
     )
 
 
@@ -219,16 +210,27 @@ def get_index_summary_by_uid(
 
 @router.get(
     "/{uid}/formulas/",
-    response_model=list[IndexFormulaSummary],
+    response_model=ResourceCollection[IndexFormulaSummary],
     summary="List Index formulas",
     operation_id="listIndexFormulas",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={404: {"model": ErrorResponse}},
 )
-def get_index_formulas(uid: str) -> list[IndexFormulaSummary]:
+def get_index_formulas(
+    uid: str,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ResourceCollection[IndexFormulaSummary]:
     result = list_index_formulas(uid=uid)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")
-    return list(result)
+    rows = list(result)
+    return resource_collection_response(
+        items=rows[offset : offset + limit],
+        total_items=len(rows),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get(
@@ -247,10 +249,11 @@ def get_index_formula_by_uid(uid: str, definition_uid: str) -> IndexFormulaDetai
 
 @router.get(
     "/{uid}/datasets/",
-    response_model=list[IndexDatasetState],
+    response_model=ResourceCollection[IndexDatasetState],
     summary="List Index datasets",
     description="List cadence-specific canonical datasets verified by an actual foreign key to Index.unique_identifier.",
     operation_id="listIndexDatasets",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={404: {"model": ErrorResponse}},
 )
 def get_index_datasets(
@@ -260,11 +263,19 @@ def get_index_datasets(
         bool,
         Query(description="Include compatible canonical datasets with no reconciled rows."),
     ] = False,
-) -> list[IndexDatasetState]:
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ResourceCollection[IndexDatasetState]:
     result = list_index_datasets(uid=uid, actor=actor, include_empty=include_empty)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")
-    return list(result)
+    rows = list(result)
+    return resource_collection_response(
+        items=rows[offset : offset + limit],
+        total_items=len(rows),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get(
@@ -334,13 +345,14 @@ def get_index_dataset_values(
 
 @router.get(
     "/{uid}/related-meta-tables/",
-    response_model=list[RelatedMetaTable],
+    response_model=ResourceCollection[RelatedMetaTable],
     summary="List related Index MetaTables",
     description=(
         "List MetaTables related to the Index. By default, return only time-indexed "
         "tables that expose at least one non-identity numeric data column."
     ),
     operation_id="listIndexRelatedMetaTables",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={404: {"model": ErrorResponse}},
 )
 def get_related_index_meta_tables(
@@ -353,7 +365,9 @@ def get_related_index_meta_tables(
         bool,
         Query(description="Require a registered time-indexed MetaTable contract."),
     ] = True,
-) -> list[RelatedMetaTable]:
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ResourceCollection[RelatedMetaTable]:
     result = list_index_related_meta_tables(
         uid=uid,
         numeric=numeric,
@@ -361,7 +375,13 @@ def get_related_index_meta_tables(
     )
     if result is None:
         raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")
-    return list(result)
+    rows = list(result)
+    return resource_collection_response(
+        items=rows[offset : offset + limit],
+        total_items=len(rows),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get(

@@ -196,9 +196,7 @@ class Curve(BaseModel):
             else []
         )
         deleted_curve_selections_count = (
-            _delete_curve_selection_rows(curve_uid=curve.uid)
-            if delete_curve_selections
-            else 0
+            _delete_curve_selection_rows(curve_uid=curve.uid) if delete_curve_selections else 0
         )
         try:
             result = delete_model(context, model=cls.__table__, uid=curve.uid)
@@ -401,17 +399,25 @@ class Curve(BaseModel):
         return PricingMarketDataSetCurveBinding.count_for_curve(curve_uid=uid)
 
     @classmethod
-    def list_curve_selections(cls, uid: uuid.UUID | str) -> dict[str, Any] | None:
+    def list_curve_selections(
+        cls,
+        uid: uuid.UUID | str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any] | None:
         curve = cls.get_by_uid(uid)
         if curve is None:
             return None
 
         from msm_pricing.api.market_data_bindings import PricingMarketDataSetCurveBinding
 
-        bindings = PricingMarketDataSetCurveBinding.filter_for_curve(
+        page = PricingMarketDataSetCurveBinding.list(
             curve_uid=curve.uid,
-            limit=5000,
+            limit=limit,
+            offset=offset,
         )
+        bindings = page["results"]
         related_context = _curve_selection_related_context(bindings)
         results = [
             _curve_selection_payload(binding, context=related_context) for binding in bindings
@@ -423,7 +429,7 @@ class Curve(BaseModel):
                 "display_name": curve.display_name,
                 "curve_type": curve.curve_type,
             },
-            "count": len(results),
+            "count": int(page["count"]),
             "results": results,
         }
 
@@ -504,9 +510,7 @@ class Curve(BaseModel):
             "request_mode": "historical" if valuation_date is not None else "latest",
             "nodes": _normalize_discount_curve_nodes(observation["nodes"]),
             "key_nodes": _normalize_discount_curve_key_nodes(observation.get("key_nodes")),
-            "metadata_json": _normalize_discount_curve_metadata(
-                observation.get("metadata_json")
-            ),
+            "metadata_json": _normalize_discount_curve_metadata(observation.get("metadata_json")),
         }
 
     @classmethod
@@ -1034,16 +1038,12 @@ def _curve_delete_warnings(
     build_details = relationship_by_key["curve_building_details"]
 
     if curve_selections["count"] > 0 and not delete_curve_selections:
-        warnings.append(
-            "Delete is blocked while pricing curve-selection rows point at this curve."
-        )
+        warnings.append("Delete is blocked while pricing curve-selection rows point at this curve.")
     elif curve_selections["count"] > 0:
         warnings.append("Pricing curve-selection rows will be deleted.")
 
     if observations["count"] > 0 and not delete_values:
-        warnings.append(
-            "Delete is blocked while discount-curve observations reference this curve."
-        )
+        warnings.append("Delete is blocked while discount-curve observations reference this curve.")
     elif observations["count"] > 0 and observations["blocks_delete"]:
         warnings.append(
             "Delete is blocked because at least one discount-curve storage table "

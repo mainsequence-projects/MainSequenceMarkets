@@ -2,19 +2,19 @@
 
 The `apps/v1` API exposes backend-authoritative bulk deletion for asset
 categories, portfolios, and portfolio groups. These routes implement the
-Command Center SDK v1 discovery, execution, and preflight contracts pinned to
-command-center-sdk commit
-`7f2c942799fb83edaacfc1c0d971452bfc8aff5c`.
+Command Center SDK v1 resource discovery, execution, and preflight contracts
+pinned to command-center-sdk `0.1.13`, commit
+`f11c0ea8c5d3fc267997e476aa1522c798fdaced`.
 
 ## Resource boundaries
 
 | Resource | Discovery | Preflight | Execution |
 | --- | --- | --- | --- |
-| Asset categories | `GET /api/v1/asset-category/bulk-actions/` | `POST /api/v1/asset-category/bulk-delete/preflight/` | `POST /api/v1/asset-category/bulk-delete/` |
-| Portfolios | `GET /api/v1/portfolio/bulk-actions/` | `POST /api/v1/portfolio/bulk-delete/preflight/` | `POST /api/v1/portfolio/bulk-delete/` |
-| Portfolio groups | `GET /api/v1/portfolio-group/bulk-actions/` | `POST /api/v1/portfolio-group/bulk-delete/preflight/` | `POST /api/v1/portfolio-group/bulk-delete/` |
+| Asset categories | `GET /api/v1/asset-category/discovery/` | `POST /api/v1/asset-category/bulk-delete/preflight/` | `POST /api/v1/asset-category/bulk-delete/` |
+| Portfolios | `GET /api/v1/portfolio/discovery/` | `POST /api/v1/portfolio/bulk-delete/preflight/` | `POST /api/v1/portfolio/bulk-delete/` |
+| Portfolio groups | `GET /api/v1/portfolio-group/discovery/` | `POST /api/v1/portfolio-group/bulk-delete/preflight/` | `POST /api/v1/portfolio-group/bulk-delete/` |
 
-Each discovery response advertises one destructive action with `explicit`
+Each `command-center.resource_discovery@v1` response advertises one destructive action with `explicit`
 selection. `all_matching` is deliberately not advertised. Discovery supplies
 the execution endpoint, preflight endpoint, confirmation copy, tone, supported
 selection modes, and options.
@@ -57,15 +57,15 @@ Request validation errors return `422`. Unsupported modes or options return
 
 ## Provider discovery
 
-The six discovery and preflight operation IDs are also exposed through
+The discovery and preflight operation IDs are also exposed through
 `/.well-known/command-center/connection-contract` as resource operations. The
 three execution operation IDs remain mutation operations:
 
-- `listAssetCategoryBulkActions` / `preflightBulkDeleteAssetCategories` /
+- `discoverAssetCategories` / `preflightBulkDeleteAssetCategories` /
   `bulkDeleteAssetCategories`
-- `listPortfolioBulkActions` / `preflightBulkDeletePortfolios` /
+- `discoverPortfolios` / `preflightBulkDeletePortfolios` /
   `bulkDeletePortfolios`
-- `listPortfolioGroupBulkActions` / `preflightBulkDeletePortfolioGroups` /
+- `discoverPortfolioGroups` / `preflightBulkDeletePortfolioGroups` /
   `bulkDeletePortfolioGroups`
 
 The language-neutral manifest, schemas, and fixtures in command-center-sdk are

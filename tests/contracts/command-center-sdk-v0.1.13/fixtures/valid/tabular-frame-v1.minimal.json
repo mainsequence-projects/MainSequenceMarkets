@@ -1,0 +1,10 @@
+{
+  "status": "ready",
+  "columns": ["symbol", "price"],
+  "rows": [
+    {
+      "symbol": "MSFT",
+      "price": 421.5
+    }
+  ]
+}

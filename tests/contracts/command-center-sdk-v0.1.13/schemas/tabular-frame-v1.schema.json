@@ -1,0 +1,305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:tabular-frame:v1",
+  "title": "Command Center tabular frame v1",
+  "description": "Canonical JSON-safe tabular value for core.tabular_frame@v1.",
+  "type": "object",
+  "required": ["status", "columns", "rows"],
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "enum": ["idle", "loading", "ready", "error"]
+    },
+    "error": {
+      "type": "string"
+    },
+    "columns": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": ".*\\S.*"
+      }
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "fields": {
+      "$comment": "Field keys must be unique. Canonical normalization keeps the first field for each key.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/field"
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "timeSeries": {
+          "$ref": "#/$defs/timeSeries"
+        },
+        "tableVisuals": {
+          "$ref": "#/$defs/tableVisuals"
+        }
+      }
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "pattern": ".*\\S.*"
+    },
+    "stringArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      }
+    },
+    "tableVisualThreshold": {
+      "type": "object",
+      "required": ["operator", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "backgroundColor": { "type": "string" },
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "operator": { "enum": ["gt", "gte", "lt", "lte", "eq"] },
+        "textColor": { "type": "string" },
+        "tone": { "enum": ["neutral", "primary", "success", "warning", "danger"] },
+        "value": { "type": "number" }
+      }
+    },
+    "tableVisualColumn": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string" },
+        "format": { "enum": ["number", "price", "percent", "volume", "currency", "datetime", "formula"] },
+        "formulaExpression": { "$ref": "#/$defs/nonEmptyString" },
+        "formulaResultFormat": { "enum": ["text", "datetime", "number", "currency", "percent", "bps"] },
+        "dateTimeInputFormat": { "type": "string" },
+        "dateTimeOutputFormat": { "type": "string" },
+        "decimals": { "type": "integer", "minimum": 0, "maximum": 6 },
+        "visible": { "type": "boolean" },
+        "colorScale": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "negative": { "type": "string" },
+            "neutral": { "type": "string" },
+            "positive": { "type": "string" }
+          }
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "midpoint": { "type": "number" },
+            "clamp": { "type": "boolean" }
+          }
+        },
+        "thresholds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tableVisualThreshold" }
+        },
+        "heatmap": { "type": "boolean" },
+        "barMode": { "enum": ["none", "fill"] },
+        "gradientMode": { "enum": ["none", "fill"] },
+        "heatmapPalette": { "enum": ["auto", "viridis", "plasma", "inferno", "magma", "turbo", "jet", "blue-white-red", "red-yellow-green"] },
+        "gaugeMode": { "enum": ["none", "ring"] },
+        "visualRangeMode": { "enum": ["auto", "fixed"] },
+        "visualMin": { "type": "number" },
+        "visualMax": { "type": "number" },
+        "kind": { "enum": ["sparkline", "bar", "heatmap"] },
+        "encoding": { "enum": ["csv-number", "json-number-array", "number-array"] },
+        "order": { "enum": ["oldest-to-newest", "newest-to-oldest"] },
+        "width": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "tableVisuals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/tableVisualColumn" }
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": ["key", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "label": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "description": {
+          "type": ["string", "null"]
+        },
+        "type": {
+          "enum": ["string", "number", "integer", "boolean", "datetime", "date", "time", "json", "unknown"]
+        },
+        "nullable": {
+          "type": "boolean"
+        },
+        "nativeType": {
+          "type": ["string", "null"]
+        },
+        "provenance": {
+          "enum": ["backend", "manual", "inferred", "derived"]
+        },
+        "reason": {
+          "type": ["string", "null"]
+        },
+        "derivedFrom": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "warnings": {
+          "$ref": "#/$defs/stringArray"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/nonEmptyString"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "label": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "updatedAtMs": {
+          "type": "integer"
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "timeSeries": {
+      "type": "object",
+      "required": ["shape", "timeField", "timeUnit", "timezone", "sorted"],
+      "additionalProperties": false,
+      "properties": {
+        "shape": {
+          "enum": ["long", "wide"]
+        },
+        "timeField": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "timeUnit": {
+          "const": "ms"
+        },
+        "timezone": {
+          "const": "UTC"
+        },
+        "sorted": {
+          "type": "boolean"
+        },
+        "valueField": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "seriesField": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "seriesLabelFields": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "valueFields": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "frequency": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "calendar": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "gapPolicy": {
+          "enum": ["preserve_nulls", "drop_nulls"]
+        },
+        "duplicatePolicy": {
+          "enum": ["error", "first", "latest", "aggregate", "preserve"]
+        },
+        "unitByField": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "shape": {
+                "const": "long"
+              }
+            }
+          },
+          "then": {
+            "required": ["valueField"],
+            "properties": {
+              "valueField": {}
+            },
+            "not": {
+              "properties": {
+                "valueFields": {}
+              },
+              "required": ["valueFields"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "shape": {
+                "const": "wide"
+              }
+            }
+          },
+          "then": {
+            "required": ["valueFields"],
+            "properties": {
+              "valueFields": {
+                "type": "array",
+                "minItems": 1
+              }
+            },
+            "not": {
+              "properties": {
+                "valueField": {}
+              },
+              "required": ["valueField"]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -18,9 +18,9 @@ def list_calendars(
     calendar_type: str | None = None,
     source: str | None = None,
     source_identifier: str | None = None,
-) -> list[Calendar]:
+) -> dict[str, Any]:
     runtime = _get_runtime()
-    rows = _list_calendar_records(
+    response = _list_calendar_records_page(
         runtime.context,
         search=search,
         limit=limit,
@@ -31,7 +31,10 @@ def list_calendars(
         source=source,
         source_identifier=source_identifier,
     )
-    return [Calendar.model_validate(row) for row in rows]
+    return {
+        "count": int(response["count"]),
+        "results": [Calendar.model_validate(row) for row in response["results"]],
+    }
 
 
 def get_calendar(*, uid: str) -> Calendar | None:
@@ -80,9 +83,9 @@ def list_calendar_dates(
     is_early_close: bool | None = None,
     limit: int = 500,
     offset: int = 0,
-) -> list[CalendarDate]:
+) -> dict[str, Any]:
     runtime = _get_runtime()
-    rows = _list_calendar_date_records(
+    response = _list_calendar_date_records_page(
         runtime.context,
         calendar_uid=calendar_uid,
         start_date=start_date,
@@ -94,7 +97,10 @@ def list_calendar_dates(
         limit=limit,
         offset=offset,
     )
-    return [CalendarDate.model_validate(row) for row in rows]
+    return {
+        "count": int(response["count"]),
+        "results": [CalendarDate.model_validate(row) for row in response["results"]],
+    }
 
 
 def get_calendar_date(*, calendar_uid: str, uid: str) -> CalendarDate | None:
@@ -157,9 +163,9 @@ def list_calendar_sessions(
     is_primary: bool | None = None,
     limit: int = 500,
     offset: int = 0,
-) -> list[CalendarSession]:
+) -> dict[str, Any]:
     runtime = _get_runtime()
-    rows = _list_calendar_session_records(
+    response = _list_calendar_session_records_page(
         runtime.context,
         calendar_uid=calendar_uid,
         start_date=start_date,
@@ -169,7 +175,10 @@ def list_calendar_sessions(
         limit=limit,
         offset=offset,
     )
-    return [CalendarSession.model_validate(row) for row in rows]
+    return {
+        "count": int(response["count"]),
+        "results": [CalendarSession.model_validate(row) for row in response["results"]],
+    }
 
 
 def get_calendar_session(*, calendar_uid: str, uid: str) -> CalendarSession | None:
@@ -241,9 +250,9 @@ def list_calendar_events(
     target_identifier: str | None = None,
     limit: int = 500,
     offset: int = 0,
-) -> list[CalendarEvent]:
+) -> dict[str, Any]:
     runtime = _get_runtime()
-    rows = _list_calendar_event_records(
+    response = _list_calendar_event_records_page(
         runtime.context,
         calendar_uid=calendar_uid,
         start_date=start_date,
@@ -256,7 +265,10 @@ def list_calendar_events(
         limit=limit,
         offset=offset,
     )
-    return [CalendarEvent.model_validate(row) for row in rows]
+    return {
+        "count": int(response["count"]),
+        "results": [CalendarEvent.model_validate(row) for row in response["results"]],
+    }
 
 
 def get_calendar_event(*, calendar_uid: str, uid: str) -> CalendarEvent | None:
@@ -328,10 +340,10 @@ def _get_runtime():
     )
 
 
-def _list_calendar_records(context, **kwargs):
-    from msm.services import list_calendar_records
+def _list_calendar_records_page(context, **kwargs):
+    from msm.services import list_calendar_records_page
 
-    return list_calendar_records(context, **kwargs)
+    return list_calendar_records_page(context, **kwargs)
 
 
 def _get_calendar_record(context, **kwargs):
@@ -364,10 +376,10 @@ def _delete_calendar_record(context, **kwargs):
     return delete_calendar_record(context, **kwargs)
 
 
-def _list_calendar_date_records(context, **kwargs):
-    from msm.services import list_calendar_date_records
+def _list_calendar_date_records_page(context, **kwargs):
+    from msm.services import list_calendar_date_records_page
 
-    return list_calendar_date_records(context, **kwargs)
+    return list_calendar_date_records_page(context, **kwargs)
 
 
 def _get_calendar_date_record(context, **kwargs):
@@ -400,10 +412,10 @@ def _bulk_upsert_calendar_date_records(context, **kwargs):
     return bulk_upsert_calendar_date_records(context, **kwargs)
 
 
-def _list_calendar_session_records(context, **kwargs):
-    from msm.services import list_calendar_session_records
+def _list_calendar_session_records_page(context, **kwargs):
+    from msm.services import list_calendar_session_records_page
 
-    return list_calendar_session_records(context, **kwargs)
+    return list_calendar_session_records_page(context, **kwargs)
 
 
 def _get_calendar_session_record(context, **kwargs):
@@ -436,10 +448,10 @@ def _bulk_upsert_calendar_session_records(context, **kwargs):
     return bulk_upsert_calendar_session_records(context, **kwargs)
 
 
-def _list_calendar_event_records(context, **kwargs):
-    from msm.services import list_calendar_event_records
+def _list_calendar_event_records_page(context, **kwargs):
+    from msm.services import list_calendar_event_records_page
 
-    return list_calendar_event_records(context, **kwargs)
+    return list_calendar_event_records_page(context, **kwargs)
 
 
 def _get_calendar_event_record(context, **kwargs):

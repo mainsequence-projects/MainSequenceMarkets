@@ -1,0 +1,22 @@
+{
+  "contract": "command-center.resource_discovery@v1",
+  "resource": {
+    "id": "records",
+    "label": "Records",
+    "item_label": "record",
+    "identity": { "fields": ["uid"] }
+  },
+  "list": {
+    "controls": { "search": null, "filters": [], "ordering": [] },
+    "columns": [
+      {
+        "id": "owner",
+        "header": "Owner",
+        "value_path": "owner.name",
+        "default_visible": true,
+        "hideable": false
+      }
+    ]
+  },
+  "bulk_actions": []
+}

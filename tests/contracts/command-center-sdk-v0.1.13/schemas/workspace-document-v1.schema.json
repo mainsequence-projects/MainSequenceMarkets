@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mainsequence:command-center-sdk:schema:workspace-document:v1",
+  "title": "Command Center workspace document v1",
+  "description": "Canonical persisted workspace document with forward-compatible widget props, runtime state, and unknown widget identities.",
+  "type": "object",
+  "required": ["id", "title", "description", "source", "widgets"],
+  "additionalProperties": true,
+  "properties": {
+    "id": { "$ref": "#/$defs/nonEmptyString" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "type": { "enum": ["workspace", "agent-monitor", "slide-studio"] },
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "publicUrl": { "type": ["string", "null"] },
+    "labels": { "$ref": "#/$defs/stringArray" },
+    "category": { "type": "string" },
+    "source": { "$ref": "#/$defs/nonEmptyString" },
+    "layoutKind": { "enum": ["custom", "auto-grid"] },
+    "autoGrid": { "$ref": "#/$defs/autoGrid" },
+    "companions": { "type": "array", "items": { "$ref": "#/$defs/companion" } },
+    "requiredPermissions": { "$ref": "#/$defs/stringArray" },
+    "grid": { "$ref": "#/$defs/grid" },
+    "controls": { "$ref": "#/$defs/controls" },
+    "widgets": { "type": "array", "items": { "$ref": "#/$defs/widget" } }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "pattern": ".*\\S.*" },
+    "stringArray": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nonEmptyString" }
+    },
+    "positiveInteger": { "type": "integer", "minimum": 1 },
+    "grid": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "columns": { "$ref": "#/$defs/positiveInteger" },
+        "rowHeight": { "$ref": "#/$defs/positiveInteger" },
+        "gap": { "type": "number", "minimum": 0 }
+      }
+    },
+    "autoGrid": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "maxColumns": { "$ref": "#/$defs/positiveInteger" },
+        "minColumnWidthPx": { "type": "number", "exclusiveMinimum": 0 },
+        "rowHeight": { "$ref": "#/$defs/positiveInteger" },
+        "fillScreen": { "type": "boolean" }
+      }
+    },
+    "canvasLayout": {
+      "type": "object",
+      "required": ["x", "y", "w", "h"],
+      "additionalProperties": true,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "w": { "$ref": "#/$defs/positiveInteger" },
+        "h": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "companion": {
+      "type": "object",
+      "required": ["id", "instanceId", "fieldId", "layout"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "instanceId": { "$ref": "#/$defs/nonEmptyString" },
+        "fieldId": { "$ref": "#/$defs/nonEmptyString" },
+        "layout": { "$ref": "#/$defs/canvasLayout" }
+      }
+    },
+    "timeRange": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "defaultRange": { "$ref": "#/$defs/timeRangeKey" },
+        "options": { "type": "array", "items": { "$ref": "#/$defs/timeRangeKey" } },
+        "selectedRange": { "enum": ["15m", "1h", "6h", "24h", "7d", "30d", "90d", "custom"] },
+        "customStartMs": { "type": "number" },
+        "customEndMs": { "type": "number" }
+      }
+    },
+    "timeRangeKey": { "enum": ["15m", "1h", "6h", "24h", "7d", "30d", "90d"] },
+    "refresh": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "defaultIntervalMs": { "type": ["number", "null"], "minimum": 0 },
+        "intervals": { "type": "array", "items": { "type": ["number", "null"], "minimum": 0 } },
+        "selectedIntervalMs": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "controls": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "timeRange": { "$ref": "#/$defs/timeRange" },
+        "refresh": { "$ref": "#/$defs/refresh" },
+        "actions": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "share": { "type": "boolean" },
+            "view": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "spanLayout": {
+      "type": "object",
+      "required": ["cols", "rows"],
+      "additionalProperties": true,
+      "properties": {
+        "cols": { "$ref": "#/$defs/positiveInteger" },
+        "rows": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "legacyLayout": {
+      "type": "object",
+      "required": ["w", "h"],
+      "additionalProperties": true,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "w": { "$ref": "#/$defs/positiveInteger" },
+        "h": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "surfaceMode": { "enum": ["default", "transparent"] },
+        "placementMode": { "enum": ["canvas", "sidebar"] },
+        "railVisibility": { "enum": ["visible", "hidden"] },
+        "exposedFields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["visible", "anchor", "order"],
+            "additionalProperties": true,
+            "properties": {
+              "visible": { "type": "boolean" },
+              "anchor": { "enum": ["top", "right", "bottom", "left"] },
+              "order": { "type": "number" },
+              "mode": { "enum": ["inline", "chip-group", "token-list", "panel"] },
+              "collapsed": { "type": "boolean" },
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "width": { "type": "number" },
+              "height": { "type": "number" },
+              "gridX": { "type": "number" },
+              "gridY": { "type": "number" },
+              "gridW": { "type": "number" },
+              "gridH": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "selectArrayItemTransform": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "const": "select-array-item" },
+        "mode": { "enum": ["first", "last", "index"] },
+        "index": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "extractPathTransform": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "const": "extract-path" },
+        "path": { "type": "array", "items": { "type": "string" } },
+        "contractId": { "type": "string", "pattern": "^.+@v[0-9]+$" }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "required": ["sourceWidgetId", "sourceOutputId"],
+      "additionalProperties": false,
+      "properties": {
+        "sourceWidgetId": { "$ref": "#/$defs/nonEmptyString" },
+        "sourceOutputId": { "$ref": "#/$defs/nonEmptyString" },
+        "transformSteps": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/selectArrayItemTransform" },
+              { "$ref": "#/$defs/extractPathTransform" }
+            ]
+          }
+        },
+        "transformId": { "type": "string" },
+        "transformPath": { "type": "array", "items": { "type": "string" } },
+        "transformContractId": { "type": "string", "pattern": "^.+@v[0-9]+$" }
+      }
+    },
+    "bindingValue": {
+      "oneOf": [
+        { "$ref": "#/$defs/binding" },
+        { "type": "array", "items": { "$ref": "#/$defs/binding" } }
+      ]
+    },
+    "publicExecution": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "queryUrl": { "type": "string" },
+        "streamUrl": { "type": "string" },
+        "capability": { "type": "string" },
+        "allowedInputs": true
+      }
+    },
+    "widget": {
+      "type": "object",
+      "required": ["id", "widgetId", "layout"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "widgetId": { "$ref": "#/$defs/nonEmptyString" },
+        "title": { "type": "string" },
+        "props": { "type": "object", "additionalProperties": true },
+        "runtimeState": { "type": "object", "additionalProperties": true },
+        "publicExecution": { "$ref": "#/$defs/publicExecution" },
+        "presentation": { "$ref": "#/$defs/presentation" },
+        "bindings": { "type": "object", "additionalProperties": { "$ref": "#/$defs/bindingValue" } },
+        "managedBy": {
+          "type": "object",
+          "required": ["ownerInstanceId", "role"],
+          "additionalProperties": false,
+          "properties": {
+            "ownerInstanceId": { "$ref": "#/$defs/nonEmptyString" },
+            "role": { "const": "embedded-connection-source" }
+          }
+        },
+        "slidePlacement": {
+          "type": "object",
+          "required": ["slideWidgetId", "region"],
+          "additionalProperties": false,
+          "properties": {
+            "slideWidgetId": { "$ref": "#/$defs/nonEmptyString" },
+            "region": { "enum": ["header", "left", "body", "right", "footer"] }
+          }
+        },
+        "row": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "collapsed": { "type": "boolean" },
+            "children": { "type": "array", "items": { "$ref": "#/$defs/widget" } }
+          }
+        },
+        "layout": { "anyOf": [{ "$ref": "#/$defs/spanLayout" }, { "$ref": "#/$defs/legacyLayout" }] },
+        "position": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+        },
+        "requiredPermissions": { "$ref": "#/$defs/stringArray" },
+        "propsVersion": { "type": "integer", "minimum": 1 },
+        "userStateVersion": { "type": "integer", "minimum": 1 },
+        "authoredWithWidgetVersion": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    }
+  }
+}

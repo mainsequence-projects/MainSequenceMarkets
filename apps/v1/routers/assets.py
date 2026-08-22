@@ -5,13 +5,12 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
-from apps.v1.schemas.common import (
-    ErrorResponse,
-    FrontEndDetailSummary,
-    PaginatedResponse,
-    build_paginated_response,
-)
+from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
 from apps.v1.schemas.indices import RelatedMetaTable
+from apps.v1.schemas.resource_contracts import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ResourceCollection,
+)
 from apps.v1.services.assets import (
     delete_asset,
     get_asset,
@@ -19,8 +18,9 @@ from apps.v1.services.assets import (
     get_asset_pricing_details,
     get_asset_summary,
     list_asset_related_meta_tables,
-    list_assets,
+    list_assets_response,
 )
+from apps.v1.services.resource_collections import resource_collection_response
 from command_center.contracts import TabularFrameResponse
 
 router = APIRouter(prefix="/asset", tags=["asset"])
@@ -28,28 +28,19 @@ router = APIRouter(prefix="/asset", tags=["asset"])
 
 @router.get(
     "/",
-    response_model=PaginatedResponse[Asset],
+    response_model=ResourceCollection[Asset],
     summary="List assets",
-    description=(
-        "Return core library asset rows. The `response_format` query parameter is "
-        "accepted for compatibility, but rows use the `msm.api.assets.Asset` contract."
-    ),
+    description=("Return canonical asset rows in the Command Center resource collection contract."),
     operation_id="listAssets",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
         400: {
             "model": ErrorResponse,
-            "description": "Unsupported response format or invalid request boundary input.",
+            "description": "Invalid resource collection request.",
         }
     },
 )
 def get_assets(
-    request: Request,
-    response_format: Annotated[
-        str,
-        Query(
-            description="Supported value for this endpoint is `frontend_list`.",
-        ),
-    ] = "frontend_list",
     search: Annotated[
         str,
         Query(
@@ -77,21 +68,16 @@ def get_assets(
             description="Optional asset category uid filter used by nested category asset tables.",
         ),
     ] = None,
-) -> PaginatedResponse[Asset]:
-    if response_format != "frontend_list":
-        raise HTTPException(
-            status_code=400,
-            detail="Only response_format=frontend_list is implemented for GET /api/v1/asset/.",
-        )
-    rows = list_assets(
+) -> ResourceCollection[Asset]:
+    response = list_assets_response(
         search=search,
-        limit=limit + 1,
+        limit=limit,
         offset=offset,
         category_uid=categories__uid,
     )
-    return build_paginated_response(
-        request_url=str(request.url),
-        results=rows,
+    return resource_collection_response(
+        items=response["results"],
+        total_items=response["count"],
         limit=limit,
         offset=offset,
     )
@@ -185,7 +171,7 @@ def get_asset_monitor_frame_route(
     responses={
         400: {
             "model": ErrorResponse,
-            "description": "Unsupported response format or invalid request boundary input.",
+            "description": "Invalid asset detail request.",
         },
         404: {
             "model": ErrorResponse,
@@ -195,18 +181,7 @@ def get_asset_monitor_frame_route(
 )
 def get_asset_by_uid(
     uid: str,
-    response_format: Annotated[
-        str,
-        Query(
-            description="Supported value for this endpoint is `frontend_detail`.",
-        ),
-    ] = "frontend_detail",
 ) -> AssetDetailResponse:
-    if response_format != "frontend_detail":
-        raise HTTPException(
-            status_code=400,
-            detail="Only response_format=frontend_detail is implemented for GET /api/v1/asset/{uid}/.",
-        )
     record = get_asset(uid=uid)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Asset {uid!r} was not found.")
@@ -238,9 +213,10 @@ def get_asset_summary_by_uid(uid: str) -> FrontEndDetailSummary:
 
 @router.get(
     "/{uid}/related-meta-tables/",
-    response_model=list[RelatedMetaTable],
+    response_model=ResourceCollection[RelatedMetaTable],
     summary="List Asset related MetaTables",
     operation_id="listAssetRelatedMetaTables",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={404: {"model": ErrorResponse}},
 )
 def get_asset_related_meta_tables(
@@ -253,7 +229,9 @@ def get_asset_related_meta_tables(
         bool,
         Query(description="Require a registered time-indexed MetaTable."),
     ] = True,
-) -> list[RelatedMetaTable]:
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ResourceCollection[RelatedMetaTable]:
     result = list_asset_related_meta_tables(
         uid=uid,
         numeric=numeric,
@@ -261,7 +239,13 @@ def get_asset_related_meta_tables(
     )
     if result is None:
         raise HTTPException(status_code=404, detail=f"Asset {uid!r} was not found.")
-    return list(result)
+    rows = list(result)
+    return resource_collection_response(
+        items=rows[offset : offset + limit],
+        total_items=len(rows),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get(

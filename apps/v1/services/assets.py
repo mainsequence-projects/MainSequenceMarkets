@@ -32,6 +32,27 @@ def list_assets(
     return [Asset.model_validate(row) for row in rows]
 
 
+def list_assets_response(
+    *,
+    search: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    category_uid: str | None = None,
+) -> dict[str, Any]:
+    runtime = _get_runtime()
+    response = _list_asset_rows_response(
+        runtime.context,
+        search=search,
+        limit=limit,
+        offset=offset,
+        category_uid=category_uid,
+    )
+    return {
+        "count": int(response["count"]),
+        "results": [Asset.model_validate(row) for row in response["results"]],
+    }
+
+
 def get_asset_monitor_frame(
     *,
     search: str = "",
@@ -141,6 +162,12 @@ def _list_asset_rows(context, **kwargs):
     from msm.services import list_asset_rows
 
     return list_asset_rows(context, **kwargs)
+
+
+def _list_asset_rows_response(context, **kwargs):
+    from msm.services import list_asset_rows_response
+
+    return list_asset_rows_response(context, **kwargs)
 
 
 def _get_asset_record(context, **kwargs):
