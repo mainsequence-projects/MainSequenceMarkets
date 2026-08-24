@@ -788,7 +788,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.108"
+version = "0.0.109"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },

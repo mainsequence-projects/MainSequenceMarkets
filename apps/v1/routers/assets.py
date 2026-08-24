@@ -215,6 +215,11 @@ def get_asset_summary_by_uid(uid: str) -> FrontEndDetailSummary:
     "/{uid}/related-meta-tables/",
     response_model=ResourceCollection[RelatedMetaTable],
     summary="List Asset related MetaTables",
+    description=(
+        "List registered MetaTables whose authoritative foreign key targets the selected "
+        "Asset's stable unique identifier. Discovery describes compatible data sources; it does "
+        "not guarantee that the selected Asset currently has observations in each table."
+    ),
     operation_id="listAssetRelatedMetaTables",
     openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={404: {"model": ErrorResponse}},
@@ -229,8 +234,12 @@ def get_asset_related_meta_tables(
         bool,
         Query(description="Require a registered time-indexed MetaTable."),
     ] = True,
-    limit: Annotated[int, Query(ge=1, le=500)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[
+        int, Query(ge=1, le=500, description="Maximum related MetaTables to return.")
+    ] = 50,
+    offset: Annotated[
+        int, Query(ge=0, description="Zero-based offset into the related MetaTable list.")
+    ] = 0,
 ) -> ResourceCollection[RelatedMetaTable]:
     result = list_asset_related_meta_tables(
         uid=uid,

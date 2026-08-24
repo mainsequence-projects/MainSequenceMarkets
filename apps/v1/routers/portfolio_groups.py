@@ -51,6 +51,10 @@ router = APIRouter(prefix="/portfolio-group", tags=["portfolio-group"])
     "/",
     response_model=ResourceCollection[PortfolioGroup],
     summary="List portfolio groups",
+    description=(
+        "Return named portfolio group identities in the canonical Command Center resource "
+        "collection contract. Groups organize portfolios through separate membership rows."
+    ),
     operation_id="listPortfolioGroups",
     openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={
@@ -101,6 +105,7 @@ def get_portfolio_groups(
     "/",
     response_model=PortfolioGroup,
     summary="Create portfolio group",
+    description="Create or idempotently upsert one named portfolio grouping.",
     operation_id="createPortfolioGroup",
 )
 def post_portfolio_group(
@@ -116,6 +121,10 @@ def post_portfolio_group(
     "/bulk-delete/",
     response_model=PortfolioGroupDeleteResponse,
     summary="Bulk delete portfolio groups",
+    description=(
+        "Delete the explicitly selected portfolio groups after server-side preflight and "
+        "authorization. Membership rows follow their database relationship policy."
+    ),
     operation_id="bulkDeletePortfolioGroups",
 )
 def post_portfolio_group_bulk_delete(
@@ -164,6 +173,10 @@ def preflight_portfolio_group_bulk_delete(
     "/membership/bulk-delete/",
     response_model=PortfolioGroupDeleteResponse,
     summary="Bulk delete portfolio group memberships",
+    description=(
+        "Delete membership rows selected by membership uid, portfolio-group uid, or portfolio "
+        "uid without deleting the referenced Portfolio or PortfolioGroup identities."
+    ),
     operation_id="bulkDeletePortfolioGroupMemberships",
 )
 def post_portfolio_group_membership_bulk_delete(
@@ -179,6 +192,10 @@ def post_portfolio_group_membership_bulk_delete(
     "/by-portfolio/{portfolio_uid}/",
     response_model=ResourceCollection[PortfolioGroup],
     summary="List groups for portfolio",
+    description=(
+        "Return the groups containing one Portfolio in the canonical Command Center resource "
+        "collection contract."
+    ),
     operation_id="listGroupsForPortfolio",
     openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
 )
@@ -204,6 +221,7 @@ def get_groups_for_portfolio(
     "/{uid}/",
     response_model=PortfolioGroup,
     summary="Get portfolio group",
+    description="Return one PortfolioGroup identity by uid.",
     operation_id="getPortfolioGroup",
     responses={
         404: {
@@ -223,6 +241,7 @@ def get_portfolio_group_by_uid(uid: str) -> PortfolioGroup:
     "/{uid}/",
     response_model=PortfolioGroup,
     summary="Update portfolio group",
+    description="Update mutable display and metadata fields for one PortfolioGroup identity.",
     operation_id="updatePortfolioGroup",
     responses={
         404: {
@@ -251,6 +270,10 @@ def patch_portfolio_group(
     "/{uid}/",
     response_model=PortfolioGroupDeleteResponse,
     summary="Delete portfolio group",
+    description=(
+        "Delete one PortfolioGroup identity and report the number of removed rows. This does not "
+        "delete Portfolio identities."
+    ),
     operation_id="deletePortfolioGroup",
     status_code=status.HTTP_200_OK,
 )
@@ -262,6 +285,10 @@ def remove_portfolio_group(uid: str) -> PortfolioGroupDeleteResponse:
     "/{uid}/portfolios/",
     response_model=ResourceCollection[Portfolio],
     summary="List portfolios in group",
+    description=(
+        "Return the Portfolios assigned to one group in the canonical Command Center resource "
+        "collection contract."
+    ),
     operation_id="listPortfoliosInGroup",
     openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
 )
@@ -287,6 +314,10 @@ def get_portfolios_in_group(
     "/{uid}/portfolios/",
     response_model=PortfolioGroupMembership,
     summary="Add portfolio to group",
+    description=(
+        "Create the many-to-many membership between one PortfolioGroup and one Portfolio, "
+        "resolving the portfolio by uid or stable unique identifier."
+    ),
     operation_id="addPortfolioToGroup",
 )
 def post_portfolio_to_group(
@@ -306,6 +337,10 @@ def post_portfolio_to_group(
     "/{uid}/portfolios/{portfolio_uid}/",
     response_model=PortfolioGroupDeleteResponse,
     summary="Remove portfolio from group",
+    description=(
+        "Delete only the membership between the selected PortfolioGroup and Portfolio; both "
+        "resource identities remain intact."
+    ),
     operation_id="removePortfolioFromGroup",
 )
 def delete_portfolio_from_group(

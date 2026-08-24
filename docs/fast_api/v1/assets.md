@@ -6,6 +6,11 @@ composition, current pricing details, and identity delete. Asset category routes
 cover category lists, detail composition, and membership-aware create, update,
 and delete operations.
 
+OpenAPI documentation preserves the same domain boundary as the package model: the canonical
+`Asset` schema is documented from `AssetTable`, while `AssetDetailResponse.current_snapshot`
+describes the latest timestamped display facts and `details` carries resolved type- or
+provider-specific records. The API does not flatten those separate models into `Asset`.
+
 ## Assets
 
 - `GET /api/v1/asset/`

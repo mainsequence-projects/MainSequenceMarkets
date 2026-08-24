@@ -44,6 +44,59 @@ def test_openapi_json_exposes_core_api_metadata() -> None:
         "href": "/docs",
     }
     assert payload["servers"] == [{"url": "/", "description": "Current deployment"}]
+    assert payload["externalDocs"] == {
+        "description": "Main Sequence Markets API source repository",
+        "url": "https://github.com/mainsequence-projects/MainSequenceMarkets",
+    }
+    assert payload["x-tagGroups"]
+    assert {tag["name"] for tag in payload["tags"]} >= {
+        "asset",
+        "index",
+        "resource-discovery",
+    }
+
+
+def test_openapi_documents_every_public_operation() -> None:
+    payload = app.openapi()
+    operations = [
+        operation
+        for path_item in payload["paths"].values()
+        for method, operation in path_item.items()
+        if method in {"get", "post", "put", "patch", "delete"}
+    ]
+
+    assert operations
+    assert all(operation.get("summary") for operation in operations)
+    assert all(operation.get("description") for operation in operations)
+
+    declared_tags = {tag["name"] for tag in payload["tags"]}
+    used_tags = {tag for operation in operations for tag in operation.get("tags", [])}
+    assert used_tags <= declared_tags
+
+
+def test_openapi_explains_the_asset_identity_boundary() -> None:
+    payload = app.openapi()
+    schemas = payload["components"]["schemas"]
+
+    asset_schema = schemas["Asset"]
+    assert "canonical asset identity table" in asset_schema["description"].lower()
+    assert "stable asset business identifier" in asset_schema["properties"][
+        "unique_identifier"
+    ]["description"]
+    assert "classify rows" in asset_schema["properties"]["asset_type"]["description"]
+
+    detail_schema = schemas["AssetDetailResponse"]
+    assert "composed asset detail" in detail_schema["description"].lower()
+    assert "not assumed to be a ticker" in detail_schema["properties"][
+        "unique_identifier"
+    ]["description"]
+    assert "separate detail models" in detail_schema["properties"]["asset_type"][
+        "description"
+    ]
+
+    snapshot_schema = schemas["AssetCurrentSnapshotResponse"]
+    assert "timestamped display facts" in snapshot_schema["description"]
+    assert "snapshot time" in snapshot_schema["properties"]["ticker"]["description"]
 
 
 def test_openapi_logo_url_serves_project_emblem() -> None:

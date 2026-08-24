@@ -142,7 +142,7 @@ rotation; use the project deployment-run interfaces to verify the terminal
 state and logs instead of treating the Git push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
-The project therefore pins the published `mainsequence==6.0.36` package and
+The project therefore pins the published `mainsequence==6.0.37` package and
 must not replace it with a machine-local `[tool.uv.sources]` path override.
 
 ## API Discoverability
@@ -150,6 +150,10 @@ must not replace it with a machine-local `[tool.uv.sources]` path override.
 - `GET /openapi.json`
   - includes Redocly-compatible `info.x-logo` metadata for Main Sequence
     Markets branding
+  - declares every operation summary and description, all used tags, stable tag groups, and the
+    [API source repository](https://github.com/mainsequence-projects/MainSequenceMarkets)
+  - derives canonical row and field descriptions from the backing MetaTable metadata instead of
+    maintaining a second description inventory in the FastAPI layer
   - uses the local emblem served by this FastAPI app at
     `/static/main-sequence-markets/main_sequence_markets_icon_emblem_transparent.png`
 - `GET /docs`
@@ -194,3 +198,12 @@ The focused FastAPI coverage for this surface lives under:
 
 Use `/openapi.json`, `/docs`, and `/redoc` from the local app for contract
 inspection.
+
+Export a deterministic reviewed snapshot for downstream documentation or client generation with:
+
+```bash
+.venv/bin/python -m scripts.export_apps_v1_openapi --output /absolute/path/to/openapi.json
+```
+
+The downstream repository owns its pinned snapshot. Its production documentation build must not
+fetch a live API release or import this repository at runtime.

@@ -23,11 +23,13 @@ from apps.v1.routers.pricing_market_data import router as pricing_market_data_ro
 from apps.v1.routers.resource_discovery import router as resource_discovery_router
 from apps.v1.routers.settings import router as settings_router
 from apps.v1.routers.virtual_funds import router as virtual_funds_router
+from apps.v1.openapi_documentation import apply_metatable_documentation
 from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime, ensure_apps_v1_runtime
 
 API_TITLE = "MainSequence Markets Public API"
 API_VERSION = version("ms-markets")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+API_SOURCE_REPOSITORY = "https://github.com/mainsequence-projects/MainSequenceMarkets"
 OPENAPI_LOGO_URL = "/static/main-sequence-markets/main_sequence_markets_icon_emblem_transparent.png"
 OPENAPI_LOGO = {
     "url": OPENAPI_LOGO_URL,
@@ -36,66 +38,121 @@ OPENAPI_LOGO = {
     "href": "/docs",
 }
 API_DESCRIPTION = (
-    "HTTP API for the local `apps/v1` surface in MainSequence Markets. "
-    "This API resolves requests into reusable markets logic from `src/` and "
-    "returns documented Pydantic response contracts."
+    "HTTP interface for Main Sequence Markets application resources. The API exposes "
+    "canonical Command Center collections and discovery contracts alongside typed detail, "
+    "summary, action, pricing, and market-data operations. Route handlers resolve into reusable "
+    "markets logic from `src/`; OpenAPI is the authoritative machine-readable description of "
+    "this HTTP surface."
 )
 API_TAGS = [
     {
         "name": "account",
-        "description": "Account registry endpoints exposed through the `apps/v1` FastAPI surface.",
+        "x-displayName": "Accounts",
+        "description": "Managed-account identities, target allocations, holdings, and account operations.",
     },
     {
         "name": "asset",
-        "description": "Asset catalog endpoints exposed through the `apps/v1` FastAPI surface.",
+        "x-displayName": "Assets",
+        "description": (
+            "Canonical asset identities, current display snapshots, pricing details, and related "
+            "MetaTable discovery. Asset identity remains separate from timestamped facts and "
+            "instrument-specific detail records."
+        ),
     },
     {
         "name": "asset-category",
-        "description": "Asset category endpoints exposed through the `apps/v1` FastAPI surface.",
+        "x-displayName": "Asset Categories",
+        "description": "Named asset groupings and their many-to-many membership with canonical assets.",
     },
     {
         "name": "index",
-        "description": "Index registry endpoints exposed through the `apps/v1` FastAPI surface.",
+        "x-displayName": "Indices",
+        "description": (
+            "Reusable market observables, index types, versioned formulas, canonical datasets, "
+            "and related MetaTables. An Index is not implicitly a tradable Asset."
+        ),
     },
     {
         "name": "calendar",
-        "description": "Calendar reference-data endpoints exposed through the `apps/v1` FastAPI surface.",
+        "x-displayName": "Calendars",
+        "description": "Calendar identities plus dated business-day, session, and event facts.",
     },
     {
         "name": "pricing-market-data",
+        "x-displayName": "Pricing Market Data",
         "description": "Pricing market-data set and concept binding management endpoints.",
     },
     {
         "name": "pricing-curve",
+        "x-displayName": "Pricing Curves",
         "description": "Pricing curve registry endpoints.",
     },
     {
         "name": "pricing-asset",
+        "x-displayName": "Asset Pricing",
         "description": "Fixed income asset pricing operation endpoints.",
     },
     {
         "name": "portfolio",
-        "description": "Portfolio identity, detail, latest weights, and delete endpoints.",
+        "x-displayName": "Portfolios",
+        "description": "Portfolio identities, summaries, weights, values, signals, and deletion operations.",
     },
     {
         "name": "portfolio-group",
+        "x-displayName": "Portfolio Groups",
         "description": "Portfolio group registry and many-to-many membership endpoints.",
     },
     {
         "name": "portfolio-signal",
+        "x-displayName": "Portfolio Signals",
         "description": "Portfolio signal metadata and signal-weight storage cleanup endpoints.",
     },
     {
         "name": "virtualfund",
-        "description": "Virtual-fund identity, detail, and holdings endpoints.",
+        "x-displayName": "Virtual Funds",
+        "description": "Virtual-fund identities, details, allocations, and holdings snapshots.",
     },
     {
         "name": "settings",
+        "x-displayName": "Settings",
         "description": "Read-only app settings and runtime assumption endpoints.",
     },
     {
         "name": "command-center",
+        "x-displayName": "Command Center",
         "description": "Command Center Adapter from API discovery and health endpoints.",
+    },
+    {
+        "name": "resource-discovery",
+        "x-displayName": "Resource Discovery",
+        "description": (
+            "Canonical `command-center.resource_discovery@v1` descriptions for every collection, "
+            "including identity, search, filters, ordering, columns, and authorized bulk actions."
+        ),
+    },
+]
+API_TAG_GROUPS = [
+    {
+        "name": "Markets resources",
+        "tags": [
+            "asset",
+            "asset-category",
+            "index",
+            "portfolio",
+            "portfolio-group",
+            "portfolio-signal",
+            "account",
+            "virtualfund",
+            "calendar",
+        ],
+    },
+    {
+        "name": "Pricing",
+        "tags": ["pricing-asset", "pricing-curve", "pricing-market-data"],
+    },
+    {
+        "name": "Platform integration",
+        "tags": ["resource-discovery", "command-center", "settings"],
     },
 ]
 
@@ -157,6 +214,7 @@ def create_app() -> FastAPI:
             version=API_VERSION,
             description=API_DESCRIPTION,
             routes=app.routes,
+            tags=API_TAGS,
         )
         openapi_schema["servers"] = [
             {"url": "/", "description": "Current deployment"},
@@ -164,6 +222,12 @@ def create_app() -> FastAPI:
         openapi_schema.setdefault("info", {})
         openapi_schema["info"]["x-app-scope"] = "apps/v1"
         openapi_schema["info"]["x-logo"] = OPENAPI_LOGO
+        openapi_schema["externalDocs"] = {
+            "description": "Main Sequence Markets API source repository",
+            "url": API_SOURCE_REPOSITORY,
+        }
+        openapi_schema["x-tagGroups"] = API_TAG_GROUPS
+        apply_metatable_documentation(openapi_schema)
         app.openapi_schema = openapi_schema
         return app.openapi_schema
 

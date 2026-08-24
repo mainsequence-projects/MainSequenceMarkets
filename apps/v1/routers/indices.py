@@ -74,6 +74,7 @@ def _request_actor(request: Request) -> IndexActor | None:
     "/",
     response_model=ResourceCollection[IndexType],
     summary="List Index types",
+    description="Return registered business classifications available for Index identities.",
     operation_id="listIndexTypes",
     openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
 )
@@ -94,6 +95,7 @@ def get_index_types(
     "/{index_type}/",
     response_model=IndexType,
     summary="Get Index type",
+    description="Return one registered Index business classification by its stable type key.",
     operation_id="getIndexType",
     responses={404: {"model": ErrorResponse}},
 )
@@ -108,6 +110,11 @@ def get_index_type_by_key(index_type: str) -> IndexType:
     "/",
     response_model=ResourceCollection[Index],
     summary="List indexes",
+    description=(
+        "Return reusable market-observable identities in the canonical Command Center resource "
+        "collection contract. Filters can distinguish formula ownership and canonical dataset "
+        "availability without treating an Index as a tradable Asset."
+    ),
     operation_id="listIndexes",
     openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={400: {"model": ErrorResponse}},
@@ -150,6 +157,10 @@ def get_indexes(
     response_model=Index,
     status_code=status.HTTP_201_CREATED,
     summary="Create Index",
+    description=(
+        "Create a reusable Index identity. `calculation_method` selects formula-managed or "
+        "custom publication; `index_type` remains an independent business classification."
+    ),
     operation_id="createIndex",
     responses={400: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
 )
@@ -164,6 +175,7 @@ def create_index_record(payload: IndexCreate) -> Index:
     "/{uid}/",
     response_model=Index,
     summary="Get index",
+    description="Return one Index identity by uid, without expanding formulas or observations.",
     operation_id="getIndex",
     responses={404: {"model": ErrorResponse}},
 )
@@ -178,6 +190,7 @@ def get_index_by_uid(uid: str) -> Index:
     "/{uid}/",
     response_model=Index,
     summary="Update Index",
+    description="Update the mutable descriptive and presentation fields of one Index identity.",
     operation_id="updateIndex",
     responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
 )
@@ -195,6 +208,10 @@ def update_index_record(uid: str, payload: IndexUpdate) -> Index:
     "/{uid}/summary/",
     response_model=FrontEndDetailSummary,
     summary="Get Index summary",
+    description=(
+        "Return the reusable detail-page summary for one Index, including its classification, "
+        "calculation ownership, and canonical dataset availability."
+    ),
     operation_id="getIndexSummary",
     responses={404: {"model": ErrorResponse}},
 )
@@ -212,6 +229,10 @@ def get_index_summary_by_uid(
     "/{uid}/formulas/",
     response_model=ResourceCollection[IndexFormulaSummary],
     summary="List Index formulas",
+    description=(
+        "Return the versioned formula definitions owned by one formula-calculated Index in the "
+        "canonical Command Center resource collection contract."
+    ),
     operation_id="listIndexFormulas",
     openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
     responses={404: {"model": ErrorResponse}},
@@ -237,6 +258,10 @@ def get_index_formulas(
     "/{uid}/formulas/{definition_uid}/",
     response_model=IndexFormulaDetail,
     summary="Get Index formula",
+    description=(
+        "Return one immutable formula definition, including its expression, exact source "
+        "bindings, validity interval, alignment policy, and missing-data policy."
+    ),
     operation_id="getIndexFormula",
     responses={404: {"model": ErrorResponse}},
 )
@@ -282,6 +307,10 @@ def get_index_datasets(
     "/{uid}/datasets/{meta_table_uid}/",
     response_model=IndexDatasetSummary,
     summary="Get Index dataset summary",
+    description=(
+        "Return availability and observation metadata for one canonical cadence-specific Index "
+        "dataset identified by its registered MetaTable uid."
+    ),
     operation_id="getIndexDatasetSummary",
     responses={404: {"model": ErrorResponse}},
 )
@@ -307,6 +336,10 @@ def get_index_dataset_summary_by_uid(
     "/{uid}/datasets/{meta_table_uid}/values/",
     response_model=TabularFrameResponse,
     summary="Get Index dataset values frame",
+    description=(
+        "Return bounded canonical Index observations as `core.tabular_frame@v1`. Timestamps must "
+        "be timezone-aware and the response is limited and ordered by the requested boundary."
+    ),
     operation_id="getIndexDatasetValuesFrame",
     response_model_exclude_none=True,
     responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},

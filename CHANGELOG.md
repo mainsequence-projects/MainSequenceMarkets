@@ -9,6 +9,10 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Completed OpenAPI documentation metadata for every FastAPI v1 operation and tag, added stable
+  tag groups and the canonical source-repository link, documented the composed Asset schemas, and
+  derived canonical row and field descriptions from existing MetaTable metadata so downstream API
+  references do not maintain a duplicate schema-description inventory.
 - Replaced every FastAPI v1 list response with the strict Command Center SDK
   `command-center.resource_collection@v1` contract and added authoritative
   `command-center.resource_discovery@v1` siblings for all 25 collections.

@@ -13,7 +13,14 @@ from apps.v1.services.resource_discovery import get_resource_discovery
 
 router = APIRouter(tags=["resource-discovery"])
 
-_DISCOVERY_OPENAPI = {"x-ui-contract": RESOURCE_DISCOVERY_CONTRACT}
+_DISCOVERY_OPENAPI = {
+    "description": (
+        "Return the canonical `command-center.resource_discovery@v1` description for this "
+        "collection. The response declares resource identity, search, filters, ordering, visible "
+        "columns, and the bulk actions authorized for the current caller."
+    ),
+    "x-ui-contract": RESOURCE_DISCOVERY_CONTRACT,
+}
 _DISCOVERY_ERRORS = {400: {"model": ErrorResponse, "description": "Invalid discovery scope."}}
 
 
