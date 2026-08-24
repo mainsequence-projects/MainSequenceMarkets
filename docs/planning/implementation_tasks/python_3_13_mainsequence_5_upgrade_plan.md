@@ -3,9 +3,10 @@
 ## Status
 
 The original Python 3.13 and MainSequence 5 runtime upgrade was implemented on
-2026-07-25. Its MainSequence version contract was superseded on 2026-08-07:
-the project now pins the published `mainsequence==6.0.35` package, and the
-installed SDK is MainSequence `6.0.35`.
+2026-07-25. Its dependency policy was superseded on 2026-08-24: the published
+package now declares `mainsequence` without an exact patch pin, while the
+repository lock and exported runtime requirements select MainSequence `6.0.46`
+as the validated build environment.
 
 Compatibility was established before the original environment rebuild:
 
@@ -18,10 +19,11 @@ Compatibility was established before the original environment rebuild:
 - the full suite also passed on Python 3.13 with that exact SDK tag:
   `1170 passed, 3 skipped`.
 
-The current project `.venv` reports Python `3.13.11` and MainSequence `6.0.35`.
-The package and lockfile resolve the published `mainsequence==6.0.35`
-distribution. There is no machine-local `tool.uv.sources` override, so the
-same dependency source is available to local and backend image builds.
+The current project `.venv` reports Python `3.13.11` and MainSequence `6.0.46`.
+The package metadata leaves the MainSequence patch version unpinned, and the
+lockfile resolves the published `mainsequence==6.0.46` distribution. There is
+no machine-local `tool.uv.sources` override, so the same dependency source is
+available to local and backend image builds.
 
 Verification evidence from the rebuilt environment:
 
@@ -31,7 +33,7 @@ Verification evidence from the rebuilt environment:
 - `.venv/bin/mkdocs build --strict`: passed;
 - `uv build`: built the wheel and source distribution;
 - locked full-environment audit: no changes required;
-- wheel metadata: `Requires-Python: <3.14,>=3.13` and the pinned MainSequence
+- wheel metadata: `Requires-Python: <3.14,>=3.13` and an unpinned MainSequence
   SDK dependency;
 - package, native dependency, CLI, and FastAPI application import smoke tests:
   passed.
@@ -48,16 +50,16 @@ The upgrade is complete when:
 - `ms-markets` declares `>=3.13,<3.14`, with no Python 3.11 or 3.12
   compatibility contract;
 - Ruff, CI documentation builds, and package publishing target Python 3.13;
-- `mainsequence` is pinned to the verified published SDK version in the package
-  contract;
+- `mainsequence` is unpinned in the published package contract while the lock
+  and exported runtime requirements select the verified SDK version;
 - `uv.lock` resolves only the Python 3.13 project contract;
 - the local `.venv` reports Python 3.13 and the current selected MainSequence SDK;
 - core, portfolio, pricing, public API, CLI, migration, and documentation
   imports work from the rebuilt environment;
 - the complete test suite, scoped Ruff baseline, strict MkDocs build, and
   package build pass;
-- built wheel metadata contains `Requires-Python: <3.14,>=3.13` and the pinned
-  MainSequence dependency;
+- built wheel metadata contains `Requires-Python: <3.14,>=3.13` and the
+  unpinned MainSequence dependency;
 - a fresh locked sync can reproduce the environment from the package index.
 
 No database schema change is required for this runtime upgrade. Applying
@@ -78,7 +80,9 @@ Gate: repository search finds no active Python 3.11 or 3.12 runtime target.
 
 ### 2. MainSequence SDK And Dependency Lock
 
-- Pin the publishable `mainsequence` dependency to the verified SDK release.
+- Keep the publishable `mainsequence` dependency free of an exact patch pin;
+  select the verified SDK release in `uv.lock` and exported runtime
+  requirements.
 - Resolve MainSequence from the package index with no machine-local
   `tool.uv.sources` override.
 - Regenerate `uv.lock` with Python 3.13.

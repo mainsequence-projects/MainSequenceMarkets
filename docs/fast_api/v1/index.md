@@ -142,8 +142,12 @@ rotation; use the project deployment-run interfaces to verify the terminal
 state and logs instead of treating the Git push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
-The project therefore pins the published `mainsequence==6.0.37` package and
-must not replace it with a machine-local `[tool.uv.sources]` path override.
+The published `ms-markets` package therefore declares `mainsequence` without
+an exact SDK patch pin. The project lock and exported runtime requirements
+select the SDK version validated for this repository, while downstream users
+can adopt newer compatible SDK fixes without waiting for another `ms-markets`
+release. Do not replace the published dependency with a machine-local
+`[tool.uv.sources]` path override.
 
 ## API Discoverability
 

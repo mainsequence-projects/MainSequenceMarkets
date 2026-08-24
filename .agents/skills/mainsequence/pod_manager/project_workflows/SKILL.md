@@ -1,6 +1,6 @@
 ---
 name: project-workflows
-description: Create and validate backend-managed deployment declarations under .mainsequence/workflows, including the active platform FastAPI browser-origin default. Use when a project should deploy or schedule Jobs, runtime/static/widget-extension ResourceReleases, or its Project Coding Agent from versioned repository files.
+description: Create and validate backend-managed API 2.1.0 deployment declarations under .mainsequence/workflows, including target-owned environment variables, FastAPI browser origins, and human-authorized Static Site navigation placement.
 ---
 
 # Main Sequence Project Workflows
@@ -74,11 +74,11 @@ same DeploymentRun; do not call image creation again.
 
 - Every file is independent and requires `api_version`, `name`, and
   `resources`.
-- Version `2.0.0` is the only supported workflow contract. It supports `job`,
+- Version `2.1.0` is current and `2.0.0` remains supported. Both support `job`,
   `resource_release`, including `widget_extension`, and
   `project_coding_agent`. Runtime targets may use target-owned `env_vars`.
-  Pre-cutover workflow versions are rejected rather than parsed by a permanent
-  compatibility layer.
+  Version `2.1.0` additionally accepts approved Static Site
+  `navigation_link` placement. Pre-`2.0.0` versions are rejected.
 - Each resource has a stable `key`, a supported `kind`, and a typed `spec`.
 - `spec` fields follow the canonical backend create/update endpoint contract.
 - The validation endpoint is read-only and uses the same validator as
@@ -90,7 +90,7 @@ Do not maintain `scheduled_jobs.yaml`; it is not a supported input.
 
 ## Runtime Environment Variables
 
-The current API `2.0.0` template returned by
+The current API `2.1.0` template returned by
 `/api/v1/project-branches/{uid}/workflow-template/` includes `env_vars`
 examples. Always preserve that list-of-items shape:
 
@@ -119,6 +119,42 @@ Coding Agent backing Job. Workflow application does not create, resolve,
 shadow, update, or delete platform Secrets, Constants, ProjectSecrets, or
 Organization Environments, and it does not write ProjectBranch-wide
 configuration. Runtime values never become project-image build inputs.
+
+## Static Site Navigation Placement
+
+A `2.1.0` Static Site declaration may propose a managed Command Center link:
+
+```yaml
+navigation_link:
+  label: Markets
+  icon_key: line-chart
+  is_enabled: true
+  audiences:
+    organization_wide: false
+    team_uids:
+      - "11111111-1111-4111-8111-111111111111"
+    user_uids: []
+```
+
+The repository and Organization automation identity may propose and apply this
+state but cannot authorize its audience. Before committing, inspect the exact
+grant with `navigation_link_grant.list` or `navigation_link_grant.get`. If no
+active grant covers the requested audience, stop and ask the authenticated
+human to authorize it through `navigation_link_grant.create` or expand it
+through `navigation_link_grant.update`. Never infer approval from Git author,
+Project edit authority, an existing manual link, or the automation identity.
+
+Grant identity is the exact ProjectBranch, workflow path, and resource key.
+Humans must select an Organization Environment for list discovery; the grant's
+environment is backend-derived from its ProjectBranch. Placement never grants
+Static Site access.
+
+Omission preserves the existing workflow-owned link. Explicit
+`navigation_link: null` removes it. Missing, insufficient, revoked, or
+conflicting authorization blocks only link reconciliation; inspect the
+resource result and correlated DeploymentRun for a sanitized
+`blocks_deployment=false` warning. Malformed fields are blocking workflow
+validation errors.
 
 ## When An Image Is Needed
 

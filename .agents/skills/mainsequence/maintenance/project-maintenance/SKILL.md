@@ -32,12 +32,11 @@ Route architecture changes to `project_design`, implementation routing to
 `maintenance/bug_auditor` when diagnosis extends beyond the maintenance
 workflow itself.
 
-The local identity contract has one persisted platform identifier:
-`MAIN_SEQUENCE_PROJECT_UID`, the logical Project UID. The checked-out Git
-branch selects the active ProjectBranch. Never ask the user for a
-ProjectBranch UID, persist `MAIN_SEQUENCE_PROJECT_BRANCH_UID`, or treat a
-ProjectBranch UID as local project configuration. The CLI may resolve that UID
-internally when a branch-owned platform API requires it.
+The local identity contract is Git-native. The containing repository remote,
+attached branch, and exact HEAD commit select the platform Project and
+ProjectBranch. Never ask the user for a ProjectBranch UID, persist Project or
+branch identity in `.env`, or use an environment variable as a branch selector.
+The CLI resolves platform UIDs internally when a branch-owned API requires them.
 
 ## Inspect Before Changing State
 
@@ -53,8 +52,8 @@ internally when a branch-owned platform API requires it.
 
    The `project current` result must report the logical `project_uid`, current
    `git_branch`, `project_branch_uid`, and `project_branch_status=resolved`.
-   Treat a detached checkout, missing logical Project UID, or unresolved/
-   unregistered Git branch as a maintenance preflight failure before any
+   Treat a detached checkout, unresolved repository, or unresolved/unregistered
+   Git branch as a maintenance preflight failure before any
    mutating workflow.
 
 4. Separate existing user changes from changes created by the maintenance
@@ -125,11 +124,10 @@ authorizes a new PKCE grant and the backend returns credentials directly to
 the waiting CLI process.
 
 The command preserves unrelated project configuration and renders only the
-current supported authentication shape. Existing `MAINSEQUENCE_TOKEN` and
-`MAIN_SEQUENCE_PROJECT_ID` entries are not carried into the rewritten file;
-this is not a separate cleanup routine. It preserves the logical
-`MAIN_SEQUENCE_PROJECT_UID` and never writes a ProjectBranch UID; switching Git
-branches changes local branch context without rewriting `.env`.
+current supported authentication shape. It removes legacy token aliases and
+all retired Project, ProjectBranch, repository-branch, and Environment identity
+entries. The Git checkout supplies source identity; switching branches changes
+context on the next process run without rewriting `.env`.
 
 ## Update The Project SDK
 
@@ -192,6 +190,12 @@ a detached checkout and rejects a Git branch that is not registered under the
 logical Project. Do not bypass that validation or supply a ProjectBranch UID
 manually. Register or select the correct Git branch first.
 
+After that branch preflight, `--dry-run` resolves the existing `uv` executable,
+previews its patch version without mutation, requests the backend-owned tag for
+that future version, rejects an invalid or existing local tag, prints the
+complete plan, and returns without generating an SSH key, querying private
+remote refs, changing dependencies or project files, or mutating Git state.
+
 After review:
 
 ```bash
@@ -200,13 +204,20 @@ mainsequence project sync --path . -m "<specific commit message>"
 
 The canonical command always:
 
-1. applies a patch version bump;
-2. runs `uv lock`;
-3. runs `uv sync`;
-4. exports locked production requirements;
-5. stages and commits the changes;
-6. creates an annotated `v<version>` tag; and
-7. pushes the branch and tag with `--follow-tags`.
+1. selects `mainsequence-<repository-slug>-<first-16-sha256>` from the normalized
+   `host[:non-default-port]/repository/path`, never from the repository basename alone and never
+   from a legacy basename-only key;
+2. previews the `uv` patch version, requests the backend-owned ProjectBranch tag, and rejects an
+   invalid or existing local tag;
+3. registers a new or inaccessible key through the owning Project and verifies a dry-run push with
+   that forced identity;
+4. queries the exact tag ref on `origin` and stops if it exists or cannot be checked;
+5. applies the patch version bump and verifies it matches the preview;
+6. runs `uv lock` and `uv sync`;
+7. exports locked production requirements;
+8. stages and commits the changes;
+9. creates the returned annotated tag unchanged; and
+10. atomically pushes the explicit branch and tag refs with `--follow-tags`.
 
 Do not offer alternate bump modes, a no-push mode, or a hand-written sequence
 of equivalent commands. Do not call `sync-after-commit` or any backend repair

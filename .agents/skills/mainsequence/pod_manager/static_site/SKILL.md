@@ -1,6 +1,6 @@
 ---
 name: static-site
-description: Apply the static-site specialization of the canonical Main Sequence ResourceRelease workflow, including delegated FastAPI target-policy preflight. Use to discover live static creation fields, preserve the Command Center frontend ownership boundary, and prepare static-specific creation or configuration inputs for one ProjectBranch.
+description: Apply the Static Site specialization of the canonical ResourceRelease workflow, including delegated FastAPI preflight and optional human-authorized Command Center navigation placement.
 ---
 
 # Main Sequence Static-Site Release
@@ -51,6 +51,25 @@ This skill does not own:
 - package selection, dependency versions, or package-manager behavior;
 - project API design or browser authentication; or
 - local source edits, builds, tests, Git operations, or credentials.
+
+## Optional Command Center Navigation Placement
+
+When deployment intent includes a Command Center link, use workflow API
+`2.1.0` and the backend template's nested `navigation_link` shape. Do not add a
+top-level link resource or create a personal link. The exact declaration must
+have a human-approved maximum-audience grant before repository automation may
+materialize its managed link.
+
+Use `navigation_link_grant.list/get/create/update/revoke` only through their
+advertised MCP contracts. A coding agent may identify that approval is needed,
+but it must not claim repository access, Project edit access, Git identity, or
+the Organization automation identity as audience authority. The canonical DRF
+operation checks the human's Project and audience permissions. Placement does
+not grant target access.
+
+A navigation authorization failure does not mean the Static Site deployment
+failed. Read the workflow result and correlated DeploymentRun warning. A
+malformed `navigation_link` block still invalidates the workflow file.
 
 A Project Blueprint may record why a static site exists and its deployment
 intent, but a Blueprint is not a DRF or MCP precondition for creating a static

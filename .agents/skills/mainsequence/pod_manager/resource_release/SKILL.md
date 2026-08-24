@@ -186,7 +186,7 @@ enabled by either `automatic_deployment: true` or
 `automatic_redeployment.enabled: true`. Policy eligibility is decided before
 the backend builds or reuses the exact-commit image.
 
-Workflow API `2.0.0` also accepts target-owned non-secret `env_vars` for these
+Workflow APIs `2.0.0` and `2.1.0` also accept target-owned non-secret `env_vars` for these
 runtime releases. The backend persists the normalized mapping on the release's
 generated Job before deployment. Omission preserves, an empty list clears, and
 a present list replaces the mapping. This workflow-only adapter does not add a
@@ -198,7 +198,7 @@ Workflow environment values never create, resolve, or mutate platform Secrets,
 Constants, ProjectSecrets, or Organization Environments, and never enter the
 project-image build. Deployment context contains only names, count, and a keyed
 HMAC digest; it never exposes values. Read the `project-workflows` skill and
-use the backend-provided API `2.0.0` template for the exact YAML shape.
+use the backend-provided API `2.1.0` template for the exact YAML shape.
 
 ## Configure FastAPI Browser Origins
 
@@ -217,7 +217,7 @@ not derive the value from a ProjectBranch or
 `OrganizationProjectEnvironment`. Retrieve the backend workflow template when
 authoring a workflow; do not copy the development value into production.
 
-Pass the canonical field on create, partial update, or an API `2.0.0`
+Pass the canonical field on create, partial update, or an API `2.1.0`
 project-workflow declaration only when an explicit override is intended.
 Creation omission uses the platform default. Update or workflow-reconciliation
 omission preserves the stored policy. An explicitly submitted `[]` denies all

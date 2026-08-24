@@ -16,8 +16,10 @@ skill before creating, configuring, or deploying a ResourceRelease.
 
 ## Keep Design Status And Runtime State Separate
 
-The canonical design is
-`docs/tdag/pod_manager/adr/adr-031-organization-project-environment-management.md`.
+The canonical normalization design is
+`docs/platform/adr/adr-0036-normalization-of-organization-environment-relation.md`.
+ADR-0036 supersedes ADR-031 wherever ADR-031 describes Organization-global
+operational resources or nullable operational Environment ownership.
 
 ADR-031 is accepted. All architecture and public-contract decisions in its
 Decision Checklist are approved, including:
@@ -33,23 +35,13 @@ Decision Checklist are approved, including:
 - branches from several Projects may share an environment only when every
   exact branch name matches that environment's immutable required branch;
 - exact branch `main` is required by the production environment;
-- platform-managed MetaTables are direct children of their Organization
+- MetaTables, including external registrations and Connection/DataSource
+  imports, belong to exactly one Organization Environment while retaining
+  their selected physical DataSource;
+- Secrets and Constants belong to exactly one Organization Environment, with
+  no Organization-global lookup, shadowing, or effective-union fallback;
+- `ProjectSecret` accepts only Secrets from the ProjectBranch's exact
   Environment;
-- external-registered MetaTables, including Connection/DataSource imports, may
-  be Organization-scoped or explicitly environment-scoped;
-- Project Executor MetaTable discovery composes Organization-scoped external
-  rows with rows from its branch environment and excludes other environments;
-- Secrets and Constants support `global` and `environment` scope;
-- existing Secret and Constant rows migrate to `global` scope;
-- a branch's effective resources compose Organization-global resources with
-  resources from its backend-derived environment, excluding other
-  environments;
-- environment scope wins over global scope during name-based resolution while
-  public-UID lookup remains exact;
-- Secret and Constant creation supports non-mutating cross-scope shadowing
-  preflight warnings;
-- `ProjectSecret` accepts Organization-global Secrets and Secrets from the
-  branch's own environment, never another environment;
 - authorized humans retain Organization-wide multi-environment discovery and
   explicit environment filters, while Organization-admin permission controls
   environment mutations;
@@ -65,7 +57,7 @@ Decision Checklist are approved, including:
 - manual repository branch import and all manual branch-creation helpers are
   retired without a compatibility path, while branch discovery remains
   read-only;
-- established mappings remain blocked until a separate migration workflow;
+- established mappings change only through explicit migration workflows;
 - Project Executor environment scope is derived through its persisted
   ProjectBranch; and
 - deployed SDK callers never set runtime mode, ProjectBranch, repository
@@ -77,26 +69,24 @@ Decision Checklist are approved, including:
   `/api/v1/organization-project-environments/` through an
   `OrganizationProjectEnvironmentViewSet`.
 
-The implementation is deployed in Django: the environment model and production
-bootstrap, ProjectBranch assignment, canonical DRF
-ViewSet, MetaTable and resource scoping, Project Executor runtime derivation,
-Secret/Constant preflights, Job routing, and Git `main` import rule are active.
-Platform-managed MetaTables have a non-null environment. External registrations
-may have a null environment and therefore remain Organization-scoped. The
-schema rollout retains production assignment for existing platform-managed
-rows and migrates existing external registrations to Organization scope. This
-catalog migration moves no physical table data.
+The strict normalization implementation is deployed in Django source: the canonical
+DRF relation, shared resolver contract, direct/derived/projected/snapshot model
+roles, exact-environment query boundaries, and deterministic data migrations
+are present. Public Secret, Constant, MetaTable, Namespace, Scheduler, Agent,
+capability, Workspace, widget-group, Bucket, and branch-owned paths now require
+or derive one exact Environment. After deterministic resolution, ambiguous
+legacy operational rows are retired and every stored Environment FK is
+database-enforced `NOT NULL`. This catalog migration moves no physical table
+data.
 
-Do not confuse accepted design with deployed behavior. Git-driven creation of
-a missing ProjectBranch is approved but not deployed yet: current webhook
-processing synchronizes only an existing ProjectBranch and ignores an unknown
-branch, while the manual repository `import-branch` action still exists. The
-accepted cutover makes the signed push provision the branch only after an
-exact environment exists, then removes that action and its manual helpers in
-the same deployment.
+Git-driven creation of a missing ProjectBranch is deployed. A persisted signed
+push provisions the branch only after an exact Environment matching its
+repository branch exists; otherwise it records ignored reason
+`organization_environment_not_configured` and creates nothing. Manual branch
+creation/import is not part of the lifecycle.
 
-Established DataSource, branch, environment, and resource remapping remains
-blocked because no data-migration workflow has been designed or approved.
+Established DataSource, branch, environment, and resource remapping remains a
+separate explicit migration operation; ordinary PATCH never performs it.
 The registered read-only `organization_environment.list` MCP tool exposes the
 canonical DRF collection so a human or local agent can resolve visible
 environment names and public UIDs. It does not expose environment creation,
@@ -105,10 +95,10 @@ mutation, deletion, branch assignment, or data migration.
 ## Understand The Accepted Normalization Target
 
 Platform ADR-0036, `Normalization of Organization Environment Relation`, is
-accepted and implementation is pending. It extends the Environment ontology
-across the whole platform and supersedes ADR-031's operational global fallback
-rules. Do not mistake the target below for fully deployed behavior until the
-corresponding migration phase is present.
+accepted and its strict normalization implementation is deployed in the backend
+source. It extends the Environment ontology across the whole platform and
+supersedes ADR-031's operational global fallback rules. The migration audit is
+now a drift guard over the enforced strict database contract.
 
 The normalized ontology has one semantic relation:
 
@@ -168,16 +158,15 @@ same exact Environment, even when both objects belong to the same
 Organization. Organization equality is necessary but not sufficient.
 
 ADR-0036 removes the product concept of Organization-global operational
-Secrets, Constants, and MetaTables. In the target state each belongs to one
-exact Environment; there is no environment-over-global shadowing or effective
-union lookup. Existing ambiguous rows require an explicit migration choice and
-are never silently assigned to production.
-
-Until each phase is deployed, explain both states plainly: identify the
-currently supported behavior, identify the accepted ADR-0036 target, and never
-promise an undeployed field, filter, constraint, or removal. After deployment,
-remove the obsolete legacy guidance from this skill in the same change so an
-agent cannot continue teaching a contract the server no longer implements.
+Secrets, Constants, and MetaTables. New public writes and collection semantics
+require one exact Environment; there is no environment-over-global shadowing
+or effective union lookup. Existing ambiguous operational rows that cannot be
+resolved from exact ownership evidence are deleted rather than retained as
+nullable migration debt. The local `org_test_<organization>` credential has an
+explicit production-Environment rule; it is not a general fallback. Use
+`audit_organization_environments --strict` as the ongoing drift guard. Do not
+describe nullable operational columns or legacy Secret/Constant `scope` values
+as supported behavior.
 
 ## Place The Environment In The Platform Ontology
 
@@ -194,13 +183,14 @@ partition resolved by its exact ProjectBranch.
 
 ```text
 Organization
-├── Organization-scoped external MetaTable
 ├── OrganizationProjectEnvironment
-│   ├── platform-managed MetaTable
-│   ├── environment-scoped external MetaTable
-│   ├── environment-scoped Secret
-│   └── environment-scoped Constant
-├── Organization-global Secret and Constant
+│   ├── MetaTable (managed or external)
+│   ├── Secret
+│   ├── Constant
+│   ├── Namespace, Scheduler, and TableUpdateNode
+│   ├── Bucket and PVCDisk
+│   ├── Agent and AgentCapability
+│   └── Workspace and SavedWidgetGroup
 └── Project
     ├── GitRepository
     └── ProjectBranch ──> OrganizationProjectEnvironment
@@ -217,7 +207,7 @@ membership row.
 
 | Concept | Stable meaning | It does not mean |
 | --- | --- | --- |
-| `Organization` | Tenant and owner of environments and Organization-scoped resources | One deployment stage |
+| `Organization` | Tenant and owner of environments and Organization control-plane resources | One deployment stage or a fallback operational environment |
 | `OrganizationProjectEnvironment` | Canonical Organization-wide operational partition | A Project, Git branch, DataSource, release, or deployment |
 | `Project` | Logical project aggregate that owns its branches, source link, sharing, labels, and lifecycle | The active environment or execution branch |
 | `GitRepository` | Provider/source-control identity | An environment or selected ProjectBranch |
@@ -360,19 +350,17 @@ fall back to production, `main`, an image, or a DataSource.
 ### MetaTables
 
 Platform-managed MetaTables belong directly to one Organization Environment.
-External-registered MetaTables, including Connection/DataSource imports, may
-instead have a null environment and remain Organization-scoped, or may be
-attached to one same-Organization environment.
+External-registered MetaTables, including Connection/DataSource imports, also
+belong to one explicit same-Organization Environment while retaining their
+selected physical DataSource.
 
-A non-empty logical `identifier` is unique within its environment, or within
-the Organization for a null-environment row. Environment-aware name resolution
-prefers an environment row and falls back to the Organization-scoped external
-row. Public UID lookup remains exact.
+A non-empty logical `identifier` is unique within its Environment. Public UID
+lookup remains exact and still enforces the same Environment boundary.
 
 For a Project Executor in environment `E`, scope must be applied before list,
 retrieve, search, identifier lookup, registration, import, reservation,
-finalization, or write. Its effective set is Organization-scoped external rows
-plus rows in `E`; rows in every other environment are excluded. Filtering only
+finalization, or write. Its effective set is exactly rows in `E`; rows in every
+other environment are excluded. Filtering only
 a collection response is not isolation: a known UID must obey the same rule.
 
 Platform-managed work uses the environment routing DataSource. External rows
@@ -382,51 +370,26 @@ Organization/DataSource/schema/table across all MetaTable scopes.
 
 ### Secrets And Constants
 
-The two designed scopes are:
+Every operational Secret and Constant belongs to exactly one Organization
+Environment. There is no Organization-global scope, environment-over-global
+shadowing, or effective union. Public writes require
+`organization_project_environment_uid`; list, retrieve, and name resolution
+are constrained to that exact Environment.
 
-- `global`: available to authorized consumers throughout one Organization and
-  stored without an environment foreign key; and
-- `environment`: attached to exactly one same-Organization environment.
-
-Existing Secret and Constant rows migrate to `global` with a null environment
-foreign key. This preserves their Organization-wide availability and existing
-public UIDs. They are not silently assigned to production or any other
-environment.
-
-The approved effective set for a Project Executor in environment `E` is:
-
-```text
-Organization-global resources
-+ resources scoped to E
-```
+Legacy rows without deterministic evidence are deleted during strict cutover.
+They are never exposed as global resources or retained without an Environment.
 
 Do not confuse those platform configuration resources with workflow API
 `2.0.0` `env_vars`. A workflow literal is target-owned process configuration
 stored on one Job or one runtime target's backing Job. It does not perform
-global-plus-environment name resolution, create a Secret or Constant, select
+Secret or Constant name resolution, create a Secret or Constant, select
 an Organization Environment, or change ProjectBranch assignment. The branch's
 backend-derived environment remains the authorization and discovery boundary;
 the literal only reaches the target process after its normal deployment path.
 
-Resources from another environment are not eligible. When a global and an
-environment row share the same logical `(namespace, name)` identity, the
-approved name-based resolution selects the environment row. Public-UID lookup
-remains exact and never substitutes a same-name row.
-
-Before creating a Secret or Constant, use the canonical non-mutating creation
-preflight:
-
-```text
-POST /api/v1/secrets/preflight-create/
-POST /api/v1/constants/preflight-create/
-```
-
-It warns when an environment resource will override an existing global
-resource or when a new global fallback will remain overridden by existing
-environment resources. The warning reports resource identity, scopes,
-affected environment, and the resulting winner without exposing Secret values.
-Same-scope duplicates remain `409` conflicts. Creation rechecks and returns the
-same warning metadata. No separate MCP preflight tool is approved or deployed.
+Resources from another Environment are not eligible. Same-Environment logical
+duplicates remain conflicts. Public-UID lookup remains exact and never
+substitutes a same-name row.
 
 Availability is not Secret injection. Secret value access keeps its stronger
 authorization, and `ProjectSecret` remains the explicit branch assignment and
@@ -538,11 +501,8 @@ deployments, runtime history, or physical data. It never creates the
 environment or selects its DataSource. Delivery replay and concurrent pushes
 must converge on one `(project, repository_branch)` row.
 
-The accepted lifecycle removes the manual repository `import-branch` action,
-its serializer/schema/service, and `ProjectBranch.clone_with_new_branch`
-without a compatibility path. Read-only provider branch discovery remains.
-Until that cutover is deployed, report the gap instead of claiming that an
-unknown pushed branch is already provisioned automatically.
+The deployed lifecycle has no manual repository `import-branch` action or
+manual branch-creation helper. Read-only provider branch discovery remains.
 
 ### 5. Project Executor Deployment And Runtime
 
@@ -609,7 +569,7 @@ Deploying code does not copy or move:
 - DataSource or Alembic ownership.
 
 Configuration promotion means explicitly creating or selecting the intended
-global or target-environment resources under the approved authorization model.
+target-Environment resources under the approved authorization model.
 Data promotion requires a separately approved preflight and explicit copy,
 move, reuse, archive, or reject policy. Do not represent either operation as an
 environment FK PATCH.
@@ -648,10 +608,9 @@ the `research` environment. Project Beta branch `release/candidate` belongs to
 `candidate-eu`, not `research`. A DataSource shared by both environments would
 not merge their logical table or configuration identities.
 
-If both the Organization and `research` define Constant
-`runtime/LOOKBACK_DAYS`, accepted name resolution selects the `research` row
-for its Project Executor. Retrieving the global Constant by its exact UID still
-addresses the global row when that caller is eligible and authorized.
+Constant `runtime/LOOKBACK_DAYS` for `research` is a different
+Environment-owned resource from a same-named Constant in production. A Project
+Executor resolves only the row in its exact Environment.
 
 A release for Project Alpha branch `research` deploys that branch's persisted
 current commit. It does not deploy the `research` environment and does not copy

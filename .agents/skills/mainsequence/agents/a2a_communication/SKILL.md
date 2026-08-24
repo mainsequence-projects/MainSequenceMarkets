@@ -29,7 +29,10 @@ the standard A2A protocol and the runtime contract documented by
 5. Resolve the session's current runtime endpoint and short-lived credential
    with `agent_session.resolve_runtime_access`.
 6. Send the message directly to that runtime using the returned access data.
-7. Consume standard response message parts.
+7. Read the selected Agent's `a2a_profile`, choose an advertised response kind,
+   and send the versioned response-kind extension header.
+8. Consume the returned `message` directly or follow the returned `task` using
+   its documented lifecycle operations.
 
 The `AgentSession.uid` is the durable conversation context. Runtime locations
 and credentials are ephemeral and must be resolved again when they expire or
@@ -68,6 +71,15 @@ merely a familiar name. If the user asked only which agents are available,
 report the candidates and stop without sending work.
 
 Do not replace platform discovery with local prompt-file inspection.
+
+Every `agent.search` and `agent.get` result includes an `a2a_profile` with:
+
+- `response_kind_extension_uri`;
+- `supported_response_kinds`; and
+- `default_response_kind`.
+
+Missing legacy profile data means Message-only support. Never infer Task support
+from runtime routes, an empty answer, or prior knowledge of another Agent.
 
 ## Session Reuse
 
@@ -124,14 +136,47 @@ portable contract.
 Assign a stable message identifier before sending. If the exact same message
 and attachments must be retried after a timeout or disconnect, reuse that
 identifier. Use a new identifier when any logical request content changes.
+This preserves request identity; it does not make direct `message` execution
+durably idempotent. A lost direct response is ambiguous and a resend may execute
+another turn. Select `task` when durable recovery is required.
+
+For a normal request, select `message`. For durable asynchronous work, select
+`task` only when `supported_response_kinds` contains `task`. Send the explicit
+selection as:
+
+```json
+{
+  "configuration": {
+    "responseKind": "message"
+  }
+}
+```
+
+Activate it with an HTTP header whose value is the exact discovered extension
+URI:
+
+```http
+A2A-Extensions: https://mainsequence.ai/a2a/extensions/response-kind/v1
+```
+
+Do not send the removed `returnImmediately` Boolean. Do not send
+`responseKind` on `message:stream`, because streaming already selects a
+different result contract.
 
 ## Response Handling
 
-- Consume only documented A2A response parts and status information.
+- For `message`, require a valid `message` result and consume only documented
+  response parts. An empty successful answer is a runtime contract failure.
+- For `task`, require a valid `task` result, preserve its ID and context ID, and
+  use task get/wait/cancel operations until a terminal state when the caller
+  needs completion.
+- Treat a response whose kind differs from the requested kind as a protocol
+  error; never reinterpret it silently.
 - Validate strict JSON before using it as structured input.
 - Preserve the target session UID for the next turn in the same conversation.
-- Treat a timeout or disconnect as an ambiguous outcome; do not create a new
-  target session or blindly send a new logical message.
+- Treat a timeout or disconnect as an ambiguous outcome. In direct `message`
+  mode, do not automatically resend because the first turn may have executed.
+  Do not create a new target session or blindly send a new logical message.
 - Report target-agent failures without exposing credentials or internal
   transport details.
 
