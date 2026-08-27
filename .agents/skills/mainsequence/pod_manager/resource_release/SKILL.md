@@ -26,6 +26,22 @@ Pod Manager owns release persistence, validation, authorization, image and
 source resolution, automatic promotion, deployment orchestration, and run
 state. MCP owns only protocol adaptation and this operation guidance.
 
+Every release owns immutable `ResourceReleaseRevision` identities plus
+`active_revision`, `desired_revision`, and `revision_retention_count`.
+Active/desired values returned by release list/detail are nullable revision
+UIDs, not provider names or browser URLs. Only a ready active revision serves
+the existing stable release URL; a failed desired revision leaves prior traffic
+unchanged. DeploymentRuns remain separate attempts.
+
+Set `revision_retention_count` through the existing release create/update
+operation when a different rollback history is required. The value is a
+positive integer, defaults to `3`, and belongs to the release, not
+`automatic_redeployment_policy`. Existing widget, workspace, active, desired,
+and live-run references remain protected. Revision candidate discovery is
+report-only until the approved Command Center maintenance and static-policy
+cutover exists; do not imply that editing the count synchronously deletes
+provider artifacts.
+
 For image-backed deployment, the parent `DeploymentRun` owns role-specific
 `DeploymentRunImageDependency` relations and `ProjectImageBuildRun` owns the
 complete provider attempt. Provider request/operation state and image
@@ -214,7 +230,7 @@ cors_allowed_origins:
 Production resolves to `https://*.site.main-sequence.app`. This platform
 deployment environment is not an Organization Environment, and callers must
 not derive the value from a ProjectBranch or
-`OrganizationProjectEnvironment`. Retrieve the backend workflow template when
+`OrganizationEnvironment`. Retrieve the backend workflow template when
 authoring a workflow; do not copy the development value into production.
 
 Pass the canonical field on create, partial update, or an API `2.1.0`
@@ -294,7 +310,7 @@ Issuance and every delegated validation require an active user with current
 view access to both releases, servable/routable release state, same-Organization
 ownership, an exact Origin match, exact target identity, and current CORS
 admission. The releases do not need to share a ProjectBranch or
-OrganizationProjectEnvironment. CORS remains browser admission and never
+OrganizationEnvironment. CORS remains browser admission and never
 replaces the delegated credential or project route authorization.
 
 The successful no-store response supplies an opaque `rpc_url`, the exact
@@ -353,17 +369,18 @@ belong to that release kind.
 
 Runtime releases accept only:
 
-- `automatic_deployment`; and
-- `automatic_redeployment_policy`; and
+- `automatic_deployment`;
+- `automatic_redeployment_policy`;
+- positive release-owned `revision_retention_count`; and
 - for FastAPI only, `cors_allowed_origins`.
 
 Static sites additionally accept the canonical static configuration fields
 advertised by `resource_release.static_site_capabilities`, including the
 complete write-only `build_environment` map.
 
-Widget-extension configuration is immutable through ordinary update. Rename,
-root-directory mutation, automatic-deployment switches, and manifest identity
-updates are rejected.
+Widget-extension source, rename, root directory, automatic-deployment switch,
+and manifest identity remain immutable through ordinary update. Its shared
+`revision_retention_count` is the one editable release lifecycle policy.
 
 An update replaces the submitted configuration values and returns the canonical
 release detail. It does not deploy the release. Re-read the release after an

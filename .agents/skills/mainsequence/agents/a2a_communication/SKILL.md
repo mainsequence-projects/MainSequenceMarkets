@@ -47,7 +47,7 @@ service UID.
 
 Agent discovery always has one Organization Environment boundary. The
 canonical `agent.list` and `agent.search` contracts require
-`organization_project_environment_uid` and return only Project Coding Agents
+`organization_environment_uid` and return only Project Coding Agents
 whose persisted ProjectBranches belong to that environment. For a human or
 local MCP caller, call `organization_environment.list`, present each visible
 name, required branch, production role, and public UID, and ask the user which

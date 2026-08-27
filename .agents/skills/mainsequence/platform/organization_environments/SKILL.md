@@ -24,7 +24,7 @@ operational resources or nullable operational Environment ownership.
 ADR-031 is accepted. All architecture and public-contract decisions in its
 Decision Checklist are approved, including:
 
-- an Organization owns its `OrganizationProjectEnvironment` rows;
+- an Organization owns its `OrganizationEnvironment` rows;
 - every Organization has exactly one production environment;
 - an Organization may have any number of additional environments;
 - Projects participate through `ProjectBranch`;
@@ -66,8 +66,8 @@ Decision Checklist are approved, including:
   values alone are non-authoritative, and branch-sensitive requests omit
   caller selection; and
 - the canonical environment-management resource is
-  `/api/v1/organization-project-environments/` through an
-  `OrganizationProjectEnvironmentViewSet`.
+  `/api/v1/organization-environments/` through an
+  `OrganizationEnvironmentViewSet`.
 
 The strict normalization implementation is deployed in Django source: the canonical
 DRF relation, shared resolver contract, direct/derived/projected/snapshot model
@@ -103,9 +103,9 @@ now a drift guard over the enforced strict database contract.
 The normalized ontology has one semantic relation:
 
 ```text
-organization_project_environment
-organization_project_environment_uid
-?organization_project_environment_uid=<uid>
+organization_environment
+organization_environment_uid
+?organization_environment_uid=<uid>
 ```
 
 Every tenant-owned operational object resolves exactly one Environment under
@@ -183,7 +183,7 @@ partition resolved by its exact ProjectBranch.
 
 ```text
 Organization
-├── OrganizationProjectEnvironment
+├── OrganizationEnvironment
 │   ├── MetaTable (managed or external)
 │   ├── Secret
 │   ├── Constant
@@ -193,7 +193,7 @@ Organization
 │   └── Workspace and SavedWidgetGroup
 └── Project
     ├── GitRepository
-    └── ProjectBranch ──> OrganizationProjectEnvironment
+    └── ProjectBranch ──> OrganizationEnvironment
         ├── ResourceRelease
         ├── Job
         └── UserProjectExecutorAgentService
@@ -208,7 +208,7 @@ membership row.
 | Concept | Stable meaning | It does not mean |
 | --- | --- | --- |
 | `Organization` | Tenant and owner of environments and Organization control-plane resources | One deployment stage or a fallback operational environment |
-| `OrganizationProjectEnvironment` | Canonical Organization-wide operational partition | A Project, Git branch, DataSource, release, or deployment |
+| `OrganizationEnvironment` | Canonical Organization-wide operational partition | A Project, Git branch, DataSource, release, or deployment |
 | `Project` | Logical project aggregate that owns its branches, source link, sharing, labels, and lifecycle | The active environment or execution branch |
 | `GitRepository` | Provider/source-control identity | An environment or selected ProjectBranch |
 | `ProjectBranch` | Durable Project participation marker and execution context for one exact provider branch and Environment partition | A caller-selected environment mapping |
@@ -248,7 +248,7 @@ The target backend resolution is:
 
 ```text
 (Project.organization_owner, ProjectBranch.repository_branch)
-    -> OrganizationProjectEnvironment.required_repository_branch
+    -> OrganizationEnvironment.required_repository_branch
 ```
 
 The approved Organization/required-branch uniqueness rule makes this lookup
@@ -265,7 +265,7 @@ AND
 ProjectBranch.repository_branch == Environment.required_repository_branch
 ```
 
-`ProjectBranch.organization_project_environment` is persisted but read-only
+`ProjectBranch.organization_environment` is persisted but read-only
 and backend-controlled. Reject a caller-supplied environment UID. Do not fall
 back to production when the exact non-production branch has no configured
 environment.
@@ -373,7 +373,7 @@ Organization/DataSource/schema/table across all MetaTable scopes.
 Every operational Secret and Constant belongs to exactly one Organization
 Environment. There is no Organization-global scope, environment-over-global
 shadowing, or effective union. Public writes require
-`organization_project_environment_uid`; list, retrieve, and name resolution
+`organization_environment_uid`; list, retrieve, and name resolution
 are constrained to that exact Environment.
 
 Legacy rows without deterministic evidence are deleted during strict cutover.
@@ -398,7 +398,7 @@ alias used by injection workflows.
 ### Project Coding Agents
 
 Agent list, quick-search, and semantic-search require one
-`organization_project_environment_uid`. Apply this boundary before filtering
+`organization_environment_uid`. Apply this boundary before filtering
 or ranking and return only typed Project Coding Agents whose persisted
 ProjectBranches belong to that environment. This permits discovery across
 Projects only when the exact branches share the same Organization Environment.
@@ -448,8 +448,8 @@ ownership.
 The canonical environment-management resource is approved as:
 
 ```text
-OrganizationProjectEnvironmentViewSet(ModelViewSet)
-/api/v1/organization-project-environments/
+OrganizationEnvironmentViewSet(ModelViewSet)
+/api/v1/organization-environments/
 ```
 
 This establishes one Organization-level collection/detail resource rather than
@@ -528,7 +528,7 @@ Git commit or exact-commit tag
   -> create or reuse canonical DeploymentRun history
 
 ProjectBranch
-  -> OrganizationProjectEnvironment
+  -> OrganizationEnvironment
   -> data and configuration context
 ```
 
@@ -538,7 +538,7 @@ To promote code toward another environment, the user's Git/CI workflow moves
 the code to the exact provider branch required by the target environment. The
 platform then synchronizes that target ProjectBranch and follows its normal
 release policy. Do not promote code by rewriting
-`ProjectBranch.organization_project_environment`.
+`ProjectBranch.organization_environment`.
 
 Automatic promotion remains target-owned:
 

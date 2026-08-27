@@ -505,7 +505,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "6.0.46"
+version = "6.0.48"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -531,9 +531,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4d/73/e46df37458b42f8296df4f45a5dfcd143819f2a46b97796c22c761ef299f/mainsequence-6.0.46.tar.gz", hash = "sha256:f8eb410be27ffcce3c20eafb7ffab1407d618dabccfaefd80dde56a07526527e", size = 516330, upload-time = "2026-08-23T17:00:29.217Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/46/c0e7b0c96eca7a1fdb2a29037ecc70e3346c889da6ba06fa6ebc468dfac8/mainsequence-6.0.48.tar.gz", hash = "sha256:ead81c463c6d6b25b6613be2498331748c18c0f6c7cae24b2d755277d705d349", size = 524720, upload-time = "2026-08-27T11:35:21.028Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5f/50/61d9c8e86a80b82176d861287805cf5c690583331ae4c7f12cd77527e38c/mainsequence-6.0.46-py3-none-any.whl", hash = "sha256:e62eb08dc333310d89040a0a12abd5af8c8afbfb4e5cf247f6b9fdf10ff49f6f", size = 402550, upload-time = "2026-08-23T17:00:27.356Z" },
+    { url = "https://files.pythonhosted.org/packages/75/b2/fb63d2bca96c3473f7a9803ea925adab30dadcfc0fbd0e4de0e257d28df3/mainsequence-6.0.48-py3-none-any.whl", hash = "sha256:4a06aca68b7c81c19509a64cc50b73116f698ac3bde0cebe5cdbcfcad0f9be4d", size = 409144, upload-time = "2026-08-27T11:35:18.501Z" },
 ]
 
 [[package]]
@@ -788,7 +788,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.110"
+version = "0.0.111"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },

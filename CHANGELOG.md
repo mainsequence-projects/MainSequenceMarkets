@@ -23,7 +23,8 @@ and this project follows versioned releases.
   and fixture bundle.
 - Removed the exact Main Sequence SDK dependency pin so `ms-markets` can install
   with newer compatible SDK releases. Refreshed the lock and exported runtime
-  requirements against Main Sequence `6.0.46`.
+  requirements against Main Sequence `6.0.48`, which accepts the backend's
+  Organization Environment fields during Git-native ProjectBranch resolution.
 - Added port 3010 to the development-only FastAPI CORS wrapper so the static-site repository's VS
   Code full-stack debugger can run the local API on port 8001 and frontend on port 3010 together
   without changing production application middleware.

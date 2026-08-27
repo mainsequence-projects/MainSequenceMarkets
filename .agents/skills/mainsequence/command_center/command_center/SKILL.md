@@ -110,7 +110,7 @@ and ConnectionType registry synchronization remain outside MCP.
 ### Workflow navigation placement grants
 
 Use `navigation_link_grant.list` with the required
-`organization_project_environment_uid` to discover grants the authenticated
+`organization_environment_uid` to discover grants the authenticated
 human may manage. Use `navigation_link_grant.get` for one exact grant UID.
 
 `navigation_link_grant.create` authorizes a maximum audience for one exact

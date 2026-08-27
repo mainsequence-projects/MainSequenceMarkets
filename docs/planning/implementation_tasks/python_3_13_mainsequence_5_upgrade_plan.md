@@ -5,7 +5,7 @@
 The original Python 3.13 and MainSequence 5 runtime upgrade was implemented on
 2026-07-25. Its dependency policy was superseded on 2026-08-24: the published
 package now declares `mainsequence` without an exact patch pin, while the
-repository lock and exported runtime requirements select MainSequence `6.0.46`
+repository lock and exported runtime requirements select MainSequence `6.0.48`
 as the validated build environment.
 
 Compatibility was established before the original environment rebuild:
@@ -19,9 +19,9 @@ Compatibility was established before the original environment rebuild:
 - the full suite also passed on Python 3.13 with that exact SDK tag:
   `1170 passed, 3 skipped`.
 
-The current project `.venv` reports Python `3.13.11` and MainSequence `6.0.46`.
+The current project `.venv` reports Python `3.13.11` and MainSequence `6.0.48`.
 The package metadata leaves the MainSequence patch version unpinned, and the
-lockfile resolves the published `mainsequence==6.0.46` distribution. There is
+lockfile resolves the published `mainsequence==6.0.48` distribution. There is
 no machine-local `tool.uv.sources` override, so the same dependency source is
 available to local and backend image builds.
 
@@ -38,10 +38,10 @@ Verification evidence from the rebuilt environment:
 - package, native dependency, CLI, and FastAPI application import smoke tests:
   passed.
 
-The current SDK and managed-skill pin both report `6.0.35`. The 2026-08-21 SDK
-refresh passed the complete suite with `1186 passed, 6 skipped`, Ruff, and the
-strict MkDocs build. The lockfile resolves the published package-index
-distribution used by portable builds.
+The current SDK and managed-skill pin both report `6.0.48`. This version matches
+the backend Git-context projection that includes Organization Environment
+identity on the resolved ProjectBranch. The lockfile resolves the published
+package-index distribution used by portable builds.
 
 ## Success Condition
 

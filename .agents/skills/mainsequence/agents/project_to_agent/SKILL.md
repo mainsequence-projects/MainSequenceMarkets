@@ -152,6 +152,20 @@ Each project skill must correspond to a real, verified project capability.
 Give it a narrow trigger, explicit inputs and outputs, concrete validation, and
 clear stop conditions.
 
+Project Executor images already contain the prepared project environment.
+Runtime command examples in project-owned skills must invoke the installed
+project console scripts directly from `PATH`. They must not use `uv run`,
+`uv sync`, `uv venv`, `uv pip install`, `pip install`, or another command that
+creates or mutates a Python virtual environment while handling a request. If an
+expected console script is absent, stop and report an executor-image build
+defect; do not install dependencies or construct a replacement environment
+inside the running pod.
+
+Write executable examples in shell-fenced Markdown blocks so deployment can
+validate them deterministically. Project Coding Agent deployment rejects a
+referenced project-owned skill whose shell commands bootstrap or mutate a
+Python environment. This validation is static and does not execute the command.
+
 Do not create a skill merely to make the agent appear more capable. If the
 underlying behavior is missing, report the gap and implement it only when the
 user authorizes that project work.
@@ -257,6 +271,8 @@ Before claiming the repository is prepared:
 - verify every skill ID is unique;
 - verify every referenced skill path exists inside the repository;
 - verify the card does not reference the managed Main Sequence skill tree;
+- verify runtime shell examples invoke installed console scripts directly and
+  do not bootstrap or mutate a Python environment;
 - compare every capability claim with actual project behavior and
   documentation;
 - verify `AGENTS.md` routes work consistently with the source card; and

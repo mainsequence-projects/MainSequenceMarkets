@@ -40,7 +40,7 @@ The template also carries the active platform FastAPI browser-origin default.
 Development returns `https://*.site-dev.main-sequence.app`; production returns
 `https://*.site.main-sequence.app`. Copy the backend-provided value instead of
 hard-coding development. This platform deployment environment is not an
-`OrganizationProjectEnvironment`.
+`OrganizationEnvironment`.
 
 ## Backend-Owned Image Orchestration
 
@@ -81,12 +81,32 @@ same DeploymentRun; do not call image creation again.
   `navigation_link` placement. Pre-`2.0.0` versions are rejected.
 - Each resource has a stable `key`, a supported `kind`, and a typed `spec`.
 - `spec` fields follow the canonical backend create/update endpoint contract.
+- Every runtime, static-site, or widget-extension `resource_release` spec may
+  set positive `revision_retention_count`; omission defaults to `3`. Keep it
+  beside `automatic_redeployment`, never inside the tag-promotion policy.
 - The validation endpoint is read-only and uses the same validator as
   repository processing.
 - Only direct `.yaml` and `.yml` children are processed; nested files and other
   extensions are ignored.
 
 Do not maintain `scheduled_jobs.yaml`; it is not a supported input.
+
+For example:
+
+```yaml
+spec:
+  release_kind: static_site
+  name: Markets
+  automatic_redeployment:
+    enabled: true
+    tag_regex: null
+  revision_retention_count: 3
+```
+
+The static frontend accesses an API through its stable release URL and the
+target's backend-selected `active_revision`; do not add API binding syntax,
+revision-selection values, or browser-build release-identity configuration.
+An API promotion does not rebuild a consuming static site.
 
 ## Runtime Environment Variables
 

@@ -55,7 +55,7 @@ Keep these distinctions:
 - `GitRepository` is the provider/source-control record. Repository detail
   exposes its owning logical Project UID and never selects an entry, main,
   oldest, or current ProjectBranch.
-- `OrganizationProjectEnvironment` is the canonical operational partition of
+- `OrganizationEnvironment` is the canonical operational partition of
   the platform. For Project-owned code and resources, the exact Git branch is
   the repository-side partition marker and `ProjectBranch` is the durable
   platform context that binds one logical Project to exactly one Environment.
@@ -85,7 +85,7 @@ Keep these distinctions:
   backend assigns each branch to the same-Organization environment whose
   immutable required branch exactly matches; the caller never supplies an
   environment UID.
-- `OrganizationProjectEnvironment` is shared by exact compatible
+- `OrganizationEnvironment` is shared by exact compatible
   ProjectBranches from one or several Projects. Its DataSource is routing
   configuration, not environment identity.
 - `DataSource` is the sole canonical physical database identity. New
@@ -151,7 +151,8 @@ Keep these distinctions:
   `source=create`, `operation=deploy` contract.
 - A widget extension is a `resource_release` deployment specialization, not a
   new Blueprint design domain. Handoff uses `release_kind: widget_extension`
-  with only `name` and optional `root_directory`; automatic deployment and the
+  with `name`, optional `root_directory`, and optional release-owned
+  `revision_retention_count`; automatic deployment and the
   fixed SDK workload build are backend-owned. Never design an `extension_id`,
   image selector, build command, environment, active deployment, or a second
   publication-attempt system.
@@ -200,6 +201,13 @@ Keep these distinctions:
 
 Use the platform ontology for global platform nouns. Define the project's own
 business concepts inside the Blueprint.
+
+Every ResourceRelease independently owns immutable revisions, nullable
+`active_revision`/`desired_revision` pointers, and a positive
+`revision_retention_count` defaulting to `3`. Record a non-default retention
+choice only as accepted deployment intent. Never copy revision UIDs, provider
+endpoints, failed attempts, or live serving/cleanup state into a Blueprint, and
+never place retention inside the automatic-redeployment tag policy.
 
 ## Preserve The Organization Environment Contract
 
@@ -526,10 +534,17 @@ platform delegation, record the exact source StaticSiteRelease UID, exact
 target FastAPI ResourceRelease UID, required target CORS origin policy, and
 same-Organization requirement in the connected API/static-site design and
 implementation handoff. Do not infer or require a common ProjectBranch,
-repository branch, or OrganizationProjectEnvironment. These UIDs are deployed
+repository branch, or OrganizationEnvironment. These UIDs are deployed
 release identities, not a new persistent Blueprint relationship model; if the
 releases do not yet exist, make their later UID resolution an explicit handoff
 condition rather than inventing values.
+
+The frontend asks Command Center for delegated access to the stable target
+release URL; backend routing selects only its ready `active_revision`. A
+failed desired API revision leaves the previous active revision serving, and a
+successful promotion does not rebuild the static site. Do not invent browser
+release-identity configuration, provider URLs, dependency registries, logical
+binding keys, or additional authorization.
 
 If the accepted runtime release is implemented as an automatically managed
 repository workflow, also use `project-workflows`: record source and promotion
@@ -610,7 +625,9 @@ Record:
   already accepted;
 - optional `deployment.automatic_redeployment_policy.tag_regex` only when the
   promotion rule is accepted; omit it for the backend-generated branch SemVer
-  default or use null for every commit; and
+  default or use null for every commit;
+- optional `deployment.revision_retention_count` only when a positive
+  non-default rollback-history decision is accepted; and
 - observable acceptance criteria.
 
 When an accepted Static Site must appear in Command Center navigation, record
@@ -632,7 +649,7 @@ If the static site will call that API through platform delegation, its API
 dependency and constraints must state that implementation resolves the exact
 source StaticSiteRelease UID and target FastAPI ResourceRelease UID, configures
 the target CORS policy for the source origin, and preserves same-Organization
-ownership. Do not add a ProjectBranch or OrganizationProjectEnvironment
+ownership. Do not add a ProjectBranch or OrganizationEnvironment
 co-location constraint. The installed Command Center SDK skills own frontend
 credential transport; the Blueprint must not contain tokens or reproduce that
 protocol.

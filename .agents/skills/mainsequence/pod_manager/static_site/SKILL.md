@@ -42,6 +42,12 @@ deleting a release does not create or remove a per-release edge resource. The
 gateway resolves the UID through Django, so artifact tenancy remains storage
 placement and is not encoded into edge lifecycle.
 
+The gateway selects only the release's ready `active_revision` and that
+revision's immutable static deployment. `desired_revision` may be pending or
+failed without replacing the serving artifact. Static releases share the
+positive release-owned `revision_retention_count` default of `3`; existing
+deployment summary fields remain compatibility projections.
+
 This skill does not own:
 
 - frontend architecture or source layout;
@@ -125,13 +131,20 @@ receive, store, or forward the user's general platform JWT. Treat the delegated
 credential and `rpc_url` as opaque, short-lived values; do not decode them or
 derive a target host.
 
+The returned `rpc_url` is the existing stable target-release URL. The backend
+requires and routes through the FastAPI release's ready `active_revision`; the
+frontend never chooses a revision, deployment attempt, provider endpoint,
+logical binding key, or browser-build release-identity variable. A new API
+deployment changes serving state behind the same URL without rebuilding the
+static site.
+
 The target FastAPI release must allow the site's exact origin, or a supported
 one-label wildcard that covers it, through `cors_allowed_origins`. CORS alone
 does not grant access. Django also rechecks the current user, both releases,
 same-Organization ownership, release serving state, exact request Origin,
 target identity, permissions, and target CORS policy on every delegated
 request. A source and target may belong to different Projects, ProjectBranches,
-or OrganizationProjectEnvironments; do not infer co-location. Both releases
+or OrganizationEnvironments; do not infer co-location. Both releases
 must belong to the same Organization.
 
 Preflight this before frontend work: retrieve the exact target with
@@ -172,6 +185,10 @@ another legacy policy shape, and do not evaluate Git refs in the client.
 The capability operation is read-only. It does not inspect the local
 repository, test infrastructure readiness, or guarantee that a later create or
 deployment will succeed.
+
+The release create/update operation accepts `revision_retention_count` even
+though the frozen static capability field catalog cannot yet advertise its
+integer discriminator without separately approved contract evolution.
 
 ## Prepare Only Canonical Release Inputs
 
