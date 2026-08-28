@@ -9,7 +9,7 @@ and this project follows versioned releases.
 
 ### Changed
 
-- Upgraded the project to Main Sequence SDK `7.0.1` and completed the SDK 7
+- Upgraded the project to Main Sequence SDK `7.0.2` and completed the SDK 7
   hard-cut refactor: updater/configuration/reference imports now use the
   `mainsequence.meta_tables` time-index-table API, configuration payloads use
   schema version 2, table references are read-only, and project code, tests,
