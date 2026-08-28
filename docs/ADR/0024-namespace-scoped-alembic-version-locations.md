@@ -26,7 +26,7 @@ src/msm/migrations/
 ```
 
 The provider owns more than the core `msm` package. It includes models from
-`msm`, `msm_portfolios`, and `msm_pricing`, plus DataNode storage tables. Keeping
+`msm`, `msm_portfolios`, and `msm_pricing`, plus time-index-table output tables. Keeping
 the migration environment under `src/msm/migrations` makes the package boundary
 look wrong: the migration stream is not a core-markets-only module.
 
@@ -112,7 +112,7 @@ tables:
 - `msm` domain tables;
 - `msm_portfolios` tables;
 - `msm_pricing` tables;
-- DataNode storage tables;
+- time-index-table output tables;
 - the markets MetaTable catalog table;
 - the package Alembic version table.
 

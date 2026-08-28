@@ -336,7 +336,7 @@ def get_portfolio_weights_by_uid(
     response_model=TabularFrameResponse,
     summary="Get portfolio signal weights frame",
     description=(
-        "Return raw signal-weight rows for the signal DataNode linked from the "
+        "Return raw signal-weight rows for the signal TimeIndexTableUpdater linked from the "
         "portfolio row as a canonical Command Center tabular frame."
     ),
     operation_id="getPortfolioSignalWeightsFrame",
@@ -344,7 +344,7 @@ def get_portfolio_weights_by_uid(
     responses={
         400: {
             "model": ErrorResponse,
-            "description": "The portfolio has no signal DataNode link or the request is invalid.",
+            "description": "The portfolio has no signal TimeIndexTableUpdater link or the request is invalid.",
         },
         404: {
             "model": ErrorResponse,

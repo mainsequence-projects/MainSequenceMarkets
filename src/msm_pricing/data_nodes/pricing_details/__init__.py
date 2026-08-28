@@ -9,7 +9,7 @@ from .storage import AssetPricingDetailsStorage
 
 
 class AssetPricingDetailConfiguration(AssetDataNodeConfiguration):
-    """Configuration for the canonical AssetPricingDetail DataNode."""
+    """Configuration for the canonical AssetPricingDetail TimeIndexTableUpdater."""
 
 
 class AssetPricingDetail(AssetTimestampedDataNode):
@@ -18,7 +18,7 @@ class AssetPricingDetail(AssetTimestampedDataNode):
     configuration_class = AssetPricingDetailConfiguration
 
     @classmethod
-    def _required_storage_table(cls) -> type[AssetPricingDetailsStorage]:
+    def _required_output_table(cls) -> type[AssetPricingDetailsStorage]:
         return AssetPricingDetailsStorage
 
 

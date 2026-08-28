@@ -46,23 +46,23 @@ def test_index_fixing_configuration_rejects_frequency_config_field() -> None:
 
 
 def test_fixing_rates_node_resolves_index_storage_first_surface(monkeypatch) -> None:
-    storage_table = FixingRatesNode._required_storage_table()
+    output_table = FixingRatesNode._required_output_table()
     registered_identifier = "registered.index-fixings"
     monkeypatch.setattr(
-        storage_table,
+        output_table,
         "get_identifier",
         classmethod(lambda _cls: registered_identifier),
     )
 
     assert issubclass(FixingRatesNode, IndexTimestampedDataNode)
-    assert storage_table is IndexFixingsStorage
-    assert storage_table.metatable_identifier() == "IndexFixingsTS"
-    assert storage_table.__index_names__ == ["time_index", INDEX_IDENTIFIER_DIMENSION]
-    assert storage_table.__cadence__ == "1d"
+    assert output_table is IndexFixingsStorage
+    assert output_table.metatable_identifier() == "IndexFixingsTS"
+    assert output_table.__index_names__ == ["time_index", INDEX_IDENTIFIER_DIMENSION]
+    assert output_table.__cadence__ == "1d"
     assert "__data_node_identifier__" not in FixingRatesNode.__dict__
     assert FixingRatesNode._default_identifier() == registered_identifier
-    assert FixingRatesNode._default_description() == storage_table.__metatable_description__
-    assert {column.name for column in storage_table.__table__.columns} == {
+    assert FixingRatesNode._default_description() == output_table.__metatable_description__
+    assert {column.name for column in output_table.__table__.columns} == {
         "time_index",
         INDEX_IDENTIFIER_DIMENSION,
         "rate",

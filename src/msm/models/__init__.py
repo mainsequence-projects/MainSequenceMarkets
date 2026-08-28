@@ -41,8 +41,8 @@ from .portfolios import SignalMetadataTable
 def markets_sqlalchemy_models() -> list[type]:
     """Return markets SQLAlchemy models in MetaTable dependency order.
 
-    Includes the ADR 0017 DataNode output storage MetaTables after their FK
-    target domain MetaTables, so the SDK migration provider registers DataNode
+    Includes the ADR 0017 TimeIndexTableUpdater output storage MetaTables after their FK
+    target domain MetaTables, so the SDK migration provider registers TimeIndexTableUpdater
     storage in dependency order alongside the domain tables.
     """
 
@@ -83,10 +83,10 @@ def markets_sqlalchemy_models() -> list[type]:
 
 
 def _markets_data_node_storage_models() -> list[type]:
-    """Return ADR 0017 DataNode output storage MetaTables in FK order.
+    """Return ADR 0017 TimeIndexTableUpdater output storage MetaTables in FK order.
 
     Imported lazily so importing ``msm.models`` never eagerly pulls in the
-    DataNode packages (avoids an import cycle: the storage modules import
+    TimeIndexTableUpdater packages (avoids an import cycle: the storage modules import
     ``msm.models`` domain tables for their FK targets).
     """
 

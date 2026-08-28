@@ -82,7 +82,7 @@ def source_time_index_meta_table_uid(source_meta_table: Any) -> str:
 def source_cadence_from_meta_table(
     source_meta_table: Any,
 ) -> str:
-    """Return declared cadence from registered source storage metadata."""
+    """Return declared cadence from registered source output metadata."""
 
     profile = getattr(source_meta_table, "time_indexed_profile", None)
     cadence: Any = None

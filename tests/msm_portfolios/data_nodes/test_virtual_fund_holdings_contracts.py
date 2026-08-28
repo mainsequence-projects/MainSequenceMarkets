@@ -52,7 +52,7 @@ def test_virtual_fund_holdings_node_uses_storage_first_contract() -> None:
     assert VirtualFundHoldings._column_dtypes_map_for_storage(
         VirtualFundHoldingsStorage
     ) == storage_column_dtypes_map(VirtualFundHoldingsStorage)
-    assert VirtualFundHoldings._required_storage_table() is VirtualFundHoldingsStorage
+    assert VirtualFundHoldings._required_output_table() is VirtualFundHoldingsStorage
 
 
 def test_virtual_fund_holdings_nullability_is_sourced_from_storage_class() -> None:
@@ -82,8 +82,8 @@ def test_virtual_fund_holdings_dtype_tokens_match_storage_columns() -> None:
     assert "target_weight" not in dtype_map
 
 
-def test_virtual_fund_holdings_bound_dtype_map_uses_instance_storage_table() -> None:
-    node = SimpleNamespace(storage_table=VirtualFundHoldingsStorage)
+def test_virtual_fund_holdings_bound_dtype_map_uses_instance_output_table() -> None:
+    node = SimpleNamespace(output_table=VirtualFundHoldingsStorage)
 
     assert VirtualFundHoldings._bound_column_dtypes_map(node) == storage_column_dtypes_map(
         VirtualFundHoldingsStorage

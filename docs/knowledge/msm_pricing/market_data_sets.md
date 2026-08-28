@@ -2,13 +2,13 @@
 
 Pricing market-data sets are the first-class rows that tell the pricing runtime
 where to read curve and fixing observations. They replace loose `context_key`
-plus DataNode identifier strings with `PricingMarketDataSet` rows and
-`PricingMarketDataSetBinding` concept bindings keyed by backend DataNode storage
+plus TimeIndexTableUpdater identifier strings with `PricingMarketDataSet` rows and
+`PricingMarketDataSetBinding` concept bindings keyed by backend time-index-table output
 table UID (see [ADR 0026](../../ADR/0026-explicit-pricing-market-data-sets.md)).
 
 ## The market-data set model
 
-The DataNode locations used by the pricing engine are pricing market-data
+The TimeIndexTableUpdater locations used by the pricing engine are pricing market-data
 bindings, not instrument metadata and not core `msm` MetaTables. Bindings are
 vertical rows under first-class market-data sets so new pricing concepts can be
 added without adding one column per future market-data source:
@@ -22,7 +22,7 @@ PricingMarketDataSet
 PricingMarketDataSetBinding
   market_data_set_uid -> PricingMarketDataSet.uid
   concept_key         = discount_curves | interest_rate_index_fixings | equity_vol_curves
-  data_node_uid       = backend DataNode storage table UID
+  data_node_uid       = backend time-index-table output table UID
   storage_table_identifier = optional diagnostic copy
 
 PricingMarketDataSetCurveBinding
@@ -248,7 +248,7 @@ market-data set and role.
 
 Runtime resolution checks direct in-memory UID overrides first, then the
 persisted binding row for `(market_data_set_uid, concept_key)`. The final read
-always uses `APIDataNode.build_from_table_uid(...)`.
+always uses `TimeIndexTableRef.from_uid(...)`.
 
 Curve consumers that need the latest available curve snapshot for one curve
 identity should use `MSDataInterface.get_latest_discount_curve(...)` explicitly:
@@ -279,7 +279,7 @@ metadata_json = observation["metadata_json"]
 `nodes` is normalized decompressed pricing data. `key_nodes` is producer-owned
 JSON provenance returned decompressed by the interface even though the storage
 column is compressed text. It may use the recommended `CurveKeyNode` fields or
-a source-specific extension enforced by the publisher's DataNode validation.
+a source-specific extension enforced by the publisher's TimeIndexTableUpdater validation.
 Canonical market identity is nested under `source_reference`, with
 `type="asset"` or `type="index"` and the corresponding unique identifier.
 That provenance does not affect market-data-set curve-role selection.

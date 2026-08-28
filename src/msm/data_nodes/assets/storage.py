@@ -1,4 +1,4 @@
-"""Asset DataNode storage contracts."""
+"""Asset time-index-table output contracts."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ class AssetSnapshotsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "AssetSnapshotsTS"
     __metatable_description__ = (
         "Timestamped asset display-fact storage keyed by (time_index, "
-        "asset_identifier). Used by the AssetSnapshot DataNode to publish "
+        "asset_identifier). Used by the AssetSnapshot TimeIndexTableUpdater to publish "
         "historical asset names, tickers, exchange codes, and share-class grouping "
         "without widening AssetTable."
     )

@@ -1,4 +1,4 @@
-"""Account DataNode storage contracts."""
+"""Account time-index-table output contracts."""
 
 from __future__ import annotations
 

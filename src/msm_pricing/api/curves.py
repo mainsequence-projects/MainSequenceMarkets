@@ -1192,7 +1192,7 @@ def _missing_discount_curve_observation_message(
         return (
             f"No discount-curve data has been published for curve {curve_identifier!r} "
             f"in pricing market-data set {market_data_set_label!r}. The curve registry "
-            f"row and discount_curves binding exist, but bound DataNode {data_node_uid} "
+            f"row and discount_curves binding exist, but bound TimeIndexTableUpdater {data_node_uid} "
             f"has no latest {storage_label} observation for this curve_identifier."
         )
 
@@ -1200,7 +1200,7 @@ def _missing_discount_curve_observation_message(
         f"No discount-curve data was found for curve {curve_identifier!r} at "
         f"valuation_date {valuation_date.isoformat()} in pricing market-data set "
         f"{market_data_set_label!r}. The curve registry row and discount_curves "
-        f"binding exist, but bound DataNode {data_node_uid} has no {storage_label} "
+        f"binding exist, but bound TimeIndexTableUpdater {data_node_uid} has no {storage_label} "
         "observation for this curve_identifier at that valuation date."
     )
 

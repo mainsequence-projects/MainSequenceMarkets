@@ -134,8 +134,8 @@ def run_account_portfolio_full_workflow(
         )
         print(
             "   Portfolio schema ready: "
-            f"configured_storage_table="
-            f"{schema_preparation_result['configured_storage_table']} "
+            f"configured_output_table="
+            f"{schema_preparation_result['configured_output_table']} "
             f"configured_storage_uid="
             f"{schema_preparation_result['configured_storage_uid']}"
         )
@@ -229,7 +229,7 @@ def run_account_portfolio_full_workflow(
         force_update=True,
     )
     if asset_snapshot_error:
-        raise RuntimeError("AssetSnapshot update failed; inspect the DataNode run logs.")
+        raise RuntimeError("AssetSnapshot update failed; inspect the TimeIndexTableUpdater run logs.")
     print(
         "   AssetSnapshot rows persisted: "
         f"rows={len(asset_snapshot_frame)} identifier={asset_snapshot_node._default_identifier()}"
@@ -307,7 +307,7 @@ def run_account_portfolio_full_workflow(
         f"{[group.unique_identifier for group in portfolio_groups_for_target_sleeve]}"
     )
 
-    print("10. Creating the AccountHoldings DataNode instance.")
+    print("10. Creating the AccountHoldings TimeIndexTableUpdater instance.")
     holdings_node = AccountHoldings(config=AccountHoldings.default_config())
     print(f"   AccountHoldings identifier={holdings_node._default_identifier()}")
 
@@ -378,7 +378,7 @@ def run_account_portfolio_full_workflow(
     combined_target_positions_frame = pd.concat(target_position_frames).sort_index()
     print(f"   Combined target-position rows ready: rows={len(combined_target_positions_frame)}")
 
-    print("12. Running the TargetPositions DataNode update.")
+    print("12. Running the TargetPositions TimeIndexTableUpdater update.")
     target_positions_node = TargetPositions(config=TargetPositions.default_config())
     target_positions_node.set_frame(combined_target_positions_frame)
     target_positions_error, persisted_target_positions_frame = target_positions_node.run(
@@ -386,7 +386,7 @@ def run_account_portfolio_full_workflow(
         force_update=True,
     )
     if target_positions_error:
-        raise RuntimeError("TargetPositions update failed; inspect the DataNode run logs.")
+        raise RuntimeError("TargetPositions update failed; inspect the TimeIndexTableUpdater run logs.")
     print(
         "    Persisted target-position rows="
         f"{len(persisted_target_positions_frame)} identifier="
@@ -433,10 +433,10 @@ def run_account_portfolio_full_workflow(
     holdings_node.set_frame(combined_holdings_frame)
     print(f"   Combined holdings rows attached: rows={len(combined_holdings_frame)}")
 
-    print("14. Running the AccountHoldings DataNode update.")
+    print("14. Running the AccountHoldings TimeIndexTableUpdater update.")
     error_on_last_update, holdings_frame = holdings_node.run(debug_mode=True, force_update=True)
     if error_on_last_update:
-        raise RuntimeError("Account holdings update failed; inspect the DataNode run logs.")
+        raise RuntimeError("Account holdings update failed; inspect the TimeIndexTableUpdater run logs.")
     print(f"    Persisted holdings rows={len(holdings_frame)}")
 
     print("15. Pretty-printing resolved positions for each account.")
@@ -611,7 +611,7 @@ def main() -> None:
         "--no-run-portfolio-data-nodes",
         action="store_true",
         help=(
-            "When chaining the portfolio example, skip its DataNode publication; "
+            "When chaining the portfolio example, skip its TimeIndexTableUpdater publication; "
             "by default the full dependency tree is published."
         ),
     )
@@ -666,9 +666,9 @@ def main() -> None:
         "Asset unique_identifiers:",
         [asset.unique_identifier for asset in result["assets"]],
     )
-    print("AssetSnapshot DataNode identifier:", result["asset_snapshot_node_identifier"])
-    print("TargetPositions DataNode identifier:", result["target_positions_data_node_identifier"])
-    print("Holdings DataNode identifier:", result["holdings_data_node_identifier"])
+    print("AssetSnapshot TimeIndexTableUpdater identifier:", result["asset_snapshot_node_identifier"])
+    print("TargetPositions TimeIndexTableUpdater identifier:", result["target_positions_data_node_identifier"])
+    print("Holdings TimeIndexTableUpdater identifier:", result["holdings_data_node_identifier"])
     print("Holdings date:", result["holdings_date"].isoformat())
     if result["virtual_fund_allocation_result"] is not None:
         allocation_result = result["virtual_fund_allocation_result"]

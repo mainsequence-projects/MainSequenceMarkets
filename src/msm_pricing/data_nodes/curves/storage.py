@@ -1,4 +1,4 @@
-"""Pricing curve DataNode storage contracts."""
+"""Pricing curve time-index-table output contracts."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
                 "use the recommended CurveKeyNode shape, including a typed asset or "
                 "index source_reference, quote_type, quote_unit, quote_side, and "
                 "optional yield fields, plus source-specific extensions validated "
-                "by the producer DataNode."
+                "by the producer TimeIndexTableUpdater."
             ),
         },
     )

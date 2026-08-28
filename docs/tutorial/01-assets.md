@@ -44,7 +44,7 @@ runtime = msm.start_engine(models=["Asset"])
 
 Runtime attachment does not take labels. Use `runtime.meta_tables` and
 `runtime.meta_table_models` after bootstrap when a specific returned MetaTable
-needs follow-up labeling or handling. Import DataNode classes from their owning
+needs follow-up labeling or handling. Import TimeIndexTableUpdater classes from their owning
 package modules. The preflight uses the Main Sequence logger at `info` level to
 report each MetaTable model being attached, what context was created, and when a
 cached runtime is reused.
@@ -90,7 +90,7 @@ Use this workflow when ingesting external asset metadata:
    `ASSET_TYPE_FUTURE`.
 3. Persist canonical identity through the user-facing `msm.api.assets.Asset`
    row API. Row operations attach to registered MetaTables lazily.
-4. Store timestamped asset facts through DataNode schemas in
+4. Store timestamped asset facts through TimeIndexTableUpdater schemas in
    `msm.data_nodes.assets`.
 
 The package boundary is deliberate: `msm.api` owns user row operations,
@@ -255,7 +255,7 @@ table.
 
 ## Asset snapshots
 
-`AssetSnapshot` is a DataNode, not a MetaTable. Build validated snapshot frames
+`AssetSnapshot` is a TimeIndexTableUpdater, not a MetaTable. Build validated snapshot frames
 or a configured node through `AssetSnapshot` methods. Construct the node first,
 then bind rows whose payloads each carry their own `time_index`:
 
@@ -278,15 +278,15 @@ Markets DataNodes use the same identifier rule as MetaTables. With the default
 markets namespace, logical identifiers stay bare, such as `Asset` and
 `AssetSnapshotsTS`. With `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`,
 the published identifiers become `mainsequence.examples.Asset` and
-`mainsequence.examples.AssetSnapshotsTS`; the default DataNode `hash_namespace`
+`mainsequence.examples.AssetSnapshotsTS`; the default TimeIndexTableUpdater `hash_namespace`
 is also `mainsequence.examples`. Pass explicit `identifier` or `hash_namespace`
 only when a test or experiment needs isolation.
 
 Asset snapshot source tables have a canonical foreign key from
 `asset_identifier` to `AssetTable.unique_identifier`, so the `Asset` MetaTable
-must exist before a snapshot DataNode initializes its source table. In examples
+must exist before a snapshot TimeIndexTableUpdater initializes its source table. In examples
 that perform source-table initialization, run `msm.start_engine(models=["Asset"])`
-with the intended namespace before creating the DataNode.
+with the intended namespace before creating the TimeIndexTableUpdater.
 
 Before the write path persists rows, `AssetSnapshot` checks the backend for the
 incoming `(time_index, asset_identifier)` tuples and fails if any tuple already
@@ -347,7 +347,7 @@ full frame contract and workspace binding rules. See
 that builds the canonical frame from sample asset rows.
 
 For timestamped facts keyed to index reference rows, use the same stamped
-DataNode workflow with `msm.data_nodes.indices.IndexTimestampedDataNode` and an
+TimeIndexTableUpdater workflow with `msm.data_nodes.indices.IndexTimestampedDataNode` and an
 `IndexDataNodeConfiguration` subclass. The frame contract is
 `["time_index", "index_identifier"]`, with a canonical source-table foreign key
 from `index_identifier` to `IndexTable.unique_identifier`. Keep index identity

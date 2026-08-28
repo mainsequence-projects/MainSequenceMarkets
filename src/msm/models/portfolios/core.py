@@ -24,7 +24,7 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "Portfolio"
     __metatable_description__ = (
         "Portfolio identity and configuration table keyed by unique_identifier. "
-        "Stores required calendar linkage, optional published index linkage, and DataNode "
+        "Stores required calendar linkage, optional published index linkage, and TimeIndexTableUpdater "
         "pointers used to publish portfolio weights, signals, and values."
     )
     __table_args__ = markets_table_args(
@@ -98,7 +98,7 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Portfolio Weights Data Node UID",
-            "description": "Platform DataNodeUpdate.uid for the portfolio weights producer.",
+            "description": "Platform TimeIndexTableUpdate.uid for the portfolio weights producer.",
         },
     )
     signal_weights_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(
@@ -106,7 +106,7 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Signal Weights Data Node UID",
-            "description": "Platform DataNodeUpdate.uid for the signal weights producer.",
+            "description": "Platform TimeIndexTableUpdate.uid for the signal weights producer.",
         },
     )
     signal_uid: Mapped[str | None] = mapped_column(
@@ -130,7 +130,7 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Portfolio Data Node UID",
-            "description": "Platform DataNodeUpdate.uid for the portfolio-level data producer.",
+            "description": "Platform TimeIndexTableUpdate.uid for the portfolio-level data producer.",
         },
     )
     backtest_table_price_column_name: Mapped[str] = mapped_column(

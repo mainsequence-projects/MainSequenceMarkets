@@ -112,7 +112,7 @@ def build_asset_snapshot_frame_from_openfigi_result(
     *,
     time_index: dt.datetime | pd.Timestamp | str,
 ) -> pd.DataFrame:
-    """Build one AssetSnapshot DataNode frame row from an OpenFIGI result."""
+    """Build one AssetSnapshot TimeIndexTableUpdater frame row from an OpenFIGI result."""
 
     from msm.data_nodes.assets import AssetSnapshot
 

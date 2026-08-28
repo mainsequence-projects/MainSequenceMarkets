@@ -189,7 +189,7 @@ frame = apply_account_virtual_fund_allocation_plan(
 
 The apply step may create or reuse `VirtualFundTable` rows, creates the
 holdings-set row, builds the `VirtualFundHoldingsStorage` frame, and optionally
-publishes it through the DataNode.
+publishes it through the TimeIndexTableUpdater.
 
 See
 `examples/msm/accounts/account_portfolio_full_workflow.py` for the complete

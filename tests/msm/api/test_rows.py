@@ -211,7 +211,7 @@ def test_account_pretty_print_positions_rejects_datanode_run_tuple() -> None:
         ]
     ).set_index(["time_index", "account_uid", "asset_identifier"])
 
-    with pytest.raises(TypeError, match="Unpack DataNode run results"):
+    with pytest.raises(TypeError, match="Unpack TimeIndexTableUpdater run results"):
         account.pretty_print_positions((False, holdings))
 
 

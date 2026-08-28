@@ -202,7 +202,7 @@ Rules:
 ## Market-Data Sets
 
 Use `PricingMarketDataSet` and `PricingMarketDataSetBinding` for storage-source
-selection. Bindings store backend DataNode storage table UIDs for pricing
+selection. Bindings store backend time-index-table output table UIDs for pricing
 concepts such as `discount_curves` and `interest_rate_index_fixings`.
 
 Use `PricingMarketDataSetCurveBinding` for curve-identity selection inside the

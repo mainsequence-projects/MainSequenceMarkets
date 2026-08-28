@@ -12,8 +12,8 @@ from pydantic import ConfigDict, Field, WithJsonSchema, model_validator
 from tqdm import tqdm
 
 from mainsequence.client.metatables import UpdateStatistics
-from mainsequence.meta_tables import APIDataNode, DataNode
-from mainsequence.meta_tables.data_nodes.utils import (
+from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from mainsequence.meta_tables.time_index_table_updates.utils import (
     string_freq_to_time_delta,
     string_frequency_to_minutes,
 )
@@ -44,13 +44,13 @@ class InterpolatedPricesConfig(AssetIndexedDataNodeConfiguration):
     intraday_bar_interpolation_rule: str
     source_time_index_meta_table_uid: uuid.UUID | str | None = None
     source_price_instance: Annotated[
-        DataNode | APIDataNode | None,
+        TimeIndexTableUpdater | TimeIndexTableRef | None,
         Field(
             description=(
-                "Optional raw/source price DataNode or APIDataNode. Pass this when "
+                "Optional raw/source price TimeIndexTableUpdater or TimeIndexTableRef. Pass this when "
                 "the source price dependency is already instantiated. If absent, "
                 "source_time_index_meta_table_uid is resolved through "
-                "APIDataNode.build_from_table_uid(...)."
+                "TimeIndexTableRef.from_uid(...)."
             ),
         ),
         WithJsonSchema({"type": "object"}),
@@ -72,61 +72,57 @@ class InterpolatedPricesConfig(AssetIndexedDataNodeConfiguration):
         return self
 
 
-def _assert_source_price_instance(source_price: DataNode | APIDataNode) -> DataNode | APIDataNode:
-    if source_price.is_api:
-        if not isinstance(source_price, APIDataNode):
-            raise TypeError("API price sources must be APIDataNode instances.")
-    else:
-        if not isinstance(source_price, DataNode):
-            raise TypeError("Price sources must be DataNode or APIDataNode instances.")
+def _assert_source_price_instance(source_price: TimeIndexTableUpdater | TimeIndexTableRef) -> TimeIndexTableUpdater | TimeIndexTableRef:
+    if not isinstance(source_price, (TimeIndexTableUpdater, TimeIndexTableRef)):
+        raise TypeError("Price sources must be TimeIndexTableUpdater or TimeIndexTableRef instances.")
     return source_price
 
 
-def _source_storage_metadata(
-    source_price: DataNode | APIDataNode,
+def _source_output_metadata(
+    source_price: TimeIndexTableUpdater | TimeIndexTableRef,
     *,
     source_context: str,
 ) -> Any:
     source_price = _assert_source_price_instance(source_price)
-    if source_price.is_api:
-        storage_metadata = source_price.storage_table
-        if storage_metadata is None:
+    if isinstance(source_price, TimeIndexTableRef):
+        output_metadata = source_price.output_table
+        if output_metadata is None:
             raise RuntimeError(
-                "InterpolatedPrices source_price_instance was an APIDataNode without "
-                "registered storage metadata. Build it with "
-                "APIDataNode.build_from_table_uid(...) or pass "
+                "InterpolatedPrices source_price_instance was a TimeIndexTableRef without "
+                "registered output metadata. Build it with "
+                "TimeIndexTableRef.from_uid(...) or pass "
                 "source_time_index_meta_table_uid."
             )
-        return storage_metadata
+        return output_metadata
 
     try:
-        return source_price.storage_metadata
+        return source_price.output_metadata
     except ValueError as exc:
         raise RuntimeError(
             "InterpolatedPrices source_price_instance must have registered "
-            f"storage metadata before interpolation can derive storage identity: "
+            f"output metadata before interpolation can derive table identity: "
             f"{source_context}."
         ) from exc
 
 
 def _source_time_index_meta_table_uid_from_instance(
-    source_price: DataNode | APIDataNode,
+    source_price: TimeIndexTableUpdater | TimeIndexTableRef,
 ) -> str:
-    storage_metadata = _source_storage_metadata(
+    output_metadata = _source_output_metadata(
         source_price,
         source_context=source_price.__class__.__name__,
     )
-    source_uid = storage_metadata.uid
+    source_uid = output_metadata.uid
     if source_uid in (None, ""):
         raise RuntimeError(
-            "InterpolatedPrices source_price_instance storage metadata is missing uid."
+            "InterpolatedPrices source_price_instance output metadata is missing uid."
         )
     return str(source_uid)
 
 
 def _resolve_interpolated_source_prices(
     interpolation_config: InterpolatedPricesConfig,
-) -> tuple[DataNode | APIDataNode, str]:
+) -> tuple[TimeIndexTableUpdater | TimeIndexTableRef, str]:
     source_price_instance = interpolation_config.source_price_instance
     if source_price_instance is not None:
         source_price_instance = _assert_source_price_instance(source_price_instance)
@@ -142,24 +138,24 @@ def _resolve_interpolated_source_prices(
             "when source_price_instance is not supplied."
         )
     source_uid = str(source_time_index_meta_table_uid)
-    return APIDataNode.build_from_table_uid(source_uid), source_uid
+    return TimeIndexTableRef.from_uid(source_uid), source_uid
 
 
 def _source_time_indexed_profile_cadence(
-    source_prices_ts: DataNode | APIDataNode,
+    source_prices_ts: TimeIndexTableUpdater | TimeIndexTableRef,
     *,
     source_time_index_meta_table_uid: str,
 ) -> str:
-    storage_table = _source_storage_metadata(
+    output_table = _source_output_metadata(
         source_prices_ts,
         source_context=source_time_index_meta_table_uid,
     )
-    profile = getattr(storage_table, "time_indexed_profile", None)
+    profile = getattr(output_table, "time_indexed_profile", None)
     cadence = getattr(profile, "cadence", None)
     if cadence in (None, ""):
-        cadence = getattr(storage_table, "cadence", None)
+        cadence = getattr(output_table, "cadence", None)
     if cadence in (None, ""):
-        contract = getattr(storage_table, "table_contract", None)
+        contract = getattr(output_table, "table_contract", None)
         if isinstance(contract, dict):
             authoring = contract.get("authoring")
             if isinstance(authoring, dict):
@@ -750,9 +746,9 @@ class InterpolatedPrices(AssetIndexedDataNode):
         source_prices_ts, source_time_index_meta_table_uid = (
             _resolve_interpolated_source_prices(interpolation_config)
         )
-        if "storage_table" in kwargs:
+        if "output_table" in kwargs:
             raise TypeError(
-                "InterpolatedPrices storage_table is derived from interpolation_config "
+                "InterpolatedPrices output_table is derived from interpolation_config "
                 "through __metatable_extra_hash_components__; pass the source storage "
                 "configuration instead."
             )
@@ -766,7 +762,7 @@ class InterpolatedPrices(AssetIndexedDataNode):
             source_time_index_meta_table_uid=source_time_index_meta_table_uid,
         )
         upsample_frequency_id = interpolation_config.upsample_frequency_id or source_cadence
-        storage_table = configured_interpolated_prices_storage(
+        output_table = configured_interpolated_prices_storage(
             source_time_index_meta_table_uid=source_time_index_meta_table_uid,
             source_cadence=source_cadence,
             upsample_frequency_id=upsample_frequency_id,
@@ -791,7 +787,7 @@ class InterpolatedPrices(AssetIndexedDataNode):
 
         super().__init__(
             config=interpolation_config,
-            storage_table=storage_table,
+            output_table=output_table,
             *args,
             **kwargs,
         )
@@ -800,7 +796,7 @@ class InterpolatedPrices(AssetIndexedDataNode):
         return {"bars_ts": self.bars_ts}
 
     @classmethod
-    def _required_storage_table(cls) -> type[InterpolatedPricesStorage]:
+    def _required_output_table(cls) -> type[InterpolatedPricesStorage]:
         return InterpolatedPricesStorage
 
     def get_string_frequency_to_minutes(self):
@@ -818,8 +814,8 @@ class InterpolatedPrices(AssetIndexedDataNode):
         return required
 
     def run_post_update_routines(self, error_on_last_update):
-        if not self.data_node_update.data_node_storage.protect_from_deletion:
-            self.local_persist_manager.protect_from_deletion()
+        if not self.table_update.output_table.protect_from_deletion:
+            self.update_manager.protect_from_deletion()
 
     def _transform_raw_data_to_upsampled_df(
         self,

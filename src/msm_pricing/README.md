@@ -2,7 +2,7 @@
 
 `msm_pricing` contains the QuantLib-backed pricing runtime for Main Sequence
 Markets. It is the package for priceable instrument definitions, pricing model
-helpers, market-data access used by pricing, and DataNode helpers for
+helpers, market-data access used by pricing, and TimeIndexTableUpdater helpers for
 pricing-owned curves and index fixings.
 
 The package intentionally uses a separate import root so core `msm` users do
@@ -119,8 +119,8 @@ directly by each model's SQLAlchemy table name.
 Curves are pricing-owned reference data, not assets. `CurveTable` owns curve
 identity, `CurveBuildingDetailsTable` owns curve construction rules, and
 `PricingMarketDataSetCurveBindingTable` owns valuation-context curve selection.
-`DiscountCurvesNode` lives under `msm_pricing.data_nodes` as a stamped DataNode
-keyed by `(time_index, curve_identifier)`. Curve DataNode configurations use
+`DiscountCurvesNode` lives under `msm_pricing.data_nodes` as a stamped TimeIndexTableUpdater
+keyed by `(time_index, curve_identifier)`. Curve TimeIndexTableUpdater configurations use
 the actual `CurveTable.unique_identifier`; they do not resolve Main Sequence
 Constants into curve identity. EOD curve observations declare daily cadence on
 `DiscountCurvesStorage.__cadence__`. Publishers emit a curve mapping plus
@@ -166,9 +166,9 @@ daily EOD cadence is declared on `IndexFixingsStorage.__cadence__`, so the
 observation interval is first-class `PlatformTimeIndexMetaTable` metadata.
 Fixing configurations likewise use actual `IndexTable.unique_identifier` values
 and do not resolve Main Sequence Constants into index identity.
-Runtime builder callables are attached after DataNode construction with
+Runtime builder callables are attached after TimeIndexTableUpdater construction with
 `set_curve_builder(...)` / `set_fixing_builders(...)` or by subclassing the hook
-methods, so builder wiring is not part of the hashed DataNode configuration.
+methods, so builder wiring is not part of the hashed TimeIndexTableUpdater configuration.
 
 Pricing market-data source selection is concept based. Bootstrap seeds default
 bindings for:
@@ -186,8 +186,8 @@ Those UIDs come from attached storage classes, not static namespace helpers.
 
 Applications can add named market-data sets such as `eod`, `live`, or
 `risk_manager` through `msm_pricing.api.PricingMarketDataSet` and
-`PricingMarketDataSetBinding`. Each binding stores the backend DataNode storage
-table UID used by `APIDataNode.build_from_table_uid(...)`:
+`PricingMarketDataSetBinding`. Each binding stores the backend time-index-table output
+table UID used by `TimeIndexTableRef.from_uid(...)`:
 
 ```python
 from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
@@ -232,7 +232,7 @@ selector policy.
 
 The data interface resolves direct in-memory overrides first and persisted
 market-data set bindings second. The final lookup uses
-`APIDataNode.build_from_table_uid(...)`.
+`TimeIndexTableRef.from_uid(...)`.
 
 At pricing time, callers select the source set by key:
 
@@ -373,7 +373,7 @@ from msm_pricing.api import Curve, IndexConventionDetails
 `IndexConventionDetails` upserts one convention payload per canonical
 `IndexTable.uid`; `Curve` upserts curve identity rows by
 `CurveTable.unique_identifier`. These rows are the durable bridge from
-instrument index references to curve DataNode observations.
+instrument index references to curve TimeIndexTableUpdater observations.
 
 At runtime, pricing code resolves backend index UIDs through
 `resolve_quantlib_index(...)` and curve rows through `resolve_pricing_curve(...)`.
@@ -385,7 +385,7 @@ curve/index-fixing data, materializes QuantLib objects, and values the
 instrument or position for an explicit valuation date.
 
 See `examples/msm_pricing/bond_pricing_example/` for a complete floating-rate bond
-workflow using the public asset, pricing registry, DataNode, attach/load, and
+workflow using the public asset, pricing registry, TimeIndexTableUpdater, attach/load, and
 pricing APIs. The example binds separate projection and discount curves for the
 floating index. A market-data set may bind both roles to one physical curve
 only by writing both role bindings explicitly.
@@ -394,6 +394,6 @@ only by writing both role bindings explicitly.
 
 Add new priceable instruments under `instruments/` and shared QuantLib helpers
 under `pricing_engine/`. Keep SQLAlchemy table declarations under `models/`.
-Keep storage access in `data_interface/`, and keep pricing DataNode publishers
+Keep storage access in `data_interface/`, and keep pricing TimeIndexTableUpdater publishers
 under `data_nodes/` so instrument classes remain focused on rebuilding terms
 and pricing.

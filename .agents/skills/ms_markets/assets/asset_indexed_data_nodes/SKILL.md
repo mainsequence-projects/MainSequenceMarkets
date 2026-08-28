@@ -1,27 +1,27 @@
 ---
 name: mainsequence-markets-asset-indexed-data-nodes
-description: Use this skill when creating, extending, reviewing, or documenting ms-markets AssetIndexedDataNode implementations, especially timestamped market tables keyed by (time_index, asset_identifier). This skill owns ms-markets asset identity conventions, AssetTable foreign keys, namespace behavior, storage metadata, and frame insertion patterns. It does not own the full Main Sequence DataNode lifecycle, orchestration, hashing theory, scheduling, or generic DataNode API behavior.
+description: Use this skill when creating, extending, reviewing, or documenting ms-markets AssetIndexedDataNode implementations, especially timestamped market tables keyed by (time_index, asset_identifier). This skill owns ms-markets asset identity conventions, AssetTable foreign keys, namespace behavior, output metadata, and frame insertion patterns. It does not own the full Main Sequence TimeIndexTableUpdater lifecycle, orchestration, hashing theory, scheduling, or generic TimeIndexTableUpdater API behavior.
 ---
 
-# Main Sequence Markets Asset-Indexed DataNodes
+# Main Sequence Markets Asset-Indexed TimeIndexTableUpdaters
 
-When an asset-indexed DataNode supplies prices, yields, returns, DV01, delta, or
+When an asset-indexed TimeIndexTableUpdater supplies prices, yields, returns, DV01, delta, or
 other facts to a calculated Index, this skill owns only the source publication
 contract. Route derived-index definitions, coefficients, selectors, resolved
 legs, and canonical Index values to the derived-index workflow skill.
 
-Use this skill for the ms-markets layer on top of Main Sequence `DataNode`s.
+Use this skill for the ms-markets layer on top of Main Sequence `TimeIndexTableUpdater`s.
 
-An `AssetIndexedDataNode` is still a Main Sequence `DataNode`. The base SDK owns
+An `AssetIndexedDataNode` is still a Main Sequence `TimeIndexTableUpdater`. The base SDK owns
 generic behavior such as storage and update hashes, execution, update statistics,
 dependencies, persistence, and scheduling. This skill only owns the markets
 conventions added around asset identity.
 
 ## Route First
 
-Use the generic DataNode skill when the task depends on Main Sequence behavior:
+Use the generic TimeIndexTableUpdater skill when the task depends on Main Sequence behavior:
 
-- `.agents/skills/mainsequence/data_publishing/data_nodes/SKILL.md`
+- `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`
 
 Then use this skill for the ms-markets-specific parts:
 
@@ -39,7 +39,7 @@ Use the asset model extension skill instead when the task is about `AssetTable`,
 
 ## This Skill Owns
 
-- Defining asset-indexed DataNodes where `asset_identifier` stores
+- Defining asset-indexed TimeIndexTableUpdaters where `asset_identifier` stores
   `msm.api.assets.Asset.unique_identifier`.
 - Requiring `ASSET_IDENTIFIER_DIMENSION` from `msm.settings`; do not
   hardcode competing asset identity column constants.
@@ -53,17 +53,17 @@ Use the asset model extension skill instead when the task is about `AssetTable`,
   foreign keys.
 - Deriving published identifiers from the migrated and registered storage table and active
   markets namespace.
-- Deriving validation from `_required_storage_table()` and the instance's bound
-  `storage_table`.
+- Deriving validation from `_required_output_table()` and the instance's bound
+  `output_table`.
 - Returning validated `datetime64[ns, UTC]` frames with a
   `["time_index", "asset_identifier"]` index for timestamped asset facts.
-- Designing insertion methods that belong on the DataNode class, such as
+- Designing insertion methods that belong on the TimeIndexTableUpdater class, such as
   `AssetSnapshot.build_frame(...)` and `AssetSnapshot().set_snapshots(...)`.
 
 ## This Skill Does Not Own
 
-- Full Main Sequence `DataNode` semantics.
-- Generic `DataNodeConfiguration` hashing rules beyond how `asset_list` should
+- Full Main Sequence `TimeIndexTableUpdater` semantics.
+- Generic `TimeIndexTableUpdateConfig` hashing rules beyond how `asset_list` should
   be scoped for markets.
 - Job scheduling, platform release setup, images, resources, or RBAC.
 - FastAPI or public API route contracts.
@@ -87,7 +87,7 @@ Before changing code, inspect the current local implementation:
 7. `docs/knowledge/msm/assets/asset_indexed_data_nodes.md`
 8. `docs/knowledge/msm/migrations/index.md`
 
-For generic SDK behavior, verify against the latest Main Sequence DataNode docs
+For generic SDK behavior, verify against the latest Main Sequence TimeIndexTableUpdater docs
 and the `mainsequence-data-nodes` skill.
 
 ## Core Contract
@@ -109,7 +109,7 @@ Rules:
 - `asset_identifier` stores the canonical `Asset.unique_identifier`, not a raw
   provider ticker, FIGI, ISIN, or venue symbol.
 - Provider identifiers belong in provider detail MetaTables or explicit
-  provider-fact DataNode columns.
+  provider-fact TimeIndexTableUpdater columns.
 - `time_index` is the observation timestamp of the row.
 - Timestamped asset rows must carry their own `time_index`; do not pass one
   global timestamp into a bulk snapshot builder.
@@ -131,9 +131,9 @@ only the schema. For asset-indexed tables, say what the asset row represents and
 why it is published over time.
 
 Storage must be migrated and registered by the SDK migration
-provider before a process writes through the DataNode. The runtime path,
+provider before a process writes through the TimeIndexTableUpdater. The runtime path,
 usually `msm.start_engine(models=[...])`, attaches the already-finalized
-storage metadata from the backend registered table. Do not manually bind a UID,
+output metadata from the backend registered table. Do not manually bind a UID,
 reconstruct a generic `MetaTable`, call storage `.register()` from runtime
 startup, or use manual bind helpers as an authoring step.
 
@@ -208,7 +208,7 @@ class ExampleAssetMetric(AssetTimestampedDataNode):
     configuration_class = ExampleAssetMetricConfiguration
 
     @classmethod
-    def _required_storage_table(cls) -> type[ExampleAssetMetricStorage]:
+    def _required_output_table(cls) -> type[ExampleAssetMetricStorage]:
         return ExampleAssetMetricStorage
 
     @classmethod
@@ -220,9 +220,9 @@ class ExampleAssetMetric(AssetTimestampedDataNode):
 ```
 
 The `asset_identifier` foreign key belongs on the storage class. Do not recreate
-the old DataNode-side foreign-key or records pattern.
+the old updater-side foreign-key or records pattern.
 
-## DataNode Class Pattern
+## TimeIndexTableUpdater Class Pattern
 
 For timestamped asset fact nodes, use the local timestamped base from
 `src/msm/data_nodes/assets/snapshots.py`. The node class should be thin and
@@ -233,7 +233,7 @@ class ExampleAssetMetric(AssetTimestampedDataNode):
     configuration_class = ExampleAssetMetricConfiguration
 
     @classmethod
-    def _required_storage_table(cls) -> type[ExampleAssetMetricStorage]:
+    def _required_output_table(cls) -> type[ExampleAssetMetricStorage]:
         return ExampleAssetMetricStorage
 
     @classmethod
@@ -249,20 +249,20 @@ Rules:
 - config subclasses carry update-scoped fields only
 - do not write an explicit constructor unless the node has real runtime fields
   beyond config and `hash_namespace`
-- class owns `_required_storage_table()`
+- class owns `_required_output_table()`
 - `_default_identifier()` and `_default_description()` derive from the storage
   table identifier and `__metatable_description__`
 - class methods build validated frames
 - instance methods attach validated frames before `run(...)`
 
 Do not create free-floating service functions when the behavior naturally
-belongs to the DataNode class.
+belongs to the TimeIndexTableUpdater class.
 
 The timestamped frame/config mechanics are shared in
 `src/msm/data_nodes/utils/stamped.py`. Keep new asset and index timestamped nodes
 on that base instead of copying validation, storage-schema lookup, namespace, or
-`datetime64[ns, UTC]` normalization logic. Asset-specific DataNodes belong under
-`src/msm/data_nodes/assets/`, and index-specific DataNodes belong under
+`datetime64[ns, UTC]` normalization logic. Asset-specific TimeIndexTableUpdaters belong under
+`src/msm/data_nodes/assets/`, and index-specific TimeIndexTableUpdaters belong under
 `src/msm/data_nodes/indices/`. Non-model-specific helpers belong under
 `src/msm/data_nodes/utils/`. For timestamped facts keyed to `IndexTable`, use
 `IndexTimestampedDataNode` and `IndexDataNodeConfiguration` from
@@ -271,22 +271,22 @@ canonical source-table foreign key target.
 
 ## Namespaces And Identifiers
 
-Use one rule for markets MetaTables and markets DataNodes:
+Use one rule for markets MetaTables and markets TimeIndexTableUpdaters:
 
 - default namespace: keep bare identifiers such as `Asset` and
   `asset_snapshots`
 - when `MSM_AUTO_REGISTER_NAMESPACE` is set to a non-default namespace, prefix
   logical identifiers with that namespace
-- use `markets_data_node_identifier(...)` for DataNode identifiers
+- use `markets_data_node_identifier(...)` for TimeIndexTableUpdater identifiers
 - let `AssetIndexedDataNode` apply the default markets `hash_namespace`
 - pass explicit `hash_namespace` only for tests, isolated experiments, or
   parallel runs that must not collide
 
 Do not hardcode `mainsequence.markets.*` or `mainsequence.examples.*` in a new
-DataNode class.
+TimeIndexTableUpdater class.
 
 Do not add a class-owned `__data_node_identifier__`; default identifiers derive
-from the storage MetaTable identifier through `_required_storage_table()`.
+from the storage MetaTable identifier through `_required_output_table()`.
 
 ## Asset Scope
 
@@ -295,7 +295,7 @@ published dataset.
 
 Asset-scoped configuration has two categories:
 
-- normal `DataNodeConfiguration` fields, which enter `update_hash`
+- normal `TimeIndexTableUpdateConfig` fields, which enter `update_hash`
 - `ClassVar[...]` invariants, which are not Pydantic fields and do not enter
   `update_hash`
 
@@ -307,10 +307,10 @@ from typing import ClassVar
 
 from pydantic import Field
 
-from mainsequence.meta_tables import DataNodeConfiguration
+from mainsequence.meta_tables import TimeIndexTableUpdateConfig
 
 
-class AssetIndexedDataNodeConfiguration(DataNodeConfiguration):
+class AssetIndexedDataNodeConfiguration(TimeIndexTableUpdateConfig):
     asset_list: list | None = Field(
         default=None,
         description=(
@@ -335,7 +335,7 @@ select the updater scope and must affect `update_hash`. `reference_dimension` is
 a `ClassVar` because it is a fixed implementation invariant, not run
 configuration.
 
-Do not use legacy platform metadata markers to remove DataNode config fields
+Do not use legacy platform metadata markers to remove TimeIndexTableUpdater config fields
 from hashing. There is no third asset-scope case: if it is a config field, it is
 hashed; if it is not hashed, it must not be a config field.
 
@@ -375,7 +375,7 @@ Rules:
 - Each row supplies its own `time_index`.
 - Existing backend keys should be checked before writes when the dataset is an
   append-only historical chain.
-- Log useful duplicate-key or coverage facts through the DataNode logger.
+- Log useful duplicate-key or coverage facts through the TimeIndexTableUpdater logger.
 
 Use `AssetSnapshot` as the canonical example for append-only historical
 representations of an asset.
@@ -384,8 +384,8 @@ representations of an asset.
 
 - Do not put `time_index_name`, `index_names`, `records`, `node_metadata`,
   `column_dtypes_map`, nullable-column maps, or foreign keys on a
-  `DataNodeConfiguration`.
-- Do not add DataNode-side constants for index names, time-index names, dtype
+  `TimeIndexTableUpdateConfig`.
+- Do not add updater-side constants for index names, time-index names, dtype
   maps, nullable columns, or source-table foreign keys.
 - Do not add fake or placeholder rows for schema setup.
 - Do not add `build_schema_bootstrap_frame(...)`,
@@ -424,4 +424,4 @@ Before marking work complete:
 - Tests cover frame validation, storage columns, foreign keys, namespace identifier
   resolution, and any duplicate-backend-key guard.
 - Docs/examples use the user-facing `msm.api` asset API where assets are
-  created before DataNode writes.
+  created before TimeIndexTableUpdater writes.

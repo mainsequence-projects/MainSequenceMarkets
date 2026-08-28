@@ -125,7 +125,7 @@ def example_index_convention_dump() -> dict[str, Any]:
 
 
 class MockFlatForwardDiscountCurvesNode(DiscountCurvesNode):
-    """Example discount-curve DataNode backed by a sampled QuantLib flat-forward curve."""
+    """Example discount-curve TimeIndexTableUpdater backed by a sampled QuantLib flat-forward curve."""
 
     def __init__(
         self,
@@ -171,7 +171,7 @@ class MockFlatForwardDiscountCurvesNode(DiscountCurvesNode):
 
 
 class MockIndexFixingsNode(FixingRatesNode):
-    """Example index-fixings DataNode that emits deterministic mock rates."""
+    """Example index-fixings TimeIndexTableUpdater that emits deterministic mock rates."""
 
     def __init__(
         self,

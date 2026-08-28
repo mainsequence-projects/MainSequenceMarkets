@@ -10,14 +10,14 @@ from pydantic import Field
 
 from mainsequence.client.metatables import UpdateStatistics
 from mainsequence.meta_tables import (
-    DataNode,
-    DataNodeConfiguration,
+    TimeIndexTableUpdater,
+    TimeIndexTableUpdateConfig,
     PlatformTimeIndexMetaTable,
 )
 from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
-from msm.data_nodes.utils.storage_metadata import (
-    storage_data_node_description,
-    storage_data_node_identifier,
+from msm.data_nodes.utils.output_metadata import (
+    storage_table_description,
+    storage_table_identifier,
 )
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.settings import (
@@ -25,11 +25,11 @@ from msm.settings import (
 )
 
 MarketAssetScopeItem = str | Mapping[str, Any] | Any
-StorageTable = type[PlatformTimeIndexMetaTable]
+OutputTable = type[PlatformTimeIndexMetaTable]
 UniqueIdentifierRangeMap = dict[str, dict[str, Any]]
 
 
-class AssetIndexedDataNodeConfiguration(DataNodeConfiguration):
+class AssetIndexedDataNodeConfiguration(TimeIndexTableUpdateConfig):
     """Base configuration for DataNodes scoped to platform assets."""
 
     asset_list: list[MarketAssetScopeItem] | None = Field(
@@ -42,9 +42,9 @@ class AssetIndexedDataNodeConfiguration(DataNodeConfiguration):
     )
 
 
-class AssetIndexedDataNode(DataNode):
+class AssetIndexedDataNode(TimeIndexTableUpdater):
     """
-    DataNode boundary for datasets whose identity dimension is a platform asset.
+    TimeIndexTableUpdater boundary for datasets whose identity dimension is a platform asset.
 
     Core TDAG works with generic dimensions. This class owns the market-specific
     contract that platform assets are stored under the ``asset_identifier``
@@ -61,39 +61,39 @@ class AssetIndexedDataNode(DataNode):
     def __init__(
         self,
         config: AssetIndexedDataNodeConfiguration,
-        storage_table: StorageTable | None = None,
+        output_table: OutputTable | None = None,
         *,
         hash_namespace: str | None = None,
     ):
         super().__init__(
             config=config,
-            storage_table=storage_table or self._required_storage_table(),
+            output_table=output_table or self._required_output_table(),
             hash_namespace=hash_namespace,
         )
 
     @classmethod
-    def _required_storage_table(cls) -> StorageTable:
+    def _required_output_table(cls) -> OutputTable:
         """Return the storage class that owns this node's schema contract."""
 
-        raise NotImplementedError(f"{cls.__name__} must define _required_storage_table().")
+        raise NotImplementedError(f"{cls.__name__} must define _required_output_table().")
 
     @classmethod
     def _default_identifier(cls) -> str:
-        return storage_data_node_identifier(cls._required_storage_table())
+        return storage_table_identifier(cls._required_output_table())
 
     @classmethod
     def _default_description(cls) -> str:
-        return storage_data_node_description(cls._required_storage_table())
+        return storage_table_description(cls._required_output_table())
 
     @classmethod
     def _column_dtypes_map_for_storage(
         cls,
-        storage_table: StorageTable | None = None,
+        output_table: OutputTable | None = None,
     ) -> dict[str, str]:
-        return storage_column_dtypes_map(storage_table or cls._required_storage_table())
+        return storage_column_dtypes_map(output_table or cls._required_output_table())
 
     def _bound_column_dtypes_map(self) -> dict[str, str]:
-        return storage_column_dtypes_map(self.storage_table)
+        return storage_column_dtypes_map(self.output_table)
 
     @classmethod
     def _asset_unique_identifier(cls, asset: MarketAssetScopeItem) -> str:
@@ -126,7 +126,7 @@ class AssetIndexedDataNode(DataNode):
 
         assets = list(asset_list)
         if not assets and not allow_empty:
-            raise ValueError("asset_list cannot be empty for an asset-indexed DataNode.")
+            raise ValueError("asset_list cannot be empty for an asset-indexed TimeIndexTableUpdater.")
 
         seen_unique_identifiers: set[str] = set()
         for position, asset in enumerate(assets):
@@ -167,7 +167,7 @@ class AssetIndexedDataNode(DataNode):
         cls,
         asset_list: Iterable[MarketAssetScopeItem] | None,
     ) -> dict[str, list[str]] | None:
-        """Translate an asset scope into canonical DataNode dimension filters."""
+        """Translate an asset scope into canonical TimeIndexTableUpdater dimension filters."""
         unique_identifiers = cls.asset_unique_identifiers(asset_list)
         if unique_identifiers is None:
             return None
@@ -267,14 +267,14 @@ class AssetIndexedDataNode(DataNode):
 
     def get_asset_list(self) -> list[MarketAssetScopeItem] | None:
         """
-        Return and validate the asset scope for this market DataNode.
+        Return and validate the asset scope for this market TimeIndexTableUpdater.
 
         Subclasses may override this to resolve assets from an asset category,
         account, portfolio, or instrument source.
         """
         asset_list = getattr(self, "asset_list", None)
         if asset_list is None:
-            config = self._get_data_node_configuration()
+            config = self._get_table_update_configuration()
             asset_list = getattr(config, "asset_list", None) if config is not None else None
 
         return self.validate_asset_list(asset_list)
@@ -344,8 +344,8 @@ class AssetIndexedDataNode(DataNode):
         return self.asset_dimension_filters(self.get_asset_list())
 
     def _storage_index_names(self) -> list[str] | None:
-        storage_table = getattr(self, "_storage_table", None)
-        index_names = getattr(storage_table, "__index_names__", None)
+        output_table = getattr(self, "_output_table", None)
+        index_names = getattr(output_table, "__index_names__", None)
         return list(index_names) if index_names else None
 
     def _asset_identity_dimensions(self) -> list[str]:
@@ -373,7 +373,7 @@ class AssetIndexedDataNode(DataNode):
 
         if self.asset_identity_dimension not in index_names:
             raise ValueError(
-                f"{self.__class__.__name__} is asset-scoped but storage_table index "
+                f"{self.__class__.__name__} is asset-scoped but output_table index "
                 f"names do not include {self.asset_identity_dimension!r}: {index_names!r}."
             )
 
@@ -451,7 +451,7 @@ class AssetIndexedDataNode(DataNode):
         assets = (
             self.get_asset_list() if asset_list is None else self.validate_asset_list(asset_list)
         )
-        return self.local_persist_manager.get_last_observation(
+        return self.update_manager.get_last_observation(
             dimension_filters=self.asset_dimension_filters(assets),
         )
 

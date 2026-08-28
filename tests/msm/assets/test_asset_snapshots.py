@@ -18,10 +18,24 @@ from msm.data_nodes.assets import (
     AssetSnapshot,
     AssetSnapshotConfiguration,
 )
+from msm.data_nodes.assets.snapshots import AssetTimestampedDataNode
 from msm.data_nodes.assets.storage import AssetSnapshotsStorage
 from msm.services.assets.openfigi import build_asset_snapshot_frame_from_openfigi_result
 from msm_pricing.data_nodes import AssetPricingDetail, AssetPricingDetailConfiguration
 from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
+
+
+def test_asset_snapshot_uses_table_update_run_hook(monkeypatch) -> None:
+    table_update_run = object()
+    monkeypatch.setattr(
+        AssetTimestampedDataNode,
+        "_execute_local_update",
+        lambda _self, *, table_update_run: table_update_run,
+    )
+    node = object.__new__(AssetSnapshot)
+
+    assert node._execute_local_update(table_update_run=table_update_run) is table_update_run
+    assert node._verify_backend_snapshot_index is False
 
 
 def test_asset_snapshot_build_frame_validates_storage_index() -> None:
@@ -54,7 +68,7 @@ def test_asset_snapshot_resolves_storage_first_surface(monkeypatch) -> None:
         classmethod(lambda _cls: registered_identifier),
     )
 
-    assert AssetSnapshot._required_storage_table() is AssetSnapshotsStorage
+    assert AssetSnapshot._required_output_table() is AssetSnapshotsStorage
     assert "__data_node_identifier__" not in AssetSnapshot.__dict__
     assert AssetSnapshot._default_identifier() == registered_identifier
     assert AssetSnapshot._default_description() == AssetSnapshotsStorage.__metatable_description__
@@ -71,7 +85,7 @@ def test_asset_snapshot_resolves_storage_first_surface(monkeypatch) -> None:
 
 
 def test_asset_pricing_detail_resolves_storage_first_surface() -> None:
-    assert AssetPricingDetail._required_storage_table() is AssetPricingDetailsStorage
+    assert AssetPricingDetail._required_output_table() is AssetPricingDetailsStorage
     assert issubclass(
         AssetPricingDetail.configuration_class,
         AssetPricingDetailConfiguration,
@@ -157,8 +171,8 @@ def test_asset_snapshot_existing_backend_index_keys_uses_one_compiled_query(monk
     )
 
     node = object.__new__(AssetSnapshot)
-    node._storage_table = AssetSnapshotsStorage
-    node._local_persist_manager = SimpleNamespace(storage_metadata=object())
+    node._output_table = AssetSnapshotsStorage
+    node._update_manager = SimpleNamespace(output_metadata=object())
     node._log_existing_asset_snapshot_key = Mock()
     node.get_df_between_dates = Mock(side_effect=AssertionError("per-key reads are too slow"))
 
@@ -187,7 +201,7 @@ def test_asset_snapshot_existing_backend_index_keys_uses_one_compiled_query(monk
     existing_keys = node.existing_backend_index_keys(frame)
 
     assert existing_keys == [(second_time.isoformat(), "asset-b")]
-    bind_meta_table.assert_called_once_with(node.local_persist_manager.storage_metadata)
+    bind_meta_table.assert_called_once_with(node.update_manager.output_metadata)
     compile_statement.assert_called_once()
     execute_operation.assert_called_once()
     node.get_df_between_dates.assert_not_called()

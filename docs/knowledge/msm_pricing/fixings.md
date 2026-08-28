@@ -20,7 +20,7 @@ not a separate `Rate` model.
 +-----------------------------+                                  +-----------------------------+
 ```
 
-The fixing DataNode contract is:
+The fixing TimeIndexTableUpdater contract is:
 
 ```text
 FixingRatesNode

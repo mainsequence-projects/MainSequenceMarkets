@@ -741,7 +741,7 @@ sub-stages. Do not land it as one opaque port from the downstream project.
 - [x] Export key-node bump helpers from
   `src/msm_pricing/scenarios/curves/__init__.py` only after the helper contract
   is tested. Do not export them from `msm_pricing.data_nodes.curves`; they are
-  scenario mechanics, not DataNode storage contracts.
+  scenario mechanics, not time-index-table output contracts.
 
 #### Stage 4.4: Scenario Curve Handle Construction
 

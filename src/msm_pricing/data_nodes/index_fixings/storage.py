@@ -1,4 +1,4 @@
-"""Pricing index-fixing DataNode storage contracts."""
+"""Pricing index-fixing time-index-table output contracts."""
 
 from __future__ import annotations
 

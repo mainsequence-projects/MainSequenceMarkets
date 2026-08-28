@@ -1,11 +1,11 @@
 ---
 name: mainsequence-markets-portfolio-workflow
-description: Use this skill when creating, extending, reviewing, or documenting msm_portfolios workflows, including portfolio DataNodes, portfolio metadata, portfolio construction examples, contributed price/signal nodes, and portfolio calculations that depend on core PortfolioTable identity.
+description: Use this skill when creating, extending, reviewing, or documenting msm_portfolios workflows, including portfolio TimeIndexTableUpdaters, portfolio metadata, portfolio construction examples, contributed price/signal nodes, and portfolio calculations that depend on core PortfolioTable identity.
 ---
 
 # Main Sequence Markets Portfolio Workflow
 
-Use this skill for `msm_portfolios` concepts: portfolio calculation DataNodes,
+Use this skill for `msm_portfolios` concepts: portfolio calculation TimeIndexTableUpdaters,
 portfolio metadata, rebalance/signal workflows, contributed portfolio price
 sources, and portfolio classification workflows. Core `msm` owns
 `PortfolioTable` identity, `PortfolioGroupTable` classification rows, account
@@ -163,7 +163,7 @@ cleared before dependency execution.
 Portfolio construction must consume valuations through an explicit dependency:
 
 ```text
-source prices / valuations DataNode -> optional InterpolatedPrices -> SignalWeights -> PortfoliosDataNode
+source prices / valuations TimeIndexTableUpdater -> optional InterpolatedPrices -> SignalWeights -> PortfoliosDataNode
 ```
 
 `PortfoliosDataNode` must not construct `InterpolatedPrices` from
@@ -177,7 +177,7 @@ Current portfolio build contract:
 
 ```text
 PortfolioBuildConfiguration
-  valuation_source_instance DataNode | APIDataNode
+  valuation_source_instance TimeIndexTableUpdater | TimeIndexTableRef
   valuation_column          str, defaults to close
   price_alignment_policy    PriceAlignmentPolicy
   portfolio_prices_frequency
@@ -189,11 +189,11 @@ Rules:
 
 - `PortfolioBuildConfiguration` must not contain `assets_configuration`.
 - `valuation_source_instance` is the recoverable upstream valuation dependency.
-  It may be `InterpolatedPrices`, another compatible DataNode, or an
-  `APIDataNode` built from a registered TimeIndexMetaTable UID.
-- When `valuation_source_instance` is an `APIDataNode`, `PortfoliosDataNode`
+  It may be `InterpolatedPrices`, another compatible TimeIndexTableUpdater, or an
+  `TimeIndexTableRef` built from a registered TimeIndexMetaTable UID.
+- When `valuation_source_instance` is an `TimeIndexTableRef`, `PortfoliosDataNode`
   loads the source table update statistics before calculating the update window.
-  Normal `DataNode` valuation sources must already have dependency
+  Normal `TimeIndexTableUpdater` valuation sources must already have dependency
   `update_statistics` populated by the SDK runner.
 - `valuation_column` is a strict string column name. Portfolio core must not
   force `close`, `open`, `vwap`, or any other OHLC enum. Specific contributed
@@ -207,7 +207,7 @@ Rules:
 - `InterpolatedPricesConfig` accepts either `source_price_instance` or
   `source_time_index_meta_table_uid`. Use the instance path when the raw/source
   price node is already in the graph; use the UID path only to attach an
-  already registered compatible source table through `APIDataNode`.
+  already registered compatible source table through `TimeIndexTableRef`.
 - `InterpolatedPrices.dependencies()` must expose the resolved source price
   object in both cases.
 - Persistent interpolation belongs to `msm_portfolios.contrib.prices`, not to
@@ -247,7 +247,7 @@ Rules:
   policy logs and continues when the downstream calculation can still produce a
   usable frame.
 - Local reindex/forward-fill inside `PortfoliosDataNode` is only calculation
-  alignment. It must not create persistent storage or hide a valuation DataNode.
+  alignment. It must not create persistent storage or hide a valuation TimeIndexTableUpdater.
 - `PortfoliosDataNode.run(..., update_pointers=True)` is the default portfolio
   workflow behavior. After the graph publishes, it must upsert the resolved
   `PortfolioTable` row with `signal_uid`, `signal_weights_data_node_uid`,
@@ -255,10 +255,10 @@ Rules:
   should not perform this final pointer upsert manually.
 - If the run produces no new executed weights, pointer update must preserve the
   existing `PortfolioTable.portfolio_weights_data_node_uid` instead of
-  requiring a fresh `PortfolioWeights` DataNodeUpdate.
+  requiring a fresh `PortfolioWeights` TimeIndexTableUpdate.
 - API reads for a portfolio's signal weights must filter by
   `PortfolioTable.signal_uid`. Do not derive the signal from
-  `DataNodeUpdate.build_configuration`, runtime update statistics, or distinct
+  `TimeIndexTableUpdate.build_configuration`, runtime update statistics, or distinct
   `SignalWeightsStorage.signal_uid` values because signal storage is shared by
   many signals.
 

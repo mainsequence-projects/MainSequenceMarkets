@@ -26,28 +26,28 @@ class AssetDataNodeConfiguration(StampedDataNodeConfiguration, AssetIndexedDataN
     """Configuration for timestamped asset DataNodes.
 
     Storage-first: the column schema, index names, and the canonical
-    ``Asset.unique_identifier`` foreign key live on the ``storage_table``
+    ``Asset.unique_identifier`` foreign key live on the ``output_table``
     (an ``AssetSnapshotsStorage``-style ``PlatformTimeIndexMetaTable`` class),
     not on this configuration.
     """
 
     reference_dimension: ClassVar[str] = ASSET_IDENTIFIER_DIMENSION
-    frame_label: ClassVar[str] = "Asset DataNode"
+    frame_label: ClassVar[str] = "Asset TimeIndexTableUpdater"
 
 
 class AssetSnapshotConfiguration(AssetDataNodeConfiguration):
-    """Configuration for the canonical AssetSnapshot DataNode."""
+    """Configuration for the canonical AssetSnapshot TimeIndexTableUpdater."""
 
 
 class AssetTimestampedFrameMixin(StampedFrameMixin):
     """Shared frame/config behavior for timestamped asset DataNodes."""
 
     configuration_class: ClassVar[type[AssetDataNodeConfiguration]] = AssetDataNodeConfiguration
-    frame_label: ClassVar[str] = "Asset DataNode"
+    frame_label: ClassVar[str] = "Asset TimeIndexTableUpdater"
 
 
 class AssetTimestampedDataNode(AssetTimestampedFrameMixin, AssetIndexedDataNode):
-    """Base asset-indexed DataNode for timestamped facts keyed by asset_identifier."""
+    """Base asset-indexed TimeIndexTableUpdater for timestamped facts keyed by asset_identifier."""
 
     def dependencies(self) -> dict:
         return {}
@@ -93,15 +93,15 @@ class AssetSnapshot(AssetTimestampedDataNode):
         *,
         verify_existing: bool = True,
     ) -> AssetSnapshot:
-        """Validate snapshot row payloads and attach them to this DataNode."""
+        """Validate snapshot row payloads and attach them to this TimeIndexTableUpdater."""
 
         self._verify_existing_snapshot_index = verify_existing
         return self.set_frame(self.build_frame(snapshots))
 
-    def _execute_local_update(self, historical_update: Any):
+    def _execute_local_update(self, table_update_run: Any):
         self._verify_backend_snapshot_index = True
         try:
-            return super()._execute_local_update(historical_update=historical_update)
+            return super()._execute_local_update(table_update_run=table_update_run)
         finally:
             self._verify_backend_snapshot_index = False
 
@@ -139,7 +139,7 @@ class AssetSnapshot(AssetTimestampedDataNode):
         )
 
         candidate_keys = _asset_snapshot_index_keys(
-            self.validate_frame(frame, storage_table=self.storage_table)
+            self.validate_frame(frame, output_table=self.output_table)
         )
         if not candidate_keys:
             return []
@@ -148,7 +148,7 @@ class AssetSnapshot(AssetTimestampedDataNode):
         times = sorted({time_index for time_index, _ in candidate_key_set})
         asset_identifiers = sorted({asset_identifier for _, asset_identifier in candidate_key_set})
 
-        AssetSnapshotsStorage._bind_meta_table(self.local_persist_manager.storage_metadata)
+        AssetSnapshotsStorage._bind_meta_table(self.update_manager.output_metadata)
         context = MarketsRepositoryContext()
         statement = (
             select(
@@ -206,7 +206,7 @@ class AssetSnapshot(AssetTimestampedDataNode):
         )
 
     @classmethod
-    def _required_storage_table(cls) -> type[AssetSnapshotsStorage]:
+    def _required_output_table(cls) -> type[AssetSnapshotsStorage]:
         return AssetSnapshotsStorage
 
 

@@ -26,7 +26,7 @@ _EXPORTS = {
     "IndexValuesStorage": ".indices",
     "configured_index_values_storage": ".indices",
     "index_values_storage_identity_components": ".indices",
-    "index_values_storage_table_name": ".indices",
+    "index_values_output_table_name": ".indices",
     "normalize_index_values_frame": ".indices",
     "OrderEvents": ".execution",
     "Orders": ".execution",

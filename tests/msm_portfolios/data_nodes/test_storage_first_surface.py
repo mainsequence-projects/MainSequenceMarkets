@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pandas as pd
 
-from mainsequence.meta_tables import APIDataNode
+from mainsequence.client.metatables import TimeIndexMetaTable
+from mainsequence.meta_tables import TimeIndexTableRef
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.models.assets.core import AssetTable
 from msm.models.portfolios import PortfolioTable
@@ -25,7 +24,7 @@ from msm_portfolios.data_nodes.prices.storage import (
     ExternalPricesStorage,
     InterpolatedPricesStorage,
     configured_interpolated_prices_storage,
-    interpolated_prices_storage_table_name,
+    interpolated_prices_output_table_name,
 )
 from msm_portfolios.data_nodes.signals import SignalWeights
 from msm_portfolios.data_nodes.signals.storage import (
@@ -45,21 +44,21 @@ def test_portfolio_nodes_expose_storage_first_surface(monkeypatch) -> None:
         assert "__data_node_identifier__" not in node_cls.__dict__
         assert "_default_identifier" not in node_cls.__dict__
         assert "_default_description" not in node_cls.__dict__
-        storage_table = node_cls._required_storage_table()
-        registered_identifier = f"registered.{storage_table.metatable_identifier()}"
+        output_table = node_cls._required_output_table()
+        registered_identifier = f"registered.{output_table.metatable_identifier()}"
         monkeypatch.setattr(
-            storage_table,
+            output_table,
             "get_identifier",
             classmethod(lambda _cls, identifier=registered_identifier: identifier),
         )
         assert node_cls._default_identifier() == registered_identifier
-        assert node_cls._default_description() == storage_table.__metatable_description__
-        assert storage_table in registered
+        assert node_cls._default_description() == output_table.__metatable_description__
+        assert output_table in registered
         assert not hasattr(node_cls, "_required_column_dtypes_map")
         assert not hasattr(node_cls, "_required_index_names")
         assert not hasattr(node_cls, "_required_time_index_name")
-        assert node_cls._column_dtypes_map_for_storage(storage_table) == storage_column_dtypes_map(
-            storage_table
+        assert node_cls._column_dtypes_map_for_storage(output_table) == storage_column_dtypes_map(
+            output_table
         )
         assert not hasattr(node_cls, "build_mock_frame")
         assert not hasattr(node_cls, "build_schema_bootstrap_frame")
@@ -82,8 +81,8 @@ def test_external_price_storage_is_registered_by_portfolio_provider() -> None:
 def test_portfolio_price_storage_has_asset_identifier_foreign_key() -> None:
     expected_target = f"{AssetTable.__table__.fullname}.unique_identifier"
 
-    for storage_table in (ExternalPricesStorage, InterpolatedPricesStorage):
-        foreign_keys = storage_table.__table__.c.asset_identifier.foreign_keys
+    for output_table in (ExternalPricesStorage, InterpolatedPricesStorage):
+        foreign_keys = output_table.__table__.c.asset_identifier.foreign_keys
         assert len(foreign_keys) == 1
         assert next(iter(foreign_keys)).target_fullname == expected_target
 
@@ -98,15 +97,13 @@ def test_portfolio_values_storage_has_portfolio_identifier_foreign_key() -> None
 
 
 def test_interpolated_prices_accepts_registered_top_level_source_cadence() -> None:
-    source_prices_ts = SimpleNamespace(
-        uid="source-uid",
-        time_indexed_profile=None,
-        cadence="1D",
-    )
-    source_price = APIDataNode(
-        data_source_uid="source-data-source",
-        physical_table_name="source-prices",
-        storage_table=source_prices_ts,
+    source_price = TimeIndexTableRef(
+        output_table=TimeIndexMetaTable.model_construct(
+            uid="source-uid",
+            data_source_uid="source-data-source",
+            time_indexed_profile=None,
+            cadence="1D",
+        )
     )
 
     assert (
@@ -155,7 +152,7 @@ def test_interpolated_prices_normalizes_time_index_output_to_ns_utc() -> None:
     assert str(normalized["open_time"].dtype) == "datetime64[ns, UTC]"
 
 
-def test_interpolated_price_policy_changes_configured_storage_table_name() -> None:
+def test_interpolated_price_policy_changes_configured_output_table_name() -> None:
     daily_storage = configured_interpolated_prices_storage(
         source_time_index_meta_table_uid="source-uid",
         source_cadence="1d",
@@ -169,7 +166,7 @@ def test_interpolated_price_policy_changes_configured_storage_table_name() -> No
         intraday_bar_interpolation_rule="ffill",
     )
 
-    assert daily_storage.__table__.name == interpolated_prices_storage_table_name(
+    assert daily_storage.__table__.name == interpolated_prices_output_table_name(
         source_time_index_meta_table_uid="source-uid",
         source_cadence="1d",
         upsample_frequency_id="1d",

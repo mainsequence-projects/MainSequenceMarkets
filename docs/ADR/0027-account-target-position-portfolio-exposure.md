@@ -86,7 +86,7 @@ TargetPositionsStorage
   metadata_json
 ```
 
-The DataNode storage index is:
+The time-index-table output index is:
 
 ```text
 (time_index, position_set_uid, target_type, target_uid)
@@ -123,7 +123,7 @@ Therefore:
   `AccountTargetAllocationTable`, `AccountHoldingsSetTable`, and
   `PositionSetTable` remain in core `msm`.
 - `PortfolioTable` remains in core `msm` as portfolio identity/reference data.
-- The expanded portfolio-aware target-position storage and its DataNode belong
+- The expanded portfolio-aware target-position storage and its TimeIndexTableUpdater belong
   to core `msm`, because account target allocation is an account concept.
 - `msm_portfolios` owns portfolio calculation DataNodes, strategies, and signal
   metadata. ADR 0029 moves virtual-fund allocation state into core `msm`

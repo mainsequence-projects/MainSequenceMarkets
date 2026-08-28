@@ -5,7 +5,7 @@ from .storage import (
     InterpolatedPricesStorage,
     configured_interpolated_prices_storage,
     interpolated_prices_storage_identity_components,
-    interpolated_prices_storage_table_name,
+    interpolated_prices_output_table_name,
 )
 
 __all__ = [
@@ -13,5 +13,5 @@ __all__ = [
     "InterpolatedPricesStorage",
     "configured_interpolated_prices_storage",
     "interpolated_prices_storage_identity_components",
-    "interpolated_prices_storage_table_name",
+    "interpolated_prices_output_table_name",
 ]

@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-import mainsequence.meta_tables.data_nodes.build_operations as build_operations
+import mainsequence.meta_tables.time_index_table_updates.configuration as update_configuration
 
 from .base import _drop_excluded_keys
 from .constants import PORTFOLIO_CONFIGURATION_HASH_EXCLUDED_KEYS
@@ -15,7 +15,7 @@ def canonical_portfolio_configuration(
 ) -> dict[str, Any]:
     """Return the canonical hash payload for a Portfolios portfolio configuration."""
     payload = _portfolio_configuration_payload(portfolio_configuration)
-    serialized_payload = build_operations.Serializer().serialize_init_kwargs(payload)
+    serialized_payload = update_configuration.Serializer().serialize_init_kwargs(payload)
     return _drop_excluded_keys(
         dict(serialized_payload),
         excluded_keys=PORTFOLIO_CONFIGURATION_HASH_EXCLUDED_KEYS,
@@ -25,7 +25,7 @@ def canonical_portfolio_configuration(
 def compute_portfolio_configuration_hash(portfolio_configuration: Any) -> str:
     """Compute the deterministic identity hash for a Portfolios portfolio config."""
     payload = canonical_portfolio_configuration(portfolio_configuration)
-    _update_hash, remote_identity_hash = build_operations.hash_signature(payload)
+    _update_hash, remote_identity_hash = update_configuration.hash_signature(payload)
     return remote_identity_hash
 
 

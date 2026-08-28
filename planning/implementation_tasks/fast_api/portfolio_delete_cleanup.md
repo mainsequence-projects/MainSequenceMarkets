@@ -150,7 +150,7 @@ helpers and validate the returned response model.
 
 ### Storage Cleanup Operation
 
-Do not use raw SQL strings and do not use compiled SQL deletes for DataNode
+Do not use raw SQL strings and do not use compiled SQL deletes for TimeIndexTableUpdater
 storage cleanup. Historical `PortfolioWeightsStorage` and `PortfoliosStorage`
 rows must be deleted through each storage table's
 `TimeIndexMetaTable.delete_after_date(...)`, scoped by

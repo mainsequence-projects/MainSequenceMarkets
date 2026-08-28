@@ -16,9 +16,9 @@ layer in detail.
 
 [ADR 0026](../../ADR/0026-explicit-pricing-market-data-sets.md) defines the
 implemented pricing market-data set architecture. Pricing no longer stores
-runtime source selection as loose `context_key` plus DataNode identifier
+runtime source selection as loose `context_key` plus TimeIndexTableUpdater identifier
 strings. It stores first-class market-data set rows and concept bindings keyed
-by backend DataNode storage table UID.
+by backend time-index-table output table UID.
 
 [ADR 0033](../../ADR/0033-pricing-valuation-position-boundary.md) defines the
 target boundary for valuation baskets. Pricing should value transient
@@ -187,7 +187,7 @@ Cardinalities that matter:
 
 The complete fixed-income pricing path, and how the pricing resolver walks it,
 is documented in [Runtime Resolution](runtime_resolution.md). The market-data
-set rows and concept bindings that supply DataNode locations to that path are
+set rows and concept bindings that supply TimeIndexTableUpdater locations to that path are
 documented in [Market Data Sets](market_data_sets.md).
 
 Registration order matters because pricing MetaTables reference core tables:
@@ -243,7 +243,7 @@ Do not reintroduce these patterns:
 - curve rows stored as assets;
 - Main Sequence Constant names as index or curve identity;
 - a persisted `IndexSpec` registry with `curve_uid`;
-- source-specific builder names inside hashed DataNode configuration.
+- source-specific builder names inside hashed TimeIndexTableUpdater configuration.
 
 The old `IndexSpec` shortcut bundled conventions and curve identity in memory.
 The persistent contract is now explicit:

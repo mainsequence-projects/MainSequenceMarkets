@@ -200,14 +200,14 @@ formula-definition UID. Custom publication rejects a supplied definition UID.
 
 ```python
 formula_definition_uids: tuple[UUID, ...]
-source_storage_tables: tuple[type[PlatformTimeIndexMetaTable], ...]
+source_output_tables: tuple[type[PlatformTimeIndexMetaTable], ...]
 ```
 
 Construction requires the registered source-storage UID set to equal the
 persisted formula-input MetaTable UID set. It also verifies exact source grain,
 numeric observables, unique storage UIDs, and constructs every dependency
 before `update()`. Formula versions and source storage classes therefore
-participate in the DataNode update identity.
+participate in the TimeIndexTableUpdater update identity.
 
 Custom code publishes with `IndexValuesDataNode` and does not create a fake
 formula.
@@ -286,7 +286,7 @@ compatibility code is not provided.
 - [x] Observation units and the unit registry are removed.
 - [x] Asset and Index related-table discovery share filters and a neutral
   response contract.
-- [x] Formula DataNode dependencies are fixed before update execution.
+- [x] Formula TimeIndexTableUpdater dependencies are fixed before update execution.
 - [x] Self-financing is demonstrated through Portfolio-owned calculation and
   custom Index publication.
 - [x] Public imports, FastAPI routes, OpenAPI, examples, tutorial, concept

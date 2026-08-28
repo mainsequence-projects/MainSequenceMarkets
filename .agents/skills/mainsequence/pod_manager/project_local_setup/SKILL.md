@@ -299,7 +299,7 @@ Then route work according to intent:
 
 - use `project-design` for architecture and the Project Blueprint;
 - use the relevant project or SDK execution skills for accepted MetaTable,
-  DataNode, job, API, CLI, project-to-agent, or static-site components;
+  TimeIndexTableUpdater, job, API, CLI, project-to-agent, or static-site components;
 - use `project-to-agent` only when the Project itself must become a coding
   agent; and
 - use an installed SDK's `project-maintenance` skill for SDK-version-specific

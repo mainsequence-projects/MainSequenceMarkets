@@ -555,7 +555,7 @@ RESOURCE_DISCOVERY_SPECS: dict[str, ResourceDiscoverySpec] = {
         columns=(
             _column("concept_key", "Concept", importance="primary", filter_key="concept_key"),
             _column("source", "Source"),
-            _column("data_node_uid", "DataNode"),
+            _column("data_node_uid", "TimeIndexTableUpdater"),
             _column("storage_table_identifier", "Storage table"),
             _column("uid", "UID"),
         ),
@@ -568,7 +568,7 @@ RESOURCE_DISCOVERY_SPECS: dict[str, ResourceDiscoverySpec] = {
         columns=(
             _column("concept_key", "Concept", importance="primary"),
             _column("source", "Source"),
-            _column("data_node_uid", "DataNode"),
+            _column("data_node_uid", "TimeIndexTableUpdater"),
             _column("storage_table_identifier", "Storage table"),
             _column("uid", "UID"),
         ),

@@ -5,49 +5,49 @@ from typing import ClassVar
 import pandas as pd
 
 from mainsequence.meta_tables import (
-    DataNode,
-    DataNodeConfiguration,
+    TimeIndexTableUpdater,
+    TimeIndexTableUpdateConfig,
     PlatformTimeIndexMetaTable,
 )
 from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
-from msm.data_nodes.utils.storage_metadata import (
-    storage_data_node_description,
-    storage_data_node_identifier,
+from msm.data_nodes.utils.output_metadata import (
+    storage_table_description,
+    storage_table_identifier,
 )
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
 
-StorageTable = type[PlatformTimeIndexMetaTable]
+OutputTable = type[PlatformTimeIndexMetaTable]
 
 
-class StampedDataNodeConfiguration(DataNodeConfiguration):
+class StampedDataNodeConfiguration(TimeIndexTableUpdateConfig):
     """Configuration for timestamped reference-keyed markets DataNodes.
 
     Storage-first: the column schema, index names, and time index live on the
-    ``storage_table`` (a ``PlatformTimeIndexMetaTable`` class), not on the
+    ``output_table`` (a ``PlatformTimeIndexMetaTable`` class), not on the
     configuration. This configuration only carries update-scoped build fields;
-    the identifier and descriptive metadata live on the ``storage_table``.
+    the identifier and descriptive metadata live on the ``output_table``.
     """
 
     reference_dimension: ClassVar[str] = "unique_identifier"
-    frame_label: ClassVar[str] = "Stamped DataNode"
+    frame_label: ClassVar[str] = "Stamped TimeIndexTableUpdater"
 
 
 class StampedFrameMixin:
     """Shared frame/config behavior for timestamped markets DataNodes."""
 
     configuration_class: ClassVar[type[StampedDataNodeConfiguration]] = StampedDataNodeConfiguration
-    frame_label: ClassVar[str] = "Stamped DataNode"
+    frame_label: ClassVar[str] = "Stamped TimeIndexTableUpdater"
 
     def __init__(
         self,
         config: StampedDataNodeConfiguration | None = None,
-        storage_table: StorageTable | None = None,
+        output_table: OutputTable | None = None,
         *,
         hash_namespace: str | None = None,
     ):
         super().__init__(
             config=config or self.default_config(),
-            storage_table=storage_table or self._required_storage_table(),
+            output_table=output_table or self._required_output_table(),
             hash_namespace=hash_namespace,
         )
 
@@ -56,18 +56,18 @@ class StampedFrameMixin:
         return cls.configuration_class()
 
     @classmethod
-    def _required_storage_table(cls) -> StorageTable:
+    def _required_output_table(cls) -> OutputTable:
         """Return the storage class that owns this node's schema contract."""
 
-        raise NotImplementedError(f"{cls.__name__} must define _required_storage_table().")
+        raise NotImplementedError(f"{cls.__name__} must define _required_output_table().")
 
     @classmethod
     def _default_identifier(cls) -> str:
-        return storage_data_node_identifier(cls._required_storage_table())
+        return storage_table_identifier(cls._required_output_table())
 
     @classmethod
     def _default_description(cls) -> str:
-        return storage_data_node_description(cls._required_storage_table())
+        return storage_table_description(cls._required_output_table())
 
     def set_frame(self, frame: pd.DataFrame):
         self._stamped_data_frame = frame
@@ -85,7 +85,7 @@ class StampedFrameMixin:
     def update(self) -> pd.DataFrame:
         return normalize_stamped_frame(
             self.get_frame(),
-            storage_table=self.storage_table,
+            output_table=self.output_table,
             frame_label=self.frame_label,
         )
 
@@ -94,18 +94,18 @@ class StampedFrameMixin:
         cls,
         frame: pd.DataFrame,
         *,
-        storage_table: StorageTable | None = None,
+        output_table: OutputTable | None = None,
     ) -> pd.DataFrame:
-        storage_table = storage_table or cls._required_storage_table()
+        output_table = output_table or cls._required_output_table()
         return normalize_stamped_frame(
             frame,
-            storage_table=storage_table,
+            output_table=output_table,
             frame_label=cls.frame_label,
         )
 
 
-class StampedDataNode(StampedFrameMixin, DataNode):
-    """Base DataNode for timestamped facts keyed by a reference unique identifier."""
+class StampedDataNode(StampedFrameMixin, TimeIndexTableUpdater):
+    """Base TimeIndexTableUpdater for timestamped facts keyed by a reference unique identifier."""
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -118,22 +118,22 @@ class StampedDataNode(StampedFrameMixin, DataNode):
 def normalize_stamped_frame(
     frame: pd.DataFrame,
     *,
-    storage_table: StorageTable,
+    output_table: OutputTable,
     frame_label: str | None = None,
 ) -> pd.DataFrame:
-    """Normalize a frame to the storage_table contract (columns, index, dtypes).
+    """Normalize a frame to the output_table contract (columns, index, dtypes).
 
-    Schema is sourced from the ``storage_table`` class — its ``__table__``
+    Schema is sourced from the ``output_table`` class — its ``__table__``
     columns, ``__index_names__``, and ``__time_index_name__`` — rather than from
     a configuration ``records`` list. Returns a frame indexed by the storage
     index with the time index as ``datetime64[ns, UTC]`` and identity dimensions
     cast to ``string``.
     """
 
-    index_names = list(storage_table.__index_names__)
-    time_index_name = storage_table.__time_index_name__
-    column_names = [column.name for column in storage_table.__table__.columns]
-    label = frame_label or storage_table.__name__
+    index_names = list(output_table.__index_names__)
+    time_index_name = output_table.__time_index_name__
+    column_names = [column.name for column in output_table.__table__.columns]
+    label = frame_label or output_table.__name__
 
     normalized = reset_frame_index(frame.copy(), index_names=index_names, frame_label=label)
     missing = sorted(set(column_names).difference(normalized.columns))
@@ -155,7 +155,7 @@ def reset_frame_index(
     frame: pd.DataFrame,
     *,
     index_names: list[str],
-    frame_label: str = "Stamped DataNode",
+    frame_label: str = "Stamped TimeIndexTableUpdater",
 ) -> pd.DataFrame:
     missing_index_names = [
         index_name

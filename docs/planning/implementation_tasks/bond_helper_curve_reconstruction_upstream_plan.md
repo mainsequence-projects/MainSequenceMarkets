@@ -104,7 +104,7 @@ Create these files:
 
 | File | Owns | Models / Functions |
 | --- | --- | --- |
-| `src/msm_pricing/pricing_engine/curves/bond_helpers.py` | Runtime QuantLib bond-helper construction. No DataNode, MetaTable, connector, or source-row imports. | `ZeroCouponBondHelperSpec`, `FixedRateBondHelperSpec`, `BondHelperSpec`, `build_zero_coupon_bond_helper(...)`, `build_fixed_rate_bond_helper(...)`, `build_bond_helper(...)`, `build_bond_helpers(...)`. |
+| `src/msm_pricing/pricing_engine/curves/bond_helpers.py` | Runtime QuantLib bond-helper construction. No TimeIndexTableUpdater, MetaTable, connector, or source-row imports. | `ZeroCouponBondHelperSpec`, `FixedRateBondHelperSpec`, `BondHelperSpec`, `build_zero_coupon_bond_helper(...)`, `build_fixed_rate_bond_helper(...)`, `build_bond_helper(...)`, `build_bond_helpers(...)`. |
 | `src/msm_pricing/pricing_engine/curves/bond_helper_key_nodes.py` | JSON-compatible key-node validation and conversion into runtime bond helper specs. | `ZeroCouponBondHelperKeyNode`, `FixedRateBondHelperKeyNode`, `BondHelperKeyNode`, `parse_bond_helper_key_node(...)`, `bond_helper_specs_from_key_nodes(...)`, `key_nodes_contain_bond_helpers(...)`. |
 | `tests/msm_pricing/pricing_engine/curves/test_bond_helpers.py` | Primitive bond helper construction tests. | Unit tests for zero-coupon and fixed-rate helper specs and QuantLib helper creation. |
 | `tests/msm_pricing/pricing_engine/curves/test_bond_helper_reconstruction.py` | Reconstruction tests through the persisted key-node adapter. | Mixed helper parsing, curve reconstruction, observation export, and error behavior. |

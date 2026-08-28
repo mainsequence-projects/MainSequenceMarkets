@@ -19,7 +19,7 @@ from msm_pricing.models import (
     PricingMarketDataSetTable,
 )
 
-# ADR 0017: pricing_sqlalchemy_models() appends the pricing DataNode storage
+# ADR 0017: pricing_sqlalchemy_models() appends the pricing time-index-table output
 # MetaTables after their FK target MetaTables (Asset/Index/Curve).
 EXPECTED_PRICING_MODELS = [
     AssetTable,
@@ -70,7 +70,7 @@ def test_core_markets_models_do_not_include_pricing_extension_table() -> None:
     assert PricingMarketDataSetTable not in markets_sqlalchemy_models()
     assert PricingMarketDataSetBindingTable not in markets_sqlalchemy_models()
     assert PricingMarketDataSetCurveBindingTable not in markets_sqlalchemy_models()
-    # ADR 0017: pricing DataNode storage registers through the pricing registry only.
+    # ADR 0017: pricing time-index-table output registers through the pricing registry only.
     assert DiscountCurvesStorage not in markets_sqlalchemy_models()
     assert IndexFixingsStorage not in markets_sqlalchemy_models()
     assert AssetPricingDetailsStorage not in markets_sqlalchemy_models()

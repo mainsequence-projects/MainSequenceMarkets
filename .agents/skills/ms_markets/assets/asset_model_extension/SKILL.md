@@ -1,6 +1,6 @@
 ---
 name: mainsequence-asset-model-extension
-description: Use this skill when extending or reviewing the ms-markets Asset model, including AssetType registration and one-to-one asset property/detail tables. This skill owns the rule that AssetTable stays small and extension data belongs in relational detail tables keyed by AssetTable.uid. It does not own AssetIndexedDataNode design, price history, portfolios, or general DataNode implementation.
+description: Use this skill when extending or reviewing the ms-markets Asset model, including AssetType registration and one-to-one asset property/detail tables. This skill owns the rule that AssetTable stays small and extension data belongs in relational detail tables keyed by AssetTable.uid. It does not own AssetIndexedDataNode design, price history, portfolios, or general TimeIndexTableUpdater implementation.
 ---
 
 # Main Sequence Markets Asset Model Extension

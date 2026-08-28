@@ -251,7 +251,7 @@ def markets_foreign_key_target_identifiers(model: type[MarketsBase]) -> list[str
 
 
 def is_time_index_meta_table_model(model: type[MarketsBase]) -> bool:
-    """True for ADR 0017 DataNode output storage classes.
+    """True for ADR 0017 TimeIndexTableUpdater output storage classes.
 
     `PlatformTimeIndexMetaTable` subclasses derive their own time-index/storage
     layout and register without the ``introspect`` argument accepted by domain
@@ -269,7 +269,7 @@ def _platform_registration_kwargs(
 ) -> dict[str, Any]:
     """Shape platform-managed register/build kwargs for one model.
 
-    DataNode storage classes (`PlatformTimeIndexMetaTable`) reject ``introspect``;
+    time-index-table output classes (`PlatformTimeIndexMetaTable`) reject ``introspect``;
     domain MetaTables require ``introspect``.
     """
 

@@ -1,6 +1,6 @@
 ---
 name: mainsequence-markets-fixed-income-curve-building
-description: Use this skill when creating, extending, reviewing, or using ms-markets/msm_pricing fixed-income pricing infrastructure, including Index convention details, index fixing DataNodes, Curve rows, CurveBuildingDetails rows, market-data-set curve bindings, discount curve DataNodes, QuantLib index/curve resolvers, and bond or swap examples that depend on those coupled concepts.
+description: Use this skill when creating, extending, reviewing, or using ms-markets/msm_pricing fixed-income pricing infrastructure, including Index convention details, index fixing TimeIndexTableUpdaters, Curve rows, CurveBuildingDetails rows, market-data-set curve bindings, discount curve TimeIndexTableUpdaters, QuantLib index/curve resolvers, and bond or swap examples that depend on those coupled concepts.
 ---
 
 # Main Sequence Markets Fixed-Income Curve Building
@@ -32,8 +32,8 @@ Use these skills first when the task crosses their boundaries:
 - Generic pricing runtime, pricing details, market-data-set, or valuation-basket
   behavior:
   `.agents/skills/ms_markets/pricing/general_pricing/SKILL.md`
-- Generic Main Sequence DataNode behavior:
-  `.agents/skills/mainsequence/data_publishing/data_nodes/SKILL.md`
+- Generic Main Sequence TimeIndexTableUpdater behavior:
+  `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`
 - Generic Main Sequence MetaTable behavior:
   `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`
 - Asset identity or bond asset detail tables:
@@ -147,7 +147,7 @@ agent also creates or verifies all of the following:
 - At least one `PricingMarketDataSetCurveBinding` selects the curve for the
   intended market-data set, valuation role, selector, and quote side.
 - The market-data set has a `PricingMarketDataSetBinding` for
-  `PRICING_CONCEPT_DISCOUNT_CURVES` pointing at the curve storage DataNode.
+  `PRICING_CONCEPT_DISCOUNT_CURVES` pointing at the curve storage TimeIndexTableUpdater.
 - Published or publishable `DiscountCurvesNode` observations use
   `curve_identifier=Curve.unique_identifier`.
 
@@ -178,7 +178,7 @@ order is resolved before runtime binding. The dependency order includes
 `AssetTable`, `IndexTypeTable`, `IndexTable`, `IndexConventionDetailsTable`,
 `CurveTable`, `CurveBuildingDetailsTable`, then pricing details,
 `PricingMarketDataSetTable`, `PricingMarketDataSetBindingTable`,
-`PricingMarketDataSetCurveBindingTable`, and pricing DataNode storage tables.
+`PricingMarketDataSetCurveBindingTable`, and pricing time-index-table output tables.
 Missing MetaTables indicate SDK migration/provider work still needs to run
 before pricing startup.
 
@@ -322,9 +322,9 @@ Rules:
   `calendar.name()`: for Mexico BMV, store
   `{"name": "Mexican stock exchange"}`, not `{"name": "Mexico"}` and not
   `{"name": "Mexico-BMV"}`.
-- Use `index_identifier` for index-stamped DataNode rows. It stores
+- Use `index_identifier` for index-stamped time-index-table output rows. It stores
   `IndexTable.unique_identifier`.
-- Use `curve_identifier` for curve DataNode rows. It stores
+- Use `curve_identifier` for curve time-index-table output rows. It stores
   `Curve.unique_identifier`.
 - Do not use Main Sequence Constant names as curve or index identity.
 - Use `MSDataInterface.get_latest_discount_curve(curve.unique_identifier, ...)`
@@ -380,7 +380,7 @@ Rules:
 - `frequency` is hashable dataset identity; changing it creates a distinct
   fixing dataset.
 - Keep builders keyed by `IndexTable.unique_identifier`.
-- Do not publish fixings keyed by backend UUID unless the DataNode contract is
+- Do not publish fixings keyed by backend UUID unless the TimeIndexTableUpdater contract is
   deliberately changed.
 
 ## Curve Pattern
@@ -474,7 +474,7 @@ Rules:
   with `set_key_nodes_validator(...)`. The hook receives the normalized
   key-node value, the full row, and the curve identifier. It must return JSON
   object/list provenance. Do not put validator callables in `CurveConfig`; they
-  are execution behavior, not hashed DataNode configuration.
+  are execution behavior, not hashed TimeIndexTableUpdater configuration.
 - Optional row diagnostics belong in the storage column named `metadata_json`.
 - The builder configuration's `curve_unique_identifier` must exist as a `Curve`
   row before publishing; emitted storage rows use `curve_identifier`.
@@ -533,10 +533,10 @@ Resolver expectations:
   `PricingMarketDataSetCurveBinding.resolve_index_curve_uid(...)`.
 - `CurveBuildingDetails` exists for the selected curve.
 - `PricingMarketDataSetBinding` resolves the active
-  `(market_data_set_uid, concept_key)` to the backend DataNode storage table UID
-  for the published curve and fixing DataNodes.
+  `(market_data_set_uid, concept_key)` to the backend time-index-table output table UID
+  for the published curve and fixing TimeIndexTableUpdaters.
 - Use `PRICING_CONCEPT_DISCOUNT_CURVES` and
-  `PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS` instead of hard-coded DataNode
+  `PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS` instead of hard-coded TimeIndexTableUpdater
   field names.
 - When multiple market-data source sets exist in one process, select them at
   pricing time with `bond.price(market_data_set="eod")` or
@@ -601,10 +601,10 @@ Before finishing a change:
   `curve_uid`.
 - Runtime curve reads have a `PricingMarketDataSetBinding` for
   `PRICING_CONCEPT_DISCOUNT_CURVES`.
-- Fixing DataNode rows use `time_index`, `index_identifier`, and `rate`.
-- Curve DataNode rows use `time_index`, `curve_identifier`, and `curve`.
+- Fixing time-index-table output rows use `time_index`, `index_identifier`, and `rate`.
+- Curve time-index-table output rows use `time_index`, `curve_identifier`, and `curve`.
 - Instrument payloads store backend index UUIDs and reject raw index-name
   relationship fields.
-- Tests cover payload validation, resolver selection, and DataNode frame shape
+- Tests cover payload validation, resolver selection, and TimeIndexTableUpdater frame shape
   for the changed behavior.
 - Docs, examples, tutorial, and changelog are updated for user-facing changes.

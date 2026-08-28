@@ -45,7 +45,7 @@ provider-specific records. The API does not flatten those separate models into `
   - returns the current pricing details row for one asset
   - response mirrors `msm_pricing.api.AssetCurrentPricingDetails`
   - reads `AssetCurrentPricingDetailsTable`, not the timestamped
-    `AssetPricingDetail` DataNode
+    `AssetPricingDetail` TimeIndexTableUpdater
   - returns 404 when no current pricing details row exists for the asset
 - `DELETE /api/v1/asset/{uid}/`
   - deletes one asset identity row by `uid`

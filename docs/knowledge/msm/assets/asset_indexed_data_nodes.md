@@ -10,9 +10,9 @@ Use this page for timestamped asset facts such as snapshots, pricing details,
 prices, signals, weights, holdings, or any table whose natural row identity is
 `(time_index, asset_identifier)`.
 
-## How It Differs From A Normal DataNode
+## How It Differs From A Normal TimeIndexTableUpdater
 
-A normal Main Sequence `DataNode` is a generic data product. It owns a stable
+A normal Main Sequence `TimeIndexTableUpdater` is a generic data product. It owns a stable
 published dataset contract, update logic, persistence, hashing, dependencies,
 and orchestration behavior. It does not know that one of its dimensions is a
 market asset.
@@ -22,7 +22,7 @@ market asset.
 - the canonical asset storage dimension is `asset_identifier`;
 - `asset_list` is an optional updater scope, not table meaning;
 - `get_asset_list()` validates string, mapping, or object asset scopes;
-- asset scopes can be translated into DataNode `dimension_filters`;
+- asset scopes can be translated into TimeIndexTableUpdater `dimension_filters`;
 - per-asset update ranges are exposed through helpers such as
   `get_asset_dimension_range_map_great_or_equal(...)`;
 - the default `hash_namespace` follows the active markets namespace;
@@ -30,9 +30,9 @@ market asset.
   `AssetTable.unique_identifier`.
 
 ```text
-+-----------------------------+           generic DataNode        +-----------------------------+
++-----------------------------+           generic TimeIndexTableUpdater        +-----------------------------+
 | mainsequence.meta_tables.   |---------------------------------->| TimeIndexMetaTable storage   |
-| DataNode                    |                                   | registered from storage cls |
+| TimeIndexTableUpdater                    |                                   | registered from storage cls |
 |-----------------------------|                                   |-----------------------------|
 | physical_table_name         |                                   | published table             |
 | update_hash                 |                                   | schema / columns            |
@@ -53,8 +53,8 @@ market asset.
 +-----------------------------+
 ```
 
-The important distinction is identity. A generic DataNode can publish any table
-shape. An asset-indexed DataNode publishes a market table where
+The important distinction is identity. A generic TimeIndexTableUpdater can publish any table
+shape. An asset-indexed TimeIndexTableUpdater publishes a market table where
 `asset_identifier` contains an `Asset.unique_identifier` value.
 
 ## Core Contract
@@ -76,7 +76,7 @@ The `asset_identifier` column should not be an arbitrary provider ticker. It
 should contain the same canonical identifier registered through
 `msm.api.assets.Asset.unique_identifier`. Provider-specific tickers, FIGIs,
 ISINs, symbols, and raw payloads belong either in provider detail tables, such
-as `OpenFigiAssetDetailsTable`, or in DataNode value columns when the table is
+as `OpenFigiAssetDetailsTable`, or in TimeIndexTableUpdater value columns when the table is
 explicitly a timestamped provider fact.
 
 The `AssetIndexedDataNodeConfiguration.asset_list` field is updater scope. Asset
@@ -86,7 +86,7 @@ same dataset when the schema and dataset meaning are otherwise the same.
 
 Asset-scoped configuration has two categories:
 
-- normal `DataNodeConfiguration` fields, which enter `update_hash`
+- normal `TimeIndexTableUpdateConfig` fields, which enter `update_hash`
 - `ClassVar[...]` invariants, which are not Pydantic fields and do not enter
   `update_hash`
 
@@ -98,10 +98,10 @@ from typing import ClassVar
 
 from pydantic import Field
 
-from mainsequence.meta_tables import DataNodeConfiguration
+from mainsequence.meta_tables import TimeIndexTableUpdateConfig
 
 
-class AssetIndexedDataNodeConfiguration(DataNodeConfiguration):
+class AssetIndexedDataNodeConfiguration(TimeIndexTableUpdateConfig):
     asset_list: list | None = Field(
         default=None,
         description=(
@@ -126,7 +126,7 @@ select the updater scope and must affect `update_hash`. `reference_dimension` is
 a `ClassVar` because it is a fixed implementation invariant, not run
 configuration.
 
-Do not use legacy platform metadata markers to remove DataNode config fields
+Do not use legacy platform metadata markers to remove TimeIndexTableUpdater config fields
 from hashing. There is no third asset-scope case: if it is a config field, it is
 hashed; if it is not hashed, it must not be a config field.
 
@@ -135,10 +135,10 @@ hashed; if it is not hashed, it must not be a config field.
 In the current storage-first architecture, the schema contract lives on a
 storage class
 (`PlatformTimeIndexMetaTable` / `MarketsTimeIndexMetaTableMixin`), not on the
-DataNode configuration. The canonical asset foreign key is an SDK
+TimeIndexTableUpdater configuration. The canonical asset foreign key is an SDK
 SQLAlchemy `ForeignKey(...)` declaration on the storage class
-`asset_identifier` column. The DataNode uses its storage class through
-`_required_storage_table()`.
+`asset_identifier` column. The TimeIndexTableUpdater uses its storage class through
+`_required_output_table()`.
 
 Project-local storage classes should inherit from an abstract project mixin that
 sets the project's default `__metatable_namespace__` and, when needed,
@@ -206,7 +206,7 @@ class ExampleAssetMetric(AssetTimestampedDataNode):
     configuration_class = ExampleAssetMetricConfiguration
 
     @classmethod
-    def _required_storage_table(cls) -> type[ExampleAssetMetricStorage]:
+    def _required_output_table(cls) -> type[ExampleAssetMetricStorage]:
         return ExampleAssetMetricStorage
 
     @classmethod
@@ -239,7 +239,7 @@ provider or observation date.
 
 ```text
 +-----------------------------+      canonical FK        +-----------------------------+
-| AssetSnapshot DataNode      |------------------------->| AssetTable                  |
+| AssetSnapshot TimeIndexTableUpdater      |------------------------->| AssetTable                  |
 |-----------------------------| asset_identifier         |-----------------------------|
 | time_index           index  |                          | unique_identifier unique    |
 | asset_identifier     index  |                          | asset_type                  |
@@ -253,13 +253,13 @@ provider or observation date.
 `AssetSnapshotsStorage` (in `msm.data_nodes.assets.storage`) declares the persisted
 schema as SQLAlchemy mapped columns and owns the canonical
 `asset_identifier -> AssetTable.unique_identifier` foreign key. `AssetSnapshot`
-uses it through `_required_storage_table()`.
+uses it through `_required_output_table()`.
 
 ## Register Assets Before Publishing Snapshots
 
 Asset snapshots should refer to assets that already exist in `AssetTable`.
 Application code normally registers the asset type and asset through the typed
-row API before running an asset-indexed DataNode.
+row API before running an asset-indexed TimeIndexTableUpdater.
 
 ```python
 import msm
@@ -282,7 +282,7 @@ runtime = msm.start_engine(models=["Asset"])
 ```
 
 Examples that use `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` inherit
-the same namespace for both markets MetaTables and default markets DataNode
+the same namespace for both markets MetaTables and default markets TimeIndexTableUpdater
 hash namespaces.
 
 ## Building And Running AssetSnapshot
@@ -325,18 +325,18 @@ the previous observation.
 ## Shared Stamped Base
 
 Timestamped reference-data facts share the same frame mechanics whether the
-reference row is an asset or an index. Non-model-specific DataNode helpers live
+reference row is an asset or an index. Non-model-specific TimeIndexTableUpdater helpers live
 under `msm.data_nodes.utils`; the generic stamped base lives in
 `msm.data_nodes.utils.stamped`:
 
 - `StampedFrameMixin` owns real frame binding, validation, and
   `datetime64[ns, UTC]` normalization — all sourced from the registered
-  `storage_table` (`__table__.columns`, `__index_names__`,
+  `output_table` (`__table__.columns`, `__index_names__`,
   `__time_index_name__`). It does not create placeholder rows for schema
   registration.
 - `StampedDataNode` owns the empty dependency default and the markets
   `hash_namespace` defaulting rule, and resolves its storage class through
-  `_required_storage_table()`.
+  `_required_output_table()`.
 
 Asset-specific classes live under `msm.data_nodes.assets` and use storage
 classes that add the `AssetTable.unique_identifier` foreign key. Index-specific
@@ -358,7 +358,7 @@ markets namespace, logical identifiers stay bare, such as `Asset` and
 `AssetSnapshotsStorage.metatable_identifier()` and resolves to
 `mainsequence.examples.AssetSnapshotsTS`.
 
-The default DataNode `hash_namespace` also follows the active markets namespace.
+The default TimeIndexTableUpdater `hash_namespace` also follows the active markets namespace.
 Pass an explicit `hash_namespace` only for isolated experiments, tests, or
 parallel runs that must not collide on a shared backend.
 
@@ -370,7 +370,7 @@ parallel runs that must not collide on a shared backend.
   `AssetSnapshotsStorage`) that own the schema, dtypes, and canonical `AssetTable`
   foreign keys.
 - `src/msm/data_nodes/utils/stamped.py`: shared timestamped frame behavior
-  validated against the registered `storage_table`.
+  validated against the registered `output_table`.
 - `src/msm/data_nodes/utils/storage_schema.py`: derives column dtype maps from a
   storage class via the SDK `dtype_codec`.
 - `src/msm/data_nodes/utils/namespaces.py`: shared markets hash-namespace
@@ -382,6 +382,6 @@ parallel runs that must not collide on a shared backend.
 - `src/msm_pricing/data_nodes/pricing_details/__init__.py`:
   `AssetPricingDetail` and its pricing-specific configuration.
 - `examples/msm/assets/asset_crud_workflow.py`: asset workflow that includes
-  `AssetSnapshot` frame construction and DataNode execution.
+  `AssetSnapshot` frame construction and TimeIndexTableUpdater execution.
 - `docs/knowledge/msm/migrations/index.md`: current storage registration and
   migration workflow for MetaTables and time-index storage tables.

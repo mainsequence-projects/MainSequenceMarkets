@@ -27,7 +27,7 @@ def build_account_holdings_frame(
     target_trade_time: dt.datetime | str | None = None,
 ) -> pd.DataFrame:
     return build_holdings_frame(
-        storage_table=AccountHoldingsStorage,
+        output_table=AccountHoldingsStorage,
         holdings_date=holdings_date,
         owner_uid=account_uid,
         positions=positions,
@@ -39,7 +39,7 @@ def build_account_holdings_frame(
 
 def build_holdings_frame(
     *,
-    storage_table: Any,
+    output_table: Any,
     holdings_date: dt.datetime | str,
     owner_uid: UUID | str,
     positions: Sequence[Mapping[str, Any] | Any],
@@ -52,7 +52,7 @@ def build_holdings_frame(
     if holdings_set_uid is None or str(holdings_set_uid).strip() == "":
         raise ValueError("Holdings rows require a holdings_set_uid.")
 
-    owner_index_name = list(storage_table.__index_names__)[1]
+    owner_index_name = list(output_table.__index_names__)[1]
     rows: list[dict[str, Any]] = []
     seen_identifiers: set[str] = set()
     duplicate_identifiers: set[str] = set()
@@ -65,7 +65,7 @@ def build_holdings_frame(
         seen_identifiers.add(asset_identifier)
 
         row: dict[str, Any] = {
-            storage_table.__time_index_name__: holdings_date,
+            output_table.__time_index_name__: holdings_date,
             owner_index_name: owner_uid,
             ASSET_IDENTIFIER_DIMENSION: asset_identifier,
             "holdings_set_uid": holdings_set_uid,
@@ -83,16 +83,16 @@ def build_holdings_frame(
             "Duplicate values: " + ", ".join(sorted(duplicate_identifiers)) + "."
         )
 
-    return validate_holdings_frame(pd.DataFrame(rows), storage_table=storage_table)
+    return validate_holdings_frame(pd.DataFrame(rows), output_table=output_table)
 
 
 def validate_holdings_frame(
     data_frame: pd.DataFrame,
     *,
-    storage_table: Any,
+    output_table: Any,
 ) -> pd.DataFrame:
     frame = data_frame.copy()
-    index_names = list(storage_table.__index_names__)
+    index_names = list(output_table.__index_names__)
     if list(frame.index.names) != index_names:
         if all(index_name in frame.columns for index_name in index_names):
             frame = frame.set_index(index_names)
@@ -103,8 +103,8 @@ def validate_holdings_frame(
             )
 
     flat = frame.reset_index()
-    column_dtypes_map = storage_column_dtypes_map(storage_table)
-    column_nullable_map = storage_column_nullable_map(storage_table)
+    column_dtypes_map = storage_column_dtypes_map(output_table)
+    column_nullable_map = storage_column_nullable_map(output_table)
     missing_columns = [
         column_name for column_name in column_dtypes_map if column_name not in flat.columns
     ]
@@ -115,9 +115,9 @@ def validate_holdings_frame(
 
     for column_name, dtype in column_dtypes_map.items():
         values = flat[column_name]
-        if column_name == storage_table.__time_index_name__ or dtype == dc.TIMESTAMP_TZ:
+        if column_name == output_table.__time_index_name__ or dtype == dc.TIMESTAMP_TZ:
             flat[column_name] = values.map(_normalize_optional_datetime)
-            if column_name == storage_table.__time_index_name__ and flat[column_name].isna().any():
+            if column_name == output_table.__time_index_name__ and flat[column_name].isna().any():
                 raise ValueError("Holdings time_index cannot contain null values.")
             flat[column_name] = pd.to_datetime(flat[column_name], utc=True).astype(
                 "datetime64[ns, UTC]"

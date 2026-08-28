@@ -49,7 +49,7 @@ for equivalent configuration payloads.
 Canonical markets DataNodes derive their published identifiers from the same
 rule as MetaTables: the default markets namespace keeps bare logical
 identifiers, while a non-default `MSM_AUTO_REGISTER_NAMESPACE` prefixes them.
-That namespace also becomes the default DataNode `hash_namespace`. Pass an
+That namespace also becomes the default TimeIndexTableUpdater `hash_namespace`. Pass an
 explicit namespace only for isolated tests or experiments.
 
 Forward-fill behavior, valuation source selection, signal semantics, and
@@ -137,7 +137,7 @@ uses injected executors.
 
 Portfolio registry tables are regular platform-managed MetaTables. They describe
 portfolio identity and relationships; they do not store historical portfolio
-values. Historical values, weights, and signal outputs live in DataNode storage
+values. Historical values, weights, and signal outputs live in time-index-table output
 tables.
 
 Portfolio identity is core reference data and lives under:
@@ -153,7 +153,7 @@ src/msm/models/portfolios/
 `PortfolioTable` is the canonical portfolio identity row. It is keyed by
 `unique_identifier` and stores optional `published_index_uid` linkage to
 `IndexTable`, an optional `signal_uid` linkage to `SignalMetadataTable`, plus
-DataNode UIDs for canonical portfolio outputs. A portfolio is not an asset. The
+TimeIndexTableUpdater UIDs for canonical portfolio outputs. A portfolio is not an asset. The
 optional published index link is metadata for workflows that want to expose the
 portfolio as an index-like observable; core portfolio weights, values, account
 expansion, and virtual-fund allocation use `PortfolioTable.uid` /
@@ -262,7 +262,7 @@ Deleting a portfolio group removes only membership rows through cascade.
 Deleting a portfolio removes only its membership rows through cascade. Neither
 operation deletes the other side of the relationship.
 
-Portfolio DataNode storage is separate from registry MetaTables. These storage
+Portfolio time-index-table output is separate from registry MetaTables. These storage
 classes are registered through the same catalog bootstrap, after their FK target
 MetaTables:
 
@@ -274,7 +274,7 @@ MetaTables:
 | External price DataNodes    |------------------------------->| ExternalPricesStorage                |
 | InterpolatedPrices          |------------------------------->| configured InterpolatedPricesStorage |
 +-----------------------------+                                +--------------------------------------+
-          DataNode update logic                                  PlatformTimeIndexMetaTable
+          TimeIndexTableUpdater update logic                                  PlatformTimeIndexMetaTable
 
 +-----------------------------+        required parent          +--------------------------------------+
 | SignalMetadataTable         |<-------------------------------| SignalWeightsStorage                 |
@@ -308,22 +308,22 @@ does not own valuation ingestion. Example workflows publish normalized OHLCV
 bars to `ExternalPricesStorage` only so the example is self-contained.
 Production users can point portfolio configurations at any registered
 compatible valuation storage table, including one produced by another library,
-vendor connector, model valuation process, or project DataNode.
+vendor connector, model valuation process, or project TimeIndexTableUpdater.
 
 ## Valuation Source Resolution
 
 Portfolio valuation inputs are not stored on `PortfolioTable`. They are provided
-by the portfolio build configuration and consumed through DataNode dependencies.
+by the portfolio build configuration and consumed through TimeIndexTableUpdater dependencies.
 
 The current portfolio path is explicit:
 
 ```text
 +-----------------------------+       writes        +-----------------------------+
-| source price DataNode       |-------------------->| source price storage        |
+| source price TimeIndexTableUpdater       |-------------------->| source price storage        |
 | e.g. ExampleDailyBars       |                     | ExternalPricesStorage       |
 +--------------+--------------+                     +--------------+--------------+
                |                                                   |
-               | explicit upstream dependency                      | APIDataNode lookup
+               | explicit upstream dependency                      | TimeIndexTableRef lookup
                v                                                   v
 +-----------------------------+       writes        +-----------------------------+
 | InterpolatedPrices          |-------------------->| configured price storage    |
@@ -341,7 +341,7 @@ The current portfolio path is explicit:
 
 `PortfolioBuildConfiguration.valuation_source_instance` receives the valuation
 source that portfolio construction consumes. The valuation source may be an
-`InterpolatedPrices` instance, another DataNode, or an `APIDataNode` pointing at
+`InterpolatedPrices` instance, another TimeIndexTableUpdater, or an `TimeIndexTableRef` pointing at
 compatible registered storage. The valuation source must expose rows keyed by
 `(time_index, asset_identifier)` and include the configured numeric
 `valuation_column`, for example `close`, `fair_value`, `nav`, or `mark_price`.
@@ -361,9 +361,9 @@ If persistent interpolation is needed, `InterpolatedPrices` is built before the
 portfolio and then passed into `PortfolioBuildConfiguration` like any other
 dependency. `InterpolatedPricesConfig` accepts either `source_price_instance`
 or `source_time_index_meta_table_uid`. Use `source_price_instance` when the
-source price `DataNode` or `APIDataNode` is already part of the graph. Use
+source price `TimeIndexTableUpdater` or `TimeIndexTableRef` is already part of the graph. Use
 `source_time_index_meta_table_uid` when attaching an already registered
-compatible source table through `APIDataNode.build_from_table_uid(...)`.
+compatible source table through `TimeIndexTableRef.from_uid(...)`.
 `InterpolatedPrices` validates the registered source cadence, exposes the
 resolved source from `dependencies()`, and writes the configured interpolation
 output.
@@ -392,7 +392,7 @@ The preparation step attaches the static schema, reads the registered
 configured `InterpolatedPricesStorage` class, and uses the active migration
 namespace from the SDK migration provider to find or generate the real dynamic
 Alembic revision. It then runs the dynamic provider upgrade before any portfolio
-DataNode writes, even when a stale `TimeIndexMetaTable` metadata row already
+TimeIndexTableUpdater writes, even when a stale `TimeIndexMetaTable` metadata row already
 exists. Metadata alone is not considered schema preparation; the physical table
 must be created by the migration flow. If an older registered
 `ExternalPricesStorage` row is missing cadence metadata, the preparation script
@@ -406,18 +406,18 @@ OHLC enum. Bar-based workflows can use `valuation_column="close"`, while model
 or vendor workflows can use fields such as `fair_value`, `nav`, or
 `settlement_price`. `PortfoliosDataNode` may locally align the consumed
 valuation frame to the rebalance index for calculation, but it does not create
-persistent interpolation storage and does not hide an upstream DataNode.
+persistent interpolation storage and does not hide an upstream TimeIndexTableUpdater.
 
 For a custom valuation source, register or migrate the source storage outside
 portfolio core, then pass the registered `TimeIndexMetaTable` UID through
-`APIDataNode.build_from_table_uid(...)`. The source table must keep its real
+`TimeIndexTableRef.from_uid(...)`. The source table must keep its real
 value column name; it should not be reshaped to `close` just to satisfy
 portfolio core. See
 `examples/msm_portfolios/portfolio_custom_valuation_column_example.py` for the
 `fair_value` configuration path.
-When the valuation source is an `APIDataNode`, `PortfoliosDataNode` loads the
+When the valuation source is an `TimeIndexTableRef`, `PortfoliosDataNode` loads the
 source table's update statistics before calculating the portfolio update
-window. Normal `DataNode` valuation sources still rely on the SDK runner to
+window. Normal `TimeIndexTableUpdater` valuation sources still rely on the SDK runner to
 populate dependency update statistics before portfolio calculation starts.
 
 The portfolio update start is always the latest `PortfoliosStorage` timestamp
@@ -470,7 +470,7 @@ For a user-owned fair-value source, the same portfolio configuration uses the
 source UID directly and keeps the valuation column explicit:
 
 ```python
-valuation_source = APIDataNode.build_from_table_uid(fair_value_table_uid)
+valuation_source = TimeIndexTableRef.from_uid(fair_value_table_uid)
 
 portfolio_configuration = PortfolioConfiguration(
     portfolio_build_configuration=PortfolioBuildConfiguration(
@@ -581,13 +581,13 @@ virtual-fund allocation rows.
         +---------------------------------------------------------+
         | Portfolio construction                                  |
         | - computes signal weights, portfolio weights, values    |
-        | - writes portfolio DataNode outputs                     |
+        | - writes portfolio TimeIndexTableUpdater outputs                     |
         +---------------------------+-----------------------------+
                                     |
                                     v
 +-------------------------+   +-------------------------+   +-------------------------+
 | SignalWeights           |   | PortfolioWeights        |   | PortfoliosDataNode      |
-| DataNode                |   | DataNode                |   | DataNode                |
+| TimeIndexTableUpdater                |   | TimeIndexTableUpdater                |   | TimeIndexTableUpdater                |
 +------------+------------+   +------------+------------+   +------------+------------+
              |                             |                             |
              v                             v                             v
@@ -596,7 +596,7 @@ virtual-fund allocation rows.
 | PlatformTimeIndexMeta   |   | PlatformTimeIndexMeta   |   | PlatformTimeIndexMeta   |
 +------------+------------+   +------------+------------+   +------------+------------+
              |                             |                             |
-             | DataNodeUpdate UID          | DataNodeUpdate UID          | DataNodeUpdate UID
+             | TimeIndexTableUpdate UID          | TimeIndexTableUpdate UID          | TimeIndexTableUpdate UID
              +-----------------------------+-----------------------------+
                                            |
                                            v
@@ -611,14 +611,14 @@ virtual-fund allocation rows.
 ```
 
 `PortfoliosDataNode.run(..., update_pointers=True)` updates the
-`PortfolioTable` DataNode pointer fields after the portfolio graph has
+`PortfolioTable` TimeIndexTableUpdater pointer fields after the portfolio graph has
 published. This is enabled by default for portfolio-configuration runs, so
 examples and callers do not need to manually re-upsert the portfolio row after
 execution. Pass `update_pointers=False` only when deliberately running the graph
 without updating portfolio registry links.
 
 When a run publishes no new executed weights, the workflow must not require a
-fresh `PortfolioWeights` DataNodeUpdate. It preserves the existing
+fresh `PortfolioWeights` TimeIndexTableUpdate. It preserves the existing
 `PortfolioTable.portfolio_weights_data_node_uid` and still updates the signal
 and portfolio-values pointers from the DataNodeUpdates produced by the current
 graph run.
@@ -690,7 +690,7 @@ shared crypto `Asset` example rows, creates or reuses a `CRYPTO_24_7` calendar
 from `pandas_market_calendars`, publishes example OHLCV bars to
 `ExternalPricesStorage`, interpolates those prices, runs
 `SignalWeights`, `PortfolioWeights`, and `PortfoliosDataNode`, and upserts the
-`Portfolio` row with `calendar_uid` plus the published DataNode update UIDs.
+`Portfolio` row with `calendar_uid` plus the published TimeIndexTableUpdater update UIDs.
 The example narrates each setup, source-price
 publication, and portfolio step so terminal output explains what was created.
 It does not create virtual funds or virtual-fund allocation rows; those require

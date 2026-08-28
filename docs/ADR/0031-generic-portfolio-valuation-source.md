@@ -60,7 +60,7 @@ The target core contract is:
 
 ```text
 PortfolioBuildConfiguration
-  valuation_source_instance      DataNode | APIDataNode
+  valuation_source_instance      TimeIndexTableUpdater | TimeIndexTableRef
   valuation_column               str = "close"
   price_alignment_policy         PriceAlignmentPolicy
   portfolio_prices_frequency     str | None
@@ -72,7 +72,7 @@ PortfolioBuildConfiguration
 bar-based workflows remain natural, but it is not constrained to `close`,
 `open`, or `vwap`.
 
-The portfolio DataNode must validate the selected column against the consumed
+The portfolio TimeIndexTableUpdater must validate the selected column against the consumed
 source frame:
 
 ```text
@@ -109,7 +109,7 @@ Those remain upstream responsibilities:
 
 ```text
 source bars / model values / vendor valuations
-  -> optional upstream transformation DataNode
+  -> optional upstream transformation TimeIndexTableUpdater
   -> valuation_source_instance
   -> PortfoliosDataNode
 ```
@@ -151,7 +151,7 @@ it as an explicit schema task with migrations, docs, and examples.
 
 ```text
 +-----------------------------+
-| ValuationSource DataNode    |
+| ValuationSource TimeIndexTableUpdater    |
 |-----------------------------|
 | time_index                  |
 | asset_identifier            |
@@ -161,7 +161,7 @@ it as an explicit schema task with migrations, docs, and examples.
                | explicit dependency
                v
 +-----------------------------+       +-----------------------------+
-| PortfoliosDataNode          |<------| SignalWeights DataNode      |
+| PortfoliosDataNode          |<------| SignalWeights TimeIndexTableUpdater      |
 |-----------------------------|       |-----------------------------|
 | valuation_column="fair_value"|      | signal_uid                  |
 | local alignment policy      |       | asset_identifier            |
@@ -207,7 +207,7 @@ Tradeoffs:
 - [x] Remove `PriceTypeNames` entirely because no contributed helper still needs
   the enum after the valuation-column refactor.
 
-### Stage 2: Portfolio DataNode Logic
+### Stage 2: Portfolio TimeIndexTableUpdater Logic
 
 - [x] Rename internal `PortfoliosDataNode.price_column` usage to
   `valuation_column`.
@@ -262,7 +262,7 @@ Tradeoffs:
 
 ## Success Criteria
 
-The refactor is complete when a user can pass a `DataNode` or `APIDataNode` with
+The refactor is complete when a user can pass a `TimeIndexTableUpdater` or `TimeIndexTableRef` with
 an asset-indexed numeric column such as `fair_value`, configure:
 
 ```python

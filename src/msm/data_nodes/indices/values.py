@@ -1,4 +1,4 @@
-"""Convenience DataNode for publishing canonical plain or calculated Index values."""
+"""Convenience TimeIndexTableUpdater for publishing canonical plain or calculated Index values."""
 
 from __future__ import annotations
 
@@ -25,13 +25,13 @@ _OPTIONAL_VALUE_COLUMNS: tuple[str, ...] = (
 def normalize_index_values_frame(
     frame: pd.DataFrame,
     *,
-    storage_table: type[PlatformTimeIndexMetaTable],
+    output_table: type[PlatformTimeIndexMetaTable],
     frame_label: str = "Index Values",
 ) -> pd.DataFrame:
     """Normalize canonical Index values and supply omitted nullable provenance columns."""
 
-    require_cadenced_index_values_storage(storage_table)
-    index_names = list(storage_table.__index_names__)
+    require_cadenced_index_values_storage(output_table)
+    index_names = list(output_table.__index_names__)
     normalized = reset_frame_index(
         frame.copy(),
         index_names=index_names,
@@ -41,13 +41,13 @@ def normalize_index_values_frame(
         raise ValueError(
             f"{frame_label} custom publication must not provide definition_uid"
         )
-    storage_columns = set(storage_table.__table__.columns.keys())
+    storage_columns = set(output_table.__table__.columns.keys())
     for column_name in _OPTIONAL_VALUE_COLUMNS:
         if column_name in storage_columns and column_name not in normalized:
             normalized[column_name] = None
     return normalize_stamped_frame(
         normalized,
-        storage_table=storage_table,
+        output_table=output_table,
         frame_label=frame_label,
     )
 
@@ -58,17 +58,17 @@ class IndexValuesDataNode(IndexTimestampedDataNode):
     frame_label: ClassVar[str] = "Index Values"
 
     @classmethod
-    def _required_storage_table(cls) -> type[PlatformTimeIndexMetaTable]:
+    def _required_output_table(cls) -> type[PlatformTimeIndexMetaTable]:
         raise NotImplementedError(
             "IndexValuesDataNode requires a cadence-specific storage table; "
-            "pass storage_table=configured_index_values_storage(cadence=...) "
-            "or override _required_storage_table() in a cadence-specific producer"
+            "pass output_table=configured_index_values_storage(cadence=...) "
+            "or override _required_output_table() in a cadence-specific producer"
         )
 
     def update(self) -> pd.DataFrame:
         frame = normalize_index_values_frame(
             self.get_frame(),
-            storage_table=self.storage_table,
+            output_table=self.output_table,
             frame_label=self.frame_label,
         )
         self._published_index_identifiers = index_identifiers_in_frame(frame)
@@ -88,11 +88,11 @@ class IndexValuesDataNode(IndexTimestampedDataNode):
         cls,
         frame: pd.DataFrame,
         *,
-        storage_table: type[PlatformTimeIndexMetaTable] | None = None,
+        output_table: type[PlatformTimeIndexMetaTable] | None = None,
     ) -> pd.DataFrame:
         return normalize_index_values_frame(
             frame,
-            storage_table=storage_table or cls._required_storage_table(),
+            output_table=output_table or cls._required_output_table(),
             frame_label=cls.frame_label,
         )
 

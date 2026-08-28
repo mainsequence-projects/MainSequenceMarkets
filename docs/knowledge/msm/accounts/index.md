@@ -4,7 +4,7 @@ Accounts are the owner identity layer for holdings, account groups, allocation
 model tracking, target position sets, and execution routing.
 The account registry and target-allocation relationships are stored in markets
 MetaTables. Account holdings history and target position rows are stored in
-DataNode tables backed by registered `PlatformTimeIndexMetaTable` storage
+TimeIndexTableUpdater tables backed by registered `PlatformTimeIndexMetaTable` storage
 classes, because those rows are timestamped observations rather than static
 reference records.
 
@@ -34,7 +34,7 @@ PlatformTimeIndexMetaTable
 
 Do not confuse these layers. `Account.upsert(...)` writes one account registry
 row. `AccountHoldings.run(...)` publishes timestamped holdings rows into a
-DataNode table.
+TimeIndexTableUpdater table.
 
 ## API Surfaces
 
@@ -120,7 +120,7 @@ target_positions = build_target_positions_frame(
 )
 ```
 
-Use the DataNode package for holdings:
+Use the TimeIndexTableUpdater package for holdings:
 
 ```python
 from msm.data_nodes.accounts import AccountHoldings
@@ -287,7 +287,7 @@ There is no top-level `msm.accounts` shim. Import account rows from
 ```
 
 `AccountTable.uid` is the canonical account identity used by other MetaTables and
-DataNode rows. `unique_identifier` is the stable external business key used for
+time-index-table output rows. `unique_identifier` is the stable external business key used for
 lookup and idempotent upserts. `account_group_uid` is optional membership in one
 account group. `holdings_data_node_uid` is optional metadata for an account's
 associated holdings storage; it is not the account identity. Account allocation
@@ -319,16 +319,16 @@ timestamped target rows in separate places.
 ## Holdings DataNodes
 
 Holdings are time-series-like observations. They are not MetaTables. A holdings
-DataNode writes to a table described by a registered `PlatformTimeIndexMetaTable`
+TimeIndexTableUpdater writes to a table described by a registered `PlatformTimeIndexMetaTable`
 storage class with a fixed index and column contract.
 
 ```text
-                                    DataNode / PlatformTimeIndexMetaTable
+                                    TimeIndexTableUpdater / PlatformTimeIndexMetaTable
                                     ------------------------------------
 
 +-------------------------------+       uses registered     +-----------------------------+
 | AccountHoldings               |-------------------------->| AccountHoldingsStorage      |
-| DataNode class                |                           | AccountHoldingsTS           |
+| TimeIndexTableUpdater class                |                           | AccountHoldingsTS           |
 |-------------------------------|                           |-----------------------------|
 | identifier, index contract,   |                           | time_index_name=time_index  |
 | and dtype contract derive     |                           | index_names:                |
@@ -371,9 +371,9 @@ The holdings storage MetaTable declares `account_uid -> AccountTable.uid`,
 `asset_identifier -> AssetTable.unique_identifier`, and
 `holdings_set_uid -> AccountHoldingsSetTable.uid` as storage-level foreign keys
 so callers can query history by account, date range, holdings set, and asset
-without duplicating relationship metadata on the DataNode configuration.
+without duplicating relationship metadata on the TimeIndexTableUpdater configuration.
 
-The holdings DataNode configuration does not carry `time_index_name`,
+The holdings TimeIndexTableUpdater configuration does not carry `time_index_name`,
 `index_names`, nullable columns, or dtype declarations. Those are storage
 MetaTable fields on `AccountHoldingsStorage`.
 
@@ -424,7 +424,7 @@ valuation resolver contract, and apply flow.
 
    AccountHoldings.run(...)
      -> uses registered PlatformTimeIndexMetaTable storage
-     -> writes rows to the DataNode source table
+     -> writes rows to the TimeIndexTableUpdater source table
 
 5. Read holdings
 
@@ -473,10 +473,10 @@ msm.start_engine(
 )
 ```
 
-The DataNode class itself does not need to be in the MetaTable model list. Its
+The TimeIndexTableUpdater class itself does not need to be in the MetaTable model list. Its
 storage class does. Add holdings storage to the migration model registry, run
 the SDK migration flow, and attach runtime with `msm.start_engine(...)` before
-constructing or running the DataNode. Do not call
+constructing or running the TimeIndexTableUpdater. Do not call
 `PlatformTimeIndexMetaTable.register(...)`, manually bind by UID, or call
 `initialize_source_table`.
 

@@ -111,7 +111,7 @@ Additional generic candidates observed around the listed code:
 The core implementation must be QuantLib-primitive first. The persisted
 `CurveBuildingDetails` path is only an adapter for resolving stored curves.
 
-Layer 1 is the reusable primitive API. It has no MetaTable, DataNode, connector,
+Layer 1 is the reusable primitive API. It has no MetaTable, TimeIndexTableUpdater, connector,
 or source dependency:
 
 ```python
@@ -391,7 +391,7 @@ helper curves can use the same generic scenario loop.
 This corrects the initial table mapping: donor key-node rebuild behavior is a
 scenario consumer use case, but its generic owner is the pricing engine.
 
-### DataNode And Key-Node Layer
+### TimeIndexTableUpdater And Key-Node Layer
 
 The existing `CurveKeyNode` helper already allows source-specific extension
 fields. Do not make helper-key-node fields mandatory for all curves. Instead,

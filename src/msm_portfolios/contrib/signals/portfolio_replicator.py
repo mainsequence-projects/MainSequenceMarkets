@@ -15,7 +15,7 @@ from msm_portfolios.data_nodes import ASSET_IDENTIFIER, SignalWeights
 from msm_portfolios.configuration import PortfolioConfigBaseModel
 from msm_portfolios.utils import TIMEDELTA
 
-from mainsequence.meta_tables import APIDataNode, DataNode
+from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
 
 
 class TrackingStrategy(Enum):
@@ -29,8 +29,8 @@ class TrackingStrategyConfiguration(PortfolioConfigBaseModel):
 
 class ETFReplicatorConfig(PortfolioConfigBaseModel):
     asset_list: list[Any]
-    price_source_instance: DataNode | APIDataNode
-    etf_price_source_instance: DataNode | APIDataNode
+    price_source_instance: TimeIndexTableUpdater | TimeIndexTableRef
+    etf_price_source_instance: TimeIndexTableUpdater | TimeIndexTableRef
     etf_ticker: str
     tracking_strategy_configuration: TrackingStrategyConfiguration
     etf_asset: Any | None = None
@@ -89,7 +89,7 @@ class ETFReplicator(SignalWeights):
         self.etf_asset = self._require_etf_asset()
         return self.price_assets + [self.etf_asset]
 
-    def dependencies(self) -> dict[str, DataNode | APIDataNode]:
+    def dependencies(self) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
         return {
             "price_source": self.price_source,
             "etf_price_source": self.etf_price_source,

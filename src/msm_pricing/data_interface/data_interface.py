@@ -158,9 +158,9 @@ class MSDataInterface:
         )
 
     def _data_node_for_concept(self, concept_key: str, *, market_data_set=None):
-        from mainsequence.meta_tables import APIDataNode
+        from mainsequence.meta_tables import TimeIndexTableRef
 
-        return APIDataNode.build_from_table_uid(
+        return TimeIndexTableRef.from_uid(
             str(
                 self._data_node_uid_for_concept(
                     concept_key,
@@ -250,14 +250,14 @@ class MSDataInterface:
             execute_markets_operation,
         )
 
-        storage_table = getattr(data_node, "storage_table", None)
-        if storage_table is None:
+        output_table = getattr(data_node, "output_table", None)
+        if output_table is None:
             raise RuntimeError(
-                "Discount curve latest-as-of query requires APIDataNode.storage_table. "
-                "Resolve curve storage with APIDataNode.build_from_table_uid(...)."
+                "Discount curve latest-as-of query requires TimeIndexTableRef.output_table. "
+                "Resolve curve storage with TimeIndexTableRef.from_uid(...)."
             )
 
-        DiscountCurvesStorage._bind_meta_table(storage_table)
+        DiscountCurvesStorage._bind_meta_table(output_table)
         ranked = (
             select(
                 DiscountCurvesStorage.time_index.label("time_index"),

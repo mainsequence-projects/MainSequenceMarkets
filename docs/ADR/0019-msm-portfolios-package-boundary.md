@@ -14,7 +14,7 @@ allocation planner are core `msm` account-allocation concepts.
 
 `msm_portfolios` has grown beyond a small core submodule. It is effectively a
 portfolio application layer inside `msm`: it owns portfolio registry rows,
-portfolio DataNode storage, virtual funds, portfolio construction logic,
+portfolio time-index-table output, virtual funds, portfolio construction logic,
 contributed price and signal nodes, rebalance strategies, and public row APIs.
 
 That shape makes core `msm` harder to reason about. A user who only needs
@@ -24,8 +24,8 @@ current coupling points are concrete:
 
 - `src/msm/models/__init__.py` registers `PortfolioTable`, `FundTable`,
   `SignalMetadataTable`, `RebalanceStrategyMetadataTable`, and portfolio
-  DataNode storage classes through core `markets_sqlalchemy_models()`.
-- `src/msm/bootstrap.py` exposes portfolio DataNode handles from the core
+  time-index-table output classes through core `markets_sqlalchemy_models()`.
+- `src/msm/bootstrap.py` exposes portfolio TimeIndexTableUpdater handles from the core
   runtime: `PortfolioWeights`, `PortfoliosDataNode`, `SignalWeights`, and
   `VirtualFundHoldings`.
 - `src/msm/api/portfolios.py` mixes portfolio row APIs and virtual-fund row APIs.
@@ -88,7 +88,7 @@ The following stay in core `msm`:
   account target allocations, position sets, portfolio identity/reference rows,
   and account target-position storage;
 - execution models and execution DataNodes;
-- shared DataNode bases and utilities such as `AssetIndexedDataNode`,
+- shared TimeIndexTableUpdater bases and utilities such as `AssetIndexedDataNode`,
   `StampedDataNode`, namespace helpers, datetime normalization, and storage
   schema helpers;
 - bootstrap, model registration, repository context, and
@@ -140,7 +140,7 @@ The initial migration preserved `PortfolioAssetDetailTable`, but that model is
 wrong for the intended portfolio domain.
 
 `PortfolioTable` must be the source of truth for portfolio identity and the
-DataNode UIDs used to build or publish the portfolio. It must not store
+TimeIndexTableUpdater UIDs used to build or publish the portfolio. It must not store
 construction-mode booleans, portfolio statistics, or generic JSON metadata.
 Those are workflow/configuration or derived-output concerns, not portfolio
 identity.
@@ -154,8 +154,8 @@ Target shape:
 | uid PK                      |
 | unique_identifier unique    |
 | calendar_name               |
-| portfolio_weights_node_uid  |-----> PortfolioWeights DataNode / storage
-| signal_weights_node_uid     |-----> SignalWeights DataNode / storage
+| portfolio_weights_node_uid  |-----> PortfolioWeights TimeIndexTableUpdater / storage
+| signal_weights_node_uid     |-----> SignalWeights TimeIndexTableUpdater / storage
 | portfolio_values_node_uid   |-----> PortfoliosDataNode / storage
 | optional published_index_uid|-----> IndexTable.uid
 +-----------------------------+       optional PortfolioIndex, not an Asset
@@ -182,10 +182,10 @@ The following relationship should be removed from the target model:
 
 This table duplicates portfolio-index identity and points it at the wrong core
 concept. If a workflow needs to describe holdings, constituents, or target
-weights, those belong in portfolio DataNode storage or a future explicit
+weights, those belong in portfolio time-index-table output or a future explicit
 constituent model, not in a one-to-one "asset detail" row.
 
-Portfolio DataNode storage should also stop using asset-language identity such
+Portfolio time-index-table output should also stop using asset-language identity such
 as `portfolio_index_asset_unique_identifier`. Storage keys should be expressed
 in portfolio/index terms:
 
@@ -215,14 +215,14 @@ create a parallel catalog, UID map, or registration path.
 2. expand required core dependencies such as `AssetTable` and `AccountTable`;
 3. register or attach selected models through the same catalog bootstrap used by
    `msm.start_engine(...)`;
-4. register portfolio DataNode storage classes only when requested by the
+4. register portfolio time-index-table output classes only when requested by the
    portfolio graph;
 5. cache runtime initialization once per process with the same explicit-startup
    semantics as core `msm`;
 6. return a portfolio runtime/context that row APIs and DataNodes can use.
 
 Core `msm.start_engine(...)` should not register portfolio/virtual-fund tables
-or portfolio DataNode storage by default after the migration.
+or portfolio time-index-table output by default after the migration.
 
 ### Execution And Fund References
 
@@ -385,14 +385,14 @@ Virtual-fund items in this stage are superseded by ADR 0029.
 
 Virtual-fund items in this stage are superseded by ADR 0029.
 
-- [x] Move portfolio DataNode storage classes into `msm_portfolios`.
-- [x] Move portfolio DataNode logic into `msm_portfolios`.
+- [x] Move portfolio time-index-table output classes into `msm_portfolios`.
+- [x] Move portfolio TimeIndexTableUpdater logic into `msm_portfolios`.
 - [x] Move `VirtualFundHoldings` and `FundHoldingsStorage` into
   `msm_portfolios`.
-- [x] Remove hard-coded DataNode handles from core `msm.bootstrap` runtime
-  attachment. DataNode classes stay in their owning package modules.
+- [x] Remove hard-coded TimeIndexTableUpdater handles from core `msm.bootstrap` runtime
+  attachment. TimeIndexTableUpdater classes stay in their owning package modules.
 - [x] Remove portfolio storage classes from core model registration.
-- [x] Update DataNode tests under `tests/msm_portfolios/data_nodes`.
+- [x] Update TimeIndexTableUpdater tests under `tests/msm_portfolios/data_nodes`.
 
 ### Stage 6: Move Contrib And Strategy Code
 
@@ -423,7 +423,7 @@ Virtual-fund items in this stage are superseded by ADR 0029.
 - [x] Run focused `ruff` for `src/msm_portfolios`, touched `src/msm` modules,
   moved tests, and touched examples.
 - [x] Run focused tests for core import boundaries, core bootstrap, portfolio
-  bootstrap, DataNode storage contracts, row APIs, repositories, and catalog
+  bootstrap, time-index-table output contracts, row APIs, repositories, and catalog
   bootstrap fallout.
 - [x] Run `git diff --check`.
 - [x] Run MkDocs strict build.
@@ -447,18 +447,18 @@ Virtual-fund items in this stage are superseded by ADR 0029.
   `metadata_json`.
 - [ ] Add or reuse a typed helper workflow that creates an `Index` row for
   portfolios that need index-like publication; do not create portfolio assets.
-- [x] Rename portfolio DataNode storage columns and helpers from
+- [x] Rename portfolio time-index-table output columns and helpers from
   `portfolio_index_asset_unique_identifier` to
   `portfolio_index_unique_identifier`.
-- [x] Update portfolio identity resolution and related DataNode code to use
+- [x] Update portfolio identity resolution and related TimeIndexTableUpdater code to use
   `PortfolioTable` identity, not `AssetTable`.
 - [x] Update `examples/msm_portfolios/` so portfolio examples no longer pass
   asset-detail payloads or create portfolio assets.
 - [x] Update `docs/knowledge/msm_portfolios/portfolios/index.md` with the
   corrected ASCII diagrams showing `PortfolioTable` owning the portfolio details
-  and DataNode UID links, plus optional `PortfolioTable -> IndexTable`.
+  and TimeIndexTableUpdater UID links, plus optional `PortfolioTable -> IndexTable`.
 - [x] Update tests under `tests/msm_portfolios/` for the new model graph,
-  bootstrap dependency order, row APIs, and DataNode storage identity columns.
+  bootstrap dependency order, row APIs, and time-index-table output identity columns.
 - [x] Run focused compile, ruff, tests, strict MkDocs build, and
   `git diff --check`.
 
@@ -563,5 +563,5 @@ core execution can no longer own a direct FK to a virtual-fund table. That is th
 right package-boundary tradeoff. Strict fund-linked execution semantics should
 be implemented in `msm_portfolios` if needed.
 
-This ADR does not change the underlying Main Sequence DataNode or MetaTable
+This ADR does not change the underlying Main Sequence TimeIndexTableUpdater or MetaTable
 semantics. It changes package ownership and bootstrap composition.

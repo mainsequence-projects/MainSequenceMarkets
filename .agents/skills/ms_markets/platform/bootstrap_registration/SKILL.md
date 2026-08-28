@@ -1,6 +1,6 @@
 ---
 name: mainsequence-markets-bootstrap-registration
-description: Use this skill when changing, documenting, or reviewing ms-markets runtime attachment, model resolution, direct backend table binding, row API startup behavior, or DataNode startup prerequisites. This skill owns the rule that ms-markets runtime startup attaches to already-migrated MetaTables through `msm.start_engine(...)`; it does not own schema migration commands or row-class schema creation shortcuts.
+description: Use this skill when changing, documenting, or reviewing ms-markets runtime attachment, model resolution, direct backend table binding, row API startup behavior, or TimeIndexTableUpdater startup prerequisites. This skill owns the rule that ms-markets runtime startup attaches to already-migrated MetaTables through `msm.start_engine(...)`; it does not own schema migration commands or row-class schema creation shortcuts.
 ---
 
 # Main Sequence Markets Runtime Attachment
@@ -58,11 +58,11 @@ create schemas, or repair schema drift.
   provider registration.
 - Generic Main Sequence MetaTable semantics; use
   `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`.
-- Generic DataNode update-process design; use
-  `.agents/skills/mainsequence/data_publishing/data_nodes/SKILL.md`.
+- Generic TimeIndexTableUpdater update-process design; use
+  `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`.
 - Asset schema modeling details; use
   `.agents/skills/ms_markets/assets/asset_model_extension/SKILL.md`.
-- Asset-indexed DataNode frame semantics; use
+- Asset-indexed TimeIndexTableUpdater frame semantics; use
   `.agents/skills/ms_markets/assets/asset_indexed_data_nodes/SKILL.md`.
 - Fixed-income pricing semantics; use
   `.agents/skills/ms_markets/pricing/fixed_income_curve_building/SKILL.md`.
@@ -195,9 +195,9 @@ When adding a new built-in markets MetaTable model:
 8. Update docs and tests so examples call `msm.start_engine(...)` only after
    migrations are already handled.
 
-When adding DataNode storage, add the `PlatformTimeIndexMetaTable` storage class
+When adding time-index-table output, add the `PlatformTimeIndexMetaTable` storage class
 to the model graph and ensure SDK migration provider coverage outside this
-skill. Do not rely on constructing a DataNode to register its storage.
+skill. Do not rely on constructing a TimeIndexTableUpdater to register its storage.
 
 ## Typed Row API Entries
 
@@ -277,6 +277,6 @@ When reviewing or implementing extension support, verify the ADR 0018 target:
 - SDK migration/provider work is handled outside this skill.
 - Runtime attachment remains explicit and startup-scoped.
 - Row APIs do not attach, register, or discover schemas on first use.
-- DataNode storage is migrated and registered before writes.
+- time-index-table output is migrated and registered before writes.
 - Runtime attachment does not apply migrations, register MetaTables, create
   schemas, or repair schema drift.

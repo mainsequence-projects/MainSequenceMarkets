@@ -55,14 +55,14 @@ Important rules:
   as the normal UX. Direct row APIs are low-level infrastructure for the
   no-date current-snapshot path.
 
-The related DataNode stays separate:
+The related TimeIndexTableUpdater stays separate:
 
 ```text
 AssetCurrentPricingDetailsTable
   grain:   one current row per asset_uid
   purpose: fast load/rebuild of the current priceable instrument
 
-AssetPricingDetail DataNode
+AssetPricingDetail TimeIndexTableUpdater
   grain:   (time_index, asset_identifier)
   purpose: timestamped pricing metadata and historical pricing-detail records
 ```
@@ -224,7 +224,7 @@ position = build_valuation_position(
 `ValuationPosition` has one `market_data_set` for the whole basket. Build
 separate baskets when two groups of lines must be valued against different
 market-data sets. See [Market Data Sets](market_data_sets.md) for how the
-selected set resolves to DataNode reads.
+selected set resolves to TimeIndexTableUpdater reads.
 
 `build_valuation_position(...)` accepts normalized mappings or a pandas
 DataFrame with required `instrument` and `units` fields, plus optional

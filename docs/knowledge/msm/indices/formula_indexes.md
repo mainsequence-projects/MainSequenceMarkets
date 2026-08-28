@@ -194,7 +194,7 @@ from msm.data_nodes.indices import (
 
 config = FormulaIndexDataNodeConfiguration(
     formula_definition_uids=(formula_index.definition.uid,),
-    source_storage_tables=(RateValuesStorage, BondValuesStorage),
+    source_output_tables=(RateValuesStorage, BondValuesStorage),
     offset_start="2026-01-01T00:00:00Z",
 )
 node = FormulaIndexDataNode(

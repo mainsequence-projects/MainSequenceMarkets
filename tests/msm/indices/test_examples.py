@@ -43,8 +43,8 @@ def test_plain_index_values_share_identity_across_frequencies() -> None:
     daily = output["frequency_datasets"]["1d"]
 
     assert output["index_identifier"] == "USD_SWAP_10Y"
-    assert one_minute["storage_table"].__cadence__ == "1m"
-    assert daily["storage_table"].__cadence__ == "1d"
+    assert one_minute["output_table"].__cadence__ == "1m"
+    assert daily["output_table"].__cadence__ == "1d"
     assert "unit" not in one_minute["values"].columns
     assert output["calculation_identity"]["coexisting_methods"] == (
         "USD_SWAP_10Y_METHOD_A",

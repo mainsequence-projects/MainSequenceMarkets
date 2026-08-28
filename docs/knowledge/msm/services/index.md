@@ -30,7 +30,7 @@ Services answer these questions:
   virtual-fund allocation planner and apply step.
 - `msm.services.portfolios`: core portfolio identity, portfolio group, and
   portfolio group membership workflows over repository operations.
-- `msm.services.holdings`: DataNode frame builders and validators for account
+- `msm.services.holdings`: TimeIndexTableUpdater frame builders and validators for account
   holdings tables.
 - `msm.services.target_positions`: account target-position frame builders,
   validators, snapshot readers, and explicit portfolio expansion helpers.
@@ -39,7 +39,7 @@ Services answer these questions:
 ## Key Contracts
 
 Services should be thin until there is a real workflow to orchestrate. They
-should not duplicate repository query construction, DataNode normalization, or
+should not duplicate repository query construction, TimeIndexTableUpdater normalization, or
 pricing runtime logic.
 
 When services need the current asset display snapshot for account holdings,
@@ -69,7 +69,7 @@ for workflows that compose providers, repositories, and DataNodes.
 Use `msm.data_nodes.assets.AssetSnapshot` directly for snapshot rows:
 `AssetSnapshot.build_frame(...)` validates row payloads, and
 `AssetSnapshot().set_snapshots(...)` binds rows to a node before running it.
-Each snapshot payload must carry its own `time_index`; the DataNode does not
+Each snapshot payload must carry its own `time_index`; the TimeIndexTableUpdater does not
 apply one timestamp to a batch.
 
 The `msm.services` package export surface is lazy. Importing a provider helper

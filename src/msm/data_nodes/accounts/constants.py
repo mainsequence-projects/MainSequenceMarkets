@@ -1,4 +1,4 @@
-"""Account DataNode storage constants."""
+"""Account time-index-table output constants."""
 
 from __future__ import annotations
 

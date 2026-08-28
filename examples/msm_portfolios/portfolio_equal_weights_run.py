@@ -18,7 +18,7 @@ def main() -> None:
     parser.add_argument(
         "--no-run-data-nodes",
         action="store_true",
-        help="Skip DataNode publication; by default the full dependency tree is published.",
+        help="Skip TimeIndexTableUpdater publication; by default the full dependency tree is published.",
     )
     args = parser.parse_args()
     build_equal_weight_portfolio(run_data_nodes=not args.no_run_data_nodes)

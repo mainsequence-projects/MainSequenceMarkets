@@ -843,7 +843,7 @@ def test_curve_discount_curve_nodes_explain_missing_latest_observation(monkeypat
     assert "No discount-curve data has been published" in message
     assert "VALMER_TIIE_28" in message
     assert "pricing market-data set 'default'" in message
-    assert f"bound DataNode {data_node_uid}" in message
+    assert f"bound TimeIndexTableUpdater {data_node_uid}" in message
     assert "has no latest ms_markets__discountcurvests observation" in message
 
 

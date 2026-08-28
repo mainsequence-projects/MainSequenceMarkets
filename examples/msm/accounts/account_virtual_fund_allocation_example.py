@@ -40,7 +40,7 @@ def main() -> None:
     parser.add_argument(
         "--no-run-portfolio-data-nodes",
         action="store_true",
-        help="Skip portfolio DataNode publication when creating the source account workflow.",
+        help="Skip portfolio TimeIndexTableUpdater publication when creating the source account workflow.",
     )
     parser.add_argument(
         "--apply",

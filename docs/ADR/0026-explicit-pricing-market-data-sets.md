@@ -5,7 +5,7 @@
 Accepted - implemented
 
 Implemented in the ADR 0026 market-data set changes. Pricing runtime now uses
-first-class market-data set rows and concept bindings keyed by backend DataNode
+first-class market-data set rows and concept bindings keyed by backend TimeIndexTableUpdater
 storage table UID.
 
 ## Context
@@ -78,7 +78,7 @@ stress_2026_06
 
 `PricingMarketDataSetBindingTable.data_node_uid` is the authoritative resource
 pointer. It stores the backend MetaTable/TimeIndexMetaTable UID consumed by
-`APIDataNode.build_from_table_uid(...)`. `storage_table_identifier` is optional
+`TimeIndexTableRef.from_uid(...)`. `storage_table_identifier` is optional
 diagnostic cache only;
 runtime resolution must not depend on it when a UID is available.
 
@@ -106,12 +106,12 @@ market_data_set_key
   -> PricingMarketDataSetTable
   -> PricingMarketDataSetBindingTable rows
   -> data_node_uid
-  -> APIDataNode.build_from_table_uid(...)
+  -> TimeIndexTableRef.from_uid(...)
 ```
 
-The SDK exposes `APIDataNode.build_from_table_uid(...)`, and pricing uses that
+The SDK exposes `TimeIndexTableRef.from_uid(...)`, and pricing uses that
 resolver for configured market-data bindings. Identifier-string resolution
-through `APIDataNode.build_from_identifier(...)` is not part of the pricing
+through `TimeIndexTableRef.from_identifier(...)` is not part of the pricing
 market-data binding path.
 
 ## Bootstrap
@@ -164,7 +164,7 @@ decision.
 - [x] Add `PricingMarketDataSetTable`.
 - [x] Add `PricingMarketDataSetBindingTable`.
 - [x] Add public row APIs for market-data sets and set bindings.
-- [x] Add or verify SDK support for UID-based DataNode resolution.
+- [x] Add or verify SDK support for UID-based TimeIndexTableUpdater resolution.
 - [x] Update pricing data-interface resolution to load a set, validate required
       concept bindings, and resolve DataNodes by storage table UID.
 - [x] Update pricing bootstrap to seed the default set from attached storage
@@ -183,7 +183,7 @@ This ADR is complete only when:
 
 - pricing has a first-class market-data set row;
 - each set binding stores an authoritative storage table UID;
-- pricing resolution uses UID-based DataNode lookup;
+- pricing resolution uses UID-based TimeIndexTableUpdater lookup;
 - the default set is seeded after runtime attachment;
 - missing required concepts fail before valuation work starts;
 - the Alembic migration is committed in the namespace-scoped revision graph;

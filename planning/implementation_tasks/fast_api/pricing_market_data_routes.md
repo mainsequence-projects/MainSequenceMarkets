@@ -14,7 +14,7 @@ The route group lets the frontend operate the pricing market-data registry used 
 - `PricingMarketDataSet`: named source sets such as `default`, `eod`, `live`, or
   scenario-specific market-data configurations.
 - `PricingMarketDataSetBinding`: binding rows that map one set and one pricing
-  concept to the DataNode storage UID that pricing engines should use.
+  concept to the time-index-table output UID that pricing engines should use.
 
 The FastAPI route must remain a resolver layer only. Row behavior must be
 implemented through `msm_pricing.api`; route handlers should not issue direct

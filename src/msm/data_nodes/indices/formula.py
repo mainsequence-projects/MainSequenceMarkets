@@ -9,7 +9,7 @@ import pandas as pd
 from pydantic import Field, model_validator
 import sqlalchemy as sa
 
-from mainsequence.meta_tables import APIDataNode, PlatformTimeIndexMetaTable
+from mainsequence.meta_tables import TimeIndexTableRef, PlatformTimeIndexMetaTable
 
 from msm.analytics.indices import IndexFormulaError
 from msm.api.formula_indices import FormulaIndex
@@ -24,7 +24,7 @@ class FormulaIndexDataNodeConfiguration(IndexDataNodeConfiguration):
     """Immutable formula versions and exact registered source storage classes."""
 
     formula_definition_uids: tuple[uuid.UUID, ...] = Field(..., min_length=1)
-    source_storage_tables: tuple[type[PlatformTimeIndexMetaTable], ...] = Field(
+    source_output_tables: tuple[type[PlatformTimeIndexMetaTable], ...] = Field(
         ...,
         min_length=1,
     )
@@ -33,9 +33,9 @@ class FormulaIndexDataNodeConfiguration(IndexDataNodeConfiguration):
     def _unique_configuration(self) -> FormulaIndexDataNodeConfiguration:
         if len(set(self.formula_definition_uids)) != len(self.formula_definition_uids):
             raise ValueError("formula_definition_uids must be unique")
-        identifiers = [table.__metatable_identifier__ for table in self.source_storage_tables]
+        identifiers = [table.__metatable_identifier__ for table in self.source_output_tables]
         if len(set(identifiers)) != len(identifiers):
-            raise ValueError("source_storage_tables must be unique")
+            raise ValueError("source_output_tables must be unique")
         return self
 
 
@@ -50,15 +50,15 @@ class FormulaIndexDataNode(IndexTimestampedDataNode):
     def __init__(
         self,
         config: FormulaIndexDataNodeConfiguration,
-        storage_table: type[PlatformTimeIndexMetaTable],
+        output_table: type[PlatformTimeIndexMetaTable],
         *,
         hash_namespace: str | None = None,
     ) -> None:
-        require_cadenced_index_values_storage(storage_table)
+        require_cadenced_index_values_storage(output_table)
         self.config = config
         self._formulas = self._load_formulas(config.formula_definition_uids)
         self._source_tables, self._source_dependencies = self._build_source_dependencies(
-            config.source_storage_tables
+            config.source_output_tables
         )
         required_source_uids = {
             str(formula_input.meta_table_uid)
@@ -68,7 +68,7 @@ class FormulaIndexDataNode(IndexTimestampedDataNode):
         configured_source_uids = set(self._source_tables)
         if configured_source_uids != required_source_uids:
             raise ValueError(
-                "source_storage_tables must exactly match formula input MetaTable UIDs; "
+                "source_output_tables must exactly match formula input MetaTable UIDs; "
                 f"missing={sorted(required_source_uids - configured_source_uids)}, "
                 f"unused={sorted(configured_source_uids - required_source_uids)}"
             )
@@ -80,11 +80,11 @@ class FormulaIndexDataNode(IndexTimestampedDataNode):
                 )
         super().__init__(
             config=config,
-            storage_table=storage_table,
+            output_table=output_table,
             hash_namespace=hash_namespace,
         )
 
-    def dependencies(self) -> dict[str, APIDataNode]:
+    def dependencies(self) -> dict[str, TimeIndexTableRef]:
         return dict(self._source_dependencies)
 
     def update(self) -> pd.DataFrame:
@@ -119,11 +119,11 @@ class FormulaIndexDataNode(IndexTimestampedDataNode):
         flat = (
             pd.concat(outputs, ignore_index=True)
             if outputs
-            else pd.DataFrame(columns=[column.name for column in self.storage_table.__table__.columns])
+            else pd.DataFrame(columns=[column.name for column in self.output_table.__table__.columns])
         )
         normalized = normalize_stamped_frame(
             flat,
-            storage_table=self.storage_table,
+            output_table=self.output_table,
             frame_label=self.frame_label,
         )
         self._published_index_identifiers = index_identifiers_in_frame(normalized)
@@ -144,7 +144,7 @@ class FormulaIndexDataNode(IndexTimestampedDataNode):
     ) -> Any:
         if not index_identifiers:
             raise ValueError("repair_after requires at least one Index identifier")
-        return self.storage_table.get_time_index_meta_table().delete_after_date(
+        return self.output_table.get_time_index_meta_table().delete_after_date(
             after_date,
             dimension_filters={"index_identifier": list(index_identifiers)},
         )
@@ -163,36 +163,36 @@ class FormulaIndexDataNode(IndexTimestampedDataNode):
 
     @staticmethod
     def _build_source_dependencies(
-        storage_tables: Sequence[type[PlatformTimeIndexMetaTable]],
-    ) -> tuple[dict[str, type[PlatformTimeIndexMetaTable]], dict[str, APIDataNode]]:
+        output_tables: Sequence[type[PlatformTimeIndexMetaTable]],
+    ) -> tuple[dict[str, type[PlatformTimeIndexMetaTable]], dict[str, TimeIndexTableRef]]:
         tables: dict[str, type[PlatformTimeIndexMetaTable]] = {}
-        dependencies: dict[str, APIDataNode] = {}
-        for storage_table in storage_tables:
-            meta_table = storage_table.get_time_index_meta_table()
+        dependencies: dict[str, TimeIndexTableRef] = {}
+        for output_table in output_tables:
+            meta_table = output_table.get_time_index_meta_table()
             if meta_table is None or not getattr(meta_table, "uid", None):
-                raise ValueError(f"source storage {storage_table.__name__} is not registered")
+                raise ValueError(f"source storage {output_table.__name__} is not registered")
             uid = str(meta_table.uid)
             if uid in tables:
                 raise ValueError(f"multiple source storage classes resolve to MetaTable {uid}")
-            tables[uid] = storage_table
-            dependencies[f"source_{uid.replace('-', '_')}"] = APIDataNode.build_from_meta_table(
+            tables[uid] = output_table
+            dependencies[f"source_{uid.replace('-', '_')}"] = TimeIndexTableRef.from_meta_table(
                 meta_table
             )
         return tables, dependencies
 
     @staticmethod
-    def _validate_source_storage(storage_table, formula_input) -> None:
+    def _validate_source_storage(output_table, formula_input) -> None:
         identity_column = (
             "asset_identifier"
             if formula_input.source_reference.type == "asset"
             else "index_identifier"
         )
         expected_index = ["time_index", identity_column]
-        if list(storage_table.__index_names__) != expected_index:
+        if list(output_table.__index_names__) != expected_index:
             raise ValueError(
                 f"formula source storage grain must be exactly {expected_index!r}"
             )
-        column = storage_table.__table__.columns.get(formula_input.observable)
+        column = output_table.__table__.columns.get(formula_input.observable)
         if column is None:
             raise ValueError(
                 f"formula source storage is missing observable {formula_input.observable!r}"

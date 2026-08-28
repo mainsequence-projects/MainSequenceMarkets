@@ -22,7 +22,7 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
     CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
     NAMESPACE,
 )
-from mainsequence.meta_tables import APIDataNode, DataNode  # noqa: E402
+from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater  # noqa: E402
 from msm_portfolios.configuration import (  # noqa: E402
     BacktestingWeightsConfig,
     PortfolioBuildConfiguration,
@@ -60,7 +60,7 @@ def build_fixed_weights_signal() -> FixedWeights:
 
 def build_fair_value_portfolio_configuration(
     *,
-    valuation_source: DataNode | APIDataNode,
+    valuation_source: TimeIndexTableUpdater | TimeIndexTableRef,
 ) -> PortfolioConfiguration:
     signal_weights = build_fixed_weights_signal()
     return PortfolioConfiguration(
@@ -82,10 +82,10 @@ def build_fair_value_portfolio_configuration(
     )
 
 
-def valuation_source_from_uid(source_time_index_meta_table_uid: str) -> APIDataNode:
+def valuation_source_from_uid(source_time_index_meta_table_uid: str) -> TimeIndexTableRef:
     if not source_time_index_meta_table_uid.strip():
         raise ValueError("source_time_index_meta_table_uid cannot be empty.")
-    return APIDataNode.build_from_table_uid(source_time_index_meta_table_uid)
+    return TimeIndexTableRef.from_uid(source_time_index_meta_table_uid)
 
 
 def run_configuration_example(

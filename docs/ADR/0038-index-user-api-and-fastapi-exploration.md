@@ -9,7 +9,7 @@ after the formula/custom replacement in ADR 0037.
 
 Index identity, formula history, canonical datasets, bounded observations,
 related MetaTables, and deletion impact must be inspectable without mixing
-those concerns into formula authoring or DataNode execution.
+those concerns into formula authoring or TimeIndexTableUpdater execution.
 
 ## Decision
 

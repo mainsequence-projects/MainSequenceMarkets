@@ -32,7 +32,7 @@ class ExampleIndexFact(IndexTimestampedDataNode):
     configuration_class: ClassVar[type[IndexDataNodeConfiguration]] = IndexDataNodeConfiguration
 
     @classmethod
-    def _required_storage_table(cls) -> type[IndexFixingsStorage]:
+    def _required_output_table(cls) -> type[IndexFixingsStorage]:
         return IndexFixingsStorage
 
 
@@ -48,12 +48,12 @@ def test_index_data_node_configuration_is_stamped() -> None:
     assert "foreign_keys" not in IndexDataNodeConfiguration.model_fields
 
 
-def test_index_node_resolves_storage_table_and_index_contract() -> None:
-    storage_table = ExampleIndexFact._required_storage_table()
+def test_index_node_resolves_output_table_and_index_contract() -> None:
+    output_table = ExampleIndexFact._required_output_table()
 
-    assert storage_table is IndexFixingsStorage
-    assert storage_table.__index_names__ == ["time_index", INDEX_IDENTIFIER_DIMENSION]
-    assert storage_table.__time_index_name__ == "time_index"
+    assert output_table is IndexFixingsStorage
+    assert output_table.__index_names__ == ["time_index", INDEX_IDENTIFIER_DIMENSION]
+    assert output_table.__time_index_name__ == "time_index"
 
 
 def test_index_node_storage_has_index_foreign_key() -> None:
@@ -115,7 +115,7 @@ def test_fixing_rates_node_is_index_timestamped(monkeypatch) -> None:
     )
 
     assert issubclass(FixingRatesNode, IndexTimestampedDataNode)
-    assert FixingRatesNode._required_storage_table() is IndexFixingsStorage
+    assert FixingRatesNode._required_output_table() is IndexFixingsStorage
     assert "__data_node_identifier__" not in FixingRatesNode.__dict__
     assert FixingRatesNode._default_identifier() == registered_identifier
     assert "fixing rates" in FixingRatesNode._default_description()

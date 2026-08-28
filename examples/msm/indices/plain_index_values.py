@@ -41,7 +41,7 @@ class Swap10YOneMinuteDataNode(IndexValuesDataNode):
     """Publish the one-minute `USD_SWAP_10Y` dataset."""
 
     @classmethod
-    def _required_storage_table(cls) -> type[PlatformTimeIndexMetaTable]:
+    def _required_output_table(cls) -> type[PlatformTimeIndexMetaTable]:
         return ONE_MINUTE_VALUES_STORAGE
 
 
@@ -49,7 +49,7 @@ class Swap10YDailyDataNode(IndexValuesDataNode):
     """Publish the daily `USD_SWAP_10Y` dataset."""
 
     @classmethod
-    def _required_storage_table(cls) -> type[PlatformTimeIndexMetaTable]:
+    def _required_output_table(cls) -> type[PlatformTimeIndexMetaTable]:
         return DAILY_VALUES_STORAGE
 
 
@@ -104,12 +104,12 @@ def run() -> dict[str, object]:
         "frequency_datasets": {
             "1m": {
                 "data_node": Swap10YOneMinuteDataNode,
-                "storage_table": ONE_MINUTE_VALUES_STORAGE,
+                "output_table": ONE_MINUTE_VALUES_STORAGE,
                 "values": one_minute_values,
             },
             "1d": {
                 "data_node": Swap10YDailyDataNode,
-                "storage_table": DAILY_VALUES_STORAGE,
+                "output_table": DAILY_VALUES_STORAGE,
                 "values": daily_values,
             },
         },
@@ -120,7 +120,7 @@ def run() -> dict[str, object]:
 if __name__ == "__main__":
     output = run()
     for frequency, dataset in output["frequency_datasets"].items():
-        storage_table = dataset["storage_table"]
-        print(f"{frequency}: {storage_table.__table__.name}")
+        output_table = dataset["output_table"]
+        print(f"{frequency}: {output_table.__table__.name}")
         print(dataset["values"])
     print(output["calculation_identity"])

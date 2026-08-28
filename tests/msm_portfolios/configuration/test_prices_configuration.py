@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import pytest
-from mainsequence.meta_tables import APIDataNode
+from mainsequence.client.metatables import TimeIndexMetaTable
+from mainsequence.meta_tables import TimeIndexTableRef
 from pydantic import ValidationError
 
 from msm_portfolios.configuration import PricesConfiguration
@@ -19,16 +20,13 @@ class _Profile:
     cadence = "1D"
 
 
-class _StorageTable:
-    uid = SOURCE_TIME_INDEX_META_TABLE_UID
-    time_indexed_profile = _Profile()
-
-
-def _api_price_source() -> APIDataNode:
-    return APIDataNode(
-        data_source_uid="source-data-source",
-        physical_table_name="source-prices",
-        storage_table=_StorageTable(),
+def _api_price_source() -> TimeIndexTableRef:
+    return TimeIndexTableRef(
+        output_table=TimeIndexMetaTable.model_construct(
+            uid=SOURCE_TIME_INDEX_META_TABLE_UID,
+            data_source_uid="source-data-source",
+            time_indexed_profile=_Profile(),
+        )
     )
 
 
@@ -158,11 +156,11 @@ def test_interpolated_prices_resolves_source_instance_as_dependency() -> None:
 def test_interpolated_prices_resolves_source_uid_as_api_dependency(monkeypatch) -> None:
     source_price = _api_price_source()
 
-    def build_from_table_uid(uid: str) -> APIDataNode:
+    def from_uid(uid: str) -> TimeIndexTableRef:
         assert uid == SOURCE_TIME_INDEX_META_TABLE_UID
         return source_price
 
-    monkeypatch.setattr(APIDataNode, "build_from_table_uid", build_from_table_uid)
+    monkeypatch.setattr(TimeIndexTableRef, "from_uid", from_uid)
 
     configuration = InterpolatedPricesConfig(
         upsample_frequency_id="1d",

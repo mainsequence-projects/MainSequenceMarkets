@@ -50,7 +50,7 @@ def markets_identifier(identifier: str, namespace: str | None = None) -> str:
 
 
 def markets_data_node_identifier(identifier: str, namespace: str | None = None) -> str:
-    """Return a DataNode identifier scoped to the markets application namespace."""
+    """Return a TimeIndexTableUpdater identifier scoped to the markets application namespace."""
 
     return markets_identifier(identifier, namespace=namespace)
 

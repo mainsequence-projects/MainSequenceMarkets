@@ -137,7 +137,7 @@ pod_manager
 
 ts_manager
 ├── MetaTable, Namespace, Scheduler, TableUpdateNode -> direct Environment
-└── columns, indexes, foreign keys, LocalTimeSerie updates -> derive through
+└── columns, indexes, foreign keys, TimeIndexTableUpdate updates -> derive through
     their mandatory MetaTable/update-graph parent
 
 agents
@@ -563,7 +563,7 @@ Deploying code does not copy or move:
 
 - physical schemas or tables;
 - MetaTable registrations;
-- history, DataNode progress, or checkpoints;
+- history, TimeIndexTableUpdater progress, or checkpoints;
 - Secrets, Constants, or ProjectSecret assignments;
 - Jobs, schedules, releases, or deployment provenance; or
 - DataSource or Alembic ownership.
@@ -619,7 +619,7 @@ research data into production.
 ## Route Work To The Correct Skill
 
 - Use `project-design` to record why a Project uses particular exact branch
-  lanes and which environment assumptions affect MetaTables, DataNodes, Jobs,
+  lanes and which environment assumptions affect MetaTables, TimeIndexTableUpdaters, Jobs,
   APIs, CLI commands, project-agent behavior, and static sites.
 - Use `project-to-agent` to prepare truthful repository instructions, skills,
   and the source card for a Project Coding Agent.

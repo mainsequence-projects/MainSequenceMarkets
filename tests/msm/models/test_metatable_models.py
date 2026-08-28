@@ -1029,7 +1029,7 @@ def test_markets_models_build_platform_registration_requests_in_dependency_order
     assert AssetTypeTable in markets_sqlalchemy_models()
     assert pairs
 
-    # ADR 0017: domain MetaTables and DataNode storage (PlatformTimeIndexMetaTable)
+    # ADR 0017: domain MetaTables and time-index-table output (PlatformTimeIndexMetaTable)
     # build different registration-request types.
     domain_requests = [req for model, req in pairs if not is_time_index_meta_table_model(model)]
     storage_requests = [req for model, req in pairs if is_time_index_meta_table_model(model)]

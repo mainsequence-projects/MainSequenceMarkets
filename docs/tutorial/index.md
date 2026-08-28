@@ -12,7 +12,7 @@ a real project would follow.
 Before starting, set up your environment with
 [Getting Started](../getting-started.md) and read
 [Core Concepts](../concepts.md) for the runtime model that the chapters assume
-(typed `msm.api` row APIs, explicit MetaTable runtime attachment, and DataNode
+(typed `msm.api` row APIs, explicit MetaTable runtime attachment, and TimeIndexTableUpdater
 helpers for time-indexed facts).
 
 ## Installing MS Markets Agent Skills

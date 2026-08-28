@@ -10,7 +10,7 @@ from msm_portfolios.data_nodes import (
     SignalWeights,
 )
 from msm_portfolios.configuration import PortfolioConfigBaseModel
-from mainsequence.meta_tables import APIDataNode, DataNode
+from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
 
 SIGNAL_OFFSET_START = datetime.datetime(2018, 1, 1, tzinfo=datetime.UTC)
 
@@ -44,7 +44,7 @@ class FixedWeights(SignalWeights):
     def get_asset_list(self) -> None | list:
         return [w.unique_identifier for w in self.asset_unique_identifier_weights]
 
-    def dependencies(self) -> dict[str, Union["DataNode", "APIDataNode"]]:
+    def dependencies(self) -> dict[str, Union["TimeIndexTableUpdater", "TimeIndexTableRef"]]:
         return {}
 
     def _calculate_signal_weights(self) -> pd.DataFrame:

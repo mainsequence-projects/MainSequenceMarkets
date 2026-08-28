@@ -663,7 +663,7 @@ def test_get_pricing_discount_curve_returns_404_for_missing_observation(monkeypa
         raise LookupError(
             "No discount-curve data has been published for curve 'VALMER_TIIE_28' "
             "in pricing market-data set 'default'. The curve registry row and "
-            "discount_curves binding exist, but bound DataNode data-node-uid has "
+            "discount_curves binding exist, but bound TimeIndexTableUpdater data-node-uid has "
             "no latest ms_markets__discountcurvests observation for this curve_identifier."
         )
 
@@ -682,7 +682,7 @@ def test_get_pricing_discount_curve_returns_404_for_missing_observation(monkeypa
     detail = response.json()["detail"]
     assert "No discount-curve data has been published" in detail
     assert "VALMER_TIIE_28" in detail
-    assert "bound DataNode data-node-uid" in detail
+    assert "bound TimeIndexTableUpdater data-node-uid" in detail
 
 
 def test_pricing_curve_summary_service_uses_pricing_api(monkeypatch) -> None:

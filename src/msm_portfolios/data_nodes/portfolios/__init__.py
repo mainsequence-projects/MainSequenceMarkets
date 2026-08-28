@@ -8,15 +8,15 @@ import numpy as np
 import pandas as pd
 import pytz
 
-import mainsequence.meta_tables.data_nodes.build_operations as build_operations
+import mainsequence.meta_tables.time_index_table_updates.configuration as update_configuration
 from mainsequence.client.metatables import UpdateStatistics
-from mainsequence.meta_tables import APIDataNode, DataNode
+from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm_portfolios.asset_scope import dedupe_asset_scope
 
 from ..base import (
     PortfolioCanonicalDataNode,
     PortfolioCanonicalDataNodeConfiguration,
-    StorageTable,
+    OutputTable,
     _class_import_path,
     _drop_empty_framework_init_kwargs,
     _empty_flat_frame,
@@ -69,7 +69,7 @@ def _calendar_schedule_name(calendar: Any) -> str:
 
 
 class PortfoliosDataNode(PortfolioCanonicalDataNode):
-    """Canonical portfolio values DataNode and portfolio workflow orchestrator."""
+    """Canonical portfolio values TimeIndexTableUpdater and portfolio workflow orchestrator."""
 
     OFFSET_START = datetime(2018, 1, 1, tzinfo=pytz.utc)
 
@@ -105,10 +105,10 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             "metadata_updater",
         ):
             init_kwargs.pop(runtime_key, None)
-        init_kwargs["time_series_class_import_path"] = _class_import_path(PortfoliosDataNode)
-        config = build_operations.create_config(
+        init_kwargs["table_updater_class_import_path"] = _class_import_path(PortfoliosDataNode)
+        config = update_configuration.create_config(
             kwargs=init_kwargs,
-            ts_class_name=PortfoliosDataNode.__name__,
+            updater_class_name=PortfoliosDataNode.__name__,
         )
         for field_name, value in config.__dict__.items():
             setattr(self, field_name, value)
@@ -191,7 +191,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         self._portfolio_metadata_updater = metadata_updater
         return self
 
-    def dependencies(self) -> dict[str, DataNode | APIDataNode]:
+    def dependencies(self) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
         if self.portfolio_configuration is None:
             return {}
         return {
@@ -253,7 +253,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                 force_update=force_update,
                 remote_scheduler=remote_scheduler,
             )
-            portfolio_weights_data_node_uid = self._required_data_node_update_uid(
+            portfolio_weights_data_node_uid = self._required_table_update_uid(
                 portfolio_weights_node,
                 "portfolio weights",
             )
@@ -261,12 +261,12 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         if update_pointers:
             portfolio = self._update_portfolio_pointers(
                 portfolio=portfolio,
-                signal_weights_data_node_uid=self._required_data_node_update_uid(
+                signal_weights_data_node_uid=self._required_table_update_uid(
                     self.signal_weights,
                     "signal weights",
                 ),
                 portfolio_weights_data_node_uid=portfolio_weights_data_node_uid,
-                portfolio_data_node_uid=self._required_data_node_update_uid(
+                portfolio_data_node_uid=self._required_table_update_uid(
                     self,
                     "portfolio values",
                 ),
@@ -329,28 +329,28 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return str(signal_uid)
 
     @staticmethod
-    def _required_data_node_update_uid(node: Any, label: str) -> str:
-        data_node_update = node.data_node_update
-        uid = data_node_update.uid
+    def _required_table_update_uid(node: Any, label: str) -> str:
+        table_update = node.table_update
+        uid = table_update.uid
         if uid in (None, ""):
             raise RuntimeError(
-                f"Cannot update PortfolioTable DataNode pointers because {label} "
-                "DataNodeUpdate.uid is not available."
+                f"Cannot update PortfolioTable TimeIndexTableUpdater pointers because {label} "
+                "TimeIndexTableUpdate.uid is not available."
             )
         return str(uid)
 
     def update(self) -> pd.DataFrame:
         raw_frame = self._calculate_portfolio_values()
         frame = (
-            self.validate_frame(raw_frame, storage_table=self.storage_table)
-            if _is_canonical_frame(raw_frame, storage_table=self.storage_table)
+            self.validate_frame(raw_frame, output_table=self.output_table)
+            if _is_canonical_frame(raw_frame, output_table=self.output_table)
             else self.validate_frame(
                 normalize_portfolio_values_frame(
                     raw_frame,
                     unique_identifier=self._resolve_unique_identifier(),
-                    storage_table=self.storage_table,
+                    output_table=self.output_table,
                 ),
-                storage_table=self.storage_table,
+                output_table=self.output_table,
             )
         )
         self._upsert_portfolio_metadata_if_available(frame)
@@ -610,23 +610,20 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         return earliest_last_value + self._valuation_source_maximum_forward_fill()
 
     def _valuation_source_update_statistics(self) -> UpdateStatistics:
-        update_statistics = self.valuation_source.update_statistics
-        if update_statistics is not None:
-            return update_statistics
+        if isinstance(self.valuation_source, TimeIndexTableRef):
+            return self.valuation_source.get_update_statistics()
 
-        if isinstance(self.valuation_source, APIDataNode):
-            update_statistics = self.valuation_source.get_update_statistics()
-            self.valuation_source.update_statistics = update_statistics
-            return update_statistics
-
-        if isinstance(self.valuation_source, DataNode):
+        if isinstance(self.valuation_source, TimeIndexTableUpdater):
+            update_statistics = self.valuation_source.update_statistics
+            if update_statistics is not None:
+                return update_statistics
             raise RuntimeError(
-                "PortfoliosDataNode valuation source DataNode has no update_statistics. "
+                "PortfoliosDataNode valuation source TimeIndexTableUpdater has no update_statistics. "
                 "The SDK runner must populate dependency update_statistics before "
                 "portfolio update-window calculation."
             )
 
-        raise TypeError("PortfoliosDataNode valuation_source must be a DataNode or APIDataNode.")
+        raise TypeError("PortfoliosDataNode valuation_source must be a TimeIndexTableUpdater or TimeIndexTableRef.")
 
     def _required_valuation_source_progress_values(
         self,
@@ -805,7 +802,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         new_index: pd.DatetimeIndex,
         unique_identifiers: list,
         index_freq: str,
-        valuation_source: DataNode | APIDataNode,
+        valuation_source: TimeIndexTableUpdater | TimeIndexTableRef,
     ):
         fetch_end_date = new_index.max()
         raw_valuations = valuation_source.get_df_between_dates(
@@ -906,7 +903,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         raw_valuations: pd.DataFrame,
         *,
         requested_asset_identifiers: list,
-        valuation_source: DataNode | APIDataNode,
+        valuation_source: TimeIndexTableUpdater | TimeIndexTableRef,
         start_date,
         end_date,
     ) -> None:
@@ -936,16 +933,14 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                 f"{', '.join(missing_identifiers)}."
             )
 
-    def _valuation_source_identifier(self, valuation_source: DataNode | APIDataNode) -> str:
-        if valuation_source.is_api:
-            if not isinstance(valuation_source, APIDataNode):
-                raise TypeError("API portfolio valuation sources must be APIDataNode instances.")
-        else:
-            if not isinstance(valuation_source, DataNode):
-                raise TypeError(
-                    "Portfolio valuation sources must be DataNode or APIDataNode instances."
-                )
-        return str(valuation_source.update_hash)
+    def _valuation_source_identifier(self, valuation_source: TimeIndexTableUpdater | TimeIndexTableRef) -> str:
+        if isinstance(valuation_source, TimeIndexTableRef):
+            return str(valuation_source.output_table_uid)
+        if isinstance(valuation_source, TimeIndexTableUpdater):
+            return str(valuation_source.update_hash)
+        raise TypeError(
+            "Portfolio valuation sources must be TimeIndexTableUpdater or TimeIndexTableRef instances."
+        )
 
     def _valuation_source_maximum_forward_fill(self) -> pd.Timedelta:
         try:
@@ -974,10 +969,18 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             return str(bar_frequency_id)
 
         try:
-            storage_table = self.valuation_source.storage_table
+            output_table = self.valuation_source.output_table
         except AttributeError:
-            storage_table = None
-        cadence = None if storage_table is None else storage_table.__cadence__
+            output_table = None
+        cadence = None
+        if output_table is not None:
+            if isinstance(self.valuation_source, TimeIndexTableRef):
+                profile = getattr(output_table, "time_indexed_profile", None)
+                cadence = getattr(profile, "cadence", None) or getattr(
+                    output_table, "cadence", None
+                )
+            else:
+                cadence = getattr(output_table, "__cadence__", None)
         if cadence not in (None, ""):
             return str(cadence)
         return "1d"
@@ -1064,7 +1067,7 @@ rebalance details:"""
         )
 
     @classmethod
-    def _required_storage_table(cls) -> type[PortfoliosStorage]:
+    def _required_output_table(cls) -> type[PortfoliosStorage]:
         return PortfoliosStorage
 
 
@@ -1072,10 +1075,10 @@ def normalize_portfolio_values_frame(
     portfolio_values_frame: pd.DataFrame,
     *,
     unique_identifier: str,
-    storage_table: StorageTable | None = None,
+    output_table: OutputTable | None = None,
 ) -> pd.DataFrame:
     """Normalize Portfolios portfolio values into canonical PortfoliosDataNode rows."""
-    required_columns = list(PortfoliosDataNode._column_dtypes_map_for_storage(storage_table))
+    required_columns = list(PortfoliosDataNode._column_dtypes_map_for_storage(output_table))
     flat = _reset_frame_index(portfolio_values_frame)
     if flat.empty:
         flat = _empty_flat_frame(column_names=required_columns)
@@ -1095,5 +1098,5 @@ def normalize_portfolio_values_frame(
     )
     return PortfoliosDataNode.validate_frame(
         flat[required_columns],
-        storage_table=storage_table,
+        output_table=output_table,
     )

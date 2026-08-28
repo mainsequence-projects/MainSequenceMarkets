@@ -314,7 +314,7 @@ The canonical valuation workflow should:
 
 The workflow must not:
 
-- create or update `Curve`, `CurveBuildingDetails`, DataNode, or MetaTable rows;
+- create or update `Curve`, `CurveBuildingDetails`, TimeIndexTableUpdater, or MetaTable rows;
 - fetch portfolios, account holdings, or assets;
 - hard-code quote side, market-data-set name, curve identifier, or provider
   resolver;

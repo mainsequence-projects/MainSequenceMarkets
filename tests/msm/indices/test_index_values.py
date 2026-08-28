@@ -19,7 +19,7 @@ def test_custom_index_values_allow_null_definition() -> None:
         }
     )
 
-    result = normalize_index_values_frame(frame, storage_table=VALUES)
+    result = normalize_index_values_frame(frame, output_table=VALUES)
 
     assert pd.isna(result.iloc[0]["definition_uid"])
     assert "unit" not in result.columns
@@ -38,7 +38,7 @@ def test_index_value_frame_rejects_duplicate_identity_times() -> None:
     )
 
     with pytest.raises(ValueError, match="duplicate"):
-        normalize_index_values_frame(frame, storage_table=VALUES)
+        normalize_index_values_frame(frame, output_table=VALUES)
 
 
 def test_custom_index_value_frame_rejects_formula_definition_uid() -> None:
@@ -52,4 +52,4 @@ def test_custom_index_value_frame_rejects_formula_definition_uid() -> None:
     )
 
     with pytest.raises(ValueError, match="must not provide definition_uid"):
-        normalize_index_values_frame(frame, storage_table=VALUES)
+        normalize_index_values_frame(frame, output_table=VALUES)

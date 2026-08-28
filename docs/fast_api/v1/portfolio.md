@@ -17,7 +17,7 @@ library workflow outside this API surface.
   portfolio weight labels.
 - Signal weights resolve from nullable `Portfolio.signal_uid`, which points to
   `SignalMetadataTable.signal_uid`. The API does not recompute signal identity
-  from the DataNode build configuration or by scanning shared signal storage.
+  from the TimeIndexTableUpdater build configuration or by scanning shared signal storage.
 
 Latest weights resolve through:
 

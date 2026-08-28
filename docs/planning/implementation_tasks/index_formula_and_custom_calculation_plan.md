@@ -59,7 +59,7 @@ IndexCalculationMethod = Literal["formula", "custom"]
 
 - `formula` means core owns and executes a versioned point-in-time expression.
 - `custom` means project or extension code owns value production and publishes
-  the result through the canonical Index-values DataNode contract.
+  the result through the canonical Index-values TimeIndexTableUpdater contract.
 
 `index_type` remains the business classification of the observable. It is not
 replaced by `calculation_method`, and formula creation must not force
@@ -188,17 +188,17 @@ publication read rechecks access under the active request or job identity. An
 unavailable MetaTable, revoked permission, schema mismatch, or ambiguous grain
 is an explicit failure; none is reported as empty data.
 
-### 4. Persisted Source And DataNode Dependency Contracts
+### 4. Persisted Source And TimeIndexTableUpdater Dependency Contracts
 
 The persisted MetaTable UID makes the formula source reproducible, but Main
-Sequence DataNode dependencies must also be deterministic and hashed through
+Sequence TimeIndexTableUpdater dependencies must also be deterministic and hashed through
 registered storage classes. Production publication therefore uses an explicit
 deployment snapshot:
 
 ```python
 class FormulaIndexDataNodeConfiguration(IndexDataNodeConfiguration):
     formula_definition_uids: tuple[uuid.UUID, ...]
-    source_storage_tables: tuple[type[PlatformTimeIndexMetaTable], ...]
+    source_output_tables: tuple[type[PlatformTimeIndexMetaTable], ...]
 ```
 
 The configuration factory loads the selected immutable formula versions and
@@ -208,7 +208,7 @@ collects their distinct source MetaTable UIDs. Construction then:
 2. verifies that the bound UID set exactly equals the formula input MetaTable
    UID set;
 3. verifies that every persisted observable still exists;
-4. builds every `APIDataNode` dependency in the constructor;
+4. builds every `TimeIndexTableRef` dependency in the constructor;
 5. exposes the fixed graph through `dependencies()`.
 
 The storage classes and formula-definition UIDs participate in
@@ -221,7 +221,7 @@ accepts caller-supplied Series or DataFrames keyed by the parsed formula
 references. The immutable Pydantic model owns the expression, inputs,
 alignment, and missing-data policies without requiring persisted identity.
 A separate platform source layer performs governed MetaTable reads for
-DataNode publication or API preview. It groups inputs by MetaTable UID, applies
+TimeIndexTableUpdater publication or API preview. It groups inputs by MetaTable UID, applies
 the inferred Asset or Index identifier filter server-side, reads only bounded
 time ranges and required observable columns, and returns source timestamps for
 no-look-ahead validation.
@@ -613,7 +613,7 @@ payload fields and calculation-kind names are rejected after the change.
 - the parsed formula-reference set must exactly equal the persisted input set;
 - unavailable MetaTable UIDs, missing or nonnumeric observable columns,
   unexpected dimensions, and duplicate timestamps fail before calculation;
-- DataNode construction rejects a dependency storage class whose bound
+- TimeIndexTableUpdater construction rejects a dependency storage class whose bound
   MetaTable UID differs from its persisted formula input;
 - dependency graphs are built before `update()` and change the update hash;
 - source reads apply identifier, timestamp, and column bounds server-side;

@@ -70,14 +70,14 @@ def test_target_positions_node_uses_target_position_configuration() -> None:
     config = TargetPositions.default_config()
 
     assert isinstance(config, TargetPositionsDataNodeConfiguration)
-    assert TargetPositions._required_storage_table() is TargetPositionsStorage
+    assert TargetPositions._required_output_table() is TargetPositionsStorage
     assert TargetPositions._column_dtypes_map_for_storage(
         TargetPositionsStorage
     ) == storage_column_dtypes_map(TargetPositionsStorage)
 
 
-def test_target_positions_bound_dtype_map_uses_instance_storage_table() -> None:
-    node = SimpleNamespace(storage_table=TargetPositionsStorage)
+def test_target_positions_bound_dtype_map_uses_instance_output_table() -> None:
+    node = SimpleNamespace(output_table=TargetPositionsStorage)
 
     assert TargetPositions._bound_column_dtypes_map(node) == storage_column_dtypes_map(
         TargetPositionsStorage

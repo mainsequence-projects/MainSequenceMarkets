@@ -7,7 +7,7 @@ from typing import Any, ClassVar, Protocol
 import pandas as pd
 from pydantic import Field
 
-from mainsequence.meta_tables import APIDataNode, DataNode
+from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm.data_nodes.utils.stamped import (
     StampedDataNode,
     StampedDataNodeConfiguration,
@@ -34,7 +34,7 @@ class DiscountCurveBuilder(Protocol):
         *,
         update_statistics,
         curve_identifier: str,
-        base_node_curve_points: APIDataNode | None,
+        base_node_curve_points: TimeIndexTableRef | None,
     ) -> pd.DataFrame: ...
 
 
@@ -54,24 +54,24 @@ class CurveDataNodeConfiguration(StampedDataNodeConfiguration):
     """Configuration for timestamped curve DataNodes.
 
     Storage-first: the column schema, index names, and the canonical
-    ``Curve.unique_identifier`` foreign key live on the ``storage_table``
+    ``Curve.unique_identifier`` foreign key live on the ``output_table``
     (a ``DiscountCurvesStorage``-style ``PlatformTimeIndexMetaTable`` class),
     not on this configuration.
     """
 
     reference_dimension: ClassVar[str] = CURVE_IDENTIFIER
-    frame_label: ClassVar[str] = "Curve DataNode"
+    frame_label: ClassVar[str] = "Curve TimeIndexTableUpdater"
 
 
 class CurveTimestampedDataNode(StampedDataNode):
-    """Base curve DataNode for timestamped facts keyed by curve_identifier."""
+    """Base curve TimeIndexTableUpdater for timestamped facts keyed by curve_identifier."""
 
     configuration_class: ClassVar[type[CurveDataNodeConfiguration]] = CurveDataNodeConfiguration
-    frame_label: ClassVar[str] = "Curve DataNode"
+    frame_label: ClassVar[str] = "Curve TimeIndexTableUpdater"
 
 
 class CurveConfig(CurveDataNodeConfiguration):
-    """Configuration for the canonical discount-curves DataNode."""
+    """Configuration for the canonical discount-curves TimeIndexTableUpdater."""
 
     curve_unique_identifier: str = Field(
         ...,
@@ -83,7 +83,7 @@ class CurveConfig(CurveDataNodeConfiguration):
     curve_points_dependency_node_uid: str | None = Field(
         None,
         title="Dependency curve points",
-        description="Optional upstream curve-points DataNode identifier.",
+        description="Optional upstream curve-points TimeIndexTableUpdater identifier.",
     )
 
 
@@ -103,18 +103,18 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
         self.key_nodes_validator: CurveKeyNodesValidator | None = None
         self.base_node_curve_points = None
         if curve_config.curve_points_dependency_node_uid:
-            self.base_node_curve_points = APIDataNode.build_from_identifier(
+            self.base_node_curve_points = TimeIndexTableRef.from_identifier(
                 identifier=curve_config.curve_points_dependency_node_uid
             )
         super().__init__(config=curve_config, **kwargs)
 
-    def dependencies(self) -> dict[str, DataNode | APIDataNode]:
+    def dependencies(self) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
         if self.base_node_curve_points is None:
             return {}
         return {self.curve_config.curve_points_dependency_node_uid: self.base_node_curve_points}
 
     @classmethod
-    def _required_storage_table(cls) -> type[DiscountCurvesStorage]:
+    def _required_output_table(cls) -> type[DiscountCurvesStorage]:
         return DiscountCurvesStorage
 
     def set_curve_builder(self, curve_builder: DiscountCurveBuilder) -> DiscountCurvesNode:
@@ -127,7 +127,7 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
     ) -> DiscountCurvesNode:
         """Attach optional producer-owned semantic validation for key_nodes.
 
-        The base DataNode always applies storage-level JSON normalization. This
+        The base TimeIndexTableUpdater always applies storage-level JSON normalization. This
         hook lets a producer enforce source-specific requirements without making
         those requirements part of the shared storage contract or hashed config.
         """
@@ -178,14 +178,14 @@ class DiscountCurvesNode(CurveTimestampedDataNode):
         if normalized.empty:
             return pd.DataFrame()
 
-        return self.validate_frame(normalized, storage_table=self.storage_table)
+        return self.validate_frame(normalized, output_table=self.output_table)
 
     def build_curve_frame(
         self,
         *,
         update_statistics,
         curve_identifier: str,
-        base_node_curve_points: APIDataNode | None,
+        base_node_curve_points: TimeIndexTableRef | None,
     ) -> pd.DataFrame:
         if self.curve_builder is None:
             raise NotImplementedError(

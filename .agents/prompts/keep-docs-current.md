@@ -39,7 +39,7 @@ as **peer top-level sections**, each to the same standard:
 Home                 → what/why in one screen, links out (no deep content)
 Getting Started      → install + a first example that runs
 Core Concepts        → THE canonical runtime model: row objects vs *Table vs
-                       DataNodes, start_engine() = attachment not schema,
+                       TimeIndexTableUpdaters, start_engine() = attachment not schema,
                        migrations-before-runtime, MSM_AUTO_REGISTER_NAMESPACE.
                        Every other page links here instead of re-explaining it.
 Tutorial             → linear narrative with "Next →" links forming a chain:
@@ -71,7 +71,7 @@ build system.
 3. **One ADR tree.** All ADRs under `docs/ADR/`. API ADRs under
    `docs/ADR/fast_api/v1/`. `docs/ADR/README.md` lists every ADR. No second
    ADR directory anywhere under `docs/`.
-4. **Core Concepts is the only place** the row-vs-`*Table`-vs-DataNode model,
+4. **Core Concepts is the only place** the row-vs-`*Table`-vs-TimeIndexTableUpdater model,
    `start_engine()` semantics, and `MSM_AUTO_REGISTER_NAMESPACE` are *explained*
    at length. Other pages state the one-line rule and link. (Code examples may
    still appear locally.)

@@ -55,7 +55,7 @@ def test_market_data_node_compatibility_names_are_removed() -> None:
     asset_indexed_module = importlib.import_module("msm.data_nodes.assets.asset_indexed")
     asset_data_nodes_module = importlib.import_module("msm.data_nodes.assets")
 
-    legacy_node_name = "Market" + "DataNode"
+    legacy_node_name = "Market" + "TimeIndexTableUpdater"
     legacy_config_name = legacy_node_name + "Configuration"
     legacy_module_name = "msm." + "markets_" + "data_node"
 
@@ -103,25 +103,25 @@ def test_asset_indexed_nodes_expose_storage_first_surface(
     assert "__data_node_identifier__" not in node_cls.__dict__
     assert "_default_identifier" not in node_cls.__dict__
     assert "_default_description" not in node_cls.__dict__
-    storage_table = node_cls._required_storage_table()
-    registered_identifier = f"registered.{storage_table.metatable_identifier()}"
+    output_table = node_cls._required_output_table()
+    registered_identifier = f"registered.{output_table.metatable_identifier()}"
     monkeypatch.setattr(
-        storage_table,
+        output_table,
         "get_identifier",
         classmethod(lambda _cls: registered_identifier),
     )
     assert node_cls._default_identifier() == registered_identifier
-    assert node_cls._default_description() == storage_table.__metatable_description__
+    assert node_cls._default_description() == output_table.__metatable_description__
 
     # msm storage registers through markets; pricing storage through pricing.
     registered = set(markets_sqlalchemy_models()) | set(pricing_sqlalchemy_models())
-    assert storage_table in registered
+    assert output_table in registered
 
     assert not hasattr(node_cls, "_required_column_dtypes_map")
     assert not hasattr(node_cls, "_required_index_names")
     assert not hasattr(node_cls, "_required_time_index_name")
-    assert node_cls._column_dtypes_map_for_storage(storage_table) == storage_column_dtypes_map(
-        storage_table
+    assert node_cls._column_dtypes_map_for_storage(output_table) == storage_column_dtypes_map(
+        output_table
     )
     assert not hasattr(node_cls, "build_mock_frame")
     assert not hasattr(node_cls, "build_schema_bootstrap_frame")
@@ -171,7 +171,7 @@ def test_timestamped_storage_identifiers_use_camel_case_ts_suffix() -> None:
     ],
 )
 def test_timestamped_asset_nodes_bind_their_storage_class(node_cls, storage_cls) -> None:
-    assert node_cls._required_storage_table() is storage_cls
+    assert node_cls._required_output_table() is storage_cls
     assert storage_cls.__index_names__ == ["time_index", ASSET_IDENTIFIER_DIMENSION]
     assert ASSET_IDENTIFIER_DIMENSION in {column.name for column in storage_cls.__table__.columns}
 

@@ -28,7 +28,7 @@ PricingModelSelector = str | type[MarketsBase]
 def pricing_sqlalchemy_models() -> list[type[MarketsBase]]:
     """Return pricing SQLAlchemy models in MetaTable dependency order.
 
-    Includes the ADR 0017 pricing DataNode output storage MetaTables after their
+    Includes the ADR 0017 pricing TimeIndexTableUpdater output storage MetaTables after their
     FK target MetaTables (``AssetTable``, ``IndexTable``, ``CurveTable``).
     """
 
@@ -48,7 +48,7 @@ def pricing_sqlalchemy_models() -> list[type[MarketsBase]]:
 
 
 def _pricing_data_node_storage_models() -> list[type[MarketsBase]]:
-    """Return ADR 0017 pricing DataNode output storage MetaTables in FK order.
+    """Return ADR 0017 pricing TimeIndexTableUpdater output storage MetaTables in FK order.
 
     Imported lazily to avoid an import cycle: the pricing storage module imports
     domain/pricing MetaTables for its FK targets.

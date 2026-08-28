@@ -7,7 +7,7 @@ from msm.settings import markets_namespace
 
 
 def default_markets_hash_namespace_kwargs(cls: type, kwargs: dict[str, Any]) -> None:
-    """Apply the markets hash namespace before the SDK DataNode wrapper runs."""
+    """Apply the markets hash namespace before the SDK TimeIndexTableUpdater wrapper runs."""
 
     namespace_aliases = tuple(getattr(cls, "_HASH_NAMESPACE_ALIASES", ()) or ())
     for namespace_alias in namespace_aliases:
@@ -24,7 +24,7 @@ def default_markets_hash_namespace_kwargs(cls: type, kwargs: dict[str, Any]) -> 
 
 
 def wrap_default_markets_hash_namespace(cls: type, original_init):
-    """Wrap DataNode subclasses so markets namespace defaults reach SDK hashing."""
+    """Wrap TimeIndexTableUpdater subclasses so markets namespace defaults reach SDK hashing."""
 
     @wraps(original_init)
     def wrapped_init(self, *args, **kwargs):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-import mainsequence.meta_tables.data_nodes.build_operations as build_operations
+import mainsequence.meta_tables.time_index_table_updates.configuration as update_configuration
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -12,7 +12,7 @@ from pydantic import (
     field_serializer,
 )
 
-from mainsequence.meta_tables import APIDataNode, DataNode
+from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm_portfolios.asset_scope import require_asset_category_scope
 from msm_portfolios.data_nodes import (
     REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS,
@@ -29,20 +29,16 @@ logger = get_portfolios_logger()
 
 
 def canonical_valuation_source_configuration(
-    valuation_source: DataNode | APIDataNode,
+    valuation_source: TimeIndexTableUpdater | TimeIndexTableRef,
 ) -> dict[str, Any]:
     """Return the canonical hash payload for a portfolio valuation dependency."""
 
-    if valuation_source.is_api:
-        if not isinstance(valuation_source, APIDataNode):
-            raise TypeError("API portfolio valuation sources must be APIDataNode instances.")
-    else:
-        if not isinstance(valuation_source, DataNode):
-            raise TypeError(
-                "Portfolio valuation sources must be DataNode or APIDataNode instances."
-            )
+    if not isinstance(valuation_source, (TimeIndexTableUpdater, TimeIndexTableRef)):
+        raise TypeError(
+            "Portfolio valuation sources must be TimeIndexTableUpdater or TimeIndexTableRef instances."
+        )
 
-    return build_operations.serialize_argument(valuation_source)
+    return update_configuration.serialize_argument(valuation_source)
 
 
 def canonical_rebalance_strategy_configuration(
@@ -51,7 +47,7 @@ def canonical_rebalance_strategy_configuration(
     """Return the canonical hash payload for a Portfolios rebalance strategy."""
 
     payload = _rebalance_strategy_payload(rebalance_strategy)
-    serialized_payload = build_operations.Serializer().serialize_init_kwargs(payload)
+    serialized_payload = update_configuration.Serializer().serialize_init_kwargs(payload)
     return _drop_excluded_keys(
         dict(serialized_payload),
         excluded_keys=REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS,
@@ -156,8 +152,8 @@ class PricesConfiguration(PortfolioConfigBaseModel):
         ...,
         description=(
             "UID of the registered TimeIndexMetaTable that stores normalized source bars. "
-            "Portfolios resolves this UID through APIDataNode.build_from_table_uid(...) "
-            "so price sources are recoverable across processes without passing a live DataNode instance. "
+            "Portfolios resolves this UID through TimeIndexTableRef.from_uid(...) "
+            "so price sources are recoverable across processes without passing a live TimeIndexTableUpdater instance. "
             "The source bar frequency is read from the table's time_indexed_profile.cadence."
         ),
         examples=["00000000-0000-0000-0000-000000000000"],
@@ -251,7 +247,7 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
     IMPORTANT (Portfolios design)
     ----------------------
     Portfolios uses **direct injection** (instances), not string lookups:
-    - `signal_weights_instance` is a SignalWeights DataNode
+    - `signal_weights_instance` is a SignalWeights TimeIndexTableUpdater
     - `rebalance_strategy_instance` is a RebalanceStrategyBase strategy (pure pydantic model)
 
     Attributes:
@@ -259,7 +255,7 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
             Rebalance strategy instance controlling how/when weights become executed weights.
         signal_weights_instance:
             Signal strategy instance producing `signal_weight` per asset and time.
-            This is typically also a TDAG DataNode and is serialized using its own configuration schema.
+            This is typically also a TDAG TimeIndexTableUpdater and is serialized using its own configuration schema.
     """
 
     model_config = ConfigDict(
@@ -281,7 +277,7 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
         SignalWeights,
         Field(
             description=(
-                "Instance of a signal weights DataNode. "
+                "Instance of a signal weights TimeIndexTableUpdater. "
                 "It is serialized from its concrete signal configuration while "
                 "stored in the canonical SignalWeights table."
             ),
@@ -444,7 +440,7 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
 
     Attributes:
         valuation_source_instance:
-            Explicit DataNode/APIDataNode valuation dependency consumed by the portfolio.
+            Explicit TimeIndexTableUpdater/TimeIndexTableRef valuation dependency consumed by the portfolio.
         valuation_column:
             Numeric column from the consumed valuation source used for valuation.
         price_alignment_policy:
@@ -460,10 +456,10 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     valuation_source_instance: Annotated[
-        DataNode | APIDataNode,
+        TimeIndexTableUpdater | TimeIndexTableRef,
         Field(
             description=(
-                "Explicit valuation source DataNode or APIDataNode consumed by the portfolio. "
+                "Explicit valuation source TimeIndexTableUpdater or TimeIndexTableRef consumed by the portfolio. "
                 "The source may be a market bar table, model value table, NAV table, "
                 "or any asset-indexed time series with the configured valuation column. "
                 "Persistent interpolation, if needed, must be prepared upstream."
@@ -514,7 +510,7 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
         when_used="json",
         return_type=dict[str, Any],
     )
-    def ser_valuation_source(self, v: DataNode | APIDataNode) -> dict[str, Any]:
+    def ser_valuation_source(self, v: TimeIndexTableUpdater | TimeIndexTableRef) -> dict[str, Any]:
         """Serialize the explicit valuation dependency identity, not backend update rows."""
         return canonical_valuation_source_configuration(v)
 

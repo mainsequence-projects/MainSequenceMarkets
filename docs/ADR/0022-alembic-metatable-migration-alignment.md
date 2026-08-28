@@ -161,7 +161,7 @@ SDK operation dictionaries or package-authored SQL manifests.
 - generate Alembic revisions;
 - apply SQL;
 - register the Alembic version table;
-- register application MetaTables as a side effect of API or DataNode use.
+- register application MetaTables as a side effect of API or TimeIndexTableUpdater use.
 
 Runtime code attaches to already-registered backend `MetaTable` and
 `TimeIndexMetaTable` resources by canonical SQLAlchemy table name.

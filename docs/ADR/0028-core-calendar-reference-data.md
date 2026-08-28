@@ -341,7 +341,7 @@ Target direction:
 | unique_identifier unique    |       | unique_identifier unique    |
 | calendar_uid FK ------------+------>| display_name                |
 | published_index_uid FK      |       | timezone                    |
-| DataNode UID pointers       |       | valid_from / valid_to       |
+| TimeIndexTableUpdater UID pointers       |       | valid_from / valid_to       |
 +-----------------------------+       +-----------------------------+
 ```
 

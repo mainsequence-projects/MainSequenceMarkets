@@ -79,7 +79,7 @@ def prepare_equal_weight_portfolio_schema(
         source_cadence = source_cadence_from_meta_table(source_meta_table)
 
     source_uid = source_time_index_meta_table_uid(source_meta_table)
-    storage_table = configured_equal_weight_interpolated_prices_storage(
+    output_table = configured_equal_weight_interpolated_prices_storage(
         source_time_index_meta_table_uid=source_uid,
         source_cadence=source_cadence,
     )
@@ -92,22 +92,22 @@ def prepare_equal_weight_portfolio_schema(
     print_detail("source_cadence", source_cadence)
     print_detail("source_cadence_repaired", source_cadence_repaired)
     print_detail("dynamic_provider", DYNAMIC_MIGRATION_PROVIDER)
-    print_detail("configured_storage_table", storage_table.__table__.name)
-    print_detail("configured_storage_identifier", storage_table.metatable_identifier())
+    print_detail("configured_output_table", output_table.__table__.name)
+    print_detail("configured_storage_identifier", output_table.metatable_identifier())
 
     print_step(2, "Checking the configured interpolation migration revision.")
-    revision_file = _find_dynamic_revision_file(storage_table.__table__.name)
-    existing = _find_time_index_meta_table(storage_table.__table__.name)
+    revision_file = _find_dynamic_revision_file(output_table.__table__.name)
+    existing = _find_time_index_meta_table(output_table.__table__.name)
     if check_only:
         if revision_file is None:
             raise RuntimeError(
                 "Configured interpolated price-source storage revision is missing and "
-                f"--check-only was set: {storage_table.__table__.name}"
+                f"--check-only was set: {output_table.__table__.name}"
             )
         if existing is None:
             raise RuntimeError(
-                "Configured interpolated price-source storage metadata is missing and "
-                f"--check-only was set: {storage_table.__table__.name}"
+                "Configured interpolated price-source output metadata is missing and "
+                f"--check-only was set: {output_table.__table__.name}"
             )
         print_detail("dynamic_revision_file", revision_file)
         print_detail("time_index_meta_table_uid", existing.uid)
@@ -115,8 +115,8 @@ def prepare_equal_weight_portfolio_schema(
             "source_time_index_meta_table_uid": source_uid,
             "source_cadence": source_cadence,
             "source_cadence_repaired": source_cadence_repaired,
-            "configured_storage_table": storage_table.__table__.name,
-            "configured_storage_identifier": storage_table.metatable_identifier(),
+            "configured_output_table": output_table.__table__.name,
+            "configured_storage_identifier": output_table.metatable_identifier(),
             "configured_storage_uid": existing.uid,
             "created_revision": False,
         }
@@ -126,7 +126,7 @@ def prepare_equal_weight_portfolio_schema(
         print_step(3, "Finding or generating the dynamic Alembic revision first.")
         created_revision = True
         message = _dynamic_revision_message(
-            storage_table.__table__.name,
+            output_table.__table__.name,
             revision_message=revision_message,
         )
         before_revision_files = _migration_revision_files()
@@ -142,13 +142,13 @@ def prepare_equal_weight_portfolio_schema(
             ],
             env=provider_env,
         )
-        revision_file = _find_dynamic_revision_file(storage_table.__table__.name)
+        revision_file = _find_dynamic_revision_file(output_table.__table__.name)
         if revision_file is None:
             new_files = sorted(_migration_revision_files() - before_revision_files)
             raise RuntimeError(
                 "Dynamic Alembic revision was generated, but no generated file "
                 "contains the configured table CREATE TABLE operation for "
-                f"{storage_table.__table__.name}. New revision files: "
+                f"{output_table.__table__.name}. New revision files: "
                 f"{[str(path) for path in new_files]}"
             )
 
@@ -165,12 +165,12 @@ def prepare_equal_weight_portfolio_schema(
         ],
         env=provider_env,
     )
-    existing = _find_time_index_meta_table(storage_table.__table__.name)
+    existing = _find_time_index_meta_table(output_table.__table__.name)
 
     if existing is None:
         raise RuntimeError(
             "Configured interpolated price-source storage still does not exist after prep: "
-            f"{storage_table.__table__.name}"
+            f"{output_table.__table__.name}"
         )
 
     print_step(5, "Configured interpolation table is registered.")
@@ -182,8 +182,8 @@ def prepare_equal_weight_portfolio_schema(
         "source_time_index_meta_table_uid": source_uid,
         "source_cadence": source_cadence,
         "source_cadence_repaired": source_cadence_repaired,
-        "configured_storage_table": storage_table.__table__.name,
-        "configured_storage_identifier": storage_table.metatable_identifier(),
+        "configured_output_table": output_table.__table__.name,
+        "configured_storage_identifier": output_table.metatable_identifier(),
         "configured_storage_uid": existing.uid,
         "created_revision": created_revision,
     }

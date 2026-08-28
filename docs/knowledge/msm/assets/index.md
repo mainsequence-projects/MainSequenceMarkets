@@ -504,11 +504,11 @@ Timestamped asset facts, such as snapshots and pricing details, belong in
 asset-indexed DataNodes instead of columns on `AssetTable`. See
 [Asset-Indexed DataNodes](asset_indexed_data_nodes.md) for the detailed
 `AssetIndexedDataNode` contract, the difference from a generic Main Sequence
-`DataNode`, and `AssetSnapshot` as the concrete implementation.
+`TimeIndexTableUpdater`, and `AssetSnapshot` as the concrete implementation.
 
 ## Extension Notes
 
-Add new DataNode schemas under `msm.data_nodes.assets` when the output is
+Add new TimeIndexTableUpdater schemas under `msm.data_nodes.assets` when the output is
 time-indexed market data. Add provider-specific lookup or normalization under a
 service submodule such as `msm.services.assets.openfigi`. Add new persistent
 fields in `msm.models` only when the platform schema needs to own the field.

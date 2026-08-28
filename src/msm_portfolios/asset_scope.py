@@ -84,7 +84,7 @@ def require_asset_category_scope(
             "inside msm. Resolve the category through MetaTable services and pass "
             "the resulting asset_list explicitly."
         )
-    raise ValueError(f"{context} requires asset_list or a source DataNode with get_asset_list().")
+    raise ValueError(f"{context} requires asset_list or a source TimeIndexTableUpdater with get_asset_list().")
 
 
 def asset_spot_reference_unique_identifier(asset: Any) -> str:

@@ -10,11 +10,11 @@ from msm_portfolios.configuration import (
     PortfolioConfigBaseModel,
 )
 from msm_portfolios.utils import TIMEDELTA
-from mainsequence.meta_tables import APIDataNode, DataNode
+from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
 
 
 class IntradayTrendConfig(PortfolioConfigBaseModel):
-    price_source_instance: DataNode | APIDataNode
+    price_source_instance: TimeIndexTableUpdater | TimeIndexTableRef
     asset_symbols_by_exchange: dict[str, list[str]]
     calendar: str
     source_frequency: str = "1d"
@@ -43,7 +43,7 @@ class IntradayTrend(SignalWeights):
     def asset_symbols(self):
         return self.intraday_trend_config.asset_symbols_by_exchange
 
-    def dependencies(self) -> dict[str, DataNode | APIDataNode]:
+    def dependencies(self) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
         return {"price_source": self.price_source}
 
     def get_asset_list(self) -> None | list:

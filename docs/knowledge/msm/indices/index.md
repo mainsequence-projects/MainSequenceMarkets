@@ -139,7 +139,7 @@ from msm.data_nodes.indices import (
 )
 
 DailyValues = configured_index_values_storage(cadence="1d")
-normalized = normalize_index_values_frame(frame, storage_table=DailyValues)
+normalized = normalize_index_values_frame(frame, output_table=DailyValues)
 ```
 
 Self-financing and chained performance are custom from the Index perspective.

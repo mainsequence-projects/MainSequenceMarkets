@@ -18,11 +18,11 @@ Use these adjacent skills when the task crosses their boundary:
 
 - Generic MetaTable behavior:
   `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`
-- Generic DataNode behavior:
-  `.agents/skills/mainsequence/data_publishing/data_nodes/SKILL.md`
+- Generic TimeIndexTableUpdater behavior:
+  `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`
 - Asset identity and asset detail rows:
   `.agents/skills/ms_markets/assets/asset_model_extension/SKILL.md`
-- Asset-indexed DataNode conventions:
+- Asset-indexed TimeIndexTableUpdater conventions:
   `.agents/skills/ms_markets/assets/asset_indexed_data_nodes/SKILL.md`
 - Portfolio construction examples and portfolio calculation workflows:
   `.agents/skills/ms_markets/portfolios/portfolio_workflow/SKILL.md`
@@ -107,14 +107,14 @@ Rules:
   writes virtual-fund holdings rows.
 - `VirtualFund.allocate_from_account_holdings_set(...)` is a low-level explicit
   publisher. It is not the allocation policy engine.
-- DataNodes do not fabricate bootstrap rows. Attach a real frame or implement a
+- TimeIndexTableUpdaters do not fabricate bootstrap rows. Attach a real frame or implement a
   real source-specific `update()`.
 
 ## Runtime Attachment
 
 Examples and scripts must run after the SDK migration provider has registered
 the required MetaTables. Application startup then attaches the
-markets runtime before row operations or DataNode writes:
+markets runtime before row operations or TimeIndexTableUpdater writes:
 
 ```python
 import msm
@@ -410,8 +410,8 @@ and uses `extra_details["ticker"]` when available.
 - `AccountTargetPositionAssignmentTable`.
 - Account allocation-model references directly on `AccountTable`.
 - Fake schema-bootstrap rows or placeholder holdings.
-- DataNode-side dtype, nullable, index-name, or FK mirrors.
-- User-provided DataNode table identifiers in examples when storage-derived
+- updater-side dtype, nullable, index-name, or FK mirrors.
+- User-provided TimeIndexTableUpdater table identifiers in examples when storage-derived
   defaults are enough.
 
 ## Validation

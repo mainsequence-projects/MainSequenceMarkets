@@ -2,7 +2,7 @@
 
 The platform concept owns shared integration primitives between `msm` and the
 Main Sequence runtime. It is the foundation for MetaTable registration, market
-DataNode behavior, and common ORM helpers.
+TimeIndexTableUpdater behavior, and common ORM helpers.
 
 ## Scope
 
@@ -22,18 +22,18 @@ Platform utilities answer these questions:
 - `msm.settings`: shared markets constants such as the canonical asset identity
   dimension.
 - `msm.data_nodes.accounts`: account holdings DataNodes.
-- `msm.data_nodes.assets`: asset-specific DataNode package, including
+- `msm.data_nodes.assets`: asset-specific TimeIndexTableUpdater package, including
   `AssetSnapshot` and shared asset-indexed behavior in
   `msm.data_nodes.assets.asset_indexed`.
 - `msm.data_nodes.execution`: execution DataNodes for orders, order events,
   and trades.
-- `msm.data_nodes.indices`: index-specific DataNode package, including
+- `msm.data_nodes.indices`: index-specific TimeIndexTableUpdater package, including
   timestamped index facts and canonical `IndexTable` source-table foreign keys.
-- `msm.data_nodes.utils`: shared DataNode utilities that are not tied to one
+- `msm.data_nodes.utils`: shared TimeIndexTableUpdater utilities that are not tied to one
   model concept, including source-table contracts, timestamp normalization,
   stamped-frame behavior, and namespace defaulting.
 - `msm_portfolios.data_nodes`: portfolio construction DataNodes that build on
-  the shared markets DataNode machinery. Core account virtual-fund storage
+  the shared markets TimeIndexTableUpdater machinery. Core account virtual-fund storage
   lives under `msm.data_nodes.accounts`.
 - `cli`: explicit command-line helpers, including
   `msm copy-msm-skills` for installing packaged ms-markets agent skills into a
@@ -45,12 +45,12 @@ Platform primitives should stay low-level. They should not know about business
 logic for a specific concept such as pricing, portfolio construction, or asset
 translation.
 
-Asset-indexed DataNode subclasses should use `AssetIndexedDataNode` for asset
+Asset-indexed TimeIndexTableUpdater subclasses should use `AssetIndexedDataNode` for asset
 scope and namespace behavior. Timestamped asset facts should use
 `AssetTimestampedDataNode` plus `AssetDataNodeConfiguration`, with schema,
 indexes, dtypes, nullability, and source-table foreign keys declared only on the
 storage MetaTable. The broad legacy compatibility names were removed;
-asset-indexed DataNode code should use the explicit asset-indexed base classes
+asset-indexed TimeIndexTableUpdater code should use the explicit asset-indexed base classes
 directly.
 
 See [MetaTable Registration](meta_table_registration.md) for runtime attachment
@@ -70,8 +70,8 @@ also the packaged skill source.
 ## Extension Notes
 
 Add behavior here only when at least two concept packages need the same platform
-primitive. If DataNode behavior is specific to one concept, keep it in that
-concept package first. If it is shared DataNode machinery and not model-shaped,
+primitive. If TimeIndexTableUpdater behavior is specific to one concept, keep it in that
+concept package first. If it is shared TimeIndexTableUpdater machinery and not model-shaped,
 place it under `msm.data_nodes.utils`.
 
 Repository-level maintenance workflows live in Open Agent skills under

@@ -67,7 +67,7 @@ def build_virtual_fund_holdings_frame(
 
     return validate_holdings_frame(
         pd.DataFrame(rows),
-        storage_table=VirtualFundHoldingsStorage,
+        output_table=VirtualFundHoldingsStorage,
     )
 
 
@@ -77,7 +77,7 @@ def validate_virtual_fund_allocation_bounds(
 ) -> None:
     frame = validate_holdings_frame(
         allocations_frame,
-        storage_table=VirtualFundHoldingsStorage,
+        output_table=VirtualFundHoldingsStorage,
     )
     flat = frame.reset_index()
 

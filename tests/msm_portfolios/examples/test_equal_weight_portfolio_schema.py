@@ -243,7 +243,7 @@ def test_prepare_schema_runs_upgrade_when_metadata_already_exists(
 
     result = prep.prepare_equal_weight_portfolio_schema()
 
-    assert result["configured_storage_table"] == table_name
+    assert result["configured_output_table"] == table_name
     assert result["configured_storage_uid"] == existing_dynamic_table.uid
     assert len(commands) == 1
     assert commands[0][0] == [

@@ -14,13 +14,13 @@ Current market runtime boundaries are:
 
 - `msm.models`: SQLAlchemy model definitions and MetaTable contracts.
 - `msm.repositories`: compiled SQL operation builders for MetaTable execution.
-- `msm.services`: workflow helpers built on repository operations and DataNode
+- `msm.services`: workflow helpers built on repository operations and TimeIndexTableUpdater
   contracts.
 - `msm.data_nodes.accounts`, `msm.data_nodes.assets`,
   `msm.data_nodes.execution`, and `msm.data_nodes.indices`: concept-specific
-  DataNode modules. Shared asset-indexed behavior lives in
+  TimeIndexTableUpdater modules. Shared asset-indexed behavior lives in
   `msm.data_nodes.assets.asset_indexed`.
-- `msm.data_nodes.utils`: shared DataNode support code that is not a model
+- `msm.data_nodes.utils`: shared TimeIndexTableUpdater support code that is not a model
   concept package.
 
 ## Removed Runtime Surface

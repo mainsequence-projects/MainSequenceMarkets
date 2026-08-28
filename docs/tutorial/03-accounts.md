@@ -130,8 +130,8 @@ through the shared asset reference service. Current asset snapshot labels are
 resolved as backend latest rows, so response construction does not scan asset
 snapshot history in Python.
 
-The DataNode frame helpers validate the dynamic-table contract locally. The
-actual table provisioning and writes remain generic TDAG/DataNode behavior.
+The TimeIndexTableUpdater frame helpers validate the dynamic-table contract locally. The
+actual table provisioning and writes remain generic TDAG/TimeIndexTableUpdater behavior.
 
 ## Virtual-fund allocation
 

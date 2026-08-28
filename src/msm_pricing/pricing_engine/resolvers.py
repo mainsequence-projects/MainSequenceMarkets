@@ -626,7 +626,7 @@ def add_historical_fixings(
     *,
     market_data_set: Any | None = None,
 ) -> None:
-    """Hydrate a QuantLib index from the configured pricing fixings DataNode."""
+    """Hydrate a QuantLib index from the configured pricing fixings TimeIndexTableUpdater."""
 
     end_date = _ensure_datetime(target_date)
     start_date = end_date - datetime.timedelta(days=365)

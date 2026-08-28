@@ -92,7 +92,7 @@ PricingMarketDataSet(set_key="default")
        data_node_uid = IndexFixingsStorage.get_meta_table_uid()
 ```
 
-The binding row maps `(market_data_set_uid, concept_key)` to a backend DataNode
+The binding row maps `(market_data_set_uid, concept_key)` to a backend TimeIndexTableUpdater
 storage table UID. Use `msm_pricing.api.PricingMarketDataSet` and
 `PricingMarketDataSetBinding` when an application needs an `eod`, `live`, or
 `risk_manager` source set:
@@ -118,7 +118,7 @@ PricingMarketDataSetBinding.upsert(
 ```
 
 Pricing resolution looks up the active market-data set and concept, then reads
-the resulting DataNode with `APIDataNode.build_from_table_uid(...)`. Public
+the resulting TimeIndexTableUpdater with `TimeIndexTableRef.from_uid(...)`. Public
 workflows should bind storage table UIDs; identifiers are diagnostic only.
 Callers select a non-default source set at valuation time:
 
@@ -594,7 +594,7 @@ See [Pricing Analytics](../knowledge/msm_pricing/analytics.md) for the package
 boundary and optional dependency policy.
 
 The reusable mock market-data components live in `examples/msm_pricing/utils/` so
-the same curve and fixing DataNode extension pattern can be reused by swap
+the same curve and fixing TimeIndexTableUpdater extension pattern can be reused by swap
 pricing examples.
 
 ## Extending the schema

@@ -7,14 +7,14 @@ from pydantic import Field
 
 from mainsequence.client import dtype_codec as dc
 from mainsequence.meta_tables import (
-    DataNode,
-    DataNodeConfiguration,
+    TimeIndexTableUpdater,
+    TimeIndexTableUpdateConfig,
     PlatformTimeIndexMetaTable,
 )
 from msm.data_nodes.assets.asset_indexed import AssetIndexedDataNode
-from msm.data_nodes.utils.storage_metadata import (
-    storage_data_node_description,
-    storage_data_node_identifier,
+from msm.data_nodes.utils.output_metadata import (
+    storage_table_description,
+    storage_table_identifier,
 )
 from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
@@ -27,10 +27,10 @@ from .constants import (
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
 )
 
-StorageTable = type[PlatformTimeIndexMetaTable]
+OutputTable = type[PlatformTimeIndexMetaTable]
 
 
-class PortfolioCanonicalDataNodeConfiguration(DataNodeConfiguration):
+class PortfolioCanonicalDataNodeConfiguration(TimeIndexTableUpdateConfig):
     """Update-scoped configuration base for canonical Portfolios DataNodes."""
 
 
@@ -43,8 +43,8 @@ class SignalWeightsConfiguration(PortfolioCanonicalDataNodeConfiguration):
     )
 
 
-class PortfolioCanonicalDataNode(DataNode):
-    """Base DataNode for canonical shared Portfolios tables."""
+class PortfolioCanonicalDataNode(TimeIndexTableUpdater):
+    """Base TimeIndexTableUpdater for canonical shared Portfolios tables."""
 
     _HASH_NAMESPACE_ALIASES = ("namespace",)
 
@@ -61,25 +61,25 @@ class PortfolioCanonicalDataNode(DataNode):
     ):
         """Create a canonical Portfolios node.
 
-        ``namespace`` is the market-domain alias for DataNode ``hash_namespace``.
-        The DataNode constructor wrapper consumes it before this method runs, so
+        ``namespace`` is the market-domain alias for TimeIndexTableUpdater ``hash_namespace``.
+        The TimeIndexTableUpdater constructor wrapper consumes it before this method runs, so
         it is intentionally not forwarded as a separate config field.
         """
         resolved_config = self._validate_config(config or self.default_config())
         if args:
             raise TypeError(
-                f"{self.__class__.__name__} accepts keyword-only DataNode arguments after config."
+                f"{self.__class__.__name__} accepts keyword-only TimeIndexTableUpdater arguments after config."
             )
         if kwargs.get("hash_namespace") in (None, ""):
             kwargs["hash_namespace"] = markets_namespace(namespace)
-        storage_table = kwargs.pop("storage_table", None) or self._required_storage_table()
+        output_table = kwargs.pop("output_table", None) or self._required_output_table()
         super().__init__(
             config=resolved_config,
-            storage_table=storage_table,
+            output_table=output_table,
             **kwargs,
         )
 
-    def dependencies(self) -> dict[str, DataNode]:
+    def dependencies(self) -> dict[str, TimeIndexTableUpdater]:
         return {}
 
     @classmethod
@@ -97,25 +97,25 @@ class PortfolioCanonicalDataNode(DataNode):
 
     @classmethod
     def _default_identifier(cls) -> str:
-        return storage_data_node_identifier(cls._required_storage_table())
+        return storage_table_identifier(cls._required_output_table())
 
     @classmethod
     def _default_description(cls) -> str:
-        return storage_data_node_description(cls._required_storage_table())
+        return storage_table_description(cls._required_output_table())
 
     @classmethod
-    def _required_storage_table(cls) -> StorageTable:
-        raise NotImplementedError(f"{cls.__name__} must define _required_storage_table().")
+    def _required_output_table(cls) -> OutputTable:
+        raise NotImplementedError(f"{cls.__name__} must define _required_output_table().")
 
     @classmethod
     def _column_dtypes_map_for_storage(
         cls,
-        storage_table: StorageTable | None = None,
+        output_table: OutputTable | None = None,
     ) -> dict[str, str]:
-        return storage_column_dtypes_map(storage_table or cls._required_storage_table())
+        return storage_column_dtypes_map(output_table or cls._required_output_table())
 
     def _bound_column_dtypes_map(self) -> dict[str, str]:
-        return storage_column_dtypes_map(self.storage_table)
+        return storage_column_dtypes_map(self.output_table)
 
     def _canonical_config(self) -> PortfolioCanonicalDataNodeConfiguration:
         return self.__class__._validate_config(
@@ -125,7 +125,7 @@ class PortfolioCanonicalDataNode(DataNode):
     def update(self) -> pd.DataFrame:
         return _validate_canonical_frame(
             self.get_canonical_frame(),
-            storage_table=self.storage_table,
+            output_table=self.output_table,
             frame_name=self.__class__.__name__,
         )
 
@@ -140,11 +140,11 @@ class PortfolioCanonicalDataNode(DataNode):
         cls,
         data_frame: pd.DataFrame,
         *,
-        storage_table: StorageTable | None = None,
+        output_table: OutputTable | None = None,
     ) -> pd.DataFrame:
         return _validate_canonical_frame(
             data_frame,
-            storage_table=storage_table or cls._required_storage_table(),
+            output_table=output_table or cls._required_output_table(),
             frame_name=cls.__name__,
         )
 
@@ -153,16 +153,16 @@ class PortfolioCanonicalDataNode(DataNode):
         cls,
         data_frame: pd.DataFrame,
         *,
-        storage_table: StorageTable | None = None,
+        output_table: OutputTable | None = None,
     ) -> pd.DataFrame:
         return cls.validate_frame(
             data_frame,
-            storage_table=storage_table,
+            output_table=output_table,
         )
 
 
 class AssetScopedPortfolioCanonicalDataNode(PortfolioCanonicalDataNode, AssetIndexedDataNode):
-    """Canonical Portfolios DataNode whose identity includes asset unique_identifier."""
+    """Canonical Portfolios TimeIndexTableUpdater whose identity includes asset unique_identifier."""
 
     def _initialize_configuration(self, init_kwargs: dict) -> None:
         _drop_empty_framework_init_kwargs(init_kwargs)
@@ -172,12 +172,12 @@ class AssetScopedPortfolioCanonicalDataNode(PortfolioCanonicalDataNode, AssetInd
 def _is_canonical_frame(
     frame: pd.DataFrame,
     *,
-    storage_table: StorageTable,
+    output_table: OutputTable,
 ) -> bool:
     return (
         isinstance(frame, pd.DataFrame)
         and isinstance(frame.index, pd.MultiIndex)
-        and list(frame.index.names) == storage_index_names(storage_table)
+        and list(frame.index.names) == storage_index_names(output_table)
     )
 
 
@@ -262,12 +262,12 @@ def _normalize_pivoted_signal_weights(frame: pd.DataFrame) -> pd.DataFrame:
 def _validate_canonical_frame(
     data_frame: pd.DataFrame,
     *,
-    storage_table: StorageTable,
+    output_table: OutputTable,
     frame_name: str,
 ) -> pd.DataFrame:
-    index_names = storage_index_names(storage_table)
-    time_index_name = storage_time_index_name(storage_table)
-    column_dtypes_map = storage_column_dtypes_map(storage_table)
+    index_names = storage_index_names(output_table)
+    time_index_name = storage_time_index_name(output_table)
+    column_dtypes_map = storage_column_dtypes_map(output_table)
     frame = _ensure_storage_index(data_frame, index_names=index_names, frame_name=frame_name)
     flat = frame.reset_index()
     missing_columns = [

@@ -107,7 +107,7 @@ the same curve observation row as compressed-at-rest construction provenance.
 The data interface and FastAPI responses return it as producer-owned JSON. It
 may include per-node `quote_type`, `quote_unit`, `quote_side`, and yield-native
 fields when those describe the raw source inputs. Source publishers may add
-their own extensions and enforce them through the DataNode validation hook.
+their own extensions and enforce them through the TimeIndexTableUpdater validation hook.
 Runtime pricing does not infer the final curve interpretation from `key_nodes`;
 `CurveBuildingDetails` remains the source for the constructed curve convention.
 Prepared valuation contexts that need many curve observations load the latest

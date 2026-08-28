@@ -12,7 +12,7 @@ handled by the SDK `mainsequence migrations ... --provider migrations:migration`
 admin flow, not by runtime startup.
 
 Market models inherit `MarketsMetaTableMixin`, which itself inherits the SDK
-`PlatformManagedMetaTable` base. Time-indexed DataNode storage inherits
+`PlatformManagedMetaTable` base. Time-indexed time-index-table output inherits
 `PlatformTimeIndexMetaTable` through `MarketsTimeIndexMetaTableMixin`.
 Do not set `__tablename__` on normal markets MetaTable models. The markets
 mixins assign physical SQLAlchemy table names from the storage app segment, the
@@ -29,7 +29,7 @@ Every concrete markets MetaTable model must declare `__metatable_description__`.
 That description is the durable platform-level discovery text copied into the
 registered MetaTable. It should state the row grain and business use of the
 table; it should not be a generic column list.
-DataNode output storage classes follow the same rule, and their default DataNode
+TimeIndexTableUpdater output storage classes follow the same rule, and their default TimeIndexTableUpdater
 descriptions are sourced from the storage table's `__metatable_description__`.
 Every physical column must also carry non-empty SQLAlchemy `info["description"]`
 metadata so generated UIs can explain fields without
@@ -136,7 +136,7 @@ provider MetaTable catalog, and runs the `msm` provider hook that writes the
 catalog projection with the current platform UID, namespace, table name,
 description, model name, and SDK version. The catalog is an inventory
 projection, not the schema authority and not the runtime binding source. The
-catalog is intentionally MetaTable-specific; DataNode registration state belongs
+catalog is intentionally MetaTable-specific; TimeIndexTableUpdater registration state belongs
 in a separate catalog if it is needed later.
 
 When startup attaches platform-managed MetaTables, it partitions requested
@@ -306,7 +306,7 @@ not broadcast the same labels to every platform resource. The returned runtime
 exposes `runtime.meta_tables` and `runtime.meta_table_models` so callers can
 decide which concrete MetaTables need labels or other follow-up handling. When
 `models=[...]` is used, those runtime collections contain only the selected
-registered models. DataNode classes are imported from their owning package
+registered models. TimeIndexTableUpdater classes are imported from their owning package
 modules, not from the runtime attachment object.
 
 Examples and notebooks can use `MSM_AUTO_REGISTER_NAMESPACE` only as a startup

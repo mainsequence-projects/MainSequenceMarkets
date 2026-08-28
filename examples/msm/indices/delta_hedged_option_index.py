@@ -22,7 +22,7 @@ def publish_portfolio_values(portfolio_values: pd.DataFrame) -> pd.DataFrame:
     source["observation_status"] = "ready"
     source["source_as_of"] = source["time_index"]
     source["metadata_json"] = None
-    return normalize_index_values_frame(source, storage_table=DAILY_INDEX_VALUES)
+    return normalize_index_values_frame(source, output_table=DAILY_INDEX_VALUES)
 
 
 def run() -> dict[str, object]:

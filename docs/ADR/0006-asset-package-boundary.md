@@ -7,7 +7,7 @@ Accepted
 ## Context
 
 The extracted SDK code temporarily used an `msm.assets` package for both asset
-DataNode schemas and OpenFIGI provider helpers. That boundary made asset identity
+TimeIndexTableUpdater schemas and OpenFIGI provider helpers. That boundary made asset identity
 look like a standalone package when the implementation actually spans three
 different concepts:
 
@@ -16,7 +16,7 @@ different concepts:
 - Services own provider lookup and normalization workflows.
 
 Keeping `msm.assets` would make future changes ambiguous, especially as provider
-integrations and DataNode schemas grow independently.
+integrations and TimeIndexTableUpdater schemas grow independently.
 
 ## Decision
 
@@ -38,7 +38,7 @@ The `AssetTable` model remains the MetaTable-backed schema declaration at:
 from msm.models import AssetTable
 ```
 
-Asset snapshot DataNode schemas move to:
+Asset snapshot TimeIndexTableUpdater schemas move to:
 
 ```python
 from msm.data_nodes.assets import AssetSnapshot

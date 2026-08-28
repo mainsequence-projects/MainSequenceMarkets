@@ -108,7 +108,7 @@ market-data-set curve bindings.
 Curve identity rules:
 
 - `CurveTable.uid` is the canonical row identity for MetaTable operations.
-- `CurveTable.unique_identifier` is the stable curve row key. Curve DataNode
+- `CurveTable.unique_identifier` is the stable curve row key. Curve TimeIndexTableUpdater
   storage publishes that value in the `curve_identifier` column.
 - Bulk latest-as-of reads for multiple curve identifiers are executed by the
   backend against `DiscountCurvesStorage` with one ranked row per
@@ -162,7 +162,7 @@ source boundary. When the source inputs are helper-style instruments, use the
 generic reconstruction machinery under
 `msm_pricing.pricing_engine.curves`.
 
-The primitive API is QuantLib-first and has no MetaTable, DataNode, connector,
+The primitive API is QuantLib-first and has no MetaTable, TimeIndexTableUpdater, connector,
 vendor, currency, or index-name dependency:
 
 ```python
@@ -695,7 +695,7 @@ See [Curve Scenarios](scenarios/curves.md),
 ## Curve Observations
 
 `DiscountCurvesNode` publishes timestamped curve observations. Its storage key
-is `CurveTable.unique_identifier`, exposed on the DataNode row as
+is `CurveTable.unique_identifier`, exposed on the TimeIndexTableUpdater row as
 `curve_identifier`.
 
 ```text
@@ -711,7 +711,7 @@ is `CurveTable.unique_identifier`, exposed on the DataNode row as
 +-----------------------------+
 ```
 
-The curve DataNode contract is:
+The curve TimeIndexTableUpdater contract is:
 
 ```text
 DiscountCurvesNode
@@ -731,7 +731,7 @@ without a separate decision.
 `key_nodes` records the input quotes used to build that specific curve
 observation. It is row-level construction provenance, not another convention
 source. Publishers pass producer-owned JSON that satisfies the base contract
-below; the DataNode compresses that JSON into the storage column, and read/API
+below; the TimeIndexTableUpdater compresses that JSON into the storage column, and read/API
 helpers return it decompressed. `msm_pricing.data_nodes.CurveKeyNode` is the
 recommended helper when the standard fields fit the source:
 
@@ -784,7 +784,7 @@ Rules:
   `CurveBuildingDetails` still describes how the final stored `curve` is built
   and interpreted by pricing.
 
-When a producer needs stricter source-specific validation, extend the DataNode
+When a producer needs stricter source-specific validation, extend the TimeIndexTableUpdater
 validator instead of tightening the shared storage contract. The base
 `DiscountCurvesNode` calls `normalize_key_nodes(...)` for each row after
 storage-level JSON normalization. Subclass it for source-owned rules:

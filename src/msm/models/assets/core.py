@@ -21,7 +21,7 @@ class AssetTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_description__ = (
         "Canonical asset identity table keyed by uid and unique_identifier. Holds "
         "only shared asset identity and asset_type so type-specific properties live "
-        "in one-to-one asset detail tables or DataNode storage."
+        "in one-to-one asset detail tables or time-index-table output."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
@@ -52,7 +52,7 @@ class AssetTable(MarketsMetaTableMixin, MarketsBase):
             "label": "Unique Identifier",
             "description": (
                 "Unique stable asset business identifier used for idempotent upserts, "
-                "lookup, and asset-indexed DataNode joins."
+                "lookup, and asset-indexed TimeIndexTableUpdater joins."
             ),
         },
     )

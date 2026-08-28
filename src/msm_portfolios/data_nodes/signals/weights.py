@@ -7,13 +7,13 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 
-import mainsequence.meta_tables.data_nodes.build_operations as build_operations
+import mainsequence.meta_tables.time_index_table_updates.configuration as update_configuration
 
 from ..base import (
     AssetScopedPortfolioCanonicalDataNode,
     PortfolioCanonicalDataNodeConfiguration,
     SignalWeightsConfiguration,
-    StorageTable,
+    OutputTable,
     _class_import_path,
     _drop_empty_framework_init_kwargs,
     _drop_excluded_keys,
@@ -33,7 +33,7 @@ from .storage import SignalWeightsStorage
 
 
 class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
-    """Canonical DataNode for Portfolios signal weights."""
+    """Canonical TimeIndexTableUpdater for Portfolios signal weights."""
 
     def __init__(
         self,
@@ -52,10 +52,10 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
         """Hash every signal subclass as the canonical SignalWeights table."""
         _drop_empty_framework_init_kwargs(init_kwargs)
         init_kwargs.pop("config", None)
-        init_kwargs["time_series_class_import_path"] = _class_import_path(SignalWeights)
-        config = build_operations.create_config(
+        init_kwargs["table_updater_class_import_path"] = _class_import_path(SignalWeights)
+        config = update_configuration.create_config(
             kwargs=init_kwargs,
-            ts_class_name=SignalWeights.__name__,
+            updater_class_name=SignalWeights.__name__,
         )
         for field_name, value in asdict(config).items():
             setattr(self, field_name, value)
@@ -85,15 +85,15 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
     def update(self) -> pd.DataFrame:
         raw_frame = self._calculate_signal_weights()
         frame = (
-            self.validate_frame(raw_frame, storage_table=self.storage_table)
-            if _is_canonical_frame(raw_frame, storage_table=self.storage_table)
+            self.validate_frame(raw_frame, output_table=self.output_table)
+            if _is_canonical_frame(raw_frame, output_table=self.output_table)
             else self.validate_frame(
                 normalize_signal_weights_frame(
                     raw_frame,
                     signal_uid=self.signal_uid,
-                    storage_table=self.storage_table,
+                    output_table=self.output_table,
                 ),
-                storage_table=self.storage_table,
+                output_table=self.output_table,
             )
         )
         self._upsert_signal_metadata_if_available()
@@ -117,7 +117,7 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
                 f"{self.__class__.__name__} requires signal_configuration to compute signal_uid."
             )
         return {
-            "time_series_class_import_path": _class_import_path(self.__class__),
+            "table_updater_class_import_path": _class_import_path(self.__class__),
             "config": self.signal_configuration,
         }
 
@@ -399,7 +399,7 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
         return super()._validate_config(config)
 
     @classmethod
-    def _required_storage_table(cls) -> type[SignalWeightsStorage]:
+    def _required_output_table(cls) -> type[SignalWeightsStorage]:
         return SignalWeightsStorage
 
     @staticmethod
@@ -419,7 +419,7 @@ def canonical_signal_configuration(signal: Any) -> dict[str, Any]:
     namespaces and backend table instances.
     """
     payload = _signal_configuration_payload(signal)
-    serialized_payload = build_operations.Serializer().serialize_init_kwargs(payload)
+    serialized_payload = update_configuration.Serializer().serialize_init_kwargs(payload)
     return _drop_excluded_keys(
         dict(serialized_payload),
         excluded_keys=SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS,
@@ -429,7 +429,7 @@ def canonical_signal_configuration(signal: Any) -> dict[str, Any]:
 def compute_signal_uid(signal: Any) -> str:
     """Compute the deterministic Portfolios `signal_uid` for a signal producer."""
     payload = canonical_signal_configuration(signal)
-    _update_hash, remote_identity_hash = build_operations.hash_signature(payload)
+    _update_hash, remote_identity_hash = update_configuration.hash_signature(payload)
     return remote_identity_hash
 
 
@@ -437,10 +437,10 @@ def normalize_signal_weights_frame(
     signal_weights_frame: pd.DataFrame,
     *,
     signal_uid: str,
-    storage_table: StorageTable | None = None,
+    output_table: OutputTable | None = None,
 ) -> pd.DataFrame:
     """Normalize signal output into canonical SignalWeights rows."""
-    required_columns = list(SignalWeights._column_dtypes_map_for_storage(storage_table))
+    required_columns = list(SignalWeights._column_dtypes_map_for_storage(output_table))
     flat = _reset_frame_index(signal_weights_frame)
     if flat.empty:
         flat = _empty_flat_frame(column_names=required_columns)
@@ -456,7 +456,7 @@ def normalize_signal_weights_frame(
     )
     return SignalWeights.validate_frame(
         flat[required_columns],
-        storage_table=storage_table,
+        output_table=output_table,
     )
 
 
@@ -473,25 +473,25 @@ def _signal_configuration_payload(signal: Any) -> dict[str, Any]:
     if isinstance(signal, BaseModel):
         return {
             "config": signal,
-            "time_series_class_import_path": _class_import_path(signal.__class__),
+            "table_updater_class_import_path": _class_import_path(signal.__class__),
         }
 
     signal_config = getattr(signal, "config", None)
     if signal_config is not None:
         return {
             "config": signal_config,
-            "time_series_class_import_path": _class_import_path(signal.__class__),
+            "table_updater_class_import_path": _class_import_path(signal.__class__),
         }
 
     if isinstance(signal, dict):
         return dict(signal)
 
     raise TypeError(
-        "signal must be a DataNode-like object with build_configuration/config, "
+        "signal must be a TimeIndexTableUpdater-like object with build_configuration/config, "
         "a Pydantic configuration model, or a dict payload."
     )
 
 
-@build_operations.serialize_argument.register(SignalWeights)
+@update_configuration.serialize_argument.register(SignalWeights)
 def _serialize_signal_weights_argument(value: SignalWeights, pickle_ts: bool = False) -> dict:
     return canonical_signal_configuration(value)

@@ -1,4 +1,4 @@
-"""Signal DataNode storage contracts."""
+"""Signal time-index-table output contracts."""
 
 from __future__ import annotations
 

@@ -8,16 +8,16 @@ from uuid import UUID
 import pandas as pd
 
 from mainsequence.client import dtype_codec as dc
-from mainsequence.meta_tables import DataNode, DataNodeConfiguration
+from mainsequence.meta_tables import TimeIndexTableUpdater, TimeIndexTableUpdateConfig
 from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
 )
 from msm.data_nodes.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
 from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
-from msm.data_nodes.utils.storage_metadata import (
-    storage_data_node_description,
-    storage_data_node_identifier,
+from msm.data_nodes.utils.output_metadata import (
+    storage_table_description,
+    storage_table_identifier,
 )
 from msm.data_nodes.utils.storage_schema import (
     storage_column_dtypes_map,
@@ -34,7 +34,7 @@ class HoldingsDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
 
 
 class HoldingsDataNode(AssetIndexedDataNode):
-    """Base class for holdings tables created through the standard DataNode path."""
+    """Base class for holdings tables created through the standard TimeIndexTableUpdater path."""
 
     def __init__(
         self,
@@ -45,7 +45,7 @@ class HoldingsDataNode(AssetIndexedDataNode):
         resolved_config = self._validate_config(config or self.default_config())
         super().__init__(resolved_config, *args, **kwargs)
 
-    def dependencies(self) -> dict[str, DataNode]:
+    def dependencies(self) -> dict[str, TimeIndexTableUpdater]:
         return {}
 
     @classmethod
@@ -67,12 +67,12 @@ class HoldingsDataNode(AssetIndexedDataNode):
         )
 
     def _owner_index_name(self) -> str:
-        return storage_index_names(self.storage_table)[1]
+        return storage_index_names(self.output_table)[1]
 
     def update(self) -> pd.DataFrame:
         return _validate_holdings_frame(
             self.get_holdings_frame(),
-            storage_table=self.storage_table,
+            output_table=self.output_table,
         )
 
     def set_frame(self, frame: pd.DataFrame) -> HoldingsDataNode:
@@ -132,20 +132,20 @@ class HoldingsDataNode(AssetIndexedDataNode):
         cls,
         data_frame: pd.DataFrame,
         *,
-        storage_table: Any | None = None,
+        output_table: Any | None = None,
     ) -> pd.DataFrame:
-        resolved_storage_table = storage_table or cls._required_storage_table()
+        resolved_output_table = output_table or cls._required_output_table()
         return _validate_holdings_frame(
             data_frame,
-            storage_table=resolved_storage_table,
+            output_table=resolved_output_table,
         )
 
 
 class AccountHoldings(HoldingsDataNode):
-    """DataNode users can subclass to import account holdings."""
+    """TimeIndexTableUpdater users can subclass to import account holdings."""
 
     @classmethod
-    def _required_storage_table(cls) -> type[AccountHoldingsStorage]:
+    def _required_output_table(cls) -> type[AccountHoldingsStorage]:
         return AccountHoldingsStorage
 
     def build_account_holdings_frame(
@@ -191,12 +191,12 @@ class AccountHoldings(HoldingsDataNode):
         )
 
 
-class TargetPositionsDataNodeConfiguration(DataNodeConfiguration):
+class TargetPositionsDataNodeConfiguration(TimeIndexTableUpdateConfig):
     """Update-scoped configuration for account target-allocation exposure rows."""
 
 
-class TargetPositions(DataNode):
-    """DataNode users can subclass to import account target-allocation exposures."""
+class TargetPositions(TimeIndexTableUpdater):
+    """TimeIndexTableUpdater users can subclass to import account target-allocation exposures."""
 
     _HASH_NAMESPACE_ALIASES = ("namespace",)
 
@@ -214,18 +214,18 @@ class TargetPositions(DataNode):
         resolved_config = self._validate_config(config or self.default_config())
         if args:
             raise TypeError(
-                f"{self.__class__.__name__} accepts keyword-only DataNode arguments after config."
+                f"{self.__class__.__name__} accepts keyword-only TimeIndexTableUpdater arguments after config."
             )
         if kwargs.get("hash_namespace") in (None, ""):
             kwargs["hash_namespace"] = markets_namespace(namespace)
-        storage_table = kwargs.pop("storage_table", None) or self._required_storage_table()
+        output_table = kwargs.pop("output_table", None) or self._required_output_table()
         super().__init__(
             config=resolved_config,
-            storage_table=storage_table,
+            output_table=output_table,
             **kwargs,
         )
 
-    def dependencies(self) -> dict[str, DataNode]:
+    def dependencies(self) -> dict[str, TimeIndexTableUpdater]:
         return {}
 
     @classmethod
@@ -243,25 +243,25 @@ class TargetPositions(DataNode):
 
     @classmethod
     def _default_identifier(cls) -> str:
-        return storage_data_node_identifier(cls._required_storage_table())
+        return storage_table_identifier(cls._required_output_table())
 
     @classmethod
     def _default_description(cls) -> str:
-        return storage_data_node_description(cls._required_storage_table())
+        return storage_table_description(cls._required_output_table())
 
     @classmethod
-    def _required_storage_table(cls) -> type[TargetPositionsStorage]:
+    def _required_output_table(cls) -> type[TargetPositionsStorage]:
         return TargetPositionsStorage
 
     @classmethod
     def _column_dtypes_map_for_storage(
         cls,
-        storage_table: type[TargetPositionsStorage] | None = None,
+        output_table: type[TargetPositionsStorage] | None = None,
     ) -> dict[str, str]:
-        return storage_column_dtypes_map(storage_table or cls._required_storage_table())
+        return storage_column_dtypes_map(output_table or cls._required_output_table())
 
     def _bound_column_dtypes_map(self) -> dict[str, str]:
-        return storage_column_dtypes_map(self.storage_table)
+        return storage_column_dtypes_map(self.output_table)
 
     def update(self) -> pd.DataFrame:
         from msm.services.target_positions import validate_target_positions_frame
@@ -334,12 +334,12 @@ def _dimension_filters_with_identifier(
 def _validate_holdings_frame(
     data_frame: pd.DataFrame,
     *,
-    storage_table: Any,
+    output_table: Any,
 ) -> pd.DataFrame:
-    index_names = storage_index_names(storage_table)
-    time_index_name = storage_time_index_name(storage_table)
-    column_dtypes_map = storage_column_dtypes_map(storage_table)
-    column_nullable_map = storage_column_nullable_map(storage_table)
+    index_names = storage_index_names(output_table)
+    time_index_name = storage_time_index_name(output_table)
+    column_dtypes_map = storage_column_dtypes_map(output_table)
+    column_nullable_map = storage_column_nullable_map(output_table)
     frame = _ensure_storage_index(data_frame, index_names=index_names)
     flat = frame.reset_index()
     missing_columns = [

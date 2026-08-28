@@ -407,7 +407,7 @@ def get_pricing_market_data_bindings_by_set(
     response_model=PricingMarketDataBindingResolveResponse,
     summary="Resolve pricing market-data binding",
     description=(
-        "Resolve the DataNode storage uid used by one pricing concept in a market-data set."
+        "Resolve the time-index-table output uid used by one pricing concept in a market-data set."
     ),
     operation_id="resolvePricingMarketDataBinding",
     responses={

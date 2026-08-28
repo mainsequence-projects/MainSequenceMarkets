@@ -276,7 +276,7 @@ class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaTable):
     Sibling of `MarketsMetaTableMixin` for time-index storage classes. Concrete
     subclasses set `__metatable_identifier__`, `__time_index_name__`, and
     `__index_names__`. The authored MetaTable identifier seeds the SQLAlchemy
-    table name and default DataNode identifier.
+    table name and default TimeIndexTableUpdater identifier.
     """
 
     __abstract__ = True

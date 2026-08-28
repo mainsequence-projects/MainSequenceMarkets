@@ -33,7 +33,7 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
 
 import msm_portfolios  # noqa: E402
 from mainsequence.client.metatables import TimeIndexMetaTable  # noqa: E402
-from mainsequence.meta_tables import APIDataNode, DataNode  # noqa: E402
+from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater  # noqa: E402
 from msm.api.assets import Asset, AssetType  # noqa: E402
 from msm.api.calendars import Calendar  # noqa: E402
 from msm.data_nodes.assets.asset_indexed import (  # noqa: E402
@@ -99,12 +99,12 @@ class ExampleDailyBars(AssetIndexedDataNode):
         self._asset_identifiers = list(asset_identifiers)
         super().__init__(
             config=AssetIndexedDataNodeConfiguration(asset_list=self._asset_identifiers),
-            storage_table=ExternalPricesStorage,
+            output_table=ExternalPricesStorage,
             hash_namespace=namespace or NAMESPACE,
         )
 
     @classmethod
-    def _required_storage_table(cls) -> type[ExternalPricesStorage]:
+    def _required_output_table(cls) -> type[ExternalPricesStorage]:
         return ExternalPricesStorage
 
     def get_asset_list(self) -> list[str]:
@@ -212,7 +212,7 @@ def build_signal_weights_node() -> FixedWeights:
 
 
 def build_interpolated_prices_node(
-    source_price_instance: DataNode | APIDataNode,
+    source_price_instance: TimeIndexTableUpdater | TimeIndexTableRef,
 ) -> InterpolatedPrices:
     return InterpolatedPrices(
         interpolation_config=InterpolatedPricesConfig(
@@ -265,10 +265,10 @@ def build_example_interpolated_prices_storage(source_meta_table: Any) -> type[An
     )
 
 
-def assert_interpolated_prices_storage_registered(storage_table: type[Any]) -> Any:
+def assert_interpolated_prices_storage_registered(output_table: type[Any]) -> Any:
     """Fail clearly when the dynamic interpolation table was not migrated first."""
 
-    table_name = storage_table.__table__.name
+    table_name = output_table.__table__.name
     matches = TimeIndexMetaTable.filter_by_body(
         physical_table_name__in=[table_name],
         limit=1,
@@ -284,7 +284,7 @@ def assert_interpolated_prices_storage_registered(storage_table: type[Any]) -> A
         )
 
     meta_table = matches[0]
-    bind = getattr(storage_table, "_bind_meta_table", None)
+    bind = getattr(output_table, "_bind_meta_table", None)
     if callable(bind):
         bind(meta_table)
     return meta_table
@@ -339,8 +339,8 @@ def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> Non
     print_detail("source_prices_cadence", result["source_prices_cadence"])
     print_detail("interpolated_prices_storage_uid", result["interpolated_prices_storage_uid"])
     print_detail(
-        "interpolated_prices_storage_table",
-        result["interpolated_prices_storage_table"],
+        "interpolated_prices_output_table",
+        result["interpolated_prices_output_table"],
     )
     print_detail(
         "interpolated_prices_storage_cadence",
@@ -414,7 +414,7 @@ def build_equal_weight_portfolio(
     )
     print_detail("price_source_update_hash", interpolated_prices_node.update_hash)
     print_detail(
-        "interpolated_prices_storage_table",
+        "interpolated_prices_output_table",
         interpolated_prices_storage.__table__.name,
     )
     print_detail(
@@ -433,10 +433,10 @@ def build_equal_weight_portfolio(
         "source_prices_rows", len(build_example_daily_bars_frame(ASSET_UNIQUE_IDENTIFIERS))
     )
 
-    print_step(5, "Publishing portfolio DataNode storage outputs.")
+    print_step(5, "Publishing portfolio time-index-table outputs.")
     if run_data_nodes:
         source_bars_node.run(debug_mode=True, update_tree=False, force_update=True)
-        source_prices_node_uid = str(source_bars_node.data_node_update.uid)
+        source_prices_node_uid = str(source_bars_node.table_update.uid)
         print_detail("source_prices_data_node_uid", source_prices_node_uid)
 
         portfolio_run_result = portfolio_values_node.run(
@@ -447,17 +447,17 @@ def build_equal_weight_portfolio(
         )
         portfolio = portfolio_run_result["portfolio"]
 
-        interpolated_prices_node_uid = str(interpolated_prices_node.data_node_update.uid)
+        interpolated_prices_node_uid = str(interpolated_prices_node.table_update.uid)
         print_detail("interpolated_prices_data_node_uid", interpolated_prices_node_uid)
 
-        signal_weights_node_uid = str(signal_weights_node.data_node_update.uid)
+        signal_weights_node_uid = str(signal_weights_node.table_update.uid)
         print_detail("signal_weights_data_node_uid", signal_weights_node_uid)
 
         portfolio_weights_node = portfolio_values_node._canonical_portfolio_weights_node()
-        portfolio_weights_node_uid = str(portfolio_weights_node.data_node_update.uid)
+        portfolio_weights_node_uid = str(portfolio_weights_node.table_update.uid)
         print_detail("portfolio_weights_data_node_uid", portfolio_weights_node_uid)
 
-        portfolio_values_node_uid = str(portfolio_values_node.data_node_update.uid)
+        portfolio_values_node_uid = str(portfolio_values_node.table_update.uid)
         print_detail("portfolio_values_data_node_uid", portfolio_values_node_uid)
     else:
         print_detail("source_prices_data_node_uid", "skipped (--no-run-data-nodes)")
@@ -471,7 +471,7 @@ def build_equal_weight_portfolio(
         portfolio_weights_node_uid = None
         portfolio_values_node_uid = None
 
-    print_step(6, "Portfolio row has current DataNode links.")
+    print_step(6, "Portfolio row has current TimeIndexTableUpdater links.")
     print_detail("portfolio_uid", portfolio.uid)
     print_detail("portfolio_identifier", portfolio.unique_identifier)
 
@@ -488,7 +488,7 @@ def build_equal_weight_portfolio(
         ),
         "source_prices_cadence": source_prices_cadence,
         "interpolated_prices_storage_uid": getattr(interpolated_prices_meta_table, "uid", None),
-        "interpolated_prices_storage_table": interpolated_prices_storage.__table__.name,
+        "interpolated_prices_output_table": interpolated_prices_storage.__table__.name,
         "interpolated_prices_storage_cadence": interpolated_prices_storage.__cadence__,
         "source_prices_node_uid": source_prices_node_uid,
         "interpolated_prices_node_uid": interpolated_prices_node_uid,
@@ -505,7 +505,7 @@ def main() -> None:
     parser.add_argument(
         "--no-run-data-nodes",
         action="store_true",
-        help="Skip DataNode publication; by default the full dependency tree is published.",
+        help="Skip TimeIndexTableUpdater publication; by default the full dependency tree is published.",
     )
     args = parser.parse_args()
     build_equal_weight_portfolio(run_data_nodes=not args.no_run_data_nodes)

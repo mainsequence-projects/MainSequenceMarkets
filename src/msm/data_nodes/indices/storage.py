@@ -149,7 +149,7 @@ def index_values_storage_identity_components(*, cadence: str) -> dict[str, str]:
     }
 
 
-def index_values_storage_table_name(*, cadence: str) -> str:
+def index_values_output_table_name(*, cadence: str) -> str:
     """Return the frequency-specific physical table name for canonical Index values."""
 
     components = index_values_storage_identity_components(cadence=cadence)
@@ -173,7 +173,7 @@ def _configured_index_values_storage(
     normalized_cadence: str,
 ) -> type[PlatformTimeIndexMetaTable]:
     components = index_values_storage_identity_components(cadence=normalized_cadence)
-    table_name = index_values_storage_table_name(cadence=normalized_cadence)
+    table_name = index_values_output_table_name(cadence=normalized_cadence)
     table = _copy_index_values_table(table_name)
     class_suffix = re.sub(r"[^a-zA-Z0-9_]+", "_", normalized_cadence)
     return type(
@@ -197,11 +197,11 @@ def _configured_index_values_storage(
 
 
 def require_cadenced_index_values_storage(
-    storage_table: type[PlatformTimeIndexMetaTable],
+    output_table: type[PlatformTimeIndexMetaTable],
 ) -> str:
     """Return a storage cadence or reject a mixed/unspecified-frequency target."""
 
-    cadence = getattr(storage_table, "__cadence__", None)
+    cadence = getattr(output_table, "__cadence__", None)
     if cadence in (None, ""):
         raise ValueError(
             "canonical Index values require a cadence-specific storage table; "
@@ -210,7 +210,7 @@ def require_cadenced_index_values_storage(
     normalized_cadence = index_values_storage_identity_components(cadence=str(cadence))[
         INDEX_VALUES_CADENCE_COMPONENT
     ]
-    hash_components = getattr(storage_table, "__metatable_extra_hash_components__", {})
+    hash_components = getattr(output_table, "__metatable_extra_hash_components__", {})
     if hash_components.get(INDEX_VALUES_STORAGE_NAME_COMPONENT) != "index_values" or (
         hash_components.get(INDEX_VALUES_CADENCE_COMPONENT) != normalized_cadence
     ):
@@ -218,7 +218,7 @@ def require_cadenced_index_values_storage(
             "canonical Index values require cadence-specific storage hash components; "
             "build the table with configured_index_values_storage(cadence=...)"
         )
-    identifier = str(getattr(storage_table, "__metatable_identifier__", ""))
+    identifier = str(getattr(output_table, "__metatable_identifier__", ""))
     if not identifier.endswith(f"IndexValuesTS.{normalized_cadence}"):
         raise ValueError(
             "canonical Index values require a cadence-specific IndexValuesTS identifier; "
@@ -281,6 +281,6 @@ __all__ = [
     "IndexValuesStorage",
     "configured_index_values_storage",
     "index_values_storage_identity_components",
-    "index_values_storage_table_name",
+    "index_values_output_table_name",
     "require_cadenced_index_values_storage",
 ]

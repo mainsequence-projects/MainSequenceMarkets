@@ -38,7 +38,7 @@ structure/continuity problem, not link rot.
 ```
 Home                 → what/why in one screen, links out (no deep content)
 Getting Started      → install + a first example that runs
-Core Concepts (NEW)  → canonical runtime model (row vs *Table vs DataNode,
+Core Concepts (NEW)  → canonical runtime model (row vs *Table vs TimeIndexTableUpdater,
                        start_engine = attachment not schema, migrations-first,
                        MSM_AUTO_REGISTER_NAMESPACE). Everything else links here.
 Tutorial             → linear chain w/ "Next →": assets → calendars → accounts
@@ -96,7 +96,7 @@ Changelog            → snippet include of root CHANGELOG.md (already correct)
 ## Phase 3 — Extract repeated boilerplate  (effort M · risk low)
 
 - [x] **3.1** Create `docs/concepts.md` ("Core Concepts / Runtime Model") as the
-  single canonical explainer (row vs `*Table` vs DataNode; `start_engine()`
+  single canonical explainer (row vs `*Table` vs TimeIndexTableUpdater; `start_engine()`
   semantics; migrations-before-runtime; `MSM_AUTO_REGISTER_NAMESPACE`).
 - [x] **3.2** Replace the duplicated paragraphs in `index.md`,
   `getting-started.md`, `knowledge/index.md`, `tutorial/index.md`, and concept

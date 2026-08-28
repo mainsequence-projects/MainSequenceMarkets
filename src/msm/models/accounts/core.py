@@ -24,7 +24,7 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "Account"
     __metatable_description__ = (
         "Canonical account registry keyed by uid and unique_identifier. Stores "
-        "client or execution-account identity, status flags, holdings DataNode "
+        "client or execution-account identity, status flags, holdings TimeIndexTableUpdater "
         "linkage, optional account group membership, and account metadata used "
         "by holdings and execution workflows. Allocation-model tracking belongs "
         "to AccountTargetAllocationTable."
@@ -117,7 +117,7 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         nullable=True,
         info={
-            "label": "Holdings DataNode UID",
+            "label": "Holdings TimeIndexTableUpdater UID",
             "description": "Optional platform DataNodeStorage UID for this account's holdings history.",
         },
     )
@@ -297,7 +297,7 @@ class AccountHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         nullable=True,
         info={
-            "label": "Source DataNode UID",
+            "label": "Source TimeIndexTableUpdater UID",
             "description": "Optional DataNodeStorage uid that produced this holdings set.",
         },
     )

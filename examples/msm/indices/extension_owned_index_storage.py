@@ -1,4 +1,4 @@
-"""Define extension-owned Index observations without using the core Index DataNode base."""
+"""Define extension-owned Index observations without using the core Index TimeIndexTableUpdater base."""
 
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ class ExtensionIndexObservationsDataNode(StampedDataNode):
     frame_label: ClassVar[str] = "Extension Index Observations"
 
     @classmethod
-    def _required_storage_table(cls) -> type[ExtensionIndexObservationsStorage]:
+    def _required_output_table(cls) -> type[ExtensionIndexObservationsStorage]:
         return ExtensionIndexObservationsStorage
 
 
@@ -115,7 +115,7 @@ def run() -> dict[str, object]:
                 "metadata_json",
             ]
         ],
-        storage_table=CANONICAL_ONE_MINUTE_VALUES_STORAGE,
+        output_table=CANONICAL_ONE_MINUTE_VALUES_STORAGE,
     )
     return {
         "index_identity": {

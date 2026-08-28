@@ -1,4 +1,4 @@
-"""Asset pricing-detail DataNode storage contracts."""
+"""Asset pricing-detail time-index-table output contracts."""
 
 from __future__ import annotations
 

@@ -29,7 +29,7 @@ projection curves; spread and basis curves; and future volatility curves or
 pricing surfaces. Those identities should not require synthetic index rows just
 to satisfy a foreign key.
 
-The existing DataNode storage already shows that curve observations are not
+The existing time-index-table output already shows that curve observations are not
 index-keyed:
 
 ```text
@@ -403,7 +403,7 @@ market_data_set_key
   -> PricingMarketDataSetTable
   -> PricingMarketDataSetBindingTable(concept_key="discount_curves")
   -> data_node_uid
-  -> APIDataNode.build_from_table_uid(data_node_uid)
+  -> TimeIndexTableRef.from_uid(data_node_uid)
 
 market_data_set_key
   -> PricingMarketDataSetCurveBindingTable(

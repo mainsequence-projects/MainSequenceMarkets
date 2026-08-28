@@ -40,7 +40,7 @@ The pricing failure exposed the issue:
 ```text
 PricingMarketDataBinding.data_node_identifier
   -> mainsequence.examples.DiscountCurvesTS
-APIDataNode.build_from_identifier(...)
+TimeIndexTableRef.from_identifier(...)
   -> MetaTable.get(identifier="mainsequence.examples.DiscountCurvesTS")
   -> no backend MetaTable found
 ```
@@ -91,7 +91,7 @@ It must not rebuild a fallback string from namespace helpers, authored model
 names, or `__metatable_identifier__`.
 
 Internal mutation of `__metatable_identifier__`, if retained, is not public
-runtime truth. User code, pricing code, DataNode code, and repository code
+runtime truth. User code, pricing code, TimeIndexTableUpdater code, and repository code
 should use the attached backend identifier through `get_identifier()`.
 
 ### Runtime Lookup
@@ -124,7 +124,7 @@ model.__table__.name -> backend physical_table_name -> backend object
 Missing matches, duplicate matches, or mismatched backend physical table names
 must fail startup before any row API is exposed.
 
-### Pricing DataNode Identifiers
+### Pricing TimeIndexTableUpdater Identifiers
 
 Pricing market-data bindings must store SDK-resolvable identifiers from attached
 storage classes:
@@ -198,13 +198,13 @@ actual backend MetaTable identifier.
 - [x] Update documentation so direct backend lookup is the only runtime binding
       mechanism.
 
-### Stage 4: DataNode Identifier Resolution
+### Stage 4: TimeIndexTableUpdater Identifier Resolution
 
-- [x] Update `storage_data_node_identifier(storage_table)` to call
-      `storage_table.get_identifier()`.
-- [x] Remove fallback DataNode identifier construction from storage class
+- [x] Update `storage_table_identifier(output_table)` to call
+      `output_table.get_identifier()`.
+- [x] Remove fallback TimeIndexTableUpdater identifier construction from storage class
       authored names.
-- [x] Add tests proving DataNode default identifiers equal the attached backend
+- [x] Add tests proving TimeIndexTableUpdater default identifiers equal the attached backend
       MetaTable/TimeIndexMetaTable identifiers.
 
 ### Stage 5: Pricing Binding Defaults
@@ -221,14 +221,14 @@ actual backend MetaTable identifier.
 - [x] Add regression tests proving no pricing binding persists
       `mainsequence.examples.DiscountCurvesTS` or
       `mainsequence.examples.IndexFixingsTS`.
-- [x] Add a pricing resolver test proving `APIDataNode.build_from_identifier`
+- [x] Add a pricing resolver test proving `TimeIndexTableRef.from_identifier`
       receives the same identifier returned by `DiscountCurvesStorage.get_identifier()`.
 
 ### Stage 6: Documentation And Validation
 
 - [x] Update bootstrap documentation to describe direct runtime attachment.
 - [x] Update pricing documentation to explain that market-data bindings store
-      SDK-resolvable DataNode/MetaTable identifiers from attached storage
+      SDK-resolvable TimeIndexTableUpdater/MetaTable identifiers from attached storage
       classes.
 - [x] Remove obsolete secondary-registry documentation.
 - [x] Run focused runtime attachment tests.

@@ -87,7 +87,7 @@ quantity back to the original account target row.
   target quantity demands use signed quantity.
 - Do not fetch hidden latest data unless `valuation_policy` explicitly allows
   that stale-data mode.
-- Do not write MetaTables or DataNode storage from the resolver.
+- Do not write MetaTables or time-index-table output from the resolver.
 - Do not execute trades, rebalance holdings, borrow, or synthesize source
   holdings.
 - Keep the resolver batch-oriented. It should receive all source holdings and

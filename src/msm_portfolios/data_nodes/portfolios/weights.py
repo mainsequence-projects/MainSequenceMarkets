@@ -6,7 +6,7 @@ import pandas as pd
 
 from ..base import (
     AssetScopedPortfolioCanonicalDataNode,
-    StorageTable,
+    OutputTable,
     _empty_flat_frame,
     _require_columns,
     _reset_frame_index,
@@ -25,7 +25,7 @@ from .storage import PortfolioWeightsStorage
 
 
 class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
-    """Canonical DataNode for executed Portfolios portfolio weights."""
+    """Canonical TimeIndexTableUpdater for executed Portfolios portfolio weights."""
 
     def set_weights_frame(
         self,
@@ -51,7 +51,7 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
     def update(self) -> pd.DataFrame:
         frame = self.validate_frame(
             self._calculate_weights(),
-            storage_table=self.storage_table,
+            output_table=self.output_table,
         )
         self._upsert_portfolio_metadata_if_available(frame)
         return frame
@@ -64,7 +64,7 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
         return normalize_portfolio_weights_frame(
             weights_frame,
             portfolio_identifier=(self._resolve_portfolio_identifier()),
-            storage_table=self.storage_table,
+            output_table=self.output_table,
         )
 
     def _resolve_portfolio_identifier(self) -> str:
@@ -151,7 +151,7 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalDataNode):
         )
 
     @classmethod
-    def _required_storage_table(cls) -> type[PortfolioWeightsStorage]:
+    def _required_output_table(cls) -> type[PortfolioWeightsStorage]:
         return PortfolioWeightsStorage
 
 
@@ -159,10 +159,10 @@ def normalize_portfolio_weights_frame(
     weights_frame: pd.DataFrame,
     *,
     portfolio_identifier: str,
-    storage_table: StorageTable | None = None,
+    output_table: OutputTable | None = None,
 ) -> pd.DataFrame:
     """Normalize postprocessed Portfolios weights into canonical PortfolioWeights rows."""
-    required_columns = list(PortfolioWeights._column_dtypes_map_for_storage(storage_table))
+    required_columns = list(PortfolioWeights._column_dtypes_map_for_storage(output_table))
     flat = _reset_frame_index(weights_frame)
     if flat.empty:
         flat = _empty_flat_frame(column_names=required_columns)
@@ -177,5 +177,5 @@ def normalize_portfolio_weights_frame(
     )
     return PortfolioWeights.validate_frame(
         flat[required_columns],
-        storage_table=storage_table,
+        output_table=output_table,
     )

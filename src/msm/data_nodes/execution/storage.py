@@ -1,4 +1,4 @@
-"""Execution DataNode storage contracts."""
+"""Execution time-index-table output contracts."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def _execution_info(column_name: str) -> dict[str, str]:
     return {
         "label": column_name.replace("_", " ").title(),
         "description": (
-            f"Execution storage field {column_name} published by the execution DataNode."
+            f"Execution storage field {column_name} published by the execution TimeIndexTableUpdater."
         ),
     }
 

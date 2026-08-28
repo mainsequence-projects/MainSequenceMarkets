@@ -4,7 +4,7 @@ from typing import Any
 import pandas as pd
 
 from mainsequence.client import dtype_codec as dc
-from mainsequence.meta_tables import DataNode
+from mainsequence.meta_tables import TimeIndexTableUpdater
 from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,
@@ -23,7 +23,7 @@ class ExecutionDataNodeConfiguration(AssetIndexedDataNodeConfiguration):
 
 
 class ExecutionDataNode(AssetIndexedDataNode):
-    """Base DataNode for timestamped execution facts."""
+    """Base TimeIndexTableUpdater for timestamped execution facts."""
 
     def __init__(
         self,
@@ -34,7 +34,7 @@ class ExecutionDataNode(AssetIndexedDataNode):
         resolved_config = self._validate_config(config or self.default_config())
         super().__init__(resolved_config, *args, **kwargs)
 
-    def dependencies(self) -> dict[str, DataNode]:
+    def dependencies(self) -> dict[str, TimeIndexTableUpdater]:
         return {}
 
     @classmethod
@@ -58,7 +58,7 @@ class ExecutionDataNode(AssetIndexedDataNode):
     def update(self) -> pd.DataFrame:
         return _validate_execution_frame(
             self.get_execution_frame(),
-            storage_table=self.storage_table,
+            output_table=self.output_table,
         )
 
     def set_frame(self, frame: pd.DataFrame) -> ExecutionDataNode:
@@ -79,12 +79,12 @@ class ExecutionDataNode(AssetIndexedDataNode):
         cls,
         data_frame: pd.DataFrame,
         *,
-        storage_table: type[OrdersStorage | OrderEventsStorage | TradesStorage] | None = None,
+        output_table: type[OrdersStorage | OrderEventsStorage | TradesStorage] | None = None,
     ) -> pd.DataFrame:
-        resolved_storage_table = storage_table or cls._required_storage_table()
+        resolved_output_table = output_table or cls._required_output_table()
         return _validate_execution_frame(
             data_frame,
-            storage_table=resolved_storage_table,
+            output_table=resolved_output_table,
         )
 
     @classmethod
@@ -92,11 +92,11 @@ class ExecutionDataNode(AssetIndexedDataNode):
         cls,
         data_frame: pd.DataFrame,
         *,
-        storage_table: type[OrdersStorage | OrderEventsStorage | TradesStorage] | None = None,
+        output_table: type[OrdersStorage | OrderEventsStorage | TradesStorage] | None = None,
     ) -> pd.DataFrame:
         return cls.validate_execution_frame(
             data_frame,
-            storage_table=storage_table,
+            output_table=output_table,
         )
 
 
@@ -104,7 +104,7 @@ class Orders(ExecutionDataNode):
     """Timestamped order records replacing Django Order, MarketOrder, and LimitOrder."""
 
     @classmethod
-    def _required_storage_table(cls) -> type[OrdersStorage]:
+    def _required_output_table(cls) -> type[OrdersStorage]:
         return OrdersStorage
 
 
@@ -112,7 +112,7 @@ class OrderEvents(ExecutionDataNode):
     """Timestamped order status events."""
 
     @classmethod
-    def _required_storage_table(cls) -> type[OrderEventsStorage]:
+    def _required_output_table(cls) -> type[OrderEventsStorage]:
         return OrderEventsStorage
 
 
@@ -120,17 +120,17 @@ class Trades(ExecutionDataNode):
     """Timestamped trade execution records."""
 
     @classmethod
-    def _required_storage_table(cls) -> type[TradesStorage]:
+    def _required_output_table(cls) -> type[TradesStorage]:
         return TradesStorage
 
 
 def _validate_execution_frame(
     data_frame: pd.DataFrame,
     *,
-    storage_table: type[OrdersStorage | OrderEventsStorage | TradesStorage],
+    output_table: type[OrdersStorage | OrderEventsStorage | TradesStorage],
 ) -> pd.DataFrame:
-    index_names = storage_index_names(storage_table)
-    column_dtypes_map = storage_column_dtypes_map(storage_table)
+    index_names = storage_index_names(output_table)
+    column_dtypes_map = storage_column_dtypes_map(output_table)
     frame = data_frame.copy()
     if list(frame.index.names) == index_names:
         flat = frame.reset_index()

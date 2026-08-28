@@ -501,7 +501,7 @@ def _flat_holdings_frame(holdings_frame: Any) -> Any:
 
     if not isinstance(holdings_frame, pd.DataFrame):
         raise TypeError(
-            "Holdings positions require a pandas DataFrame. Unpack DataNode run results "
+            "Holdings positions require a pandas DataFrame. Unpack TimeIndexTableUpdater run results "
             "before calling Account.pretty_print_positions(...)."
         )
 

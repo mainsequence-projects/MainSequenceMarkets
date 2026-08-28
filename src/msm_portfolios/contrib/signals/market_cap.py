@@ -18,10 +18,10 @@ from msm_portfolios.configuration import (
     PortfolioConfigBaseModel,
 )
 from msm_portfolios.utils import TIMEDELTA
-from mainsequence.meta_tables import APIDataNode
+from mainsequence.meta_tables import TimeIndexTableRef
 
 if TYPE_CHECKING:
-    from mainsequence.meta_tables import DataNode
+    from mainsequence.meta_tables import TimeIndexTableUpdater
 
 
 class AssetMistMatch(Exception): ...
@@ -89,12 +89,12 @@ class MarketCap(SignalWeights):
         return self.market_cap_config.volatility_control_configuration
 
     @property
-    def historical_market_cap_ts(self) -> APIDataNode:
+    def historical_market_cap_ts(self) -> TimeIndexTableRef:
         historical_market_cap_ts = getattr(self, "_historical_market_cap_ts", None)
         if historical_market_cap_ts is not None:
             return historical_market_cap_ts
 
-        historical_market_cap_ts = APIDataNode.build_from_identifier(
+        historical_market_cap_ts = TimeIndexTableRef.from_identifier(
             self.market_cap_config.market_cap_time_series.unique_identifier
         )
         self._historical_market_cap_ts = historical_market_cap_ts
@@ -103,7 +103,7 @@ class MarketCap(SignalWeights):
     def maximum_forward_fill(self):
         return timedelta(days=1) - TIMEDELTA
 
-    def dependencies(self) -> dict[str, Union["DataNode", "APIDataNode"]]:
+    def dependencies(self) -> dict[str, Union["TimeIndexTableUpdater", "TimeIndexTableRef"]]:
         return {"historical_market_cap_ts": self.historical_market_cap_ts}
 
     def get_explanation(self):

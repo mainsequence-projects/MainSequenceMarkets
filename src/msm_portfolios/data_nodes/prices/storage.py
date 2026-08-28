@@ -1,4 +1,4 @@
-"""Portfolio price-source DataNode storage contracts."""
+"""Portfolio price-source time-index-table output contracts."""
 
 from __future__ import annotations
 
@@ -142,7 +142,7 @@ def interpolated_prices_storage_identity_components(
     }
 
 
-def interpolated_prices_storage_table_name(
+def interpolated_prices_output_table_name(
     *,
     source_time_index_meta_table_uid: str,
     source_cadence: str,
@@ -182,7 +182,7 @@ def configured_interpolated_prices_storage(
         upsample_frequency_id=upsample_frequency_id,
         intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
     )
-    table_name = interpolated_prices_storage_table_name(
+    table_name = interpolated_prices_output_table_name(
         source_time_index_meta_table_uid=source_time_index_meta_table_uid,
         source_cadence=source_cadence,
         upsample_frequency_id=upsample_frequency_id,
@@ -337,5 +337,5 @@ __all__ = [
     "InterpolatedPricesStorage",
     "configured_interpolated_prices_storage",
     "interpolated_prices_storage_identity_components",
-    "interpolated_prices_storage_table_name",
+    "interpolated_prices_output_table_name",
 ]

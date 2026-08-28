@@ -1,6 +1,6 @@
 ---
 name: project-design
-description: Design, explain, review, and maintain a Main Sequence project architecture and its connected Project Blueprint. Use for initial project design, organization-environment architecture, architectural changes, ontology maintenance, Blueprint review or reconciliation, and implementation handoff across MetaTables, TimeIndexMetaTables, DataNodes, jobs, APIs, CLI commands, project-to-agent skills, and static sites.
+description: Design, explain, review, and maintain a Main Sequence project architecture and its connected Project Blueprint. Use for initial project design, organization-environment architecture, architectural changes, ontology maintenance, Blueprint review or reconciliation, and implementation handoff across MetaTables, TimeIndexMetaTables, TimeIndexTableUpdaters, jobs, APIs, CLI commands, project-to-agent skills, and static sites.
 ---
 
 # Main Sequence Project Design
@@ -102,7 +102,7 @@ Keep these distinctions:
 - `TimeIndexMetaTable` is the `MetaTable` specialization for time-indexed
   storage. It owns the time index, cadence, ordered identity dimensions,
   partition strategy, and time-series progress behavior.
-- `DataNode` is deterministic update logic that produces or maintains
+- `TimeIndexTableUpdater` is deterministic update logic that produces or maintains
   `TimeIndexMetaTable` data; its database identities are derived from its
   input and output MetaTables.
 - `Job` is a project-bound execution definition with a repository execution
@@ -244,7 +244,7 @@ why each relationship needs a foreign key or constraint, and which access
 pattern justifies an index. State the physical database dialect because it
 affects the SQLAlchemy types, defaults, and constraint behavior.
 
-For a DataNode, explain the produced dataset, complete output grain, cadence,
+For a TimeIndexTableUpdater, explain the produced dataset, complete output grain, cadence,
 dependencies, incremental boundary, determinism, and consumers.
 
 ### Advanced Mode
@@ -308,7 +308,7 @@ Produce or update one project-owned, version-controlled YAML document with this
 top-level structure:
 
 ```yaml
-blueprint_version: "1"
+blueprint_version: "2"
 
 project:
   purpose: ...
@@ -325,7 +325,7 @@ decisions: ...
 open_questions: ...
 
 metatables: ...
-data_nodes: ...
+time_index_table_updaters: ...
 jobs: ...
 apis: ...
 cli: ...
@@ -345,7 +345,7 @@ Give every reusable Blueprint item a stable key. Reference it with its section:
 project.outcomes.daily_portfolio_risk
 ontology.concepts.portfolio
 metatables.portfolios
-data_nodes.calculate_daily_portfolio_risk
+time_index_table_updaters.calculate_daily_portfolio_risk
 jobs.nightly_reconciliation
 apis.portfolio_risk_api
 cli.calculate_portfolio_risk
@@ -361,7 +361,7 @@ existing object through the canonical operation.
 
 ## Connect Every Component
 
-For every MetaTable, DataNode, Job, API, CLI command, and static site, record:
+For every MetaTable, TimeIndexTableUpdater, Job, API, CLI command, and static site, record:
 
 - `key` and human-facing `name`;
 - `purpose`;
@@ -385,7 +385,7 @@ Do not add a second Blueprint environment-variable domain or represent a
 workflow literal as a platform Secret/Constant resource.
 
 `depends_on`, `consumers`, and acceptance criteria are Blueprint architecture
-links. Do not misrepresent them as persisted fields on a MetaTable, DataNode,
+links. Do not misrepresent them as persisted fields on a MetaTable, TimeIndexTableUpdater,
 Job, API, or CLI record.
 
 ## Design MetaTables
@@ -422,9 +422,9 @@ For application-owned schema evolution, SQLAlchemy/Alembic owns physical DDL;
 MetaTable owns catalog identity, permissions, physical-table binding, and
 introspected metadata.
 
-## Design DataNodes
+## Design TimeIndexTableUpdaters
 
-Use a DataNode for deterministic computation that incrementally produces or
+Use a TimeIndexTableUpdater for deterministic computation that incrementally produces or
 maintains `TimeIndexMetaTable` data.
 
 Record:
@@ -433,20 +433,20 @@ Record:
   `output_metatable` field);
 - complete output grain: time index plus all identity dimensions;
 - cadence and freshness expectation;
-- DataNode, MetaTable, and external-data dependencies;
+- TimeIndexTableUpdater, MetaTable, and external-data dependencies;
 - update boundary and partitioning;
 - determinism and idempotency expectations;
 - backfill and replay behavior;
 - lineage and downstream consumers.
 
-Require the DataNode output grain to agree with its output
+Require the TimeIndexTableUpdater output grain to agree with its output
 `TimeIndexMetaTable`. Keep storage shape in the table resource and update
-behavior in the DataNode.
+behavior in the TimeIndexTableUpdater.
 
 ## Design Jobs
 
 Use a Job for project code that should execute manually or on an optional
-interval/crontab schedule and does not belong in deterministic DataNode
+interval/crontab schedule and does not belong in deterministic TimeIndexTableUpdater
 production or a request-time API.
 
 Record:
@@ -479,7 +479,7 @@ image or commit selectors: workflow API `2.1.0` derives the exact image from
 the immutable repository event. Neither automatic path resolves branch HEAD at
 runtime or persists an image-less Job.
 
-Explain why the workload is a Job rather than a DataNode, API request, or local
+Explain why the workload is a Job rather than a TimeIndexTableUpdater, API request, or local
 developer command.
 
 Do not invent Job fields for retry policy, failure policy, queues, dependency
@@ -505,7 +505,7 @@ Record:
 - deployment/release expectation;
 - acceptance criteria.
 
-Do not rebuild producer logic in an API. Reference the DataNode or MetaTable
+Do not rebuild producer logic in an API. Reference the TimeIndexTableUpdater or MetaTable
 that owns the data.
 
 When implementation produces a deployable FastAPI, Streamlit, agent-runtime,
@@ -703,7 +703,7 @@ Before handoff, verify:
 - every MetaTable has explicit grain and keys;
 - foreign keys cite compatible target keys and ontology relationships;
 - indexes cite concrete access patterns;
-- every DataNode output and grain agree with its MetaTable;
+- every TimeIndexTableUpdater output and grain agree with its MetaTable;
 - API data dependencies resolve;
 - every CLI command maps to real components and declares side effects;
 - every project-agent skill references at least one compatible CLI command;

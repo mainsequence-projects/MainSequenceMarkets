@@ -70,7 +70,7 @@ class FixingRatesNode(IndexTimestampedDataNode):
         super().__init__(config=self.fixing_config, **kwargs)
 
     @classmethod
-    def _required_storage_table(cls) -> type[IndexFixingsStorage]:
+    def _required_output_table(cls) -> type[IndexFixingsStorage]:
         return IndexFixingsStorage
 
     def set_fixing_builders(
@@ -104,7 +104,7 @@ class FixingRatesNode(IndexTimestampedDataNode):
         normalized = normalized.dropna(subset=["rate"])
         if normalized.empty:
             return pd.DataFrame()
-        return self.validate_frame(normalized, storage_table=self.storage_table)
+        return self.validate_frame(normalized, output_table=self.output_table)
 
     def build_fixing_frame(
         self,

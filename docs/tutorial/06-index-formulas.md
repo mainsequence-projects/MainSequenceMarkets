@@ -176,7 +176,7 @@ result = mixed.calculate_from_sources(
 )
 ```
 
-## 8. Publish Through A DataNode
+## 8. Publish Through A TimeIndexTableUpdater
 
 Use the actual registered source storage classes whose MetaTable UIDs match
 the two input UIDs:
@@ -191,7 +191,7 @@ from msm.data_nodes.indices import (
 DailyIndexValues = configured_index_values_storage(cadence="1d")
 config = FormulaIndexDataNodeConfiguration(
     formula_definition_uids=(mixed.definition.uid,),
-    source_storage_tables=(RateValuesStorage, BondValuesStorage),
+    source_output_tables=(RateValuesStorage, BondValuesStorage),
     offset_start="2026-01-01T00:00:00Z",
 )
 node = FormulaIndexDataNode(config, DailyIndexValues)

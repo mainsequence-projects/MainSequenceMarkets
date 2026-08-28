@@ -15,10 +15,10 @@ from msm.services.accounts.virtual_fund_holdings import (
 
 
 class VirtualFundHoldings(HoldingsDataNode):
-    """DataNode users can subclass to import virtual-fund holdings."""
+    """TimeIndexTableUpdater users can subclass to import virtual-fund holdings."""
 
     @classmethod
-    def _required_storage_table(cls) -> type[VirtualFundHoldingsStorage]:
+    def _required_output_table(cls) -> type[VirtualFundHoldingsStorage]:
         return VirtualFundHoldingsStorage
 
     def build_virtual_fund_holdings_frame(

@@ -65,7 +65,7 @@ def test_holdings_nodes_source_column_dtypes_from_storage_classes() -> None:
     assert AccountHoldings._column_dtypes_map_for_storage(
         AccountHoldingsStorage
     ) == storage_column_dtypes_map(AccountHoldingsStorage)
-    assert AccountHoldings._required_storage_table() is AccountHoldingsStorage
+    assert AccountHoldings._required_output_table() is AccountHoldingsStorage
 
 
 def test_holdings_nullability_is_sourced_from_storage_classes() -> None:
@@ -91,8 +91,8 @@ def test_account_holdings_dtype_tokens_match_storage_columns() -> None:
     assert dtype_map["holdings_set_uid"] == dc.UUID_TOKEN
 
 
-def test_holdings_bound_dtype_map_uses_instance_storage_table() -> None:
-    node = SimpleNamespace(storage_table=AccountHoldingsStorage)
+def test_holdings_bound_dtype_map_uses_instance_output_table() -> None:
+    node = SimpleNamespace(output_table=AccountHoldingsStorage)
 
     assert AccountHoldings._bound_column_dtypes_map(node) == storage_column_dtypes_map(
         AccountHoldingsStorage

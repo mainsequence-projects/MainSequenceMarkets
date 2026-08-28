@@ -86,7 +86,7 @@ It does two things, and nothing more:
 
 - it namespaces example/local MetaTable identities and the physical table-name
   suffix;
-- it becomes the default namespace for markets DataNode identifiers and
+- it becomes the default namespace for markets TimeIndexTableUpdater identifiers and
   `hash_namespace` values created in the same process.
 
 It does **not** make row operations register schemas, and a different namespace

@@ -100,7 +100,7 @@ The registry is derived from:
 
 Managed models must inherit normal SDK authoring bases. Plain MetaTables use
 `PlatformManagedMetaTable` through `MarketsMetaTableMixin`; time-indexed
-DataNode storage uses `PlatformTimeIndexMetaTable` through
+time-index-table output uses `PlatformTimeIndexMetaTable` through
 `MarketsTimeIndexMetaTableMixin`.
 
 The registry is built through the SDK `build_metatable_model_registry(...)`

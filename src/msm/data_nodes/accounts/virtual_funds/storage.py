@@ -1,4 +1,4 @@
-"""Virtual-fund DataNode storage contracts."""
+"""Virtual-fund time-index-table output contracts."""
 
 from __future__ import annotations
 

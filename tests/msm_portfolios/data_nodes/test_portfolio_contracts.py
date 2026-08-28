@@ -6,7 +6,8 @@ import pandas as pd
 import pytest
 import msm_portfolios.data_nodes.portfolios as portfolios_module
 
-from mainsequence.meta_tables import APIDataNode, DataNode
+from mainsequence.client.metatables import TimeIndexMetaTable
+from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.models import AssetTable, PortfolioTable
 from msm_portfolios.configuration import (
@@ -49,12 +50,27 @@ PORTFOLIO_NODE_STORAGE = (
 )
 
 
-class ExplicitPriceSource(DataNode):
+class ExplicitPriceSource(TimeIndexTableUpdater):
     def update(self) -> pd.DataFrame:
         return pd.DataFrame()
 
     def dependencies(self) -> dict:
         return {}
+
+
+def output_table_stub(
+    *,
+    uid: str = "test-output-table",
+    data_source_uid: str = "test-data-source",
+) -> SimpleNamespace:
+    output_metadata = TimeIndexMetaTable.model_construct(
+        uid=uid,
+        data_source_uid=data_source_uid,
+    )
+    return SimpleNamespace(
+        get_time_index_meta_table=lambda: output_metadata,
+        get_data_source_uid=lambda: data_source_uid,
+    )
 
 
 def explicit_price_source(
@@ -65,10 +81,24 @@ def explicit_price_source(
 ) -> ExplicitPriceSource:
     price_source = object.__new__(source_cls)
     price_source.update_hash = update_hash
-    price_source._storage_table = SimpleNamespace(
-        get_data_source_uid=lambda: data_source_uid,
+    price_source._output_table = output_table_stub(
+        uid=f"{update_hash}-table",
+        data_source_uid=data_source_uid,
     )
     return price_source
+
+
+def table_ref(
+    *,
+    uid: str = "registered-valuations",
+    data_source_uid: str = "source",
+) -> TimeIndexTableRef:
+    return TimeIndexTableRef(
+        output_table=TimeIndexMetaTable.model_construct(
+            uid=uid,
+            data_source_uid=data_source_uid,
+        )
+    )
 
 
 class ExamplePriceSource(ExplicitPriceSource):
@@ -115,7 +145,7 @@ def test_portfolio_nodes_source_column_dtypes_from_storage_classes(
     assert node_cls._column_dtypes_map_for_storage(storage_cls) == storage_column_dtypes_map(
         storage_cls
     )
-    assert node_cls._required_storage_table() is storage_cls
+    assert node_cls._required_output_table() is storage_cls
 
 
 def test_portfolio_configurations_do_not_carry_storage_schema() -> None:
@@ -213,18 +243,15 @@ def test_valuation_source_configuration_uses_sdk_data_node_identity() -> None:
     )
 
     assert canonical_valuation_source_configuration(valuation_source) == {
-        "is_time_serie_instance": True,
+        "kind": "table_update",
         "update_hash": "valuations-node",
-        "data_source_uid": "source",
+        "output_table_uid": "valuations-node-table",
     }
 
-    api_valuation_source = APIDataNode(
-        data_source_uid="source",
-        physical_table_name="registered_valuations",
-    )
+    api_valuation_source = table_ref()
     assert canonical_valuation_source_configuration(api_valuation_source) == {
-        "is_api_time_serie_instance": True,
-        "update_hash": "API_registered_valuations",
+        "kind": "time_index_table_ref",
+        "time_index_meta_table_uid": "registered-valuations",
         "data_source_uid": "source",
     }
 
@@ -398,7 +425,7 @@ def test_portfolio_values_noop_when_existing_output_is_ahead_of_valuation_source
 
     node = object.__new__(PortfoliosDataNode)
     node.update_hash = "portfolio-node"
-    node._storage_table = SimpleNamespace(get_data_source_uid=lambda: "test-data-source")
+    node._output_table = output_table_stub(uid="portfolio-output-table")
     node.valuation_source = explicit_price_source(update_hash="valuations")
     node.rebalancer = SimpleNamespace(calendar=ExplodingCalendar())
     node._calculate_start_end_dates = lambda: (
@@ -669,7 +696,8 @@ def test_usable_valuation_end_uses_only_required_valuation_assets() -> None:
 
     progress = ScopedProgress()
     node = object.__new__(PortfoliosDataNode)
-    node.valuation_source = SimpleNamespace(update_statistics=progress)
+    node.valuation_source = explicit_price_source()
+    node.valuation_source.update_statistics = progress
     node.price_alignment_policy = PriceAlignmentPolicy()
     node.portfolio_prices_frequency = "1d"
 
@@ -692,9 +720,9 @@ def test_portfolio_update_window_loads_api_valuation_source_statistics() -> None
             }[identity]
 
     progress = ScopedProgress()
-    valuation_source = APIDataNode(
+    valuation_source = table_ref(
+        uid="test-valuations",
         data_source_uid="test-data-source",
-        physical_table_name="test-valuations",
     )
     valuation_source.get_update_statistics = lambda: progress
 
@@ -705,7 +733,7 @@ def test_portfolio_update_window_loads_api_valuation_source_statistics() -> None
 
     end_date = node._usable_valuation_end_date(["btc", "eth"])
 
-    assert valuation_source.update_statistics is progress
+    assert not hasattr(valuation_source, "update_statistics")
     assert end_date == pd.Timestamp("2026-01-04T00:00:00Z")
     assert progress.requested_identities == ["btc", "eth"]
 
@@ -744,7 +772,8 @@ def test_required_valuation_assets_include_existing_weight_assets() -> None:
         ),
     )
     node = object.__new__(PortfoliosDataNode)
-    node.valuation_source = SimpleNamespace(update_statistics=progress)
+    node.valuation_source = explicit_price_source()
+    node.valuation_source.update_statistics = progress
     node.signal_weights = SimpleNamespace(
         get_asset_uid_to_override_portfolio_price=lambda: None,
     )
@@ -801,7 +830,7 @@ def test_portfolio_workflow_reads_signal_before_valuation_coverage_noop() -> Non
     signal = Signal()
     node = object.__new__(PortfoliosDataNode)
     node.update_hash = "portfolio-node"
-    node._storage_table = SimpleNamespace(get_data_source_uid=lambda: "test-data-source")
+    node._output_table = output_table_stub(uid="portfolio-output-table")
     node.signal_weights = signal
     node.valuation_source = SimpleNamespace()
     node.rebalancer = SimpleNamespace(calendar=object())
@@ -829,8 +858,8 @@ def test_portfolio_value_node_is_not_asset_scoped() -> None:
     assert issubclass(SignalWeights, AssetScopedPortfolioCanonicalDataNode)
 
 
-def test_portfolio_bound_dtype_map_uses_instance_storage_table() -> None:
-    node = SimpleNamespace(storage_table=SignalWeightsStorage)
+def test_portfolio_bound_dtype_map_uses_instance_output_table() -> None:
+    node = SimpleNamespace(output_table=SignalWeightsStorage)
 
     assert PortfolioWeights._bound_column_dtypes_map(node) == storage_column_dtypes_map(
         SignalWeightsStorage
@@ -958,7 +987,7 @@ def test_required_valuation_assets_include_previous_portfolio_weights() -> None:
 def test_missing_required_valuations_continue_by_default() -> None:
     node = object.__new__(PortfoliosDataNode)
     node.update_hash = "test-update"
-    node._storage_table = SimpleNamespace(get_data_source_uid=lambda: "test-data-source")
+    node._output_table = output_table_stub(uid="portfolio-output-table")
     node.valuation_column = "close"
     node.price_alignment_policy = PriceAlignmentPolicy()
     raw_prices = pd.DataFrame(
@@ -985,7 +1014,7 @@ def test_missing_required_valuations_continue_by_default() -> None:
 def test_missing_required_valuations_fail_under_strict_policy() -> None:
     node = object.__new__(PortfoliosDataNode)
     node.update_hash = "test-update"
-    node._storage_table = SimpleNamespace(get_data_source_uid=lambda: "test-data-source")
+    node._output_table = output_table_stub(uid="portfolio-output-table")
     node.valuation_column = "close"
     node.price_alignment_policy = PriceAlignmentPolicy(fail_on_missing_prices=True)
     raw_prices = pd.DataFrame(

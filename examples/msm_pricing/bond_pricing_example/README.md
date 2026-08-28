@@ -23,7 +23,7 @@ The migration step must complete before the script starts. The script uses
 `msm.start_engine(...)` and `msm_pricing.bootstrap.attach_pricing_schemas(...)`
 only to attach already-migrated MetaTables and configure pricing runtime state.
 
-The discount-curve DataNode publishes `key_nodes` beside the `curve` payload.
+The discount-curve TimeIndexTableUpdater publishes `key_nodes` beside the `curve` payload.
 Publishers pass `key_nodes` as source-owned JSON; storage compresses it at rest
 and read/API helpers return decompressed JSON. The mock flat-forward publisher
 uses the recommended `CurveKeyNode` shape with `maturity_date`,

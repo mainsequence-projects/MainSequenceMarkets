@@ -1,1 +1,1 @@
-"""DataNode contract tests."""
+"""TimeIndexTableUpdater contract tests."""

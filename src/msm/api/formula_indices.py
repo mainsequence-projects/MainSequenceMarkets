@@ -340,7 +340,7 @@ class FormulaIndex(BaseModel):
     ) -> IndexFormulaResult:
         """Read the pinned MetaTables over one bounded interval and calculate."""
 
-        from mainsequence.meta_tables import APIDataNode
+        from mainsequence.meta_tables import TimeIndexTableRef
 
         start_at = _utc_boundary(start, field="start")
         end_at = _utc_boundary(end, field="end")
@@ -364,7 +364,7 @@ class FormulaIndex(BaseModel):
                 if formula_input.source_reference.type == "asset"
                 else "index_identifier"
             )
-            dependency = APIDataNode.build_from_meta_table(meta_table)
+            dependency = TimeIndexTableRef.from_meta_table(meta_table)
             frame = dependency.get_df_between_dates(
                 start_date=source_start,
                 end_date=end_at,

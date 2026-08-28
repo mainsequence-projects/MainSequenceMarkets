@@ -9,6 +9,12 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Upgraded the project to Main Sequence SDK `7.0.1` and completed the SDK 7
+  hard-cut refactor: updater/configuration/reference imports now use the
+  `mainsequence.meta_tables` time-index-table API, configuration payloads use
+  schema version 2, table references are read-only, and project code, tests,
+  examples, tutorials, documentation, and agent instructions use the canonical
+  time-index-table terminology without compatibility aliases.
 - Completed OpenAPI documentation metadata for every FastAPI v1 operation and tag, added stable
   tag groups and the canonical source-repository link, documented the composed Asset schemas, and
   derived canonical row and field descriptions from existing MetaTable metadata so downstream API
@@ -21,10 +27,6 @@ and this project follows versioned releases.
   discovery; added canonical account and pricing-curve detail operations; and
   pinned conformance tests to the complete Command Center SDK `0.1.13` schema
   and fixture bundle.
-- Removed the exact Main Sequence SDK dependency pin so `ms-markets` can install
-  with newer compatible SDK releases. Refreshed the lock and exported runtime
-  requirements against Main Sequence `6.0.48`, which accepts the backend's
-  Organization Environment fields during Git-native ProjectBranch resolution.
 - Added port 3010 to the development-only FastAPI CORS wrapper so the static-site repository's VS
   Code full-stack debugger can run the local API on port 8001 and frontend on port 3010 together
   without changing production application middleware.

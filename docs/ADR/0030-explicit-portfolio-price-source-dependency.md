@@ -6,7 +6,7 @@ Accepted - implemented
 
 This ADR defines the target architecture for portfolio price consumption in
 `msm_portfolios`. It supersedes the current design where `PortfoliosDataNode`
-builds an `InterpolatedPrices` DataNode internally from `AssetsConfiguration`.
+builds an `InterpolatedPrices` TimeIndexTableUpdater internally from `AssetsConfiguration`.
 
 Amendment: [ADR 0031](0031-generic-portfolio-valuation-source.md) supersedes
 the `price_column: PriceTypeNames` part of this ADR. Portfolio core should
@@ -40,7 +40,7 @@ That produces this hidden graph:
             v
 +-----------------------+      reads       +-----------------------+
 | InterpolatedPrices    |<-----------------| raw/source prices     |
-| DataNode              |                  | DataNode/APIDataNode  |
+| TimeIndexTableUpdater              |                  | TimeIndexTableUpdater/TimeIndexTableRef  |
 +-----------+-----------+                  +-----------------------+
             |
             | hidden dependency
@@ -50,11 +50,11 @@ That produces this hidden graph:
 +-----------------------+                  +-----------------------+
 ```
 
-This hides a persistent price-processing DataNode and its dynamic storage table
+This hides a persistent price-processing TimeIndexTableUpdater and its dynamic storage table
 behind portfolio configuration. It also makes portfolio extension harder because
 users who already have a proper price graph cannot pass that graph directly.
 
-The Main Sequence DataNode model is cleaner when each DataNode owns its own
+The Main Sequence TimeIndexTableUpdater model is cleaner when each TimeIndexTableUpdater owns its own
 update process and downstream nodes consume explicit dependencies. Persistent
 price interpolation is an upstream price workflow. Portfolio construction is a
 downstream calculation workflow.
@@ -102,14 +102,14 @@ The target graph is:
 ```text
                     +-----------------------+
                     | raw/source prices     |
-                    | DataNode/APIDataNode  |
+                    | TimeIndexTableUpdater/TimeIndexTableRef  |
                     +-----------+-----------+
                                 |
                                 | optional upstream processing
                                 v
 +-----------------------+      +-----------------------+
 | SignalWeights         |      | price source          |
-| DataNode              |      | DataNode/APIDataNode  |
+| TimeIndexTableUpdater              |      | TimeIndexTableUpdater/TimeIndexTableRef  |
 +-----------+-----------+      +-----------+-----------+
             |                              |
             | explicit dependency          | explicit dependency
@@ -122,18 +122,18 @@ The target graph is:
 ```
 
 `InterpolatedPrices` remains useful, but it becomes a contributed price-source
-DataNode that users build and pass explicitly. It is not owned by
+TimeIndexTableUpdater that users build and pass explicitly. It is not owned by
 `PortfoliosDataNode`.
 
 Portfolio logic may still locally align a consumed price frame to the portfolio
 rebalance index. That local alignment is part of portfolio calculation. It must
-not create persistent interpolation storage or hide an upstream DataNode.
+not create persistent interpolation storage or hide an upstream TimeIndexTableUpdater.
 
 The portfolio should also make price gaps visible. If the consumed price source
 has missing dates or requires local forward-fill during rebalance-index
 alignment, the portfolio emits diagnostics that describe the gaps and the local
 fill decisions. The interpolation part stays in the price/interpolation
-DataNode.
+TimeIndexTableUpdater.
 
 ## Current Construction Logic
 
@@ -191,11 +191,11 @@ The desired implementation separates price processing from portfolio
 construction:
 
 ```text
-Raw/source price DataNode or APIDataNode
-  -> optional InterpolatedPrices DataNode
+Raw/source price TimeIndexTableUpdater or TimeIndexTableRef
+  -> optional InterpolatedPrices TimeIndexTableUpdater
        -> owns persistent interpolation output and storage
 
-SignalWeights DataNode
+SignalWeights TimeIndexTableUpdater
   -> owns investment intent and signal asset universe
 
 PortfoliosDataNode
@@ -215,13 +215,13 @@ PortfoliosDataNode
 Target responsibilities:
 
 ```text
-Price/interpolation DataNode owns:
+Price/interpolation TimeIndexTableUpdater owns:
   - raw price ingestion or price normalization
   - persistent interpolation, if the user wants it
   - dynamic interpolation storage, if needed
   - source cadence and interpolation policy
   - explicit upstream source dependency resolution from either a live
-    `DataNode`/`APIDataNode` instance or a registered source
+    `TimeIndexTableUpdater`/`TimeIndexTableRef` instance or a registered source
     `TimeIndexMetaTable` UID
 
 SignalWeights owns:
@@ -240,7 +240,7 @@ PortfoliosDataNode owns:
 
 Portfolio local price alignment must remain a temporary calculation step. It
 must not create persistent interpolation storage and must not replace the
-external price/interpolation DataNode.
+external price/interpolation TimeIndexTableUpdater.
 
 ## Portfolio Universe Resolution
 
@@ -255,7 +255,7 @@ assets from:
 3. any explicit portfolio target asset used to override the calculated
    portfolio value series.
 
-The signal DataNode may expose a candidate universe through `get_asset_list()`.
+The signal TimeIndexTableUpdater may expose a candidate universe through `get_asset_list()`.
 That is useful for preflight, update statistics, and dependency setup, but the
 actual signal output frame remains authoritative for the update window.
 
@@ -274,7 +274,7 @@ result                        = warn/diagnose and follow alignment policy
 Price gaps must be reported with diagnostics that name:
 
 - missing or stale asset identifiers,
-- the price source DataNode/storage identifier,
+- the price source TimeIndexTableUpdater/storage identifier,
 - the update date range,
 - the price column requested,
 - the alignment policy that was applied,
@@ -287,7 +287,7 @@ only fail when the configured policy says the price frame is unusable.
 
 ## Price Source Contract
 
-A portfolio price source must be a `DataNode` or `APIDataNode` whose storage can
+A portfolio price source must be a `TimeIndexTableUpdater` or `TimeIndexTableRef` whose storage can
 be read by time and `asset_identifier`.
 
 Minimum contract:
@@ -313,9 +313,9 @@ optional columns:
 The price source may be:
 
 - `InterpolatedPrices`,
-- another `msm_portfolios` contributed price DataNode,
-- a project-defined DataNode,
-- an `APIDataNode` pointing to a compatible registered storage table.
+- another `msm_portfolios` contributed price TimeIndexTableUpdater,
+- a project-defined TimeIndexTableUpdater,
+- an `TimeIndexTableRef` pointing to a compatible registered storage table.
 
 `PortfolioBuildConfiguration` should store the price source instance, not a
 source storage UID plus interpolation policy. If a user wants persistent
@@ -324,11 +324,11 @@ portfolio.
 
 `InterpolatedPrices` itself may be built from either:
 
-- `source_price_instance`, when the raw/source price `DataNode` or
-  `APIDataNode` already exists in the current graph,
+- `source_price_instance`, when the raw/source price `TimeIndexTableUpdater` or
+  `TimeIndexTableRef` already exists in the current graph,
 - `source_time_index_meta_table_uid`, when the source is an already registered
   compatible storage table and should be attached through
-  `APIDataNode.build_from_table_uid(...)`.
+  `TimeIndexTableRef.from_uid(...)`.
 
 In both cases, `InterpolatedPrices.dependencies()` exposes the resolved source
 object. The UID path is an attachment convenience; it must not hide the source
@@ -391,7 +391,7 @@ but that must be explicit in the dependency graph.
 Positive consequences:
 
 - The portfolio dependency graph becomes visible and inspectable.
-- Users extending portfolios can pass their own price DataNode or APIDataNode.
+- Users extending portfolios can pass their own price TimeIndexTableUpdater or TimeIndexTableRef.
 - Persistent interpolation storage is prepared and run as a price workflow, not
   as a side effect of portfolio construction.
 - `PortfoliosDataNode` becomes focused on portfolio calculation.
@@ -510,7 +510,7 @@ old `AssetsConfiguration`/`PricesConfiguration` path locally.
   not portfolio schema preparation.
 - [x] Verify that `InterpolatedPrices` can be passed directly as the portfolio
   price source.
-- [x] Verify that an `APIDataNode` pointing to compatible interpolated storage
+- [x] Verify that an `TimeIndexTableRef` pointing to compatible interpolated storage
   can also be passed as the portfolio price source.
 
 ### Stage 5: Contributed Signal Refactor
@@ -561,7 +561,7 @@ old `AssetsConfiguration`/`PricesConfiguration` path locally.
 - [x] Update `mainsequence-markets-portfolio-workflow` skill to route price
   interpolation work to the price-source workflow, not portfolio core.
 - [x] Update any price-source skill or docs to explain `InterpolatedPrices` as a
-  reusable upstream DataNode.
+  reusable upstream TimeIndexTableUpdater.
 - [x] Update the changelog once implementation begins.
 
 ### Stage 8: Compatibility And Removal

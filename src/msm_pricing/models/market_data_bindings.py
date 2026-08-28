@@ -22,7 +22,7 @@ class PricingMarketDataSetTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "PricingMarketDataSet"
     __metatable_description__ = (
         "Pricing market-data set table keyed by set_key. Each row represents a "
-        "named collection of market-data DataNode storage bindings, such as "
+        "named collection of market-data time-index-table output bindings, such as "
         "default, eod, live, or a stress scenario, used by pricing engines."
     )
     __table_args__ = markets_table_args(
@@ -95,7 +95,7 @@ class PricingMarketDataSetTable(MarketsMetaTableMixin, MarketsBase):
 
 
 class PricingMarketDataSetBindingTable(MarketsMetaTableMixin, MarketsBase):
-    """Binding from a market-data set and pricing concept to a DataNode storage UID."""
+    """Binding from a market-data set and pricing concept to a time-index-table output UID."""
 
     __metatable_identifier__ = "PricingMarketDataSetBinding"
     __metatable_description__ = (
@@ -152,9 +152,9 @@ class PricingMarketDataSetBindingTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         nullable=False,
         info={
-            "label": "DataNode Storage UID",
+            "label": "TimeIndexTableUpdater Storage UID",
             "description": (
-                "Backend MetaTable/TimeIndexMetaTable UID of the DataNode storage table "
+                "Backend MetaTable/TimeIndexMetaTable UID of the time-index-table output table "
                 "used to resolve this pricing concept."
             ),
         },
