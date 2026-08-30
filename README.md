@@ -104,6 +104,10 @@ Recommended entry points:
 
 ## Quick Start
 
+`ms-markets` 1.x requires Python 3.13 and Main Sequence SDK `>=8.0.4`.
+SDK 6 and SDK 7 are not supported; install a 0.x `ms-markets` release when
+maintaining an older Main Sequence project.
+
 Install the package from this repository in editable mode:
 
 ```bash
@@ -152,15 +156,15 @@ After installing the pricing extra, verify the optional pricing import:
 python -c "import msm_pricing; print(msm_pricing.FixedRateBond)"
 ```
 
-Copy the packaged ms-markets skills into a host Main Sequence project only when
-you explicitly want them available to agents in that project:
+Copy the packaged ms-markets skills into a host Main Sequence CodeRepository
+only when you explicitly want them available to agents in that repository:
 
 ```bash
-msm copy-msm-skills --path /path/to/project
+msm copy-msm-skills --path /path/to/code-repository
 ```
 
 Importing `msm` never mutates the current directory or auto-copies skills. The
-command writes only to `<project>/.agents/skills/ms_markets/` and leaves
+command writes only to `<code-repository>/.agents/skills/ms_markets/` and leaves
 unrelated `.agents` content alone. Use `--dry-run` or `--json` to inspect the
 copy plan.
 
@@ -214,7 +218,7 @@ Runtime dependencies are declared in
 [pyproject.toml](https://github.com/mainsequence-projects/MainSequenceMarkets/blob/main/pyproject.toml).
 The core stack starts with:
 
-- `mainsequence` for platform integration
+- `mainsequence>=8.0.4` for the SDK-8 platform integration contract
 - `SQLAlchemy` for market-domain ORM models
 - `pydantic` for typed configuration and serialized row contracts
 - `pandas` and `numpy` for tabular market data

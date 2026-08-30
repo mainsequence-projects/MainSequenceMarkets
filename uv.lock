@@ -505,7 +505,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "7.0.2"
+version = "8.0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -531,9 +531,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/06/7d/eb313b2d8b6cd4b1c748feddd1b1d618798d0d1d1f3820d04a7ad22bbad4/mainsequence-7.0.2.tar.gz", hash = "sha256:63ca1362b1c05b56766b4fa83d8342611a67128b8fd7039f60f3111c7ab08695", size = 534925, upload-time = "2026-08-28T12:10:58.01Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/12/e4/17f0f1dfc032b472d17b5e012938531732528e23071fc9022b2db7631856/mainsequence-8.0.4.tar.gz", hash = "sha256:fc630eaf1febd27a8da3b9d8b7c9b590a756f2fd629d86c50049c54778bad90a", size = 539211, upload-time = "2026-08-29T15:35:35.112Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/a3/ee37eb90932cb640c82f225fd06347bd453a5bab2ce1d8d6196fbf5825cd/mainsequence-7.0.2-py3-none-any.whl", hash = "sha256:2bfa192a33aa6430212345234446b8e943ac7578d3c0b75f206083f659f7ba31", size = 413137, upload-time = "2026-08-28T12:10:56.477Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/1e/1b15c3cf8029655f81d35202f076d44ac6c179d550f6d4d1b1ca59093ca8/mainsequence-8.0.4-py3-none-any.whl", hash = "sha256:66102c7e05ec0d20458186c3db3f730f436e2b1a97cca846345151b60e7edeb2", size = 414929, upload-time = "2026-08-29T15:35:32.951Z" },
 ]
 
 [[package]]
@@ -788,7 +788,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "0.0.114"
+version = "1.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -857,7 +857,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.136.3" },
     { name = "fastapi", marker = "extra == 'public-api'", specifier = ">=0.136.3" },
     { name = "joblib", marker = "extra == 'portfolios'" },
-    { name = "mainsequence", specifier = "==7.0.2" },
+    { name = "mainsequence", specifier = ">=8.0.4" },
     { name = "matplotlib", marker = "extra == 'pricing'" },
     { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6" },

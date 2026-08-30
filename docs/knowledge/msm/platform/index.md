@@ -37,7 +37,7 @@ Platform utilities answer these questions:
   lives under `msm.data_nodes.accounts`.
 - `cli`: explicit command-line helpers, including
   `msm copy-msm-skills` for installing packaged ms-markets agent skills into a
-  host project.
+  host CodeRepository.
 
 ## Key Contracts
 
@@ -59,10 +59,11 @@ the admin-owned schema creation and evolution workflow.
 
 The `msm` import path is side-effect free. Installing the package makes the
 ms-markets skill bundle available as package data, but skills are copied into a
-host project only when a user runs `msm copy-msm-skills --path <project>`.
+host CodeRepository only when a user runs
+`msm copy-msm-skills --path <code-repository>`.
 That command writes to `.agents/skills/ms_markets/` and leaves Main Sequence
-scaffold skills and project-state files untouched. It also writes
-`.agents/skills/ms_markets/PINNED_FROM.txt` so host projects can see which
+scaffold skills and repository-state files untouched. It also writes
+`.agents/skills/ms_markets/PINNED_FROM.txt` so host CodeRepositories can see which
 installed ms-markets version supplied the copied skills. The command is blocked
 when the target path is the ms-markets source checkout because that checkout is
 also the packaged skill source.

@@ -1,4 +1,4 @@
-api_version: 2.0.0
+api_version: 2.1.0
 name: mainsequence-markets-fastapi
 resources:
   - key: markets-api
@@ -14,3 +14,4 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+      revision_retention_count: 3

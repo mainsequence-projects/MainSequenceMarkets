@@ -1,5 +1,9 @@
 # Getting Started
 
+`ms-markets` 1.x requires Python 3.13 and Main Sequence SDK `>=8.0.4`. It
+cannot run against an SDK 6 or SDK 7 backend contract and does not provide
+compatibility aliases or a mixed-version mode.
+
 Install the project in editable mode with development dependencies:
 
 ```bash
@@ -25,8 +29,8 @@ Verify that the import package is available:
 import msm
 ```
 
-Install ms-markets agent skills into a host project only through the explicit
-CLI command:
+Install ms-markets agent skills into a host CodeRepository only through the
+explicit CLI command:
 
 ```bash
 msm copy-msm-skills --path .
@@ -37,7 +41,7 @@ writes `.agents/skills/ms_markets/PINNED_FROM.txt` with the ms-markets version
 that supplied the installed skills. Importing `msm` does not write files,
 create `.agents/`, or auto-install skills.
 
-Run this command only from a separate host project. The CLI blocks
+Run this command only from a separate host CodeRepository. The CLI blocks
 `msm copy-msm-skills --path .` inside the ms-markets source checkout because
 the destination would overlap the package's own skill source.
 

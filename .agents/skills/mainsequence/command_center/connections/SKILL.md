@@ -141,7 +141,7 @@ This skill owns platform connection meaning and MCP operation selection. It
 does not own React controls, entity summaries, resource-list normalization,
 bulk selection/preflight UX, widgets, themes, or iframe integration. For those
 tasks, use the complete version-matched skill bundle installed from the
-project's `@dev-mainsequence/command-center-sdk` package.
+CodeRepository's `@dev-mainsequence/command-center-sdk` package.
 
 The frontend may derive configuration controls from the ConnectionType schemas
 and normalize canonical DRF pagination. Do not create duplicate backend DTOs

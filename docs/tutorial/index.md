@@ -17,7 +17,7 @@ helpers for time-indexed facts).
 
 ## Installing MS Markets Agent Skills
 
-Use the `msm` CLI when a host Main Sequence project should receive the
+Use the `msm` CLI when a host Main Sequence CodeRepository should receive the
 ms-markets agent skills:
 
 ```bash
@@ -27,10 +27,10 @@ msm copy-msm-skills --path .
 The command copies the packaged bundle into `.agents/skills/ms_markets/`,
 overwrites only matching skill folders under that namespace, and writes
 `.agents/skills/ms_markets/PINNED_FROM.txt` with the installed ms-markets
-version. It does not touch `.agents/skills/mainsequence`, project-state files,
+version. It does not touch `.agents/skills/mainsequence`, repository-state files,
 or `AGENTS.md`.
 
-Run it only from a separate host project. The CLI rejects the ms-markets source
+Run it only from a separate host CodeRepository. The CLI rejects the ms-markets source
 checkout to avoid deleting the package-owned skill bundle.
 
 Do not rely on `import msm` for this setup. Imports are side-effect free and do

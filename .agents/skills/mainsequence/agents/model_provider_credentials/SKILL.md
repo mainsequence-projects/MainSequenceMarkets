@@ -70,7 +70,8 @@ an MCP tool.
 
 `sign_in_continue.input` is allowed only when the exact active attempt requests
 `prompt_input` or `enter_callback_url`. Do not write that value to logs,
-project files, shell history, environment variables, Blueprints, or skills.
+CodeRepository files, shell history, environment variables, Blueprints, or
+skills.
 
 The maintained runtime exchanges provider authorization and persists the final
 credential through the canonical backend. MCP and the calling agent never

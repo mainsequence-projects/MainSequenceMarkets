@@ -1,17 +1,17 @@
 ---
 name: organization-environments
-description: Understand, enumerate, design, and review Main Sequence Organization Environments and their lifecycle. Use to resolve visible environment UIDs before human/local Agent discovery; distinguish an Organization Environment from a Project, ProjectBranch, Git branch, DataSource, release, or deployment; reason about branch-owned runtime scope and shared MetaTables, Secrets, and Constants; and separate code promotion from configuration and data migration.
+description: Understand, enumerate, design, and review Main Sequence Organization Environments and their lifecycle. Use to resolve visible environment UIDs before human/local Agent discovery; distinguish an Organization Environment from a CodeRepository, CodeRepositoryBranch, Git branch, DataSource, release, or deployment; reason about branch-owned runtime scope and shared MetaTables, Secrets, and Constants; and separate code promotion from configuration and data migration.
 ---
 
 # Main Sequence Organization Environments
 
 Use this skill to understand where an Organization Environment fits in the
-Main Sequence platform and how it affects project branches, Project Executors,
+Main Sequence platform and how it affects code repository branches, CodeRepository Executors,
 data, configuration, and releases.
 
 Read `mainsequence://platform/ontology` first for the currently deployed
-platform nouns. Read the platform `project-design` skill when environment
-decisions must be recorded in a Project Blueprint. Read the `resource-release`
+platform nouns. Read the platform `code-repository-design` skill when environment
+decisions must be recorded in a CodeRepository Blueprint. Read the `resource-release`
 skill before creating, configuring, or deploying a ResourceRelease.
 
 ## Keep Design Status And Runtime State Separate
@@ -27,12 +27,12 @@ Decision Checklist are approved, including:
 - an Organization owns its `OrganizationEnvironment` rows;
 - every Organization has exactly one production environment;
 - an Organization may have any number of additional environments;
-- Projects participate through `ProjectBranch`;
-- ProjectBranch environment assignment is backend-controlled and derived from
+- CodeRepositories participate through `CodeRepositoryBranch`;
+- CodeRepositoryBranch environment assignment is backend-controlled and derived from
   the Organization plus exact repository branch name;
 - an Organization has at most one environment for each exact
   `required_repository_branch`;
-- branches from several Projects may share an environment only when every
+- branches from several CodeRepositories may share an environment only when every
   exact branch name matches that environment's immutable required branch;
 - exact branch `main` is required by the production environment;
 - MetaTables, including external registrations and Connection/DataSource
@@ -40,7 +40,7 @@ Decision Checklist are approved, including:
   their selected physical DataSource;
 - Secrets and Constants belong to exactly one Organization Environment, with
   no Organization-global lookup, shadowing, or effective-union fallback;
-- `ProjectSecret` accepts only Secrets from the ProjectBranch's exact
+- `CodeRepositorySecret` accepts only Secrets from the CodeRepositoryBranch's exact
   Environment;
 - authorized humans retain Organization-wide multi-environment discovery and
   explicit environment filters, while Organization-admin permission controls
@@ -50,7 +50,7 @@ Decision Checklist are approved, including:
   blocker;
 - exact Git `main` import and synchronization remain independent of
   environment names, and ordinary PATCH cannot rename repository branches;
-- signed Git branch push is the only accepted post-bootstrap ProjectBranch
+- signed Git branch push is the only accepted post-bootstrap CodeRepositoryBranch
   creation trigger;
 - a pre-created Organization Environment is the exact branch allowlist, and a
   push never creates an environment or chooses a DataSource;
@@ -58,9 +58,9 @@ Decision Checklist are approved, including:
   retired without a compatibility path, while branch discovery remains
   read-only;
 - established mappings change only through explicit migration workflows;
-- Project Executor environment scope is derived through its persisted
-  ProjectBranch; and
-- deployed SDK callers never set runtime mode, ProjectBranch, repository
+- CodeRepository Executor environment scope is derived through its persisted
+  CodeRepositoryBranch; and
+- deployed SDK callers never set runtime mode, CodeRepositoryBranch, repository
   branch, or environment context: authenticated JobRun startup or runtime
   credential exchange installs backend-derived context, reserved environment
   values alone are non-authoritative, and branch-sensitive requests omit
@@ -79,7 +79,7 @@ legacy operational rows are retired and every stored Environment FK is
 database-enforced `NOT NULL`. This catalog migration moves no physical table
 data.
 
-Git-driven creation of a missing ProjectBranch is deployed. A persisted signed
+Git-driven creation of a missing CodeRepositoryBranch is deployed. A persisted signed
 push provisions the branch only after an exact Environment matching its
 repository branch exists; otherwise it records ignored reason
 `organization_environment_not_configured` and creates nothing. Manual branch
@@ -129,11 +129,11 @@ The target model by application is:
 
 ```text
 pod_manager
-├── ProjectBranch -> exact Environment partition
-│   └── Jobs, images, releases, runtimes, and Project Coding Agents derive or
+├── CodeRepositoryBranch -> exact Environment partition
+│   └── Jobs, images, releases, runtimes, and CodeRepository Coding Agents derive or
 │       carry declared read-only projections/snapshots
 ├── Secret, Constant, Bucket, and PVCDisk -> direct Environment
-└── Project, DataSource, CloudTenancy, Cluster, registries -> not singular
+└── CodeRepository, DataSource, CloudTenancy, Cluster, registries -> not singular
 
 ts_manager
 ├── MetaTable, Namespace, Scheduler, TableUpdateNode -> direct Environment
@@ -142,7 +142,7 @@ ts_manager
 
 agents
 ├── Agent, AgentCapability, CodingAgentDeploymentDefault -> direct Environment
-├── ProjectExecutorRuntimeImage and ProjectExecutorRun -> inherited projection
+├── CodeRepositoryExecutorRuntimeImage and CodeRepositoryExecutorRun -> inherited projection
     or snapshot from their Pod Manager parent
 └── sessions, tasks, messages, handles, and bindings -> derive and must match
 
@@ -172,14 +172,14 @@ as supported behavior.
 
 An Organization Environment is the canonical Organization-wide operational
 partition for data, configuration, execution, applications, and agents. It is
-not a child of one Project.
+not a child of one CodeRepository.
 
-For Project-owned resources, the exact Git branch is the repository-side
-partition marker and `ProjectBranch` is the durable platform marker that binds
-one logical Project to exactly one Environment. This is the platform's
-multi-environment composition model: a Project spans environments through
-sibling ProjectBranches, while every branch-owned descendant stays inside the
-partition resolved by its exact ProjectBranch.
+For CodeRepository-owned resources, the exact Git branch is the repository-side
+partition marker and `CodeRepositoryBranch` is the durable platform marker that binds
+one logical CodeRepository to exactly one Environment. This is the platform's
+multi-environment composition model: a CodeRepository spans environments through
+sibling CodeRepositoryBranches, while every branch-owned descendant stays inside the
+partition resolved by its exact CodeRepositoryBranch.
 
 ```text
 Organization
@@ -191,16 +191,16 @@ Organization
 │   ├── Bucket and PVCDisk
 │   ├── Agent and AgentCapability
 │   └── Workspace and SavedWidgetGroup
-└── Project
-    ├── GitRepository
-    └── ProjectBranch ──> OrganizationEnvironment
+└── CodeRepository
+    ├── GitHubRepositoryBinding
+    └── CodeRepositoryBranch ──> OrganizationEnvironment
         ├── ResourceRelease
         ├── Job
-        └── UserProjectExecutorAgentService
+        └── UserCodeRepositoryExecutorAgentService
 ```
 
-Several Projects in the same Organization can therefore use one environment.
-They do so through compatible branches, not through a Project-to-environment
+Several CodeRepositories in the same Organization can therefore use one environment.
+They do so through compatible branches, not through a CodeRepository-to-environment
 membership row.
 
 ## Distinguish The Identities
@@ -208,16 +208,16 @@ membership row.
 | Concept | Stable meaning | It does not mean |
 | --- | --- | --- |
 | `Organization` | Tenant and owner of environments and Organization control-plane resources | One deployment stage or a fallback operational environment |
-| `OrganizationEnvironment` | Canonical Organization-wide operational partition | A Project, Git branch, DataSource, release, or deployment |
-| `Project` | Logical project aggregate that owns its branches, source link, sharing, labels, and lifecycle | The active environment or execution branch |
-| `GitRepository` | Provider/source-control identity | An environment or selected ProjectBranch |
-| `ProjectBranch` | Durable Project participation marker and execution context for one exact provider branch and Environment partition | A caller-selected environment mapping |
+| `OrganizationEnvironment` | Canonical Organization-wide operational partition | A CodeRepository, Git branch, DataSource, release, or deployment |
+| `CodeRepository` | Logical code repository aggregate that owns its branches, source link, sharing, labels, and lifecycle | The active environment or execution branch |
+| `GitHubRepositoryBinding` | Provider/source-control identity | An environment or selected CodeRepositoryBranch |
+| `CodeRepositoryBranch` | Durable CodeRepository participation marker and execution context for one exact provider branch and Environment partition | A caller-selected environment mapping |
 | `repository_branch` | Exact, case-sensitive repository-side partition marker used for backend assignment | Environment identity, authorization, or display name |
 | `DataSource` | Physical database connection identity | The logical environment or proof of data ownership |
-| `MetaTable` | Catalog identity for one physical table | A Project-owned environment selector |
-| `ResourceRelease` | Durable deployable target owned by one ProjectBranch | An environment, promotion lane, or deployment attempt |
+| `MetaTable` | Catalog identity for one physical table | A CodeRepository-owned environment selector |
+| `ResourceRelease` | Durable deployable target owned by one CodeRepositoryBranch | An environment, promotion lane, or deployment attempt |
 | `DeploymentRun` | One deployment attempt for a target | The environment or durable release configuration |
-| `UserProjectExecutorAgentService` | Deployed Project Executor service tied to one ProjectBranch | A human-selectable active environment |
+| `UserCodeRepositoryExecutorAgentService` | Deployed CodeRepository Executor service tied to one CodeRepositoryBranch | A human-selectable active environment |
 
 The environment has its own public UID and operator-facing name. Its
 `required_repository_branch` is an immutable branch-compatibility and backend
@@ -225,13 +225,13 @@ assignment rule; it is not the environment identity. Its
 `metatables_data_source` is physical routing configuration; it is also not the
 environment identity.
 
-For deployed project code, follow the ownership chain, never process input:
-`JobRun -> Job -> ProjectBranch`, `UserProjectExecutorAgentService ->
-ProjectBranch`, or runtime `ResourceRelease -> ProjectBranch`. The backend
-derives the Organization Environment through that ProjectBranch. SDK methods
+For deployed code-repository code, follow the ownership chain, never process input:
+`JobRun -> Job -> CodeRepositoryBranch`, `UserCodeRepositoryExecutorAgentService ->
+CodeRepositoryBranch`, or runtime `ResourceRelease -> CodeRepositoryBranch`. The backend
+derives the Organization Environment through that CodeRepositoryBranch. SDK methods
 do not accept a runtime/branch/environment override. A genuine local checkout
 may change Git branches, but the SDK translates the current checkout to a
-persisted ProjectBranch internally only when constructing an authorized wire
+persisted CodeRepositoryBranch internally only when constructing an authorized wire
 request; that is local discovery, not runtime selection.
 
 Environment display names are Organization-defined. Do not prescribe a fixed
@@ -240,14 +240,14 @@ environment's required repository branch is fixed to exact `main`.
 
 ## Preserve The Branch Compatibility Rule
 
-Project creation establishes `main`. After bootstrap, the provider supplies an
+CodeRepository creation establishes `main`. After bootstrap, the provider supplies an
 exact branch through a signed push; a human caller chooses neither the branch
 creation operation nor the environment foreign key.
 
 The target backend resolution is:
 
 ```text
-(Project.organization_owner, ProjectBranch.repository_branch)
+(CodeRepository.organization_owner, CodeRepositoryBranch.repository_branch)
     -> OrganizationEnvironment.required_repository_branch
 ```
 
@@ -258,14 +258,14 @@ exact required repository branch.
 The resolved relationship must satisfy:
 
 ```text
-Project.organization_owner == Environment.organization_owner
+CodeRepository.organization_owner == Environment.organization_owner
 
 AND
 
-ProjectBranch.repository_branch == Environment.required_repository_branch
+CodeRepositoryBranch.repository_branch == Environment.required_repository_branch
 ```
 
-`ProjectBranch.organization_environment` is persisted but read-only
+`CodeRepositoryBranch.organization_environment` is persisted but read-only
 and backend-controlled. Reject a caller-supplied environment UID. Do not fall
 back to production when the exact non-production branch has no configured
 environment.
@@ -275,10 +275,10 @@ The environment must exist before the push. When it does not, processing uses
 ignored reason `organization_environment_not_configured` and creates nothing.
 Never infer that Git is authorized to create the missing environment.
 
-Branches from different Projects may share one environment only when all of
+Branches from different CodeRepositories may share one environment only when all of
 these are true:
 
-1. every Project belongs to the same Organization as the environment;
+1. every CodeRepository belongs to the same Organization as the environment;
 2. every branch has the same exact, case-sensitive `repository_branch`; and
 3. that branch value equals the environment's
    `required_repository_branch`.
@@ -292,21 +292,21 @@ PATCH.
 
 ### Branch-Owned Kubernetes Runtime
 
-A deployed JobRun, Project Executor, or runtime ResourceRelease has a
+A deployed JobRun, CodeRepository Executor, or runtime ResourceRelease has a
 trustworthy implicit branch context because the authenticated backend target
-already owns exactly one ProjectBranch:
+already owns exactly one CodeRepositoryBranch:
 
 ```text
-JobRun runtime JWT -> JobRun -> Job -> ProjectBranch -> Environment
+JobRun runtime JWT -> JobRun -> Job -> CodeRepositoryBranch -> Environment
 
-runtime credential -> UserProjectExecutorAgentService
-                   -> ProjectBranch -> Environment
+runtime credential -> UserCodeRepositoryExecutorAgentService
+                   -> CodeRepositoryBranch -> Environment
 
-runtime credential -> ResourceRelease -> ProjectBranch -> Environment
+runtime credential -> ResourceRelease -> CodeRepositoryBranch -> Environment
 ```
 
 The startup or credential-exchange response supplies the same public
-`runtime_project_context` for each branch-owned target. The request cannot
+`runtime_code_repository_context` for each branch-owned target. The request cannot
 choose or widen the derived branch or environment. Environment scope must
 refine existing organization, object, capability, billing, and operation
 authorization; it never replaces those checks. Container environment values
@@ -321,7 +321,7 @@ action allowlist.
 
 ### Human Or Local Coding Agent
 
-A human JWT or local coding agent has no implicit authenticated ProjectBranch.
+A human JWT or local coding agent has no implicit authenticated CodeRepositoryBranch.
 Before Agent list or search, call `organization_environment.list`, present the
 visible environment names, required repository branches, production role, and
 public UIDs, and ask the user which environment should bound the work. Continue
@@ -332,16 +332,16 @@ row. Reuse the selected UID for the bounded workflow and pass it explicitly to
 every `agent.list` or `agent.search` call.
 
 A genuine local checkout may use its active Git branch only to discover a
-persisted ProjectBranch for an explicit operation; it cannot turn that
+persisted CodeRepositoryBranch for an explicit operation; it cannot turn that
 discovery into a runtime credential or infer an environment directly. Do not
-infer an active environment from a Project, DataSource, production default,
+infer an active environment from a CodeRepository, DataSource, production default,
 branch text alone, or request body.
 
 ### Organization-Scoped And Other Coding-Agent Services
 
 Do not give an Organization orchestrator, test runtime, or another coding-agent
 service type branch-owned semantics merely because it belongs to the same
-Organization. Only a persisted target relationship to a ProjectBranch creates
+Organization. Only a persisted target relationship to a CodeRepositoryBranch creates
 implicit branch context. A null runtime context is intentional and must not
 fall back to production, `main`, an image, or a DataSource.
 
@@ -357,7 +357,7 @@ selected physical DataSource.
 A non-empty logical `identifier` is unique within its Environment. Public UID
 lookup remains exact and still enforces the same Environment boundary.
 
-For a Project Executor in environment `E`, scope must be applied before list,
+For a CodeRepository Executor in environment `E`, scope must be applied before list,
 retrieve, search, identifier lookup, registration, import, reservation,
 finalization, or write. Its effective set is exactly rows in `E`; rows in every
 other environment are excluded. Filtering only
@@ -383,7 +383,7 @@ Do not confuse those platform configuration resources with workflow API
 `2.0.0` `env_vars`. A workflow literal is target-owned process configuration
 stored on one Job or one runtime target's backing Job. It does not perform
 Secret or Constant name resolution, create a Secret or Constant, select
-an Organization Environment, or change ProjectBranch assignment. The branch's
+an Organization Environment, or change CodeRepositoryBranch assignment. The branch's
 backend-derived environment remains the authorization and discovery boundary;
 the literal only reaches the target process after its normal deployment path.
 
@@ -392,34 +392,34 @@ duplicates remain conflicts. Public-UID lookup remains exact and never
 substitutes a same-name row.
 
 Availability is not Secret injection. Secret value access keeps its stronger
-authorization, and `ProjectSecret` remains the explicit branch assignment and
+authorization, and `CodeRepositorySecret` remains the explicit branch assignment and
 alias used by injection workflows.
 
-### Project Coding Agents
+### CodeRepository Coding Agents
 
 Agent list, quick-search, and semantic-search require one
 `organization_environment_uid`. Apply this boundary before filtering
-or ranking and return only typed Project Coding Agents whose persisted
-ProjectBranches belong to that environment. This permits discovery across
-Projects only when the exact branches share the same Organization Environment.
-Project Coding Agents from every other environment and unscoped Agent types are
+or ranking and return only typed CodeRepository Coding Agents whose persisted
+CodeRepositoryBranches belong to that environment. This permits discovery across
+CodeRepositories only when the exact branches share the same Organization Environment.
+CodeRepository Coding Agents from every other environment and unscoped Agent types are
 excluded.
 
 An authorized human or local caller first uses
 `organization_environment.list`, presents the visible choices to the user,
 and asks which environment should bound the work. The selected public UID is
-then required on `agent.list` and `agent.search`. A deployed Project Executor
+then required on `agent.list` and `agent.search`. A deployed CodeRepository Executor
 does not list or choose environments: Astro Tau injects the UID provided by
 the backend runtime context and removes it from the model-visible MCP schema.
-Never ask a deployed Project Executor user to select an environment, and never
+Never ask a deployed CodeRepository Executor user to select an environment, and never
 infer or widen scope from Organization membership, repository branch text,
 DataSource equality, or prompt input.
 
 Same-environment discovery does not grant arbitrary session access. Delegation
-to another Project Coding Agent requires a caller-owned parent session, and the
+to another CodeRepository Coding Agent requires a caller-owned parent session, and the
 persisted parent-child relationship authorizes subsequent delegated runtime-
-access and task operations. Project Executor subagent bindings require both
-endpoints to be Project Coding Agents in the same environment, and the calling
+access and task operations. CodeRepository Executor subagent bindings require both
+endpoints to be CodeRepository Coding Agents in the same environment, and the calling
 runtime may manage only its own outbound bindings.
 
 ### DataSource
@@ -433,13 +433,13 @@ Deleting a DataSource receives no new blocker merely because an environment
 references it. Environment-wide MetaTable deletion protection protects tables,
 not the DataSource record.
 
-### Jobs, Releases, And Project Executors
+### Jobs, Releases, And CodeRepository Executors
 
-Jobs, ResourceReleases, and Project Executor services remain owned by an exact
-ProjectBranch. They do not move under the Organization Environment. The branch
-links them to their environment context. Their project-code images must carry
-verified source provenance for the same exact ProjectBranch and commit. At
-runtime, backend authentication derives and issues the ProjectBranch context;
+Jobs, ResourceReleases, and CodeRepository Executor services remain owned by an exact
+CodeRepositoryBranch. They do not move under the Organization Environment. The branch
+links them to their environment context. Their code-repository images must carry
+verified source provenance for the same exact CodeRepositoryBranch and commit. At
+runtime, backend authentication derives and issues the CodeRepositoryBranch context;
 a deployed SDK does not inspect Git or use image provenance as runtime
 ownership.
 
@@ -453,12 +453,12 @@ OrganizationEnvironmentViewSet(ModelViewSet)
 ```
 
 This establishes one Organization-level collection/detail resource rather than
-an endpoint nested below each Project. Public lookup uses the environment UID.
+an endpoint nested below each CodeRepository. Public lookup uses the environment UID.
 The ADR defines list, create, retrieve, partial-update, and delete intent and
 does not define full-replacement PUT.
 
 The route is deployed with the accepted serializer fields, filters,
-Organization-admin mutation permissions, and transition restrictions. Project
+Organization-admin mutation permissions, and transition restrictions. CodeRepository
 Executor credentials can observe only their derived environment and cannot
 mutate this resource. The read-only `organization_environment.list` MCP tool
 delegates to this exact list action and returns its canonical paginated
@@ -478,20 +478,20 @@ and its required repository branch is exact `main`. The display name may be
 An Organization administrator may define any number of additional environments
 with distinct names and exact required repository branches. Creating an
 environment establishes a resource boundary and branch lane. It does not create
-a Project, provider branch, DataSource, table, Secret, release, or deployment.
+a CodeRepository, provider branch, DataSource, table, Secret, release, or deployment.
 
-### 3. Project And Initial Branch Creation
+### 3. CodeRepository And Initial Branch Creation
 
-Canonical Project creation creates the logical Project and initial exact
-`main` ProjectBranch. The backend resolves that branch to the Organization's
-production environment. The project-creation caller does
+Canonical CodeRepository creation creates the logical CodeRepository and initial exact
+`main` CodeRepositoryBranch. The backend resolves that branch to the Organization's
+production environment. The code-repository creation caller does
 not submit an environment UID.
 
 ### 4. Signed Provider Branch Push
 
 After the Organization administrator creates the environment that allows the
 exact branch, a signed provider push idempotently creates the missing sibling
-ProjectBranch under the same logical Project and then runs canonical repository
+CodeRepositoryBranch under the same logical CodeRepository and then runs canonical repository
 reconciliation. Missing environment configuration produces ignored reason
 `organization_environment_not_configured`; it does not silently use production
 and creates nothing.
@@ -499,17 +499,17 @@ and creates nothing.
 The push does not copy environment resources, Secrets, Jobs, releases,
 deployments, runtime history, or physical data. It never creates the
 environment or selects its DataSource. Delivery replay and concurrent pushes
-must converge on one `(project, repository_branch)` row.
+must converge on one `(code_repository, repository_branch)` row.
 
 The deployed lifecycle has no manual repository `import-branch` action or
 manual branch-creation helper. Read-only provider branch discovery remains.
 
-### 5. Project Executor Deployment And Runtime
+### 5. CodeRepository Executor Deployment And Runtime
 
-Project Coding Agent preparation remains repository work owned by the
-`project-to-agent` skill. Deployment creates or reconciles the canonical
-ProjectBranch-owned Project Executor target and service. Under the environment
-design, authenticated Project Executor platform operations derive data and
+CodeRepository Coding Agent preparation remains repository work owned by the
+`code-repository-to-agent` skill. Deployment creates or reconciles the canonical
+CodeRepositoryBranch-owned CodeRepository Executor target and service. Under the environment
+design, authenticated CodeRepository Executor platform operations derive data and
 configuration scope through the persisted service-to-branch-to-environment
 chain.
 
@@ -522,12 +522,12 @@ Environment lifecycle and release lifecycle are different:
 
 ```text
 Git commit or exact-commit tag
-  -> synchronize one exact ProjectBranch
+  -> synchronize one exact CodeRepositoryBranch
   -> evaluate each target-owned automatic redeployment policy
-  -> deploy the ProjectBranch-owned ResourceRelease or Project Coding Agent
+  -> deploy the CodeRepositoryBranch-owned ResourceRelease or CodeRepository Coding Agent
   -> create or reuse canonical DeploymentRun history
 
-ProjectBranch
+CodeRepositoryBranch
   -> OrganizationEnvironment
   -> data and configuration context
 ```
@@ -536,9 +536,9 @@ The environment itself is not deployed and owns no DeploymentRun.
 
 To promote code toward another environment, the user's Git/CI workflow moves
 the code to the exact provider branch required by the target environment. The
-platform then synchronizes that target ProjectBranch and follows its normal
+platform then synchronizes that target CodeRepositoryBranch and follows its normal
 release policy. Do not promote code by rewriting
-`ProjectBranch.organization_environment`.
+`CodeRepositoryBranch.organization_environment`.
 
 Automatic promotion remains target-owned:
 
@@ -564,7 +564,7 @@ Deploying code does not copy or move:
 - physical schemas or tables;
 - MetaTable registrations;
 - history, TimeIndexTableUpdater progress, or checkpoints;
-- Secrets, Constants, or ProjectSecret assignments;
+- Secrets, Constants, or CodeRepositorySecret assignments;
 - Jobs, schedules, releases, or deployment provenance; or
 - DataSource or Alembic ownership.
 
@@ -603,37 +603,37 @@ Environment "candidate-eu"
   required_repository_branch = release/candidate
 ```
 
-Project Alpha branch `research` and Project Beta branch `research` may share
-the `research` environment. Project Beta branch `release/candidate` belongs to
+CodeRepository Alpha branch `research` and CodeRepository Beta branch `research` may share
+the `research` environment. CodeRepository Beta branch `release/candidate` belongs to
 `candidate-eu`, not `research`. A DataSource shared by both environments would
 not merge their logical table or configuration identities.
 
 Constant `runtime/LOOKBACK_DAYS` for `research` is a different
-Environment-owned resource from a same-named Constant in production. A Project
+Environment-owned resource from a same-named Constant in production. A CodeRepository
 Executor resolves only the row in its exact Environment.
 
-A release for Project Alpha branch `research` deploys that branch's persisted
+A release for CodeRepository Alpha branch `research` deploys that branch's persisted
 current commit. It does not deploy the `research` environment and does not copy
 research data into production.
 
 ## Route Work To The Correct Skill
 
-- Use `project-design` to record why a Project uses particular exact branch
+- Use `code-repository-design` to record why a CodeRepository uses particular exact branch
   lanes and which environment assumptions affect MetaTables, TimeIndexTableUpdaters, Jobs,
-  APIs, CLI commands, project-agent behavior, and static sites.
-- Use `project-to-agent` to prepare truthful repository instructions, skills,
-  and the source card for a Project Coding Agent.
+  APIs, CLI commands, code-repository-agent behavior, and static sites.
+- Use `code-repository-to-agent` to prepare truthful repository instructions, skills,
+  and the source card for a CodeRepository Coding Agent.
 - Use `resource-release` to discover, configure, deploy, and observe a
-  ProjectBranch-owned ResourceRelease.
+  CodeRepositoryBranch-owned ResourceRelease.
 - Use `organization_environment.list` before human/local Agent discovery to
   resolve visible environment names to public UIDs and obtain the user's
   explicit environment selection.
 - Use `static-site` for the static-site specialization after the exact
-  ProjectBranch is selected.
+  CodeRepositoryBranch is selected.
 - Stop for a separately approved data-migration workflow when the requested
   action would move or reassign established environment state.
 
-Do not add a new top-level Project Blueprint domain for environments. Record
+Do not add a new top-level CodeRepository Blueprint domain for environments. Record
 environment assumptions in decisions, dependencies, constraints, and
 acceptance criteria until a separately approved Blueprint contract says
 otherwise.
@@ -642,9 +642,9 @@ otherwise.
 
 Stop and ask for direction when:
 
-- the Organization, logical Project, exact ProjectBranch, and environment are
+- the Organization, logical CodeRepository, exact CodeRepositoryBranch, and environment are
   being treated as one identity;
-- a caller tries to select or PATCH the ProjectBranch environment directly;
+- a caller tries to select or PATCH the CodeRepositoryBranch environment directly;
 - branches with different exact names are assigned to one environment;
 - a human or generic coding-agent credential is treated as having an implicit
   branch environment;
@@ -659,7 +659,7 @@ Stop and ask for direction when:
 
 Return:
 
-1. the Organization and exact ProjectBranch identities involved;
+1. the Organization and exact CodeRepositoryBranch identities involved;
 2. the environment's role, required branch, and affected resource classes;
 3. the caller context and whether environment scope is implicit or explicit;
 4. whether the request changes code, deployment, configuration, data, or an

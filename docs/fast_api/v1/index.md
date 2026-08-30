@@ -125,7 +125,8 @@ It contains no route, schema, service, or runtime logic.
 
 The release is managed by
 `.mainsequence/workflows/fastapi.yaml`. The declaration uses workflow API
-`2.0.0` and its automatic-redeployment policy follows every synchronized
+`2.1.0`, retains three release revisions for rollback, and its
+automatic-redeployment policy follows every synchronized
 `main` commit (`tag_regex: null`). The backend resolves the verified image for
 the exact eligible commit, so the workflow must not contain a
 `related_image_uid`. It requests the standard API capacity of `0.25` vCPU and
@@ -136,18 +137,18 @@ The frontend identifies this release by its stable ResourceRelease UID; the SDK
 resolves the current opaque RPC endpoint at request time after every automatic
 API redeployment.
 
-Use `mainsequence project sync --path . -m "<message>"` to publish repository
-changes. A successful sync triggers the backend-owned image build and release
-rotation; use the project deployment-run interfaces to verify the terminal
+Use `mainsequence code-repository sync --path . -m "<message>"` to publish
+repository changes. A successful sync triggers the backend-owned image build
+and release rotation; use the deployment-run interfaces to verify the terminal
 state and logs instead of treating the Git push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
-The published `ms-markets` package therefore declares `mainsequence` without
-an exact SDK patch pin. The project lock and exported runtime requirements
-select the SDK version validated for this repository, while downstream users
-can adopt newer compatible SDK fixes without waiting for another `ms-markets`
-release. Do not replace the published dependency with a machine-local
-`[tool.uv.sources]` path override.
+The published `ms-markets` 1.x package therefore declares
+`mainsequence>=8.0.4` without an exact SDK patch pin. The lower bound enforces
+the SDK 8 CodeRepository hard cut, while the project lock and exported runtime
+requirements select the exact SDK release validated for this repository. Do
+not replace the published dependency with a machine-local `[tool.uv.sources]`
+path override.
 
 ## API Discoverability
 

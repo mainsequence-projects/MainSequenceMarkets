@@ -3,10 +3,10 @@
 ## Status
 
 The original Python 3.13 and MainSequence 5 runtime upgrade was implemented on
-2026-07-25. Its dependency policy was superseded on 2026-08-24: the published
-package now declares `mainsequence` without an exact patch pin, while the
-repository lock and exported runtime requirements select MainSequence `6.0.48`
-as the validated build environment.
+2026-07-25. Its dependency policy was superseded by the SDK 8 hard cut on
+2026-08-30: `ms-markets` 1.x declares `mainsequence>=8.0.4` without an exact
+patch pin, while the repository lock and exported runtime requirements select
+MainSequence `8.0.4` as the validated build environment.
 
 Compatibility was established before the original environment rebuild:
 
@@ -19,28 +19,28 @@ Compatibility was established before the original environment rebuild:
 - the full suite also passed on Python 3.13 with that exact SDK tag:
   `1170 passed, 3 skipped`.
 
-The current project `.venv` reports Python `3.13.11` and MainSequence `6.0.48`.
-The package metadata leaves the MainSequence patch version unpinned, and the
-lockfile resolves the published `mainsequence==6.0.48` distribution. There is
-no machine-local `tool.uv.sources` override, so the same dependency source is
-available to local and backend image builds.
+The current project `.venv` reports Python `3.13.11` and MainSequence `8.0.4`.
+The package metadata excludes SDK 6 and SDK 7 without exact-pinning an SDK
+patch, and the lockfile resolves the published `mainsequence==8.0.4`
+distribution. There is no machine-local `tool.uv.sources` override, so the same
+dependency source is available to local and backend image builds.
 
 Verification evidence from the rebuilt environment:
 
-- `.venv/bin/pytest -q`: `1170 passed, 3 skipped`;
+- `.venv/bin/pytest -q`: `1198 passed, 3 skipped`;
 - `.venv/bin/ruff check apps src/cli src/msm src/migrations
   src/msm_portfolios src/msm_pricing examples tests`: passed;
 - `.venv/bin/mkdocs build --strict`: passed;
 - `uv build`: built the wheel and source distribution;
 - locked full-environment audit: no changes required;
-- wheel metadata: `Requires-Python: <3.14,>=3.13` and an unpinned MainSequence
-  SDK dependency;
+- wheel metadata: `Requires-Python: <3.14,>=3.13` and
+  `Requires-Dist: mainsequence>=8.0.4`;
 - package, native dependency, CLI, and FastAPI application import smoke tests:
   passed.
 
-The current SDK and managed-skill pin both report `6.0.48`. This version matches
-the backend Git-context projection that includes Organization Environment
-identity on the resolved ProjectBranch. The lockfile resolves the published
+The current SDK and managed-skill pin both report `8.0.4`. This version uses the
+canonical CodeRepository runtime context and retains the complete
+time-index-table updater hard cut. The lockfile resolves the published
 package-index distribution used by portable builds.
 
 ## Success Condition
@@ -50,16 +50,17 @@ The upgrade is complete when:
 - `ms-markets` declares `>=3.13,<3.14`, with no Python 3.11 or 3.12
   compatibility contract;
 - Ruff, CI documentation builds, and package publishing target Python 3.13;
-- `mainsequence` is unpinned in the published package contract while the lock
-  and exported runtime requirements select the verified SDK version;
+- `mainsequence>=8.0.4` is enforced in the published package contract without
+  an exact patch pin, while the lock and exported runtime requirements select
+  the verified SDK patch version;
 - `uv.lock` resolves only the Python 3.13 project contract;
 - the local `.venv` reports Python 3.13 and the current selected MainSequence SDK;
 - core, portfolio, pricing, public API, CLI, migration, and documentation
   imports work from the rebuilt environment;
 - the complete test suite, scoped Ruff baseline, strict MkDocs build, and
   package build pass;
-- built wheel metadata contains `Requires-Python: <3.14,>=3.13` and the
-  unpinned MainSequence dependency;
+- built wheel metadata contains `Requires-Python: <3.14,>=3.13` and
+  `Requires-Dist: mainsequence>=8.0.4`;
 - a fresh locked sync can reproduce the environment from the package index.
 
 No database schema change is required for this runtime upgrade. Applying
@@ -80,9 +81,9 @@ Gate: repository search finds no active Python 3.11 or 3.12 runtime target.
 
 ### 2. MainSequence SDK And Dependency Lock
 
-- Keep the publishable `mainsequence` dependency free of an exact patch pin;
-  select the verified SDK release in `uv.lock` and exported runtime
-  requirements.
+- Keep the publishable `mainsequence` dependency on the supported SDK 8 hard
+  cut without exact-pinning a patch; select the verified SDK release in
+  `uv.lock` and exported runtime requirements.
 - Resolve MainSequence from the package index with no machine-local
   `tool.uv.sources` override.
 - Regenerate `uv.lock` with Python 3.13.

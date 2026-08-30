@@ -49,7 +49,7 @@ mainsequence agent search "<discoveryPrompt>" \
 ```
 
 Use the canonical Organization Environment UID associated with the target
-ProjectBranch. It scopes discovery only; it does not create, assign, or override an
+CodeRepositoryBranch. It scopes discovery only; it does not create, assign, or override an
 Agent's environment.
 
 4. Treat the CLI output as authoritative.
@@ -341,7 +341,7 @@ handle for a different task or conversation.
 ### Runtime-Owned Child Or Executor Agent
 
 - May use bounded A2A within the active task scope without separate user confirmation.
-- Should keep the request tightly scoped to the current project or active task.
+- Should keep the request tightly scoped to the current CodeRepository or active task.
 
 ## A2A Response Behavior
 

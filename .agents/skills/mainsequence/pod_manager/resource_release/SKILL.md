@@ -9,15 +9,15 @@ Use this skill for the shared ResourceRelease lifecycle. Main Sequence MCP
 projects the canonical DRF operations; it does not implement another release,
 deployment, permission, or retry system.
 
-Read `mainsequence://platform/ontology` before operating on ProjectBranch,
-ResourceRelease, ProjectJobImage, PublicCatalogImage, or DeploymentRun
+Read `mainsequence://platform/ontology` before operating on CodeRepositoryBranch,
+ResourceRelease, CodeRepositoryJobImage, PublicCatalogImage, or DeploymentRun
 identities. Read the separate
 `mainsequence://platform/skills/static-site` skill when the target release kind
 is `static_site`.
 
 This skill's runtime creation procedure describes the direct
 `resource_release.create` MCP operation. When release intent is declared under
-`.mainsequence/workflows`, read the `project-workflows` skill instead; its
+`.mainsequence/workflows`, read the `code-repository-workflows` skill instead; its
 automatic-deployment image contract is intentionally different.
 
 ## Preserve Canonical Ownership
@@ -43,33 +43,33 @@ cutover exists; do not imply that editing the count synchronously deletes
 provider artifacts.
 
 For image-backed deployment, the parent `DeploymentRun` owns role-specific
-`DeploymentRunImageDependency` relations and `ProjectImageBuildRun` owns the
+`DeploymentRunImageDependency` relations and `CodeRepositoryImageBuildRun` owns the
 complete provider attempt. Provider request/operation state and image
 UID/URI/digest/readiness are never owned by generic run JSON or duplicated on
-`ProjectJobImage`. Preparation commits before provider submission; database
+`CodeRepositoryJobImage`. Preparation commits before provider submission; database
 due-action state recovers lost Celery wake-ups. An ambiguous submission is
 reconciled on the same attempt and must not be retried through another create
 call. Runtime admission requires the verified dependency's digest-pinned
 output and never selects `latest`.
 
 The persisted image model is ownership-typed. Public catalog inputs use
-`PublicCatalogImage`; deployable project outputs use the Organization-owned
-`ProjectJobImage` descendant. There is no generic persisted `Image`, union
+`PublicCatalogImage`; deployable code-repository outputs use the Organization-owned
+`CodeRepositoryJobImage` descendant. There is no generic persisted `Image`, union
 lookup, or ownership inference. The release operation accepts only the
-canonical project-image UID where documented; backend catalog selection never
+canonical code-repository-image UID where documented; backend catalog selection never
 asks the caller for a public-image UID.
 
 The public release kinds are:
 
 - `streamlit_dashboard`;
-- `agent`, meaning a runtime ResourceRelease and not a Project Coding Agent;
+- `agent`, meaning a runtime ResourceRelease and not a CodeRepository Coding Agent;
 - `fastapi`; and
 - `static_site`; and
 - `widget_extension`.
 
-Every ResourceRelease belongs to one exact ProjectBranch. Use the public
-ProjectBranch UID for branch-scoped discovery and never substitute a logical
-Project UID.
+Every ResourceRelease belongs to one exact CodeRepositoryBranch. Use the public
+CodeRepositoryBranch UID for branch-scoped discovery and never substitute a logical
+CodeRepository UID.
 
 `ResourceRelease.uid` is also the sole public runtime target. Release
 responses do not expose a separate `subdomain`, and clients must not derive or
@@ -80,7 +80,7 @@ URL as opaque connection data instead of constructing a product hostname.
 ## Discover Existing Releases
 
 Use `resource_release.list` with bounded `limit` and `offset`. Prefer exact
-filters such as `project_branch_uid`, `release_kind`, or `uid` before free-text
+filters such as `code_repository_branch_uid`, `release_kind`, or `uid` before free-text
 search. The response is the canonical paginated collection with `count`,
 `next`, `previous`, `results`, `controls`, and `actions`.
 
@@ -96,26 +96,35 @@ raw endpoint through a generic HTTP or API proxy.
 ## Prepare Runtime Release Inputs
 
 For the direct `resource_release.create` MCP operation, runtime release
-creation requires two public references from the same intended ProjectBranch
+creation requires two public references from the same intended CodeRepositoryBranch
 and code revision:
 
-1. Resolve an indexed source with `project_resource.list`. Use
-   `ProjectResource.uid` as `resource_uid`. This operation does not scan or
+1. Resolve an indexed source with `code_repository_resource.list`. Use
+   `CodeRepositoryResource.uid` as `resource_uid`. This operation does not scan or
    synchronize the repository and does not return stored code.
-2. Resolve an execution image with `project_image.list` or
-   `project_image.get`. Use `ProjectImage.uid` as `related_image_uid`.
-3. If the required image does not exist, call `project_image.create` once and
-   inspect the returned image with `project_image.get` until its canonical
+2. Resolve an execution image with `code_repository_image.list` or
+   `code_repository_image.get`. Use `CodeRepositoryJobImage.uid` as
+   `related_image_uid`.
+3. If the required image does not exist, call `code_repository_image.create` once and
+   inspect the returned image with `code_repository_image.get` until its canonical
    state establishes whether it is ready or failed.
-4. Verify the source kind, image ProjectBranch, frozen commit, digest-pinned
+4. Verify the source kind, image CodeRepositoryBranch, frozen commit, digest-pinned
    output, and read-only verified source provenance are compatible with the
    intended `streamlit_dashboard`, `agent`, or `fastapi` release.
 
-The backend admits project source only after proving that the full commit is
-reachable from the exact ProjectBranch ref, then supplies every provider one
+The backend admits code-repository source only after proving that the full commit is
+reachable from the exact CodeRepositoryBranch ref, then supplies every provider one
 normalized checksummed archive. Do not accept an image whose provenance is
 missing or unverified, infer provenance from its tag, or treat a matching
-commit alone as sufficient when the image belongs to another ProjectBranch.
+commit alone as sufficient when the image belongs to another CodeRepositoryBranch.
+
+Python runtime releases execute the admitted checkout at `/workspace` under
+non-root UID/GID `10000:10000`. This is a deployment-owned ABI; callers must
+not supply legacy Jupyter/Jovyan paths, users, or compatibility environment.
+The backend may reject Python image mutation and Knative materialization while
+the ADR-047 destructive cutover lock is active. Preserve the requested release
+identity and wait for the backend-owned cutover rather than selecting a retired
+image or an alternate launcher.
 
 Do not use numeric resource or image identifiers. Do not retry an ambiguous
 image creation or release creation automatically; inspect the returned image
@@ -124,16 +133,16 @@ and canonical DeploymentRun until that same durable attempt is terminal.
 ## Prepare Static-Site Inputs
 
 For `static_site`, read the separate static-site skill and call
-`resource_release.static_site_capabilities` for the exact ProjectBranch before
+`resource_release.static_site_capabilities` for the exact CodeRepositoryBranch before
 creation or static configuration changes. That live DRF response owns supported
 fields, defaults, choices, conditions, and constraints. The installed Command
 Center SDK skills own frontend implementation.
 
 ## Prepare Widget-Extension Inputs
 
-For `widget_extension`, supply only `project_branch_uid`, `name`, and optional
+For `widget_extension`, supply only `code_repository_branch_uid`, `name`, and optional
 repository-relative `root_directory`. Do not supply `extension_id`, a
-ProjectResource or image UID, build/runtime settings, environment, secrets,
+CodeRepositoryResource or image UID, build/runtime settings, environment, secrets,
 publication version, or an automatic-deployment policy. Automatic deployment
 is forced on.
 
@@ -174,9 +183,9 @@ change it.
 Call `resource_release.create` once with the exact discriminated request:
 
 - runtime kinds use `resource_uid` and `related_image_uid`;
-- `static_site` uses `project_branch_uid`, `name`, and only currently
+- `static_site` uses `code_repository_branch_uid`, `name`, and only currently
   advertised static configuration; or
-- `widget_extension` uses `project_branch_uid`, `name`, and optional
+- `widget_extension` uses `code_repository_branch_uid`, `name`, and optional
   `root_directory`.
 
 Creation uses the canonical authorization, credit, validation, persistence,
@@ -192,9 +201,9 @@ determine the image requirement:
 | --- | --- | --- |
 | Direct `resource_release.create` for a runtime release | Either | `related_image_uid` is required for the initial deployment and must identify a ready verified image. Initial deployment uses `source=create`, `operation=deploy`. This includes a direct request with `automatic_deployment: true`. |
 | Workflow declaration for a runtime release | Enabled | `related_image_uid` is not needed. If present for compatibility, the backend ignores it before UUID parsing or image lookup. Initial application owns one `source=create`, `operation=build_and_deploy` run and may wait for image verification. |
-| Workflow declaration for a runtime release | Disabled | `related_image_uid` is required and selects the explicit verified project image. |
+| Workflow declaration for a runtime release | Disabled | `related_image_uid` is required and selects the explicit verified code-repository image. |
 | Static-site release | Either | No caller-supplied runtime image UID is needed. The backend owns the static-site build. |
-| Widget-extension release | Forced enabled | No caller-supplied runtime image or ProjectResource UID is accepted. The fixed SDK workload adapter owns the build output. |
+| Widget-extension release | Forced enabled | No caller-supplied runtime image or CodeRepositoryResource UID is accepted. The fixed SDK workload adapter owns the build output. |
 
 Runtime releases are `fastapi`, `streamlit_dashboard`, and runtime `agent`
 ResourceReleases. For the workflow path, effective automatic deployment is
@@ -211,9 +220,9 @@ direct `resource_release.create` or `resource_release.update` field.
 Static sites reject `env_vars` and continue to use `build_environment`.
 Widget extensions reject both `env_vars` and `build_environment`.
 Workflow environment values never create, resolve, or mutate platform Secrets,
-Constants, ProjectSecrets, or Organization Environments, and never enter the
-project-image build. Deployment context contains only names, count, and a keyed
-HMAC digest; it never exposes values. Read the `project-workflows` skill and
+Constants, CodeRepositorySecrets, or Organization Environments, and never enter the
+code-repository-image build. Deployment context contains only names, count, and a keyed
+HMAC digest; it never exposes values. Read the `code-repository-workflows` skill and
 use the backend-provided API `2.1.0` template for the exact YAML shape.
 
 ## Configure FastAPI Browser Origins
@@ -229,12 +238,12 @@ cors_allowed_origins:
 
 Production resolves to `https://*.site.main-sequence.app`. This platform
 deployment environment is not an Organization Environment, and callers must
-not derive the value from a ProjectBranch or
+not derive the value from a CodeRepositoryBranch or
 `OrganizationEnvironment`. Retrieve the backend workflow template when
 authoring a workflow; do not copy the development value into production.
 
 Pass the canonical field on create, partial update, or an API `2.1.0`
-project-workflow declaration only when an explicit override is intended.
+code-repository workflow declaration only when an explicit override is intended.
 Creation omission uses the platform default. Update or workflow-reconciliation
 omission preserves the stored policy. An explicitly submitted `[]` denies all
 browser origins, while a non-empty list replaces the policy.
@@ -309,14 +318,14 @@ current `cors_allowed_origins` policy.
 Issuance and every delegated validation require an active user with current
 view access to both releases, servable/routable release state, same-Organization
 ownership, an exact Origin match, exact target identity, and current CORS
-admission. The releases do not need to share a ProjectBranch or
+admission. The releases do not need to share a CodeRepositoryBranch or
 OrganizationEnvironment. CORS remains browser admission and never
-replaces the delegated credential or project route authorization.
+replaces the delegated credential or code-repository route authorization.
 
 The successful no-store response supplies an opaque `rpc_url`, the exact
 target `resource_release_uid`, expiration, and a maximum-five-minute token
 bound to the source release, source origin, user, target, and FastAPI RPC
-purpose. This flow never transfers the user's general platform JWT to project
+purpose. This flow never transfers the user's general platform JWT to code-repository
 code. Frontend acquisition and transport belong to the installed Command
 Center SDK skill bundle; do not duplicate its message protocol or TypeScript
 API here.
@@ -325,7 +334,7 @@ API here.
 
 FastAPI releases served by `pod-orchestrator serve_fastapi` always receive the
 platform-authenticated human caller through request state. Pod Deployment
-Orchestrator owns and installs the middleware; project code must not import or
+Orchestrator owns and installs the middleware; code-repository code must not import or
 install `mainsequence.client.fastapi.LoggedUserContextMiddleware` or any other
 request-identity middleware.
 
@@ -352,13 +361,13 @@ def get_me(request: Request) -> dict[str, str | None]:
 
 The public FastAPI gateway removes caller-supplied identity headers, validates
 the release Bearer token through Django, installs Django's trusted UID headers,
-and removes the Bearer credential before project code runs. Direct local
+and removes the Bearer credential before code-repository code runs. Direct local
 launcher requests validate a Bearer token through `/api/v1/users/me/`. Every
 non-`OPTIONS` route is authenticated; CORS preflight remains outside identity
 resolution.
 
 Request identity names the human making the call. It is not the release owner,
-ProjectBranch, Organization Environment, runtime workload principal, or an
+CodeRepositoryBranch, Organization Environment, runtime workload principal, or an
 authorization grant. Each route must still apply its own object and operation
 authorization using the canonical request UID.
 
@@ -394,7 +403,7 @@ values are write-only and responses expose only their keys.
 
 When explicit deployment is requested, call
 `resource_release.deploy_current_version` with only
-`resource_release_uid`. The operation deploys the ProjectBranch's persisted
+`resource_release_uid`. The operation deploys the CodeRepositoryBranch's persisted
 current commit; it does not accept an arbitrary commit, tag, policy override,
 or MCP idempotency key.
 
@@ -407,17 +416,17 @@ pipeline used by automatic repository events. If the deployment does not have
 that adapter installed, the canonical run becomes blocked; it is never routed
 to the runtime/Knative deployer.
 
-A runtime ResourceRelease receives a backend-derived public ProjectBranch
+A runtime ResourceRelease receives a backend-derived public CodeRepositoryBranch
 context during runtime-credential exchange. The deployed SDK uses that
 authenticated context for branch-owned operations without requiring a Git
-checkout. The container cannot select another ProjectBranch or Organization
+checkout. The container cannot select another CodeRepositoryBranch or Organization
 Environment through branch text, environment values, request data, or image
 metadata.
 
 The exchanged credential also authenticates its persisted responsible User.
 Runtime token scope neither grants nor removes API actions: canonical DRF,
 product-role, service-identity, object, and operation policy applies exactly as
-it would for another token belonging to that User. ProjectBranch and
+it would for another token belonging to that User. CodeRepositoryBranch and
 Organization Environment context still narrow resource discovery and routing;
 they are not a second action principal.
 
@@ -469,8 +478,8 @@ target-specific cleanup, and errors.
 - A conflict or target-cleanup failure is a failed delete. Preserve the
   canonical error and do not claim that the target was removed.
 
-Call `project_image.delete` with only `project_image_uid` when an exact image is
-no longer required. It dispatches the canonical ProjectImage destroy action,
+Call `code_repository_image.delete` with only `code_repository_image_uid` when an exact image is
+no longer required. It dispatches the canonical CodeRepositoryJobImage destroy action,
 including live-resource protection, typed detachment of terminal build,
 deployment, and JobRun history, and registry-artifact cleanup. Active runs or
 live Jobs return the canonical structured conflict; terminal records retain
@@ -480,14 +489,14 @@ returns `{}` after the canonical HTTP 204 response.
 Delete dependent ResourceReleases before deleting an image they use. Neither
 delete tool is a bulk operation or a generic API proxy. Do not automatically
 retry an ambiguous destructive response: use `resource_release.get` or
-`project_image.get` first to determine whether the object still exists.
+`code_repository_image.get` first to determine whether the object still exists.
 
 ## Stop Conditions
 
 Stop and ask for direction when:
 
-- the logical Project and exact ProjectBranch cannot be distinguished;
-- a runtime source or image does not belong to the intended ProjectBranch or
+- the CodeRepository and exact CodeRepositoryBranch cannot be distinguished;
+- a runtime source or image does not belong to the intended CodeRepositoryBranch or
   commit;
 - a static field is not advertised by the live capability response;
 - a requested update field is not valid for the target release kind;

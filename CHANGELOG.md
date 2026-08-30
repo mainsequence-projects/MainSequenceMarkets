@@ -7,14 +7,21 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-08-30
+
 ### Changed
 
-- Upgraded the project to Main Sequence SDK `7.0.2` and completed the SDK 7
-  hard-cut refactor: updater/configuration/reference imports now use the
-  `mainsequence.meta_tables` time-index-table API, configuration payloads use
-  schema version 2, table references are read-only, and project code, tests,
-  examples, tutorials, documentation, and agent instructions use the canonical
-  time-index-table terminology without compatibility aliases.
+- Released the first SDK-8-only `ms-markets` major version. Package metadata
+  requires `mainsequence>=8.0.4` without an exact SDK patch pin; SDK 6 and SDK 7
+  are unsupported and no compatibility aliases or mixed-version mode are
+  provided.
+- Completed the SDK 8 hard cut: repository operations use the canonical
+  CodeRepository and CodeRepositoryBranch ontology, while updater,
+  configuration, and reference imports use the `mainsequence.meta_tables`
+  time-index-table API, configuration schema version 2, canonical dependency
+  actions, and read-only table references.
+- Updated `msm copy-msm-skills` for the SDK 8 scaffold-copy contract and renamed
+  its JSON target field from `project` to `code_repository`.
 - Completed OpenAPI documentation metadata for every FastAPI v1 operation and tag, added stable
   tag groups and the canonical source-repository link, documented the composed Asset schemas, and
   derived canonical row and field descriptions from existing MetaTable metadata so downstream API

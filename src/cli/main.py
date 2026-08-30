@@ -40,26 +40,26 @@ def copy_msm_skills_command(
     if not source_root.exists() or not source_root.is_dir():
         raise SystemExit(f"Packaged ms-markets skill bundle is missing: {source_root}")
 
-    project_dir = path.expanduser().resolve(strict=False)
-    destination_root = project_dir / ".agents" / "skills" / MSM_SKILL_NAMESPACE
+    code_repository_dir = path.expanduser().resolve(strict=False)
+    destination_root = code_repository_dir / ".agents" / "skills" / MSM_SKILL_NAMESPACE
     source_label = _source_root_label(source_root)
     try:
         result = copy_scaffold_skills(
-            project_dir=project_dir,
+            code_repository_dir=code_repository_dir,
             library_name="ms-markets",
             namespace=MSM_SKILL_NAMESPACE,
             skills_path=source_root,
             pinned_version=_ms_markets_version(),
             command=MSM_SKILL_COPY_COMMAND,
             dry_run=dry_run,
-            project_guard=_copy_msm_skills_block_reason,
+            code_repository_guard=_copy_msm_skills_block_reason,
         )
     except ScaffoldSkillCopyBlocked as exc:
         payload = {
             "blocked": True,
             "destination_root": str(destination_root),
             "dry_run": dry_run,
-            "project": str(project_dir),
+            "code_repository": str(code_repository_dir),
             "reason": str(exc),
             "source": source_label,
             "updated": [],
@@ -80,7 +80,7 @@ def copy_msm_skills_command(
         for item in result.copied
     ]
     payload = {
-        "project": str(project_dir),
+        "code_repository": str(code_repository_dir),
         "source": source_label,
         "destination_root": str(result.destination_root),
         "library_name": result.library_name,
@@ -127,12 +127,12 @@ def _ms_markets_source_checkout_root() -> Path:
 
 
 def _copy_msm_skills_block_reason(
-    project_dir: Path,
+    code_repository_dir: Path,
 ) -> str | None:
     source_checkout_root = _ms_markets_source_checkout_root()
-    if _same_or_inside_path(project_dir, source_checkout_root) or _is_ms_markets_source_checkout(
-        project_dir
-    ):
+    if _same_or_inside_path(
+        code_repository_dir, source_checkout_root
+    ) or _is_ms_markets_source_checkout(code_repository_dir):
         return (
             "Blocked: msm copy-msm-skills cannot run inside the ms-markets source "
             "checkout. Use this command only from a separate host project."
@@ -165,12 +165,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     copy_parser = subparsers.add_parser(
         "copy-msm-skills",
-        help="Copy packaged ms-markets agent skills into a host project.",
+        help="Copy packaged ms-markets agent skills into a host CodeRepository.",
     )
     copy_parser.add_argument(
         "--path",
         default=".",
-        help="Host project directory. Defaults to the current directory.",
+        help="Host CodeRepository directory. Defaults to the current directory.",
     )
     copy_parser.add_argument(
         "--dry-run",

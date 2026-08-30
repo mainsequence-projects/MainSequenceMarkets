@@ -116,6 +116,7 @@ nav:
       - Prepared Pricing Valuation Context: ADR/0036-prepared-pricing-valuation-context.md
       - Index Formula And Custom Calculation Framework: ADR/0037-index-formula-and-custom-calculation-framework.md
       - Index User API And FastAPI Exploration: ADR/0038-index-user-api-and-fastapi-exploration.md
+      - SDK 8 Hard Cut And 1.0 Package Contract: ADR/0039-sdk-8-hard-cut-and-1-0-package-contract.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - FastAPI v1:
           - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md

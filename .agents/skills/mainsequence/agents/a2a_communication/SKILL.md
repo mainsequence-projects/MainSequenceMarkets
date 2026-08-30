@@ -21,7 +21,7 @@ the standard A2A protocol and the runtime contract documented by
 1. For a human or local caller, call `organization_environment.list`, present
    the visible choices, and ask which environment should bound the work. Skip
    this step only when the user already selected an environment or the deployed
-   Project Executor host injects its backend-derived environment.
+   Code Repository Executor host injects its backend-derived environment.
 2. Discover a bounded set of candidates with `agent.search`, passing the
    selected environment UID when it is model-visible.
 3. Inspect the selected Agent with `agent.get` when more detail is needed.
@@ -47,14 +47,14 @@ service UID.
 
 Agent discovery always has one Organization Environment boundary. The
 canonical `agent.list` and `agent.search` contracts require
-`organization_environment_uid` and return only Project Coding Agents
-whose persisted ProjectBranches belong to that environment. For a human or
+`organization_environment_uid` and return only Code Repository Coding Agents
+whose persisted CodeRepositoryBranches belong to that environment. For a human or
 local MCP caller, call `organization_environment.list`, present each visible
 name, required branch, production role, and public UID, and ask the user which
 environment should bound the work. Continue limit/offset pagination until
 `next` is null before presenting the choices. Resolve a user-supplied name
 through that tool; never guess the UID or default to production. In a deployed
-Astro Tau Project Executor, the host injects the backend-derived environment
+Astro Tau Code Repository Executor, the host injects the backend-derived environment
 and removes the argument from the model-visible tool schema; never call the
 environment selector workflow, ask the user for it, infer it from a branch
 name, or try to override it.
@@ -89,9 +89,9 @@ conversation. A retry of the same get-or-create request reuses the same handle.
 After a session is returned, reuse its public UID for later turns.
 
 If the request originates from an existing caller session, supply that
-authorized parent session UID when creating the target session. A Project
-Executor may target only a Project Coding Agent in its own Organization
-Environment, and the parent session's Agent must be the calling Project
+authorized parent session UID when creating the target session. A Code Repository
+Executor may target only a Code Repository Coding Agent in its own Organization
+Environment, and the parent session's Agent must be the calling CodeRepository
 Executor. The backend copies `parent_session.created_by_user` into the child
 session and its handle. Never provide or infer a replacement User. Parent
 linkage proves the calling Agent, while the inherited owner preserves the User
@@ -189,7 +189,7 @@ delegation.
 
 A runtime-owned child or executor may make bounded A2A calls within the active
 task scope. It must not use A2A to broaden the task, authorization boundary, or
-project context.
+code-repository context.
 
 When responding to an incoming A2A request, answer agent-to-agent. Follow an
 explicit output schema exactly; otherwise return concise machine-usable

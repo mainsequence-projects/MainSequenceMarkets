@@ -9,7 +9,7 @@ Read `mainsequence://platform/skills/resource-release` first. That skill owns
 the shared release discovery, creation, configuration, deployment, and
 DeploymentRun workflow. This skill adds only the static-site specialization.
 
-Use the complete, version-matched skill bundle shipped by the project's
+Use the complete, version-matched skill bundle shipped by the CodeRepository's
 installed Command Center SDK for frontend implementation.
 
 The MCP server delivers this guidance and approved platform operations. The
@@ -22,7 +22,7 @@ This skill owns only:
 
 - discovery of the canonical static-site creation contract;
 - static-specific creation and configuration input preparation for an exact
-  `ProjectBranch`; and
+  `CodeRepositoryBranch`; and
 - the boundary between platform release behavior and frontend implementation.
 
 The general `resource-release` skill owns the shared `resource_release.list`,
@@ -55,7 +55,7 @@ This skill does not own:
 - resource views, actions, widgets, workspaces, themes, or embeds;
 - Command Center SDK contracts or public entrypoints;
 - package selection, dependency versions, or package-manager behavior;
-- project API design or browser authentication; or
+- CodeRepository API design or browser authentication; or
 - local source edits, builds, tests, Git operations, or credentials.
 
 ## Optional Command Center Navigation Placement
@@ -68,16 +68,16 @@ materialize its managed link.
 
 Use `navigation_link_grant.list/get/create/update/revoke` only through their
 advertised MCP contracts. A coding agent may identify that approval is needed,
-but it must not claim repository access, Project edit access, Git identity, or
+but it must not claim repository access, CodeRepository edit access, Git identity, or
 the Organization automation identity as audience authority. The canonical DRF
-operation checks the human's Project and audience permissions. Placement does
+operation checks the human's CodeRepository and audience permissions. Placement does
 not grant target access.
 
 A navigation authorization failure does not mean the Static Site deployment
 failed. Read the workflow result and correlated DeploymentRun warning. A
 malformed `navigation_link` block still invalidates the workflow file.
 
-A Project Blueprint may record why a static site exists and its deployment
+A CodeRepository Blueprint may record why a static site exists and its deployment
 intent, but a Blueprint is not a DRF or MCP precondition for creating a static
 release.
 
@@ -85,10 +85,10 @@ release.
 
 Before implementing or changing the frontend:
 
-1. Use the Git repository root as the canonical Vite application root. Keep
+1. Use the GitHub repository binding root as the canonical Vite application root. Keep
    `package.json`, `package-lock.json`, `.agents/`, `src/`, and `dist/` under
-   that root; do not create or discover a nested `frontend/` project.
-2. Resolve the project's installed
+   that root; do not create or discover a nested `frontend/` repository.
+2. Resolve the CodeRepository's installed
    `@dev-mainsequence/command-center-sdk` package.
 3. Read that installed package's version, `package.json`, README, public export
    map, and declarations relevant to the work.
@@ -111,7 +111,7 @@ Before implementing or changing the frontend:
 The installed SDK version is authoritative for frontend behavior. Do not use
 this MCP skill as a substitute for those skills, summarize their contracts
 here, or assume that every static site uses every SDK capability. The local
-coding agent, not MCP, installs dependencies and refreshes project skills.
+coding agent, not MCP, installs dependencies and refreshes CodeRepository skills.
 
 ## Use Narrow FastAPI Delegation When The Site Calls An API
 
@@ -126,7 +126,7 @@ GET /api/v1/resource-releases/<fastapi_release_uid>/exchange-launch/
 
 The backend response supplies the exact `rpc_url` and a maximum-five-minute
 credential bound to this source StaticSiteRelease, its backend-derived origin,
-the authenticated user, and the exact FastAPI target. Project code must not
+the authenticated user, and the exact FastAPI target. application code must not
 receive, store, or forward the user's general platform JWT. Treat the delegated
 credential and `rpc_url` as opaque, short-lived values; do not decode them or
 derive a target host.
@@ -143,7 +143,7 @@ one-label wildcard that covers it, through `cors_allowed_origins`. CORS alone
 does not grant access. Django also rechecks the current user, both releases,
 same-Organization ownership, release serving state, exact request Origin,
 target identity, permissions, and target CORS policy on every delegated
-request. A source and target may belong to different Projects, ProjectBranches,
+request. A source and target may belong to different CodeRepositories, CodeRepositoryBranches,
 or OrganizationEnvironments; do not infer co-location. Both releases
 must belong to the same Organization.
 
@@ -158,7 +158,7 @@ If exchange returns `403` with `code=origin_not_allowed`, treat it as target
 FastAPI policy mismatch. Correct the target through `resource_release.update`,
 verify it with another get, redeploy it through
 `resource_release.deploy_current_version`, and observe the DeploymentRun before
-retrying browser preflight. Project code never submits an origin to Django and
+retrying browser preflight. application code never submits an origin to Django and
 never writes the reserved `FASTAPI_CORS_ALLOW_ORIGINS` runtime setting.
 
 This skill records only the platform boundary. Read the installed Command
@@ -168,12 +168,12 @@ that SDK's message protocol here.
 ## Discover The Canonical Release Contract
 
 Call `resource_release.static_site_capabilities` before creating a static
-release. Pass `project_branch_uid` when the target ProjectBranch is known so
+release. Pass `code_repository_branch_uid` when the target CodeRepositoryBranch is known so
 the canonical creation form can return that default.
 
 Treat the returned DRF fields, requiredness, defaults, choices, conditions,
 constraints, and help text as authoritative. Do not infer them from this skill,
-an older project, framework documentation, or the installed Command Center
+an older CodeRepository, framework documentation, or the installed Command Center
 SDK.
 
 The advertised nested `automatic_redeployment_policy.tag_regex` is the only
@@ -199,7 +199,7 @@ Do not impose a fixed application source tree, filenames, TypeScript policy,
 test framework, or extra package scripts. The platform owns only the build and
 output behavior advertised by the canonical capability response. Frontend
 implementation choices belong to the installed Command Center SDK skills and
-the project.
+the repository.
 
 Build environment values are public browser build inputs, not secret storage.
 Send only accepted keys and values. Do not submit platform-reserved keys, and
@@ -213,7 +213,7 @@ When the user requests creation:
 2. Build `resource_release.create` input using only the currently advertised
    fields.
 3. Set `release_kind` to `static_site`.
-4. Set `project_branch_uid` to the public UID of the exact ProjectBranch that
+4. Set `code_repository_branch_uid` to the public UID of the exact CodeRepositoryBranch that
    owns the source branch and current commit.
 5. Set `name` to the requested human-facing release name.
 6. Include optional configuration only when it is supported by the capability
@@ -222,8 +222,8 @@ When the user requests creation:
    `resource_release.create` once.
 
 Creation uses the canonical DRF authorization, validation, configuration, and
-asynchronous deployment behavior. Do not substitute the logical Project UID
-for `project_branch_uid`. Do not automatically retry an ambiguous create
+asynchronous deployment behavior. Do not substitute the CodeRepository UID
+for `code_repository_branch_uid`. Do not automatically retry an ambiguous create
 result.
 
 ## Configure, Deploy, And Observe
@@ -244,9 +244,9 @@ Static build attempts expose the complete declared build pipeline under
 steps.
 
 Call `resource_release.deploy_current_version` only for an existing release
-when deployment is requested. It deploys the ProjectBranch's persisted current
+when deployment is requested. It deploys the CodeRepositoryBranch's persisted current
 commit through the canonical DRF action. Before materializing site source, the
-backend proves that full commit is reachable from the exact ProjectBranch ref
+backend proves that full commit is reachable from the exact CodeRepositoryBranch ref
 and produces a normalized checksummed archive; it does not accept a commit
 merely because that object exists elsewhere in the repository. Do not
 automatically retry an ambiguous deployment result.
@@ -255,7 +255,7 @@ automatically retry an ambiguous deployment result.
 
 Stop and ask for direction when:
 
-- the target ProjectBranch cannot be identified by public UID;
+- the target CodeRepositoryBranch cannot be identified by public UID;
 - the requested release field, framework, routing behavior, or build input is
   not advertised by `resource_release.static_site_capabilities`;
 - the local frontend cannot produce the advertised output;

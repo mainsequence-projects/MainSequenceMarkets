@@ -1,22 +1,22 @@
 ---
-name: project-workflows
+name: code-repository-workflows
 description: Create and validate backend-managed API 2.1.0 deployment declarations under .mainsequence/workflows, including target-owned environment variables, FastAPI browser origins, and human-authorized Static Site navigation placement.
 ---
 
-# Main Sequence Project Workflows
+# Main Sequence CodeRepository Workflows
 
-Project workflow files are repository-authored deployment configuration. The
+Code repository workflow files are repository-authored deployment configuration. The
 backend owns parsing, validation, defaults, permissions, and application.
 Clients must not implement a second parser or construct a separate interpreted
 deployment payload.
 
 ## Procedure
 
-1. Identify the exact `ProjectBranch` public UID.
-2. GET `/api/v1/project-branches/{uid}/workflow-template/`.
+1. Identify the exact `CodeRepositoryBranch` public UID.
+2. GET `/api/v1/code-repository-branches/{uid}/workflow-template/`.
 3. Copy and edit the returned YAML using its advertised `api_version`.
 4. POST the proposed `path` and `content` to
-   `/api/v1/project-branches/{uid}/validate-workflow/`.
+   `/api/v1/code-repository-branches/{uid}/validate-workflow/`.
 5. Fix every backend validation error before committing.
 6. Save the file as a direct `.yaml` or `.yml` child of
    `.mainsequence/workflows/` and commit it.
@@ -24,13 +24,13 @@ deployment payload.
    runs. A successful Git commit alone does not prove deployment succeeded.
 
 Repository processing is branch-specific. The event repository, exact
-`refs/heads/...` ref, matched ProjectBranch, and full pushed commit must agree.
-Project-code images are admitted only after the backend proves that full commit
-is reachable from the exact ProjectBranch ref and builds one normalized,
+`refs/heads/...` ref, matched CodeRepositoryBranch, and full pushed commit must agree.
+Code-repository-source images are admitted only after the backend proves that full commit
+is reachable from the exact CodeRepositoryBranch ref and builds one normalized,
 checksummed source archive. A provider build must consume that archive; it does
 not clone the repository or choose a branch tip. Any Job or runtime release
 deployed from the workflow may attach only a digest-pinned verified image for
-the same ProjectBranch and commit. For an automatically managed runtime release,
+the same CodeRepositoryBranch and commit. For an automatically managed runtime release,
 the backend—not the workflow author—resolves that image after policy eligibility.
 
 Always retrieve a fresh template when the backend's current or supported
@@ -45,8 +45,8 @@ hard-coding development. This platform deployment environment is not an
 ## Backend-Owned Image Orchestration
 
 The persisted image model is ownership-typed. Platform bases, build tools, and
-executor bundles are `PublicCatalogImage` inputs. Project build outputs are
-Organization-owned `ProjectJobImage` rows. There is no generic persisted
+executor bundles are `PublicCatalogImage` inputs. Code repository build outputs are
+Organization-owned `CodeRepositoryJobImage` rows. There is no generic persisted
 `Image` resource, manager, UID resolver, or cross-root search. Jobs and
 JobRuns use exclusive public/Organization relations while preserving their
 documented read-only response projections.
@@ -54,10 +54,10 @@ documented read-only response projections.
 Workflow authors never create build attempts, choose provider operations,
 select transient tags, or retry ambiguous submissions. For every image-backed
 target, the backend attaches a typed `DeploymentRunImageDependency` to the
-parent run and prepares one complete `ProjectImageBuildRun` before contacting
+parent run and prepares one complete `CodeRepositoryImageBuildRun` before contacting
 the provider. The database row is the durable queue; Celery only wakes
-submission or reconciliation. Concurrent Jobs, ResourceReleases, and Project
-Coding Agent stages requesting the same exact build converge on one canonical
+submission or reconciliation. Concurrent Jobs, ResourceReleases, and Code
+Repository Coding Agent stages requesting the same exact build converge on one canonical
 attempt while retaining independent parent dependencies.
 
 Active build, deployment, and JobRun relations block image deletion. Terminal
@@ -76,7 +76,7 @@ same DeploymentRun; do not call image creation again.
   `resources`.
 - Version `2.1.0` is current and `2.0.0` remains supported. Both support `job`,
   `resource_release`, including `widget_extension`, and
-  `project_coding_agent`. Runtime targets may use target-owned `env_vars`.
+  `code_repository_coding_agent`. Runtime targets may use target-owned `env_vars`.
   Version `2.1.0` additionally accepts approved Static Site
   `navigation_link` placement. Pre-`2.0.0` versions are rejected.
 - Each resource has a stable `key`, a supported `kind`, and a typed `spec`.
@@ -111,7 +111,7 @@ An API promotion does not rebuild a consuming static site.
 ## Runtime Environment Variables
 
 The current API `2.1.0` template returned by
-`/api/v1/project-branches/{uid}/workflow-template/` includes `env_vars`
+`/api/v1/code-repository-branches/{uid}/workflow-template/` includes `env_vars`
 examples. Always preserve that list-of-items shape:
 
 ```yaml
@@ -123,7 +123,7 @@ env_vars:
 ```
 
 `env_vars` is accepted for `job`, runtime `resource_release` kinds, and
-`project_coding_agent`. Omission preserves an existing target mapping, an
+`code_repository_coding_agent`. Omission preserves an existing target mapping, an
 empty list clears it, and a present non-empty list replaces it. Static sites
 reject this field because `build_environment` is their separate build-time
 contract. Widget extensions reject both fields because their SDK build profile
@@ -134,11 +134,11 @@ keys, access tokens, private keys, provider credentials, or signing material
 in `env_vars`. The backend rejects reserved runtime identity/authentication
 names and warns about suspicious names without echoing values.
 
-The mapping belongs only to the declared Job or to the ResourceRelease/Project
-Coding Agent backing Job. Workflow application does not create, resolve,
-shadow, update, or delete platform Secrets, Constants, ProjectSecrets, or
-Organization Environments, and it does not write ProjectBranch-wide
-configuration. Runtime values never become project-image build inputs.
+The mapping belongs only to the declared Job or to the ResourceRelease/Code
+Repository Coding Agent backing Job. Workflow application does not create, resolve,
+shadow, update, or delete platform Secrets, Constants, CodeRepositorySecrets, or
+Organization Environments, and it does not write CodeRepositoryBranch-wide
+configuration. Runtime values never become code-repository-image build inputs.
 
 ## Static Site Navigation Placement
 
@@ -162,11 +162,11 @@ grant with `navigation_link_grant.list` or `navigation_link_grant.get`. If no
 active grant covers the requested audience, stop and ask the authenticated
 human to authorize it through `navigation_link_grant.create` or expand it
 through `navigation_link_grant.update`. Never infer approval from Git author,
-Project edit authority, an existing manual link, or the automation identity.
+CodeRepository edit authority, an existing manual link, or the automation identity.
 
-Grant identity is the exact ProjectBranch, workflow path, and resource key.
+Grant identity is the exact CodeRepositoryBranch, workflow path, and resource key.
 Humans must select an Organization Environment for list discovery; the grant's
-environment is backend-derived from its ProjectBranch. Placement never grants
+environment is backend-derived from its CodeRepositoryBranch. Placement never grants
 Static Site access.
 
 Omission preserves the existing workflow-owned link. Explicit
@@ -185,10 +185,10 @@ whether the declaration needs an image:
 | --- | --- | --- |
 | Job | Either | The workflow never accepts an image or commit selector. The backend creates or reuses the exact image identity for the immutable repository-event commit and keeps the Job non-runnable until it is verified and digest-pinned. |
 | Static site | Either | No runtime image UID is needed. The backend owns the static-site build. |
-| Widget extension | Always enabled | No runtime image or ProjectResource UID is accepted. The backend invokes the fixed SDK widget build through the existing ResourceReleaseRun pipeline. |
-| Project Coding Agent | Either | No project-image or Project Executor image UID is needed. The backend builds the verified image chain. |
+| Widget extension | Always enabled | No runtime image or CodeRepositoryResource UID is accepted. The backend invokes the fixed SDK widget build through the existing ResourceReleaseRun pipeline. |
+| CodeRepository Coding Agent | Either | No code-repository-image or CodeRepository Executor image UID is needed. The backend builds the verified image chain. |
 | Runtime ResourceRelease (`fastapi`, `streamlit_dashboard`, or runtime `agent`) | Enabled | `related_image_uid` is not needed. If present for compatibility, the backend ignores it. |
-| Runtime ResourceRelease (`fastapi`, `streamlit_dashboard`, or runtime `agent`) | Disabled | `related_image_uid` is required and selects the explicit verified project image. |
+| Runtime ResourceRelease (`fastapi`, `streamlit_dashboard`, or runtime `agent`) | Disabled | `related_image_uid` is required and selects the explicit verified code repository image. |
 
 For a workflow runtime release, effective automatic deployment is enabled by
 either `automatic_deployment: true` or `automatic_redeployment.enabled: true`.
@@ -213,10 +213,19 @@ Every workflow Job declaration must include explicit future-promotion intent:
       tag_regex: null
 ```
 
-Do not add `related_image_uid`, `project_repo_hash`, or
-`project_branch_uid`. The backend owns the exact ProjectBranch and immutable
+`execution_path` must be repository-relative and end in `.py` or `.yaml`.
+Notebook files may remain CodeRepository resources, but `.ipynb` is not a Job
+launch format and workflow validation rejects it without conversion.
+
+During the one-way lean-Python ABI cutover, the backend maintenance lock may
+temporarily reject workflow-owned Python image preparation or deployment. Do
+not change the declaration, select a legacy image, or retry through a different
+launcher; inspect the durable deployment state and wait for the lock to clear.
+
+Do not add a client-selected image UID, commit hash, or
+`code_repository_branch_uid`. The backend owns the exact CodeRepositoryBranch and immutable
 repository-event commit. On first application it creates or reuses the exact
-`ProjectJobImage`, persists the Job pointing to that identity, disables any
+`CodeRepositoryJobImage`, persists the Job pointing to that identity, disables any
 schedule until the artifact is ready, and activates only after verified
 digest-pinned readiness. This exact initial image is required whether future
 automatic redeployment is enabled or disabled.
@@ -228,23 +237,23 @@ branch HEAD, a registry `latest` tag, an omitted image, or client-side Git
 selection. Each JobRun freezes the selected image UID, digest, and commit
 before launch and is unaffected by later promotions.
 
-## Project Coding Agent
+## CodeRepository Coding Agent
 
-Use one `project_coding_agent` declaration when the current ProjectBranch
-itself must be deployed as a Project Executor coding agent. The backend derives
-the ProjectBranch and `agent_type=project-executor`; do not put either selector
-in the spec. A ProjectBranch can have only one such declaration across all
+Use one `code_repository_coding_agent` declaration when the current CodeRepositoryBranch
+itself must be deployed as a CodeRepository Executor coding agent. The backend derives
+the CodeRepositoryBranch and `agent_type=code-repository-executor`; do not put either selector
+in the spec. A CodeRepositoryBranch can have only one such declaration across all
 workflow files.
 
-The spec accepts the canonical Project Executor LLM, compute,
+The spec accepts the canonical CodeRepository Executor LLM, compute,
 `automatic_deployment`, and `automatic_redeployment_policy` fields. Never add
 `harness`. Harness is registered by the selected backend deployment and exposed
 later as read-only service metadata; it is not user-selectable deployment
 input.
 
 ```yaml
-- key: project-agent
-  kind: project_coding_agent
+- key: code-repository-agent
+  kind: code_repository_coding_agent
   spec:
     llm_provider: openai
     llm_model: gpt-5.4
@@ -257,19 +266,19 @@ input.
     automatic_redeployment_policy:
       tag_regex: null
     env_vars:
-      - name: PROJECT_OPERATING_MODE
+      - name: CODE_REPOSITORY_OPERATING_MODE
         value: review
 ```
 
-Prepare `.agents/agent_card.json`, project-owned skills, and project
-instructions through the separate `project-to-agent` skill before declaring
+Prepare `.agents/agent_card.json`, repository-owned skills, and repository
+instructions through the separate `code-repository-to-agent` skill before declaring
 deployment. Repository preparation and runtime deployment remain separate
 validation steps.
 
-A Project Coding Agent workflow declaration does not need a ProjectBranch
-project-image UID, a Project Executor image UID, or a prebuilt image. The
-deployment service builds the verified project-image and executor-image chain,
-so `project_image.create` is not a prerequisite.
+A CodeRepository Coding Agent workflow declaration does not need a CodeRepositoryBranch
+code-repository-image UID, a CodeRepository Executor image UID, or a prebuilt image. The
+deployment service builds the verified code-repository-image and executor-image chain,
+so `code_repository_image.create` is not a prerequisite.
 
 ## Widget Extensions
 
@@ -309,11 +318,11 @@ Files are processed independently. An invalid file is not applied and does not
 block another valid file. Git commit SHA, file path, and blob hash identify the
 document version; repository-event action results record processing status.
 A successful workflow parse or source commit is not build or deployment
-success. Inspect the project-image provenance/build state and resulting
+success. Inspect the code-repository-image provenance/build state and resulting
 DeploymentRun independently.
 
 Workflow files never declare build-context storage or provider source
-locations. For every backend-derived project or executor image, the platform
+locations. For every backend-derived code repository or executor image, the platform
 freezes the exact compressed context as a checksum-verified relational artifact
 before it commits the build attempt. GCP and Azure derive their request source
 from that artifact; a retry never re-reads branch HEAD or asks the workflow
@@ -388,7 +397,7 @@ reserved `FASTAPI_CORS_ALLOW_ORIGINS` environment variable.
 
 ## Stop Conditions
 
-Stop and request direction when the target ProjectBranch is ambiguous, the
+Stop and request direction when the target CodeRepositoryBranch is ambiguous, the
 backend rejects the document version or resource kind, a requested field is
 absent from the accepted template and canonical endpoint contract, or an apply
 result is ambiguous. Do not work around validation by reproducing backend

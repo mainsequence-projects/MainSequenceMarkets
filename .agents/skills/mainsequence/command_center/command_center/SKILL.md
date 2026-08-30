@@ -1,6 +1,6 @@
 ---
 name: command-center
-description: Discover and use the Main Sequence Command Center backend resources exposed through MCP. Use as the top-level operation map for Workspaces, immutable widget revisions, Connections, and human-authorized Project workflow navigation placement.
+description: Discover and use the Main Sequence Command Center backend resources exposed through MCP. Use as the top-level operation map for Workspaces, immutable widget revisions, Connections, and human-authorized CodeRepository workflow navigation placement.
 ---
 
 # Main Sequence Command Center
@@ -17,13 +17,13 @@ This skill owns the language-neutral backend resource and operation map for:
 - `RegisteredWidgetType`;
 - `ConnectionType`; and
 - `ConnectionInstance`, exposed by MCP as `connection.*`; and
-- `ProjectWorkflowNavigationLinkGrant`, exposed by MCP as
+- `CodeRepositoryWorkflowNavigationLinkGrant`, exposed by MCP as
   `navigation_link_grant.*`.
 
 It does not own frontend architecture, React components, resource views,
 actions, widgets, workspaces, themes, embeds, or Command Center SDK extension
 contracts. Use the complete version-matched skill bundle installed from the
-project's `@dev-mainsequence/command-center-sdk` package for frontend work.
+CodeRepository's `@dev-mainsequence/command-center-sdk` package for frontend work.
 
 Do not use the Python SDK model hierarchy as proof that an operation exists.
 Generic inherited methods such as `create`, `patch_by_uid`,
@@ -114,13 +114,13 @@ Use `navigation_link_grant.list` with the required
 human may manage. Use `navigation_link_grant.get` for one exact grant UID.
 
 `navigation_link_grant.create` authorizes a maximum audience for one exact
-`projectBranchUid + workflowPath + resourceKey`. `update` changes, contracts,
+`codeRepositoryBranchUid + workflowPath + resourceKey`. `update` changes, contracts,
 or reactivates it. `revoke` immediately removes its workflow-owned link while
 retaining the audit row. These tools dispatch to canonical DRF operations;
 MCP owns no separate permission model.
 
-Project edit authority is required in addition to audience authority. A
-Project editor may authorize only their own exact User. Other selected Users
+CodeRepository edit authority is required in addition to audience authority. A
+CodeRepository editor may authorize only their own exact User. Other selected Users
 and Organization-wide placement require Organization administrator authority.
 Team audiences require edit authority for every selected Team or Organization
 administrator authority. Repository automation, Git authors, and coding agents

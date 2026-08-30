@@ -1,21 +1,21 @@
 ---
-name: mainsequence-sdk-project-execution
-description: Use the installed Main Sequence SDK and project-local tools to verify repository context, apply local scaffold conventions, and route concrete implementation work after platform intent and ontology have been established.
+name: mainsequence-sdk-code-repository-execution
+description: Use the installed Main Sequence SDK and repository-local tools to verify CodeRepository context, apply local scaffold conventions, and route concrete implementation work after platform intent and ontology have been established.
 ---
 
-# Main Sequence SDK Project Execution
+# Main Sequence SDK CodeRepository Execution
 
 ## Overview
 
-Use this SDK-owned execution skill after the platform `project-design` skill
-has established intent, project ontology, the connected Project Blueprint, and
+Use this SDK-owned execution skill after the platform `code-repository-design` skill
+has established intent, CodeRepository ontology, the connected CodeRepository Blueprint, and
 the observable definition of success. This file owns local SDK, CLI,
 filesystem, and repository mechanics; it does not define the platform ontology
-or replace `project-design`.
+or replace `code-repository-design`.
 
 This skill is for:
 
-- establishing project context
+- establishing code repository context
 - defining success up front
 - enforcing a docs-first workflow
 - verifying platform context before making claims
@@ -25,7 +25,7 @@ This skill is for:
 
 - determine the correct startup and read order
 - define a concrete success condition before implementation starts
-- verify current project and platform context
+- verify current code repository and platform context
 - decide which specialized skill owns the actual domain work
 - enforce standard Main Sequence repository structure expectations
 - separate verified facts from assumptions
@@ -57,17 +57,17 @@ Do not let this skill become a domain manual.
   `.agents/skills/mainsequence/data_access/exploration/SKILL.md`
 - FastAPI APIs serving the Command Center frontend:
   `.agents/skills/mainsequence/application_surfaces/api_surfaces/SKILL.md`
-- project audits, blocker analysis, and upstream SDK assessment:
+- CodeRepository audits, blocker analysis, and upstream SDK assessment:
   `.agents/skills/mainsequence/maintenance/bug_auditor/SKILL.md`
-- local environment repair, project authentication refresh, SDK updates,
-  managed skill refresh, and canonical project sync:
-  `.agents/skills/mainsequence/maintenance/project-maintenance/SKILL.md`
+- local environment repair, CodeRepository authentication refresh, SDK updates,
+  managed skill refresh, and canonical CodeRepository sync:
+  `.agents/skills/mainsequence/maintenance/code_repository_maintenance/SKILL.md`
 - jobs, schedules, artifacts, images, resources, releases, and Streamlit dashboard deployment:
   `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
 - RBAC and sharing:
   `.agents/skills/mainsequence/platform_operations/access_control_and_sharing/SKILL.md`
 
-Streamlit dashboard design and implementation are app-owned project work, not a separate Main Sequence scaffold skill. Route only platform deployment of an already-authored Streamlit dashboard to orchestration and releases.
+Streamlit dashboard design and implementation are app-owned repository work, not a separate Main Sequence scaffold skill. Route only platform deployment of an already-authored Streamlit dashboard to orchestration and releases.
 
 ## Read First
 
@@ -83,47 +83,47 @@ Before starting non-trivial work, collect or infer:
 
 - the user goal
 - the concrete success condition
-- the repository path and current project context
+- the repository path and current code repository context
 - whether live platform verification is required
 - which specialized skill should own the domain behavior
 
-If the user goal or project context is unclear, stop before routing domain work.
+If the user goal or code repository context is unclear, stop before routing domain work.
 
-## Resolve Local Project Context From Git
+## Resolve Local CodeRepository Context From Git
 
 The containing Git worktree is the only source of repository, attached branch,
 and exact commit identity. The SDK normalizes the non-secret repository remote,
-maps it to Project and ProjectBranch through the platform API, resolves once for
+maps it to CodeRepository and CodeRepositoryBranch through the platform API, resolves once for
 the process, and reuses the immutable result. Authentication selects credentials
 and permissions; it does not select source identity. A `git switch` performed in
 a long-running process takes effect only in the next CLI invocation, worker,
 script, or other process run.
 
-Use `mainsequence project current --debug --json` to verify that Git context resolves
-to `project_branch_status=resolved` and a nonempty `project_branch_uid`. The UID
+Use `mainsequence code-repository current --debug --json` to verify that Git context resolves
+to `code_repository_branch_status=resolved` and a nonempty `code_repository_branch_uid`. The UID
 is an internal resolution result for branch-owned platform calls; it is not a
 local or environment configuration input. Never require the user to look it up,
-persist project identity in `.env`, accept a branch environment override, or
-infer a branch from collection order. Local and deployed project images use the
+persist CodeRepository identity in `.env`, accept a branch environment override, or
+infer a branch from collection order. Local and deployed code repository images use the
 same Git algorithm. A detached checkout or an unregistered Git branch is
 unresolved context and must block only live branch-owned operations.
 
 Keep the platform boundaries explicit:
 
-- use the Git-resolved logical Project UID for aggregate identity and Project operations;
-- let the SDK resolve the current Git branch to ProjectBranch only when Jobs,
+- use the Git-resolved logical CodeRepository UID for aggregate identity and CodeRepository operations;
+- let the SDK resolve the current Git branch to CodeRepositoryBranch only when Jobs,
   images, releases, resources, pods, or other branch-owned APIs require it;
-- treat GitRepository as repository metadata and clone-location ownership;
-  `git_ssh_url` is not ProjectBranch state.
+- treat GitHubRepositoryBinding as repository metadata and clone-location ownership;
+  `git_ssh_url` is not CodeRepositoryBranch state.
 
 For ordinary local implementation, work naturally in the current Git branch.
-Do not make ProjectBranch selection a separate user workflow.
+Do not make CodeRepositoryBranch selection a separate user workflow.
 An unregistered local branch remains valid for ordinary local development, but
-it has no ProjectBranch, Environment, or project-derived MetaTables DataSource.
+it has no CodeRepositoryBranch, Environment, or branch-derived MetaTables DataSource.
 Only branch-owned operations fail. Register the branch before using Jobs,
 images, releases, resources, platform-managed MetaTables/TimeIndexTableUpdaters, migrations,
 pods, or other branch-owned platform APIs. Never fall back to another branch or
-to a Project-level default DataSource.
+to an aggregate-level default DataSource.
 
 ## Required Decisions
 
@@ -140,9 +140,9 @@ For every non-trivial task, decide:
 
 Do not rely on memory or copied snippets when the current Main Sequence docs should be checked.
 
-### 2. Maintain the standard Main Sequence project structure
+### 2. Maintain the standard Main Sequence CodeRepository structure
 
-Also maintain these standard project areas when relevant:
+Also maintain these standard repository areas when relevant:
 
 - `src/`
 - `scripts/`
@@ -152,13 +152,13 @@ Also maintain these standard project areas when relevant:
 - `dashboards/`
 - `dashboards/components/`
 
-If the project has recurring scheduled jobs or repository-managed releases,
+If the CodeRepository has recurring scheduled jobs or repository-managed releases,
 keep backend-managed declarations as direct `.yaml` or `.yml` children of
 `.mainsequence/workflows/`. Never create `scheduled_jobs.yaml`; retrieve and
-validate the current workflow contract through the backend-owned ProjectBranch
+validate the current workflow contract through the backend-owned CodeRepositoryBranch
 workflow endpoints.
 
-Use the standard Main Sequence project structure unless the repository explicitly documents a different layout.
+Use the standard Main Sequence CodeRepository structure unless the repository explicitly documents a different layout.
 
 Repository-local execution paths for jobs must:
 
@@ -170,7 +170,7 @@ Do not treat:
 
 - `.env` as long-term documentation
 - `.venv` as source code
-- local absolute paths as reusable project instructions
+- local absolute paths as reusable repository instructions
 
 ### 3. Define success before implementation
 
@@ -178,19 +178,19 @@ Make the end state explicit before changing code, docs, or platform objects.
 
 Do not start domain work with a vague target.
 
-### 4. Verify project context before making platform claims
+### 4. Verify code repository context before making platform claims
 
-Use the CLI to confirm the active project and refresh credentials before live checks when needed.
+Use the CLI to confirm the active CodeRepository and refresh credentials before live checks when needed.
 
 When the result will be consumed programmatically or used as machine-readable evidence, prefer the CLI `--json` flag.
 
 Typical bootstrap checks:
 
-- `mainsequence project current --debug`
-- `mainsequence project refresh_token --path .`
+- `mainsequence code-repository current --debug`
+- `mainsequence code-repository refresh-token --path .`
 
-Do not proceed with a live branch-owned check unless `project current` reports
-the current Git branch and a resolved ProjectBranch UID.
+Do not proceed with a live branch-owned check unless `code-repository current` reports
+the current Git branch and a resolved CodeRepositoryBranch UID.
 
 ### 5. Route domain work instead of expanding the bootstrap skill
 
@@ -216,7 +216,7 @@ When reviewing bootstrap behavior, look for:
 
 Do not claim bootstrap success until you have checked:
 
-- the correct project context is selected
+- the correct code repository context is selected
 - the relevant docs were checked
 - the success condition is explicit
 - the correct specialized skill was chosen
@@ -225,7 +225,7 @@ Do not claim bootstrap success until you have checked:
 ## This Skill Must Stop And Escalate When
 
 - the relevant docs cannot be accessed
-- the project context is unclear
+- the code repository context is unclear
 - the success condition is still ambiguous
 - live platform state is required but has not been verified
 - domain work is proceeding without the relevant specialized skill or docs

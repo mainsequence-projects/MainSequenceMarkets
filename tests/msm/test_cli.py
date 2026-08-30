@@ -144,7 +144,7 @@ def test_copy_msm_skills_blocks_ms_markets_source_checkout_json(capsys) -> None:
     payload = json.loads(captured.out)
     assert payload["blocked"] is True
     assert payload["dry_run"] is True
-    assert payload["project"] == str(repo_root)
+    assert payload["code_repository"] == str(repo_root)
     assert payload["destination_root"] == str(source_tree_msm_skills_root())
     assert payload["updated_count"] == 0
     assert payload["updated"] == []

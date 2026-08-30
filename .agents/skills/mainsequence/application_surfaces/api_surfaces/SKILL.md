@@ -1,6 +1,6 @@
 ---
 name: mainsequence-command-center-fastapi
-description: Build, contract-test, release, and verify a FastAPI project resource that serves the Command Center frontend. Use when a Main Sequence API must implement a wire contract defined by the mainsequence-sdk/command-center-sdk GitHub repository and then move through local testing, project sync, image and resource resolution, FastAPI ResourceRelease creation, and deployed frontend validation.
+description: Build, contract-test, release, and verify a FastAPI code repository resource that serves the Command Center frontend. Use when a Main Sequence API must implement a wire contract defined by the mainsequence-sdk/command-center-sdk GitHub repository and then move through local testing, code-repository sync, image and resource resolution, FastAPI ResourceRelease creation, and deployed frontend validation.
 ---
 
 # Command Center FastAPI Release Lifecycle
@@ -94,7 +94,7 @@ Record:
 
 FastAPI releases receive the authenticated human from the Main Sequence
 platform through injected request state. No SDK authentication setup is
-required in project code:
+required in repository code:
 
 ```python
 from fastapi import FastAPI, Request
@@ -132,7 +132,7 @@ Keep Command Center contract-bearing route code focused on transport and
 application behavior:
 
 1. validate request bodies and parameters
-2. invoke project-owned services and Main Sequence data access
+2. invoke repository-owned services and Main Sequence data access
 3. serialize the declared Command Center contract
 4. validate the serialized body against the schema from the selected repository
    commit before it crosses the HTTP boundary
@@ -176,24 +176,24 @@ Adapter From API schema and fixtures at the selected repository commit.
 
 ### 5. Release the tested commit
 
-Before release, verify local project resolution:
+Before release, verify local CodeRepository resolution:
 
 ```bash
-mainsequence project current --debug --json
+mainsequence code-repository current --debug --json
 ```
 
 Then move the tested code through the canonical lifecycle:
 
 ```bash
-mainsequence project sync -m "Release Command Center API"
-mainsequence project images create
-mainsequence project project_resource list --filter resource_type=fastapi
-mainsequence project project_resource create_fastapi
+mainsequence code-repository sync -m "Release Command Center API"
+mainsequence code-repository images create
+mainsequence code-repository resources list --filter resource_type=fastapi
+mainsequence code-repository resources create_fastapi
 ```
 
 Verify that:
 
-- project sync used the intended Git branch
+- code-repository sync used the intended Git branch
 - the selected image contains the exact tested commit
 - resource discovery found the expected FastAPI path at that commit
 - the selected resource UID and image UID refer to the same commit
@@ -226,7 +226,7 @@ Report:
 - implemented contract IDs and schema `$id` values
 - conformance and route-test results
 - local frontend integration path used
-- Git commit, project image UID, project resource UID, and release identity
+- Git commit, code repository image UID, code repository resource UID, and release identity
 - deployed contract validation and Command Center frontend result
 - whether automatic deployment is enabled and why
 

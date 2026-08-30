@@ -1,11 +1,11 @@
 ---
-name: project-maintenance
-description: Maintain an existing Main Sequence project checkout using the SDK-version-matched CLI. Use for inspecting project state, building or repairing .venv, refreshing local project authentication, updating the SDK, refreshing SDK and platform skills plus AGENTS.md, publishing changes with project sync, or diagnosing a partially completed maintenance workflow.
+name: code_repository_maintenance
+description: Maintain an existing Main Sequence CodeRepository checkout using the SDK-version-matched CLI. Use for inspecting repository state, building or repairing .venv, refreshing local authentication, updating the SDK, refreshing SDK and platform skills plus AGENTS.md, publishing changes with CodeRepository sync, or diagnosing a partially completed maintenance workflow.
 ---
 
-# Main Sequence Project Maintenance
+# Main Sequence CodeRepository Maintenance
 
-Maintain the local project through the installed Main Sequence CLI. Treat the
+Maintain the local CodeRepository through the installed Main Sequence CLI. Treat the
 CLI as the canonical implementation of SDK-version-specific filesystem, `uv`,
 authentication, scaffold, and Git behavior. Select and sequence commands here;
 do not reproduce their Python implementation or replace them with ad hoc shell
@@ -15,47 +15,47 @@ workflows.
 
 Own:
 
-- local project inspection and maintenance sequencing;
+- local CodeRepository inspection and maintenance sequencing;
 - `.venv`, SDK, managed skill, `AGENTS.md`, and Git-release workflows;
 - precondition checks, explicit approval gates, and partial-failure diagnosis.
 
 Do not own:
 
-- platform ontology or Project Blueprint design;
+- platform ontology or CodeRepository Blueprint design;
 - domain implementation for MetaTables, TimeIndexTableUpdaters, APIs, jobs, or releases;
 - backend repository reconciliation;
 - MCP authorization policy, OAuth token storage, or access-token extraction;
-- project-owned skills outside `.agents/skills/mainsequence/`.
+- repository-owned skills outside `.agents/skills/mainsequence/`.
 
-Route architecture changes to `project_design`, implementation routing to
-`sdk_project_execution`, and failure classification to
+Route architecture changes to `code_repository_design`, implementation routing to
+`sdk_code_repository_execution`, and failure classification to
 `maintenance/bug_auditor` when diagnosis extends beyond the maintenance
 workflow itself.
 
 The local identity contract is Git-native. The containing repository remote,
-attached branch, and exact HEAD commit select the platform Project and
-ProjectBranch. Never ask the user for a ProjectBranch UID, persist Project or
+attached branch, and exact HEAD commit select the platform CodeRepository and
+CodeRepositoryBranch. Never ask the user for a CodeRepositoryBranch UID, persist CodeRepository or
 branch identity in `.env`, or use an environment variable as a branch selector.
 The CLI resolves platform UIDs internally when a branch-owned API requires them.
-The same rule applies inside deployed project-code runtimes: runtime credentials
+The same rule applies inside deployed CodeRepository runtimes: runtime credentials
 authorize the backend target but never replace Git source discovery. A missing,
 detached, or mismatched deployed checkout is a hard runtime-image error; do not
-fall back to credential claims or injected ProjectBranch values.
+fall back to credential claims or injected CodeRepositoryBranch values.
 
 ## Inspect Before Changing State
 
 1. Read `AGENTS.md` and the relevant repository skills.
 2. Confirm the repository root and the user's requested maintenance outcome.
-3. Inspect project and Git state:
+3. Inspect code repository and Git state:
 
    ```bash
-   mainsequence project current --debug --json
-   mainsequence project sdk-status --path . --json
+   mainsequence code-repository current --debug --json
+   mainsequence code-repository sdk-status --path . --json
    git status --short
    ```
 
-   The `project current` result must report the logical `project_uid`, current
-   `git_branch`, `project_branch_uid`, and `project_branch_status=resolved`.
+   The `code-repository current` result must report the logical `code_repository_uid`, current
+   `git_branch`, `code_repository_branch_uid`, and `code_repository_branch_status=resolved`.
    Treat a detached checkout, unresolved repository, or unresolved/unregistered
    Git branch as a maintenance preflight failure before any
    mutating workflow.
@@ -71,13 +71,13 @@ bearer token or an unpinned downloaded CLI as a substitute.
 
 ## Build Or Repair The Local Environment
 
-Build the project environment with:
+Build the CodeRepository environment with:
 
 ```bash
-mainsequence project build_local_venv --path .
+mainsequence code-repository build-local-venv --path .
 ```
 
-The command reads the project Python requirement, resolves `uv`, creates
+The command reads the package Python requirement, resolves `uv`, creates
 `.venv`, and synchronizes dependencies. Do not manually parse
 `pyproject.toml` or reconstruct those steps.
 
@@ -85,15 +85,15 @@ When an existing `.venv` is incompatible, show the detected mismatch and ask
 before replacing it. Only then run:
 
 ```bash
-mainsequence project build_local_venv --path . --recreate
+mainsequence code-repository build-local-venv --path . --recreate
 ```
 
-Treat `.venv` as generated state, never as source code or durable project
+Treat `.venv` as generated state, never as source code or durable repository
 documentation.
 
-## Refresh Project Authentication
+## Refresh CodeRepository Authentication
 
-Establish CLI authentication before refreshing a project. Select exactly one
+Establish CLI authentication before refreshing a CodeRepository. Select exactly one
 existing authentication lane:
 
 - When `MAINSEQUENCE_AUTH_MODE=runtime_credential`, run `mainsequence login`.
@@ -114,11 +114,11 @@ terminal. If `auth.cli_authorize` returns an error, preserve the pending local
 workflow output and report that exact error rather than starting multiple
 handoffs blindly.
 
-Refresh only the CLI-managed runtime authentication entries in the project
+Refresh only the CLI-managed runtime authentication entries in the CodeRepository
 `.env`:
 
 ```bash
-mainsequence project refresh_token --path .
+mainsequence code-repository refresh-token --path .
 ```
 
 Require one supported Main Sequence CLI login lane first. Never print,
@@ -127,21 +127,21 @@ attempt to extract the calling MCP host's protected bearer token: the handoff
 authorizes a new PKCE grant and the backend returns credentials directly to
 the waiting CLI process.
 
-The command preserves unrelated project configuration and renders only the
+The command preserves unrelated repository configuration and renders only the
 current supported authentication shape. It removes legacy token aliases and
-all retired Project, ProjectBranch, repository-branch, and Environment identity
-entries. The Git checkout supplies source identity; switching branches changes
+all retired repository, branch, and environment identity entries. The Git
+checkout supplies source identity; switching branches changes
 context on the next process run without rewriting `.env`.
 
-## Update The Project SDK
+## Update The CodeRepository SDK
 
 Inspect the current status, preview the update, and then update when requested
 or required by repository instructions:
 
 ```bash
-mainsequence project sdk-status --path . --json
-mainsequence project update-sdk --path . --dry-run
-mainsequence project update-sdk --path .
+mainsequence code-repository sdk-status --path . --json
+mainsequence code-repository update-sdk --path . --dry-run
+mainsequence code-repository update-sdk --path .
 ```
 
 `update-sdk` updates the lock and local environment. It does not publish the
@@ -149,7 +149,7 @@ working tree. After the SDK changes, refresh the managed agent context and run
 the repository-specific validation required by `AGENTS.md`.
 
 Do not automatically commit or push an SDK update unless the user also asked
-to publish the project changes.
+to publish the CodeRepository changes.
 
 ## Refresh Managed Skills And Instructions
 
@@ -157,33 +157,33 @@ Refresh the SDK-owned and platform-owned skills first, then update the managed
 Main Sequence block in `AGENTS.md`:
 
 ```bash
-mainsequence project update_agent_skills --path .
-mainsequence project update AGENTS.md --path .
+mainsequence code-repository update-agent-skills --path .
+mainsequence code-repository update AGENTS.md --path .
 ```
 
 Verify `.agents/skills/mainsequence/PINNED_FROM.txt` after success:
 
-- `sdk_version` must match the installed project SDK;
+- `sdk_version` must match the installed CodeRepository SDK;
 - platform manifest, ontology, and resource hashes must be present;
-- project-owned skills outside `.agents/skills/mainsequence/` must remain
+- repository-owned skills outside `.agents/skills/mainsequence/` must remain
   untouched.
 
 The skill update is staged and atomic. If it fails, report the failing lane and
 preserve the previous valid managed tree. Because this operation can update
-this skill, reload the refreshed `project-maintenance/SKILL.md` before starting
+this skill, reload the refreshed `code_repository_maintenance/SKILL.md` before starting
 another maintenance routine.
 
-## Publish With Canonical Project Sync
+## Publish With Canonical CodeRepository Sync
 
-Use project sync only when the user intends to commit, tag, and push all
-reviewed project changes.
+Use CodeRepository sync only when the user intends to commit, tag, and push all
+reviewed repository changes.
 
 Before execution:
 
 ```bash
 git status --short
 git diff --stat
-mainsequence project sync --path . -m "<specific commit message>" --dry-run
+mainsequence code-repository sync --path . -m "<specific commit message>" --dry-run
 ```
 
 Review every pending file because the command stages with `git add -A`. Do not
@@ -191,19 +191,19 @@ continue when unrelated or unexplained changes would be included.
 
 The command performs the same branch preflight even for `--dry-run`: it rejects
 a detached checkout and rejects a Git branch that is not registered under the
-logical Project. Do not bypass that validation or supply a ProjectBranch UID
+logical CodeRepository. Do not bypass that validation or supply a CodeRepositoryBranch UID
 manually. Register or select the correct Git branch first.
 
 After that branch preflight, `--dry-run` resolves the existing `uv` executable,
 previews its patch version without mutation, requests the backend-owned tag for
 that future version, rejects an invalid or existing local tag, prints the
 complete plan, and returns without generating an SSH key, querying private
-remote refs, changing dependencies or project files, or mutating Git state.
+remote refs, changing dependencies or repository files, or mutating Git state.
 
 After review:
 
 ```bash
-mainsequence project sync --path . -m "<specific commit message>"
+mainsequence code-repository sync --path . -m "<specific commit message>"
 ```
 
 The canonical command always:
@@ -211,9 +211,9 @@ The canonical command always:
 1. selects `mainsequence-<repository-slug>-<first-16-sha256>` from the normalized
    `host[:non-default-port]/repository/path`, never from the repository basename alone and never
    from a legacy basename-only key;
-2. previews the `uv` patch version, requests the backend-owned ProjectBranch tag, and rejects an
+2. previews the `uv` patch version, requests the backend-owned CodeRepositoryBranch tag, and rejects an
    invalid or existing local tag;
-3. registers a new or inaccessible key through the owning Project and verifies a dry-run push with
+3. registers a new or inaccessible key through the owning CodeRepository and verifies a dry-run push with
    that forced identity;
 4. queries the exact tag ref on `origin` and stops if it exists or cannot be checked;
 5. applies the patch version bump and verifies it matches the preview;
@@ -238,7 +238,7 @@ Never rerun an entire mutating workflow blindly.
   environment, and the failed command before retrying.
 - After a skill refresh failure, keep the previous managed tree and identify
   whether the SDK or platform lane failed.
-- After a sync failure, inspect `git status`, `git log -1`, the current project
+- After a sync failure, inspect `git status`, `git log -1`, the current package
   version, tags pointing at `HEAD`, the upstream branch, and remote tags before
   deciding which step remains.
 
@@ -247,11 +247,11 @@ commit or tag.
 
 ## Validate And Report
 
-Run only repository-relevant validation discovered from `AGENTS.md`, project
+Run only repository-relevant validation discovered from `AGENTS.md`, repository
 documentation, and the changed files. Report:
 
 - the maintenance routine performed;
-- the project path and installed SDK version;
+- the code repository path and installed SDK version;
 - files or generated state changed;
 - validation run and its result;
 - whether changes remain local or were committed, tagged, and pushed;
