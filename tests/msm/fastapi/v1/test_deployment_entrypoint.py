@@ -17,7 +17,7 @@ def test_main_fastapi_workflow_uses_current_automatic_deployment_contract() -> N
     workflow_path = PROJECT_ROOT / ".mainsequence" / "workflows" / "fastapi.yaml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
 
-    assert workflow["api_version"] == "2.0.0"
+    assert workflow["api_version"] == "2.1.0"
     assert workflow["name"] == "mainsequence-markets-fastapi"
 
     resources = workflow["resources"]
@@ -35,4 +35,5 @@ def test_main_fastapi_workflow_uses_current_automatic_deployment_contract() -> N
         "enabled": True,
         "tag_regex": None,
     }
+    assert spec["revision_retention_count"] == 3
     assert "related_image_uid" not in spec

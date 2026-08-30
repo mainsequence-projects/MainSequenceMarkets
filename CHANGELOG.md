@@ -7,6 +7,14 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-08-30
+
+### Fixed
+
+- Aligned the FastAPI deployment-contract test with the backend-validated
+  workflow API `2.1.0` declaration and its explicit three-revision retention
+  policy.
+
 ## [1.0.1] - 2026-08-30
 
 ### Changed
