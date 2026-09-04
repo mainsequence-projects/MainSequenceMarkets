@@ -1,6 +1,6 @@
 ---
 name: static-site
-description: Apply the Static Site specialization of the canonical ResourceRelease workflow, including delegated FastAPI preflight and optional human-authorized Command Center navigation placement.
+description: Apply the Static Site specialization of the canonical ResourceRelease workflow, including delegated FastAPI preflight and optional authenticated-repository-action-authorized Command Center navigation placement with an exact-commit repository icon.
 ---
 
 # Main Sequence Static-Site Release
@@ -61,17 +61,43 @@ This skill does not own:
 ## Optional Command Center Navigation Placement
 
 When deployment intent includes a Command Center link, use workflow API
-`2.1.0` and the backend template's nested `navigation_link` shape. Do not add a
+`2.2.0` and the backend template's nested `navigation_link` shape. Do not add a
 top-level link resource or create a personal link. The exact declaration must
-have a human-approved maximum-audience grant before repository automation may
-materialize its managed link.
+be triggered by an active human User resolved from authenticated repository
+action provenance: exact signed provider identity for an ordinary push, or the
+canonical default-tag action's short-lived exact branch/tag/commit correlation
+for its matching tag webhook delivery; the request must predate delivery receipt
+and a later delivery cannot reuse it. The User's current exact-branch and complete
+affected-audience permissions must authorize the mutation.
 
-Use `navigation_link_grant.list/get/create/update/revoke` only through their
-advertised MCP contracts. A coding agent may identify that approval is needed,
-but it must not claim repository access, CodeRepository edit access, Git identity, or
-the Organization automation identity as audience authority. The canonical DRF
-operation checks the human's CodeRepository and audience permissions. Placement does
-not grant target access.
+There is no navigation-grant registry or `navigation_link_grant.*` MCP contract.
+The Organization automation identity applies workflow state but is not the
+authorization principal. The tag correlation is identity evidence, not a grant.
+Commit authorship, email, username, uncorrelated bot or deploy-key identity, and
+coding-agent identity are not accepted substitutes for authenticated causal evidence.
+Placement does not grant target access.
+
+The optional `navigation_link.icon_mask_path` points to the exact event-commit
+checkout and never to a local absolute path, URL, branch tip, or runtime image.
+It must be a safe forward-slash repository-relative path of at most 1024 UTF-8
+bytes, with no empty, `.`, `..`, `.git`, backslash, NUL, or symlink component,
+and must resolve to a regular file. Input is at most 512 KiB and must be either
+a sanitized basic-geometry SVG with a finite positive square `viewBox`, at
+most 256 elements, and at most 16 nesting levels; or a one-frame, static,
+square transparent PNG/WebP from 32 x 32 through 512 x 512 pixels inclusive.
+Raster input must contain transparent and visible pixels. Scripts, event
+handlers, text, style, external references, embedded data, advanced SVG
+elements, JPEG, opaque raster, and animation are rejected. Extensions and
+media-type labels do not override byte validation.
+
+Omitting `icon_mask_path` preserves the current stored mask, explicit null
+removes it, and content-identical sanitized bytes are a digest-aware no-op. Invalid path
+syntax blocks workflow validation. A missing, unsafe, unreadable, oversized,
+or invalid repository file preserves the prior navigation link and mask and
+emits a non-blocking navigation warning while the Static Site deployment
+continues. `icon_key` remains required as the loading/error fallback. After the
+hard cut clears legacy images, a valid push or redeployment re-resolves and
+restores the exact-commit mask.
 
 A navigation authorization failure does not mean the Static Site deployment
 failed. Read the workflow result and correlated DeploymentRun warning. A

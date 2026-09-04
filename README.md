@@ -104,7 +104,7 @@ Recommended entry points:
 
 ## Quick Start
 
-`ms-markets` 1.x requires Python 3.13 and Main Sequence SDK `>=8.0.4`.
+`ms-markets` 1.x requires Python 3.13 and Main Sequence SDK `>=8.0.7`.
 SDK 6 and SDK 7 are not supported; install a 0.x `ms-markets` release when
 maintaining an older Main Sequence project.
 
@@ -218,7 +218,7 @@ Runtime dependencies are declared in
 [pyproject.toml](https://github.com/mainsequence-projects/MainSequenceMarkets/blob/main/pyproject.toml).
 The core stack starts with:
 
-- `mainsequence>=8.0.4` for the SDK-8 platform integration contract
+- `mainsequence>=8.0.7` for the SDK-8 platform integration contract
 - `SQLAlchemy` for market-domain ORM models
 - `pydantic` for typed configuration and serialized row contracts
 - `pandas` and `numpy` for tabular market data

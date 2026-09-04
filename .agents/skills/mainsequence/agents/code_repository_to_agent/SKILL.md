@@ -87,10 +87,12 @@ tombstones without retaining the image row. Each provider attempt is a complete 
 prepared before submission. Reserved image build arguments are derived from
 those relations at submission and are never persisted as image UIDs or URIs in
 generic build-argument JSON. Multiple deployment entry points converge on the
-same exact build identity. Celery is only a wake-up, ambiguous submission is
-never blindly retried, and neither code repository instructions nor repository-owned
-skills may encode image UIDs, provider handles, transient tags, or a `latest`
-runtime selector.
+same exact build identity. Celery is only a wake-up. Ambiguous submission stays
+on that attempt during a bounded resolution window and is never blindly
+retried; an unresolved attempt and its awaiting dependencies fail at the
+deadline and cannot be rewound by a delayed observation. Neither code repository
+instructions nor repository-owned skills may encode image UIDs, provider
+handles, transient tags, or a `latest` runtime selector.
 
 ## Required Repository Artifacts
 

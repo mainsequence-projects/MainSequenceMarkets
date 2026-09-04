@@ -48,9 +48,11 @@ complete provider attempt. Provider request/operation state and image
 UID/URI/digest/readiness are never owned by generic run JSON or duplicated on
 `CodeRepositoryJobImage`. Preparation commits before provider submission; database
 due-action state recovers lost Celery wake-ups. An ambiguous submission is
-reconciled on the same attempt and must not be retried through another create
-call. Runtime admission requires the verified dependency's digest-pinned
-output and never selects `latest`.
+reconciled on the same attempt during a bounded resolution window and must not
+be retried through another create call. If no provider handle or output can be
+adopted by the deadline, that attempt and its awaiting dependencies fail; a
+delayed observation cannot rewind it. Runtime admission requires the verified
+dependency's digest-pinned output and never selects `latest`.
 
 The persisted image model is ownership-typed. Public catalog inputs use
 `PublicCatalogImage`; deployable code-repository outputs use the Organization-owned
@@ -61,11 +63,14 @@ asks the caller for a public-image UID.
 
 The public release kinds are:
 
-- `streamlit_dashboard`;
 - `agent`, meaning a runtime ResourceRelease and not a CodeRepository Coding Agent;
 - `fastapi`; and
 - `static_site`; and
 - `widget_extension`.
+
+Main Sequence-managed Streamlit dashboard deployment is retired. Stop if a
+request or repository workflow declares `streamlit_dashboard`; do not translate
+it to another release kind, infer a replacement, or use a legacy launcher.
 
 Every ResourceRelease belongs to one exact CodeRepositoryBranch. Use the public
 CodeRepositoryBranch UID for branch-scoped discovery and never substitute a logical
@@ -110,7 +115,7 @@ and code revision:
    state establishes whether it is ready or failed.
 4. Verify the source kind, image CodeRepositoryBranch, frozen commit, digest-pinned
    output, and read-only verified source provenance are compatible with the
-   intended `streamlit_dashboard`, `agent`, or `fastapi` release.
+   intended `agent` or `fastapi` release.
 
 The backend admits code-repository source only after proving that the full commit is
 reachable from the exact CodeRepositoryBranch ref, then supplies every provider one
@@ -205,13 +210,13 @@ determine the image requirement:
 | Static-site release | Either | No caller-supplied runtime image UID is needed. The backend owns the static-site build. |
 | Widget-extension release | Forced enabled | No caller-supplied runtime image or CodeRepositoryResource UID is accepted. The fixed SDK workload adapter owns the build output. |
 
-Runtime releases are `fastapi`, `streamlit_dashboard`, and runtime `agent`
-ResourceReleases. For the workflow path, effective automatic deployment is
+Runtime releases are `fastapi` and runtime `agent` ResourceReleases. For the
+workflow path, effective automatic deployment is
 enabled by either `automatic_deployment: true` or
 `automatic_redeployment.enabled: true`. Policy eligibility is decided before
 the backend builds or reuses the exact-commit image.
 
-Workflow APIs `2.0.0` and `2.1.0` also accept target-owned non-secret `env_vars` for these
+Workflow APIs `2.0.0`, `2.1.0`, and `2.2.0` also accept target-owned non-secret `env_vars` for these
 runtime releases. The backend persists the normalized mapping on the release's
 generated Job before deployment. Omission preserves, an empty list clears, and
 a present list replaces the mapping. This workflow-only adapter does not add a
@@ -220,10 +225,10 @@ direct `resource_release.create` or `resource_release.update` field.
 Static sites reject `env_vars` and continue to use `build_environment`.
 Widget extensions reject both `env_vars` and `build_environment`.
 Workflow environment values never create, resolve, or mutate platform Secrets,
-Constants, CodeRepositorySecrets, or Organization Environments, and never enter the
+Constants, or Organization Environments, and never enter the
 code-repository-image build. Deployment context contains only names, count, and a keyed
 HMAC digest; it never exposes values. Read the `code-repository-workflows` skill and
-use the backend-provided API `2.1.0` template for the exact YAML shape.
+use the backend-provided API `2.2.0` template for the exact YAML shape.
 
 ## Configure FastAPI Browser Origins
 
@@ -242,7 +247,7 @@ not derive the value from a CodeRepositoryBranch or
 `OrganizationEnvironment`. Retrieve the backend workflow template when
 authoring a workflow; do not copy the development value into production.
 
-Pass the canonical field on create, partial update, or an API `2.1.0`
+Pass the canonical field on create, partial update, or an API `2.2.0`
 code-repository workflow declaration only when an explicit override is intended.
 Creation omission uses the platform default. Update or workflow-reconciliation
 omission preserves the stored policy. An explicitly submitted `[]` denies all
@@ -277,8 +282,7 @@ cors_allowed_origin_regex: '^https://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 The `*` policy authorizes browser JavaScript from every matching
 `<site-uid>.site-dev.main-sequence.app` static-site deployment origin to make
 and read CORS-enabled requests to that FastAPI release. It does not match the
-parent domain, nested subdomains, or Streamlit dashboard origins under
-`*.dash-dev.main-sequence.app`. CORS is not API authentication: the caller must
+parent domain or nested subdomains. CORS is not API authentication: the caller must
 still present the FastAPI release's valid Bearer token and target the exact
 release UID.
 

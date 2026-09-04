@@ -7,6 +7,22 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-09-04
+
+### Fixed
+
+- Replaced the per-asset `AssetCategory.replace_memberships()` write loop with
+  one governed multi-row upsert followed by one scoped stale-membership delete.
+  Duplicate asset UIDs are normalized before compilation, empty replacements
+  execute one delete, and the public API returns every row from the bulk upsert.
+  This closes [#1](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/1).
+
+### Changed
+
+- Raised the SDK 8 package floor and validated project lock to
+  `mainsequence>=8.0.7`, and refreshed the managed Main Sequence repository
+  scaffold from SDK 8.0.7.
+
 ## [1.0.2] - 2026-08-30
 
 ### Fixed

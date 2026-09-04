@@ -320,6 +320,11 @@ memberships = AssetCategory.replace_memberships(
 )
 ```
 
+Use `replace_memberships()` for a complete universe update instead of calling
+`AssetCategoryMembership.upsert()` in an asset loop. It compiles the desired
+memberships into one bulk upsert and removes stale rows with one scoped delete;
+duplicate UIDs are deduplicated, and an empty list performs only the delete.
+
 For a step-by-step membership lifecycle, run
 `examples/msm/assets/asset_category_workflow.py`. It creates a category, adds
 assets, removes assets, and prints the category contents after each change. The

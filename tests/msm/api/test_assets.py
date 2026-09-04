@@ -7,6 +7,8 @@ import pytest
 
 from msm.api.assets import (
     Asset,
+    AssetCategory,
+    AssetCategoryMembership,
     AssetType,
     AssetTypeUpsert,
     AssetUpsert,
@@ -415,6 +417,45 @@ def test_asset_get_many_by_unique_identifier_empty_input_skips_runtime(monkeypat
     monkeypatch.setattr("msm.bootstrap.resolve_runtime", fail_resolve_runtime)
 
     assert Asset.get_many_by_unique_identifier([]) == {}
+
+
+def test_asset_category_replace_memberships_returns_every_bulk_upsert_row(
+    monkeypatch,
+) -> None:
+    context = object()
+    category_uid = uuid.uuid4()
+    asset_uids = [uuid.uuid4(), uuid.uuid4()]
+    rows = [
+        {
+            "uid": str(uuid.uuid4()),
+            "category_uid": str(category_uid),
+            "asset_uid": str(asset_uid),
+        }
+        for asset_uid in asset_uids
+    ]
+    calls = []
+
+    def fake_replace(active_context, *, category_uid, asset_uids):
+        calls.append((active_context, category_uid, asset_uids))
+        return [{"rows": rows}, {"rows": []}]
+
+    monkeypatch.setattr(
+        AssetCategoryMembership,
+        "_active_context",
+        classmethod(lambda cls: context),
+    )
+    monkeypatch.setattr(
+        "msm.repositories.asset_categories.replace_asset_category_memberships",
+        fake_replace,
+    )
+
+    memberships = AssetCategory.replace_memberships(
+        category_uid=category_uid,
+        asset_uids=asset_uids,
+    )
+
+    assert memberships == [AssetCategoryMembership.model_validate(row) for row in rows]
+    assert calls == [(context, category_uid, asset_uids)]
 
 
 def test_operation_result_rows_accepts_common_envelopes() -> None:

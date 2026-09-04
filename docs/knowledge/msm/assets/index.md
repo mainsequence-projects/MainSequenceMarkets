@@ -433,6 +433,13 @@ memberships = AssetCategory.replace_memberships(
 )
 ```
 
+`replace_memberships()` normalizes duplicate asset UIDs, performs one governed
+multi-row upsert, and then deletes stale memberships with one category-scoped
+statement. A non-empty replacement therefore uses two backend executions
+regardless of universe size; an empty replacement uses one delete. The upsert
+runs first so an interrupted replacement cannot erase the existing universe
+before the desired memberships have been accepted.
+
 See `examples/msm/assets/asset_category_workflow.py` for a lifecycle example that
 creates a category, adds assets, removes assets, and prints category membership
 after each change. The normal run leaves assets in the category; only the

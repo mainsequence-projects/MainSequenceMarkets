@@ -14,6 +14,7 @@ from msm.models import (
     AccountGroupTable,
     AccountTargetAllocationTable,
     AccountTable,
+    AssetCategoryMembershipTable,
     AssetTypeTable,
     AssetTable,
     OpenFigiAssetDetailsTable,
@@ -31,6 +32,10 @@ from msm.repositories.assets import (
     build_get_asset_by_unique_identifier_operation,
     build_search_assets_operation,
     build_upsert_asset_operation,
+)
+from msm.repositories.asset_categories import (
+    build_replace_asset_category_memberships_operations,
+    replace_asset_category_memberships,
 )
 from msm.repositories.crud import (
     build_bulk_upsert_model_operation,
@@ -229,6 +234,104 @@ def test_generic_bulk_upsert_operation_compiles_one_statement_for_many_rows() ->
     assert operation.scope.tables[0].access == "write"
     assert "ON CONFLICT" in operation.statement.sql
     assert operation.statement.sql.count("display_name") >= 2
+
+
+def test_replace_asset_category_memberships_compiles_two_operations_and_deduplicates() -> None:
+    context = _repository_context()
+    category_uid = uuid.uuid4()
+    first_asset_uid = uuid.uuid4()
+    second_asset_uid = uuid.uuid4()
+
+    operations = build_replace_asset_category_memberships_operations(
+        context,
+        category_uid=category_uid,
+        asset_uids=[first_asset_uid, str(second_asset_uid), first_asset_uid],
+    )
+
+    assert [operation.operation for operation in operations] == ["upsert", "delete"]
+    assert all(operation.scope.tables[0].access == "write" for operation in operations)
+    assert all(
+        operation.scope.tables[0].meta_table_uid
+        == context.meta_table_uid_for_model(AssetCategoryMembershipTable)
+        for operation in operations
+    )
+    assert "ON CONFLICT (category_uid, asset_uid)" in operations[0].statement.sql
+    assert "NOT IN" in operations[1].statement.sql
+    assert {
+        value
+        for key, value in operations[0].statement.parameters.items()
+        if key.startswith("asset_uid_m")
+    } == {first_asset_uid, second_asset_uid}
+    assert {
+        value
+        for key, value in operations[1].statement.parameters.items()
+        if key.startswith("asset_uid_")
+    } == {first_asset_uid, second_asset_uid}
+
+
+def test_replace_asset_category_memberships_executes_bulk_upsert_before_stale_delete(
+    monkeypatch,
+) -> None:
+    context = _repository_context()
+    category_uid = uuid.uuid4()
+    asset_uids = [uuid.uuid4(), uuid.uuid4()]
+    calls = []
+    upsert_result = {
+        "rows": [
+            {
+                "uid": str(uuid.uuid4()),
+                "category_uid": str(category_uid),
+                "asset_uid": str(asset_uid),
+            }
+            for asset_uid in asset_uids
+        ]
+    }
+
+    def fake_execute(operation, *, context):
+        calls.append((operation, context))
+        return upsert_result if operation.operation == "upsert" else {"rows": []}
+
+    monkeypatch.setattr(
+        "msm.repositories.asset_categories.execute_markets_operation",
+        fake_execute,
+    )
+
+    results = replace_asset_category_memberships(
+        context,
+        category_uid=category_uid,
+        asset_uids=asset_uids,
+    )
+
+    assert [operation.operation for operation, _ in calls] == ["upsert", "delete"]
+    assert all(active_context is context for _, active_context in calls)
+    assert results == [upsert_result, {"rows": []}]
+
+
+def test_replace_asset_category_memberships_empty_set_executes_one_delete(
+    monkeypatch,
+) -> None:
+    context = _repository_context()
+    calls = []
+
+    def fake_execute(operation, *, context):
+        calls.append((operation, context))
+        return {"rows": []}
+
+    monkeypatch.setattr(
+        "msm.repositories.asset_categories.execute_markets_operation",
+        fake_execute,
+    )
+
+    results = replace_asset_category_memberships(
+        context,
+        category_uid=uuid.uuid4(),
+        asset_uids=[],
+    )
+
+    assert len(calls) == 1
+    assert calls[0][0].operation == "delete"
+    assert "NOT IN" not in calls[0][0].statement.sql
+    assert results == [{"rows": []}]
 
 
 def test_portfolio_group_upsert_operation_uses_unique_identifier_conflict() -> None:

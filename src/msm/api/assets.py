@@ -581,15 +581,11 @@ class AssetCategory(MarketsMetaTableRow):
             category_uid=category_uid,
             asset_uids=asset_uids,
         )
-        rows: list[AssetCategoryMembership] = []
-        for result in results:
-            row = AssetCategoryMembership._from_operation_result(
-                result,
-                required=False,
-            )
-            if row is not None:
-                rows.append(row)
-        return rows
+        return [
+            AssetCategoryMembership.model_validate(row)
+            for result in results
+            for row in operation_result_rows(result)
+        ]
 
 
 class AssetCategoryCreate(BaseModel):

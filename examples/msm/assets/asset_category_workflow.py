@@ -53,6 +53,7 @@ def run_asset_category_workflow(*, delete_temporary_assets: bool = False) -> dic
     assets_by_identifier = {asset.unique_identifier: asset for asset in assets}
 
     category = AssetCategory.upsert(**EXAMPLE_ASSET_CATEGORY)
+    # Complete-set replacement is batched into one upsert and one stale-row delete.
     AssetCategory.replace_memberships(
         category_uid=category.uid,
         asset_uids=[assets_by_identifier[EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER].uid],

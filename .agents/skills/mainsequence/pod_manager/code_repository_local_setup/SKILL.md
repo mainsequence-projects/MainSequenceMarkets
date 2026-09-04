@@ -77,10 +77,12 @@ Do not:
 2. Read the CodeRepository with `code_repository.get`. Its `branches` collection is a
    selector only and contains exactly `uid` and `repository_branch`. Do not
    expect readiness, configuration, or repository fields on these items.
-3. Select one exact branch. A newly created CodeRepository initially has its created
-   `main` CodeRepositoryBranch; otherwise use the branch explicitly selected by the
-   user or calling flow. Do not infer a default, entry, oldest, or current
-   branch from collection order.
+3. Select one exact branch. After creation, refresh the branch collection in the
+   requested bootstrap Environment and resolve by parent CodeRepository UID plus exact
+   Environment. Omission of bootstrap context yields only `main`; a non-main bootstrap
+   may also create a hidden production `main`, so never pick the first returned branch.
+   For an existing repository use the branch explicitly selected by the user or calling
+   flow. Do not infer a default, entry, oldest, or current branch from collection order.
 4. Read the selected branch with `code_repository_branch.get`. Keep its UID only for
    the remote setup operations that explicitly require a CodeRepositoryBranch.
 5. Read the CodeRepository's `github_repository_binding_uid` with `github_repository_binding.get`.

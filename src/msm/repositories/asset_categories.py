@@ -12,6 +12,7 @@ from msm.models import AssetCategoryTable, AssetCategoryMembershipTable
 
 from .base import MarketsRepositoryContext, compile_markets_statement, execute_markets_operation
 from .crud import (
+    build_bulk_upsert_model_operation,
     build_create_model_operation,
     build_delete_model_operation,
     build_get_model_by_uid_operation,
@@ -19,6 +20,20 @@ from .crud import (
     build_search_model_operation,
     build_update_model_operation,
 )
+
+
+def _normalize_asset_uids(
+    asset_uids: Sequence[uuid.UUID | str],
+) -> list[uuid.UUID]:
+    normalized: list[uuid.UUID] = []
+    seen: set[uuid.UUID] = set()
+    for asset_uid in asset_uids:
+        normalized_asset_uid = uuid.UUID(str(asset_uid))
+        if normalized_asset_uid in seen:
+            continue
+        seen.add(normalized_asset_uid)
+        normalized.append(normalized_asset_uid)
+    return normalized
 
 
 def build_create_asset_category_operation(
@@ -264,25 +279,58 @@ def build_delete_asset_category_memberships_for_category_operation(
     )
 
 
+def build_delete_stale_asset_category_memberships_operation(
+    context: MarketsRepositoryContext,
+    *,
+    category_uid: uuid.UUID | str,
+    retained_asset_uids: Sequence[uuid.UUID | str],
+) -> MetaTableCompiledSQLOperation:
+    normalized_asset_uids = _normalize_asset_uids(retained_asset_uids)
+    statement = delete(AssetCategoryMembershipTable).where(
+        AssetCategoryMembershipTable.category_uid == category_uid
+    )
+    if normalized_asset_uids:
+        statement = statement.where(
+            AssetCategoryMembershipTable.asset_uid.not_in(normalized_asset_uids)
+        )
+    return compile_markets_statement(
+        statement,
+        context=context,
+        operation="delete",
+        models=[AssetCategoryMembershipTable],
+        access="write",
+    )
+
+
 def build_replace_asset_category_memberships_operations(
     context: MarketsRepositoryContext,
     *,
     category_uid: uuid.UUID | str,
     asset_uids: Sequence[uuid.UUID | str],
 ) -> list[MetaTableCompiledSQLOperation]:
-    operations = [
-        build_delete_asset_category_memberships_for_category_operation(
+    normalized_asset_uids = _normalize_asset_uids(asset_uids)
+    operations: list[MetaTableCompiledSQLOperation] = []
+    if normalized_asset_uids:
+        operations.append(
+            build_bulk_upsert_model_operation(
+                context,
+                model=AssetCategoryMembershipTable,
+                values=[
+                    {
+                        "category_uid": category_uid,
+                        "asset_uid": asset_uid,
+                    }
+                    for asset_uid in normalized_asset_uids
+                ],
+                conflict_columns=("category_uid", "asset_uid"),
+            )
+        )
+    operations.append(
+        build_delete_stale_asset_category_memberships_operation(
             context,
             category_uid=category_uid,
+            retained_asset_uids=normalized_asset_uids,
         )
-    ]
-    operations.extend(
-        build_create_asset_category_membership_operation(
-            context,
-            category_uid=category_uid,
-            asset_uid=asset_uid,
-        )
-        for asset_uid in asset_uids
     )
     return operations
 
@@ -350,6 +398,7 @@ __all__ = [
     "build_delete_asset_category_membership_operation",
     "build_delete_asset_category_membership_by_pair_operation",
     "build_delete_asset_category_memberships_for_category_operation",
+    "build_delete_stale_asset_category_memberships_operation",
     "build_delete_asset_category_operation",
     "build_get_asset_category_by_uid_operation",
     "build_get_asset_category_by_unique_identifier_operation",

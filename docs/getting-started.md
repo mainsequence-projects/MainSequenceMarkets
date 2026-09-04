@@ -1,6 +1,6 @@
 # Getting Started
 
-`ms-markets` 1.x requires Python 3.13 and Main Sequence SDK `>=8.0.4`. It
+`ms-markets` 1.x requires Python 3.13 and Main Sequence SDK `>=8.0.7`. It
 cannot run against an SDK 6 or SDK 7 backend contract and does not provide
 compatibility aliases or a mixed-version mode.
 

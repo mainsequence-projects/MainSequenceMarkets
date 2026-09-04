@@ -1,6 +1,6 @@
 ---
 name: command-center
-description: Discover and use the Main Sequence Command Center backend resources exposed through MCP. Use as the top-level operation map for Workspaces, immutable widget revisions, Connections, and human-authorized CodeRepository workflow navigation placement.
+description: Discover and use the Main Sequence Command Center backend resources exposed through MCP. Use as the top-level operation map for Workspaces, immutable widget revisions, and Connections.
 ---
 
 # Main Sequence Command Center
@@ -16,9 +16,7 @@ This skill owns the language-neutral backend resource and operation map for:
 - `Workspace`;
 - `RegisteredWidgetType`;
 - `ConnectionType`; and
-- `ConnectionInstance`, exposed by MCP as `connection.*`; and
-- `CodeRepositoryWorkflowNavigationLinkGrant`, exposed by MCP as
-  `navigation_link_grant.*`.
+- `ConnectionInstance`, exposed by MCP as `connection.*`.
 
 It does not own frontend architecture, React components, resource views,
 actions, widgets, workspaces, themes, embeds, or Command Center SDK extension
@@ -40,7 +38,6 @@ The approved discovery surface includes these read operations:
 | RegisteredWidgetType | `registered_widget_type.list` | `registered_widget_type.get` |
 | ConnectionType | `connection_type.list` | `connection_type.get` |
 | ConnectionInstance | `connection.list` | `connection.get` |
-| Workflow navigation grant | `navigation_link_grant.list` | `navigation_link_grant.get` |
 
 Always inspect the live `tools/list` result before relying on an operation.
 Do not invent an aggregate `command_center.get_context`, a generic API proxy,
@@ -106,26 +103,6 @@ secure fields are present. It never returns secure configuration values.
 Connection creation, partial update, hard delete, health test, query, and
 allowlisted resource reads use their dedicated `connection.*` tools. Streaming
 and ConnectionType registry synchronization remain outside MCP.
-
-### Workflow navigation placement grants
-
-Use `navigation_link_grant.list` with the required
-`organization_environment_uid` to discover grants the authenticated
-human may manage. Use `navigation_link_grant.get` for one exact grant UID.
-
-`navigation_link_grant.create` authorizes a maximum audience for one exact
-`codeRepositoryBranchUid + workflowPath + resourceKey`. `update` changes, contracts,
-or reactivates it. `revoke` immediately removes its workflow-owned link while
-retaining the audit row. These tools dispatch to canonical DRF operations;
-MCP owns no separate permission model.
-
-CodeRepository edit authority is required in addition to audience authority. A
-CodeRepository editor may authorize only their own exact User. Other selected Users
-and Organization-wide placement require Organization administrator authority.
-Team audiences require edit authority for every selected Team or Organization
-administrator authority. Repository automation, Git authors, and coding agents
-cannot create human authorization on their own. Placement never grants access
-to the target Static Site.
 
 ## Understand Workspace Mutation Availability
 

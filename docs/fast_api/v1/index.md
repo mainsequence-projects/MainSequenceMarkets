@@ -144,7 +144,7 @@ state and logs instead of treating the Git push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
 The published `ms-markets` 1.x package therefore declares
-`mainsequence>=8.0.4` without an exact SDK patch pin. The lower bound enforces
+`mainsequence>=8.0.7` without an exact SDK patch pin. The lower bound enforces
 the SDK 8 CodeRepository hard cut, while the project lock and exported runtime
 requirements select the exact SDK release validated for this repository. Do
 not replace the published dependency with a machine-local `[tool.uv.sources]`
