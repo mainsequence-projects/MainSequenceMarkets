@@ -21,7 +21,8 @@ def test_package_metadata_enforces_sdk_8_hard_cut_without_exact_patch_pin() -> N
     assert Version("7.99.0") not in requirement.specifier
     assert Version("8.0.3") not in requirement.specifier
     assert Version("8.0.6") not in requirement.specifier
-    assert Version("8.0.7") in requirement.specifier
+    assert Version("8.0.7") not in requirement.specifier
+    assert Version("8.1.0") in requirement.specifier
     assert Version("8.99.0") in requirement.specifier
     assert Version("9.0.0") in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

@@ -139,10 +139,7 @@ holdings_node.set_account_holdings_frame(
         }
     ],
 )
-error_on_last_update, updated_frame = holdings_node.run(
-    debug_mode=True,
-    force_update=True,
-)
+error_on_last_update, updated_frame = holdings_node.run()
 if error_on_last_update:
     raise RuntimeError("Account holdings update failed.")
 ```

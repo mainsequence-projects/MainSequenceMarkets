@@ -224,12 +224,11 @@ def run_account_portfolio_full_workflow(
             },
         ]
     )
-    asset_snapshot_error, asset_snapshot_frame = asset_snapshot_node.run(
-        debug_mode=True,
-        force_update=True,
-    )
+    asset_snapshot_error, asset_snapshot_frame = asset_snapshot_node.run()
     if asset_snapshot_error:
-        raise RuntimeError("AssetSnapshot update failed; inspect the TimeIndexTableUpdater run logs.")
+        raise RuntimeError(
+            "AssetSnapshot update failed; inspect the TimeIndexTableUpdater run logs."
+        )
     print(
         "   AssetSnapshot rows persisted: "
         f"rows={len(asset_snapshot_frame)} identifier={asset_snapshot_node._default_identifier()}"
@@ -381,12 +380,11 @@ def run_account_portfolio_full_workflow(
     print("12. Running the TargetPositions TimeIndexTableUpdater update.")
     target_positions_node = TargetPositions(config=TargetPositions.default_config())
     target_positions_node.set_frame(combined_target_positions_frame)
-    target_positions_error, persisted_target_positions_frame = target_positions_node.run(
-        debug_mode=True,
-        force_update=True,
-    )
+    target_positions_error, persisted_target_positions_frame = target_positions_node.run()
     if target_positions_error:
-        raise RuntimeError("TargetPositions update failed; inspect the TimeIndexTableUpdater run logs.")
+        raise RuntimeError(
+            "TargetPositions update failed; inspect the TimeIndexTableUpdater run logs."
+        )
     print(
         "    Persisted target-position rows="
         f"{len(persisted_target_positions_frame)} identifier="
@@ -434,9 +432,11 @@ def run_account_portfolio_full_workflow(
     print(f"   Combined holdings rows attached: rows={len(combined_holdings_frame)}")
 
     print("14. Running the AccountHoldings TimeIndexTableUpdater update.")
-    error_on_last_update, holdings_frame = holdings_node.run(debug_mode=True, force_update=True)
+    error_on_last_update, holdings_frame = holdings_node.run()
     if error_on_last_update:
-        raise RuntimeError("Account holdings update failed; inspect the TimeIndexTableUpdater run logs.")
+        raise RuntimeError(
+            "Account holdings update failed; inspect the TimeIndexTableUpdater run logs."
+        )
     print(f"    Persisted holdings rows={len(holdings_frame)}")
 
     print("15. Pretty-printing resolved positions for each account.")
@@ -666,8 +666,13 @@ def main() -> None:
         "Asset unique_identifiers:",
         [asset.unique_identifier for asset in result["assets"]],
     )
-    print("AssetSnapshot TimeIndexTableUpdater identifier:", result["asset_snapshot_node_identifier"])
-    print("TargetPositions TimeIndexTableUpdater identifier:", result["target_positions_data_node_identifier"])
+    print(
+        "AssetSnapshot TimeIndexTableUpdater identifier:", result["asset_snapshot_node_identifier"]
+    )
+    print(
+        "TargetPositions TimeIndexTableUpdater identifier:",
+        result["target_positions_data_node_identifier"],
+    )
     print("Holdings TimeIndexTableUpdater identifier:", result["holdings_data_node_identifier"])
     print("Holdings date:", result["holdings_date"].isoformat())
     if result["virtual_fund_allocation_result"] is not None:

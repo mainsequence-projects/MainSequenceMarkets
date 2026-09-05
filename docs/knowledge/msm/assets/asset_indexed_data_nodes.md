@@ -309,7 +309,7 @@ snapshots = [
 
 snapshot_frame = AssetSnapshot.build_frame(snapshots)
 snapshot_node = AssetSnapshot().set_snapshots(snapshots)
-result_frame = snapshot_node.run(debug_mode=True, force_update=True)
+result_frame = snapshot_node.run()
 ```
 
 Each snapshot row must carry its own `time_index`. `AssetSnapshot` validates the

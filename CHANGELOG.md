@@ -7,6 +7,15 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-09-05
+
+### Fixed
+
+- Updated portfolio, asset-snapshot, holdings, virtual-fund, and pricing updater calls for the
+  Main Sequence SDK 8.1 execution contract. `PortfoliosDataNode.run()` now forwards only
+  `update_tree`, `update_only_tree`, and `override_update_stats`; the removed scheduler,
+  debug, and force-update controls are no longer exposed or passed to the SDK runner.
+
 ## [1.0.3] - 2026-09-04
 
 ### Fixed

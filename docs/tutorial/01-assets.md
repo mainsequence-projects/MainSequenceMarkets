@@ -271,7 +271,7 @@ snapshot_node = AssetSnapshot().set_snapshots(
         "ticker": "BTC",
     },
 )
-snapshot_frame = snapshot_node.run(debug_mode=True, force_update=True)
+snapshot_frame = snapshot_node.run()
 ```
 
 Markets DataNodes use the same identifier rule as MetaTables. With the default

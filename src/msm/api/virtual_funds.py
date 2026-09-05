@@ -103,7 +103,7 @@ class VirtualFund(MarketsMetaTableRow):
         if data_node is not None:
             data_node.set_frame(frame)
             if run:
-                data_node.run(debug_mode=True, update_tree=False, force_update=True)
+                data_node.run(update_tree=False)
         return frame
 
 

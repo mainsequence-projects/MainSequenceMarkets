@@ -510,11 +510,13 @@ def _preview_cashflows(
 
 
 def _run_data_node_frame(node: Any, *, label: str) -> Any:
-    result = node.run(debug_mode=True, force_update=True)
+    result = node.run()
     if isinstance(result, tuple):
         error_on_last_update, frame = result
         if error_on_last_update:
-            raise RuntimeError(f"{label} TimeIndexTableUpdater update failed; inspect the run logs.")
+            raise RuntimeError(
+                f"{label} TimeIndexTableUpdater update failed; inspect the run logs."
+            )
         return frame
     return result
 

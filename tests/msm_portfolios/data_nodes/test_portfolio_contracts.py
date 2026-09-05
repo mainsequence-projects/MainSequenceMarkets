@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from types import SimpleNamespace
 
 import pandas as pd
@@ -48,6 +49,18 @@ PORTFOLIO_NODE_STORAGE = (
     (SignalWeights, SignalWeightsStorage),
     (PortfoliosDataNode, PortfoliosStorage),
 )
+
+
+def test_portfolio_run_matches_sdk_8_1_runtime_controls() -> None:
+    parameters = inspect.signature(PortfoliosDataNode.run).parameters
+
+    assert "update_tree" in parameters
+    assert "update_only_tree" in parameters
+    assert "override_update_stats" in parameters
+    assert "update_pointers" in parameters
+    assert "debug_mode" not in parameters
+    assert "force_update" not in parameters
+    assert "remote_scheduler" not in parameters
 
 
 class ExplicitPriceSource(TimeIndexTableUpdater):

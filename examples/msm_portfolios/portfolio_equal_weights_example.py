@@ -435,14 +435,12 @@ def build_equal_weight_portfolio(
 
     print_step(5, "Publishing portfolio time-index-table outputs.")
     if run_data_nodes:
-        source_bars_node.run(debug_mode=True, update_tree=False, force_update=True)
+        source_bars_node.run(update_tree=False)
         source_prices_node_uid = str(source_bars_node.table_update.uid)
         print_detail("source_prices_data_node_uid", source_prices_node_uid)
 
         portfolio_run_result = portfolio_values_node.run(
-            debug_mode=True,
             update_tree=True,
-            force_update=True,
             update_pointers=True,
         )
         portfolio = portfolio_run_result["portfolio"]

@@ -85,7 +85,7 @@ def create_query_assets(
             snapshot_time=asset_snapshot_time,
         ),
     )
-    snapshot_frame = asset_snapshot_node.run(debug_mode=True, force_update=True)
+    snapshot_frame = asset_snapshot_node.run()
     created_asset_identifiers = [
         payload["unique_identifier"]
         for payload in [
@@ -93,12 +93,9 @@ def create_query_assets(
             {"unique_identifier": normalized_openfigi["unique_identifier"]},
         ]
     ]
-    created_assets_by_identifier = Asset.get_many_by_unique_identifier(
-        created_asset_identifiers
-    )
+    created_assets_by_identifier = Asset.get_many_by_unique_identifier(created_asset_identifiers)
     created_asset_listing = [
-        created_assets_by_identifier.get(identifier)
-        for identifier in created_asset_identifiers
+        created_assets_by_identifier.get(identifier) for identifier in created_asset_identifiers
     ]
     deleted_assets = []
     if delete_temporary_assets:

@@ -32,7 +32,7 @@ pricing imports from `msm_pricing`.
 ## Project Status
 
 - Status: initial scaffold and SDK extraction
-- Current package version: `0.0.18`
+- Current package version: `1.0.4`
 - Documentation: [Documentation Site](https://mainsequence-projects.github.io/MainSequenceMarkets/)
 - Open issues: [GitHub Issues](https://github.com/mainsequence-projects/MainSequenceMarkets/issues)
 - Release history: [CHANGELOG.md](https://github.com/mainsequence-projects/MainSequenceMarkets/blob/main/CHANGELOG.md)

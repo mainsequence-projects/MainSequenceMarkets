@@ -75,7 +75,7 @@ def create_eurusd_currency_spot() -> dict[str, Any]:
             snapshot_time=snapshot_time,
         )
     )
-    snapshot_frame = asset_snapshot_node.run(debug_mode=True, force_update=True)
+    snapshot_frame = asset_snapshot_node.run()
 
     return {
         "currency_asset_type": currency_asset_type,

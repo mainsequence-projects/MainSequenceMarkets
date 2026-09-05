@@ -9,7 +9,7 @@ import pandas as pd
 import pytz
 
 import mainsequence.meta_tables.time_index_table_updates.configuration as update_configuration
-from mainsequence.client.metatables import UpdateStatistics
+from mainsequence.client import BaseUpdateStatistics
 from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm_portfolios.asset_scope import dedupe_asset_scope
 
@@ -201,22 +201,16 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
 
     def run(
         self,
-        debug_mode: bool = True,
         *,
         update_tree: bool = True,
-        force_update: bool = False,
         update_only_tree: bool = False,
         update_pointers: bool = True,
-        remote_scheduler: object | None = None,
-        override_update_stats: UpdateStatistics | None = None,
+        override_update_stats: BaseUpdateStatistics | None = None,
     ):
         if self.portfolio_configuration is None:
             return super().run(
-                debug_mode=debug_mode,
                 update_tree=update_tree,
-                force_update=force_update,
                 update_only_tree=update_only_tree,
-                remote_scheduler=remote_scheduler,
                 override_update_stats=override_update_stats,
             )
 
@@ -226,11 +220,8 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         portfolio_weights_node = PortfolioWeights(namespace=self._canonical_namespace())
 
         portfolio_values_result = super().run(
-            debug_mode=debug_mode,
             update_tree=update_tree,
-            force_update=force_update,
             update_only_tree=update_only_tree,
-            remote_scheduler=remote_scheduler,
             override_update_stats=override_update_stats,
         )
         if update_only_tree:
@@ -248,10 +239,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                 portfolio_description=self._resolve_portfolio_description(),
             )
             portfolio_weights_result = portfolio_weights_node.run(
-                debug_mode=debug_mode,
                 update_tree=False,
-                force_update=force_update,
-                remote_scheduler=remote_scheduler,
             )
             portfolio_weights_data_node_uid = self._required_table_update_uid(
                 portfolio_weights_node,
@@ -609,7 +597,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             return datetime.now(pytz.utc)
         return earliest_last_value + self._valuation_source_maximum_forward_fill()
 
-    def _valuation_source_update_statistics(self) -> UpdateStatistics:
+    def _valuation_source_update_statistics(self) -> BaseUpdateStatistics:
         if isinstance(self.valuation_source, TimeIndexTableRef):
             return self.valuation_source.get_update_statistics()
 
@@ -623,7 +611,9 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                 "portfolio update-window calculation."
             )
 
-        raise TypeError("PortfoliosDataNode valuation_source must be a TimeIndexTableUpdater or TimeIndexTableRef.")
+        raise TypeError(
+            "PortfoliosDataNode valuation_source must be a TimeIndexTableUpdater or TimeIndexTableRef."
+        )
 
     def _required_valuation_source_progress_values(
         self,
@@ -933,7 +923,9 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                 f"{', '.join(missing_identifiers)}."
             )
 
-    def _valuation_source_identifier(self, valuation_source: TimeIndexTableUpdater | TimeIndexTableRef) -> str:
+    def _valuation_source_identifier(
+        self, valuation_source: TimeIndexTableUpdater | TimeIndexTableRef
+    ) -> str:
         if isinstance(valuation_source, TimeIndexTableRef):
             return str(valuation_source.output_table_uid)
         if isinstance(valuation_source, TimeIndexTableUpdater):

@@ -438,7 +438,7 @@ In code, the important wiring is:
 
 ```python
 source_bars_node = ExampleDailyBars(asset_identifiers=["asset-btc", "asset-eth"])
-source_bars_node.run(debug_mode=True, update_tree=False, force_update=True)
+source_bars_node.run(update_tree=False)
 
 price_source = InterpolatedPrices(
     interpolation_config=InterpolatedPricesConfig(
