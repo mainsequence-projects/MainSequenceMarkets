@@ -12,6 +12,26 @@ from msm.repositories.calendars import search_calendar_sessions
 from msm.services.calendars import ensure_date_range, iter_local_dates
 
 
+# Governed MetaTable reads can cap an operation at 1,000 rows. A multi-year
+# trading-calendar request can exceed that even though the requested date range
+# is valid, so keep every read comfortably below that boundary.
+_SESSION_QUERY_WINDOW_DAYS = 366 * 2
+
+
+def _calendar_session_query_windows(
+    start: dt.date,
+    end: dt.date,
+):
+    window_start = start
+    while window_start <= end:
+        window_end = min(
+            window_start + dt.timedelta(days=_SESSION_QUERY_WINDOW_DAYS - 1),
+            end,
+        )
+        yield window_start, window_end
+        window_start = window_end + dt.timedelta(days=1)
+
+
 @dataclass(frozen=True)
 class PersistedCalendarSchedule:
     """Pandas-like schedule adapter backed by persisted calendar session rows."""
@@ -30,14 +50,16 @@ class PersistedCalendarSchedule:
     ) -> pd.DataFrame:
         start, end = ensure_date_range(start_date, end_date)
         context = Calendar._active_context()
-        result = search_calendar_sessions(
-            context,
-            calendar_uid=str(self.calendar.uid),
-            start_date=start,
-            end_date=end,
-            session_label=self.session_label,
-        )
-        rows = operation_result_rows(result)
+        rows: list[dict[str, Any]] = []
+        for window_start, window_end in _calendar_session_query_windows(start, end):
+            result = search_calendar_sessions(
+                context,
+                calendar_uid=str(self.calendar.uid),
+                start_date=window_start,
+                end_date=window_end,
+                session_label=self.session_label,
+            )
+            rows.extend(operation_result_rows(result))
         if not rows:
             return pd.DataFrame(columns=["market_open", "market_close"])
 

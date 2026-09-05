@@ -562,6 +562,16 @@ def interpolate_daily_bars(
 
     bars_df = bars_df[bars_df.index.isin(restricted_schedule.index)]
 
+    # Daily source tables may use their time index as the session close and omit
+    # an explicit bar-open timestamp. The persisted calendar already supplies
+    # the authoritative open for every retained close, so derive the optional
+    # InterpolatedPrices field instead of requiring it from every source schema.
+    if "open_time" not in bars_df.columns:
+        bars_df["open_time"] = pd.Series(
+            pd.NaT,
+            index=bars_df.index,
+            dtype="datetime64[ns, UTC]",
+        )
     null_index = bars_df[bars_df["open_time"].isnull()].index
     if len(null_index) > 0:
         # Use the market_open that corresponds to each market_close index
