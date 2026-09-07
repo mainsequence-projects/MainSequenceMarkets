@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-09-07
+
 ### Added
 
 - Added `CalendarEventSignal` with hash-bearing calendar, session, event,
@@ -31,6 +33,14 @@ and this project follows versioned releases.
   `ValuationAlignmentPolicy` as-of selection. Portfolio configuration no longer
   accepts `portfolio_prices_frequency` or `price_alignment_policy`.
 - Updated the Main Sequence SDK lock and managed repository skills to 8.1.4.
+
+### Fixed
+
+- Chunked long-horizon persisted-calendar reads so daily price interpolation
+  remains within governed operation limits.
+- Resolved sparse per-asset valuation seeding, midnight relabeling and rerun
+  duplication, and implicit calendar-event timing semantics tracked in issues
+  #2, #3, and #4.
 
 ### Removed
 
