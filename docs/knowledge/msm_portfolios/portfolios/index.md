@@ -140,6 +140,44 @@ control execution without relying on hidden row-class active context. See
 `examples/msm_portfolios/portfolio_read_services.py` for an offline example that
 uses injected executors.
 
+## Repair legacy midnight-indexed portfolio values
+
+Portfolio values written by the former daily resampling path may carry a UTC
+midnight `time_index` while `close_time` records the real exchange close. Do
+not rewrite those indexed coordinates directly. Plan a portfolio-scoped tail
+rollback against the persisted calendar first:
+
+```bash
+PYTHONPATH=src:. python \
+  examples/msm_portfolios/portfolio_midnight_timestamp_repair.py \
+  --portfolio-identifier <portfolio-identifier> \
+  --start 2026-01-01T00:00:00Z \
+  --end <latest-portfolio-value-timestamp>
+```
+
+The default is a read-only dry run. It checks `Portfolio.calendar_uid`,
+persisted `CalendarSession.closes_at`, the historical `close_time`, destination
+conflicts, and whether `--end` reaches the latest stored value. Any uncertainty
+is a blocking issue. Review the JSON plan, then apply exactly one portfolio:
+
+```bash
+PYTHONPATH=src:. python \
+  examples/msm_portfolios/portfolio_midnight_timestamp_repair.py \
+  --portfolio-identifier <portfolio-identifier> \
+  --start 2026-01-01T00:00:00Z \
+  --end <latest-portfolio-value-timestamp> \
+  --apply
+```
+
+Apply performs an inclusive `PortfoliosStorage` tail delete scoped by
+`portfolio_identifier`; it does not finish the repair by itself. Pause any
+scheduled writer before apply, and keep it paused while you immediately rerun
+the portfolio workflow with the migrated configuration to replay that tail
+from canonical valuation observations. The result compares the deleted count
+with the dry-run count and exits nonzero if they differ. Run the dry plan again
+after replay: it should contain no rollback. Process another portfolio only
+after the previous portfolio has been replayed and verified.
+
 ## Portfolio Registry Tables
 
 Portfolio registry tables are regular platform-managed MetaTables. They describe

@@ -73,6 +73,18 @@ reserved for true execution at a signal's original observation timestamp.
 does not fall back to a process-local calendar. Ensure the required
 `CalendarSession` horizon exists before executing the graph.
 
+## Migrate values produced by the former daily resampler
+
+If an existing portfolio has midnight-indexed values from the former combined
+portfolio path, run `examples/msm_portfolios/portfolio_midnight_timestamp_repair.py`
+without `--apply` first. Set `--end` at or after the latest stored portfolio
+value; the plan refuses to delete a tail it has not fully inspected and
+validates every candidate against the portfolio's persisted calendar and
+historical `close_time`. After reviewing the plan, run it with `--apply` for one
+portfolio while scheduled writers are paused, then immediately rerun the
+portfolio workflow to rebuild the scoped tail. A post-replay dry run must
+report no rollback.
+
 The core configuration uses `valuation_alignment_policy` to bound per-asset
 as-of freshness. It does not accept `portfolio_prices_frequency`; configure a
 separate `PortfolioAnalytics` node when a chart or analysis needs daily,

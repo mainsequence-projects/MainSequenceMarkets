@@ -14,6 +14,9 @@ and this project follows versioned releases.
 - Added `PortfolioAnalytics` and separate `PortfolioAnalyticsStorage` for
   consumer-owned reporting resampling with explicit period boundaries and
   source-observation lineage.
+- Added a dry-run-first legacy portfolio timestamp repair that validates
+  midnight rows against persisted calendar sessions, applies only a scoped
+  inclusive tail rollback, and requires deterministic portfolio replay.
 
 ### Changed
 

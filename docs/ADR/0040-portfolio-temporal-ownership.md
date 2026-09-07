@@ -524,6 +524,32 @@ labels and makes downstream consumers unable to recover the canonical series.
 - [x] Document the breaking migration in the Unreleased changelog.
 - [x] Require calendar-event strategies to resolve persisted calendars without
       a local fallback.
+- [x] Provide a dry-run-first migration path for legacy midnight-indexed
+      portfolio values.
+
+### Legacy Midnight-Indexed Values
+
+Existing rows cannot be corrected by updating `time_index` in place. They are
+owned by `PortfoliosDataNode`, and changing an indexed coordinate would bypass
+the updater's storage lifecycle and make later incremental progress ambiguous.
+
+The supported migration is therefore a portfolio-scoped rollback and replay:
+
+1. Inspect the requested legacy window and the latest persisted row.
+2. Resolve every candidate row through the portfolio's `calendar_uid` and
+   persisted `CalendarSession` close. The old `close_time` must corroborate the
+   mapping.
+3. Refuse missing, ambiguous, conflicting, or only partially inspected tails.
+4. Delete the inclusive tail with
+   `TimeIndexMetaTable.delete_after_date(..., dimension_filters={"portfolio_identifier": [...]})`.
+5. Rerun the migrated portfolio graph so `PortfoliosDataNode` deterministically
+   rebuilds values at canonical valuation-source timestamps.
+
+Apply one portfolio at a time with scheduled writers paused. The result checks
+the deleted row count against the plan so a concurrent tail change is visible.
+The migration never reconstructs a close from a fixed UTC hour, never uses raw
+SQL, and never presents deletion alone as a completed repair. A second dry run
+after replay must return no rollback.
 
 ## Acceptance Criteria
 
@@ -545,6 +571,8 @@ This ADR is implemented only when:
 - per-asset valuation as-of alignment uses the last eligible observation for
   each required asset and enforces configured staleness.
 - reruns before a new eligible event return no new rows.
+- legacy midnight-indexed rows have a persisted-calendar-validated, scoped
+  rollback-and-replay path that is idempotent after replay.
 - analytical resampling writes a separate derived data product.
 - unsupported unfinished strategies are not presented as executable.
 - documentation and examples distinguish all temporal concepts and no longer

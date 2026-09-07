@@ -269,6 +269,13 @@ Rules:
   `time_index` is the actual selected source-observation timestamp; analytical
   bucket boundaries live in `period_start` and `period_end`, and
   `source_time_index` preserves lineage.
+- Repair legacy midnight-indexed `PortfoliosStorage` rows only through a
+  dry-run-validated, `portfolio_identifier`-scoped inclusive tail delete using
+  `TimeIndexMetaTable.delete_after_date(...)`, followed immediately by a
+  deterministic portfolio replay. Require persisted `CalendarSession` and
+  historical `close_time` agreement, prove the inspection reaches the latest
+  stored row, and apply one portfolio at a time. Never update indexed
+  coordinates in place or use raw SQL.
 - `PortfoliosDataNode.run(..., update_pointers=True)` is the default portfolio
   workflow behavior. After the graph publishes, it must upsert the resolved
   `PortfolioTable` row with `signal_uid`, `signal_weights_data_node_uid`,
