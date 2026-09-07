@@ -222,6 +222,14 @@ A strategy that applies the latest signal at every market close is a
 close-event strategy. It must not describe itself as immediate at the original
 signal timestamp.
 
+Calendar-relative strategies require a persisted calendar identifier. Runtime
+resolution must read `CalendarSession` rows and must fail when the calendar is
+missing, its source identifier is ambiguous, or the governed lookup fails. A
+serialized economic strategy must never silently fall back to
+`pandas_market_calendars`, a process-local always-open calendar, or another
+date generator. Those helpers may remain available only through an explicitly
+named legacy utility that cannot be selected by `CalendarEventSignal`.
+
 ### 3. PortfoliosDataNode Owns Valuation Only
 
 `PortfoliosDataNode` consumes:
@@ -514,6 +522,8 @@ labels and makes downstream consumers unable to recover the canonical series.
 - [x] Update portfolio configuration serialization and hashing.
 - [x] Update examples, tutorials, portfolio knowledge docs, skills, and changelog.
 - [x] Document the breaking migration in the Unreleased changelog.
+- [x] Require calendar-event strategies to resolve persisted calendars without
+      a local fallback.
 
 ## Acceptance Criteria
 

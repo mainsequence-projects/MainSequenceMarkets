@@ -41,6 +41,7 @@ _EXPORTS = {
     "update_rebalance_strategy_metadata": ".market_metadata",
     "update_signal_metadata": ".market_metadata",
     "list_portfolio_rows_response": ".public_api",
+    "resolve_legacy_rebalance_calendar": ".calendars",
     "resolve_rebalance_calendar": ".calendars",
 }
 

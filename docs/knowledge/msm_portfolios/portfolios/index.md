@@ -88,6 +88,12 @@ instead executes only at original signal observation timestamps. Event
 selection belongs to `PortfolioWeights`; `PortfoliosDataNode` does not build a
 rebalance index.
 
+`calendar_identifier` is required for `CalendarEventSignal`. It resolves a
+persisted `Calendar.unique_identifier` or one unambiguous
+`Calendar.source_identifier`. Missing, ambiguous, and failed calendar lookups
+raise an error; the strategy never substitutes a local pandas or synthetic
+calendar. Materialize the calendar horizon before running the portfolio graph.
+
 `Portfolio.upsert(...)` writes only the portfolio identity row. Portfolio
 constituents, weights, values, and optional index publication are separate
 portfolio workflows.

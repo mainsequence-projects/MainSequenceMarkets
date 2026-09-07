@@ -69,6 +69,9 @@ FixedWeights signal
 weekly `CalendarEventSignal` can therefore produce sparse weight rows while a
 daily valuation source produces daily portfolio values. `ImmediateSignal` is
 reserved for true execution at a signal's original observation timestamp.
+`CalendarEventSignal` requires an explicit persisted calendar identifier and
+does not fall back to a process-local calendar. Ensure the required
+`CalendarSession` horizon exists before executing the graph.
 
 The core configuration uses `valuation_alignment_policy` to bound per-asset
 as-of freshness. It does not accept `portfolio_prices_frequency`; configure a

@@ -193,6 +193,7 @@ def build_portfolio_configuration(
                 signal_weights_instance=signal_weights,
                 rebalance_strategy_instance=CalendarEventSignal(
                     calendar_identifier=calendar.unique_identifier,
+                    session_label="regular",
                     rebalance_event="market_close",
                 ),
             ),

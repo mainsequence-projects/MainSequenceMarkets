@@ -121,28 +121,59 @@ class PandasMarketCalendarSchedule:
 
 
 def resolve_rebalance_calendar(calendar_key: str) -> Any:
-    """Resolve a portfolio rebalance calendar, preferring persisted calendars."""
+    """Resolve a persisted calendar for an economic rebalance contract.
 
-    if calendar_key == "24/7":
-        return AlwaysOpenCalendarSchedule(name=calendar_key)
+    Calendar-relative execution must remain reproducible from governed
+    ``CalendarSession`` rows. Missing calendars and backend lookup failures are
+    therefore errors; callers never silently switch to a local calendar
+    implementation.
+    """
 
-    calendar = _find_persisted_calendar(calendar_key)
-    if calendar is not None:
-        return PersistedCalendarSchedule(calendar=calendar)
+    identifier = str(calendar_key).strip()
+    if not identifier:
+        raise ValueError("calendar_identifier must be a non-empty string.")
 
-    if calendar_key == "CRYPTO_24_7":
-        return AlwaysOpenCalendarSchedule(name=calendar_key)
+    calendar = _find_persisted_calendar(identifier)
+    if calendar is None:
+        raise ValueError(
+            f"Persisted rebalance calendar {identifier!r} was not found. "
+            "Create and materialize the Calendar and CalendarSession rows before "
+            "running CalendarEventSignal."
+        )
+    return PersistedCalendarSchedule(calendar=calendar)
 
-    return PandasMarketCalendarSchedule(calendar_key=calendar_key)
+
+def resolve_legacy_rebalance_calendar(calendar_key: str) -> Any:
+    """Explicitly resolve a legacy local calendar helper.
+
+    This helper is intentionally separate from ``resolve_rebalance_calendar``
+    so a serialized economic strategy cannot fall back to process-local date
+    generation.
+    """
+
+    identifier = str(calendar_key).strip()
+    if not identifier:
+        raise ValueError("calendar_key must be a non-empty string.")
+    if identifier in {"24/7", "CRYPTO_24_7"}:
+        return AlwaysOpenCalendarSchedule(name=identifier)
+    return PandasMarketCalendarSchedule(calendar_key=identifier)
 
 
 def _find_persisted_calendar(calendar_key: str) -> Calendar | None:
-    try:
-        matches = Calendar.filter(unique_identifier=calendar_key, limit=1)
-        if not matches:
-            matches = Calendar.filter(source_identifier=calendar_key, limit=1)
-    except Exception:
-        return None
+    matches = Calendar.filter(unique_identifier=calendar_key, limit=2)
+    if len(matches) > 1:
+        raise RuntimeError(
+            f"Persisted calendar identifier {calendar_key!r} resolved to multiple rows."
+        )
+    if matches:
+        return matches[0]
+
+    matches = Calendar.filter(source_identifier=calendar_key, limit=2)
+    if len(matches) > 1:
+        raise ValueError(
+            f"Calendar source_identifier {calendar_key!r} is ambiguous; "
+            "configure CalendarEventSignal with a unique Calendar.unique_identifier."
+        )
     return matches[0] if matches else None
 
 
@@ -150,5 +181,6 @@ __all__ = [
     "AlwaysOpenCalendarSchedule",
     "PandasMarketCalendarSchedule",
     "PersistedCalendarSchedule",
+    "resolve_legacy_rebalance_calendar",
     "resolve_rebalance_calendar",
 ]

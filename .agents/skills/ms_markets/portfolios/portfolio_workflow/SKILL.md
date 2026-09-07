@@ -228,7 +228,9 @@ Rules:
   Use `CalendarEventSignal` when the latest eligible signal should execute at a
   persisted market open or close. Its calendar identifier, session label,
   event, offset, cadence, signal selection, and execution valuation convention
-  are hash-bearing configuration.
+  are hash-bearing configuration. The calendar identifier is required and must
+  resolve to persisted `CalendarSession` rows; missing, ambiguous, or failed
+  governed lookups must not fall back to a local pandas or synthetic calendar.
 - `TimeWeighted` and `VolumeParticipation` are not supported public strategies
   until their bar-driven execution implementations are complete.
 - The authoritative portfolio universe is the signal output frame. A signal

@@ -16,12 +16,13 @@ class CalendarEventSignal(ImmediateSignal):
 
     timing_mode: Literal["calendar_event"] = "calendar_event"
     calendar_identifier: str = Field(
-        "24/7",
+        ...,
         min_length=1,
         description=(
-            "Persisted Calendar.unique_identifier or source_identifier used to "
-            "resolve sessions."
+            "Required persisted Calendar.unique_identifier or unambiguous "
+            "source_identifier used to resolve CalendarSession rows."
         ),
+        examples=["XNYS", "CRYPTO_24_7"],
     )
     session_label: str = Field(
         "regular",

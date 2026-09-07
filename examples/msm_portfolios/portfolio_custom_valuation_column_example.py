@@ -72,6 +72,7 @@ def build_fair_value_portfolio_configuration(
                 signal_weights_instance=signal_weights,
                 rebalance_strategy_instance=CalendarEventSignal(
                     calendar_identifier=CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
+                    session_label="regular",
                     rebalance_event="market_close",
                 ),
             ),

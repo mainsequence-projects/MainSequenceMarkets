@@ -4,8 +4,58 @@ import datetime as dt
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 
 from msm_portfolios.services import calendars
+
+
+def calendar_row(identifier: str = "XNYS", *, source_identifier: str = "NYSE"):
+    return SimpleNamespace(
+        uid="calendar-uid",
+        unique_identifier=identifier,
+        source_identifier=source_identifier,
+    )
+
+
+def test_rebalance_calendar_requires_a_persisted_calendar(monkeypatch) -> None:
+    monkeypatch.setattr(calendars.Calendar, "filter", lambda **_kwargs: [])
+
+    with pytest.raises(ValueError, match="Persisted rebalance calendar 'MISSING' was not found"):
+        calendars.resolve_rebalance_calendar("MISSING")
+
+
+def test_rebalance_calendar_does_not_hide_backend_lookup_failures(monkeypatch) -> None:
+    def fail_lookup(**_kwargs):
+        raise RuntimeError("backend unavailable")
+
+    monkeypatch.setattr(calendars.Calendar, "filter", fail_lookup)
+
+    with pytest.raises(RuntimeError, match="backend unavailable"):
+        calendars.resolve_rebalance_calendar("XNYS")
+
+
+def test_rebalance_calendar_rejects_ambiguous_source_identifier(monkeypatch) -> None:
+    rows = [calendar_row("XNYS-A"), calendar_row("XNYS-B")]
+
+    def fake_filter(**kwargs):
+        return [] if "unique_identifier" in kwargs else rows
+
+    monkeypatch.setattr(calendars.Calendar, "filter", fake_filter)
+
+    with pytest.raises(ValueError, match="source_identifier 'NYSE' is ambiguous"):
+        calendars.resolve_rebalance_calendar("NYSE")
+
+
+def test_legacy_calendar_resolution_is_explicit(monkeypatch) -> None:
+    monkeypatch.setattr(
+        calendars.Calendar,
+        "filter",
+        lambda **_kwargs: pytest.fail("legacy resolution must not query persisted calendars"),
+    )
+
+    resolved = calendars.resolve_legacy_rebalance_calendar("24/7")
+
+    assert isinstance(resolved, calendars.AlwaysOpenCalendarSchedule)
 
 
 def test_persisted_calendar_schedule_chunks_multi_year_session_reads(monkeypatch) -> None:

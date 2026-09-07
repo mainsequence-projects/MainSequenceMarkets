@@ -21,10 +21,13 @@ and this project follows versioned releases.
   `PortfoliosDataNode` a valuation-only consumer of canonical executed weights.
   Canonical execution and valuation timestamps now originate only from signal,
   persisted calendar, execution-data, or valuation-source observations.
+- Made `CalendarEventSignal.calendar_identifier` required and removed silent
+  fallback from persisted calendar lookup to local pandas or synthetic
+  calendars. Missing, ambiguous, and failed governed lookups now fail visibly.
 - Replaced portfolio-local price-grid controls with strict, bounded per-asset
   `ValuationAlignmentPolicy` as-of selection. Portfolio configuration no longer
   accepts `portfolio_prices_frequency` or `price_alignment_policy`.
-- Updated the Main Sequence SDK lock and managed repository skills to 8.1.2.
+- Updated the Main Sequence SDK lock and managed repository skills to 8.1.4.
 
 ### Removed
 

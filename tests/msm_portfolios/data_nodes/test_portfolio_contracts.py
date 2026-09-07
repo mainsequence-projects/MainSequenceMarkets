@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 
 from mainsequence.client.metatables import TimeIndexMetaTable
 from mainsequence.meta_tables import TimeIndexTableUpdater
@@ -41,6 +42,7 @@ from msm_portfolios.data_nodes.portfolios.temporal import (
 from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
 from msm_portfolios.models import portfolio_sqlalchemy_models
 from msm_portfolios.rebalance_strategy import CalendarEventSignal, ImmediateSignal
+from msm_portfolios.services import calendars as calendar_services
 
 
 class ExplicitValuationSource(TimeIndexTableUpdater):
@@ -168,6 +170,37 @@ def test_rebalance_strategy_serialization_distinguishes_temporal_owners() -> Non
     assert "calendar_event" in str(close)
 
 
+def test_calendar_strategy_requires_a_persisted_calendar_identifier() -> None:
+    with pytest.raises(ValidationError, match="calendar_identifier"):
+        CalendarEventSignal()
+
+
+def test_calendar_strategy_offset_changes_execution_and_hash() -> None:
+    event = pd.Timestamp("2026-01-02T21:00:00Z")
+    schedule = pd.DataFrame(
+        {"market_open": [event - pd.Timedelta(hours=6)], "market_close": [event]},
+        index=[date(2026, 1, 2)],
+    )
+    base = CalendarEventSignal(calendar_identifier="XNYS")
+    shifted = CalendarEventSignal(
+        calendar_identifier="XNYS",
+        event_offset=timedelta(minutes=5),
+    )
+    base._calendar_obj = FakeCalendar(schedule)
+    shifted._calendar_obj = FakeCalendar(schedule)
+
+    result = shifted.execution_timestamps(
+        event - pd.Timedelta(hours=1),
+        event + pd.Timedelta(hours=1),
+        signal_timestamps=pd.DatetimeIndex([]),
+    )
+
+    assert result.tolist() == [event + pd.Timedelta(minutes=5)]
+    assert canonical_rebalance_strategy_configuration(base) != (
+        canonical_rebalance_strategy_configuration(shifted)
+    )
+
+
 def test_immediate_signal_uses_only_signal_observation_timestamps() -> None:
     signal_times = pd.DatetimeIndex(
         ["2026-01-02T14:00:00Z", "2026-01-02T16:00:00Z"],
@@ -203,9 +236,33 @@ def calendar_schedule() -> pd.DataFrame:
     )
 
 
-def test_calendar_strategy_preserves_dst_holiday_and_early_close_events() -> None:
+def test_calendar_strategy_preserves_persisted_dst_holiday_and_early_close_events(
+    monkeypatch,
+) -> None:
+    persisted_calendar = SimpleNamespace(uid="calendar-uid", unique_identifier="XNYS")
+
+    def fake_filter(**kwargs):
+        return [persisted_calendar] if kwargs.get("unique_identifier") == "XNYS" else []
+
+    def fake_search(_context, **kwargs):
+        assert kwargs["calendar_uid"] == "calendar-uid"
+        assert kwargs["session_label"] == "regular"
+        return {
+            "rows": [
+                {
+                    "local_date": local_date,
+                    "opens_at": row.market_open,
+                    "closes_at": row.market_close,
+                }
+                for local_date, row in calendar_schedule().iterrows()
+            ]
+        }
+
+    monkeypatch.setattr(calendar_services.Calendar, "filter", fake_filter)
+    monkeypatch.setattr(calendar_services.Calendar, "_active_context", lambda: object())
+    monkeypatch.setattr(calendar_services, "search_calendar_sessions", fake_search)
+    monkeypatch.setattr(calendar_services, "operation_result_rows", lambda result: result["rows"])
     strategy = CalendarEventSignal(calendar_identifier="XNYS", rebalance_event="market_close")
-    strategy._calendar_obj = FakeCalendar(calendar_schedule())
     result = strategy.execution_timestamps(
         pd.Timestamp("2026-03-06T00:00:00Z"),
         pd.Timestamp("2026-03-10T23:59:00Z"),
@@ -327,24 +384,31 @@ def test_seed_lookup_is_one_set_based_request_for_all_assets() -> None:
 
 
 def test_signal_after_calendar_cutoff_is_not_applied_retroactively() -> None:
-    before = pd.DataFrame(
+    observations = pd.DataFrame(
         [
             ("2026-01-02T20:59:00Z", "signal", "btc", 0.6),
             ("2026-01-02T20:59:00Z", "signal", "eth", 0.4),
+            ("2026-01-02T21:01:00Z", "signal", "btc", 0.2),
+            ("2026-01-02T21:01:00Z", "signal", "eth", 0.8),
         ],
         columns=["time_index", "signal_uid", ASSET_IDENTIFIER, "signal_weight"],
     )
-    before["time_index"] = pd.to_datetime(before["time_index"], utc=True)
-    before = before.set_index(["time_index", "signal_uid", ASSET_IDENTIFIER])
+    observations["time_index"] = pd.to_datetime(observations["time_index"], utc=True)
+    observations = observations.set_index(["time_index", "signal_uid", ASSET_IDENTIFIER])
 
     class CanonicalSource:
         update_statistics = None
 
-        def get_df_between_dates(self, **_kwargs):
-            return before.iloc[0:0]
+        def get_df_between_dates(self, **kwargs):
+            start = pd.Timestamp(kwargs["start_date"])
+            end = pd.Timestamp(kwargs["end_date"])
+            times = observations.index.get_level_values("time_index")
+            return observations[(times >= start) & (times <= end)]
 
-        def get_last_observation(self, **_kwargs):
-            return before
+        def get_last_observation(self, **kwargs):
+            end = pd.Timestamp(kwargs["dimension_range_map"][0]["end_date"])
+            times = observations.index.get_level_values("time_index")
+            return observations[times < end]
 
     class TestSignal(SignalWeights):
         @property
@@ -360,10 +424,15 @@ def test_signal_after_calendar_cutoff_is_not_applied_retroactively() -> None:
     signal = object.__new__(TestSignal)
     signal.use_canonical_signal_weights = True
     signal.canonical_signal_weights_node = CanonicalSource()
-    event = pd.DatetimeIndex(["2026-01-02T21:00:00Z"], name="time_index")
-    result = signal.interpolate_index(event)
-    assert result.loc[event[0], "btc"] == pytest.approx(0.6)
-    assert result.loc[event[0], "eth"] == pytest.approx(0.4)
+    events = pd.DatetimeIndex(
+        ["2026-01-02T21:00:00Z", "2026-01-03T21:00:00Z"],
+        name="time_index",
+    )
+    result = signal.interpolate_index(events)
+    assert result.loc[events[0], "btc"] == pytest.approx(0.6)
+    assert result.loc[events[0], "eth"] == pytest.approx(0.4)
+    assert result.loc[events[1], "btc"] == pytest.approx(0.2)
+    assert result.loc[events[1], "eth"] == pytest.approx(0.8)
 
 
 class FrameSource:
@@ -435,6 +504,73 @@ def test_portfolio_weights_calculates_execution_rows_it_owns() -> None:
     assert result.loc[(timestamps[1], "btc"), "weights_current"] == pytest.approx(0.6)
 
 
+def test_portfolio_weights_rerun_emits_only_the_next_persisted_event() -> None:
+    first_event = pd.Timestamp("2026-03-09T20:00:00Z")
+    next_event = pd.Timestamp("2026-03-10T17:00:00Z")
+    schedule = pd.DataFrame(
+        {
+            "market_open": [
+                pd.Timestamp("2026-03-09T13:30:00Z"),
+                pd.Timestamp("2026-03-10T13:30:00Z"),
+            ],
+            "market_close": [first_event, next_event],
+        },
+        index=[date(2026, 3, 9), date(2026, 3, 10)],
+    )
+    strategy = CalendarEventSignal(calendar_identifier="XNYS")
+    strategy._calendar_obj = FakeCalendar(schedule)
+    valuations = asset_frame(
+        [
+            ("2026-03-09T20:00:00Z", "btc", 100.0),
+            ("2026-03-10T17:00:00Z", "btc", 101.0),
+        ]
+    )
+
+    class ExecutionSignal:
+        signal_uid = "signal"
+
+        def get_asset_list(self):
+            return ["btc"]
+
+        def get_asset_uid_to_override_portfolio_price(self):
+            return None
+
+        def get_df_between_dates(self, **_kwargs):
+            return pd.DataFrame()
+
+        def interpolate_index(self, index):
+            return pd.DataFrame({"btc": [1.0] * len(index)}, index=index)
+
+    node = object.__new__(PortfolioWeights)
+    node.signal_weights = ExecutionSignal()
+    node.rebalancer = strategy
+    node.execution_valuation_source = FrameSource(valuations)
+    node.valuation_column = "close"
+    node.valuation_alignment_policy = ValuationAlignmentPolicy(
+        maximum_staleness=timedelta(days=1)
+    )
+    node.update_statistics = None
+    node._resolve_portfolio_identifier = lambda: "portfolio"
+    node._execution_window = lambda _latest: (
+        first_event.to_pydatetime(),
+        next_event.to_pydatetime(),
+    )
+    node._latest_execution_time_index_value = lambda: first_event
+    node._last_executed_weights = lambda _latest: None
+
+    result = node._calculate_executed_weights()
+
+    assert result.index.get_level_values("time_index").unique().tolist() == [next_event]
+    assert result.index.get_level_values(ASSET_IDENTIFIER).tolist() == ["btc"]
+
+    node._execution_window = lambda _latest: (
+        next_event.to_pydatetime(),
+        (next_event + pd.Timedelta(hours=1)).to_pydatetime(),
+    )
+    node._latest_execution_time_index_value = lambda: next_event
+    assert node._calculate_executed_weights().empty
+
+
 def test_weekly_weights_can_drive_daily_canonical_valuations() -> None:
     days = pd.date_range("2026-01-01", periods=10, freq="D", tz="UTC")
     valuation_rows = [
@@ -475,6 +611,51 @@ def test_weekly_weights_can_drive_daily_canonical_valuations() -> None:
     assert result.index.tolist() == days.tolist()
     assert len(weight_times) == 2
     assert len(result) == 10
+
+
+def test_portfolio_values_preserve_persisted_close_timestamps_and_rerun_noop() -> None:
+    close_times = pd.DatetimeIndex(
+        calendar_schedule()["market_close"],
+        name="time_index",
+    )
+    valuations = asset_frame(
+        [(timestamp.isoformat(), "btc", 100.0 + offset) for offset, timestamp in enumerate(close_times)]
+    )
+    weights = pd.DataFrame(
+        [(close_times[0], "btc", 1.0, 0.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "weight", "weight_before"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+
+    node = object.__new__(PortfoliosDataNode)
+    node.valuation_source = FrameSource(valuations)
+    node.valuation_column = "close"
+    node.valuation_alignment_policy = ValuationAlignmentPolicy(
+        maximum_staleness=timedelta(days=4)
+    )
+    node.signal_weights = SimpleNamespace(get_asset_uid_to_override_portfolio_price=lambda: None)
+    node.commission_fee = 0.0
+    node._latest_portfolio_time_index_value = lambda: None
+    node._valuation_window = lambda _latest: (
+        close_times[0].to_pydatetime(),
+        close_times[-1].to_pydatetime(),
+    )
+    node._executed_weights_between = lambda **_kwargs: weights
+    node._apply_cumulative_portfolio_values = lambda frame: frame.assign(
+        close=(frame["return"] + 1.0).cumprod()
+    )
+
+    result = node._calculate_portfolio_workflow_values()
+
+    assert result.index.tolist() == close_times.tolist()
+    assert result["close_time"].tolist() == close_times.tolist()
+
+    latest = close_times[-1]
+    node._latest_portfolio_time_index_value = lambda: latest
+    node._valuation_window = lambda _latest: (
+        latest.to_pydatetime(),
+        (latest + pd.Timedelta(hours=1)).to_pydatetime(),
+    )
+    assert node._calculate_portfolio_workflow_values().empty
 
 
 def test_portfolio_core_contains_no_generic_date_range_or_resample() -> None:
