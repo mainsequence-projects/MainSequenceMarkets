@@ -456,6 +456,15 @@ a failure, later prevented steps are `skipped` with
 `outcome=run_terminated`. Inspect the failed step's `error` before the root
 error when explaining where execution stopped.
 
+Read image-lifecycle cost from the run's `billing` object. Its scope is exactly
+`image_lifecycle`: it may include an attributed image build, registry storage,
+and registry service, but it is not the release's runtime-compute total. A
+deployment that reuses an existing image has zero incremental image-build cost;
+do not copy the producer build's charge onto the consumer. `pending` with a
+null total means asynchronous pricing or persisted allocation is incomplete.
+Do not interpret a priced terminal zero as missing work, and do not infer or
+request internal provider, rate, allocation-evidence, or diagnostic fields.
+
 The current MCP catalog exposes run list and detail but no log-read tool. A
 logs URL in the run projection does not authorize a generic endpoint call.
 

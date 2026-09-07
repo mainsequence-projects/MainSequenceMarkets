@@ -38,6 +38,7 @@ Recommended sections:
 - [0037. Index Formula And Custom Calculation Framework](0037-index-formula-and-custom-calculation-framework.md)
 - [0038. Index User API And FastAPI Exploration](0038-index-user-api-and-fastapi-exploration.md)
 - [0039. SDK 8 Hard Cut And 1.0 Package Contract](0039-sdk-8-hard-cut-and-1-0-package-contract.md)
+- [0040. Portfolio Temporal Ownership And Execution-Valuation Separation](0040-portfolio-temporal-ownership.md)
 
 ## Command Center Decisions
 

@@ -36,7 +36,7 @@ from msm_portfolios.contrib.signals.fixed_weights import (  # noqa: E402
     FixedWeightsConfig,
 )
 from msm_portfolios.data_nodes import compute_portfolio_configuration_hash  # noqa: E402
-from msm_portfolios.rebalance_strategy import ImmediateSignal  # noqa: E402
+from msm_portfolios.rebalance_strategy import CalendarEventSignal  # noqa: E402
 
 FAIR_VALUE_SOURCE_UID_ENV = "MSM_EXAMPLE_FAIR_VALUE_TIME_INDEX_META_TABLE_UID"
 FAIR_VALUE_COLUMN = "fair_value"
@@ -67,12 +67,12 @@ def build_fair_value_portfolio_configuration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
             valuation_source_instance=valuation_source,
             valuation_column=FAIR_VALUE_COLUMN,
-            portfolio_prices_frequency="1d",
             execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.00018),
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal_weights,
-                rebalance_strategy_instance=ImmediateSignal(
-                    calendar_key=CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
+                rebalance_strategy_instance=CalendarEventSignal(
+                    calendar_identifier=CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
+                    rebalance_event="market_close",
                 ),
             ),
         ),

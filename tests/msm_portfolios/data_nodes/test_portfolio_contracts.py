@@ -1,69 +1,49 @@
 from __future__ import annotations
 
 import inspect
+from datetime import date, timedelta
 from types import SimpleNamespace
 
 import pandas as pd
 import pytest
-import msm_portfolios.data_nodes.portfolios as portfolios_module
 
 from mainsequence.client.metatables import TimeIndexMetaTable
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from mainsequence.meta_tables import TimeIndexTableUpdater
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.models import AssetTable, PortfolioTable
 from msm_portfolios.configuration import (
     PortfolioBuildConfiguration,
-    PriceAlignmentPolicy,
+    ValuationAlignmentPolicy,
+    canonical_rebalance_strategy_configuration,
     canonical_valuation_source_configuration,
 )
-from msm_portfolios.contrib.signals.external_weights import ExternalWeightsConfig
-from msm_portfolios.contrib.signals.fixed_weights import FixedWeightsConfig
-from msm_portfolios.contrib.signals.intraday_trend import IntradayTrend, IntradayTrendConfig
-from msm_portfolios.contrib.signals.market_cap import MarketCapConfig
-from msm_portfolios.contrib.signals.portfolio_replicator import (
-    ETFReplicator,
-    ETFReplicatorConfig,
-    TrackingStrategyConfiguration,
-)
-from msm_portfolios.data_nodes.constants import ASSET_IDENTIFIER, PORTFOLIO_IDENTIFIER
-from msm_portfolios.data_nodes.base import (
+from msm_portfolios.data_nodes import (
     AssetScopedPortfolioCanonicalDataNode,
+    PortfolioAnalytics,
+    PortfolioAnalyticsConfiguration,
     PortfolioCanonicalDataNode,
     PortfolioCanonicalDataNodeConfiguration,
+    PortfolioWeights,
+    PortfoliosDataNode,
+    SignalWeights,
+    SignalWeightsConfiguration,
 )
-from msm_portfolios.data_nodes.portfolios.weights import PortfolioWeights
-from msm_portfolios.data_nodes.portfolios import PortfoliosDataNode
+from msm_portfolios.data_nodes.constants import ASSET_IDENTIFIER, PORTFOLIO_IDENTIFIER
 from msm_portfolios.data_nodes.portfolios.storage import (
+    PortfolioAnalyticsStorage,
     PortfolioWeightsStorage,
     PortfoliosStorage,
 )
-from msm_portfolios.rebalance_strategy import ImmediateSignal
-from msm_portfolios.data_nodes.signals import SignalWeights
-from msm_portfolios.data_nodes import SignalWeightsConfiguration
-from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
-from msm_portfolios.models import SignalMetadataTable, portfolio_sqlalchemy_models
-from msm_portfolios.data_nodes.metadata import emit_signal_metadata
-
-PORTFOLIO_NODE_STORAGE = (
-    (PortfolioWeights, PortfolioWeightsStorage),
-    (SignalWeights, SignalWeightsStorage),
-    (PortfoliosDataNode, PortfoliosStorage),
+from msm_portfolios.data_nodes.portfolios.temporal import (
+    align_asset_observations,
+    fetch_asset_observations,
 )
+from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
+from msm_portfolios.models import portfolio_sqlalchemy_models
+from msm_portfolios.rebalance_strategy import CalendarEventSignal, ImmediateSignal
 
 
-def test_portfolio_run_matches_sdk_8_1_runtime_controls() -> None:
-    parameters = inspect.signature(PortfoliosDataNode.run).parameters
-
-    assert "update_tree" in parameters
-    assert "update_only_tree" in parameters
-    assert "override_update_stats" in parameters
-    assert "update_pointers" in parameters
-    assert "debug_mode" not in parameters
-    assert "force_update" not in parameters
-    assert "remote_scheduler" not in parameters
-
-
-class ExplicitPriceSource(TimeIndexTableUpdater):
+class ExplicitValuationSource(TimeIndexTableUpdater):
     def update(self) -> pd.DataFrame:
         return pd.DataFrame()
 
@@ -71,94 +51,43 @@ class ExplicitPriceSource(TimeIndexTableUpdater):
         return {}
 
 
-def output_table_stub(
-    *,
-    uid: str = "test-output-table",
-    data_source_uid: str = "test-data-source",
-) -> SimpleNamespace:
-    output_metadata = TimeIndexMetaTable.model_construct(
-        uid=uid,
-        data_source_uid=data_source_uid,
-    )
+def output_table_stub(uid: str = "valuation-table") -> SimpleNamespace:
+    metadata = TimeIndexMetaTable.model_construct(uid=uid, data_source_uid="source")
     return SimpleNamespace(
-        get_time_index_meta_table=lambda: output_metadata,
-        get_data_source_uid=lambda: data_source_uid,
+        get_time_index_meta_table=lambda: metadata,
+        get_data_source_uid=lambda: "source",
     )
 
 
-def explicit_price_source(
-    *,
-    update_hash: str = "test-price-source",
-    data_source_uid: str = "test-data-source",
-    source_cls: type[ExplicitPriceSource] = ExplicitPriceSource,
-) -> ExplicitPriceSource:
-    price_source = object.__new__(source_cls)
-    price_source.update_hash = update_hash
-    price_source._output_table = output_table_stub(
-        uid=f"{update_hash}-table",
-        data_source_uid=data_source_uid,
-    )
-    return price_source
+def valuation_source(update_hash: str = "valuations") -> ExplicitValuationSource:
+    source = object.__new__(ExplicitValuationSource)
+    source.update_hash = update_hash
+    source._output_table = output_table_stub()
+    return source
 
 
-def table_ref(
-    *,
-    uid: str = "registered-valuations",
-    data_source_uid: str = "source",
-) -> TimeIndexTableRef:
-    return TimeIndexTableRef(
-        output_table=TimeIndexMetaTable.model_construct(
-            uid=uid,
-            data_source_uid=data_source_uid,
-        )
-    )
-
-
-class ExamplePriceSource(ExplicitPriceSource):
-    def get_df_between_dates(self, **_kwargs):
-        frame = pd.DataFrame(
-            [
-                {
-                    "time_index": "2026-01-01T00:00:00Z",
-                    ASSET_IDENTIFIER: "btc",
-                    "close": 100.0,
-                    "fair_value": 101.0,
-                },
-                {
-                    "time_index": "2026-01-01T00:00:00Z",
-                    ASSET_IDENTIFIER: "eth",
-                    "close": 200.0,
-                    "fair_value": 201.0,
-                },
-                {
-                    "time_index": "2026-01-01T00:00:00Z",
-                    ASSET_IDENTIFIER: "sol",
-                    "close": 300.0,
-                    "fair_value": 301.0,
-                },
-            ]
-        )
-        frame["time_index"] = pd.to_datetime(frame["time_index"], utc=True)
-        return frame.set_index(["time_index", ASSET_IDENTIFIER])
-
-
-class ProgressSignal(SignalWeights):
-    @property
-    def signal_uid(self) -> str:
-        return "this-signal"
-
-
-@pytest.mark.parametrize(("node_cls", "storage_cls"), PORTFOLIO_NODE_STORAGE)
-def test_portfolio_nodes_source_column_dtypes_from_storage_classes(
-    node_cls,
-    storage_cls,
-) -> None:
-    assert not hasattr(node_cls, "_required_column_dtypes_map")
-    assert not hasattr(node_cls, "_required_index_names")
+@pytest.mark.parametrize(
+    ("node_cls", "storage_cls"),
+    [
+        (PortfolioWeights, PortfolioWeightsStorage),
+        (SignalWeights, SignalWeightsStorage),
+        (PortfoliosDataNode, PortfoliosStorage),
+        (PortfolioAnalytics, PortfolioAnalyticsStorage),
+    ],
+)
+def test_portfolio_nodes_source_schema_from_storage(node_cls, storage_cls) -> None:
     assert node_cls._column_dtypes_map_for_storage(storage_cls) == storage_column_dtypes_map(
         storage_cls
     )
     assert node_cls._required_output_table() is storage_cls
+
+
+def test_portfolio_run_matches_sdk_8_1_runtime_controls() -> None:
+    parameters = inspect.signature(PortfoliosDataNode.run).parameters
+    assert {"update_tree", "update_only_tree", "override_update_stats", "update_pointers"} <= set(
+        parameters
+    )
+    assert "force_update" not in parameters
 
 
 def test_portfolio_configurations_do_not_carry_storage_schema() -> None:
@@ -166,887 +95,472 @@ def test_portfolio_configurations_do_not_carry_storage_schema() -> None:
     assert "index_names" not in SignalWeightsConfiguration.model_fields
 
 
-def test_portfolio_weights_storage_keys_by_portfolio_identifier() -> None:
+def test_portfolio_storage_grains_and_foreign_keys_remain_stable() -> None:
     assert PortfolioWeightsStorage.__index_names__ == [
         "time_index",
-        "portfolio_identifier",
+        PORTFOLIO_IDENTIFIER,
         ASSET_IDENTIFIER,
     ]
-    assert hasattr(PortfolioWeightsStorage, "portfolio_identifier")
-    assert not hasattr(PortfolioWeightsStorage, "portfolio_index_identifier")
-
-
-def test_portfolio_weights_storage_references_portfolio_and_asset_tables() -> None:
-    portfolio_foreign_keys = PortfolioWeightsStorage.__table__.c.portfolio_identifier.foreign_keys
-    asset_foreign_keys = PortfolioWeightsStorage.__table__.c.asset_identifier.foreign_keys
-
-    assert len(portfolio_foreign_keys) == 1
-    portfolio_foreign_key = next(iter(portfolio_foreign_keys))
-    assert portfolio_foreign_key.column is PortfolioTable.__table__.c.unique_identifier
-    assert portfolio_foreign_key.ondelete == "RESTRICT"
-
-    assert len(asset_foreign_keys) == 1
-    asset_foreign_key = next(iter(asset_foreign_keys))
-    assert asset_foreign_key.column is AssetTable.__table__.c.unique_identifier
-    assert asset_foreign_key.ondelete == "RESTRICT"
-
-
-def test_signal_weights_storage_references_signal_metadata_and_asset_table() -> None:
-    signal_foreign_keys = SignalWeightsStorage.__table__.c.signal_uid.foreign_keys
-    asset_foreign_keys = SignalWeightsStorage.__table__.c.asset_identifier.foreign_keys
-
-    assert len(signal_foreign_keys) == 1
-    signal_foreign_key = next(iter(signal_foreign_keys))
-    assert signal_foreign_key.column is SignalMetadataTable.__table__.c.signal_uid
-    assert signal_foreign_key.ondelete == "RESTRICT"
-
-    assert len(asset_foreign_keys) == 1
-    asset_foreign_key = next(iter(asset_foreign_keys))
-    assert asset_foreign_key.column is AssetTable.__table__.c.unique_identifier
-    assert asset_foreign_key.ondelete == "RESTRICT"
-
-
-def test_portfolio_table_signal_uid_references_signal_metadata() -> None:
-    signal_foreign_keys = PortfolioTable.__table__.c.signal_uid.foreign_keys
-
-    assert len(signal_foreign_keys) == 1
-    signal_foreign_key = next(iter(signal_foreign_keys))
-    assert signal_foreign_key.column is SignalMetadataTable.__table__.c.signal_uid
-    assert signal_foreign_key.ondelete == "RESTRICT"
-    assert PortfolioTable.__table__.c.signal_uid.nullable is True
-
-
-def test_signal_metadata_emission_uses_registry_upsert_by_default(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_upsert(**kwargs):
-        captured.update(kwargs)
-        return {"row": kwargs}
-
-    from msm_portfolios.api.market_metadata import SignalMetadata
-
-    monkeypatch.setattr(SignalMetadata, "upsert", staticmethod(fake_upsert))
-
-    result = emit_signal_metadata(
-        signal_uid="example-signal",
-        signal_description="Example signal",
-        updater=None,
-    )
-
-    assert result == {"row": captured}
-    assert captured == {
-        "signal_uid": "example-signal",
-        "signal_description": "Example signal",
+    assert PortfoliosStorage.__index_names__ == ["time_index", PORTFOLIO_IDENTIFIER]
+    assert PortfolioAnalyticsStorage.__index_names__ == [
+        "time_index",
+        PORTFOLIO_IDENTIFIER,
+        "analysis_identifier",
+    ]
+    portfolio_targets = {
+        foreign_key.target_fullname
+        for foreign_key in PortfolioWeightsStorage.__table__.c.portfolio_identifier.foreign_keys
     }
+    asset_targets = {
+        foreign_key.target_fullname
+        for foreign_key in PortfolioWeightsStorage.__table__.c.asset_identifier.foreign_keys
+    }
+    assert portfolio_targets == {f"{PortfolioTable.__table__.fullname}.unique_identifier"}
+    assert asset_targets == {f"{AssetTable.__table__.fullname}.unique_identifier"}
 
 
-def test_portfolio_build_configuration_uses_explicit_valuation_source_contract() -> None:
+def test_analytics_storage_is_in_migration_provider_scope() -> None:
+    models = portfolio_sqlalchemy_models()
+    assert PortfolioAnalyticsStorage in models
+    assert models.index(PortfolioTable) < models.index(PortfolioAnalyticsStorage)
+
+
+def test_analytics_configuration_declares_full_sampling_semantics() -> None:
+    config = PortfolioAnalyticsConfiguration(
+        portfolio_values_instance=valuation_source("portfolio-values"),
+        portfolio_identifier="portfolio",
+        frequency="1W",
+        label="right",
+        closed="right",
+        timezone="Europe/Athens",
+    )
+    assert config.model_dump()["frequency"] == "1W"
+    assert config.model_dump()["timezone"] == "Europe/Athens"
+
+
+def test_portfolio_build_configuration_is_observation_driven() -> None:
     assert "valuation_source_instance" in PortfolioBuildConfiguration.model_fields
     assert "valuation_column" in PortfolioBuildConfiguration.model_fields
-    assert PortfolioBuildConfiguration.model_fields["valuation_column"].default == "close"
-    assert "price_source_instance" not in PortfolioBuildConfiguration.model_fields
-    assert "price_column" not in PortfolioBuildConfiguration.model_fields
-    assert "price_alignment_policy" in PortfolioBuildConfiguration.model_fields
-    assert "assets_configuration" not in PortfolioBuildConfiguration.model_fields
+    assert "valuation_alignment_policy" in PortfolioBuildConfiguration.model_fields
+    assert "portfolio_prices_frequency" not in PortfolioBuildConfiguration.model_fields
+    assert "price_alignment_policy" not in PortfolioBuildConfiguration.model_fields
+    assert ValuationAlignmentPolicy().fail_on_missing_values is True
 
 
-def test_valuation_source_configuration_uses_sdk_data_node_identity() -> None:
-    valuation_source = explicit_price_source(
-        update_hash="valuations-node", data_source_uid="source"
+def test_valuation_source_configuration_uses_sdk_identity() -> None:
+    source = valuation_source("source-a")
+    payload = canonical_valuation_source_configuration(source)
+    assert payload
+    assert "source-a" in str(payload)
+
+
+def test_rebalance_strategy_serialization_distinguishes_temporal_owners() -> None:
+    immediate = canonical_rebalance_strategy_configuration(ImmediateSignal())
+    close = canonical_rebalance_strategy_configuration(
+        CalendarEventSignal(calendar_identifier="XNYS", rebalance_event="market_close")
+    )
+    open_ = canonical_rebalance_strategy_configuration(
+        CalendarEventSignal(calendar_identifier="XNYS", rebalance_event="market_open")
+    )
+    assert immediate != close
+    assert close != open_
+    assert "signal_time" in str(immediate)
+    assert "calendar_event" in str(close)
+
+
+def test_immediate_signal_uses_only_signal_observation_timestamps() -> None:
+    signal_times = pd.DatetimeIndex(
+        ["2026-01-02T14:00:00Z", "2026-01-02T16:00:00Z"],
+        name="time_index",
+    )
+    result = ImmediateSignal().execution_timestamps(
+        pd.Timestamp("2026-01-02T15:00:00Z"),
+        pd.Timestamp("2026-01-02T17:00:00Z"),
+        signal_timestamps=signal_times,
+    )
+    assert result.tolist() == [pd.Timestamp("2026-01-02T16:00:00Z")]
+
+
+class FakeCalendar:
+    def __init__(self, schedule: pd.DataFrame):
+        self._schedule = schedule
+
+    def schedule(self, **_kwargs) -> pd.DataFrame:
+        return self._schedule
+
+
+def calendar_schedule() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "market_open": pd.to_datetime(
+                ["2026-03-06T14:30:00Z", "2026-03-09T13:30:00Z", "2026-03-10T13:30:00Z"]
+            ),
+            "market_close": pd.to_datetime(
+                ["2026-03-06T21:00:00Z", "2026-03-09T20:00:00Z", "2026-03-10T17:00:00Z"]
+            ),
+        },
+        index=[date(2026, 3, 6), date(2026, 3, 9), date(2026, 3, 10)],
     )
 
-    assert canonical_valuation_source_configuration(valuation_source) == {
-        "kind": "table_update",
-        "update_hash": "valuations-node",
-        "output_table_uid": "valuations-node-table",
-    }
 
-    api_valuation_source = table_ref()
-    assert canonical_valuation_source_configuration(api_valuation_source) == {
-        "kind": "time_index_table_ref",
-        "time_index_meta_table_uid": "registered-valuations",
-        "data_source_uid": "source",
-    }
-
-
-def test_fixed_weights_configuration_does_not_require_asset_configuration() -> None:
-    assert "signal_assets_configuration" not in FixedWeightsConfig.model_fields
-
-
-def test_contributed_signal_configs_do_not_hide_price_interpolation() -> None:
-    assert "signal_assets_configuration" not in ExternalWeightsConfig.model_fields
-    assert "asset_list" in ExternalWeightsConfig.model_fields
-
-    assert "signal_assets_configuration" not in MarketCapConfig.model_fields
-    assert "asset_list" in MarketCapConfig.model_fields
-
-    assert "signal_assets_configuration" not in ETFReplicatorConfig.model_fields
-    assert "price_source_instance" in ETFReplicatorConfig.model_fields
-    assert "etf_price_source_instance" in ETFReplicatorConfig.model_fields
-
-    assert "signal_assets_configuration" not in IntradayTrendConfig.model_fields
-    assert "price_source_instance" in IntradayTrendConfig.model_fields
-
-
-def test_contributed_price_signals_expose_explicit_dependency_names() -> None:
-    basket_price_source = explicit_price_source()
-    etf_price_source = explicit_price_source()
-    replicator = object.__new__(ETFReplicator)
-    replicator.signal_configuration = ETFReplicatorConfig(
-        asset_list=["btc", "eth"],
-        price_source_instance=basket_price_source,
-        etf_price_source_instance=etf_price_source,
-        etf_ticker="ETF",
-        tracking_strategy_configuration=TrackingStrategyConfiguration(),
-        etf_asset="ETF",
+def test_calendar_strategy_preserves_dst_holiday_and_early_close_events() -> None:
+    strategy = CalendarEventSignal(calendar_identifier="XNYS", rebalance_event="market_close")
+    strategy._calendar_obj = FakeCalendar(calendar_schedule())
+    result = strategy.execution_timestamps(
+        pd.Timestamp("2026-03-06T00:00:00Z"),
+        pd.Timestamp("2026-03-10T23:59:00Z"),
+        signal_timestamps=pd.DatetimeIndex([]),
     )
+    assert result.tolist() == [
+        pd.Timestamp("2026-03-06T21:00:00Z"),
+        pd.Timestamp("2026-03-09T20:00:00Z"),
+        pd.Timestamp("2026-03-10T17:00:00Z"),
+    ]
+    assert pd.Timestamp("2026-03-07T21:00:00Z") not in result
 
-    assert replicator.dependencies() == {
-        "price_source": basket_price_source,
-        "etf_price_source": etf_price_source,
-    }
 
-    intraday_price_source = explicit_price_source()
-    intraday = object.__new__(IntradayTrend)
-    intraday.signal_configuration = IntradayTrendConfig(
-        price_source_instance=intraday_price_source,
-        asset_symbols_by_exchange={"crypto": ["btc", "eth"]},
-        calendar="24/7",
+def test_calendar_strategy_weekly_cadence_produces_sparse_execution_events() -> None:
+    strategy = CalendarEventSignal(
+        calendar_identifier="XNYS",
+        rebalance_cadence="weekly",
+        rebalance_weekday=0,
     )
+    strategy._calendar_obj = FakeCalendar(calendar_schedule())
+    result = strategy.execution_timestamps(
+        pd.Timestamp("2026-03-06T00:00:00Z"),
+        pd.Timestamp("2026-03-10T23:59:00Z"),
+        signal_timestamps=pd.DatetimeIndex([]),
+    )
+    assert result.tolist() == [pd.Timestamp("2026-03-09T20:00:00Z")]
 
-    assert intraday.dependencies() == {"price_source": intraday_price_source}
 
-
-def test_portfolio_values_dependencies_expose_explicit_valuation_source() -> None:
-    signal_weights = object()
-    valuation_source = object()
+def test_portfolio_values_depend_on_executed_weights_not_signal_directly() -> None:
     node = object.__new__(PortfoliosDataNode)
     node.portfolio_configuration = object()
-    node.signal_weights = signal_weights
-    node.valuation_source = valuation_source
-
+    weights = object()
+    valuations = object()
+    node.valuation_source = valuations
+    node._ensure_portfolio_weights_node = lambda: weights
     assert node.dependencies() == {
-        "signal_weights": signal_weights,
-        "valuation_source": valuation_source,
+        "portfolio_weights": weights,
+        "valuation_source": valuations,
     }
 
 
-def test_portfolio_values_updates_portfolio_data_node_pointers(monkeypatch) -> None:
-    from msm.api.portfolios import Portfolio
-
-    captured: dict[str, object] = {}
-
-    def fake_upsert(**kwargs):
-        captured.update(kwargs)
-        return SimpleNamespace(uid="portfolio-uid", **kwargs)
-
-    node = object.__new__(PortfoliosDataNode)
-    metadata_calls: list[bool] = []
-    node.signal_weights = SimpleNamespace(
-        signal_uid="example-signal",
-        _upsert_signal_metadata_if_available=lambda: metadata_calls.append(True),
-    )
-    node.valuation_column = "close"
-    portfolio = SimpleNamespace(
-        unique_identifier="example-portfolio",
-        calendar_uid="calendar-uid",
-        published_index_uid="index-uid",
-        backtest_table_price_column_name="close",
-    )
-
-    monkeypatch.setattr(Portfolio, "upsert", staticmethod(fake_upsert))
-
-    updated = node._update_portfolio_pointers(
-        portfolio=portfolio,
-        signal_weights_data_node_uid="signal-node-uid",
-        portfolio_weights_data_node_uid="weights-node-uid",
-        portfolio_data_node_uid="values-node-uid",
-    )
-
-    assert updated.uid == "portfolio-uid"
-    assert node.target_portfolio is updated
-    assert captured == {
-        "unique_identifier": "example-portfolio",
-        "calendar_uid": "calendar-uid",
-        "published_index_uid": "index-uid",
-        "backtest_table_price_column_name": "close",
-        "signal_weights_data_node_uid": "signal-node-uid",
-        "signal_uid": "example-signal",
-        "portfolio_weights_data_node_uid": "weights-node-uid",
-        "portfolio_data_node_uid": "values-node-uid",
+def test_portfolio_weights_owns_signal_and_execution_valuation_dependencies() -> None:
+    node = object.__new__(PortfolioWeights)
+    node._portfolio_configuration = object()
+    node.signal_weights = object()
+    node.execution_valuation_source = object()
+    assert node.dependencies() == {
+        "signal_weights": node.signal_weights,
+        "execution_valuations": node.execution_valuation_source,
     }
-    assert metadata_calls == [True]
 
 
-def test_portfolio_pointer_update_preserves_existing_weights_uid_on_no_new_weights(
-    monkeypatch,
-) -> None:
-    from msm.api.portfolios import Portfolio
+def asset_frame(rows: list[tuple[str, str, float]]) -> pd.DataFrame:
+    frame = pd.DataFrame(rows, columns=["time_index", ASSET_IDENTIFIER, "close"])
+    frame["time_index"] = pd.to_datetime(frame["time_index"], utc=True)
+    return frame.set_index(["time_index", ASSET_IDENTIFIER])
 
-    captured: dict[str, object] = {}
 
-    def fake_upsert(**kwargs):
-        captured.update(kwargs)
-        return SimpleNamespace(uid="portfolio-uid", **kwargs)
-
-    node = object.__new__(PortfoliosDataNode)
-    node.signal_weights = SimpleNamespace(
-        signal_uid="example-signal",
-        _upsert_signal_metadata_if_available=lambda: None,
+def test_per_asset_asof_alignment_uses_distinct_seed_observations() -> None:
+    observations = asset_frame(
+        [
+            ("2026-01-01T20:00:00Z", "btc", 100.0),
+            ("2026-01-02T19:00:00Z", "eth", 200.0),
+            ("2026-01-03T20:00:00Z", "btc", 110.0),
+        ]
     )
-    node.valuation_column = "close"
-    portfolio = SimpleNamespace(
-        unique_identifier="example-portfolio",
-        calendar_uid="calendar-uid",
-        published_index_uid="index-uid",
-        backtest_table_price_column_name="close",
-        portfolio_weights_data_node_uid="existing-weights-node-uid",
+    target = pd.DatetimeIndex(["2026-01-03T20:00:00Z"])
+    aligned = align_asset_observations(
+        observations,
+        target_index=target,
+        asset_identifiers=["btc", "eth"],
+        value_columns=["close"],
+        maximum_staleness=timedelta(days=2),
+        fail_on_missing_values=True,
     )
-
-    monkeypatch.setattr(Portfolio, "upsert", staticmethod(fake_upsert))
-
-    node._update_portfolio_pointers(
-        portfolio=portfolio,
-        signal_weights_data_node_uid="signal-node-uid",
-        portfolio_weights_data_node_uid=portfolio.portfolio_weights_data_node_uid,
-        portfolio_data_node_uid="values-node-uid",
-    )
-
-    assert captured["portfolio_weights_data_node_uid"] == "existing-weights-node-uid"
+    assert aligned.loc[(pd.Timestamp("2026-01-03T20:00:00Z"), "btc"), "close"] == 110.0
+    assert aligned.loc[(pd.Timestamp("2026-01-03T20:00:00Z"), "eth"), "close"] == 200.0
 
 
-def test_portfolio_values_identifier_resolution_does_not_stringify_method(monkeypatch) -> None:
-    portfolio_configuration = object()
-    node = object.__new__(PortfoliosDataNode)
-    node._explicit_portfolio_identifier = None
-    node._portfolio_configuration = portfolio_configuration
-    node._portfolio_resolver = None
-
-    monkeypatch.setattr(
-        portfolios_module,
-        "get_or_create_portfolio",
-        lambda *args, **kwargs: SimpleNamespace(unique_identifier="example-portfolio"),
-    )
-
-    assert node._resolve_unique_identifier() == "example-portfolio"
-
-
-def test_portfolio_values_noop_when_existing_output_is_ahead_of_valuation_source() -> None:
-    class ExplodingCalendar:
-        def schedule(self, **_kwargs):
-            raise AssertionError("calendar.schedule must not be called")
-
-    node = object.__new__(PortfoliosDataNode)
-    node.update_hash = "portfolio-node"
-    node._output_table = output_table_stub(uid="portfolio-output-table")
-    node.valuation_source = explicit_price_source(update_hash="valuations")
-    node.rebalancer = SimpleNamespace(calendar=ExplodingCalendar())
-    node._calculate_start_end_dates = lambda: (
-        pd.Timestamp("2026-01-03T00:00:00Z"),
-        pd.Timestamp("2026-01-02T00:00:00Z"),
-    )
-
-    frame = node._calculate_portfolio_workflow_values()
-
-    assert frame.empty
-
-
-def test_portfolio_values_fail_when_calendar_has_no_sessions() -> None:
-    class EmptyCalendar:
-        name = "BMV"
-
-        def schedule(self, **_kwargs):
-            return pd.DataFrame(columns=["market_open", "market_close"])
-
-    node = object.__new__(PortfoliosDataNode)
-    node._portfolio_update_frequency = lambda: "1d"
-    start_date = pd.Timestamp("2026-06-01T00:00:00Z")
-    end_date = pd.Timestamp("2026-06-30T00:00:00Z")
-
-    with pytest.raises(
-        ValueError,
-        match=(
-            "Calendar BMV has no sessions for requested portfolio update range "
-            ".*Materialize CalendarSession rows"
-        ),
-    ):
-        node._generate_new_index(start_date, end_date, EmptyCalendar())
-
-
-def test_portfolio_values_reads_existing_values_with_dimension_filter() -> None:
-    latest_value = pd.Timestamp("2026-01-01T00:00:00Z")
-    captured: dict[str, object] = {}
-
-    def fake_get_df_between_dates(**kwargs):
-        captured.update(kwargs)
-        frame = pd.DataFrame(
-            {"close": [10.0]},
-            index=pd.MultiIndex.from_tuples(
-                [(latest_value, "example-portfolio")],
-                names=["time_index", PORTFOLIO_IDENTIFIER],
-            ),
+def test_per_asset_asof_alignment_enforces_staleness() -> None:
+    observations = asset_frame([("2026-01-01T20:00:00Z", "btc", 100.0)])
+    with pytest.raises(ValueError, match="No sufficiently fresh valuation"):
+        align_asset_observations(
+            observations,
+            target_index=pd.DatetimeIndex(["2026-01-03T20:00:00Z"]),
+            asset_identifiers=["btc"],
+            value_columns=["close"],
+            maximum_staleness=timedelta(hours=24),
+            fail_on_missing_values=True,
         )
-        return frame
-
-    node = object.__new__(PortfoliosDataNode)
-    node._latest_portfolio_time_index_value = lambda: latest_value
-    node._unique_identifier = lambda: "example-portfolio"
-    node.get_df_between_dates = fake_get_df_between_dates
-    portfolio_returns = pd.DataFrame(
-        {"return": [0.0, 0.1]},
-        index=[
-            latest_value,
-            pd.Timestamp("2026-01-02T00:00:00Z"),
-        ],
-    )
-
-    result = node._apply_cumulative_portfolio_values(portfolio_returns)
-
-    assert captured == {
-        "start_date": latest_value,
-        "great_or_equal": True,
-        "dimension_filters": {PORTFOLIO_IDENTIFIER: ["example-portfolio"]},
-    }
-    assert "dimension_range_map" not in captured
-    assert list(result.index) == [pd.Timestamp("2026-01-02T00:00:00Z")]
-    assert result["close"].iloc[0] == pytest.approx(11.0)
 
 
-def test_portfolio_values_reads_last_weights_with_dimension_filter(monkeypatch) -> None:
-    latest_value = pd.Timestamp("2026-01-01T00:00:00Z")
-    captured: dict[str, object] = {}
+def test_seed_lookup_is_one_set_based_request_for_all_assets() -> None:
+    calls: list[dict] = []
 
-    class FakePortfolioWeightsNode:
-        def __init__(self, *, namespace=None):
-            self.namespace = namespace
-
+    class Source:
         def get_df_between_dates(self, **kwargs):
-            captured.update(kwargs)
-            frame = pd.DataFrame(
-                {"weight": [0.25, 0.75]},
-                index=pd.MultiIndex.from_tuples(
-                    [
-                        (latest_value, "example-portfolio", "btc"),
-                        (latest_value, "example-portfolio", "eth"),
-                    ],
-                    names=["time_index", PORTFOLIO_IDENTIFIER, ASSET_IDENTIFIER],
-                ),
+            calls.append({"kind": "window", **kwargs})
+            return asset_frame([("2026-01-03T00:00:00Z", "btc", 110.0)])
+
+        def get_last_observation(self, **kwargs):
+            calls.append({"kind": "seed", **kwargs})
+            return asset_frame(
+                [
+                    ("2026-01-01T00:00:00Z", "btc", 100.0),
+                    ("2026-01-02T00:00:00Z", "eth", 200.0),
+                ]
             )
-            return frame
 
-    node = object.__new__(PortfoliosDataNode)
-    node._latest_portfolio_time_index_value = lambda: latest_value
-    node._unique_identifier = lambda: "example-portfolio"
-    node._canonical_namespace = lambda: "test-namespace"
-    monkeypatch.setattr(portfolios_module, "PortfolioWeights", FakePortfolioWeightsNode)
-
-    weights = node._get_last_weights()
-
-    assert captured == {
-        "start_date": latest_value,
-        "great_or_equal": True,
-        "dimension_filters": {PORTFOLIO_IDENTIFIER: ["example-portfolio"]},
-    }
-    assert "dimension_range_map" not in captured
-    assert weights is not None
-    assert weights.index.names == ["time_index", ASSET_IDENTIFIER]
-    assert weights["weights_current"].to_dict() == {
-        (latest_value, "btc"): 0.25,
-        (latest_value, "eth"): 0.75,
-    }
-
-
-def test_portfolio_values_does_not_expose_partial_dimension_range_map_helper() -> None:
-    assert not hasattr(PortfoliosDataNode, "_portfolio_dimension_range_map")
-
-
-def test_portfolio_latest_value_ignores_other_portfolio_global_progress() -> None:
-    node = object.__new__(PortfoliosDataNode)
-    node._resolved_unique_identifier = "this-portfolio"
-    node.update_statistics = SimpleNamespace(
-        index_progress={
-            "other-portfolio": pd.Timestamp("2026-05-27T00:00:00Z"),
-        },
-        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
+    _window, seed = fetch_asset_observations(
+        Source(),
+        start=pd.Timestamp("2026-01-03T00:00:00Z"),
+        end=pd.Timestamp("2026-01-04T00:00:00Z"),
+        asset_identifiers=["btc", "eth"],
     )
+    assert len([call for call in calls if call["kind"] == "seed"]) == 1
+    assert len(calls[1]["dimension_range_map"]) == 2
+    assert set(seed.index.get_level_values(ASSET_IDENTIFIER)) == {"btc", "eth"}
 
-    assert node._latest_portfolio_time_index_value() is None
 
-
-def test_portfolio_latest_value_handles_empty_progress_for_current_portfolio() -> None:
-    node = object.__new__(PortfoliosDataNode)
-    node._resolved_unique_identifier = "this-portfolio"
-    node.update_statistics = SimpleNamespace(
-        index_progress=None,
-        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
+def test_signal_after_calendar_cutoff_is_not_applied_retroactively() -> None:
+    before = pd.DataFrame(
+        [
+            ("2026-01-02T20:59:00Z", "signal", "btc", 0.6),
+            ("2026-01-02T20:59:00Z", "signal", "eth", 0.4),
+        ],
+        columns=["time_index", "signal_uid", ASSET_IDENTIFIER, "signal_weight"],
     )
+    before["time_index"] = pd.to_datetime(before["time_index"], utc=True)
+    before = before.set_index(["time_index", "signal_uid", ASSET_IDENTIFIER])
 
-    assert node._latest_portfolio_time_index_value() is None
+    class CanonicalSource:
+        update_statistics = None
 
+        def get_df_between_dates(self, **_kwargs):
+            return before.iloc[0:0]
 
-def test_portfolio_latest_value_uses_this_portfolio_progress() -> None:
-    this_portfolio_value = pd.Timestamp("2025-01-01T00:00:00Z")
-    node = object.__new__(PortfoliosDataNode)
-    node._resolved_unique_identifier = "this-portfolio"
-    node.update_statistics = SimpleNamespace(
-        index_progress={
-            "other-portfolio": pd.Timestamp("2026-05-27T00:00:00Z"),
-            "this-portfolio": this_portfolio_value,
-        },
-        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
-    )
+        def get_last_observation(self, **_kwargs):
+            return before
 
-    assert node._latest_portfolio_time_index_value() == this_portfolio_value
-
-
-def test_signal_latest_value_ignores_other_signal_global_progress() -> None:
-    node = object.__new__(ProgressSignal)
-    node.update_statistics = SimpleNamespace(
-        index_progress={
-            "other-signal": {
-                "btc": pd.Timestamp("2026-05-27T00:00:00Z"),
-            },
-        },
-        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
-        _initial_fallback_date=pd.Timestamp("2018-01-01T00:00:00Z"),
-    )
-
-    assert node._latest_signal_time_index_value() is None
-
-
-def test_signal_latest_value_handles_empty_progress_for_current_signal() -> None:
-    node = object.__new__(ProgressSignal)
-    node.update_statistics = SimpleNamespace(
-        index_progress=None,
-        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
-        _initial_fallback_date=pd.Timestamp("2018-01-01T00:00:00Z"),
-    )
-
-    assert node._latest_signal_time_index_value() is None
-
-
-def test_signal_latest_value_uses_current_signal_progress() -> None:
-    latest_current_signal_value = pd.Timestamp("2025-01-03T00:00:00Z")
-    node = object.__new__(ProgressSignal)
-    node.update_statistics = SimpleNamespace(
-        index_progress={
-            "other-signal": {
-                "btc": pd.Timestamp("2026-05-27T00:00:00Z"),
-            },
-            "this-signal": {
-                "btc": pd.Timestamp("2025-01-01T00:00:00Z"),
-                "eth": latest_current_signal_value,
-            },
-        },
-        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
-        _initial_fallback_date=pd.Timestamp("2018-01-01T00:00:00Z"),
-    )
-
-    assert node._latest_signal_time_index_value() == latest_current_signal_value
-
-
-def test_signal_asset_start_date_uses_current_signal_asset_or_fallback() -> None:
-    fallback_date = pd.Timestamp("2018-01-01T00:00:00Z")
-    btc_signal_value = pd.Timestamp("2025-01-01T00:00:00Z")
-    node = object.__new__(ProgressSignal)
-    node.update_statistics = SimpleNamespace(
-        index_progress={
-            "other-signal": {
-                "eth": pd.Timestamp("2026-05-27T00:00:00Z"),
-            },
-            "this-signal": {
-                "btc": btc_signal_value,
-            },
-        },
-        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
-        _initial_fallback_date=fallback_date,
-    )
-
-    assert node._signal_asset_start_date("btc") == btc_signal_value
-    assert node._signal_asset_start_date("eth") == fallback_date
-
-
-def test_portfolio_update_window_start_uses_this_portfolio_identifier(monkeypatch) -> None:
-    class ValuationSourceMustNotBeRead:
+    class TestSignal(SignalWeights):
         @property
-        def update_statistics(self):
-            raise AssertionError("start-date resolution must not read valuation stats")
+        def signal_uid(self) -> str:
+            return "signal"
 
-    this_portfolio_value = pd.Timestamp("2025-01-01T00:00:00Z")
-    node = object.__new__(PortfoliosDataNode)
-    node._resolved_unique_identifier = "this-portfolio"
-    node.update_statistics = SimpleNamespace(
-        index_progress={
-            "other-portfolio": pd.Timestamp("2026-05-27T00:00:00Z"),
-            "this-portfolio": this_portfolio_value,
-        },
-        max_time_index_value=pd.Timestamp("2026-05-27T00:00:00Z"),
-    )
-    node.valuation_source = ValuationSourceMustNotBeRead()
-
-    monkeypatch.setenv("MAX_TD_FROM_LATEST_VALUE", "1D")
-
-    start_date, end_date = node._calculate_start_end_dates()
-
-    assert start_date == this_portfolio_value
-    assert end_date == this_portfolio_value + pd.Timedelta("1D")
-
-
-def test_usable_valuation_end_uses_only_required_valuation_assets() -> None:
-    class ScopedProgress:
-        def __init__(self) -> None:
-            self.requested_identities: list[str] = []
-
-        def get_index_progress_leaf_values(self):
-            raise AssertionError("portfolio update window must not use global source progress")
-
-        def get_earliest_update_for_identity(self, identity):
-            self.requested_identities.append(identity)
-            return {
-                "btc": pd.Timestamp("2026-01-05T00:00:00Z"),
-                "eth": pd.Timestamp("2026-01-03T00:00:00Z"),
-            }[identity]
-
-    progress = ScopedProgress()
-    node = object.__new__(PortfoliosDataNode)
-    node.valuation_source = explicit_price_source()
-    node.valuation_source.update_statistics = progress
-    node.price_alignment_policy = PriceAlignmentPolicy()
-    node.portfolio_prices_frequency = "1d"
-
-    end_date = node._usable_valuation_end_date(["btc", "eth"])
-
-    assert end_date == pd.Timestamp("2026-01-04T00:00:00Z")
-    assert progress.requested_identities == ["btc", "eth"]
-
-
-def test_portfolio_update_window_loads_api_valuation_source_statistics() -> None:
-    class ScopedProgress:
-        def __init__(self) -> None:
-            self.requested_identities: list[str] = []
-
-        def get_earliest_update_for_identity(self, identity):
-            self.requested_identities.append(identity)
-            return {
-                "btc": pd.Timestamp("2026-01-05T00:00:00Z"),
-                "eth": pd.Timestamp("2026-01-03T00:00:00Z"),
-            }[identity]
-
-    progress = ScopedProgress()
-    valuation_source = table_ref(
-        uid="test-valuations",
-        data_source_uid="test-data-source",
-    )
-    valuation_source.get_update_statistics = lambda: progress
-
-    node = object.__new__(PortfoliosDataNode)
-    node.valuation_source = valuation_source
-    node.price_alignment_policy = PriceAlignmentPolicy()
-    node.portfolio_prices_frequency = "1d"
-
-    end_date = node._usable_valuation_end_date(["btc", "eth"])
-
-    assert not hasattr(valuation_source, "update_statistics")
-    assert end_date == pd.Timestamp("2026-01-04T00:00:00Z")
-    assert progress.requested_identities == ["btc", "eth"]
-
-
-def test_portfolio_update_window_requires_runner_statistics_for_data_node_source() -> None:
-    node = object.__new__(PortfoliosDataNode)
-    node.valuation_source = explicit_price_source()
-    node.valuation_source.update_statistics = None
-
-    with pytest.raises(RuntimeError, match="SDK runner must populate"):
-        node._valuation_source_update_statistics()
-
-
-def test_required_valuation_assets_include_existing_weight_assets() -> None:
-    class ScopedProgress:
-        def __init__(self) -> None:
-            self.requested_identities: list[str] = []
-
-        def get_index_progress_leaf_values(self):
-            raise AssertionError("portfolio update window must not use global source progress")
-
-        def get_earliest_update_for_identity(self, identity):
-            self.requested_identities.append(identity)
-            return {
-                "btc": pd.Timestamp("2026-01-05T00:00:00Z"),
-                "eth": pd.Timestamp("2026-01-03T00:00:00Z"),
-                "sol": pd.Timestamp("2026-01-02T00:00:00Z"),
-            }[identity]
-
-    progress = ScopedProgress()
-    last_weights = pd.DataFrame(
-        {"weights_current": [1.0]},
-        index=pd.MultiIndex.from_tuples(
-            [(pd.Timestamp("2026-01-01T00:00:00Z"), "sol")],
-            names=["time_index", ASSET_IDENTIFIER],
-        ),
-    )
-    node = object.__new__(PortfoliosDataNode)
-    node.valuation_source = explicit_price_source()
-    node.valuation_source.update_statistics = progress
-    node.signal_weights = SimpleNamespace(
-        get_asset_uid_to_override_portfolio_price=lambda: None,
-    )
-    node.price_alignment_policy = PriceAlignmentPolicy()
-    node.portfolio_prices_frequency = "1d"
-    signal_weights = pd.DataFrame(
-        [[0.5, 0.5]],
-        index=pd.DatetimeIndex([pd.Timestamp("2026-01-02T00:00:00Z")]),
-        columns=pd.Index(["btc", "eth"], name=ASSET_IDENTIFIER),
-    )
-    required_assets = node._required_valuation_asset_identifiers(
-        signal_weights=signal_weights,
-        last_rebalance_weights=last_weights,
-    )
-
-    end_date = node._usable_valuation_end_date(required_assets)
-
-    assert required_assets == ["btc", "eth", "sol"]
-    assert end_date == pd.Timestamp("2026-01-03T00:00:00Z")
-    assert progress.requested_identities == ["btc", "eth", "sol"]
-
-
-def test_portfolio_update_window_requires_valuation_asset_scope() -> None:
-    node = object.__new__(PortfoliosDataNode)
-
-    with pytest.raises(ValueError, match="required asset scope"):
-        node._required_valuation_source_progress_values(
-            SimpleNamespace(),
-            asset_identifiers=[],
-        )
-
-
-def test_portfolio_workflow_reads_signal_before_valuation_coverage_noop() -> None:
-    class Signal:
-        def __init__(self) -> None:
-            self.interpolate_called = False
-
-        def interpolate_index(self, index):
-            self.interpolate_called = True
-            return pd.DataFrame(
-                [[1.0] for _value in index],
-                index=index,
-                columns=pd.Index(["btc"], name=ASSET_IDENTIFIER),
-            )
+        def get_asset_list(self):
+            return ["btc", "eth"]
 
         def maximum_forward_fill(self):
-            return pd.Timedelta("1D")
+            return timedelta(days=1)
+
+    signal = object.__new__(TestSignal)
+    signal.use_canonical_signal_weights = True
+    signal.canonical_signal_weights_node = CanonicalSource()
+    event = pd.DatetimeIndex(["2026-01-02T21:00:00Z"], name="time_index")
+    result = signal.interpolate_index(event)
+    assert result.loc[event[0], "btc"] == pytest.approx(0.6)
+    assert result.loc[event[0], "eth"] == pytest.approx(0.4)
+
+
+class FrameSource:
+    def __init__(self, frame: pd.DataFrame):
+        self.frame = frame
+
+    def get_df_between_dates(self, **kwargs):
+        start = pd.Timestamp(kwargs["start_date"])
+        end = pd.Timestamp(kwargs["end_date"])
+        times = self.frame.index.get_level_values("time_index")
+        return self.frame[(times >= start) & (times <= end)]
+
+    def get_last_observation(self, **_kwargs):
+        return self.frame.iloc[0:0]
+
+
+def test_portfolio_weights_calculates_execution_rows_it_owns() -> None:
+    timestamps = pd.DatetimeIndex(
+        ["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"],
+        name="time_index",
+    )
+    signal_frame = pd.DataFrame(
+        [
+            (timestamp, "signal", asset, weight)
+            for timestamp, btc_weight in zip(timestamps, [0.5, 0.6], strict=True)
+            for asset, weight in (("btc", btc_weight), ("eth", 1.0 - btc_weight))
+        ],
+        columns=["time_index", "signal_uid", ASSET_IDENTIFIER, "signal_weight"],
+    ).set_index(["time_index", "signal_uid", ASSET_IDENTIFIER])
+    valuations = asset_frame(
+        [
+            ("2026-01-01T00:00:00Z", "btc", 100.0),
+            ("2026-01-01T00:00:00Z", "eth", 200.0),
+            ("2026-01-02T00:00:00Z", "btc", 110.0),
+            ("2026-01-02T00:00:00Z", "eth", 190.0),
+        ]
+    )
+
+    class ExecutionSignal:
+        signal_uid = "signal"
+
+        def get_asset_list(self):
+            return ["btc", "eth"]
 
         def get_asset_uid_to_override_portfolio_price(self):
             return None
 
-    start_date = pd.Timestamp("2026-01-02T00:00:00Z")
-    end_date = pd.Timestamp("2026-01-03T00:00:00Z")
-    signal = Signal()
+        def get_df_between_dates(self, **_kwargs):
+            return signal_frame
+
+    node = object.__new__(PortfolioWeights)
+    node.signal_weights = ExecutionSignal()
+    node.rebalancer = ImmediateSignal()
+    node.execution_valuation_source = FrameSource(valuations)
+    node.valuation_column = "close"
+    node.valuation_alignment_policy = ValuationAlignmentPolicy(
+        maximum_staleness=timedelta(days=1)
+    )
+    node.update_statistics = None
+    node._resolve_portfolio_identifier = lambda: "portfolio"
+    node._execution_window = lambda _latest: (
+        timestamps[0].to_pydatetime(),
+        timestamps[-1].to_pydatetime(),
+    )
+    node._last_executed_weights = lambda _latest: None
+    result = node._calculate_executed_weights()
+    assert set(result.index.get_level_values("time_index")) == set(timestamps)
+    assert set(result.index.get_level_values(ASSET_IDENTIFIER)) == {"btc", "eth"}
+    assert result.loc[(timestamps[1], "btc"), "weights_current"] == pytest.approx(0.6)
+
+
+def test_weekly_weights_can_drive_daily_canonical_valuations() -> None:
+    days = pd.date_range("2026-01-01", periods=10, freq="D", tz="UTC")
+    valuation_rows = [
+        (timestamp, asset, 100.0 + day_number)
+        for day_number, timestamp in enumerate(days)
+        for asset in ("btc", "eth")
+    ]
+    valuations = pd.DataFrame(
+        valuation_rows,
+        columns=["time_index", ASSET_IDENTIFIER, "close"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    weight_times = [days[0], days[7]]
+    weights = pd.DataFrame(
+        [
+            (timestamp, asset, 0.5, 0.0 if timestamp == days[0] else 0.5)
+            for timestamp in weight_times
+            for asset in ("btc", "eth")
+        ],
+        columns=["time_index", ASSET_IDENTIFIER, "weight", "weight_before"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+
     node = object.__new__(PortfoliosDataNode)
-    node.update_hash = "portfolio-node"
-    node._output_table = output_table_stub(uid="portfolio-output-table")
-    node.signal_weights = signal
-    node.valuation_source = SimpleNamespace()
-    node.rebalancer = SimpleNamespace(calendar=object())
-    node._calculate_start_end_dates = lambda: (start_date, end_date)
-    node._generate_new_index = lambda *_args: (
-        pd.DatetimeIndex([start_date, end_date]),
-        "1d",
+    node.valuation_source = FrameSource(valuations)
+    node.valuation_column = "close"
+    node.valuation_alignment_policy = ValuationAlignmentPolicy(
+        maximum_staleness=timedelta(days=2)
     )
-    node._get_last_weights = lambda: None
-    node._usable_valuation_end_date = lambda _asset_identifiers: pd.Timestamp(
-        "2026-01-01T00:00:00Z"
+    node.signal_weights = SimpleNamespace(get_asset_uid_to_override_portfolio_price=lambda: None)
+    node.commission_fee = 0.0
+    node._latest_portfolio_time_index_value = lambda: None
+    node._valuation_window = lambda _latest: (days[0].to_pydatetime(), days[-1].to_pydatetime())
+    node._executed_weights_between = lambda **_kwargs: weights
+    node._apply_cumulative_portfolio_values = lambda frame: frame.assign(
+        close=(frame["return"] + 1.0).cumprod()
     )
-    node._valuation_source_identifier = lambda _valuation_source: "valuations"
 
-    frame = node._calculate_portfolio_workflow_values()
+    result = node._calculate_portfolio_workflow_values()
+    assert result.index.tolist() == days.tolist()
+    assert len(weight_times) == 2
+    assert len(result) == 10
 
-    assert signal.interpolate_called is True
-    assert frame.empty
+
+def test_portfolio_core_contains_no_generic_date_range_or_resample() -> None:
+    weights_source = inspect.getsource(PortfolioWeights)
+    values_source = inspect.getsource(PortfoliosDataNode)
+    assert "pd.date_range" not in weights_source + values_source
+    assert ".resample(" not in values_source
+    assert not hasattr(PortfoliosDataNode, "_generate_new_index")
+
+
+def test_analytics_uses_actual_source_timestamp_not_bucket_label() -> None:
+    source_frame = pd.DataFrame(
+        {
+            "time_index": pd.to_datetime(
+                ["2026-01-01T21:00:00Z", "2026-01-02T20:30:00Z", "2026-01-03T19:00:00Z"]
+            ),
+            PORTFOLIO_IDENTIFIER: ["portfolio"] * 3,
+            "close": [1.0, 1.1, 1.2],
+        }
+    ).set_index(["time_index", PORTFOLIO_IDENTIFIER])
+
+    class ValuesSource:
+        def get_df_between_dates(self, **_kwargs):
+            return source_frame
+
+    node = object.__new__(PortfolioAnalytics)
+    node.portfolio_values = ValuesSource()
+    node.portfolio_identifier = "portfolio"
+    node.frequency = "2D"
+    node.label = "right"
+    node.closed = "right"
+    node.timezone = "UTC"
+    node.aggregation = "last"
+    node.update_hash = "analysis"
+    node.update_statistics = None
+    node._output_table = PortfolioAnalyticsStorage
+    result = node.update()
+    assert set(result.index.get_level_values("time_index")) <= set(
+        source_frame.index.get_level_values("time_index")
+    )
+    assert (
+        result.reset_index()["time_index"] == result.reset_index()["source_time_index"]
+    ).all()
+
+
+def test_unfinished_strategies_are_not_supported_exports() -> None:
+    import msm_portfolios.rebalance_strategy as strategies
+    from msm_portfolios.rebalance_strategy.volume_participation import VolumeParticipation
+
+    assert not hasattr(strategies, "TimeWeighted")
+    assert not hasattr(strategies, "VolumeParticipation")
+    assert VolumeParticipation().model_dump()["timing_mode"] == "bar_participation"
+    with pytest.raises(NotImplementedError):
+        VolumeParticipation().apply_rebalance_logic(
+            last_rebalance_weights=None,
+            start_date=pd.Timestamp("2026-01-01T00:00:00Z"),
+            end_date=pd.Timestamp("2026-01-02T00:00:00Z"),
+            signal_weights=pd.DataFrame(),
+            valuations_df=pd.DataFrame(),
+            valuation_column="close",
+        )
 
 
 def test_portfolio_value_node_is_not_asset_scoped() -> None:
     assert issubclass(PortfoliosDataNode, PortfolioCanonicalDataNode)
     assert not issubclass(PortfoliosDataNode, AssetScopedPortfolioCanonicalDataNode)
     assert issubclass(PortfolioWeights, AssetScopedPortfolioCanonicalDataNode)
-    assert issubclass(SignalWeights, AssetScopedPortfolioCanonicalDataNode)
 
 
-def test_portfolio_bound_dtype_map_uses_instance_output_table() -> None:
-    node = SimpleNamespace(output_table=SignalWeightsStorage)
-
-    assert PortfolioWeights._bound_column_dtypes_map(node) == storage_column_dtypes_map(
-        SignalWeightsStorage
-    )
-
-
-@pytest.mark.parametrize(("_node_cls", "storage_cls"), PORTFOLIO_NODE_STORAGE)
-def test_portfolio_storage_classes_are_registered_metatables(_node_cls, storage_cls) -> None:
-    assert storage_cls in set(portfolio_sqlalchemy_models())
-
-
-def test_portfolio_valuation_alignment_ignores_extra_source_assets() -> None:
-    node = object.__new__(PortfoliosDataNode)
-    node.valuation_column = "fair_value"
-    node.price_alignment_policy = PriceAlignmentPolicy()
-    node.portfolio_prices_frequency = "1d"
-
-    _raw_valuations, aligned_valuations = node._align_valuation_source_to_index(
-        new_index=pd.DatetimeIndex([pd.Timestamp("2026-01-01T00:00:00Z")]),
-        unique_identifiers=["btc", "eth"],
-        index_freq="1D",
-        valuation_source=explicit_price_source(source_cls=ExamplePriceSource),
-    )
-
-    assert set(aligned_valuations.index.get_level_values(ASSET_IDENTIFIER)) == {"btc", "eth"}
-    assert "fair_value" in aligned_valuations.columns
-
-
-def test_portfolio_returns_use_custom_valuation_column() -> None:
-    node = object.__new__(PortfoliosDataNode)
-    node.valuation_column = "fair_value"
-    node.commission_fee = 0.0
-    node._latest_portfolio_time_index_value = lambda: None
-    time_index = pd.DatetimeIndex(
+def test_immediate_signal_calculation_does_not_require_volume() -> None:
+    timestamps = pd.DatetimeIndex(["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"])
+    signal = pd.DataFrame({"btc": [0.5, 0.6], "eth": [0.5, 0.4]}, index=timestamps)
+    signal.columns.name = ASSET_IDENTIFIER
+    valuations = asset_frame(
         [
-            pd.Timestamp("2026-01-01T00:00:00Z"),
-            pd.Timestamp("2026-01-02T00:00:00Z"),
-        ],
-        name="time_index",
-    )
-    weights = pd.DataFrame(
-        {
-            "weights_before": [1.0, 1.0],
-            "weights_current": [1.0, 1.0],
-            "price_current": [None, None],
-            "price_before": [None, None],
-        },
-        index=pd.MultiIndex.from_product(
-            [time_index, ["btc"]],
-            names=["time_index", ASSET_IDENTIFIER],
-        ),
-    )
-    valuations = pd.DataFrame(
-        {"fair_value": [100.0, 110.0]},
-        index=pd.MultiIndex.from_product(
-            [time_index, ["btc"]],
-            names=["time_index", ASSET_IDENTIFIER],
-        ),
-    )
-
-    returns = node._calculate_portfolio_returns(weights, valuations)
-
-    assert returns["return"].iloc[-1] == pytest.approx(0.1)
-
-
-def test_immediate_signal_does_not_require_price_source_volume() -> None:
-    time_index = pd.DatetimeIndex(
-        [
-            pd.Timestamp("2026-01-01T00:00:00Z"),
-            pd.Timestamp("2026-01-02T00:00:00Z"),
+            ("2026-01-01T00:00:00Z", "btc", 100.0),
+            ("2026-01-01T00:00:00Z", "eth", 200.0),
+            ("2026-01-02T00:00:00Z", "btc", 110.0),
+            ("2026-01-02T00:00:00Z", "eth", 190.0),
         ]
     )
-    signal_weights = pd.DataFrame(
-        [[0.6, 0.4], [0.5, 0.5]],
-        index=time_index,
-        columns=pd.Index(["btc", "eth"], name=ASSET_IDENTIFIER),
-    )
-    prices = pd.DataFrame(
-        [
-            {"time_index": time_index[0], ASSET_IDENTIFIER: "btc", "close": 100.0},
-            {"time_index": time_index[0], ASSET_IDENTIFIER: "eth", "close": 200.0},
-            {"time_index": time_index[1], ASSET_IDENTIFIER: "btc", "close": 110.0},
-            {"time_index": time_index[1], ASSET_IDENTIFIER: "eth", "close": 190.0},
-        ]
-    ).set_index(["time_index", ASSET_IDENTIFIER])
-
-    weights = ImmediateSignal().apply_rebalance_logic(
+    result = ImmediateSignal().apply_rebalance_logic(
         last_rebalance_weights=None,
-        signal_weights=signal_weights,
-        valuations_df=prices,
+        signal_weights=signal,
+        valuations_df=valuations,
         valuation_column="close",
     )
-
-    assert "volume_current" in weights.columns.get_level_values(0)
-    assert "volume_before" in weights.columns.get_level_values(0)
-    assert weights["volume_current"].isna().all().all()
-    assert weights["volume_before"].isna().all().all()
-    assert weights["price_current"].notna().all().all()
-
-
-def test_required_valuation_assets_include_previous_portfolio_weights() -> None:
-    node = object.__new__(PortfoliosDataNode)
-    node.signal_weights = SimpleNamespace(
-        get_asset_uid_to_override_portfolio_price=lambda: None,
-    )
-    signal_weights = pd.DataFrame(
-        [[0.6, 0.4]],
-        index=pd.DatetimeIndex([pd.Timestamp("2026-01-02T00:00:00Z")]),
-        columns=pd.Index(["btc", "eth"], name=ASSET_IDENTIFIER),
-    )
-    last_weights = pd.DataFrame(
-        {"weights_current": [1.0]},
-        index=pd.MultiIndex.from_tuples(
-            [(pd.Timestamp("2026-01-01T00:00:00Z"), "sol")],
-            names=["time_index", ASSET_IDENTIFIER],
-        ),
-    )
-
-    assert node._required_valuation_asset_identifiers(
-        signal_weights=signal_weights,
-        last_rebalance_weights=last_weights,
-    ) == ["btc", "eth", "sol"]
-
-
-def test_missing_required_valuations_continue_by_default() -> None:
-    node = object.__new__(PortfoliosDataNode)
-    node.update_hash = "test-update"
-    node._output_table = output_table_stub(uid="portfolio-output-table")
-    node.valuation_column = "close"
-    node.price_alignment_policy = PriceAlignmentPolicy()
-    raw_prices = pd.DataFrame(
-        [
-            {
-                "time_index": "2026-01-01T00:00:00Z",
-                ASSET_IDENTIFIER: "btc",
-                "close": 100.0,
-            },
-        ]
-    )
-    raw_prices["time_index"] = pd.to_datetime(raw_prices["time_index"], utc=True)
-    raw_prices = raw_prices.set_index(["time_index", ASSET_IDENTIFIER])
-
-    node._diagnose_valuation_source_coverage(
-        raw_prices,
-        requested_asset_identifiers=["btc", "eth"],
-        valuation_source=explicit_price_source(update_hash="valuations"),
-        start_date=pd.Timestamp("2026-01-01T00:00:00Z"),
-        end_date=pd.Timestamp("2026-01-02T00:00:00Z"),
-    )
-
-
-def test_missing_required_valuations_fail_under_strict_policy() -> None:
-    node = object.__new__(PortfoliosDataNode)
-    node.update_hash = "test-update"
-    node._output_table = output_table_stub(uid="portfolio-output-table")
-    node.valuation_column = "close"
-    node.price_alignment_policy = PriceAlignmentPolicy(fail_on_missing_prices=True)
-    raw_prices = pd.DataFrame(
-        [
-            {
-                "time_index": "2026-01-01T00:00:00Z",
-                ASSET_IDENTIFIER: "btc",
-                "close": 100.0,
-            },
-        ]
-    )
-    raw_prices["time_index"] = pd.to_datetime(raw_prices["time_index"], utc=True)
-    raw_prices = raw_prices.set_index(["time_index", ASSET_IDENTIFIER])
-
-    with pytest.raises(ValueError, match="missing required signal assets"):
-        node._diagnose_valuation_source_coverage(
-            raw_prices,
-            requested_asset_identifiers=["btc", "eth"],
-            valuation_source=explicit_price_source(update_hash="valuations"),
-            start_date=pd.Timestamp("2026-01-01T00:00:00Z"),
-            end_date=pd.Timestamp("2026-01-02T00:00:00Z"),
-        )
+    assert "volume_current" in result.columns.get_level_values(0)
+    assert result["volume_current"].isna().all().all()

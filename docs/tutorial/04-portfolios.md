@@ -3,7 +3,7 @@
 Construct an equal-weights portfolio end to end. The workflow runs in two
 stages: a schema-preparation step that provisions the interpolated price
 storage, then a run step that publishes prices, computes weights, and stores the
-portfolio TimeIndexTableUpdater result. It reuses the calendar from
+portfolio TimeIndexTableUpdater results. It reuses the calendar from
 [Calendars](02-calendars.md) as `Portfolio.calendar_uid`.
 
 For the runtime model behind these row APIs, see [Core Concepts](../concepts.md).
@@ -52,5 +52,29 @@ frequency, and interpolation rule combinations do not collide inside one price
 table. The script prints the workflow steps, created row UIDs, source valuation
 row counts, explicit valuation-source dependency details, and published TimeIndexTableUpdater
 storage UIDs.
+
+## Understand the three clocks
+
+The example intentionally keeps execution, valuation, and reporting separate:
+
+```text
+FixedWeights signal
+  -> CalendarEventSignal selects persisted CRYPTO_24_7 market_close events
+  -> PortfolioWeights writes executed weights at those event timestamps
+  -> PortfoliosDataNode values current holdings at valuation-source observations
+  -> optional PortfolioAnalytics samples canonical values for reporting
+```
+
+`PortfoliosDataNode` never creates a calendar or frequency-based index. A
+weekly `CalendarEventSignal` can therefore produce sparse weight rows while a
+daily valuation source produces daily portfolio values. `ImmediateSignal` is
+reserved for true execution at a signal's original observation timestamp.
+
+The core configuration uses `valuation_alignment_policy` to bound per-asset
+as-of freshness. It does not accept `portfolio_prices_frequency`; configure a
+separate `PortfolioAnalytics` node when a chart or analysis needs daily,
+weekly, or monthly sampling. Analytical rows keep the actual selected source
+observation in both `time_index` and `source_time_index`, with bucket boundaries
+in `period_start` and `period_end`.
 
 **Next →** [Pricing Instruments](05-pricing.md)

@@ -74,7 +74,7 @@ Decision Checklist are approved, including:
 The strict normalization implementation is deployed in Django source: the canonical
 DRF relation, shared resolver contract, direct/derived/projected/snapshot model
 roles, exact-environment query boundaries, and deterministic data migrations
-are present. Public Secret, Constant, MetaTable, Namespace, Scheduler, Agent,
+are present. Public Secret, Constant, MetaTable, Namespace, Agent,
 capability, Workspace, widget-group, Bucket, and branch-owned paths now require
 or derive one exact Environment. After deterministic resolution, ambiguous
 legacy operational rows are retired and every stored Environment FK is
@@ -93,6 +93,14 @@ The registered read-only `organization_environment.list` MCP tool exposes the
 canonical DRF collection so a human or local agent can resolve visible
 environment names and public UIDs. It does not expose environment creation,
 mutation, deletion, branch assignment, or data migration.
+
+`OrganizationProject` is a separate lightweight Command Center organization
+concept. It stores one direct immutable Environment and may organize many
+`CodeRepositoryBranch` rows only when every branch belongs to that exact
+Environment. It uses standard user/team view and edit sharing, but a Project
+grant never bypasses Environment admission or grants access to member branches.
+Project CRUD, sharing, and branch membership are DRF/Command Center-only; there
+is no SDK, CLI, runtime, generated-CodeRepository, or MCP operation for it.
 
 ## Understand The Accepted Normalization Target
 
@@ -131,6 +139,7 @@ The target model by application is:
 
 ```text
 pod_manager
+├── OrganizationProject -> direct Environment; organizes only exact-Environment branches
 ├── CodeRepositoryBranch -> exact Environment partition
 │   └── Jobs, images, releases, runtimes, and CodeRepository Coding Agents derive or
 │       carry declared read-only projections/snapshots
@@ -138,7 +147,7 @@ pod_manager
 └── CodeRepository, DataSource, CloudTenancy, Cluster, registries -> not singular
 
 ts_manager
-├── MetaTable, Namespace, Scheduler, TableUpdateNode -> direct Environment
+├── MetaTable, Namespace, TableUpdateNode -> direct Environment
 └── columns, indexes, foreign keys, TimeIndexTableUpdate updates -> derive through
     their mandatory MetaTable/update-graph parent
 
@@ -189,10 +198,11 @@ partition resolved by its exact CodeRepositoryBranch.
 ```text
 Organization
 ├── OrganizationEnvironment
+│   ├── OrganizationProject ── organizes ──> CodeRepositoryBranch in this exact Environment
 │   ├── MetaTable (managed or external)
 │   ├── Secret
 │   ├── Constant
-│   ├── Namespace, Scheduler, and TableUpdateNode
+│   ├── Namespace and TableUpdateNode
 │   ├── Bucket and PVCDisk
 │   ├── Agent and AgentCapability
 │   ├── UserOrchestratorAgentService through its Environment-owned Agent
@@ -215,6 +225,7 @@ membership row.
 | --- | --- | --- |
 | `Organization` | Tenant and owner of environments and Organization control-plane resources | One deployment stage or a fallback operational environment |
 | `OrganizationEnvironment` | Canonical Organization-wide operational partition | A CodeRepository, Git branch, DataSource, release, or deployment |
+| `OrganizationProject` | Shareable lightweight Command Center grouping of branch identities inside one exact Organization Environment | Branch ownership, transitive branch access, runtime scope, nested project, or container for branch descendants |
 | `CodeRepository` | Logical code repository aggregate that owns its branches, source link, sharing, labels, and lifecycle | The active environment or execution branch |
 | `GitHubRepositoryBinding` | Provider/source-control identity | An environment or selected CodeRepositoryBranch |
 | `CodeRepositoryBranch` | Durable CodeRepository participation marker and execution context for one exact provider branch and Environment partition | A caller-selected environment mapping |

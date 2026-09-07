@@ -26,6 +26,7 @@ from .signals import SignalMetadataTable
 def portfolio_sqlalchemy_models() -> list[type]:
     from msm.data_nodes.accounts.storage import TargetPositionsStorage
     from msm_portfolios.data_nodes.portfolios.storage import (
+        PortfolioAnalyticsStorage,
         PortfoliosStorage,
         PortfolioWeightsStorage,
     )
@@ -51,6 +52,7 @@ def portfolio_sqlalchemy_models() -> list[type]:
         VirtualFundTable,
         RebalanceStrategyMetadataTable,
         PortfolioMetadataTable,
+        PortfolioAnalyticsStorage,
         PortfolioWeightsStorage,
         SignalWeightsStorage,
         PortfoliosStorage,

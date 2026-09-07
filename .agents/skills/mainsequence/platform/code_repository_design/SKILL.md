@@ -255,8 +255,10 @@ why each relationship needs a foreign key or constraint, and which access
 pattern justifies an index. State the physical database dialect because it
 affects the SQLAlchemy types, defaults, and constraint behavior.
 
-For a TimeIndexTableUpdater, explain the produced dataset, complete output grain, cadence,
-dependencies, incremental boundary, determinism, and consumers.
+For a TimeIndexTableUpdater, explain the produced dataset, complete output grain,
+input/output data frequency and freshness expectations, dependencies,
+incremental boundary, determinism, and consumers. Do not assign executable
+cadence to the updater.
 
 ### Advanced Mode
 
@@ -443,7 +445,8 @@ Record:
 - the output `TimeIndexMetaTable` reference (stored in the Blueprint's existing
   `output_metatable` field);
 - complete output grain: time index plus all identity dimensions;
-- cadence and freshness expectation;
+- input/output data frequency and freshness expectation, without treating it as
+  executable cadence;
 - TimeIndexTableUpdater, MetaTable, and external-data dependencies;
 - update boundary and partitioning;
 - determinism and idempotency expectations;
@@ -474,7 +477,14 @@ Record:
 - `spot`;
 - positive `max_runtime_seconds`;
 - optional `task_schedule` using the existing interval or crontab schedule
-  shape, including start-time or one-off intent when needed.
+  shape, including start-time or one-off intent when needed;
+- for every crontab, the canonical IANA timezone in which its wall-clock fields
+  are evaluated; interval schedules have no timezone.
+
+Do not translate a calendar schedule to the designer's current UTC offset. The
+Job snapshots its chosen timezone and does not follow later Command Center
+preference changes. Treat an omitted legacy timezone as UTC-compatible but not
+as confirmed user intent; new designs should always state the zone.
 
 The canonical creation flow infers the Job type from `execution_path`. Do not
 declare an independent type or command contract in the Blueprint. A `.ipynb`

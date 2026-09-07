@@ -65,7 +65,7 @@ from msm_portfolios.data_nodes import (  # noqa: E402
     PortfoliosDataNode,
     compute_portfolio_configuration_hash,
 )
-from msm_portfolios.rebalance_strategy import ImmediateSignal  # noqa: E402
+from msm_portfolios.rebalance_strategy import CalendarEventSignal  # noqa: E402
 
 
 class ExamplePortfolioResolver:
@@ -188,12 +188,12 @@ def build_portfolio_configuration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
             valuation_source_instance=price_source,
             valuation_column="close",
-            portfolio_prices_frequency="1d",
             execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.00018),
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal_weights,
-                rebalance_strategy_instance=ImmediateSignal(
-                    calendar_key=calendar.unique_identifier
+                rebalance_strategy_instance=CalendarEventSignal(
+                    calendar_identifier=calendar.unique_identifier,
+                    rebalance_event="market_close",
                 ),
             ),
         ),
@@ -230,8 +230,9 @@ def build_portfolio_values_node(
     *,
     portfolio_resolver: ExamplePortfolioResolver,
 ) -> PortfoliosDataNode:
-    return PortfoliosDataNode(namespace=NAMESPACE).set_portfolio_configuration(
-        portfolio_configuration,
+    return PortfoliosDataNode(
+        namespace=NAMESPACE,
+        portfolio_configuration=portfolio_configuration,
         portfolio_resolver=portfolio_resolver,
         portfolio_description="Published portfolio value series.",
     )

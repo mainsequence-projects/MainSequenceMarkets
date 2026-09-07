@@ -1,6 +1,6 @@
 ---
 name: code-repository-workflows
-description: Create and validate backend-managed API 2.2.0 deployment declarations under .mainsequence/workflows, including target-owned environment variables, FastAPI browser origins, and authenticated-repository-action-authorized Static Site navigation placement with repository-backed icons.
+description: Create and validate backend-managed API 2.2.0 deployment declarations under .mainsequence/workflows, including explicit IANA-timezone Job crontabs, target-owned environment variables, FastAPI browser origins, and authenticated-repository-action-authorized Static Site navigation placement with repository-backed icons.
 ---
 
 # Main Sequence CodeRepository Workflows
@@ -356,6 +356,13 @@ The manifest `id` and SemVer are validated outputs of the fixed SDK workload
 build and are retained in immutable publications. They are not workflow or
 release fields. A run with no installed fixed workload adapter blocks
 explicitly; it never falls through to a Knative runtime deployment.
+
+For Job `task_schedule` declarations, include `schedule.timezone` on every
+crontab using a canonical IANA identifier such as `UTC` or `Europe/Vienna`.
+Cron fields are wall-clock values in that zone; do not pre-convert them to a
+fixed UTC offset. Interval schedules must omit timezone. Reconciliation of a
+historical declaration that omits timezone preserves the existing Job's
+effective zone, but new workflow declarations should be explicit.
 
 ## Application Semantics
 

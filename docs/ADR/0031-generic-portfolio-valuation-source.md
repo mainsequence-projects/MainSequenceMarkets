@@ -9,6 +9,10 @@ ADR 0030 correctly moved portfolio construction to explicit upstream
 dependencies, but it kept the core portfolio input named and typed as a
 market-price column. That is too narrow for portfolio construction.
 
+[ADR 0040](0040-portfolio-temporal-ownership.md) preserves this generic
+valuation-source contract but supersedes the combined-node design in which
+`PortfoliosDataNode` also creates rebalance timestamps and executed weights.
+
 ## Context
 
 `PortfolioBuildConfiguration` currently accepts a `price_source_instance` and a

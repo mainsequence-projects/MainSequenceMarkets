@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from typing import Annotated, Any
 
@@ -328,26 +329,27 @@ class PortfolioExecutionConfiguration(PortfolioConfigBaseModel):
     )
 
 
-class PriceAlignmentPolicy(PortfolioConfigBaseModel):
-    """Portfolio-local price alignment behavior for consumed price sources."""
+class ValuationAlignmentPolicy(PortfolioConfigBaseModel):
+    """Bounded per-asset as-of policy for consumed valuation observations."""
 
-    forward_fill_to_now: bool = Field(
-        default=False,
+    model_config = ConfigDict(extra="forbid")
+
+    maximum_staleness: dt.timedelta = Field(
+        default=dt.timedelta(days=1),
+        gt=dt.timedelta(0),
         description=(
-            "If True, portfolio-local price alignment extends the rebalance index to now "
-            "and forward-fills the consumed price source for calculation only."
+            "Maximum age of the latest valuation observation selected at an explicit "
+            "execution or valuation timestamp. Alignment never creates timestamps."
         ),
-        examples=[False, True],
+        examples=["P1D"],
     )
-    fail_on_missing_prices: bool = Field(
-        default=False,
+    fail_on_missing_values: bool = Field(
+        default=True,
         description=(
-            "If True, portfolio calculation fails when required signal assets have no "
-            "usable price observations in the consumed price source. If False, the "
-            "portfolio logs diagnostics and continues when the downstream rebalance "
-            "calculation can still produce a usable frame."
+            "Fail when any required asset has no valuation at or before an explicit "
+            "target timestamp within maximum_staleness."
         ),
-        examples=[False, True],
+        examples=[True, False],
     )
 
 
@@ -436,17 +438,15 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
     - how signal weights are generated
     - how rebalancing is applied
     - what fee model to apply
-    - what frequency the portfolio series is produced at
+    - how observations are aligned without manufacturing timestamps
 
     Attributes:
         valuation_source_instance:
             Explicit TimeIndexTableUpdater/TimeIndexTableRef valuation dependency consumed by the portfolio.
         valuation_column:
             Numeric column from the consumed valuation source used for valuation.
-        price_alignment_policy:
-            Portfolio-local alignment behavior for the consumed price frame.
-        portfolio_prices_frequency:
-            Portfolio resampling/valuation frequency (e.g. "1d", "15m").
+        valuation_alignment_policy:
+            Bounded per-asset as-of behavior for the consumed valuation frame.
         execution_configuration:
             Fee/execution model.
         backtesting_weights_configuration:
@@ -480,18 +480,12 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
         examples=["close", "fair_value", "nav", "mark_price"],
     )
 
-    price_alignment_policy: PriceAlignmentPolicy = Field(
-        default_factory=PriceAlignmentPolicy,
-        description="Portfolio-local policy for aligning consumed prices to the rebalance index.",
-    )
-
-    portfolio_prices_frequency: str | None = Field(
-        default="1d",
+    valuation_alignment_policy: ValuationAlignmentPolicy = Field(
+        default_factory=ValuationAlignmentPolicy,
         description=(
-            "Portfolio output frequency used when resampling the final portfolio series "
-            "(e.g. '1d', '15m'). If None, the portfolio may rely on internal defaults."
+            "Per-asset as-of and staleness policy used at explicit execution and "
+            "valuation observations."
         ),
-        examples=["1d", "15m", None],
     )
 
     execution_configuration: PortfolioExecutionConfiguration = Field(
@@ -515,11 +509,14 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
         return canonical_valuation_source_configuration(v)
 
     @field_serializer(
-        "price_alignment_policy",
+        "valuation_alignment_policy",
         when_used="json",
         return_type=dict[str, Any],
     )
-    def ser_price_alignment_policy(self, v: PriceAlignmentPolicy) -> dict[str, Any]:
+    def ser_valuation_alignment_policy(
+        self,
+        v: ValuationAlignmentPolicy,
+    ) -> dict[str, Any]:
         return v.model_dump()
 
     def model_dump(self, **kwargs):

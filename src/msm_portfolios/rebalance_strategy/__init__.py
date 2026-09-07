@@ -1,11 +1,9 @@
 from .base import RebalanceStrategyBase
+from .calendar_event import CalendarEventSignal
 from .immediate_signal import ImmediateSignal
-from .time_weighted import TimeWeighted
-from .volume_participation import VolumeParticipation
 
 __all__ = [
+    "CalendarEventSignal",
     "ImmediateSignal",
     "RebalanceStrategyBase",
-    "TimeWeighted",
-    "VolumeParticipation",
 ]

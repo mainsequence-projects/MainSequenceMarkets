@@ -1,6 +1,6 @@
 ---
 name: model-provider-credentials
-description: Discover the Django-owned Main Sequence model-provider catalog, explain active, revoked, or missing credentials, and guide a user through durable sign-in, cancellation, status, and revocation without creating an agent runtime or receiving final credentials.
+description: Discover one Django-owned built-in-plus-Organization-custom model-provider result, explain which rows use User credentials, and guide a user through built-in provider sign-in, cancellation, status, and revocation without creating an agent runtime or receiving final credentials.
 ---
 
 # Model Provider Credentials
@@ -18,21 +18,29 @@ or runtime-access credential.
 
 1. Call `model_provider.list` before recommending a provider or model. It has
    no input.
-2. Present relevant returned provider fields: `display_name`, `auth_methods`,
+2. Distinguish built-in rows (`known=true`) from Organization custom rows
+   (`known=false`) in that same result. Do not make or recommend a second
+   provider-discovery call.
+3. Present relevant returned provider fields: `display_name`, `auth_methods`,
    `known`, `enabled`, `credential_status`, `authenticated`,
    `sign_in_available`, and `default_model`.
-3. Use only the concrete returned `models`. A model includes its identifier,
+4. Use only the concrete returned `models`. A model includes its identifier,
    display name, API protocol, supported input kinds, reasoning flag, thinking
    levels, context window, and maximum output tokens.
-4. Explain the boundary accurately: `known` and `enabled` are catalog/product
-   state, while `authenticated` is User credential state. The general catalog
-   does not claim that a specific runtime supports, can select, or can execute
-   a model.
-5. If the user did not name a provider, ask them to choose from the live
+5. For built-ins, explain that `known` and `enabled` are catalog/product state
+   while `authenticated` is User credential state. For an Organization custom
+   row, `authenticated=true`, `credential_status=missing`, empty
+   `auth_methods`, and `sign_in_available=false` mean no per-User sign-in is
+   required; they are not custom-provider lifecycle state.
+6. The general catalog does not claim that a specific runtime supports, can
+   select, or can execute a model.
+7. If the user did not name a provider, ask them to choose from the live
    result. Do not substitute another provider silently.
 
-The `schema_version` and `catalog_digest` identify the returned catalog
-contract and content. They are not runtime compatibility or execution proofs.
+The `schema_version` identifies the shared response contract.
+`catalog_digest` identifies only the immutable built-in catalog; it is not a
+revision or digest for Organization custom rows. Neither is runtime
+compatibility or execution proof.
 
 ## Read credential state
 
@@ -44,22 +52,26 @@ credential.
 
 1. Require the selected provider to be present and enabled in the latest
    `model_provider.list` response.
-2. If it is already authenticated, explain that no sign-in is needed.
-3. If `sign_in_available=false`, explain that interactive sign-in is not
+2. If `known=false`, explain that authentication is managed on the
+   Organization custom provider. Do not call User credential status, sign-in,
+   cancellation, or revoke tools for it. MCP does not expose custom-provider
+   mutation or secret capture.
+3. If it is already authenticated, explain that no sign-in is needed.
+4. If `sign_in_available=false`, explain that interactive sign-in is not
    currently configured. Do not call start.
-4. Call `model_provider_credential.sign_in_start` with only the exact returned
+5. Call `model_provider_credential.sign_in_start` with only the exact returned
    `provider`.
-5. Retain the returned attempt `uid` only for this workflow.
-6. Follow `next_action`:
+6. Retain the returned attempt `uid` only for this workflow.
+7. Follow `next_action`:
    - `open_url`: show the exact `authorization_url`, optional `user_code`, and
      instructions, then ask the user to complete provider authorization; or
    - `none`: inspect the attempt status before acting again.
-7. Call `model_provider_credential.sign_in_get` with
+8. Call `model_provider_credential.sign_in_get` with
    `attempt_id=<returned uid>` until the attempt is terminal. Django owns the
    browser callback and advances due device-code polling durably.
-8. Treat `completed`, `failed`, and `cancelled` as terminal. Report
+9. Treat `completed`, `failed`, and `cancelled` as terminal. Report
    `error_code` when present, without inventing provider details.
-9. After completion, call `model_provider_credential.status` again and report
+10. After completion, call `model_provider_credential.status` again and report
    only the non-secret result.
 
 Repeated start requests for the same authenticated User and provider converge

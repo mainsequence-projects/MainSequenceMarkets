@@ -7,6 +7,36 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Added
+
+- Added `CalendarEventSignal` with hash-bearing calendar, session, event,
+  offset, cadence, cutoff, and execution-valuation semantics.
+- Added `PortfolioAnalytics` and separate `PortfolioAnalyticsStorage` for
+  consumer-owned reporting resampling with explicit period boundaries and
+  source-observation lineage.
+
+### Changed
+
+- Promoted `PortfolioWeights` to the execution/rebalance updater and made
+  `PortfoliosDataNode` a valuation-only consumer of canonical executed weights.
+  Canonical execution and valuation timestamps now originate only from signal,
+  persisted calendar, execution-data, or valuation-source observations.
+- Replaced portfolio-local price-grid controls with strict, bounded per-asset
+  `ValuationAlignmentPolicy` as-of selection. Portfolio configuration no longer
+  accepts `portfolio_prices_frequency` or `price_alignment_policy`.
+- Updated the Main Sequence SDK lock and managed repository skills to 8.1.2.
+
+### Removed
+
+- Removed unfinished `TimeWeighted` and `VolumeParticipation` strategies from
+  the supported public strategy surface until their bar-driven execution
+  contracts are implemented.
+
+### Documentation
+
+- Added and implemented ADR 0040, establishing separate temporal ownership for
+  portfolio execution, valuation, and analytics.
+
 ## [1.0.4] - 2026-09-05
 
 ### Fixed

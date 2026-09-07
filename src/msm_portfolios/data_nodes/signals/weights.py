@@ -205,45 +205,20 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
             signal_weights_node=signal_weights_node,
             use_canonical_signal_weights=use_canonical_signal_weights,
         )
+        if len(new_index) == 0:
+            return pd.DataFrame()
+        new_index = pd.DatetimeIndex(pd.to_datetime(new_index, utc=True), name="time_index")
         weights = self._get_signal_weights_between_dates(
             weights_source=weights_source,
             start_date=new_index.min(),
             end_date=new_index.max(),
         )
-
-        if len(weights) == 0:
-            update_statistics = getattr(weights_source, "update_statistics", None)
-            if update_statistics is None:
-                update_statistics = self.update_statistics
-
-            if not update_statistics.index_progress:
-                raise Exception("Signal has not been updated")
-
-            identity_dimensions = (
-                weights_source._asset_identity_dimensions()
-                if hasattr(weights_source, "_asset_identity_dimensions")
-                else self._asset_identity_dimensions()
-            )
-            last_observation = self._get_signal_weights_between_dates(
-                weights_source=weights_source,
-                dimension_range_map=update_statistics.get_dimension_range_map_great_or_equal(
-                    identity_dimensions=identity_dimensions,
-                ),
-            )
-            if last_observation is None or last_observation.empty:
-                return pd.DataFrame()
-            last_date = last_observation.index.get_level_values("time_index")[0]
-
-            if last_date < new_index.min():
-                self.logger.warning(
-                    f"No weights data at start of the portfolio at {new_index.min()}"
-                    f" will use last available weights {last_date}"
-                )
-                weights = self._get_signal_weights_between_dates(
-                    weights_source=weights_source,
-                    start_date=last_date,
-                    end_date=new_index.max(),
-                )
+        seeds = self._signal_weight_seeds(
+            weights_source=weights_source,
+            before=new_index.min(),
+            window_weights=weights,
+        )
+        weights = pd.concat([seeds, weights]).sort_index() if not seeds.empty else weights
 
         if len(weights) == 0:
             self.logger.warning("No weights data in index interpolation")
@@ -281,6 +256,50 @@ class SignalWeights(AssetScopedPortfolioCanonicalDataNode):
         weights_reindex = weights_reindex.loc[new_index]
         weights_reindex.index.name = "time_index"
         return weights_reindex
+
+    def _signal_weight_seeds(
+        self,
+        *,
+        weights_source,
+        before: pd.Timestamp,
+        window_weights: pd.DataFrame,
+    ) -> pd.DataFrame:
+        assets = [
+            str(self._asset_unique_identifier(asset)) for asset in (self.get_asset_list() or [])
+        ]
+        if not assets and window_weights is not None and not window_weights.empty:
+            assets = [
+                str(value)
+                for value in window_weights.index.get_level_values(ASSET_IDENTIFIER).unique()
+            ]
+        if not assets:
+            return pd.DataFrame()
+
+        get_last_observation = getattr(weights_source, "get_last_observation", None)
+        if not callable(get_last_observation):
+            return pd.DataFrame()
+        range_map = [
+            {
+                "coordinate": {
+                    SIGNAL_UID: self.signal_uid,
+                    ASSET_IDENTIFIER: asset_identifier,
+                },
+                "end_date": before.to_pydatetime(),
+                "end_date_operand": "<",
+            }
+            for asset_identifier in assets
+        ]
+        seeds = get_last_observation(dimension_range_map=range_map)
+        if seeds is None or seeds.empty:
+            return pd.DataFrame()
+        seeds = self._normalize_signal_weights_time_index(seeds)
+        flat = seeds.reset_index().sort_values("time_index")
+        return (
+            flat.groupby(ASSET_IDENTIFIER, as_index=False, sort=False)
+            .tail(1)
+            .set_index(seeds.index.names)
+            .sort_index()
+        )
 
     def _resolve_signal_weights_source(
         self,

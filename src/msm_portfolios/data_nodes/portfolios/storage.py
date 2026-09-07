@@ -179,8 +179,96 @@ class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
+class PortfolioAnalyticsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+    """Derived portfolio observations with explicit period and source lineage."""
+
+    __metatable_identifier__ = "PortfolioAnalyticsTS"
+    __metatable_description__ = (
+        "Derived portfolio analytics keyed by time_index, portfolio_identifier, "
+        "and analysis_identifier. Each time_index is the actual final canonical "
+        "portfolio observation selected for the analytical period."
+    )
+    __time_index_name__: ClassVar[str] = "time_index"
+    __index_names__: ClassVar[list[str]] = [
+        "time_index",
+        PORTFOLIO_IDENTIFIER_DIMENSION,
+        "analysis_identifier",
+    ]
+
+    time_index: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        info={
+            "label": "Time Index",
+            "description": "Actual canonical portfolio observation selected for this period.",
+        },
+    )
+    portfolio_identifier: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey(
+            f"{PortfolioTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        info={
+            "label": "Portfolio Identifier",
+            "description": "Stable PortfolioTable identifier for the analyzed value series.",
+        },
+    )
+    analysis_identifier: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Analysis Identifier",
+            "description": "Hash identity of the frequency, timezone, and aggregation contract.",
+        },
+    )
+    close: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={
+            "label": "Close",
+            "description": "Last canonical portfolio close selected in the analytical period.",
+        },
+    )
+    return_: Mapped[float | None] = mapped_column(
+        "return",
+        Float,
+        nullable=True,
+        info={
+            "label": "Return",
+            "description": "Return between consecutive derived analytical observations.",
+        },
+    )
+    source_time_index: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        info={
+            "label": "Source Time Index",
+            "description": "Canonical portfolio observation timestamp selected for this row.",
+        },
+    )
+    period_start: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        info={
+            "label": "Period Start",
+            "description": "Configured analytical bucket start, distinct from time_index.",
+        },
+    )
+    period_end: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        info={
+            "label": "Period End",
+            "description": "Configured analytical bucket end, distinct from time_index.",
+        },
+    )
+
+
 __all__ = [
     "PORTFOLIO_IDENTIFIER_DIMENSION",
+    "PortfolioAnalyticsStorage",
     "PortfolioWeightsStorage",
     "PortfoliosStorage",
 ]

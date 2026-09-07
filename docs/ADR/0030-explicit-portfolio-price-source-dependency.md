@@ -13,6 +13,11 @@ the `price_column: PriceTypeNames` part of this ADR. Portfolio core should
 consume a generic valuation source and `valuation_column: str`, while
 OHLC-specific enums remain in contributed price/bar helpers.
 
+Amendment: [ADR 0040](0040-portfolio-temporal-ownership.md) supersedes this
+ADR's assignment of rebalance-index generation, executed-weight production,
+and final portfolio resampling to `PortfoliosDataNode`. The explicit upstream
+valuation-source decision remains in force.
+
 Implemented in the portfolio configuration contract, `PortfoliosDataNode`,
 contributed signal configurations, the equal-weight portfolio example, docs,
 skills, changelog, and focused portfolio tests.

@@ -1,5 +1,6 @@
 import datetime
 import re
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -15,6 +16,12 @@ _TIME_RE = re.compile(r"^(?:[01]?\d|2[0-3]):[0-5]\d$")
 
 
 class TimeWeighted(RebalanceStrategyBase):
+    timing_mode: Literal["bar_participation"] = "bar_participation"
+    calendar_identifier: str = "24/7"
+    session_label: str = "regular"
+    bar_timestamp_selection: Literal["source_observation"] = "source_observation"
+    signal_selection: Literal["latest_at_or_before_bar"] = "latest_at_or_before_bar"
+    execution_valuation: Literal["bar_value"] = "bar_value"
     rebalance_start: str = Field(
         default="9:00",
         description="Start time for rebalancing in 'H:MM' or 'HH:MM' (24h).",

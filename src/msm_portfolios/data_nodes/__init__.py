@@ -28,6 +28,7 @@ from .portfolio_identity import (
     get_or_create_portfolio,
 )
 from .portfolios.weights import PortfolioWeights, normalize_portfolio_weights_frame
+from .portfolios.analytics import PortfolioAnalytics, PortfolioAnalyticsConfiguration
 from .portfolios import PortfoliosDataNode, normalize_portfolio_values_frame
 from .signals import (
     SignalWeights,
@@ -51,6 +52,8 @@ __all__ = [
     "SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS",
     "SIGNAL_WEIGHTS_INDEX_NAMES",
     "PortfoliosDataNode",
+    "PortfolioAnalytics",
+    "PortfolioAnalyticsConfiguration",
     "PortfolioWeights",
     "SignalWeights",
     "SignalWeightsConfiguration",

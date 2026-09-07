@@ -52,9 +52,10 @@ identifiers, while a non-default `MSM_AUTO_REGISTER_NAMESPACE` prefixes them.
 That namespace also becomes the default TimeIndexTableUpdater `hash_namespace`. Pass an
 explicit namespace only for isolated tests or experiments.
 
-Forward-fill behavior, valuation source selection, signal semantics, and
-rebalance frequency should be explicit in configuration rather than inferred
-from data.
+Signal observation, rebalance decision, execution, valuation, and analytical
+time are separate concepts. Every canonical timestamp must come from a signal,
+persisted calendar event, execution bar, or valuation observation. Job time and
+generic frequency strings are not economic clocks.
 
 Use the typed row API for registry records:
 
@@ -81,11 +82,11 @@ portfolio = Portfolio.upsert(
 )
 ```
 
-Portfolio execution uses persisted `CalendarSession` rows to build the daily
-rebalance index. If the referenced calendar has no sessions in the requested
-portfolio update range, `PortfoliosDataNode` fails loudly instead of treating
-the empty schedule as a clean no-op. Materialize the calendar sessions before
-running the portfolio graph.
+`CalendarEventSignal` uses persisted `CalendarSession` rows to select market
+opens or closes, including early closes and DST shifts. `ImmediateSignal`
+instead executes only at original signal observation timestamps. Event
+selection belongs to `PortfolioWeights`; `PortfoliosDataNode` does not build a
+rebalance index.
 
 `Portfolio.upsert(...)` writes only the portfolio identity row. Portfolio
 constituents, weights, values, and optional index publication are separate
@@ -271,6 +272,7 @@ MetaTables:
 | PortfolioWeights            |------------------------------->| PortfolioWeightsStorage              |
 | SignalWeights               |------------------------------->| SignalWeightsStorage                 |
 | PortfoliosDataNode          |------------------------------->| PortfoliosStorage                    |
+| PortfolioAnalytics         |------------------------------->| PortfolioAnalyticsStorage           |
 | External price DataNodes    |------------------------------->| ExternalPricesStorage                |
 | InterpolatedPrices          |------------------------------->| configured InterpolatedPricesStorage |
 +-----------------------------+                                +--------------------------------------+
@@ -303,6 +305,13 @@ point to unknown assets. `PortfoliosDataNode` resolves the portfolio identifier
 from the attached `PortfolioTable` row or from the explicit runtime identifier
 before normalizing rows.
 
+`PortfolioWeightsStorage.time_index` is the execution timestamp.
+`PortfoliosStorage.time_index` is the valuation observation timestamp. They do
+not need to be equal: weekly execution can feed daily valuation. Optional
+`PortfolioAnalyticsStorage.time_index` is the actual source observation chosen
+for an analytical period; `period_start` and `period_end` carry bucket
+boundaries without relabelling the source event.
+
 Portfolio construction depends on a real valuation source, but portfolio logic
 does not own valuation ingestion. Example workflows publish normalized OHLCV
 bars to `ExternalPricesStorage` only so the example is self-contained.
@@ -330,12 +339,18 @@ The current portfolio path is explicit:
 | optional price workflow     |                     | InterpolatedPricesStorage   |
 +--------------+--------------+                     +--------------+--------------+
                |                                                   |
-               | explicit portfolio dependency                     | reads
-               +--------------------------+------------------------+
-                                          v
+               | execution valuations                     | reads
+               v                                           v
+     +-----------------------------+             +-----------------------------+
+     | PortfolioWeights            |------------>| PortfolioWeightsStorage     |
+     | execution/rebalance updater |             | actual execution timestamps |
+     +--------------+--------------+             +--------------+--------------+
+                    | canonical executed weights                |
+                    +--------------------+-----------------------+
+                                         v
                              +-----------------------------+
                              | PortfoliosDataNode          |
-                             | portfolio calculation       |
+                             | valuation-only updater      |
                              +-----------------------------+
 ```
 
@@ -346,9 +361,9 @@ compatible registered storage. The valuation source must expose rows keyed by
 `(time_index, asset_identifier)` and include the configured numeric
 `valuation_column`, for example `close`, `fair_value`, `nav`, or `mark_price`.
 `ImmediateSignal` does not require source volume; it writes empty volume fields
-in portfolio-weight output when the consumed valuation source does not provide
-volume. Volume-aware rebalance strategies, such as `VolumeParticipation`, still
-require volume explicitly.
+when the valuation source does not provide volume. The unfinished
+`TimeWeighted` and `VolumeParticipation` implementations are not exported as
+supported strategies.
 
 This producer boundary is intentional. Price collection, valuation modeling,
 normalization, vendor mapping, and connector-specific scheduling are separate
@@ -404,9 +419,9 @@ create or migrate dynamic storage.
 the explicit valuation source drives portfolio returns. It is a string, not an
 OHLC enum. Bar-based workflows can use `valuation_column="close"`, while model
 or vendor workflows can use fields such as `fair_value`, `nav`, or
-`settlement_price`. `PortfoliosDataNode` may locally align the consumed
-valuation frame to the rebalance index for calculation, but it does not create
-persistent interpolation storage and does not hide an upstream TimeIndexTableUpdater.
+`settlement_price`. Both execution and valuation perform bounded per-asset
+as-of selection under `ValuationAlignmentPolicy`; alignment targets only
+explicit events or source observations and never creates a timestamp.
 
 For a custom valuation source, register or migrate the source storage outside
 portfolio core, then pass the registered `TimeIndexMetaTable` UID through
@@ -415,24 +430,17 @@ value column name; it should not be reshaped to `close` just to satisfy
 portfolio core. See
 `examples/msm_portfolios/portfolio_custom_valuation_column_example.py` for the
 `fair_value` configuration path.
-When the valuation source is an `TimeIndexTableRef`, `PortfoliosDataNode` loads the
-source table's update statistics before calculating the portfolio update
-window. Normal `TimeIndexTableUpdater` valuation sources still rely on the SDK runner to
-populate dependency update statistics before portfolio calculation starts.
-
 The portfolio update start is always the latest `PortfoliosStorage` timestamp
 for the resolved `PortfolioTable.unique_identifier`, stored as
 `PortfoliosStorage.portfolio_identifier`. It is not derived from signal progress,
 valuation-source progress, or the table-wide maximum of the shared
 `PortfoliosStorage` table.
 
-After resolving that portfolio-scoped start, `PortfoliosDataNode` builds the
-candidate rebalance index, reads the actual signal frame, derives the required
-valuation assets from that signal frame plus any previous weights still needing
-valuation or liquidation, and only then caps the usable end timestamp by
-valuation-source coverage. If the portfolio is already ahead of usable
-valuation coverage, the run returns no new rows after the signal has been read
-and logged as part of the current graph.
+After resolving that portfolio-scoped start, `PortfoliosDataNode` reads
+canonical executed weights and actual valuation observations. It selects the
+latest weights as-of each eligible observation, validates per-asset staleness,
+and writes one canonical value row per eligible source timestamp. A rerun before
+new source data arrives is an empty update.
 
 In code, the important wiring is:
 
@@ -455,11 +463,13 @@ portfolio_configuration = PortfolioConfiguration(
     portfolio_build_configuration=PortfolioBuildConfiguration(
         valuation_source_instance=price_source,
         valuation_column="close",
-        portfolio_prices_frequency="1d",
         execution_configuration=PortfolioExecutionConfiguration(...),
         backtesting_weights_configuration=BacktestingWeightsConfig(
             signal_weights_instance=signal_weights,
-            rebalance_strategy_instance=ImmediateSignal(...),
+            rebalance_strategy_instance=CalendarEventSignal(
+                calendar_identifier="CRYPTO_24_7",
+                rebalance_event="market_close",
+            ),
         ),
     ),
     portfolio_markets_configuration=PortfolioMarketsConfig(...),
@@ -476,7 +486,6 @@ portfolio_configuration = PortfolioConfiguration(
     portfolio_build_configuration=PortfolioBuildConfiguration(
         valuation_source_instance=valuation_source,
         valuation_column="fair_value",
-        portfolio_prices_frequency="1d",
         execution_configuration=PortfolioExecutionConfiguration(...),
         backtesting_weights_configuration=BacktestingWeightsConfig(...),
     ),
@@ -484,16 +493,15 @@ portfolio_configuration = PortfolioConfiguration(
 )
 ```
 
-`PortfoliosDataNode.dependencies()` exposes the signal node and the explicit
-valuation source. Valuation sources may contain more assets than the signal
-requires; portfolio calculation filters to the signal-required asset subset and
-reports missing required assets when the consumed valuation source does not
-cover them.
-The usable valuation end timestamp is scoped to the assets the portfolio
-actually needs: the actual signal output frame, any previous portfolio-weight
-assets that still need valuation or liquidation, and any explicit portfolio
-value override asset. It does not use unrelated assets present in the source
-valuation table when deciding the usable source-data end timestamp.
+`PortfolioWeights.dependencies()` exposes signal weights and execution
+valuations. `PortfoliosDataNode.dependencies()` exposes the canonical
+`PortfolioWeights` updater and the valuation source. Valuation sources may
+contain extra assets; required holdings are aligned independently using the
+latest observation at or before the target within `maximum_staleness`.
+
+`portfolio_prices_frequency` and `PriceAlignmentPolicy` were removed. Use
+`ValuationAlignmentPolicy` for source freshness and `PortfolioAnalytics` for
+daily, weekly, monthly, or other reporting frequency conversion.
 
 Existing portfolio output progress is scoped by `portfolio_identifier` because
 `PortfoliosStorage` is keyed by `(time_index, portfolio_identifier)`. A later

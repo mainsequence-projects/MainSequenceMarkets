@@ -1,3 +1,6 @@
+import datetime as dt
+from typing import Literal
+
 import pandas as pd
 
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
@@ -7,11 +10,29 @@ from msm_portfolios.rebalance_strategy.base import (
 
 
 class ImmediateSignal(RebalanceStrategyBase):
+    timing_mode: Literal["signal_time"] = "signal_time"
+    signal_selection: Literal["exact_observation"] = "exact_observation"
+    execution_valuation: Literal["latest_at_or_before_event"] = "latest_at_or_before_event"
+
     def get_explanation(self):
         return (
             "ImmediateSignal: rebalances immediately to the current signal weights. "
             "This is equivalent to using the signal weights directly."
         )
+
+    def execution_timestamps(
+        self,
+        start: dt.datetime,
+        end: dt.datetime,
+        *,
+        signal_timestamps: pd.DatetimeIndex,
+    ) -> pd.DatetimeIndex:
+        timestamps = pd.DatetimeIndex(pd.to_datetime(signal_timestamps, utc=True), name="time_index")
+        start_ts = pd.Timestamp(start)
+        end_ts = pd.Timestamp(end)
+        start_ts = start_ts.tz_localize("UTC") if start_ts.tzinfo is None else start_ts.tz_convert("UTC")
+        end_ts = end_ts.tz_localize("UTC") if end_ts.tzinfo is None else end_ts.tz_convert("UTC")
+        return timestamps[(timestamps >= start_ts) & (timestamps <= end_ts)]
 
     def apply_rebalance_logic(
         self,

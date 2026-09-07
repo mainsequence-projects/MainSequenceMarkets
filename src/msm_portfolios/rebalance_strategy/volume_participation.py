@@ -1,5 +1,6 @@
 import datetime
 import re
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,13 @@ class VolumeParticipation(RebalanceStrategyBase):
     This rebalance strategy implies volume participation with no market impact.
     i.e. execution at VWAP and it will never execute more than max_percent_volume_in_bar.
     """
+
+    timing_mode: Literal["bar_participation"] = "bar_participation"
+    calendar_identifier: str = "24/7"
+    session_label: str = "regular"
+    bar_timestamp_selection: Literal["source_observation"] = "source_observation"
+    signal_selection: Literal["latest_at_or_before_bar"] = "latest_at_or_before_bar"
+    execution_valuation: Literal["bar_vwap"] = "bar_vwap"
 
     rebalance_start: str = Field(
         default="9:00",

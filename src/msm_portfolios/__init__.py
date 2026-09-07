@@ -15,6 +15,8 @@ _EXPORTS = {
     "SIGNAL_WEIGHTS_INDEX_NAMES": ".data_nodes",
     "PortfolioCanonicalDataNode": ".data_nodes",
     "PortfolioCanonicalDataNodeConfiguration": ".data_nodes",
+    "PortfolioAnalytics": ".data_nodes",
+    "PortfolioAnalyticsConfiguration": ".data_nodes",
     "PortfolioWeights": ".data_nodes",
     "PortfoliosDataNode": ".data_nodes",
     "SignalWeights": ".data_nodes",
