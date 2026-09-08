@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-09-09
+
 ### Fixed
 
 - Unified asset-scope mapping identity on canonical `asset_identifier` and
