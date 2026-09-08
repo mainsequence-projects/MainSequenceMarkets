@@ -265,6 +265,12 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         calculation_index = observation_index
         if latest_value is not None:
             calculation_index = utc_index([latest_value, *observation_index])
+        held_weights = self._weights_as_of(weights, calculation_index, assets)
+        required_valuations = self._required_valuation_coordinates(
+            held_weights=held_weights,
+            valuation_assets=valuation_assets,
+            override_asset=override_asset,
+        )
         all_valuations = pd.concat([valuation_seed, valuation_window]).sort_index()
         aligned = align_asset_observations(
             all_valuations,
@@ -273,9 +279,17 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
             value_columns=[self.valuation_column],
             maximum_staleness=self.valuation_alignment_policy.maximum_staleness,
             fail_on_missing_values=self.valuation_alignment_policy.fail_on_missing_values,
+            required_coordinates=required_valuations,
         )
-        prices = aligned[self.valuation_column].unstack(ASSET_IDENTIFIER)
-        eligible = prices.reindex(columns=valuation_assets).notna().all(axis=1)
+        prices = (
+            aligned[self.valuation_column]
+            .unstack(ASSET_IDENTIFIER)
+            .reindex(
+                index=calculation_index,
+                columns=valuation_assets,
+            )
+        )
+        eligible = (prices.notna() | ~required_valuations).all(axis=1)
         observation_index = observation_index.intersection(eligible[eligible].index)
         if len(observation_index) == 0:
             return pd.DataFrame()
@@ -283,7 +297,7 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         if latest_value is not None and bool(eligible.get(pd.Timestamp(latest_value), False)):
             calculation_index = utc_index([latest_value, *observation_index])
         prices = prices.reindex(calculation_index)
-        held_weights = self._weights_as_of(weights, calculation_index, assets)
+        held_weights = held_weights.reindex(calculation_index)
         portfolio_returns = self._calculate_portfolio_returns(
             held_weights=held_weights,
             valuations=prices,
@@ -310,6 +324,20 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         wide = weights["weight"].unstack(ASSET_IDENTIFIER).reindex(columns=assets)
         combined = wide.index.union(target_index).sort_values()
         return wide.reindex(combined).ffill().reindex(target_index).fillna(0.0)
+
+    @staticmethod
+    def _required_valuation_coordinates(
+        *,
+        held_weights: pd.DataFrame,
+        valuation_assets: list[str],
+        override_asset: Any | None,
+    ) -> pd.DataFrame:
+        previous_weights = held_weights.shift(1).fillna(held_weights)
+        required = held_weights.ne(0.0) | previous_weights.ne(0.0)
+        required = required.reindex(columns=valuation_assets, fill_value=False)
+        if override_asset is not None:
+            required[str(override_asset)] = True
+        return required
 
     def _calculate_portfolio_returns(
         self,

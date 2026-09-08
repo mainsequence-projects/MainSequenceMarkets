@@ -121,6 +121,7 @@ def align_asset_observations(
     value_columns: Iterable[str],
     maximum_staleness: Any,
     fail_on_missing_values: bool,
+    required_coordinates: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Select the latest eligible observation per asset at explicit target times."""
     targets = utc_index(target_index)
@@ -128,6 +129,12 @@ def align_asset_observations(
     columns = list(value_columns)
     if len(targets) == 0 or not assets:
         return pd.DataFrame()
+
+    required = (
+        pd.DataFrame(True, index=targets, columns=assets)
+        if required_coordinates is None
+        else required_coordinates.reindex(index=targets, columns=assets).fillna(False).astype(bool)
+    )
 
     normalized = normalize_asset_observations(observations)
     missing_columns = sorted(set(columns) - set(normalized.columns))
@@ -138,8 +145,11 @@ def align_asset_observations(
 
     available_assets = set(normalized.index.get_level_values(ASSET_IDENTIFIER).astype(str).unique())
     absent_assets = sorted(set(assets) - available_assets)
-    if absent_assets and fail_on_missing_values:
-        raise ValueError("Valuation source is missing required assets: " + ", ".join(absent_assets))
+    absent_required_assets = [asset for asset in absent_assets if required[asset].any()]
+    if absent_required_assets and fail_on_missing_values:
+        raise ValueError(
+            "Valuation source is missing required assets: " + ", ".join(absent_required_assets)
+        )
 
     flat = normalized.reset_index()
     result_parts: dict[str, pd.DataFrame] = {}
@@ -168,10 +178,11 @@ def align_asset_observations(
     ages = target_matrix - observation_times
     stale = ages > pd.Timedelta(maximum_staleness)
     missing = observation_times.isna() | stale
-    if missing.any().any() and fail_on_missing_values:
+    missing_required = missing & required
+    if missing_required.any().any() and fail_on_missing_values:
         details = [
             f"{asset}@{timestamp.isoformat()}"
-            for timestamp, row in missing.iterrows()
+            for timestamp, row in missing_required.iterrows()
             for asset, is_missing in row.items()
             if bool(is_missing)
         ]

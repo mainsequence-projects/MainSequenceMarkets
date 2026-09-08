@@ -166,7 +166,11 @@ portfolio workflow to rebuild the scoped tail. A post-replay dry run must
 report no rollback.
 
 The core configuration uses `valuation_alignment_policy` to bound per-asset
-as-of freshness. It does not accept `portfolio_prices_frequency`; configure a
+as-of freshness. In strict mode, freshness is required when the current or
+immediately preceding executed weight is nonzero. This keeps entry and exit
+prices mandatory without making an unchanged zero-weight row economically
+required or removing that row from the stored signal. It does not accept
+`portfolio_prices_frequency`; configure a
 separate `PortfolioAnalytics` node when a chart or analysis needs daily,
 weekly, or monthly sampling. Analytical rows keep the actual selected source
 observation in both `time_index` and `source_time_index`, with bucket boundaries

@@ -7,6 +7,22 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [1.0.12] - 2026-09-08
+
+### Fixed
+
+- Made strict portfolio valuation require fresh values only where the current
+  or immediately preceding executed holding is nonzero. Unchanged zero-weight
+  assets can remain in complete signal and weight snapshots without blocking
+  valuation, while entry and exit observations remain mandatory. Added
+  regressions that close
+  [#8](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/8).
+
+### Documentation
+
+- Documented exposure-aware strict valuation in the portfolio guide, tutorial,
+  and equal-weight example.
+
 ## [1.0.11] - 2026-09-08
 
 ### Fixed

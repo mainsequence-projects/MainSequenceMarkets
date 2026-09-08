@@ -48,6 +48,7 @@ from msm_portfolios.configuration import (  # noqa: E402
     PortfolioConfiguration,
     PortfolioExecutionConfiguration,
     PortfolioMarketsConfig,
+    ValuationAlignmentPolicy,
 )
 from msm_portfolios.contrib.signals.fixed_weights import (  # noqa: E402
     AUIDWeight,
@@ -191,6 +192,9 @@ def build_portfolio_configuration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
             valuation_source_instance=price_source,
             valuation_column="close",
+            # Strict freshness applies to current and immediately preceding
+            # nonzero holdings, preserving entry/exit checks and zero rows.
+            valuation_alignment_policy=ValuationAlignmentPolicy(),
             execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.00018),
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal_weights,

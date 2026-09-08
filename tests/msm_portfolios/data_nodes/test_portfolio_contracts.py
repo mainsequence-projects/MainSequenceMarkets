@@ -689,6 +689,146 @@ class FrameSource:
         return self.frame.iloc[0:0]
 
 
+def portfolio_values_node_for_frames(
+    *,
+    valuations: pd.DataFrame,
+    weights: pd.DataFrame,
+    timestamps: pd.DatetimeIndex,
+) -> PortfoliosDataNode:
+    node = object.__new__(PortfoliosDataNode)
+    node.valuation_source = FrameSource(valuations)
+    node.valuation_column = "close"
+    node.valuation_alignment_policy = ValuationAlignmentPolicy(
+        maximum_staleness=timedelta(hours=12)
+    )
+    node.signal_weights = SimpleNamespace(get_asset_uid_to_override_portfolio_price=lambda: None)
+    node.commission_fee = 0.0
+    node._latest_portfolio_time_index_value = lambda: None
+    node._valuation_window = lambda _latest: (
+        timestamps[0].to_pydatetime(),
+        timestamps[-1].to_pydatetime(),
+    )
+    node._executed_weights_between = lambda **_kwargs: weights
+    node._apply_cumulative_portfolio_values = lambda frame: frame.assign(
+        close=(frame["return"] + 1.0).cumprod()
+    )
+    return node
+
+
+def test_strict_portfolio_valuation_ignores_missing_zero_exposure_asset() -> None:
+    days = pd.date_range("2026-01-01", periods=3, freq="D", tz="UTC")
+    valuations = asset_frame(
+        [(timestamp.isoformat(), "btc", 100.0 + offset) for offset, timestamp in enumerate(days)]
+    )
+    weights = pd.DataFrame(
+        [
+            (days[0], "btc", 1.0, 0.0),
+            (days[0], "holx", 0.0, 0.0),
+            (days[1], "btc", 1.0, 1.0),
+            (days[1], "holx", 0.0, 0.0),
+        ],
+        columns=["time_index", ASSET_IDENTIFIER, "weight", "weight_before"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    node = portfolio_values_node_for_frames(
+        valuations=valuations,
+        weights=weights,
+        timestamps=days,
+    )
+
+    result = node._calculate_portfolio_workflow_values()
+
+    assert result.index.tolist() == days.tolist()
+    assert "holx" in weights.index.get_level_values(ASSET_IDENTIFIER)
+
+
+def test_strict_portfolio_valuation_requires_entry_price() -> None:
+    days = pd.date_range("2026-01-01", periods=3, freq="D", tz="UTC")
+    valuations = asset_frame(
+        [(timestamp.isoformat(), "btc", 100.0 + offset) for offset, timestamp in enumerate(days)]
+    )
+    weights = pd.DataFrame(
+        [
+            (days[0], "btc", 1.0, 0.0),
+            (days[0], "holx", 0.0, 0.0),
+            (days[1], "btc", 0.75, 1.0),
+            (days[1], "holx", 0.25, 0.0),
+        ],
+        columns=["time_index", ASSET_IDENTIFIER, "weight", "weight_before"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    node = portfolio_values_node_for_frames(
+        valuations=valuations,
+        weights=weights,
+        timestamps=days,
+    )
+
+    with pytest.raises(ValueError, match="missing required assets: holx"):
+        node._calculate_portfolio_workflow_values()
+
+
+def test_strict_portfolio_valuation_requires_exit_price() -> None:
+    days = pd.date_range("2026-01-01", periods=3, freq="D", tz="UTC")
+    valuations = asset_frame(
+        [
+            *(
+                (timestamp.isoformat(), "btc", 100.0 + offset)
+                for offset, timestamp in enumerate(days)
+            ),
+            (days[0].isoformat(), "holx", 50.0),
+        ]
+    )
+    weights = pd.DataFrame(
+        [
+            (days[0], "btc", 0.75, 0.0),
+            (days[0], "holx", 0.25, 0.0),
+            (days[1], "btc", 1.0, 0.75),
+            (days[1], "holx", 0.0, 0.25),
+        ],
+        columns=["time_index", ASSET_IDENTIFIER, "weight", "weight_before"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    node = portfolio_values_node_for_frames(
+        valuations=valuations,
+        weights=weights,
+        timestamps=days,
+    )
+
+    with pytest.raises(ValueError, match=r"holx@2026-01-02T00:00:00\+00:00"):
+        node._calculate_portfolio_workflow_values()
+
+
+def test_strict_portfolio_valuation_stops_requiring_prices_after_exit() -> None:
+    days = pd.date_range("2026-01-01", periods=3, freq="D", tz="UTC")
+    valuations = asset_frame(
+        [
+            *(
+                (timestamp.isoformat(), "btc", 100.0 + offset)
+                for offset, timestamp in enumerate(days)
+            ),
+            (days[0].isoformat(), "holx", 50.0),
+            (days[1].isoformat(), "holx", 51.0),
+        ]
+    )
+    weights = pd.DataFrame(
+        [
+            (days[0], "btc", 0.75, 0.0),
+            (days[0], "holx", 0.25, 0.0),
+            (days[1], "btc", 1.0, 0.75),
+            (days[1], "holx", 0.0, 0.25),
+        ],
+        columns=["time_index", ASSET_IDENTIFIER, "weight", "weight_before"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    node = portfolio_values_node_for_frames(
+        valuations=valuations,
+        weights=weights,
+        timestamps=days,
+    )
+
+    result = node._calculate_portfolio_workflow_values()
+
+    assert result.index.tolist() == days.tolist()
+    assert result.loc[days[1], "return"] == pytest.approx(0.0125)
+    assert result.loc[days[2], "return"] == pytest.approx(102.0 / 101.0 - 1.0)
+
+
 def test_immediate_strategy_builds_complete_rebalance_state_at_signal_events() -> None:
     timestamps = pd.DatetimeIndex(
         ["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"],

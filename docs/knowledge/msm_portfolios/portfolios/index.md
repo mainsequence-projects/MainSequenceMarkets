@@ -617,6 +617,14 @@ request. Shared multidimensional sources use complete coordinates; for signal
 weights that means both `signal_uid` and `asset_identifier`. A rerun before new
 source data arrives is an empty update.
 
+Strict valuation coverage is exposure-aware at each asset and timestamp. A
+valuation is required when either the current or immediately preceding
+executed weight is nonzero: the current weight protects entries, and the
+preceding weight protects exits. A zero-to-zero asset is optional, and after a
+completed exit it becomes optional on the following valuation timestamp. The
+complete signal and executed-weight snapshots are not filtered, so explicit
+zero rows remain available for state reconstruction and auditing.
+
 In code, the important wiring is:
 
 ```python
