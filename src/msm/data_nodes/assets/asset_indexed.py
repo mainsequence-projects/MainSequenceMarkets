@@ -27,6 +27,54 @@ from msm.settings import (
 MarketAssetScopeItem = str | Mapping[str, Any] | Any
 OutputTable = type[PlatformTimeIndexMetaTable]
 UniqueIdentifierRangeMap = dict[str, dict[str, Any]]
+_MISSING = object()
+
+
+def _asset_scope_field(asset: MarketAssetScopeItem, field_name: str) -> Any:
+    if isinstance(asset, Mapping):
+        value = asset.get(field_name, _MISSING)
+        metadata = asset.get("metadata")
+    else:
+        value = getattr(asset, field_name, _MISSING)
+        metadata = getattr(asset, "metadata", None)
+
+    if (value is _MISSING or value is None) and isinstance(metadata, Mapping):
+        value = metadata.get(field_name, _MISSING)
+    return value
+
+
+def asset_scope_identifier(
+    asset: MarketAssetScopeItem,
+    *,
+    identity_dimension: str = ASSET_IDENTIFIER_DIMENSION,
+) -> str:
+    """Resolve one asset scope item to its canonical stored identifier.
+
+    Mapping and object scopes use ``asset_identifier`` exclusively.
+    """
+
+    if isinstance(asset, str):
+        return asset
+
+    value = _asset_scope_field(asset, identity_dimension)
+    if isinstance(asset, Mapping):
+        if _asset_scope_field(asset, "unique_identifier") is not _MISSING:
+            raise TypeError(
+                f"Asset scope mappings must use {identity_dimension!r} and must not "
+                "contain 'unique_identifier'."
+            )
+        if not isinstance(value, str):
+            raise TypeError(
+                f"Asset scope mappings require {identity_dimension!r}; "
+                "'unique_identifier' is not a valid mapping key."
+            )
+        return value
+
+    if not isinstance(value, str):
+        raise TypeError(
+            f"Asset scopes must contain strings, mappings, or objects with {identity_dimension!r}."
+        )
+    return value
 
 
 class AssetIndexedDataNodeConfiguration(TimeIndexTableUpdateConfig):
@@ -47,9 +95,9 @@ class AssetIndexedDataNode(TimeIndexTableUpdater):
     TimeIndexTableUpdater boundary for datasets whose identity dimension is a platform asset.
 
     Core TDAG works with generic dimensions. This class owns the market-specific
-    contract that platform assets are stored under the ``asset_identifier``
-    dimension while asset objects continue to expose their registry
-    ``unique_identifier``.
+    contract that platform asset scopes and rows use the
+    ``asset_identifier`` dimension. Its value is the corresponding registry
+    asset's canonical identifier.
     """
 
     asset_identity_dimension = ASSET_IDENTIFIER_DIMENSION
@@ -97,21 +145,10 @@ class AssetIndexedDataNode(TimeIndexTableUpdater):
 
     @classmethod
     def _asset_unique_identifier(cls, asset: MarketAssetScopeItem) -> str:
-        if isinstance(asset, str):
-            return asset
-        if isinstance(asset, Mapping):
-            value = asset.get(cls.asset_identity_dimension)
-        else:
-            value = getattr(asset, cls.asset_identity_dimension, None)
-            if value is None:
-                value = getattr(asset, "unique_identifier", None)
-
-        if not isinstance(value, str):
-            raise TypeError(
-                "AssetIndexedDataNode asset scopes must contain strings, mappings, "
-                f"or objects with {cls.asset_identity_dimension!r}."
-            )
-        return value
+        return asset_scope_identifier(
+            asset,
+            identity_dimension=cls.asset_identity_dimension,
+        )
 
     @classmethod
     def validate_asset_list(

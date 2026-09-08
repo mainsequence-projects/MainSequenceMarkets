@@ -689,6 +689,125 @@ class FrameSource:
         return self.frame.iloc[0:0]
 
 
+class ExecutedWeightsSource:
+    def __init__(self, *, window: pd.DataFrame, seed: pd.DataFrame) -> None:
+        self.window = window
+        self.seed = seed
+        self.window_calls: list[dict[str, object]] = []
+        self.seed_calls: list[dict[str, object]] = []
+
+    @staticmethod
+    def _asset_unique_identifier(asset: object) -> str:
+        return str(asset)
+
+    def get_df_between_dates(self, **kwargs):
+        self.window_calls.append(kwargs)
+        return self.window.copy()
+
+    def get_last_observation(self, **kwargs):
+        self.seed_calls.append(kwargs)
+        return self.seed.copy()
+
+
+def executed_weights_frame(rows: list[dict[str, object]]) -> pd.DataFrame:
+    return pd.DataFrame(rows).set_index(["time_index", PORTFOLIO_IDENTIFIER, ASSET_IDENTIFIER])
+
+
+def test_executed_weights_discard_out_of_range_seed_rows() -> None:
+    start = pd.Timestamp("2026-01-01T00:00:00Z")
+    current_time = pd.Timestamp("2026-01-02T00:00:00Z")
+    current = executed_weights_frame(
+        [
+            {
+                "time_index": current_time,
+                PORTFOLIO_IDENTIFIER: "portfolio-1",
+                ASSET_IDENTIFIER: "asset-btc",
+                "weight": 0.6,
+                "weight_before": 0.5,
+            },
+            {
+                "time_index": current_time,
+                PORTFOLIO_IDENTIFIER: "portfolio-1",
+                ASSET_IDENTIFIER: "asset-eth",
+                "weight": 0.4,
+                "weight_before": 0.5,
+            },
+        ]
+    )
+    source = ExecutedWeightsSource(window=current, seed=current)
+    node = object.__new__(PortfoliosDataNode)
+    node._unique_identifier = lambda: "portfolio-1"
+    node._ensure_portfolio_weights_node = lambda: source
+    node.signal_weights = SimpleNamespace(get_asset_list=lambda: ["asset-btc", "asset-eth"])
+
+    result = node._executed_weights_between(
+        start=start.to_pydatetime(),
+        end=current_time.to_pydatetime(),
+    )
+
+    assert len(result) == 2
+    assert not result.index.has_duplicates
+    assert set(result.index.get_level_values("time_index")) == {current_time}
+    assert len(source.seed_calls) == 1
+    assert source.seed_calls[0]["dimension_range_map"] == [
+        {
+            "coordinate": {
+                PORTFOLIO_IDENTIFIER: "portfolio-1",
+                ASSET_IDENTIFIER: "asset-btc",
+            },
+            "end_date": start.to_pydatetime(),
+            "end_date_operand": "<",
+        },
+        {
+            "coordinate": {
+                PORTFOLIO_IDENTIFIER: "portfolio-1",
+                ASSET_IDENTIFIER: "asset-eth",
+            },
+            "end_date": start.to_pydatetime(),
+            "end_date_operand": "<",
+        },
+    ]
+
+
+def test_executed_weights_reject_duplicate_current_window_coordinates() -> None:
+    current_time = pd.Timestamp("2026-01-02T00:00:00Z")
+    duplicate_window = executed_weights_frame(
+        [
+            {
+                "time_index": current_time,
+                PORTFOLIO_IDENTIFIER: "portfolio-1",
+                ASSET_IDENTIFIER: "asset-btc",
+                "weight": 0.6,
+                "weight_before": 0.5,
+            },
+            {
+                "time_index": current_time,
+                PORTFOLIO_IDENTIFIER: "portfolio-1",
+                ASSET_IDENTIFIER: "asset-btc",
+                "weight": 0.7,
+                "weight_before": 0.6,
+            },
+        ]
+    )
+    source = ExecutedWeightsSource(
+        window=duplicate_window,
+        seed=duplicate_window.iloc[0:0],
+    )
+    node = object.__new__(PortfoliosDataNode)
+    node._unique_identifier = lambda: "portfolio-1"
+    node._ensure_portfolio_weights_node = lambda: source
+    node.signal_weights = SimpleNamespace(get_asset_list=lambda: ["asset-btc"])
+
+    with pytest.raises(
+        ValueError,
+        match="Persisted portfolio weight window contains duplicate canonical weight coordinates",
+    ):
+        node._executed_weights_between(
+            start=pd.Timestamp("2026-01-01T00:00:00Z").to_pydatetime(),
+            end=current_time.to_pydatetime(),
+        )
+
+
 def portfolio_values_node_for_frames(
     *,
     valuations: pd.DataFrame,

@@ -84,6 +84,22 @@ universe selection affects update identity, not the storage identity of the
 published dataset. Two updater jobs can write different asset subsets into the
 same dataset when the schema and dataset meaning are otherwise the same.
 
+String scope items are interpreted directly as canonical asset identifiers.
+Mapping scope items use `asset_identifier` as the canonical key, including when
+that key is nested under `metadata`; mapping payloads must not contain
+`unique_identifier`, even when `asset_identifier` is also present. Object scope
+items must expose `.asset_identifier`; `.unique_identifier` is not consulted.
+The same resolver is used by inherited
+`AssetIndexedDataNode` validation and portfolio helpers such as price-calendar
+resolution, so one mapping shape cannot pass one stage and fail the next.
+
+```python
+asset_list = [
+    "asset_crypto_btc",
+    {"asset_identifier": "asset_crypto_eth", "calendar": "24/7"},
+]
+```
+
 Asset-scoped configuration has two categories:
 
 - normal `TimeIndexTableUpdateConfig` fields, which enter `update_hash`

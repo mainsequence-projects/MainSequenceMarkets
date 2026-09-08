@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from mainsequence.client.metatables import TimeIndexMetaTable
 from mainsequence.meta_tables import TimeIndexTableRef
@@ -10,6 +11,7 @@ from msm.models.portfolios import PortfolioTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.asset_scope import ASSET_IDENTIFIER
 from msm_portfolios.contrib.prices.data_nodes import (
+    InterpolatedPrices,
     _asset_calendar_map,
     _normalize_time_indexed_frame_ns_utc,
     _source_time_indexed_profile_cadence,
@@ -131,18 +133,49 @@ def test_interpolated_prices_accepts_registered_top_level_source_cadence() -> No
     )
 
 
-def test_interpolated_prices_asset_calendar_map_accepts_string_scope_items() -> None:
-    assert _asset_calendar_map(
-        [
-            "example-asset-btc",
-            {"unique_identifier": "example-asset-eth", "calendar": "NYSE"},
-            {"metadata": {"unique_identifier": "example-asset-sol"}},
-        ]
-    ) == {
+def test_interpolated_prices_mapping_scope_uses_canonical_asset_identifier() -> None:
+    asset_scope = [
+        "example-asset-btc",
+        {
+            "asset_identifier": "example-asset-eth",
+            "calendar": "NYSE",
+        },
+        {"metadata": {"asset_identifier": "example-asset-sol"}},
+    ]
+
+    assert InterpolatedPrices.asset_unique_identifiers(asset_scope) == [
+        "example-asset-btc",
+        "example-asset-eth",
+        "example-asset-sol",
+    ]
+    assert _asset_calendar_map(asset_scope) == {
         "example-asset-btc": "24/7",
         "example-asset-eth": "NYSE",
         "example-asset-sol": "24/7",
     }
+
+
+@pytest.mark.parametrize(
+    "asset_scope",
+    [
+        [{"unique_identifier": "example-asset-invalid", "calendar": "NYSE"}],
+        [
+            {
+                "asset_identifier": "example-asset-invalid",
+                "unique_identifier": "legacy-example-asset-invalid",
+                "calendar": "NYSE",
+            }
+        ],
+    ],
+)
+def test_interpolated_prices_mapping_scope_rejects_unique_identifier_key(
+    asset_scope: list[dict[str, str]],
+) -> None:
+
+    with pytest.raises(TypeError, match="must not contain 'unique_identifier'"):
+        InterpolatedPrices.asset_unique_identifiers(asset_scope)
+    with pytest.raises(TypeError, match="must not contain 'unique_identifier'"):
+        _asset_calendar_map(asset_scope)
 
 
 def test_interpolated_prices_normalizes_time_index_output_to_ns_utc() -> None:

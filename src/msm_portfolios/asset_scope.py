@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from msm.data_nodes.assets.asset_indexed import asset_scope_identifier
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
 ASSET_IDENTIFIER = ASSET_IDENTIFIER_DIMENSION
@@ -34,11 +35,9 @@ def asset_field(asset: Any, field_name: str, default: Any = _MISSING) -> Any:
 
 
 def asset_unique_identifier(asset: Any) -> str:
-    if isinstance(asset, str):
-        return asset
-    value = asset_field(asset, "unique_identifier")
-    if not isinstance(value, str) or not value.strip():
-        raise TypeError("Asset scope item requires a non-empty unique_identifier string.")
+    value = asset_scope_identifier(asset, identity_dimension=ASSET_IDENTIFIER)
+    if not value.strip():
+        raise TypeError("Asset scope item requires a non-empty asset_identifier string.")
     return value
 
 
@@ -84,7 +83,9 @@ def require_asset_category_scope(
             "inside msm. Resolve the category through MetaTable services and pass "
             "the resulting asset_list explicitly."
         )
-    raise ValueError(f"{context} requires asset_list or a source TimeIndexTableUpdater with get_asset_list().")
+    raise ValueError(
+        f"{context} requires asset_list or a source TimeIndexTableUpdater with get_asset_list()."
+    )
 
 
 def asset_spot_reference_unique_identifier(asset: Any) -> str:

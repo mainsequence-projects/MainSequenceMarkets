@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import os
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -276,11 +277,44 @@ def test_core_execution_storage_does_not_carry_fund_identifier() -> None:
 
 
 def test_asset_indexed_node_normalizes_asset_scope_helpers() -> None:
-    assert AssetSnapshot.validate_asset_list(["BTC", "ETH"]) == ["BTC", "ETH"]
-    assert AssetSnapshot.asset_dimension_filters(["BTC", "ETH"]) == {
-        ASSET_IDENTIFIER_DIMENSION: ["BTC", "ETH"]
+    assets = [
+        "BTC",
+        {"asset_identifier": "ETH"},
+        SimpleNamespace(asset_identifier="SOL"),
+        {"metadata": {"asset_identifier": "ADA"}},
+    ]
+
+    assert AssetSnapshot.validate_asset_list(assets) == assets
+    assert AssetSnapshot.asset_unique_identifiers(assets) == [
+        "BTC",
+        "ETH",
+        "SOL",
+        "ADA",
+    ]
+    assert AssetSnapshot.asset_dimension_filters(assets) == {
+        ASSET_IDENTIFIER_DIMENSION: ["BTC", "ETH", "SOL", "ADA"]
     }
     assert AssetSnapshot.asset_dimension_filters(None) is None
+
+
+@pytest.mark.parametrize(
+    "asset",
+    [
+        {"unique_identifier": "SOL"},
+        {"asset_identifier": "SOL", "unique_identifier": "legacy-sol"},
+    ],
+)
+def test_asset_indexed_node_rejects_unique_identifier_mapping_key(asset: dict) -> None:
+    with pytest.raises(
+        TypeError,
+        match="must use 'asset_identifier'.*must not contain 'unique_identifier'",
+    ):
+        AssetSnapshot.validate_asset_list([asset])
+
+
+def test_asset_indexed_node_rejects_unique_identifier_object_attribute() -> None:
+    with pytest.raises(TypeError, match="objects with 'asset_identifier'"):
+        AssetSnapshot.validate_asset_list([SimpleNamespace(unique_identifier="SOL")])
 
 
 def test_asset_indexed_last_observation_preserves_sdk_dimension_query_contract() -> None:

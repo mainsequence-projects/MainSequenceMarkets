@@ -60,6 +60,10 @@ repairing rows written by an affected older runtime, upgrade `ms-markets`
 before applying any `asset_identifier`-scoped tail delete, then replay the
 interpolation updater and downstream portfolio graph immediately.
 
+Asset-scope mappings use `asset_identifier` as their canonical identity key;
+the example supplies that key alongside `calendar`. Mapping payloads containing
+`unique_identifier` are rejected, even when `asset_identifier` is also present.
+
 ## Understand the independent clocks
 
 The example intentionally keeps execution, valuation, and reporting separate:
@@ -88,6 +92,9 @@ Each execution or valuation window is seeded with the latest eligible row for
 every required asset using one set-based `get_last_observation(...)` request.
 For shared signal storage, each range coordinate includes both `signal_uid` and
 `asset_identifier`, preventing another signal's rows from entering the seed.
+Portfolio valuation also rechecks the response boundary: executed-weight seed
+rows are kept only when they are strictly earlier than the window start, and
+duplicate `(time_index, asset_identifier)` coordinates fail before pivoting.
 
 This example uses one concrete strategy; it does not define the architecture.
 Under [ADR 0040](../ADR/0040-portfolio-temporal-ownership.md), every strategy

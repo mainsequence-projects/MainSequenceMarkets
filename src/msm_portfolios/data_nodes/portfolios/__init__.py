@@ -380,6 +380,10 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                 dimension_filters={PORTFOLIO_IDENTIFIER: [portfolio_identifier]},
             )
         )
+        self._require_unique_weight_coordinates(
+            window,
+            context="Persisted portfolio weight window",
+        )
         assets = [
             str(node._asset_unique_identifier(asset))
             for asset in (self.signal_weights.get_asset_list() or [])
@@ -403,7 +407,20 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
                     ]
                 )
             )
-        return pd.concat([seed, window]).sort_index() if not seed.empty else window
+            if not seed.empty:
+                seed_cutoff = pd.to_datetime(start, utc=True)
+                seed = seed[seed.index.get_level_values("time_index") < seed_cutoff]
+                self._require_unique_weight_coordinates(
+                    seed,
+                    context="Portfolio weight seed",
+                )
+
+        executed_weights = pd.concat([seed, window]).sort_index() if not seed.empty else window
+        self._require_unique_weight_coordinates(
+            executed_weights,
+            context="Executed portfolio weights",
+        )
+        return executed_weights
 
     @staticmethod
     def _normalize_weights_frame(frame: pd.DataFrame | None) -> pd.DataFrame:
@@ -413,6 +430,28 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True)
         flat[ASSET_IDENTIFIER] = flat[ASSET_IDENTIFIER].map(str)
         return flat.set_index(["time_index", ASSET_IDENTIFIER]).sort_index()
+
+    @staticmethod
+    def _require_unique_weight_coordinates(
+        frame: pd.DataFrame,
+        *,
+        context: str,
+    ) -> None:
+        if frame.empty or not frame.index.has_duplicates:
+            return
+
+        duplicate_index = frame.index[frame.index.duplicated(keep=False)].unique()
+        sample = ", ".join(
+            f"({pd.Timestamp(time_index).isoformat()}, {asset_identifier!r})"
+            for time_index, asset_identifier in duplicate_index[:5]
+        )
+        remaining = len(duplicate_index) - 5
+        if remaining > 0:
+            sample = f"{sample}, and {remaining} more"
+        raise ValueError(
+            f"{context} contains duplicate canonical weight coordinates "
+            f"(time_index, {ASSET_IDENTIFIER}): {sample}."
+        )
 
     def _valuation_window(self, latest_value: Any | None) -> tuple[datetime, datetime]:
         start = (

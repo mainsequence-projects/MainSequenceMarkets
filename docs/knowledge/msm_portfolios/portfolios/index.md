@@ -617,6 +617,13 @@ request. Shared multidimensional sources use complete coordinates; for signal
 weights that means both `signal_uid` and `asset_identifier`. A rerun before new
 source data arrives is an empty update.
 
+Executed-weight seed rows are normalized and retained only when their
+`time_index` is strictly earlier than the calculation-window start, even if an
+upstream latest-observation response violates the requested `< start` bound.
+The current window, retained seed, and combined frame must each be unique on
+`(time_index, asset_identifier)`; a genuine duplicate fails with an explicit
+invariant error before weights are pivoted.
+
 Strict valuation coverage is exposure-aware at each asset and timestamp. A
 valuation is required when either the current or immediately preceding
 executed weight is nonzero: the current weight protects entries, and the

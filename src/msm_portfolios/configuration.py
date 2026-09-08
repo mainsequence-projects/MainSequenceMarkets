@@ -206,7 +206,7 @@ class AssetsConfiguration(PortfolioConfigBaseModel):
         default=None,
         description=(
             "Resolved asset scope for portfolio DataNodes. Items may be strings, mappings, "
-            "or objects with a unique_identifier field."
+            "or objects with an asset_identifier field."
         ),
         json_schema_extra={"hash_excluded": True},
     )

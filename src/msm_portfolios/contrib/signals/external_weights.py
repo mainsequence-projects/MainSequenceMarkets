@@ -5,7 +5,7 @@ from datetime import timedelta
 import pandas as pd
 
 from mainsequence.client import Artifact
-from msm_portfolios.asset_scope import asset_field
+from msm_portfolios.asset_scope import asset_field, asset_unique_identifier
 from msm_portfolios.data_nodes import ASSET_IDENTIFIER, SignalWeights
 from msm_portfolios.configuration import (
     PortfolioConfigBaseModel,
@@ -60,7 +60,7 @@ class ExternalWeights(SignalWeights):
             weights_source.loc[
                 weights_source["figi"] == asset_field(asset, "figi"),
                 ASSET_IDENTIFIER,
-            ] = asset_field(asset, "unique_identifier")
+            ] = asset_unique_identifier(asset)
 
         weights = weights_source[["time_index", ASSET_IDENTIFIER, "weight"]]
         weights.rename(columns={"weight": "signal_weight"}, inplace=True)

@@ -236,7 +236,12 @@ def build_interpolated_prices_node(
 ) -> InterpolatedPrices:
     return InterpolatedPrices(
         interpolation_config=InterpolatedPricesConfig(
-            asset_list=list(ASSET_UNIQUE_IDENTIFIERS),
+            # Mapping scopes use the stored dimension name as their canonical
+            # identity key; calendar resolution consumes the same mapping.
+            asset_list=[
+                {"asset_identifier": asset_identifier, "calendar": "24/7"}
+                for asset_identifier in ASSET_UNIQUE_IDENTIFIERS
+            ],
             intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
             source_price_instance=source_price_instance,
             upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,

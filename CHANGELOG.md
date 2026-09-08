@@ -7,6 +7,23 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- Unified asset-scope mapping identity on canonical `asset_identifier` and
+  removed `unique_identifier` fallback behavior from mapping and object scopes,
+  so inherited asset-indexed validation and portfolio calendar resolution
+  enforce the same payload. Added regressions for
+  [#9](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/9).
+- Discarded out-of-range executed-weight seed rows and enforced unique
+  `(time_index, asset_identifier)` coordinates before portfolio weight pivots,
+  while preserving one set-based seed lookup. Added regressions for
+  [#10](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/10).
+
+### Documentation
+
+- Documented canonical mapping scopes and defensive portfolio seed validation
+  in the asset guide, portfolio guide, tutorial, and equal-weight example.
+
 ## [1.0.12] - 2026-09-08
 
 ### Fixed
