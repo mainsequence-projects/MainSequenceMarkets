@@ -72,9 +72,13 @@ class InterpolatedPricesConfig(AssetIndexedDataNodeConfiguration):
         return self
 
 
-def _assert_source_price_instance(source_price: TimeIndexTableUpdater | TimeIndexTableRef) -> TimeIndexTableUpdater | TimeIndexTableRef:
+def _assert_source_price_instance(
+    source_price: TimeIndexTableUpdater | TimeIndexTableRef,
+) -> TimeIndexTableUpdater | TimeIndexTableRef:
     if not isinstance(source_price, (TimeIndexTableUpdater, TimeIndexTableRef)):
-        raise TypeError("Price sources must be TimeIndexTableUpdater or TimeIndexTableRef instances.")
+        raise TypeError(
+            "Price sources must be TimeIndexTableUpdater or TimeIndexTableRef instances."
+        )
     return source_price
 
 
@@ -421,7 +425,9 @@ class UpsampleAndInterpolation:
                     d = int(digits.mode().iat[0])
 
                     unit = UNIT_BY_MIN_DIGITS[max(k for k in UNIT_BY_MIN_DIGITS if d >= k)]
-                    tmp_df[col] = pd.to_datetime(s, unit=unit, utc=True)
+                    tmp_df[col] = normalize_datetime64_ns_utc(
+                        pd.to_datetime(s, unit=unit, utc=True)
+                    )
 
             except Exception as e:
                 raise e
@@ -474,7 +480,7 @@ class UpsampleAndInterpolation:
         # Keep everything as timezone-aware datetimes.
         for col in all_columns:
             if col in upsampled_df.columns:
-                upsampled_df[col] = pd.to_datetime(upsampled_df[col]).astype(np.int64).values
+                upsampled_df[col] = normalize_datetime64_ns_utc(upsampled_df[col])
 
         return upsampled_df
 
@@ -597,7 +603,7 @@ def interpolate_intraday_bars(
 
     def sanitize_today_update(x: pd.DataFrame, date_range, day):
         # normalize to UTC for consistent “today” comparison
-        today_utc = datetime.datetime.utcnow()
+        today_utc = datetime.datetime.now(datetime.UTC)
 
         if day.date() == today_utc.date():
             x.index.name = None
@@ -753,8 +759,8 @@ class InterpolatedPrices(AssetIndexedDataNode):
         intraday_bar_interpolation_rule = interpolation_config.intraday_bar_interpolation_rule
         asset_category_unique_id = interpolation_config.asset_category_unique_id
         asset_list = interpolation_config.asset_list
-        source_prices_ts, source_time_index_meta_table_uid = (
-            _resolve_interpolated_source_prices(interpolation_config)
+        source_prices_ts, source_time_index_meta_table_uid = _resolve_interpolated_source_prices(
+            interpolation_config
         )
         if "output_table" in kwargs:
             raise TypeError(
@@ -990,9 +996,7 @@ class InterpolatedPrices(AssetIndexedDataNode):
         prices = self.update_statistics.filter_df_by_latest_value(prices)
 
         duplicates_exist = (
-            prices.reset_index()
-            .duplicated(subset=["time_index", ASSET_IDENTIFIER_DIMENSION])
-            .any()
+            prices.reset_index().duplicated(subset=["time_index", ASSET_IDENTIFIER_DIMENSION]).any()
         )
         if duplicates_exist:
             raise Exception()

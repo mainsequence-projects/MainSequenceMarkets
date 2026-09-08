@@ -54,6 +54,12 @@ table. The script prints the workflow steps, created row UIDs, source valuation
 row counts, explicit valuation-source dependency details, and published TimeIndexTableUpdater
 storage UIDs.
 
+Source-bar timestamp payloads are kept as timezone-aware datetimes and
+normalized to nanosecond UTC before `InterpolatedPrices` publishes them. When
+repairing rows written by an affected older runtime, upgrade `ms-markets`
+before applying any `asset_identifier`-scoped tail delete, then replay the
+interpolation updater and downstream portfolio graph immediately.
+
 ## Understand the independent clocks
 
 The example intentionally keeps execution, valuation, and reporting separate:

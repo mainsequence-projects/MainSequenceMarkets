@@ -539,6 +539,21 @@ compatible source table through `TimeIndexTableRef.from_uid(...)`.
 resolved source from `dependencies()`, and writes the configured interpolation
 output.
 
+Timestamp-valued bar payloads such as `open_time`, `first_trade_time`, and
+`last_trade_time` remain timezone-aware datetimes throughout interpolation and
+are normalized to `datetime64[ns, UTC]` before publication. They are never
+round-tripped through unit-ambiguous integers. This matters with pandas 3,
+where parsed datetimes commonly retain microsecond resolution and an integer
+cast therefore represents microseconds rather than nanoseconds.
+
+Upgrading the library does not rewrite previously published interpolated rows.
+If inspection finds corrupt timestamp payloads, install the corrected package
+first, determine the earliest affected observation per asset, apply an
+inclusive `asset_identifier`-scoped tail delete through
+`TimeIndexMetaTable.delete_after_date(...)`, and immediately replay the
+interpolation updater and affected downstream graph. Do not update persisted
+time coordinates in place.
+
 The interpolation policy is storage identity, not row metadata.
 `InterpolatedPrices` builds a configured storage class whose
 `__metatable_extra_hash_components__` include the source `TimeIndexMetaTable`

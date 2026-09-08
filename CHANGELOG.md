@@ -7,6 +7,24 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [1.0.11] - 2026-09-08
+
+### Fixed
+
+- Preserved `open_time`, `first_trade_time`, `last_trade_time`, and intraday
+  `trade_day` as timezone-aware `datetime64[ns, UTC]` values throughout price
+  interpolation instead of round-tripping pandas 3 microsecond timestamps
+  through unit-ambiguous integers. Added daily and intraday regressions that
+  close [#7](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/7).
+- Replaced the deprecated naive `datetime.utcnow()` comparison in intraday
+  interpolation with a timezone-aware UTC timestamp.
+
+### Documentation
+
+- Documented the interpolated price timestamp contract and the required
+  upgrade-before-scoped-replay order in the portfolio guide, tutorial, and
+  equal-weight example.
+
 ## [1.0.10] - 2026-09-08
 
 ### Changed

@@ -308,6 +308,8 @@ def assert_interpolated_prices_storage_registered(output_table: type[Any]) -> An
 
 
 def build_example_daily_bars_frame(asset_identifiers: Sequence[str]) -> pd.DataFrame:
+    """Build source bars with explicit nanosecond UTC index and payload timestamps."""
+
     base_open = TIME_INDEX - pd.Timedelta(days=3)
     rows: list[dict[str, object]] = []
     for asset_position, asset_identifier in enumerate(asset_identifiers):
@@ -333,8 +335,8 @@ def build_example_daily_bars_frame(asset_identifiers: Sequence[str]) -> pd.DataF
                 }
             )
     frame = pd.DataFrame(rows)
-    frame["time_index"] = normalize_datetime64_ns_utc(frame["time_index"])
-    frame["open_time"] = normalize_datetime64_ns_utc(frame["open_time"])
+    for timestamp_column in ("time_index", "open_time"):
+        frame[timestamp_column] = normalize_datetime64_ns_utc(frame[timestamp_column])
     return frame.set_index(["time_index", "asset_identifier"]).sort_index()
 
 
