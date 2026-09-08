@@ -7,6 +7,14 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-09-08
+
+### Documentation
+
+- Corrected the live README, getting-started guide, and FastAPI package
+  contract documentation to state the required Main Sequence SDK 8.1.7 floor;
+  the published dependency metadata already enforced that floor.
+
 ## [1.0.8] - 2026-09-08
 
 ### Added
