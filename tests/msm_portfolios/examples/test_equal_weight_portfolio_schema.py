@@ -21,6 +21,8 @@ def _configured_dynamic_table_name() -> str:
 
 def test_static_runtime_models_exclude_configured_interpolation_storage() -> None:
     assert "ExternalPricesStorage" in config.PORTFOLIO_EXAMPLE_RUNTIME_MODELS
+    assert "PortfolioCalendarEventsStorage" in config.PORTFOLIO_EXAMPLE_RUNTIME_MODELS
+    assert "PortfolioRebalanceStateStorage" in config.PORTFOLIO_EXAMPLE_RUNTIME_MODELS
     assert all(isinstance(model, str) for model in config.PORTFOLIO_EXAMPLE_RUNTIME_MODELS)
     assert "InterpolatedPricesStorage" not in config.PORTFOLIO_EXAMPLE_RUNTIME_MODELS
     assert not any(
@@ -43,9 +45,7 @@ def test_runtime_derives_configured_storage_from_registered_source_metadata() ->
 
     assert storage is expected
     assert storage.__table__.name == expected.__table__.name
-    assert storage.__metatable_extra_hash_components__[
-        "source_time_index_meta_table_uid"
-    ] == (
+    assert storage.__metatable_extra_hash_components__["source_time_index_meta_table_uid"] == (
         "source-storage-uid"
     )
     assert storage.__metatable_extra_hash_components__["source_cadence"] == "5m"

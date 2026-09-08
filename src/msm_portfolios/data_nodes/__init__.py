@@ -27,7 +27,12 @@ from .portfolio_identity import (
     compute_portfolio_configuration_hash,
     get_or_create_portfolio,
 )
+from .portfolios.calendar_events import (
+    PortfolioCalendarEvents,
+    PortfolioCalendarEventsConfiguration,
+)
 from .portfolios.weights import PortfolioWeights, normalize_portfolio_weights_frame
+from .portfolios.rebalance import PortfolioRebalance, normalize_rebalance_state_frame
 from .portfolios.analytics import PortfolioAnalytics, PortfolioAnalyticsConfiguration
 from .portfolios import PortfoliosDataNode, normalize_portfolio_values_frame
 from .signals import (
@@ -54,6 +59,9 @@ __all__ = [
     "PortfoliosDataNode",
     "PortfolioAnalytics",
     "PortfolioAnalyticsConfiguration",
+    "PortfolioCalendarEvents",
+    "PortfolioCalendarEventsConfiguration",
+    "PortfolioRebalance",
     "PortfolioWeights",
     "SignalWeights",
     "SignalWeightsConfiguration",
@@ -67,6 +75,7 @@ __all__ = [
     "compute_signal_uid",
     "get_or_create_portfolio",
     "normalize_portfolio_weights_frame",
+    "normalize_rebalance_state_frame",
     "normalize_portfolio_values_frame",
     "normalize_signal_weights_frame",
 ]

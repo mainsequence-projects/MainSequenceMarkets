@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib
+import inspect
 from importlib import resources
 from pathlib import Path
 
@@ -108,6 +110,18 @@ def test_migration_version_packages_do_not_assume_generated_history() -> None:
     assert versions_root.joinpath("default").is_dir()
     assert versions_root.joinpath("mainsequence_markets").is_dir()
     assert versions_root.joinpath("mainsequence_examples").is_dir()
+
+
+def test_general_portfolio_rebalance_revision_follows_current_head() -> None:
+    revision = importlib.import_module(
+        "migrations.versions.mainsequence_markets.0016_add_general_portfolio_rebalance_"
+    )
+    source = inspect.getsource(revision)
+
+    assert revision.revision == "0016"
+    assert revision.down_revision == "0015"
+    assert "ms_markets__portfoliocalendareventsts" in source
+    assert "ms_markets__portfoliorebalancestatets" in source
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:

@@ -17,6 +17,9 @@ _EXPORTS = {
     "PortfolioCanonicalDataNodeConfiguration": ".data_nodes",
     "PortfolioAnalytics": ".data_nodes",
     "PortfolioAnalyticsConfiguration": ".data_nodes",
+    "PortfolioCalendarEvents": ".data_nodes",
+    "PortfolioCalendarEventsConfiguration": ".data_nodes",
+    "PortfolioRebalance": ".data_nodes",
     "PortfolioWeights": ".data_nodes",
     "PortfoliosDataNode": ".data_nodes",
     "SignalWeights": ".data_nodes",
@@ -30,6 +33,7 @@ _EXPORTS = {
     "get_runtime": ".bootstrap",
     "normalize_portfolio_values_frame": ".data_nodes",
     "normalize_portfolio_weights_frame": ".data_nodes",
+    "normalize_rebalance_state_frame": ".data_nodes",
     "normalize_signal_weights_frame": ".data_nodes",
     "start_engine": ".bootstrap",
 }

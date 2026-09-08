@@ -62,6 +62,8 @@ from msm_portfolios.data_nodes.prices.storage import (  # noqa: E402
     ExternalPricesStorage,
 )
 from msm_portfolios.data_nodes import (  # noqa: E402
+    PortfolioCalendarEvents,
+    PortfolioCalendarEventsConfiguration,
     PortfoliosDataNode,
     compute_portfolio_configuration_hash,
 )
@@ -182,6 +184,7 @@ def build_portfolio_configuration(
     signal_weights: FixedWeights,
     *,
     calendar: Calendar,
+    calendar_events: PortfolioCalendarEvents,
     price_source: InterpolatedPrices,
 ) -> PortfolioConfiguration:
     return PortfolioConfiguration(
@@ -192,6 +195,7 @@ def build_portfolio_configuration(
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal_weights,
                 rebalance_strategy_instance=CalendarEventSignal(
+                    calendar_events_instance=calendar_events,
                     calendar_identifier=calendar.unique_identifier,
                     session_label="regular",
                     rebalance_event="market_close",
@@ -208,6 +212,17 @@ def build_signal_weights_node() -> FixedWeights:
     signal_configuration = build_fixed_weights_config()
     return FixedWeights.from_signal_configuration(
         signal_configuration,
+        namespace=NAMESPACE,
+    )
+
+
+def build_calendar_events_node(*, calendar: Calendar) -> PortfolioCalendarEvents:
+    return PortfolioCalendarEvents(
+        config=PortfolioCalendarEventsConfiguration(
+            calendar_identifier=calendar.unique_identifier,
+            session_label="regular",
+            event_types=("market_open", "market_close"),
+        ),
         namespace=NAMESPACE,
     )
 
@@ -351,6 +366,8 @@ def print_result_summary(result: dict[str, Any], *, run_data_nodes: bool) -> Non
     print_detail("source_prices_data_node_uid", result["source_prices_node_uid"])
     print_detail("interpolated_prices_data_node_uid", result["interpolated_prices_node_uid"])
     print_detail("signal_weights_data_node_uid", result["signal_weights_node_uid"])
+    print_detail("calendar_events_data_node_uid", result["calendar_events_node_uid"])
+    print_detail("portfolio_rebalance_data_node_uid", result["portfolio_rebalance_node_uid"])
     print_detail("portfolio_weights_data_node_uid", result["portfolio_weights_node_uid"])
     print_detail("portfolio_values_data_node_uid", result["portfolio_values_node_uid"])
     if not run_data_nodes:
@@ -389,9 +406,11 @@ def build_equal_weight_portfolio(
     source_bars_node = build_source_bars_node()
     interpolated_prices_node = build_interpolated_prices_node(source_bars_node)
     signal_weights_node = build_signal_weights_node()
+    calendar_events_node = build_calendar_events_node(calendar=portfolio_calendar)
     portfolio_configuration = build_portfolio_configuration(
         signal_weights_node,
         calendar=portfolio_calendar,
+        calendar_events=calendar_events_node,
         price_source=interpolated_prices_node,
     )
     portfolio = Portfolio.upsert(
@@ -453,7 +472,15 @@ def build_equal_weight_portfolio(
         signal_weights_node_uid = str(signal_weights_node.table_update.uid)
         print_detail("signal_weights_data_node_uid", signal_weights_node_uid)
 
+        calendar_events_node_uid = str(calendar_events_node.table_update.uid)
+        print_detail("calendar_events_data_node_uid", calendar_events_node_uid)
+
         portfolio_weights_node = portfolio_values_node._canonical_portfolio_weights_node()
+        portfolio_rebalance_node_uid = str(
+            portfolio_weights_node.portfolio_rebalance.table_update.uid
+        )
+        print_detail("portfolio_rebalance_data_node_uid", portfolio_rebalance_node_uid)
+
         portfolio_weights_node_uid = str(portfolio_weights_node.table_update.uid)
         print_detail("portfolio_weights_data_node_uid", portfolio_weights_node_uid)
 
@@ -463,11 +490,15 @@ def build_equal_weight_portfolio(
         print_detail("source_prices_data_node_uid", "skipped (--no-run-data-nodes)")
         print_detail("interpolated_prices_data_node_uid", "skipped (--no-run-data-nodes)")
         print_detail("signal_weights_data_node_uid", "skipped (--no-run-data-nodes)")
+        print_detail("calendar_events_data_node_uid", "skipped (--no-run-data-nodes)")
+        print_detail("portfolio_rebalance_data_node_uid", "skipped (--no-run-data-nodes)")
         print_detail("portfolio_weights_data_node_uid", "skipped (--no-run-data-nodes)")
         print_detail("portfolio_values_data_node_uid", "skipped (--no-run-data-nodes)")
         source_prices_node_uid = None
         interpolated_prices_node_uid = None
         signal_weights_node_uid = None
+        calendar_events_node_uid = None
+        portfolio_rebalance_node_uid = None
         portfolio_weights_node_uid = None
         portfolio_values_node_uid = None
 
@@ -493,6 +524,8 @@ def build_equal_weight_portfolio(
         "source_prices_node_uid": source_prices_node_uid,
         "interpolated_prices_node_uid": interpolated_prices_node_uid,
         "signal_weights_node_uid": signal_weights_node_uid,
+        "calendar_events_node_uid": calendar_events_node_uid,
+        "portfolio_rebalance_node_uid": portfolio_rebalance_node_uid,
         "portfolio_weights_node_uid": portfolio_weights_node_uid,
         "portfolio_values_node_uid": portfolio_values_node_uid,
     }

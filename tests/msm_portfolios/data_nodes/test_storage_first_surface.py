@@ -14,9 +14,13 @@ from msm_portfolios.contrib.prices.data_nodes import (
     _normalize_time_indexed_frame_ns_utc,
     _source_time_indexed_profile_cadence,
 )
+from msm_portfolios.data_nodes.portfolios.calendar_events import PortfolioCalendarEvents
+from msm_portfolios.data_nodes.portfolios.rebalance import PortfolioRebalance
 from msm_portfolios.data_nodes.portfolios.weights import PortfolioWeights
 from msm_portfolios.data_nodes.portfolios import PortfoliosDataNode
 from msm_portfolios.data_nodes.portfolios.storage import (
+    PortfolioCalendarEventsStorage,
+    PortfolioRebalanceStateStorage,
     PortfolioWeightsStorage,
     PortfoliosStorage,
 )
@@ -40,7 +44,13 @@ def test_portfolio_asset_scope_uses_markets_asset_dimension() -> None:
 def test_portfolio_nodes_expose_storage_first_surface(monkeypatch) -> None:
     registered = set(portfolio_sqlalchemy_models())
 
-    for node_cls in (PortfolioWeights, PortfoliosDataNode, SignalWeights):
+    for node_cls in (
+        PortfolioCalendarEvents,
+        PortfolioRebalance,
+        PortfolioWeights,
+        PortfoliosDataNode,
+        SignalWeights,
+    ):
         assert "__data_node_identifier__" not in node_cls.__dict__
         assert "_default_identifier" not in node_cls.__dict__
         assert "_default_description" not in node_cls.__dict__
@@ -66,6 +76,12 @@ def test_portfolio_nodes_expose_storage_first_surface(monkeypatch) -> None:
 
 
 def test_portfolio_storage_identifiers_use_camel_case_ts_suffix() -> None:
+    assert PortfolioRebalanceStateStorage.metatable_identifier().endswith(
+        "PortfolioRebalanceStateTS"
+    )
+    assert PortfolioCalendarEventsStorage.metatable_identifier().endswith(
+        "PortfolioCalendarEventsTS"
+    )
     assert PortfolioWeightsStorage.metatable_identifier().endswith("PortfolioWeightsTS")
     assert SignalWeightsStorage.metatable_identifier().endswith("SignalWeightsTS")
     assert PortfoliosStorage.metatable_identifier().endswith("PortfoliosTS")

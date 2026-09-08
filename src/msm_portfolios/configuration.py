@@ -49,10 +49,16 @@ def canonical_rebalance_strategy_configuration(
 
     payload = _rebalance_strategy_payload(rebalance_strategy)
     serialized_payload = update_configuration.Serializer().serialize_init_kwargs(payload)
-    return _drop_excluded_keys(
+    canonical = _drop_excluded_keys(
         dict(serialized_payload),
         excluded_keys=REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS,
     )
+    if isinstance(rebalance_strategy, RebalanceStrategyBase):
+        canonical["declared_dependencies"] = {
+            name: canonical_valuation_source_configuration(dependency)
+            for name, dependency in sorted(rebalance_strategy.declared_dependencies().items())
+        }
+    return canonical
 
 
 def _rebalance_strategy_payload(rebalance_strategy: Any) -> dict[str, Any]:
@@ -249,11 +255,13 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
     ----------------------
     Portfolios uses **direct injection** (instances), not string lookups:
     - `signal_weights_instance` is a SignalWeights TimeIndexTableUpdater
-    - `rebalance_strategy_instance` is a RebalanceStrategyBase strategy (pure pydantic model)
+    - `rebalance_strategy_instance` is a RebalanceStrategyBase state machine whose
+      declared DataNode dependencies are serialized as part of its identity
 
     Attributes:
         rebalance_strategy_instance:
-            Rebalance strategy instance controlling how/when weights become executed weights.
+            Rebalance strategy instance controlling observed inputs, target activation,
+            event selection, partial execution, and unfinished state.
         signal_weights_instance:
             Signal strategy instance producing `signal_weight` per asset and time.
             This is typically also a TDAG TimeIndexTableUpdater and is serialized using its own configuration schema.
@@ -268,8 +276,10 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
     rebalance_strategy_instance: RebalanceStrategyBase = Field(
         ...,
         description=(
-            "Instance of the rebalance strategy (e.g., ImmediateSignal). "
-            "Controls how signal weights are turned into executed/portfolio weights."
+            "Dependency-declaring rebalance state machine (for example ImmediateSignal, "
+            "TimeWeighted, VolumeParticipation, TrailingAverageDailyVolumeParticipation, "
+            "or LiquidityConstrained). Controls how signal targets become executed "
+            "portfolio weights."
         ),
         examples=[{"calendar_key": "24/7"}],
     )
@@ -436,7 +446,7 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
     This section defines the *behavior* of the portfolio build pipeline:
     - which explicit valuation source is consumed
     - how signal weights are generated
-    - how rebalancing is applied
+    - which stateful rebalance strategy and observed execution dependencies are used
     - what fee model to apply
     - how observations are aligned without manufacturing timestamps
 

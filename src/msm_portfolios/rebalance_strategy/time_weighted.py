@@ -1,158 +1,153 @@
-import datetime
-import re
-from typing import Literal
+from __future__ import annotations
 
-import numpy as np
+import datetime as dt
+from typing import Any, Literal
+
 import pandas as pd
 from pydantic import Field, field_validator, model_validator
 
-from msm_portfolios.enums import RebalanceFrequencyStrategyName
+from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.rebalance_strategy.base import (
+    AssetExecution,
+    RebalanceInputContract,
+    RebalanceTarget,
     RebalanceStrategyBase,
+    dependency_events,
 )
-from msm_portfolios.utils import logger
-
-_TIME_RE = re.compile(r"^(?:[01]?\d|2[0-3]):[0-5]\d$")
 
 
 class TimeWeighted(RebalanceStrategyBase):
-    timing_mode: Literal["bar_participation"] = "bar_participation"
-    calendar_identifier: str = "24/7"
-    session_label: str = "regular"
-    bar_timestamp_selection: Literal["source_observation"] = "source_observation"
-    signal_selection: Literal["latest_at_or_before_bar"] = "latest_at_or_before_bar"
-    execution_valuation: Literal["bar_value"] = "bar_value"
-    rebalance_start: str = Field(
-        default="9:00",
-        description="Start time for rebalancing in 'H:MM' or 'HH:MM' (24h).",
-    )
-    rebalance_end: str = Field(
-        default="23:00",
-        description="End time for rebalancing in 'H:MM' or 'HH:MM' (24h).",
-    )
-    rebalance_frequency_strategy: RebalanceFrequencyStrategyName = Field(
-        default=RebalanceFrequencyStrategyName.DAILY,
-        description="Rebalance frequency (Enum).",
-    )
+    """Move toward each active target according to elapsed observed bar time."""
 
-    @field_validator("rebalance_start", "rebalance_end")
-    @classmethod
-    def _validate_time_format(cls, v: str) -> str:
-        if not _TIME_RE.match(v):
-            raise ValueError("Expected 'H:MM' or 'HH:MM' (24-hour), e.g., '9:00' or '09:00'.")
-        return v
+    timing_mode: Literal["bar_participation"] = "bar_participation"
+    execution_bars_instance: TimeIndexTableUpdater | TimeIndexTableRef = Field(
+        ...,
+        description="Asset-indexed observed bars that provide eligible execution events.",
+    )
+    price_column: str = Field(
+        default="close",
+        min_length=1,
+        description="Observed bar field recorded as execution price.",
+    )
+    rebalance_start: dt.time = Field(
+        default=dt.time(9, 0),
+        description="UTC start of the daily time-weighted execution window.",
+    )
+    rebalance_end: dt.time = Field(
+        default=dt.time(23, 0),
+        description="UTC end of the daily time-weighted execution window.",
+    )
 
     @model_validator(mode="after")
-    def _check_time_order(self) -> "TimeWeighted":
-        start_t = self._parse_time(self.rebalance_start)
-        end_t = self._parse_time(self.rebalance_end)
-        if start_t >= end_t:
+    def _check_time_order(self) -> TimeWeighted:
+        if self.rebalance_start >= self.rebalance_end:
             raise ValueError("rebalance_start must be earlier than rebalance_end.")
         return self
 
-    @staticmethod
-    def _parse_time(s: str) -> datetime.time:
-        h, m = s.split(":")
-        return datetime.time(int(h), int(m))
+    @field_validator("rebalance_start", "rebalance_end", mode="before")
+    @classmethod
+    def _parse_time(cls, value: object) -> object:
+        if isinstance(value, str):
+            try:
+                return dt.time.fromisoformat(value)
+            except ValueError as exc:
+                raise ValueError("Expected an HH:MM[:SS] time.") from exc
+        return value
 
-    @property
-    def rebalance_start_time(self) -> datetime.time:
-        return self._parse_time(self.rebalance_start)
-
-    @property
-    def rebalance_end_time(self) -> datetime.time:
-        return self._parse_time(self.rebalance_end)
-
-    def apply_rebalance_logic(
+    def declared_dependencies(
         self,
-        last_rebalance_weights: pd.DataFrame,
-        start_date: datetime.datetime,
-        end_date: datetime.datetime,
-        signal_weights: pd.DataFrame,
-        valuations_df: pd.DataFrame,
-        valuation_column: str,
-    ) -> pd.DataFrame:
-        """
-        Rebalance weights are set at start_time of rebalancing.
-        """
-        raise NotImplementedError
-        asset_list = list(signal_weights.columns)
-        start_time, end_time = (
-            pd.Timestamp(self.rebalance_start).time(),
-            pd.Timestamp(self.rebalance_end).time(),
-        )
+    ) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
+        return {"execution_bars": self.execution_bars_instance}
 
-        def get_time_seconds(x):
-            return x.hour * 3600 + x.minute * 60 + x.second
-
-        rebalance_dates = self.calculate_rebalance_dates(
-            start=start_date,
-            end=end_date,
-            rebalance_frequency_strategy=self.rebalance_frequency_strategy,
-            calendar=self.calendar,
-        )
-
-        signal_weights["day"] = signal_weights.index.floor("D")
-        rebalance_days = np.intersect1d(signal_weights["day"], rebalance_dates)
-        rebalance_weights = signal_weights[signal_weights["day"].isin(rebalance_days)]
-
-        rebalance_weights = rebalance_weights[rebalance_weights.index.time >= start_time]
-        rebalance_weights = rebalance_weights[rebalance_weights.index.time <= end_time]
-
-        past_rebalance_weights = rebalance_weights.groupby("day").first().shift()
-
-        if last_rebalance_weights is not None:
-            past_rebalance_weight = last_rebalance_weights["weights_current"].reset_index(
-                level="time_index", drop=True
+    def required_input_contract(self) -> dict[str, RebalanceInputContract]:
+        return {
+            "execution_bars": RebalanceInputContract(
+                index_names=("time_index", ASSET_IDENTIFIER_DIMENSION),
+                required_columns=(self.price_column,),
             )
-        else:
-            past_rebalance_weight = pd.Series(0, index=asset_list)
+        }
 
-        past_rebalance_weights.index += datetime.timedelta(seconds=get_time_seconds(start_time))
-        past_rebalance_weights = past_rebalance_weights.reindex(rebalance_weights.index).ffill()
-
-        time_weight = (rebalance_weights.index - rebalance_weights["day"]).dt.total_seconds()
-        time_weight = (time_weight - get_time_seconds(start_time)) / (
-            get_time_seconds(end_time) - get_time_seconds(start_time)
-        )
-
-        rebalance_weights = rebalance_weights.drop(columns=["day"])
-
-        diff_weights = rebalance_weights - past_rebalance_weights
-        rebalance_weights = past_rebalance_weights + diff_weights.multiply(time_weight, axis=0)
-
-        valuations_df = (
-            valuations_df.reset_index()
-            .pivot(index="time_index", columns="asset_symbol", values=valuation_column)
-            .ffill()
-            .fillna(0)
-        )
-        valid_columns = rebalance_weights.columns[
-            rebalance_weights.columns.isin(valuations_df.columns)
-        ]
-        if len(valid_columns) != rebalance_weights.shape[1]:
-            rebalance_weights = rebalance_weights[valid_columns].copy()
-            rebalance_weights = rebalance_weights.divide(rebalance_weights.sum(axis=1), axis=0)
-
-        nan_mask = valuations_df.loc[rebalance_weights.index].isna()
-        rebalance_weights[nan_mask] = np.nan
-
-        if len(rebalance_weights) == 0:
-            logger.info("No new rebalancing weights found - returning empty DataFrame")
-            return pd.DataFrame()
-
-        shifted_rebalance_weights = rebalance_weights.shift(1)
-        shifted_rebalance_weights.iloc[0] = past_rebalance_weight
-        rebalance_weights = pd.concat(
-            objs=[
-                shifted_rebalance_weights,
-                rebalance_weights,
-                valuations_df,
-                valuations_df.shift(1),
+    def select_events(
+        self,
+        start: dt.datetime,
+        end: dt.datetime,
+        *,
+        signal_observations: pd.DataFrame,
+        observed_inputs: dict[str, pd.DataFrame],
+    ) -> pd.DataFrame:
+        del signal_observations
+        events = dependency_events(observed_inputs["execution_bars"], source="execution_bars")
+        if events.empty:
+            return events
+        timestamps = pd.to_datetime(events["time_index"], utc=True)
+        in_window = pd.Series(
+            [
+                self.rebalance_start <= timestamp.time() <= self.rebalance_end
+                for timestamp in timestamps
             ],
-            keys=["weights_before", "weights_current", "price_current", "price_before"],
-            axis=1,
+            index=events.index,
         )
+        start_ts = self._as_utc_timestamp(start)
+        end_ts = self._as_utc_timestamp(end)
+        return events[in_window & (timestamps >= start_ts) & (timestamps <= end_ts)]
 
-        logger.info(f"{len(rebalance_weights)} new rebalancing weights calculated")
-        return rebalance_weights
+    def apply_event(
+        self,
+        *,
+        event_time: pd.Timestamp,
+        event_source: str,
+        event_observations: dict[str, pd.DataFrame],
+        target: RebalanceTarget,
+        current_weights: dict[str, float],
+        previous_asset_state: dict[str, dict],
+        new_target: bool,
+        execution_context: Any,
+    ) -> dict[str, AssetExecution]:
+        del event_source, execution_context
+        bars = event_observations["execution_bars"]
+        bars_by_asset = {
+            str(row[ASSET_IDENTIFIER_DIMENSION]): row for row in bars.to_dict(orient="records")
+        }
+        session_end = event_time.normalize() + pd.Timedelta(
+            hours=self.rebalance_end.hour,
+            minutes=self.rebalance_end.minute,
+            seconds=self.rebalance_end.second,
+        )
+        executions: dict[str, AssetExecution] = {}
+        for asset in sorted(set(current_weights) | set(target.weights)):
+            prior = previous_asset_state.get(asset)
+            prior_payload = self.parse_strategy_state(prior)
+            if (
+                new_target
+                or str(prior.get("rebalance_intent_id") if prior else "") != target.intent_id
+            ):
+                target_start_weight = float(current_weights.get(asset, 0.0))
+                target_started_at = event_time
+            else:
+                target_start_weight = float(
+                    prior_payload.get("target_start_weight", current_weights.get(asset, 0.0))
+                )
+                target_started_at = self._as_utc_timestamp(
+                    prior_payload.get("target_started_at", event_time)
+                )
+            duration = max((session_end - target_started_at).total_seconds(), 0.0)
+            elapsed = max((event_time - target_started_at).total_seconds(), 0.0)
+            progress = 1.0 if duration == 0 else min(1.0, elapsed / duration)
+            target_weight = float(target.weights.get(asset, 0.0))
+            weight_after = target_start_weight + (target_weight - target_start_weight) * progress
+            bar = bars_by_asset.get(asset, {})
+            price = bar.get(self.price_column)
+            executions[asset] = AssetExecution(
+                weight_after=weight_after,
+                execution_price=None if pd.isna(price) else float(price),
+                strategy_state={
+                    "target_start_weight": target_start_weight,
+                    "target_started_at": target_started_at.isoformat(),
+                    "elapsed_fraction": progress,
+                },
+            )
+        return executions
+
+
+__all__ = ["TimeWeighted"]

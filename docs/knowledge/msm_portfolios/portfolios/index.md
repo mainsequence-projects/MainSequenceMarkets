@@ -82,21 +82,124 @@ portfolio = Portfolio.upsert(
 )
 ```
 
-`CalendarEventSignal` uses persisted `CalendarSession` rows to select market
-opens or closes, including early closes and DST shifts. `ImmediateSignal`
-instead executes only at original signal observation timestamps. Event
-selection belongs to `PortfolioWeights`; `PortfoliosDataNode` does not build a
-rebalance index.
+`PortfolioCalendarEvents` publishes persisted `CalendarSession` opens or closes
+at their actual UTC timestamps, including early closes and DST shifts.
+`CalendarEventSignal` declares that published table as an observed dependency.
+`ImmediateSignal` instead selects original signal observations and declares no
+additional event source. Event selection and state transitions occur in the
+strategy below `PortfolioRebalance`; neither `PortfolioWeights` nor
+`PortfoliosDataNode` builds a rebalance index.
 
-`calendar_identifier` is required for `CalendarEventSignal`. It resolves a
-persisted `Calendar.unique_identifier` or one unambiguous
-`Calendar.source_identifier`. Missing, ambiguous, and failed calendar lookups
-raise an error; the strategy never substitutes a local pandas or synthetic
-calendar. Materialize the calendar horizon before running the portfolio graph.
+`calendar_identifier` and `calendar_events_instance` are required for
+`CalendarEventSignal`. The event producer requires the canonical persisted
+`Calendar.unique_identifier`; a `source_identifier` alias is rejected because
+published rows carry a foreign key to that canonical value. Missing and failed
+calendar lookups raise an error; neither the producer nor the strategy
+substitutes a local pandas or synthetic calendar. Materialize the calendar
+horizon before running the portfolio graph.
 
 `Portfolio.upsert(...)` writes only the portfolio identity row. Portfolio
 constituents, weights, values, and optional index publication are separate
 portfolio workflows.
+
+## General Rebalance Architecture
+
+[ADR 0040](../../../ADR/0040-portfolio-temporal-ownership.md) records the
+implemented general strategy boundary. `ImmediateSignal`,
+`CalendarEventSignal`, `TimeWeighted`, `VolumeParticipation`, and
+`LiquidityConstrained` are concrete strategies below that boundary; none of
+them defines the architecture itself.
+
+```text
+SignalWeights target intent --------------------------+
+                                                       |
+strategy-declared observed inputs ---------------------+--> PortfolioRebalance
+  calendar events, bars, volume, quotes, book depth,          generic stateful updater
+  available liquidity, schedules, or fills                         |
+                                                                   v
+                                                     PortfolioRebalanceStateStorage
+                                                     active intent, partial progress,
+                                                     remaining target, provenance
+                                                                   |
+                                                                   v
+                                                        PortfolioWeights
+                                                        executed-weight projection
+                                                                   |
+                                                                   v
+                                                        PortfolioWeightsStorage
+                                                                   |
+valuation observations --------------------------------------------+--> PortfoliosDataNode
+                                                                        valuation only
+                                                                            |
+                                                                            v
+                                                                     PortfoliosStorage
+                                                                            |
+                                                                            v
+                                                                     PortfolioAnalytics
+```
+
+The portfolio composes the rebalance strategy and includes its serialized
+policy and declared dependency identities in portfolio/update hashing. It does
+not subclass the strategy and does not copy or generate strategy dates.
+
+The strategy contract owns dependency declaration, input validation, target
+cutoff and succession, source-event selection, partial state transitions, and
+completion. The generic rebalance updater contains no branch for immediate,
+calendar, time, volume, or liquidity strategies. A missing future bar, quote,
+liquidity observation, or fill leaves the target unfinished; it never forces a
+completion timestamp.
+
+`PortfolioTable.calendar_uid` remains required portfolio reference metadata;
+it does not implicitly schedule rebalances. Calendar-aware strategies declare
+their published calendar-event input explicitly. Strategies driven by bars,
+volume, quotes, order-book depth, available liquidity, schedules, or fills do
+not gain calendar events merely because the portfolio has a reference
+calendar.
+
+`PortfolioRebalanceStateStorage` is a portfolio-level state ledger, not a
+broker order/fill ledger. `PortfolioWeights` projects only state transitions
+that actually changed executed weights, and `PortfoliosDataNode` continues to
+value those weights at independent valuation-source observations. Missing
+future bars or liquidity leave a target `pending` or `partial`; they do not
+create a completion timestamp.
+
+### Trailing daily-liquidity participation
+
+`TrailingAverageDailyVolumeParticipation` separates capacity estimation from
+execution pricing. It declares two independent asset-indexed sources:
+
+```text
+completed daily liquidity bars (daily VWAP, daily volume)
+  -> trailing average daily notional
+  -> per-asset session cap
+
+observable intraday execution bars (execution price, bar volume)
+  -> per-bar cap
+  -> actual execution price and quantity
+```
+
+For each asset, completed historical daily notional is
+`daily_vwap * daily_volume`. The strategy averages the most recent configured
+number of completed observations that were available strictly before the
+session execution window began. A current-session or future daily VWAP is
+never eligible because VWAP is an ex-post statistic. Daily input timestamps
+must therefore represent the right edge/availability time of completed bars.
+
+At each intraday bar, executable notional is the minimum of the remaining
+target notional, remaining per-session daily cap, and the configured fraction
+of the current observed bar's notional. The stored `execution_price` is always
+the configured field from the intraday execution source, such as `close`,
+`mid_price`, or an arrival-price observation. It is never the historical daily
+VWAP. Daily capacity consumed is persisted per asset in `strategy_state`, so a
+restart or a same-session target supersession cannot reset the participation
+limit.
+
+The history read is bounded by `history_lookback_days`. Rolling daily capacity,
+signal targets, and timestamp-to-observation groups are prepared once per run;
+the transition loop does not rescan the full daily history for each intraday
+bar. Apart from sorting unsorted source frames, preparation is linear in the
+daily and intraday input rows, followed by the unavoidable emitted state
+transitions.
 
 ## Portfolio Read Services
 
@@ -313,6 +416,8 @@ MetaTables:
 
 ```text
 +-----------------------------+             writes             +--------------------------------------+
+| PortfolioCalendarEvents     |------------------------------->| PortfolioCalendarEventsStorage       |
+| PortfolioRebalance          |------------------------------->| PortfolioRebalanceStateStorage       |
 | PortfolioWeights            |------------------------------->| PortfolioWeightsStorage              |
 | SignalWeights               |------------------------------->| SignalWeightsStorage                 |
 | PortfoliosDataNode          |------------------------------->| PortfoliosStorage                    |
@@ -340,16 +445,21 @@ update_pointers=True)` completes, the portfolio row should store the same
 reads for portfolio signal weights must use this pointer; they must not infer a
 signal by scanning the shared `SignalWeightsStorage` table.
 
-`PortfoliosStorage.portfolio_identifier` and
+`PortfoliosStorage.portfolio_identifier`,
+`PortfolioRebalanceStateStorage.portfolio_identifier`, and
 `PortfolioWeightsStorage.portfolio_identifier` reference
 `PortfolioTable.unique_identifier`; portfolio value and weight rows must be
-written for a real portfolio identity. `PortfolioWeightsStorage.asset_identifier`
-also references `AssetTable.unique_identifier`, so executed weights cannot
-point to unknown assets. `PortfoliosDataNode` resolves the portfolio identifier
+written for a real portfolio identity. Rebalance state and portfolio weights
+also reference `AssetTable.unique_identifier`, so neither can point to unknown
+assets. `PortfolioCalendarEventsStorage.calendar_identifier` references
+`CalendarTable.unique_identifier`. `PortfoliosDataNode` resolves the portfolio identifier
 from the attached `PortfolioTable` row or from the explicit runtime identifier
 before normalizing rows.
 
-`PortfolioWeightsStorage.time_index` is the execution timestamp.
+`PortfolioRebalanceStateStorage.time_index` is the strategy-selected observed
+event timestamp, including partial or pending events.
+`PortfolioWeightsStorage.time_index` is an execution timestamp copied from a
+state transition that changed executed weight.
 `PortfoliosStorage.time_index` is the valuation observation timestamp. They do
 not need to be equal: weekly execution can feed daily valuation. Optional
 `PortfolioAnalyticsStorage.time_index` is the actual source observation chosen
@@ -368,34 +478,23 @@ vendor connector, model valuation process, or project TimeIndexTableUpdater.
 Portfolio valuation inputs are not stored on `PortfolioTable`. They are provided
 by the portfolio build configuration and consumed through TimeIndexTableUpdater dependencies.
 
-The current portfolio path is explicit:
+The current portfolio path keeps execution and valuation dependencies explicit:
 
 ```text
-+-----------------------------+       writes        +-----------------------------+
-| source price TimeIndexTableUpdater       |-------------------->| source price storage        |
-| e.g. ExampleDailyBars       |                     | ExternalPricesStorage       |
-+--------------+--------------+                     +--------------+--------------+
-               |                                                   |
-               | explicit upstream dependency                      | TimeIndexTableRef lookup
-               v                                                   v
-+-----------------------------+       writes        +-----------------------------+
-| InterpolatedPrices          |-------------------->| configured price storage    |
-| optional price workflow     |                     | InterpolatedPricesStorage   |
-+--------------+--------------+                     +--------------+--------------+
-               |                                                   |
-               | execution valuations                     | reads
-               v                                           v
-     +-----------------------------+             +-----------------------------+
-     | PortfolioWeights            |------------>| PortfolioWeightsStorage     |
-     | execution/rebalance updater |             | actual execution timestamps |
-     +--------------+--------------+             +--------------+--------------+
-                    | canonical executed weights                |
-                    +--------------------+-----------------------+
-                                         v
-                             +-----------------------------+
-                             | PortfoliosDataNode          |
-                             | valuation-only updater      |
-                             +-----------------------------+
+SignalWeights --------------------------+
+strategy-declared observations ---------+--> PortfolioRebalance
+  bars, volume, liquidity, fills, events       | writes/restarts from
+                                              v
+                                  PortfolioRebalanceStateStorage
+                                              |
+                                              v
+                                      PortfolioWeights
+                                              |
+                                              v
+ValuationSource --------------------> PortfoliosDataNode
+  bars, fair value, NAV                    |
+                                          v
+                                  canonical portfolio values
 ```
 
 `PortfolioBuildConfiguration.valuation_source_instance` receives the valuation
@@ -404,10 +503,13 @@ source that portfolio construction consumes. The valuation source may be an
 compatible registered storage. The valuation source must expose rows keyed by
 `(time_index, asset_identifier)` and include the configured numeric
 `valuation_column`, for example `close`, `fair_value`, `nav`, or `mark_price`.
-`ImmediateSignal` does not require source volume; it writes empty volume fields
-when the valuation source does not provide volume. The unfinished
-`TimeWeighted` and `VolumeParticipation` implementations are not exported as
-supported strategies.
+Execution observations are strategy inputs, not portfolio valuation inputs.
+`ImmediateSignal` requires no execution market-data dependency.
+`TimeWeighted` declares price bars, `VolumeParticipation` declares price and
+volume bars, `TrailingAverageDailyVolumeParticipation` declares completed daily
+liquidity plus observable intraday execution bars, and `LiquidityConstrained`
+declares price plus available liquidity. Each uses actual observations from
+its declared source; historical daily VWAP is capacity input only.
 
 This producer boundary is intentional. Price collection, valuation modeling,
 normalization, vendor mapping, and connector-specific scheduling are separate
@@ -463,9 +565,10 @@ create or migrate dynamic storage.
 the explicit valuation source drives portfolio returns. It is a string, not an
 OHLC enum. Bar-based workflows can use `valuation_column="close"`, while model
 or vendor workflows can use fields such as `fair_value`, `nav`, or
-`settlement_price`. Both execution and valuation perform bounded per-asset
-as-of selection under `ValuationAlignmentPolicy`; alignment targets only
-explicit events or source observations and never creates a timestamp.
+`settlement_price`. Portfolio valuation performs bounded per-asset as-of
+selection under `ValuationAlignmentPolicy`; alignment targets only explicit
+valuation observations and never creates a timestamp. Execution-side event
+selection and capacity are owned by the configured rebalance strategy.
 
 For a custom valuation source, register or migrate the source storage outside
 portfolio core, then pass the registered `TimeIndexMetaTable` UID through
@@ -502,6 +605,12 @@ price_source = InterpolatedPrices(
 )
 
 signal_weights = FixedWeights.from_signal_configuration(...)
+calendar_events = PortfolioCalendarEvents(
+    config=PortfolioCalendarEventsConfiguration(
+        calendar_identifier="CRYPTO_24_7",
+        event_types=("market_close",),
+    )
+)
 
 portfolio_configuration = PortfolioConfiguration(
     portfolio_build_configuration=PortfolioBuildConfiguration(
@@ -511,6 +620,7 @@ portfolio_configuration = PortfolioConfiguration(
         backtesting_weights_configuration=BacktestingWeightsConfig(
             signal_weights_instance=signal_weights,
             rebalance_strategy_instance=CalendarEventSignal(
+                calendar_events_instance=calendar_events,
                 calendar_identifier="CRYPTO_24_7",
                 rebalance_event="market_close",
             ),
@@ -537,9 +647,12 @@ portfolio_configuration = PortfolioConfiguration(
 )
 ```
 
-`PortfolioWeights.dependencies()` exposes signal weights and execution
-valuations. `PortfoliosDataNode.dependencies()` exposes the canonical
-`PortfolioWeights` updater and the valuation source. Valuation sources may
+`PortfolioRebalance.dependencies()` merges signal weights with arbitrary typed
+sources declared by the strategy, validates those observations against the
+strategy's required grain and fields, and persists the resulting state.
+`PortfolioWeights.dependencies()` exposes only that rebalance-state updater.
+`PortfoliosDataNode.dependencies()` continues to expose canonical
+executed weights and its independent valuation source. Valuation sources may
 contain extra assets; required holdings are aligned independently using the
 latest observation at or before the target within `maximum_staleness`.
 
@@ -624,34 +737,28 @@ Portfolio construction produces portfolio artifacts.
 It does not own virtual-fund identity and it does not connect directly to
 virtual-fund allocation rows.
 
-+------------------+       +------------------+       +------------------+
-| Price DataNodes  |       | Signal DataNodes |       | Rebalance Logic  |
-+--------+---------+       +--------+---------+       +--------+---------+
-         \                          |                          /
-          \                         |                         /
-           v                        v                        v
-        +---------------------------------------------------------+
-        | Portfolio construction                                  |
-        | - computes signal weights, portfolio weights, values    |
-        | - writes portfolio TimeIndexTableUpdater outputs                     |
-        +---------------------------+-----------------------------+
-                                    |
-                                    v
-+-------------------------+   +-------------------------+   +-------------------------+
-| SignalWeights           |   | PortfolioWeights        |   | PortfoliosDataNode      |
-| TimeIndexTableUpdater                |   | TimeIndexTableUpdater                |   | TimeIndexTableUpdater                |
-+------------+------------+   +------------+------------+   +------------+------------+
-             |                             |                             |
-             v                             v                             v
-+-------------------------+   +-------------------------+   +-------------------------+
-| SignalWeightsStorage    |   | PortfolioWeightsStorage |   | PortfoliosStorage       |
-| PlatformTimeIndexMeta   |   | PlatformTimeIndexMeta   |   | PlatformTimeIndexMeta   |
-+------------+------------+   +------------+------------+   +------------+------------+
-             |                             |                             |
-             | TimeIndexTableUpdate UID          | TimeIndexTableUpdate UID          | TimeIndexTableUpdate UID
-             +-----------------------------+-----------------------------+
-                                           |
-                                           v
++---------------------+      +-----------------------------+
+| SignalWeights       |----->| PortfolioRebalance          |<----- strategy-declared
++---------------------+      | generic strategy runner     |      observed sources
+                             +--------------+--------------+
+                                            |
+                                            v
+                             +-----------------------------+
+                             | RebalanceStateStorage       |
+                             +--------------+--------------+
+                                            |
+                                            v
+                             +-----------------------------+
+                             | PortfolioWeights projection |
+                             +--------------+--------------+
+                                            |
+                                            v
++---------------------+      +-----------------------------+
+| ValuationSource     |----->| PortfoliosDataNode          |
++---------------------+      | valuation only              |
+                             +--------------+--------------+
+                                            |
+                                            v
         +---------------------------------------------------------+
         | PortfolioTable                                          |
         | - portfolio identity                                    |
@@ -726,10 +833,10 @@ from `VirtualFundTable`, `VirtualFundHoldingsSetTable`, and
 
 Storage dimensions use explicit names instead of reusing bare
 `unique_identifier`: `asset_identifier` for asset-keyed rows,
-`portfolio_identifier` for portfolio value rows and portfolio weight rows. The
-`portfolio_identifier` value is `PortfolioTable.unique_identifier`; for
-portfolio values and portfolio weights this is enforced by storage foreign keys.
-Portfolio weights also enforce `asset_identifier` against
+`portfolio_identifier` for rebalance state, portfolio value rows, and portfolio
+weight rows. The `portfolio_identifier` value is
+`PortfolioTable.unique_identifier` and is enforced by storage foreign keys.
+Rebalance state and portfolio weights also enforce `asset_identifier` against
 `AssetTable.unique_identifier`. Portfolio identity does not require a linked
 `IndexTable` row.
 
@@ -741,7 +848,8 @@ portfolio run. The reusable implementation lives in
 shared crypto `Asset` example rows, creates or reuses a `CRYPTO_24_7` calendar
 from `pandas_market_calendars`, publishes example OHLCV bars to
 `ExternalPricesStorage`, interpolates those prices, runs
-`SignalWeights`, `PortfolioWeights`, and `PortfoliosDataNode`, and upserts the
+`PortfolioCalendarEvents`, `SignalWeights`, `PortfolioRebalance`,
+`PortfolioWeights`, and `PortfoliosDataNode`, and upserts the
 `Portfolio` row with `calendar_uid` plus the published TimeIndexTableUpdater update UIDs.
 The example narrates each setup, source-price
 publication, and portfolio step so terminal output explains what was created.

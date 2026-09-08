@@ -22,8 +22,11 @@ from msm_portfolios.data_nodes import (
     AssetScopedPortfolioCanonicalDataNode,
     PortfolioAnalytics,
     PortfolioAnalyticsConfiguration,
+    PortfolioCalendarEvents,
+    PortfolioCalendarEventsConfiguration,
     PortfolioCanonicalDataNode,
     PortfolioCanonicalDataNodeConfiguration,
+    PortfolioRebalance,
     PortfolioWeights,
     PortfoliosDataNode,
     SignalWeights,
@@ -32,17 +35,27 @@ from msm_portfolios.data_nodes import (
 from msm_portfolios.data_nodes.constants import ASSET_IDENTIFIER, PORTFOLIO_IDENTIFIER
 from msm_portfolios.data_nodes.portfolios.storage import (
     PortfolioAnalyticsStorage,
+    PortfolioCalendarEventsStorage,
+    PortfolioRebalanceStateStorage,
     PortfolioWeightsStorage,
     PortfoliosStorage,
 )
+from msm_portfolios.data_nodes.portfolios.rebalance import normalize_rebalance_input
 from msm_portfolios.data_nodes.portfolios.temporal import (
     align_asset_observations,
     fetch_asset_observations,
 )
 from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
 from msm_portfolios.models import portfolio_sqlalchemy_models
-from msm_portfolios.rebalance_strategy import CalendarEventSignal, ImmediateSignal
-from msm_portfolios.services import calendars as calendar_services
+from msm_portfolios.rebalance_strategy import (
+    CalendarEventSignal,
+    ImmediateSignal,
+    LiquidityConstrained,
+    RebalanceInputContract,
+    TimeWeighted,
+    TrailingAverageDailyVolumeParticipation,
+    VolumeParticipation,
+)
 
 
 class ExplicitValuationSource(TimeIndexTableUpdater):
@@ -72,6 +85,8 @@ def valuation_source(update_hash: str = "valuations") -> ExplicitValuationSource
     ("node_cls", "storage_cls"),
     [
         (PortfolioWeights, PortfolioWeightsStorage),
+        (PortfolioRebalance, PortfolioRebalanceStateStorage),
+        (PortfolioCalendarEvents, PortfolioCalendarEventsStorage),
         (SignalWeights, SignalWeightsStorage),
         (PortfoliosDataNode, PortfoliosStorage),
         (PortfolioAnalytics, PortfolioAnalyticsStorage),
@@ -98,6 +113,18 @@ def test_portfolio_configurations_do_not_carry_storage_schema() -> None:
 
 
 def test_portfolio_storage_grains_and_foreign_keys_remain_stable() -> None:
+    assert PortfolioCalendarEventsStorage.__index_names__ == [
+        "time_index",
+        "calendar_identifier",
+        "session_label",
+        "event_type",
+    ]
+    assert PortfolioRebalanceStateStorage.__index_names__ == [
+        "time_index",
+        PORTFOLIO_IDENTIFIER,
+        "rebalance_intent_id",
+        ASSET_IDENTIFIER,
+    ]
     assert PortfolioWeightsStorage.__index_names__ == [
         "time_index",
         PORTFOLIO_IDENTIFIER,
@@ -119,12 +146,36 @@ def test_portfolio_storage_grains_and_foreign_keys_remain_stable() -> None:
     }
     assert portfolio_targets == {f"{PortfolioTable.__table__.fullname}.unique_identifier"}
     assert asset_targets == {f"{AssetTable.__table__.fullname}.unique_identifier"}
+    state_portfolio_targets = {
+        foreign_key.target_fullname
+        for foreign_key in (
+            PortfolioRebalanceStateStorage.__table__.c.portfolio_identifier.foreign_keys
+        )
+    }
+    state_asset_targets = {
+        foreign_key.target_fullname
+        for foreign_key in (
+            PortfolioRebalanceStateStorage.__table__.c.asset_identifier.foreign_keys
+        )
+    }
+    assert state_portfolio_targets == {f"{PortfolioTable.__table__.fullname}.unique_identifier"}
+    assert state_asset_targets == {f"{AssetTable.__table__.fullname}.unique_identifier"}
 
 
 def test_analytics_storage_is_in_migration_provider_scope() -> None:
     models = portfolio_sqlalchemy_models()
     assert PortfolioAnalyticsStorage in models
+    assert PortfolioCalendarEventsStorage in models
+    assert PortfolioRebalanceStateStorage in models
     assert models.index(PortfolioTable) < models.index(PortfolioAnalyticsStorage)
+    assert models.index(PortfolioTable) < models.index(PortfolioRebalanceStateStorage)
+
+
+def test_calendar_event_node_configuration_is_hash_bearing() -> None:
+    payload = PortfolioCalendarEventsConfiguration(calendar_identifier="XNYS").model_dump()
+    assert payload["calendar_identifier"] == "XNYS"
+    assert payload["session_label"] == "regular"
+    assert payload["event_types"] == ("market_open", "market_close")
 
 
 def test_analytics_configuration_declares_full_sampling_semantics() -> None:
@@ -157,12 +208,21 @@ def test_valuation_source_configuration_uses_sdk_identity() -> None:
 
 
 def test_rebalance_strategy_serialization_distinguishes_temporal_owners() -> None:
+    events = valuation_source("calendar-events")
     immediate = canonical_rebalance_strategy_configuration(ImmediateSignal())
     close = canonical_rebalance_strategy_configuration(
-        CalendarEventSignal(calendar_identifier="XNYS", rebalance_event="market_close")
+        CalendarEventSignal(
+            calendar_events_instance=events,
+            calendar_identifier="XNYS",
+            rebalance_event="market_close",
+        )
     )
     open_ = canonical_rebalance_strategy_configuration(
-        CalendarEventSignal(calendar_identifier="XNYS", rebalance_event="market_open")
+        CalendarEventSignal(
+            calendar_events_instance=events,
+            calendar_identifier="XNYS",
+            rebalance_event="market_open",
+        )
     )
     assert immediate != close
     assert close != open_
@@ -170,32 +230,54 @@ def test_rebalance_strategy_serialization_distinguishes_temporal_owners() -> Non
     assert "calendar_event" in str(close)
 
 
+def test_rebalance_strategy_serialization_includes_declared_dependency_identity() -> None:
+    first = canonical_rebalance_strategy_configuration(
+        VolumeParticipation(execution_bars_instance=valuation_source("bars-a"))
+    )
+    second = canonical_rebalance_strategy_configuration(
+        VolumeParticipation(execution_bars_instance=valuation_source("bars-b"))
+    )
+
+    assert first != second
+    assert "bars-a" in str(first)
+    assert "bars-b" in str(second)
+
+
 def test_calendar_strategy_requires_a_persisted_calendar_identifier() -> None:
     with pytest.raises(ValidationError, match="calendar_identifier"):
-        CalendarEventSignal()
+        CalendarEventSignal(calendar_events_instance=valuation_source("events"))
 
 
 def test_calendar_strategy_offset_changes_execution_and_hash() -> None:
     event = pd.Timestamp("2026-01-02T21:00:00Z")
-    schedule = pd.DataFrame(
-        {"market_open": [event - pd.Timedelta(hours=6)], "market_close": [event]},
-        index=[date(2026, 1, 2)],
+    events_source = valuation_source("calendar-events")
+    observations = pd.DataFrame(
+        [(event, "XNYS", "regular", "market_close", date(2026, 1, 2))],
+        columns=[
+            "time_index",
+            "calendar_identifier",
+            "session_label",
+            "event_type",
+            "local_date",
+        ],
+    ).set_index("time_index")
+    base = CalendarEventSignal(
+        calendar_events_instance=events_source,
+        calendar_identifier="XNYS",
     )
-    base = CalendarEventSignal(calendar_identifier="XNYS")
     shifted = CalendarEventSignal(
+        calendar_events_instance=events_source,
         calendar_identifier="XNYS",
         event_offset=timedelta(minutes=5),
     )
-    base._calendar_obj = FakeCalendar(schedule)
-    shifted._calendar_obj = FakeCalendar(schedule)
-
-    result = shifted.execution_timestamps(
+    result = shifted.select_events(
         event - pd.Timedelta(hours=1),
         event + pd.Timedelta(hours=1),
-        signal_timestamps=pd.DatetimeIndex([]),
+        signal_observations=pd.DataFrame(),
+        observed_inputs={"calendar_events": observations},
     )
 
-    assert result.tolist() == [event + pd.Timedelta(minutes=5)]
+    assert result["time_index"].tolist() == [event + pd.Timedelta(minutes=5)]
     assert canonical_rebalance_strategy_configuration(base) != (
         canonical_rebalance_strategy_configuration(shifted)
     )
@@ -206,20 +288,20 @@ def test_immediate_signal_uses_only_signal_observation_timestamps() -> None:
         ["2026-01-02T14:00:00Z", "2026-01-02T16:00:00Z"],
         name="time_index",
     )
-    result = ImmediateSignal().execution_timestamps(
+    signals = pd.DataFrame(
+        {
+            "time_index": signal_times,
+            ASSET_IDENTIFIER: ["btc", "btc"],
+            "signal_weight": [0.4, 0.6],
+        }
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    result = ImmediateSignal().select_events(
         pd.Timestamp("2026-01-02T15:00:00Z"),
         pd.Timestamp("2026-01-02T17:00:00Z"),
-        signal_timestamps=signal_times,
+        signal_observations=signals,
+        observed_inputs={},
     )
-    assert result.tolist() == [pd.Timestamp("2026-01-02T16:00:00Z")]
-
-
-class FakeCalendar:
-    def __init__(self, schedule: pd.DataFrame):
-        self._schedule = schedule
-
-    def schedule(self, **_kwargs) -> pd.DataFrame:
-        return self._schedule
+    assert result["time_index"].tolist() == [pd.Timestamp("2026-01-02T16:00:00Z")]
 
 
 def calendar_schedule() -> pd.DataFrame:
@@ -236,39 +318,89 @@ def calendar_schedule() -> pd.DataFrame:
     )
 
 
-def test_calendar_strategy_preserves_persisted_dst_holiday_and_early_close_events(
-    monkeypatch,
-) -> None:
-    persisted_calendar = SimpleNamespace(uid="calendar-uid", unique_identifier="XNYS")
-
-    def fake_filter(**kwargs):
-        return [persisted_calendar] if kwargs.get("unique_identifier") == "XNYS" else []
-
-    def fake_search(_context, **kwargs):
-        assert kwargs["calendar_uid"] == "calendar-uid"
-        assert kwargs["session_label"] == "regular"
-        return {
-            "rows": [
-                {
-                    "local_date": local_date,
-                    "opens_at": row.market_open,
-                    "closes_at": row.market_close,
-                }
-                for local_date, row in calendar_schedule().iterrows()
+def calendar_event_frame() -> pd.DataFrame:
+    rows = []
+    for local_date, row in calendar_schedule().iterrows():
+        rows.extend(
+            [
+                (row.market_open, "XNYS", "regular", "market_open", local_date),
+                (row.market_close, "XNYS", "regular", "market_close", local_date),
             ]
-        }
+        )
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "time_index",
+            "calendar_identifier",
+            "session_label",
+            "event_type",
+            "local_date",
+        ],
+    ).set_index("time_index")
 
-    monkeypatch.setattr(calendar_services.Calendar, "filter", fake_filter)
-    monkeypatch.setattr(calendar_services.Calendar, "_active_context", lambda: object())
-    monkeypatch.setattr(calendar_services, "search_calendar_sessions", fake_search)
-    monkeypatch.setattr(calendar_services, "operation_result_rows", lambda result: result["rows"])
-    strategy = CalendarEventSignal(calendar_identifier="XNYS", rebalance_event="market_close")
-    result = strategy.execution_timestamps(
+
+def test_calendar_event_node_publishes_persisted_session_timestamps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class PersistedCalendar:
+        name = "XNYS"
+
+        def schedule(self, *, start_date, end_date):
+            del start_date, end_date
+            return calendar_schedule()
+
+    monkeypatch.setattr(
+        "msm_portfolios.data_nodes.portfolios.calendar_events.resolve_rebalance_calendar",
+        lambda _identifier: PersistedCalendar(),
+    )
+    node = object.__new__(PortfolioCalendarEvents)
+    node.config = PortfolioCalendarEventsConfiguration(
+        calendar_identifier="XNYS",
+        event_types=("market_open", "market_close"),
+    )
+    node.update_statistics = SimpleNamespace(max_time_index_value=None)
+    node._output_table = PortfolioCalendarEventsStorage
+
+    result = node.update().reset_index()
+
+    expected = set(calendar_schedule()[["market_open", "market_close"]].to_numpy().ravel())
+    assert set(result["time_index"]) == expected
+    assert set(result["event_type"]) == {"market_open", "market_close"}
+
+
+def test_calendar_event_node_rejects_noncanonical_calendar_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calendar = SimpleNamespace(name="XNYS")
+    monkeypatch.setattr(
+        "msm_portfolios.data_nodes.portfolios.calendar_events.resolve_rebalance_calendar",
+        lambda _identifier: calendar,
+    )
+    node = object.__new__(PortfolioCalendarEvents)
+    node.config = PortfolioCalendarEventsConfiguration(
+        calendar_identifier="NYSE",
+        event_types=("market_close",),
+    )
+    node.update_statistics = SimpleNamespace(max_time_index_value=None)
+    node._output_table = PortfolioCalendarEventsStorage
+
+    with pytest.raises(ValueError, match="canonical Calendar.unique_identifier"):
+        node.update()
+
+
+def test_calendar_strategy_preserves_persisted_dst_holiday_and_early_close_events() -> None:
+    strategy = CalendarEventSignal(
+        calendar_events_instance=valuation_source("calendar-events"),
+        calendar_identifier="XNYS",
+        rebalance_event="market_close",
+    )
+    result = strategy.select_events(
         pd.Timestamp("2026-03-06T00:00:00Z"),
         pd.Timestamp("2026-03-10T23:59:00Z"),
-        signal_timestamps=pd.DatetimeIndex([]),
+        signal_observations=pd.DataFrame(),
+        observed_inputs={"calendar_events": calendar_event_frame()},
     )
-    assert result.tolist() == [
+    assert result["time_index"].tolist() == [
         pd.Timestamp("2026-03-06T21:00:00Z"),
         pd.Timestamp("2026-03-09T20:00:00Z"),
         pd.Timestamp("2026-03-10T17:00:00Z"),
@@ -278,17 +410,18 @@ def test_calendar_strategy_preserves_persisted_dst_holiday_and_early_close_event
 
 def test_calendar_strategy_weekly_cadence_produces_sparse_execution_events() -> None:
     strategy = CalendarEventSignal(
+        calendar_events_instance=valuation_source("calendar-events"),
         calendar_identifier="XNYS",
         rebalance_cadence="weekly",
         rebalance_weekday=0,
     )
-    strategy._calendar_obj = FakeCalendar(calendar_schedule())
-    result = strategy.execution_timestamps(
+    result = strategy.select_events(
         pd.Timestamp("2026-03-06T00:00:00Z"),
         pd.Timestamp("2026-03-10T23:59:00Z"),
-        signal_timestamps=pd.DatetimeIndex([]),
+        signal_observations=pd.DataFrame(),
+        observed_inputs={"calendar_events": calendar_event_frame()},
     )
-    assert result.tolist() == [pd.Timestamp("2026-03-09T20:00:00Z")]
+    assert result["time_index"].tolist() == [pd.Timestamp("2026-03-09T20:00:00Z")]
 
 
 def test_portfolio_values_depend_on_executed_weights_not_signal_directly() -> None:
@@ -304,15 +437,72 @@ def test_portfolio_values_depend_on_executed_weights_not_signal_directly() -> No
     }
 
 
-def test_portfolio_weights_owns_signal_and_execution_valuation_dependencies() -> None:
+def test_portfolio_weights_depends_only_on_rebalance_state() -> None:
     node = object.__new__(PortfolioWeights)
     node._portfolio_configuration = object()
-    node.signal_weights = object()
-    node.execution_valuation_source = object()
+    node.portfolio_rebalance = object()
+    assert node.dependencies() == {"portfolio_rebalance": node.portfolio_rebalance}
+
+
+def test_portfolio_rebalance_merges_arbitrary_strategy_dependencies_without_dispatch() -> None:
+    signal = valuation_source("signal")
+    liquidity = valuation_source("liquidity")
+    node = object.__new__(PortfolioRebalance)
+    node._portfolio_configuration = object()
+    node.signal_weights = signal
+    node.rebalance_strategy = LiquidityConstrained(liquidity_source_instance=liquidity)
+
     assert node.dependencies() == {
-        "signal_weights": node.signal_weights,
-        "execution_valuations": node.execution_valuation_source,
+        "signal_weights": signal,
+        "available_liquidity": liquidity,
     }
+    source = inspect.getsource(PortfolioRebalance)
+    assert "timing_mode" not in source
+    assert "ImmediateSignal" not in source
+    assert "VolumeParticipation" not in source
+    assert "LiquidityConstrained" not in source
+
+
+def test_rebalance_and_projection_progress_resolve_nested_asset_state() -> None:
+    earlier = pd.Timestamp("2026-01-01T01:00:00Z")
+    latest = pd.Timestamp("2026-01-01T02:00:00Z")
+    rebalance = object.__new__(PortfolioRebalance)
+    rebalance._resolve_portfolio_identifier = lambda: "portfolio"
+    rebalance.update_statistics = SimpleNamespace(
+        index_progress={
+            "portfolio": {
+                "intent-a": {"btc": earlier},
+                "intent-b": {"btc": latest},
+            }
+        },
+        max_time_index_value=pd.Timestamp("2026-02-01T00:00:00Z"),
+    )
+    projection = object.__new__(PortfolioWeights)
+    projection._resolve_portfolio_identifier = lambda: "portfolio"
+    projection.update_statistics = SimpleNamespace(
+        index_progress={"portfolio": {"btc": earlier, "eth": latest}},
+        max_time_index_value=pd.Timestamp("2026-02-01T00:00:00Z"),
+    )
+
+    assert rebalance._latest_transition_time_index_value() == latest
+    assert projection._latest_projection_time_index_value() == latest
+
+
+def test_rebalance_input_contract_rejects_missing_strategy_fields() -> None:
+    observations = pd.DataFrame(
+        [("2026-01-01T00:00:00Z", "btc", 100.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "close"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    contract = RebalanceInputContract(
+        index_names=("time_index", ASSET_IDENTIFIER),
+        required_columns=("close", "volume"),
+    )
+    with pytest.raises(ValueError, match="missing columns: volume"):
+        normalize_rebalance_input(
+            observations,
+            dependency_name="execution_bars",
+            contract=contract,
+        )
 
 
 def asset_frame(rows: list[tuple[str, str, float]]) -> pd.DataFrame:
@@ -449,7 +639,7 @@ class FrameSource:
         return self.frame.iloc[0:0]
 
 
-def test_portfolio_weights_calculates_execution_rows_it_owns() -> None:
+def test_immediate_strategy_builds_complete_rebalance_state_at_signal_events() -> None:
     timestamps = pd.DatetimeIndex(
         ["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"],
         name="time_index",
@@ -462,113 +652,104 @@ def test_portfolio_weights_calculates_execution_rows_it_owns() -> None:
         ],
         columns=["time_index", "signal_uid", ASSET_IDENTIFIER, "signal_weight"],
     ).set_index(["time_index", "signal_uid", ASSET_IDENTIFIER])
-    valuations = asset_frame(
-        [
-            ("2026-01-01T00:00:00Z", "btc", 100.0),
-            ("2026-01-01T00:00:00Z", "eth", 200.0),
-            ("2026-01-02T00:00:00Z", "btc", 110.0),
-            ("2026-01-02T00:00:00Z", "eth", 190.0),
-        ]
+    signal_frame = signal_frame.reset_index("signal_uid")
+    result = ImmediateSignal().build_transitions(
+        start=timestamps[0],
+        end=timestamps[-1],
+        signal_observations=signal_frame,
+        observed_inputs={},
+        previous_state=None,
     )
-
-    class ExecutionSignal:
-        signal_uid = "signal"
-
-        def get_asset_list(self):
-            return ["btc", "eth"]
-
-        def get_asset_uid_to_override_portfolio_price(self):
-            return None
-
-        def get_df_between_dates(self, **_kwargs):
-            return signal_frame
-
-    node = object.__new__(PortfolioWeights)
-    node.signal_weights = ExecutionSignal()
-    node.rebalancer = ImmediateSignal()
-    node.execution_valuation_source = FrameSource(valuations)
-    node.valuation_column = "close"
-    node.valuation_alignment_policy = ValuationAlignmentPolicy(
-        maximum_staleness=timedelta(days=1)
-    )
-    node.update_statistics = None
-    node._resolve_portfolio_identifier = lambda: "portfolio"
-    node._execution_window = lambda _latest: (
-        timestamps[0].to_pydatetime(),
-        timestamps[-1].to_pydatetime(),
-    )
-    node._last_executed_weights = lambda _latest: None
-    result = node._calculate_executed_weights()
-    assert set(result.index.get_level_values("time_index")) == set(timestamps)
-    assert set(result.index.get_level_values(ASSET_IDENTIFIER)) == {"btc", "eth"}
-    assert result.loc[(timestamps[1], "btc"), "weights_current"] == pytest.approx(0.6)
+    assert set(result["time_index"]) == set(timestamps)
+    assert set(result[ASSET_IDENTIFIER]) == {"btc", "eth"}
+    assert set(result["execution_status"]) == {"complete"}
+    btc = result[
+        (result["time_index"] == timestamps[1]) & (result[ASSET_IDENTIFIER] == "btc")
+    ].iloc[0]
+    assert btc["weight_after"] == pytest.approx(0.6)
+    assert btc["weight_before"] == pytest.approx(0.5)
 
 
-def test_portfolio_weights_rerun_emits_only_the_next_persisted_event() -> None:
+def test_portfolio_weights_projects_only_state_events_that_change_execution() -> None:
     first_event = pd.Timestamp("2026-03-09T20:00:00Z")
     next_event = pd.Timestamp("2026-03-10T17:00:00Z")
-    schedule = pd.DataFrame(
-        {
-            "market_open": [
-                pd.Timestamp("2026-03-09T13:30:00Z"),
-                pd.Timestamp("2026-03-10T13:30:00Z"),
-            ],
-            "market_close": [first_event, next_event],
-        },
-        index=[date(2026, 3, 9), date(2026, 3, 10)],
-    )
-    strategy = CalendarEventSignal(calendar_identifier="XNYS")
-    strategy._calendar_obj = FakeCalendar(schedule)
-    valuations = asset_frame(
+    state = pd.DataFrame(
         [
-            ("2026-03-09T20:00:00Z", "btc", 100.0),
-            ("2026-03-10T17:00:00Z", "btc", 101.0),
-        ]
-    )
-
-    class ExecutionSignal:
-        signal_uid = "signal"
-
-        def get_asset_list(self):
-            return ["btc"]
-
-        def get_asset_uid_to_override_portfolio_price(self):
-            return None
-
-        def get_df_between_dates(self, **_kwargs):
-            return pd.DataFrame()
-
-        def interpolate_index(self, index):
-            return pd.DataFrame({"btc": [1.0] * len(index)}, index=index)
-
+            (
+                first_event,
+                "portfolio",
+                "intent-a",
+                "btc",
+                first_event,
+                "available_liquidity",
+                "pending",
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                100.0,
+                None,
+                0.0,
+                None,
+                0.0,
+                "{}",
+            ),
+            (
+                next_event,
+                "portfolio",
+                "intent-a",
+                "btc",
+                first_event,
+                "available_liquidity",
+                "partial",
+                1.0,
+                0.0,
+                0.25,
+                0.25,
+                0.75,
+                101.0,
+                1.0,
+                25.0,
+                None,
+                2500.0,
+                "{}",
+            ),
+        ],
+        columns=[
+            "time_index",
+            PORTFOLIO_IDENTIFIER,
+            "rebalance_intent_id",
+            ASSET_IDENTIFIER,
+            "target_signal_time_index",
+            "event_source",
+            "execution_status",
+            "target_weight",
+            "weight_before",
+            "weight_after",
+            "executed_weight_delta",
+            "remaining_weight_delta",
+            "execution_price",
+            "executed_quantity",
+            "executed_notional",
+            "observed_volume",
+            "observed_available_liquidity",
+            "strategy_state",
+        ],
+    ).set_index(["time_index", PORTFOLIO_IDENTIFIER, "rebalance_intent_id", ASSET_IDENTIFIER])
     node = object.__new__(PortfolioWeights)
-    node.signal_weights = ExecutionSignal()
-    node.rebalancer = strategy
-    node.execution_valuation_source = FrameSource(valuations)
-    node.valuation_column = "close"
-    node.valuation_alignment_policy = ValuationAlignmentPolicy(
-        maximum_staleness=timedelta(days=1)
-    )
+    node.portfolio_rebalance = FrameSource(state)
     node.update_statistics = None
     node._resolve_portfolio_identifier = lambda: "portfolio"
-    node._execution_window = lambda _latest: (
+    node._projection_window = lambda _latest: (
         first_event.to_pydatetime(),
         next_event.to_pydatetime(),
     )
-    node._latest_execution_time_index_value = lambda: first_event
-    node._last_executed_weights = lambda _latest: None
-
-    result = node._calculate_executed_weights()
-
+    node._last_projected_weights = lambda _latest: None
+    result = node._calculate_projected_weights()
     assert result.index.get_level_values("time_index").unique().tolist() == [next_event]
     assert result.index.get_level_values(ASSET_IDENTIFIER).tolist() == ["btc"]
-
-    node._execution_window = lambda _latest: (
-        next_event.to_pydatetime(),
-        (next_event + pd.Timedelta(hours=1)).to_pydatetime(),
-    )
-    node._latest_execution_time_index_value = lambda: next_event
-    assert node._calculate_executed_weights().empty
+    assert result.loc[(next_event, "btc"), "weight"] == pytest.approx(0.25)
 
 
 def test_weekly_weights_can_drive_daily_canonical_valuations() -> None:
@@ -595,9 +776,7 @@ def test_weekly_weights_can_drive_daily_canonical_valuations() -> None:
     node = object.__new__(PortfoliosDataNode)
     node.valuation_source = FrameSource(valuations)
     node.valuation_column = "close"
-    node.valuation_alignment_policy = ValuationAlignmentPolicy(
-        maximum_staleness=timedelta(days=2)
-    )
+    node.valuation_alignment_policy = ValuationAlignmentPolicy(maximum_staleness=timedelta(days=2))
     node.signal_weights = SimpleNamespace(get_asset_uid_to_override_portfolio_price=lambda: None)
     node.commission_fee = 0.0
     node._latest_portfolio_time_index_value = lambda: None
@@ -619,7 +798,10 @@ def test_portfolio_values_preserve_persisted_close_timestamps_and_rerun_noop() -
         name="time_index",
     )
     valuations = asset_frame(
-        [(timestamp.isoformat(), "btc", 100.0 + offset) for offset, timestamp in enumerate(close_times)]
+        [
+            (timestamp.isoformat(), "btc", 100.0 + offset)
+            for offset, timestamp in enumerate(close_times)
+        ]
     )
     weights = pd.DataFrame(
         [(close_times[0], "btc", 1.0, 0.0)],
@@ -629,9 +811,7 @@ def test_portfolio_values_preserve_persisted_close_timestamps_and_rerun_noop() -
     node = object.__new__(PortfoliosDataNode)
     node.valuation_source = FrameSource(valuations)
     node.valuation_column = "close"
-    node.valuation_alignment_policy = ValuationAlignmentPolicy(
-        maximum_staleness=timedelta(days=4)
-    )
+    node.valuation_alignment_policy = ValuationAlignmentPolicy(maximum_staleness=timedelta(days=4))
     node.signal_weights = SimpleNamespace(get_asset_uid_to_override_portfolio_price=lambda: None)
     node.commission_fee = 0.0
     node._latest_portfolio_time_index_value = lambda: None
@@ -696,27 +876,428 @@ def test_analytics_uses_actual_source_timestamp_not_bucket_label() -> None:
     assert set(result.index.get_level_values("time_index")) <= set(
         source_frame.index.get_level_values("time_index")
     )
-    assert (
-        result.reset_index()["time_index"] == result.reset_index()["source_time_index"]
-    ).all()
+    assert (result.reset_index()["time_index"] == result.reset_index()["source_time_index"]).all()
 
 
-def test_unfinished_strategies_are_not_supported_exports() -> None:
+def test_general_rebalance_strategies_are_supported_exports() -> None:
     import msm_portfolios.rebalance_strategy as strategies
-    from msm_portfolios.rebalance_strategy.volume_participation import VolumeParticipation
 
-    assert not hasattr(strategies, "TimeWeighted")
-    assert not hasattr(strategies, "VolumeParticipation")
-    assert VolumeParticipation().model_dump()["timing_mode"] == "bar_participation"
-    with pytest.raises(NotImplementedError):
-        VolumeParticipation().apply_rebalance_logic(
-            last_rebalance_weights=None,
-            start_date=pd.Timestamp("2026-01-01T00:00:00Z"),
-            end_date=pd.Timestamp("2026-01-02T00:00:00Z"),
-            signal_weights=pd.DataFrame(),
-            valuations_df=pd.DataFrame(),
-            valuation_column="close",
+    bars = valuation_source("bars")
+    assert strategies.TimeWeighted is TimeWeighted
+    assert (
+        strategies.TrailingAverageDailyVolumeParticipation
+        is TrailingAverageDailyVolumeParticipation
+    )
+    assert strategies.VolumeParticipation is VolumeParticipation
+    assert strategies.LiquidityConstrained is LiquidityConstrained
+    assert TimeWeighted(execution_bars_instance=bars).declared_dependencies() == {
+        "execution_bars": bars
+    }
+
+
+def test_trailing_daily_volume_strategy_declares_both_observed_sources() -> None:
+    daily = valuation_source("daily-liquidity")
+    intraday = valuation_source("execution-bars")
+    strategy = TrailingAverageDailyVolumeParticipation(
+        daily_liquidity_instance=daily,
+        execution_bars_instance=intraday,
+    )
+
+    assert strategy.declared_dependencies() == {
+        "daily_liquidity": daily,
+        "execution_bars": intraday,
+    }
+    assert strategy.required_input_contract()["daily_liquidity"].required_columns == (
+        "vwap",
+        "volume",
+    )
+    assert strategy.required_input_contract()["execution_bars"].required_columns == (
+        "close",
+        "volume",
+    )
+    serialized = canonical_rebalance_strategy_configuration(strategy)
+    assert "daily-liquidity" in str(serialized)
+    assert "execution-bars" in str(serialized)
+    start = pd.Timestamp("2026-01-01T00:00:00Z")
+    source_start, source_end = strategy.dependency_window(
+        "daily_liquidity",
+        start,
+        start + pd.Timedelta(days=1),
+    )
+    assert source_start == start - pd.Timedelta(days=60)
+    assert source_end == start + pd.Timedelta(days=1)
+
+
+def test_rebalance_base_allows_new_descriptive_strategy_categories() -> None:
+    from msm_portfolios.rebalance_strategy import RebalanceStrategyBase
+
+    strategy = RebalanceStrategyBase(timing_mode="external_fill_events")
+    assert strategy.timing_mode == "external_fill_events"
+
+
+def test_strategy_must_consolidate_same_timestamp_input_precedence() -> None:
+    duplicate_time = pd.Timestamp("2026-01-01T01:00:00Z")
+    with pytest.raises(ValueError, match="must consolidate strategy input precedence"):
+        ImmediateSignal._normalize_events(
+            pd.DataFrame(
+                {
+                    "time_index": [duplicate_time, duplicate_time],
+                    "event_source": ["quotes", "fills"],
+                }
+            )
         )
+
+
+def test_volume_participation_persists_partial_progress_and_restarts() -> None:
+    bars_source = valuation_source("bars")
+    strategy = VolumeParticipation(
+        execution_bars_instance=bars_source,
+        rebalance_start="00:00",
+        rebalance_end="23:59",
+        max_percent_volume_in_bar=0.1,
+        total_notional=1_000.0,
+    )
+    signal_time = pd.Timestamp("2026-01-01T00:00:00Z")
+    event_times = pd.DatetimeIndex(["2026-01-01T01:00:00Z", "2026-01-01T02:00:00Z"])
+    signals = pd.DataFrame(
+        [(signal_time, "signal", "btc", 1.0)],
+        columns=["time_index", "signal_uid", ASSET_IDENTIFIER, "signal_weight"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    bars = pd.DataFrame(
+        [(timestamp, "btc", 100.0, 2.0) for timestamp in event_times],
+        columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+
+    first = strategy.build_transitions(
+        start=event_times[0],
+        end=event_times[0],
+        signal_observations=signals,
+        observed_inputs={"execution_bars": bars.loc[[event_times[0]]]},
+        previous_state=None,
+    )
+    assert first.iloc[0]["execution_status"] == "partial"
+    assert first.iloc[0]["weight_after"] == pytest.approx(0.02)
+
+    resumed = strategy.build_transitions(
+        start=event_times[1],
+        end=event_times[1],
+        signal_observations=pd.DataFrame(),
+        observed_inputs={"execution_bars": bars.loc[[event_times[1]]]},
+        previous_state=first,
+    )
+    assert resumed.iloc[0]["weight_before"] == pytest.approx(0.02)
+    assert resumed.iloc[0]["weight_after"] == pytest.approx(0.04)
+    assert resumed.iloc[0]["remaining_weight_delta"] == pytest.approx(0.96)
+
+
+def test_liquidity_strategy_records_pending_state_when_capacity_is_zero() -> None:
+    liquidity_source = valuation_source("liquidity")
+    strategy = LiquidityConstrained(
+        liquidity_source_instance=liquidity_source,
+        total_notional=1_000.0,
+    )
+    signal_time = pd.Timestamp("2026-01-01T00:00:00Z")
+    event_time = pd.Timestamp("2026-01-01T01:00:00Z")
+    signals = pd.DataFrame(
+        [(signal_time, "signal", "btc", 1.0)],
+        columns=["time_index", "signal_uid", ASSET_IDENTIFIER, "signal_weight"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    observations = pd.DataFrame(
+        [(event_time, "btc", 100.0, 0.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "mid_price", "available_notional"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+
+    result = strategy.build_transitions(
+        start=event_time,
+        end=event_time,
+        signal_observations=signals,
+        observed_inputs={"available_liquidity": observations},
+        previous_state=None,
+    )
+    assert result.iloc[0]["execution_status"] == "pending"
+    assert result.iloc[0]["executed_weight_delta"] == 0.0
+    assert result.iloc[0]["remaining_weight_delta"] == 1.0
+
+
+def test_new_signal_supersedes_unfinished_intent_before_partial_execution() -> None:
+    bars_source = valuation_source("bars")
+    strategy = VolumeParticipation(
+        execution_bars_instance=bars_source,
+        rebalance_start="00:00",
+        rebalance_end="23:59",
+        max_percent_volume_in_bar=0.1,
+        total_notional=1_000.0,
+    )
+    first_event = pd.Timestamp("2026-01-01T01:00:00Z")
+    second_event = pd.Timestamp("2026-01-01T02:00:00Z")
+    first_signal = pd.DataFrame(
+        [(pd.Timestamp("2026-01-01T00:00:00Z"), "btc", 1.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "signal_weight"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    first_bar = pd.DataFrame(
+        [(first_event, "btc", 100.0, 2.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    first = strategy.build_transitions(
+        start=first_event,
+        end=first_event,
+        signal_observations=first_signal,
+        observed_inputs={"execution_bars": first_bar},
+        previous_state=None,
+    )
+
+    second_signal = pd.DataFrame(
+        [
+            (pd.Timestamp("2026-01-01T00:00:00Z"), "btc", 1.0),
+            (pd.Timestamp("2026-01-01T01:30:00Z"), "btc", 0.5),
+        ],
+        columns=["time_index", ASSET_IDENTIFIER, "signal_weight"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    second_bar = pd.DataFrame(
+        [(second_event, "btc", 100.0, 2.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    second = strategy.build_transitions(
+        start=second_event,
+        end=second_event,
+        signal_observations=second_signal,
+        observed_inputs={"execution_bars": second_bar},
+        previous_state=first,
+    )
+
+    assert second["execution_status"].tolist() == ["superseded", "partial"]
+    assert second.iloc[0]["rebalance_intent_id"] != second.iloc[1]["rebalance_intent_id"]
+    assert second.iloc[1]["weight_before"] == pytest.approx(0.02)
+    assert second.iloc[1]["weight_after"] == pytest.approx(0.04)
+
+
+def test_trailing_daily_volume_uses_prior_capacity_but_intraday_execution_price() -> None:
+    strategy = TrailingAverageDailyVolumeParticipation(
+        daily_liquidity_instance=valuation_source("daily-liquidity"),
+        execution_bars_instance=valuation_source("execution-bars"),
+        lookback_observations=2,
+        history_lookback_days=10,
+        execution_start="00:00",
+        execution_end="23:59",
+        max_daily_participation=0.10,
+        max_bar_participation=0.20,
+        total_notional=10_000.0,
+    )
+    signal_time = pd.Timestamp("2025-12-31T22:00:00Z")
+    event_times = pd.DatetimeIndex(
+        [
+            "2026-01-01T10:00:00Z",
+            "2026-01-01T11:00:00Z",
+            "2026-01-01T12:00:00Z",
+        ]
+    )
+    signals = pd.DataFrame(
+        [(signal_time, "btc", 1.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "signal_weight"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    daily = pd.DataFrame(
+        [
+            (pd.Timestamp("2025-12-30T21:00:00Z"), "btc", 100.0, 100.0),
+            (pd.Timestamp("2025-12-31T21:00:00Z"), "btc", 200.0, 100.0),
+            # This completed-daily value is not available at the execution session start.
+            (pd.Timestamp("2026-01-01T23:59:00Z"), "btc", 1_000.0, 1_000.0),
+        ],
+        columns=["time_index", ASSET_IDENTIFIER, "vwap", "volume"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    bars = pd.DataFrame(
+        [
+            (event_times[0], "btc", 50.0, 100.0),
+            (event_times[1], "btc", 60.0, 100.0),
+            (event_times[2], "btc", 70.0, 100.0),
+        ],
+        columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+
+    result = strategy.build_transitions(
+        start=event_times[0],
+        end=event_times[-1],
+        signal_observations=signals,
+        observed_inputs={"daily_liquidity": daily, "execution_bars": bars},
+        previous_state=None,
+    )
+
+    assert result["execution_price"].tolist() == [50.0, 60.0, 70.0]
+    assert result["executed_notional"].tolist() == pytest.approx([1_000.0, 500.0, 0.0])
+    assert result["weight_after"].tolist() == pytest.approx([0.10, 0.15, 0.15])
+    assert result["executed_quantity"].tolist()[:2] == pytest.approx([20.0, 500.0 / 60.0])
+    state = strategy.parse_strategy_state(result.iloc[-1].to_dict())
+    assert state["trailing_average_daily_notional"] == pytest.approx(15_000.0)
+    assert state["daily_notional_limit"] == pytest.approx(1_500.0)
+    assert state["daily_notional_consumed"] == pytest.approx(1_500.0)
+
+
+def test_trailing_daily_volume_daily_cap_survives_restart_and_target_supersession() -> None:
+    strategy = TrailingAverageDailyVolumeParticipation(
+        daily_liquidity_instance=valuation_source("daily-liquidity"),
+        execution_bars_instance=valuation_source("execution-bars"),
+        lookback_observations=2,
+        history_lookback_days=10,
+        execution_start="00:00",
+        execution_end="23:59",
+        max_daily_participation=0.10,
+        max_bar_participation=1.0,
+        total_notional=10_000.0,
+    )
+    first_event = pd.Timestamp("2026-01-01T10:00:00Z")
+    second_event = pd.Timestamp("2026-01-01T11:00:00Z")
+    daily = pd.DataFrame(
+        [
+            (pd.Timestamp("2025-12-30T21:00:00Z"), "btc", 100.0, 100.0),
+            (pd.Timestamp("2025-12-31T21:00:00Z"), "btc", 200.0, 100.0),
+        ],
+        columns=["time_index", ASSET_IDENTIFIER, "vwap", "volume"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    first_signal = pd.DataFrame(
+        [(pd.Timestamp("2025-12-31T22:00:00Z"), "btc", 1.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "signal_weight"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    first_bar = pd.DataFrame(
+        [(first_event, "btc", 50.0, 20.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    first = strategy.build_transitions(
+        start=first_event,
+        end=first_event,
+        signal_observations=first_signal,
+        observed_inputs={"daily_liquidity": daily, "execution_bars": first_bar},
+        previous_state=None,
+    )
+
+    second_signal = pd.DataFrame(
+        [
+            (pd.Timestamp("2025-12-31T22:00:00Z"), "btc", 1.0),
+            (pd.Timestamp("2026-01-01T10:30:00Z"), "btc", 0.5),
+        ],
+        columns=["time_index", ASSET_IDENTIFIER, "signal_weight"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    second_bar = pd.DataFrame(
+        [(second_event, "btc", 50.0, 20.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    resumed = strategy.build_transitions(
+        start=second_event,
+        end=second_event,
+        signal_observations=second_signal,
+        observed_inputs={"daily_liquidity": daily, "execution_bars": second_bar},
+        previous_state=first,
+    )
+
+    assert first.iloc[0]["executed_notional"] == pytest.approx(1_000.0)
+    assert resumed["execution_status"].tolist() == ["superseded", "partial"]
+    assert resumed.iloc[-1]["executed_notional"] == pytest.approx(500.0)
+    assert resumed.iloc[-1]["weight_after"] == pytest.approx(0.15)
+    state = strategy.parse_strategy_state(resumed.iloc[-1].to_dict())
+    assert state["daily_notional_consumed"] == pytest.approx(1_500.0)
+
+
+def test_trailing_daily_volume_waits_for_required_completed_history() -> None:
+    strategy = TrailingAverageDailyVolumeParticipation(
+        daily_liquidity_instance=valuation_source("daily-liquidity"),
+        execution_bars_instance=valuation_source("execution-bars"),
+        lookback_observations=2,
+        history_lookback_days=10,
+        execution_start="00:00",
+        execution_end="23:59",
+        total_notional=10_000.0,
+    )
+    event_time = pd.Timestamp("2026-01-01T10:00:00Z")
+    signals = pd.DataFrame(
+        [(pd.Timestamp("2025-12-31T22:00:00Z"), "btc", 1.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "signal_weight"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    daily = pd.DataFrame(
+        [(pd.Timestamp("2025-12-31T21:00:00Z"), "btc", 100.0, 100.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "vwap", "volume"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    bars = pd.DataFrame(
+        [(event_time, "btc", 50.0, 100.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+
+    result = strategy.build_transitions(
+        start=event_time,
+        end=event_time,
+        signal_observations=signals,
+        observed_inputs={"daily_liquidity": daily, "execution_bars": bars},
+        previous_state=None,
+    )
+
+    assert result.iloc[0]["execution_status"] == "pending"
+    assert result.iloc[0]["executed_notional"] == 0.0
+    state = strategy.parse_strategy_state(result.iloc[0].to_dict())
+    assert state["history_observations"] == 1
+    assert state["trailing_average_daily_notional"] is None
+
+
+def test_trailing_daily_volume_resets_consumption_for_the_next_session() -> None:
+    strategy = TrailingAverageDailyVolumeParticipation(
+        daily_liquidity_instance=valuation_source("daily-liquidity"),
+        execution_bars_instance=valuation_source("execution-bars"),
+        lookback_observations=2,
+        history_lookback_days=10,
+        execution_start="00:00",
+        execution_end="23:59",
+        max_daily_participation=0.10,
+        max_bar_participation=1.0,
+        total_notional=10_000.0,
+    )
+    first_event = pd.Timestamp("2026-01-01T10:00:00Z")
+    next_event = pd.Timestamp("2026-01-02T10:00:00Z")
+    signals = pd.DataFrame(
+        [(pd.Timestamp("2025-12-31T22:00:00Z"), "btc", 1.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "signal_weight"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    first_history = pd.DataFrame(
+        [
+            (pd.Timestamp("2025-12-30T21:00:00Z"), "btc", 100.0, 100.0),
+            (pd.Timestamp("2025-12-31T21:00:00Z"), "btc", 200.0, 100.0),
+        ],
+        columns=["time_index", ASSET_IDENTIFIER, "vwap", "volume"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    first_bar = pd.DataFrame(
+        [(first_event, "btc", 50.0, 30.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    first = strategy.build_transitions(
+        start=first_event,
+        end=first_event,
+        signal_observations=signals,
+        observed_inputs={"daily_liquidity": first_history, "execution_bars": first_bar},
+        previous_state=None,
+    )
+
+    next_history = pd.concat(
+        [
+            first_history,
+            pd.DataFrame(
+                [(pd.Timestamp("2026-01-01T21:00:00Z"), "btc", 300.0, 100.0)],
+                columns=["time_index", ASSET_IDENTIFIER, "vwap", "volume"],
+            ).set_index(["time_index", ASSET_IDENTIFIER]),
+        ]
+    )
+    next_bar = pd.DataFrame(
+        [(next_event, "btc", 50.0, 20.0)],
+        columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
+    ).set_index(["time_index", ASSET_IDENTIFIER])
+    resumed = strategy.build_transitions(
+        start=next_event,
+        end=next_event,
+        signal_observations=pd.DataFrame(),
+        observed_inputs={"daily_liquidity": next_history, "execution_bars": next_bar},
+        previous_state=first,
+    )
+
+    assert first.iloc[0]["executed_notional"] == pytest.approx(1_500.0)
+    assert resumed.iloc[0]["executed_notional"] == pytest.approx(1_000.0)
+    state = strategy.parse_strategy_state(resumed.iloc[0].to_dict())
+    assert state["session_date"] == "2026-01-02"
+    assert state["daily_notional_consumed"] == pytest.approx(1_000.0)
+    assert state["trailing_average_daily_notional"] == pytest.approx(25_000.0)
 
 
 def test_portfolio_value_node_is_not_asset_scoped() -> None:
@@ -725,23 +1306,7 @@ def test_portfolio_value_node_is_not_asset_scoped() -> None:
     assert issubclass(PortfolioWeights, AssetScopedPortfolioCanonicalDataNode)
 
 
-def test_immediate_signal_calculation_does_not_require_volume() -> None:
-    timestamps = pd.DatetimeIndex(["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"])
-    signal = pd.DataFrame({"btc": [0.5, 0.6], "eth": [0.5, 0.4]}, index=timestamps)
-    signal.columns.name = ASSET_IDENTIFIER
-    valuations = asset_frame(
-        [
-            ("2026-01-01T00:00:00Z", "btc", 100.0),
-            ("2026-01-01T00:00:00Z", "eth", 200.0),
-            ("2026-01-02T00:00:00Z", "btc", 110.0),
-            ("2026-01-02T00:00:00Z", "eth", 190.0),
-        ]
-    )
-    result = ImmediateSignal().apply_rebalance_logic(
-        last_rebalance_weights=None,
-        signal_weights=signal,
-        valuations_df=valuations,
-        valuation_column="close",
-    )
-    assert "volume_current" in result.columns.get_level_values(0)
-    assert result["volume_current"].isna().all().all()
+def test_retired_fixed_frame_strategy_api_is_not_exposed() -> None:
+    strategy = ImmediateSignal()
+    assert not hasattr(strategy, "execution_timestamps")
+    assert not hasattr(strategy, "apply_rebalance_logic")

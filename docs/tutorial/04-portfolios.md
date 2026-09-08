@@ -26,7 +26,8 @@ cadence metadata, the preparation step repairs that source metadata before
 deriving the dynamic interpolation table. The run script creates the
 optional portfolio `Index`, publishes example OHLCV source bars to
 `ExternalPricesStorage`, interpolates prices, runs `SignalWeights`,
-`PortfolioWeights`, and `PortfoliosDataNode`, creates or reuses the crypto
+`PortfolioCalendarEvents`, `PortfolioRebalance`, `PortfolioWeights`, and
+`PortfoliosDataNode`, creates or reuses the crypto
 `CRYPTO_24_7` calendar, and stores the calendar, index, and TimeIndexTableUpdater UIDs on the
 `Portfolio` row. The price configuration stores the
 `ExternalPricesStorage` TimeIndexMetaTable UID on `InterpolatedPricesConfig`, so
@@ -53,14 +54,16 @@ table. The script prints the workflow steps, created row UIDs, source valuation
 row counts, explicit valuation-source dependency details, and published TimeIndexTableUpdater
 storage UIDs.
 
-## Understand the three clocks
+## Understand the independent clocks
 
 The example intentionally keeps execution, valuation, and reporting separate:
 
 ```text
 FixedWeights signal
-  -> CalendarEventSignal selects persisted CRYPTO_24_7 market_close events
-  -> PortfolioWeights writes executed weights at those event timestamps
+  + PortfolioCalendarEvents publishes persisted CRYPTO_24_7 session events
+  -> CalendarEventSignal selects market_close observations
+  -> PortfolioRebalance persists complete or unfinished strategy state
+  -> PortfolioWeights projects only executed-weight changes
   -> PortfoliosDataNode values current holdings at valuation-source observations
   -> optional PortfolioAnalytics samples canonical values for reporting
 ```
@@ -70,8 +73,56 @@ weekly `CalendarEventSignal` can therefore produce sparse weight rows while a
 daily valuation source produces daily portfolio values. `ImmediateSignal` is
 reserved for true execution at a signal's original observation timestamp.
 `CalendarEventSignal` requires an explicit persisted calendar identifier and
-does not fall back to a process-local calendar. Ensure the required
-`CalendarSession` horizon exists before executing the graph.
+an explicit calendar-event updater or table reference. It does not read a
+calendar behind the dependency graph or fall back to a process-local calendar.
+Ensure the required `CalendarSession` horizon exists before executing the
+graph.
+
+This example uses one concrete strategy; it does not define the architecture.
+Under [ADR 0040](../ADR/0040-portfolio-temporal-ownership.md), every strategy
+declares the observations it needs and implements the same state transition
+contract. `TimeWeighted` consumes observed price bars,
+`VolumeParticipation` consumes price and volume bars, and
+`TrailingAverageDailyVolumeParticipation` uses completed historical daily
+VWAP-times-volume only to estimate a daily notional cap while executing at an
+observable intraday price, and
+`LiquidityConstrained` consumes price plus available-liquidity observations.
+Missing capacity leaves persisted work pending or partial. Adding a strategy
+does not add a branch or date generator to `PortfolioRebalance`,
+`PortfolioWeights`, or `PortfoliosDataNode`.
+
+For a bounded five-percent trailing daily participation policy:
+
+```python
+from mainsequence.meta_tables import TimeIndexTableRef
+from msm_portfolios.rebalance_strategy import (
+    TrailingAverageDailyVolumeParticipation,
+)
+
+strategy = TrailingAverageDailyVolumeParticipation(
+    daily_liquidity_instance=TimeIndexTableRef.from_uid(daily_table_uid),
+    execution_bars_instance=TimeIndexTableRef.from_uid(intraday_table_uid),
+    daily_vwap_column="vwap",
+    daily_volume_column="volume",
+    execution_price_column="close",
+    execution_volume_column="volume",
+    lookback_observations=20,
+    history_lookback_days=60,
+    session_timezone="America/New_York",
+    execution_start="09:30",
+    execution_end="16:00",
+    max_daily_participation=0.05,
+    max_bar_participation=0.10,
+    total_notional=50_000_000,
+)
+```
+
+Inject `strategy` as `BacktestingWeightsConfig.rebalance_strategy_instance`.
+The daily source must timestamp each row when the completed bar is available;
+the intraday source supplies the actual price used by the execution
+assumption. See
+`examples/msm_portfolios/portfolio_trailing_adv_participation_example.py` for
+the focused configuration helper.
 
 ## Migrate values produced by the former daily resampler
 

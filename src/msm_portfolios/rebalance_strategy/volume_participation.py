@@ -1,214 +1,166 @@
-import datetime
-import re
-from typing import Literal
+from __future__ import annotations
 
-import numpy as np
+import datetime as dt
+from typing import Any, Literal
+
 import pandas as pd
 from pydantic import Field, field_validator, model_validator
-from tqdm import tqdm
 
-from msm_portfolios.enums import RebalanceFrequencyStrategyName
+from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.rebalance_strategy.base import (
+    AssetExecution,
+    RebalanceInputContract,
+    RebalanceTarget,
     RebalanceStrategyBase,
+    dependency_events,
 )
-from msm_portfolios.utils import logger
-
-_TIME_RE = re.compile(r"^(?:[01]?\d|2[0-3]):[0-5]\d$")
 
 
 class VolumeParticipation(RebalanceStrategyBase):
-    """
-    This rebalance strategy implies volume participation with no market impact.
-    i.e. execution at VWAP and it will never execute more than max_percent_volume_in_bar.
-    """
+    """Execute target deltas without exceeding a configured fraction of observed bar volume."""
 
     timing_mode: Literal["bar_participation"] = "bar_participation"
-    calendar_identifier: str = "24/7"
-    session_label: str = "regular"
-    bar_timestamp_selection: Literal["source_observation"] = "source_observation"
-    signal_selection: Literal["latest_at_or_before_bar"] = "latest_at_or_before_bar"
-    execution_valuation: Literal["bar_vwap"] = "bar_vwap"
-
-    rebalance_start: str = Field(
-        default="9:00",
-        description="Start time for rebalancing in 'H:MM' or 'HH:MM' 24-hour format.",
+    execution_bars_instance: TimeIndexTableUpdater | TimeIndexTableRef = Field(
+        ...,
+        description="Asset-indexed observed bars containing price and traded volume.",
     )
-    rebalance_end: str = Field(
-        default="23:00",
-        description="End time for rebalancing in 'H:MM' or 'HH:MM' 24-hour format.",
+    price_column: str = Field(
+        default="close",
+        min_length=1,
+        description="Observed price field used to convert bar volume to notional capacity.",
     )
-    rebalance_frequency_strategy: RebalanceFrequencyStrategyName = Field(
-        default=RebalanceFrequencyStrategyName.DAILY,
-        description="Rebalance frequency (Enum).",
+    volume_column: str = Field(
+        default="volume",
+        min_length=1,
+        description="Observed quantity-volume field used to cap execution.",
+    )
+    rebalance_start: dt.time = Field(
+        default=dt.time(9, 0),
+        description="UTC start of the daily participation window.",
+    )
+    rebalance_end: dt.time = Field(
+        default=dt.time(23, 0),
+        description="UTC end of the daily participation window.",
     )
     max_percent_volume_in_bar: float = Field(
         default=0.01,
         gt=0,
         le=1,
-        description="Maximum fraction of volume to trade per bar (0, 1].",
+        description="Maximum fraction of observed quantity volume executable in one bar.",
     )
     total_notional: float = Field(
         default=50_000_000,
         gt=0,
-        description="Initial notional invested in the strategy (must be > 0).",
+        description="Portfolio notional used to translate execution capacity into weight.",
     )
 
-    @field_validator("rebalance_start", "rebalance_end")
+    @field_validator("rebalance_start", "rebalance_end", mode="before")
     @classmethod
-    def _validate_time_format(cls, v: str) -> str:
-        if not _TIME_RE.match(v):
-            raise ValueError("Expected 'H:MM' or 'HH:MM' (24-hour), e.g. '9:00' or '09:00'.")
-        return v
-
-    @field_validator("max_percent_volume_in_bar")
-    @classmethod
-    def _validate_pct(cls, v: float) -> float:
-        if not (0 < v <= 1):
-            raise ValueError("max_percent_volume_in_bar must be in the (0, 1] range.")
-        return v
-
-    @field_validator("total_notional")
-    @classmethod
-    def _validate_notional(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("total_notional must be positive.")
-        return float(v)
+    def _parse_time(cls, value: object) -> object:
+        if isinstance(value, str):
+            try:
+                return dt.time.fromisoformat(value)
+            except ValueError as exc:
+                raise ValueError("Expected an HH:MM[:SS] time.") from exc
+        return value
 
     @model_validator(mode="after")
-    def _check_time_order(self) -> "VolumeParticipation":
-        start_t = self._parse_time(self.rebalance_start)
-        end_t = self._parse_time(self.rebalance_end)
-        if start_t >= end_t:
+    def _check_time_order(self) -> VolumeParticipation:
+        if self.rebalance_start >= self.rebalance_end:
             raise ValueError("rebalance_start must be earlier than rebalance_end.")
         return self
 
-    @staticmethod
-    def _parse_time(s: str) -> datetime.time:
-        h, m = s.split(":")
-        return datetime.time(int(h), int(m))
-
-    def apply_rebalance_logic(
+    def declared_dependencies(
         self,
-        last_rebalance_weights: pd.DataFrame,
-        start_date: datetime.datetime,
-        end_date: datetime.datetime,
-        signal_weights: pd.DataFrame,
-        valuations_df: pd.DataFrame,
-        valuation_column: str,
+    ) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
+        return {"execution_bars": self.execution_bars_instance}
+
+    def required_input_contract(self) -> dict[str, RebalanceInputContract]:
+        return {
+            "execution_bars": RebalanceInputContract(
+                index_names=("time_index", ASSET_IDENTIFIER_DIMENSION),
+                required_columns=(self.price_column, self.volume_column),
+            )
+        }
+
+    def select_events(
+        self,
+        start: dt.datetime,
+        end: dt.datetime,
+        *,
+        signal_observations: pd.DataFrame,
+        observed_inputs: dict[str, pd.DataFrame],
     ) -> pd.DataFrame:
-        raise NotImplementedError
-        asset_list = list(signal_weights.columns)
-        start_time, end_time = (
-            pd.Timestamp(self.rebalance_start).time(),
-            pd.Timestamp(self.rebalance_end).time(),
-        )
-
-        rebalance_dates = self.calculate_rebalance_dates(
-            start=start_date,
-            end=end_date,
-            rebalance_frequency_strategy=self.rebalance_frequency_strategy,
-            calendar=self.calendar,
-        )
-
-        signal_weights["day"] = signal_weights.index.floor("D")
-
-        volume_df = (
-            valuations_df.reset_index()
-            .pivot(index="time_index", columns="asset_symbol", values="volume")
-            .fillna(0)
-        )
-        valuations_df = (
-            valuations_df.reset_index()
-            .pivot(index="time_index", columns="asset_symbol", values=valuation_column)
-            .fillna(0)
-        )
-
-        rebalance_days = np.intersect1d(signal_weights["day"], rebalance_dates)
-
-        rebalance_weights = signal_weights[signal_weights["day"].isin(rebalance_days)]
-        rebalance_weights = rebalance_weights[rebalance_weights.index.time >= start_time]
-        rebalance_weights = rebalance_weights[rebalance_weights.index.time <= end_time]
-
-        rebalance_weights = rebalance_weights.set_index("day", append=True)
-
-        max_participation_volume = (volume_df * valuations_df) * self.max_percent_volume_in_bar
-        max_participation_volume["day"] = max_participation_volume.index.floor("D")
-        max_participation_volume = max_participation_volume.set_index("day", append=True)
-        max_participation_volume = max_participation_volume[
-            max_participation_volume.index.isin(rebalance_weights.index)
-        ]
-
-        rebalance_weights = pd.concat(
-            objs=[rebalance_weights, max_participation_volume],
-            axis=1,
-            keys=["weights", "max_dollar_volume"],
-        )
-
-        if last_rebalance_weights is not None:
-            past_rebalance_weight = last_rebalance_weights["weights_current"].reset_index(
-                level="time_index", drop=True
-            )
-        else:
-            past_rebalance_weight = pd.Series(0, index=asset_list)
-
-        past_day_rebalance_weight = past_rebalance_weight
-        new_rebalance_weights = []
-        for day, day_df in tqdm(
-            rebalance_weights.groupby("day"), desc="building volume participation"
-        ):
-            if (day_df.weights.max() - day_df.weights.min()).sum() != 0.0:
-                logger.warning(
-                    "Signal weight in time period changes, using weights at rebalancing start"
-                )
-                day_df.loc[:, "weights"] = day_df["weights"].iloc[0].to_numpy()
-
-            weights_diff = day_df.weights - past_day_rebalance_weight
-
-            target_dollar_volume = np.abs(weights_diff) * self.total_notional
-            cumulative_dollar_volume = day_df.max_dollar_volume.fillna(0).cumsum()
-            weighted_volume_multiplier = (cumulative_dollar_volume / target_dollar_volume).replace(
-                [np.inf], np.nan
-            )
-            weighted_volume_multiplier = weighted_volume_multiplier.fillna(0).map(
-                lambda x: min(1.0, x)
-            )
-
-            new_rebalance_weights_day = (
-                past_day_rebalance_weight + weights_diff * weighted_volume_multiplier
-            )
-            new_rebalance_weights.append(new_rebalance_weights_day)
-            past_day_rebalance_weight = new_rebalance_weights_day.iloc[-1]
-
-        if len(new_rebalance_weights) == 0:
-            logger.info("No new rebalancing weights found - returning empty DataFrame")
-            return pd.DataFrame()
-
-        rebalance_weights = pd.concat(new_rebalance_weights, axis=0).reset_index("day", drop=True)
-        rebalance_weights_index = rebalance_weights.index
-
-        shifted_rebalance_weights = rebalance_weights.shift(1)
-        shifted_rebalance_weights.iloc[0] = past_rebalance_weight
-        rebalance_weights = pd.concat(
-            objs=[
-                rebalance_weights,
-                shifted_rebalance_weights,
-                valuations_df,
-                valuations_df.shift(1),
-                volume_df,
-                volume_df.shift(1),
+        del signal_observations
+        events = dependency_events(observed_inputs["execution_bars"], source="execution_bars")
+        if events.empty:
+            return events
+        timestamps = pd.to_datetime(events["time_index"], utc=True)
+        in_window = pd.Series(
+            [
+                self.rebalance_start <= timestamp.time() <= self.rebalance_end
+                for timestamp in timestamps
             ],
-            keys=[
-                "weights_current",
-                "weights_before",
-                "price_current",
-                "price_before",
-                "volume_current",
-                "volume_before",
-            ],
-            axis=1,
+            index=events.index,
         )
+        start_ts = self._as_utc_timestamp(start)
+        end_ts = self._as_utc_timestamp(end)
+        return events[in_window & (timestamps >= start_ts) & (timestamps <= end_ts)]
 
-        rebalance_weights = rebalance_weights.loc[rebalance_weights_index].fillna(0)
+    def apply_event(
+        self,
+        *,
+        event_time: pd.Timestamp,
+        event_source: str,
+        event_observations: dict[str, pd.DataFrame],
+        target: RebalanceTarget,
+        current_weights: dict[str, float],
+        previous_asset_state: dict[str, dict],
+        new_target: bool,
+        execution_context: Any,
+    ) -> dict[str, AssetExecution]:
+        del event_time, event_source, previous_asset_state, new_target, execution_context
+        bars = event_observations["execution_bars"]
+        bars_by_asset = {
+            str(row[ASSET_IDENTIFIER_DIMENSION]): row for row in bars.to_dict(orient="records")
+        }
+        executions: dict[str, AssetExecution] = {}
+        for asset in sorted(set(current_weights) | set(target.weights)):
+            current = float(current_weights.get(asset, 0.0))
+            remaining = float(target.weights.get(asset, 0.0)) - current
+            bar = bars_by_asset.get(asset, {})
+            price_value = bar.get(self.price_column)
+            volume_value = bar.get(self.volume_column)
+            price = None if pd.isna(price_value) else float(price_value)
+            volume = None if pd.isna(volume_value) else float(volume_value)
+            capacity_weight = (
+                0.0
+                if price is None or volume is None or price <= 0 or volume <= 0
+                else price * volume * self.max_percent_volume_in_bar / self.total_notional
+            )
+            executed_delta = min(abs(remaining), capacity_weight)
+            if remaining < 0:
+                executed_delta = -executed_delta
+            weight_after = current + executed_delta
+            executed_notional = abs(executed_delta) * self.total_notional
+            executed_quantity = (
+                None
+                if price is None or price <= 0
+                else executed_delta * self.total_notional / price
+            )
+            executions[asset] = AssetExecution(
+                weight_after=weight_after,
+                execution_price=price,
+                executed_quantity=executed_quantity,
+                executed_notional=executed_notional,
+                observed_volume=volume,
+                strategy_state={
+                    "capacity_weight": capacity_weight,
+                    "participation_limit": self.max_percent_volume_in_bar,
+                },
+            )
+        return executions
 
-        logger.info(f"{len(rebalance_weights)} new rebalancing weights calculated")
-        return rebalance_weights
+
+__all__ = ["VolumeParticipation"]

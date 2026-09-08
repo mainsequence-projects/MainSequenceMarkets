@@ -111,14 +111,12 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
         backtesting = build.backtesting_weights_configuration
         self.portfolio_build_configuration = build
         self.execution_configuration = build.execution_configuration
-        self.backtesting_weights_config = backtesting
         self.portfolio_markets_config = portfolio_configuration.portfolio_markets_configuration
         self.commission_fee = self.execution_configuration.commission_fee
         self.valuation_source = build.valuation_source_instance
         self.valuation_column = str(build.valuation_column)
         self.valuation_alignment_policy = build.valuation_alignment_policy
         self.signal_weights = backtesting.signal_weights_instance
-        self.rebalancer = backtesting.rebalance_strategy_instance
         self._ensure_portfolio_weights_node()
 
     def _ensure_portfolio_weights_node(self) -> PortfolioWeights:

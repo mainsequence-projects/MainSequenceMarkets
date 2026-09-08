@@ -138,7 +138,7 @@ def resolve_rebalance_calendar(calendar_key: str) -> Any:
         raise ValueError(
             f"Persisted rebalance calendar {identifier!r} was not found. "
             "Create and materialize the Calendar and CalendarSession rows before "
-            "running CalendarEventSignal."
+            "publishing PortfolioCalendarEvents."
         )
     return PersistedCalendarSchedule(calendar=calendar)
 

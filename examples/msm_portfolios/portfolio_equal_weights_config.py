@@ -52,6 +52,8 @@ PORTFOLIO_EXAMPLE_RUNTIME_MODELS = [
     "SignalMetadata",
     "RebalanceStrategyMetadata",
     "ExternalPricesStorage",
+    "PortfolioCalendarEventsStorage",
+    "PortfolioRebalanceStateStorage",
     "PortfolioWeightsStorage",
     "SignalWeightsStorage",
     "PortfoliosStorage",

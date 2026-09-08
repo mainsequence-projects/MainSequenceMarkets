@@ -7,6 +7,60 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-09-08
+
+### Added
+
+- Added the generic `PortfolioRebalance` updater and
+  `PortfolioRebalanceStateStorage` ledger for deterministic active-intent,
+  partial-execution, remaining-target, event-provenance, and restart state.
+- Added `PortfolioCalendarEvents` and `PortfolioCalendarEventsStorage` so
+  calendar-relative strategies consume an explicit published schedule rather
+  than reading or generating dates behind the dependency graph.
+- Added supported `TimeWeighted`, `VolumeParticipation`, and
+  `LiquidityConstrained` strategies driven by observed bars, volume, and
+  available liquidity.
+- Added `TrailingAverageDailyVolumeParticipation`, which estimates a bounded
+  per-asset daily notional cap from completed historical daily VWAP and volume
+  while executing only at observable intraday prices and volumes.
+- Added static migration `0016` for calendar-event and rebalance-state storage;
+  it also provisions the previously declared portfolio-analytics storage.
+
+### Changed
+
+- Replaced the fixed `execution_timestamps(...)` /
+  `apply_rebalance_logic(...)` strategy API with declared dependencies,
+  required input contracts, strategy-owned event selection, and deterministic
+  per-event state transitions. This is a breaking portfolio execution contract
+  change.
+- Added the optional `prepare_execution_context()` strategy hook and indexed
+  signal/event preparation so rolling inputs are computed once rather than
+  rescanned for every event.
+- Converted `PortfolioWeights` from the strategy executor into a pure
+  projection of rebalance-state events that changed executed allocations.
+- Updated the SDK lock, exported requirements, and managed repository skills
+  to Main Sequence SDK 8.1.5.
+
+### Fixed
+
+- Removed central assumptions that every rebalance strategy uses an immediate
+  signal, one execution valuation frame, or an optional column named
+  `volume`. New strategy categories can declare arbitrary typed observed
+  inputs without changing portfolio valuation code.
+- Preserved unfinished volume- and liquidity-constrained work as `pending` or
+  `partial`, with explicit supersession when a newer signal arrives.
+- Prevented ex-post current-session VWAP from being treated as an execution
+  price or eligible trailing-capacity observation. Daily participation usage
+  now survives same-session restarts and target supersession.
+
+### Documentation
+
+- Marked ADR 0040 implemented and updated the portfolio knowledge page,
+  tutorial, and equal-weight example for the general strategy-driven
+  rebalance graph.
+- Documented the trailing daily-liquidity strategy and added a focused public
+  configuration example.
+
 ## [1.0.6] - 2026-09-07
 
 ### Added

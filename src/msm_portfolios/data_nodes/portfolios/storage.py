@@ -5,11 +5,12 @@ from __future__ import annotations
 import datetime
 from typing import ClassVar
 
-from sqlalchemy import DateTime, Float, ForeignKey, String
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.assets import AssetTable
+from msm.models.calendars import CalendarTable
 from msm.models.portfolios import PortfolioTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.data_nodes.constants import (
@@ -114,6 +115,254 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         info={
             "label": "Volume Before",
             "description": "Asset volume from the previous rebalance reference.",
+        },
+    )
+
+
+class PortfolioCalendarEventsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+    """Published calendar events that strategies may declare as observed inputs."""
+
+    __metatable_identifier__ = "PortfolioCalendarEventsTS"
+    __metatable_description__ = (
+        "Persisted calendar session events projected onto their actual UTC open or "
+        "close timestamps. Rows are keyed by time, calendar, session label, and event "
+        "type for explicit use as a rebalance-strategy dependency."
+    )
+    __time_index_name__: ClassVar[str] = "time_index"
+    __index_names__: ClassVar[list[str]] = [
+        "time_index",
+        "calendar_identifier",
+        "session_label",
+        "event_type",
+    ]
+
+    time_index: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        info={
+            "label": "Calendar Event Time",
+            "description": "Actual UTC timestamp of the persisted session open or close.",
+        },
+    )
+    calendar_identifier: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey(
+            f"{CalendarTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        info={
+            "label": "Calendar Identifier",
+            "description": "CalendarTable unique_identifier that owns this session event.",
+        },
+    )
+    session_label: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        info={
+            "label": "Session Label",
+            "description": "Persisted session category from which this event was projected.",
+        },
+    )
+    event_type: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        info={
+            "label": "Event Type",
+            "description": "Session boundary represented by the row: market_open or market_close.",
+        },
+    )
+    local_date: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        info={
+            "label": "Local Session Date",
+            "description": "Calendar-local ISO date used for weekly event selection.",
+        },
+    )
+
+
+class PortfolioRebalanceStateStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+    """Auditable rebalance intent and execution progress by portfolio asset."""
+
+    __metatable_identifier__ = "PortfolioRebalanceStateTS"
+    __metatable_description__ = (
+        "Event-driven portfolio rebalance state keyed by event timestamp, portfolio, "
+        "target intent, and asset. Rows record target activation, partial execution, "
+        "remaining weight, observed execution capacity, and strategy-owned restart state."
+    )
+    __time_index_name__: ClassVar[str] = "time_index"
+    __index_names__: ClassVar[list[str]] = [
+        "time_index",
+        PORTFOLIO_IDENTIFIER_DIMENSION,
+        "rebalance_intent_id",
+        ASSET_IDENTIFIER_DIMENSION,
+    ]
+
+    time_index: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        info={
+            "label": "Execution Event Time",
+            "description": (
+                "UTC timestamp of the observed event that caused this state transition."
+            ),
+        },
+    )
+    portfolio_identifier: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey(
+            f"{PortfolioTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        info={
+            "label": "Portfolio Identifier",
+            "description": (
+                "Stable PortfolioTable unique_identifier for the rebalance state machine."
+            ),
+        },
+    )
+    rebalance_intent_id: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        info={
+            "label": "Rebalance Intent ID",
+            "description": (
+                "Deterministic hash of the selected signal timestamp and target weights."
+            ),
+        },
+    )
+    asset_identifier: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey(
+            f"{AssetTable.__table__.fullname}.unique_identifier",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        info={
+            "label": "Asset Identifier",
+            "description": "AssetTable unique_identifier whose target progress is recorded.",
+        },
+    )
+    target_signal_time_index: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        info={
+            "label": "Target Signal Time",
+            "description": (
+                "UTC observation timestamp of the signal target active for this transition."
+            ),
+        },
+    )
+    event_source: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        info={
+            "label": "Event Source",
+            "description": (
+                "Declared strategy input whose observed timestamp triggered the transition."
+            ),
+        },
+    )
+    execution_status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        info={
+            "label": "Execution Status",
+            "description": (
+                "Lifecycle state: pending, partial, complete, superseded, cancelled, or rejected."
+            ),
+        },
+    )
+    target_weight: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        info={
+            "label": "Target Weight",
+            "description": "Signal target weight selected for this asset and intent.",
+        },
+    )
+    weight_before: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        info={
+            "label": "Weight Before",
+            "description": "Executed portfolio weight immediately before this transition.",
+        },
+    )
+    weight_after: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        info={
+            "label": "Weight After",
+            "description": "Executed portfolio weight immediately after this transition.",
+        },
+    )
+    executed_weight_delta: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        info={
+            "label": "Executed Weight Delta",
+            "description": "Signed weight change executed at this observed event.",
+        },
+    )
+    remaining_weight_delta: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        info={
+            "label": "Remaining Weight Delta",
+            "description": "Signed target weight still unexecuted after this transition.",
+        },
+    )
+    execution_price: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={
+            "label": "Execution Price",
+            "description": "Observed price used by the strategy for this asset transition.",
+        },
+    )
+    executed_quantity: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={
+            "label": "Executed Quantity",
+            "description": "Signed asset quantity implied or reported for this transition.",
+        },
+    )
+    executed_notional: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={
+            "label": "Executed Notional",
+            "description": "Absolute notional capacity consumed by this asset transition.",
+        },
+    )
+    observed_volume: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={
+            "label": "Observed Volume",
+            "description": "Source bar volume observed by a volume-aware strategy.",
+        },
+    )
+    observed_available_liquidity: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={
+            "label": "Observed Available Liquidity",
+            "description": "Source liquidity capacity observed by a liquidity-aware strategy.",
+        },
+    )
+    strategy_state: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        info={
+            "label": "Strategy State",
+            "description": (
+                "Versioned JSON state owned by the strategy and used for deterministic restart."
+            ),
         },
     )
 
@@ -269,6 +518,8 @@ class PortfolioAnalyticsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 __all__ = [
     "PORTFOLIO_IDENTIFIER_DIMENSION",
     "PortfolioAnalyticsStorage",
+    "PortfolioCalendarEventsStorage",
+    "PortfolioRebalanceStateStorage",
     "PortfolioWeightsStorage",
     "PortfoliosStorage",
 ]
