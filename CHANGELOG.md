@@ -7,6 +7,31 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-09-08
+
+### Added
+
+- Added a source-backed trailing-average-daily-volume participation preview
+  example that performs bounded, asset-filtered reads and reports execution
+  quantities, remaining weights, and daily-cap consumption without persisting
+  portfolio state.
+
+### Changed
+
+- Raised the minimum, locked, and exported Main Sequence SDK dependency plus
+  managed repository skill pin from 8.1.5 to 8.1.7 so portfolio configuration
+  durations serialize deterministically during updater hashing.
+
+### Fixed
+
+- Restored deterministic updater hashing and configuration reconstruction for
+  `CalendarEventSignal.event_offset` and
+  `ValuationAlignmentPolicy.maximum_staleness` by requiring Main Sequence SDK
+  8.1.7 or newer.
+- Added the repository root to pytest's configured import path so executable
+  examples can be imported by example-focused tests without shell-specific
+  `PYTHONPATH` setup.
+
 ## [1.0.7] - 2026-09-08
 
 ### Added

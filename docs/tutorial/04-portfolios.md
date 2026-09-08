@@ -122,7 +122,25 @@ The daily source must timestamp each row when the completed bar is available;
 the intraday source supplies the actual price used by the execution
 assumption. See
 `examples/msm_portfolios/portfolio_trailing_adv_participation_example.py` for
-the focused configuration helper.
+the focused configuration helper. To preview real transitions against two
+registered source tables without persisting portfolio state, run:
+
+```bash
+python examples/msm_portfolios/portfolio_trailing_adv_participation_preview.py \
+  --daily-liquidity-table-uid <daily-table-uid> \
+  --execution-bars-table-uid <intraday-table-uid> \
+  --signal-time 2026-01-05T14:25:00Z \
+  --start 2026-01-05T14:30:00Z \
+  --end 2026-01-05T21:00:00Z \
+  --target BTC-USD=0.60 \
+  --target ETH-USD=0.40
+```
+
+The preview filters both reads to the requested target assets, expands only
+the strategy's bounded daily-history window, and prints execution price,
+quantity, remaining target weight, trailing capacity, and consumed daily cap.
+Use the full `PortfolioRebalance` graph when those transitions should be
+persisted and projected into canonical portfolio weights.
 
 ## Migrate values produced by the former daily resampler
 

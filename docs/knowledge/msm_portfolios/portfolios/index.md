@@ -201,6 +201,16 @@ bar. Apart from sorting unsorted source frames, preparation is linear in the
 daily and intraday input rows, followed by the unavoidable emitted state
 transitions.
 
+Use
+`examples/msm_portfolios/portfolio_trailing_adv_participation_preview.py` to
+preview this state machine against registered daily-liquidity and intraday-bar
+tables. The example filters both source reads to the requested assets, applies
+the strategy-owned bounded history window, and prints quantities and cap
+consumption without writing `PortfolioRebalanceStateStorage`. Production
+portfolio workflows inject the same strategy into
+`BacktestingWeightsConfig.rebalance_strategy_instance` and let
+`PortfolioRebalance` persist the resulting transitions.
+
 ## Portfolio Read Services
 
 Reusable portfolio output reads live under

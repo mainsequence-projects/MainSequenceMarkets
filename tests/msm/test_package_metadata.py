@@ -8,7 +8,7 @@ from packaging.version import Version
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_package_metadata_enforces_sdk_8_hard_cut_without_exact_patch_pin() -> None:
+def test_package_metadata_enforces_fixed_sdk_floor_without_exact_patch_pin() -> None:
     project = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())["project"]
     requirement = next(
         Requirement(value)
@@ -22,7 +22,8 @@ def test_package_metadata_enforces_sdk_8_hard_cut_without_exact_patch_pin() -> N
     assert Version("8.0.3") not in requirement.specifier
     assert Version("8.0.6") not in requirement.specifier
     assert Version("8.0.7") not in requirement.specifier
-    assert Version("8.1.0") in requirement.specifier
+    assert Version("8.1.6") not in requirement.specifier
+    assert Version("8.1.7") in requirement.specifier
     assert Version("8.99.0") in requirement.specifier
     assert Version("9.0.0") in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

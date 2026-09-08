@@ -10,6 +10,11 @@ from pydantic import ValidationError
 
 from mainsequence.client.metatables import TimeIndexMetaTable
 from mainsequence.meta_tables import TimeIndexTableUpdater
+from mainsequence.meta_tables.time_index_table_updates.configuration import (
+    ConfigRebuilder,
+    Serializer,
+    hash_signature,
+)
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.models import AssetTable, PortfolioTable
 from msm_portfolios.configuration import (
@@ -277,9 +282,28 @@ def test_calendar_strategy_offset_changes_execution_and_hash() -> None:
         observed_inputs={"calendar_events": observations},
     )
 
+    base_configuration = canonical_rebalance_strategy_configuration(base)
+    shifted_configuration = canonical_rebalance_strategy_configuration(shifted)
+
     assert result["time_index"].tolist() == [event + pd.Timedelta(minutes=5)]
-    assert canonical_rebalance_strategy_configuration(base) != (
-        canonical_rebalance_strategy_configuration(shifted)
+    assert base_configuration["config"]["event_offset"] == "PT0S"
+    assert shifted_configuration["config"]["event_offset"] == "PT5M"
+    assert hash_signature(base_configuration)[0] != hash_signature(shifted_configuration)[0]
+
+
+def test_valuation_staleness_is_sdk_hash_serializable_and_reversible() -> None:
+    serialized = Serializer().serialize_init_kwargs(
+        {
+            "policy": ValuationAlignmentPolicy(
+                maximum_staleness=timedelta(days=2),
+            )
+        }
+    )
+
+    assert serialized["policy"]["serialized_model"]["maximum_staleness"] == "P2D"
+    assert hash_signature(serialized)[0]
+    assert ConfigRebuilder().rebuild(serialized)["policy"].maximum_staleness == timedelta(
+        days=2
     )
 
 
