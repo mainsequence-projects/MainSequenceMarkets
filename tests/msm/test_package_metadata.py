@@ -23,7 +23,8 @@ def test_package_metadata_enforces_fixed_sdk_floor_without_exact_patch_pin() -> 
     assert Version("8.0.6") not in requirement.specifier
     assert Version("8.0.7") not in requirement.specifier
     assert Version("8.1.6") not in requirement.specifier
-    assert Version("8.1.7") in requirement.specifier
+    assert Version("8.1.7") not in requirement.specifier
+    assert Version("8.1.8") in requirement.specifier
     assert Version("8.99.0") in requirement.specifier
     assert Version("9.0.0") in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

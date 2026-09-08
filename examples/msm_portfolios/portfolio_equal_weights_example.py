@@ -88,7 +88,7 @@ class ExamplePortfolioResolver:
 
 
 class ExampleDailyBars(AssetIndexedDataNode):
-    """Example daily OHLCV bars used as the real portfolio price dependency."""
+    """Daily OHLCV source supporting the portfolio's set-based seed observation read."""
 
     OFFSET_START = (TIME_INDEX - pd.Timedelta(days=90)).to_pydatetime()
 

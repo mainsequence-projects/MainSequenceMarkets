@@ -283,6 +283,70 @@ def test_asset_indexed_node_normalizes_asset_scope_helpers() -> None:
     assert AssetSnapshot.asset_dimension_filters(None) is None
 
 
+def test_asset_indexed_last_observation_preserves_sdk_dimension_query_contract() -> None:
+    calls: list[dict] = []
+
+    class Manager:
+        def get_last_observation(self, **kwargs):
+            calls.append(kwargs)
+            return pd.DataFrame()
+
+    class TestAssetNode(AssetIndexedDataNode):
+        @classmethod
+        def _required_output_table(cls):
+            return AssetSnapshotsStorage
+
+        def dependencies(self):
+            return {}
+
+        def update(self):
+            return pd.DataFrame()
+
+    node = object.__new__(TestAssetNode)
+    node._update_manager = Manager()
+    node.asset_list = ["BTC", "ETH"]
+    index_coordinates = [
+        {"signal_uid": "signal-a", ASSET_IDENTIFIER_DIMENSION: "BTC"},
+    ]
+    dimension_range_map = [
+        {
+            "coordinate": {
+                "signal_uid": "signal-a",
+                ASSET_IDENTIFIER_DIMENSION: "BTC",
+            },
+            "end_date": "2026-01-03T00:00:00Z",
+        },
+    ]
+
+    result = node.get_last_observation(
+        dimension_filters={"signal_uid": ["signal-a"]},
+        index_coordinates=index_coordinates,
+        dimension_range_map=dimension_range_map,
+    )
+
+    assert result.empty
+    assert calls == [
+        {
+            "dimension_filters": {
+                "signal_uid": ["signal-a"],
+                ASSET_IDENTIFIER_DIMENSION: ["BTC", "ETH"],
+            },
+            "index_coordinates": index_coordinates,
+            "dimension_range_map": dimension_range_map,
+        }
+    ]
+
+    calls.clear()
+    node.get_last_observation(asset_list=["ETH"])
+    assert calls == [
+        {
+            "dimension_filters": {ASSET_IDENTIFIER_DIMENSION: ["ETH"]},
+            "index_coordinates": None,
+            "dimension_range_map": None,
+        }
+    ]
+
+
 def test_asset_indexed_node_rejects_duplicate_or_empty_asset_scope() -> None:
     with pytest.raises(ValueError):
         AssetSnapshot.validate_asset_list(["BTC", "BTC"])

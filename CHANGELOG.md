@@ -7,6 +7,28 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-09-08
+
+### Changed
+
+- Raised the minimum, locked, and exported Main Sequence SDK dependency plus
+  managed repository skill pin from 8.1.7 to 8.1.8.
+
+### Fixed
+
+- Restored the complete SDK dimension-query contract on
+  `AssetIndexedDataNode.get_last_observation(...)` while retaining validated
+  optional asset scoping.
+- Fixed portfolio seed observation reads to include complete multidimensional
+  coordinates such as `(signal_uid, asset_identifier)` in one set-based backend
+  request. Added concrete AssetIndexedDataNode regressions that close
+  [#6](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/6).
+
+### Documentation
+
+- Documented the set-based asset seed-read contract in the asset, portfolio,
+  tutorial, and equal-weight example surfaces.
+
 ## [1.0.9] - 2026-09-08
 
 ### Documentation

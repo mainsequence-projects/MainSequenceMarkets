@@ -302,9 +302,7 @@ def test_valuation_staleness_is_sdk_hash_serializable_and_reversible() -> None:
 
     assert serialized["policy"]["serialized_model"]["maximum_staleness"] == "P2D"
     assert hash_signature(serialized)[0]
-    assert ConfigRebuilder().rebuild(serialized)["policy"].maximum_staleness == timedelta(
-        days=2
-    )
+    assert ConfigRebuilder().rebuild(serialized)["policy"].maximum_staleness == timedelta(days=2)
 
 
 def test_immediate_signal_uses_only_signal_observation_timestamps() -> None:
@@ -572,29 +570,57 @@ def test_per_asset_asof_alignment_enforces_staleness() -> None:
 def test_seed_lookup_is_one_set_based_request_for_all_assets() -> None:
     calls: list[dict] = []
 
-    class Source:
+    def signal_frame(rows: list[tuple[str, str, str, float]]) -> pd.DataFrame:
+        frame = pd.DataFrame(
+            rows,
+            columns=["time_index", "signal_uid", ASSET_IDENTIFIER, "signal_weight"],
+        )
+        frame["time_index"] = pd.to_datetime(frame["time_index"], utc=True)
+        return frame.set_index(["time_index", "signal_uid", ASSET_IDENTIFIER])
+
+    class SourceManager:
         def get_df_between_dates(self, **kwargs):
             calls.append({"kind": "window", **kwargs})
-            return asset_frame([("2026-01-03T00:00:00Z", "btc", 110.0)])
+            return signal_frame([("2026-01-03T00:00:00Z", "signal-a", "btc", 0.6)])
 
         def get_last_observation(self, **kwargs):
             calls.append({"kind": "seed", **kwargs})
-            return asset_frame(
+            return signal_frame(
                 [
-                    ("2026-01-01T00:00:00Z", "btc", 100.0),
-                    ("2026-01-02T00:00:00Z", "eth", 200.0),
+                    ("2026-01-01T00:00:00Z", "signal-a", "btc", 0.5),
+                    ("2026-01-02T00:00:00Z", "signal-a", "eth", 0.5),
                 ]
             )
 
+    source = object.__new__(SignalWeights)
+    source._update_manager = SourceManager()
+    source.asset_list = ["btc", "eth"]
     _window, seed = fetch_asset_observations(
-        Source(),
+        source,
         start=pd.Timestamp("2026-01-03T00:00:00Z"),
         end=pd.Timestamp("2026-01-04T00:00:00Z"),
         asset_identifiers=["btc", "eth"],
+        extra_dimension_filters={"signal_uid": ["signal-a"]},
     )
-    assert len([call for call in calls if call["kind"] == "seed"]) == 1
-    assert len(calls[1]["dimension_range_map"]) == 2
+    seed_calls = [call for call in calls if call["kind"] == "seed"]
+    assert len(seed_calls) == 1
+    assert seed_calls[0]["dimension_filters"] == {
+        ASSET_IDENTIFIER: ["btc", "eth"],
+        "signal_uid": ["signal-a"],
+    }
+    assert seed_calls[0]["dimension_range_map"] == [
+        {
+            "coordinate": {
+                "signal_uid": "signal-a",
+                ASSET_IDENTIFIER: asset_identifier,
+            },
+            "end_date": pd.Timestamp("2026-01-03T00:00:00Z").to_pydatetime(),
+            "end_date_operand": "<",
+        }
+        for asset_identifier in ["btc", "eth"]
+    ]
     assert set(seed.index.get_level_values(ASSET_IDENTIFIER)) == {"btc", "eth"}
+    assert set(seed["signal_uid"]) == {"signal-a"}
 
 
 def test_signal_after_calendar_cutoff_is_not_applied_retroactively() -> None:

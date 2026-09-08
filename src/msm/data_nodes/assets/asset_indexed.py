@@ -126,7 +126,9 @@ class AssetIndexedDataNode(TimeIndexTableUpdater):
 
         assets = list(asset_list)
         if not assets and not allow_empty:
-            raise ValueError("asset_list cannot be empty for an asset-indexed TimeIndexTableUpdater.")
+            raise ValueError(
+                "asset_list cannot be empty for an asset-indexed TimeIndexTableUpdater."
+            )
 
         seen_unique_identifiers: set[str] = set()
         for position, asset in enumerate(assets):
@@ -446,13 +448,31 @@ class AssetIndexedDataNode(TimeIndexTableUpdater):
     def get_last_observation(
         self,
         asset_list: Iterable[MarketAssetScopeItem] | None = None,
+        *,
+        dimension_filters: dict[str, list[Any]] | None = None,
+        index_coordinates: list[dict[str, Any]] | None = None,
+        dimension_range_map: list[dict[str, Any]] | None = None,
     ) -> pd.DataFrame:
-        """Return the latest observation, optionally scoped to market assets."""
+        """Return latest observations through the full SDK dimension-query contract."""
         assets = (
             self.get_asset_list() if asset_list is None else self.validate_asset_list(asset_list)
         )
-        return self.update_manager.get_last_observation(
-            dimension_filters=self.asset_dimension_filters(assets),
+        resolved_dimension_filters = copy.deepcopy(dimension_filters)
+        asset_filters = self.asset_dimension_filters(assets)
+        if resolved_dimension_filters is None:
+            resolved_dimension_filters = asset_filters
+        elif self.asset_identity_dimension in resolved_dimension_filters:
+            self.validate_asset_list(
+                resolved_dimension_filters[self.asset_identity_dimension],
+                allow_empty=True,
+            )
+        elif asset_filters is not None:
+            resolved_dimension_filters.update(asset_filters)
+
+        return super().get_last_observation(
+            dimension_filters=resolved_dimension_filters,
+            index_coordinates=index_coordinates,
+            dimension_range_map=dimension_range_map,
         )
 
     def get_ranged_data_per_asset(

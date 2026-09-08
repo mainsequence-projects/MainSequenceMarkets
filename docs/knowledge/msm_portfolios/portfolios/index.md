@@ -596,8 +596,11 @@ valuation-source progress, or the table-wide maximum of the shared
 After resolving that portfolio-scoped start, `PortfoliosDataNode` reads
 canonical executed weights and actual valuation observations. It selects the
 latest weights as-of each eligible observation, validates per-asset staleness,
-and writes one canonical value row per eligible source timestamp. A rerun before
-new source data arrives is an empty update.
+and writes one canonical value row per eligible source timestamp. Before the
+window, it retrieves all required per-asset seed observations in one set-based
+request. Shared multidimensional sources use complete coordinates; for signal
+weights that means both `signal_uid` and `asset_identifier`. A rerun before new
+source data arrives is an empty update.
 
 In code, the important wiring is:
 

@@ -130,6 +130,18 @@ Do not use legacy platform metadata markers to remove TimeIndexTableUpdater conf
 from hashing. There is no third asset-scope case: if it is a config field, it is
 hashed; if it is not hashed, it must not be a config field.
 
+## Set-Based Observation Reads
+
+`AssetIndexedDataNode.get_last_observation(...)` preserves the generic SDK
+dimension-query contract. Callers may pass `dimension_filters`,
+`index_coordinates`, and `dimension_range_map` together while the markets layer
+validates and applies the optional `asset_list` scope. Multidimensional range
+coordinates must contain every identity dimension from the storage table.
+
+Portfolio and signal workflows use this contract to retrieve the latest seed
+observation for all required assets in one backend request. They do not issue
+one request per asset.
+
 ## Canonical Foreign Key
 
 In the current storage-first architecture, the schema contract lives on a

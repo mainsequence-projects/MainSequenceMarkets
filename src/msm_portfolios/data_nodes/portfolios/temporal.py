@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from itertools import product
 from typing import Any
 
 import pandas as pd
@@ -40,12 +41,20 @@ def fetch_asset_observations(
     asset_identifiers: Iterable[str],
     extra_dimension_filters: dict[str, list[Any]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Fetch window rows plus one set-based seed observation per required asset."""
+    """Fetch window rows plus set-based seeds for complete identity coordinates."""
     assets = list(dict.fromkeys(str(value) for value in asset_identifiers))
     if not assets:
         return pd.DataFrame(), pd.DataFrame()
 
-    dimension_filters = {ASSET_IDENTIFIER: assets, **(extra_dimension_filters or {})}
+    extra_filters = {
+        dimension: list(values) for dimension, values in (extra_dimension_filters or {}).items()
+    }
+    if ASSET_IDENTIFIER in extra_filters:
+        raise ValueError(
+            f"{ASSET_IDENTIFIER!r} must be supplied through asset_identifiers, "
+            "not extra_dimension_filters."
+        )
+    dimension_filters = {ASSET_IDENTIFIER: assets, **extra_filters}
     window = normalize_asset_observations(
         source.get_df_between_dates(
             start_date=start,
@@ -56,19 +65,35 @@ def fetch_asset_observations(
         )
     )
 
+    extra_dimensions = list(extra_filters)
+    extra_coordinates = (
+        [
+            dict(zip(extra_dimensions, values, strict=True))
+            for values in product(*(extra_filters[name] for name in extra_dimensions))
+        ]
+        if extra_dimensions
+        else [{}]
+    )
     range_map = [
         {
-            "coordinate": {ASSET_IDENTIFIER: asset_identifier},
+            "coordinate": {
+                **extra_coordinate,
+                ASSET_IDENTIFIER: asset_identifier,
+            },
             "end_date": pd.Timestamp(start).to_pydatetime(),
             "end_date_operand": "<",
         }
+        for extra_coordinate in extra_coordinates
         for asset_identifier in assets
     ]
+    if not range_map:
+        return window, pd.DataFrame()
+
     get_last_observation = getattr(source, "get_last_observation", None)
     if callable(get_last_observation):
         seed = normalize_asset_observations(
             get_last_observation(
-                dimension_filters=extra_dimension_filters,
+                dimension_filters=dimension_filters,
                 dimension_range_map=range_map,
             )
         )
@@ -83,9 +108,7 @@ def fetch_asset_observations(
         seed = _latest_per_asset(seed_candidates)
 
     if not seed.empty:
-        seed = seed[
-            seed.index.get_level_values(ASSET_IDENTIFIER).astype(str).isin(assets)
-        ]
+        seed = seed[seed.index.get_level_values(ASSET_IDENTIFIER).astype(str).isin(assets)]
         seed = _latest_per_asset(seed)
     return window, seed
 
@@ -113,14 +136,10 @@ def align_asset_observations(
             "Valuation source is missing required columns: " + ", ".join(missing_columns)
         )
 
-    available_assets = set(
-        normalized.index.get_level_values(ASSET_IDENTIFIER).astype(str).unique()
-    )
+    available_assets = set(normalized.index.get_level_values(ASSET_IDENTIFIER).astype(str).unique())
     absent_assets = sorted(set(assets) - available_assets)
     if absent_assets and fail_on_missing_values:
-        raise ValueError(
-            "Valuation source is missing required assets: " + ", ".join(absent_assets)
-        )
+        raise ValueError("Valuation source is missing required assets: " + ", ".join(absent_assets))
 
     flat = normalized.reset_index()
     result_parts: dict[str, pd.DataFrame] = {}
@@ -133,10 +152,7 @@ def align_asset_observations(
             aggfunc="last",
         ).reindex(columns=assets)
         source_times = pd.DataFrame(
-            {
-                asset: pivot.index.where(pivot[asset].notna())
-                for asset in pivot.columns
-            },
+            {asset: pivot.index.where(pivot[asset].notna()) for asset in pivot.columns},
             index=pivot.index,
         )
         combined = pivot.index.union(targets).sort_values()

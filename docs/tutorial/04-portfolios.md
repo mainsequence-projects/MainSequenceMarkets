@@ -78,6 +78,11 @@ calendar behind the dependency graph or fall back to a process-local calendar.
 Ensure the required `CalendarSession` horizon exists before executing the
 graph.
 
+Each execution or valuation window is seeded with the latest eligible row for
+every required asset using one set-based `get_last_observation(...)` request.
+For shared signal storage, each range coordinate includes both `signal_uid` and
+`asset_identifier`, preventing another signal's rows from entering the seed.
+
 This example uses one concrete strategy; it does not define the architecture.
 Under [ADR 0040](../ADR/0040-portfolio-temporal-ownership.md), every strategy
 declares the observations it needs and implements the same state transition
