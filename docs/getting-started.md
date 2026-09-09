@@ -27,7 +27,12 @@ Verify that the import package is available:
 
 ```python
 import msm
+from msm.api.http import ResourceCollection, build_resource_discovery_spec
 ```
+
+Provider FastAPI projects should use the installable
+[`msm.api.http`](fast_api/v1/provider_adapter_toolkit.md) boundary for shared
+collection, discovery, preflight, operation, and error behavior.
 
 Install ms-markets agent skills into a host CodeRepository only through the
 explicit CLI command:

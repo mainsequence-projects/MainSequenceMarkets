@@ -5,6 +5,10 @@ The FastAPI v1 resource surface is a strict consumer of
 `f11c0ea8c5d3fc267997e476aa1522c798fdaced`. The package manifest, JSON Schemas,
 and valid and invalid fixtures are the wire-contract authority.
 
+The implementing Python contracts and builders are public from
+`msm.api.http`. The `apps.v1.schemas.resource_contracts` module is retained as
+a compatibility import for this repository's FastAPI app.
+
 ## Collections
 
 Every list route declares `command-center.resource_collection@v1` and returns

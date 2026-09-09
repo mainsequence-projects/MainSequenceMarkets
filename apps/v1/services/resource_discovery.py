@@ -2,144 +2,37 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal
-
 from fastapi import HTTPException, Request
 
-from apps.v1.schemas.bulk_actions import BulkActionDefinition
-from apps.v1.schemas.resource_contracts import (
-    ResourceBooleanFilter,
-    ResourceColumn,
-    ResourceDescriptor,
+from msm.api.http import (
     ResourceDiscovery,
-    ResourceFilter,
-    ResourceFilterOption,
-    ResourceIdentity,
-    ResourceListControls,
-    ResourceListDiscovery,
-    ResourceSearchControl,
-    ResourceSelectFilter,
-    ResourceTextFilter,
+    ResourceDiscoverySpec,
+    build_bulk_delete_action,
+    build_resource_discovery_spec,
+    resolve_resource_discovery,
+    resource_boolean_filter,
+    resource_column,
+    resource_select_filter,
+    resource_text_filter,
 )
-from apps.v1.services.bulk_actions import build_bulk_delete_action
-
-_PRESENTATION_QUERY_KEYS = frozenset(
-    {"light", "limit", "offset", "ordering", "page", "page_size", "sort"}
-)
-
-
-@dataclass(frozen=True)
-class ResourceDiscoverySpec:
-    response: ResourceDiscovery
-    semantic_query_keys: frozenset[str]
 
 
 def get_resource_discovery(spec_key: str, request: Request) -> ResourceDiscovery:
-    spec = RESOURCE_DISCOVERY_SPECS[spec_key]
-    supplied = set(request.query_params)
-    presentation_keys = sorted(supplied.intersection(_PRESENTATION_QUERY_KEYS))
-    if presentation_keys:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Resource discovery does not accept presentation query keys: "
-                + ", ".join(presentation_keys)
-                + "."
-            ),
+    try:
+        return resolve_resource_discovery(
+            spec_key,
+            request.query_params,
+            specs=RESOURCE_DISCOVERY_SPECS,
         )
-    unknown = sorted(supplied.difference(spec.semantic_query_keys))
-    if unknown:
-        raise HTTPException(
-            status_code=400,
-            detail="Unsupported resource discovery query keys: " + ", ".join(unknown) + ".",
-        )
-    return spec.response
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _column(
-    value_path: str,
-    header: str,
-    data_type: Literal[
-        "text", "number", "boolean", "date", "datetime", "badge", "list", "json"
-    ] = "text",
-    *,
-    importance: Literal["primary", "secondary", "tertiary"] | None = None,
-    filter_key: str | None = None,
-) -> ResourceColumn:
-    return ResourceColumn(
-        id=value_path.replace("_", "-").replace(".", "-"),
-        header=header,
-        value_path=value_path,
-        data_type=data_type,
-        default_visible=True,
-        hideable=True,
-        importance=importance,
-        filter_key=filter_key,
-    )
-
-
-def _text_filter(key: str, label: str) -> ResourceTextFilter:
-    return ResourceTextFilter(key=key, label=label)
-
-
-def _boolean_filter(key: str, label: str) -> ResourceBooleanFilter:
-    return ResourceBooleanFilter(key=key, label=label)
-
-
-def _select_filter(
-    key: str,
-    label: str,
-    values: tuple[tuple[str, str], ...],
-) -> ResourceSelectFilter:
-    return ResourceSelectFilter(
-        key=key,
-        label=label,
-        options=[
-            ResourceFilterOption(value=value, label=option_label) for value, option_label in values
-        ],
-    )
-
-
-def _spec(
-    *,
-    resource_id: str,
-    label: str,
-    item_label: str,
-    identity_fields: tuple[str, ...],
-    columns: tuple[ResourceColumn, ...],
-    search: bool = False,
-    filters: tuple[ResourceFilter, ...] = (),
-    bulk_actions: tuple[BulkActionDefinition, ...] = (),
-) -> ResourceDiscoverySpec:
-    semantic_query_keys = {item.key for item in filters}
-    search_control = None
-    if search:
-        semantic_query_keys.add("search")
-        search_control = ResourceSearchControl(
-            placeholder=f"Search {item_label}",
-            fields=[column.id for column in columns],
-        )
-    return ResourceDiscoverySpec(
-        response=ResourceDiscovery(
-            resource=ResourceDescriptor(
-                id=resource_id,
-                label=label,
-                item_label=item_label,
-                identity=ResourceIdentity(fields=list(identity_fields)),
-            ),
-            list=ResourceListDiscovery(
-                controls=ResourceListControls(
-                    search=search_control,
-                    filters=list(filters),
-                    ordering=[],
-                ),
-                columns=list(columns),
-            ),
-            bulk_actions=list(bulk_actions),
-        ),
-        semantic_query_keys=frozenset(semantic_query_keys),
-    )
+_column = resource_column
+_text_filter = resource_text_filter
+_boolean_filter = resource_boolean_filter
+_select_filter = resource_select_filter
+_spec = build_resource_discovery_spec
 
 
 _ASSET_CATEGORY_DELETE = build_bulk_delete_action(

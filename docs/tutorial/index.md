@@ -46,6 +46,12 @@ sibling `/discovery/` endpoint owns identity, controls, columns, and authorized
 bulk actions. Detail and summary operations remain distinct resource-specific
 boundaries.
 
+Provider CodeRepositories can reuse these boundaries directly from
+`msm.api.http`. The [provider adapter HTTP toolkit](../fast_api/v1/provider_adapter_toolkit.md)
+also supplies bulk-preflight helpers, sanitized structured errors, and
+owner-scoped observable-operation primitives, so connectors do not need to
+copy the infrastructure from this repository's `apps/v1` tree.
+
 ## The path
 
 1. [Assets and Categories](01-assets.md) — runtime setup, asset types and

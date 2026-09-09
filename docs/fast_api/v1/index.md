@@ -8,6 +8,8 @@ surface for this repository.
 This API is intentionally thin:
 
 - route declarations, validation, and OpenAPI metadata live under `apps/v1`
+- provider-neutral collection, discovery, bulk-preflight, operation, and
+  structured-error machinery lives in the installable `msm.api.http` package
 - reusable asset category workflows live under `src/msm/services`
 - asset, category, and index frontend route composition is backed by
   `src/msm/services/asset_master_lists.py`
@@ -50,6 +52,9 @@ This API is intentionally thin:
   discovery, preflight, and execution for destructive collection actions.
 - [Command Center Resource Contracts](resource_contracts.md): the canonical
   collection, discovery, detail, summary, and action boundaries for all lists.
+- [Provider Adapter HTTP Toolkit](provider_adapter_toolkit.md): installable
+  collection, discovery, preflight, observable-operation, and error helpers for
+  Alpaca-, Binance-, and other provider adapters.
 
 ## Design Decisions (ADRs)
 

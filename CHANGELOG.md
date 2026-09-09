@@ -7,6 +7,28 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [1.0.14] - 2026-09-09
+
+### Added
+
+- Added the installable `msm.api.http` provider adapter toolkit with strict
+  Command Center collection, discovery, bulk-action preflight, structured
+  error, and owner-scoped observable-operation contracts and helpers.
+- Added a provider-neutral HTTP contract example covering discovery metadata
+  and operation creation.
+
+### Changed
+
+- Moved the reusable `apps/v1` resource and bulk-action implementations behind
+  the public `msm.api.http` import boundary while retaining compatibility
+  imports for the repository FastAPI app.
+
+### Documentation
+
+- Documented provider adapter reuse, error sanitization, operation ownership,
+  and the explicit single-process durability boundary of the bundled in-memory
+  operation store.
+
 ## [1.0.13] - 2026-09-09
 
 ### Fixed

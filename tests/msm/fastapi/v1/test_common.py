@@ -3,10 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from apps.v1.schemas.resource_contracts import (
-    ResourceCollection,
-    build_resource_collection,
-)
+from msm.api.http import ResourceCollection, build_resource_collection
 
 
 class ExampleRow(BaseModel):

@@ -69,6 +69,6 @@ three execution operation IDs remain mutation operations:
   `bulkDeletePortfolioGroups`
 
 The language-neutral manifest, schemas, and fixtures in command-center-sdk are
-the contract authority. The API-owned Python models under
-`apps.v1.schemas.bulk_actions` implement those wire formats without importing
-deprecated MainSequence SDK Command Center modules.
+the contract authority. Provider projects import the implementing Python models
+and helpers from `msm.api.http`; `apps.v1.schemas.bulk_actions` remains a
+compatibility import for this repository's FastAPI app.

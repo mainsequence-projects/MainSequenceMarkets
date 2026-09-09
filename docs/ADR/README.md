@@ -39,6 +39,7 @@ Recommended sections:
 - [0038. Index User API And FastAPI Exploration](0038-index-user-api-and-fastapi-exploration.md)
 - [0039. SDK 8 Hard Cut And 1.0 Package Contract](0039-sdk-8-hard-cut-and-1-0-package-contract.md)
 - [0040. Portfolio Temporal Ownership And General Rebalance Execution](0040-portfolio-temporal-ownership.md)
+- [0041. Installable Provider HTTP Toolkit](0041-installable-provider-http-toolkit.md)
 
 ## Command Center Decisions
 

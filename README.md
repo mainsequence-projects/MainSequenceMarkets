@@ -51,6 +51,8 @@ Main package areas:
 - `msm.api.calendars`: calendar identity, date, session, and event row APIs
 - `msm.api`: user-facing Pydantic row objects and typed class methods for
   markets MetaTable records
+- `msm.api.http`: installable provider-neutral collection, discovery,
+  bulk-preflight, observable-operation, and structured-error contracts
 - `msm.constants`: static built-in keys such as asset type constants used across
   applications and examples
 - `msm.client`: client-facing Main Sequence market models and API wrappers
@@ -150,6 +152,12 @@ Verify the core import:
 python -c "import msm; print(msm.__version__)"
 ```
 
+Provider APIs can import the shared HTTP toolkit directly from the wheel:
+
+```python
+from msm.api.http import ResourceCollection, api_http_error
+```
+
 After installing the pricing extra, verify the optional pricing import:
 
 ```bash
@@ -237,6 +245,7 @@ exposed as `msm_pricing`.
 
 - Distribution name: `ms-markets`
 - Import packages: `msm`, `msm_portfolios`, and optional `msm_pricing`
+- Provider HTTP toolkit: `msm.api.http`
 - Python: `>=3.13,<3.14`
 - License: Apache-2.0
 - Repository: <https://github.com/mainsequence-projects/MainSequenceMarkets>

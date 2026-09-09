@@ -9,13 +9,11 @@ from jsonschema import Draft202012Validator
 from pydantic import ValidationError
 from referencing import Registry, Resource
 
-from apps.v1.schemas.bulk_actions import (
+from msm.api.http import (
     BULK_ACTION_EXECUTION_CONTRACT,
     BULK_ACTION_PREFLIGHT_CONTRACT,
     BulkActionExecutionRequest,
     BulkActionPreflightResponse,
-)
-from apps.v1.schemas.resource_contracts import (
     RESOURCE_COLLECTION_CONTRACT,
     RESOURCE_DISCOVERY_CONTRACT,
     ResourceCollection,
@@ -24,9 +22,7 @@ from apps.v1.schemas.resource_contracts import (
 
 COMMAND_CENTER_SDK_TAG = "v0.1.13"
 COMMAND_CENTER_SDK_COMMIT = "f11c0ea8c5d3fc267997e476aa1522c798fdaced"
-CONTRACTS_ROOT = (
-    Path(__file__).parents[3] / "contracts" / "command-center-sdk-v0.1.13"
-)
+CONTRACTS_ROOT = Path(__file__).parents[3] / "contracts" / "command-center-sdk-v0.1.13"
 
 _CONTRACT_MODELS = {
     RESOURCE_COLLECTION_CONTRACT: ResourceCollection[dict[str, Any]],
@@ -38,8 +34,7 @@ _CONTRACT_MODELS = {
 
 def _schema_registry() -> Registry:
     schemas = [
-        json.loads(path.read_text())
-        for path in (CONTRACTS_ROOT / "schemas").glob("*.schema.json")
+        json.loads(path.read_text()) for path in (CONTRACTS_ROOT / "schemas").glob("*.schema.json")
     ]
     return Registry().with_resources(
         (schema["$id"], Resource.from_contents(schema)) for schema in schemas
