@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Protocol
 
 import numpy as np
 import pandas as pd
@@ -31,12 +31,27 @@ class CorrectionReplayRequired(RuntimeError):
     """Raised when an existing economic event arrives with a new source revision."""
 
 
+class _ExecutionSimulator(Protocol):
+    model_identifier: str
+    model_version: str
+    event_times: tuple[pd.Timestamp, ...]
+
+    def simulate(
+        self,
+        *,
+        time_index: pd.Timestamp,
+        state: AccountingStateView,
+        valuation_result: ValuationResult,
+    ) -> EventBatch: ...
+
+
 @dataclass
 class _AccountingState:
     positions: dict[str, dict[str, Any]] = field(default_factory=dict)
     cash: dict[str, dict[str, Any]] = field(default_factory=dict)
     obligations: dict[str, dict[str, Any]] = field(default_factory=dict)
     lifecycle_state: dict[str, dict[str, Any]] = field(default_factory=dict)
+    execution_progress: dict[str, dict[str, Any]] = field(default_factory=dict)
     applied_events: dict[str, str] = field(default_factory=dict)
     event_sequence: int = 0
     last_nav: float | None = None
@@ -77,6 +92,10 @@ class _AccountingState:
                 self.lifecycle_state,
                 columns=("state_identifier", "state_schema_version", "extension_payload"),
             ),
+            execution_progress=_state_frame(
+                self.execution_progress,
+                columns=("state_identifier", "asset_identifier", "extension_payload"),
+            ),
             state_identifier=self.identifier(),
         )
 
@@ -86,6 +105,7 @@ class _AccountingState:
             "cash": _sorted_state(self.cash),
             "obligations": _sorted_state(self.obligations),
             "lifecycle_state": _sorted_state(self.lifecycle_state),
+            "execution_progress": _sorted_state(self.execution_progress),
             "applied_events": sorted(self.applied_events.items()),
         }
         return _digest(payload)
@@ -280,10 +300,11 @@ class PortfolioAccounting:
         *,
         valuation_observations: pd.DataFrame,
         fx_observations: pd.DataFrame | None = None,
-        execution_facts: pd.DataFrame | None = None,
+        execution_simulator: _ExecutionSimulator | None = None,
         lifecycle_models: Iterable[LifecycleEventModel] = (),
         lifecycle_inputs: Mapping[str, Mapping[str, pd.DataFrame]] | None = None,
         valuation_times: Iterable[pd.Timestamp | str] = (),
+        calculation_end: pd.Timestamp | str | None = None,
     ) -> pd.DataFrame:
         """Run a deterministic time scan and vectorize within compatible groups."""
 
@@ -305,6 +326,10 @@ class PortfolioAccounting:
             seen_model_ids.add(model.model_identifier)
             provided = inputs_by_model.get(model.model_identifier, {})
             candidates = model.select_event_candidates(LifecycleInputBatch(provided)).frame
+            if calculation_end is not None and not candidates.empty:
+                candidates = candidates[
+                    candidates["time_index"] <= _utc_timestamp(calculation_end)
+                ].reset_index(drop=True)
             if (
                 not candidates.empty
                 and (candidates["observed_at"] > candidates["time_index"]).any()
@@ -317,14 +342,18 @@ class PortfolioAccounting:
 
         _reject_cross_model_event_ownership(candidates_by_model)
 
-        executions = _normalize_execution_facts(execution_facts)
         times: set[pd.Timestamp] = {_utc_timestamp(value) for value in valuation_times}
-        if not executions.empty:
-            times.update(pd.DatetimeIndex(executions["time_index"]))
+        if execution_simulator is not None:
+            times.update(_utc_timestamp(value) for value in execution_simulator.event_times)
         for candidates in candidates_by_model.values():
             if not candidates.empty:
                 times.update(pd.DatetimeIndex(candidates["time_index"]))
-        times.discard(self.initial_state_time_index)
+        times = {
+            timestamp for timestamp in times if timestamp >= self.initial_state_time_index
+        }
+        if calculation_end is not None:
+            horizon = _utc_timestamp(calculation_end)
+            times = {timestamp for timestamp in times if timestamp <= horizon}
 
         model_map = {model.model_identifier: model for model in models}
         ordered_model_identifiers = sorted(
@@ -336,13 +365,22 @@ class PortfolioAccounting:
         )
         for timestamp in sorted(times):
             for phase in ("pre_execution", "execution", "post_execution"):
-                if phase == "execution" and not executions.empty:
-                    selected = executions[executions["time_index"] == timestamp]
-                    if not selected.empty:
+                if phase == "execution" and execution_simulator is not None:
+                    if timestamp in execution_simulator.event_times:
+                        valuation_result = self._value(
+                            timestamp,
+                            valuation_observations=valuation_observations,
+                            fx_observations=fx,
+                        )
+                        batch = execution_simulator.simulate(
+                            time_index=timestamp,
+                            state=self.state,
+                            valuation_result=valuation_result,
+                        )
                         self.apply_event_batch(
-                            execution_event_batch(selected),
-                            model_identifier="msm.execution_fact",
-                            model_version="1",
+                            batch,
+                            model_identifier=execution_simulator.model_identifier,
+                            model_version=execution_simulator.model_version,
                             valuation_observations=valuation_observations,
                             fx_observations=fx,
                         )
@@ -468,12 +506,15 @@ class PortfolioAccounting:
             is_opening_state = envelope["event_type"] == "opening_state"
             if is_opening_state:
                 recognized_pnl = 0.0
+            elif envelope["event_type"] == "execution":
+                recognized_pnl = difference
             elif np.isclose(declared_recognized_pnl, 0.0, rtol=0.0, atol=self.balance_tolerance):
                 recognized_pnl = 0.0
             else:
                 recognized_pnl = difference
             if (
                 not is_opening_state
+                and envelope["event_type"] != "execution"
                 and declared_recognized_pnl == 0.0
                 and not np.isclose(difference, 0.0, rtol=0.0, atol=self.balance_tolerance)
             ):
@@ -533,6 +574,15 @@ class PortfolioAccounting:
             self._state.lifecycle_state[state_identifier] = {
                 "state_identifier": state_identifier,
                 "state_schema_version": int(row.get("state_schema_version") or 1),
+                "extension_payload": _required_text(row, "extension_payload"),
+            }
+        for row in event[event["record_kind"] == "execution_progress"].to_dict(
+            orient="records"
+        ):
+            state_identifier = _required_text(row, "state_identifier")
+            self._state.execution_progress[state_identifier] = {
+                "state_identifier": state_identifier,
+                "asset_identifier": _required_text(row, "asset_identifier"),
                 "extension_payload": _required_text(row, "extension_payload"),
             }
 
@@ -725,78 +775,6 @@ def opening_cash_event_batch(
     )
 
 
-def execution_event_batch(execution_facts: pd.DataFrame) -> EventBatch:
-    """Convert explicit signed execution facts into position and cash records."""
-
-    facts = _normalize_execution_facts(execution_facts)
-    required = {
-        "execution_identifier",
-        "source_revision",
-        "asset_identifier",
-        "quantity_delta",
-        "quantity_unit",
-        "execution_price",
-        "price_asset_identifier",
-    }
-    missing = sorted(required - set(facts.columns))
-    if missing:
-        raise ValueError("Execution facts are missing: " + ", ".join(missing))
-    for column in ("quantity_delta", "execution_price"):
-        facts[column] = pd.to_numeric(facts[column], errors="raise").astype("float64")
-        if not np.isfinite(facts[column]).all():
-            raise ValueError(f"Execution {column} values must be finite.")
-    facts["position_identifier"] = facts.get(
-        "position_identifier", facts["asset_identifier"]
-    ).astype(str)
-    facts["observed_at"] = pd.to_datetime(
-        facts.get("observed_at", facts["time_index"]), utc=True
-    ).astype("datetime64[ns, UTC]")
-    rows: list[pd.DataFrame] = []
-    for record_order, record_kind in enumerate(("position_delta", "cash_delta")):
-        part = pd.DataFrame(
-            {
-                "_fact_order": np.arange(len(facts), dtype=np.int64),
-                "_record_order": record_order,
-                "event_local_identifier": facts["execution_identifier"].astype(str),
-                "time_index": facts["time_index"],
-                "observed_at": facts["observed_at"],
-                "source_identifier": facts["execution_identifier"].astype(str),
-                "source_revision": facts["source_revision"].astype(str),
-                "event_type": "execution",
-                "phase": "execution",
-                "record_kind": record_kind,
-                "position_identifier": facts["position_identifier"].astype(str),
-                "asset_identifier": (
-                    facts["asset_identifier"].astype(str)
-                    if record_kind == "position_delta"
-                    else facts["price_asset_identifier"].astype(str)
-                ),
-                "balance_role": (
-                    "instrument" if record_kind == "position_delta" else "settled_cash"
-                ),
-                "quantity_delta": (
-                    facts["quantity_delta"].to_numpy(dtype="float64")
-                    if record_kind == "position_delta"
-                    else -facts["quantity_delta"].to_numpy(dtype="float64")
-                    * facts["execution_price"].to_numpy(dtype="float64")
-                ),
-                "quantity_unit": (
-                    facts["quantity_unit"].astype(str)
-                    if record_kind == "position_delta"
-                    else facts["price_asset_identifier"].astype(str)
-                ),
-                "price": facts["execution_price"],
-                "price_asset_identifier": facts["price_asset_identifier"].astype(str),
-                "recognized_pnl": 0.0,
-            }
-        )
-        rows.append(part)
-    result = pd.concat(rows, ignore_index=True).sort_values(
-        ["_fact_order", "_record_order"], kind="stable"
-    )
-    return EventBatch.from_frame(result.drop(columns=["_fact_order", "_record_order"]))
-
-
 def valuation_marker_event_batch(time_index: pd.Timestamp | str) -> EventBatch:
     timestamp = _utc_timestamp(time_index)
     identifier = f"valuation:{timestamp.isoformat()}"
@@ -817,18 +795,6 @@ def valuation_marker_event_batch(time_index: pd.Timestamp | str) -> EventBatch:
             ]
         )
     )
-
-
-def _normalize_execution_facts(frame: pd.DataFrame | None) -> pd.DataFrame:
-    if frame is None or frame.empty:
-        return pd.DataFrame()
-    flat = frame.copy().reset_index()
-    if "time_index" not in flat.columns:
-        raise ValueError("Execution facts require time_index.")
-    flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True).astype("datetime64[ns, UTC]")
-    if flat.duplicated(subset=["execution_identifier", "source_revision"]).any():
-        raise ValueError("Execution facts contain duplicate economic identities.")
-    return flat.sort_values(["time_index", "execution_identifier"], kind="stable")
 
 
 def _reject_cross_model_event_ownership(
@@ -1035,7 +1001,6 @@ __all__ = [
     "CorrectionReplayRequired",
     "PortfolioAccounting",
     "event_digest",
-    "execution_event_batch",
     "opening_cash_event_batch",
     "valuation_marker_event_batch",
 ]

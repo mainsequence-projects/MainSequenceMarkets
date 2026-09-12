@@ -1240,8 +1240,8 @@ def test_trailing_daily_volume_strategy_declares_both_observed_sources() -> None
 def test_rebalance_base_allows_new_descriptive_strategy_categories() -> None:
     from msm_portfolios.rebalance_strategy import RebalanceStrategyBase
 
-    strategy = RebalanceStrategyBase(timing_mode="external_fill_events")
-    assert strategy.timing_mode == "external_fill_events"
+    strategy = RebalanceStrategyBase(timing_mode="custom_simulation_events")
+    assert strategy.timing_mode == "custom_simulation_events"
 
 
 def test_strategy_must_consolidate_same_timestamp_input_precedence() -> None:

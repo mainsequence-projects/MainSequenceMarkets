@@ -218,4 +218,22 @@ must inject every source as a declared `TimeIndexTableUpdater` or
 `TimeIndexTableRef`; the in-memory example passes frames directly so it remains
 deterministic and safe to run without platform writes.
 
+To verify derivative settlement and same-time event ordering, run:
+
+```bash
+uv run --extra portfolios python \
+  examples/msm_portfolios/portfolio_perpetual_funding_example.py
+```
+
+This fixture configures `TargetWeightExecutionModel` on the existing
+`ImmediateSignal` rebalance strategy. Explicit instrument terms declare
+notional-weight sizing, contract units and rounding, USD quote currency, and
+variation-margin settlement. The strategy opens ten contracts without deducting
+their full notional from cash and applies commission once. At the next timestamp,
+a funding lifecycle model reduces NAV before the same-time target is sized, so
+the position is reduced to eight contracts; a later funding event changes cash
+and NAV without a rebalance. Portfolios never accept broker executions or
+Account holdings; all execution facts in this path are internal deterministic
+simulation output.
+
 **Next →** [Pricing Instruments](05-pricing.md)

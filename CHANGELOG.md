@@ -5,6 +5,51 @@ All notable changes to this project should be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows versioned releases.
 
+## [Unreleased]
+
+## [1.0.16] - 2026-09-12
+
+### Added
+
+- Added explicit, vectorized `TargetWeightExecutionModel` and
+  `InstrumentExecutionSpec` contracts for converting the configured signal and
+  rebalance policy into simulated quantities, settlement legs, and restartable
+  execution progress.
+- Added composable strategy-owned execution cost models and an offline linear
+  perpetual fixture proving variation-margin settlement and pre-execution
+  funding order.
+
+### Changed
+
+- Routed opt-in position-aware portfolios through one coordinated
+  signal-to-`RebalanceStrategy` simulation path while leaving the weight-only
+  `PortfolioRebalance` and commission path unchanged.
+- Included execution progress in canonical ledger restart state and made exact
+  incremental retries publish no duplicate ledger tail.
+- Refreshed the repository lock, exported requirements, and managed platform
+  skills to Main Sequence SDK 8.1.11.
+
+### Removed
+
+- Removed the external execution-fact source from position-aware Portfolio
+  configuration and accounting. Portfolios accept no broker/Account execution
+  ingress, compatibility alias, replay lane, or fallback.
+
+### Fixed
+
+- Prevented floating-point noise at exact quantity-step boundaries from rounding
+  a mathematically integral target down by one lot.
+- Excluded explicitly closed zero-quantity positions from strict mark
+  requirements while preserving their ledger and state rows.
+
+### Documentation
+
+- Corrected ADR 0042 and the portfolio accounting guidance to enforce that a
+  Portfolio is a backtest model with no Account or broker execution inputs.
+  The configured signal and `RebalanceStrategy` are the sole producer of
+  internal simulated execution facts; issue #11 removes the external-execution
+  ingress from `1.0.15` without a compatibility fallback.
+
 ## [1.0.15] - 2026-09-12
 
 ### Added

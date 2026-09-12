@@ -544,6 +544,13 @@ must converge on one `(code_repository, repository_branch)` row.
 The deployed lifecycle has no manual repository `import-branch` action or
 manual branch-creation helper. Read-only provider branch discovery remains.
 
+Human branch removal is scoped to one exact Organization Environment and
+requires edit authority on the parent CodeRepository. Provider repositories
+and provider Git branches are always preserved. If the selected branch set
+exhausts a logical CodeRepository, Django removes that aggregate and its local
+GitHubRepositoryBinding registry row in the same transaction. Direct logical
+CodeRepository deletion remains a separate Organization-admin operation.
+
 ### 5. CodeRepository Executor Deployment And Runtime
 
 CodeRepository Coding Agent preparation remains repository work owned by the

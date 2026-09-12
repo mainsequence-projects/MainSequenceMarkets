@@ -114,6 +114,10 @@ class MarketPriceValuationModel(PositionValuationModel):
 
         if not state.positions.empty:
             positions = state.positions.copy().reset_index(drop=True)
+            positions = positions[positions["quantity"].astype("float64") != 0.0]
+        else:
+            positions = pd.DataFrame()
+        if not positions.empty:
             marks = _select_latest_rows(
                 valuation_observations,
                 timestamp=timestamp,

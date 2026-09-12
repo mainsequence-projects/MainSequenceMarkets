@@ -78,8 +78,8 @@ Repository areas:
   reference scaffold
 - `examples/msm/`: core assets, accounts, calendars, formula/custom indexes, platform,
   and row-workflow examples
-- `examples/msm_portfolios/`: single portfolio construction example with
-  index linkage and canonical portfolio DataNodes
+- `examples/msm_portfolios/`: portfolio construction, rebalance simulation,
+  lifecycle cash-flow, multi-currency valuation, and accounting examples
 - `examples/msm_pricing/`: optional pricing and QuantLib-backed examples
 - `.agents/skills/ms_markets/`: source agent skills for market-domain workflows
 - `tests/`: automated tests

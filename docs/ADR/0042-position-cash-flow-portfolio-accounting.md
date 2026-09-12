@@ -6,23 +6,29 @@ Accepted - foundational implementation in progress entirely within
 `msm_portfolios`. There is no `mainsequence-sdk` blocker and this design requires
 no new SDK transaction, checkpoint, or publication capability. Amended on
 2026-09-12 following the event-ledger, rebalance-ownership, vectorization,
-user-extension, and backward-compatibility reviews.
+user-extension, backward-compatibility, and portfolio/account boundary reviews.
 
 This decision extends [ADR 0040](0040-portfolio-temporal-ownership.md) and
 preserves the pricing boundary in
 [ADR 0033](0033-pricing-valuation-position-boundary.md). It preserves ownership
 of signal, execution, valuation, analytics, and job timestamps, but amends the
-position-aware execution graph: accounting consumes execution facts directly,
-and state-dependent simulated execution is coordinated with accounting.
+position-aware execution graph: the configured rebalance strategy is the sole
+producer of simulated portfolio executions, and accounting consumes those
+internal execution facts.
 
 The public lifecycle contracts, columnar event batches, reference reducer,
-execution-fact adapter, dividend model, explicit price/FX valuation, canonical
-ledger schema, strict ledger-to-state restart, initial read projections, and
-migration `0017` are implemented.
-The execution-simulation lane, optimized-reducer conformance implementation,
-correction-tail publisher, state/weight projection updaters, and option/bond
-acceptance fixtures remain `msm_portfolios` implementation work; none depends on
-an SDK change. This status does not claim those later phases are complete.
+dividend model, explicit price/FX valuation, canonical ledger schema, strict
+ledger-to-state restart, initial read projections, migration `0017`, and issue
+#11's coordinated execution-simulation path are implemented. The erroneous
+externally supplied execution-fact ingress released in `1.0.15` has been removed,
+with no portfolio replay mode, compatibility alias, or fallback. The configured
+signal and `RebalanceStrategy` now produce explicit simulated quantities,
+settlement legs, costs, and restartable execution progress inside one engine run.
+
+Optimized-reducer conformance, correction-tail publication, state/weight
+projection updaters, and option/bond acceptance fixtures remain
+`msm_portfolios` implementation work; none depends on an SDK change. This status
+does not claim those later phases are complete.
 
 ## Context And Success Condition
 
@@ -47,6 +53,8 @@ does not require production pricing or execution support for every instrument.
 The existing concepts retain their boundaries:
 
 - `PortfolioTable` is stable portfolio identity and output linkage.
+- A Portfolio is a backtest model. It has no Account, owns no custody state, and
+  never ingests broker orders, trades, fills, or account holdings.
 - `PortfolioWeightsStorage` is an executed-exposure projection, not a fill ledger.
 - `PortfolioRebalanceStateStorage` owns execution intent and progress for the
   existing weight-only path; position-aware execution records the corresponding
@@ -55,10 +63,11 @@ The existing concepts retain their boundaries:
 - `AccountHoldingsStorage` contains account custody observations.
 - `msm_pricing.ValuationPosition` is a transient pricing basket.
 
-None becomes the durable portfolio accounting ledger. External contributions
-and withdrawals, tax-lot accounting, live order routing, a full margin engine,
-and custody reconciliation implementation are out of scope. The state contract
-must distinguish collateral and obligations without claiming those systems exist.
+None becomes the durable portfolio accounting ledger. Account orders, trades,
+holdings, cash, custody reconciliation, external contributions and withdrawals,
+tax-lot accounting, live order routing, and a full account margin engine are
+outside `msm_portfolios`. The simulated state contract may distinguish collateral
+and obligations without claiming that the Portfolio owns an Account.
 
 ## Decision
 
@@ -76,7 +85,7 @@ state, or deliver several Assets.
 ```mermaid
 flowchart TB
     SW["SignalWeightsStorage<br/>TimeIndexMetaTable<br/>grain: time_index, signal_uid, asset_identifier"]
-    XO["Execution observations<br/>TimeIndexMetaTable(s)<br/>grain: time_index + source dimensions"]
+    MO["Execution-market observations<br/>prices, liquidity, terms<br/>TimeIndexMetaTable(s)<br/>grain: time_index + source dimensions"]
     RS["RebalanceStrategy<br/>pure policy<br/>includes execution-cost models"]
 
     LO["Lifecycle observations<br/>TimeIndexMetaTable(s)<br/>grain: time_index + source-event dimensions"]
@@ -89,9 +98,9 @@ flowchart TB
     PS["Projection storage<br/>PlatformTimeIndexMetaTable(s)<br/>state: time_index, portfolio_identifier, state_identifier<br/>cash flows: time_index, portfolio_identifier, cash_flow_identifier<br/>weights: time_index, portfolio_identifier, asset_identifier<br/>NAV: time_index, portfolio_identifier"]
 
     SW --> RS
-    XO --> RS
+    MO --> RS
     LO --> LM
-    RS -->|execution events and cost legs| PE
+    RS -->|internal simulated execution facts<br/>and cost legs| PE
     LM -->|dividend, funding, coupon, exercise, expiry...| PE
     VO --> PE
     PE --> EL
@@ -121,8 +130,8 @@ economic event; rerunning the projection rebuilds it from the ledger.
 The platform capability decision is closed: the existing
 `TimeIndexTableUpdater` and `PlatformTimeIndexMetaTable` contracts are sufficient.
 `PortfolioEngine` calculates and returns one complete canonical ledger output.
-Stable event coordinates, revisions, record counts, and digests provide replay
-and idempotency inside `msm_portfolios`; they do not require an SDK-owned
+Stable event coordinates, revisions, record counts, and digests provide restart
+replay and idempotency inside `msm_portfolios`; they do not require an SDK-owned
 accounting transaction or checkpoint API.
 
 The SDK-managed migration provider is only the established mechanism for
@@ -133,11 +142,11 @@ they are intentionally outside the authoritative commit and therefore require no
 cross-table atomic write.
 
 All remaining work named by this ADR belongs to `msm_portfolios`: reducer
-optimization, source alignment, causal ordering, rebalance simulation and costs,
-correction-tail replay, projection updaters, compatibility fixtures, and
-instrument acceptance fixtures. An implementation task must not be reported as
-blocked on `mainsequence-sdk` unless a new concrete SDK defect is independently
-reproduced and recorded; no such defect is known or required by this decision.
+optimization, broader source alignment and causal ordering, correction-tail
+replay, projection updaters, compatibility fixtures, and additional instrument
+acceptance fixtures. An implementation task must not be reported as blocked on
+`mainsequence-sdk` unless a new concrete SDK defect is independently reproduced
+and recorded; no such defect is known or required by this decision.
 
 The weight-return engine remains the default without accounting configuration.
 Position-aware accounting is an explicit mode with distinct configuration
@@ -192,10 +201,10 @@ configuration remains fully hash-bearing and must not be removed by these rules.
 Without accounting configuration, preserve the existing strategies, execution
 timing, valuation/alignment policies, commission calculation, price overrides,
 zero-weight handling, output columns, index grains, and numerical results.
-The new execution-fact contract, initial NAV, quantity units, lifecycle coverage,
-obligations, and canonical event ledger are requirements of the
-opt-in path only. Do not eagerly construct or query accounting dependencies for
-weight-only portfolios.
+The new internal simulated-execution contract, initial NAV, quantity units,
+lifecycle coverage, obligations, and canonical event ledger are requirements of
+the opt-in path only. Do not eagerly construct or query accounting dependencies
+for weight-only portfolios.
 
 Existing stored weights, rebalance progress, portfolio values, and metadata must
 remain readable and usable as incremental seeds. A restart must continue from
@@ -246,16 +255,25 @@ When explicitly enabled, `PortfolioBuildConfiguration.accounting_configuration`
 contains a serializable accounting configuration:
 
 ```text
-PortfolioAccountingConfiguration
-  valuation_asset_identifier
-  initial_nav
-  initial_state_time_index
-  execution_fact_source_instance OR rebalance_strategy_instance
-  position_valuation_model_instance
-  lifecycle_event_model_instances = ()
-  historical_information_policy
-  rounding_and_balance_policy
+PortfolioBuildConfiguration
+  backtesting_weights_configuration
+    signal_weights_instance
+    rebalance_strategy_instance
+  accounting_configuration
+    valuation_asset_identifier
+    initial_nav
+    initial_state_time_index
+    position_valuation_model_instance
+    lifecycle_event_model_instances = ()
+    historical_information_policy
+    rounding_and_balance_policy
 ```
+
+The existing `BacktestingWeightsConfig` owns the signal and rebalance strategy
+for both weight-only and position-aware backtests. Accounting configuration must
+not add an alternative execution source, a second strategy, or broker/account
+identity. When accounting is enabled, `PortfolioEngine` invokes that configured
+strategy in-process with the accounting state described below.
 
 `valuation_asset_identifier` references the currency Asset used for NAV.
 The initial state is `initial_nav` units of settled valuation-currency cash at
@@ -322,14 +340,17 @@ included. Each value component appears in either the instrument mark or a
 separate balance, never both. Dividend-adjusted total-return prices cannot be
 combined with separately credited dividends as if they were unadjusted marks.
 
-### Execution Facts And Simulation
+### Simulated Execution Facts
 
-Accounting consumes canonical execution facts directly, not through
-`PortfolioWeights`. The current weights projection omits executed quantities
-and notionals and collapses same-time transitions. Rebalance facts can be
-adapted only when their declared contract supplies enough information.
+Every portfolio execution is simulated by the configured `RebalanceStrategy`.
+The strategy emits canonical execution facts as an internal typed boundary to
+`PortfolioAccounting`; execution facts are not a user-configured
+`TimeIndexTableUpdater`, connector feed, broker fill, or account observation.
+Accounting never reconstructs them from `PortfolioWeights`, whose projection
+omits executed quantities and notionals and collapses same-time transitions.
 
-An execution record identifies the execution, source revision, instrument,
+An internal execution record identifies the simulated execution, source
+revisions used by the decision, instrument,
 signed **quantity delta**, quantity unit, execution price and currency, contract
 terms version, settlement instructions, and costs. An explicitly empty cost
 result differs from missing required cost coverage. Preserve individual fill
@@ -337,20 +358,12 @@ identity or use a declared aggregation that preserves consideration and fees.
 An executed notional without its unit, sign convention, and sizing semantics
 does not substitute for an executed quantity.
 
-Exactly one configured lane supplies execution for a modeled portfolio:
-
-1. **Execution-fact replay:** ingest declared executions without changing their
-   quantities in response to simulated cash. Report any configured balance
-   constraint violation; do not silently resize observed fills.
-2. **Execution simulation:** a configured strategy/sizing model produces explicit
-   executions from targets, observations, and the pre-execution accounting state.
-   Quantity derivation from weights is allowed only in this named lane.
-
-The simulated lane keeps the following ownership inside the configured
-`RebalanceStrategy` aggregate:
+There is one execution path. A configured strategy/sizing model produces
+executions from signal targets, market observations, and the pre-execution
+accounting state. The configured `RebalanceStrategy` aggregate owns:
 
 - rebalance triggers and execution timing;
-- target-to-order or target-to-fill sizing;
+- target-to-simulated-quantity sizing;
 - partial-fill and completion policy; and
 - composable execution-cost models for commissions, exchange fees, slippage,
   and other fill-time costs.
@@ -369,8 +382,8 @@ target NAV weight by their market value. Units, contract rounding, and residual
 cash are explicit; no multiplier or inverse-contract behavior is inferred from
 a ticker.
 
-For simulation, `PortfolioEngine` invokes the separate strategy and accounting
-components sequentially. The strategy receives current NAV, positions,
+`PortfolioEngine` invokes the separate strategy and accounting components
+sequentially. The strategy receives current NAV, positions,
 obligations, and available balances after preceding lifecycle events; accounting
 validates and applies its proposed execution events and cost legs. Related basket
 legs use one declared sizing snapshot. Execution progress is represented in the
@@ -380,11 +393,11 @@ execution history.
 
 `PortfolioRebalance` and `PortfolioRebalanceStateStorage` retain their existing
 intent, timing, and completion semantics for the weight-only path. The
-position-aware engine calls the configured rebalance policy in-process; it does
-not depend on a separately advancing `PortfolioRebalance` output. It records
-coordinated execution facts in the ledger and derives `PortfolioWeights` from
-them. Weights are a reporting projection, never the source from which lost fill
-economics are reconstructed.
+position-aware engine calls the same configured rebalance policy in-process; it
+does not depend on a separately advancing `PortfolioRebalance` output. It records
+the strategy's simulated execution facts in the ledger and derives
+`PortfolioWeights` from them. Weights are a reporting projection, never the
+source from which lost execution economics are reconstructed.
 
 ### Lifecycle Event Models
 
@@ -617,8 +630,8 @@ its identity. Multiple deliverable Assets or dates do not require a new engine.
 
 ## Economic Ordering And Historical Information
 
-The timeline is built from declared executions, lifecycle observations,
-contractual schedules, and eligible valuation observations. It never uses job
+The timeline is built from signal and strategy observations, lifecycle
+observations, contractual schedules, and eligible valuation observations. It never uses job
 start time, wall-clock `now`, or an arbitrary generated frequency grid.
 
 At a shared timestamp, the coordinator:
@@ -626,7 +639,8 @@ At a shared timestamp, the coordinator:
 1. Reconstructs the last committed state and selects policy-valid observations.
 2. Establishes explicit pre-event marks and qualifying entitlement snapshots.
 3. Applies lifecycle events declared to precede execution.
-4. Runs the configured execution lane and applies its linked legs and costs.
+4. Runs the configured rebalance strategy and applies its simulated execution
+   legs and costs.
 5. Applies lifecycle events declared to follow execution, including any causally
    subsequent settlement, and values the final state.
 
@@ -890,7 +904,7 @@ against that history. The reconstructed state includes:
 
 - positions, all cash buckets, and outstanding obligations;
 - reset/accrual/entitlement state and pending contractual events;
-- execution intent/progress for the simulation lane;
+- execution intent/progress for the single portfolio simulation path;
 - canonical NAV and the active event/input revisions; and
 - policy-required historical valuations, fixings, FX, and terms.
 
@@ -940,7 +954,8 @@ multiple settlement currencies use the same event primitives.
 
 - **`msm_portfolios`:** accounting event/model interfaces, state machine,
   `PortfolioEngine`, the canonical ledger, rebalance/execution coordination,
-  execution-cost models, projections, replay, and read services.
+  simulated execution-cost models, projections, deterministic backtest restart,
+  and read services. It owns no Account, broker execution, or custody state.
 - **Reusable instrument-domain models:** units, contract economics, deliverables,
   entitlement and lifecycle rules. Built-in or contributed implementations use
   the same interface; standard option or bond economics are not duplicated per
@@ -949,12 +964,13 @@ multiple settlement currencies use the same event primitives.
   transient valuation baskets remain transient. Pricing adapters consume the
   same versioned economics used by lifecycle models, not a conflicting payoff
   definition.
-- **Connectors:** observed terms, rates, calendars, exercises, assignments,
-  settlements, source revisions, provider identifier normalization, credentials,
-  and actual account-ledger ingestion/comparison. Venue-specific policies are
-  declared inputs/extensions, not branches in the generic accounting core.
-- **Core `msm`:** Asset and Portfolio identity; account-domain custody and actual
-  cash movements remain distinct from modeled portfolio accounting.
+- **Connectors:** historical market observations used by a backtest, including
+  terms, rates, calendars, exercises, assignments, settlements, liquidity, and
+  source revisions. Connector credentials and actual broker/account ingestion
+  remain outside `PortfolioEngine`.
+- **Core `msm`:** Asset and Portfolio identity. Account-domain orders, trades,
+  holdings, custody, and actual cash remain separate and are never Portfolio
+  accounting inputs.
 
 Asset dimensions use `asset_identifier` with an FK to
 `AssetTable.unique_identifier`; there is no `unique_identifier` mapping fallback.
@@ -982,10 +998,12 @@ introduced by this decision.
    the reference reducer before performance claims. Include explicit grain
    alignment, vectorization-signature partitioning, and segmented ragged-event
    kernels in this step.
-5. Add the explicit execution-fact lane and coordinated simulation integration.
-   Move position-aware commissions and other fill-time costs into composable
-   execution-cost models owned by the rebalance strategy. Do not change the
-   legacy weight-only fee path.
+5. **Implemented by issue #11.** The erroneous public external-execution ingress
+   is removed. One coordinated simulation path uses the configured signal and
+   `RebalanceStrategy`; the strategy receives post-lifecycle, pre-execution state
+   and NAV and emits internal typed execution facts. Position-aware commissions
+   and other fill-time costs are composable strategy-owned execution-cost models.
+   There is no replay alias, and the legacy weight-only fee path is unchanged.
 6. Add ledger-derived position, cash-flow, weights, NAV/return, and analytics
    projections, `ledger_state_identifier` validation, correction replay, and
    portfolio-scoped rebuild behavior.
@@ -1005,8 +1023,9 @@ Completion requires tests proving:
 - pre/post execution, reset/settlement, and causal ordering are deterministic,
   with equivalent independent-model permutations producing identical economics;
 - declared schedules create legitimate events without a job-time or resampling grid;
-- explicit execution facts are preserved and simulated sizing uses current
-  accounting state, including the effects of prior funding and obligations;
+- internal simulated execution facts are deterministic, complete, and derived
+  from current accounting state, including the effects of prior funding and
+  obligations;
 - quantity/notional/risk units, quote conventions, rounding residuals, zero/negative
   NAV, long/short positions, partial events, and multi-Asset delivery are explicit;
 - no missing required input silently produces zero cash flow or a weight fallback;
@@ -1063,6 +1082,9 @@ Completion requires tests proving:
   and counts accrued income or derivative settlement twice.
 - **Accounting reconstructed from executed weights:** loses fill economics and
   conflates market value, notional, and risk exposure.
+- **Externally supplied broker executions in `PortfolioEngine`:** confuses a
+  backtest Portfolio with Account-owned orders, trades, holdings, and custody.
+  Portfolio executions are always simulated by its configured rebalance strategy.
 - **All lifecycle behavior inside rebalance strategies:** held positions have
   economic events independent of a strategy's execution decisions.
 - **Holding-period costs modeled as execution fees:** funding, borrow, interest,
@@ -1097,21 +1119,26 @@ grains. Existing weight-only portfolios remain lightweight. The architecture
 uses the existing one-updater/one-output-table contract. It introduces no
 `mainsequence-sdk` transaction requirement and has no outstanding SDK dependency.
 
-The first implementation slice now provides the public lifecycle-model override
-surface, flat `EventBatch`, deterministic reference reducer, explicit
-execution-fact conversion, dividend entitlement and settlement, strict price/FX
-valuation, canonical ledger, initial cash-flow and portfolio-value projections,
-additive storage schemas, migration `0017`, and offline examples. The dividend
-fixture proves that an entitlement survives a subsequent sale and that payment
-settles the receivable without recognizing income twice. The custom-model fixture
-proves direct module-level injection and vector calculation without a core model
-registry.
+The implementation now provides the public lifecycle-model override surface,
+flat `EventBatch`, deterministic reference reducer, coordinated signal-to-strategy
+execution simulation, composable fill-time costs, explicit instrument sizing and
+settlement terms, dividend entitlement and settlement, strict price/FX valuation,
+canonical ledger, restartable execution progress, initial cash-flow and
+portfolio-value projections, additive storage schemas, migration `0017`, and
+offline examples. The external execution source has been removed and is not
+retained as a second Portfolio mode. The dividend fixture proves that an
+entitlement survives a subsequent sale and payment does not recognize income
+twice. The linear-perpetual fixture proves that variation-margin execution does
+not deduct full notional and that same-time funding changes NAV before sizing.
+The custom-model fixture proves direct module-level injection and vector
+calculation without a core model registry.
 
 This remains an implementation-in-progress ADR rather than a release-complete
 claim. The optimized reducer, full correction/supersession tail publication,
-state/weight projection updaters, simulation-lane rebalance integration, option
-and bond fixtures, and complete frozen-version compatibility matrix remain the
-`msm_portfolios` acceptance work listed above. None is blocked on or assigned to
+state/weight projection updaters, option and bond fixtures, and the complete
+frozen-version compatibility matrix remain the `msm_portfolios` acceptance work
+listed above. Issue #11's external-ingress removal and coordinated simulation are
+complete. None of the remaining work is blocked on or assigned to
 `mainsequence-sdk`.
 
 ## References

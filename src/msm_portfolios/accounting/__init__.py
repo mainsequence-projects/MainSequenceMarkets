@@ -24,7 +24,6 @@ from .reducer import (
     CorrectionReplayRequired,
     PortfolioAccounting,
     event_digest,
-    execution_event_batch,
     opening_cash_event_batch,
     valuation_marker_event_batch,
 )
@@ -55,7 +54,6 @@ __all__ = [
     "ValuationResult",
     "canonical_lifecycle_model_configuration",
     "canonical_valuation_model_configuration",
-    "execution_event_batch",
     "event_digest",
     "opening_cash_event_batch",
     "project_cash_flows",

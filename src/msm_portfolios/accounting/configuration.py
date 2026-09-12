@@ -19,8 +19,6 @@ from mainsequence.meta_tables.time_index_table_updates.configuration import (
     Serializer,
     serialize_argument,
 )
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
-
 from .lifecycle import LifecycleEventModel
 from .valuation import PositionValuationModel
 
@@ -49,10 +47,6 @@ class PortfolioAccountingConfiguration(BaseModel):
     valuation_asset_identifier: str = Field(min_length=1)
     initial_nav: float = Field(gt=0.0, allow_inf_nan=False)
     initial_state_time_index: dt.datetime
-    execution_fact_source_instance: TimeIndexTableUpdater | TimeIndexTableRef | None = Field(
-        default=None,
-        description="Explicit execution-fact dependency for the replay lane.",
-    )
     position_valuation_model_instance: PositionValuationModel
     lifecycle_event_model_instances: tuple[LifecycleEventModel, ...] = ()
     historical_information_policy: HistoricalInformationPolicy = Field(
@@ -81,22 +75,15 @@ class PortfolioAccountingConfiguration(BaseModel):
             identifiers.add(model.model_identifier)
             dependencies = model.declared_dependencies()
             contracts = model.required_input_contracts()
-            if set(dependencies) != set(contracts):
+            if not set(dependencies).issubset(contracts):
                 raise ValueError(
-                    f"{model.model_identifier} dependency names and input contracts must match."
+                    f"{model.model_identifier} declares a dependency without an input contract."
                 )
         return self
 
     @field_serializer("position_valuation_model_instance", when_used="json")
     def serialize_valuation_model(self, value: PositionValuationModel) -> dict[str, Any]:
         return canonical_valuation_model_configuration(value)
-
-    @field_serializer("execution_fact_source_instance", when_used="json")
-    def serialize_execution_source(
-        self,
-        value: TimeIndexTableUpdater | TimeIndexTableRef | None,
-    ) -> dict[str, Any] | None:
-        return None if value is None else serialize_argument(value)
 
     @field_serializer("lifecycle_event_model_instances", when_used="json")
     def serialize_lifecycle_models(

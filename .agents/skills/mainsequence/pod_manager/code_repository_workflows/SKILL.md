@@ -354,10 +354,12 @@ forced on and first application queues the canonical exact-commit
 `ResourceReleaseRun`; later repository events reuse the same resource-release
 policy, idempotency, queue, and run history.
 
-The manifest `id` and SemVer are validated outputs of the fixed SDK workload
-build and are retained in immutable publications. They are not workflow or
-release fields. A run with no installed fixed workload adapter blocks
-explicitly; it never falls through to a Knative runtime deployment.
+The fixed workload build must produce a finalized generic Artifact. The
+successful run records its UID, checksum, and size and activates the ordinary
+release revision. Manifest identity, SemVer, catalog registration, publication,
+and bundle delivery belong to Workspace Runtime and are not workflow or release
+fields. A run with no installed fixed workload adapter blocks explicitly; it
+never falls through to a Knative runtime deployment.
 
 For Job `task_schedule` declarations, include `schedule.timezone` on every
 crontab using a canonical IANA identifier such as `UTC` or `Europe/Vienna`.

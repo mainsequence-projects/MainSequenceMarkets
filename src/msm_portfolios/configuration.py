@@ -68,6 +68,16 @@ def _rebalance_strategy_payload(rebalance_strategy: Any) -> dict[str, Any]:
 
     model_dump = getattr(rebalance_strategy, "model_dump", None)
     config = model_dump() if callable(model_dump) else rebalance_strategy
+    if isinstance(rebalance_strategy, RebalanceStrategyBase):
+        config = dict(config)
+        if rebalance_strategy.execution_model_instance is not None:
+            config["execution_model_instance"] = (
+                rebalance_strategy.execution_model_instance
+            )
+        if rebalance_strategy.execution_cost_model_instances:
+            config["execution_cost_model_instances"] = (
+                rebalance_strategy.execution_cost_model_instances
+            )
     return {
         "rebalance_strategy_class_import_path": _class_import_path(rebalance_strategy.__class__),
         "config": config,

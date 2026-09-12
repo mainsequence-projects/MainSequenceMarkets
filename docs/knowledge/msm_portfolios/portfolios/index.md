@@ -20,25 +20,30 @@ falling back to weight-only valuation.
 The opt-in implementation follows [ADR 0042](../../../ADR/0042-position-cash-flow-portfolio-accounting.md):
 
 ```text
-execution facts + lifecycle observations + price/FX observations
-                              |
-                              v
-                 PortfolioAccounting (pure reducer)
-                              |
-                              v
-                 PortfolioEngine (one updater)
-                              |
-                              v
-             PortfolioEventLedgerStorage (authority)
-                              |
-                              v
-          state, cash-flow, and portfolio-value projections
+signal weights + execution-market observations
+                         |
+                         v
+        RebalanceStrategy + execution/cost models
+                         |
+                         v
+lifecycle observations -> PortfolioEngine <- price/FX observations
+                         |
+                         v
+             PortfolioAccounting (pure reducer)
+                         |
+                         v
+         PortfolioEventLedgerStorage (authority)
+                         |
+                         v
+      state, cash-flow, and portfolio-value projections
 ```
 
 `PortfolioAccounting` is intentionally usable in offline tests and examples.
 `PortfolioEngine` is the `TimeIndexTableUpdater` boundary: it declares the
-execution, lifecycle, valuation, and FX sources and publishes the long event
-ledger. The ledger grain is `(time_index, portfolio_identifier,
+signal, strategy observation, lifecycle, valuation, and FX sources and publishes
+the long event ledger. Portfolio execution is simulated only by the configured
+`RebalanceStrategy`; no broker/account execution source is accepted. The ledger
+grain is `(time_index, portfolio_identifier,
 event_identifier, event_revision, record_identifier)`. Migration `0017` adds
 that table plus additive state and completed-cash-flow projection schemas.
 The pure reducer can also reconstruct positions, cash, obligations, applied
@@ -67,18 +72,23 @@ returns a flat, columnar `EventBatch`. The engine owns canonical identifiers,
 validation, state application, NAV reconciliation, and persistence. A custom
 model cannot replace those operations or write a projection directly.
 
-Two offline examples require no backend writes:
+Three offline examples require no backend writes:
 
 ```bash
 uv run --extra portfolios python \
   examples/msm_portfolios/portfolio_cashflows_and_fx_valuation_example.py
 uv run --extra portfolios python \
   examples/msm_portfolios/portfolio_custom_cashflow_model_example.py
+
+uv run --extra portfolios python \
+  examples/msm_portfolios/portfolio_perpetual_funding_example.py
 ```
 
 The first buys and later sells a EUR-denominated stock in a USD portfolio,
 recognizes a EUR dividend before the sale, and settles it afterward. The second
-defines and injects a user-owned vectorized EUR usage royalty model.
+defines and injects a user-owned vectorized EUR usage royalty model. The third
+models a variation-margined linear perpetual whose same-time funding event is
+applied before target sizing.
 
 ## Scope
 

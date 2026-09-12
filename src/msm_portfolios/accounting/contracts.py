@@ -140,6 +140,7 @@ class AccountingStateView:
     cash: pd.DataFrame
     obligations: pd.DataFrame
     lifecycle_state: pd.DataFrame
+    execution_progress: pd.DataFrame
     state_identifier: str
 
 

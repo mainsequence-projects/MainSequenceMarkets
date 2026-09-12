@@ -11,10 +11,16 @@ import pandas as pd
 from msm_portfolios.accounting import (
     DividendCashFlowModel,
     MarketPriceValuationModel,
-    PortfolioAccounting,
+    PortfolioAccountingConfiguration,
     project_cash_flows,
     project_portfolio_values,
     project_state,
+)
+from msm_portfolios.data_nodes import PortfolioEngine
+from msm_portfolios.rebalance_strategy import (
+    ImmediateSignal,
+    InstrumentExecutionSpec,
+    TargetWeightExecutionModel,
 )
 
 
@@ -54,40 +60,28 @@ def build_example() -> dict[str, pd.DataFrame]:
             "source_revision",
         ],
     )
-    executions = pd.DataFrame(
+    signals = pd.DataFrame(
         [
             (
                 "2026-01-02T10:00:00Z",
-                "buy-10-shares",
-                "1",
+                "mock-stock-signal",
                 "STOCK-EUR",
-                10.0,
-                "shares",
-                50.0,
-                "EUR",
+                0.55,
             ),
             (
                 "2026-01-04T10:00:00Z",
-                "sell-10-shares",
-                "1",
+                "mock-stock-signal",
                 "STOCK-EUR",
-                -10.0,
-                "shares",
-                49.0,
-                "EUR",
+                0.0,
             ),
         ],
         columns=[
             "time_index",
-            "execution_identifier",
-            "source_revision",
+            "signal_uid",
             "asset_identifier",
-            "quantity_delta",
-            "quantity_unit",
-            "execution_price",
-            "price_asset_identifier",
+            "signal_weight",
         ],
-    )
+    ).set_index(["time_index", "signal_uid", "asset_identifier"])
     dividends = pd.DataFrame(
         [
             (
@@ -115,21 +109,44 @@ def build_example() -> dict[str, pd.DataFrame]:
         ],
     )
 
-    accounting = PortfolioAccounting(
-        portfolio_identifier="mock-eur-stock-portfolio",
+    accounting_configuration = PortfolioAccountingConfiguration(
         valuation_asset_identifier="USD",
         initial_nav=1_000.0,
         initial_state_time_index="2026-01-01T10:00:00Z",
-        valuation_model=MarketPriceValuationModel(maximum_staleness=pd.Timedelta(days=3)),
+        position_valuation_model_instance=MarketPriceValuationModel(
+            maximum_staleness=pd.Timedelta(days=3)
+        ),
+        lifecycle_event_model_instances=(DividendCashFlowModel(),),
     )
-    ledger = accounting.run(
+    strategy = ImmediateSignal(
+        execution_model_instance=TargetWeightExecutionModel(
+            instrument_specs=(
+                InstrumentExecutionSpec(
+                    asset_identifier="STOCK-EUR",
+                    quantity_unit="shares",
+                    target_measure="market_value_weight",
+                    contract_multiplier=1.0,
+                    quantity_step=1.0,
+                    price_asset_identifier="EUR",
+                    settlement_style="cash",
+                    terms_version="mock-stock-v1",
+                ),
+            ),
+            maximum_staleness=pd.Timedelta(days=3),
+        )
+    )
+    accounting = PortfolioEngine.calculate_backtest(
+        portfolio_identifier="mock-eur-stock-portfolio",
+        accounting_configuration=accounting_configuration,
+        rebalance_strategy=strategy,
+        signal_observations=signals,
+        rebalance_inputs={},
         valuation_observations=prices,
         fx_observations=fx,
-        execution_facts=executions,
-        lifecycle_models=(DividendCashFlowModel(),),
         lifecycle_inputs={DividendCashFlowModel.model_identifier: {"dividends": dividends}},
         valuation_times=("2026-01-05T10:00:00Z",),
     )
+    ledger = accounting.ledger
     return {
         "ledger": ledger,
         "cash_flows": project_cash_flows(ledger),
@@ -138,6 +155,7 @@ def build_example() -> dict[str, pd.DataFrame]:
         "positions": accounting.state.positions,
         "cash": accounting.state.cash,
         "obligations": accounting.state.obligations,
+        "execution_progress": accounting.state.execution_progress,
     }
 
 

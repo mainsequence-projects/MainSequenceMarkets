@@ -8,10 +8,16 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny
 
 from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
+
+from .accounting import (
+    AccountingExecutionContext,
+    ExecutionCostModel,
+    PositionExecutionModel,
+)
 
 
 RebalanceDependency = TimeIndexTableUpdater | TimeIndexTableRef
@@ -64,6 +70,15 @@ class AssetExecution:
     strategy_state: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class AccountingRebalanceEvent:
+    """One scheduled backtest execution decision and its active signal target."""
+
+    time_index: pd.Timestamp
+    event_source: str
+    target: RebalanceTarget
+
+
 class RebalanceStrategyBase(BaseModel):
     """Dependency-declaring state machine for portfolio rebalance execution."""
 
@@ -85,6 +100,19 @@ class RebalanceStrategyBase(BaseModel):
     target_succession: Literal["supersede_active"] = Field(
         default="supersede_active",
         description="Policy applied when a newer signal replaces unfinished execution.",
+    )
+    execution_model_instance: SerializeAsAny[PositionExecutionModel] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Explicit position sizing and settlement model used only by the "
+            "position-aware backtest engine."
+        ),
+    )
+    execution_cost_model_instances: tuple[SerializeAsAny[ExecutionCostModel], ...] = Field(
+        default=(),
+        exclude_if=lambda value: not value,
+        description="Composable fill-time cost models owned by this rebalance strategy.",
     )
 
     def get_explanation(self) -> str:
@@ -147,6 +175,165 @@ class RebalanceStrategyBase(BaseModel):
     ) -> dict[str, AssetExecution]:
         """Apply one event to the current executed state."""
         raise NotImplementedError
+
+    def build_accounting_schedule(
+        self,
+        *,
+        start: dt.datetime,
+        end: dt.datetime,
+        signal_observations: pd.DataFrame,
+        observed_inputs: dict[str, pd.DataFrame],
+    ) -> tuple[AccountingRebalanceEvent, ...]:
+        """Resolve one deterministic active signal target per simulated execution time."""
+
+        if self.execution_model_instance is None:
+            raise ValueError(
+                f"{self.__class__.__name__} requires execution_model_instance for "
+                "position-aware accounting."
+            )
+        events = self._normalize_events(
+            self.select_events(
+                start,
+                end,
+                signal_observations=signal_observations,
+                observed_inputs=observed_inputs,
+            )
+        )
+        targets = self._targets_from_signal_observations(signal_observations)
+        exact_targets = {target.signal_time_index: target for target in targets}
+        next_target_index = 0
+        latest_target: RebalanceTarget | None = None
+        schedule: list[AccountingRebalanceEvent] = []
+        for row in events.to_dict(orient="records"):
+            timestamp = self._as_utc_timestamp(row["time_index"])
+            if self.target_selection_mode() == "exact":
+                target = exact_targets.get(timestamp)
+            else:
+                while (
+                    next_target_index < len(targets)
+                    and targets[next_target_index].signal_time_index <= timestamp
+                ):
+                    latest_target = targets[next_target_index]
+                    next_target_index += 1
+                target = latest_target
+            if target is not None:
+                schedule.append(
+                    AccountingRebalanceEvent(
+                        time_index=timestamp,
+                        event_source=str(row["event_source"]),
+                        target=target,
+                    )
+                )
+        return tuple(schedule)
+
+    def simulate_accounting_event(
+        self,
+        *,
+        scheduled_event: AccountingRebalanceEvent,
+        state: Any,
+        valuation_result: Any,
+        valuation_asset_identifier: str,
+        valuation_observations: pd.DataFrame,
+        fx_observations: pd.DataFrame,
+        event_observations: dict[str, pd.DataFrame],
+        execution_context: Any,
+        strategy_revision: str,
+    ):
+        """Simulate one position-aware event from the post-lifecycle accounting state."""
+
+        model = self.execution_model_instance
+        if model is None:
+            raise ValueError(
+                f"{self.__class__.__name__} requires execution_model_instance for "
+                "position-aware accounting."
+            )
+        current_weights = model.current_weights(
+            state=state,
+            valuation_result=valuation_result,
+            time_index=scheduled_event.time_index,
+            valuation_asset_identifier=str(valuation_asset_identifier),
+            valuation_observations=valuation_observations,
+            fx_observations=fx_observations,
+        )
+        previous_asset_state = self._accounting_progress_by_asset(state)
+        target = scheduled_event.target
+        active_intent = self._active_intent(previous_asset_state)
+        asset_executions = self.apply_event(
+            event_time=scheduled_event.time_index,
+            event_source=scheduled_event.event_source,
+            event_observations=event_observations,
+            target=target,
+            current_weights=dict(current_weights),
+            previous_asset_state=previous_asset_state,
+            new_target=active_intent != target.intent_id,
+            execution_context=execution_context,
+        )
+        assets = sorted(set(current_weights) | set(target.weights))
+        missing_assets = sorted(set(assets) - set(asset_executions))
+        if missing_assets:
+            raise ValueError(
+                f"{self.__class__.__name__}.apply_event() omitted assets: "
+                + ", ".join(missing_assets)
+            )
+        desired_weights = {
+            asset: float(asset_executions[asset].weight_after) for asset in assets
+        }
+        for asset, value in desired_weights.items():
+            self._require_finite("weight_after", value, asset=asset)
+        context = AccountingExecutionContext(
+            time_index=scheduled_event.time_index,
+            event_source=scheduled_event.event_source,
+            rebalance_intent_id=target.intent_id,
+            signal_time_index=target.signal_time_index,
+            signal_target_weights={asset: target.weights.get(asset, 0.0) for asset in assets},
+            desired_weights=desired_weights,
+            weight_before=current_weights,
+            asset_executions=asset_executions,
+            state=state,
+            available_balances=(
+                state.cash[
+                    state.cash["balance_role"].astype(str) == "settled_cash"
+                ].copy()
+                if not state.cash.empty
+                else state.cash.copy()
+            ),
+            pre_execution_nav=float(valuation_result.nav),
+            valuation_asset_identifier=str(valuation_asset_identifier),
+            valuation_references=str(valuation_result.valuation_references),
+            valuation_observations=valuation_observations,
+            fx_observations=fx_observations,
+            event_observations=event_observations,
+            strategy_revision=strategy_revision,
+            completion_tolerance=self.completion_tolerance,
+        )
+        return model.simulate(
+            context,
+            cost_models=self.execution_cost_model_instances,
+        )
+
+    @classmethod
+    def _accounting_progress_by_asset(cls, state: Any) -> dict[str, dict[str, Any]]:
+        progress = getattr(state, "execution_progress", None)
+        if progress is None or progress.empty:
+            return {}
+        rows: dict[str, dict[str, Any]] = {}
+        for record in progress.to_dict(orient="records"):
+            asset = str(record["asset_identifier"])
+            payload = json.loads(str(record["extension_payload"]))
+            if not isinstance(payload, dict):
+                raise ValueError("Execution progress payload must decode to an object.")
+            rows[asset] = {
+                **payload,
+                "asset_identifier": asset,
+                "rebalance_intent_id": payload["rebalance_intent_id"],
+                "target_signal_time_index": payload["target_signal_time_index"],
+                "strategy_state": json.dumps(
+                    payload.get("strategy_state", {}),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            }
+        return rows
 
     def build_transitions(
         self,
@@ -562,6 +749,7 @@ def dependency_events(frame: pd.DataFrame, *, source: str) -> pd.DataFrame:
 
 
 __all__ = [
+    "AccountingRebalanceEvent",
     "AssetExecution",
     "ExecutionStatus",
     "RebalanceDependency",

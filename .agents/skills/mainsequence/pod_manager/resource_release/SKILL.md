@@ -36,13 +36,14 @@ unchanged. DeploymentRuns remain separate attempts.
 Set `revision_retention_count` through the existing release create/update
 operation when a different rollback history is required. The value is a
 positive integer, defaults to `3`, and belongs to the release, not
-`automatic_redeployment_policy`. Existing widget, workspace, active, desired,
-and live-run references remain protected. Revision candidate discovery is
+`automatic_redeployment_policy`. Active, desired, and live-run references
+remain protected. Revision candidate discovery is
 asynchronous: successful runtime activation and a retention edit enqueue
 backend reconciliation after commit, and a periodic database sweep recovers
 lost Celery wake-ups. Editing the count does not synchronously delete provider
-artifacts. Static-site and widget-extension cleanup remain blocked until their
-target adapters exist.
+artifacts. Static-site cleanup remains target-specific; widget-extension
+revision retention deletes only Pod Manager revision rows and never consults
+widget publications, saved widgets, or workspaces.
 
 Every retained runtime revision pins its exact `CodeRepositoryJobImage`, not
 only the active or desired revision. Before deleting an apparently unused
@@ -161,18 +162,13 @@ CodeRepositoryResource or image UID, build/runtime settings, environment, secret
 publication version, or an automatic-deployment policy. Automatic deployment
 is forced on.
 
-The release UID identifies the backend release. Manifest `id` and SemVer are
-validated immutable build outputs, not release fields. Every build attempt uses
-the existing `ResourceReleaseRun`; successful publications are historical
-versions, not deployment attempts or a second deployment model.
-
-Widget consumers use the canonical DRF revision/dependency and nested publication
-bundle routes documented in `docs/command_center/widgets.md`. Pin exact registered
-revision UIDs; a release's active pointer or latest version is not a workspace
-dependency. Bundle access rechecks current release and Environment visibility and
-verifies the entire Artifact hash, including conditional reads. Public links pin
-their own protected snapshot and dependency plan. Do not invent a parallel MCP
-widget registry or new MCP tool names for these DRF-only consumption actions.
+The release UID identifies the backend deployment. Every build attempt uses the
+existing `ResourceReleaseRun`. Success records the finalized generic Artifact's
+UID, checksum, and size in the run, returns `outcome=artifact_ready`, and
+activates the ordinary release revision. Manifest identity, SemVer, widget
+catalog registration, publication, dependency planning, and bundle delivery
+belong to Workspace Runtime. Pod Manager and this MCP skill expose no widget
+publication or bundle operation.
 
 ## Configure Automatic Redeployment
 
@@ -409,8 +405,8 @@ Static sites additionally accept the canonical static configuration fields
 advertised by `resource_release.static_site_capabilities`, including the
 complete write-only `build_environment` map.
 
-Widget-extension source, rename, root directory, automatic-deployment switch,
-and manifest identity remain immutable through ordinary update. Its shared
+Widget-extension source, rename, root directory, and automatic-deployment switch
+remain immutable through ordinary update. Its shared
 `revision_retention_count` is the one editable release lifecycle policy.
 
 An update replaces the submitted configuration values and returns the canonical
@@ -433,10 +429,11 @@ The operation requires canonical edit access, may perform build or provider
 work, is non-idempotent, and returns the unified DeploymentRun projection. Do
 not automatically retry an ambiguous response.
 
-For `widget_extension`, this action queues the same fixed SDK build/publication
+For `widget_extension`, this action queues the same fixed build-to-Artifact
 pipeline used by automatic repository events. If the deployment does not have
 that adapter installed, the canonical run becomes blocked; it is never routed
-to the runtime/Knative deployer.
+to the runtime/Knative deployer and Pod Manager never attempts widget
+publication.
 
 A runtime ResourceRelease receives a backend-derived public CodeRepositoryBranch
 context during runtime-credential exchange. The deployed SDK uses that
@@ -514,6 +511,10 @@ target-specific cleanup, and errors.
   share the same infrastructure-owned environment edge, so deletion does not
   mutate DNS, TLS, or a Front Door domain. Treat a `deleting` lifecycle as
   accepted cleanup, not completed deletion.
+- Widget-extension deletion uses the ordinary release deletion path. Pod
+  Manager does not inspect or delete Workspace Runtime publications, widgets,
+  workspaces, or saved-widget references; generic Artifacts retain their own
+  lifecycle.
 - A conflict or target-cleanup failure is a failed delete. Preserve the
   canonical error and do not claim that the target was removed.
 

@@ -12,13 +12,15 @@ converts or appends to a legacy weight-only portfolio.
 
 !!! note "Current implementation status"
 
-    The canonical ledger, reference reducer, execution-fact replay, dividend
-    recognition and settlement, explicit price/FX valuation, ledger restart,
-    read projections, storage schemas, and migration `0017` are implemented.
-    Correction-tail publication, coordinated rebalance simulation, optimized
-    reducer parity, projection publishers, and option/bond acceptance fixtures
-    remain implementation work inside `msm_portfolios`. There is no
-    `mainsequence-sdk` blocker.
+    The canonical ledger, reference reducer, coordinated signal-to-strategy
+    execution simulation, explicit instrument sizing and settlement terms,
+    strategy-owned execution costs, dividend recognition and settlement,
+    explicit price/FX valuation, ledger restart, read projections, storage
+    schemas, and migration `0017` are implemented. Issue #11 removed the
+    erroneous external execution ingress; there is no replay lane or fallback.
+    Correction-tail publication, optimized reducer parity, projection publishers,
+    and option/bond acceptance fixtures remain implementation work inside
+    `msm_portfolios`. There is no `mainsequence-sdk` blocker.
 
 The architectural contract is recorded in
 [ADR 0042](../../../ADR/0042-position-cash-flow-portfolio-accounting.md).
@@ -27,7 +29,9 @@ The architectural contract is recorded in
 
 ```mermaid
 flowchart LR
-    EF["Execution facts<br/>TimeIndexTableUpdater or ref"]
+    SW["Signal weights<br/>TimeIndexTableUpdater or ref"]
+    MO["Execution-market observations<br/>prices, liquidity, terms"]
+    RS["RebalanceStrategy<br/>pure simulated sizing + costs"]
     LF["Lifecycle observations<br/>TimeIndexTableUpdater(s) or refs"]
     VM["Price and FX observations<br/>TimeIndexTableUpdater(s) or refs"]
     LM["LifecycleEventModel(s)<br/>pure, directly injected"]
@@ -36,7 +40,9 @@ flowchart LR
     EL["PortfolioEventLedgerStorage<br/>authoritative TimeIndexMetaTable"]
     RP["Ledger-derived projections<br/>state, cash flows, NAV/returns"]
 
-    EF --> PE
+    SW --> RS
+    MO --> RS
+    RS -->|internal simulated execution facts| PE
     LF --> LM --> PE
     VM --> PE
     PE --> PA --> PE
@@ -49,6 +55,8 @@ The responsibilities are strict:
 
 - `PortfolioEngine` owns dependencies, source loading, orchestration, canonical
   validation, and publication of one authoritative table.
+- A Portfolio is a backtest model with no Account, custody, broker orders,
+  trades, fills, or actual account holdings.
 - `PortfolioAccounting` is an in-memory deterministic reducer. It is not a
   `TimeIndexMetaTable`, updater, or extension point.
 - `LifecycleEventModel` implementations turn declared observations into typed,
@@ -57,8 +65,9 @@ The responsibilities are strict:
   an economic timestamp using explicit observations.
 - `PortfolioEventLedgerStorage` is restart authority. State, cash-flow, weight,
   and value tables are rebuildable projections.
-- All accounting and replay behavior belongs to `msm_portfolios`. The existing
-  SDK updater, MetaTable, and migration contracts are sufficient.
+- All simulated accounting and deterministic restart behavior belongs to
+  `msm_portfolios`. The existing SDK updater, MetaTable, and migration contracts
+  are sufficient.
 
 ## Selecting The Correct Portfolio Path
 
@@ -67,58 +76,92 @@ The responsibilities are strict:
 | Weighted asset-return portfolio with turnover commission | Existing `PortfoliosDataNode` |
 | Existing saved portfolio with no accounting configuration | Existing `PortfoliosDataNode` |
 | Quantities, currency cash, receivables, payables, or lifecycle cash flows | `PortfolioEngine` |
-| Direct replay of observed fills/executions | `PortfolioEngine` execution-fact lane |
+| Signal targets converted into simulated quantities and costs | `PortfolioEngine` coordinated `RebalanceStrategy` path |
 | User-defined position-dependent economics | Inject a `LifecycleEventModel` into `PortfolioEngine` |
+
+Broker executions, account trades, custody holdings, and actual cash are not a
+Portfolio path. They belong to the account domain even when an Account uses a
+Portfolio as allocation intent.
 
 An omitted `PortfolioBuildConfiguration.accounting_configuration` and an
 explicit `None` both preserve the legacy serialized configuration and hash. An
 enabled accounting configuration passed to `PortfoliosDataNode` is rejected;
 there is no silent downgrade to weight-only valuation.
 
-## Configuration
+## Target Configuration
 
 `PortfolioAccountingConfiguration` is hash-bearing. Every value that can change
 economic events, state, or valuation belongs in this configuration or in a
 versioned model configuration.
 
+```text
+PortfolioBuildConfiguration
+  backtesting_weights_configuration
+    signal_weights_instance
+    rebalance_strategy_instance
+  accounting_configuration
+    valuation_asset_identifier
+    initial_nav
+    initial_state_time_index
+    position_valuation_model_instance
+    lifecycle_event_model_instances
+```
+
+The signal and `RebalanceStrategy` already owned by
+`BacktestingWeightsConfig` are the only execution decision path. Accounting does
+not accept an execution source, Account, broker, order, trade, fill, or holdings
+dependency. The removed external-execution field is rejected as an unknown
+configuration key; it has no alias or compatibility fallback.
+
+Configure position sizing, settlement, and execution-time costs on the existing
+rebalance strategy:
+
 ```python
-import datetime as dt
-
-from msm_portfolios.accounting import (
-    DividendCashFlowModel,
-    MarketPriceValuationModel,
-    PortfolioAccountingConfiguration,
-)
-from msm_portfolios.data_nodes.portfolios import (
-    PortfolioEngine,
-    PortfolioEngineConfiguration,
+from msm_portfolios.rebalance_strategy import (
+    ImmediateSignal,
+    InstrumentExecutionSpec,
+    ProportionalExecutionCostModel,
+    TargetWeightExecutionModel,
 )
 
-valuation_model = MarketPriceValuationModel(
-    valuation_source=price_source,
-    fx_source=fx_source,
-    price_column="price",
-    maximum_staleness=dt.timedelta(days=3),
-)
-dividend_model = DividendCashFlowModel(dividend_source=dividend_source)
-
-accounting_configuration = PortfolioAccountingConfiguration(
-    valuation_asset_identifier="USD",
-    initial_nav=1_000_000.0,
-    initial_state_time_index=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
-    execution_fact_source_instance=execution_source,
-    position_valuation_model_instance=valuation_model,
-    lifecycle_event_model_instances=(dividend_model,),
-)
-
-engine = PortfolioEngine(
-    config=PortfolioEngineConfiguration(
-        portfolio_identifier="my-position-portfolio",
-        accounting_configuration=accounting_configuration,
+strategy = ImmediateSignal(
+    execution_model_instance=TargetWeightExecutionModel(
+        instrument_specs=(
+            InstrumentExecutionSpec(
+                asset_identifier="STOCK-EUR",
+                quantity_unit="shares",
+                target_measure="market_value_weight",
+                contract_multiplier=1.0,
+                quantity_step=1.0,
+                price_asset_identifier="EUR",
+                settlement_style="cash",
+                terms_version="stock-v1",
+            ),
+        )
     ),
-    namespace="my-project",
+    execution_cost_model_instances=(
+        ProportionalExecutionCostModel(rate=0.001),
+    ),
 )
 ```
+
+`TargetWeightExecutionModel` sizes every compatible Asset in one vectorized
+timestamp batch from the immutable post-lifecycle state and NAV. Every Asset
+with nonzero desired exposure or a position to close requires an
+`InstrumentExecutionSpec`; an unchanged zero target is not economically
+required. The engine never guesses its unit,
+multiplier, lot step, quote Asset, target measure, or settlement style.
+For each rebalance timestamp the strategy receives the signal targets, desired
+and current exposures, immutable positions, free settled balances by currency,
+post-lifecycle NAV, price/FX observations, canonical valuation references, and
+the prior execution-progress state. Assets are partitioned by a stable
+vectorization signature—target measure, unit, quote Asset, multiplier, lot step,
+terms version, and settlement style—then each compatible partition is sized and
+costed as one vector.
+`settlement_style="cash"` posts trade consideration. For a linear perpetual
+whose position has zero fair value between variation-margin events,
+`settlement_style="variation_margin"` changes contract quantity without
+deducting full notional cash. Funding remains a lifecycle event.
 
 Before publishing, the referenced `PortfolioTable` row and every Asset used by
 positions, cash, prices, or FX must already exist. Persisted Asset dimensions use
@@ -144,27 +187,31 @@ contract.
 All timestamps are economic UTC timestamps. Inputs retain their truthful grains;
 the engine does not reshape unrelated sources into one artificial index.
 
-### Execution Facts
+### Internal Simulated Execution Facts
 
-Current production accounting implements the execution-fact replay lane. One
-row represents one immutable signed execution fact.
+The configured `RebalanceStrategy` produces a batch of deterministic simulated
+execution facts from signal targets, market observations, and the
+post-lifecycle/pre-execution accounting state. This batch is an internal typed
+boundary to `PortfolioAccounting`; it is not an upstream table or broker feed.
+One row represents one simulated signed execution fact.
 
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `time_index` | Yes | Economic execution time |
-| `execution_identifier` | Yes | Stable source execution identity |
-| `source_revision` | Yes | Immutable source revision |
+| `execution_identifier` | Yes | Stable simulated execution identity |
+| `source_revision` | Yes | Deterministic revision of the signal, observations, terms, strategy, and input state |
 | `asset_identifier` | Yes | Executed instrument Asset |
 | `quantity_delta` | Yes | Signed executed quantity; buy positive, sell negative |
 | `quantity_unit` | Yes | Explicit unit such as `shares` or `contracts` |
 | `execution_price` | Yes | Price per declared quantity unit |
 | `price_asset_identifier` | Yes | Asset in which the execution price is quoted |
 | `position_identifier` | No | Stable position state identity; defaults to the Asset identifier |
-| `observed_at` | No | Source availability time; defaults to `time_index` |
+| `observed_at` | Yes | Availability time of the selected execution mark |
 
 The economic identity `(execution_identifier, source_revision)` must be unique.
-The adapter emits a position delta and the opposite signed cash consideration.
-It does not resize an observed fill to fit simulated cash.
+Settlement and cost legs are explicit. The engine must not infer spot cash
+consideration, futures settlement, multipliers, or inverse-contract behavior
+from an Asset type or ticker.
 
 ### Price Observations
 
@@ -242,16 +289,37 @@ The example prints event-level USD NAV/P&L, ending positions, obligations and
 currency balances, completed cash-flow rows, and normalized USD portfolio
 values. It also exposes the frames through `build_example()` for tests.
 
+## Linear Perpetual / Funding Example
+
+Run the variation-margin fixture:
+
+```bash
+uv run --extra portfolios python \
+  examples/msm_portfolios/portfolio_perpetual_funding_example.py
+```
+
+The first signal targets 100% notional exposure at USD 100 and creates ten
+contracts without a USD 1,000 trade-consideration debit; its one-percent
+commission reduces NAV to USD 990 exactly once. At the next timestamp, a
+vectorized `PositionCashFlowModel` applies USD 100 of funding in
+`pre_execution`. The same-time signal is sized from the resulting USD 890 NAV,
+changes the position to eight contracts, and applies a USD 2 commission once. A
+second funding event changes cash and NAV with no rebalance. The fixture uses a
+custom `PositionValuationModel` because a variation-margined contract has
+different value semantics from a cash-settled share; settlement style and
+valuation model must agree.
+
 ## Economic Ordering
 
-The reducer scans actual economic timestamps from executions, lifecycle events,
-and requested valuation observations. It never creates a generic frequency grid
-or uses job time as an economic timestamp.
+The reducer scans actual economic timestamps from signal/strategy observations,
+lifecycle events, and requested valuation observations. It never creates a
+generic frequency grid or uses job time as an economic timestamp.
 
 Within one timestamp, current processing is:
 
 1. lifecycle events in `pre_execution`;
-2. execution facts in `execution`;
+2. the configured rebalance strategy emits and accounting applies internal
+   simulated execution facts in `execution`;
 3. lifecycle events in `post_execution`; and
 4. an optional valuation marker.
 
@@ -315,8 +383,8 @@ source revision produces the same identity and does not apply the balance change
 twice. Before publication, existing and calculated event digests are compared.
 
 `PortfolioAccounting.from_ledger(...)` reconstructs positions, cash,
-obligations, applied revisions, latest NAV, and event sequence from a complete
-active ledger. It validates:
+obligations, execution progress, applied revisions, latest NAV, and event
+sequence from a complete active ledger. It validates:
 
 - one portfolio identity;
 - contiguous event and record sequences;

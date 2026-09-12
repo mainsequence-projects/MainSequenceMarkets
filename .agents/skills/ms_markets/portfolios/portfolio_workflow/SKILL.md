@@ -318,6 +318,21 @@ currency balances, obligations, or position-driven lifecycle events. Preserve
 `PortfoliosDataNode` as the unchanged default when accounting configuration is
 omitted or explicitly `None`.
 
+A Portfolio is a backtest model. It has no Account and must not ingest broker
+orders, trades, fills, account holdings, custody balances, or actual account
+cash. The configured signal and `RebalanceStrategy` are the only source of
+simulated portfolio executions. The strategy emits internal execution facts to
+`PortfolioAccounting`; do not expose an external execution-fact input lane or a
+compatibility fallback for one.
+
+For the built-in position-aware path, configure a `TargetWeightExecutionModel`
+on that existing strategy and provide an explicit `InstrumentExecutionSpec` for
+every simulated Asset. Keep fill-time `ExecutionCostModel`s on the strategy and
+holding-period funding/dividend/coupon economics in `LifecycleEventModel`s.
+Variation-margin instruments change quantity without a full-notional cash leg;
+their valuation model must implement the corresponding instrument-value
+semantics.
+
 `PortfolioEventLedgerStorage` is the sole authoritative position-accounting
 output. `PortfolioAccounting` is the pure reducer, not a MetaTable or updater.
 State, cash-flow, weights, values, and analytics are ledger-derived read models.
@@ -330,7 +345,7 @@ contracts are sufficient; ADR 0042 has no `mainsequence-sdk` blocker.
 
 Read [references/position_accounting.md](references/position_accounting.md)
 before changing the accounting engine, lifecycle-model boundary, valuation/FX
-contract, canonical ledger, projections, replay behavior, accounting examples,
+contract, canonical ledger, projections, restart behavior, accounting examples,
 or the ADR.
 
 ## Write Pattern
@@ -411,6 +426,7 @@ uv run --extra portfolios --extra dev ruff check src/msm_portfolios/accounting s
 uv run --extra portfolios --extra dev pytest tests/msm_portfolios/accounting/test_accounting.py
 uv run --extra portfolios python examples/msm_portfolios/portfolio_cashflows_and_fx_valuation_example.py
 uv run --extra portfolios python examples/msm_portfolios/portfolio_custom_cashflow_model_example.py
+uv run --extra portfolios python examples/msm_portfolios/portfolio_perpetual_funding_example.py
 ```
 
 For portfolio target-position changes, run:

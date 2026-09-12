@@ -173,11 +173,10 @@ Keep these distinctions:
   `revision_retention_count`; automatic deployment and the
   fixed SDK workload build are backend-owned. Never design an `extension_id`,
   image selector, build command, environment, active deployment, or a second
-  publication-attempt system.
-  Consumption pins exact registered revisions through an environment-bound
-  workspace dependency plan, never the release's latest version. Public links
-  freeze a protected historical snapshot and recheck publisher release access;
-  ordinary workspace edits do not change the link's code dependencies.
+  publication-attempt system. The Pod Manager handoff ends at the finalized
+  Artifact UID recorded by the successful DeploymentRun. Workspace Runtime
+  owns manifest validation, publication, catalog revisions, composition, and
+  bundle delivery.
 - Workflow APIs `2.0.0`, `2.1.0`, and `2.2.0` can carry non-secret target-owned `env_vars` for Jobs,
   runtime ResourceReleases, and CodeRepository Coding Agents. Static sites use
   `build_environment`; widget extensions accept neither. These literals configure only the declared target or
@@ -563,9 +562,9 @@ the requirement as unresolved until the design chooses a supported target.
 For a widget-extension deliverable, record only why the CodeRepository needs the
 extension and the repository-relative source ownership needed for
 implementation handoff. Do not add a `widgets` top-level Blueprint domain or
-copy SDK manifest/instance contracts into CodeRepository design. The installed
-Command Center SDK skill bundle owns the manifest and executable module; the
-`code-repository-workflows` and `resource-release` skills own deployment.
+copy Workspace Runtime manifest/publication/instance contracts into
+CodeRepository design. The `code-repository-workflows` and `resource-release`
+skills own only deployment and finalized-Artifact production.
 
 For a browser-called FastAPI, record the intended exact or wildcard browser
 origins as API deployment intent when the platform default is not sufficient.
@@ -837,6 +836,15 @@ This Git-driven lifecycle is deployed. A persisted signed push creates a
 missing CodeRepositoryBranch only when the Organization already owns the exact
 matching Environment. Otherwise the push is ignored and creates no branch. Do
 not design manual branch creation/import as an alternative lifecycle.
+
+Branch removal is scoped to one exact Organization Environment and requires
+edit authority on the parent CodeRepository. It always preserves the provider
+repository and provider Git branches. When a detail or bulk selection removes
+the final remaining CodeRepositoryBranch, Django atomically removes the
+exhausted logical CodeRepository and its local GitHubRepositoryBinding registry
+row as lifecycle cleanup under that branch operation. Directly selecting a
+logical CodeRepository for deletion remains a separate Organization-admin
+operation.
 
 Choose the public `code_repository_type` deliberately when the design establishes the
 primary CodeRepository scaffold: `python` or `vite_react`. The immutable value belongs

@@ -1,12 +1,17 @@
 # Position-Aware Accounting Maintenance
 
 Use this reference only for `msm_portfolios` position accounting, lifecycle cash
-flows, accounting valuation, replay, or ledger-derived projections.
+flows, accounting valuation, deterministic restart, or ledger-derived projections.
 
 ## Ownership
 
 - `PortfolioEngine` is the `TimeIndexTableUpdater` orchestration and publication
   boundary.
+- A Portfolio is a backtest model with no Account, custody, broker execution, or
+  actual account state.
+- The configured signal and `RebalanceStrategy` are the only source of simulated
+  Portfolio executions. Their execution facts are an internal typed boundary to
+  accounting, never an external input lane.
 - `PortfolioAccounting` is a pure deterministic in-memory reducer and must not
   become a MetaTable, updater, persistence client, or user extension point.
 - Directly injected `LifecycleEventModel` instances own lifecycle economics.
@@ -37,10 +42,11 @@ flows, accounting valuation, replay, or ledger-derived projections.
 Keep source grains truthful and time-first:
 
 ```text
-executions: time_index + execution_identifier/source_revision
-valuations: time_index, asset_identifier
-FX:         time_index, base_asset_identifier, quote_asset_identifier
-dividends:  time_index, source_event_identifier, source_revision
+signals:               time_index, signal_uid, asset_identifier
+execution observations: time_index + source dimensions
+valuations:             time_index, asset_identifier
+FX:                     time_index, base_asset_identifier, quote_asset_identifier
+dividends:              time_index, source_event_identifier, source_revision
 ```
 
 Require stable source identities and revisions. Use economic time for
@@ -48,9 +54,21 @@ Require stable source identities and revisions. Use economic time for
 an observation that became available after the event being calculated. Missing
 or stale price/FX/terms/eligibility input is an error, never zero or a fallback.
 
-Execution facts must retain signed quantity, unit, execution price, and quote
-Asset. Observed fills are replayed exactly and are not resized in response to
-simulated cash.
+Internal simulated execution facts must retain signed quantity, unit, execution
+price, quote Asset, source revisions, terms version, settlement legs, and costs.
+They are generated from the post-lifecycle/pre-execution accounting state. Do
+not accept actual account or broker fills as Portfolio inputs.
+
+Use `TargetWeightExecutionModel` plus one `InstrumentExecutionSpec` per
+economically required Asset for the built-in position-aware sizing path. An
+unchanged zero target needs neither terms nor a mark; entries and exits do. Each
+spec declares target measure,
+quantity unit, contract multiplier, quantity step, quote Asset, settlement style,
+and terms version. Use `settlement_style="cash"` for trade consideration and
+`settlement_style="variation_margin"` when changing contract quantity must not
+deduct full notional. Put fill-time fees in strategy-owned
+`ExecutionCostModel`s; keep funding, borrow, interest, dividends, coupons, and
+other holding-period economics in lifecycle models.
 
 `MarketPriceValuationModel` requires explicit direct FX from each foreign Asset
 to the portfolio valuation Asset. Do not infer inverse pairs. Value positions,
@@ -159,6 +177,7 @@ Keep these surfaces aligned with code changes:
 - `CHANGELOG.md`
 - `examples/msm_portfolios/portfolio_cashflows_and_fx_valuation_example.py`
 - `examples/msm_portfolios/portfolio_custom_cashflow_model_example.py`
+- `examples/msm_portfolios/portfolio_perpetual_funding_example.py`
 
 Document implemented behavior separately from pending `msm_portfolios` work.
 Never describe a generated-but-unapplied migration as an SDK blocker; applying it
