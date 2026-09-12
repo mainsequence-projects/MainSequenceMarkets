@@ -5,7 +5,37 @@ All notable changes to this project should be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows versioned releases.
 
-## [Unreleased]
+## [1.0.15] - 2026-09-12
+
+### Added
+
+- Added the opt-in `PortfolioEngine` and pure `PortfolioAccounting` reducer,
+  public directly injected lifecycle-event contracts, columnar event batches,
+  explicit execution-fact conversion, and a built-in dividend entitlement and
+  settlement model.
+- Added strict multi-currency position, cash, and obligation valuation through
+  explicit price and FX observations, plus ledger-derived completed-cash-flow
+  state, and normalized portfolio-value projections.
+- Added strict reducer restart from a complete active ledger, including event
+  digest, record-count, state-chain, and opening-configuration validation.
+- Added `PortfolioEventLedgerStorage`, `PortfolioStateStorage`, and
+  `PortfolioCashFlowsStorage` with provider migration `0017`.
+- Added offline EUR-dividend/USD-NAV and custom vectorized cash-flow examples.
+
+### Changed
+
+- Added optional `PortfolioBuildConfiguration.accounting_configuration` while
+  omitting disabled accounting from legacy serialization. The legacy
+  `PortfoliosDataNode` rejects enabled accounting instead of mixing histories
+  or silently falling back to weight-only valuation.
+
+### Documentation
+
+- Added a dedicated position-aware accounting guide covering engine ownership,
+  configuration, execution/dividend/price/FX input grains, ledger records,
+  retry and restart behavior, projections, custom lifecycle models, failure
+  semantics, examples, and the explicit absence of an SDK blocker. Updated the
+  repository portfolio-workflow skill with the same maintenance invariants.
 
 ## [1.0.14] - 2026-09-09
 

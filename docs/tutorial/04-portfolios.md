@@ -183,4 +183,39 @@ weekly, or monthly sampling. Analytical rows keep the actual selected source
 observation in both `time_index` and `source_time_index`, with bucket boundaries
 in `period_start` and `period_end`.
 
+## Preview position cash flows and FX valuation
+
+The full configuration, input-grain, ledger, restart, and extension contracts
+are documented in
+[Position-Aware Portfolio Accounting](../knowledge/msm_portfolios/portfolios/accounting.md).
+
+Position-aware accounting is opt-in and writes a separate canonical event
+ledger. The existing weight-only example and its identity do not change. Start
+with the offline fixture before wiring registered dependencies:
+
+```bash
+uv run --extra portfolios python \
+  examples/msm_portfolios/portfolio_cashflows_and_fx_valuation_example.py
+```
+
+The fixture starts with USD cash, buys ten shares quoted in EUR, recognizes a
+EUR 1-per-share dividend, sells the shares, and then settles the retained EUR
+receivable. Explicit EUR/USD observations value every component in USD. Inspect
+the event-level summary rows: entitlement recognizes income once; the later
+cash receipt has zero recognized P&L because it only exchanges receivable state
+for settled cash.
+
+To see the user-extension boundary, run:
+
+```bash
+uv run --extra portfolios python \
+  examples/msm_portfolios/portfolio_custom_cashflow_model_example.py
+```
+
+That example defines a module-level `PositionCashFlowModel` subclass and emits
+two royalty events in one vectorized calculation partition. Production models
+must inject every source as a declared `TimeIndexTableUpdater` or
+`TimeIndexTableRef`; the in-memory example passes frames directly so it remains
+deterministic and safe to run without platform writes.
+
 **Next →** [Pricing Instruments](05-pricing.md)

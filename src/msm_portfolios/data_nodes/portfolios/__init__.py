@@ -108,6 +108,11 @@ class PortfoliosDataNode(PortfolioCanonicalDataNode):
 
     def _initialize_from_portfolio_configuration(self, portfolio_configuration: Any) -> None:
         build = portfolio_configuration.portfolio_build_configuration
+        if getattr(build, "accounting_configuration", None) is not None:
+            raise ValueError(
+                "Position-aware accounting configurations must run through PortfolioEngine; "
+                "PortfoliosDataNode remains the legacy weight-only valuation path."
+            )
         backtesting = build.backtesting_weights_configuration
         self.portfolio_build_configuration = build
         self.execution_configuration = build.execution_configuration
@@ -639,4 +644,17 @@ def normalize_portfolio_values_frame(
     return PortfoliosDataNode.validate_frame(flat[required_columns], output_table=output_table)
 
 
-__all__ = ["PortfoliosDataNode", "normalize_portfolio_values_frame"]
+from .accounting import (  # noqa: E402
+    PortfolioEngine,
+    PortfolioEngineConfiguration,
+    normalize_portfolio_event_ledger_frame,
+)
+
+
+__all__ = [
+    "PortfolioEngine",
+    "PortfolioEngineConfiguration",
+    "PortfoliosDataNode",
+    "normalize_portfolio_event_ledger_frame",
+    "normalize_portfolio_values_frame",
+]

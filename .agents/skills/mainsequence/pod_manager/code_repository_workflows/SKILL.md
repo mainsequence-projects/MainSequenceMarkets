@@ -60,9 +60,11 @@ submission or reconciliation. Concurrent Jobs, ResourceReleases, and Code
 Repository Coding Agent stages requesting the same exact build converge on one canonical
 attempt while retaining independent parent dependencies.
 
-Active build, deployment, and JobRun relations block image deletion. Terminal
-history retains immutable typed image snapshots and may detach its live
-relation, so historical evidence never forces an image row to exist forever.
+Active build, deployment, and JobRun relations block image deletion. Every
+retained runtime `ResourceReleaseRevision` also pins its exact image, including
+rollback revisions that are no longer active or desired. Terminal run history
+retains immutable typed image snapshots and may detach its live relation, so
+run evidence alone never forces an image row to exist forever.
 
 An image UID, URI, digest, provider handle, or readiness value in generic run
 JSON is never authoritative. A build uses an attempt-specific transient tag,
@@ -341,10 +343,10 @@ widgets, through the ordinary `resource_release` workflow kind:
   spec:
     release_kind: widget_extension
     name: command-center-widgets
-    root_directory: command-center
+    entrypoint: src/extensions/table.ts
 ```
 
-This spec accepts exactly `release_kind`, `name`, and optional
+This spec accepts exactly `release_kind`, `name`, required `entrypoint`, and optional
 `root_directory`. Do not add `extension_id`, `resource_uid`,
 `related_image_uid`, build commands, output paths, environment, secrets,
 `automatic_deployment`, or `automatic_redeployment`. Automatic deployment is

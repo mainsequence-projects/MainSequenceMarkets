@@ -4,6 +4,82 @@ The portfolios concept owns portfolio construction workflows. It connects
 assets, signals, rebalance strategies, portfolio weights,
 portfolio metadata, and portfolio value time series.
 
+## Position-aware cash flows and valuation
+
+For the complete engine contract, source schemas, configuration, ledger fields,
+restart semantics, extension hooks, and operational limitations, read
+[Position-Aware Portfolio Accounting](accounting.md).
+
+The existing `PortfoliosDataNode` remains the default weight-return engine.
+Omitting `PortfolioBuildConfiguration.accounting_configuration`, or setting it
+to `None`, does not add dependencies or change the serialized legacy
+configuration. Supplying accounting configuration selects a separate history;
+passing that configuration to `PortfoliosDataNode` is rejected instead of
+falling back to weight-only valuation.
+
+The opt-in implementation follows [ADR 0042](../../../ADR/0042-position-cash-flow-portfolio-accounting.md):
+
+```text
+execution facts + lifecycle observations + price/FX observations
+                              |
+                              v
+                 PortfolioAccounting (pure reducer)
+                              |
+                              v
+                 PortfolioEngine (one updater)
+                              |
+                              v
+             PortfolioEventLedgerStorage (authority)
+                              |
+                              v
+          state, cash-flow, and portfolio-value projections
+```
+
+`PortfolioAccounting` is intentionally usable in offline tests and examples.
+`PortfolioEngine` is the `TimeIndexTableUpdater` boundary: it declares the
+execution, lifecycle, valuation, and FX sources and publishes the long event
+ledger. The ledger grain is `(time_index, portfolio_identifier,
+event_identifier, event_revision, record_identifier)`. Migration `0017` adds
+that table plus additive state and completed-cash-flow projection schemas.
+The pure reducer can also reconstruct positions, cash, obligations, applied
+event revisions, and the latest NAV from a complete active ledger after
+validating its digest and state chain.
+
+`DividendCashFlowModel` recognizes a receivable using the position at the
+entitlement time. Payment later reduces that receivable and increases settled
+cash. It therefore works when the originating shares have already been sold,
+and settlement does not recognize the dividend a second time.
+
+`MarketPriceValuationModel` values signed positions, cash, and obligations in
+the configured valuation Asset. Foreign values require an explicit observation
+with grain `(time_index, base_asset_identifier, quote_asset_identifier)` and a
+strictly positive `rate`; it does not infer an inverse pair or silently replace
+a missing rate. Price and FX selection is bounded by `maximum_staleness`.
+
+Use the public extension boundary for unusual economics:
+
+```python
+from msm_portfolios.accounting import LifecycleEventModel, PositionCashFlowModel
+```
+
+A module-level directly injected model selects source-backed candidates and
+returns a flat, columnar `EventBatch`. The engine owns canonical identifiers,
+validation, state application, NAV reconciliation, and persistence. A custom
+model cannot replace those operations or write a projection directly.
+
+Two offline examples require no backend writes:
+
+```bash
+uv run --extra portfolios python \
+  examples/msm_portfolios/portfolio_cashflows_and_fx_valuation_example.py
+uv run --extra portfolios python \
+  examples/msm_portfolios/portfolio_custom_cashflow_model_example.py
+```
+
+The first buys and later sells a EUR-denominated stock in a USD portfolio,
+recognizes a EUR dividend before the sale, and settles it afterward. The second
+defines and injects a user-owned vectorized EUR usage royalty model.
+
 ## Scope
 
 Portfolios answer these questions:

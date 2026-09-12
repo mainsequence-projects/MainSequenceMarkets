@@ -20,7 +20,7 @@ Report local setup as complete only when all of the following are true:
 - `code_repository.get` returns the CodeRepository and its lightweight
   `{uid, repository_branch}` branch selector;
 - `code_repository_branch.get` confirms that the selected CodeRepositoryBranch has
-  `is_initialized=true`;
+  `provisioning_status=READY` and the compatible `is_initialized=true` projection;
 - `github_repository_binding.get` confirms that the CodeRepository's GitHubRepositoryBinding has a
   nonempty clone URL;
 - the user confirmed the fully resolved canonical checkout path;
@@ -88,13 +88,17 @@ Do not:
 5. Read the CodeRepository's `github_repository_binding_uid` with `github_repository_binding.get`.
    `git_ssh_url` and `git_repo_url` belong only to GitHubRepositoryBinding; never treat a
    clone URL as CodeRepositoryBranch state.
-6. If `is_initialized` is false, wait and retry `code_repository_branch.get` with a
-   bounded interval. If the GitHubRepositoryBinding clone URL is not ready, retry
-   `github_repository_binding.get`. Do not retry `code_repository.create`.
-7. If initialization does not complete within the user's available working
+6. Branch on `provisioning_status`. For `CREATING`, wait and retry
+   `code_repository_branch.get` with a bounded interval. For `FAILED`, stop
+   polling and report `provisioning_error_code`, `provisioning_error_detail`,
+   and `provisioning_job_run_uid`; do not invoke the DRF-only retry action or
+   retry `code_repository.create`. Continue only for `READY`, whose compatible
+   `is_initialized` projection must be true. If the GitHubRepositoryBinding
+   clone URL is not ready, retry `github_repository_binding.get`.
+7. If initialization remains `CREATING` beyond the user's available working
    window, report the CodeRepository UID, selected branch name and UID, and
-   current readiness state. Do not invent a repository URL or continue with a
-   partial provider result.
+   current provisioning state plus the linked setup JobRun UID. Do not invent a
+   repository URL or continue with a partial provider result.
 
 Repository initialization is platform state. Polling it is caller behavior;
 it is not an MCP task or subscription.
@@ -286,7 +290,9 @@ token-export tool or reading the MCP client's credential store.
 Verify without revealing sensitive values:
 
 - CodeRepository identity and lightweight branch selection from `code_repository.get`;
-- selected CodeRepositoryBranch UID and `is_initialized` from `code_repository_branch.get`;
+- selected CodeRepositoryBranch UID, `provisioning_status`, linked setup JobRun
+  UID, failure fields, and compatible `is_initialized` projection from
+  `code_repository_branch.get`;
 - clone URL and repository identity from `github_repository_binding.get`;
 - exact Git `origin` agreement;
 - current Git branch agreement with the selected `repository_branch`;
@@ -313,7 +319,11 @@ The interface-neutral local setup does not depend on that optional SDK lane.
 
 Identify the last completed boundary and preserve safe completed work:
 
-- initialization pending: no local changes required;
+- initialization `CREATING`: no local changes required; report the linked setup
+  JobRun and bounded-wait result;
+- initialization `FAILED`: stop polling, preserve provider/platform state, and
+  report the stable error fields and linked setup JobRun for an authorized
+  human to inspect or explicitly retry through DRF;
 - deploy-key failure: local key may exist, repository not yet accessible;
 - clone failure: remove only a new incomplete clone created by this attempt;
 - credential materialization unavailable: preserve the verified checkout and

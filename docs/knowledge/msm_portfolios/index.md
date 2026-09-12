@@ -21,6 +21,9 @@ owns portfolio-only runtime helpers such as `pandas-market-calendars`; the core
 
 - [Portfolios](portfolios/index.md): portfolio identity, asset linkage,
   metadata, signals, rebalance strategies, and canonical portfolio DataNodes.
+- [Position-Aware Accounting](portfolios/accounting.md): quantities, cash and
+  obligations, lifecycle cash flows, explicit price/FX valuation, canonical
+  ledger semantics, restart behavior, and custom lifecycle models.
 
 Virtual funds are **not** owned by `msm_portfolios`. They are core `msm`
 account-allocation state; see

@@ -17,7 +17,10 @@ from msm.data_nodes.utils.output_metadata import (
     storage_table_identifier,
 )
 from msm.data_nodes.utils.namespaces import wrap_default_markets_hash_namespace
-from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
+from msm.data_nodes.utils.storage_schema import (
+    storage_column_dtypes_map,
+    storage_column_nullable_map,
+)
 from msm.data_nodes.utils.storage_schema import storage_index_names, storage_time_index_name
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
 from msm.settings import markets_namespace
@@ -268,6 +271,7 @@ def _validate_canonical_frame(
     index_names = storage_index_names(output_table)
     time_index_name = storage_time_index_name(output_table)
     column_dtypes_map = storage_column_dtypes_map(output_table)
+    column_nullable_map = storage_column_nullable_map(output_table)
     frame = _ensure_storage_index(data_frame, index_names=index_names, frame_name=frame_name)
     flat = frame.reset_index()
     missing_columns = [
@@ -282,6 +286,7 @@ def _validate_canonical_frame(
         flat,
         time_index_name=time_index_name,
         column_dtypes_map=column_dtypes_map,
+        column_nullable_map=column_nullable_map,
         frame_name=frame_name,
     )
     _validate_identity_values(flat, index_names=index_names, frame_name=frame_name)
@@ -315,6 +320,7 @@ def _normalize_config_values(
     *,
     time_index_name: str,
     column_dtypes_map: dict[str, str],
+    column_nullable_map: dict[str, bool],
     frame_name: str,
 ) -> pd.DataFrame:
     normalized = frame.copy()
@@ -326,8 +332,21 @@ def _normalize_config_values(
             normalized[column_name] = _normalize_datetime_column(values)
         elif dtype == dc.FLOAT64:
             normalized[column_name] = _normalize_float64(values, column_name=column_name)
+        elif dtype in {dc.INT16, dc.INT32, dc.INT64}:
+            normalized[column_name] = _normalize_integer(
+                values,
+                column_name=column_name,
+                nullable=column_nullable_map[column_name],
+            )
+        elif dtype == dc.BOOL:
+            normalized[column_name] = values.astype(
+                "boolean" if column_nullable_map[column_name] else "bool"
+            )
         elif dtype == dc.STRING:
-            normalized[column_name] = _normalize_string(values)
+            normalized[column_name] = _normalize_string(
+                values,
+                nullable=column_nullable_map[column_name],
+            )
         else:
             raise ValueError(
                 f"Unsupported canonical Portfolios dtype {dtype!r} for "
@@ -366,5 +385,24 @@ def _normalize_float64(values: Any, *, column_name: str) -> pd.Series:
         ) from exc
 
 
-def _normalize_string(values: Any) -> pd.Series:
+def _normalize_integer(
+    values: Any,
+    *,
+    column_name: str,
+    nullable: bool,
+) -> pd.Series:
+    try:
+        numeric = pd.to_numeric(values, errors="raise")
+        if numeric.dropna().mod(1).ne(0).any():
+            raise ValueError
+        return numeric.astype("Int64" if nullable else "int64")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Invalid integer canonical Portfolios value for {column_name!r}."
+        ) from exc
+
+
+def _normalize_string(values: Any, *, nullable: bool) -> pd.Series:
+    if nullable:
+        return values.map(lambda value: pd.NA if pd.isna(value) else str(value)).astype("string")
     return values.map(lambda value: "" if pd.isna(value) else str(value)).astype("string")

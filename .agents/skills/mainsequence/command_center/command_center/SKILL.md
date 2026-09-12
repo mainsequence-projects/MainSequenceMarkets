@@ -70,8 +70,12 @@ into that response; it is never shared workspace content.
 
 ### Registered widget type reads
 
-Use `registered_widget_type.list` with only `widget_id`, `limit`, and `offset`.
-Use `registered_widget_type.get` with the stable `widget_id` natural key.
+Use `registered_widget_type.list` with `organization_environment_uid`, optional
+`widget_id`, `limit`, and `offset`. Use `registered_widget_type.get` with the
+stable `widget_id` natural key and `organization_environment_uid`. Human
+credentials must select an environment; runtime credentials derive their
+authenticated environment and may not select another. Both tools delegate the
+same environment and release visibility checks to DRF.
 
 RegisteredWidgetType is stable `(widget-extension release, widget_id)` identity,
 not a mutable metadata mirror. Each catalog response selects an immutable
@@ -80,6 +84,12 @@ release UID, publication UID, and manifest-projected metadata. The mutable
 registry synchronization service no longer exists. Successful
 WidgetExtensionRelease publication is the only registration path, including
 for first-party widgets.
+
+The exact revision, workspace dependency, and hash-addressed widget bundle routes
+are DRF consumption APIs, not additional MCP tools. Public workspace links freeze
+exact dependencies and recheck publisher release access; they do not make the
+catalog globally discoverable. See `docs/command_center/widgets.md` for the
+canonical delivery contract.
 
 ### Connection type reads
 

@@ -15,6 +15,7 @@ from pydantic import (
 
 from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm_portfolios.asset_scope import require_asset_category_scope
+from msm_portfolios.accounting.configuration import PortfolioAccountingConfiguration
 from msm_portfolios.data_nodes import (
     REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS,
     SignalWeights,
@@ -507,6 +508,15 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
     backtesting_weights_configuration: BacktestingWeightsConfig = Field(
         ...,
         description="Injected signal and rebalance strategy instances used to build the portfolio.",
+    )
+
+    accounting_configuration: PortfolioAccountingConfiguration | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Explicit opt-in position accounting configuration. Omitted and None preserve "
+            "the legacy weight-return path and its serialized identity."
+        ),
     )
 
     @field_serializer(

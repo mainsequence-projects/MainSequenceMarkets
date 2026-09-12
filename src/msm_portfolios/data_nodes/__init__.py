@@ -34,7 +34,13 @@ from .portfolios.calendar_events import (
 from .portfolios.weights import PortfolioWeights, normalize_portfolio_weights_frame
 from .portfolios.rebalance import PortfolioRebalance, normalize_rebalance_state_frame
 from .portfolios.analytics import PortfolioAnalytics, PortfolioAnalyticsConfiguration
-from .portfolios import PortfoliosDataNode, normalize_portfolio_values_frame
+from .portfolios import (
+    PortfolioEngine,
+    PortfolioEngineConfiguration,
+    PortfoliosDataNode,
+    normalize_portfolio_event_ledger_frame,
+    normalize_portfolio_values_frame,
+)
 from .signals import (
     SignalWeights,
     canonical_signal_configuration,
@@ -57,6 +63,8 @@ __all__ = [
     "SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS",
     "SIGNAL_WEIGHTS_INDEX_NAMES",
     "PortfoliosDataNode",
+    "PortfolioEngine",
+    "PortfolioEngineConfiguration",
     "PortfolioAnalytics",
     "PortfolioAnalyticsConfiguration",
     "PortfolioCalendarEvents",
@@ -77,5 +85,6 @@ __all__ = [
     "normalize_portfolio_weights_frame",
     "normalize_rebalance_state_frame",
     "normalize_portfolio_values_frame",
+    "normalize_portfolio_event_ledger_frame",
     "normalize_signal_weights_frame",
 ]

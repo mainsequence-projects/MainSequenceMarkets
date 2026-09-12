@@ -62,7 +62,9 @@ nav:
       - Services: knowledge/msm/services/index.md
   - msm_portfolios:
       - Overview: knowledge/msm_portfolios/index.md
-      - Portfolios: knowledge/msm_portfolios/portfolios/index.md
+      - Portfolios:
+          - Overview: knowledge/msm_portfolios/portfolios/index.md
+          - Position-Aware Accounting: knowledge/msm_portfolios/portfolios/accounting.md
   - msm_pricing:
       - Overview: knowledge/msm_pricing/index.md
       - Market Data Sets: knowledge/msm_pricing/market_data_sets.md
@@ -120,6 +122,7 @@ nav:
       - SDK 8 Hard Cut And 1.0 Package Contract: ADR/0039-sdk-8-hard-cut-and-1-0-package-contract.md
       - Portfolio Temporal Ownership And Execution-Valuation Separation: ADR/0040-portfolio-temporal-ownership.md
       - Installable Provider HTTP Toolkit: ADR/0041-installable-provider-http-toolkit.md
+      - Position Cash Flows In Portfolio Accounting: ADR/0042-position-cash-flow-portfolio-accounting.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - FastAPI v1:
           - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md

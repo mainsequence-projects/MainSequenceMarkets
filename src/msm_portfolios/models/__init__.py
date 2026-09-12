@@ -27,8 +27,11 @@ def portfolio_sqlalchemy_models() -> list[type]:
     from msm.data_nodes.accounts.storage import TargetPositionsStorage
     from msm_portfolios.data_nodes.portfolios.storage import (
         PortfolioAnalyticsStorage,
+        PortfolioCashFlowsStorage,
         PortfolioCalendarEventsStorage,
+        PortfolioEventLedgerStorage,
         PortfolioRebalanceStateStorage,
+        PortfolioStateStorage,
         PortfoliosStorage,
         PortfolioWeightsStorage,
     )
@@ -55,8 +58,11 @@ def portfolio_sqlalchemy_models() -> list[type]:
         RebalanceStrategyMetadataTable,
         PortfolioMetadataTable,
         PortfolioAnalyticsStorage,
+        PortfolioCashFlowsStorage,
         PortfolioCalendarEventsStorage,
+        PortfolioEventLedgerStorage,
         PortfolioRebalanceStateStorage,
+        PortfolioStateStorage,
         PortfolioWeightsStorage,
         SignalWeightsStorage,
         PortfoliosStorage,
