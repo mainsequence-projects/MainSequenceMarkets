@@ -1,0 +1,15 @@
+{
+  "display_name": "Analytics postgresql",
+  "class_type": "postgresql",
+  "configuration": {
+    "host": "postgres.example.com",
+    "database_name": "analytics",
+    "database_user": "metatables",
+    "password_secret_uid": "00000000-0000-0000-0000-000000000001",
+    "port": 5432,
+    "default_schema": "public",
+    "ssl_mode": "verify-full"
+  },
+  "storage_access_mode": "read_only",
+  "is_default": false
+}

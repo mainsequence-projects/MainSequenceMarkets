@@ -1,0 +1,16 @@
+{
+  "display_name": "Analytics mysql",
+  "class_type": "mysql",
+  "configuration": {
+    "host": "mysql.example.com",
+    "database_name": "analytics",
+    "database_user": "metatables",
+    "password_secret_uid": "00000000-0000-0000-0000-000000000001",
+    "port": 3306,
+    "default_schema": "analytics",
+    "ssl_mode": "verify-full",
+    "default_charset": "utf8mb4"
+  },
+  "storage_access_mode": "read_only",
+  "is_default": false
+}

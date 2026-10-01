@@ -1,0 +1,16 @@
+{
+  "display_name": "Analytics mssql",
+  "class_type": "mssql",
+  "configuration": {
+    "host": "sqlserver.example.com",
+    "database_name": "analytics",
+    "database_user": "metatables",
+    "password_secret_uid": "00000000-0000-0000-0000-000000000001",
+    "port": 1433,
+    "default_schema": "dbo",
+    "encrypt": true,
+    "trust_server_certificate": false
+  },
+  "storage_access_mode": "read_only",
+  "is_default": false
+}
