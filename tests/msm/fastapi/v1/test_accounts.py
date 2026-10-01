@@ -1985,12 +1985,13 @@ def test_core_add_account_holdings_snapshot_rejects_existing_without_overwrite(
     assert captured["frame_kwargs"]["account_uid"] == str(account_uid)
 
 
-@pytest.mark.usefixtures("offline_postgresql_runtime")
-def test_account_repository_builds_atomic_holdings_replacement_operation() -> None:
+def test_account_repository_builds_atomic_holdings_replacement_operation(
+    offline_postgresql_runtime,
+) -> None:
     from msm.repositories import accounts as account_repository
 
     class FakeContext:
-        data_source_uid = "test-data-source"
+        data_source_uid = None
         limits = None
 
     holdings_set_uid = uuid.uuid4()
@@ -2036,7 +2037,7 @@ def test_account_repository_builds_atomic_holdings_replacement_operation() -> No
         "holdings_date": "timestamp with time zone",
         "target_trade_time_0": "timestamp with time zone",
     }
-    assert operation.data_source_uid == "test-data-source"
+    assert operation.data_source_uid == offline_postgresql_runtime.require_data_source_uid()
 
 
 def test_core_add_account_holdings_snapshot_rejects_asset_uid_mismatch(
@@ -2179,12 +2180,13 @@ def test_core_search_account_target_allocation_candidates_maps_rows(monkeypatch)
     }
 
 
-@pytest.mark.usefixtures("offline_postgresql_runtime")
-def test_account_repository_builds_single_target_candidate_search_operation() -> None:
+def test_account_repository_builds_single_target_candidate_search_operation(
+    offline_postgresql_runtime,
+) -> None:
     from msm.repositories import accounts as account_repository
 
     class FakeContext:
-        data_source_uid = "test-data-source"
+        data_source_uid = None
         limits = None
 
     operation = account_repository.build_search_account_target_allocation_candidates_operation(
@@ -2204,7 +2206,7 @@ def test_account_repository_builds_single_target_candidate_search_operation() ->
     assert "row_number()" in sql.lower()
     assert "LIMIT" in sql
     assert "OFFSET" in sql
-    assert operation.data_source_uid == "test-data-source"
+    assert operation.data_source_uid == offline_postgresql_runtime.require_data_source_uid()
 
 
 def test_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
@@ -2547,12 +2549,13 @@ def test_core_add_account_target_positions_raises_conflict_when_snapshot_exists(
         )
 
 
-@pytest.mark.usefixtures("offline_postgresql_runtime")
-def test_account_repository_builds_atomic_target_positions_replacement_operation() -> None:
+def test_account_repository_builds_atomic_target_positions_replacement_operation(
+    offline_postgresql_runtime,
+) -> None:
     from msm.repositories import accounts as account_repository
 
     class FakeContext:
-        data_source_uid = "test-data-source"
+        data_source_uid = None
         limits = None
 
     account_uid = uuid.uuid4()
@@ -2612,4 +2615,4 @@ def test_account_repository_builds_atomic_target_positions_replacement_operation
     assert operation.statement.parameter_types == {
         "target_positions_date": "timestamp with time zone",
     }
-    assert operation.data_source_uid == "test-data-source"
+    assert operation.data_source_uid == offline_postgresql_runtime.require_data_source_uid()

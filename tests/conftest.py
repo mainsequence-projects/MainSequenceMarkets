@@ -7,12 +7,15 @@ OFFLINE_RUNTIME_DATA_SOURCE_UID = "00000000-0000-0000-0000-000000000001"
 
 @pytest.fixture
 def offline_postgresql_runtime(monkeypatch):
-    """Select a PostgreSQL MetaTables runtime without resolving or calling an API.
+    """Serve a hosted PostgreSQL MetaTables runtime without resolving or calling an API.
 
-    `metatables.compiled_sql.v1.compile_sqlalchemy_statement` reads the SQL
-    dialect, and the DataSource when the repository context selects none, from
-    the API-selected runtime. Statement tests compile offline for the hosted
-    PostgreSQL engine instead.
+    When a repository context leaves `data_source_uid` as `None`, as product code
+    does, or no `dialect=` is passed, `metatables.compiled_sql.v1` reads the
+    DataSource UID and the SQL dialect together from the Environment-selected
+    API runtime through `RuntimeContext.require_data_source_uid()` and
+    `RuntimeContext.require_sql_dialect()`. This fixture answers
+    `get_runtime_context()` offline with a runtime that satisfies both checks,
+    so statement tests compile through the same automatic path.
     """
 
     import metatables.runtime_context
@@ -25,5 +28,12 @@ def offline_postgresql_runtime(monkeypatch):
         data_source={"uid": OFFLINE_RUNTIME_DATA_SOURCE_UID},
         default_schema="public",
     )
-    monkeypatch.setattr(metatables.runtime_context, "get_runtime_context", lambda: runtime)
+    assert runtime.require_data_source_uid() == OFFLINE_RUNTIME_DATA_SOURCE_UID
+    assert runtime.require_sql_dialect() == ("postgresql", "pyformat")
+
+    def get_runtime_context() -> RuntimeContext:
+        runtime.require_data_source_uid()
+        return runtime
+
+    monkeypatch.setattr(metatables.runtime_context, "get_runtime_context", get_runtime_context)
     return runtime

@@ -4,7 +4,8 @@ import datetime as dt
 import uuid
 
 import pytest
-from sqlalchemy import DateTime, Index, String
+from metatables import DataSourceResolutionError
+from sqlalchemy import DateTime, Index, String, select
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -20,7 +21,11 @@ from msm.models import (
     PortfolioTable,
     markets_sqlalchemy_models,
 )
-from msm.repositories import MarketsMetaTableHandle, MarketsRepositoryContext
+from msm.repositories import (
+    MarketsMetaTableHandle,
+    MarketsRepositoryContext,
+    compile_markets_statement,
+)
 from msm.repositories.assets import (
     build_create_asset_operation,
     build_delete_asset_operation,
@@ -86,7 +91,7 @@ class RepositoryDefaultTable(MarketsMetaTableMixin, MarketsBase):
     )
 
 
-TEST_DATA_SOURCE_UID = str(uuid.UUID("00000000-0000-0000-0000-000000000002"))
+OTHER_DATA_SOURCE_UID = str(uuid.UUID("00000000-0000-0000-0000-000000000002"))
 
 pytestmark = pytest.mark.usefixtures("offline_postgresql_runtime")
 
@@ -97,9 +102,9 @@ def bind_test_meta_table_uids(monkeypatch) -> None:
         monkeypatch.setattr(model, "__metatable_uid__", str(uuid.uuid4()), raising=False)
 
 
-def _repository_context() -> MarketsRepositoryContext:
+def _repository_context(data_source_uid: str | None = None) -> MarketsRepositoryContext:
     return MarketsRepositoryContext(
-        data_source_uid=TEST_DATA_SOURCE_UID,
+        data_source_uid=data_source_uid,
         limits={"max_rows": 100, "statement_timeout_ms": 5000},
     )
 
@@ -127,14 +132,17 @@ def test_repository_context_resolves_identifier_after_physical_binding(monkeypat
     assert context.table(AssetTypeTable).meta_table_uid == meta_table_uid
 
 
-def test_generic_search_operation_compiles_for_every_market_model() -> None:
+def test_generic_search_operation_compiles_for_every_market_model(
+    offline_postgresql_runtime,
+) -> None:
     context = _repository_context()
+    runtime_data_source_uid = offline_postgresql_runtime.require_data_source_uid()
 
     for model in markets_sqlalchemy_models():
         operation = build_search_model_operation(context, model=model, limit=10, offset=5)
 
         assert operation.operation == "select"
-        assert operation.data_source_uid == TEST_DATA_SOURCE_UID
+        assert operation.data_source_uid == runtime_data_source_uid
         assert operation.dialect == "postgresql"
         assert operation.statement.paramstyle == "pyformat"
         assert operation.limits is not None
@@ -143,6 +151,37 @@ def test_generic_search_operation_compiles_for_every_market_model() -> None:
         assert model.__table__.name in operation.statement.sql
         assert "LIMIT" in operation.statement.sql
         assert "OFFSET" in operation.statement.sql
+
+
+def test_explicit_data_source_must_match_runtime_unless_dialect_is_supplied(
+    offline_postgresql_runtime,
+) -> None:
+    statement = select(AssetTable.uid)
+    runtime_data_source_uid = offline_postgresql_runtime.require_data_source_uid()
+
+    matching = compile_markets_statement(
+        statement,
+        context=_repository_context(runtime_data_source_uid),
+        operation="select",
+    )
+    assert matching.data_source_uid == runtime_data_source_uid
+    assert matching.dialect == "postgresql"
+
+    with pytest.raises(DataSourceResolutionError):
+        compile_markets_statement(
+            statement,
+            context=_repository_context(OTHER_DATA_SOURCE_UID),
+            operation="select",
+        )
+
+    offline = compile_markets_statement(
+        statement,
+        context=_repository_context(OTHER_DATA_SOURCE_UID),
+        operation="select",
+        dialect="postgresql",
+    )
+    assert offline.data_source_uid == OTHER_DATA_SOURCE_UID
+    assert offline.dialect == "postgresql"
 
 
 def test_generic_count_operation_compiles_for_filtered_model() -> None:
