@@ -33,9 +33,9 @@ Use these skills first when the task crosses their boundaries:
   behavior:
   `.agents/skills/ms_markets/pricing/general_pricing/SKILL.md`
 - Generic Main Sequence TimeIndexTableUpdater behavior:
-  `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`
+  `.agents/skills/metatables/metatables-time-index-table-updates/SKILL.md`
 - Generic Main Sequence MetaTable behavior:
-  `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`
+  `.agents/skills/metatables/metatables-meta-tables/SKILL.md`
 - Asset identity or bond asset detail tables:
   `.agents/skills/ms_markets/assets/asset_model_extension/SKILL.md`
 - Asset-indexed market data:
@@ -179,7 +179,7 @@ order is resolved before runtime binding. The dependency order includes
 `CurveTable`, `CurveBuildingDetailsTable`, then pricing details,
 `PricingMarketDataSetTable`, `PricingMarketDataSetBindingTable`,
 `PricingMarketDataSetCurveBindingTable`, and pricing time-index-table output tables.
-Missing MetaTables indicate SDK migration/provider work still needs to run
+Missing MetaTables indicate MetaTables migration/provider work still needs to run
 before pricing startup.
 
 ## Creation Workflow

@@ -41,6 +41,7 @@ Recommended sections:
 - [0040. Portfolio Temporal Ownership And General Rebalance Execution](0040-portfolio-temporal-ownership.md)
 - [0041. Installable Provider HTTP Toolkit](0041-installable-provider-http-toolkit.md)
 - [0042. Position Cash Flows In Portfolio Accounting](0042-position-cash-flow-portfolio-accounting.md)
+- [0043. SDK 9 And MetaTables Client Hard Cut For The 2.0 Package Contract](0043-sdk-9-metatables-client-hard-cut.md)
 
 ## Command Center Decisions
 

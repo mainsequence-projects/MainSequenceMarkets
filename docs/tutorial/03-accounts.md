@@ -49,7 +49,7 @@ virtual_fund = VirtualFund.upsert(
 Use this workflow when publishing and inspecting account positions:
 
 1. Before runtime, run the admin migration flow with
-   `mainsequence migrations upgrade --provider migrations:migration head`
+   `metatables migrations upgrade --provider migrations:migration head`
    so the package schema is finalized.
 2. Attach account holdings and target positions through `msm.start_engine(...)`.
    When target positions can reference portfolios, include `Portfolio` and
@@ -65,7 +65,7 @@ Use this workflow when publishing and inspecting account positions:
 6. Build holdings rows with `build_account_holdings_frame(...)` and attach the
    real combined frame to `AccountHoldings` with `set_frame(...)`. For a single
    account, `set_account_holdings_frame(...)` is the convenience path.
-7. Run the node and unpack the SDK result:
+7. Run the node and unpack the updater result:
    `error_on_last_update, holdings_frame = holdings_node.run(...)`.
 8. Pass only `holdings_frame` to `Account.pretty_print_positions(...)`.
 

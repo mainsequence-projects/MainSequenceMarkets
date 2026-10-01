@@ -104,7 +104,7 @@ before model import. Use that for isolated tests and examples.
 
 Changing `__metatable_namespace__` or `__markets_storage_app__` after the table
 has been migrated and registered is a logical or physical table rotation and
-must go through the SDK migration and registration path.
+must go through the MetaTables migration and registration path.
 
 ```python
 class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
@@ -119,7 +119,7 @@ class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
 
 ## Public API Pattern
 
-After the SDK migration provider has migrated and registered the SQLAlchemy
+After the MetaTables migration provider has migrated and registered the SQLAlchemy
 detail model, application code should attach it through `msm.start_engine(...)`
 and then work through the Pydantic row API:
 
@@ -270,5 +270,5 @@ When changing asset extension code, verify:
   the detail row should not outlive the asset.
 - Pydantic row models, repository helpers, tests, docs, and examples match the
   table identity shape.
-- startup examples call `msm.start_engine(models=[DetailTable])` after SDK
+- startup examples call `msm.start_engine(models=[DetailTable])` after MetaTables
   migrations, not direct registration or row-level schema helpers.

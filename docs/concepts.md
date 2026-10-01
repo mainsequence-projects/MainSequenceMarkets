@@ -62,13 +62,13 @@ fixed through the migration flow below — startup never silently creates them.
 
 ## Migrations before runtime
 
-Schema mutation belongs to the SDK migration command, not to row operations or
+Schema mutation belongs to the `metatables migrations` command, not to row operations or
 `start_engine()`. Run admin migrations to finalize schema **before** application
 startup:
 
 ```bash
-mainsequence migrations current --provider migrations:migration --json
-mainsequence migrations upgrade --provider migrations:migration head
+metatables --json migrations current --provider migrations:migration
+metatables migrations upgrade --provider migrations:migration head
 ```
 
 Only after migrations are current does `start_engine(...)` resolve and bind the

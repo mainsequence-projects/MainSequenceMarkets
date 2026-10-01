@@ -21,7 +21,7 @@ conventions added around asset identity.
 
 Use the generic TimeIndexTableUpdater skill when the task depends on Main Sequence behavior:
 
-- `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`
+- `.agents/skills/metatables/metatables-time-index-table-updates/SKILL.md`
 
 Then use this skill for the ms-markets-specific parts:
 
@@ -130,7 +130,7 @@ should explain the table's market intention, row grain, and downstream use, not
 only the schema. For asset-indexed tables, say what the asset row represents and
 why it is published over time.
 
-Storage must be migrated and registered by the SDK migration
+Storage must be migrated and registered by the MetaTables migration
 provider before a process writes through the TimeIndexTableUpdater. The runtime path,
 usually `msm.start_engine(models=[...])`, attaches the already-finalized
 output metadata from the backend registered table. Do not manually bind a UID,
@@ -147,7 +147,7 @@ identity. `MSM_AUTO_REGISTER_NAMESPACE` still overrides the mixin namespace for
 isolated tests and examples.
 
 Changing the namespace or storage app after migration finalization is a logical
-or physical table-name rotation and must go through the normal SDK migration and
+or physical table-name rotation and must go through the normal MetaTables migration and
 registration path.
 
 Minimal storage-first pattern:
@@ -307,7 +307,7 @@ from typing import ClassVar
 
 from pydantic import Field
 
-from mainsequence.meta_tables import TimeIndexTableUpdateConfig
+from metatables import TimeIndexTableUpdateConfig
 
 
 class AssetIndexedDataNodeConfiguration(TimeIndexTableUpdateConfig):
@@ -415,7 +415,7 @@ Before marking work complete:
   `ASSET_IDENTIFIER_DIMENSION`.
 - The storage table declares the canonical `asset_identifier ->
   AssetTable.unique_identifier` SQLAlchemy `ForeignKey`.
-- The storage table is migrated and registered by the SDK migration
+- The storage table is migrated and registered by the MetaTables migration
   provider before writes.
 - `asset_list` is updater scope, not part of table meaning.
 - Identifier generation derives from the migrated and registered storage table.

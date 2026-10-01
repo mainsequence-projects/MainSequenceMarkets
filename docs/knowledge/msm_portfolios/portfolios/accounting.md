@@ -66,8 +66,8 @@ The responsibilities are strict:
 - `PortfolioEventLedgerStorage` is restart authority. State, cash-flow, weight,
   and value tables are rebuildable projections.
 - All simulated accounting and deterministic restart behavior belongs to
-  `msm_portfolios`. The existing SDK updater, MetaTable, and migration contracts
-  are sufficient.
+  `msm_portfolios`. The existing `metatables` updater, MetaTable, and migration
+  contracts are sufficient.
 
 ## Selecting The Correct Portfolio Path
 
@@ -396,7 +396,7 @@ sequence from a complete active ledger. It validates:
 Changed or deleted source revisions currently stop with an explicit tail-replay
 error. They are never ignored or applied on top of the old state. Appending
 superseding/cancellation revisions and publishing the corrected portfolio tail
-remain `msm_portfolios` work; no SDK feature is needed.
+remain `msm_portfolios` work; no SDK or MetaTables client feature is needed.
 
 ## Read Projections
 
@@ -487,9 +487,9 @@ stale valuation, inverse FX guess, or weight-only fallback.
 ## Migration And Validation
 
 Migration `0017` adds the canonical ledger and rebuildable state/cash-flow
-schemas. Apply it through the repository's existing SDK-managed migration
+schemas. Apply it through the repository's existing MetaTables migration
 deployment workflow before runtime attachment. This is an ordinary deployment
-step, not an SDK development dependency.
+step, not a client development dependency.
 
 For changes to this accounting surface, run at least:
 

@@ -105,7 +105,7 @@ Current local-dev behavior:
   `IndexFixingsStorage` so the API can report restrictive dependencies before
   an index delete is attempted
 - schema mutation must already have been handled by
-  `mainsequence migrations upgrade --provider migrations:migration head`
+  `metatables migrations upgrade --provider migrations:migration head`
 - the app uses the real project/session data source already configured for the
   Main Sequence client session
 - if the session cannot resolve a valid DynamicTable data source, startup
@@ -148,12 +148,18 @@ and release rotation; use the deployment-run interfaces to verify the terminal
 state and logs instead of treating the Git push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
-The published `ms-markets` 1.x package therefore declares
-`mainsequence>=8.1.8` without an exact SDK patch pin. The lower bound enforces
-the SDK 8 CodeRepository hard cut, while the project lock and exported runtime
-requirements select the exact SDK release validated for this repository. Do
-not replace the published dependency with a machine-local `[tool.uv.sources]`
-path override.
+The published `ms-markets` 2.x package therefore declares
+`mainsequence>=9.0.1,<10` and `mainsequence-metatable>=0.1.5,<0.2` without
+exact patch pins. The lower bounds enforce the SDK 9 and MetaTables client
+extraction hard cut, while the project lock and exported runtime requirements
+select the exact releases validated for this repository. Do not replace the
+published dependencies with machine-local `[tool.uv.sources]` path overrides.
+
+The SDK 9 request identity contract applies to authenticated routes: handlers
+read the platform-injected `request.state.user` (canonical `uid` and optional
+`username`). The Index routes derive their actor from that state and treat a
+request without it as anonymous; route code does not parse authentication
+headers or bind SDK request-header context variables.
 
 ## API Discoverability
 

@@ -340,7 +340,7 @@ Do not introduce a second authoritative checkpoint or claim a cross-table
 transaction requirement.
 
 All accounting implementation work belongs to `msm_portfolios`. The existing
-`TimeIndexTableUpdater`, `PlatformTimeIndexMetaTable`, and SDK-managed migration
+`TimeIndexTableUpdater`, `PlatformTimeIndexMetaTable`, and MetaTables-managed migration
 contracts are sufficient; ADR 0042 has no `mainsequence-sdk` blocker.
 
 Read [references/position_accounting.md](references/position_accounting.md)

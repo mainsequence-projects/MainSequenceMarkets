@@ -9,6 +9,11 @@ Project-side package relocation is implemented. SDK support for provider-owned
 `mainsequence-sdk`, and the `ms-markets` provider now passes the active namespace
 version location to the SDK.
 
+Amended by [ADR 0043](0043-sdk-9-metatables-client-hard-cut.md): the same
+provider-owned version locations are now implemented by the `metatables`
+client, and the `mainsequence migrations` commands quoted below are historical;
+use `metatables migrations ... --provider migrations:migration`.
+
 ## Context
 
 ADR 0022 moved `ms-markets` to the SDK-managed Alembic migration workflow.

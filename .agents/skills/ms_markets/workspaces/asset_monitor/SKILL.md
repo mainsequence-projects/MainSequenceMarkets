@@ -41,8 +41,8 @@ Never run:
 Refresh authentication before live platform checks:
 
 ```bash
-.venv/bin/mainsequence project refresh_token --path .
-.venv/bin/mainsequence project current --debug
+.venv/bin/mainsequence refresh-token
+.venv/bin/mainsequence code-repository current --debug
 ```
 
 ## 1. Verify The Widget Registry

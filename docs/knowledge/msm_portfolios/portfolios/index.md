@@ -662,7 +662,7 @@ python examples/msm_portfolios/portfolio_equal_weights_run.py
 The preparation step attaches the static schema, reads the registered
 `ExternalPricesStorage` UID and cadence metadata, builds the
 configured `InterpolatedPricesStorage` class, and uses the active migration
-namespace from the SDK migration provider to find or generate the real dynamic
+namespace from the MetaTables migration provider to find or generate the real dynamic
 Alembic revision. It then runs the dynamic provider upgrade before any portfolio
 TimeIndexTableUpdater writes, even when a stale `TimeIndexMetaTable` metadata row already
 exists. Metadata alone is not considered schema preparation; the physical table

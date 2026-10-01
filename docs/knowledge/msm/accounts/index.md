@@ -25,7 +25,7 @@ MetaTable
   AccountTargetAllocationTable, and PositionSetTable are MetaTables.
 
 PlatformTimeIndexMetaTable
-  SQLAlchemy storage class registered through the SDK migration/catalog lifecycle. It
+  SQLAlchemy storage class registered through the MetaTables migration/catalog lifecycle. It
   describes the published table shape: time index, dimension indexes, column
   dtypes, foreign keys, and storage identity. AccountHoldings use registered
   core `msm` storage classes. Account target-allocation exposure rows also use
@@ -472,7 +472,7 @@ msm.start_engine(
 
 The TimeIndexTableUpdater class itself does not need to be in the MetaTable model list. Its
 storage class does. Add holdings storage to the migration model registry, run
-the SDK migration flow, and attach runtime with `msm.start_engine(...)` before
+the MetaTables migration flow, and attach runtime with `msm.start_engine(...)` before
 constructing or running the TimeIndexTableUpdater. Do not call
 `PlatformTimeIndexMetaTable.register(...)`, manually bind by UID, or call
 `initialize_source_table`.

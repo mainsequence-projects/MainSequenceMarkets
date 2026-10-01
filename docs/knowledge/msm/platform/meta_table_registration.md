@@ -7,12 +7,13 @@ order; TS Manager owns governed execution.
 ## Platform Managed
 
 Use platform-managed models when TS Manager should own physical tables on the
-configured DynamicTable data source. Creating or evolving those tables is now
-handled by the SDK `mainsequence migrations ... --provider migrations:migration`
-admin flow, not by runtime startup.
+configured DynamicTable data source. Creating or evolving those tables is
+handled by the `metatables migrations ... --provider migrations:migration`
+admin flow of the MetaTables client (`mainsequence-metatable`, imported as
+`metatables`), not by runtime startup.
 
-Market models inherit `MarketsMetaTableMixin`, which itself inherits the SDK
-`PlatformManagedMetaTable` base. Time-indexed time-index-table output inherits
+Market models inherit `MarketsMetaTableMixin`, which itself inherits the
+`metatables` `PlatformManagedMetaTable` base. Time-indexed time-index-table output inherits
 `PlatformTimeIndexMetaTable` through `MarketsTimeIndexMetaTableMixin`.
 Do not set `__tablename__` on normal markets MetaTable models. The markets
 mixins assign physical SQLAlchemy table names from the storage app segment, the
@@ -54,23 +55,24 @@ application tables, apply migrations, or repair catalog drift.
 The schema mutation entrypoint is the admin CLI:
 
 ```bash
-mainsequence migrations upgrade --provider migrations:migration head
+metatables migrations upgrade --provider migrations:migration head
 ```
 
 MetaTable registration is migration-owned. Normal applications, examples, and
 runtime bootstrap code should not call model `.register()` methods or local
-registration helpers. The SDK migration provider resolves the package model
+registration helpers. The MetaTables migration provider resolves the package model
 registry, applies Alembic migrations, and registers the MetaTables as part of
 the admin migration flow.
 
-Runtime lookup is keyed by the SQLAlchemy table name because the SDK migration
-flow uses that name as the stable MetaTable identity. For example,
+Runtime lookup is keyed by the SQLAlchemy table name because the MetaTables
+migration flow uses that name as the stable MetaTable identity. For example,
 `AccountTable` resolves as `ms_markets__account`, or as
 `ms_markets__account__mainsequence_examples` when
 `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` is set before model import.
 The registered platform `MetaTable.uid` is only known after migration
-finalization and runtime attachment. Row operations read that UID from the
-bound model when compiling operation scope.
+finalization and runtime attachment. Compiled row operations do not carry
+MetaTable UIDs: each operation selects a DataSource, and the database enforces
+the caller's table permissions on the tables the SQL touches.
 
 Foreign keys between platform-managed MetaTables are normal SQLAlchemy/Alembic
 foreign keys:
@@ -90,8 +92,8 @@ asset_uid = mapped_column(
 )
 ```
 
-The authored target is the SQLAlchemy table/column. The SDK migration provider
-reserves and finalizes the MetaTables, while Alembic renders and applies the
+The authored target is the SQLAlchemy table/column. The MetaTables migration
+provider reserves and finalizes the MetaTables, while Alembic renders and applies the
 physical FK DDL from the SQLAlchemy metadata.
 
 User-facing row operations use the active markets runtime. They do not attach
@@ -130,8 +132,9 @@ msm.start_engine()
 backend rows are treated as missing migration finalization, not as permission to
 register application tables.
 
-The catalog is finalized by the SDK migration upgrade flow. That command applies
-Alembic-rendered SQL through the backend migration endpoint, synchronizes the
+The catalog is finalized by the MetaTables migration upgrade flow. That command
+applies Alembic-rendered SQL with the environment connection selected by the
+MetaTables API, synchronizes the
 provider MetaTable catalog, and runs the `msm` provider hook that writes the
 catalog projection with the current platform UID, namespace, table name,
 description, model name, and SDK version. The catalog is an inventory
@@ -144,7 +147,7 @@ models into normal `MetaTable` models and `PlatformTimeIndexMetaTable` storage
 models, then performs one backend filter lookup per resource type keyed by
 `model.__table__.name`. Runtime attachment does not call `MetaTable.get_by_uid(...)`
 one table at a time and does not introspect physical storage. Physical schema
-validation belongs to the SDK migration flow and explicit diagnostics, not to
+validation belongs to the MetaTables migration flow and explicit diagnostics, not to
 normal application startup.
 
 For narrow explicit startup, pass `models=[...]` to attach only the tables the
@@ -220,7 +223,8 @@ segment. It does not replace the logical MetaTable identifier, does not
 participate in row API selection, and does not create a project-local UID map.
 Set it in the class body before SQLAlchemy maps the table. Changing it after a
 table has been migrated and registered points the model at a different physical
-table name and must go through the normal SDK migration and registration path.
+table name and must go through the normal MetaTables migration and registration
+path.
 
 Projects with several extension tables can define an abstract local mixin once:
 
@@ -298,7 +302,7 @@ Runtime attachment emits structured Main Sequence `info` logs for namespace
 selection, model resolution, direct backend attachment, repository context
 creation, final runtime creation, and cached-runtime reuse. Missing backend
 `MetaTable` or `TimeIndexMetaTable` resources fail startup and must be
-corrected by the SDK migration upgrade flow or an explicit admin/platform
+corrected by the MetaTables migration upgrade flow or an explicit admin/platform
 repair.
 
 `msm.start_engine(...)` does not accept labels because initialization should
@@ -374,7 +378,7 @@ runtime = msm.start_engine(
 External mode does not import application ORM code into the backend. The
 admin migration/registration flow registers a neutral table contract derived
 from the `msm` SQLAlchemy model metadata. If an external registration flow has
-to provide already registered FK targets explicitly, pass them through the SDK's
+to provide already registered FK targets explicitly, pass them through the
 model-keyed `target_meta_tables={TargetModel: meta_table_uid}` input; do not key
 runtime state by SQLAlchemy table names.
 
@@ -394,6 +398,30 @@ context = MarketsRepositoryContext(
 asset_table = context.table("Asset")
 ```
 
-Operations compiled by repositories use the `compiled-sql.v1` platform protocol.
-Application code keeps SQLAlchemy ergonomics; TS Manager receives SQL, bound
-parameters, scope tables, limits, and operation kind.
+Operations compiled by repositories use the `compiled-sql.v1` platform protocol
+through `metatables.compiled_sql.v1`. Application code keeps SQLAlchemy
+ergonomics; the MetaTables API receives SQL, bound parameters, the selected
+DataSource UID, the dialect, limits, and the operation kind. There is no
+declared table scope: the API executes as the authenticated user and the
+database enforces that user's permissions on the tables the SQL touches.
+
+```python
+from sqlalchemy import select
+
+from msm.models import AssetTable
+from msm.repositories.base import compile_markets_statement, execute_markets_operation
+
+operation = compile_markets_statement(
+    select(AssetTable).where(AssetTable.unique_identifier == "example-asset-btc"),
+    context=context,
+    operation="select",
+)
+result = execute_markets_operation(operation, context=context)
+```
+
+`MarketsRepositoryContext.data_source_uid` selects the DataSource explicitly.
+When it is `None`, and when no `dialect=` is passed, the compiler uses the
+DataSource and dialect selected by the MetaTables API runtime. A MetaTable UID is
+never a DataSource UID. `operation="select"` selects read execution; the other
+operation labels select write execution. Limits, offsets, statement deadlines,
+and the HTTP `timeout` are preserved from the context.

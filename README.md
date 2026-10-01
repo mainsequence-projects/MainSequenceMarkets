@@ -32,7 +32,7 @@ pricing imports from `msm_pricing`.
 ## Project Status
 
 - Status: initial scaffold and SDK extraction
-- Current release line: `1.x`
+- Current release line: `2.x`
 - Documentation: [Documentation Site](https://mainsequence-projects.github.io/MainSequenceMarkets/)
 - Open issues: [GitHub Issues](https://github.com/mainsequence-projects/MainSequenceMarkets/issues)
 - Release history: [CHANGELOG.md](https://github.com/mainsequence-projects/MainSequenceMarkets/blob/main/CHANGELOG.md)
@@ -69,8 +69,9 @@ Main package areas:
 - `msm.repositories`: compiled persistence operations over market-domain models
 - `msm.services`: application-level orchestration over repositories, including
   asset lookup and OpenFIGI service helpers
-- `msm` CLI: package maintenance helpers such as explicit agent-skill copying
-  and SDK-managed MetaTable migration commands
+- `msm` CLI: package maintenance helpers such as explicit agent-skill copying;
+  MetaTable migrations run through the `metatables migrations` CLI with
+  `--provider migrations:migration`
 
 Repository areas:
 
@@ -106,9 +107,12 @@ Recommended entry points:
 
 ## Quick Start
 
-`ms-markets` 1.x requires Python 3.13 and Main Sequence SDK `>=8.1.8`.
-SDK 6 and SDK 7 are not supported; install a 0.x `ms-markets` release when
-maintaining an older Main Sequence project.
+`ms-markets` 2.x requires Python 3.13, Main Sequence SDK `>=9.0.1,<10`, and
+the MetaTables client `mainsequence-metatable>=0.1.5,<0.2`, which is imported
+as `metatables`. SDK 8 and earlier are not supported; install a 1.x
+`ms-markets` release when maintaining an SDK 8 project. See
+[ADR 0043](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0043-sdk-9-metatables-client-hard-cut/)
+and the 2.0.0 changelog entry for the breaking changes.
 
 Install the package from this repository in editable mode:
 
@@ -226,8 +230,11 @@ Runtime dependencies are declared in
 [pyproject.toml](https://github.com/mainsequence-projects/MainSequenceMarkets/blob/main/pyproject.toml).
 The core stack starts with:
 
-- `mainsequence>=8.1.8` for the SDK-8 platform integration and deterministic
-  updater-configuration duration hashing contract
+- `mainsequence>=9.0.1,<10` for identity, login, Git source context,
+  CodeRepository, jobs, and agents
+- `mainsequence-metatable>=0.1.5,<0.2` (import `metatables`) for MetaTables,
+  time-index table updaters, governed compiled SQL, and application-owned
+  Alembic migrations
 - `SQLAlchemy` for market-domain ORM models
 - `pydantic` for typed configuration and serialized row contracts
 - `pandas` and `numpy` for tabular market data

@@ -1,8 +1,10 @@
 # Getting Started
 
-`ms-markets` 1.x requires Python 3.13 and Main Sequence SDK `>=8.1.8`. It
-cannot run against an SDK 6 or SDK 7 backend contract and does not provide
-compatibility aliases or a mixed-version mode.
+`ms-markets` 2.x requires Python 3.13, Main Sequence SDK `>=9.0.1,<10`, and
+the MetaTables client `mainsequence-metatable>=0.1.5,<0.2` (imported as
+`metatables`). It cannot run against an SDK 8 or earlier contract and does not
+provide compatibility aliases or a mixed-version mode. Install a 1.x
+`ms-markets` release when maintaining an SDK 8 project.
 
 Install the project in editable mode with development dependencies:
 
@@ -73,7 +75,7 @@ Implementation decisions should be recorded under `docs/ADR`.
 Start with the typed row API for simple workflows:
 
 ```bash
-mainsequence migrations upgrade --provider migrations:migration head
+metatables migrations upgrade --provider migrations:migration head
 ```
 
 ```python
@@ -112,8 +114,8 @@ asset_table = runtime.table("Asset")
 
 That startup preflight resolves already-registered backend `MetaTable` and
 `TimeIndexMetaTable` resources by each selected model's SQLAlchemy table name.
-Missing backend tables fail startup and should be fixed through the SDK
-migration upgrade flow.
+Missing backend tables fail startup and should be fixed through the
+MetaTables migration upgrade flow.
 
 For development examples that should use an example namespace, set
 `MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`, then call

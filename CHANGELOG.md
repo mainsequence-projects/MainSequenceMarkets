@@ -7,6 +7,90 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-01
+
+Breaking release for Main Sequence SDK 9, which moved MetaTables out of the SDK
+into the separate `mainsequence-metatable` client (imported as `metatables`).
+See
+[ADR 0043](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0043-sdk-9-metatables-client-hard-cut/).
+
+### Changed
+
+- **Breaking:** requires `mainsequence>=9.0.1,<10` and
+  `mainsequence-metatable>=0.1.5,<0.2`. SDK 8 and earlier are unsupported; stay
+  on `ms-markets` 1.x for SDK 8 projects. Dependent packages declare
+  `ms-markets>=2,<3`. `mainsequence-metatable` requires SQLAlchemy 2.1, whose
+  PostgreSQL compiler renders typed bind casts such as
+  `%(direction_0)s::SMALLINT` in compiled SQL.
+- **Breaking:** MetaTables imports moved from `mainsequence.meta_tables`,
+  `mainsequence.client.metatables`, `mainsequence.client.dtype_codec`, and
+  `mainsequence.client.BaseUpdateStatistics` to the `metatables` public exports;
+  `mainsequence.meta_tables.time_index_table_updates.<module>` moved to
+  `metatables.updaters.<module>`; migration helpers moved to
+  `metatables.migrations`; the compiler moved to `metatables.compiled_sql.v1`.
+  Types in ms-markets signatures (`MetaTable`, `TimeIndexMetaTable`,
+  `MetaTableCompiledSQLOperation`, `MetaTableOperationLimits`,
+  `UpdateStatistics`, `BaseUpdateStatistics`, `TimeIndexTableUpdater`,
+  `TimeIndexTableRef`, `PlatformManagedMetaTable`, `PlatformTimeIndexMetaTable`,
+  and the updater configuration classes) are now the `metatables` classes.
+- **Breaking:** `msm.repositories.base.compile_markets_statement(statement, *,
+  context, operation, models, access)` is now
+  `compile_markets_statement(statement, *, context, operation, dialect=None)`.
+  The `models=` and `access=` parameters were removed with the SQL operation
+  scope; passing them raises `TypeError`. The compiled operation carries
+  `data_source_uid` at top level and has no `scope`. When
+  `context.data_source_uid` or `dialect` is `None`, the compiler resolves them
+  from the MetaTables API runtime. `data_source_uid`, limits, offsets,
+  statement deadlines, HTTP timeouts, and the `select` (read) versus other
+  labels (write) execution semantics are unchanged.
+- **Breaking:** `MarketsRepositoryContext` no longer accepts or exposes
+  `reserved_policy` and no longer has `scope_table(...)`.
+  `MarketsMetaTableHandle` no longer has the `reserved_policy` field,
+  `scope_table(...)`, or `meta_table_uid_for_model(...)`. Kept:
+  `MarketsRepositoryContext(limits=, data_source_uid=, timeout=, namespace=)`,
+  `MarketsRepositoryContext.meta_table_uid_for_model(...)`,
+  `MarketsRepositoryContext.table(...)`, and `MarketsMetaTableHandle.meta_table_uid`.
+- **Breaking:** `AssetReferenceExecutor` and `PortfolioReadExecutor` callbacks
+  passed as `executor=` to `asset_reference_details(...)`,
+  `asset_reference_details_by_uids(...)`, `latest_portfolio_weights(...)`, and
+  `portfolio_values(...)` are called as `executor(statement)` instead of
+  `executor(statement, models)`.
+- **Breaking:** MetaTable migration admin commands moved from
+  `mainsequence migrations ...` to
+  `metatables migrations ... --provider migrations:migration`;
+  `current --json` is now `metatables --json migrations current`, and
+  `revision` autogenerates by default. The provider identity is unchanged
+  (package `msm`, namespace `mainsequence.markets`, version table
+  `ms_markets__alembic_version`, head `0017`), and no revision was added.
+- **Breaking:** Index FastAPI routes resolve the caller from the
+  platform-injected `request.state.user` (SDK 9 request identity) instead of
+  binding the removed `_CURRENT_AUTH_HEADERS` and `_CURRENT_USER` SDK context
+  variables. A request without injected identity is anonymous.
+
+### Removed
+
+- Removed `MetaTableOperationScopeTable` usage and every scope-only helper and
+  parameter. No compatibility classes or aliases are provided.
+- Removed the dead `metatable_configured_tablename` usage from
+  `examples/msm/platform/inspect_markets_metatable_models.py`; the helper has
+  no `metatables` equivalent and the example already reports the configured
+  physical `table_name`.
+
+### Added
+
+- Added the version-matched MetaTables client skills under
+  `.agents/skills/metatables/`, copied with
+  `metatables copy-metatables-skills --path .`.
+
+### Documentation
+
+- Updated the README, getting started, concepts, tutorials, knowledge guides,
+  FastAPI notes, examples, packaged `ms_markets` agent skills, VS Code tasks and
+  launch configurations, and the managed AGENTS.md section to the SDK 9 and
+  `metatables` imports and commands. Added ADR 0043 and marked ADR 0022, 0024,
+  and 0039 as amended or superseded.
+- Refreshed the repository lock and exported requirements.
+
 ## [1.0.16] - 2026-09-12
 
 ### Added

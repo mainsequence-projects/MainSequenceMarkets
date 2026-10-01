@@ -32,7 +32,7 @@ FixingRatesNode
 
 The EOD pricing storage tables declare `__cadence__ = "1d"` on the
 `PlatformTimeIndexMetaTable` storage class. Cadence is first-class
-time-indexed table metadata and participates in SDK storage identity, so it
+time-indexed table metadata and participates in MetaTables storage identity, so it
 does not belong on `IndexFixingConfiguration`.
 
 `MSDataInterface.get_historical_fixings(...)` reads only the requested bounded

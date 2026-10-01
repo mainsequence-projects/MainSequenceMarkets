@@ -10,7 +10,7 @@ Use this skill for the ms-markets runtime attachment layer: `msm.start_engine`,
 MetaTable binding, and row API startup requirements.
 
 This skill is not the migration skill. Schema changes, Alembic revision
-generation, and MetaTable registration are handled by the Main Sequence SDK
+generation, and MetaTable registration are handled by the MetaTables
 migration provider outside this skill.
 
 ## Core Rule
@@ -49,17 +49,17 @@ create schemas, or repair schema drift.
 - Typed row API entry wiring for MetaTable-backed Pydantic rows that subclass
   `MarketsMetaTableRow` and point at a registered SQLAlchemy model through
   `__table__`.
-- The boundary between SDK-managed schema work and ms-markets runtime
+- The boundary between MetaTables-managed schema work and ms-markets runtime
   attachment.
 
 ## This Skill Does Not Own
 
-- SDK MetaTable migration commands, Alembic revisions, render/apply behavior, or
+- MetaTables migration commands, Alembic revisions, render/apply behavior, or
   provider registration.
 - Generic Main Sequence MetaTable semantics; use
-  `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`.
+  `.agents/skills/metatables/metatables-meta-tables/SKILL.md`.
 - Generic TimeIndexTableUpdater update-process design; use
-  `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`.
+  `.agents/skills/metatables/metatables-time-index-table-updates/SKILL.md`.
 - Asset schema modeling details; use
   `.agents/skills/ms_markets/assets/asset_model_extension/SKILL.md`.
 - Asset-indexed TimeIndexTableUpdater frame semantics; use
@@ -85,7 +85,7 @@ For pricing bootstrap changes, also inspect:
 
 ## User-Facing Startup Pattern
 
-Operators should run the SDK migration provider before application startup.
+Operators should run the MetaTables migration provider before application startup.
 Examples and application code should then attach once, then use row APIs:
 
 ```python
@@ -144,7 +144,7 @@ project-owned `__metatable_namespace__` and, when needed, a project-owned
 `__markets_base_identifier__` as the bare concept name. ms-markets combines the
 mixin namespace and base identifier into the globally unique MetaTable
 identifier. This does not affect row API selection and does not remove the need
-for SDK migration/provider registration before runtime startup.
+for MetaTables migration/provider registration before runtime startup.
 
 `MSM_AUTO_REGISTER_NAMESPACE` still overrides the project mixin namespace when
 it is set before model import. Use that for isolated tests and examples. Do not
@@ -179,7 +179,7 @@ project namespace default and test namespace override are explicit.
 
 Set `__metatable_namespace__` and `__markets_storage_app__` before SQLAlchemy
 maps the table. Changing either after migration finalization points the model at
-a different logical or physical table and requires the normal SDK migration and
+a different logical or physical table and requires the normal MetaTables migration and
 registration path.
 
 When adding a new built-in markets MetaTable model:
@@ -191,12 +191,12 @@ When adding a new built-in markets MetaTable model:
 4. Export the model from its package.
 5. Add it to `markets_sqlalchemy_models()` in dependency order.
 6. Add or update row APIs only after the storage model is in the graph.
-7. Ensure the SDK migration provider includes the model outside this skill.
+7. Ensure the MetaTables migration provider includes the model outside this skill.
 8. Update docs and tests so examples call `msm.start_engine(...)` only after
    migrations are already handled.
 
 When adding time-index-table output, add the `PlatformTimeIndexMetaTable` storage class
-to the model graph and ensure SDK migration provider coverage outside this
+to the model graph and ensure MetaTables migration provider coverage outside this
 skill. Do not rely on constructing a TimeIndexTableUpdater to register its storage.
 
 ## Typed Row API Entries
@@ -235,7 +235,7 @@ Rules:
 - `__required_tables__` lists the models that must be present in the active
   runtime before row operations execute.
 - `__upsert_keys__` names the table columns used for upsert conflict handling.
-- The SDK migration provider registers or refreshes the SQLAlchemy model's
+- The MetaTables migration provider registers or refreshes the SQLAlchemy model's
   platform MetaTable before runtime.
 - `msm.start_engine(...)` attaches it; the row class does not register, attach,
   or discover schemas.
@@ -268,13 +268,13 @@ When reviewing or implementing extension support, verify the ADR 0018 target:
 - Custom row API classes remain row-operation wrappers; startup still goes
   through `msm.start_engine(...)`.
 - Missing backend MetaTable resources fail startup and are repaired through the
-  normal SDK migration path.
+  normal MetaTables migration path.
 
 ## Review Checklist
 
 - User docs/examples call `msm.start_engine(...)`, not `*.create_schemas()`.
 - New runtime models are present in the model graph in dependency order.
-- SDK migration/provider work is handled outside this skill.
+- MetaTables migration/provider work is handled outside this skill.
 - Runtime attachment remains explicit and startup-scoped.
 - Row APIs do not attach, register, or discover schemas on first use.
 - time-index-table output is migrated and registered before writes.

@@ -1,30 +1,35 @@
 ---
 name: mainsequence-markets-metatable-migrations
-description: Use this skill when an ms-markets project extension needs SDK-managed MetaTable migration wiring. MetaTable migrations are handled by mainsequence-sdk; this skill only covers project table/spec refresh through after_register_metatables.
+description: Use this skill when an ms-markets project extension needs MetaTables-managed migration wiring. MetaTable migrations are handled by the metatables client (mainsequence-metatable); this skill only covers project table/spec refresh through after_register_metatables.
 ---
 
 # Main Sequence Markets MetaTable Migration Extensions
 
-MetaTable migrations are handled by `mainsequence-sdk`.
+MetaTable migrations are handled by the MetaTables client: the
+`mainsequence-metatable` distribution, imported as `metatables`. Main Sequence
+SDK 9 no longer ships `mainsequence.meta_tables` or the `mainsequence
+migrations` commands.
 
-Use the SDK migration system for schema changes and MetaTable registration:
+Use the application-owned MetaTables migration system for schema changes and
+MetaTable registration:
 
-- `mainsequence.meta_tables.migrations.AlembicMetaTableMigration`
-- `mainsequence.meta_tables.migrations.build_alembic_version_metatable`
-- `mainsequence.meta_tables.migrations.build_metatable_migration_provider`
-- `mainsequence.meta_tables.migrations.build_metatable_model_registry`
-- `mainsequence.meta_tables.migrations.metadata_for_models`
-- `mainsequence.meta_tables.migrations.run_mainsequence_alembic_env`
-- the SDK MetaTable migration CLI
-- the SDK migration tutorial and knowledge docs
-- the project-local SDK migration provider, when the project defines one
+- `metatables.migrations.AlembicMetaTableMigration`
+- `metatables.migrations.build_alembic_version_metatable`
+- `metatables.migrations.build_metatable_migration_provider`
+- `metatables.migrations.build_metatable_model_registry`
+- `metatables.migrations.metadata_for_models`
+- `metatables.migrations.run_mainsequence_alembic_env`
+- the `metatables migrations ... --provider <package>.migrations:migration` CLI
+- the `metatables-migrations` and `metatables-upgrade-legacy-app` skills that
+  `metatables copy-metatables-skills` installs under `.agents/skills/metatables/`
+- the project-local migration provider, when the project defines one
 
 This skill does not own schema migration commands, migration engines, registry
 rows, DDL apply behavior, or built-in ms-markets table registration.
 
 ## Core Rule
 
-The default path is the SDK helper/scaffold path. Do not hand-roll namespace
+The default path is the `metatables.migrations` helper/scaffold path. Do not hand-roll namespace
 slugging, Alembic version-table subclasses, provider model dedupe, Alembic
 `env.py` online/offline boilerplate, or revision templates in ms-markets.
 
@@ -32,7 +37,7 @@ The only ms-markets-specific extension point here is
 `after_register_metatables`.
 
 Use `after_register_metatables` only when the project defines project tables
-that need project table specs refreshed after SDK MetaTable registration.
+that need project table specs refreshed after MetaTable registration.
 
 Do not add built-in ms-markets tables to `after_register_metatables`.
 
@@ -42,18 +47,28 @@ Do not add project table specs when the project does not define project tables.
 
 Before changing project extension migration wiring, inspect:
 
-1. `mainsequence-sdk/docs/tutorial/metatable_migrations.md`
-2. `mainsequence-sdk/docs/knowledge/meta_tables/migrations.md`
-3. `mainsequence-sdk/mainsequence/meta_tables/migrations.py`
+1. `.agents/skills/metatables/metatables-migrations/SKILL.md` and its
+   `references/docs/client/define-and-migrate-tables.md`
+2. `.agents/skills/metatables/metatables-upgrade-legacy-app/SKILL.md` when the
+   project still imports `mainsequence.meta_tables` or calls
+   `mainsequence migrations`
+3. `metatables migrations --help` for the installed client's command shape
 4. the project-local `AlembicMetaTableMigration` provider, if present
 5. the project code that defines project table specs, if present
 
+Run provider commands with the project's Python provider reference, for example
+`metatables migrations upgrade --provider my_project.migrations:migration head`.
+The MetaTables API needs no provider code, allowlist, or
+`application_migration_providers` alias. Keep the provider package, namespace,
+model registry, version-table binding, revision IDs, and applied revision
+history when upgrading the client.
+
 ## Expected Project Pattern
 
-The project SDK provider owns the migrated model list:
+The project migration provider owns the migrated model list:
 
 ```python
-from mainsequence.meta_tables.migrations import (
+from metatables.migrations import (
     build_alembic_version_metatable,
     build_metatable_migration_provider,
 )
@@ -84,13 +99,13 @@ migration = build_metatable_migration_provider(
 registered by that provider.
 
 It must not register built-in ms-markets tables, infer the built-in model graph,
-or mutate schema. The SDK provider already owns schema work.
+or mutate schema. The MetaTables provider already owns schema work.
 
 ## Review Checklist
 
-- The provider is an SDK `AlembicMetaTableMigration`.
-- Provider construction uses SDK helpers unless a documented SDK helper gap
-  requires a direct constructor.
+- The provider is a `metatables.migrations.AlembicMetaTableMigration`.
+- Provider construction uses `metatables.migrations` helpers unless a
+  documented helper gap requires a direct constructor.
 - Project tables are listed in the project provider.
 - Default PostgreSQL `public` tables are authored as `schema=None`, not
   `schema="public"`.

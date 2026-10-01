@@ -8,6 +8,12 @@ Amended by [ADR 0024](0024-namespace-scoped-alembic-version-locations.md) for
 the top-level `src/migrations/` provider package and namespace-scoped revision
 locations.
 
+Amended by [ADR 0043](0043-sdk-9-metatables-client-hard-cut.md): the provider
+interfaces now come from the `metatables` client (`mainsequence-metatable`) and
+the admin commands are `metatables migrations ... --provider
+migrations:migration`. The `mainsequence migrations` commands quoted below are
+historical.
+
 ## Context
 
 `ms-markets` originally explored a project-owned MetaTable migration runner.

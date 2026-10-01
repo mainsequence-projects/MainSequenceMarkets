@@ -17,12 +17,12 @@ It does not create or evolve schema.
 Run admin migrations before application startup:
 
 ```bash
-mainsequence migrations current --provider migrations:migration --json
-mainsequence migrations upgrade --provider migrations:migration head
+metatables --json migrations current --provider migrations:migration
+metatables migrations upgrade --provider migrations:migration head
 ```
 
 See [Migrations](../knowledge/msm/migrations/index.md)
-for the package registry, SDK Alembic provider, upgrade flow, schema
+for the package registry, MetaTables Alembic provider, upgrade flow, schema
 finalization, and runtime attachment lifecycle.
 
 ## Runtime setup

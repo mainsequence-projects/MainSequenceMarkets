@@ -17,9 +17,9 @@ account holdings into account-owned virtual portfolio views.
 Use these adjacent skills when the task crosses their boundary:
 
 - Generic MetaTable behavior:
-  `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`
+  `.agents/skills/metatables/metatables-meta-tables/SKILL.md`
 - Generic TimeIndexTableUpdater behavior:
-  `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`
+  `.agents/skills/metatables/metatables-time-index-table-updates/SKILL.md`
 - Asset identity and asset detail rows:
   `.agents/skills/ms_markets/assets/asset_model_extension/SKILL.md`
 - Asset-indexed TimeIndexTableUpdater conventions:
@@ -112,7 +112,7 @@ Rules:
 
 ## Runtime Attachment
 
-Examples and scripts must run after the SDK migration provider has registered
+Examples and scripts must run after the MetaTables migration provider has registered
 the required MetaTables. Application startup then attaches the
 markets runtime before row operations or TimeIndexTableUpdater writes:
 

@@ -623,7 +623,7 @@ Use this workflow when adding or reviewing a market-domain relational table:
    order.
 6. Generate or update a normal Alembic revision under the active namespace
    directory in `src/migrations/versions/`.
-7. Use the SDK migration upgrade flow for schema mutation, then
+7. Use the MetaTables migration upgrade flow for schema mutation, then
    `msm.start_engine(...)` for runtime attachment. Do not call model
    `.register()` methods or local registration helpers from application code.
 
@@ -645,7 +645,7 @@ application code should use typed row classes such as
 `runtime.context` only for lower-level repository or service internals.
 
 See `examples/msm/platform/inspect_markets_metatable_models.py` for a small offline
-inspection example that prints the SDK-derived table names. See
+inspection example that prints the configured table names. See
 [Markets Models](../knowledge/msm/models/index.md) for the model reference.
 
 ### Project-local MetaTable extensions

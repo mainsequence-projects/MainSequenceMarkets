@@ -34,6 +34,16 @@ construction explicit and testable.
 Repository functions should accept a `MarketsRepositoryContext` when they need
 platform metadata or execution settings.
 
+`compile_markets_statement(statement, *, context, operation, dialect=None)`
+compiles SQLAlchemy SQL with `metatables.compiled_sql.v1`. It sends SQL and one
+DataSource, never a declared table list: the database enforces the caller's
+table permissions on the tables the SQL touches. The context supplies
+`data_source_uid` and limits, and `execute_markets_operation(...)` applies the
+context `timeout`. Do not add table-scope parameters, SQL parsing, or local
+permission checks to repository helpers. See
+[MetaTable Registration](../platform/meta_table_registration.md) for the
+DataSource and dialect selection rules.
+
 ## Extension Notes
 
 Add generic behavior in `crud` only when it applies across models. Add

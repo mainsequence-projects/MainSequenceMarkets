@@ -31,7 +31,7 @@ market asset.
 
 ```text
 +-----------------------------+           generic TimeIndexTableUpdater        +-----------------------------+
-| mainsequence.meta_tables.   |---------------------------------->| TimeIndexMetaTable storage   |
+| metatables.                 |---------------------------------->| TimeIndexMetaTable storage   |
 | TimeIndexTableUpdater                    |                                   | registered from storage cls |
 |-----------------------------|                                   |-----------------------------|
 | physical_table_name         |                                   | published table             |
@@ -114,7 +114,7 @@ from typing import ClassVar
 
 from pydantic import Field
 
-from mainsequence.meta_tables import TimeIndexTableUpdateConfig
+from metatables import TimeIndexTableUpdateConfig
 
 
 class AssetIndexedDataNodeConfiguration(TimeIndexTableUpdateConfig):
@@ -148,8 +148,8 @@ hashed; if it is not hashed, it must not be a config field.
 
 ## Set-Based Observation Reads
 
-`AssetIndexedDataNode.get_last_observation(...)` preserves the generic SDK
-dimension-query contract. Callers may pass `dimension_filters`,
+`AssetIndexedDataNode.get_last_observation(...)` preserves the generic
+MetaTables updater dimension-query contract. Callers may pass `dimension_filters`,
 `index_coordinates`, and `dimension_range_map` together while the markets layer
 validates and applies the optional `asset_list` scope. Multidimensional range
 coordinates must contain every identity dimension from the storage table.
@@ -163,7 +163,7 @@ one request per asset.
 In the current storage-first architecture, the schema contract lives on a
 storage class
 (`PlatformTimeIndexMetaTable` / `MarketsTimeIndexMetaTableMixin`), not on the
-TimeIndexTableUpdater configuration. The canonical asset foreign key is an SDK
+TimeIndexTableUpdater configuration. The canonical asset foreign key is a
 SQLAlchemy `ForeignKey(...)` declaration on the storage class
 `asset_identifier` column. The TimeIndexTableUpdater uses its storage class through
 `_required_output_table()`.
@@ -245,7 +245,7 @@ class ExampleAssetMetric(AssetTimestampedDataNode):
         return self.set_frame(self.build_frame(rows))
 ```
 
-Add the storage class to the markets migration model registry so the SDK
+Add the storage class to the markets migration model registry so the MetaTables
 migration provider registers it after the `Asset` MetaTable dependency. Runtime
 startup can then attach it with `msm.start_engine(models=[...])`. Do not call
 `PlatformTimeIndexMetaTable.register(...)`, manually bind storage by UID, or
@@ -400,7 +400,7 @@ parallel runs that must not collide on a shared backend.
 - `src/msm/data_nodes/utils/stamped.py`: shared timestamped frame behavior
   validated against the registered `output_table`.
 - `src/msm/data_nodes/utils/storage_schema.py`: derives column dtype maps from a
-  storage class via the SDK `dtype_codec`.
+  storage class via `metatables.dtype_codec`.
 - `src/msm/data_nodes/utils/namespaces.py`: shared markets hash-namespace
   defaulting for DataNodes.
 - `src/msm/data_nodes/assets/snapshots.py`: `AssetSnapshot`,

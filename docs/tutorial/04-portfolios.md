@@ -32,7 +32,7 @@ optional portfolio `Index`, publishes example OHLCV source bars to
 `Portfolio` row. The price configuration stores the
 `ExternalPricesStorage` TimeIndexMetaTable UID on `InterpolatedPricesConfig`, so
 the explicit upstream interpolation node can recover the price source through
-the SDK TimeIndexTableRef lookup path. The portfolio configuration receives that
+the `metatables` TimeIndexTableRef lookup path. The portfolio configuration receives that
 `InterpolatedPrices` node as `valuation_source_instance` and sets
 `valuation_column="close"`; `PortfoliosDataNode` does not create interpolation
 storage internally. Real portfolio extensions can pass any compatible
@@ -112,7 +112,7 @@ does not add a branch or date generator to `PortfolioRebalance`,
 For a bounded five-percent trailing daily participation policy:
 
 ```python
-from mainsequence.meta_tables import TimeIndexTableRef
+from metatables import TimeIndexTableRef
 from msm_portfolios.rebalance_strategy import (
     TrailingAverageDailyVolumeParticipation,
 )

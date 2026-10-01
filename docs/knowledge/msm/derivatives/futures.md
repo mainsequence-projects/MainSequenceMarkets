@@ -175,7 +175,7 @@ FutureAssetDetailsTable
 ```
 
 Production code normally assumes these MetaTables already exist and the catalog
-has been finalized by the SDK migration upgrade flow. Application startup can
+has been finalized by the MetaTables migration upgrade flow. Application startup can
 attach only this dependency set explicitly:
 
 ```python

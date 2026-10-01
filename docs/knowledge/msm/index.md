@@ -27,8 +27,8 @@ integration live in `msm_pricing`.
   order, event, and trade DataNodes.
 - [Indexes](indices/index.md): canonical identity, formula/custom calculation,
   cadence publication, derivative underlyings, and pricing references.
-- [Migrations](migrations/index.md): admin-owned schema evolution through the SDK
-  Alembic provider and automatic catalog finalization.
+- [Migrations](migrations/index.md): admin-owned schema evolution through the
+  MetaTables Alembic provider and automatic catalog finalization.
 - [Models](models/index.md): SQLAlchemy MetaTable declarations and registration
   order for core market tables.
 - [Platform](platform/index.md): Main Sequence integration primitives,

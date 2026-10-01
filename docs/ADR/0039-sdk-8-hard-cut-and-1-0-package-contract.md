@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted and implemented for `ms-markets` 1.0.1.
+Accepted and implemented for `ms-markets` 1.0.1. Superseded for 2.x by
+[ADR 0043](0043-sdk-9-metatables-client-hard-cut.md).
 
 ## Context
 
