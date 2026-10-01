@@ -80,7 +80,7 @@ dropped tables. Revision files already applied remain immutable.
 
 ## MetaTables system migrations
 
-The API continues to own `api.backend.migrations`, `metatables_catalog_version`
+The API continues to own `metatables.api.backend.migrations`, `metatables_catalog_version`
 and the explicit admin bootstrap/upgrade operation in Settings. Application
 migration commands do not invoke that operation. Applications must keep their
 physical names and version tables separate from reserved system objects.

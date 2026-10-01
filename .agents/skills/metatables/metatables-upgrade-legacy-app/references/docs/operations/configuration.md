@@ -5,14 +5,16 @@ implement a second platform HTTP client or token exchange.
 
 | Setting | Consumer | Purpose |
 | --- | --- | --- |
-| `METATABLES_API_URL` | Python client / CLI | Explicit base URL; unset/empty selects automatic discovery from the packaged API workflow. |
+| `METATABLES_API_URL` | Python client / CLI | Local development only: loopback HTTP(S) base URL, set automatically by `--local` or `configure_local_client()`. Unset/empty resolves the packaged API deployment in the caller's SDK-owned Environment. Hosted URL overrides are rejected. |
 | `local_mode_available` in `configuration.yaml` | API / launcher | Enables developer Local/Hosted selection; strict boolean, default false. |
 | `METATABLES_LOCAL_TOKEN` | Local launcher and client | Private ASCII token of at least 40 characters. |
 | `METATABLES_LOCAL_ALLOWED_ORIGINS` | Local API | Comma-separated exact loopback HTTP(S) origins with explicit ports; empty by default. |
 | `METATABLES_LOCAL_STORAGE_DIR` | Local API | Root for the checkout's local runtime SQLite file, shared across Git branches; defaults to `~/.local/share/metatables`. |
 
-Client discovery uses the name derived from the API automatic-deployment file,
-not a deployment-name environment variable. It caches only the resolved endpoint
+Client discovery uses the name derived from the API automatic-deployment file
+and the caller's resolved Organization Environment. Identical names in other
+Environments do not require URL configuration or renaming. The cache is scoped
+to the platform and Environment and retains only the resolved endpoint
 and target identity; `/runtime-context/` continues to supply fresh DataSource
 state. See [client connection](../client/installation-and-connection.md).
 

@@ -16,7 +16,7 @@ For upgrading older client imports, SQL scopes or provider integration, use the
 [legacy upgrade skill](../metatables-upgrade-legacy-app/SKILL.md). This skill
 covers authoring and running application schema revisions.
 
-In a copied skill, resolve the `docs/` and `examples/` paths below relative to
+In a copied skill, resolve the `docs/` and `src/metatables/examples/` paths below relative to
 this skill's `references/` directory. The client CLI bundles the matching version's
 guides and examples there, including their linked documents. In the MetaTables
 source checkout, read the same paths from the repository root.
@@ -28,7 +28,7 @@ verification within the requested scope.
 
 Read `docs/client/define-and-migrate-tables.md`,
 `docs/concepts/table-contracts-and-lifecycle.md`, and the tested
-`examples/tables.py`. Managed authoring is migration-first: define SQLAlchemy
+`src/metatables/examples/tables.py`. Managed authoring is migration-first: define SQLAlchemy
 models, select a provider, author and apply a revision with the client, then
 finalize catalog bindings through the API. Use the
 [table skill](../metatables-meta-tables/SKILL.md) for contract design.
@@ -106,7 +106,7 @@ and finalizes contracts through the API. Treat connection material as private.
 
 Use the application's setup entry point when available. Python code can call
 `metatables.upgrade_application("ledger.migrations:migration")`;
-`examples/scripts/setup_metatables.py` shows the pattern. Remove the retired
+`src/metatables/examples/scripts/setup_metatables.py` shows the pattern. Remove the retired
 `application_migration_providers` setting and use Python references instead of aliases.
 Application migration histories remain separate from API system migrations.
 

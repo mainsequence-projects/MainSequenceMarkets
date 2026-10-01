@@ -22,8 +22,8 @@ In another terminal in the same project and Python environment:
 ```bash
 metatables --local runtime status
 metatables --local runtime initialize
-metatables --local migrations upgrade --provider examples.local_app.migrations:migration
-python -m examples.local_app
+metatables --local migrations upgrade --provider metatables.examples.local_app.migrations:migration
+python -m metatables.examples.local_app
 metatables --local meta-table list
 ```
 
@@ -39,13 +39,13 @@ selected dialect, upserts one note, and reads it back. Ordinary reads and writes
 the existing row before any write:
 
 ```bash
-python -m examples.local_app --read-only
+python -m metatables.examples.local_app --read-only
 ```
 
 The API retains its selected database across restarts and branches. Initialization
 is explicit. `runtime status` and Admin Settings work before system migration.
 Native keyring credentials are the default; for a headless machine, configure the
-file credential provider as described in the [local runtime guide](../../docs/operations/local-runtime.md#local-credentials).
+file credential provider as described in the [local runtime guide](../../../../docs/operations/local-runtime.md#local-credentials).
 
 For your own application, define tables like [Note](tables.py), install the package
-containing your [migration provider](migrations/__init__.py) in the application process. See [migration authoring](../../docs/client/define-and-migrate-tables.md).
+containing your [migration provider](migrations/__init__.py) in the application process. See [migration authoring](../../../../docs/client/define-and-migrate-tables.md).

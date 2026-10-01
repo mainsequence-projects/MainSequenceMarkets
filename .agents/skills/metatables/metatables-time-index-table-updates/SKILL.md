@@ -12,7 +12,7 @@ client. It covers application-facing models and workflows. Client-library
 implementation, this repository's development/release tooling, and API internals
 have separate ownership.
 
-In a copied skill, resolve the `docs/` and `examples/` paths below relative to
+In a copied skill, resolve the `docs/` and `src/metatables/examples/` paths below relative to
 this skill's `references/` directory. The client CLI bundles the matching version's
 guides and examples there, including their linked documents. In the MetaTables
 source checkout, read the same paths from the repository root.
@@ -24,8 +24,8 @@ verification within the requested scope.
 
 Read `docs/client/build-an-updater.md`,
 `docs/concepts/time-index-tables-and-updates.md`, and the tested
-`examples/updater.py`. Use `docs/client/read-existing-time-index-tables.md` and
-`examples/reader.py` for consumers that only need existing output.
+`src/metatables/examples/updater.py`. Use `docs/client/read-existing-time-index-tables.md` and
+`src/metatables/examples/reader.py` for consumers that only need existing output.
 
 The storage contract is a `PlatformTimeIndexMetaTable` SQLAlchemy class. The
 producer is a `TimeIndexTableUpdater`; the API record is `TimeIndexTableUpdate`.
@@ -41,7 +41,7 @@ choices, first-run/backfill bounds, and whether identity must be preserved from
 the task and existing code. Clarify only unresolved choices that change the
 published contract. Keep storage description, namespace, identifier, cadence,
 columns, and FK/index metadata on the authoring model, not the updater config.
-Use intention-rich table and column descriptions; see `examples/tables.py`.
+Use intention-rich table and column descriptions; see `src/metatables/examples/tables.py`.
 
 Migrate and bind the output class before constructing the producer. Pass explicit
 `config` and `output_table`; do not create/register tables inside `update()`.

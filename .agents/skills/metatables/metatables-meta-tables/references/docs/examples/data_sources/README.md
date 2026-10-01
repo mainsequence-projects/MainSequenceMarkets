@@ -14,7 +14,7 @@ They create a catalog registration; they do not provision a database.
 4. Run the script with your edited file:
 
 ```sh
-python examples/data_sources/register.py /path/to/my-source.json --validate
+python src/metatables/examples/data_sources/register.py /path/to/my-source.json --validate
 ```
 
 Each run creates a registration. Omit `--validate` to register without connecting.

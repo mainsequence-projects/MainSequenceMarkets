@@ -10,19 +10,37 @@ authorize the caller; the selected engine backend executes the database operatio
 Use `metatables.compiled_sql.v1.compile_sqlalchemy_statement(...)` to compile a
 SQLAlchemy Core statement with bound parameters. A request selects one DataSource;
 the database applies your Reader and Writer grants to every table it touches.
-[The query example](../examples/query.py) selects account rows by name:
+Omit source and dialect configuration for the normal application path:
 
 ```python
-from examples.query import find_accounts
+from sqlalchemy import String, column, select, table
 
-result = find_accounts("runtime-data-source-uuid", "Savings")
+from metatables import MetaTable
+from metatables.compiled_sql.v1 import compile_sqlalchemy_statement
+
+accounts = table("ledger_account", column("name", String))
+operation = compile_sqlalchemy_statement(
+    select(accounts).where(accounts.c.name == "Savings"), operation="select"
+)
+result = MetaTable.execute_operation(operation)
 ```
 
-The compiler can obtain the DataSource and dialect from the API runtime context.
+The client discovers the MetaTables deployment in the caller's Environment. The
+compiler obtains the DataSource UID, dialect and parameter style together from
+that API's fresh runtime context. No URL or DataSource UID is needed in the
+application. The API operator configures and initializes the runtime in Settings.
+An absent, unavailable or malformed runtime source raises the public
+`metatables.DataSourceResolutionError`; it never selects another source as a fallback.
+
 For offline compilation, supply both `data_source_uid=` and `dialect=`. PostgreSQL
 and MySQL use `pyformat`, SQL Server uses ordered `qmark`, and SQLite uses named
 parameters. The API checks the wire dialect and the runtime binding. There is no
 list of declared table scopes and no SQL parser in the API.
+
+If only a UID is supplied, it must match the runtime source before the compiler
+can infer its dialect. A different UID cannot borrow the runtime's dialect.
+Supplying a UID and dialect offline creates a payload; it does not authorize
+execution against another source. See the explicit [query example](../examples/query.py).
 
 For applications still passing `scope_tables` or importing the removed scope
 classes, follow [upgrade a legacy application](upgrade-legacy-app.md). Remove the
@@ -47,6 +65,28 @@ multiple statements. SQL Server accepts a batch under the same restricted identi
 an explicit commit inside a write batch can persist writes before a later error.
 Use the supported table operations when an operation needs their transaction and
 journal guarantees. See [database access](../security/index.md#sql-and-schema-boundary).
+
+## Read another registered source
+
+Keep the same API connection and runtime default. An administrator first
+[imports the source's tables or views](register-existing-tables.md); Readers and
+Writers then select an imported MetaTable and use its registered source:
+
+```python
+from metatables import MetaTable
+
+external_table = MetaTable.get_by_uid("imported-table-uuid")
+page = external_table.read_rows(columns=["symbol"], limit=100)
+```
+
+Use `iter_rows()` to consume bounded pages incrementally. These operations honor
+table and namespace grants, source availability and read-only access. They do
+not change the catalog, runtime DataSource selection or write destination.
+The current external reader accepts structured columns, predicates and ordering;
+it does not accept SQL or joins. `run_query()` and `execute_operation()` against
+another source return HTTP 409 with `data_source_not_selected_runtime`, rather
+than HTTP 503 suggesting an outage. General external SQL requires a separate
+permission model; `operation="select"` alone does not establish that boundary.
 
 ## Metadata and search
 

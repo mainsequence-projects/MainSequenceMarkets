@@ -17,6 +17,14 @@ and repair; the Python client and examples use DataSource-only SQL requests.
 
 Owner: MetaTables API.
 
+Clarified 2026-10-01 (MetaTables #9): automatic compiler source resolution must
+preserve the selected runtime's restricted SQL identity. An explicit different
+source UID is not SQL admission, even with `operation=select`; return a specific
+source-policy conflict rather than claiming the database is unavailable. ADR
+0010's registered-table reader remains the supported external read path. General
+external SQL requires a separate permission design that preserves caller grants
+without using the source's shared account as an unrestricted SQL identity.
+
 Related decisions: [API ADR 0001: Unified API storage](0001-unified-api-storage-and-local-sqlite.md),
 [API ADR 0002: Administration and table ownership](0002-application-administration-and-table-ownership.md)
 and [API ADR 0008: Database backend contract](0008-mysql-mssql-table-workflows.md).

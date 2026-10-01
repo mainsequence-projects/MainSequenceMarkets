@@ -12,11 +12,11 @@ development fixtures and test writes in the local runtime, then return to the
 intended environment as part of the requested workflow. Respect an explicitly
 requested target or backend-specific test scope.
 
-In a copied skill, resolve the `docs/` and `examples/` paths below relative to
+In a copied skill, resolve the `docs/` and `src/metatables/examples/` paths below relative to
 this skill's `references/` directory. In the MetaTables source checkout, resolve
 them from the repository root. Read `docs/operations/local-runtime.md` for runtime
 selection and persistence, and `docs/client/installation-and-connection.md` when
-installing or troubleshooting. `examples/local_app/README.md` provides a complete
+installing or troubleshooting. `src/metatables/examples/local_app/README.md` provides a complete
 installed-package migration/write/read example.
 
 ## Select local storage deliberately

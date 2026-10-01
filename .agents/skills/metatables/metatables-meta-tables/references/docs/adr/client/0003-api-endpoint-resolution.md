@@ -9,8 +9,16 @@ Owner: MetaTables Python client, including the CLI.
 
 Related decision: [API ADR 0001: One API execution path with SQLite for local development](../api/0001-unified-api-storage-and-local-sqlite.md).
 
-The client implements this decision using the SDK's exact-name release filter
-and existing release-access operation.
+The client implements this decision using the SDK's Environment context,
+exact-name release filter, owning-branch metadata and release-access operation.
+
+Amended 2026-10-01 ([MetaTables #11](https://github.com/mainsequence-projects/MetaTables/issues/11)):
+hosted discovery must select the caller's resolved Organization Environment.
+The previous visibility-only lookup and hosted URL workaround violated that
+contract. `METATABLES_API_URL` is reserved for loopback development APIs. Identical
+deployment names in different Environments are expected and must work without
+user configuration. Connection and configuration documentation must describe
+this distinction and the Environment-specific failure cases.
 
 Amended 2026-09-29: obtain the target name from the MetaTables automatic
 deployment. Remove the proposed conventional name and manually configured
@@ -25,7 +33,7 @@ with the client and use the SDK for the subsequent release lookup and access.
 Previously, the client constructed resource URLs from a model's `ROOT_URL` or
 `METATABLES_API_URL`, and failed when neither was configured. The CLI separately
 required the environment variable. This decision replaces that duplicated
-selection with automatic discovery and an explicit URL override.
+selection with automatic hosted discovery and a local development URL override.
 
 A client connecting to a hosted MetaTables deployment obtains the correct name
 from the automatic deployment's authoritative metadata. Users should not copy
@@ -37,8 +45,11 @@ local API through an environment variable.
 The SDK supplies generic platform release operations. Ordinary release collection
 queries currently infer the consuming repository's branch, whereas the MetaTables
 deployment can belong to another repository. A name filter alone does not solve
-that distinction. Release names are also not currently guaranteed to be unique;
-text search or selecting the first result cannot establish the intended target.
+that distinction. The caller's Environment, obtained from the SDK's resolved
+repository context or authenticated runtime credential, selects the intended
+deployment across repositories. Release names can repeat across Environments;
+visibility alone, text search or selecting the first result cannot establish the
+intended target. Selecting the wrong API also selects the wrong runtime DataSource.
 
 Endpoint selection is a client transport concern. The API's runtime mode,
 bootstrap and DataSource binding remain governed by API ADR 0001. Connecting to
@@ -47,7 +58,7 @@ runtime mode through Settings.
 
 ## Decision
 
-### 1. One resolver with an explicit URL override
+### 1. One resolver with a local development URL override
 
 All Python resource models, runtime-context requests, readers, updaters and CLI
 commands use one client endpoint resolver. Migration commands use the same
@@ -57,19 +68,21 @@ The resolver uses the following precedence:
 
 | Configuration | Behavior |
 | --- | --- |
-| Nonempty `METATABLES_API_URL` | Use that explicit base URL and skip all deployment discovery. |
-| URL unset or empty | Obtain the MetaTables API's name from its automatic-deployment metadata, then resolve that named deployment through the SDK. |
+| Nonempty `METATABLES_API_URL` | Require a loopback HTTP(S) development URL, use it and skip platform Environment/deployment discovery. |
+| URL unset or empty | Obtain the MetaTables API's name from its automatic-deployment metadata and resolve that deployment in the caller's SDK-owned Environment. |
 
 The deployment name is derived data, owned by the automatic deployment. There is
 no hardcoded default such as `metatables`, and no manually maintained
 `METATABLES_API_DEPLOYMENT_NAME` setting. The client must consume the actual name
 produced by that deployment, so changing it does not require editing consuming
-projects. `METATABLES_API_URL` remains the explicit client override; there is no
+projects. `METATABLES_API_URL` remains the local development override; there is no
 additional automatic/manual mode variable.
 
-An explicit URL may target a local or hosted API. Preserve any deployment path
-prefix when joining resource routes. A nonempty invalid URL produces a
-configuration error; it must not fall through to automatic discovery. Model-level
+An explicit URL must target `localhost` or a loopback IP address. Hosted URLs
+are rejected with an instruction to unset the variable and use Environment
+discovery. Preserve any local path prefix when joining resource routes. A nonempty
+invalid URL produces a configuration error; it must not fall through to automatic
+discovery. Model-level
 `ROOT_URL` assignments must no longer independently override the environment or
 split different resources across different API targets.
 
@@ -101,25 +114,30 @@ for exact-name lookup and stable endpoint retrieval. It does not call platform
 routes directly, inspect platform persistence models, derive hostnames from UIDs,
 or maintain a second platform client.
 
-Discovery must operate in the platform's permitted release scope without
-implicitly restricting the result to the consuming application's repository
-branch. The SDK owns the generic lookup capability and its platform contract.
-This decision does not relax branch or Environment requirements on ordinary SDK
-resource operations, and does not make local development require a registered
-branch.
+Resolve the caller's Environment with the public SDK
+`resolve_organization_environment_uid()` helper. The SDK owns Git registration,
+authenticated runtime context and authorization. A developer's signed-in process
+connecting to a hosted API follows the same Environment selection rule. Local
+development URL selection does not require a registered branch or Environment.
 
-The client calls `ResourceRelease.filter_admin(name=..., release_kind="fastapi")`
-using the existing explicit SDK collection interface, which does not infer the
-consumer's branch. This is an exact bounded query, not enumeration of all releases.
-Backend visibility and runtime scope still apply. The client requires one match
-and calls that release's `resolve_runtime_access()` for the backend-issued URL.
-No SDK context reset, branch override or new platform metadata endpoint is needed.
+The installed SDK does not expose an Environment filter on `ResourceRelease`.
+Use `ResourceRelease.filter_admin(name=..., release_kind="fastapi")` only to
+obtain exact-name candidates, without restricting them to the consuming
+application's repository branch. Each candidate supplies its owning
+`code_repository_branch_uid`. Read those public `CodeRepositoryBranch` records
+through the SDK using `filter(uid__in=...)`, in batches of at most 100 unique UIDs,
+and compare their `organization_environment_uid` with the caller's Environment.
+The client must verify ownership before requesting runtime access, even if only
+one release is visible. Missing or inconsistent ownership metadata fails closed.
+An owning branch with no Environment cannot match an Environment-bound caller.
 
-Exactly one matching release is required. Missing or ambiguous target metadata,
-no matching release, multiple matches, the wrong release kind, or a missing
-usable endpoint produces a specific resolution error.
-Ambiguous deployments must be given distinct names or use the explicit URL
-override. There is no first-result selection or fallback to another release.
+Require exactly one match **within that Environment**, then call the selected
+release's `resolve_runtime_access()` for its backend-issued URL. The same name in
+other Environments is neither an error nor a fallback. Zero matches report a
+missing deployment in the selected Environment; multiple matches report duplicate
+deployments within it. Neither error recommends a URL override or globally unique
+deployment names. No first-result selection, SDK context reset, consumer branch
+override, direct platform request or new platform endpoint is needed.
 
 Existing SDK release-access operations may report a starting or unavailable
 runtime. Such a result is not a successful endpoint resolution. Respect the
@@ -131,18 +149,21 @@ mechanism, credential type, account-binding policy or Organization policy.
 
 Resolve lazily on the first operation that needs an API address. Cache a
 successful result in process memory for the selected platform endpoint and
-automatic-deployment target, including its derived name. The discovery sequence
-obtains target metadata, resolves the exact name and retrieves the endpoint;
-subsequent operations reuse its result without repeating any of those steps.
+resolved Organization Environment. The entry holds the release UID and derived
+deployment name. The discovery sequence obtains target metadata, verifies the
+candidate owners' Environments and retrieves the endpoint; subsequent operations
+reuse its result without repeating those platform lookups. Read the SDK-owned
+process context when selecting the cache key; do not maintain a separate
+Environment cache or reuse an endpoint after that context changes.
 
 Concurrent first callers share one resolution attempt. Do not cache failed,
 ambiguous, starting or unavailable results as successful entries. Later calls
 can retry after a failed attempt. Forked or new processes start with their own
 cache; no discovered address is persisted to disk.
 
-The explicit URL is checked before consulting the discovery cache, so setting
+The local URL is checked before consulting the discovery cache, so setting
 `METATABLES_API_URL` takes effect even after automatic resolution. Configuration
-changes invalidate the previous target's cache; an explicit client reset or
+and Environment changes invalidate the previous target's cache; an explicit client reset or
 process restart also permits a fresh lookup, including reacquiring the name from
 the packaged workflow. Editable installs observe workflow changes on that fresh
 lookup; installed wheels use their immutable workflow snapshot. Stable configuration
@@ -155,6 +176,25 @@ silently select another deployment or replay a mutation against a different API.
 
 ### 4. Keep endpoint discovery separate from runtime state
 
+Amended 2026-10-01 ([MetaTables #9](https://github.com/mainsequence-projects/MetaTables/issues/9)):
+the compiler's default is Environment → API deployment → fresh `/runtime-context/`
+→ selected DataSource UID and SQL dialect. Consuming applications configure none
+of these values. Runtime bootstrap and Settings remain operator responsibilities.
+The client preserves the runtime descriptor's public `data_source` dictionary
+and uses a shared validated UID accessor. Missing, unavailable or malformed source
+metadata raises `DataSourceResolutionError`, including when the compiler is given
+an isolated runtime descriptor. UID, dialect and parameter style must describe
+the same source. Never combine an explicit different source UID with the runtime
+source's inferred dialect. Supplying both a UID and dialect retains offline
+compilation; execution still applies API source binding and grants.
+
+Optional reads from another registered source use the imported MetaTable's source
+through ADR 0010's bounded reader. They do not change the resolved API, runtime
+default or write destination. General SQL on another source needs a separate
+database-permission design; the client must not imply that an explicit UID grants
+that capability. Document default compilation, offline compilation, source-specific
+errors and the distinction between bounded external reads and runtime SQL.
+
 Cache only the stable endpoint and the release identity needed to describe that
 selection. Do not cache temporary release-access tokens, admission/readiness
 decisions, permission facts or the API's effective DataSource with it. SDK session
@@ -165,7 +205,7 @@ Keep it in a separate, memory-only SDK `SessionJWTAuthProvider`, outside the
 endpoint cache and shared platform session. The SDK request helper retries a
 401 once: reacquire access for the same release UID and reject a changed URL
 instead of retargeting the request. This does not repeat name discovery or add an
-authentication contract. Local and explicit-URL transports retain their existing
+authentication contract. Local development transports retain their existing
 SDK session behavior.
 
 The API's `/runtime-context/` response remains fresh under API ADR 0001. Resetting
@@ -177,8 +217,8 @@ those changes or introduce client database access.
 
 | Owner | Responsibility |
 | --- | --- |
-| MetaTables client | Read the packaged workflow, configuration precedence, shared endpoint resolver, process cache and resolution errors. |
-| Main Sequence SDK/platform | Generic exact-name release discovery, accessible release scope, endpoint and release-access retrieval. |
+| MetaTables client | Read the packaged workflow, select the release in the SDK-owned Environment, enforce the local URL override, share and cache endpoints, and report resolution errors. |
+| Main Sequence SDK/platform | Resolve the caller's Environment and provide authorized release discovery, owning-branch metadata and release access. |
 | MetaTables API | Own the automatic deployment declaration, runtime descriptor, admission, Settings, bootstrap and its enforced DataSource binding. |
 
 This is a separate client ADR because API runtime selection and storage ownership
@@ -186,9 +226,10 @@ do not change. API ADR 0001's prohibition on caching effective runtime context
 remains in force. The Vite Admin site's connection configuration is outside this
 Python-client decision.
 
-Existing explicit URL configurations continue to work. Automatic mode adds a
-platform discovery dependency only when no URL is provided. A deleted or replaced
-deployment can require an explicit reset or process restart to discover a new
+Local explicit URL configurations continue to work. Existing hosted URL overrides
+must be removed; Environment discovery replaces them. Hosted selection requires
+SDK Environment context and authorized reads of candidate branch metadata. A
+deleted or replaced deployment can require an explicit reset or process restart to discover a new
 address; normal requests do not repeatedly search for one.
 
 ## Implementation and acceptance criteria
@@ -206,17 +247,22 @@ The workflow must be applied on the platform before the hosted launch can find i
 
 - The client obtains the actual MetaTables deployment name from automatic
   deployment metadata and resolves it through the SDK without a user-supplied
-  name or UID, including outside the consuming repository's branch.
+  name, UID or URL, including outside the consuming repository's branch but
+  always within its resolved Environment.
+- Identically named deployments in other Environments are ignored; a lone release
+  in the wrong Environment cannot be selected. Missing Environment context,
+  unverifiable ownership or duplicate releases within the selected Environment
+  fail before runtime access. Test both signed-in and authenticated runtime context.
 - Tests use distinct deployment-generated names and verify that a fresh lookup
   after an editable-workflow rename uses updated metadata without edits to
   consuming projects. Wheels retain their packaged deployment declaration.
   Missing or ambiguous metadata/names fail clearly without a constant fallback.
 - Repeated and concurrent operations across resource classes and CLI consumers
   perform one successful discovery sequence per process and configuration.
-- An explicit URL bypasses all discovery, including automatic-deployment metadata
-  retrieval and a populated cache, and preserves route prefixes. Invalid explicit
-  URLs do not trigger discovery.
-- Failed resolution remains retryable; reset, configuration changes and process
+- A local loopback URL bypasses all discovery, including Environment and
+  automatic-deployment metadata retrieval and a populated cache, and preserves
+  route prefixes. Invalid URLs and hosted URL overrides fail without discovery.
+- Failed resolution remains retryable; reset, Environment/configuration changes and process
   forks do not reuse a stale target.
 - Local explicit-URL operations still work on an unregistered branch without
   introducing a platform release or Environment requirement.
@@ -225,7 +271,9 @@ The workflow must be applied on the platform before the hosted launch can find i
 - Resource calls and migration lifecycles consistently use their selected API;
   the resolver never redirects ordinary SDK platform requests to that API.
 - Update connection guides, configuration reference and executable examples with
-  automatic and explicit modes once behavior is verified. Keep dependency and
+  automatic hosted discovery and local development selection once behavior is verified.
+  Document removal of hosted URL overrides and Environment-specific deployment
+  errors without suggesting URL or name workarounds. Keep dependency and
   authentication boundaries covered by the existing checks.
 
 ## References

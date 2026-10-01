@@ -112,9 +112,13 @@ checkout. After upgrading the client, rerun it to refresh the copied bundle.
 
 ## Connect to an API
 
-Authenticate through the SDK. With no explicit URL, the client reads the API
-deployment name from the workflow bundled with MetaTables, finds exactly one
-visible FastAPI release through the SDK, and caches its endpoint in this process:
+Authenticate through the SDK. Hosted connections require no API URL. The client
+reads the API deployment name from the workflow bundled with MetaTables and
+selects exactly one release in the caller's resolved Organization Environment.
+The SDK obtains that Environment from the registered consuming branch or the
+authenticated runtime credential. This also applies when running on a developer
+machine and connecting to a hosted API. The endpoint is cached per platform and
+Environment in this process:
 
 ```bash
 mainsequence login
@@ -122,10 +126,10 @@ unset METATABLES_API_URL
 metatables --json meta-table detail TABLE_UID
 ```
 
-To select an explicit endpoint, set `METATABLES_API_URL`. It overrides discovery,
-including an already cached deployment. It is the base URL mounting `/meta-tables` and related
-routes. The checked-in API mounts them at its root. If a deployment adds a path
-prefix, include that prefix in the value:
+`METATABLES_API_URL` is only for a local development API on `localhost` or a
+loopback IP address. `--local` and `configure_local_client()` set it automatically
+from the launcher's private connection file. A manual local URL overrides
+discovery, including an already cached deployment, and can include a path prefix:
 
 ```bash
 export METATABLES_API_URL=http://127.0.0.1:18473
@@ -134,8 +138,18 @@ export METATABLES_API_URL=http://127.0.0.1:18473
 The name comes from `.mainsequence/workflows/metatables-api.yaml` in the
 MetaTables repository, packaged unchanged with installed clients. No deployment
 UID or name variable is needed in consuming projects. Missing or ambiguous
-deployments fail clearly. Apply the workflow before using hosted discovery;
+deployments **within the selected Environment** fail clearly. The same name in
+other Environments is expected and requires no configuration. A lone deployment
+in another Environment is never used as a fallback. Apply the workflow in the
+intended Environment before using hosted discovery;
 having the Python package installed does not create a deployment.
+
+Remove existing hosted `METATABLES_API_URL` values; non-loopback overrides are
+rejected. If the SDK cannot resolve the caller's Environment, fix the consuming
+branch registration or runtime context. If no deployment matches, apply the API
+workflow in that Environment; if several match within it, remove the duplicates.
+Discovery also requires authorized SDK reads of the candidate releases' owning
+branch metadata to verify their Environments.
 
 Call `metatables.endpoint.reset_api_endpoint()` or restart the process to resolve
 again. This rereads the workflow in editable installs; a wheel uses its packaged
@@ -144,7 +158,7 @@ See [client ADR 0003](../adr/client/0003-api-endpoint-resolution.md).
 
 The client uses SDK-issued release access for automatically discovered deployments,
 separate from the platform session. SDK request handling renews rejected release
-credentials for the same target without repeating name discovery. Explicit URLs
+credentials for the same target without repeating name discovery. Local URLs
 retain the existing SDK session behavior. The
 platform ingress supplies the caller proof consumed by the API. Direct callers
 cannot replace that proof with an unsigned user UID.
@@ -156,7 +170,8 @@ Git source facts remain required; platform branch registration is unnecessary.
 ## Keep the scopes explicit
 
 Use SDK configuration for platform authentication and repository identity. Use
-automatic deployment discovery or `METATABLES_API_URL` for table operations. The API selects the effective DataSource. The client discovers its storage capabilities and
+Environment-scoped discovery for hosted table operations and the local development
+connection for a local API. The API selects the effective DataSource. The client discovers its storage capabilities and
 dialect through `/runtime-context/`. Never point the SDK session
 at the MetaTables URL to make table requests work.
 

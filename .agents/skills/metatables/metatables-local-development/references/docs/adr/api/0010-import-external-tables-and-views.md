@@ -9,6 +9,15 @@ client and Vite import/Rows views. Verification and boundaries are recorded belo
 
 Owner: MetaTables API. The Python client and Vite application consume its contract.
 
+Clarified 2026-10-01 (MetaTables #9): default compiler calls discover the API's
+runtime DataSource automatically. Selecting an imported MetaTable for an optional
+external read uses that table's registered source through `read_rows()` or
+`iter_rows()` and the same API. It does not mutate the default, replace Environment
+selection or authorize external writes. Arbitrary external SQL and joins remain
+outside this implementation; SQL selection of another source reports a specific
+policy conflict. Client guides must show the working external read workflow and
+must not present `data_source_uid` alone as enabling arbitrary external SQL.
+
 Related decisions: [ADR 0002: Administration and ownership](0002-application-administration-and-table-ownership.md),
 [ADR 0007: Database-enforced table access](0007-database-enforced-table-access.md),
 [ADR 0008: Database backend contract](0008-mysql-mssql-table-workflows.md), and
@@ -60,10 +69,10 @@ explicitly identified as belonging to the Vite application.
 
 | Area | Current evidence | Required change |
 | --- | --- | --- |
-| HTTP workflow | Generated OpenAPI has `POST /meta-tables/register/` and `POST /meta-tables/{uid}/introspect/`, but no import action. `api/app/routes/table_registration.py` requires one caller-authored contract. | One import operation with discovery, preview, selection, reconciliation, and structured results. |
-| Discovery | `TableBackend` in `api/backend/backends/contracts.py` introspects a known name. It has no relation discovery or batch introspection contract. | Add narrow discovery and read operations to this existing facet. |
+| HTTP workflow | Generated OpenAPI has `POST /meta-tables/register/` and `POST /meta-tables/{uid}/introspect/`, but no import action. `src/metatables/api/app/routes/table_registration.py` requires one caller-authored contract. | One import operation with discovery, preview, selection, reconciliation, and structured results. |
+| Discovery | `TableBackend` in `src/metatables/api/backend/backends/contracts.py` introspects a known name. It has no relation discovery or batch introspection contract. | Add narrow discovery and read operations to this existing facet. |
 | External source resolution | `CatalogDataSourceProvider.get()` calls `RuntimeStorageBinding.require_execution_source()`. A saved non-runtime source cannot be used by table operations. | Resolve sources according to the authorized operation; preserve the runtime restriction for managed DDL, migrations, and caller-written SQL. |
-| Restart invariants | `RuntimeBootstrap.inspect()` in `api/app/bootstrap.py` rejects any `MetaTable` or `PhysicalOperation` referencing another source. | Permit externally owned MetaTables on registered sources, while keeping physical mutation journals and managed tables bound to the runtime source. |
+| Restart invariants | `RuntimeBootstrap.inspect()` in `src/metatables/api/app/bootstrap.py` rejects any `MetaTable` or `PhysicalOperation` referencing another source. | Permit externally owned MetaTables on registered sources, while keeping physical mutation journals and managed tables bound to the runtime source. |
 | View access | `postgresql_access.py` and `sqlite_access.py` require ordinary tables. `hosted.py` rejects MySQL objects other than base tables and MSSQL objects other than user tables. | Explicit view admission and read semantics. Changing an introspection query alone is insufficient. |
 | Physical metadata | `MetaTable.kind` distinguishes relational and time-index tables. Contract normalization preserves extra physical fields but does not validate `relation_kind` as a first-class invariant. | Validate physical relation kind independently of the existing logical kind. A view is a relational MetaTable. |
 | Names and types | `catalog_rules.py` and `table_contracts.py` impose an unqualified 63-character table-name rule; `models.py` stores `String(63)`. Some type validation retains PostgreSQL assumptions. | Preserve legal external identifiers and native types through adapter normalization, without truncation or executing catalog expressions. |
@@ -118,7 +127,7 @@ generic capability registry is introduced.
 ### 2. Extend the existing backend contract
 
 Add these conceptual operations to `DatabaseBackend.tables` in
-`api/backend/backends/contracts.py`; retain `backend_for(source)` as the only
+`src/metatables/api/backend/backends/contracts.py`; retain `backend_for(source)` as the only
 engine dispatch point:
 
 ```text
@@ -556,11 +565,11 @@ availability.
 
 ## Implementation and verification record
 
-- Shared orchestration: `api/backend/operations/import_relations.py`; engine
+- Shared orchestration: `src/metatables/api/backend/operations/import_relations.py`; engine
   discovery, read-only sessions and safe runtime-view validation:
-  `api/backend/backends/relation_tables.py`, selected by the existing registry.
-- Published commands/results: `api/backend/contracts/relation_import.py` and
-  `api/app/routes/table_import.py`. Existing introspect handles Writer refresh.
+  `src/metatables/api/backend/backends/relation_tables.py`, selected by the existing registry.
+- Published commands/results: `src/metatables/api/backend/contracts/relation_import.py` and
+  `src/metatables/api/app/routes/table_import.py`. Existing introspect handles Writer refresh.
 - Migration `0007_external_relation_names` widens hosted physical names to 128
   characters. SQLite retains its descriptive legacy VARCHAR width without a table
   rebuild; SQLite does not enforce that width. Missing relation kinds read as table.

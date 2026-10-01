@@ -37,8 +37,8 @@ fact before catalog access. Any Organization admin can manage an existing source
 creator attribution does not confer exclusive control. Reconfiguration refuses concurrent requests, open
 migration leases, unfinished updates and unresolved operations.
 
-Migrations are packaged under `api.backend.migrations`; the ORM models live under
-`api.backend.persistence.models`. System revisions use `metatables_catalog_version`.
+Migrations are packaged under `metatables.api.backend.migrations`; the ORM models live under
+`metatables.api.backend.persistence.models`. System revisions use `metatables_catalog_version`.
 User tables use their own [migration provider histories](../client/define-and-migrate-tables.md).
 System table names cannot be registered as user MetaTables. Never use `create_all`
 or stamp a revision to bypass initialization.

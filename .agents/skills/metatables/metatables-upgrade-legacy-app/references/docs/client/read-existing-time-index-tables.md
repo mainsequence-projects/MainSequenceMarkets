@@ -9,7 +9,7 @@ identity, existing MetaTable object, or update resource.
 
 ```python
 from datetime import datetime, timezone
-from examples.reader import balances
+from metatables.examples.reader import balances
 
 frame = balances(
     "balance-table-uuid", "account-uuid",

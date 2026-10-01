@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from examples.tutorial.migrations.registry import metatable_provider_models
-from examples.tutorial.tables import Base
+from metatables.examples.tutorial.migrations.registry import metatable_provider_models
+from metatables.examples.tutorial.tables import Base
 from metatables.migrations import (
     build_alembic_version_metatable,
     build_metatable_migration_provider,
@@ -16,10 +16,10 @@ TutorialAlembicVersion = build_alembic_version_metatable(
 )
 
 migration = build_metatable_migration_provider(
-    package="examples.tutorial",
+    package="metatables.examples.tutorial",
     migration_namespace="metatables_market_tutorial",
-    script_location="examples.tutorial.migrations:",
-    version_location_prefix="examples.tutorial.migrations:versions",
+    script_location="metatables.examples.tutorial.migrations:",
+    version_location_prefix="metatables.examples.tutorial.migrations:versions",
     target_metadata=Base.metadata,
     alembic_registry=TutorialAlembicVersion,
     metatable_models=metatable_provider_models(),

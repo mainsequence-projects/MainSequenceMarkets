@@ -21,7 +21,7 @@ For one connected walkthrough, start with the [market tutorial](tutorial/README.
 
 ```bash
 python -m pytest -q tests/examples
-python -m examples.quickstart TABLE_UID
+python -m metatables.examples.quickstart TABLE_UID
 ```
 
 The [managed-table guide](../client/define-and-migrate-tables.md) explains how

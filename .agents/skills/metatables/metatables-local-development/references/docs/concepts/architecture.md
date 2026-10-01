@@ -64,7 +64,7 @@ also uses SQLAlchemy to describe the user's application tables.
 
 A user defines `class Account(PlatformManagedMetaTable, Base)` to author storage.
 After registration, `metatables.MetaTable` represents its HTTP resource. Inside
-the service, `api.backend.persistence.models.MetaTable` is the catalog ORM row.
+the service, `metatables.api.backend.persistence.models.MetaTable` is the catalog ORM row.
 They describe the same resource at different boundaries; they are not interchangeable.
 Client applications import `metatables`, not the API persistence models.
 

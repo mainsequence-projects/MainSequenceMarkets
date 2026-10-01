@@ -16,7 +16,7 @@ decisions belong in the SDK repository and are linked as dependencies.
 
 | ADR | Status | Scope |
 | --- | --- | --- |
-| [0003: Automatic API endpoint resolution](client/0003-api-endpoint-resolution.md) | Accepted and implemented; live hosted verification pending | Read the name from the packaged API workflow, resolve through the SDK, cache the endpoint per process, and allow an explicit URL override. |
+| [0003: Automatic API endpoint resolution](client/0003-api-endpoint-resolution.md) | Accepted and implemented; live hosted verification pending | Resolve the packaged API name within the SDK-owned Environment, cache per platform/Environment, and reserve URL overrides for local development. |
 | [0011: Local CLI workflow with reusable Admin](client/0011-cli-local-development-with-managed-admin.md) | Accepted; implemented | Download missing Admin source once, reuse ready dependencies, launch the installed API with Vite, and expose explicit bootstrap, application-owned migrations and local client connection. |
 
 ## API

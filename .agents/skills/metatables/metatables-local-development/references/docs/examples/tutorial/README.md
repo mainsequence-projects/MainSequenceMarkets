@@ -20,7 +20,7 @@ All table, migration, updater, and reader operations import the `metatables` lib
 Start without a server:
 
 ```bash
-python -m examples.tutorial preview
+python -m metatables.examples.tutorial preview
 ```
 
 Expect **69 price rows**, **66 return rows**, and **54 volatility rows**. Continue with the walkthrough
@@ -60,14 +60,14 @@ it on shutdown. The local example reads it before importing the SDK. The connect
 works with either Local or Hosted storage selected in Settings, including custom
 API ports. Restart an older API/Admin launch once to create this connection file.
 
-The configuration runs `python -m examples.tutorial` using the project's `.venv`,
+The configuration runs `python -m metatables.examples.tutorial` using the project's `.venv`,
 and prints its selected step and API endpoint in the Debug Console.
 
 ## Root selection and simulated failures
 
 ```bash
-python -m examples.tutorial update --prepare-data --root returns
-python -m examples.tutorial update --prepare-data --root volatility
+python -m metatables.examples.tutorial update --prepare-data --root returns
+python -m metatables.examples.tutorial update --prepare-data --root volatility
 ```
 
 Add `--development-client .local/development-client.json` to use the running local
@@ -92,8 +92,8 @@ debug launch stops before reading the output; existing published rows remain.
 Read either output independently after a successful run:
 
 ```bash
-python -m examples.tutorial read --root returns --symbol SPY
-python -m examples.tutorial read --root volatility --symbol SPY
+python -m metatables.examples.tutorial read --root returns --symbol SPY
+python -m metatables.examples.tutorial read --root volatility --symbol SPY
 ```
 
 Rolling volatility is the per-symbol sample standard deviation of the last five
@@ -117,7 +117,7 @@ the new revision. The API does not load tutorial code.
 To run migration setup alone from the repository root:
 
 ```bash
-python -m examples.scripts.setup_metatables --development-client .local/development-client.json
+python -m metatables.examples.scripts.setup_metatables --development-client .local/development-client.json
 ```
 
 For a hosted deployment, omit `--development-client`; normal endpoint discovery

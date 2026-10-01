@@ -88,7 +88,16 @@ def execute_repository_operation(operation, *, context):
 ```
 
 The compiler resolves missing DataSource or dialect values from the selected API
-runtime. A MetaTable UID is not a DataSource UID. For offline compilation supply
+runtime. Leave `context.data_source_uid` as `None` for the automatic path: the
+Environment selects the API deployment, and its runtime supplies the source and
+dialect together. No application URL or source setting is needed. Missing or
+malformed source metadata raises `metatables.DataSourceResolutionError`.
+An explicit UID must match that runtime when its dialect is inferred; another
+source cannot inherit the runtime dialect. Optional external reads use imported
+MetaTables' `read_rows()`/`iter_rows()` under existing grants; arbitrary SQL remains
+runtime-bound. See [query and mutate](query-and-mutate.md).
+
+A MetaTable UID is not a DataSource UID. For offline compilation supply
 both `data_source_uid` and `dialect`. For example, this exercises the replacement
 compiler above without registration, credentials or a running API:
 

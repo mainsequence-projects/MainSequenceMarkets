@@ -1,17 +1,17 @@
 ---
 name: mainsequence-sdk-code-repository-execution
-description: Use the installed Main Sequence SDK and repository-local tools to verify CodeRepository context, apply local scaffold conventions, and route concrete implementation work after platform intent and ontology have been established.
+description: Use the installed Main Sequence SDK and repository-local tools to verify CodeRepository context, apply local scaffold conventions, and route concrete implementation work. Use a platform-owned design skill first only when architecture or ontology is unresolved.
 ---
 
 # Main Sequence SDK CodeRepository Execution
 
 ## Overview
 
-Use this SDK-owned execution skill after the platform `code-repository-design` skill
-has established intent, CodeRepository ontology, the connected CodeRepository Blueprint, and
-the observable definition of success. This file owns local SDK, CLI,
-filesystem, and repository mechanics; it does not define the platform ontology
-or replace `code-repository-design`.
+Use this SDK-owned skill for local SDK, CLI, filesystem, repository mechanics,
+and implementation routing. A platform-owned design skill is required first
+only when product architecture, ontology, or the CodeRepository Blueprint is
+unresolved. Maintenance, audits, and already-scoped implementation work do not
+require a design-first sequence.
 
 This skill is for:
 
@@ -30,14 +30,12 @@ This skill is for:
 - enforce standard Main Sequence repository structure expectations
 - separate verified facts from assumptions
 - surface documentation mismatches to the user
-- enforce the namespace-first safety rule for new or modified TimeIndexTableUpdaters
 
 ## This Skill Must Not Claim
 
 This skill must not claim ownership of:
 
-- TimeIndexTableUpdater engineering
-- MetaTable design
+- domain-package data modeling and execution
 - Command Center-serving FastAPI contract and release design
 - jobs, schedules, images, resources, or releases
 - RBAC or sharing semantics
@@ -49,12 +47,8 @@ Do not let this skill become a domain manual.
 
 ## Route Adjacent Work
 
-- TimeIndexTableUpdaters:
-  `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`
-- MetaTables:
-  `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`
-- platform data discovery before implementation:
-  `.agents/skills/mainsequence/data_access/exploration/SKILL.md`
+- MetaTables, table updates, and domain data discovery: use the installed
+  `metatables` package skills and documentation
 - FastAPI APIs serving the Command Center frontend:
   `.agents/skills/mainsequence/application_surfaces/api_surfaces/SKILL.md`
 - CodeRepository audits, blocker analysis, and upstream SDK assessment:
@@ -66,11 +60,16 @@ Do not let this skill become a domain manual.
   `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
 - RBAC and sharing:
   `.agents/skills/mainsequence/platform_operations/access_control_and_sharing/SKILL.md`
+- TAU-based Harness Agent repository integration, local development, project
+  customization, and runtime A2A adaptation: use the version-matched skills in
+  `.agents/skills/ms_tau_sdk/` after the platform-owned skill defines the
+  platform contract. If the namespace is absent, report it; synchronize it with
+  `uv run ms-tau skills sync --path .` only when the user requests that update.
 
 ## Read First
 
 1. `AGENTS.md`
-2. the latest relevant Main Sequence docs for the task
+2. the relevant documentation for the installed SDK and current platform contract
 
 Canonical documentation root:
 `https://mainsequence-sdk.github.io/mainsequence-sdk/`
@@ -117,11 +116,9 @@ Keep the platform boundaries explicit:
 For ordinary local implementation, work naturally in the current Git branch.
 Do not make CodeRepositoryBranch selection a separate user workflow.
 An unregistered local branch remains valid for ordinary local development, but
-it has no CodeRepositoryBranch, Environment, or branch-derived MetaTables DataSource.
-Only branch-owned operations fail. Register the branch before using Jobs,
-images, releases, resources, platform-managed MetaTables/TimeIndexTableUpdaters, migrations,
-pods, or other branch-owned platform APIs. Never fall back to another branch or
-to an aggregate-level default DataSource.
+it has no CodeRepositoryBranch or Environment. Only branch-owned operations
+fail. Register the branch before using Jobs, images, releases, resources, pods,
+or other branch-owned platform APIs. Never fall back to another branch.
 
 ## Required Decisions
 
@@ -134,9 +131,18 @@ For every non-trivial task, decide:
 
 ## Build Rules
 
-### 1. The latest docs are the source of truth
+### 1. Use the authority that owns the contract
 
-Do not rely on memory or copied snippets when the current Main Sequence docs should be checked.
+Use installed SDK skills, CLI help, and version-matched documentation for
+client behavior. Use installed platform-owned skills and backend-advertised
+schemas, templates, and capabilities for platform behavior. Treat the public
+documentation site as supplemental when it describes another SDK version. If
+the client and platform contracts disagree, stop and route the evidence to the
+bug-auditor skill instead of guessing or updating automatically.
+
+The `mainsequence` CLI owns `.agents/skills/mainsequence/`. It must not copy,
+refresh, or remove `.agents/skills/ms_tau_sdk/`; that independent namespace is
+owned by the installed `ms-tau-sdk` command.
 
 ### 2. Maintain the standard Main Sequence CodeRepository structure
 
@@ -176,14 +182,20 @@ Do not start domain work with a vague target.
 
 ### 4. Verify code repository context before making platform claims
 
-Use the CLI to confirm the active CodeRepository and refresh credentials before live checks when needed.
+Use the CLI to confirm the active CodeRepository and the saved session before live checks when needed.
 
 When the result will be consumed programmatically or used as machine-readable evidence, prefer the CLI `--json` flag.
 
 Typical bootstrap checks:
 
 - `mainsequence code-repository current --debug`
-- `mainsequence code-repository refresh-token --path .`
+- `mainsequence auth status --check`
+- `mainsequence refresh-token`
+
+The session lives in the operating system credential store, not in `.env`, and
+belongs to the machine, not to a checkout. `auth status` reports it without
+printing a token value. `refresh-token` renews it; run in a checkout, it also
+removes credential entries an earlier version left in `.env`.
 
 Do not proceed with a live branch-owned check unless `code-repository current` reports
 the current Git branch and a resolved CodeRepositoryBranch UID.
@@ -193,10 +205,6 @@ the current Git branch and a resolved CodeRepositoryBranch UID.
 Once the task boundary is clear, move into the correct specialized skill.
 
 Do not teach domain semantics here.
-
-### 6. Use namespaces first for new or modified TimeIndexTableUpdaters
-
-Before first-running or validating a new or changed TimeIndexTableUpdater, use an explicit namespace before any non-namespaced run.
 
 ## Review Rules
 

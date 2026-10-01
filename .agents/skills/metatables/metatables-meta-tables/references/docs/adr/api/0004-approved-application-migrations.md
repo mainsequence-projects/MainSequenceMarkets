@@ -50,7 +50,7 @@ remain explicit Settings operations.
 
 ## Example integration
 
-`examples/scripts/setup_metatables.py` only reserves, upgrades and finalizes the
+`src/metatables/examples/scripts/setup_metatables.py` only reserves, upgrades and finalizes the
 tutorial provider. Every data-dependent tutorial command calls it first. VS Code
 launches then seed instruments and run producers through `--prepare-data` before
 the requested example. Offline preview and endpoint-only connect skip preparation.

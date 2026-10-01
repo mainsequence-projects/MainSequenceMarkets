@@ -11,6 +11,13 @@ Date: 2026-09-29
 
 Status: Accepted.
 
+Clarified 2026-10-01 (MetaTables #9): the compiler obtains the runtime DataSource
+UID, dialect and parameter style together, with no caller configuration. The
+default path covers PostgreSQL/TimescaleDB, SQLite, MySQL and MSSQL. An explicit
+different source must not inherit the runtime source's dialect. Offline explicit
+UID/dialect compilation remains supported but does not relax API execution
+binding. Optional external bounded reads retain ADR 0010's source selection.
+
 Amended 2026-09-29: one selected execution DataSource, explicit workflow and
 transaction ownership, first-bootstrap recovery, and a Compose database test suite.
 
@@ -46,7 +53,7 @@ ownership and unknown-outcome reconciliation. Local verification is complete; ho
 
 `POST /data-sources/` accepts `mysql` and `mssql`, and validation opens their
 connections and runs `SELECT 1`. At the time of the original decision, the
-static feature registry declared no table support for either. The physical operations in `api/backend/integrations/`
+static feature registry declared no table support for either. The physical operations in `src/metatables/api/backend/integrations/`
 use PostgreSQL or SQLite connections, SQL and introspection; they cannot act on
 the registered MySQL or MSSQL source.
 
@@ -172,14 +179,14 @@ engine matrices in routes, Admin and documentation.
 
 Refactor the current SQLite and PostgreSQL paths into this contract before
 adding MySQL and MSSQL implementations. In particular, remove engine decisions
-from `api/app/bootstrap.py`, `api/app/routes/application_migrations.py`,
-`api/app/routes/table_sql.py`, `api/app/routes/runtime_context.py`, and
-`api/backend/integrations/source_validation.py`; route existing SQLite and
+from `src/metatables/api/app/bootstrap.py`, `src/metatables/api/app/routes/application_migrations.py`,
+`src/metatables/api/app/routes/table_sql.py`, `src/metatables/api/app/routes/runtime_context.py`, and
+`src/metatables/api/backend/integrations/source_validation.py`; route existing SQLite and
 PostgreSQL work through the bound backend in this first step, before implementing
 MySQL or MSSQL table support. During the refactor, retain the existing MySQL/MSSQL
 connection probes without pretending they satisfy the full backend contract.
 Move the branches in `postgresql_*`
-physical helpers and `api/backend/database_operations/runtime.py` into adapter
+physical helpers and `src/metatables/api/backend/database_operations/runtime.py` into adapter
 implementations or shared engine-neutral helpers. This refactor must preserve
 current SQLite and PostgreSQL behavior under the existing contract tests. It
 prevents the new engines from multiplying conditionals across every endpoint.

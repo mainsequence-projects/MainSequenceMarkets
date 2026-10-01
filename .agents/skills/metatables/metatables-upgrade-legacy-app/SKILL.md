@@ -14,7 +14,7 @@ in the MainSequence SDK.
 
 Read `docs/client/upgrade-legacy-app.md` for the conversion table and before/after
 repository compiler examples. In a copied skill, resolve the `docs/` and
-`examples/` paths here relative to this skill's `references/` directory. In the
+`src/metatables/examples/` paths here relative to this skill's `references/` directory. In the
 MetaTables source checkout, resolve them from the repository root.
 
 Use `docs/client/installation-and-connection.md` to establish the target package

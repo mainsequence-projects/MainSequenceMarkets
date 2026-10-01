@@ -5,7 +5,7 @@ an instrument table and three time-index tables, load recorded prices, calculate
 daily returns and rolling volatility, and read published results independently.
 Choose different execution roots and inspect successes and simulated failures.
 
-The complete code is in [examples/tutorial](../examples/tutorial/README.md).
+The complete code is in [src/metatables/examples/tutorial](../examples/tutorial/README.md).
 Run commands from the MetaTables repository root in the Python environment where
 [MetaTables and the compatible SDK](installation-and-connection.md) are installed.
 The sample contains recorded SPY, QQQ, and IWM prices; a symbol is simply the key
@@ -14,7 +14,7 @@ identifying one instrument. No market-data service is needed for this exercise.
 ## 1. Preview the data
 
 ```bash
-python -m examples.tutorial preview
+python -m metatables.examples.tutorial preview
 ```
 
 This command needs no API connection. Expect `Recorded prices: 69 rows` and
@@ -27,7 +27,7 @@ dates per symbol. A return needs a preceding price, so each symbol has 22 return
 and calculates each symbol's change independently:
 
 ```python
-from examples.tutorial.frames import daily_returns, recorded_prices, rolling_volatility
+from metatables.examples.tutorial.frames import daily_returns, recorded_prices, rolling_volatility
 
 prices = recorded_prices()
 returns = daily_returns(prices)
@@ -86,11 +86,11 @@ These are system migrations only. The tutorial's application migrations run
 in the application's Python process through the client in both modes:
 
 ```bash
-python -m examples.scripts.setup_metatables --development-client .local/development-client.json
+python -m metatables.examples.scripts.setup_metatables --development-client .local/development-client.json
 ```
 
 Omit `--development-client` to use hosted deployment discovery. The application
-process loads `examples.tutorial.migrations:migration` and uses the selected
+process loads `metatables.examples.tutorial.migrations:migration` and uses the selected
 runtime's environment connection. The API needs no tutorial provider installation
 or configuration. The script reserves missing catalog bindings, applies outstanding
 Alembic revisions locally, and finalizes tables. It does not seed rows or run producers.
@@ -113,7 +113,7 @@ tutorial code so it loads the updated provider before setup.
 ## 4. Seed the instrument table
 
 ```bash
-python -m examples.tutorial seed
+python -m metatables.examples.tutorial seed
 ```
 
 Expect the three instrument rows. [operations.py](../examples/tutorial/operations.py)
@@ -127,8 +127,8 @@ Seed first because the three time-index tables' foreign keys require those symbo
 ## 5. Run the connected updaters
 
 ```bash
-python -m examples.tutorial update --root returns
-python -m examples.tutorial update --root volatility
+python -m metatables.examples.tutorial update --root returns
+python -m metatables.examples.tutorial update --root volatility
 ```
 
 [updaters.py](../examples/tutorial/updaters.py) contains three producers:
@@ -190,8 +190,8 @@ only once.
 ## 6. Read the result independently
 
 ```bash
-python -m examples.tutorial read --root returns --symbol SPY
-python -m examples.tutorial read --root volatility --symbol SPY
+python -m metatables.examples.tutorial read --root returns --symbol SPY
+python -m metatables.examples.tutorial read --root volatility --symbol SPY
 ```
 
 The reader resolves the published table by logical identifier and selects one
@@ -199,7 +199,7 @@ symbol. Without `--prepare-data`, it does not construct or execute an updater:
 
 ```python
 from metatables import TimeIndexTableRef
-from examples.tutorial.tables import RETURN_IDENTIFIER
+from metatables.examples.tutorial.tables import RETURN_IDENTIFIER
 
 reference = TimeIndexTableRef.from_identifier(RETURN_IDENTIFIER)
 frame = reference.get_df_between_dates(

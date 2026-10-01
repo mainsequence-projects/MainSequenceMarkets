@@ -12,7 +12,7 @@ client. It covers application-facing models and workflows. Client-library
 implementation, this repository's development/release tooling, and API internals
 have separate ownership.
 
-In a copied skill, resolve the `docs/` and `examples/` paths below relative to
+In a copied skill, resolve the `docs/` and `src/metatables/examples/` paths below relative to
 this skill's `references/` directory. The client CLI bundles the matching version's
 guides and examples there, including their linked documents. In the MetaTables
 source checkout, read the same paths from the repository root.
@@ -51,7 +51,7 @@ contract. Preserve the user's existing authorization and scope.
   evolution.
 - Existing externally owned tables use `register_external_sqlalchemy_model` with
   their actual physical binding. Registration does not create the physical table;
-  see `docs/client/register-existing-tables.md` and `examples/external_table.py`.
+  see `docs/client/register-existing-tables.md` and `src/metatables/examples/external_table.py`.
 - `backend_managed` is a separate low-level API provisioning intent. Do not use it
   as a substitute for ordinary managed application-table migrations.
 
@@ -62,7 +62,7 @@ are fingerprints, not table identity. See `docs/concepts/identity-and-scope.md`.
 
 ## SQLAlchemy contract rules
 
-Use `examples/tables.py` as the tested pattern. Declare an explicit
+Use `src/metatables/examples/tables.py` as the tested pattern. Declare an explicit
 application-prefixed physical name with `schema_table_name(app, concept)`, a
 stable logical identifier, and an intention-rich `__metatable_description__`.
 Give columns useful `info={"label": ..., "description": ...}` metadata. Explain
@@ -84,7 +84,7 @@ revisions; do not recompute identity from columns or rewrite applied history.
 
 ## Queries and mutations
 
-Read `docs/client/query-and-mutate.md` and `examples/query.py`. Use
+Read `docs/client/query-and-mutate.md` and `src/metatables/examples/query.py`. Use
 `compile_sqlalchemy_statement` with bound parameters. The request sends SQL and
 selects one DataSource; the API executes as the authenticated user, and the
 selected database backend enforces Reader/Writer permissions on the tables

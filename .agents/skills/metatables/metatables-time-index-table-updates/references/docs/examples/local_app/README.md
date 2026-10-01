@@ -24,8 +24,8 @@ In another terminal in the same project and Python environment:
 ```bash
 metatables --local runtime status
 metatables --local runtime initialize
-metatables --local migrations upgrade --provider examples.local_app.migrations:migration
-python -m examples.local_app
+metatables --local migrations upgrade --provider metatables.examples.local_app.migrations:migration
+python -m metatables.examples.local_app
 metatables --local meta-table list
 ```
 
@@ -41,7 +41,7 @@ selected dialect, upserts one note, and reads it back. Ordinary reads and writes
 the existing row before any write:
 
 ```bash
-python -m examples.local_app --read-only
+python -m metatables.examples.local_app --read-only
 ```
 
 The API retains its selected database across restarts and branches. Initialization

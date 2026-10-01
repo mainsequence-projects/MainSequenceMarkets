@@ -22,7 +22,7 @@ decisions in the SDK repository.
 
 1. Update behavior and relevant tests together.
 2. Update the authored concept/workflow pages and the capability inventory.
-3. Keep runnable examples in `examples/` and exercise them in `tests/examples`.
+3. Keep runnable examples in `src/metatables/examples/` and exercise them in `tests/examples`.
 4. Regenerate references and check links, imports, examples, and the site.
 
 ```bash
@@ -38,7 +38,7 @@ The reference generator derives HTTP paths and schemas from `create_app`, Python
 exports from `metatables.__all__`, and CLI arguments from Typer. Capability status
 is maintained deliberately in the inventory because reflection cannot establish
 behavioral support. The generator also publishes copies of tested example assets
-inside the documentation site; edit their originals in `examples/`.
+inside the documentation site; edit their originals in `src/metatables/examples/`.
 
 The test suite rejects stale generated artifacts. The documentation checker
 validates local Markdown links, heading links, Python-block syntax, and skill

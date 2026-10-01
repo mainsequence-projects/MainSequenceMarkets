@@ -10,6 +10,11 @@ Date: 2026-09-30
 
 Status: Accepted.
 
+Amended 2026-10-01 (MetaTables #11): `METATABLES_API_URL` selects only a loopback
+development API. Hosted clients resolve their SDK-owned Environment's deployment
+automatically under amended ADR 0003. Document both CLI and Python selection;
+`--local` and `configure_local_client()` continue configuring the URL automatically.
+
 Amended 2026-10-01: both SDK session sources use the developer's saved session
 from the machine's credential store, which the Main Sequence CLI and the VS Code
 extension share. The API process receives only its backend and reads that
@@ -42,7 +47,7 @@ Vite already proxies `/api` and the frontend already supports direct access in
 development mode. This is the local runtime to expose through the installed CLI.
 
 The remaining setup assumes two manually prepared source checkouts. The launcher
-requires `api/app/main.py` inside its backend directory and a pre-existing Admin
+requires `src/metatables/api/app/main.py` inside its backend directory and a pre-existing Admin
 `node_modules` directory. The installed CLI starts only the API. System bootstrap
 and application-owned migrations also need supported client commands.
 
@@ -137,8 +142,9 @@ ownership, permissions, loopback target and current launcher identity, and uses
 the API's existing Git/runtime checks. An absent, stale or mismatched local
 connection produces a local launch error; it never falls back to hosted discovery.
 The explicit local selection applies to the operation scope in the CLI and the
-configured Python process. Other invocations retain ADR 0003's existing endpoint
-precedence, including `METATABLES_API_URL` and hosted discovery.
+configured Python process. Other invocations use ADR 0003's Environment-scoped
+hosted discovery unless a loopback development URL is configured. A hosted URL
+in `METATABLES_API_URL` is rejected; it cannot override Environment selection.
 
 For execution and authoring, `--provider ledger.migrations:migration` resolves in
 the application's Python environment. The selected API supplies its environment
@@ -200,7 +206,7 @@ SDK authentication and API identity refresh requirements still apply.
 
 Move reusable combined-launch orchestration into the installed Python package.
 Both the public CLI and the existing VS Code developer launch should use it.
-Validate importable API modules instead of requiring `api/app/main.py` inside the
+Validate importable API modules instead of requiring `src/metatables/api/app/main.py` inside the
 consuming application. Reuse the current supervisor and private connection-file
 mechanism rather than creating a second independent runtime lifecycle.
 

@@ -14,6 +14,13 @@ Status: Accepted.
 Owner: MetaTables API. Scope: runtime binding, storage and bootstrap, with shared
 client/API execution constraints.
 
+Clarified 2026-10-01 (MetaTables #9): applications automatically obtain the
+selected runtime DataSource from this API after Environment-scoped deployment
+discovery. UID and SQL dialect belong to the same fresh descriptor. Applications
+need no source configuration for the default path; an uninitialized API reports
+a configuration error. ADR 0010 permits optional bounded reads from registered
+external sources without changing this runtime's catalog or write destination.
+
 Client endpoint selection is governed by
 [client ADR 0003](../client/0003-api-endpoint-resolution.md). Its endpoint cache
 does not cache this API's runtime context or select its runtime mode or DataSource.

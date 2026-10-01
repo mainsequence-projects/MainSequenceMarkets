@@ -1,6 +1,6 @@
 ---
 name: mainsequence-access-control-and-sharing
-description: Use this skill when the task is about RBAC, resource sharing, or access verification in a Main Sequence CodeRepository. This skill owns organization and team access concepts, view and edit semantics, choosing the correct shareable resource boundary, and access checks across CodeRepositories, TimeIndexMetaTable, constants, secrets, buckets, artifacts, and releases. It does not own job scheduling, TimeIndexTableUpdater producer logic, or API route design.
+description: Use this skill when the task is about RBAC, resource sharing, or access verification in a Main Sequence CodeRepository. This skill owns organization and team access concepts, view and edit semantics, choosing the correct shareable resource boundary, and access checks across CodeRepositories, constants, secrets, buckets, artifacts, and releases. It does not own job scheduling, domain-package data behavior, or API route design.
 ---
 
 # Main Sequence Access Control And Sharing
@@ -26,13 +26,11 @@ This skill is for:
 - decide whether a user needs `view` or `edit`
 - identify the correct shareable object boundary:
   - `CodeRepository`
-  - `TimeIndexMetaTable`
   - `Constant`
   - `Secret`
   - `Bucket`
   - `Artifact`
   - `ResourceRelease`
-- explain that sharing an updater's published output means sharing its `TimeIndexMetaTable`
 - choose whether configuration belongs in a `Constant` or a `Secret`
 - review CLI sharing flows for existing resources
 - verify access assumptions before claiming a workflow is shareable
@@ -42,31 +40,29 @@ This skill is for:
 This skill must not claim ownership of:
 
 - job scheduling or image pinning
-- TimeIndexTableUpdater producer implementation
-- MetaTable schema design
+- domain-package data production and schema design
 - FastAPI route design
 - application UI design or implementation
-- workspace document structure
 
 ## Route Adjacent Work
 
 - jobs, schedules, images, code repository resources, releases, and Artifacts as operational workflows:
   `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
-- TimeIndexTableUpdaters:
-  `.agents/skills/mainsequence/data_publishing/time_index_table_updates/SKILL.md`
-- MetaTables:
-  `.agents/skills/mainsequence/data_publishing/meta_tables/SKILL.md`
+- MetaTables and table updates: use the installed `metatables` package skills
+  and documentation
 - Command Center-serving FastAPI providers:
   `.agents/skills/mainsequence/application_surfaces/api_surfaces/SKILL.md`
 This skill only reasons about access to deployed resources such as `ResourceRelease`.
 
 ## Read First
 
-1. `docs/tutorial/role_based_access_control.md`
-2. `docs/knowledge/infrastructure/users_and_access.md`
-3. `docs/knowledge/infrastructure/constants_and_secrets.md`
+1. `AGENTS.md`
+2. <https://mainsequence-sdk.github.io/mainsequence-sdk/knowledge/infrastructure/users_and_access/>
+3. <https://mainsequence-sdk.github.io/mainsequence-sdk/knowledge/infrastructure/constants_and_secrets/>
 
-If the task is specifically about a resource type, also read the corresponding knowledge or tutorial page for that resource.
+The pages above are the authoritative reference for access control and sharing.
+If the task is specifically about a resource type, also read that resource's own
+page from the documentation root at <https://mainsequence-sdk.github.io/mainsequence-sdk/>.
 
 ## Inputs This Skill Needs
 
@@ -107,7 +103,6 @@ Do not speak loosely about sharing "the code" when the operational boundary is a
 
 Examples:
 
-- sharing an updater's published output usually means sharing the `TimeIndexMetaTable`
 - sharing a deployed experience usually means sharing the `ResourceRelease`
 - sharing runtime configuration means sharing the `Constant` or `Secret`
 

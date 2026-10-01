@@ -84,7 +84,7 @@ referenced behavior tests. A route listing is not a substitute for executing the
 test. Signature and database-operation contracts live beside it; documentation is
 not used as a test fixture store.
 
-`tests/examples` executes the assets in `examples/`. Contract construction,
+`tests/examples` executes the assets in `src/metatables/examples/`. Contract construction,
 bound SQL, incremental frame shape, and SQLite persistence run without an API.
 A PostgreSQL example test also creates the authored relations, persists producer
 rows, and executes the compiled bound query in the disposable database. Network

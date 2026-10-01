@@ -1,6 +1,6 @@
 ---
-name: code_repository_maintenance
-description: Maintain an existing Main Sequence CodeRepository checkout using the SDK-version-matched CLI. Use for inspecting repository state, building or repairing .venv, refreshing local authentication, updating the SDK, refreshing SDK and platform skills plus AGENTS.md, publishing changes with CodeRepository sync, or diagnosing a partially completed maintenance workflow.
+name: mainsequence-code-repository-maintenance
+description: Maintain an existing Main Sequence CodeRepository checkout using the SDK-version-matched CLI. Use for inspecting repository state, building or repairing .venv, refreshing local authentication, performing explicitly requested SDK, skill, or AGENTS.md updates, publishing changes with CodeRepository sync, or diagnosing a partially completed maintenance workflow.
 ---
 
 # Main Sequence CodeRepository Maintenance
@@ -22,7 +22,7 @@ Own:
 Do not own:
 
 - platform ontology or CodeRepository Blueprint design;
-- domain implementation for MetaTables, TimeIndexTableUpdaters, APIs, jobs, or releases;
+- domain implementation for data packages, APIs, jobs, or releases;
 - backend repository reconciliation;
 - MCP authorization policy, OAuth token storage, or access-token extraction;
 - repository-owned skills outside `.agents/skills/mainsequence/`.
@@ -91,10 +91,10 @@ mainsequence code-repository build-local-venv --path . --recreate
 Treat `.venv` as generated state, never as source code or durable repository
 documentation.
 
-## Refresh CodeRepository Authentication
+## Refresh Authentication
 
-Establish CLI authentication before refreshing a CodeRepository. Select exactly one
-existing authentication lane:
+Authentication belongs to the machine, not to a CodeRepository. Establish the
+CLI session through exactly one existing authentication lane:
 
 - When `MAINSEQUENCE_AUTH_MODE=runtime_credential`, run `mainsequence login`.
   The CLI exchanges the injected runtime credential without a browser or a
@@ -114,12 +114,23 @@ terminal. If `auth.cli_authorize` returns an error, preserve the pending local
 workflow output and report that exact error rather than starting multiple
 handoffs blindly.
 
-Refresh only the CLI-managed runtime authentication entries in the CodeRepository
-`.env`:
+The session is one record per backend in the operating system credential
+store. A login made from any CodeRepository serves every other one on the
+machine, and the SDK reads the saved session when it is imported. No
+CodeRepository holds a copy: `.env` has the backend endpoint and no credential.
+
+Renew the saved session and confirm that it works:
 
 ```bash
-mainsequence code-repository refresh-token --path .
+mainsequence refresh-token
 ```
+
+The command takes no path, because the session does not belong to a checkout.
+It renews the access token, saves it, and reports the session without printing
+a token value. When the directory it runs in has a `.env` with an access token,
+a refresh token, or a runtime credential left by an earlier version or another
+tool, it removes those entries and reports them by name only; it changes
+nothing else in that file.
 
 Require one supported Main Sequence CLI login lane first. Never print,
 inspect, summarize, copy, or return access and refresh token values. Do not
@@ -127,16 +138,22 @@ attempt to extract the calling MCP host's protected bearer token: the handoff
 authorizes a new PKCE grant and the backend returns credentials directly to
 the waiting CLI process.
 
-The command preserves unrelated repository configuration and renders only the
-current supported authentication shape. It removes legacy token aliases and
-all retired repository, branch, and environment identity entries. The Git
-checkout supplies source identity; switching branches changes
-context on the next process run without rewriting `.env`.
+Never write a token into `.env` to make a tool work. `mainsequence auth status`
+reports whether a session exists, when it expires, and whether the process
+takes its credentials from its environment or from the saved session; it
+prints no token value. `mainsequence auth token` exists for local tools that
+consume a short-lived access token programmatically. Do not run it to read a
+token into the conversation.
+
+The Git checkout supplies source identity; switching branches changes context
+on the next process run without rewriting `.env`.
 
 ## Update The CodeRepository SDK
 
-Inspect the current status, preview the update, and then update when requested
-or required by repository instructions:
+Run an SDK update only when the user explicitly requests it. A newer available
+version, documentation mismatch, or non-trivial task is not permission to
+mutate the environment. For an explicit update, inspect the current status,
+preview it, and then update:
 
 ```bash
 mainsequence code-repository sdk-status --path . --json
@@ -145,28 +162,46 @@ mainsequence code-repository update-sdk --path .
 ```
 
 `update-sdk` updates the lock and local environment. It does not publish the
-working tree. After the SDK changes, refresh the managed agent context and run
-the repository-specific validation required by `AGENTS.md`.
+working tree or authorize a managed-skill or `AGENTS.md` refresh. Report any
+resulting pin mismatch and run those updates only when the user explicitly
+requests them.
 
 Do not automatically commit or push an SDK update unless the user also asked
 to publish the CodeRepository changes.
 
 ## Refresh Managed Skills And Instructions
 
-Refresh the SDK-owned and platform-owned skills first, then update the managed
-Main Sequence block in `AGENTS.md`:
+Run either managed-scaffold command only when the user explicitly requests that
+specific update. When both are requested, refresh the SDK-owned skills first,
+then update the managed Main Sequence block in
+`AGENTS.md`:
 
 ```bash
-mainsequence code-repository update-agent-skills --path .
-mainsequence code-repository update AGENTS.md --path .
+uv run --offline mainsequence code-repository update-agent-skills --path .
+uv run --offline mainsequence code-repository update AGENTS.md --path .
 ```
 
 Verify `.agents/skills/mainsequence/PINNED_FROM.txt` after success:
 
-- `sdk_version` must match the installed CodeRepository SDK;
-- platform manifest, ontology, and resource hashes must be present;
+- `pinned_version` must match the installed CodeRepository SDK;
+- the namespace must contain exactly the installed SDK's skill folders;
 - repository-owned skills outside `.agents/skills/mainsequence/` must remain
   untouched.
+
+The SDK owns the whole `mainsequence` namespace. Copying it requires no login
+or platform access and deletes obsolete folders, including retired table
+workflow skills. Do not preserve old or platform-owned content in that folder.
+The installed `metatables` package owns table workflows in its own namespace.
+
+When the user requests platform skills, use the separate authenticated command:
+
+```bash
+mainsequence code-repository update-platform-skills --path .
+```
+
+It owns only `.agents/skills/mainsequence_platform/` and records the platform
+manifest, ontology, and resource hashes there. A backend or authentication
+failure in this command must not block a local SDK skill copy.
 
 The skill update is staged and atomic. If it fails, report the failing lane and
 preserve the previous valid managed tree. Because this operation can update

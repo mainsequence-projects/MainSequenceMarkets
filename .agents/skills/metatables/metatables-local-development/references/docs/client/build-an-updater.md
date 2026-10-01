@@ -18,7 +18,7 @@ ad hoc storage definition inside `update()`.
 ```python
 from datetime import datetime, timezone
 from uuid import UUID
-from examples.updater import BalanceConfig, run
+from metatables.examples.updater import BalanceConfig, run
 
 run(BalanceConfig(
     account_uid=UUID("your-existing-account-uuid"),

@@ -1,8 +1,10 @@
 # Operate a hosted API
 
 The repository's `.mainsequence/workflows/metatables-api.yaml` declares the
-automatic FastAPI deployment at `api/metatables/main.py`. Its deployment-specific
-`configuration.yaml` disables local controls. The workflow uses no release or
+automatic FastAPI deployment at `api/metatables/main.py`. This file imports
+`metatables.api.metatables.main:app`; the server and its deployment-specific
+`configuration.yaml` are installed under `metatables.api`. That configuration
+disables local controls. The workflow uses no release or
 branch UIDs. Apply it through the platform's repository workflow lifecycle;
 installing or debugging the Python client does not deploy the API.
 
@@ -13,15 +15,19 @@ The Python package bundles this same workflow for [client discovery](../client/i
 Workflow API `2.3.0` derives a FastAPI release name from the directory containing
 `source_path`, so the declared directory is also the client's exact lookup name.
 Do not maintain a separate name constant in consuming projects. After changing
-that source path, publish/install a matching package build. Ambiguous visible
-names must be resolved before clients can use automatic selection.
+that source path, publish/install a matching package build. Clients select the
+release in their SDK-owned Organization Environment, including when the API and
+the consuming application belong to different repositories. Identical names in
+other Environments are expected. Each Environment must have one matching visible
+deployment; resolve duplicates within it. Hosted clients leave
+`METATABLES_API_URL` unset; that variable accepts only loopback development URLs.
 
-Serve `api.app.main:app` with hosted execution and one runtime DataSource. Start one
+Serve `metatables.api.app.main:app` with hosted execution and one runtime DataSource. Start one
 worker per runtime instance, configure the ordinary SDK session and caller verifier,
 and set `local_mode_available: false` in `configuration.yaml` on shared deployments.
 
 ```bash
-uvicorn api.app.main:app --host 0.0.0.0 --port 18473
+uvicorn metatables.api.app.main:app --host 0.0.0.0 --port 18473
 ```
 
 No database is required just to open Settings. Register a PostgreSQL, TimescaleDB, MySQL or MSSQL
