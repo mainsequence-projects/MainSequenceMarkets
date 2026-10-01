@@ -7,7 +7,7 @@ order; TS Manager owns governed execution.
 ## Platform Managed
 
 Use platform-managed models when TS Manager should own physical tables on the
-configured DynamicTable data source. Creating or evolving those tables is
+runtime DataSource of the MetaTables API. Creating or evolving those tables is
 handled by the `metatables migrations ... --provider migrations:migration`
 admin flow of the MetaTables client (`mainsequence-metatable`, imported as
 `metatables`), not by runtime startup.
@@ -419,9 +419,15 @@ operation = compile_markets_statement(
 result = execute_markets_operation(operation, context=context)
 ```
 
-`MarketsRepositoryContext.data_source_uid` selects the DataSource explicitly.
-When it is `None`, and when no `dialect=` is passed, the compiler uses the
-DataSource and dialect selected by the MetaTables API runtime. A MetaTable UID is
-never a DataSource UID. `operation="select"` selects read execution; the other
-operation labels select write execution. Limits, offsets, statement deadlines,
-and the HTTP `timeout` are preserved from the context.
+Leave `MarketsRepositoryContext.data_source_uid` as `None`, as
+`msm.start_engine(...)` does. The compiler then takes the DataSource UID, the
+dialect, and the parameter style together from the runtime of the MetaTables
+API that the caller's Organization Environment selects, so applications set no
+API URL or DataSource. A runtime without a usable DataSource raises
+`metatables.DataSourceResolutionError` instead of falling back to another
+source. An explicit `data_source_uid` must match that runtime when the dialect
+is inferred; pass both `data_source_uid` and `dialect=` only to compile offline
+for another DataSource. A MetaTable UID is never a DataSource UID.
+`operation="select"` selects read execution; the other operation labels select
+write execution. Limits, offsets, statement deadlines, and the HTTP `timeout`
+are preserved from the context.

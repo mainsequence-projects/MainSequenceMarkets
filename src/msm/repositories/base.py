@@ -38,8 +38,9 @@ class MarketsRepositoryContext:
 
     `namespace` records the runtime namespace override selected during
     bootstrap. `None` means the library's normal MetaTable namespace was used.
-    `data_source_uid` selects the DataSource explicitly; `None` lets the
-    compiler use the DataSource selected by the MetaTables API runtime.
+    `data_source_uid` is normally `None`, which lets the compiler take the
+    DataSource and dialect from the MetaTables API runtime. An explicit UID must
+    match that runtime unless a dialect is also supplied.
     """
 
     limits: MetaTableOperationLimits | Mapping[str, Any] | None = None
@@ -119,9 +120,13 @@ def compile_markets_statement(
 ) -> MetaTableCompiledSQLOperation:
     """Compile SQLAlchemy SQL for the context's DataSource.
 
-    A missing `context.data_source_uid` or `dialect` is resolved by the
-    compiler from the selected MetaTables API runtime. `operation="select"`
-    selects read execution; the other operation labels select write execution.
+    When `context.data_source_uid` or `dialect` is `None`, the compiler reads
+    the DataSource and dialect together from the Environment-selected
+    MetaTables API runtime and raises `metatables.DataSourceResolutionError`
+    if that runtime has no usable DataSource or disagrees with the supplied
+    value. Supplying both compiles offline without the runtime.
+    `operation="select"` selects read execution; the other operation labels
+    select write execution.
     """
 
     return compile_sqlalchemy_statement(

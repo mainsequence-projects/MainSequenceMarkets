@@ -171,9 +171,9 @@ now also exposes the simple index registry routes:
 - `DELETE /api/v1/index/{uid}/`
 
 When `MSM_AUTO_REGISTER_NAMESPACE` is set for this local API, startup now
-pre-registers the full `apps/v1` table set against the real project/session
-data source already configured for the Main Sequence client. If the session
-cannot resolve a valid DynamicTable data source, startup should fail and that
+pre-registers the full `apps/v1` table set against the runtime DataSource of
+the MetaTables API that the caller's Organization Environment selects. If that
+runtime has no usable DataSource, startup should fail and that
 platform/data-source issue should be fixed directly.
 
 See [FastAPI v1](../fast_api/v1/index.md) for the current route inventory and

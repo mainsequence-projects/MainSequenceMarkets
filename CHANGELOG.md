@@ -16,8 +16,8 @@ See
 
 ### Changed
 
-- **Breaking:** requires `mainsequence>=9.0.1,<10` and
-  `mainsequence-metatable>=0.1.5,<0.2`. SDK 8 and earlier are unsupported; stay
+- **Breaking:** requires `mainsequence>=9.0.2,<10` and
+  `mainsequence-metatable>=0.1.6,<0.2`. SDK 8 and earlier are unsupported; stay
   on `ms-markets` 1.x for SDK 8 projects. Dependent packages declare
   `ms-markets>=2,<3`. `mainsequence-metatable` requires SQLAlchemy 2.1, whose
   PostgreSQL compiler renders typed bind casts such as
@@ -38,11 +38,16 @@ See
   `compile_markets_statement(statement, *, context, operation, dialect=None)`.
   The `models=` and `access=` parameters were removed with the SQL operation
   scope; passing them raises `TypeError`. The compiled operation carries
-  `data_source_uid` at top level and has no `scope`. When
-  `context.data_source_uid` or `dialect` is `None`, the compiler resolves them
-  from the MetaTables API runtime. `data_source_uid`, limits, offsets,
-  statement deadlines, HTTP timeouts, and the `select` (read) versus other
-  labels (write) execution semantics are unchanged.
+  `data_source_uid` at top level and has no `scope`. ms-markets leaves
+  `context.data_source_uid` as `None`, so the compiler takes the DataSource and
+  the SQL dialect together from the runtime of the MetaTables API that the
+  caller's Organization Environment selects; no API URL or DataSource setting
+  is needed. A runtime without a usable DataSource raises
+  `metatables.DataSourceResolutionError`, and an explicit `data_source_uid`
+  that differs from the runtime is rejected unless `dialect=` is also passed
+  for offline compilation. Limits, offsets, statement deadlines, HTTP
+  timeouts, and the `select` (read) versus other labels (write) execution
+  semantics are unchanged.
 - **Breaking:** `MarketsRepositoryContext` no longer accepts or exposes
   `reserved_policy` and no longer has `scope_table(...)`.
   `MarketsMetaTableHandle` no longer has the `reserved_policy` field,
@@ -89,6 +94,11 @@ See
   launch configurations, and the managed AGENTS.md section to the SDK 9 and
   `metatables` imports and commands. Added ADR 0043 and marked ADR 0022, 0024,
   and 0039 as amended or superseded.
+- Refreshed the SDK-owned skills under `.agents/skills/mainsequence/` with the
+  offline SDK 9.0.2 `mainsequence code-repository update-agent-skills --path .`.
+  The retired SDK MetaTable skills are gone, and platform-owned skills are no
+  longer mirrored into that namespace; the authenticated platform update
+  installs them under `.agents/skills/mainsequence_platform/`.
 - Refreshed the repository lock and exported requirements.
 
 ## [1.0.16] - 2026-09-12

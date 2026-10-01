@@ -29,10 +29,14 @@ injected by the platform into `request.state.user`.
 
 ## Decision
 
-- `ms-markets` 2.x requires `mainsequence>=9.0.1,<10` and
-  `mainsequence-metatable>=0.1.5,<0.2`, without exact patch pins. The lock and
-  exported requirements select the validated releases. SDK 8 and earlier are
-  unsupported; there are no fallback imports, aliases, or shims.
+- `ms-markets` 2.x requires `mainsequence>=9.0.2,<10` and
+  `mainsequence-metatable>=0.1.6,<0.2`, without exact patch pins. These floors
+  are the releases in which the SDK-owned agent skills refresh offline, the
+  client takes the DataSource and dialect from the API runtime, the client
+  wheel ships only the `metatables` packages, and hosted discovery selects the
+  `metatables` deployment of the caller's Organization Environment. The lock
+  and exported requirements select the validated releases. SDK 8 and earlier
+  are unsupported; there are no fallback imports, aliases, or shims.
 - MetaTables imports use the `metatables` public exports, `metatables.updaters`,
   `metatables.migrations`, `metatables.dtype_codec`, and
   `metatables.compiled_sql.v1`. Other SDK imports are unchanged.
@@ -43,9 +47,13 @@ injected by the platform into `request.state.user`.
   `reserved_policy` field of the repository context and table handle are
   deleted. `data_source_uid`, limits, offsets, statement deadlines, HTTP
   timeouts, the namespace, and the `select` (read) versus other labels (write)
-  execution semantics are preserved. A missing DataSource or dialect is
-  resolved by the client from the selected API runtime; ms-markets does not add
-  SQL parsing, per-query catalog lookups, or local permission checks.
+  execution semantics are preserved. Product code leaves `data_source_uid` as
+  `None`: the client takes the DataSource and dialect together from the runtime
+  of the Environment-selected MetaTables API and raises
+  `metatables.DataSourceResolutionError` when that runtime has no usable
+  DataSource. An explicit DataSource must match the runtime unless a dialect is
+  also supplied for offline compilation. ms-markets does not add SQL parsing,
+  per-query catalog lookups, or local permission checks.
 - Read-service executor callbacks receive only the statement, because the
   table list they also received existed only to build the deleted scope.
 - The migration provider stays `migrations:migration` with the same package,
@@ -66,6 +74,9 @@ injected by the platform into `request.state.user`.
   `operation.data_source_uid`; executor callbacks take one argument.
 - `mainsequence-metatable` requires SQLAlchemy 2.1, whose PostgreSQL compiler
   renders typed bind casts such as `%(direction_0)s::SMALLINT` in compiled SQL.
+- Hosted applications configure neither an API URL nor a DataSource: the
+  caller's Organization Environment selects the MetaTables deployment, and its
+  runtime supplies the DataSource and dialect.
 - No database schema migration is introduced. Upgrading the client does not
   authorize applying migrations to a hosted database.
 - Version-matched MetaTables agent skills live under `.agents/skills/metatables/`

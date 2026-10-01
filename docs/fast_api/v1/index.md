@@ -106,10 +106,12 @@ Current local-dev behavior:
   an index delete is attempted
 - schema mutation must already have been handled by
   `metatables migrations upgrade --provider migrations:migration head`
-- the app uses the real project/session data source already configured for the
-  Main Sequence client session
-- if the session cannot resolve a valid DynamicTable data source, startup
-  should fail instead of redirecting writes into an ad hoc local store
+- the app uses the runtime DataSource of the MetaTables API that the caller's
+  Organization Environment selects; it configures no API URL or DataSource of
+  its own
+- if that runtime has no usable DataSource, compiled operations raise
+  `metatables.DataSourceResolutionError` instead of redirecting writes into an
+  ad hoc local store
 
 ### Local full-stack debugging
 
@@ -149,7 +151,7 @@ state and logs instead of treating the Git push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
 The published `ms-markets` 2.x package therefore declares
-`mainsequence>=9.0.1,<10` and `mainsequence-metatable>=0.1.5,<0.2` without
+`mainsequence>=9.0.2,<10` and `mainsequence-metatable>=0.1.6,<0.2` without
 exact patch pins. The lower bounds enforce the SDK 9 and MetaTables client
 extraction hard cut, while the project lock and exported runtime requirements
 select the exact releases validated for this repository. Do not replace the
