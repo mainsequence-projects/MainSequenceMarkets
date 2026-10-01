@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mainsequence.meta_tables.migrations.env import run_mainsequence_alembic_env
+from metatables.migrations.env import run_mainsequence_alembic_env
 
 from msm.base import MARKETS_DEFAULT_SCHEMA, MARKETS_SCHEMA
 from migrations import migration as default_migration

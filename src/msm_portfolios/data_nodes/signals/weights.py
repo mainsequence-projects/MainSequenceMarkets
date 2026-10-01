@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 
-import mainsequence.meta_tables.time_index_table_updates.configuration as update_configuration
+import metatables.updaters.configuration as update_configuration
 
 from ..base import (
     AssetScopedPortfolioCanonicalDataNode,

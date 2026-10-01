@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mainsequence.client.metatables import MetaTableCompiledSQLOperation
+from metatables import MetaTableCompiledSQLOperation
 
 from msm.models import AccountAllocationModelTable
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mainsequence.client.metatables import MetaTable, TimeIndexMetaTable
+from metatables import MetaTable, TimeIndexMetaTable
 
 from msm.models import AssetTable, IndexTable
 from msm.services.indices.contracts import RelatedMetaTable

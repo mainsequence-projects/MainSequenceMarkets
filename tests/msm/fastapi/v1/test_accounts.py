@@ -1985,23 +1985,13 @@ def test_core_add_account_holdings_snapshot_rejects_existing_without_overwrite(
     assert captured["frame_kwargs"]["account_uid"] == str(account_uid)
 
 
+@pytest.mark.usefixtures("offline_postgresql_runtime")
 def test_account_repository_builds_atomic_holdings_replacement_operation() -> None:
-    from mainsequence.client.metatables import MetaTableOperationScopeTable
-
-    from msm.data_nodes.accounts.storage import AccountHoldingsStorage
-    from msm.models import AccountHoldingsSetTable
     from msm.repositories import accounts as account_repository
 
     class FakeContext:
         data_source_uid = "test-data-source"
         limits = None
-
-        def scope_table(self, model, *, access="read", alias=None):
-            return MetaTableOperationScopeTable(
-                meta_table_uid=f"{model.__name__}-uid",
-                access=access,
-                alias=alias,
-            )
 
     holdings_set_uid = uuid.uuid4()
     account_uid = uuid.uuid4()
@@ -2037,7 +2027,7 @@ def test_account_repository_builds_atomic_holdings_replacement_operation() -> No
     assert "JOIN holdings_set ON true" in sql
     assert "JOIN deleted_gate ON true" in sql
     assert "CAST(%(quantity_0)s AS FLOAT)" in sql
-    assert "CAST(%(direction_0)s AS SMALLINT)" in sql
+    assert "CAST(%(direction_0)s::SMALLINT AS SMALLINT)" in sql
     assert operation.statement.parameters["holdings_set_uid"] == holdings_set_uid
     assert operation.statement.parameters["account_uid"] == account_uid
     assert operation.statement.parameters["overwrite"] is True
@@ -2046,10 +2036,7 @@ def test_account_repository_builds_atomic_holdings_replacement_operation() -> No
         "holdings_date": "timestamp with time zone",
         "target_trade_time_0": "timestamp with time zone",
     }
-    assert [(table.meta_table_uid, table.access) for table in operation.scope.tables] == [
-        (f"{AccountHoldingsSetTable.__name__}-uid", "write"),
-        (f"{AccountHoldingsStorage.__name__}-uid", "write"),
-    ]
+    assert operation.data_source_uid == "test-data-source"
 
 
 def test_core_add_account_holdings_snapshot_rejects_asset_uid_mismatch(
@@ -2192,23 +2179,13 @@ def test_core_search_account_target_allocation_candidates_maps_rows(monkeypatch)
     }
 
 
+@pytest.mark.usefixtures("offline_postgresql_runtime")
 def test_account_repository_builds_single_target_candidate_search_operation() -> None:
-    from mainsequence.client.metatables import MetaTableOperationScopeTable
-
-    from msm.data_nodes.assets.storage import AssetSnapshotsStorage
-    from msm.models import AssetTable, PortfolioTable
     from msm.repositories import accounts as account_repository
 
     class FakeContext:
         data_source_uid = "test-data-source"
         limits = None
-
-        def scope_table(self, model, *, access="read", alias=None):
-            return MetaTableOperationScopeTable(
-                meta_table_uid=f"{model.__name__}-uid",
-                access=access,
-                alias=alias,
-            )
 
     operation = account_repository.build_search_account_target_allocation_candidates_operation(
         FakeContext(),
@@ -2227,11 +2204,7 @@ def test_account_repository_builds_single_target_candidate_search_operation() ->
     assert "row_number()" in sql.lower()
     assert "LIMIT" in sql
     assert "OFFSET" in sql
-    assert [(table.meta_table_uid, table.access) for table in operation.scope.tables] == [
-        (f"{AssetTable.__name__}-uid", "read"),
-        (f"{AssetSnapshotsStorage.__name__}-uid", "read"),
-        (f"{PortfolioTable.__name__}-uid", "read"),
-    ]
+    assert operation.data_source_uid == "test-data-source"
 
 
 def test_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
@@ -2574,27 +2547,13 @@ def test_core_add_account_target_positions_raises_conflict_when_snapshot_exists(
         )
 
 
+@pytest.mark.usefixtures("offline_postgresql_runtime")
 def test_account_repository_builds_atomic_target_positions_replacement_operation() -> None:
-    from mainsequence.client.metatables import MetaTableOperationScopeTable
-
-    from msm.data_nodes.accounts.storage import TargetPositionsStorage
-    from msm.models import (
-        AccountAllocationModelTable,
-        AccountTargetAllocationTable,
-        PositionSetTable,
-    )
     from msm.repositories import accounts as account_repository
 
     class FakeContext:
         data_source_uid = "test-data-source"
         limits = None
-
-        def scope_table(self, model, *, access="read", alias=None):
-            return MetaTableOperationScopeTable(
-                meta_table_uid=f"{model.__name__}-uid",
-                access=access,
-                alias=alias,
-            )
 
     account_uid = uuid.uuid4()
     asset_uid = uuid.uuid4()
@@ -2653,9 +2612,4 @@ def test_account_repository_builds_atomic_target_positions_replacement_operation
     assert operation.statement.parameter_types == {
         "target_positions_date": "timestamp with time zone",
     }
-    assert [(table.meta_table_uid, table.access) for table in operation.scope.tables] == [
-        (f"{AccountAllocationModelTable.__name__}-uid", "write"),
-        (f"{AccountTargetAllocationTable.__name__}-uid", "write"),
-        (f"{PositionSetTable.__name__}-uid", "write"),
-        (f"{TargetPositionsStorage.__name__}-uid", "write"),
-    ]
+    assert operation.data_source_uid == "test-data-source"

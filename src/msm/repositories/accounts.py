@@ -31,11 +31,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
 
-from mainsequence.client.metatables import MetaTableCompiledSQLOperation
+from metatables import MetaTableCompiledSQLOperation
 from msm.data_nodes.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
 from msm.data_nodes.assets.storage import AssetSnapshotsStorage
 from msm.models import (
-    AccountGroupTable,
     AccountHoldingsSetTable,
     AccountAllocationModelTable,
     AccountTable,
@@ -86,8 +85,6 @@ def build_create_account_operation(
         statement,
         context=context,
         operation="insert",
-        models=[AccountGroupTable, AccountTable],
-        access="write",
     )
 
 
@@ -113,8 +110,6 @@ def build_get_account_by_unique_identifier_operation(
         statement,
         context=context,
         operation="select",
-        models=[AccountTable],
-        access="read",
     )
 
 
@@ -175,8 +170,6 @@ def build_search_accounts_operation(
         statement,
         context=context,
         operation="select",
-        models=[AccountTable],
-        access="read",
     )
 
 
@@ -220,8 +213,6 @@ def build_update_account_operation(
         statement,
         context=context,
         operation="update",
-        models=[AccountGroupTable, AccountTable],
-        access="write",
     )
 
 
@@ -245,8 +236,6 @@ def build_delete_account_operation(
         statement,
         context=context,
         operation="delete",
-        models=[AccountTable],
-        access="write",
     )
 
 
@@ -421,8 +410,6 @@ def build_search_account_target_allocation_candidates_operation(
         statement,
         context=context,
         operation="select",
-        models=[AssetTable, AssetSnapshotsStorage, PortfolioTable],
-        access="read",
     )
 
 
@@ -806,8 +793,6 @@ def build_replace_account_holdings_snapshot_operation(
         statement,
         context=context,
         operation="upsert",
-        models=[AccountHoldingsSetTable, AccountHoldingsStorage],
-        access="write",
     )
 
 
@@ -1135,13 +1120,6 @@ def build_replace_account_target_positions_snapshot_operation(
         statement,
         context=context,
         operation="upsert",
-        models=[
-            AccountAllocationModelTable,
-            AccountTargetAllocationTable,
-            PositionSetTable,
-            TargetPositionsStorage,
-        ],
-        access="write",
     )
 
 

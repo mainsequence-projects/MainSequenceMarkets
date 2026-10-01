@@ -350,7 +350,6 @@ def test_public_delete_signal_metadata_operation_deletes_metadata_only(monkeypat
         fake_compile,
     )
 
-    from msm_portfolios.models import SignalMetadataTable
     from msm_portfolios.services.public_api import (
         _compile_delete_signal_metadata_operation,
     )
@@ -363,8 +362,6 @@ def test_public_delete_signal_metadata_operation_deletes_metadata_only(monkeypat
     statement_text = str(captured["statement"]).lower()
     assert operation == "compiled-delete-signal-op"
     assert captured["operation"] == "delete"
-    assert captured["access"] == "write"
-    assert captured["models"] == [SignalMetadataTable]
     assert "signal_scope" not in statement_text
     assert "deleted_signal_weights" not in statement_text
     assert "delete from" in statement_text

@@ -266,8 +266,6 @@ def activate_formula_definition(
             statement,
             context=context,
             operation="update",
-            models=[IndexFormulaDefinitionTable],
-            access="write",
         ),
         context=context,
     )

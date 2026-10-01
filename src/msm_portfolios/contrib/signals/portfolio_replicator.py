@@ -15,7 +15,7 @@ from msm_portfolios.data_nodes import ASSET_IDENTIFIER, SignalWeights
 from msm_portfolios.configuration import PortfolioConfigBaseModel
 from msm_portfolios.utils import TIMEDELTA
 
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 
 
 class TrackingStrategy(Enum):

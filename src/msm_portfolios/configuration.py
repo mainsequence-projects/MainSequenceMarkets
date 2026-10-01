@@ -4,7 +4,7 @@ import datetime as dt
 import uuid
 from typing import Annotated, Any
 
-import mainsequence.meta_tables.time_index_table_updates.configuration as update_configuration
+import metatables.updaters.configuration as update_configuration
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -13,7 +13,7 @@ from pydantic import (
     field_serializer,
 )
 
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm_portfolios.asset_scope import require_asset_category_scope
 from msm_portfolios.accounting.configuration import PortfolioAccountingConfiguration
 from msm_portfolios.data_nodes import (

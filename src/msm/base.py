@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
-from mainsequence.meta_tables import (
+from metatables import (
     PlatformManagedMetaTable,
     PlatformTimeIndexMetaTable,
     schema_table_name,

@@ -8,7 +8,6 @@ from typing import Any
 
 from sqlalchemy import and_, func, select
 
-from msm.base import MarketsBase
 from msm.models import PortfolioTable
 from msm.repositories.base import (
     MarketsOperationContext,
@@ -18,7 +17,7 @@ from msm.repositories.base import (
 from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
 
 PortfolioReadExecutor = Callable[
-    [Any, Sequence[type[MarketsBase]]],
+    [Any],
     Mapping[str, Any] | list[Any] | None,
 ]
 
@@ -85,7 +84,6 @@ def latest_portfolio_weights(
     return _execute_statement(
         repository_context=repository_context,
         statement=statement,
-        models=(PortfolioTable, PortfolioWeightsStorage),
         executor=executor,
     )
 
@@ -157,7 +155,6 @@ def portfolio_values(
     return _execute_statement(
         repository_context=repository_context,
         statement=statement,
-        models=(PortfolioTable, PortfoliosStorage),
         executor=executor,
     )
 
@@ -207,11 +204,10 @@ def _execute_statement(
     *,
     repository_context: MarketsOperationContext | None,
     statement: Any,
-    models: Sequence[type[MarketsBase]],
     executor: PortfolioReadExecutor | None,
 ) -> list[dict[str, Any]]:
     if executor is not None:
-        return _operation_result_rows(executor(statement, tuple(models)))
+        return _operation_result_rows(executor(statement))
     if repository_context is None:
         raise ValueError("repository_context is required when executor is not provided.")
 
@@ -221,8 +217,6 @@ def _execute_statement(
                 statement,
                 context=repository_context,
                 operation="select",
-                models=models,
-                access="read",
             ),
             context=repository_context,
         )

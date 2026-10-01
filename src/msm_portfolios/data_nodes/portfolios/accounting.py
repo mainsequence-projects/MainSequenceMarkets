@@ -10,7 +10,7 @@ from typing import Any
 import pandas as pd
 from pydantic import ConfigDict, Field, field_serializer
 
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm_portfolios.accounting import (
     LifecycleInputContract,
     PortfolioAccounting,

@@ -6,12 +6,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import Table
+from sqlalchemy.sql import visitors
+
 if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from msm.data_nodes.assets.storage import AssetSnapshotsStorage  # noqa: E402
-from msm.models import AssetTable, PortfolioTable  # noqa: E402
 from msm.services.assets import asset_reference_details  # noqa: E402
 from msm_portfolios.data_nodes.portfolios.storage import (  # noqa: E402
     PortfolioWeightsStorage,
@@ -20,12 +22,17 @@ from msm_portfolios.data_nodes.portfolios.storage import (  # noqa: E402
 from msm_portfolios.services import latest_portfolio_weights, portfolio_values  # noqa: E402
 
 
+def _referenced_tables(statement: Any) -> set[str]:
+    return {element.name for element in visitors.iterate(statement) if isinstance(element, Table)}
+
+
 def build_portfolio_read_services_example() -> dict[str, Any]:
     portfolio_identifier = "example-target-portfolio"
     snapshot_time = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
 
-    def portfolio_executor(_statement: Any, models: tuple[type[Any], ...]) -> dict[str, Any]:
-        if models == (PortfolioTable, PortfolioWeightsStorage):
+    def portfolio_executor(statement: Any) -> dict[str, Any]:
+        tables = _referenced_tables(statement)
+        if PortfolioWeightsStorage.__table__.name in tables:
             return {
                 "rows": [
                     {
@@ -44,7 +51,7 @@ def build_portfolio_read_services_example() -> dict[str, Any]:
                     },
                 ]
             }
-        if models == (PortfolioTable, PortfoliosStorage):
+        if PortfoliosStorage.__table__.name in tables:
             return {
                 "rows": [
                     {
@@ -56,11 +63,12 @@ def build_portfolio_read_services_example() -> dict[str, Any]:
                     }
                 ]
             }
-        raise AssertionError(f"unexpected portfolio models: {models!r}")
+        raise AssertionError(f"unexpected portfolio statement tables: {sorted(tables)!r}")
 
-    def asset_executor(_statement: Any, models: tuple[type[Any], ...]) -> dict[str, Any]:
-        if models != (AssetTable, AssetSnapshotsStorage):
-            raise AssertionError(f"unexpected asset models: {models!r}")
+    def asset_executor(statement: Any) -> dict[str, Any]:
+        tables = _referenced_tables(statement)
+        if AssetSnapshotsStorage.__table__.name not in tables:
+            raise AssertionError(f"unexpected asset statement tables: {sorted(tables)!r}")
         return {
             "rows": [
                 {

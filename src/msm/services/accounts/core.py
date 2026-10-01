@@ -78,8 +78,6 @@ def list_account_rows_response(
                 count_statement,
                 context=context,
                 operation="select",
-                models=[AccountTable],
-                access="read",
             ),
             context=context,
         )
@@ -90,8 +88,6 @@ def list_account_rows_response(
                 statement.limit(limit).offset(offset),
                 context=context,
                 operation="select",
-                models=[AccountTable],
-                access="read",
             ),
             context=context,
         )

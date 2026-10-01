@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import delete, func, insert, inspect, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
-from mainsequence.client.metatables import MetaTableCompiledSQLOperation
+from metatables import MetaTableCompiledSQLOperation
 
 from msm.base import MarketsBase
 
@@ -38,8 +38,6 @@ def build_create_model_operation(
         statement,
         context=context,
         operation="insert",
-        models=[model],
-        access="write",
     )
 
 
@@ -88,8 +86,6 @@ def build_upsert_model_operation(
         statement,
         context=context,
         operation="upsert",
-        models=[model],
-        access="write",
     )
 
 
@@ -147,8 +143,6 @@ def build_bulk_upsert_model_operation(
         statement,
         context=context,
         operation="upsert",
-        models=[model],
-        access="write",
     )
 
 
@@ -217,8 +211,6 @@ def build_get_model_by_uid_operation(
         statement,
         context=context,
         operation="select",
-        models=[model],
-        access="read",
     )
 
 
@@ -249,8 +241,6 @@ def build_get_model_by_unique_identifier_operation(
         statement,
         context=context,
         operation="select",
-        models=[model],
-        access="read",
     )
 
 
@@ -293,8 +283,6 @@ def build_search_model_operation(
         statement,
         context=context,
         operation="select",
-        models=[model],
-        access="read",
     )
 
 
@@ -341,8 +329,6 @@ def build_count_model_operation(
         statement,
         context=context,
         operation="select",
-        models=[model],
-        access="read",
     )
 
 
@@ -391,8 +377,6 @@ def build_update_model_operation(
         statement,
         context=context,
         operation="update",
-        models=[model],
-        access="write",
     )
 
 
@@ -427,8 +411,6 @@ def build_delete_model_operation(
         statement,
         context=context,
         operation="delete",
-        models=[model],
-        access="write",
     )
 
 

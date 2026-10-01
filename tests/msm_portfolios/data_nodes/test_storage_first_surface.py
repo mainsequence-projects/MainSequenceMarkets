@@ -3,8 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from mainsequence.client.metatables import TimeIndexMetaTable
-from mainsequence.meta_tables import TimeIndexTableRef
+from metatables import TimeIndexMetaTable, TimeIndexTableRef
 from msm.data_nodes.utils.storage_schema import storage_column_dtypes_map
 from msm.models.assets.core import AssetTable
 from msm.models.portfolios import PortfolioTable

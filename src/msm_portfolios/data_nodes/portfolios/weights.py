@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 import pytz
 
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 
 from ..base import (
     AssetScopedPortfolioCanonicalDataNode,

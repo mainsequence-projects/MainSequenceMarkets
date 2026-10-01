@@ -877,7 +877,7 @@ def _count_model_rows(context: Any, *, model: type[Any], filters: dict[str, Any]
 
 
 def _discount_curve_storage_scopes(*, context: Any) -> list[dict[str, Any]]:
-    from mainsequence.client.metatables import TimeIndexMetaTable
+    from metatables import TimeIndexMetaTable
     from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
     from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
 

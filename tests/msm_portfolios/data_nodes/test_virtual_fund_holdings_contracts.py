@@ -4,7 +4,7 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-from mainsequence.client import dtype_codec as dc
+from metatables import dtype_codec as dc
 
 from msm.data_nodes.accounts.storage import AccountHoldingsStorage
 from msm.data_nodes.utils.storage_schema import (

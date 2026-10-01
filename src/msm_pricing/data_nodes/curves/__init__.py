@@ -7,7 +7,7 @@ from typing import Any, ClassVar, Protocol
 import pandas as pd
 from pydantic import Field
 
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm.data_nodes.utils.stamped import (
     StampedDataNode,
     StampedDataNodeConfiguration,

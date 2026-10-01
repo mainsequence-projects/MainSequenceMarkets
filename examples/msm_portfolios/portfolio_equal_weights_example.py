@@ -32,8 +32,8 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
 )
 
 import msm_portfolios  # noqa: E402
-from mainsequence.client.metatables import TimeIndexMetaTable  # noqa: E402
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater  # noqa: E402
+from metatables import TimeIndexMetaTable  # noqa: E402
+from metatables import TimeIndexTableRef, TimeIndexTableUpdater  # noqa: E402
 from msm.api.assets import Asset, AssetType  # noqa: E402
 from msm.api.calendars import Calendar  # noqa: E402
 from msm.data_nodes.assets.asset_indexed import (  # noqa: E402

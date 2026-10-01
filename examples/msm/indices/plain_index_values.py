@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from mainsequence.meta_tables import PlatformTimeIndexMetaTable
+from metatables import PlatformTimeIndexMetaTable
 
 from msm.data_nodes.indices import IndexValuesDataNode, configured_index_values_storage
 from msm.api.indices import Index

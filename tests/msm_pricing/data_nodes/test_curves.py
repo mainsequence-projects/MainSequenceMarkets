@@ -13,7 +13,7 @@ os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
-from mainsequence.meta_tables.sqlalchemy_contracts import (
+from metatables.sqlalchemy_contracts import (
     time_indexed_registration_request_from_sqlalchemy_model,
 )
 from msm.data_nodes.utils.stamped import StampedDataNodeConfiguration

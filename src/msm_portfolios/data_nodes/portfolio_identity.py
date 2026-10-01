@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-import mainsequence.meta_tables.time_index_table_updates.configuration as update_configuration
+import metatables.updaters.configuration as update_configuration
 
 from .base import _drop_excluded_keys
 from .constants import PORTFOLIO_CONFIGURATION_HASH_EXCLUDED_KEYS

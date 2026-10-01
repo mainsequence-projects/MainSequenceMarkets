@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
-from mainsequence.client.metatables import MetaTableCompiledSQLOperation
+from metatables import MetaTableCompiledSQLOperation
 
 from msm.base import new_markets_uid
 from msm.models import AssetTable
@@ -70,8 +70,6 @@ def build_upsert_asset_operation(
         statement,
         context=asset,
         operation="upsert",
-        models=[AssetTable],
-        access="write",
     )
 
 

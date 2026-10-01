@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from mainsequence.client.metatables import MetaTableCompiledSQLOperation
+from metatables import MetaTableCompiledSQLOperation
 
 from msm.models import CalendarSessionTable
 from msm.repositories.base import (
@@ -51,8 +51,6 @@ def build_search_calendar_sessions_operation(
         statement,
         context=context,
         operation="select",
-        models=[CalendarSessionTable],
-        access="read",
     )
 
 

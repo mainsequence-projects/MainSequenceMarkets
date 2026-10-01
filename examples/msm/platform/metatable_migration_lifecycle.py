@@ -4,15 +4,15 @@ PROVIDER = "migrations:migration"
 
 
 def main() -> None:
-    print("ms-markets MetaTable migrations use the SDK Alembic provider:")
+    print("ms-markets MetaTable migrations use the application-owned MetaTables provider:")
     print(PROVIDER)
 
     print("\nAdmin command sequence:")
     for command in (
-        f"mainsequence migrations current --provider {PROVIDER} --json",
-        f'mainsequence migrations revision --provider {PROVIDER} --autogenerate -m "describe change"',
-        f"mainsequence migrations upgrade --provider {PROVIDER} head",
-        f"mainsequence migrations downgrade --provider {PROVIDER} <revision>",
+        f"metatables --json migrations current --provider {PROVIDER}",
+        f'metatables migrations revision --provider {PROVIDER} -m "describe change"',
+        f"metatables migrations upgrade --provider {PROVIDER} head",
+        f"metatables migrations downgrade --provider {PROVIDER} <revision>",
     ):
         print(command)
 

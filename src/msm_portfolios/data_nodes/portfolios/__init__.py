@@ -8,9 +8,8 @@ import numpy as np
 import pandas as pd
 import pytz
 
-import mainsequence.meta_tables.time_index_table_updates.configuration as update_configuration
-from mainsequence.client import BaseUpdateStatistics
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+import metatables.updaters.configuration as update_configuration
+from metatables import BaseUpdateStatistics, TimeIndexTableRef, TimeIndexTableUpdater
 
 from ..base import (
     OutputTable,

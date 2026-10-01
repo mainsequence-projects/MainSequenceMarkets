@@ -365,8 +365,6 @@ def _execute_virtual_fund_select(context: MarketsRepositoryContext, statement) -
             statement,
             context=context,
             operation="select",
-            models=[VirtualFundTable],
-            access="read",
         ),
         context=context,
     )
@@ -507,8 +505,6 @@ def _virtual_fund_holdings_snapshot_time(
             statement,
             context=context,
             operation="select",
-            models=[VirtualFundHoldingsSetTable],
-            access="read",
         ),
         context=context,
     )

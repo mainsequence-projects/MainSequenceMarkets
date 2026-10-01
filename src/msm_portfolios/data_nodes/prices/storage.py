@@ -20,7 +20,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from mainsequence.meta_tables import schema_index_name
+from metatables import schema_index_name
 from msm.base import (
     MARKETS_TABLE_APP,
     MarketsBase,

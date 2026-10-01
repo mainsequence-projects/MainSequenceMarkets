@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy import delete, func, insert, or_, select, update
 
-from mainsequence.client.metatables import MetaTableCompiledSQLOperation
+from metatables import MetaTableCompiledSQLOperation
 from msm.repositories.base import (
     MarketsRepositoryContext,
     compile_markets_statement,
@@ -53,8 +53,6 @@ def build_create_portfolio_operation(
         statement,
         context=context,
         operation="insert",
-        models=[PortfolioTable],
-        access="write",
     )
 
 
@@ -80,8 +78,6 @@ def build_get_portfolio_by_unique_identifier_operation(
         statement,
         context=context,
         operation="select",
-        models=[PortfolioTable],
-        access="read",
     )
 
 
@@ -120,8 +116,6 @@ def build_search_portfolios_operation(
         statement,
         context=context,
         operation="select",
-        models=[PortfolioTable],
-        access="read",
     )
 
 
@@ -151,8 +145,6 @@ def build_update_portfolio_operation(
         statement,
         context=context,
         operation="update",
-        models=[PortfolioTable],
-        access="write",
     )
 
 
@@ -176,8 +168,6 @@ def build_delete_portfolio_operation(
         statement,
         context=context,
         operation="delete",
-        models=[PortfolioTable],
-        access="write",
     )
 
 
@@ -335,8 +325,6 @@ def build_search_portfolio_groups_operation(
         statement,
         context=context,
         operation="select",
-        models=[PortfolioGroupTable],
-        access="read",
     )
 
 
@@ -488,8 +476,6 @@ def build_delete_portfolio_group_membership_by_pair_operation(
         statement,
         context=context,
         operation="delete",
-        models=[PortfolioGroupMembershipTable],
-        access="write",
     )
 
 
@@ -532,8 +518,6 @@ def build_list_portfolios_for_group_operation(
         statement,
         context=context,
         operation="select",
-        models=[PortfolioTable, PortfolioGroupMembershipTable],
-        access="read",
     )
 
 
@@ -570,8 +554,6 @@ def build_list_portfolio_groups_for_portfolio_operation(
         statement,
         context=context,
         operation="select",
-        models=[PortfolioGroupTable, PortfolioGroupMembershipTable],
-        access="read",
     )
 
 

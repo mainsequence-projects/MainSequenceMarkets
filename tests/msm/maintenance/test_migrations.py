@@ -10,12 +10,12 @@ import pytest
 from sqlalchemy import DateTime, MetaData
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from mainsequence.meta_tables import (
+from metatables import (
     POSTGRES_IDENTIFIER_MAX_LENGTH,
     PlatformManagedMetaTable,
     PlatformTimeIndexMetaTable,
 )
-from mainsequence.meta_tables.migrations import (
+from metatables.migrations import (
     AlembicMetaTableMigration,
     load_alembic_metatable_migration_provider,
     namespace_version_location,
@@ -59,11 +59,25 @@ def test_migration_provider_is_single_sdk_alembic_provider() -> None:
     assert list(migration.metatable_models) == metatable_provider_models()
 
 
-def test_migration_upgrade_command_uses_current_sdk_flags() -> None:
-    upgrade_command = "mainsequence migrations upgrade --provider migrations:migration head"
+def test_migration_upgrade_command_uses_metatables_cli_flags() -> None:
+    from metatables.cli.app import app
+    from typer.testing import CliRunner
 
+    upgrade_command = "metatables migrations upgrade --provider migrations:migration head"
+    help_result = CliRunner().invoke(
+        app,
+        ["migrations", "upgrade", "--help"],
+        env={"COLUMNS": "200"},
+    )
+
+    assert help_result.exit_code == 0
+    assert "--provider" in help_result.output
+    assert "--register-metatables" not in help_result.output
+    assert "--apply" not in help_result.output
     assert "--register-metatables" not in upgrade_command
     assert "--apply" not in upgrade_command
+    provider_reference = upgrade_command.split("--provider ", 1)[1].split()[0]
+    assert load_alembic_metatable_migration_provider(provider_reference) is migration
 
 
 def test_sdk_loader_resolves_msm_migration_provider() -> None:

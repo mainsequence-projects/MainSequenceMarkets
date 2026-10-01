@@ -6,11 +6,7 @@ from typing import ClassVar
 import datetime as dt
 
 import pytest
-from mainsequence.client.metatables import TimeIndexMetaTable
-from mainsequence.meta_tables import (
-    PlatformManagedMetaTable,
-    PlatformTimeIndexMetaTable,
-)
+from metatables import TimeIndexMetaTable, PlatformManagedMetaTable, PlatformTimeIndexMetaTable
 from pydantic import AliasChoices, Field
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -94,10 +90,10 @@ class ExtensionAssetDetails(MarketsMetaTableRow):
 
 
 def _install_fake_session_data_source(monkeypatch) -> None:
-    from mainsequence.client import metatables
+    import metatables.models
 
     monkeypatch.setattr(
-        metatables,
+        metatables.models,
         "get_session_data_source",
         lambda: SimpleNamespace(
             uid=str(uuid.uuid4()),

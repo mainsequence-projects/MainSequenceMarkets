@@ -15,8 +15,8 @@ if __package__ in {None, ""}:
 else:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-from mainsequence.client.metatables import TimeIndexMetaTable  # noqa: E402
-from mainsequence.meta_tables.migrations import namespace_version_location  # noqa: E402
+from metatables import TimeIndexMetaTable  # noqa: E402
+from metatables.migrations import namespace_version_location  # noqa: E402
 
 from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
     DYNAMIC_MIGRATION_PROVIDER,

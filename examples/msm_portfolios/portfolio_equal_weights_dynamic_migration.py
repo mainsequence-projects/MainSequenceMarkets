@@ -8,7 +8,7 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from mainsequence.meta_tables.migrations import (  # noqa: E402
+from metatables.migrations import (  # noqa: E402
     build_metatable_migration_provider,
     metadata_for_models,
 )

@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from pydantic import Field, field_validator, model_validator
 
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.rebalance_strategy.base import (
     AssetExecution,

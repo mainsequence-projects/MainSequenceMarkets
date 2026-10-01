@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from mainsequence.meta_tables import TimeIndexTableRef
+from metatables import TimeIndexTableRef
 from msm_portfolios.rebalance_strategy import (
     TrailingAverageDailyVolumeParticipation,
 )

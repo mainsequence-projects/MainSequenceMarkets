@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
-from mainsequence.client.metatables import (
+from metatables import (
     MetaTable,
+    MetaTableCompiledSQLDialect,
     MetaTableCompiledSQLOperation,
     MetaTableOperation,
     MetaTableOperationLimits,
-    MetaTableOperationScopeTable,
 )
-from mainsequence.meta_tables.compiled_sql.v1 import compile_sqlalchemy_statement
+from metatables.compiled_sql.v1 import compile_sqlalchemy_statement
 
 from msm.base import MarketsBase
 
@@ -26,32 +26,10 @@ class MarketsMetaTableHandle:
     data_source_uid: str | None = None
     timeout: int | float | tuple[float, float] | None = None
     namespace: str | None = None
-    reserved_policy: Literal["reject", "reconcile"] | None = None
 
     @property
     def meta_table_uid(self) -> str:
         return _bound_meta_table_uid(self.model, meta_table=self.meta_table)
-
-    def meta_table_uid_for_model(self, model: type[MarketsBase]) -> str:
-        if model is not self.model:
-            raise ValueError(
-                f"{self.model.__name__} handle cannot compile operations for {model.__name__}."
-            )
-        return _bound_meta_table_uid(model, meta_table=self.meta_table)
-
-    def scope_table(
-        self,
-        model: type[MarketsBase],
-        *,
-        access: str = "read",
-        alias: str | None = None,
-    ) -> MetaTableOperationScopeTable:
-        return MetaTableOperationScopeTable(
-            meta_table_uid=self.meta_table_uid_for_model(model),
-            alias=alias,
-            access=access,
-            reserved_policy=self.reserved_policy,
-        )
 
 
 @dataclass(frozen=True, init=False)
@@ -60,13 +38,14 @@ class MarketsRepositoryContext:
 
     `namespace` records the runtime namespace override selected during
     bootstrap. `None` means the library's normal MetaTable namespace was used.
+    `data_source_uid` selects the DataSource explicitly; `None` lets the
+    compiler use the DataSource selected by the MetaTables API runtime.
     """
 
     limits: MetaTableOperationLimits | Mapping[str, Any] | None = None
     data_source_uid: str | None = None
     timeout: int | float | tuple[float, float] | None = None
     namespace: str | None = None
-    reserved_policy: Literal["reject", "reconcile"] | None = None
 
     def __init__(
         self,
@@ -74,13 +53,11 @@ class MarketsRepositoryContext:
         data_source_uid: str | None = None,
         timeout: int | float | tuple[float, float] | None = None,
         namespace: str | None = None,
-        reserved_policy: Literal["reject", "reconcile"] | None = None,
     ) -> None:
         object.__setattr__(self, "limits", limits)
         object.__setattr__(self, "data_source_uid", data_source_uid)
         object.__setattr__(self, "timeout", timeout)
         object.__setattr__(self, "namespace", namespace)
-        object.__setattr__(self, "reserved_policy", reserved_policy)
 
     def meta_table_uid_for_model(self, model: type[MarketsBase]) -> str:
         return _bound_meta_table_uid(model)
@@ -96,21 +73,6 @@ class MarketsRepositoryContext:
             data_source_uid=self.data_source_uid,
             timeout=self.timeout,
             namespace=self.namespace,
-            reserved_policy=self.reserved_policy,
-        )
-
-    def scope_table(
-        self,
-        model: type[MarketsBase],
-        *,
-        access: str = "read",
-        alias: str | None = None,
-    ) -> MetaTableOperationScopeTable:
-        return MetaTableOperationScopeTable(
-            meta_table_uid=self.meta_table_uid_for_model(model),
-            alias=alias,
-            access=access,
-            reserved_policy=self.reserved_policy,
         )
 
 
@@ -153,16 +115,22 @@ def compile_markets_statement(
     *,
     context: MarketsOperationContext,
     operation: MetaTableOperation,
-    models: Sequence[type[MarketsBase]],
-    access: str,
+    dialect: MetaTableCompiledSQLDialect | None = None,
 ) -> MetaTableCompiledSQLOperation:
-    kwargs: dict[str, Any] = {
-        "operation": operation,
-        "scope_tables": [context.scope_table(model, access=access) for model in models],
-        "limits": context.limits,
-        "data_source_uid": context.data_source_uid,
-    }
-    return compile_sqlalchemy_statement(statement, **kwargs)
+    """Compile SQLAlchemy SQL for the context's DataSource.
+
+    A missing `context.data_source_uid` or `dialect` is resolved by the
+    compiler from the selected MetaTables API runtime. `operation="select"`
+    selects read execution; the other operation labels select write execution.
+    """
+
+    return compile_sqlalchemy_statement(
+        statement,
+        operation=operation,
+        data_source_uid=context.data_source_uid,
+        dialect=dialect,
+        limits=context.limits,
+    )
 
 
 def execute_markets_operation(

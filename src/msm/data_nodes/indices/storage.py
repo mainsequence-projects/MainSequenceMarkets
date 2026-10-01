@@ -20,7 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
-from mainsequence.meta_tables import PlatformTimeIndexMetaTable, schema_index_name
+from metatables import PlatformTimeIndexMetaTable, schema_index_name
 
 from msm.base import (
     MARKETS_TABLE_APP,

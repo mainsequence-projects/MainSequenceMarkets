@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy import Float, Integer, Numeric, String, and_, cast, exists, func, or_, select
 
-from mainsequence.client.metatables import MetaTable, TimeIndexMetaTable
+from metatables import MetaTable, TimeIndexMetaTable
 
 from msm.api.base import operation_result_rows
 from msm.api.indices import Index, IndexType
@@ -56,7 +56,6 @@ def list_indexes(context: MarketsOperationContext, request: IndexListRequest) ->
     """Return an authoritative, stable page from the canonical Index table."""
 
     statement = select(IndexTable)
-    models: list[type[Any]] = [IndexTable]
     conditions: list[Any] = []
     if request.search.strip():
         needle = f"%{request.search.strip().lower()}%"
@@ -75,7 +74,6 @@ def list_indexes(context: MarketsOperationContext, request: IndexListRequest) ->
     if request.index_type:
         conditions.append(IndexTable.index_type == request.index_type)
     if request.has_formula is not None:
-        models.append(IndexFormulaDefinitionTable)
         formula_exists = exists(
             select(IndexFormulaDefinitionTable.uid).where(
                 IndexFormulaDefinitionTable.index_uid == IndexTable.uid
@@ -84,7 +82,6 @@ def list_indexes(context: MarketsOperationContext, request: IndexListRequest) ->
         conditions.append(formula_exists if request.has_formula else ~formula_exists)
 
     if request.has_canonical_values is not None or request.cadence:
-        models.append(IndexDatasetAvailabilityTable)
         availability_conditions = [
             IndexDatasetAvailabilityTable.index_uid == IndexTable.uid,
             IndexDatasetAvailabilityTable.population_state == "populated",
@@ -119,8 +116,6 @@ def list_indexes(context: MarketsOperationContext, request: IndexListRequest) ->
             count_statement,
             context=context,
             operation="select",
-            models=models,
-            access="read",
         ),
         context=context,
     )
@@ -130,8 +125,6 @@ def list_indexes(context: MarketsOperationContext, request: IndexListRequest) ->
             page_statement,
             context=context,
             operation="select",
-            models=models,
-            access="read",
         ),
         context=context,
     )
@@ -167,8 +160,6 @@ def list_index_types(
                 count_statement,
                 context=context,
                 operation="select",
-                models=[IndexTypeTable],
-                access="read",
             ),
             context=context,
         )
@@ -179,8 +170,6 @@ def list_index_types(
                 base.limit(limit).offset(offset),
                 context=context,
                 operation="select",
-                models=[IndexTypeTable],
-                access="read",
             ),
             context=context,
         )
@@ -221,8 +210,6 @@ def list_formulas(
                     count_statement,
                     context=context,
                     operation="select",
-                    models=[IndexFormulaInputTable],
-                    access="read",
                 ),
                 context=context,
             )
@@ -343,8 +330,6 @@ def dataset_summary(
                     aggregate,
                     context=handle,
                     operation="select",
-                    models=[model],
-                    access="read",
                 ),
                 context=handle,
             )
@@ -366,8 +351,6 @@ def dataset_summary(
                     latest_statement,
                     context=handle,
                     operation="select",
-                    models=[model],
-                    access="read",
                 ),
                 context=handle,
             )
@@ -437,8 +420,6 @@ def read_index_values(
             statement,
             context=handle,
             operation="select",
-            models=[model],
-            access="read",
         ),
         context=handle,
     )
@@ -535,7 +516,6 @@ def list_related_meta_tables(
                     data_source_uid=context.data_source_uid,
                     timeout=context.timeout,
                     namespace=context.namespace,
-                    reserved_policy=context.reserved_policy,
                 )
                 value = index.uid if provider.join_kind == "uid" else index.unique_identifier
                 count = _count(
@@ -765,7 +745,6 @@ def _dataset_model_and_handle(
         data_source_uid=context.data_source_uid,
         timeout=context.timeout,
         namespace=context.namespace,
-        reserved_policy=context.reserved_policy,
     )
     return model, handle
 

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from mainsequence.client.metatables import TimeIndexMetaTable
-from mainsequence.meta_tables import TimeIndexTableRef
+from metatables import TimeIndexMetaTable, TimeIndexTableRef
 from pydantic import ValidationError
 
 from msm_portfolios.configuration import PricesConfiguration

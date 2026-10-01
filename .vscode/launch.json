@@ -6,13 +6,13 @@
       "type": "debugpy",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
-      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "program": "${workspaceFolder}/.venv/bin/metatables",
       "args": [
+        "--json",
         "migrations",
         "current",
         "--provider",
-        "migrations:migration",
-        "--json"
+        "migrations:migration"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
@@ -27,13 +27,12 @@
       "type": "debugpy",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
-      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "program": "${workspaceFolder}/.venv/bin/metatables",
       "args": [
         "migrations",
         "revision",
         "--provider",
         "migrations:migration",
-        "--autogenerate",
         "-m",
         "${input:migrationMessage}"
       ],
@@ -50,7 +49,7 @@
       "type": "debugpy",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
-      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "program": "${workspaceFolder}/.venv/bin/metatables",
       "args": [
         "migrations",
         "upgrade",
@@ -71,7 +70,7 @@
       "type": "debugpy",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
-      "program": "${workspaceFolder}/.venv/bin/mainsequence",
+      "program": "${workspaceFolder}/.venv/bin/metatables",
       "args": [
         "migrations",
         "downgrade",

@@ -165,8 +165,6 @@ class AssetSnapshot(AssetTimestampedDataNode):
             statement,
             context=context,
             operation="select",
-            models=[AssetSnapshotsStorage],
-            access="read",
         )
         result = execute_markets_operation(operation, context=context)
         existing_key_set = {

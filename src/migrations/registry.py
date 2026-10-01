@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mainsequence.meta_tables.migrations import build_metatable_model_registry
+from metatables.migrations import build_metatable_model_registry
 
 from msm.base import MarketsBase
 

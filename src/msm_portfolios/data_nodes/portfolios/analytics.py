@@ -9,7 +9,7 @@ import pandas as pd
 import pytz
 from pydantic import ConfigDict, Field
 
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 
 from ..base import PortfolioCanonicalDataNode, PortfolioCanonicalDataNodeConfiguration
 from ..constants import PORTFOLIO_IDENTIFIER

@@ -979,8 +979,6 @@ def _virtual_fund_reference_count(
                 statement,
                 context=context,
                 operation="select",
-                models=[VirtualFundTable],
-                access="read",
             ),
             context=context,
         )
@@ -1003,8 +1001,6 @@ def _target_position_reference_count(
                 statement,
                 context=context,
                 operation="select",
-                models=[TargetPositionsStorage],
-                access="read",
             ),
             context=context,
         )
@@ -1155,8 +1151,6 @@ def _compile_delete_signal_metadata_operation(
         statement,
         context=context,
         operation="delete",
-        models=[SignalMetadataTable],
-        access="write",
     )
 
 
@@ -1199,12 +1193,6 @@ def _compile_delete_portfolio_operation(
         statement,
         context=context,
         operation="delete",
-        models=[
-            PortfolioTable,
-            TargetPositionsStorage,
-            VirtualFundTable,
-        ],
-        access="write",
     )
 
 
@@ -1267,12 +1255,6 @@ def _compile_cascade_delete_portfolio_operation(
         statement,
         context=context,
         operation="delete",
-        models=[
-            PortfolioTable,
-            VirtualFundHoldingsSetTable,
-            VirtualFundTable,
-        ],
-        access="write",
     )
 
 
@@ -1317,8 +1299,6 @@ def _execute_portfolio_select(context: MarketsRepositoryContext, statement) -> d
             statement,
             context=context,
             operation="select",
-            models=[PortfolioTable],
-            access="read",
         ),
         context=context,
     )
@@ -1375,8 +1355,6 @@ def _portfolio_weights_snapshot_time(
             statement,
             context=context,
             operation="select",
-            models=[PortfolioWeightsStorage],
-            access="read",
         ),
         context=context,
     )
@@ -1435,8 +1413,6 @@ def _portfolio_values_rows(
                 statement,
                 context=context,
                 operation="select",
-                models=[PortfoliosStorage],
-                access="read",
             ),
             context=context,
         )
@@ -1471,8 +1447,6 @@ def _portfolio_signal_weight_rows(
                 statement,
                 context=context,
                 operation="select",
-                models=[SignalWeightsStorage],
-                access="read",
             ),
             context=context,
         )

@@ -10,7 +10,7 @@ from msm_portfolios.data_nodes import (
     SignalWeights,
 )
 from msm_portfolios.configuration import PortfolioConfigBaseModel
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 
 SIGNAL_OFFSET_START = datetime.datetime(2018, 1, 1, tzinfo=datetime.UTC)
 

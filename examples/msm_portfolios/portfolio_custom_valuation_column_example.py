@@ -22,7 +22,7 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
     CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
     NAMESPACE,
 )
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater  # noqa: E402
+from metatables import TimeIndexTableRef, TimeIndexTableUpdater  # noqa: E402
 from msm_portfolios.configuration import (  # noqa: E402
     BacktestingWeightsConfig,
     PortfolioBuildConfiguration,

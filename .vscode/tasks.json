@@ -8,10 +8,7 @@
       "args": [
         "run",
         "mainsequence",
-        "project",
-        "refresh_token",
-        "--path",
-        "."
+        "refresh-token"
       ],
       "options": {
         "cwd": "${workspaceFolder}",
@@ -27,12 +24,12 @@
       "command": "uv",
       "args": [
         "run",
-        "mainsequence",
+        "metatables",
+        "--json",
         "migrations",
         "current",
         "--provider",
-        "migrations:migration",
-        "--json"
+        "migrations:migration"
       ],
       "options": {
         "cwd": "${workspaceFolder}",
@@ -52,12 +49,11 @@
       "command": "uv",
       "args": [
         "run",
-        "mainsequence",
+        "metatables",
         "migrations",
         "revision",
         "--provider",
         "migrations:migration",
-        "--autogenerate",
         "-m",
         "${input:migrationMessage}"
       ],
@@ -79,7 +75,7 @@
       "command": "uv",
       "args": [
         "run",
-        "mainsequence",
+        "metatables",
         "migrations",
         "upgrade",
         "--provider",
@@ -104,7 +100,7 @@
       "command": "uv",
       "args": [
         "run",
-        "mainsequence",
+        "metatables",
         "migrations",
         "downgrade",
         "--provider",

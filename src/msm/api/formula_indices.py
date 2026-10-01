@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
-from mainsequence.client.metatables import MetaTable
+from metatables import MetaTable
 from pydantic import BaseModel, ConfigDict
 
 from msm.analytics.indices import (
@@ -340,7 +340,7 @@ class FormulaIndex(BaseModel):
     ) -> IndexFormulaResult:
         """Read the pinned MetaTables over one bounded interval and calculate."""
 
-        from mainsequence.meta_tables import TimeIndexTableRef
+        from metatables import TimeIndexTableRef
 
         start_at = _utc_boundary(start, field="start")
         end_at = _utc_boundary(end, field="end")

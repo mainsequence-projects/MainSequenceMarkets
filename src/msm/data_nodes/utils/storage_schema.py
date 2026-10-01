@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mainsequence.client.dtype_codec import sqlalchemy_type_to_token
+from metatables.dtype_codec import sqlalchemy_type_to_token
 
 
 def storage_column_dtypes_map(output_table: Any) -> dict[str, str]:

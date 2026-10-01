@@ -6,7 +6,7 @@ from typing import Literal
 import pandas as pd
 from pydantic import Field
 
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm_portfolios.rebalance_strategy.base import RebalanceInputContract
 from msm_portfolios.rebalance_strategy.immediate_signal import ImmediateSignal
 

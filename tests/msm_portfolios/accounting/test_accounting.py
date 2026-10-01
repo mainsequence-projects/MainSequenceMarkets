@@ -7,9 +7,8 @@ import pandas as pd
 import pytest
 from pydantic import ValidationError
 
-from mainsequence.client.metatables import TimeIndexMetaTable
-from mainsequence.meta_tables import TimeIndexTableUpdater
-from mainsequence.meta_tables.time_index_table_updates.configuration import ConfigRebuilder
+from metatables import TimeIndexMetaTable, TimeIndexTableUpdater
+from metatables.updaters.configuration import ConfigRebuilder
 from msm.models import AssetTable, PortfolioTable
 from msm_portfolios.accounting import (
     DividendCashFlowModel,

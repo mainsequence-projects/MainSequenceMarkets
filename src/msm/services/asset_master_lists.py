@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from mainsequence.meta_tables import slugify_identifier
+from metatables import slugify_identifier
 from sqlalchemy import String, cast, func, or_, select
 
 from msm.models import (
@@ -289,20 +289,17 @@ def list_asset_rows_response(
     """Return an authoritative page from the canonical asset registry."""
 
     statement = select(AssetTable)
-    models: list[type[Any]] = [AssetTable]
     if category_uid not in (None, ""):
         statement = statement.join(
             AssetCategoryMembershipTable,
             AssetCategoryMembershipTable.asset_uid == AssetTable.uid,
         ).where(AssetCategoryMembershipTable.category_uid == str(category_uid))
-        models.append(AssetCategoryMembershipTable)
     normalized_search = search.strip().lower()
     if normalized_search:
         statement = statement.outerjoin(
             OpenFigiAssetDetailsTable,
             OpenFigiAssetDetailsTable.asset_uid == AssetTable.uid,
         )
-        models.append(OpenFigiAssetDetailsTable)
         needle = f"%{normalized_search}%"
         statement = statement.where(
             or_(
@@ -323,8 +320,6 @@ def list_asset_rows_response(
                 count_statement,
                 context=context,
                 operation="select",
-                models=models,
-                access="read",
             ),
             context=context,
         )
@@ -335,8 +330,6 @@ def list_asset_rows_response(
                 statement.limit(limit).offset(offset),
                 context=context,
                 operation="select",
-                models=models,
-                access="read",
             ),
             context=context,
         )
@@ -632,8 +625,6 @@ def list_asset_category_rows_page(
                 count_statement,
                 context=context,
                 operation="select",
-                models=[AssetCategoryTable],
-                access="read",
             ),
             context=context,
         )
@@ -644,8 +635,6 @@ def list_asset_category_rows_page(
                 statement.limit(limit).offset(offset),
                 context=context,
                 operation="select",
-                models=[AssetCategoryTable],
-                access="read",
             ),
             context=context,
         )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mainsequence.meta_tables import PlatformManagedMetaTable
+from metatables import PlatformManagedMetaTable
 
 from msm.base import MARKETS_TABLE_APP, markets_table_name
 from msm.models import AssetTable, IndexTable

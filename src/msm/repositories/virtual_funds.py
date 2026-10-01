@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from mainsequence.client.metatables import MetaTableCompiledSQLOperation
+from metatables import MetaTableCompiledSQLOperation
 from sqlalchemy import delete, insert, select, update
 
 from msm.repositories.base import (
@@ -34,8 +34,6 @@ def build_create_virtual_fund_operation(
         statement,
         context=context,
         operation="insert",
-        models=[VirtualFundTable],
-        access="write",
     )
 
 
@@ -63,8 +61,6 @@ def build_get_virtual_fund_by_unique_identifier_operation(
         statement,
         context=context,
         operation="select",
-        models=[VirtualFundTable],
-        access="read",
     )
 
 
@@ -97,8 +93,6 @@ def build_get_virtual_funds_by_portfolio_operation(
         statement,
         context=context,
         operation="select",
-        models=[VirtualFundTable],
-        access="read",
     )
 
 
@@ -131,8 +125,6 @@ def build_get_virtual_funds_by_account_operation(
         statement,
         context=context,
         operation="select",
-        models=[VirtualFundTable],
-        access="read",
     )
 
 
@@ -168,8 +160,6 @@ def build_update_virtual_fund_operation(
         statement,
         context=context,
         operation="update",
-        models=[VirtualFundTable],
-        access="write",
     )
 
 
@@ -193,8 +183,6 @@ def build_delete_virtual_fund_operation(
         statement,
         context=context,
         operation="delete",
-        models=[VirtualFundTable],
-        access="write",
     )
 
 

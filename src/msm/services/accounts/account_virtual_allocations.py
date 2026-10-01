@@ -1343,8 +1343,6 @@ def _latest_portfolio_weight_records(
                 statement,
                 context=context,
                 operation="select",
-                models=[portfolio_weights_storage],
-                access="read",
             ),
             context=context,
         )

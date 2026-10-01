@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 import pytz
 
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
+from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm.data_nodes.utils.time import normalize_datetime64_ns_utc
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.rebalance_strategy import (

@@ -8,7 +8,6 @@ from typing import Any
 
 from sqlalchemy import and_, func, literal, select
 
-from msm.base import MarketsBase
 from msm.data_nodes.assets.storage import AssetSnapshotsStorage
 from msm.models import AssetTable
 from msm.repositories.base import (
@@ -18,7 +17,7 @@ from msm.repositories.base import (
 )
 
 AssetReferenceExecutor = Callable[
-    [Any, Sequence[type[MarketsBase]]],
+    [Any],
     Mapping[str, Any] | list[Any] | None,
 ]
 
@@ -45,7 +44,6 @@ def asset_reference_details(
     rows = _execute_statement(
         repository_context=repository_context,
         statement=statement,
-        models=(AssetTable, AssetSnapshotsStorage) if latest_snapshot else (AssetTable,),
         executor=executor,
     )
     return _order_rows_by_identifier(rows, identifiers=identifiers)
@@ -68,7 +66,6 @@ def asset_reference_details_by_uids(
     rows = _execute_statement(
         repository_context=repository_context,
         statement=statement,
-        models=(AssetTable, AssetSnapshotsStorage) if latest_snapshot else (AssetTable,),
         executor=executor,
     )
     return _order_rows_by_key(rows, values=requested_uids, key="asset_uid")
@@ -206,11 +203,10 @@ def _execute_statement(
     *,
     repository_context: MarketsOperationContext | None,
     statement: Any,
-    models: Sequence[type[MarketsBase]],
     executor: AssetReferenceExecutor | None,
 ) -> list[dict[str, Any]]:
     if executor is not None:
-        return _operation_result_rows(executor(statement, tuple(models)))
+        return _operation_result_rows(executor(statement))
     if repository_context is None:
         raise ValueError("repository_context is required when executor is not provided.")
 
@@ -220,8 +216,6 @@ def _execute_statement(
                 statement,
                 context=repository_context,
                 operation="select",
-                models=models,
-                access="read",
             ),
             context=repository_context,
         )

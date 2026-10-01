@@ -11,8 +11,6 @@ os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
-from msm.models import PortfolioTable
-from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
 from msm_portfolios.services import latest_portfolio_weights, portfolio_values
 
 
@@ -23,11 +21,10 @@ def _compiled_sql(statement: Any) -> str:
 def test_latest_portfolio_weights_builds_as_of_snapshot_query() -> None:
     calls: list[dict[str, Any]] = []
 
-    def executor(statement: Any, models: tuple[type[Any], ...]) -> dict[str, Any]:
+    def executor(statement: Any) -> dict[str, Any]:
         calls.append(
             {
                 "sql": _compiled_sql(statement),
-                "models": models,
             }
         )
         return {
@@ -57,7 +54,6 @@ def test_latest_portfolio_weights_builds_as_of_snapshot_query() -> None:
             "weight": 1.0,
         }
     ]
-    assert calls[0]["models"] == (PortfolioTable, PortfolioWeightsStorage)
     sql = calls[0]["sql"].lower()
     assert "max(" in sql
     assert "<=" in sql
@@ -68,8 +64,7 @@ def test_latest_portfolio_weights_builds_as_of_snapshot_query() -> None:
 def test_latest_portfolio_weights_exact_date_does_not_use_latest_subquery() -> None:
     calls: list[str] = []
 
-    def executor(statement: Any, models: tuple[type[Any], ...]) -> list[dict[str, Any]]:
-        assert models == (PortfolioTable, PortfolioWeightsStorage)
+    def executor(statement: Any) -> list[dict[str, Any]]:
         calls.append(_compiled_sql(statement))
         return []
 
@@ -89,11 +84,10 @@ def test_latest_portfolio_weights_exact_date_does_not_use_latest_subquery() -> N
 def test_portfolio_values_builds_latest_only_time_window_query() -> None:
     calls: list[dict[str, Any]] = []
 
-    def executor(statement: Any, models: tuple[type[Any], ...]) -> dict[str, Any]:
+    def executor(statement: Any) -> dict[str, Any]:
         calls.append(
             {
                 "sql": _compiled_sql(statement),
-                "models": models,
             }
         )
         return {
@@ -118,7 +112,6 @@ def test_portfolio_values_builds_latest_only_time_window_query() -> None:
 
     assert rows[0]["portfolio_identifier"] == "growth"
     assert rows[0]["return"] == 0.015
-    assert calls[0]["models"] == (PortfolioTable, PortfoliosStorage)
     sql = calls[0]["sql"].lower()
     assert "max(" in sql
     assert ">=" in sql
@@ -135,9 +128,9 @@ def test_portfolio_reads_require_explicit_execution_boundary() -> None:
 
 def test_portfolio_reads_validate_identifiers_and_limits() -> None:
     with pytest.raises(ValueError, match="non-empty"):
-        latest_portfolio_weights(["growth", " "], executor=lambda _statement, _models: [])
+        latest_portfolio_weights(["growth", " "], executor=lambda _statement: [])
 
     with pytest.raises(ValueError, match="positive"):
-        portfolio_values("growth", limit=0, executor=lambda _statement, _models: [])
+        portfolio_values("growth", limit=0, executor=lambda _statement: [])
 
-    assert portfolio_values([], executor=lambda _statement, _models: []) == []
+    assert portfolio_values([], executor=lambda _statement: []) == []

@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy import delete
 
-from mainsequence.client.metatables import MetaTableCompiledSQLOperation
+from metatables import MetaTableCompiledSQLOperation
 
 from msm.models import AssetCategoryTable, AssetCategoryMembershipTable
 
@@ -257,8 +257,6 @@ def build_delete_asset_category_membership_by_pair_operation(
         statement,
         context=context,
         operation="delete",
-        models=[AssetCategoryMembershipTable],
-        access="write",
     )
 
 
@@ -274,8 +272,6 @@ def build_delete_asset_category_memberships_for_category_operation(
         statement,
         context=context,
         operation="delete",
-        models=[AssetCategoryMembershipTable],
-        access="write",
     )
 
 
@@ -297,8 +293,6 @@ def build_delete_stale_asset_category_memberships_operation(
         statement,
         context=context,
         operation="delete",
-        models=[AssetCategoryMembershipTable],
-        access="write",
     )
 
 

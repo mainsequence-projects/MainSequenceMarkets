@@ -11,9 +11,8 @@ import pytz
 from pydantic import ConfigDict, Field, WithJsonSchema, model_validator
 from tqdm import tqdm
 
-from mainsequence.client.metatables import UpdateStatistics
-from mainsequence.meta_tables import TimeIndexTableRef, TimeIndexTableUpdater
-from mainsequence.meta_tables.time_index_table_updates.utils import (
+from metatables import UpdateStatistics, TimeIndexTableRef, TimeIndexTableUpdater
+from metatables.updaters.utils import (
     string_freq_to_time_delta,
     string_frequency_to_minutes,
 )

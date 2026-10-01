@@ -10,7 +10,7 @@ from sqlalchemy import DateTime, Float, ForeignKey, MetaData, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON
 
-from mainsequence.meta_tables import schema_table_name, sqlalchemy_naming_convention
+from metatables import schema_table_name, sqlalchemy_naming_convention
 
 from msm.base import MarketsTimeIndexMetaTableMixin
 from msm.data_nodes.indices import IndexValuesDataNode, configured_index_values_storage

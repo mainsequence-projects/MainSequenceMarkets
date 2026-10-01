@@ -8,23 +8,37 @@ from packaging.version import Version
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_package_metadata_enforces_fixed_sdk_floor_without_exact_patch_pin() -> None:
-    project = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())["project"]
-    requirement = next(
+def _project() -> dict:
+    return tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())["project"]
+
+
+def _requirement(name: str) -> Requirement:
+    return next(
         Requirement(value)
-        for value in project["dependencies"]
-        if Requirement(value).name == "mainsequence"
+        for value in _project()["dependencies"]
+        if Requirement(value).name == name
     )
 
-    assert Version(project["version"]).major >= 1
-    assert Version("6.0.53") not in requirement.specifier
-    assert Version("7.99.0") not in requirement.specifier
-    assert Version("8.0.3") not in requirement.specifier
-    assert Version("8.0.6") not in requirement.specifier
-    assert Version("8.0.7") not in requirement.specifier
-    assert Version("8.1.6") not in requirement.specifier
-    assert Version("8.1.7") not in requirement.specifier
-    assert Version("8.1.8") in requirement.specifier
-    assert Version("8.99.0") in requirement.specifier
-    assert Version("9.0.0") in requirement.specifier
+
+def test_package_metadata_enforces_sdk_9_floor_without_exact_patch_pin() -> None:
+    requirement = _requirement("mainsequence")
+
+    assert Version(_project()["version"]).major >= 2
+    assert Version("8.1.11") not in requirement.specifier
+    assert Version("8.99.0") not in requirement.specifier
+    assert Version("9.0.0") not in requirement.specifier
+    assert Version("9.0.1") in requirement.specifier
+    assert Version("9.99.0") in requirement.specifier
+    assert Version("10.0.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)
+
+
+def test_package_metadata_requires_extracted_metatables_client() -> None:
+    requirement = _requirement("mainsequence-metatable")
+
+    assert Version("0.1.4") not in requirement.specifier
+    assert Version("0.1.5") in requirement.specifier
+    assert Version("0.1.99") in requirement.specifier
+    assert Version("0.2.0") not in requirement.specifier
+    assert all(specifier.operator != "==" for specifier in requirement.specifier)
+    assert not any(Requirement(value).name == "metatables" for value in _project()["dependencies"])

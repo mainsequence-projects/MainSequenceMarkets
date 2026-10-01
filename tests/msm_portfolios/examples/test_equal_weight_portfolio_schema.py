@@ -5,7 +5,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
-from mainsequence.meta_tables.migrations import metadata_for_models
+from metatables.migrations import metadata_for_models
 
 from examples.msm_portfolios import portfolio_equal_weights_config as config
 from examples.msm_portfolios import portfolio_equal_weights_example as example

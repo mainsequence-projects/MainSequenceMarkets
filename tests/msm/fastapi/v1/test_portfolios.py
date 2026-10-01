@@ -1341,7 +1341,6 @@ def test_public_portfolio_values_frame_queries_storage_by_portfolio_identifier(m
         },
     )
 
-    from msm_portfolios.data_nodes.portfolios.storage import PortfoliosStorage
     from msm_portfolios.services.public_api import get_portfolio_values_frame_response
 
     response = get_portfolio_values_frame_response(
@@ -1361,9 +1360,7 @@ def test_public_portfolio_values_frame_queries_storage_by_portfolio_identifier(m
     ]
     assert response["rows"][0]["return"] == 0.01
     assert response["source"]["context"]["portfolio_identifier"] == "example-sleeve"
-    assert captured["models"] == [PortfoliosStorage]
     assert captured["operation"] == "select"
-    assert captured["access"] == "read"
 
 
 def test_public_signal_weights_frame_uses_portfolio_signal_uid(monkeypatch) -> None:
@@ -1400,7 +1397,6 @@ def test_public_signal_weights_frame_uses_portfolio_signal_uid(monkeypatch) -> N
         },
     )
 
-    from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
     from msm_portfolios.services.public_api import get_portfolio_signal_weights_frame_response
 
     response = get_portfolio_signal_weights_frame_response(
@@ -1417,9 +1413,7 @@ def test_public_signal_weights_frame_uses_portfolio_signal_uid(monkeypatch) -> N
         "signal_weight": 0.6,
     }
     assert response["source"]["context"]["signal_uid"] == "portfolio-signal"
-    assert captured["models"] == [SignalWeightsStorage]
     assert captured["operation"] == "select"
-    assert captured["access"] == "read"
 
 
 def test_public_signal_weights_frame_requires_portfolio_signal_uid(monkeypatch) -> None:
@@ -1464,8 +1458,6 @@ def test_public_delete_portfolio_operation_deletes_identity_only(monkeypatch) ->
         fake_compile,
     )
 
-    from msm.data_nodes.accounts.storage import TargetPositionsStorage
-    from msm.models import PortfolioTable, VirtualFundTable
     from msm_portfolios.services.public_api import _compile_delete_portfolio_operation
 
     operation = _compile_delete_portfolio_operation(
@@ -1476,12 +1468,6 @@ def test_public_delete_portfolio_operation_deletes_identity_only(monkeypatch) ->
     statement_text = str(captured["statement"]).lower()
     assert operation == "compiled-delete-op"
     assert captured["operation"] == "delete"
-    assert captured["access"] == "write"
-    assert captured["models"] == [
-        PortfolioTable,
-        TargetPositionsStorage,
-        VirtualFundTable,
-    ]
     assert "portfolio_scope" in statement_text
     assert "deleted_weights" not in statement_text
     assert "deleted_values" not in statement_text
@@ -1502,7 +1488,6 @@ def test_public_cascade_delete_portfolio_operation_deletes_dependents(monkeypatc
         fake_compile,
     )
 
-    from msm.models import PortfolioTable, VirtualFundHoldingsSetTable, VirtualFundTable
     from msm_portfolios.services.public_api import _compile_cascade_delete_portfolio_operation
 
     operation = _compile_cascade_delete_portfolio_operation(
@@ -1513,12 +1498,6 @@ def test_public_cascade_delete_portfolio_operation_deletes_dependents(monkeypatc
     statement_text = str(captured["statement"]).lower()
     assert operation == "compiled-cascade-delete-op"
     assert captured["operation"] == "delete"
-    assert captured["access"] == "write"
-    assert captured["models"] == [
-        PortfolioTable,
-        VirtualFundHoldingsSetTable,
-        VirtualFundTable,
-    ]
     assert "deleted_virtual_funds" in statement_text
     assert "deleted_virtual_fund_holdings_sets" in statement_text
     assert "deleted_target_positions" not in statement_text

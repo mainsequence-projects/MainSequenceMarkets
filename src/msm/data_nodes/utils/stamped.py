@@ -4,7 +4,7 @@ from typing import ClassVar
 
 import pandas as pd
 
-from mainsequence.meta_tables import (
+from metatables import (
     TimeIndexTableUpdater,
     TimeIndexTableUpdateConfig,
     PlatformTimeIndexMetaTable,

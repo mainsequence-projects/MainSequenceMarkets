@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mainsequence.meta_tables.migrations import (
+from metatables.migrations import (
     build_alembic_version_metatable,
     build_metatable_migration_provider,
 )

@@ -158,7 +158,7 @@ class MSDataInterface:
         )
 
     def _data_node_for_concept(self, concept_key: str, *, market_data_set=None):
-        from mainsequence.meta_tables import TimeIndexTableRef
+        from metatables import TimeIndexTableRef
 
         return TimeIndexTableRef.from_uid(
             str(
@@ -291,8 +291,6 @@ class MSDataInterface:
             statement,
             context=context,
             operation="select",
-            models=[DiscountCurvesStorage],
-            access="read",
         )
         return operation_result_rows(execute_markets_operation(operation, context=context))
 

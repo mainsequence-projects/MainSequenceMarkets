@@ -79,7 +79,7 @@ def test_get_historical_fixings_reads_index_stamped_data(monkeypatch) -> None:
                 ]
             ).set_index(["time_index", "index_identifier"])
 
-    import mainsequence.meta_tables as meta_tables
+    import metatables as meta_tables
 
     monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
 
@@ -136,7 +136,7 @@ def test_get_historical_fixings_uses_persisted_pricing_market_data_binding(
                 ]
             ).set_index(["time_index", "index_identifier"])
 
-    import mainsequence.meta_tables as meta_tables
+    import metatables as meta_tables
     from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
 
     monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
@@ -202,7 +202,7 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
                 ]
             ).set_index(["time_index", "curve_identifier"])
 
-    import mainsequence.meta_tables as meta_tables
+    import metatables as meta_tables
 
     monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
 
@@ -294,7 +294,7 @@ def test_get_historical_discount_curve_uses_persisted_pricing_market_data_bindin
                 ]
             ).set_index(["time_index", "curve_identifier"])
 
-    import mainsequence.meta_tables as meta_tables
+    import metatables as meta_tables
     from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
 
     monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
@@ -341,15 +341,13 @@ def test_get_historical_discount_curve_observations_reads_many_curves_once(monke
     def bind_meta_table(cls, output_table):
         calls.append(("bind", output_table.uid))
 
-    def compile_statement(statement, *, context, operation, models, access):
+    def compile_statement(statement, *, context, operation):
         calls.append(
             (
                 "compiled_sql",
                 str(statement.compile(compile_kwargs={"literal_binds": True})).lower(),
                 context.limits,
                 operation,
-                models,
-                access,
             )
         )
         return {"compiled": True}
@@ -371,7 +369,7 @@ def test_get_historical_discount_curve_observations_reads_many_curves_once(monke
             ]
         }
 
-    import mainsequence.meta_tables as meta_tables
+    import metatables as meta_tables
 
     monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
     monkeypatch.setattr(DiscountCurvesStorage, "_bind_meta_table", classmethod(bind_meta_table))
@@ -400,8 +398,6 @@ def test_get_historical_discount_curve_observations_reads_many_curves_once(monke
     assert "<=" in compiled_sql
     assert calls[2][2] == {"max_rows": 2}
     assert calls[2][3] == "select"
-    assert calls[2][4] == [DiscountCurvesStorage]
-    assert calls[2][5] == "read"
     assert calls[3] == ("execute", {"compiled": True}, {"max_rows": 2})
 
 
@@ -435,7 +431,7 @@ def test_get_historical_fixings_for_identifiers_reads_many_indexes_once(monkeypa
                 ]
             ).set_index(["time_index", "index_identifier"])
 
-    import mainsequence.meta_tables as meta_tables
+    import metatables as meta_tables
 
     monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
     interface = MSDataInterface(
@@ -517,7 +513,7 @@ def test_get_latest_discount_curve_uses_last_update_for_curve_identity(monkeypat
                 ]
             ).set_index(["time_index", "curve_identifier"])
 
-    import mainsequence.meta_tables as meta_tables
+    import metatables as meta_tables
 
     monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
 
@@ -594,7 +590,7 @@ def test_get_latest_discount_curve_requires_latest_curve_observation(monkeypatch
         def get_update_statistics(self):
             return FakeUpdateStatistics()
 
-    import mainsequence.meta_tables as meta_tables
+    import metatables as meta_tables
 
     monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
 
@@ -659,7 +655,7 @@ def test_get_historical_fixings_uses_persisted_binding_before_static_default(
                 ]
             ).set_index(["time_index", "index_identifier"])
 
-    import mainsequence.meta_tables as meta_tables
+    import metatables as meta_tables
 
     monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
     monkeypatch.setattr(

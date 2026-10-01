@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mainsequence.meta_tables import (
+from metatables import (
     POSTGRES_IDENTIFIER_MAX_LENGTH,
     bounded_identifier,
     parse_schema_table_name,

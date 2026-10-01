@@ -15,7 +15,7 @@ from pydantic import (
     model_validator,
 )
 
-from mainsequence.meta_tables.time_index_table_updates.configuration import (
+from metatables.updaters.configuration import (
     Serializer,
     serialize_argument,
 )

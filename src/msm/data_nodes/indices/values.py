@@ -6,7 +6,7 @@ from typing import ClassVar
 
 import pandas as pd
 
-from mainsequence.meta_tables import PlatformTimeIndexMetaTable
+from metatables import PlatformTimeIndexMetaTable
 
 from msm.data_nodes.indices.storage import (
     require_cadenced_index_values_storage,

@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 import pandas as pd
 
-from mainsequence.client import dtype_codec as dc
+from metatables import dtype_codec as dc
 from msm.api.base import operation_result_rows
 from msm.data_nodes.accounts.constants import (
     TARGET_TYPE_ASSET,

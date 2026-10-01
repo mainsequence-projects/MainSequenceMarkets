@@ -18,10 +18,10 @@ from msm_portfolios.configuration import (
     PortfolioConfigBaseModel,
 )
 from msm_portfolios.utils import TIMEDELTA
-from mainsequence.meta_tables import TimeIndexTableRef
+from metatables import TimeIndexTableRef
 
 if TYPE_CHECKING:
-    from mainsequence.meta_tables import TimeIndexTableUpdater
+    from metatables import TimeIndexTableUpdater
 
 
 class AssetMistMatch(Exception): ...

@@ -7,8 +7,8 @@ from uuid import UUID
 
 import pandas as pd
 
-from mainsequence.client import dtype_codec as dc
-from mainsequence.meta_tables import TimeIndexTableUpdater, TimeIndexTableUpdateConfig
+from metatables import dtype_codec as dc
+from metatables import TimeIndexTableUpdater, TimeIndexTableUpdateConfig
 from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,

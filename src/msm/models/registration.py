@@ -4,18 +4,16 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from mainsequence.client.metatables import (
+from metatables import (
     MetaTable,
     MetaTableRegistrationRequest,
     TimeIndexMetaTable,
-)
-from mainsequence.logconf import logger as _mainsequence_logger
-from mainsequence.meta_tables import (
     PlatformTimeIndexMetaTable,
     external_registered_registration_request_from_sqlalchemy_model,
     platform_managed_registration_request_from_sqlalchemy_model,
     time_indexed_registration_request_from_sqlalchemy_model,
 )
+from mainsequence.logconf import logger as _mainsequence_logger
 
 from msm.base import (
     MarketsBase,

@@ -3,8 +3,8 @@ from typing import Any
 
 import pandas as pd
 
-from mainsequence.client import dtype_codec as dc
-from mainsequence.meta_tables import TimeIndexTableUpdater
+from metatables import dtype_codec as dc
+from metatables import TimeIndexTableUpdater
 from msm.data_nodes.assets.asset_indexed import (
     AssetIndexedDataNode,
     AssetIndexedDataNodeConfiguration,

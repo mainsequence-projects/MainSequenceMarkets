@@ -93,7 +93,6 @@ def list_portfolio_group_rows_response(
     return _collection_page(
         context,
         statement=statement,
-        models=[PortfolioGroupTable],
         limit=limit,
         offset=offset,
     )
@@ -118,7 +117,6 @@ def list_portfolios_for_group_response(
     return _collection_page(
         context,
         statement=statement,
-        models=[PortfolioTable, PortfolioGroupMembershipTable],
         limit=limit,
         offset=offset,
     )
@@ -143,7 +141,6 @@ def list_portfolio_groups_for_portfolio_response(
     return _collection_page(
         context,
         statement=statement,
-        models=[PortfolioGroupTable, PortfolioGroupMembershipTable],
         limit=limit,
         offset=offset,
     )
@@ -153,7 +150,6 @@ def _collection_page(
     context: MarketsRepositoryContext,
     *,
     statement: Any,
-    models: list[type[Any]],
     limit: int,
     offset: int,
 ) -> dict[str, Any]:
@@ -163,8 +159,6 @@ def _collection_page(
                 select(func.count().label("count")).select_from(statement.subquery()),
                 context=context,
                 operation="select",
-                models=models,
-                access="read",
             ),
             context=context,
         )
@@ -175,8 +169,6 @@ def _collection_page(
                 statement.limit(limit).offset(offset),
                 context=context,
                 operation="select",
-                models=models,
-                access="read",
             ),
             context=context,
         )

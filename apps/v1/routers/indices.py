@@ -4,11 +4,6 @@ import datetime as dt
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from mainsequence.client.models_user import (
-    _CURRENT_AUTH_HEADERS,
-    _CURRENT_USER,
-    User,
-)
 
 from apps.v1.schemas.command_center import TabularFrameResponse
 from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
@@ -53,21 +48,12 @@ index_type_router = APIRouter(prefix="/index-type", tags=["index"])
 
 
 def _request_actor(request: Request) -> IndexActor | None:
-    headers = dict(request.headers)
-    has_identity = any(key in headers for key in ("x-user-uid", "x-user-id", "authorization"))
-    if not has_identity:
+    """Return the platform-injected human caller, or `None` for an anonymous request."""
+
+    user = getattr(request.state, "user", None)
+    if user is None:
         return None
-    headers_token = _CURRENT_AUTH_HEADERS.set(headers)
-    user_token = _CURRENT_USER.set(None)
-    try:
-        return actor_from_user(User.get_logged_user())
-    except Exception as exc:
-        raise HTTPException(
-            status_code=401, detail=f"Authenticated user could not be resolved: {exc}"
-        ) from exc
-    finally:
-        _CURRENT_USER.reset(user_token)
-        _CURRENT_AUTH_HEADERS.reset(headers_token)
+    return actor_from_user(user)
 
 
 @index_type_router.get(

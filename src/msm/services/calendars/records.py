@@ -66,7 +66,6 @@ def list_calendar_records(
     return _execute_limited_select(
         context,
         statement=statement,
-        model=CalendarTable,
         limit=limit,
         offset=offset,
     )
@@ -94,7 +93,6 @@ def list_calendar_records_page(
             source=source,
             source_identifier=source_identifier,
         ),
-        model=CalendarTable,
         limit=limit,
         offset=offset,
     )
@@ -288,7 +286,6 @@ def list_calendar_date_records(
     return _execute_limited_select(
         context,
         statement=statement,
-        model=CalendarDateTable,
         limit=limit,
         offset=offset,
     )
@@ -318,7 +315,6 @@ def list_calendar_date_records_page(
             is_weekend=is_weekend,
             is_early_close=is_early_close,
         ),
-        model=CalendarDateTable,
         limit=limit,
         offset=offset,
     )
@@ -427,7 +423,6 @@ def list_calendar_session_records(
     return _execute_limited_select(
         context,
         statement=statement,
-        model=CalendarSessionTable,
         limit=limit,
         offset=offset,
     )
@@ -453,7 +448,6 @@ def list_calendar_session_records_page(
             session_label=session_label,
             is_primary=is_primary,
         ),
-        model=CalendarSessionTable,
         limit=limit,
         offset=offset,
     )
@@ -568,7 +562,6 @@ def list_calendar_event_records(
     return _execute_limited_select(
         context,
         statement=statement,
-        model=CalendarEventTable,
         limit=limit,
         offset=offset,
     )
@@ -600,7 +593,6 @@ def list_calendar_event_records_page(
             target_uid=target_uid,
             target_identifier=target_identifier,
         ),
-        model=CalendarEventTable,
         limit=limit,
         offset=offset,
     )
@@ -845,7 +837,6 @@ def _execute_limited_select(
     context: MarketsRepositoryContext,
     *,
     statement: Any,
-    model: Any,
     limit: int,
     offset: int,
 ) -> list[dict[str, Any]]:
@@ -854,8 +845,6 @@ def _execute_limited_select(
         limited_statement,
         context=context,
         operation="select",
-        models=[model],
-        access="read",
     )
     return operation_result_rows(execute_markets_operation(operation, context=context))
 
@@ -864,7 +853,6 @@ def _execute_collection_page(
     context: MarketsRepositoryContext,
     *,
     statement: Any,
-    model: Any,
     limit: int,
     offset: int,
 ) -> dict[str, Any]:
@@ -875,8 +863,6 @@ def _execute_collection_page(
                 count_statement,
                 context=context,
                 operation="select",
-                models=[model],
-                access="read",
             ),
             context=context,
         )
@@ -886,7 +872,6 @@ def _execute_collection_page(
         "results": _execute_limited_select(
             context,
             statement=statement,
-            model=model,
             limit=limit,
             offset=offset,
         ),

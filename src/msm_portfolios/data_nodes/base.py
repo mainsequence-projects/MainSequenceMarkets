@@ -5,8 +5,8 @@ from typing import Any
 import pandas as pd
 from pydantic import Field
 
-from mainsequence.client import dtype_codec as dc
-from mainsequence.meta_tables import (
+from metatables import dtype_codec as dc
+from metatables import (
     TimeIndexTableUpdater,
     TimeIndexTableUpdateConfig,
     PlatformTimeIndexMetaTable,

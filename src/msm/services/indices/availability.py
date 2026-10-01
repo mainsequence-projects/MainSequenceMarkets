@@ -98,8 +98,6 @@ def reconcile_index_dataset_availability(
                 statement,
                 context=context,
                 operation="select",
-                models=[IndexTable],
-                access="read",
             ),
             context=context,
         )
@@ -149,8 +147,6 @@ def reconcile_index_dataset_availability(
                         statement,
                         context=handle,
                         operation="select",
-                        models=[model],
-                        access="read",
                     ),
                     context=handle,
                 )

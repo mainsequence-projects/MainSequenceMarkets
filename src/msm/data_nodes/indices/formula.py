@@ -9,7 +9,7 @@ import pandas as pd
 from pydantic import Field, model_validator
 import sqlalchemy as sa
 
-from mainsequence.meta_tables import TimeIndexTableRef, PlatformTimeIndexMetaTable
+from metatables import TimeIndexTableRef, PlatformTimeIndexMetaTable
 
 from msm.analytics.indices import IndexFormulaError
 from msm.api.formula_indices import FormulaIndex

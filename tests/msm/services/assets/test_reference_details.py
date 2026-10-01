@@ -10,8 +10,6 @@ os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
-from msm.data_nodes.assets.storage import AssetSnapshotsStorage
-from msm.models import AssetTable
 from msm.services import asset_reference_details, asset_reference_details_by_uids
 
 
@@ -22,11 +20,10 @@ def _compiled_sql(statement: Any) -> str:
 def test_asset_reference_details_builds_latest_snapshot_join() -> None:
     calls: list[dict[str, Any]] = []
 
-    def executor(statement: Any, models: tuple[type[Any], ...]) -> dict[str, Any]:
+    def executor(statement: Any) -> dict[str, Any]:
         calls.append(
             {
                 "sql": _compiled_sql(statement),
-                "models": models,
             }
         )
         return {
@@ -55,7 +52,6 @@ def test_asset_reference_details_builds_latest_snapshot_join() -> None:
 
     assert [row["asset_identifier"] for row in rows] == ["asset-b", "asset-a"]
     assert rows[0]["ticker"] == "BBB"
-    assert calls[0]["models"] == (AssetTable, AssetSnapshotsStorage)
     sql = calls[0]["sql"].lower()
     assert "max(" in sql
     assert "outer join" in sql
@@ -69,11 +65,10 @@ def test_asset_reference_details_by_uids_builds_latest_snapshot_join() -> None:
     asset_b_uid = "00000000-0000-0000-0000-0000000000bb"
     calls: list[dict[str, Any]] = []
 
-    def executor(statement: Any, models: tuple[type[Any], ...]) -> dict[str, Any]:
+    def executor(statement: Any) -> dict[str, Any]:
         calls.append(
             {
                 "sql": _compiled_sql(statement),
-                "models": models,
             }
         )
         return {
@@ -104,7 +99,6 @@ def test_asset_reference_details_by_uids_builds_latest_snapshot_join() -> None:
 
     assert [row["asset_uid"] for row in rows] == [asset_a_uid, asset_b_uid]
     assert rows[0]["ticker"] == "AAA"
-    assert calls[0]["models"] == (AssetTable, AssetSnapshotsStorage)
     sql = calls[0]["sql"].lower()
     assert "requested_assets" in sql
     assert "max(" in sql
@@ -115,11 +109,10 @@ def test_asset_reference_details_by_uids_builds_latest_snapshot_join() -> None:
 def test_asset_reference_details_can_read_identity_without_snapshots() -> None:
     calls: list[dict[str, Any]] = []
 
-    def executor(statement: Any, models: tuple[type[Any], ...]) -> dict[str, Any]:
+    def executor(statement: Any) -> dict[str, Any]:
         calls.append(
             {
                 "sql": _compiled_sql(statement),
-                "models": models,
             }
         )
         return {
@@ -136,7 +129,6 @@ def test_asset_reference_details_can_read_identity_without_snapshots() -> None:
     rows = asset_reference_details("asset-a", latest_snapshot=False, executor=executor)
 
     assert rows[0]["asset_identifier"] == "asset-a"
-    assert calls[0]["models"] == (AssetTable,)
     assert "max(" not in calls[0]["sql"].lower()
 
 
@@ -147,6 +139,6 @@ def test_asset_reference_details_require_explicit_execution_boundary() -> None:
 
 def test_asset_reference_details_validate_identifiers() -> None:
     with pytest.raises(ValueError, match="non-empty"):
-        asset_reference_details(["asset-a", ""], executor=lambda _statement, _models: [])
+        asset_reference_details(["asset-a", ""], executor=lambda _statement: [])
 
-    assert asset_reference_details([], executor=lambda _statement, _models: []) == []
+    assert asset_reference_details([], executor=lambda _statement: []) == []

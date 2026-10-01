@@ -11,14 +11,10 @@ from sqlalchemy.types import Uuid
 from msm.base import MarketsBase, MarketsMetaTableMixin, markets_table_args, new_markets_uid
 from msm.models.registration import markets_meta_table_identifier
 from msm.models import (
-    AccountGroupTable,
-    AccountTargetAllocationTable,
     AccountTable,
-    AssetCategoryMembershipTable,
     AssetTypeTable,
     AssetTable,
     OpenFigiAssetDetailsTable,
-    PositionSetTable,
     PortfolioGroupMembershipTable,
     PortfolioGroupTable,
     PortfolioTable,
@@ -90,6 +86,11 @@ class RepositoryDefaultTable(MarketsMetaTableMixin, MarketsBase):
     )
 
 
+TEST_DATA_SOURCE_UID = str(uuid.UUID("00000000-0000-0000-0000-000000000002"))
+
+pytestmark = pytest.mark.usefixtures("offline_postgresql_runtime")
+
+
 @pytest.fixture(autouse=True)
 def bind_test_meta_table_uids(monkeypatch) -> None:
     for model in [RepositoryDefaultTable, *markets_sqlalchemy_models()]:
@@ -98,7 +99,7 @@ def bind_test_meta_table_uids(monkeypatch) -> None:
 
 def _repository_context() -> MarketsRepositoryContext:
     return MarketsRepositoryContext(
-        data_source_uid=str(uuid.UUID("00000000-0000-0000-0000-000000000001")),
+        data_source_uid=TEST_DATA_SOURCE_UID,
         limits={"max_rows": 100, "statement_timeout_ms": 5000},
     )
 
@@ -133,10 +134,12 @@ def test_generic_search_operation_compiles_for_every_market_model() -> None:
         operation = build_search_model_operation(context, model=model, limit=10, offset=5)
 
         assert operation.operation == "select"
+        assert operation.data_source_uid == TEST_DATA_SOURCE_UID
+        assert operation.dialect == "postgresql"
+        assert operation.statement.paramstyle == "pyformat"
         assert operation.limits is not None
         assert operation.limits.max_rows == 100
-        assert operation.scope.tables[0].access == "read"
-        assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(model)
+        assert operation.limits.statement_timeout_ms == 5000
         assert model.__table__.name in operation.statement.sql
         assert "LIMIT" in operation.statement.sql
         assert "OFFSET" in operation.statement.sql
@@ -152,15 +155,11 @@ def test_generic_count_operation_compiles_for_filtered_model() -> None:
     )
 
     assert operation.operation == "select"
-    assert operation.scope.tables[0].access == "read"
-    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
-        AccountTable
-    )
     assert "count" in operation.statement.sql.lower()
     assert AccountTable.__table__.name in operation.statement.sql
 
 
-def test_asset_create_operation_uses_write_scope() -> None:
+def test_asset_create_operation_compiles_insert() -> None:
     asset = _asset_table()
 
     operation = build_create_asset_operation(
@@ -170,8 +169,6 @@ def test_asset_create_operation_uses_write_scope() -> None:
     )
 
     assert operation.operation == "insert"
-    assert operation.scope.tables[0].access == "write"
-    assert operation.scope.tables[0].meta_table_uid == asset.meta_table_uid
     assert AssetTable.__table__.name in operation.statement.sql
     assert isinstance(operation.statement.parameters["uid"], uuid.UUID)
     assert operation.statement.parameters["unique_identifier"] == "BTC"
@@ -188,7 +185,6 @@ def test_asset_upsert_operation_uses_compiled_upsert_protocol() -> None:
     )
 
     assert operation.operation == "upsert"
-    assert operation.scope.tables[0].access == "write"
     assert "ON CONFLICT" in operation.statement.sql
     assert isinstance(operation.statement.parameters["uid"], uuid.UUID)
     assert "metadata_json" not in operation.statement.sql
@@ -231,7 +227,6 @@ def test_generic_bulk_upsert_operation_compiles_one_statement_for_many_rows() ->
     )
 
     assert operation.operation == "upsert"
-    assert operation.scope.tables[0].access == "write"
     assert "ON CONFLICT" in operation.statement.sql
     assert operation.statement.sql.count("display_name") >= 2
 
@@ -249,12 +244,6 @@ def test_replace_asset_category_memberships_compiles_two_operations_and_deduplic
     )
 
     assert [operation.operation for operation in operations] == ["upsert", "delete"]
-    assert all(operation.scope.tables[0].access == "write" for operation in operations)
-    assert all(
-        operation.scope.tables[0].meta_table_uid
-        == context.meta_table_uid_for_model(AssetCategoryMembershipTable)
-        for operation in operations
-    )
     assert "ON CONFLICT (category_uid, asset_uid)" in operations[0].statement.sql
     assert "NOT IN" in operations[1].statement.sql
     assert {
@@ -344,10 +333,6 @@ def test_portfolio_group_upsert_operation_uses_unique_identifier_conflict() -> N
     )
 
     assert operation.operation == "upsert"
-    assert operation.scope.tables[0].access == "write"
-    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
-        PortfolioGroupTable
-    )
     assert "ON CONFLICT" in operation.statement.sql
     assert "unique_identifier" in operation.statement.sql
     assert isinstance(operation.statement.parameters["uid"], uuid.UUID)
@@ -365,10 +350,6 @@ def test_portfolio_group_membership_upsert_operation_uses_pair_conflict() -> Non
     )
 
     assert operation.operation == "upsert"
-    assert operation.scope.tables[0].access == "write"
-    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
-        PortfolioGroupMembershipTable
-    )
     assert "ON CONFLICT" in operation.statement.sql
     assert "portfolio_group_uid" in operation.statement.sql
     assert "portfolio_uid" in operation.statement.sql
@@ -380,7 +361,6 @@ def test_portfolio_group_search_operation_uses_or_search() -> None:
     operation = build_search_portfolio_groups_operation(context, search="core", limit=10)
 
     assert operation.operation == "select"
-    assert operation.scope.tables[0].access == "read"
     assert PortfolioGroupTable.__table__.name in operation.statement.sql
     assert " OR " in operation.statement.sql
 
@@ -419,10 +399,6 @@ def test_portfolio_group_membership_delete_by_pair_operation_is_scoped_to_pair()
     )
 
     assert operation.operation == "delete"
-    assert operation.scope.tables[0].access == "write"
-    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
-        PortfolioGroupMembershipTable
-    )
     assert "portfolio_group_uid" in operation.statement.sql
     assert "portfolio_uid" in operation.statement.sql
 
@@ -466,9 +442,6 @@ def test_position_set_operation_requires_utc_timestamp() -> None:
         position_set_time="2026-05-25T00:00:00Z",
     )
 
-    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
-        PositionSetTable,
-    )
     assert operation.statement.parameter_types["position_set_time"] == "timestamp with time zone"
     assert operation.statement.parameters["position_set_time"] == "2026-05-25T00:00:00Z"
 
@@ -486,9 +459,6 @@ def test_account_target_allocation_operation_uses_account_and_allocation_model_l
         display_name="Main Account Target",
     )
 
-    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
-        AccountTargetAllocationTable,
-    )
     assert operation.statement.parameters["unique_identifier"] == "acct-main-target"
     assert operation.statement.parameters["account_uid"] == account_uid
     assert operation.statement.parameters["account_allocation_model_uid"] == allocation_model_uid
@@ -505,12 +475,6 @@ def test_account_create_operation_accepts_group_link_only() -> None:
         account_group_uid=account_group_uid,
     )
 
-    assert operation.scope.tables[0].meta_table_uid == context.meta_table_uid_for_model(
-        AccountGroupTable,
-    )
-    assert operation.scope.tables[1].meta_table_uid == context.meta_table_uid_for_model(
-        AccountTable,
-    )
     assert operation.statement.parameters["account_group_uid"] == account_group_uid
     assert "account_allocation_model_uid" not in operation.statement.parameters
 
@@ -530,7 +494,7 @@ def test_generic_get_by_uid_uses_single_primary_key_when_uid_column_is_absent() 
     assert "asset_uid" in operation.statement.sql
 
 
-def test_asset_get_by_unique_identifier_operation_uses_read_scope() -> None:
+def test_asset_get_by_unique_identifier_operation_compiles_select() -> None:
     asset = _asset_table()
 
     operation = build_get_asset_by_unique_identifier_operation(
@@ -539,21 +503,17 @@ def test_asset_get_by_unique_identifier_operation_uses_read_scope() -> None:
     )
 
     assert operation.operation == "select"
-    assert operation.scope.tables[0].access == "read"
-    assert operation.scope.tables[0].meta_table_uid == asset.meta_table_uid
     assert AssetTable.__table__.name in operation.statement.sql
     assert operation.statement.parameters["unique_identifier_1"] == "example-asset-btc"
 
 
-def test_asset_get_by_uid_operation_uses_read_scope() -> None:
+def test_asset_get_by_uid_operation_compiles_select() -> None:
     asset = _asset_table()
     asset_uid = uuid.uuid4()
 
     operation = build_get_asset_by_uid_operation(asset, uid=asset_uid)
 
     assert operation.operation == "select"
-    assert operation.scope.tables[0].access == "read"
-    assert operation.scope.tables[0].meta_table_uid == asset.meta_table_uid
     assert AssetTable.__table__.name in operation.statement.sql
     assert operation.statement.parameters["uid_1"] == asset_uid
 
@@ -569,22 +529,18 @@ def test_asset_search_operation_filters_by_identifier_and_type() -> None:
     )
 
     assert operation.operation == "select"
-    assert operation.scope.tables[0].access == "read"
-    assert operation.scope.tables[0].meta_table_uid == asset.meta_table_uid
     assert AssetTable.__table__.name in operation.statement.sql
     assert operation.statement.parameters["asset_type_1"] == "crypto"
     assert "example-asset-" in set(operation.statement.parameters.values())
     assert operation.statement.parameters["param_1"] == 20
 
 
-def test_asset_delete_operation_uses_write_scope() -> None:
+def test_asset_delete_operation_compiles_delete() -> None:
     asset = _asset_table()
     asset_uid = uuid.uuid4()
 
     operation = build_delete_asset_operation(asset, uid=asset_uid)
 
     assert operation.operation == "delete"
-    assert operation.scope.tables[0].access == "write"
-    assert operation.scope.tables[0].meta_table_uid == asset.meta_table_uid
     assert AssetTable.__table__.name in operation.statement.sql
     assert operation.statement.parameters["uid_1"] == asset_uid
