@@ -1,6 +1,8 @@
+"""Compatibility alias for the ``msm_migrations:migration`` provider."""
+
 from __future__ import annotations
 
-from migrations import MarketsAlembicVersion, migration
+from msm_migrations import MarketsAlembicVersion, migration
 
 
 __all__ = [

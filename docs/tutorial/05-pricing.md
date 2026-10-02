@@ -622,7 +622,7 @@ Use this workflow when adding or reviewing a market-domain relational table:
 5. Add the model to `markets_sqlalchemy_models()` in foreign-key dependency
    order.
 6. Generate or update a normal Alembic revision under the active namespace
-   directory in `src/migrations/versions/`.
+   directory in `src/msm_migrations/versions/`.
 7. Use the MetaTables migration upgrade flow for schema mutation, then
    `msm.start_engine(...)` for runtime attachment. Do not call model
    `.register()` methods or local registration helpers from application code.

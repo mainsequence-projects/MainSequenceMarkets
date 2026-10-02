@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-PROVIDER = "migrations:migration"
+PROVIDER = "msm_migrations:migration"
 
 
 def main() -> None:

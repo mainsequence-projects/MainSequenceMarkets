@@ -8,21 +8,30 @@ create tables, apply DDL, or repair schema drift.
 The package exposes one application-owned MetaTables Alembic provider:
 
 ```text
-migrations:migration
+msm_migrations:migration
 ```
 
 That single provider covers core `msm`, `msm_portfolios`, and `msm_pricing`
 MetaTables. Do not create separate migration configurations for those packages.
+
+`msm.migrations:migration` remains a compatibility alias for the same provider
+object. The top-level `migrations` package shipped by `ms-markets` 2.0.x is no
+longer installed, because generic top-level package names collide with other
+distributions and shadow application-owned `migrations` packages. The rename
+does not change the provider key `msm:<namespace>`, the
+`ms_markets__alembic_version` table, or the revision history, so existing
+databases continue from their current revision. See
+[ADR 0044](../../../ADR/0044-namespaced-migration-provider-package.md).
 
 ## Admin Commands
 
 Use the `metatables` CLI from the `mainsequence-metatable` client directly:
 
 ```bash
-metatables --json migrations current --provider migrations:migration
-metatables migrations revision --provider migrations:migration -m "describe change"
-metatables migrations upgrade --provider migrations:migration head
-metatables migrations downgrade --provider migrations:migration <revision>
+metatables --json migrations current --provider msm_migrations:migration
+metatables migrations revision --provider msm_migrations:migration -m "describe change"
+metatables migrations upgrade --provider msm_migrations:migration head
+metatables migrations downgrade --provider msm_migrations:migration <revision>
 ```
 
 `revision` autogenerates by default. The retired `mainsequence migrations`
@@ -40,8 +49,8 @@ hand-authored operation manifests.
 The package migration environment stays on the standard MetaTables scaffold
 path:
 
-- `src/migrations/env.py`;
-- `src/migrations/script.py.mako`;
+- `src/msm_migrations/env.py`;
+- `src/msm_migrations/script.py.mako`;
 - namespace version locations calculated by `metatables.migrations`.
 
 `env.py`, provider construction, provider model registry, version-table class
@@ -77,13 +86,13 @@ schema back to an earlier revision.
 2. Ensure the model is returned by the package model graph:
    `markets_sqlalchemy_models()`, `portfolio_sqlalchemy_models()`, or
    `pricing_sqlalchemy_models()`.
-3. Let `metatables migrations revision --provider migrations:migration`
+3. Let `metatables migrations revision --provider msm_migrations:migration`
    generate a normal Alembic revision.
 4. Review the generated Alembic operations. A no-op model state must not produce
    FK drop/create churn, index churn, or `public` versus default-schema churn.
 5. Run the MetaTables apply and finalization command:
    ```bash
-   metatables migrations upgrade --provider migrations:migration head
+   metatables migrations upgrade --provider msm_migrations:migration head
    ```
 6. Start runtime code with `msm.start_engine(...)`.
 
@@ -93,7 +102,7 @@ tables by `model.__table__.name` and fails if required platform `MetaTable` or
 
 ## Registry
 
-`src/migrations/registry.py` defines the package-owned table universe used
+`src/msm_migrations/registry.py` defines the package-owned table universe used
 by the MetaTables provider. It is the `msm` equivalent of an installed-app
 registry, not migration history.
 

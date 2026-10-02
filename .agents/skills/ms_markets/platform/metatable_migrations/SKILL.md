@@ -25,7 +25,9 @@ MetaTable registration:
 - the project-local migration provider, when the project defines one
 
 This skill does not own schema migration commands, migration engines, registry
-rows, DDL apply behavior, or built-in ms-markets table registration.
+rows, DDL apply behavior, or built-in ms-markets table registration. Built-in
+ms-markets tables are migrated by the package provider
+`msm_migrations:migration` (compatibility alias `msm.migrations:migration`).
 
 ## Core Rule
 
@@ -86,6 +88,7 @@ migration = build_metatable_migration_provider(
     package="my_project",
     migration_namespace="my-project",
     script_location="my_project:migrations",
+    version_location_prefix="my_project:migrations/versions",
     target_metadata=Base.metadata,
     alembic_registry=ProjectAlembicVersion,
     metatable_models=[
@@ -94,6 +97,11 @@ migration = build_metatable_migration_provider(
     after_register_metatables=refresh_project_market_specs,
 )
 ```
+
+Always pass `version_location_prefix` with the provider's own package. The
+client default is `migrations:versions`, which resolves to whichever top-level
+`migrations` package is first on `sys.path`, including one installed by another
+distribution.
 
 `refresh_project_market_specs` should refresh only specs for project tables
 registered by that provider.
@@ -104,6 +112,8 @@ or mutate schema. The MetaTables provider already owns schema work.
 ## Review Checklist
 
 - The provider is a `metatables.migrations.AlembicMetaTableMigration`.
+- The provider sets `script_location` and `version_location_prefix` inside the
+  project's own package, never a bare top-level `migrations` package.
 - Provider construction uses `metatables.migrations` helpers unless a
   documented helper gap requires a direct constructor.
 - Project tables are listed in the project provider.

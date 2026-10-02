@@ -14,6 +14,11 @@ provider-owned version locations are now implemented by the `metatables`
 client, and the `mainsequence migrations` commands quoted below are historical;
 use `metatables migrations ... --provider migrations:migration`.
 
+Amended by [ADR 0044](0044-namespaced-migration-provider-package.md): the
+provider package is now `msm_migrations` and the provider reference is
+`msm_migrations:migration`; the top-level `migrations` package is no longer
+shipped.
+
 ## Context
 
 ADR 0022 moved `ms-markets` to the SDK-managed Alembic migration workflow.

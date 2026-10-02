@@ -8,6 +8,10 @@ CLI references in [ADR 0022](0022-alembic-metatable-migration-alignment.md) and
 [ADR 0024](0024-namespace-scoped-alembic-version-locations.md); the provider
 design those ADRs record is unchanged.
 
+Amended by [ADR 0044](0044-namespaced-migration-provider-package.md): the
+provider reference `migrations:migration` below is replaced by
+`msm_migrations:migration`.
+
 ## Context
 
 Main Sequence SDK 9 no longer contains MetaTables. Table resources, the

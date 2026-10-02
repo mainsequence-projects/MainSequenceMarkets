@@ -7,6 +7,25 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** the Alembic migration provider moved from the top-level
+  `migrations` package to `msm_migrations`, and the wheel no longer installs a
+  top-level `migrations` package. Use
+  `metatables migrations ... --provider msm_migrations:migration`;
+  `msm.migrations:migration` remains a compatibility alias. The provider key
+  `msm:<namespace>`, `MarketsAlembicVersion`, and revisions `0001`–`0017` are
+  unchanged, so existing databases continue from their current revision. See
+  [ADR 0044](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0044-namespaced-migration-provider-package/)
+  and [#14](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/14).
+- The provider now sets `version_location_prefix="msm_migrations:versions"`
+  instead of relying on the client default `migrations:versions`.
+
+### Removed
+
+- The unreachable `versions/default` revision directory and the redundant
+  `script.py.mako` wheel force-include.
+
 ## [2.0.0] - 2026-10-01
 
 Breaking release for Main Sequence SDK 9, which moved MetaTables out of the SDK

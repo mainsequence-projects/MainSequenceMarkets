@@ -75,7 +75,7 @@ Implementation decisions should be recorded under `docs/ADR`.
 Start with the typed row API for simple workflows:
 
 ```bash
-metatables migrations upgrade --provider migrations:migration head
+metatables migrations upgrade --provider msm_migrations:migration head
 ```
 
 ```python

@@ -103,14 +103,13 @@ packages = [
   "src/cli",
   "src/command_center",
   "src/msm",
-  "src/migrations",
+  "src/msm_migrations",
   "src/msm_portfolios",
   "src/msm_pricing",
 ]
 
 [tool.hatch.build.targets.wheel.force-include]
 ".agents/skills/ms_markets" = ".agents/skills/ms_markets"
-"src/migrations/script.py.mako" = "migrations/script.py.mako"
 
 [tool.hatch.build.targets.sdist]
 include = [

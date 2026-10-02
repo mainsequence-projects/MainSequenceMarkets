@@ -29,7 +29,7 @@
         "migrations",
         "current",
         "--provider",
-        "migrations:migration"
+        "msm_migrations:migration"
       ],
       "options": {
         "cwd": "${workspaceFolder}",
@@ -53,7 +53,7 @@
         "migrations",
         "revision",
         "--provider",
-        "migrations:migration",
+        "msm_migrations:migration",
         "-m",
         "${input:migrationMessage}"
       ],
@@ -79,7 +79,7 @@
         "migrations",
         "upgrade",
         "--provider",
-        "migrations:migration",
+        "msm_migrations:migration",
         "head"
       ],
       "options": {
@@ -104,7 +104,7 @@
         "migrations",
         "downgrade",
         "--provider",
-        "migrations:migration",
+        "msm_migrations:migration",
         "${input:migrationTargetRevision}"
       ],
       "options": {

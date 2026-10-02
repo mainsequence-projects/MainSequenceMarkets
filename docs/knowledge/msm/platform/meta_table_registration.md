@@ -8,7 +8,7 @@ order; TS Manager owns governed execution.
 
 Use platform-managed models when TS Manager should own physical tables on the
 runtime DataSource of the MetaTables API. Creating or evolving those tables is
-handled by the `metatables migrations ... --provider migrations:migration`
+handled by the `metatables migrations ... --provider msm_migrations:migration`
 admin flow of the MetaTables client (`mainsequence-metatable`, imported as
 `metatables`), not by runtime startup.
 
@@ -55,7 +55,7 @@ application tables, apply migrations, or repair catalog drift.
 The schema mutation entrypoint is the admin CLI:
 
 ```bash
-metatables migrations upgrade --provider migrations:migration head
+metatables migrations upgrade --provider msm_migrations:migration head
 ```
 
 MetaTable registration is migration-owned. Normal applications, examples, and

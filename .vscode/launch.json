@@ -12,7 +12,7 @@
         "migrations",
         "current",
         "--provider",
-        "migrations:migration"
+        "msm_migrations:migration"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
@@ -32,7 +32,7 @@
         "migrations",
         "revision",
         "--provider",
-        "migrations:migration",
+        "msm_migrations:migration",
         "-m",
         "${input:migrationMessage}"
       ],
@@ -54,7 +54,7 @@
         "migrations",
         "upgrade",
         "--provider",
-        "migrations:migration",
+        "msm_migrations:migration",
         "head"
       ],
       "cwd": "${workspaceFolder}",
@@ -75,7 +75,7 @@
         "migrations",
         "downgrade",
         "--provider",
-        "migrations:migration",
+        "msm_migrations:migration",
         "${input:migrationTargetRevision}"
       ],
       "cwd": "${workspaceFolder}",

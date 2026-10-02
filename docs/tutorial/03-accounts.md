@@ -49,7 +49,7 @@ virtual_fund = VirtualFund.upsert(
 Use this workflow when publishing and inspecting account positions:
 
 1. Before runtime, run the admin migration flow with
-   `metatables migrations upgrade --provider migrations:migration head`
+   `metatables migrations upgrade --provider msm_migrations:migration head`
    so the package schema is finalized.
 2. Attach account holdings and target positions through `msm.start_engine(...)`.
    When target positions can reference portfolios, include `Portfolio` and

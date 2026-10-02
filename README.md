@@ -71,7 +71,7 @@ Main package areas:
   asset lookup and OpenFIGI service helpers
 - `msm` CLI: package maintenance helpers such as explicit agent-skill copying;
   MetaTable migrations run through the `metatables migrations` CLI with
-  `--provider migrations:migration`
+  `--provider msm_migrations:migration`
 
 Repository areas:
 

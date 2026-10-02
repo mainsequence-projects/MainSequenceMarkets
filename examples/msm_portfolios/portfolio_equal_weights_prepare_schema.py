@@ -233,7 +233,10 @@ def _migration_revision_files() -> set[Path]:
 
 
 def _active_version_directory() -> Path:
-    version_location = namespace_version_location(EXAMPLE_METATABLE_NAMESPACE)
+    version_location = namespace_version_location(
+        EXAMPLE_METATABLE_NAMESPACE,
+        prefix="msm_migrations:versions",
+    )
     package_name, separator, resource_path = version_location.partition(":")
     if not separator or not package_name or not resource_path:
         raise RuntimeError(

@@ -21,13 +21,14 @@ from metatables.migrations import (  # noqa: E402
 from examples.msm.indices.plain_index_values import (  # noqa: E402
     FREQUENCY_STORAGE_MODELS,
 )
-from migrations import MarketsAlembicVersion  # noqa: E402
+from msm_migrations import MarketsAlembicVersion  # noqa: E402
 from msm.settings import markets_namespace  # noqa: E402
 
 migration = build_metatable_migration_provider(
     package="msm",
     migration_namespace=markets_namespace(),
-    script_location="migrations:",
+    script_location="msm_migrations:",
+    version_location_prefix="msm_migrations:versions",
     target_metadata=metadata_for_models(FREQUENCY_STORAGE_MODELS),
     alembic_registry=MarketsAlembicVersion,
     metatable_models=FREQUENCY_STORAGE_MODELS,

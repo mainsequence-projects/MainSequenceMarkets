@@ -67,8 +67,8 @@ Schema mutation belongs to the `metatables migrations` command, not to row opera
 startup:
 
 ```bash
-metatables --json migrations current --provider migrations:migration
-metatables migrations upgrade --provider migrations:migration head
+metatables --json migrations current --provider msm_migrations:migration
+metatables migrations upgrade --provider msm_migrations:migration head
 ```
 
 Only after migrations are current does `start_engine(...)` resolve and bind the

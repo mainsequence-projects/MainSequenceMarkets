@@ -26,7 +26,7 @@ from msm.base import (
     markets_table_storage_name,
 )
 from msm.data_nodes.accounts.storage import AccountHoldingsStorage
-from migrations.registry import metatable_provider_models
+from msm_migrations.registry import metatable_provider_models
 from msm.models.registration import (
     build_markets_registration_requests,
     is_time_index_meta_table_model,

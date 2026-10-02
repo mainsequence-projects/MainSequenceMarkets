@@ -12,7 +12,7 @@ from msm.models import (
 
 
 ROOT = Path(__file__).resolve().parents[3]
-REVISION = ROOT / "src/migrations/versions/mainsequence_markets/0015_index_formula_and_custom_calculation.py"
+REVISION = ROOT / "src/msm_migrations/versions/mainsequence_markets/0015_index_formula_and_custom_calculation.py"
 
 
 def test_index_model_owns_calculation_and_display_format() -> None:

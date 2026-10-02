@@ -12,7 +12,7 @@ Use this workflow when a project needs durable market, settlement, fixing, or
 custom calendar facts:
 
 1. Before runtime, run the admin migration flow with
-   `metatables migrations upgrade --provider migrations:migration head`.
+   `metatables migrations upgrade --provider msm_migrations:migration head`.
 2. Attach `Calendar`, `CalendarDate`, `CalendarSession`, and `CalendarEvent`
    with `msm.start_engine(...)`.
 3. Use `Calendar.create_from_pandas_calendar(...)` for generated market

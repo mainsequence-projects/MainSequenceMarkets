@@ -105,7 +105,7 @@ Current local-dev behavior:
   `IndexFixingsStorage` so the API can report restrictive dependencies before
   an index delete is attempted
 - schema mutation must already have been handled by
-  `metatables migrations upgrade --provider migrations:migration head`
+  `metatables migrations upgrade --provider msm_migrations:migration head`
 - the app uses the runtime DataSource of the MetaTables API that the caller's
   Organization Environment selects; it configures no API URL or DataSource of
   its own

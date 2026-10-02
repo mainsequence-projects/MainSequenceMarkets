@@ -8,11 +8,12 @@ ships MetaTables or the `mainsequence migrations` commands.
 
 ## Provider
 
-The provider is exported from `migrations:migration` and contains:
+The provider is exported from `msm_migrations:migration` and contains:
 
 - package: `msm`;
 - migration namespace: the active markets namespace;
-- script location: `migrations:`;
+- script location: `msm_migrations:`;
+- version location prefix: `msm_migrations:versions`;
 - target metadata: `MarketsBase.metadata`;
 - Alembic version registry: `MarketsAlembicVersion`;
 - provider model scope: `metatable_provider_models()`.
@@ -41,10 +42,10 @@ revisions.
 Use the `metatables` CLI with the application's provider reference:
 
 ```bash
-metatables --json migrations current --provider migrations:migration
-metatables migrations revision --provider migrations:migration -m "describe change"
-metatables migrations upgrade --provider migrations:migration head
-metatables migrations downgrade --provider migrations:migration <revision>
+metatables --json migrations current --provider msm_migrations:migration
+metatables migrations revision --provider msm_migrations:migration -m "describe change"
+metatables migrations upgrade --provider msm_migrations:migration head
+metatables migrations downgrade --provider msm_migrations:migration <revision>
 ```
 
 `revision` is the authoring entrypoint and autogenerates by default; pass
@@ -100,7 +101,7 @@ history is the Alembic revision graph plus the provider's version table.
 The implementation requires `mainsequence-metatable>=0.1.5,<0.2` with
 `mainsequence>=9.0.1,<10`. The client exposes `AlembicMetaTableMigration`,
 `AlembicVersionMetaTable`, application-owned Alembic execution, and the command
-shape where `metatables migrations upgrade --provider migrations:migration head`
+shape where `metatables migrations upgrade --provider msm_migrations:migration head`
 applies without `--apply`, `--to`, or `--register-metatables`. Namespace-scoped
 revision directories use the Alembic `version_locations` configured by the
 provider. Upgrading the client keeps the provider package, namespace, model

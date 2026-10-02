@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import importlib
 import inspect
+import tomllib
 from importlib import resources
 from pathlib import Path
 
@@ -30,11 +31,11 @@ from msm.base import (
     markets_table_args,
     normalize_metatable_schema,
 )
-from migrations import (
+from msm_migrations import (
     MarketsAlembicVersion,
     migration,
 )
-from migrations.registry import metatable_provider_models
+from msm_migrations.registry import metatable_provider_models
 from msm.models import AssetTable
 from msm.settings import markets_identifier
 
@@ -42,7 +43,7 @@ from msm.settings import markets_identifier
 def test_migration_provider_is_single_sdk_alembic_provider() -> None:
     assert isinstance(migration, AlembicMetaTableMigration)
     assert migration.package == "msm"
-    assert migration.script_location == "migrations:"
+    assert migration.script_location == "msm_migrations:"
     assert migration.target_metadata is MarketsBase.metadata
     assert migration.alembic_registry is MarketsAlembicVersion
     assert MarketsAlembicVersion.__metatable_namespace__ == migration.migration_namespace
@@ -63,7 +64,7 @@ def test_migration_upgrade_command_uses_metatables_cli_flags() -> None:
     from metatables.cli.app import app
     from typer.testing import CliRunner
 
-    upgrade_command = "metatables migrations upgrade --provider migrations:migration head"
+    upgrade_command = "metatables migrations upgrade --provider msm_migrations:migration head"
     help_result = CliRunner().invoke(
         app,
         ["migrations", "upgrade", "--help"],
@@ -81,7 +82,7 @@ def test_migration_upgrade_command_uses_metatables_cli_flags() -> None:
 
 
 def test_sdk_loader_resolves_msm_migration_provider() -> None:
-    loaded = load_alembic_metatable_migration_provider("migrations:migration")
+    loaded = load_alembic_metatable_migration_provider("msm_migrations:migration")
 
     assert loaded is migration
 
@@ -90,10 +91,23 @@ def test_legacy_migrations_provider_import_is_compatibility_alias() -> None:
     from msm.migrations import migration as legacy_migration
 
     assert legacy_migration is migration
+    assert load_alembic_metatable_migration_provider("msm.migrations:migration") is migration
+
+
+def test_wheel_ships_only_namespaced_migration_package() -> None:
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    wheel = pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]
+
+    assert "src/msm_migrations" in wheel["packages"]
+    assert "src/migrations" not in wheel["packages"]
+    assert not any(
+        target.split("/", 1)[0] == "migrations"
+        for target in wheel.get("force-include", {}).values()
+    )
 
 
 def test_migration_script_template_is_packaged() -> None:
-    template = resources.files("migrations").joinpath("script.py.mako")
+    template = resources.files("msm_migrations").joinpath("script.py.mako")
 
     assert template.is_file()
     template_text = template.read_text(encoding="utf-8")
@@ -111,24 +125,26 @@ def test_namespace_version_slug_is_deterministic() -> None:
 
 
 def test_migration_provider_uses_sdk_namespace_version_location() -> None:
-    expected_location = namespace_version_location(migration.migration_namespace)
+    expected_location = namespace_version_location(
+        migration.migration_namespace,
+        prefix="msm_migrations:versions",
+    )
 
     assert migration.version_locations == [expected_location]
     assert migration.version_path == expected_location
 
 
 def test_migration_version_packages_do_not_assume_generated_history() -> None:
-    versions_root = resources.files("migrations").joinpath("versions")
+    versions_root = resources.files("msm_migrations").joinpath("versions")
 
     assert not versions_root.joinpath("0001_migration.py").is_file()
-    assert versions_root.joinpath("default").is_dir()
     assert versions_root.joinpath("mainsequence_markets").is_dir()
     assert versions_root.joinpath("mainsequence_examples").is_dir()
 
 
 def test_general_portfolio_rebalance_revision_follows_current_head() -> None:
     revision = importlib.import_module(
-        "migrations.versions.mainsequence_markets.0016_add_general_portfolio_rebalance_"
+        "msm_migrations.versions.mainsequence_markets.0016_add_general_portfolio_rebalance_"
     )
     source = inspect.getsource(revision)
 
@@ -235,7 +251,7 @@ def test_account_holdings_single_and_composite_indexes_have_distinct_names() -> 
 
 
 def test_alembic_env_normalizes_default_schema_reflection() -> None:
-    env_text = Path("src/migrations/env.py").read_text(encoding="utf-8")
+    env_text = Path("src/msm_migrations/env.py").read_text(encoding="utf-8")
 
     assert "run_mainsequence_alembic_env" in env_text
     assert "def _included_schema" in env_text

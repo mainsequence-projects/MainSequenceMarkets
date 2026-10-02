@@ -17,8 +17,8 @@ It does not create or evolve schema.
 Run admin migrations before application startup:
 
 ```bash
-metatables --json migrations current --provider migrations:migration
-metatables migrations upgrade --provider migrations:migration head
+metatables --json migrations current --provider msm_migrations:migration
+metatables migrations upgrade --provider msm_migrations:migration head
 ```
 
 See [Migrations](../knowledge/msm/migrations/index.md)

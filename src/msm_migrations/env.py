@@ -3,7 +3,7 @@ from __future__ import annotations
 from metatables.migrations.env import run_mainsequence_alembic_env
 
 from msm.base import MARKETS_DEFAULT_SCHEMA, MARKETS_SCHEMA
-from migrations import migration as default_migration
+from msm_migrations import migration as default_migration
 
 
 def _included_schema(name: str | None) -> bool:
