@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-10-02
+
 ### Changed
 
 - **Breaking:** the Alembic migration provider moved from the top-level
