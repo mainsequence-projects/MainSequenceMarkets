@@ -233,7 +233,10 @@ tests, OpenAPI, docs, examples, tutorial, changelog, and this skill aligned.
 2. Run FastAPI/OpenAPI and Adapter from API contract tests.
 3. Run Ruff on every changed Python file.
 4. Build MkDocs in strict mode.
-5. Apply the migration through the selected provider and verify current head.
+5. Apply the migration to the local runtime with
+   `metatables --local migrations upgrade --provider <provider> head` and verify
+   current head. Hosted environments receive it only from the deployment
+   workflow's migration Job.
 6. Verify mixed Asset/Index example output and custom Portfolio publication.
 
 ## Canonical References

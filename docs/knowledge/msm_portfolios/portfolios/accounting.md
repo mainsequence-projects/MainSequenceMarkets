@@ -487,9 +487,13 @@ stale valuation, inverse FX guess, or weight-only fallback.
 ## Migration And Validation
 
 The ms-markets migration provider creates the canonical ledger and rebuildable
-state/cash-flow schemas. Apply it through the repository's existing MetaTables migration
-deployment workflow before runtime attachment. This is an ordinary deployment
-step, not a client development dependency.
+state/cash-flow schemas. Hosted environments receive them only from the
+ms-markets deployment's `migrate-markets` Job, which runs before the Markets API
+rolls out; applications that use portfolio accounting do not apply the
+ms-markets provider themselves. During ms-markets development, apply it to the
+local runtime with
+`metatables --local migrations upgrade --provider msm_migrations:migration head`
+before runtime attachment.
 
 For changes to this accounting surface, run at least:
 

@@ -96,8 +96,8 @@ ProjectAlembicVersion = build_alembic_version_metatable(
 migration = build_metatable_migration_provider(
     package="my_project",
     migration_namespace="my-project",
-    script_location="my_project:migrations",
-    version_location_prefix="my_project:migrations/versions",
+    script_location="my_project.migrations:",
+    version_location_prefix="my_project.migrations:versions",
     target_metadata=Base.metadata,
     alembic_registry=ProjectAlembicVersion,
     metatable_models=[
@@ -107,10 +107,12 @@ migration = build_metatable_migration_provider(
 )
 ```
 
-Always pass `version_location_prefix` with the provider's own package. The
-client default is `migrations:versions`, which resolves to whichever top-level
-`migrations` package is first on `sys.path`, including one installed by another
-distribution.
+Always pass both `script_location` and `version_location_prefix`, pointing at
+the provider's own module the way
+`metatables migrations scaffold --module my_project.migrations` derives them.
+The client default is `migrations:versions`, which resolves to whichever
+top-level `migrations` package is first on `sys.path`, including one installed
+by another distribution.
 
 `refresh_project_market_specs` should refresh only specs for project tables
 registered by that provider.

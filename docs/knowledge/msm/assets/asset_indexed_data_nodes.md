@@ -245,9 +245,11 @@ class ExampleAssetMetric(AssetTimestampedDataNode):
         return self.set_frame(self.build_frame(rows))
 ```
 
-Add the storage class to the markets migration model registry so the MetaTables
-migration provider registers it after the `Asset` MetaTable dependency. Runtime
-startup can then attach it with `msm.start_engine(models=[...])`. Do not call
+Add the storage class to the model registry of the migration provider that owns
+it, so that provider registers it after the `Asset` MetaTable dependency: the
+markets registry for a built-in ms-markets table, or the project's own provider
+for a project table. Runtime startup can then attach it with
+`msm.start_engine(models=[...])`. Do not call
 `PlatformTimeIndexMetaTable.register(...)`, manually bind storage by UID, or
 reconstruct a generic `MetaTable` in application code.
 
