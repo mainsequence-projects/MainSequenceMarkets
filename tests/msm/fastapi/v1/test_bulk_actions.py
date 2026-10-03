@@ -365,8 +365,8 @@ def test_portfolio_group_preflight_reports_cascades(monkeypatch) -> None:
     }
 
 
-def test_cascade_blockers_stop_bulk_delete(monkeypatch) -> None:
-    blocker = "PortfolioGroupMembership: A cascade reaches a table you cannot write."
+def test_impact_blockers_stop_bulk_delete(monkeypatch) -> None:
+    blocker = "PortfolioGroup: You cannot write this table."
     _stub_portfolio_group_preflight(monkeypatch, DeleteRowsImpact(impact=None, blockers=[blocker]))
 
     def unexpected_delete(*args, **kwargs):

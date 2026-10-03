@@ -143,17 +143,13 @@ def test_set_null_updates_and_hidden_tables_are_described() -> None:
                 "on_update": "no action",
             },
         ],
+        # Cascades never block; only the table itself and its DataSource do.
         "blockers": [
             {"code": "data_source_read_only", "message": "The DataSource does not accept writes."},
             {
-                "code": "cascade_target_unregistered",
-                "message": "A foreign-key action modifies a table MetaTables does not manage.",
-                "node": "relation:public.legacy_notes",
-            },
-            {
-                "code": "cascade_target_not_writable",
-                "message": "A cascade reaches a table you cannot write.",
-                "node": "hidden:1",
+                "code": "table_not_writable",
+                "message": "You cannot write this table.",
+                "node": INDEX,
             },
         ],
     }
@@ -171,8 +167,7 @@ def test_set_null_updates_and_hidden_tables_are_described() -> None:
     ]
     assert result.blockers == [
         "The DataSource does not accept writes.",
-        "public.legacy_notes: A foreign-key action modifies a table MetaTables does not manage.",
-        "A table you cannot view: A cascade reaches a table you cannot write.",
+        "Index: You cannot write this table.",
     ]
 
 

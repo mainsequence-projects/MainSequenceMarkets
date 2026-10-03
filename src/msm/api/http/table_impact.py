@@ -30,7 +30,7 @@ class TableImpactNode(_TableImpactModel):
     )
     can_write: bool | None = Field(
         default=None,
-        description="The caller's effective write after cascade narrowing; null for updates.",
+        description="Whether the caller may write this table; null for updates.",
     )
 
 

@@ -6,6 +6,14 @@
 > conflicting application-migration execution and credential restrictions;
 > governed API operations and MetaTables system migrations remain separate.
 
+> Amendment (2026-10-03): "Cascades" below means the confirmed cascade delete,
+> which drops referencing tables and so needs Writer access to every table it
+> drops. Foreign-key row actions (`CASCADE`, `SET NULL`, `SET DEFAULT`) are
+> different: the referencing table's own foreign key authorizes them, so a caller
+> who changes a referenced row needs no access to the referencing tables, and
+> tables that reference a table never change who may write it
+> ([ADR 0007](0007-database-enforced-table-access.md), amended 2026-10-03).
+
 
 Date: 2026-09-29
 
