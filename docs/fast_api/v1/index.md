@@ -104,8 +104,9 @@ Current local-dev behavior:
 - index delete-impact preflight attaches `FutureAssetDetails` and
   `IndexFixingsStorage` so the API can report restrictive dependencies before
   an index delete is attempted
-- schema mutation must already have been handled by
-  `metatables migrations upgrade --provider msm_migrations:migration head`
+- schema mutation must already have been handled by the deployment workflow's
+  `migrate-markets` Job, which applies `msm_migrations:migration` before the API
+  rolls out (locally, `metatables --local migrations upgrade`)
 - the app uses the runtime DataSource of the MetaTables API that the caller's
   Organization Environment selects; it configures no API URL or DataSource of
   its own
@@ -151,7 +152,7 @@ state and logs instead of treating the Git push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
 The published `ms-markets` 2.x package therefore declares
-`mainsequence>=9.0.5,<10` and `mainsequence-metatable>=0.1.9,<0.2` without
+`mainsequence>=9.0.5,<10` and `mainsequence-metatable>=0.1.12,<0.2` without
 exact patch pins. The lower bounds enforce the SDK 9 and MetaTables client
 extraction hard cut, while the project lock and exported runtime requirements
 select the exact releases validated for this repository. Do not replace the

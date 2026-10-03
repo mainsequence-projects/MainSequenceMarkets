@@ -18,10 +18,15 @@ MetaTables. Do not create separate migration configurations for those packages.
 object. The top-level `migrations` package shipped by `ms-markets` 2.0.x is no
 longer installed, because generic top-level package names collide with other
 distributions and shadow application-owned `migrations` packages. The rename
-does not change the provider key `msm:<namespace>`, the
-`ms_markets__alembic_version` table, or the revision history, so existing
-databases continue from their current revision. See
+does not change the provider key `msm:<namespace>` or the
+`ms_markets__alembic_version` table. See
 [ADR 0044](../../../ADR/0044-namespaced-migration-provider-package.md).
+
+Since 2.1.0 the history is one revision, `0018_initial_schema`, which replaces
+`0001`–`0017` without reusing their IDs. A database left at any of those
+revisions fails with an unknown-revision error: downgrade it to `base` with
+2.0.x installed, then apply 2.1.0 from empty. See
+[ADR 0045](../../../ADR/0045-squashed-initial-schema-and-namespaced-packages.md).
 
 ## Admin Commands
 
@@ -30,8 +35,8 @@ Use the `metatables` CLI from the `mainsequence-metatable` client directly:
 ```bash
 metatables --json migrations current --provider msm_migrations:migration
 metatables migrations revision --provider msm_migrations:migration -m "describe change"
-metatables migrations upgrade --provider msm_migrations:migration head
-metatables migrations downgrade --provider msm_migrations:migration <revision>
+metatables --local migrations upgrade --provider msm_migrations:migration head
+metatables --local migrations downgrade --provider msm_migrations:migration <revision>
 ```
 
 `revision` autogenerates by default. The retired `mainsequence migrations`

@@ -15,7 +15,7 @@ Run it from the project root after installing the pricing extra:
 
 ```bash
 uv sync --extra pricing
-metatables migrations upgrade --provider msm_migrations:migration head
+metatables --local migrations upgrade --provider msm_migrations:migration head
 uv run python examples/msm_pricing/bond_pricing_example/main.py
 ```
 

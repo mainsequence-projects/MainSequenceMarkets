@@ -103,8 +103,10 @@ hosted runtime database is now declared by the deployment:
   keeps its own file, so each Environment's deployment reads its own file and
   Secret.
 - **Secret.** The database administrator creates it in each Environment, for
-  example `postgresql://login:password@host:5432/database`. Host, port, database,
-  login and password come only from the URI, certificates only from the named
+  example `postgresql://metatables:password@host:5432/database`. The login is the
+  code constant `metatables`, one per database server and shared by every
+  Environment's database on it; a URI with another login is refused. Host, port,
+  database and password come only from the URI, certificates only from the named
   Secrets. The runtime DataSource's `password_secret_uid` is the URI Secret's UID
   ([ADR 0009](0009-shared-credential-store.md)).
 - **Deployment.** On every deployment the `migrate-system` Job reads the
@@ -730,8 +732,12 @@ Both SQLite catalog mutations and table writes use explicit `BEGIN IMMEDIATE`
 transactions with foreign-key enforcement and a 30-second connection busy timeout.
 Bounded physical operations select a 5-second lock timeout. The
 catalog uses WAL. Application DDL uses the same Alembic reservation/finalization
-workflow as PostgreSQL. SQLite rejects named schemas, exact decimal, unsigned
-64-bit integer, array, PostgreSQL JSONB, and specialized index contracts.
+workflow as PostgreSQL. SQLite rejects named schemas, unsigned 64-bit integer,
+array, and specialized index contracts, naming the column or index. PostgreSQL
+JSONB is stored as JSON, and NUMERIC as SQLite numbers exact to about 15
+significant digits, the precision the client's float64 frames already carry.
+Revisions written for PostgreSQL run unchanged: column and constraint changes use
+Alembic batch mode, with foreign keys checked before commit.
 Timestamps require UTC offsets and preserve microseconds; finer precision is
 rejected rather than truncated. UUID coordinate filters use the same contract
 conversion for reads and deletes.

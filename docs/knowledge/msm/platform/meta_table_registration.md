@@ -52,10 +52,12 @@ dependency order, resolves registered backend `MetaTable` and
 those backend objects onto their SQLAlchemy model classes. It must not create
 application tables, apply migrations, or repair catalog drift.
 
-The schema mutation entrypoint is the admin CLI:
+Schema mutation goes through the migration provider. Hosted environments apply
+it in the deployment workflow's migration Job (`jobs/migrate_markets.py`);
+during development, apply it to the local runtime:
 
 ```bash
-metatables migrations upgrade --provider msm_migrations:migration head
+metatables --local migrations upgrade --provider msm_migrations:migration head
 ```
 
 MetaTable registration is migration-owned. Normal applications, examples, and

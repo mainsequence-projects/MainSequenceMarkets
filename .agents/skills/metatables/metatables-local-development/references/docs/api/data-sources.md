@@ -187,8 +187,10 @@ Preparing the database, its login and these privileges is the database
 administrator's responsibility. On every deployment, the hosted migration Job checks
 the PostgreSQL requirements before any migration runs: `CREATEROLE`, `CREATE` on the
 database or ownership of the `metatables` schema, and `CREATE` on the default schema.
-A missing one fails the Job with the reason, for example `metatables_dev lacks
-CREATEROLE`; nothing is written and the API does not roll out.
+A missing one fails the Job with the reason, for example `metatables lacks
+CREATEROLE`; nothing is written and the API does not roll out. The hosted login is
+always `metatables`, one per database server; see
+[Set up a hosted runtime database](../operations/hosted-runtime.md#set-up-a-hosted-runtime-database).
 
 The database may be shared with other applications. Setup revokes `PUBLIC` access
 only on objects MetaTables owns: its `metatables` schema, the tables it manages and

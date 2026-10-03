@@ -154,6 +154,12 @@ The global `--local` selects the running project's API connection; inspect runti
 status because Admin can switch that API to Hosted. Upgrade/downgrade accept
 Alembic targets. Use `--no-autogenerate` for offline revision authoring.
 
+Write each revision once, for the hosted engine. On local SQLite, MetaTables runs
+column and constraint changes through Alembic batch mode, generated revisions use
+batch blocks, `JSONB` runs as JSON, and `postgresql_where` predicates also apply to
+SQLite. Raw PostgreSQL SQL, such as `ctid`, `::` casts or `jsonb_*` functions, must
+branch on `op.get_bind().dialect.name`.
+
 The client imports and executes application revisions, using the connection
 resolved for the selected environment. Environment operators supply the database
 login's DDL privileges. MetaTables does not mint migration roles or sandbox DDL.

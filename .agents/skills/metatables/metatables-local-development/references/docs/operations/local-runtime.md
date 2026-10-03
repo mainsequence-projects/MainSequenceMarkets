@@ -99,20 +99,30 @@ Shared hosted deployments disable local mode. Switching affects the whole API in
 The default file is:
 
 ```text
-~/.local/share/metatables/<workspace-uid>/metatables.sqlite
+~/.local/share/metatables/metatables.sqlite
 ```
 
-`METATABLES_LOCAL_STORAGE_DIR` changes the root before workspace selection. Settings
-can configure an absolute SQLite file. The default workspace identity uses the
-checkout and repository, excluding Git branch, ref and commit. The selected file is
-stored under the single `local` entry in `.local/runtime-data-sources.json`. Branch
-changes and restarts reuse it, its credentials and its DataSource UID. Git context
-still describes the running code; changing that context requires restarting the API.
+The local runtime is one per laptop: every checkout, repository and branch uses the
+same file. `METATABLES_LOCAL_STORAGE_DIR` changes its directory. Settings can
+configure another absolute SQLite file. A new file's identity derives from its
+location; an existing file keeps the identity recorded in its scope marker, so a file
+moved together with its marker keeps its DataSource UID and run logs. The selected
+file is stored under the single `local` entry in `.local/runtime-data-sources.json`.
+Branch changes and restarts reuse it, its credentials and its DataSource UID. Git
+context still describes the running code; changing that context requires restarting
+the API.
 
-Existing files retain their paths, storage markers and IDs. A single legacy saved
-file is adopted intact and its selection is rewritten to `local`. When multiple
-legacy files exist, choose the intended file in Settings; startup does not guess,
-merge catalogs or create an empty replacement. Old unselected files are preserved.
+Existing files retain their paths, storage markers and IDs. A checkout that saved a
+per-checkout file under an earlier release keeps using it after an upgrade; select
+the shared file in Settings to join the laptop runtime. Its tables are not copied, so
+run the application's migrations and fixtures again. A single legacy saved file is
+adopted intact and its selection is rewritten to `local`. When multiple legacy files
+exist, choose the intended file in Settings; startup does not guess, merge catalogs
+or create an empty replacement. Old unselected files are preserved.
+
+Every project opening the shared file needs a MetaTables release that includes the
+file's system migrations. An older client reports an unsupported revision; upgrade
+its `mainsequence-metatable` rather than selecting another database.
 
 The runtime source remains fixed while active. The Data Sources page displays it but
 cannot retarget, disable or delete it. Source selection belongs to Settings, where the
@@ -133,6 +143,23 @@ SQLite supports ordinary managed/external table workflows, contracts, incrementa
 updates and governed SQL within its dialect. PostgreSQL-specific SQL, database roles,
 Timescale hypertables and policies are unavailable. Select expressions and writes must
 use the API-advertised dialect; SQL is not translated between engines.
+
+Application models keep their hosted column types. A PostgreSQL `JSONB` column is
+created and decoded as JSON. `Numeric` columns are SQLite numbers, exact to about 15
+significant digits; reads return `Decimal`, and the client's frames carry them as
+float64 on every engine. Unsigned 64-bit integers and arrays have no SQLite type:
+registration rejects them with `unsupported_sqlite_type`, naming the table and
+column.
+
+Application revisions written for PostgreSQL run unchanged. SQLite cannot alter
+columns or constraints in place, so the migration environment runs `alter_column`,
+`add_column`, `drop_column` and constraint operations through Alembic batch mode,
+which copies the table and swaps it in. Foreign keys are not enforced while the
+revisions run; `PRAGMA foreign_key_check` runs before commit and rolls back every
+revision if a key dangles. A `postgresql_where` predicate also becomes the SQLite
+partial-index predicate. Generated revisions use batch blocks, which PostgreSQL
+applies as plain `ALTER` statements. Raw PostgreSQL SQL, such as `ctid`, `::` casts
+or `jsonb_*` functions, must branch on `op.get_bind().dialect.name`.
 
 The SQLite adapter shares the request's transaction for catalog and physical work.
 Physical savepoints preserve rollback semantics and avoid two writers competing for

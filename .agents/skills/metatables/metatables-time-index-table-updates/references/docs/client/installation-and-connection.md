@@ -93,6 +93,11 @@ guide/example snapshots in each skill's `references/` folder. The installed clie
 version is recorded in `PINNED_FROM.txt`. Skills for API implementation or
 MetaTables project development are outside this bundle.
 
+Running the command again replaces the whole `metatables` namespace: folders the
+installed client does not ship, including any added there, are removed. Keep the
+application's own skills in another `.agents/skills/` namespace; the copy never
+changes it.
+
 Use `metatables-upgrade-legacy-app` when replacing older MainSequence/MetaTables
 imports, declared SQL scopes or API-owned application migration setup. The
 [legacy application upgrade guide](upgrade-legacy-app.md) explains the current

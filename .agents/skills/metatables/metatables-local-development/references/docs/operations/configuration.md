@@ -10,7 +10,7 @@ implement a second platform HTTP client or token exchange.
 | `runtime_database` in the API's `configuration.yaml` | Hosted API, migration Job, launcher in Hosted mode | Declares the hosted runtime database: engine, the Environment Secret holding its URI, schema and TLS. See [hosted runtime](hosted-runtime.md#declare-the-runtime-database). |
 | `METATABLES_LOCAL_TOKEN` | Local launcher and client | Private ASCII token of at least 40 characters. |
 | `METATABLES_LOCAL_ALLOWED_ORIGINS` | Local API | Comma-separated exact loopback HTTP(S) origins with explicit ports; empty by default. |
-| `METATABLES_LOCAL_STORAGE_DIR` | Local API | Root for the checkout's local runtime SQLite file, shared across Git branches; defaults to `~/.local/share/metatables`. |
+| `METATABLES_LOCAL_STORAGE_DIR` | Local API | Directory of the laptop's single local runtime SQLite file, shared by every checkout and branch; defaults to `~/.local/share/metatables`. |
 
 Client discovery uses the name derived from the API automatic-deployment file
 and the caller's resolved Organization Environment. Identical names in other

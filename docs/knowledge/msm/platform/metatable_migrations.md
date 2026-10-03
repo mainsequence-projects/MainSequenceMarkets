@@ -44,9 +44,12 @@ Use the `metatables` CLI with the application's provider reference:
 ```bash
 metatables --json migrations current --provider msm_migrations:migration
 metatables migrations revision --provider msm_migrations:migration -m "describe change"
-metatables migrations upgrade --provider msm_migrations:migration head
-metatables migrations downgrade --provider msm_migrations:migration <revision>
+metatables --local migrations upgrade --provider msm_migrations:migration head
+metatables --local migrations downgrade --provider msm_migrations:migration <revision>
 ```
+
+Run `upgrade` and `downgrade` only against the local runtime; hosted
+environments are migrated by the deployment workflow's migration Job.
 
 `revision` is the authoring entrypoint and autogenerates by default; pass
 `--no-autogenerate` for offline authoring. It creates normal Alembic revision
@@ -91,7 +94,10 @@ run `metatables --local migrations upgrade`.
 4. Generate an Alembic revision with the `metatables migrations revision` CLI.
 5. Review the generated revision. Reject revisions that only drop and recreate
    unchanged foreign keys because one side is `schema=None` and the other is
-   `schema="public"`.
+   `schema="public"`. Write the revision once, for PostgreSQL: on local SQLite,
+   MetaTables runs column and constraint changes in Alembic batch mode and
+   `JSONB` as JSON. Raw PostgreSQL SQL, such as `ctid`, `::` casts or `jsonb_*`
+   functions, must branch on `op.get_bind().dialect.name`.
 6. Upgrade the local runtime through `metatables --local migrations upgrade`.
 7. Start application code through `msm.start_engine(...)` after the upgrade.
 8. Commit the revision. Hosted environments receive it from the deployment
@@ -102,7 +108,7 @@ history is the Alembic revision graph plus the provider's version table.
 
 ## Client Requirement
 
-The implementation requires `mainsequence-metatable>=0.1.9,<0.2` with
+The implementation requires `mainsequence-metatable>=0.1.12,<0.2` with
 `mainsequence>=9.0.5,<10`. The client exposes `AlembicMetaTableMigration`,
 `AlembicVersionMetaTable`, application-owned Alembic execution, and the command
 shape where `metatables migrations upgrade --provider msm_migrations:migration head`
@@ -110,3 +116,6 @@ applies without `--apply`, `--to`, or `--register-metatables`. Namespace-scoped
 revision directories use the Alembic `version_locations` configured by the
 provider. Upgrading the client keeps the provider package, namespace, model
 registry, version-table binding, revision IDs, and applied revision history.
+The 2.1.0 squash into `0018_initial_schema` is a separate, one-time replacement
+of the history; see
+[ADR 0045](../../../ADR/0045-squashed-initial-schema-and-namespaced-packages.md).

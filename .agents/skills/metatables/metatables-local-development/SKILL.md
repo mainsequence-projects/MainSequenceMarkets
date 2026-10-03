@@ -38,6 +38,20 @@ storage isolation. Require `local_mode: true`; after initialization also require
 stop the mutating work and select Local in Settings or restart with `serve --local`.
 Do not retry against automatic hosted discovery when a local connection fails.
 
+## One local runtime per laptop
+
+The local runtime is a single SQLite file, `~/.local/share/metatables/metatables.sqlite`
+by default, shared by every project, checkout and branch on the machine. Each project
+records it under `local` in its `.local/runtime-data-sources.json`.
+
+- A checkout that ran an earlier MetaTables release may still have its own
+  per-checkout file saved there; upgrading does not move it. To join the shared
+  runtime, select the shared file in Settings. The old file's tables are not copied:
+  run the application's migrations and fixtures again, and leave the old file in place.
+- The shared runtime is at the newest system migration any project applied. If
+  status reports an unsupported revision, upgrade the application's
+  `mainsequence-metatable` instead of selecting another database.
+
 ## Establish the development loop
 
 1. Work in the consuming application's Git checkout, with its commit and origin
@@ -120,9 +134,10 @@ or idempotent behavior. For a persistence claim, restart and read existing rows
 before seeding again. Recheck runtime state after any restart or mode/source change;
 do not switch modes while tests or producers are running.
 
-Local storage persists across launches and Git branches of the checkout. A new
-branch does not create a fresh test database. Use identifiable fixtures and clean
-up only the rows owned by the test. When a fresh database is necessary, select a
+Local storage persists across launches, and other projects' tables and fixtures share
+the same runtime. A new branch or project does not create a fresh test database. Use
+identifiable fixtures in the application's own namespace and clean up only the rows
+owned by the test. When a fresh database is necessary, select a
 separate temporary SQLite file through Settings and initialize it explicitly;
 restore the previous selection afterwards. Do not delete or replace a developer's
 existing database just to obtain a clean test run.
@@ -130,7 +145,12 @@ existing database just to obtain a clean test run.
 SQLite verifies portable application behavior, not PostgreSQL/MySQL/MSSQL-specific
 SQL, Timescale features, database roles or every concurrency behavior. Report that
 limit and use the intended engine in an isolated test database when the task
-requires those checks. Do not use the shared environment database as the default
+requires those checks. Application models keep their hosted column types: a
+PostgreSQL `JSONB` column runs as JSON, and `Numeric` runs as a SQLite number exact
+to about 15 significant digits, the precision the client's float64 frames carry on
+every engine. Unsigned 64-bit integers and arrays are rejected, naming the column.
+Revisions need no SQLite variants: column and constraint changes run through Alembic
+batch mode. Only raw PostgreSQL SQL must check `op.get_bind().dialect.name`. Do not use the shared environment database as the default
 integration-test fixture.
 
 ## Finish verification and switch back

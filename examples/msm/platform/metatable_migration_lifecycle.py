@@ -11,8 +11,8 @@ def main() -> None:
     for command in (
         f"metatables --json migrations current --provider {PROVIDER}",
         f'metatables migrations revision --provider {PROVIDER} -m "describe change"',
-        f"metatables migrations upgrade --provider {PROVIDER} head",
-        f"metatables migrations downgrade --provider {PROVIDER} <revision>",
+        f"metatables --local migrations upgrade --provider {PROVIDER} head",
+        f"metatables --local migrations downgrade --provider {PROVIDER} <revision>",
     ):
         print(command)
 

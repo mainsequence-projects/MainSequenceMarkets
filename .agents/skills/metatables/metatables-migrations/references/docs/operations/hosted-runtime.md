@@ -62,7 +62,8 @@ runtime_database:
 ```
 
 The Secret named by `uri_secret` holds a URI such as
-`postgresql://login:password@host:5432/database`. Use `postgresql://` or
+`postgresql://metatables:password@host:5432/database`. The login is always
+`metatables`; the Job and the API refuse any other. Use `postgresql://` or
 `postgres://` for `postgresql` and `timescale_db`, `mysql://` for MySQL and
 `mssql://` for SQL Server, and percent-encode special characters in the password.
 Host, port, database, login and password come only from the URI. It takes no
@@ -75,16 +76,33 @@ rejects them and maps `tls.mode` to its driver: `disable` turns encryption off,
 
 ## Set up a hosted runtime database
 
-The database, its login and the login's privileges are the database
-administrator's responsibility. [DataSource database privileges](../api/data-sources.md#database-privileges-and-sql-behavior)
+Every Environment's runtime database is opened by the same login, `metatables`.
+Database roles are server-wide, so each database server has one `metatables`
+login, shared by every Environment's database on it. Its role names are the
+same everywhere: the login and `mt_owner`, which setup creates. The database,
+the login and its privileges are the database administrator's responsibility.
+[DataSource database privileges](../api/data-sources.md#database-privileges-and-sql-behavior)
 lists what MetaTables requires.
 
-1. Create the Environment Secret named by `uri_secret` in each Environment that
-   deploys the API, holding the connection URI.
-2. Set `runtime_database` in the API's `configuration.yaml`: engine, Secret name,
+1. Once per database server, create the login. On PostgreSQL and TimescaleDB:
+
+   ```sql
+   CREATE ROLE metatables LOGIN CREATEROLE PASSWORD '...';
+   ```
+
+2. For each Environment's database, let the login create the `metatables` schema:
+
+   ```sql
+   GRANT CREATE ON DATABASE production TO metatables;
+   ```
+
+   It also needs `CREATE` on the default schema.
+3. Create the Environment Secret named by `uri_secret` in that Environment, holding
+   `postgresql://metatables:password@host:5432/<database>`.
+4. Set `runtime_database` in the API's `configuration.yaml`: engine, Secret name,
    schema and TLS.
-3. Deploy the API. The migration Job initializes the database before the API rolls out.
-4. Open **Settings** and check the declaration, the resolved connection, the
+5. Deploy the API. The migration Job initializes the database before the API rolls out.
+6. Open **Settings** and check the declaration, the resolved connection, the
    `ready` status and the applied migration revisions.
 
 ## Deployment gate

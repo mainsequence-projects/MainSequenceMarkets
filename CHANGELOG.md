@@ -14,6 +14,16 @@ and this project follows versioned releases.
   `dependency_unavailable`. Fixes
   [#13](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/13).
 
+### Documentation
+
+- Aligned the migration docs and examples with the MetaTables 0.1.12 guidance:
+  manual `upgrade`/`downgrade` commands target the local runtime (`--local`),
+  hosted schema changes come from the `migrate-markets` deployment Job, raw
+  PostgreSQL SQL in a revision must branch on the dialect, and the 2.1.0
+  `0018_initial_schema` squash replaces the old revision history. The documented
+  client requirement is `mainsequence-metatable>=0.1.12,<0.2`. Refreshed the
+  MetaTables agent skills to 0.1.12.
+
 ## [2.1.0] - 2026-10-03
 
 ### Changed

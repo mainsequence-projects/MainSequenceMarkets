@@ -1,7 +1,7 @@
 # Getting Started
 
 `ms-markets` 2.x requires Python 3.13, Main Sequence SDK `>=9.0.5,<10`, and
-the MetaTables client `mainsequence-metatable>=0.1.9,<0.2` (imported as
+the MetaTables client `mainsequence-metatable>=0.1.12,<0.2` (imported as
 `metatables`). It cannot run against an SDK 8 or earlier contract and does not
 provide compatibility aliases or a mixed-version mode. Install a 1.x
 `ms-markets` release when maintaining an SDK 8 project.
