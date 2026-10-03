@@ -46,6 +46,37 @@ selected UID and reports `allowed`, `matched_count`, `blockers`, and `warnings`
 without mutating data. Portfolio preflight also evaluates protected
 VirtualFund and target-position references.
 
+Each bulk-delete preflight also reports what deleting rows from the resource's
+table reaches through foreign keys. It asks MetaTables
+(`MetaTable.get_impact(action="delete_rows")`) and adds:
+
+- `impact`: the MetaTables impact graph. Nodes are the tables the delete
+  reaches, with their effects and whether the caller may write each one. Edges
+  are classified as `cascade_delete`, `cascade_update`, `set_null`,
+  `set_default`, `restrict` or `reads`. MetaTables' blockers are included.
+- `warnings`: one sentence for each foreign-key action the delete triggers, for
+  example "PortfolioGroupMembership rows that reference deleted PortfolioGroup
+  rows are deleted too (ON DELETE CASCADE)." Command Center shows warnings
+  without custom rendering.
+- `blockers`: MetaTables' reasons the caller may not run the delete, prefixed
+  with the table: the caller cannot write the table, the table does not accept
+  writes, or its DataSource is read-only. The preflight then answers
+  `allowed: false` and execution answers `409` before the database refuses the
+  delete. Cascades never block: write on a table depends only on its own grants,
+  because a foreign key's action belongs to the referencing table.
+
+Deleting portfolios or portfolio groups cascades to their
+`PortfolioGroupMembership` rows; deleting asset categories cascades to their
+`AssetCategoryMembership` rows. If MetaTables cannot compute the impact,
+`impact` is `null` and a warning says so. The preflight is not blocked, because
+the database still applies and enforces every foreign-key action.
+
+On the local SQLite runtime, MetaTables documents one limitation: its authorizer
+also checks the reads and writes of foreign-key actions, so a delete that
+cascades fails unless the caller can access every referencing table. The
+preflight cannot detect this. PostgreSQL runs these actions as the referencing
+table's owner.
+
 Execution repeats preflight immediately before invoking domain deletion. A
 blocked selection returns HTTP `409` and does not call the delete service. The
 underlying delete operation still performs its own conflict checks, protecting

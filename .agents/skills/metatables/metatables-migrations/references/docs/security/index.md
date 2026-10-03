@@ -23,6 +23,7 @@ deployment's migration Job does so for its declared runtime database.
 | Application Settings and global Security admission | MetaTables, using the trusted platform admin fact |
 | Sharing, lifecycle and schema admission | The MetaTables API |
 | Data access during SQL execution | Database roles and privileges; SQLite engine authorizer locally |
+| What happens to rows that reference a changed row | The referencing table's foreign key, chosen by whoever controls its schema |
 | Showing permitted actions and access explanations | The Admin UI and Python client, using API decisions |
 
 MetaTables does not maintain another Organization or Environment policy model.
@@ -128,9 +129,10 @@ statement classification or function allowlist. The database enforces access in
 joins, CTEs, subqueries and permitted invoker routines. Database permissions are
 established during setup and schema changes. Catalog tables remain inaccessible,
 views cannot be registered, elevated routines cannot confer owner access, and
-triggered writes are restricted by the engine's policy. A table with cascading
-foreign keys is writable only by callers who can write every table the cascade
-modifies.
+triggered writes are restricted by the engine's policy. Cascading foreign keys are
+allowed: a referencing table's own foreign key decides what happens to its rows, so
+tables that reference a table never change who may write it. See
+[foreign keys and cascades](permissions.md#foreign-keys-and-cascades).
 
 PostgreSQL stores the catalog in `metatables` and owns managed tables through a
 non-login owner role. User, Team and namespace grants become database privileges

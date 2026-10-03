@@ -60,7 +60,10 @@ Permissions follow the resources actually affected:
 - A query needs Reader access to every table it reads and Writer access to every
   table it changes. Supplying an authorized table UID does not authorize arbitrary
   SQL against other tables.
-- A cascade needs Writer access to every affected table. Migration connection
+- A confirmed cascade delete needs Writer access to every table it drops. A
+  foreign-key action (`CASCADE`, `SET NULL`, `SET DEFAULT`) needs no access to the
+  referencing tables: their own foreign keys authorize it (see
+  [Foreign keys and cascades](#foreign-keys-and-cascades)). Migration connection
   admission checks all provider catalog tables, including their registry. The
   resulting direct connection is governed by database privileges, not table grants.
 - An updater needs Writer access to its output and Reader access to its inputs.
@@ -80,6 +83,57 @@ For an external table, deletion removes its MetaTables registration; it does not
 drop the externally owned physical relation. Application system tables and grant
 records cannot be edited as ordinary API table data. Direct migration access uses
 the environment login's privileges; its restrictions are the environment operator's responsibility.
+
+## Foreign keys and cascades
+
+**Write on a table depends only on that table's own grants.** Tables that
+reference it, directly or through any chain of foreign keys, never add or remove
+access to it.
+
+A foreign key belongs to the referencing table. Whoever controls that table's
+schema chooses its action, and so decides what happens to their own rows when a
+referenced row is deleted or its key changes:
+
+| Action on the referencing table | What happens to its rows |
+| --- | --- |
+| `CASCADE` | Deleted with the referenced row, or re-keyed with it |
+| `SET NULL` / `SET DEFAULT` | Their reference is cleared or reset |
+| `RESTRICT` / `NO ACTION` | The database refuses the change while they exist |
+
+A caller who changes a referenced row therefore needs no access to the
+referencing tables. The database applies each referencing table's action as part
+of that write; MetaTables adds no check of its own. PostgreSQL runs these actions
+as the referencing table's owner.
+
+| Operation on a referenced table | Access required |
+| --- | --- |
+| Insert rows, or update columns no foreign key references | Writer on the table |
+| Delete rows, or update referenced key columns | Writer on the table; each referencing table's action then applies |
+| Drop the table with the confirmed cascade delete | Writer on the table and on every referencing table it drops |
+
+For example, Alice owns `assets`. Carol's `details` table references `assets`
+with `ON DELETE CASCADE`. Alice's Writers can still insert, update and delete
+assets without any access to `details`. When they delete an asset, the database
+deletes Carol's rows for it, because Carol's foreign key says so. If Carol wants
+her rows kept, she uses `RESTRICT` or `NO ACTION`, and the database then refuses
+to delete assets her rows still reference. Dropping `assets` with the confirmed
+cascade delete would drop `details` too, so it needs Writer access to both.
+
+Referencing another owner's table is a commitment: its Writers' deletes and key
+updates apply your foreign key's action to your rows.
+
+**Seeing the effects first.** `table.get_impact(action=...)` (or
+`GET /meta-tables/{uid}/impact/`) lists every table a row delete, key update or
+table drop reaches and what happens to each. Cascade effects are information,
+never a reason the action is blocked. Tables you cannot view appear as opaque
+nodes. See [ADR 0016](../adr/api/0016-impact-preflight.md).
+
+**SQLite limitation.** In a local SQLite runtime, MetaTables' authorizer is also
+asked about the reads and writes that foreign-key actions make, and it cannot
+tell them apart from the caller's own. A delete or key update on a referenced
+table therefore fails unless the caller can access every referencing table.
+PostgreSQL does not have this limitation; MySQL and SQL Server are pending
+verification against their containers.
 
 ## Choosing the right page
 

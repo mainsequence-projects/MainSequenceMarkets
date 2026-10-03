@@ -691,7 +691,7 @@ server = [
 
 [[package]]
 name = "mainsequence-metatable"
-version = "0.1.17"
+version = "0.1.18"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -721,9 +721,9 @@ dependencies = [
     { name = "urllib3" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/06/9e/c8c426ee16bbfade9ec64c103d68c56331ed30e629b176fd225fb69dc7ae/mainsequence_metatable-0.1.17.tar.gz", hash = "sha256:62221c158faa68773c15ad0648a3f0b2c266e129dd9277bf53626830b07d308a", size = 1011150, upload-time = "2026-10-03T17:39:12.074Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/75/cabeca4d06ec877ced37fe007f1e59a563dc311ef772cadba693d6444f93/mainsequence_metatable-0.1.18.tar.gz", hash = "sha256:a6f7149e05434dddae4f3656c2ba365e8a2fd5d0c0685b8e67ae67f151e43182", size = 1010928, upload-time = "2026-10-03T19:35:01.979Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/57/fb0a63f7e99e113306f202136b38f0af85430ac16bd7ca1933c80fccfa7a/mainsequence_metatable-0.1.17-py3-none-any.whl", hash = "sha256:e90291cbe2f0f097658077fdd6e622d4f8ebfb9d6946f9f1f682b97d3f807c16", size = 2034879, upload-time = "2026-10-03T17:39:10.247Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/0f/a90835a4843a6f4841217fe0972686625e1c6d7ae53e336647f486996b8f/mainsequence_metatable-0.1.18-py3-none-any.whl", hash = "sha256:529ce1496ed208068da452d0cac65a0d251f7c4f26c1f860ef621d1bebc95a08", size = 2043467, upload-time = "2026-10-03T19:35:00.012Z" },
 ]
 
 [[package]]
@@ -987,7 +987,7 @@ wheels = [
 
 [[package]]
 name = "ms-markets"
-version = "2.2.2"
+version = "2.2.3"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -1062,7 +1062,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'public-api'", specifier = ">=0.136.3" },
     { name = "joblib", marker = "extra == 'portfolios'" },
     { name = "mainsequence", specifier = ">=9.0.5,<10" },
-    { name = "mainsequence-metatable", specifier = ">=0.1.17,<0.2" },
+    { name = "mainsequence-metatable", specifier = ">=0.1.18,<0.2" },
     { name = "matplotlib", marker = "extra == 'pricing'" },
     { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6" },

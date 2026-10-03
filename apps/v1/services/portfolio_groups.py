@@ -10,7 +10,7 @@ from apps.v1.schemas.portfolio_groups import (
     PortfolioGroupMembership,
 )
 from msm.api.base import operation_result_rows
-from msm.api.http import BulkActionPreflightResponse
+from msm.api.http import BulkDeletePreflightResponse
 
 
 def list_portfolio_groups(
@@ -79,7 +79,7 @@ def bulk_delete_portfolio_groups(*, payload: Mapping[str, Any]) -> PortfolioGrou
     return PortfolioGroupDeleteResponse.model_validate(result)
 
 
-def preflight_bulk_delete_portfolio_groups(*, uids: list[str]) -> BulkActionPreflightResponse:
+def preflight_bulk_delete_portfolio_groups(*, uids: list[str]) -> BulkDeletePreflightResponse:
     runtime = _get_runtime()
     target_uids = list(dict.fromkeys(uids))
     missing_uids = [
@@ -89,18 +89,21 @@ def preflight_bulk_delete_portfolio_groups(*, uids: list[str]) -> BulkActionPref
     ]
     matched_count = len(target_uids) - len(missing_uids)
     blockers = [f"Portfolio group {uid} was not found." for uid in missing_uids]
+    impact = _portfolio_group_delete_impact()
+    blockers.extend(impact.blockers)
     allowed = bool(target_uids) and not blockers
     detail = (
         f"{matched_count} portfolio group{' is' if matched_count == 1 else 's are'} ready for deletion."
         if allowed
         else "The portfolio-group selection cannot be deleted as submitted."
     )
-    return BulkActionPreflightResponse(
+    return BulkDeletePreflightResponse(
         allowed=allowed,
         detail=detail,
         matched_count=matched_count,
         blockers=blockers,
-        warnings=[],
+        warnings=impact.warnings,
+        impact=impact.impact,
     )
 
 
@@ -197,6 +200,13 @@ def _get_runtime():
         ],
         row_model_name="PortfolioGroup apps/v1",
     )
+
+
+def _portfolio_group_delete_impact():
+    from msm.models import PortfolioGroupTable
+    from msm.services import delete_rows_impact
+
+    return delete_rows_impact(PortfolioGroupTable)
 
 
 def _search_portfolio_groups(context, **kwargs):
