@@ -7,6 +7,43 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-10-03
+
+### Changed
+
+- Requires `mainsequence-metatable>=0.1.14,<0.2`; the lock and exported
+  `requirements.txt` select `mainsequence-metatable` 0.1.14 and keep
+  `mainsequence` 9.0.5. MetaTables 0.1.13 and 0.1.14 only make a failed runtime
+  database bootstrap name its cause. The `msm_migrations:migration` provider,
+  the `0018_initial_schema` history, the `migrate-markets` Job and the
+  deployment workflow are unchanged.
+- The VS Code launch configurations and tasks that check, apply and downgrade
+  migrations pass `--local`, so they act on the local runtime instead of
+  whichever MetaTables API the SDK environment resolves, and their names say
+  so.
+
+### Documentation
+
+- The FastAPI deployment docs describe workflow API 2.3.0 and its
+  `image` → `migrate` → `deploy_api` graph, and say that publishing is a plain
+  `git push`. Since Main Sequence SDK 9.0.5, `mainsequence code-repository sync`
+  only refreshes `uv.lock`, the environment and `requirements.txt`; it no longer
+  bumps, tags, commits or pushes.
+- Every developer migration command targets the local runtime
+  (`metatables --local`), including the ADR 0045 reset path. Hosted
+  environments are migrated only by the deployment workflow's Job.
+- Downstream projects declare their own migration provider and version table.
+  The MetaTable migration, portfolio accounting and asset-indexed storage
+  guides, the pricing tutorial and the bootstrap, index and
+  `metatable_migrations` skills no longer suggest extending the ms-markets
+  revision graph or applying `msm_migrations:migration` outside the ms-markets
+  deployment.
+- MetaTable registration no longer describes the removed catalog projection
+  hook, and the `metatable_migrations` skill's project provider example uses
+  the locations `metatables migrations scaffold --module` derives.
+- Refreshed the MetaTables agent skills to 0.1.14 and the managed `AGENTS.md`
+  section from SDK 9.0.5; the SDK skill bundle is unchanged.
+
 ## [2.1.1] - 2026-10-03
 
 ### Changed
