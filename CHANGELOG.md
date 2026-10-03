@@ -7,21 +7,34 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
-### Fixed
+### Changed
 
-- The VS Code migration launch configurations and tasks pass `--local`, so
-  `upgrade`, `downgrade` and `current` no longer target a hosted API that the SDK
-  environment resolves.
+- The VS Code launch configurations and tasks that check, apply and downgrade
+  migrations pass `--local`, so they act on the local runtime instead of
+  whichever MetaTables API the SDK environment resolves, and their names say
+  so.
 
 ### Documentation
 
-- Developer and agent migration commands target the local runtime
-  (`metatables --local`); hosted schemas change only through the
-  `migrate-markets` deployment Job. Downstream projects declare their own
-  provider and never apply `msm_migrations:migration`.
-- The FastAPI deployment docs describe workflow API 2.3.0, the
-  `image` → `migrate` → `deploy_api` graph, and publishing with `git push`.
-- Refreshed the SDK 9.0.5 and MetaTables 0.1.14 agent skills.
+- The FastAPI deployment docs describe workflow API 2.3.0 and its
+  `image` → `migrate` → `deploy_api` graph, and say that publishing is a plain
+  `git push`. Since Main Sequence SDK 9.0.5, `mainsequence code-repository sync`
+  only refreshes `uv.lock`, the environment and `requirements.txt`; it no longer
+  bumps, tags, commits or pushes.
+- Every developer migration command targets the local runtime
+  (`metatables --local`), including the ADR 0045 reset path. Hosted
+  environments are migrated only by the deployment workflow's Job.
+- Downstream projects declare their own migration provider and version table.
+  The MetaTable migration, portfolio accounting and asset-indexed storage
+  guides, the pricing tutorial and the bootstrap, index and
+  `metatable_migrations` skills no longer suggest extending the ms-markets
+  revision graph or applying `msm_migrations:migration` outside the ms-markets
+  deployment.
+- MetaTable registration no longer describes the removed catalog projection
+  hook, and the `metatable_migrations` skill's project provider example uses
+  the locations `metatables migrations scaffold --module` derives.
+- Refreshed the MetaTables agent skills to 0.1.14 and the managed `AGENTS.md`
+  section from SDK 9.0.5; the SDK skill bundle is unchanged.
 
 ## [2.2.0] - 2026-10-03
 
