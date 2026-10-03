@@ -43,6 +43,11 @@ and this project follows versioned releases.
   its `x-ui-contract` declaration; it no longer infers `core.tabular_frame@v1`
   from a response model named `TabularFrameResponse`. Every frame route already
   declares it, so the advertised contracts are unchanged.
+
+## [2.1.2] - 2026-10-03
+
+### Changed
+
 - Releases follow the MetaTables branch model. Every push to `development`
   publishes an `X.Y.Z.devN` build to PyPI. `main` is protected, and each merged
   pull request from `development` publishes the declared `X.Y.Z`, creates the
