@@ -65,7 +65,9 @@ def test_migration_upgrade_command_uses_metatables_cli_flags() -> None:
     from metatables.cli.app import app
     from typer.testing import CliRunner
 
-    upgrade_command = "metatables migrations upgrade --provider msm_migrations:migration head"
+    upgrade_command = (
+        "metatables --local migrations upgrade --provider msm_migrations:migration head"
+    )
     help_result = CliRunner().invoke(
         app,
         ["migrations", "upgrade", "--help"],

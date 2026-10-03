@@ -40,9 +40,10 @@ MetaTables local SQLite runtime (#15). The wheel also still installed top-level
 ## Consequences
 
 - A database at any of `0001`–`0017` fails with Alembic's unknown-revision error.
-  With 2.0.x still installed, run
-  `metatables migrations downgrade base --provider msm_migrations:migration`,
-  then install 2.1.0 and upgrade from empty.
+  For a local runtime, with 2.0.x still installed, run
+  `metatables --local migrations downgrade base --provider msm_migrations:migration`,
+  then install 2.1.0 and upgrade from empty. Hosted environments are migrated
+  only by the deployment workflow's migration Job.
 - Imports of `cli` and `command_center` change to `msm_cli` and
   `msm_command_center`.
 - Later schema changes are new revisions after `0018`. MetaTables generates them

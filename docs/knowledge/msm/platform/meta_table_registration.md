@@ -135,14 +135,12 @@ backend rows are treated as missing migration finalization, not as permission to
 register application tables.
 
 The catalog is finalized by the MetaTables migration upgrade flow. That command
-applies Alembic-rendered SQL with the environment connection selected by the
-MetaTables API, synchronizes the
-provider MetaTable catalog, and runs the `msm` provider hook that writes the
-catalog projection with the current platform UID, namespace, table name,
-description, model name, and SDK version. The catalog is an inventory
-projection, not the schema authority and not the runtime binding source. The
-catalog is intentionally MetaTable-specific; TimeIndexTableUpdater registration state belongs
-in a separate catalog if it is needed later.
+reserves the provider's MetaTables through the MetaTables API, applies the
+Alembic revisions with the environment connection selected by that API, and
+finalizes the provider's `MetaTable` and `TimeIndexMetaTable` bindings from
+`reserved` to `active`. The `msm` provider registers no
+`after_register_metatables` hook and keeps no secondary catalog table; the
+finalized backend resources are the inventory.
 
 When startup attaches platform-managed MetaTables, it partitions requested
 models into normal `MetaTable` models and `PlatformTimeIndexMetaTable` storage

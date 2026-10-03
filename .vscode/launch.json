@@ -2,12 +2,13 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Main Sequence: Check current migration",
+      "name": "Main Sequence: Check current local migration",
       "type": "debugpy",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
       "program": "${workspaceFolder}/.venv/bin/metatables",
       "args": [
+        "--local",
         "--json",
         "migrations",
         "current",
@@ -45,12 +46,13 @@
       "justMyCode": false
     },
     {
-      "name": "Main Sequence: Apply migrations (upgrade head)",
+      "name": "Main Sequence: Apply local migrations (upgrade head)",
       "type": "debugpy",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
       "program": "${workspaceFolder}/.venv/bin/metatables",
       "args": [
+        "--local",
         "migrations",
         "upgrade",
         "--provider",
@@ -66,12 +68,13 @@
       "justMyCode": false
     },
     {
-      "name": "Main Sequence: Downgrade migrations to target",
+      "name": "Main Sequence: Downgrade local migrations to target",
       "type": "debugpy",
       "request": "launch",
       "python": "${workspaceFolder}/.venv/bin/python",
       "program": "${workspaceFolder}/.venv/bin/metatables",
       "args": [
+        "--local",
         "migrations",
         "downgrade",
         "--provider",
