@@ -142,9 +142,9 @@ class BulkDeletePreflightResponse(BulkActionPreflightResponse):
         default=None,
         description=(
             "MetaTables delete_rows impact for the table the selected rows are deleted "
-            "from: the tables its foreign-key actions reach, the effect on each and the "
-            "caller's effective write. Each cascade is also summarized in warnings. "
-            "Null when nothing matched or MetaTables could not compute it."
+            "from: the tables its foreign-key actions reach, the effect on each and "
+            "whether the caller may write each table. Each cascade is also summarized "
+            "in warnings. Null when MetaTables could not compute it."
         ),
     )
 

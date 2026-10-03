@@ -1,5 +1,11 @@
 # ADR 0016: Impact pre-flight for cascades and deletes
 
+> Amendment (2026-10-03): Cascade effects are information, never blockers. An
+> earlier version of this ADR reported a cascade into an unregistered table or a
+> table the caller could not write as a blocker, and computed `can_write` after
+> removing write from such callers. Both are withdrawn with that rule
+> ([ADR 0007](0007-database-enforced-table-access.md), amended 2026-10-03).
+
 Date: 2026-10-03
 
 Status: Accepted.
@@ -14,17 +20,18 @@ own their UIs.
 
 Related decisions: [ADR 0001](0001-unified-api-storage-and-local-sqlite.md) (the SDK
 makes no access decisions of its own), [ADR 0002](0002-application-administration-and-table-ownership.md)
-(cascades need access to every affected table) and [ADR 0007](0007-database-enforced-table-access.md)
-(amended 2026-10-03: write requires write on every cascade target).
+(the confirmed cascade delete needs access to every table it drops) and
+[ADR 0007](0007-database-enforced-table-access.md) (amended 2026-10-03: tables that
+reference a table never change who may write it).
 
 ## Context
 
-Cascading foreign keys are now allowed. A caller keeps write on a table only while
-they can write every table its `CASCADE`, `SET NULL` and `SET DEFAULT` actions
-modify. A project that builds its own UI needs to show, before acting, which
-tables a delete or key update reaches, what happens to each, and why a write is
-or is not available. Before this decision, a caller could only try the action
-and read the error.
+Cascading foreign keys are now allowed, and write on a table depends only on its
+own grants. A delete or key update can still reach many tables through their
+`CASCADE`, `SET NULL` and `SET DEFAULT` actions. A project that builds its own UI
+needs to show, before acting, which tables an action reaches, what happens to
+each, and whether the action is available. Before this decision, a caller could
+only try the action and read the error.
 
 ## Decision
 
@@ -59,23 +66,21 @@ The response is a graph rooted at the table:
     with no names.
 
   Each node lists its `effects` (`drop`, `delete`, `update`, `input_changed`) and
-  the caller's `can_write`. For row actions, `can_write` is the database
-  privilege after cascade narrowing, computed by the same function the
-  reconciler uses. For `drop_table`, it is the edit grant the drop requires.
+  the caller's `can_write`. For row actions, `can_write` is the caller's write on
+  that table: its grants, and whether the table and DataSource accept writes.
+  Tables that reference it never change it. For `drop_table`, it is the edit
+  grant the drop requires.
 - **Edges**: each edge points from the dependent to what it depends on, as in
   the schema graph. Edges are classified by effect: `cascade_delete`,
   `cascade_update`, `set_null`, `set_default`, `restrict` (fails while
   referencing rows exist), `drop`, and `reads`.
 - **Verdict**: `allowed` and every blocker, each with a code and the node it
-  concerns:
-  - `cascade_target_unregistered`
-  - `cascade_target_not_writable`
-  - `table_not_writable`
-  - `writes_unsupported`
-  - `data_source_read_only`
-  - `retained_referencing_table`
-  - `alembic_protection`
-  - `deletion_protected`
+  concerns. A row action is blocked only by the table itself:
+  `table_not_writable`, `writes_unsupported` or `data_source_read_only`. Cascade
+  effects are information, never blockers, because the referencing table's own
+  foreign key authorizes them. `drop_table` keeps the confirmed delete's
+  blockers: `table_not_writable` (for every table it drops),
+  `retained_referencing_table`, `alembic_protection` and `deletion_protected`.
 
 `delete-with-cascade` runs the same planner (`persistence/impact.py`) and refuses
 with its first blocker's status and message, so a preview and the confirmed
@@ -91,7 +96,7 @@ every rule at execution time.
 | Need | Today |
 | --- | --- |
 | `on_update` in the catalog | `MetaTableForeignKey` and contracts carry only `on_delete`; contracts reject `set default`. Row-action edges use the physical actions, which are complete. |
-| Effective write in table responses | `permissions.write` reflects catalog grants and can say yes when cascade narrowing says no. Callers should use the pre-flight. |
+| SQLite runtimes | MetaTables' authorizer also checks the reads and writes of foreign-key actions, so a local delete or key update on a referenced table fails unless the caller can access every referencing table ([ADR 0007](0007-database-enforced-table-access.md)). The pre-flight does not report this. |
 | Plain delete | `DELETE /meta-tables/{uid}/` still answers 409 without listing references. |
 | Contract changes | No `change_contract` action; a PATCH that would invalidate an incoming key fails with a text message. |
 | Schema and update graphs | `get_schema_graph` returns an untyped dict; `update-graph` has no client method. |

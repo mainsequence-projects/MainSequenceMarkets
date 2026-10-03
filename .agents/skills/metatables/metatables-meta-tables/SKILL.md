@@ -143,8 +143,8 @@ Before a destructive action, or to show impact in an application UI, call
 The API returns whether the caller may run it, every blocker, and a graph of
 affected tables, foreign-key effects and reading updates; render that result
 rather than re-deriving foreign-key or permission rules in the client. Cascading
-foreign keys are allowed, but write on a table requires write on every table its
-cascades modify; a cascade into an unregistered table makes the parent read-only.
+foreign keys are allowed. Write on a table depends only on its own grants; the
+cascade effects in the result are information, never a reason the action is blocked.
 
 On a TimescaleDB DataSource, time-index tables are hypertables. Their compression
 and retention policies are set only through `TimeIndexMetaTable.set_timescale_policies`

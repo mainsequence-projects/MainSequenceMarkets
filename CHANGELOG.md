@@ -11,13 +11,24 @@ and this project follows versioned releases.
 
 - The portfolio, portfolio-group and asset-category bulk-delete preflights
   report what the delete reaches through foreign keys. They return the
-  MetaTables `delete_rows` impact as `impact`, describe each cascade,
-  `SET NULL` or `SET DEFAULT` action in `warnings`, and add MetaTables'
-  blockers (for example a cascade into a table the caller cannot write), which
-  also stop the bulk delete with `409`. If MetaTables cannot compute the
+  MetaTables `delete_rows` impact as `impact` and describe each cascade,
+  `SET NULL` or `SET DEFAULT` action in `warnings`. MetaTables' blockers (the
+  caller cannot write the table, the table does not accept writes, or its
+  DataSource is read-only) are added to `blockers` and also stop the bulk
+  delete with `409`; cascades never block. If MetaTables cannot compute the
   impact, a warning says so and the delete is not blocked.
   `BulkDeletePreflightResponse` and the `TableImpact` models are exported from
   `msm.api.http`, and `delete_rows_impact` from `msm.services`.
+
+### Changed
+
+- Requires `mainsequence-metatable>=0.1.18,<0.2`; the lock and exported
+  `requirements.txt` select `mainsequence-metatable` 0.1.18. MetaTables 0.1.18
+  removes the cascade write narrowing released in 0.1.17: write on a table
+  depends only on its own grants, so a foreign key on a referencing table no
+  longer locks the referenced table's Writers out. Its impact pre-flight
+  reports cascades as information, never as blockers.
+- Refreshed the MetaTables agent skills to 0.1.18.
 
 ## [2.2.2] - 2026-10-03
 
