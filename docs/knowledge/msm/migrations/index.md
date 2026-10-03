@@ -60,19 +60,13 @@ This repository's `.mainsequence/workflows/ms-markets-api.yaml` builds the image
 at head is left unchanged, and a failure blocks the API rollout while the
 previous release keeps serving.
 
-An application that installs ms-markets and deploys code reading ms-markets
-tables applies `msm_migrations:migration` in its own migration Job, before its
-own providers:
+The ms-markets schema is owned and migrated only by this repository's
+deployment. An application that installs ms-markets to read or write its tables
+does not apply `msm_migrations:migration`; its own migration Job, if it has one,
+applies only its own providers, and it runs against the schema the ms-markets
+deployment has applied.
 
-```python
-from metatables import upgrade_application
-
-for provider in ("msm_migrations:migration", "my_app.migrations:migration"):
-    result = upgrade_application(provider)
-```
-
-Every deployed resource that reads or writes the tables gets a deploy step with
-`needs: [migrate]`. Do not run migrations at application startup, and do not run
+Do not run migrations at application startup, and do not run
 `metatables migrations upgrade` or `downgrade` against a hosted API from a
 developer or agent session.
 

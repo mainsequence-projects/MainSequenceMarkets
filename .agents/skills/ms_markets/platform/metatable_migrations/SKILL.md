@@ -64,12 +64,11 @@ Run `upgrade` and `downgrade` from a developer or agent session only against a
 local runtime.
 
 Hosted runtimes are migrated only by the deployment workflow's migration Job,
-as `.agents/skills/metatables/metatables-migrations/SKILL.md` describes. A
-project that deploys code reading ms-markets tables applies
-`msm_migrations:migration` in that Job before its own providers, with
-`metatables.upgrade_application(...)`, and gives every deployed resource that
-uses the tables a deploy step with `needs: [migrate]`. Do not migrate at
-application startup.
+as `.agents/skills/metatables/metatables-migrations/SKILL.md` describes. The
+ms-markets schema is migrated only by the ms-markets deployment's
+`migrate-markets` Job. A project that installs ms-markets to read or write its
+tables does not apply `msm_migrations:migration`; its own migration Job applies
+only its own providers. Do not migrate at application startup.
 The MetaTables API needs no provider code, allowlist, or
 `application_migration_providers` alias. Keep the provider package, namespace,
 model registry, version-table binding, revision IDs, and applied revision

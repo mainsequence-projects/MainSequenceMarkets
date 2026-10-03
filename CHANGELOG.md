@@ -29,6 +29,11 @@ and this project follows versioned releases.
   `0018_initial_schema` squash replaces the old revision history. The documented
   client requirement is `mainsequence-metatable>=0.1.12,<0.2`. Refreshed the
   MetaTables agent skills to 0.1.12.
+- Withdrew the 2.1.0 instruction that applications reading ms-markets tables
+  apply `msm_migrations:migration` in their own migration Job. The migration
+  docs and the shipped `metatable_migrations` skill now state that only the
+  ms-markets deployment's `migrate-markets` Job migrates the ms-markets schema;
+  other applications apply only their own providers.
 
 ## [2.1.0] - 2026-10-03
 
