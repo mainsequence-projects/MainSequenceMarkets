@@ -6,17 +6,13 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query
 from starlette import status as http_status
 
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
+from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.pricing_curves import (
     CurveDeleteResponse,
     CurveSelection,
     Curve,
     DiscountCurveResponse,
-)
-from apps.v1.schemas.resource_contracts import (
-    RESOURCE_COLLECTION_CONTRACT,
-    ResourceCollection,
 )
 from apps.v1.services.pricing_curves import (
     delete_pricing_curve,
@@ -27,7 +23,12 @@ from apps.v1.services.pricing_curves import (
     list_pricing_curve_selections,
     list_pricing_curves,
 )
-from apps.v1.services.resource_collections import resource_collection_response
+from msm.api.http import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ErrorResponse,
+    ResourceCollection,
+    resource_collection_response,
+)
 from msm_pricing.api import CurveDeleteConflictError
 
 router = APIRouter(prefix="/pricing/curves", tags=["pricing-curve"])

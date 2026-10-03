@@ -3,12 +3,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from apps.v1.schemas.bulk_actions import BulkActionPreflightResponse
 from apps.v1.schemas.asset_categories import (
     AssetCategory,
     AssetCategoryDetailResponse,
     BulkDeleteAssetCategoriesResponse,
 )
+from msm.api.http import BulkActionPreflightResponse
 
 
 def list_asset_categories(

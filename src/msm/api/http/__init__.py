@@ -69,10 +69,20 @@ from .operations import (
     OperationStep,
     OperationStepStatus,
 )
+from .tabular import (
+    CORE_TABULAR_FRAME_CONTRACT,
+    TabularFrameFieldResponse,
+    TabularFrameMetaResponse,
+    TabularFrameResponse,
+    TabularFrameSourceResponse,
+    build_tabular_field,
+    build_tabular_frame,
+)
 
 __all__ = [
     "BULK_ACTION_EXECUTION_CONTRACT",
     "BULK_ACTION_PREFLIGHT_CONTRACT",
+    "CORE_TABULAR_FRAME_CONTRACT",
     "PRESENTATION_QUERY_KEYS",
     "RESOURCE_COLLECTION_CONTRACT",
     "RESOURCE_DISCOVERY_CONTRACT",
@@ -113,6 +123,10 @@ __all__ = [
     "ResourceSearchControl",
     "ResourceSelectFilter",
     "ResourceTextFilter",
+    "TabularFrameFieldResponse",
+    "TabularFrameMetaResponse",
+    "TabularFrameResponse",
+    "TabularFrameSourceResponse",
     "api_error",
     "api_http_error",
     "bad_request",
@@ -120,6 +134,8 @@ __all__ = [
     "build_bulk_delete_action",
     "build_resource_collection",
     "build_resource_discovery_spec",
+    "build_tabular_field",
+    "build_tabular_frame",
     "conflict",
     "dependency_unavailable",
     "explicit_uuid_selection",

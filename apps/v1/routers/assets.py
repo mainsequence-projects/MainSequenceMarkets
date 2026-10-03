@@ -5,12 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
+from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.indices import RelatedMetaTable
-from apps.v1.schemas.resource_contracts import (
-    RESOURCE_COLLECTION_CONTRACT,
-    ResourceCollection,
-)
 from apps.v1.services.assets import (
     delete_asset,
     get_asset,
@@ -20,8 +16,14 @@ from apps.v1.services.assets import (
     list_asset_related_meta_tables,
     list_assets_response,
 )
-from apps.v1.services.resource_collections import resource_collection_response
-from msm_command_center.contracts import TabularFrameResponse
+from msm.api.http import (
+    CORE_TABULAR_FRAME_CONTRACT,
+    RESOURCE_COLLECTION_CONTRACT,
+    ErrorResponse,
+    ResourceCollection,
+    TabularFrameResponse,
+    resource_collection_response,
+)
 
 router = APIRouter(prefix="/asset", tags=["asset"])
 
@@ -96,7 +98,7 @@ def get_assets(
     operation_id="getAssetMonitorFrame",
     response_model_exclude_none=True,
     openapi_extra={
-        "x-ui-contract": "core.tabular_frame@v1",
+        "x-ui-contract": CORE_TABULAR_FRAME_CONTRACT,
         "x-ui-output-root": "response:$",
     },
     responses={

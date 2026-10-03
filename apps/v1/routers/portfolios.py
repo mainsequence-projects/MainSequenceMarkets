@@ -6,13 +6,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 
-from apps.v1.schemas.bulk_actions import (
-    BULK_ACTION_PREFLIGHT_CONTRACT,
-    BulkActionExecutionRequest,
-    BulkActionPreflightResponse,
-)
-from apps.v1.schemas.command_center import TabularFrameResponse
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
+from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
     PortfolioBulkCascadeDeleteResponse,
     PortfolioBulkDeleteResponse,
@@ -22,10 +16,6 @@ from apps.v1.schemas.portfolios import (
     Portfolio,
     PortfolioWeightsDeleteResponse,
     PortfolioWeightsSnapshotResponse,
-)
-from apps.v1.schemas.resource_contracts import (
-    RESOURCE_COLLECTION_CONTRACT,
-    ResourceCollection,
 )
 from apps.v1.services.portfolios import (
     PortfolioDataIntegrityError,
@@ -41,10 +31,18 @@ from apps.v1.services.portfolios import (
     list_portfolios,
     preflight_bulk_delete_portfolios,
 )
-from apps.v1.services.resource_collections import resource_collection_response
-from apps.v1.services.bulk_actions import (
+from msm.api.http import (
+    BULK_ACTION_PREFLIGHT_CONTRACT,
+    CORE_TABULAR_FRAME_CONTRACT,
+    RESOURCE_COLLECTION_CONTRACT,
+    BulkActionExecutionRequest,
+    BulkActionPreflightResponse,
+    ErrorResponse,
+    ResourceCollection,
+    TabularFrameResponse,
     blocked_preflight_detail,
     explicit_uuid_selection,
+    resource_collection_response,
 )
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
@@ -351,7 +349,7 @@ def get_portfolio_weights_by_uid(
             "description": "The requested portfolio uid was not found.",
         },
     },
-    openapi_extra={"x-ui-contract": "core.tabular_frame@v1"},
+    openapi_extra={"x-ui-contract": CORE_TABULAR_FRAME_CONTRACT},
 )
 def get_portfolio_signal_weights_frame_by_uid(
     uid: str,
@@ -407,7 +405,7 @@ def get_portfolio_signal_weights_frame_by_uid(
             "description": "The requested portfolio uid was not found.",
         },
     },
-    openapi_extra={"x-ui-contract": "core.tabular_frame@v1"},
+    openapi_extra={"x-ui-contract": CORE_TABULAR_FRAME_CONTRACT},
 )
 def get_portfolio_values_frame_by_uid(
     uid: str,

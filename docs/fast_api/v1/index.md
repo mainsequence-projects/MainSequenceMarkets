@@ -152,7 +152,7 @@ state and logs instead of treating the Git push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
 The published `ms-markets` 2.x package therefore declares
-`mainsequence>=9.0.5,<10` and `mainsequence-metatable>=0.1.12,<0.2` without
+`mainsequence>=9.0.5,<10` and `mainsequence-metatable>=0.1.14,<0.2` without
 exact patch pins. The lower bounds enforce the SDK 9 and MetaTables client
 extraction hard cut, while the project lock and exported runtime requirements
 select the exact releases validated for this repository. Do not replace the
@@ -192,8 +192,8 @@ headers or bind SDK request-header context variables.
   - classifies read/calculation operations as `query`
   - classifies create/update/delete/write operations as `mutation`
   - disables cache metadata for mutation operations and non-GET calculations
-  - keeps provider-native responses provider-native and exposes optional
-    `responseMappings` only as metadata
+  - keeps provider-native responses provider-native and does not publish
+    `responseMappings`
   - advertises `getAssetMonitorFrame` as a direct
     `core.tabular_frame@v1` query operation for Command Center Asset Monitor
     workspaces

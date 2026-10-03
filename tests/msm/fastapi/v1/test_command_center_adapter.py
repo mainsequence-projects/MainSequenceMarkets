@@ -5,12 +5,12 @@ from fastapi.testclient import TestClient
 from apps.v1.main import app
 from apps.v1.services.command_center_adapter import (
     CONTRACT_OPERATION_ID,
-    DIRECT_FRAME_CONTRACT,
     HEALTH_OPERATION_ID,
     MUTATION_OPERATION_IDS,
     QUERY_OPERATION_IDS,
     RESOURCE_OPERATION_IDS,
 )
+from msm.api.http import CORE_TABULAR_FRAME_CONTRACT
 
 
 def _contract_payload() -> dict:
@@ -106,7 +106,7 @@ def test_command_center_contract_only_classifies_canonical_frames_as_queries() -
         operation = operations[operation_id]
         assert operation["kind"] == "query", operation_id
         assert operation["capabilities"] == ["query"], operation_id
-        assert operation["responseContract"] == DIRECT_FRAME_CONTRACT, operation_id
+        assert operation["responseContract"] == CORE_TABULAR_FRAME_CONTRACT, operation_id
 
     for operation_id in sorted(RESOURCE_OPERATION_IDS | {HEALTH_OPERATION_ID}):
         operation = operations[operation_id]
@@ -194,7 +194,7 @@ def test_command_center_contract_exposes_complete_index_operations() -> None:
 
     values = operations["getIndexDatasetValuesFrame"]
     assert values["kind"] == "query"
-    assert values["responseContract"] == DIRECT_FRAME_CONTRACT
+    assert values["responseContract"] == CORE_TABULAR_FRAME_CONTRACT
     assert values["responseModel"] == "TabularFrameResponse"
 
 
@@ -203,19 +203,19 @@ def test_command_center_contract_documents_response_contract_boundaries() -> Non
     operations = _operation_by_id(payload)
 
     direct_frame = operations["getFixedIncomeAssetCashflowsFrame"]
-    assert direct_frame["responseContract"] == DIRECT_FRAME_CONTRACT
+    assert direct_frame["responseContract"] == CORE_TABULAR_FRAME_CONTRACT
     assert direct_frame["responseModel"] == "TabularFrameResponse"
 
     portfolio_signal_weights = operations["getPortfolioSignalWeightsFrame"]
-    assert portfolio_signal_weights["responseContract"] == DIRECT_FRAME_CONTRACT
+    assert portfolio_signal_weights["responseContract"] == CORE_TABULAR_FRAME_CONTRACT
     assert portfolio_signal_weights["responseModel"] == "TabularFrameResponse"
 
     portfolio_values = operations["getPortfolioValuesFrame"]
-    assert portfolio_values["responseContract"] == DIRECT_FRAME_CONTRACT
+    assert portfolio_values["responseContract"] == CORE_TABULAR_FRAME_CONTRACT
     assert portfolio_values["responseModel"] == "TabularFrameResponse"
 
     asset_monitor = operations["getAssetMonitorFrame"]
-    assert asset_monitor["responseContract"] == DIRECT_FRAME_CONTRACT
+    assert asset_monitor["responseContract"] == CORE_TABULAR_FRAME_CONTRACT
     assert asset_monitor["responseModel"] == "TabularFrameResponse"
 
     application_owned = operations["getFixedIncomeAssetCashflows"]

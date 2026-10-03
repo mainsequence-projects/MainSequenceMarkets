@@ -15,12 +15,8 @@ from apps.v1.schemas.indices import (
     IndexUpdate,
     RelatedMetaTable,
 )
-from msm_command_center.contracts import (
-    TabularFrameResponse,
-    build_tabular_field,
-    build_tabular_frame,
-)
 from msm.api.base import operation_result_rows
+from msm.api.http import TabularFrameResponse, build_tabular_field, build_tabular_frame
 from msm.models import IndexTable, IndexTypeTable
 from msm.repositories.crud import get_model_by_uid, search_model
 from msm.services.indices import (

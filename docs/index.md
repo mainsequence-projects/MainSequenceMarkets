@@ -55,7 +55,6 @@ the docs.
 - [Core Concepts](concepts.md)
 - [Tutorial](tutorial/index.md)
 - [FastAPI v1](fast_api/v1/index.md)
-- [Command Center](command_center/index.md)
 - Package reference: [msm](knowledge/msm/index.md),
   [msm_portfolios](knowledge/msm_portfolios/index.md),
   [msm_pricing](knowledge/msm_pricing/index.md)

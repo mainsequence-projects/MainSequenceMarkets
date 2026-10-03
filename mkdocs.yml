@@ -94,9 +94,6 @@ nav:
       - Pricing Market Data: fast_api/v1/pricing_market_data.md
       - Fixed Income Pricer: fast_api/v1/fixed_income_pricer.md
       - Command Center Bulk Actions: fast_api/v1/command_center_bulk_actions.md
-  - Command Center:
-      - Overview: command_center/index.md
-      - Asset Monitor: command_center/asset_monitor.md
   - Architecture:
       - ADR: ADR/README.md
       - Pricing Package Refactor: ADR/0005-pricing-package-refactor.md

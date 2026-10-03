@@ -22,11 +22,7 @@ from apps.v1.schemas.calendars import (
     CalendarSessionUpdate,
     CalendarUpdate,
 )
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
-from apps.v1.schemas.resource_contracts import (
-    RESOURCE_COLLECTION_CONTRACT,
-    ResourceCollection,
-)
+from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.services.calendars import (
     bulk_upsert_calendar_dates,
     bulk_upsert_calendar_events,
@@ -53,7 +49,12 @@ from apps.v1.services.calendars import (
     update_calendar_event,
     update_calendar_session,
 )
-from apps.v1.services.resource_collections import resource_collection_response
+from msm.api.http import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ErrorResponse,
+    ResourceCollection,
+    resource_collection_response,
+)
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 

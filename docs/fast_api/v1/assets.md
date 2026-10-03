@@ -28,6 +28,7 @@ provider-specific records. The API does not flatten those separate models into `
     `main-sequence-markets__asset-screener`
   - publishes `AssetTable.unique_identifier` as the ms-markets stable asset key
     without adding a synthetic `Symbol` column
+  - returns the columns `uid`, `unique_identifier`, and `asset_type`
 - `GET /api/v1/asset/{uid}/`
   - resolves the asset by `uid`
   - returns `AssetDetailResponse` with top-level `uid`, `unique_identifier`,

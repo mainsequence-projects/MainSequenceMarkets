@@ -52,7 +52,8 @@ Main package areas:
 - `msm.api`: user-facing Pydantic row objects and typed class methods for
   markets MetaTable records
 - `msm.api.http`: installable provider-neutral collection, discovery,
-  bulk-preflight, observable-operation, and structured-error contracts
+  bulk-preflight, tabular-frame, observable-operation, and structured-error
+  contracts
 - `msm.constants`: static built-in keys such as asset type constants used across
   applications and examples
 - `msm.client`: client-facing Main Sequence market models and API wrappers
@@ -99,7 +100,6 @@ Recommended entry points:
 - [Getting Started](https://mainsequence-projects.github.io/MainSequenceMarkets/getting-started/)
 - [Tutorial](https://mainsequence-projects.github.io/MainSequenceMarkets/tutorial/)
 - [FastAPI v1](https://mainsequence-projects.github.io/MainSequenceMarkets/fast_api/v1/)
-- [Command Center](https://mainsequence-projects.github.io/MainSequenceMarkets/command_center/)
 - [Knowledge Base](https://mainsequence-projects.github.io/MainSequenceMarkets/knowledge/)
 - [Architecture Decision Records](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/)
 - [Changelog](https://mainsequence-projects.github.io/MainSequenceMarkets/changelog/)
@@ -108,7 +108,7 @@ Recommended entry points:
 ## Quick Start
 
 `ms-markets` 2.x requires Python 3.13, Main Sequence SDK `>=9.0.5,<10`, and
-the MetaTables client `mainsequence-metatable>=0.1.12,<0.2`, which is imported
+the MetaTables client `mainsequence-metatable>=0.1.14,<0.2`, which is imported
 as `metatables`. SDK 8 and earlier are not supported; install a 1.x
 `ms-markets` release when maintaining an SDK 8 project. See
 [ADR 0043](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0043-sdk-9-metatables-client-hard-cut/)
@@ -226,7 +226,7 @@ The core stack starts with:
 
 - `mainsequence>=9.0.5,<10` for identity, login, Git source context,
   CodeRepository, jobs, and agents
-- `mainsequence-metatable>=0.1.12,<0.2` (import `metatables`) for MetaTables,
+- `mainsequence-metatable>=0.1.14,<0.2` (import `metatables`) for MetaTables,
   time-index table updaters, governed compiled SQL, and application-owned
   Alembic migrations
 - `SQLAlchemy` for market-domain ORM models

@@ -75,8 +75,7 @@ Response:
             "key": "with_yield",
             "required": false
           }
-        ],
-        "response_mappings": []
+        ]
       }
     ]
   }
@@ -162,10 +161,9 @@ POST /api/v1/pricing/assets/{asset_uid}/cashflows/frame/
 POST /api/v1/pricing/assets/{asset_uid}/net-cashflows/frame/
 ```
 
-The original cashflow endpoints still return provider-native pricing JSON and
-carry `x-response-mappings` metadata for frontend/editor context. The frame
-endpoints are the routes to bind directly into generic table, chart, curve,
-transform, or agent-facing Command Center consumers.
+The original cashflow endpoints still return provider-native pricing JSON. The
+frame endpoints are the routes to bind directly into generic table, chart,
+curve, transform, or agent-facing Command Center consumers.
 
 ## Price
 

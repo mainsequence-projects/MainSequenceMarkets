@@ -11,16 +11,6 @@ from apps.v1.schemas.asset_categories import (
     CreateAssetCategoryRequest,
     PatchAssetCategoryRequest,
 )
-from apps.v1.schemas.bulk_actions import (
-    BULK_ACTION_PREFLIGHT_CONTRACT,
-    BulkActionExecutionRequest,
-    BulkActionPreflightResponse,
-)
-from apps.v1.schemas.common import ErrorResponse
-from apps.v1.schemas.resource_contracts import (
-    RESOURCE_COLLECTION_CONTRACT,
-    ResourceCollection,
-)
 from apps.v1.services.asset_categories import (
     bulk_delete_asset_categories,
     create_asset_category,
@@ -30,10 +20,16 @@ from apps.v1.services.asset_categories import (
     preflight_bulk_delete_asset_categories,
     update_asset_category,
 )
-from apps.v1.services.resource_collections import resource_collection_response
-from apps.v1.services.bulk_actions import (
+from msm.api.http import (
+    BULK_ACTION_PREFLIGHT_CONTRACT,
+    RESOURCE_COLLECTION_CONTRACT,
+    BulkActionExecutionRequest,
+    BulkActionPreflightResponse,
+    ErrorResponse,
+    ResourceCollection,
     blocked_preflight_detail,
     explicit_uuid_selection,
+    resource_collection_response,
 )
 
 router = APIRouter(prefix="/asset-category", tags=["asset-category"])

@@ -4,7 +4,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status as http_status
 
-from apps.v1.schemas.common import ErrorResponse
 from apps.v1.schemas.pricing_market_data import (
     PricingMarketDataBindingResolveResponse,
     PricingMarketDataCardResponse,
@@ -18,10 +17,6 @@ from apps.v1.schemas.pricing_market_data import (
     PricingMarketDataSetDeleteResponse,
     PricingMarketDataSetUpdate,
     PricingMarketDataSetUpsert,
-)
-from apps.v1.schemas.resource_contracts import (
-    RESOURCE_COLLECTION_CONTRACT,
-    ResourceCollection,
 )
 from apps.v1.services.pricing_market_data import (
     create_pricing_market_data_binding,
@@ -41,7 +36,12 @@ from apps.v1.services.pricing_market_data import (
     upsert_pricing_market_data_binding,
     upsert_pricing_market_data_set,
 )
-from apps.v1.services.resource_collections import resource_collection_response
+from msm.api.http import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ErrorResponse,
+    ResourceCollection,
+    resource_collection_response,
+)
 
 router = APIRouter(prefix="/pricing/market_data", tags=["pricing-market-data"])
 

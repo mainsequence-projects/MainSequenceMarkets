@@ -162,7 +162,7 @@ def test_get_asset_monitor_frame_returns_tabular_asset_frame(monkeypatch) -> Non
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ready"
-    assert payload["columns"][:3] == ["uid", "unique_identifier", "asset_type"]
+    assert payload["columns"] == ["uid", "unique_identifier", "asset_type"]
     assert payload["rows"][0]["uid"] == str(asset_uid)
     assert payload["rows"][0]["unique_identifier"] == "MXN-BONO-2031"
     assert "Symbol" not in payload["rows"][0]

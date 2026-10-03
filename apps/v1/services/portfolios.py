@@ -4,8 +4,6 @@ import datetime as dt
 import uuid
 from collections.abc import Mapping
 
-from apps.v1.schemas.bulk_actions import BulkActionPreflightResponse
-from apps.v1.schemas.command_center import TabularFrameResponse
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
     Portfolio,
@@ -17,6 +15,7 @@ from apps.v1.schemas.portfolios import (
     PortfolioWeightsDeleteResponse,
     PortfolioWeightsSnapshotResponse,
 )
+from msm.api.http import BulkActionPreflightResponse, TabularFrameResponse
 
 
 class PortfolioDataIntegrityError(ValueError):
