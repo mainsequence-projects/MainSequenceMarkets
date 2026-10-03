@@ -133,9 +133,9 @@ It contains no route, schema, service, or runtime logic.
 
 The release is managed by
 `.mainsequence/workflows/ms-markets-api.yaml`. The declaration uses workflow API
-`2.1.0`, retains three release revisions for rollback, and its
-automatic-redeployment policy follows every synchronized
-`main` commit (`tag_regex: null`). The backend resolves the verified image for
+`2.3.0`, retains three release revisions for rollback, and its
+automatic-redeployment policy deploys every pushed commit of the tracked branch
+(`tag_regex: null`). The backend resolves the verified image for
 the exact eligible commit, so the workflow must not contain a
 `related_image_uid`. It requests the standard API capacity of `0.25` vCPU and
 `0.5` GiB on non-spot infrastructure. The release admits the supported
@@ -145,10 +145,22 @@ The frontend identifies this release by its stable ResourceRelease UID; the SDK
 resolves the current opaque RPC endpoint at request time after every automatic
 API redeployment.
 
-Use `mainsequence code-repository sync --path . -m "<message>"` to publish
-repository changes. A successful sync triggers the backend-owned image build
-and release rotation; use the deployment-run interfaces to verify the terminal
-state and logs instead of treating the Git push alone as deployment success.
+The same file declares the `migrate-markets` Job, which follows the same
+every-push policy, and the order of each deployment: the `image` step prepares
+the `markets-api` image, `migrate` runs `jobs/migrate_markets.py` from that
+image, and `deploy_api` deploys the API with `needs: [migrate]`. A failed
+migration blocks the rollout and the previous release keeps serving; see
+[Hosted Deployments](../../knowledge/msm/migrations/index.md#hosted-deployments).
+
+Publish repository changes with a plain `git push` of the tracked branch; the
+workflow files decide what deploys. The tracked `main` branch changes only through
+release pull requests from `development`; see [Releasing](../../releasing.md). Since Main Sequence SDK 9.0.5,
+`mainsequence code-repository sync` only refreshes local dependencies
+(`uv lock`, `uv sync`, `uv export --locked --no-dev --no-hashes`); it does not
+bump the version, tag, commit, or push. The push starts the backend-owned image
+build, the migration Job, and the release rotation; use the deployment-run
+interfaces to verify the terminal state and logs instead of treating the Git
+push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
 The published `ms-markets` 2.x package therefore declares

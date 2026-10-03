@@ -7,6 +7,22 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- The VS Code migration launch configurations and tasks pass `--local`, so
+  `upgrade`, `downgrade` and `current` no longer target a hosted API that the SDK
+  environment resolves.
+
+### Documentation
+
+- Developer and agent migration commands target the local runtime
+  (`metatables --local`); hosted schemas change only through the
+  `migrate-markets` deployment Job. Downstream projects declare their own
+  provider and never apply `msm_migrations:migration`.
+- The FastAPI deployment docs describe workflow API 2.3.0, the
+  `image` → `migrate` → `deploy_api` graph, and publishing with `git push`.
+- Refreshed the SDK 9.0.5 and MetaTables 0.1.14 agent skills.
+
 ## [2.2.0] - 2026-10-03
 
 ### Removed

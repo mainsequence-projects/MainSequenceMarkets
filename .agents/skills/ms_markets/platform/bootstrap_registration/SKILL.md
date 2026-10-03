@@ -85,8 +85,11 @@ For pricing bootstrap changes, also inspect:
 
 ## User-Facing Startup Pattern
 
-Operators should run the MetaTables migration provider before application startup.
-Examples and application code should then attach once, then use row APIs:
+MetaTables migrations are applied before application startup, never by it.
+Hosted environments are migrated only by a deployment workflow's migration Job;
+during development, apply a provider to the local runtime with
+`metatables --local migrations upgrade --provider <provider> head`. Examples and
+application code should then attach once, then use row APIs:
 
 ```python
 import msm

@@ -123,6 +123,12 @@ Any failure blocks the rollout. The Job prints `status` (`initialized`, `upgrade
 or `up_to_date`), `previous_revisions`, `revisions` and `data_source_uid`. A new
 runtime DataSource is recorded as created by the Job's SDK user.
 
+A failed run names its cause. The error line gives the exception type, plus the
+database server's SQLSTATE and message when the server answered. The
+`metatables.bootstrap` logger writes the full error with its traceback to the Job
+log, with passwords, tokens and connection-string credentials redacted. Settings
+and API errors never carry driver text, which can include hosts and connection strings.
+
 ## API pods and Settings
 
 API pods read the same declaration and Secret at startup and never run DDL. They

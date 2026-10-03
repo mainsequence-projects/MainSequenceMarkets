@@ -27,9 +27,11 @@ The provider is constructed with the `metatables.migrations` helpers:
 
 `MarketsAlembicVersion` stores Alembic state in
 `public.ms_markets__alembic_version`. This package-specific version table avoids
-collisions in databases that host multiple independent providers. Downstream
-projects that inherit from ms-markets should use this same provider and version
-table when they are extending the ms-markets revision graph.
+collisions in databases that host multiple independent providers. The provider
+and its revision graph belong to ms-markets alone. A downstream project that
+adds its own tables declares its own provider, module, and version table; it
+neither adds revisions to the ms-markets graph nor applies
+`msm_migrations:migration`, which only the ms-markets deployment migrates.
 
 Although the physical table is in PostgreSQL `public`, the provider metadata
 authors default-schema tables as `schema=None`. `public` is the database
@@ -111,7 +113,8 @@ history is the Alembic revision graph plus the provider's version table.
 The implementation requires `mainsequence-metatable>=0.1.14,<0.2` with
 `mainsequence>=9.0.5,<10`. The client exposes `AlembicMetaTableMigration`,
 `AlembicVersionMetaTable`, application-owned Alembic execution, and the command
-shape where `metatables migrations upgrade --provider msm_migrations:migration head`
+shape where
+`metatables --local migrations upgrade --provider msm_migrations:migration head`
 applies without `--apply`, `--to`, or `--register-metatables`. Namespace-scoped
 revision directories use the Alembic `version_locations` configured by the
 provider. Upgrading the client keeps the provider package, namespace, model

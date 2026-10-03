@@ -661,8 +661,10 @@ migrated and registered with the same path as built-in tables:
    base identifier with the mixin namespace to produce the globally unique
    MetaTable identifier.
 4. Declare relationships with normal SQLAlchemy `ForeignKey(...)` targets.
-5. Add or sync the package/project migration that creates or refreshes the
-   table and finalizes the schema.
+5. Add a revision to the project's own migration provider that creates or
+   changes the table, and apply it to the local runtime with
+   `metatables --local migrations upgrade --provider <provider> head`. Hosted
+   environments receive it from the project's deployment migration Job.
 6. Attach at runtime with `msm.start_engine(models=[MyModelTable])`.
 7. Put row operations in an optional `MarketsMetaTableRow` wrapper.
 

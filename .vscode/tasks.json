@@ -19,12 +19,13 @@
       "problemMatcher": []
     },
     {
-      "label": "Main Sequence: Check current migration",
+      "label": "Main Sequence: Check current local migration",
       "type": "shell",
       "command": "uv",
       "args": [
         "run",
         "metatables",
+        "--local",
         "--json",
         "migrations",
         "current",
@@ -70,12 +71,13 @@
       "problemMatcher": []
     },
     {
-      "label": "Main Sequence: Apply migrations (upgrade head)",
+      "label": "Main Sequence: Apply local migrations (upgrade head)",
       "type": "shell",
       "command": "uv",
       "args": [
         "run",
         "metatables",
+        "--local",
         "migrations",
         "upgrade",
         "--provider",
@@ -95,12 +97,13 @@
       "problemMatcher": []
     },
     {
-      "label": "Main Sequence: Downgrade migrations to target",
+      "label": "Main Sequence: Downgrade local migrations to target",
       "type": "shell",
       "command": "uv",
       "args": [
         "run",
         "metatables",
+        "--local",
         "migrations",
         "downgrade",
         "--provider",
@@ -120,10 +123,10 @@
       "problemMatcher": []
     },
     {
-      "label": "Main Sequence: Check then apply migrations",
+      "label": "Main Sequence: Check then apply local migrations",
       "dependsOn": [
-        "Main Sequence: Check current migration",
-        "Main Sequence: Apply migrations (upgrade head)"
+        "Main Sequence: Check current local migration",
+        "Main Sequence: Apply local migrations (upgrade head)"
       ],
       "dependsOrder": "sequence",
       "problemMatcher": []
