@@ -31,6 +31,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | GET | `/meta-tables/{table_uid}/` | Retrieve Table | 200 |
 | PATCH | `/meta-tables/{table_uid}/` | Patch Meta Table | 200 |
 | POST | `/meta-tables/{table_uid}/delete-with-cascade/` | Delete With Cascade | 200 |
+| GET | `/meta-tables/{table_uid}/impact/` | Get Impact | 200 |
 | POST | `/meta-tables/{table_uid}/introspect/` | Introspect Meta Table | 200 |
 | POST | `/meta-tables/{table_uid}/migration-connection/` | Migration Connection | 200 |
 | POST | `/meta-tables/{table_uid}/read/` | Read Rows | 200 |
@@ -89,6 +90,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | POST | `/time-index-meta-tables/{table_uid}/get-data-between-dates-from-remote/` | Get Data Between Dates From Remote | 200 |
 | POST | `/time-index-meta-tables/{table_uid}/get-last-observation/` | Get Last Observation | 200 |
 | GET | `/time-index-meta-tables/{table_uid}/get-stats/` | Get Time Index Stats | 200 |
+| GET | `/time-index-meta-tables/{table_uid}/impact/` | Time Index Get Impact | 200 |
 | POST | `/time-index-meta-tables/{table_uid}/introspect/` | Time Index Introspect Meta Table | 200 |
 | POST | `/time-index-meta-tables/{table_uid}/migration-connection/` | Time Index Migration Connection | 200 |
 | GET | `/time-index-meta-tables/{table_uid}/schema-graph` | Time Index Get Schema Graph | 200 |
