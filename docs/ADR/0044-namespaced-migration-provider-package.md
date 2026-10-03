@@ -2,9 +2,10 @@
 
 ## Status
 
-Accepted and implemented. Its revision history and the `cli`/`command_center`
-exclusion are superseded by
-[ADR 0045](0045-squashed-initial-schema-and-namespaced-packages.md). Supersedes the provider package location in
+Accepted and implemented. Amended by [ADR 0045](0045-squashed-initial-schema-and-namespaced-packages.md): revisions `0001`–`0017` are
+replaced by `0018_initial_schema`, so existing databases no longer continue from
+their revision, and `cli`/`command_center` are renamed `msm_cli` and
+`msm_command_center`. Supersedes the provider package location in
 [ADR 0024](0024-namespace-scoped-alembic-version-locations.md) and the
 `migrations:migration` provider reference in
 [ADR 0043](0043-sdk-9-metatables-client-hard-cut.md). The namespace-scoped

@@ -8,6 +8,11 @@ and the `cli`/`command_center` exclusion in
 [MainSequenceMarkets#12](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/12),
 [#14](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/14) and
 [#15](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/15).
+Amends ADRs [0034](0034-command-center-asset-monitor-helpers.md),
+[0037](0037-index-formula-and-custom-calculation-framework.md),
+[0042](0042-position-cash-flow-portfolio-accounting.md) and
+[0043](0043-sdk-9-metatables-client-hard-cut.md), and withdraws the 2.0.2
+CHANGELOG promise that revisions `0001`–`0017` stay unchanged.
 
 ## Context
 
@@ -19,8 +24,10 @@ MetaTables local SQLite runtime (#15). The wheel also still installed top-level
 
 ## Decision
 
-- One revision, `0001_initial_schema`, generated from the models, creates the
-  whole schema on PostgreSQL and on the local SQLite runtime. MetaTables 0.1.12
+- One revision, `0018_initial_schema`, generated from the models, creates the
+  whole schema on PostgreSQL and on the local SQLite runtime. It never reuses a
+  2.x revision ID: under a reused `0001`, a database at the old `0001` would pass
+  as already at head and skip every table. MetaTables 0.1.12
   runs `JSONB` as JSON, `Numeric` as SQLite numbers and `postgresql_where`
   predicates there. The provider key `msm:<namespace>`, `MarketsAlembicVersion`
   and its table are unchanged.
@@ -32,9 +39,11 @@ MetaTables local SQLite runtime (#15). The wheel also still installed top-level
 
 ## Consequences
 
-- A database at a 2.x revision cannot upgrade: drop its ms-markets tables, then
-  apply 3.0.0 from empty.
+- A database at any 2.x revision fails with Alembic's unknown-revision error.
+  With 2.x still installed, run
+  `metatables migrations downgrade base --provider msm_migrations:migration`,
+  then install 3.0.0 and upgrade from empty.
 - Imports of `cli` and `command_center` change to `msm_cli` and
   `msm_command_center`.
-- Later schema changes are new revisions after `0001`. MetaTables generates them
+- Later schema changes are new revisions after `0018`. MetaTables generates them
   as batch blocks, which run on both engines.

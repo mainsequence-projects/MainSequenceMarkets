@@ -12,7 +12,7 @@ from msm.models import (
 
 
 ROOT = Path(__file__).resolve().parents[3]
-REVISION = ROOT / "src/msm_migrations/versions/mainsequence_markets/0001_initial_schema.py"
+REVISION = ROOT / "src/msm_migrations/versions/mainsequence_markets/0018_initial_schema.py"
 
 
 def test_index_model_owns_calculation_and_display_format() -> None:
@@ -55,7 +55,7 @@ def test_model_registry_has_no_legacy_index_models() -> None:
 
 def test_initial_schema_creates_formula_index_tables_without_units() -> None:
     source = REVISION.read_text()
-    assert "revision: str = '0001'" in source
+    assert "revision: str = '0018'" in source
     assert "op.create_table('ms_markets__indexformuladefinition'" in source
     assert "op.create_table('ms_markets__indexformulainput'" in source
     values = source[source.index("op.create_table('ms_markets__indexvaluests'"):]

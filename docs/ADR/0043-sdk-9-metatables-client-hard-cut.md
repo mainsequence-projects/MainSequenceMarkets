@@ -12,6 +12,9 @@ Amended by [ADR 0044](0044-namespaced-migration-provider-package.md): the
 provider reference `migrations:migration` below is replaced by
 `msm_migrations:migration`.
 
+Amended by [ADR 0045](0045-squashed-initial-schema-and-namespaced-packages.md): the revision IDs and applied history it keeps unchanged are
+replaced by one `0018_initial_schema` revision in 3.0.0.
+
 ## Context
 
 Main Sequence SDK 9 no longer contains MetaTables. Table resources, the

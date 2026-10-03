@@ -1,6 +1,9 @@
 """initial schema
 
-Revision ID: 0001
+Replaces revisions 0001-0017 without reusing their IDs: a database left at
+any of them fails with an unknown revision instead of passing as this head.
+
+Revision ID: 0018
 Revises: 
 Create Date: 2026-10-03 15:05:56.559716
 
@@ -12,7 +15,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '0001'
+revision: str = '0018'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

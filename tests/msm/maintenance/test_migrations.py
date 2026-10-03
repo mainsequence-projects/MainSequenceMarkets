@@ -145,11 +145,12 @@ def test_migration_version_packages_do_not_assume_generated_history() -> None:
 def test_history_is_one_initial_schema_revision() -> None:
     versions_root = resources.files("msm_migrations").joinpath("versions", "mainsequence_markets")
     revisions = sorted(item.name for item in versions_root.iterdir() if item.name[:4].isdigit())
-    assert revisions == ["0001_initial_schema.py"]
-    revision = importlib.import_module("msm_migrations.versions.mainsequence_markets.0001_initial_schema")
+    assert revisions == ["0018_initial_schema.py"]
+    revision = importlib.import_module("msm_migrations.versions.mainsequence_markets.0018_initial_schema")
     source = inspect.getsource(revision)
 
-    assert revision.revision == "0001"
+    # 2.x databases sit at 0001-0017; reusing one would mistake them for this head.
+    assert int(revision.revision) > 17
     assert revision.down_revision is None
     assert "ms_markets__portfoliocalendareventsts" in source
     assert "ms_markets__portfolioeventledgerts" in source

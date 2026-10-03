@@ -4,6 +4,12 @@
 
 Accepted - implementation complete
 
+Amended by [ADR 0045](0045-squashed-initial-schema-and-namespaced-packages.md): the package uses this ADR's fallback name,
+`src/msm_command_center/`, in 3.0.0. The top-level `command_center` name
+collided with other distributions' generic packages
+([MainSequenceMarkets#14](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/14)).
+Paths below that name `src/command_center/` now refer to it.
+
 ## Success Condition
 
 `ms-markets` exposes a reusable Command Center helper layer for the Asset
