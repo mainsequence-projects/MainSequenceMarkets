@@ -128,7 +128,9 @@ statement classification or function allowlist. The database enforces access in
 joins, CTEs, subqueries and permitted invoker routines. Database permissions are
 established during setup and schema changes. Catalog tables remain inaccessible,
 views cannot be registered, elevated routines cannot confer owner access, and
-triggered writes and cascading foreign keys are restricted by the engine's policy.
+triggered writes are restricted by the engine's policy. A table with cascading
+foreign keys is writable only by callers who can write every table the cascade
+modifies.
 
 PostgreSQL stores the catalog in `metatables` and owns managed tables through a
 non-login owner role. User, Team and namespace grants become database privileges

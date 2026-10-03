@@ -14,6 +14,15 @@
 > `metatables` schema and tables in the DataSource's default schema; it need not
 > own the database.
 
+> Amendment (2026-10-03): Cascading foreign keys are allowed. The database runs
+> `CASCADE`, `SET NULL` and `SET DEFAULT` actions as the table owner, so a role
+> keeps write on a table only while every login reaching it can also write each
+> table those actions modify, following chains of cascades. A cascade into an
+> unregistered table leaves the parent read-only. Registration and reconciliation
+> record each table's cascade targets; nothing inspects submitted queries. This
+> replaces the rule that foreign keys must use `restrict` or `no action`, which the
+> implementation applied on every engine, not only where the explorer is enabled.
+
 
 Date: 2026-09-29
 
@@ -193,8 +202,8 @@ client.
 - Any role can see the names, columns and row counts of every table in PostgreSQL's
   system catalogs, but not their data. MetaTables accepts this where the explorer
   is enabled. Role names are opaque, because table permissions are visible too.
-- PostgreSQL runs foreign-key cascades as the table owner. Where the explorer is
-  enabled, foreign keys must use `restrict` or `no action`.
+- Databases run foreign-key cascades as the table owner. Write on a table
+  requires write on every table its cascades modify (amendment 2026-10-03).
 - Heavy queries still consume resources. Per-role connection limits, time limits
   and, optionally, a read replica bound them.
 
@@ -274,7 +283,8 @@ and [MySQL implicit commits](https://dev.mysql.com/doc/refman/8.4/en/implicit-co
 - The DataSource login needs `CREATEROLE` and the right to create the `metatables`
   schema; it does not need to own the database.
 - Physical table names become visible to explorer users.
-- Cascading foreign keys are unavailable where the explorer is enabled.
+- Cascading foreign keys narrow write access to callers who can write the whole
+  cascade; a cascade into an unregistered table makes its parent read-only.
 - Team membership reaches the database at the pace of the existing one-hour
   platform-fact cache.
 
