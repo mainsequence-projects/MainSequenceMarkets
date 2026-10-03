@@ -68,7 +68,7 @@ and this project follows versioned releases.
   head. Downgrade it to `base` with 2.0.x installed, then apply 2.1.0 from empty.
   The provider key, `MarketsAlembicVersion` and its table are unchanged. The
   history now builds on the MetaTables local SQLite runtime as well as PostgreSQL
-  ([ADR 0045](docs/ADR/0045-squashed-initial-schema-and-namespaced-packages.md),
+  ([ADR 0045](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0045-squashed-initial-schema-and-namespaced-packages/),
   #12, #15).
 - **Breaking:** the `cli` and `command_center` packages are renamed `msm_cli` and
   `msm_command_center`, and bundled skills ship inside `msm_cli/_skills`. The

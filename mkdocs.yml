@@ -177,9 +177,11 @@ markdown_extensions:
   - md_in_html
   - pymdownx.details
   - pymdownx.snippets:
+      # Repository root first: on case-insensitive filesystems docs/CHANGELOG.md
+      # would otherwise resolve to docs/changelog.md, the page including it.
       base_path:
-        - docs
         - .
+        - docs
       check_paths: true
   - pymdownx.superfences:
       custom_fences:
