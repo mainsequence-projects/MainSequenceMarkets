@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-03
+
 ### Removed
 
 - **Breaking:** the `msm_command_center` package is removed. Import the

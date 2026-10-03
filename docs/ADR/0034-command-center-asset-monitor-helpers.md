@@ -2,7 +2,7 @@
 
 ## Status
 
-Superseded - the `msm_command_center` package is removed after 2.1.1. The
+Superseded - the `msm_command_center` package is removed in 2.2.0. The
 `core.tabular_frame@v1` models moved to `msm.api.http` with the other Command
 Center contracts, the Asset Monitor frame is built inside the `apps/v1` route
 that serves it, and the workspace document builder and Asset Monitor skills are
