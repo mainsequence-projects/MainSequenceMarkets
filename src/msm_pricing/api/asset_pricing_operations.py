@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from msm.api.assets import Asset
+from msm.api.http import CORE_TABULAR_FRAME_CONTRACT
 from msm_pricing import Instrument
 from msm_pricing.settings import PRICING_MARKET_DATA_SET_DEFAULT
 
@@ -48,7 +49,6 @@ class PricingOperationDefinition:
     executor: Callable[[Any, str | None, dict[str, Any]], Any]
     requires_market_data_set: bool = True
     flat_outputs: tuple[str, ...] = ()
-    response_mappings: tuple[dict[str, Any], ...] = ()
     frame_response_model: str | None = None
 
 
@@ -94,12 +94,11 @@ def build_asset_pricing_support(
                     }
                     for parameter_key in sorted(definition.parameter_keys)
                 ],
-                "response_mappings": list(definition.response_mappings),
                 **(
                     {
                         "frame_url": f"/api/v1/pricing/assets/{asset_uid}/{definition.key}/frame/",
                         "frame_response_model": definition.frame_response_model,
-                        "frame_response_contract": "core.tabular_frame@v1",
+                        "frame_response_contract": CORE_TABULAR_FRAME_CONTRACT,
                     }
                     if definition.frame_response_model is not None
                     else {}
@@ -795,21 +794,6 @@ PRICING_OPERATION_DEFINITIONS = {
         required_parameter_keys=frozenset(),
         executor=_cashflows,
         flat_outputs=("legs",),
-        response_mappings=(
-            {
-                "id": "cashflow_rows_by_leg",
-                "label": "Cashflow rows by leg",
-                "contract": "core.tabular_frame@v1",
-                "statusCode": "200",
-                "contentType": "application/json",
-                "rowsPath": "$.legs.*[*]",
-                "fieldTypes": {
-                    "payment_date": "date",
-                    "amount": "number",
-                    "rate": "number",
-                },
-            },
-        ),
         frame_response_model="TabularFrameResponse",
     ),
     "net-cashflows": PricingOperationDefinition(
@@ -820,20 +804,6 @@ PRICING_OPERATION_DEFINITIONS = {
         required_parameter_keys=frozenset(),
         executor=_net_cashflows,
         flat_outputs=("cashflows",),
-        response_mappings=(
-            {
-                "id": "net_cashflows",
-                "label": "Net cashflows",
-                "contract": "core.tabular_frame@v1",
-                "statusCode": "200",
-                "contentType": "application/json",
-                "rowsPath": "$.cashflows",
-                "fieldTypes": {
-                    "payment_date": "date",
-                    "net_cashflow": "number",
-                },
-            },
-        ),
         frame_response_model="TabularFrameResponse",
     ),
     "carry-roll-down": PricingOperationDefinition(

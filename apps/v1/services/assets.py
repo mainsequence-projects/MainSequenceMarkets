@@ -5,11 +5,15 @@ from typing import Any
 
 from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
 from apps.v1.schemas.common import FrontEndDetailSummary
-from msm_command_center.contracts import TabularFrameResponse
-from msm_command_center.widgets.asset_monitor import (
-    ASSET_MONITOR_OPERATION_ID,
-    build_asset_monitor_frame,
+from msm.api.http import (
+    CORE_TABULAR_FRAME_CONTRACT,
+    TabularFrameResponse,
+    build_tabular_field,
+    build_tabular_frame,
 )
+
+ASSET_MONITOR_OPERATION_ID = "getAssetMonitorFrame"
+ASSET_MONITOR_WIDGET_ID = "main-sequence-markets__asset-screener"
 
 
 def list_assets(
@@ -79,8 +83,44 @@ def get_asset_monitor_frame(
     if request_url is not None:
         source_context["url"] = request_url
 
-    return build_asset_monitor_frame(
-        rows[:limit],
+    return build_tabular_frame(
+        columns=["uid", "unique_identifier", "asset_type"],
+        rows=[
+            {
+                "uid": str(row.uid),
+                "unique_identifier": row.unique_identifier or None,
+                "asset_type": row.asset_type or None,
+            }
+            for row in rows[:limit]
+        ],
+        fields=[
+            build_tabular_field(
+                key="uid",
+                label="UID",
+                nullable=False,
+                description="Backend AssetTable row uid.",
+            ),
+            build_tabular_field(
+                key="unique_identifier",
+                label="Asset Identifier",
+                nullable=False,
+                description="Stable AssetTable unique_identifier used as the market asset key.",
+            ),
+            build_tabular_field(
+                key="asset_type",
+                label="Asset Type",
+                description="Optional AssetTable asset_type.",
+            ),
+        ],
+        meta={
+            "contract": CORE_TABULAR_FRAME_CONTRACT,
+            "widget": {"id": ASSET_MONITOR_WIDGET_ID, "input": "seedData"},
+            "marketAsset": {
+                "assetKeyField": "unique_identifier",
+                "uidField": "uid",
+                "assetTypeField": "asset_type",
+            },
+        },
         source={
             "kind": "api",
             "id": ASSET_MONITOR_OPERATION_ID,

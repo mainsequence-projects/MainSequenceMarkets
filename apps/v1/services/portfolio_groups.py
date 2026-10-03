@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from apps.v1.schemas.bulk_actions import BulkActionPreflightResponse
 from apps.v1.schemas.portfolio_groups import (
     Portfolio,
     PortfolioGroup,
@@ -11,6 +10,7 @@ from apps.v1.schemas.portfolio_groups import (
     PortfolioGroupMembership,
 )
 from msm.api.base import operation_result_rows
+from msm.api.http import BulkActionPreflightResponse
 
 
 def list_portfolio_groups(

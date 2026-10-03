@@ -18,20 +18,12 @@ ASSET_PRICING_REQUEST_EXTRA = {
 }
 
 
-def _operation_response_extra(
-    *,
-    kind: str,
-    flat_outputs: list[str],
-    response_mappings: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    extra = {
+def _operation_response_extra(*, kind: str, flat_outputs: list[str]) -> dict[str, Any]:
+    return {
         **APP_COMPONENT_OPERATION_EXTRA,
         "x-ui-result-kind": kind,
         "x-ui-flat-outputs": flat_outputs,
     }
-    if response_mappings is not None:
-        extra["x-response-mappings"] = response_mappings
-    return extra
 
 
 class AssetPricingOperationRequest(BaseModel):
@@ -157,21 +149,6 @@ class BondCashflowsResponse(AssetPricingOperationResponseBase):
         json_schema_extra=_operation_response_extra(
             kind="cashflow-legs",
             flat_outputs=["legs"],
-            response_mappings=[
-                {
-                    "id": "cashflow_rows_by_leg",
-                    "label": "Cashflow rows by leg",
-                    "contract": "core.tabular_frame@v1",
-                    "statusCode": "200",
-                    "contentType": "application/json",
-                    "rowsPath": "$.legs.*[*]",
-                    "fieldTypes": {
-                        "payment_date": "date",
-                        "amount": "number",
-                        "rate": "number",
-                    },
-                }
-            ],
         ),
     )
 
@@ -191,20 +168,6 @@ class BondNetCashflowsResponse(AssetPricingOperationResponseBase):
         json_schema_extra=_operation_response_extra(
             kind="cashflow-table",
             flat_outputs=["cashflows"],
-            response_mappings=[
-                {
-                    "id": "net_cashflows",
-                    "label": "Net cashflows",
-                    "contract": "core.tabular_frame@v1",
-                    "statusCode": "200",
-                    "contentType": "application/json",
-                    "rowsPath": "$.cashflows",
-                    "fieldTypes": {
-                        "payment_date": "date",
-                        "net_cashflow": "number",
-                    },
-                }
-            ],
         ),
     )
 

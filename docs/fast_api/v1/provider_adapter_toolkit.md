@@ -2,8 +2,9 @@
 
 `ms-markets` ships its provider-neutral FastAPI contracts and helpers in the
 installable `msm.api.http` package. Connector repositories should import this
-package instead of copying collection, discovery, bulk-preflight, operation,
-or structured-error models from the `apps/v1` source tree.
+package instead of copying collection, discovery, bulk-preflight,
+tabular-frame, operation, or structured-error models from the `apps/v1` source
+tree.
 
 ## Public import boundary
 
@@ -18,10 +19,8 @@ from msm.api.http import (
 )
 ```
 
-The package is part of the `msm` wheel. The repository-local
-`apps.v1.schemas.resource_contracts`, `apps.v1.schemas.bulk_actions`, and thin
-service modules remain compatibility imports for the project FastAPI app; they
-do not own separate implementations.
+The package is part of the `msm` wheel. The project `apps/v1` FastAPI app
+imports it directly; it has no re-export modules of its own.
 
 ## Collections and discovery
 
@@ -37,6 +36,14 @@ envelope.
 their resource identity, columns, semantic filters, and authorized actions.
 `resolve_resource_discovery(...)` rejects presentation query keys such as
 `limit`, `offset`, and `ordering`, along with undeclared semantic keys.
+
+## Tabular frames
+
+`TabularFrameResponse` and `build_tabular_frame(...)` implement
+`core.tabular_frame@v1`, the payload generic Command Center table, chart, and
+transform consumers read. A route that returns a frame declares it with
+`openapi_extra={"x-ui-contract": CORE_TABULAR_FRAME_CONTRACT}`; Adapter from API
+discovery reads the contract from that declaration only.
 
 ## Bulk actions and preflight
 
@@ -79,5 +86,4 @@ without platform I/O.
 
 The public models are checked against the vendored Command Center SDK `0.1.13`
 schemas and fixtures. Focused tests also cover discovery query rejection,
-unexpected-error sanitization, compatibility imports, operation transitions,
-and owner isolation.
+unexpected-error sanitization, operation transitions, and owner isolation.

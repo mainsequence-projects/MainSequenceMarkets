@@ -192,8 +192,8 @@ headers or bind SDK request-header context variables.
   - classifies read/calculation operations as `query`
   - classifies create/update/delete/write operations as `mutation`
   - disables cache metadata for mutation operations and non-GET calculations
-  - keeps provider-native responses provider-native and exposes optional
-    `responseMappings` only as metadata
+  - keeps provider-native responses provider-native and does not publish
+    `responseMappings`
   - advertises `getAssetMonitorFrame` as a direct
     `core.tabular_frame@v1` query operation for Command Center Asset Monitor
     workspaces

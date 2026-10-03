@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from msm.api.http.errors import ErrorResponse as ErrorResponse
 from pydantic import BaseModel
 
 

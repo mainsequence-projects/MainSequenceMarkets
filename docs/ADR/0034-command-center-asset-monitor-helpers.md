@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted - implementation complete
+Superseded - the `msm_command_center` package is removed after 2.1.1. The
+`core.tabular_frame@v1` models moved to `msm.api.http` with the other Command
+Center contracts, the Asset Monitor frame is built inside the `apps/v1` route
+that serves it, and the workspace document builder and Asset Monitor skills are
+deleted because workspace wiring is not a supported library surface.
 
 Amended by [ADR 0045](0045-squashed-initial-schema-and-namespaced-packages.md): the package uses this ADR's fallback name,
 `src/msm_command_center/`, in 2.1.0. The top-level `command_center` name

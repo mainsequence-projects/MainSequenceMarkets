@@ -4,8 +4,6 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from apps.v1.schemas.command_center import TabularFrameResponse
-from apps.v1.schemas.common import ErrorResponse
 from apps.v1.schemas.pricing_assets import (
     AssetPricingOperationRequest,
     BondAnalyticsResponse,
@@ -24,6 +22,7 @@ from apps.v1.services.pricing_assets import (
     execute_pricing_asset_net_cashflows_frame,
     execute_pricing_asset_operation,
 )
+from msm.api.http import CORE_TABULAR_FRAME_CONTRACT, ErrorResponse, TabularFrameResponse
 
 router = APIRouter(prefix="/pricing/assets", tags=["pricing-asset"])
 
@@ -165,7 +164,7 @@ def get_fixed_income_asset_cashflows(
     response_model_exclude_none=True,
     responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
     openapi_extra={
-        "x-ui-contract": "core.tabular_frame@v1",
+        "x-ui-contract": CORE_TABULAR_FRAME_CONTRACT,
         "x-ui-output-root": "response:$",
     },
 )
@@ -216,7 +215,7 @@ def get_fixed_income_asset_net_cashflows(
     response_model_exclude_none=True,
     responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
     openapi_extra={
-        "x-ui-contract": "core.tabular_frame@v1",
+        "x-ui-contract": CORE_TABULAR_FRAME_CONTRACT,
         "x-ui-output-root": "response:$",
     },
 )

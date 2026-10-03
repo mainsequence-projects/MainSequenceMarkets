@@ -7,6 +7,41 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking:** the `msm_command_center` package is removed. Import the
+  `core.tabular_frame@v1` models and helpers (`TabularFrameResponse`,
+  `TabularFrameMetaResponse`, `TabularFrameFieldResponse`,
+  `TabularFrameSourceResponse`, `build_tabular_frame`, `build_tabular_field`,
+  `CORE_TABULAR_FRAME_CONTRACT`) from `msm.api.http`. `infer_tabular_field_type`
+  is removed.
+- **Breaking:** `build_asset_monitor_frame` and
+  `build_asset_monitor_workspace_document` are removed. `getAssetMonitorFrame`
+  builds its frame inside `apps/v1` and its response is unchanged; workspace
+  documents are not built by this library.
+- **Breaking:** fixed income pricing support no longer returns
+  `response_mappings`, and the cashflow response schemas no longer carry
+  `x-response-mappings`. Command Center SDK 0.1.13 retired response mappings;
+  bind the `cashflows/frame/` and `net-cashflows/frame/` routes instead.
+- **Breaking:** `getAssetMonitorFrame` returns only the `uid`,
+  `unique_identifier`, and `asset_type` columns, and its `meta.marketAsset` no
+  longer names a `tickerField`. The removed `ticker`, `name`, `figi`,
+  `composite_figi`, `exchange_code`, `security_type`, `security_market_sector`,
+  and `currency` columns were always null: the asset list does not load them.
+- The `apps/v1` re-export modules are removed: `apps.v1.schemas.command_center`,
+  `apps.v1.schemas.resource_contracts`, `apps.v1.schemas.bulk_actions`,
+  `apps.v1.services.resource_collections`, `apps.v1.services.bulk_actions`, and
+  the `ErrorResponse` re-export in `apps.v1.schemas.common`. Import from
+  `msm.api.http`.
+- The Command Center Asset Monitor skills are removed.
+
+### Changed
+
+- Adapter from API discovery takes an operation's `responseContract` only from
+  its `x-ui-contract` declaration; it no longer infers `core.tabular_frame@v1`
+  from a response model named `TabularFrameResponse`. Every frame route already
+  declares it, so the advertised contracts are unchanged.
+
 ## [2.1.1] - 2026-10-03
 
 ### Changed

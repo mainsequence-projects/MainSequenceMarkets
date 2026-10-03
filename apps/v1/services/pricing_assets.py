@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any
 
-from apps.v1.schemas.command_center import (
+from msm.api.http import (
     TabularFrameFieldResponse,
     TabularFrameResponse,
     TabularFrameSourceResponse,

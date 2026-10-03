@@ -1,17 +1,13 @@
-"""Project-owned models for the ``core.tabular_frame@v1`` wire contract.
-
-The language-neutral contract is owned by ``@dev-mainsequence/command-center-sdk``.
-These Pydantic models implement that contract without depending on the removed
-Main Sequence SDK compatibility package.
-"""
+"""Provider-neutral Command Center ``core.tabular_frame@v1`` contract and helpers."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
+
+from ._base import HttpContractModel
 
 CORE_TABULAR_FRAME_CONTRACT = "core.tabular_frame@v1"
 
@@ -30,11 +26,7 @@ TabularFrameFieldType = Literal[
 TabularFrameFieldProvenance = Literal["backend", "manual", "inferred", "derived"]
 
 
-class ContractBaseModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-class TabularFrameFieldResponse(ContractBaseModel):
+class TabularFrameFieldResponse(HttpContractModel):
     key: str
     type: TabularFrameFieldType
     label: str | None = None
@@ -47,7 +39,7 @@ class TabularFrameFieldResponse(ContractBaseModel):
     warnings: list[str] | None = None
 
 
-class TabularFrameSourceResponse(ContractBaseModel):
+class TabularFrameSourceResponse(HttpContractModel):
     kind: str
     id: str | int | float | None = None
     label: str | None = None
@@ -55,7 +47,7 @@ class TabularFrameSourceResponse(ContractBaseModel):
     context: dict[str, Any] | None = None
 
 
-class TabularTimeSeriesMetaResponse(ContractBaseModel):
+class TabularTimeSeriesMetaResponse(HttpContractModel):
     shape: Literal["long", "wide"]
     timeField: str
     timeUnit: Literal["ms"] = "ms"
@@ -81,7 +73,7 @@ class TabularTimeSeriesMetaResponse(ContractBaseModel):
         return self
 
 
-class TableVisualThreshold(ContractBaseModel):
+class TableVisualThreshold(HttpContractModel):
     operator: Literal["gt", "gte", "lt", "lte", "eq"]
     value: float
     backgroundColor: str | None = None
@@ -90,20 +82,20 @@ class TableVisualThreshold(ContractBaseModel):
     tone: Literal["neutral", "primary", "success", "warning", "danger"] | None = None
 
 
-class TableVisualColorScale(ContractBaseModel):
+class TableVisualColorScale(HttpContractModel):
     negative: str | None = None
     neutral: str | None = None
     positive: str | None = None
 
 
-class TableVisualRange(ContractBaseModel):
+class TableVisualRange(HttpContractModel):
     min: float | None = None
     max: float | None = None
     midpoint: float | None = None
     clamp: bool | None = None
 
 
-class TableVisualColumn(ContractBaseModel):
+class TableVisualColumn(HttpContractModel):
     label: str | None = None
     format: Literal[
         "number",
@@ -154,18 +146,18 @@ class TableVisualColumn(ContractBaseModel):
     width: float | None = Field(default=None, gt=0)
 
 
-class TableFrameVisualsMetadata(ContractBaseModel):
+class TableFrameVisualsMetadata(HttpContractModel):
     columns: dict[str, TableVisualColumn] | None = None
 
 
-class TabularFrameMetaResponse(ContractBaseModel):
+class TabularFrameMetaResponse(HttpContractModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     timeSeries: TabularTimeSeriesMetaResponse | None = None
     tableVisuals: TableFrameVisualsMetadata | None = None
 
 
-class TabularFrameResponse(ContractBaseModel):
+class TabularFrameResponse(HttpContractModel):
     status: TabularFrameStatus
     columns: list[str]
     rows: list[dict[str, Any]]
@@ -238,22 +230,6 @@ def build_tabular_frame(
     )
 
 
-def infer_tabular_field_type(value: Any) -> TabularFrameFieldType:
-    if isinstance(value, bool):
-        return "boolean"
-    if isinstance(value, int):
-        return "integer"
-    if isinstance(value, float):
-        return "number"
-    if isinstance(value, datetime):
-        return "datetime"
-    if isinstance(value, date):
-        return "date"
-    if isinstance(value, (dict, list, tuple)):
-        return "json"
-    return "string"
-
-
 def _columns_from_rows(rows: Sequence[Mapping[str, Any]]) -> list[str]:
     columns: list[str] = []
     seen: set[str] = set()
@@ -267,7 +243,6 @@ def _columns_from_rows(rows: Sequence[Mapping[str, Any]]) -> list[str]:
 
 __all__ = [
     "CORE_TABULAR_FRAME_CONTRACT",
-    "ContractBaseModel",
     "TabularFrameFieldProvenance",
     "TabularFrameFieldResponse",
     "TabularFrameFieldType",
@@ -278,5 +253,4 @@ __all__ = [
     "TabularTimeSeriesMetaResponse",
     "build_tabular_field",
     "build_tabular_frame",
-    "infer_tabular_field_type",
 ]

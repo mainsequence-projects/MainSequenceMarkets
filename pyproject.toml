@@ -102,7 +102,6 @@ msm = "msm_cli.main:main"
 packages = [
   "src/msm",
   "src/msm_cli",
-  "src/msm_command_center",
   "src/msm_migrations",
   "src/msm_portfolios",
   "src/msm_pricing",

@@ -17,7 +17,6 @@ from apps.v1.schemas.command_center_adapter import (
     CommandCenterOperationParameters,
     CommandCenterOperationRequestBody,
 )
-from msm_command_center.contracts import CORE_TABULAR_FRAME_CONTRACT
 
 ADAPTER_ID = "ms-markets.apps-v1"
 ADAPTER_TITLE = "MainSequence Markets API"
@@ -25,7 +24,6 @@ ADAPTER_DESCRIPTION = "Adapter contract for the apps/v1 markets FastAPI surface.
 CONTRACT_VERSION = 1
 HEALTH_OPERATION_ID = "getApiHealth"
 CONTRACT_OPERATION_ID = "getCommandCenterConnectionContract"
-DIRECT_FRAME_CONTRACT = CORE_TABULAR_FRAME_CONTRACT
 
 READ_OPERATION_IDS = frozenset(
     {
@@ -288,7 +286,7 @@ def _build_operation(
 
     kind = _operation_kind(operation_id)
     response_model = _response_model_name(openapi_operation)
-    response_contract = _response_contract(openapi_operation, response_model)
+    response_contract = _response_contract(openapi_operation)
     parameters = _build_parameters(openapi_operation.get("parameters", []))
 
     return CommandCenterOperation(
@@ -406,15 +404,10 @@ def _response_model_name(openapi_operation: dict[str, Any]) -> str | None:
     return _schema_ref_name(response_schema)
 
 
-def _response_contract(
-    openapi_operation: dict[str, Any],
-    response_model: str | None,
-) -> str | None:
+def _response_contract(openapi_operation: dict[str, Any]) -> str | None:
     declared_contract = openapi_operation.get("x-ui-contract")
     if isinstance(declared_contract, str) and declared_contract:
         return declared_contract
-    if response_model == "TabularFrameResponse":
-        return DIRECT_FRAME_CONTRACT
     return None
 
 

@@ -6,8 +6,7 @@ The FastAPI v1 resource surface is a strict consumer of
 and valid and invalid fixtures are the wire-contract authority.
 
 The implementing Python contracts and builders are public from
-`msm.api.http`. The `apps.v1.schemas.resource_contracts` module is retained as
-a compatibility import for this repository's FastAPI app.
+`msm.api.http`, which this repository's FastAPI app imports directly.
 
 ## Collections
 
