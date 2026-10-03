@@ -14,6 +14,9 @@ operate within the Main Sequence platform and must follow Main Sequence platform
 - Use repository documentation, tests, git state, task context, and verified platform evidence for
   status and handoff information. The `.agents/` directory is reserved for managed skills and
   explicitly documented tooling configuration.
+- Work on `development` or on feature branches merged into it. `main` is protected and changes
+  only through a merge-commit pull request from `development`; every merge into `main` publishes
+  the declared version to PyPI. Never push to `main` or push `v*` tags. See `docs/releasing.md`.
 
 
 

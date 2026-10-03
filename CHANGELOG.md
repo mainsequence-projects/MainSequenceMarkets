@@ -7,6 +7,26 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-10-03
+
+### Changed
+
+- Releases follow the MetaTables branch model. Every push to `development`
+  publishes an `X.Y.Z.devN` build to PyPI. `main` is protected, and each merged
+  pull request from `development` publishes the declared `X.Y.Z`, creates the
+  `vX.Y.Z` tag and GitHub release, deploys the documentation and returns the next
+  patch version to `development`. Pushing a `v*` tag no longer publishes.
+- Pull requests and both publishing workflows run `Package and static checks`:
+  the lockfile, Ruff, the strict documentation build, the full test suite, and a
+  distribution check that the wheel and sdist match the current sources.
+- The `dev` extra adds `build`, `packaging` and `twine>=7`. twine 6 rejects the
+  `Metadata-Version: 2.5` that hatchling writes.
+
+### Documentation
+
+- Added the [Releasing](https://mainsequence-projects.github.io/MainSequenceMarkets/releasing/)
+  guide.
+
 ## [2.1.1] - 2026-10-03
 
 ### Changed

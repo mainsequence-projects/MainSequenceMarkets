@@ -212,17 +212,11 @@ Build the package:
 uv build
 ```
 
-Publish a tagged release to PyPI:
-
-```bash
-git tag v0.0.2
-git push origin v0.0.2
-```
-
-Pushing a `v*` tag triggers
-`.github/workflows/publish-to-pypi.yml`, which builds the distribution and
-publishes it to PyPI through GitHub Actions using trusted publishing for the
-repository `pypi` environment.
+Releases are published by GitHub Actions, never by hand. Work lands on the
+`development` branch, where every push publishes an `X.Y.Z.devN` build to PyPI.
+`main` is protected: merging a pull request from `development` publishes the
+declared `X.Y.Z`, creates its `vX.Y.Z` tag and deploys the documentation. See
+[Releasing](https://mainsequence-projects.github.io/MainSequenceMarkets/releasing/).
 
 ## Core Dependencies
 
