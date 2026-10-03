@@ -7,6 +7,26 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-10-03
+
+### Changed
+
+- Releases follow the MetaTables branch model. Every push to `development`
+  publishes an `X.Y.Z.devN` build to PyPI. `main` is protected, and each merged
+  pull request from `development` publishes the declared `X.Y.Z`, creates the
+  `vX.Y.Z` tag and GitHub release, deploys the documentation and returns the next
+  patch version to `development`. Pushing a `v*` tag no longer publishes.
+- Pull requests and both publishing workflows run `Package and static checks`:
+  the lockfile, Ruff, the strict documentation build, the full test suite, and a
+  distribution check that the wheel and sdist match the current sources.
+- The `dev` extra adds `build`, `packaging` and `twine>=7`. twine 6 rejects the
+  `Metadata-Version: 2.5` that hatchling writes.
+
+### Documentation
+
+- Added the [Releasing](https://mainsequence-projects.github.io/MainSequenceMarkets/releasing/)
+  guide.
+
 ## [2.1.1] - 2026-10-03
 
 ### Changed
@@ -48,7 +68,7 @@ and this project follows versioned releases.
   head. Downgrade it to `base` with 2.0.x installed, then apply 2.1.0 from empty.
   The provider key, `MarketsAlembicVersion` and its table are unchanged. The
   history now builds on the MetaTables local SQLite runtime as well as PostgreSQL
-  ([ADR 0045](docs/ADR/0045-squashed-initial-schema-and-namespaced-packages.md),
+  ([ADR 0045](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0045-squashed-initial-schema-and-namespaced-packages/),
   #12, #15).
 - **Breaking:** the `cli` and `command_center` packages are renamed `msm_cli` and
   `msm_command_center`, and bundled skills ship inside `msm_cli/_skills`. The

@@ -143,6 +143,7 @@ nav:
           - Python 3.13 And MainSequence 5 Upgrade: planning/implementation_tasks/python_3_13_mainsequence_5_upgrade_plan.md
           - Reusable Valuation Portfolio Scenario And Analytics: planning/implementation_tasks/reusable_valuation_portfolio_scenario_analytics_plan.md
   - Changelog: changelog.md
+  - Releasing: releasing.md
   - Reference:
       - API Reference: reference/index.md
       - Index API: reference/indices.md
@@ -176,9 +177,11 @@ markdown_extensions:
   - md_in_html
   - pymdownx.details
   - pymdownx.snippets:
+      # Repository root first: on case-insensitive filesystems docs/CHANGELOG.md
+      # would otherwise resolve to docs/changelog.md, the page including it.
       base_path:
-        - docs
         - .
+        - docs
       check_paths: true
   - pymdownx.superfences:
       custom_fences:

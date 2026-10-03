@@ -61,6 +61,7 @@ def test_migration_provider_is_single_sdk_alembic_provider() -> None:
 
 
 def test_migration_upgrade_command_uses_metatables_cli_flags() -> None:
+    from click import unstyle
     from metatables.cli.app import app
     from typer.testing import CliRunner
 
@@ -70,11 +71,14 @@ def test_migration_upgrade_command_uses_metatables_cli_flags() -> None:
         ["migrations", "upgrade", "--help"],
         env={"COLUMNS": "200"},
     )
+    # Typer forces styled Rich help under GITHUB_ACTIONS, splitting option names
+    # with ANSI codes.
+    help_text = unstyle(help_result.output)
 
     assert help_result.exit_code == 0
-    assert "--provider" in help_result.output
-    assert "--register-metatables" not in help_result.output
-    assert "--apply" not in help_result.output
+    assert "--provider" in help_text
+    assert "--register-metatables" not in help_text
+    assert "--apply" not in help_text
     assert "--register-metatables" not in upgrade_command
     assert "--apply" not in upgrade_command
     provider_reference = upgrade_command.split("--provider ", 1)[1].split()[0]

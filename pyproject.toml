@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ms-markets"
-version = "2.1.1"
+version = "2.1.2"
 description = "Financial markets ORM, engines, and application management extensions for Main Sequence."
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
@@ -53,15 +53,19 @@ dependencies = [
 [project.optional-dependencies]
 analytics = []
 dev = [
+  "build>=1,<2",
   "fastapi>=0.136.3",
   "mkdocs>=1.6",
   "mkdocs-autorefs>=1.2",
   "mkdocs-material>=9.5",
   "mkdocs-mermaid2-plugin>=1.1",
   "mkdocstrings[python]>=0.26",
+  "packaging>=24.2",
   "pymdown-extensions>=10.0",
   "pytest>=8",
   "ruff>=0.5",
+  # twine 7 is the first release that reads hatchling's Metadata-Version 2.5.
+  "twine>=7,<8",
   "uvicorn>=0.48.0",
 ]
 docs = [

@@ -1,0 +1,38 @@
+name: Package and static checks
+
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Package and static checks
+    runs-on: ubuntu-latest
+    concurrency:
+      group: checks-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Install locked tools
+        run: |
+          python -m pip install uv==0.10.4
+          uv lock --check
+          uv sync --frozen --all-extras
+      - name: Check source and documentation
+        run: |
+          uv run --frozen --all-extras ruff check --no-fix .
+          uv run --frozen --all-extras mkdocs build --strict
+      - name: Run the test suite
+        run: uv run --frozen --all-extras pytest -q
+      - name: Build and verify distributions
+        run: |
+          uv run --frozen --all-extras python -m build
+          uv run --frozen --all-extras python -m scripts.check_distribution_sources
+          uv run --frozen --all-extras python -m twine check --strict dist/*
