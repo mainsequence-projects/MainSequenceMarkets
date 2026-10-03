@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 
 from apps.v1.main import app
 from apps.v1.services import asset_categories, portfolio_groups, portfolios
+from msm.api.http import TableImpact
+from msm.services.table_impact import DeleteRowsImpact
 
 
 @pytest.mark.parametrize(
@@ -102,6 +104,7 @@ def test_bulk_action_preflight_preserves_blockers(
         "matched_count": 1,
         "blockers": ["Protected reference exists."],
         "warnings": [],
+        "impact": None,
         "domain_context": {"resource_uid": str(resource_uid)},
     }
 
@@ -180,8 +183,7 @@ def test_bulk_action_operations_are_exposed_by_command_center_adapter() -> None:
     response = TestClient(app).get("/.well-known/command-center/connection-contract")
     assert response.status_code == 200
     operations = {
-        operation["operationId"]: operation
-        for operation in response.json()["availableOperations"]
+        operation["operationId"]: operation for operation in response.json()["availableOperations"]
     }
 
     for operation_id in (
@@ -215,6 +217,9 @@ def test_asset_category_preflight_is_owned_by_apps_v1(monkeypatch) -> None:
         "_get_asset_category_frontend_detail",
         lambda context, uid: {"uid": uid} if uid == existing_uid else None,
     )
+    monkeypatch.setattr(
+        asset_categories, "_asset_category_delete_impact", lambda: DeleteRowsImpact(impact=None)
+    )
 
     result = asset_categories.preflight_bulk_delete_asset_categories(
         uids=[existing_uid, missing_uid, existing_uid]
@@ -226,6 +231,7 @@ def test_asset_category_preflight_is_owned_by_apps_v1(monkeypatch) -> None:
         "matched_count": 1,
         "blockers": [f"Asset category {missing_uid} was not found."],
         "warnings": [],
+        "impact": None,
     }
 
 
@@ -242,10 +248,11 @@ def test_portfolio_group_preflight_is_owned_by_apps_v1(monkeypatch) -> None:
         "_get_portfolio_group_by_uid",
         lambda context, uid: {"results": [{"uid": uid}]},
     )
-
-    result = portfolio_groups.preflight_bulk_delete_portfolio_groups(
-        uids=[first_uid, second_uid]
+    monkeypatch.setattr(
+        portfolio_groups, "_portfolio_group_delete_impact", lambda: DeleteRowsImpact(impact=None)
     )
+
+    result = portfolio_groups.preflight_bulk_delete_portfolio_groups(uids=[first_uid, second_uid])
 
     assert result.model_dump() == {
         "allowed": True,
@@ -253,6 +260,7 @@ def test_portfolio_group_preflight_is_owned_by_apps_v1(monkeypatch) -> None:
         "matched_count": 2,
         "blockers": [],
         "warnings": [],
+        "impact": None,
     }
 
 
@@ -268,6 +276,9 @@ def test_portfolio_preflight_is_owned_by_apps_v1(monkeypatch) -> None:
         "_portfolio_delete_preflight_item",
         lambda context, uid: (True, ["VirtualFundTable references this portfolio."]),
     )
+    monkeypatch.setattr(
+        portfolios, "_portfolio_delete_impact", lambda: DeleteRowsImpact(impact=None)
+    )
 
     result = portfolios.preflight_bulk_delete_portfolios(uids=[portfolio_uid])
 
@@ -275,8 +286,101 @@ def test_portfolio_preflight_is_owned_by_apps_v1(monkeypatch) -> None:
         "allowed": False,
         "detail": "The portfolio selection cannot be deleted as submitted.",
         "matched_count": 1,
-        "blockers": [
-            f"Portfolio {portfolio_uid}: VirtualFundTable references this portfolio."
-        ],
+        "blockers": [f"Portfolio {portfolio_uid}: VirtualFundTable references this portfolio."],
         "warnings": [],
+        "impact": None,
     }
+
+
+def _stub_portfolio_group_preflight(monkeypatch, impact: DeleteRowsImpact) -> None:
+    monkeypatch.setattr(
+        portfolio_groups,
+        "_get_runtime",
+        lambda: SimpleNamespace(context=object()),
+    )
+    monkeypatch.setattr(
+        portfolio_groups,
+        "_get_portfolio_group_by_uid",
+        lambda context, uid: {"results": [{"uid": uid}]},
+    )
+    monkeypatch.setattr(portfolio_groups, "_portfolio_group_delete_impact", lambda: impact)
+
+
+def test_portfolio_group_preflight_reports_cascades(monkeypatch) -> None:
+    group_uid = str(uuid.uuid4())
+    membership_uid = str(uuid.uuid4())
+    warning = (
+        "PortfolioGroupMembership rows that reference deleted PortfolioGroup rows "
+        "are deleted too (ON DELETE CASCADE)."
+    )
+    impact = TableImpact(
+        root_uid=group_uid,
+        action="delete_rows",
+        allowed=True,
+        nodes=[
+            {
+                "id": group_uid,
+                "type": "meta_table",
+                "identifier": "PortfolioGroup",
+                "effects": ["delete"],
+                "can_write": True,
+            },
+            {
+                "id": membership_uid,
+                "type": "meta_table",
+                "identifier": "PortfolioGroupMembership",
+                "effects": ["delete"],
+                "can_write": True,
+            },
+        ],
+        edges=[
+            {
+                "source": membership_uid,
+                "target": group_uid,
+                "kind": "foreign_key",
+                "effect": "cascade_delete",
+                "on_delete": "cascade",
+                "on_update": "no action",
+            },
+        ],
+        blockers=[],
+    )
+    _stub_portfolio_group_preflight(
+        monkeypatch, DeleteRowsImpact(impact=impact, warnings=[warning])
+    )
+
+    response = TestClient(app).post(
+        "/api/v1/portfolio-group/bulk-delete/preflight/",
+        json={"selection": {"mode": "explicit", "uids": [group_uid]}, "options": {}},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "allowed": True,
+        "detail": "1 portfolio group is ready for deletion.",
+        "matched_count": 1,
+        "blockers": [],
+        "warnings": [warning],
+        "impact": impact.model_dump(mode="json"),
+    }
+
+
+def test_cascade_blockers_stop_bulk_delete(monkeypatch) -> None:
+    blocker = "PortfolioGroupMembership: A cascade reaches a table you cannot write."
+    _stub_portfolio_group_preflight(monkeypatch, DeleteRowsImpact(impact=None, blockers=[blocker]))
+
+    def unexpected_delete(*args, **kwargs):
+        raise AssertionError("Deletion must not run after a blocked preflight.")
+
+    monkeypatch.setattr(
+        "apps.v1.routers.portfolio_groups.bulk_delete_portfolio_groups",
+        unexpected_delete,
+    )
+
+    response = TestClient(app).post(
+        "/api/v1/portfolio-group/bulk-delete/",
+        json={"selection": {"mode": "explicit", "uids": [str(uuid.uuid4())]}, "options": {}},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": blocker}

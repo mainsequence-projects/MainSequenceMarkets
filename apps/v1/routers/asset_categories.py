@@ -24,7 +24,7 @@ from msm.api.http import (
     BULK_ACTION_PREFLIGHT_CONTRACT,
     RESOURCE_COLLECTION_CONTRACT,
     BulkActionExecutionRequest,
-    BulkActionPreflightResponse,
+    BulkDeletePreflightResponse,
     ErrorResponse,
     ResourceCollection,
     blocked_preflight_detail,
@@ -116,7 +116,7 @@ def post_asset_category_bulk_delete(
         uids = explicit_uuid_selection(request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    preflight = BulkActionPreflightResponse.model_validate(
+    preflight = BulkDeletePreflightResponse.model_validate(
         preflight_bulk_delete_asset_categories(uids=uids)
     )
     if not preflight.allowed:
@@ -126,9 +126,12 @@ def post_asset_category_bulk_delete(
 
 @router.post(
     "/bulk-delete/preflight/",
-    response_model=BulkActionPreflightResponse,
+    response_model=BulkDeletePreflightResponse,
     summary="Preflight asset-category bulk deletion",
-    description="Reauthorize and resolve an explicit category selection without deleting rows.",
+    description=(
+        "Reauthorize and resolve an explicit category selection without deleting rows, and "
+        "report the tables the delete reaches through foreign-key cascades."
+    ),
     operation_id="preflightBulkDeleteAssetCategories",
     openapi_extra={"x-ui-contract": BULK_ACTION_PREFLIGHT_CONTRACT},
     responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
@@ -138,12 +141,12 @@ def preflight_asset_category_bulk_delete(
         BulkActionExecutionRequest,
         Body(description="Command Center bulk-action execution request to preflight."),
     ],
-) -> BulkActionPreflightResponse:
+) -> BulkDeletePreflightResponse:
     try:
         uids = explicit_uuid_selection(request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return BulkActionPreflightResponse.model_validate(
+    return BulkDeletePreflightResponse.model_validate(
         preflight_bulk_delete_asset_categories(uids=uids)
     )
 
