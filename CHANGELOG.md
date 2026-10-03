@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-10-03
+
 ### Changed
 
 - Renamed the deployment workflow file from `.mainsequence/workflows/fastapi.yaml`
