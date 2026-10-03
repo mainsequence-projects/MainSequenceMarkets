@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-10-03
+
 ### Changed
 
 - The VS Code launch configurations and tasks that check, apply and downgrade
