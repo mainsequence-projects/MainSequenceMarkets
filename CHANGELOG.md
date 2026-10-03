@@ -43,6 +43,9 @@ and this project follows versioned releases.
   its `x-ui-contract` declaration; it no longer infers `core.tabular_frame@v1`
   from a response model named `TabularFrameResponse`. Every frame route already
   declares it, so the advertised contracts are unchanged.
+- Requires `mainsequence-metatable>=0.1.14,<0.2`; the lock and exported
+  `requirements.txt` select `mainsequence-metatable` 0.1.14. MetaTables 0.1.13
+  and 0.1.14 change only how a failed runtime database bootstrap names its cause.
 
 ## [2.1.2] - 2026-10-03
 
