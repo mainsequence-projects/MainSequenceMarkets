@@ -58,6 +58,7 @@ from msm.models import (
     VirtualFundTable,
     markets_sqlalchemy_models,
 )
+from msm_portfolios.data_nodes.portfolios.storage import PortfolioEventLedgerStorage
 from msm_pricing.meta_tables import pricing_sqlalchemy_models
 from msm.settings import MSM_AUTO_REGISTER_NAMESPACE_ENV
 
@@ -123,6 +124,31 @@ def test_time_index_models_use_package_owned_table_names() -> None:
         MARKETS_TABLE_APP,
         AccountHoldingsStorage.__metatable_identifier__.rsplit(".", 1)[-1],
     )
+
+
+def test_time_index_provider_models_have_valid_storage_layouts() -> None:
+    # Run the API's own layout check: without __storage_layout__, MetaTables
+    # derives the lookup index name from the identity dimensions and rejects
+    # it when it exceeds PostgreSQL's 63-character limit.
+    from metatables.api.backend.contracts.storage_layouts import parse_storage_layout
+
+    time_index_models = [
+        model
+        for model in metatable_provider_models()
+        if issubclass(model, PlatformTimeIndexMetaTable)
+    ]
+    assert PortfolioEventLedgerStorage in time_index_models
+
+    for model in time_index_models:
+        layout = parse_storage_layout(
+            getattr(model, "__storage_layout__", None),
+            time_index_name=model.__time_index_name__,
+            index_names=model.__index_names__,
+            columns_by_name={column.name: column for column in model.__table__.columns},
+        )
+        for secondary_index in layout.secondary_indexes:
+            # The physical index is "<name>_idx" and must not be truncated.
+            assert len(f"{secondary_index.name}_idx") <= 63, model.__name__
 
 
 def test_markets_table_name_applies_optional_suffix() -> None:

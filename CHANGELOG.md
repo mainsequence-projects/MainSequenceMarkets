@@ -7,6 +7,16 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- `PortfolioEventLedgerTS` declares an explicit `__storage_layout__` whose
+  lookup index is named `portfolio_event_ledger_identity`. The default layout
+  derived a 70-character name from its four identity dimensions, which
+  MetaTables rejects (it never shortens derived names), so the ms-markets
+  migration provider could not be applied in any new environment
+  ([#19](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/19)).
+  A test runs the MetaTables layout check on every provider time-index model.
+
 ## [2.2.1] - 2026-10-03
 
 ### Changed
