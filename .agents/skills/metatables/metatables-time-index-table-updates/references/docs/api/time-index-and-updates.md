@@ -72,6 +72,40 @@ Column search works over visible catalog column metadata. See the generated
 [HTTP reference](reference.md) and [capabilities](../reference/capabilities.md) for
 exact paths and evidence classifications.
 
+## TimescaleDB policies
+
+On a `timescale_db` DataSource, each time-index table becomes a hypertable on its
+time index when it is finalized or created, unless its storage layout sets
+`partitioning.strategy` to `none`. Such tables report
+`capabilities.timescale_policies: true`. TimescaleDB 2.11 or later is required.
+
+TimescaleDB stores the policies as background jobs; MetaTables keeps no copy.
+`GET /meta-tables/{table_uid}/timescale-policies/` (Reader) returns
+`eligibility`, both policies, the derived compression settings (segment by the
+identity dimensions, order by time descending), compression stats and the table's
+jobs. `PUT` on the same path (Writer, read-write DataSource) replaces both
+policies:
+
+```json
+{
+  "compression": {"after": "7 days"},
+  "retention": {"after": "365 days", "schedule_interval": "1 day"}
+}
+```
+
+`after: null` removes a policy; removing compression keeps compressed chunks.
+Retention must be longer than compression and permanently drops older chunks on
+every run, including later backfills. Each change is journaled with the caller.
+Errors are `404 timescale_policies_unavailable` for other engines,
+`409 timescale_not_hypertable`, `409 timescale_version_unsupported`,
+`409 timescale_extension_missing` and `422` for an invalid interval, timezone or
+`timescale_retention_not_after_compression`.
+
+`GET /data-sources/{uid}/timescale-jobs/` lists the source's jobs with their
+status, last and next run, failures and last error. Admins see every job; other
+Users see jobs of tables they can read. The Python client exposes
+`TimeIndexMetaTable.get_timescale_policies()` and `set_timescale_policies()`.
+To keep policies in code, run a Job at bootstrap that calls the client.
 
 ## Run logs
 

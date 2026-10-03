@@ -28,6 +28,10 @@ does not cache this API's runtime context or select its runtime mode or DataSour
 Updated 2026-09-28: application Environment policy and relationships are removed.
 Amended 2026-09-29: one enforced runtime binding and explicit bootstrap select one
 database for system and user tables.
+Amended 2026-10-02: each runtime mode lists and selects only its own DataSources,
+and inspection checks the login's prerequisites before setup.
+Amended 2026-10-03: the deployment declares the hosted runtime database; Settings
+is read-only in Hosted mode.
 
 Companion decision: [Main Sequence SDK ADR 0035: Independent Git source and platform execution context](https://github.com/mainsequence-sdk/mainsequence-sdk/blob/metatables_removal/docs/adr/0035-independent-git-source-and-platform-context.md).
 The SDK prerequisite is implemented on `metatables_removal`; the current local
@@ -81,6 +85,114 @@ API requirement. The guides and examples describe the implemented shared path.
 
 ## Decision
 
+### The deployment declares the hosted runtime database (amended 2026-10-03)
+
+Implemented 2026-10-03 for [MetaTables #13](https://github.com/mainsequence-projects/MetaTables/issues/13) in the API, the migration Job and the Admin.
+The PostgreSQL transition test and the container suite were updated but not run;
+hosted verification is pending.
+
+Settings used to save the hosted selection in the database it pointed to, with a
+pointer file on the pod. A restarted or additional pod lost that pointer. The
+hosted runtime database is now declared by the deployment:
+
+- **Declaration.** The API's `configuration.yaml`
+  (`metatables/api/metatables/configuration.yaml`) has a `runtime_database`
+  section with the engine, the name of the Environment Secret holding the
+  connection URI, the default schema, the TLS mode and optional certificate
+  Secret names. It holds names and settings, never secret values. Each branch
+  keeps its own file, so each Environment's deployment reads its own file and
+  Secret.
+- **Secret.** The database administrator creates it in each Environment, for
+  example `postgresql://login:password@host:5432/database`. Host, port, database,
+  login and password come only from the URI, certificates only from the named
+  Secrets. The runtime DataSource's `password_secret_uid` is the URI Secret's UID
+  ([ADR 0009](0009-shared-credential-store.md)).
+- **Deployment.** On every deployment the `migrate-system` Job reads the
+  declaration and the Secret. It checks the prerequisites, applies the system
+  migrations, registers the runtime DataSource and reapplies access setup
+  ([ADR 0014](0014-main-sequence-release-jobs-and-production-migrations.md)).
+  Pointing the Secret at another database follows the same procedure: that
+  database is initialized and becomes the runtime. Each database keeps its own
+  catalog, and nothing is transferred. When only the connection changes (host,
+  login, TLS), the deployment updates the registration.
+- **API.** Every pod reads the same declaration and Secret at startup and takes
+  the runtime row from the catalog. It never runs DDL and writes no pointer, so
+  restarts and additional pods agree and report the same instance identity
+  ([MetaTables #14](https://github.com/mainsequence-projects/MetaTables/issues/14)).
+  A pod that starts on an unprepared database reports `migration_required` or
+  `registration_required` and serves no application operations. A Secret change
+  therefore takes effect on deployment.
+- **Settings, Hosted mode.** Settings is read-only: it shows the declaration, the
+  resolved connection, the status and the revisions.
+  - Hosted `configure`, `migrate` and `activate` answer 409.
+  - `select` and the pre-activation Hosted registry
+    (`runtime-source-candidates.json`, `hosted_source_uid`) are removed.
+  - Hosted DataSources are registered only in the active runtime catalog.
+  - Settings does not show the migration Job's result; the deployment run
+    reports a failed Job.
+- **Developer launcher, Hosted mode.** The launcher reads the packaged deployment
+  file and the same Secret, so it uses the same database; its own
+  `configuration.yaml` only grants the developer capability. It never migrates. A
+  newer local migration reports `migration_required` until it is deployed.
+
+Local mode is unchanged. For Hosted mode, this supersedes three earlier
+decisions:
+- the Hosted registry and selection in the 2026-10-02 amendment;
+- Settings-initiated hosted initialization in the 2026-09-29 bootstrap amendment;
+- the persisted hosted selection in the 2026-09-29 bootstrap amendment.
+
+### Each runtime mode selects only its own DataSources (amended 2026-10-02)
+
+Hosted rows are superseded by the 2026-10-03 amendment above: Hosted has no
+registry before activation and no selection.
+
+Implemented 2026-10-02 in the API and Admin; the PostgreSQL runtime-transition test
+was updated but not run.
+
+A DataSource belongs to the runtime mode that registered it. Data Sources and
+Settings show only the current mode's registrations:
+
+| Mode | Registrations | Credential references |
+| --- | --- | --- |
+| Local | The workspace SQLite catalog | Local CredentialStore |
+| Hosted | The Hosted registry until activation, then the hosted catalog | SDK Secrets |
+
+Neither mode lists, selects or copies the other mode's registrations. This applies
+ADR 0009's rule against automatic credential transfers to selection. A Hosted
+DataSource is registered and selected after switching to Hosted. Local mode offers
+**Switch to Hosted** without choosing a source; Hosted starts with its saved
+selection or uninitialized, as the supervised-selection amendment below requires.
+
+Gap observed 2026-10-02: in Local mode, the Settings Hosted picker listed the local
+catalog (`GET /data-sources/`). Selecting a TimescaleDB registered there made
+`POST /runtime-bootstrap/hosted/select/` copy the row, with its local password
+reference, into `.local/runtime-source-candidates.json`. SDK Secrets could not
+resolve that reference ("SDK Secret access failed"). Local mode also offered no
+way to register a Hosted source: **Add DataSource** writes the local catalog, and
+the Admin disables **Switch to Hosted** until a Hosted source is selected. The
+operations guide documents this cross-mode flow.
+
+Fix:
+
+1. API: remove Local-mode Hosted preselection: `POST /runtime-bootstrap/hosted/select/`,
+   the Local `hosted_bootstrap` and its runtime-context field. Remove the
+   local-catalog lookup and `remember()` from `registered_hosted_source`. Hosted
+   `POST /runtime-bootstrap/select/` resolves only the Hosted registry or the
+   active hosted catalog.
+2. Admin: in Local mode, Settings enables **Switch to Hosted** with no source
+   picker. The Hosted picker and its **Add DataSource** render only in Hosted
+   mode, where Data Sources is the Hosted registry.
+3. Docs: `docs/operations/local-runtime.md` describes the order Switch to Hosted,
+   register in Data Sources, select in Settings, then run MetaTables migrations
+   or use the existing catalog.
+4. Tests: the Local-mode selection route no longer exists; Hosted selection
+   rejects a local-catalog UID; a fresh Hosted runtime registers a source with an
+   SDK Secret reference and selects it; Settings in Local mode switches without a
+   selection.
+
+Hosted registry entries already copied from a local catalog carry unusable
+references; developers remove them. No data migration is provided.
+
 ### One local runtime across branches (amended 2026-09-30)
 
 MetaTables owns one persistent local SQLite runtime for a checkout. Git branches,
@@ -99,10 +211,18 @@ by startup or migration. This supersedes the previous branch isolation policy.
 
 ### Explicit runtime bootstrap in the selected DataSource (amended 2026-09-29)
 
+Hosted upgrades: before each API rollout, the deployment workflow runs
+`metatables runtime upgrade` from the new image against the active runtime
+([ADR 0014](0014-main-sequence-release-jobs-and-production-migrations.md)). Initializing a selected DataSource and startup
+inspection follow the lifecycle below.
+
 This amendment supersedes the separate catalog connection, the two-file SQLite
 binding, automatic local catalog upgrades, and the requirement that switching to
 Hosted already have a migrated catalog. It corrects this ADR's runtime lifecycle;
 it does not introduce a second execution architecture.
+
+For Hosted mode, the 2026-10-03 amendment replaces Settings selection and
+initialization with the deployment's declaration and migration Job.
 
 Settings selects the runtime mode and its DataSource. That database contains both
 MetaTables' system tables and user tables. Local selects one persistent SQLite
@@ -116,6 +236,14 @@ chooses **Run MetaTables migrations**. Only after migration succeeds is the prop
 configuration inserted as the runtime DataSource in that database. Failed work
 never activates a partially initialized runtime. A database already initialized
 and compatible can be selected without running migrations.
+
+Amended 2026-10-02: before any runtime is registered, inspection also checks,
+read-only, the login's prerequisites under
+[ADR 0007](0007-database-enforced-table-access.md): `CREATEROLE`, and permission to
+create the `metatables` schema and tables in the default schema. Unmet
+prerequisites make the target incompatible, with each reason shown in Settings,
+so setup never leaves a database half-initialized. A registered runtime is not
+rechecked.
 
 Settings, runtime context, mode selection and bootstrap actions do not depend on
 catalog sessions or catalog memberships. They retain the existing request admission.
@@ -210,10 +338,18 @@ The supervisor passes mode and transport parameters explicitly to the child;
 `METATABLES_LOCAL_RUNTIME` has no authority. Database credentials remain private
 deployment inputs and are never stored in YAML or sent to Vite.
 
-The runtime descriptor reports capability, switching availability and a fresh
-instance identity. Admin requests carry that identity so stale requests are
-rejected after a restart. During transition the UI blocks work, reloads runtime
-context and remounts cached views. A mode change affects the entire developer API
+The runtime descriptor reports capability, switching availability and an
+instance identity. Admin requests carry that identity so requests made against a
+previous runtime are rejected. During transition the UI blocks work, reloads runtime
+context and remounts cached views.
+
+Amended 2026-10-03 for [MetaTables #14](https://github.com/mainsequence-projects/MetaTables/issues/14):
+the instance identity names the runtime binding, not the process. It is derived
+from the mode, the runtime database's public configuration, the runtime
+DataSource UID, its activation and the catalog revision. Every process and pod
+serving one binding reports the same identity, so an API deploy or restart keeps
+open pages valid; selecting another DataSource, activating it, applying
+migrations or switching mode changes it. A mode change affects the entire developer API
 instance, never an individual user's view of a shared service.
 
 ### Enforced runtime binding (amended 2026-09-29)

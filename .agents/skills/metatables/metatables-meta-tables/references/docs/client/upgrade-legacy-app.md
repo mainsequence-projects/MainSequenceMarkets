@@ -135,9 +135,20 @@ See [query and mutate](query-and-mutate.md) for engine-specific behavior.
 
 Application providers and Alembic execution belong to the application. Update
 provider/bootstrap imports to the target client's public migration interfaces,
-and retain the existing provider package, namespace, model registry, version-table
-binding, revision IDs and applied history. Do not scaffold a replacement provider
-or stamp an existing database merely to make the upgrade pass.
+and retain the existing provider `package=` value, namespace, model registry,
+version-table binding, revision IDs and applied history. Do not scaffold a
+replacement provider or stamp an existing database merely to make the upgrade pass.
+
+If the provider is installed under a generic top-level module such as
+`migrations`, move it under a module the application owns. Other installed
+packages that use the same name overwrite its files. Move the package with its
+`env.py`, `script.py.mako` and `versions/` tree. Update `script_location`,
+`version_location_prefix`, the imports, the packaging configuration and every
+provider reference. Keep `package=`, `migration_namespace`, the version-table
+binding and the revision files unchanged. The catalog binds provider tables to
+`package:namespace` and rejects a reservation from a different key. Alembic
+stores only revision IDs, so the module path can change. Do not ship a
+forwarding module under the old name, because it would keep the file collision.
 
 The application loads its provider locally. The API handles authorization,
 reservations, connection resolution and finalization. The client runs Alembic

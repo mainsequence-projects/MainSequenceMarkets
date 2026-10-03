@@ -11,7 +11,8 @@ records the decision and the migration boundary.
 
 **Applications run Alembic through the client using their environment database login.**
 Direct database connections and general client-side Alembic execution remain blocked.
-Admins can still initialize and upgrade MetaTables system tables in Settings.
+Admins initialize and upgrade MetaTables system tables in Local Settings; a hosted
+deployment's migration Job does so for its declared runtime database.
 
 ## Who owns each decision
 
@@ -72,7 +73,8 @@ manage grants and see why each User or Team has access. Global **Settings** and
 Data Sources appears once in the MetaTables catalog menu. Its list and detail
 pages at `/data-sources` and `/data-sources/{uid}` are available to authenticated
 users, including before runtime initialization. Admins manage registrations in
-these same pages. Selecting the runtime DataSource stays in admin-only Settings.
+these same pages. The hosted runtime DataSource is declared by the deployment;
+Local selects its SQLite file in admin-only Settings.
 
 The Admin menu is rendered only when the API reports `is_admin: true`. Its pages
 are `/admin/settings` and `/admin/security`. Old `/settings` and `/security` links
@@ -166,9 +168,11 @@ reconciles catalog metadata and governed-SQL policies after schema changes. See
 
 ## Development database setup
 
-Use Settings to create a fresh development runtime database and explicitly run
-MetaTables migrations. Existing development data is not migrated into the new
-PostgreSQL catalog schema. Setup must also establish database permissions before
-caller SQL is enabled. Keep the hosted DataSource password in a platform Secret;
-it also seeds the derived caller-login passwords. Credentials are exposed only through the authenticated migration connection workflow;
+Declare a fresh hosted development runtime database in the API's `configuration.yaml`
+and its Environment Secret, then deploy; the migration Job initializes it
+([hosted setup](../operations/hosted-runtime.md#set-up-a-hosted-runtime-database)).
+Existing development data is not migrated into the new PostgreSQL catalog schema.
+Setup must also establish database permissions before caller SQL is enabled. The
+login password in the URI Secret also seeds the derived caller-login passwords; each
+deployment reapplies them, so a rotated password reaches them. Credentials are exposed only through the authenticated migration connection workflow;
 ordinary data/query clients do not receive them.

@@ -28,7 +28,8 @@ result = MetaTable.execute_operation(operation)
 The client discovers the MetaTables deployment in the caller's Environment. The
 compiler obtains the DataSource UID, dialect and parameter style together from
 that API's fresh runtime context. No URL or DataSource UID is needed in the
-application. The API operator configures and initializes the runtime in Settings.
+application. A hosted API's deployment declares and initializes the runtime;
+Local initializes it in Settings.
 An absent, unavailable or malformed runtime source raises the public
 `metatables.DataSourceResolutionError`; it never selects another source as a fallback.
 

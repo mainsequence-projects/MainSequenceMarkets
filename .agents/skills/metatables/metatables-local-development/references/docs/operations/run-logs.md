@@ -125,7 +125,7 @@ separate deployment check. Existing runs without capture references, and laptop
 processes with no platform collection/forwarding path, report unavailable logs.
 No new authentication mode or application-specific platform endpoint is required.
 
-Existing catalogs need the explicit Settings migration for `0003_run_log_capture`,
-which adds nullable run capture metadata. Logs never create a catalog logging table.
+Existing catalogs need system revision `0003_run_log_capture`
+([catalog migrations](catalog-migrations.md)), which adds nullable run capture metadata. Logs never create a catalog logging table.
 The architecture and verification boundaries are recorded in
 [ADR 0005](../adr/api/0005-run-logs-and-local-file-capture.md).

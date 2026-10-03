@@ -2450,11 +2450,6 @@
             ],
             "title": "Namespace"
           },
-          "partition_strategy": {
-            "default": "backend_default",
-            "title": "Partition Strategy",
-            "type": "string"
-          },
           "physical_schema": {
             "anyOf": [
               {
@@ -2811,11 +2806,6 @@
             ],
             "title": "Namespace"
           },
-          "partition_strategy": {
-            "default": "backend_default",
-            "title": "Partition Strategy",
-            "type": "string"
-          },
           "physical_schema": {
             "anyOf": [
               {
@@ -2933,6 +2923,18 @@
             "title": "Current Revisions",
             "type": "array"
           },
+          "declaration": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declaration"
+          },
           "error": {
             "anyOf": [
               {
@@ -2943,6 +2945,15 @@
               }
             ],
             "title": "Error"
+          },
+          "managed_by": {
+            "default": "settings",
+            "enum": [
+              "settings",
+              "deployment"
+            ],
+            "title": "Managed By",
+            "type": "string"
           },
           "migration_error": {
             "anyOf": [
@@ -3127,16 +3138,6 @@
             ],
             "title": "Git Source"
           },
-          "hosted_bootstrap": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeBootstrapDescriptor"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "hosted_environment": {
             "anyOf": [
               {
@@ -3290,21 +3291,6 @@
           "configuration"
         ],
         "title": "RuntimeSourceInput",
-        "type": "object"
-      },
-      "RuntimeSourceSelection": {
-        "additionalProperties": false,
-        "properties": {
-          "source_uid": {
-            "format": "uuid",
-            "title": "Source Uid",
-            "type": "string"
-          }
-        },
-        "required": [
-          "source_uid"
-        ],
-        "title": "RuntimeSourceSelection",
         "type": "object"
       },
       "SharingUpdate": {
@@ -3877,6 +3863,539 @@
           "multi_index_column_stats"
         ],
         "title": "TimeIndexStatsResponse",
+        "type": "object"
+      },
+      "TimescaleCompressionSettings": {
+        "properties": {
+          "orderby": {
+            "title": "Orderby",
+            "type": "string"
+          },
+          "segmentby": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Segmentby",
+            "type": "array"
+          }
+        },
+        "required": [
+          "segmentby",
+          "orderby"
+        ],
+        "title": "TimescaleCompressionSettings",
+        "type": "object"
+      },
+      "TimescaleCompressionStats": {
+        "properties": {
+          "after_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Bytes"
+          },
+          "before_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Bytes"
+          },
+          "compressed_chunks": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compressed Chunks"
+          },
+          "total_chunks": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Chunks"
+          }
+        },
+        "title": "TimescaleCompressionStats",
+        "type": "object"
+      },
+      "TimescaleEligibility": {
+        "properties": {
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "timescale_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timescale Version"
+          }
+        },
+        "required": [
+          "eligible"
+        ],
+        "title": "TimescaleEligibility",
+        "type": "object"
+      },
+      "TimescaleJob": {
+        "properties": {
+          "hypertable_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hypertable Name"
+          },
+          "hypertable_schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hypertable Schema"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "compression",
+              "retention",
+              "other"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_run_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run Started At"
+          },
+          "last_run_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run Status"
+          },
+          "last_successful_finish": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Successful Finish"
+          },
+          "next_start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Start"
+          },
+          "proc_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proc Name"
+          },
+          "schedule_interval": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Interval"
+          },
+          "scheduled": {
+            "title": "Scheduled",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "Scheduled",
+              "Running",
+              "Paused",
+              "Failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "table_identifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Identifier"
+          },
+          "table_uid": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Uid"
+          },
+          "total_failures": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Failures"
+          },
+          "total_runs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Runs"
+          }
+        },
+        "required": [
+          "job_id",
+          "kind",
+          "scheduled",
+          "status"
+        ],
+        "title": "TimescaleJob",
+        "type": "object"
+      },
+      "TimescaleJobsPage": {
+        "properties": {
+          "data_source_uid": {
+            "format": "uuid",
+            "title": "Data Source Uid",
+            "type": "string"
+          },
+          "failed_count": {
+            "title": "Failed Count",
+            "type": "integer"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/TimescaleJob"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "policy_count": {
+            "title": "Policy Count",
+            "type": "integer"
+          },
+          "timescale_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timescale Version"
+          }
+        },
+        "required": [
+          "data_source_uid",
+          "policy_count",
+          "failed_count",
+          "jobs"
+        ],
+        "title": "TimescaleJobsPage",
+        "type": "object"
+      },
+      "TimescalePoliciesUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "compression": {
+            "$ref": "#/components/schemas/TimescalePolicy"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/TimescalePolicy"
+          }
+        },
+        "required": [
+          "compression",
+          "retention"
+        ],
+        "title": "TimescalePoliciesUpdate",
+        "type": "object"
+      },
+      "TimescalePolicy": {
+        "additionalProperties": false,
+        "description": "`after: null` removes the policy; omitted options use Timescale's defaults.",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "initial_start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Start"
+          },
+          "schedule_interval": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Interval"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "TimescalePolicy",
+        "type": "object"
+      },
+      "TimescalePolicyState": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "initial_start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Start"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "schedule_interval": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Interval"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "TimescalePolicyState",
+        "type": "object"
+      },
+      "TimescaleTablePolicies": {
+        "properties": {
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "compression": {
+            "$ref": "#/components/schemas/TimescalePolicyState"
+          },
+          "compression_settings": {
+            "$ref": "#/components/schemas/TimescaleCompressionSettings"
+          },
+          "compression_stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimescaleCompressionStats"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "eligibility": {
+            "$ref": "#/components/schemas/TimescaleEligibility"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/TimescaleJob"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/TimescalePolicyState"
+          },
+          "table_uid": {
+            "format": "uuid",
+            "title": "Table Uid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table_uid",
+          "can_edit",
+          "eligibility",
+          "compression",
+          "retention",
+          "compression_settings",
+          "jobs"
+        ],
+        "title": "TimescaleTablePolicies",
         "type": "object"
       },
       "TransferLimits": {
@@ -4618,6 +5137,51 @@
         },
         "summary": "Discover Source Relations",
         "tags": [
+          "DataSources"
+        ]
+      }
+    },
+    "/data-sources/{source_uid}/timescale-jobs/": {
+      "get": {
+        "description": "List TimescaleDB jobs: admins see all, other Users only jobs of tables they can read.",
+        "operationId": "get_timescale_jobs_data_sources__source_uid__timescale_jobs__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_uid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Uid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimescaleJobsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Timescale Jobs",
+        "tags": [
+          "MetaTables",
           "DataSources"
         ]
       }
@@ -5740,6 +6304,102 @@
         ]
       }
     },
+    "/meta-tables/{table_uid}/timescale-policies/": {
+      "get": {
+        "description": "Read a time-index table's policies, job status and compression stats from TimescaleDB.",
+        "operationId": "get_timescale_policies_meta_tables__table_uid__timescale_policies__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "table_uid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Table Uid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimescaleTablePolicies"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Timescale Policies",
+        "tags": [
+          "MetaTables"
+        ]
+      },
+      "put": {
+        "description": "Replace both policies. Writers only; the change is journaled with the caller.",
+        "operationId": "put_timescale_policies_meta_tables__table_uid__timescale_policies__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "table_uid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Table Uid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimescalePoliciesUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimescaleTablePolicies"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Timescale Policies",
+        "tags": [
+          "MetaTables"
+        ]
+      }
+    },
     "/meta-tables/{table_uid}/update-graph/": {
       "get": {
         "operationId": "get_table_update_graph_meta_tables__table_uid__update_graph__get",
@@ -6510,48 +7170,6 @@
         ]
       }
     },
-    "/runtime-bootstrap/hosted/select/": {
-      "post": {
-        "description": "Select a registered hosted DataSource without changing the active local runtime.",
-        "operationId": "select_hosted_before_switch_runtime_bootstrap_hosted_select__post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeSourceSelection"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeBootstrapDescriptor"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Select Hosted Before Switch",
-        "tags": [
-          "Runtime bootstrap"
-        ]
-      }
-    },
     "/runtime-bootstrap/migrate/": {
       "post": {
         "operationId": "migrate_runtime_bootstrap_migrate__post",
@@ -6568,47 +7186,6 @@
           }
         },
         "summary": "Migrate",
-        "tags": [
-          "Runtime bootstrap"
-        ]
-      }
-    },
-    "/runtime-bootstrap/select/": {
-      "post": {
-        "operationId": "select_hosted_runtime_source_runtime_bootstrap_select__post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeSourceSelection"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeBootstrapDescriptor"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Select Hosted Runtime Source",
         "tags": [
           "Runtime bootstrap"
         ]

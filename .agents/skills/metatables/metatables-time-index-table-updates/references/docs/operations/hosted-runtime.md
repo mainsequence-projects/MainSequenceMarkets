@@ -1,11 +1,19 @@
 # Operate a hosted API
 
+A hosted API's runtime database is declared by its deployment, not selected in
+Settings. The API's `configuration.yaml` names the engine, the Environment Secret
+holding the connection URI, and the public schema and TLS settings. Before every
+rollout, the deployment workflow's migration Job prepares that database from the
+new image, and a failure stops the rollout. API pods only open it. See
+[ADR 0001](../adr/api/0001-unified-api-storage-and-local-sqlite.md) and
+[ADR 0014](../adr/api/0014-main-sequence-release-jobs-and-production-migrations.md).
+
 The repository's `.mainsequence/workflows/metatables-api.yaml` declares the
 automatic FastAPI deployment at `api/metatables/main.py`. This file imports
 `metatables.api.metatables.main:app`; the server and its deployment-specific
 `configuration.yaml` are installed under `metatables.api`. That configuration
-disables local controls. The workflow uses no release or
-branch UIDs. Apply it through the platform's repository workflow lifecycle;
+disables local controls and declares the runtime database. The workflow uses no
+release or branch UIDs. Apply it through the platform's repository workflow lifecycle;
 installing or debugging the Python client does not deploy the API.
 
 The FastAPI target declares `min_scale: 1`, requesting at least one runtime
@@ -30,45 +38,118 @@ and set `local_mode_available: false` in `configuration.yaml` on shared deployme
 uvicorn metatables.api.app.main:app --host 0.0.0.0 --port 18473
 ```
 
-No database is required just to open Settings. Register a PostgreSQL, TimescaleDB, MySQL or MSSQL
-DataSource with its connection settings and password under **MetaTables → Data Sources**.
-The injected SDKCredentialStore saves the password as a managed platform Secret
-and stores its UID. Hosted never provisions a local key or applies MetaTables AES
-encryption to that Secret. Then select it
-from the registered DataSources list in **Settings → Runtime → DataSource**. In the
-developer launcher, this selection can be saved while Local mode remains active;
-**Switch to Hosted** is a separate action.
-If MetaTables is absent or outdated, explicitly click **Run MetaTables migrations**.
-If its schema is already compatible, choose **Use this DataSource**. The selected
-database stores both the system catalog and user tables; the source registration is
-saved there only after migrations succeed. See [bootstrap and upgrades](catalog-migrations.md).
-
-`GET /runtime-context/` reports `bootstrap.status`, candidate configuration, migration
-revisions and activation state without querying catalog memberships. Pending bootstrap
-returns HTTP 200 with a null active DataSource; application routes remain unavailable.
-This lets the Vite site show Settings even on the first launch. Once active, the descriptor
-supplies the source UID, dialect, parameter style and schema to both clients.
-
-DataSources are registered through `/data-sources/` in either runtime mode. Private
-pre-initialization persistence retains the legacy `.local/runtime-source-candidates.json`
-filename for compatibility; it is not a second resource. Selection saves
-public connection settings and Secret references to `.local/runtime-data-sources.json`.
-Persist that directory across restarts. Startup verifies
-the existing schema and reopens the selected source; it never upgrades. An incompatible
-or unreachable database leaves Settings available and application operations blocked.
-
-The active source cannot be replaced through `is_default` or independently redirected
-through a catalog environment variable. Reconfigure it through Settings as one complete
-runtime binding. Other registrations are candidates for Settings; operations execute
-only against the selected source. The catalog and application tables stay in that
-one database. Changing the selected source does not transfer tables or catalog state.
-
-The verified hosted Environment remains display metadata supplied through ordinary SDK
-interfaces. Selecting storage does not change SDK context or Environment requirements.
-
 The ingress must provide signed caller assertions. Unsigned User UIDs and the
 runtime's own workload token cannot identify the human requesting a table
 operation. The SDK verifies caller proof; MetaTables applies local resource policy.
+
+## Declare the runtime database
+
+The deployment configuration is `src/metatables/api/metatables/configuration.yaml`,
+packaged as `metatables/api/metatables/configuration.yaml`. It holds Secret names
+and public settings, never secret values:
+
+```yaml
+local_mode_available: false
+runtime_database:
+  engine: timescale_db                      # postgresql | timescale_db | mysql | mssql
+  uri_secret: METATABLES_RUNTIME_DATABASE   # Environment Secret holding the connection URI
+  default_schema: public                    # optional; the engine default when omitted
+  tls:
+    mode: require                           # disable | require | verify-ca | verify-full
+    ca_secret: null                         # optional Environment Secret names
+    client_certificate_secret: null
+    client_key_secret: null                 # set together with the certificate
+```
+
+The Secret named by `uri_secret` holds a URI such as
+`postgresql://login:password@host:5432/database`. Use `postgresql://` or
+`postgres://` for `postgresql` and `timescale_db`, `mysql://` for MySQL and
+`mssql://` for SQL Server, and percent-encode special characters in the password.
+Host, port, database, login and password come only from the URI. It takes no
+query options: TLS and the schema come from `configuration.yaml`.
+
+The certificate Secrets apply to PostgreSQL, TimescaleDB and MySQL. SQL Server
+rejects them and maps `tls.mode` to its driver: `disable` turns encryption off,
+`require` encrypts and trusts the server certificate without validating it, and
+`verify-ca` or `verify-full` encrypt and validate it.
+
+## Set up a hosted runtime database
+
+The database, its login and the login's privileges are the database
+administrator's responsibility. [DataSource database privileges](../api/data-sources.md#database-privileges-and-sql-behavior)
+lists what MetaTables requires.
+
+1. Create the Environment Secret named by `uri_secret` in each Environment that
+   deploys the API, holding the connection URI.
+2. Set `runtime_database` in the API's `configuration.yaml`: engine, Secret name,
+   schema and TLS.
+3. Deploy the API. The migration Job initializes the database before the API rolls out.
+4. Open **Settings** and check the declaration, the resolved connection, the
+   `ready` status and the applied migration revisions.
+
+## Deployment gate
+
+In `.mainsequence/workflows/metatables-api.yaml`, the `migrate-system` Job
+(`jobs/migrate_system.py`, exactly `metatables runtime upgrade`) runs from the
+candidate image before the API rolls out, on every deployment. It reads
+`configuration.yaml` and the Secret itself; it does not call the running API. It:
+
+1. checks that the login can secure the database: `CREATEROLE`, `CREATE` on the
+   database or ownership of the `metatables` schema, and `CREATE` on the default schema;
+2. applies the system migrations;
+3. registers the runtime DataSource, or updates its connection if the declaration changed;
+4. reapplies database access setup. Per-User role passwords derive from the login
+   password, so a rotated password reaches them.
+
+Any failure blocks the rollout. The Job prints `status` (`initialized`, `upgraded`
+or `up_to_date`), `previous_revisions`, `revisions` and `data_source_uid`. A new
+runtime DataSource is recorded as created by the Job's SDK user.
+
+## API pods and Settings
+
+API pods read the same declaration and Secret at startup and never run DDL. They
+write no pointer to the pod's filesystem, so restarts and additional pods agree.
+If the database is not migrated or registered, they report `migration_required` or
+`registration_required` and serve no application operations until a deployment's
+Job has run and the API has rolled out.
+
+A Secret change takes effect on the next deployment. Pointing the Secret at a
+different database follows the same procedure. Each database keeps its own
+catalog, including registered tables and grants; nothing is transferred.
+
+Settings is read-only in Hosted mode. It shows the declaration, the resolved
+connection, the status and the migration revisions. `POST /runtime-bootstrap/configure/`,
+`/migrate/` and `/activate/` answer 409: "The deployment manages the hosted runtime
+database. Change runtime_database in the API's configuration.yaml or its Environment
+Secret, then deploy the API." `metatables runtime initialize` uses `/migrate/`, so
+it is Local only.
+
+`GET /runtime-context/` reports the `bootstrap` descriptor without querying catalog
+memberships. Pending bootstrap returns HTTP 200 with a null active DataSource, and
+application routes remain unavailable. `managed_by` is `deployment` in Hosted and
+`settings` in Local, and `can_configure` is false in Hosted. For admins,
+`declaration` is the `runtime_database` section and `candidate` the resolved public
+configuration, whose `password_secret_uid` is the URI Secret's UID.
+`selected_source_uid` is the runtime DataSource UID once registered. Once active,
+the descriptor supplies the source UID, dialect, parameter style and schema to
+both clients.
+
+Before the runtime is active, `/data-sources/` lists nothing and creating a
+DataSource answers 409: registrations live only in the runtime catalog. The active
+source cannot be replaced through `is_default` or redirected through a catalog
+environment variable; change the declaration and deploy. The catalog and
+application tables stay in that one database.
+
+The verified hosted Environment remains display metadata supplied through ordinary SDK
+interfaces. The declared database does not change SDK context or Environment requirements.
+
+## Developer launcher in Hosted mode
+
+After `metatables serve --local --admin` is switched to Hosted, the launcher reads
+the API's packaged deployment configuration and the same Secret, resolved in the
+developer's SDK Environment, so it uses the same database as the deployed API.
+It never migrates. If the local branch has newer migrations than the deployed API,
+it reports `migration_required` until that code is deployed.
 
 ## Application grants
 
@@ -80,11 +161,13 @@ describes live inheritance and revocation.
 
 ## Source and physical operation readiness
 
-Register the runtime DataSource under **MetaTables → Data Sources**, then select and initialize
-it through Settings. Additional [DataSources](../concepts/data-sources.md) in an active
-hosted catalog use the regular registry API. The runtime
-descriptor supplies authoring defaults from the selected binding. Platform Secret access
-retains its normal SDK Environment requirement.
+The deployment registers the runtime DataSource. Once it is active, additional
+[DataSources](../concepts/data-sources.md) are registered under **MetaTables → Data
+Sources** through the regular registry API. The injected SDKCredentialStore saves
+each entered password as a managed platform Secret and stores its UID; Hosted never
+provisions a local key or applies MetaTables AES encryption to that Secret. The
+runtime descriptor supplies authoring defaults from the runtime binding. Platform
+Secret access retains its normal SDK Environment requirement.
 
 DataSources are resolved from the application catalog. Platform Secret values are fetched
 for each physical operation after resource authorization; it is not cached across

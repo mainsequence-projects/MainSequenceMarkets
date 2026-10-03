@@ -34,7 +34,8 @@ metatables migrations scaffold \
   --module ledger.migrations \
   --namespace ledger \
   --base ledger.tables:Base \
-  --metadata ledger.tables:Base.metadata
+  --metadata ledger.tables:Base.metadata \
+  --alembic-version-table-name ledger__alembic_version
 ```
 
 The scaffold creates a provider, model registry, Alembic environment, revision
@@ -42,6 +43,24 @@ template, and versions directory under the chosen source root. Edit its
 `registry.py` to return the intended `Account` and `Balance` models. Scaffold
 creation alone does not select all imported models or migrate a database.
 Use `--source-root` and `--code-repository-root` if your layout differs from `src/`.
+
+### Provider placement
+
+Where the provider lives is the application's choice. Its module name, however,
+must be unique in every environment that installs the package. A library's
+provider ships in its wheel and runs next to providers from other libraries. If
+two packages install the same top-level module, such as `migrations`, the later
+install overwrites the earlier one's files and imports load the wrong provider.
+Pass `--module` with a module the application owns, such as `ledger.migrations`
+or `ledger_migrations`. Without it, the scaffold creates a top-level `migrations`
+module. A hand-written `build_metatable_migration_provider` call must set
+`script_location` and `version_location_prefix` to that module, because both
+default to `migrations:`. Before releasing, list the built wheel with
+`python -m zipfile -l <wheel>` and check that every top-level entry belongs to the
+application.
+
+Pass `--alembic-version-table-name` as well. The default `public.alembic_version`
+would be shared by every provider on the same DataSource that keeps the default.
 
 ## Author and execute in the application
 
@@ -73,6 +92,11 @@ runtime status to verify the database actually selected in Settings.
 Python setup code can call `metatables.upgrade_application("ledger.migrations:migration")`.
 For current and downgrade, use `metatables.migrations.runner.run_migration` with
 `operation="current"` or `operation="downgrade", revision="0001"`.
+
+Hosted runtimes are migrated by the application's deployment workflow, not from a
+developer machine: a Job applies the providers from the candidate image before
+the application rolls out. See
+[Migrate in the deployment workflow](deploy-application-migrations.md).
 
 The provider is installed only in the application process. Remove the retired
 `application_migration_providers` setting from existing deployment configuration;

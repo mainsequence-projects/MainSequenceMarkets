@@ -81,7 +81,8 @@ export METATABLES_API_URL=http://127.0.0.1:18473
 ```
 
 In Settings, check the runtime DataSource and explicitly choose **Run MetaTables
-migrations**, or select an already initialized database. Startup does not migrate.
+migrations**, or select an already initialized database. Startup does not migrate;
+a hosted API's deployment applies these before it rolls out.
 These are system migrations only. The tutorial's application migrations run
 in the application's Python process through the client in both modes:
 

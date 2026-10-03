@@ -11,7 +11,7 @@ require running another service locally.
 Install in your application's Python environment on macOS or Linux:
 
 ```bash
-python -m pip install "mainsequence-metatable==0.1.5" "mainsequence[server]==9.0.1"
+python -m pip install "mainsequence-metatable==0.1.8" "mainsequence[server]==9.0.4"
 mainsequence login
 metatables init --local
 metatables serve --local --admin
@@ -19,11 +19,11 @@ metatables serve --local --admin
 
 Run from an application Git checkout with a commit and an `origin` remote. Python
 3.13+ is required. Admin also needs Node.js 22.12+ (or 20.19+) and npm. The package
-requires published `mainsequence[server]>=9.0.1,<10`; no SDK checkout is needed.
-The next stable release is MetaTables 0.1.5, paired with published SDK 9.0.1.
+requires published `mainsequence[server]>=9.0.4,<10`; no SDK checkout is needed.
+The next stable release is MetaTables 0.1.8, paired with published SDK 9.0.4.
 The pinned command above applies after that stable release is published; before
-then, install the exact `0.1.5.devN` artifact produced by the development publishing
-workflow alongside `mainsequence[server]==9.0.1`. SDK 8 is outside this release's
+then, install the exact `0.1.8.devN` artifact produced by the development publishing
+workflow alongside `mainsequence[server]==9.0.4`. SDK 8 is outside this release's
 dependency range.
 `python -m metatables.sdk_compat` checks the required SDK interfaces without network
 requests. Local SQLite uses the standard library driver.

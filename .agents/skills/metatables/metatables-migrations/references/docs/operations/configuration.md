@@ -7,6 +7,7 @@ implement a second platform HTTP client or token exchange.
 | --- | --- | --- |
 | `METATABLES_API_URL` | Python client / CLI | Local development only: loopback HTTP(S) base URL, set automatically by `--local` or `configure_local_client()`. Unset/empty resolves the packaged API deployment in the caller's SDK-owned Environment. Hosted URL overrides are rejected. |
 | `local_mode_available` in `configuration.yaml` | API / launcher | Enables developer Local/Hosted selection; strict boolean, default false. |
+| `runtime_database` in the API's `configuration.yaml` | Hosted API, migration Job, launcher in Hosted mode | Declares the hosted runtime database: engine, the Environment Secret holding its URI, schema and TLS. See [hosted runtime](hosted-runtime.md#declare-the-runtime-database). |
 | `METATABLES_LOCAL_TOKEN` | Local launcher and client | Private ASCII token of at least 40 characters. |
 | `METATABLES_LOCAL_ALLOWED_ORIGINS` | Local API | Comma-separated exact loopback HTTP(S) origins with explicit ports; empty by default. |
 | `METATABLES_LOCAL_STORAGE_DIR` | Local API | Root for the checkout's local runtime SQLite file, shared across Git branches; defaults to `~/.local/share/metatables`. |
@@ -22,7 +23,9 @@ The supervisor passes runtime mode and listener/token parameters directly to eac
 worker through a private inherited descriptor. `METATABLES_LOCAL_RUNTIME` is
 ignored. Deployment configuration is read from `configuration.yaml` in the working
 directory, or the explicit `--configuration` path on the launcher/CLI; there is no
-environment-variable override for that capability or configuration path.
+environment-variable override for that capability or configuration path. The
+migration Job and the launcher's Hosted mode read `runtime_database` from the
+API's packaged `configuration.yaml` instead.
 
 A developer's selected mode is persisted separately in ignored
 `.local/runtime-selection.json`, only after successful startup. Shared deployments
@@ -35,13 +38,15 @@ MetaTables passes no user-supplied issuer, key URL, or target scope to verificat
 The [SDK capability check](../client/installation-and-connection.md) establishes
 interface availability, not deployment credentials or network readiness.
 
-Settings configures the complete runtime DataSource. Its database contains the system
-catalog and application tables. Local prefills SQLite; hosted accepts PostgreSQL or
-TimescaleDB. Both require explicit initialization through [Settings](catalog-migrations.md).
-Public source configuration and Secret references are persisted after activation in
-`.local/runtime-data-sources.json`; proposed configuration stays in API memory until then.
-Keep this directory private, writable by the API, and persistent across deployments.
-Resolved passwords and TLS material remain in memory, never in selection files.
+The runtime DataSource's database contains the system catalog and application tables.
+A hosted deployment declares a PostgreSQL, TimescaleDB, MySQL or SQL Server database
+under `runtime_database`, and its migration Job initializes it before each rollout
+([hosted runtime](hosted-runtime.md)). Local prefills SQLite and requires explicit
+initialization through [Settings](catalog-migrations.md). Local persists the selected
+file after activation under `local` in `.local/runtime-data-sources.json`; proposed
+configuration stays in API memory until then. Keep this directory private, writable
+by the API, and persistent across restarts. Hosted writes no selection file.
+Resolved passwords and TLS material remain in memory, never in files.
 
 Separate catalog URLs, physical-file overrides and default-source UID overrides are
 retired. Neither startup nor runtime-mode selection automatically runs Alembic.

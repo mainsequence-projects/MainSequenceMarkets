@@ -18,11 +18,12 @@ selected driver and runs `SELECT 1`. For `timescale_db`, that probe does not
 verify that the TimescaleDB extension is installed in the target database.
 
 The **Data Sources** section and `/data-sources/` expose one registration workflow.
-Hosted database DataSources can be registered before hosted runtime initialization.
-In Local mode, run system migrations in Settings first; remote registrations then
-use the same catalog table as the SQLite runtime row. The initialized
-workspace SQLite DataSource appears in the same list and remains runtime-managed
-with `can_manage: false`. Its storage and access cannot be changed through this API.
+Registrations live only in the active runtime's catalog. Before the runtime is
+active, the list is empty and registration is refused: Hosted answers 409 until the
+deployment has initialized its runtime database, and Local requires system migrations
+in Settings first. The runtime DataSource appears in the same list and remains
+runtime-managed with `can_manage: false`. Its storage and access cannot be changed
+through this API.
 
 External registration, editing, validation and removal require Organization admin
 access but do not depend on the runtime database's SQL permission initialization.
@@ -30,15 +31,14 @@ These operations do not reconcile runtime table grants. If database permissions
 need repair in Security, caller queries remain blocked while external DataSource
 management remains available.
 
-Settings lists eligible PostgreSQL, TimescaleDB, MySQL and MSSQL DataSources from
-that same registry and selects one by UID through `/runtime-bootstrap/hosted/select/`
-while Local is active or `/runtime-bootstrap/select/` in Hosted mode. Selection does
-not itself switch runtime mode. Registration preserves the UID when its catalog is
-initialized. The API's private pre-initialization storage is an implementation detail.
+Each runtime mode lists only its own catalog's registrations. The hosted runtime
+DataSource is declared by the API's deployment, not chosen from this list; see
+[hosted runtime](../operations/hosted-runtime.md).
 
 The active runtime DataSource hosts the system catalog and default application
-tables. It exposes `can_manage: false`; configuration, inspection and selection
-belong to Settings. Other registrations cannot replace it by setting `is_default`.
+tables. It exposes `can_manage: false`; its configuration belongs to the deployment
+declaration in Hosted and to Settings in Local. Other registrations cannot replace
+it by setting `is_default`.
 Hosted mode rejects injected SQLite catalog records with
 `hosted_runtime_rejects_local_storage`. Execution remains bound to the selected
 runtime DataSource; registering another database does not enable its table operations.
@@ -99,9 +99,9 @@ check: explicitly validate after registration or a configuration change.
 
 All remote engines require `host`, `database_name`, and `database_user`.
 `password_secret_uid` is an opaque CredentialStore UUID: a local encrypted record
-or a hosted SDK Secret. It is required
-for the selected hosted runtime, including databases that otherwise permit
-passwordless administrator connections: caller credentials are derived from it.
+or a hosted SDK Secret. For the hosted runtime it is the UID of the URI Secret,
+whose login password is required even where the database permits passwordless
+administrator connections: caller credentials are derived from it.
 The write-only password is a top-level request field, separate from persistent
 `configuration`. Plaintext passwords inside configuration, connection strings,
 arbitrary driver options, and unknown fields are rejected. Ports must be between
@@ -140,7 +140,7 @@ JSON bodies and a small client script. Those same bodies can be submitted to
 In MetaTables Admin, open **Data Sources → Register source**, choose an engine,
 fill in connection settings and Secret UIDs, and save. The form supplies the
 engine's defaults and only its supported TLS options. Open the saved source to
-validate, edit, disable, or remove it. Select the runtime DataSource in Settings. All hosted engines use the same bootstrap and table APIs.
+validate, edit, disable, or remove it. The hosted runtime DataSource is declared by the deployment, not registered here. All hosted engines use the same bootstrap and table APIs.
 
 For a configuration edit, submit the complete configuration rather than a nested
 partial patch. The registration's engine cannot change; create another registration
@@ -151,8 +151,9 @@ for a different engine. The default schema of a referenced source cannot change.
 - `403`: another caller tried to manage the registration or replace its default.
 - `404`: the registration does not exist.
 - `409`: a source is disabled during validation, referenced/default during deletion,
-  has a protected schema, or the
-  operation conflicts with the runtime's fixed storage binding.
+  has a protected schema, the
+  operation conflicts with the runtime's fixed storage binding, or a Hosted
+  registration arrives before the runtime is active.
 - `422`: invalid engine, configuration, field type, or Secret UID.
 - `503`: connection or credential storage failed, including unavailable drivers,
   keys, catalog initialization or hosted Secrets. Runtime-context reports the
@@ -173,13 +174,27 @@ uses the selected database as its SQL schema. SQL Server 2022 uses `dbo` for the
 system schema; application providers may use approved schemas in that database.
 
 The API database login manages native caller identities as well as schema. PostgreSQL
-requires `CREATEROLE`, ownership of the runtime database and management rights on
-`mt_owner` if it already exists. It stores the catalog in the private `metatables`
+requires `CREATEROLE`, permission to create the `metatables` schema in the runtime
+database and tables in its default schema, and management rights on `mt_owner` if
+it already exists. It does not need to own the database. It stores the catalog in the private `metatables`
 schema. MySQL requires account/role administration, privilege disclosure and grant
 rights on the selected database, `TRIGGER` visibility, and permission to cancel
 other caller sessions. SQL Server requires login/user/role administration,
 `VIEW DEFINITION` and grant management. Managed database services must provide
 these capabilities; missing permissions leave caller SQL disabled.
+
+Preparing the database, its login and these privileges is the database
+administrator's responsibility. On every deployment, the hosted migration Job checks
+the PostgreSQL requirements before any migration runs: `CREATEROLE`, `CREATE` on the
+database or ownership of the `metatables` schema, and `CREATE` on the default schema.
+A missing one fails the Job with the reason, for example `metatables_dev lacks
+CREATEROLE`; nothing is written and the API does not roll out.
+
+The database may be shared with other applications. Setup revokes `PUBLIC` access
+only on objects MetaTables owns: its `metatables` schema, the tables it manages and
+the roles it creates. Database-wide defaults and other owners' objects, including
+extensions such as TimescaleDB and pgvector, are the database administrator's
+responsibility.
 
 Hosted sources require a password Secret to derive per-User database credentials.
 MySQL global mandatory roles are unsupported. Registration admits ordinary tables
@@ -195,4 +210,6 @@ Timescale extension operations check the installed extension in the selected
 PostgreSQL database at invocation. Registering `timescale_db` does not establish
 that the extension exists. User roles and grants authorize operations; database
 features are resolved by the bound backend. Responses contain no static
-`supports_*` list and the Admin detail view has no capability table.
+`supports_*` list and the Admin detail view has no capability table. Time-index
+tables on `timescale_db` are hypertables owned by the API's login and can carry
+[compression and retention policies](time-index-and-updates.md#timescaledb-policies).

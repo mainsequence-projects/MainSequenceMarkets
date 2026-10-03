@@ -15,9 +15,10 @@ The authenticated `/runtime-context/` descriptor supplies effective DataSource
 metadata, dialect, parameter style, and default schema. Local responses also carry Git provenance
 so a client cannot accidentally use an API started from another branch. Each
 local workspace has one SQLite database for system and user tables, selected by
-canonical repository, checkout, and Git branch. Hosted APIs use their selected
-PostgreSQL, TimescaleDB, MySQL or MSSQL runtime DataSource for both roles. Settings initializes or
-selects that database through the same bootstrap flow in both modes.
+canonical repository, checkout, and Git branch. Hosted APIs use the PostgreSQL,
+TimescaleDB, MySQL or MSSQL runtime DataSource their deployment declares, for both
+roles; the deployment's migration Job initializes it. Local Settings initializes or
+selects the SQLite file. Both use the same bootstrap operation.
 
 The SDK supplies trusted User identity, active Team UIDs, Organization admin status,
 and independent Git source facts. MetaTables owns workspace identity and

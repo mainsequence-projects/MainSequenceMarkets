@@ -35,8 +35,9 @@ identity and Git source facts use SDK imports. Table operations use the client's
 with SQLite behind it; ordinary clients never open local table files. Local
 workspaces use one persistent SQLite database for system and user tables per
 checkout; Git branches share it.
-Settings explicitly initializes or selects the runtime DataSource in both modes;
-startup never runs Alembic. See `docs/operations/catalog-migrations.md`.
+A hosted API's deployment declares and initializes its runtime DataSource; Local
+Settings explicitly initializes or selects the SQLite file. Startup never runs
+Alembic. See `docs/operations/catalog-migrations.md`.
 
 ## Authoring decisions
 
@@ -117,6 +118,12 @@ inclusive time cutoff and explicit dimension/coordinate scope when appropriate.
 A null cutoff requires a scope. Do not replace that workflow with ad hoc SQL.
 Deletion/cascade requires edit access, relevant protection checks, and explicit
 cascade intent; it is not an administrator-role bypass or migration repair.
+
+On a TimescaleDB DataSource, time-index tables are hypertables. Their compression
+and retention policies are set only through `TimeIndexMetaTable.set_timescale_policies`
+(Writer) and read with `get_timescale_policies`. Do not add policies to table
+contracts or Alembic revisions; to keep them in code, call the client from a
+bootstrap Job. Retention permanently drops older chunks, including backfills.
 
 ## Validation
 

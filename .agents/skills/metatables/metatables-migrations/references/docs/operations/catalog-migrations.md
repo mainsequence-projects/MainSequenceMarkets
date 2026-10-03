@@ -1,36 +1,46 @@
 # Initialize and upgrade the runtime database
 
-Settings selects the runtime mode and a DataSource. That database stores MetaTables'
-system tables, including `data_source`, alongside user tables. There is no separate
-catalog connection to configure. Local and hosted use the same initialization flow.
+The runtime database stores MetaTables' system tables, including `data_source`,
+alongside user tables. There is no separate catalog connection to configure. API
+startup never runs Alembic in either mode.
 
-1. For Hosted mode, register a PostgreSQL, TimescaleDB, MySQL or MSSQL connection under **MetaTables → Data Sources**. This registration is available before the hosted catalog is initialized.
-2. Open **Settings**, choose Hosted runtime mode, and select that registered DataSource from the list. Local mode prefills the single local SQLite runtime file, shared across Git branches, and uses **Check DataSource**. Choosing a hosted DataSource and switching modes are separate actions.
-3. For an empty or outdated database, click **Run MetaTables migrations**. This
-   explicitly runs the packaged Alembic history. After success, the API saves the
-   proposal as the runtime DataSource inside the newly initialized registry.
-4. For an already initialized compatible database, click **Use this DataSource**.
+A hosted API's deployment initializes and upgrades its declared database: before
+every rollout, the `migrate-system` Job runs `metatables runtime upgrade` from the
+new image, and a failure blocks the rollout. Settings is read-only in Hosted mode.
+See [the deployment gate](hosted-runtime.md#deployment-gate) and
+[ADR 0014](../adr/api/0014-main-sequence-release-jobs-and-production-migrations.md).
+
+Local mode initializes its SQLite file explicitly in Settings:
+
+1. Open **Settings**. Local mode prefills the single local SQLite runtime file,
+   shared across Git branches. Click **Check DataSource**.
+2. For an empty or outdated file, click **Run MetaTables migrations**, or run
+   `metatables --local runtime initialize`. This explicitly runs the packaged
+   Alembic history. After success, the API saves the file as the runtime
+   DataSource inside the newly initialized catalog.
+3. For an already initialized compatible file, click **Use this DataSource**.
    Selection verifies its schema and registration without executing migrations.
 
-Startup and mode selection never run Alembic. A previously selected database can
-reopen on restart only when its migration revision and required system tables and
-columns are compatible. Unknown revisions and schema drift block activation.
-An existing revision marker alone is insufficient when required tables are missing.
-Migration failure keeps normal application routes unavailable. Settings remains
-accessible for correction and retry; a completed schema with an unfinished source
+A runtime database reopens on restart only when its migration revision and
+required system tables and columns are compatible. Unknown revisions and schema
+drift block activation. An existing revision marker alone is insufficient when
+required tables are missing. Migration failure keeps normal application routes
+unavailable. Local Settings remains accessible for correction and retry; in Hosted,
+the next deployment retries. A completed schema with an unfinished source
 registration can be retried without recreating tables.
 
-The API owns these endpoints in both modes:
+The API owns these endpoints:
 
 | Endpoint | Action |
 | --- | --- |
 | `GET /runtime-context/` | Read runtime and bootstrap status, including before any catalog exists. |
-| `GET/POST /data-sources/` | List or register DataSources, including before hosted bootstrap. |
-| `POST /runtime-bootstrap/hosted/select/` | Select a registered hosted DataSource while Local remains active. |
-| `POST /runtime-bootstrap/select/` | Select a registered DataSource in Hosted mode. |
-| `POST /runtime-bootstrap/configure/` | Hold and inspect a proposed `{display_name, class_type, configuration}`. |
-| `POST /runtime-bootstrap/migrate/` | Explicitly migrate, register the runtime source, and activate. |
-| `POST /runtime-bootstrap/activate/` | Verify and select an already initialized database. |
+| `GET/POST /data-sources/` | List or register DataSources in the active runtime's catalog. Before activation the list is empty and registration is refused. |
+| `POST /runtime-bootstrap/configure/` | Local: hold and inspect a proposed `{display_name, class_type, configuration}`. |
+| `POST /runtime-bootstrap/migrate/` | Local: explicitly migrate, register the runtime source, and activate. |
+| `POST /runtime-bootstrap/activate/` | Local: verify and select an already initialized database. |
+
+In Hosted mode, configure, migrate and activate answer 409 and point to the
+deployment's `runtime_database` declaration.
 
 Configuration, migration, activation, and destruction require the platform admin
 fact before catalog access. Any Organization admin can manage an existing source;
@@ -49,14 +59,16 @@ reads the database's current Alembic heads and the API's current migration files
 it does not apply migrations. An active DataSource can still have pending system
 migrations. Unknown database revisions or failed reads show a comparison error
 instead of claiming the database is up to date. Migrations apply only through the
-explicit **Run MetaTables migrations** action.
+explicit **Run MetaTables migrations** action in Local and the deployment's
+migration Job in Hosted.
 
-Selected public connection configuration and Secret references are saved after
-activation in `.local/runtime-data-sources.json`, next to the deployment configuration.
-This locates the registry on restart; resolved credentials are never saved there.
-Use one API worker per runtime instance and persist this private selection directory
+In Local mode, the selected SQLite file is saved after activation under the `local`
+entry of `.local/runtime-data-sources.json`, next to the deployment configuration.
+This locates the runtime on restart; resolved credentials are never saved there.
+Use one API worker per local runtime instance and persist this private directory
 across restarts. Initialization state is process-owned; do not distribute its requests
-across independently configured workers.
+across independently configured workers. Hosted writes no such file: every pod and
+the Job resolve the declaration and its Secret.
 
 ## Development schema baseline
 
@@ -66,12 +78,14 @@ for Reader/Writer grants, live namespace inheritance, and audit history, then
 `0004_historical_run_graphs` for root membership, idempotent admission and saved
 execution graphs. Log bodies remain in
 local files or the platform log store. Existing current-chain databases upgrade
-through **MetaTables migrations** in Settings; this does not recreate their data.
+through the hosted deployment's migration Job, or **Run MetaTables migrations** in
+Local Settings; this does not recreate their data.
 The initial revision is an explicit schema snapshot, independent of future ORM
 changes. The earlier development migration chain has been removed.
 
 Databases created with that earlier chain require recreation. Select a fresh SQLite
-file or empty hosted database in Settings, then run **MetaTables migrations**.
+file in Settings and run **MetaTables migrations**, or point the hosted runtime
+Secret at an empty database and deploy the API.
 Application migrations run through the client against their own revision history.
 Preserve existing data or restore a reviewed backup before recreating a runtime.
 An existing revision cannot be stamped to this baseline to bypass recreation.
@@ -84,7 +98,7 @@ and type `DESTROY` to confirm. This permanently removes its system records and u
 data, SQLite sidecar files, workspace markers, and saved local selection. An older
 adjacent `catalog.sqlite` / `tables.sqlite` pair is also removed when its markers
 identify the same workspace. Unmarked files, another workspace's files, and symlinks
-are rejected before any deletion. Other runtime selections remain intact.
+are rejected before any deletion.
 
 The API closes its database connections and rejects destruction while requests,
 migration connections, updates or unresolved operations are active. Hosted mode

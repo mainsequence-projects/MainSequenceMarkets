@@ -100,9 +100,10 @@ Rolling volatility is the per-symbol sample standard deviation of the last five
 trading-session returns, multiplied by `sqrt(252)`. The window is in its hashed
 configuration; the default fixture yields 18 volatility observations per symbol.
 
-First initialize the runtime DataSource in **Settings** using **Run MetaTables
-migrations**, or select an initialized database. Neither local nor hosted startup
-runs these migrations automatically.
+In Local mode, first initialize the runtime DataSource in **Settings** using **Run
+MetaTables migrations**, or select an initialized database. A hosted API's deployment
+initializes its runtime database before it rolls out. Startup never runs these
+migrations.
 
 Every `seed`, `update`, and `read` invocation first calls the setup script against
 its selected API. It reserves the registry and four tutorial tables, upgrades the

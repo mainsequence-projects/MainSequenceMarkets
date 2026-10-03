@@ -14,8 +14,9 @@ In Admin, open **Runs**. The left-hand list shows all recorded attempts by defau
 including dependency attempts and older records without a captured graph. Each
 entry shows its timestamp, outcome and duration; dependency attempts are indented
 under their invocation's root when both are on the page. Select one to inspect its
-invocation and logs. Choose **Root invocations** in the **Attempts** filter to
-restrict the list explicitly, or filter by updater, outcome or start-time interval.
+invocation and logs. The filters head the list: updater, outcome, a start-time
+range (last hour, 24 hours, 7 days or a custom local-time range) and **Root
+invocations only**. **Clear filters** keeps the selected run.
 The URL keeps these filters and the selected run. On narrow screens, the list
 appears above the run.
 Use **Hide history** to give the run the full width; **Show history** restores
@@ -139,6 +140,7 @@ Oversized plans fail before calculation rather than returning truncated history.
 Snapshot and state metadata use the selected catalog; log bodies remain in the
 stores defined by the logging contract.
 
-Existing stores require system revision `0004_historical_run_graphs`. Restart the
-API with the updated code, then apply pending migrations explicitly in Settings.
-Local and hosted runtimes use the same migration and run lifecycle.
+Existing stores require system revision `0004_historical_run_graphs`. A hosted
+deployment applies it before the API rolls out. Locally, restart the API with the
+updated code, then apply pending migrations explicitly in Settings. Local and hosted
+runtimes use the same migrations and run lifecycle.

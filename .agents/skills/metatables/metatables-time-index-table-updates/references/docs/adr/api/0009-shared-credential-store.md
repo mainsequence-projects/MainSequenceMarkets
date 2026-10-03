@@ -9,6 +9,10 @@
 
 Date: 2026-09-30
 
+Amended 2026-10-03 ([MetaTables #13](https://github.com/mainsequence-projects/MetaTables/issues/13)): the hosted runtime login's password comes from the
+URI Secret that the deployment declares. See
+[Bootstrap, restart and lifecycle](#bootstrap-restart-and-lifecycle).
+
 Status: Accepted. Implemented by the API CredentialStore providers and catalog
 revision `0006_local_credentials`.
 
@@ -131,17 +135,21 @@ coverage must additionally run on its corresponding host.
 ### Bootstrap, restart and lifecycle
 
 Local SQLite opens using the existing API-owned file binding, before credential
-lookup. Hosted bootstrap resolves the selected connection's UUID through SDK
-Secrets before opening the catalog. Its credential never depends on opening the
-database that needs that password. Saved selection JSON holds only public
-settings and UUID references.
+lookup. Hosted bootstrap reads the Environment Secret named by
+`runtime_database.uri_secret` (amended 2026-10-03). It reads the Secret by name
+through the SDK before opening the catalog. The login and password come from that
+URI, and the runtime DataSource references the Secret's UID as
+`password_secret_uid`. The hosted store serves that UID only as the database
+password and refuses to delete it. Every other reference still resolves through
+SDK Secrets by UID. The credential never depends on opening the database that
+needs it. Local selection JSON holds only public settings and UUID references.
 
 A fresh local catalog must receive explicit system migrations before saving
 sources/credentials. Local saves never substitute JSON for encrypted SQL storage.
 Previously saved local candidate metadata can be materialized by explicit setup,
-retaining DataSource UIDs. Hosted pre-catalog registration continues to use SDK
-Secrets and its existing metadata registry; it becomes the runtime row during
-explicit setup. Startup never silently applies migrations.
+retaining DataSource UIDs. Hosted has no pre-catalog registration: the
+deployment's migration Job registers the declared runtime, and other hosted
+sources are registered in its catalog. Startup never silently applies migrations.
 
 `metatables credentials` provides admin-only local operations:
 

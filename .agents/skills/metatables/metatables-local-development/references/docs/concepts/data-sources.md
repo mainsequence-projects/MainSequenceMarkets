@@ -23,26 +23,27 @@ DataSources and cannot select a remote default or explicit remote UID.
 | Microsoft SQL Server | `mssql` | Supported | Supported | `1433` / `dbo` |
 | SQLite | `sqlite` | Local runtime registration; read-only metadata in the management API | Supported within the [local SQL limits](../operations/local-runtime.md) | Bound workspace file / `public` |
 
-Every hosted engine can be selected as the runtime DataSource. Settings explicitly
-initializes the system schema and registers that same connection. A connection
-probe proves connectivity; migration and schema verification are separate steps.
-Only the selected source can execute table operations. Other registrations are
-candidates, not additional execution databases. DuckDB remains unsupported.
+Every hosted engine can be the runtime DataSource. A hosted deployment declares it
+in the API's `configuration.yaml`, and the deployment's migration Job initializes the
+system schema and registers that same connection ([hosted runtime](../operations/hosted-runtime.md)).
+A connection probe proves connectivity; migration and schema verification are separate
+steps. Only the runtime source can execute table operations; other registrations are
+not additional execution databases. DuckDB remains unsupported.
 
 See the [DataSource API guide](../api/data-sources.md) for configuration fields,
 engine-specific examples, error behavior and API-server driver installation.
 
-The [runtime binding](architecture.md) selects one DataSource containing MetaTables'
-system catalog and default application tables. Settings configures and inspects it
-before catalog tables exist, then explicitly runs system Alembic and registers the
-source. An existing compatible source can be selected without migration. This is the
-same flow for local SQLite and every hosted engine.
+The [runtime binding](architecture.md) holds one DataSource containing MetaTables'
+system catalog and default application tables. In Local mode, Settings configures and
+inspects the SQLite file before catalog tables exist, then explicitly runs system
+Alembic and registers the source; an existing compatible file can be selected without
+migration. Hosted Settings is read-only.
 
-Source configuration is temporarily held in API memory. Only successful initialization
-saves its catalog record, and successful activation saves its public connection pointer
-for restart. Startup never upgrades. The active runtime source cannot be retargeted,
-disabled, deleted or replaced by changing a registry default. See
-[initialization and upgrades](../operations/catalog-migrations.md).
+Registrations live only in the runtime catalog, so nothing is registered before
+initialization. Local saves the selected file for restart after activation; Hosted
+resolves its declaration at every start. Startup never upgrades. The active runtime
+source cannot be retargeted, disabled, deleted or replaced by changing a registry
+default. See [initialization and upgrades](../operations/catalog-migrations.md).
 
 ## Register a database
 
@@ -128,8 +129,7 @@ the API server.
 
 In hosted mode, MetaTables Admin's Data Sources page supports registration, configuration,
 validation, disablement and removal of additional sources. The runtime source is
-managed through Settings. The selected source binds the shared database backend
-contract. Existing roles and grants authorize operations. Optional database features,
+declared by the deployment. It binds the shared database backend contract. Existing roles and grants authorize operations. Optional database features,
 such as Timescale hypertables, are resolved on that source at invocation; there
 is no static DataSource feature flag list.
 

@@ -46,8 +46,8 @@ A missing server, driver, health check failure, failed test or skipped contract
 test fails the local run. Test-only credentials are confined to the isolated
 services. The test container checks its SDK interfaces before collecting tests.
 
-The suite covers system schema creation and constraints, explicit Settings
-bootstrap, runtime binding, interrupted initialization, drift detection, approved
+The suite covers system schema creation and constraints, explicit Local bootstrap,
+the hosted deployment gate, runtime binding, interrupted initialization, drift detection, approved
 application migrations, compiled SQL produced by the Python client, managed and
 external ownership, protected deletion, time-index replacement and statistics,
 and authorization rejection. PostgreSQL-specific extension helpers remain behind

@@ -52,8 +52,8 @@ CredentialStore without a hosted Secret requirement.
 Open **Settings**, review the prefilled **SQLite file**, and click **Check DataSource**.
 For a new workspace, click **Run MetaTables migrations**. The API creates the system
 schema and then records this same file as its runtime DataSource. An existing compatible
-file can instead be selected with **Use this DataSource**. Both modes follow
-[the same bootstrap lifecycle](catalog-migrations.md).
+file can instead be selected with **Use this DataSource**. See
+[the bootstrap lifecycle](catalog-migrations.md).
 
 Local launch does **not** run Alembic. Before initialization, Settings and Admin
 Data Sources are available. Data Sources shows the configured SQLite file and its
@@ -67,13 +67,23 @@ Apply application providers through the client with
 
 ## Switch modes in one Admin site
 
-Register a hosted connection under **MetaTables → Data Sources**, then choose Hosted under
-**Settings → Runtime mode** and select the registered DataSource. **Switch to Hosted**
-stops the old worker before starting the selected mode; it never copies data. A fresh
-Hosted runtime can start without a database, so Settings remains available.
+Each mode lists only its own runtime catalog's DataSources. Local shows the workspace
+catalog and keeps its passwords in the local CredentialStore; Hosted shows the catalog
+of the deployed runtime database and keeps passwords as managed Main Sequence Secrets.
+A DataSource registered in Local never appears in Hosted, and neither mode copies the
+other's registrations or credentials.
+
+To use the hosted database, choose Hosted under **Settings → Runtime mode** and click
+**Switch to Hosted**. The worker restarts in Hosted and opens the database the API's
+deployment declares: it reads the API's packaged deployment configuration and the same
+Environment Secret, resolved in your SDK Environment. Hosted Settings is read-only and
+the launcher never migrates. If your branch has newer system migrations than the
+deployed API, it reports `migration_required` until that code is deployed. See
+[the developer launcher in Hosted mode](hosted-runtime.md#developer-launcher-in-hosted-mode).
+Switching stops the old worker before starting the selected mode; it never copies data.
 Failed worker startup restores the previous worker. Mode selection is recorded in
-`.local/runtime-selection.json`; successful DataSource selection is recorded separately
-in `.local/runtime-data-sources.json` using public settings and Secret references only.
+`.local/runtime-selection.json`; the Local SQLite selection is recorded separately
+under `local` in `.local/runtime-data-sources.json`.
 
 The API refuses switching or source reconfiguration while other requests, open
 migration connections, reserved migrations, unfinished updates or unresolved physical
@@ -133,8 +143,8 @@ the same file. Application migration connections are blocked; see the
 ## Local credentials
 
 Encrypted credentials remain with their DataSource registrations in the same local
-database across branch changes and schema migrations. Bootstrap does not copy
-registration metadata from the saved candidate registry into a local catalog.
+database across branch changes and schema migrations. Bootstrap never copies
+registration metadata between catalogs.
 If an earlier version already created an orphaned credential reference, recover
 that specific credential from its original catalog or re-enter it through **Edit
 source**. Discovery and import report `credential_not_found` with recovery

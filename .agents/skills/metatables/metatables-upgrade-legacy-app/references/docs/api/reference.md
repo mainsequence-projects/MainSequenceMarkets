@@ -11,6 +11,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | POST | `/data-sources/` | Create Source | 201 |
 | POST | `/data-sources/test-connection/` | Test Source Connection | 200 |
 | GET | `/data-sources/{source_uid}/relations/` | Discover Source Relations | 200 |
+| GET | `/data-sources/{source_uid}/timescale-jobs/` | Get Timescale Jobs | 200 |
 | DELETE | `/data-sources/{uid}/` | Delete Source | 204 |
 | GET | `/data-sources/{uid}/` | Retrieve Source | 200 |
 | PATCH | `/data-sources/{uid}/` | Update Source | 200 |
@@ -36,6 +37,8 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | GET | `/meta-tables/{table_uid}/schema-graph` | Get Schema Graph | 200 |
 | GET | `/meta-tables/{table_uid}/search-document/` | Get Table Search Document | 200 |
 | GET | `/meta-tables/{table_uid}/stats` | Get Time Index Stats | 200 |
+| GET | `/meta-tables/{table_uid}/timescale-policies/` | Get Timescale Policies | 200 |
+| PUT | `/meta-tables/{table_uid}/timescale-policies/` | Put Timescale Policies | 200 |
 | GET | `/meta-tables/{table_uid}/update-graph/` | Get Table Update Graph | 200 |
 | GET | `/meta-tables/{table_uid}/updates` | List Table Updates | 200 |
 | POST | `/meta-tables/{table_uid}/validate-contract` | Validate Existing Contract | 200 |
@@ -51,9 +54,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | POST | `/runtime-bootstrap/activate/` | Activate | 200 |
 | POST | `/runtime-bootstrap/configure/` | Configure | 200 |
 | POST | `/runtime-bootstrap/destroy-local/` | Destroy Local | 200 |
-| POST | `/runtime-bootstrap/hosted/select/` | Select Hosted Before Switch | 200 |
 | POST | `/runtime-bootstrap/migrate/` | Migrate | 200 |
-| POST | `/runtime-bootstrap/select/` | Select Hosted Runtime Source | 200 |
 | GET | `/runtime-context/` | Runtime Context | 200 |
 | POST | `/runtime-migrations/{lease_uid}/release/` | Release Migration | 200 |
 | POST | `/runtime-mode/` | Select Runtime | 202 |

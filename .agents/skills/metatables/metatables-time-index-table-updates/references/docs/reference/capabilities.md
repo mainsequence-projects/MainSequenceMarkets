@@ -122,6 +122,8 @@ This inventory records the support status of public resource methods and CLI com
 | `TimeIndexMetaTable.date_to_string` | internal |  | Transport, serialization, or model lifecycle helper; not a separate API operation. |
 | `TimeIndexMetaTable.delete` | implemented | `DELETE /time-index-meta-tables/{table_uid}/` | Generic resource operation with a mounted API route. Check route constraints; method-specific evidence is not claimed. |
 | `TimeIndexMetaTable.delete_after_date` | tested | `POST /time-index-meta-tables/{table_uid}/delete-after-date/` | Client/API behavior covered with isolated catalog and adapters; live storage checks are separate. Tests: `tests/e2e/test_time_index_delete_client_api.py::test_public_delete_after_date_replaces_stats_and_checks_edit_grant` |
+| `TimeIndexMetaTable.get_timescale_policies` | tested | `GET /meta-tables/{table_uid}/timescale-policies/` | Client/API behavior covered with an isolated catalog and a fake TimescaleDB adapter; live Timescale checks run in the container suite. Tests: `tests/e2e/test_timescale_policies_client_api.py::test_writer_sets_policies_through_the_client_and_the_change_is_journaled` |
+| `TimeIndexMetaTable.set_timescale_policies` | tested | `PUT /meta-tables/{table_uid}/timescale-policies/` | Client/API behavior covered with an isolated catalog and a fake TimescaleDB adapter; live Timescale checks run in the container suite. Tests: `tests/e2e/test_timescale_policies_client_api.py::test_writer_sets_policies_through_the_client_and_the_change_is_journaled` |
 | `TimeIndexMetaTable.delete_table` | implemented |  | Deletes through the MetaTables API and shared lifecycle for every supported source. |
 | `TimeIndexMetaTable.delete_with_cascade` | implemented |  | Client helper; requires its documented input and registered-table context. |
 | `TimeIndexMetaTable.delete_with_cascade_by_uid` | tested | `POST /time-index-meta-tables/{table_uid}/delete-with-cascade/` | Client/API behavior covered with isolated catalog and adapters; live storage checks are separate. Tests: `tests/e2e/test_remaining_client_routes.py::test_public_cascade_and_inherited_crud` |
@@ -303,5 +305,6 @@ This inventory records the support status of public resource methods and CLI com
 | `credentials remove-unused` | implemented | visible | Admin-only removal of an unreferenced local credential. |
 | `init` | tested | visible | Enable local development while preserving settings; no database initialization. |
 | `runtime status` | tested | visible | Read bootstrap and effective runtime state before or after initialization. |
-| `runtime initialize` | tested | visible | Explicit API system migrations under current admin admission. |
+| `runtime initialize` | tested | visible | Explicit Local API system migrations under current admin admission; Hosted answers 409 (the deployment migrates). |
+| `runtime upgrade` | tested | visible | Deployment gate: verify, migrate and register the runtime database declared in configuration.yaml and its Environment Secret. |
 | `admin repair` | tested | visible | Explicitly stage pinned source/dependencies; refuse replacement while in use. |

@@ -80,6 +80,10 @@ dropped tables. Revision files already applied remain immutable.
 
 ## MetaTables system migrations
 
+Hosted system upgrades also run as a deployment prerequisite Job
+([ADR 0014](0014-main-sequence-release-jobs-and-production-migrations.md)). Application providers keep their own histories and are not
+part of that Job.
+
 The API continues to own `metatables.api.backend.migrations`, `metatables_catalog_version`
 and the explicit admin bootstrap/upgrade operation in Settings. Application
 migration commands do not invoke that operation. Applications must keep their

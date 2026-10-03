@@ -89,7 +89,7 @@ today's definitions.
 
 ## Runs in Admin
 
-**Runs** lists recorded attempts by default. Use **Attempts → Root invocations**
+**Runs** lists recorded attempts by default. Use **Root invocations only**
 to restrict history to roots. The compact history on the left identifies each
 run by date/time, source updater, outcome indicator, and duration. Selecting a row
 shows that Run's UID, timestamps, outcome and duration on the right. The updater

@@ -1,6 +1,6 @@
 ---
 name: metatables-upgrade-legacy-app
-description: "Upgrade consuming applications from MainSequence 8.x MetaTables or older extracted clients to the installed metatables package. Use for legacy imports, removed SQL scopes, repository compilers and application migration-provider integration. Excludes MetaTables client/API implementation and ordinary schema revision authoring."
+description: "Upgrade consuming applications from MainSequence 8.x MetaTables or older extracted clients to the installed metatables package. Use for legacy imports, removed SQL scopes, repository compilers, application migration-provider integration and provider modules that collide with other installed packages. Excludes MetaTables client/API implementation and ordinary schema revision authoring."
 ---
 
 # Upgrade a legacy MetaTables application
@@ -58,10 +58,32 @@ Read `docs/client/query-and-mutate.md` for current query behavior and
 
 ## Upgrade application migration integration
 
-Keep the existing provider package, namespace, model registry, version-table
-binding and applied revision history. Update bootstrap/import wiring to the
-installed client's public migration interfaces. Do not scaffold a replacement
+Keep the existing provider `package=` value, namespace, model registry,
+version-table binding and applied revision history. Update bootstrap/import wiring
+to the installed client's public migration interfaces. Do not scaffold a replacement
 provider, rewrite applied history or stamp the database to bypass an upgrade issue.
+
+### Move a provider whose module name collides
+
+A provider installed under a generic top-level module, such as `migrations`,
+shares files and imports with every other installed package that chose the same
+name. Move it under a module the application owns, for example `ledger.migrations`
+or `ledger_migrations`:
+
+- Move the provider package with its `env.py`, `script.py.mako` and `versions/`
+  tree.
+- Update `script_location`, `version_location_prefix`, the `env.py` import,
+  imports inside the provider, packaging configuration, and every provider
+  reference in code, scripts and jobs.
+- Keep `package=`, `migration_namespace`, the version-table binding and the
+  revision files unchanged. The catalog binds provider tables to
+  `package:namespace` and rejects a reservation from a different key. Alembic
+  stores only revision IDs, so the module path can change.
+- Do not ship a module under the old name. A forwarding module would keep the
+  file collision.
+
+Then confirm that `migrations current` reports the same revision as before the
+move, and that the built wheel no longer installs the old top-level name.
 
 Providers load in the application process from Python references such as
 `ledger.migrations:migration`. The client executes Alembic with the environment
@@ -74,6 +96,9 @@ Use the [application migrations skill](../metatables-migrations/SKILL.md),
 `docs/client/define-and-migrate-tables.md`, and
 `docs/adr/api/0013-application-owned-migrations.md` for that workflow. Ordinary
 SQL continues through the governed API, independently of the migration connection.
+If the application's deployment workflow does not yet run its providers in a
+migration Job before its API and agents roll out, add one as
+`docs/client/deploy-application-migrations.md` describes.
 
 ## Verify the upgrade
 

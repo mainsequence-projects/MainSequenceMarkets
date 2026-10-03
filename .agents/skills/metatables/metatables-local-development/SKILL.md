@@ -72,6 +72,8 @@ Do not retry against automatic hosted discovery when a local connection fails.
    Substitute the application's own module. Provider code and revisions are
    installed in the application process; the API requires no provider approval
    or installation. System initialization and application histories remain separate.
+   Running the provider yourself is for the local runtime only; hosted runtimes
+   receive the same revisions from the deployment workflow's migration Job.
 5. Build application contracts/queries with the
    [table skill](../metatables-meta-tables/SKILL.md), or producers/readers with the
    [updater skill](../metatables-time-index-table-updates/SKILL.md). Use small,
@@ -134,26 +136,36 @@ integration-test fixture.
 ## Finish verification and switch back
 
 Record what passed, the runtime/DataSource used, and any engine-specific work still
-unverified. Carry forward the reviewed application code and migration revisions;
+unverified. Commit the reviewed application code and its migration revisions together;
 local rows, catalog UIDs, credentials and fixture data are not promoted by a switch.
+The application's deployment workflow applies those revisions to the hosted runtime
+before the code rolls out; see the [migrations skill](../metatables-migrations/SKILL.md)
+and `docs/client/deploy-application-migrations.md`. Add the migration Job if the
+workflow lacks one.
 
 When returning to the environment is part of the requested workflow:
 
 1. Finish local tests and stop active writers. In Admin **Settings → Runtime mode**,
-   inspect the displayed hosted environment and choose the intended registered
-   DataSource. Use **Switch to Hosted**. This changes the API worker and selected
-   database; it does not copy or merge the local database. Leave local capability
-   enabled if the developer needs to switch back later.
+   inspect the displayed hosted environment and use **Switch to Hosted**. Hosted
+   opens the runtime database the API's deployment declares, through the same
+   Environment Secret; there is no DataSource to choose and the launcher never
+   migrates it. This changes the API worker and database; it does not copy or merge
+   the local database. Leave local capability enabled if the developer needs to
+   switch back later.
 2. Re-read runtime status and verify `local_mode: false`, the intended verified
-   hosted environment, the expected DataSource and readiness. The same local
+   hosted environment, the expected DataSource and readiness. `migration_required`
+   means the branch has system migrations the deployed API does not have yet; it
+   clears once that code is deployed. The same local
    connection command still reaches this supervised API; its `--local` flag alone
    does not prove SQLite. If the switch fails and the old worker is restored,
    report the actual mode instead of claiming the switch succeeded.
 3. Restart application/test client processes and resolve catalog bindings again.
    Do not reuse local table UIDs or already-bound updater instances against the
-   environment database. Apply reviewed revisions or perform environment writes
-   only within the user's requested scope; passing local tests is not itself a
-   request to seed fixtures, run backfills or migrate that database.
+   environment database. Do not apply application revisions from this session;
+   the deployment's migration Job does. `migrations current` can confirm the
+   deployed revision. Perform other environment writes only within the user's
+   requested scope; passing local tests is not itself a request to seed fixtures
+   or run backfills.
 
 If the user instead wants to connect to a separately deployed API, follow the
 installation guide's hosted endpoint selection. Restore prior connection settings

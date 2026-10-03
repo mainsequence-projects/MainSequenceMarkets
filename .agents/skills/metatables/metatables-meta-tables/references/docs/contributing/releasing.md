@@ -42,10 +42,13 @@ substitute for the published SDK in a release. The selected SDK artifact must
 provide ordinary `Secret.get_by_uid`, independent Git source context, and
 `CallerAssertionVerifier.from_environment` through its `server` extra.
 
-The next MetaTables stable release is `0.1.5`; its supported SDK range is
-`mainsequence[server]>=9.0.1,<10`. Development builds use `0.1.5.devN`.
-The minimum and lockfile now select published SDK `9.0.1`, which supplies those
-interfaces. Runtime compatibility is verified manually with the published artifact;
+The next MetaTables stable release is `0.1.8`; its supported SDK range is
+`mainsequence[server]>=9.0.4,<10`. Development builds use `0.1.8.devN`.
+The minimum and lockfile now select published SDK `9.0.4`, which supplies those
+interfaces and is the first SDK whose caller-assertion verifier accepts the
+platform's EdDSA (Ed25519) caller assertions. Earlier SDKs verify only RS256, so a
+hosted API built with them cannot authenticate platform callers.
+Runtime compatibility is verified manually with the published artifact;
 package/static CI does not establish runtime compatibility. When changing the SDK
 minimum, update it in `pyproject.toml`, then run:
 

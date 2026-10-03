@@ -6,6 +6,14 @@
 > conflicting application-migration execution and credential restrictions;
 > governed API operations and MetaTables system migrations remain separate.
 
+> Amendment (2026-10-02): MetaTables secures only what it owns: its `metatables`
+> schema, the tables it manages and the roles it creates. Database-wide defaults
+> and `PUBLIC` access to other owners' objects, including extensions and other
+> applications sharing the database, are the database administrator's
+> responsibility. The login needs `CREATEROLE` and permission to create the
+> `metatables` schema and tables in the DataSource's default schema; it need not
+> own the database.
+
 
 Date: 2026-09-29
 
@@ -160,12 +168,14 @@ client.
 - **Ownership.** Tables are owned by `mt_owner`, a role that cannot log in, because
   an owner holds every privilege. The API's own role manages grants and schema
   changes and never runs caller SQL.
-- **Defaults.** PostgreSQL's default `PUBLIC` privileges are revoked: connecting,
-  creating objects and temporary tables, and executing new functions.
+- **Defaults.** On objects MetaTables owns, PostgreSQL's default `PUBLIC`
+  privileges are revoked, including for future tables and routines. Database-wide
+  defaults (connecting, creating objects and temporary tables) and other owners'
+  objects belong to the database administrator.
 - **Privileged routines.** Restricted caller roles must not be able to execute
   application routines with elevated owner privileges, including
   `SECURITY DEFINER` routines. Initialization establishes this restriction for
-  existing routines as well as future defaults, covering direct grants, inherited
+  the routines MetaTables owns, existing and future, covering direct grants, inherited
   roles and `PUBLIC`. Revoking a direct User grant alone is insufficient if
   another grant still permits execution. Schema changes and extension installation
   preserve the restriction before exposing new or changed routines to callers.
@@ -261,7 +271,8 @@ and [MySQL implicit commits](https://dev.mysql.com/doc/refman/8.4/en/implicit-co
 
 - The explorer can run any PostgreSQL query, and the API has no SQL parser left
   to get wrong.
-- The DataSource login needs `CREATEROLE`.
+- The DataSource login needs `CREATEROLE` and the right to create the `metatables`
+  schema; it does not need to own the database.
 - Physical table names become visible to explorer users.
 - Cascading foreign keys are unavailable where the explorer is enabled.
 - Team membership reaches the database at the pace of the existing one-hour

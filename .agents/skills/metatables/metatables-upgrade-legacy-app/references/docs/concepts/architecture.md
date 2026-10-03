@@ -4,13 +4,14 @@ MetaTables makes physical database tables discoverable and usable through a
 catalog with explicit identity, contracts, and permissions. It has two principal
 surfaces: the installed Python client and the MetaTables API.
 
-**Local and hosted use one execution and initialization path. Each API instance
-selects one runtime DataSource containing its system catalog and default table storage.**
+**Local and hosted share one execution and bootstrap path. Each API instance binds
+one runtime DataSource containing its system catalog and default table storage.**
 
 ```mermaid
 flowchart TD
     Client["MetaTables Python client"] --> API["MetaTables API"]
-    Admin["Admin Settings: select runtime mode and DataSource"] --> Bootstrap["Shared bootstrap: inspect → explicit Alembic → register → activate"]
+    Deploy["Hosted: configuration.yaml and Environment Secret, prepared by the migration Job"] --> Bootstrap["Shared bootstrap: inspect → explicit Alembic → register → activate"]
+    Admin["Local: Admin Settings selects the SQLite file"] --> Bootstrap
     Bootstrap --> Binding["One active runtime DataSource"]
     API --> Services["Shared permissions, contracts, readers and writers"]
     Services --> Binding
@@ -19,17 +20,20 @@ flowchart TD
 ```
 
 Before activation, Settings and the bootstrap API work without catalog tables.
-Startup never runs migrations. Both modes require the same explicit initialization
-action, or selection of an existing compatible database. Changing a DataSource replaces
-the complete binding; no independent catalog setting can point elsewhere.
+Startup never runs migrations. A hosted deployment declares its runtime database in
+`configuration.yaml` and an Environment Secret, and its migration Job initializes or
+upgrades that database before each rollout. Local initializes its SQLite file through
+an explicit Settings action, or selects an existing compatible file. Changing the
+runtime database replaces the complete binding; no independent catalog setting can
+point elsewhere.
 
-| Runtime | Selected database | Initialization |
+| Runtime | Runtime database | Initialization |
 | --- | --- | --- |
-| Local | One SQLite file per workspace | Explicit system Alembic action, then source registration. |
-| Hosted | PostgreSQL, TimescaleDB, MySQL or SQL Server | The same action and source registration. |
+| Local | One SQLite file per workspace, selected in Settings | Explicit system Alembic action in Settings, then source registration. |
+| Hosted | PostgreSQL, TimescaleDB, MySQL or SQL Server, declared by the deployment | The deployment's migration Job: the same migrations and source registration, before each rollout. |
 
-Additional registrations are candidates for a future complete runtime selection.
-Table operations require the selected DataSource UID. SQLite is restricted to the
+Additional registrations never replace the runtime binding.
+Table operations require the runtime DataSource UID. SQLite is restricted to the
 local runtime. The client resources, HTTP endpoints and workflow services are
 shared; a registry binds one `DatabaseBackend` with `catalog`, `tables` and `sql`
 interfaces. Engine adapters own connections, SQL syntax and migration mechanics.
@@ -84,8 +88,9 @@ All ordinary reads and writes go through the API. Application migrations run
 Alembic in the application's client process using the selected environment's
 configured database connection and existing DDL privileges. The API authorizes
 catalog participation, reserves tables and finalizes physical contracts. Providers
-declare the dialects their scripts support. System migrations run explicitly in
-Settings. See [ADR 0013](../adr/api/0013-application-owned-migrations.md).
+declare the dialects their scripts support. System migrations run in the hosted
+deployment's migration Job, or explicitly in Local Settings. See
+[ADR 0013](../adr/api/0013-application-owned-migrations.md).
 
 There are two migration histories: **catalog migrations** evolve the service's
 own database; **application-table migrations** evolve a user's tables through a

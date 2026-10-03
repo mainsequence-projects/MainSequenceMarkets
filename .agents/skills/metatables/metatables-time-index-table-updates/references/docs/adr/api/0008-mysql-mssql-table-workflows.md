@@ -253,6 +253,10 @@ this work must not require recreation or transfer them to another DataSource.
 
 ### First-bootstrap and migration recovery
 
+The deployment workflow's `metatables runtime upgrade` ([ADR 0014](0014-main-sequence-release-jobs-and-production-migrations.md))
+runs this same protocol, with its backend locks, progress reconciliation,
+registration and schema verification, before each hosted API rollout.
+
 The shared bootstrap service operates before a DataSource row or the full operation
 journal exists. Startup and Settings inspection remain read-only. Only the explicit
 **Run MetaTables migrations** action may initialize or upgrade the selected database.

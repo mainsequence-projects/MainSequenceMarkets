@@ -104,7 +104,7 @@ The distribution check requires exactly one wheel and one sdist in `dist/` and
 compares packaged Python modules with current source. Also test importing the
 wheel in a fresh environment with the compatible published SDK installed, and verify
 both catalog migrations and application revision templates are packaged.
-The package requires published SDK 9.0.1 or newer within its declared major version.
+The package requires published SDK 9.0.4 or newer within its declared major version.
 
 Run the installed-wheel smoke tests manually from outside the checkout, using a
 fresh virtual environment with the compatible SDK and built MetaTables wheel:

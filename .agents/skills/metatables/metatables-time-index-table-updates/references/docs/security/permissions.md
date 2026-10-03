@@ -15,7 +15,7 @@ Organization admin status comes from the platform through the SDK.
 | Create or register a table in an available DataSource | Yes | Yes |
 | Configure, validate, disable, or remove DataSources | No | Yes |
 | Select runtime mode or the runtime DataSource where supported | No | Yes |
-| Initialize or upgrade MetaTables system tables | No | Yes |
+| Initialize or upgrade MetaTables system tables in Local Settings (Hosted: the deployment's migration Job) | No | Yes |
 | Destroy a local runtime database through Settings | No | Yes |
 | Change application-wide Settings and security policies | No | Yes |
 | Manage grants across the application and recover orphaned tables | No | Yes |

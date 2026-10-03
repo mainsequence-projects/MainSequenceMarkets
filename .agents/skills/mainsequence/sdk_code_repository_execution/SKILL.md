@@ -54,12 +54,15 @@ Do not let this skill become a domain manual.
 - CodeRepository audits, blocker analysis, and upstream SDK assessment:
   `.agents/skills/mainsequence/maintenance/bug_auditor/SKILL.md`
 - local environment repair, CodeRepository authentication refresh, SDK updates,
-  managed skill refresh, and canonical CodeRepository sync:
+  managed skill refresh, dependency sync, and publishing with Git:
   `.agents/skills/mainsequence/maintenance/code_repository_maintenance/SKILL.md`
 - jobs, schedules, artifacts, images, resources, and releases:
   `.agents/skills/mainsequence/platform_operations/orchestration_and_releases/SKILL.md`
 - RBAC and sharing:
   `.agents/skills/mainsequence/platform_operations/access_control_and_sharing/SKILL.md`
+- direct recorded inference, structured extraction, thinking/provider controls,
+  conversation history and safe replay:
+  `.agents/skills/mainsequence/mainsequence-inference/SKILL.md`
 - TAU-based Harness Agent repository integration, local development, project
   customization, and runtime A2A adaptation: use the version-matched skills in
   `.agents/skills/ms_tau_sdk/` after the platform-owned skill defines the
