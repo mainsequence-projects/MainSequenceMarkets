@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.3] - 2026-10-03
+
 ### Added
 
 - The portfolio, portfolio-group and asset-category bulk-delete preflights
