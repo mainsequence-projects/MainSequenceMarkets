@@ -28,7 +28,8 @@ def test_package_metadata_enforces_sdk_9_floor_without_exact_patch_pin() -> None
     assert Version("8.99.0") not in requirement.specifier
     assert Version("9.0.0") not in requirement.specifier
     assert Version("9.0.1") not in requirement.specifier
-    assert Version("9.0.2") in requirement.specifier
+    assert Version("9.0.4") not in requirement.specifier
+    assert Version("9.0.5") in requirement.specifier
     assert Version("9.99.0") in requirement.specifier
     assert Version("10.0.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)
@@ -37,8 +38,8 @@ def test_package_metadata_enforces_sdk_9_floor_without_exact_patch_pin() -> None
 def test_package_metadata_requires_extracted_metatables_client() -> None:
     requirement = _requirement("mainsequence-metatable")
 
-    assert Version("0.1.5") not in requirement.specifier
-    assert Version("0.1.6") in requirement.specifier
+    assert Version("0.1.8") not in requirement.specifier
+    assert Version("0.1.9") in requirement.specifier
     assert Version("0.1.99") in requirement.specifier
     assert Version("0.2.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

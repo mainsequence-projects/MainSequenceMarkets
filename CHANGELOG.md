@@ -7,6 +7,12 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Requires `mainsequence>=9.0.5,<10` and `mainsequence-metatable>=0.1.9,<0.2`;
+  the lock and exported `requirements.txt` select `mainsequence` 9.0.5 and
+  `mainsequence-metatable` 0.1.9.
+
 ## [2.0.2] - 2026-10-02
 
 ### Changed

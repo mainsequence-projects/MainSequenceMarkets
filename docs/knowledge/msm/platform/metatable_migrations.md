@@ -98,8 +98,8 @@ history is the Alembic revision graph plus the provider's version table.
 
 ## Client Requirement
 
-The implementation requires `mainsequence-metatable>=0.1.5,<0.2` with
-`mainsequence>=9.0.1,<10`. The client exposes `AlembicMetaTableMigration`,
+The implementation requires `mainsequence-metatable>=0.1.9,<0.2` with
+`mainsequence>=9.0.5,<10`. The client exposes `AlembicMetaTableMigration`,
 `AlembicVersionMetaTable`, application-owned Alembic execution, and the command
 shape where `metatables migrations upgrade --provider msm_migrations:migration head`
 applies without `--apply`, `--to`, or `--register-metatables`. Namespace-scoped
