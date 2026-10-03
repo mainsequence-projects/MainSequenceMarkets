@@ -132,7 +132,7 @@ Sequence discovers deployable FastAPI resources from `api/**/main.py` paths.
 It contains no route, schema, service, or runtime logic.
 
 The release is managed by
-`.mainsequence/workflows/fastapi.yaml`. The declaration uses workflow API
+`.mainsequence/workflows/ms-markets-api.yaml`. The declaration uses workflow API
 `2.1.0`, retains three release revisions for rollback, and its
 automatic-redeployment policy follows every synchronized
 `main` commit (`tag_regex: null`). The backend resolves the verified image for

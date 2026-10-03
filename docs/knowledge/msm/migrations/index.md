@@ -53,7 +53,7 @@ deployment workflow, described next.
 
 Hosted runtimes are migrated only by a Job in the deployment workflow, which
 runs from the candidate image before anything that uses the tables rolls out.
-This repository's `.mainsequence/workflows/fastapi.yaml` builds the image, runs
+This repository's `.mainsequence/workflows/ms-markets-api.yaml` builds the image, runs
 `jobs/migrate_markets.py`, and deploys the Markets API with
 `needs: [migrate]`. The Job calls
 `metatables.upgrade_application("msm_migrations:migration")`; a database already

@@ -14,7 +14,7 @@ def test_deployment_entrypoint_exposes_apps_v1_application() -> None:
 
 
 def test_main_fastapi_workflow_uses_current_automatic_deployment_contract() -> None:
-    workflow_path = PROJECT_ROOT / ".mainsequence" / "workflows" / "fastapi.yaml"
+    workflow_path = PROJECT_ROOT / ".mainsequence" / "workflows" / "ms-markets-api.yaml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
 
     assert workflow["api_version"] == "2.3.0"
@@ -41,7 +41,7 @@ def test_main_fastapi_workflow_uses_current_automatic_deployment_contract() -> N
 
 
 def test_main_fastapi_workflow_migrates_before_the_api_deploys() -> None:
-    workflow_path = PROJECT_ROOT / ".mainsequence" / "workflows" / "fastapi.yaml"
+    workflow_path = PROJECT_ROOT / ".mainsequence" / "workflows" / "ms-markets-api.yaml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
 
     job = next(resource for resource in workflow["resources"] if resource["key"] == "migrate-markets")

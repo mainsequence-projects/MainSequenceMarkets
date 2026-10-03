@@ -7,6 +7,12 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Renamed the deployment workflow file from `.mainsequence/workflows/fastapi.yaml`
+  to `.mainsequence/workflows/ms-markets-api.yaml`. Its `name`, resources and
+  execution graph are unchanged.
+
 ### Fixed
 
 - `api_http_error` maps the SDK `ConflictError` to a non-retryable `409`
