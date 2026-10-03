@@ -7,6 +7,18 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Added
+
+- The portfolio, portfolio-group and asset-category bulk-delete preflights
+  report what the delete reaches through foreign keys. They return the
+  MetaTables `delete_rows` impact as `impact`, describe each cascade,
+  `SET NULL` or `SET DEFAULT` action in `warnings`, and add MetaTables'
+  blockers (for example a cascade into a table the caller cannot write), which
+  also stop the bulk delete with `409`. If MetaTables cannot compute the
+  impact, a warning says so and the delete is not blocked.
+  `BulkDeletePreflightResponse` and the `TableImpact` models are exported from
+  `msm.api.http`, and `delete_rows_impact` from `msm.services`.
+
 ## [2.2.2] - 2026-10-03
 
 ### Changed

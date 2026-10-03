@@ -13,6 +13,7 @@ from .bulk_actions import (
     BulkActionPreflightResponse,
     BulkActionResourceId,
     BulkActionSelection,
+    BulkDeletePreflightResponse,
     blocked_preflight_detail,
     build_bulk_delete_action,
     explicit_uuid_selection,
@@ -78,6 +79,12 @@ from .tabular import (
     build_tabular_field,
     build_tabular_frame,
 )
+from .table_impact import (
+    TableImpact,
+    TableImpactBlocker,
+    TableImpactEdge,
+    TableImpactNode,
+)
 
 __all__ = [
     "BULK_ACTION_EXECUTION_CONTRACT",
@@ -98,6 +105,7 @@ __all__ = [
     "BulkActionPreflightResponse",
     "BulkActionResourceId",
     "BulkActionSelection",
+    "BulkDeletePreflightResponse",
     "ErrorCode",
     "ErrorResponse",
     "InMemoryOperationStore",
@@ -123,6 +131,10 @@ __all__ = [
     "ResourceSearchControl",
     "ResourceSelectFilter",
     "ResourceTextFilter",
+    "TableImpact",
+    "TableImpactBlocker",
+    "TableImpactEdge",
+    "TableImpactNode",
     "TabularFrameFieldResponse",
     "TabularFrameMetaResponse",
     "TabularFrameResponse",

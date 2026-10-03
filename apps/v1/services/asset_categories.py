@@ -8,7 +8,7 @@ from apps.v1.schemas.asset_categories import (
     AssetCategoryDetailResponse,
     BulkDeleteAssetCategoriesResponse,
 )
-from msm.api.http import BulkActionPreflightResponse
+from msm.api.http import BulkDeletePreflightResponse
 
 
 def list_asset_categories(
@@ -65,7 +65,7 @@ def bulk_delete_asset_categories(
     return BulkDeleteAssetCategoriesResponse.model_validate(result)
 
 
-def preflight_bulk_delete_asset_categories(*, uids: list[str]) -> BulkActionPreflightResponse:
+def preflight_bulk_delete_asset_categories(*, uids: list[str]) -> BulkDeletePreflightResponse:
     runtime = _get_runtime()
     target_uids = list(dict.fromkeys(uids))
     missing_uids = [
@@ -75,18 +75,21 @@ def preflight_bulk_delete_asset_categories(*, uids: list[str]) -> BulkActionPref
     ]
     matched_count = len(target_uids) - len(missing_uids)
     blockers = [f"Asset category {uid} was not found." for uid in missing_uids]
+    impact = _asset_category_delete_impact()
+    blockers.extend(impact.blockers)
     allowed = bool(target_uids) and not blockers
     detail = (
         f"{matched_count} asset categor{'y is' if matched_count == 1 else 'ies are'} ready for deletion."
         if allowed
         else "The asset-category selection cannot be deleted as submitted."
     )
-    return BulkActionPreflightResponse(
+    return BulkDeletePreflightResponse(
         allowed=allowed,
         detail=detail,
         matched_count=matched_count,
         blockers=blockers,
-        warnings=[],
+        warnings=impact.warnings,
+        impact=impact.impact,
     )
 
 
@@ -101,6 +104,13 @@ def _get_runtime():
         ],
         row_model_name="AssetCategory apps/v1",
     )
+
+
+def _asset_category_delete_impact():
+    from msm.models import AssetCategoryTable
+    from msm.services import delete_rows_impact
+
+    return delete_rows_impact(AssetCategoryTable)
 
 
 def _list_asset_category_rows_page(context, **kwargs):

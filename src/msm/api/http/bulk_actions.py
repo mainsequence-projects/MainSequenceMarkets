@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import Field, StrictFloat, StrictInt, field_validator, model_validator
 
 from ._base import HttpContractModel
+from .table_impact import TableImpact
 
 BULK_ACTION_EXECUTION_CONTRACT = "command-center.bulk_action_execution@v1"
 BULK_ACTION_PREFLIGHT_CONTRACT = "command-center.bulk_action_preflight@v1"
@@ -134,6 +135,20 @@ class BulkActionPreflightResponse(HttpContractModel):
     warnings: list[str] | None = None
 
 
+class BulkDeletePreflightResponse(BulkActionPreflightResponse):
+    """Bulk-delete preflight that also reports what deleting the selection reaches."""
+
+    impact: TableImpact | None = Field(
+        default=None,
+        description=(
+            "MetaTables delete_rows impact for the table the selected rows are deleted "
+            "from: the tables its foreign-key actions reach, the effect on each and the "
+            "caller's effective write. Each cascade is also summarized in warnings. "
+            "Null when nothing matched or MetaTables could not compute it."
+        ),
+    )
+
+
 def build_bulk_delete_action(
     *,
     action_id: str,
@@ -203,6 +218,7 @@ __all__ = [
     "BulkActionPreflightResponse",
     "BulkActionResourceId",
     "BulkActionSelection",
+    "BulkDeletePreflightResponse",
     "blocked_preflight_detail",
     "build_bulk_delete_action",
     "explicit_uuid_selection",

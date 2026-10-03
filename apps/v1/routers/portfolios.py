@@ -36,7 +36,7 @@ from msm.api.http import (
     CORE_TABULAR_FRAME_CONTRACT,
     RESOURCE_COLLECTION_CONTRACT,
     BulkActionExecutionRequest,
-    BulkActionPreflightResponse,
+    BulkDeletePreflightResponse,
     ErrorResponse,
     ResourceCollection,
     TabularFrameResponse,
@@ -140,7 +140,7 @@ def bulk_delete_portfolio_rows(
         uids = explicit_uuid_selection(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    preflight = BulkActionPreflightResponse.model_validate(
+    preflight = BulkDeletePreflightResponse.model_validate(
         preflight_bulk_delete_portfolios(uids=uids)
     )
     if not preflight.allowed:
@@ -163,11 +163,12 @@ def bulk_delete_portfolio_rows(
 
 @router.post(
     "/bulk-delete/preflight/",
-    response_model=BulkActionPreflightResponse,
+    response_model=BulkDeletePreflightResponse,
     summary="Preflight portfolio bulk deletion",
     description=(
-        "Reauthorize an explicit portfolio selection and report missing rows or protected "
-        "references without deleting data."
+        "Reauthorize an explicit portfolio selection and report missing rows, protected "
+        "references and the tables the delete reaches through foreign-key cascades, "
+        "without deleting data."
     ),
     operation_id="preflightBulkDeletePortfolios",
     openapi_extra={"x-ui-contract": BULK_ACTION_PREFLIGHT_CONTRACT},
@@ -178,12 +179,12 @@ def preflight_portfolio_bulk_delete(
         BulkActionExecutionRequest,
         Body(description="Command Center bulk-action execution request to preflight."),
     ],
-) -> BulkActionPreflightResponse:
+) -> BulkDeletePreflightResponse:
     try:
         uids = explicit_uuid_selection(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return BulkActionPreflightResponse.model_validate(preflight_bulk_delete_portfolios(uids=uids))
+    return BulkDeletePreflightResponse.model_validate(preflight_bulk_delete_portfolios(uids=uids))
 
 
 @router.post(

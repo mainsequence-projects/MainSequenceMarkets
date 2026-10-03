@@ -15,7 +15,7 @@ from apps.v1.schemas.portfolios import (
     PortfolioWeightsDeleteResponse,
     PortfolioWeightsSnapshotResponse,
 )
-from msm.api.http import BulkActionPreflightResponse, TabularFrameResponse
+from msm.api.http import BulkDeletePreflightResponse, TabularFrameResponse
 
 
 class PortfolioDataIntegrityError(ValueError):
@@ -161,7 +161,7 @@ def bulk_delete_portfolios(*, uids: list[str]) -> PortfolioBulkDeleteResponse:
     return PortfolioBulkDeleteResponse.model_validate(response)
 
 
-def preflight_bulk_delete_portfolios(*, uids: list[str]) -> BulkActionPreflightResponse:
+def preflight_bulk_delete_portfolios(*, uids: list[str]) -> BulkDeletePreflightResponse:
     runtime = _get_runtime()
     target_uids = list(dict.fromkeys(uids))
     matched_count = 0
@@ -173,6 +173,8 @@ def preflight_bulk_delete_portfolios(*, uids: list[str]) -> BulkActionPreflightR
             continue
         matched_count += 1
         blockers.extend(f"Portfolio {uid}: {blocker}" for blocker in resource_blockers)
+    impact = _portfolio_delete_impact()
+    blockers.extend(impact.blockers)
 
     allowed = bool(target_uids) and not blockers
     detail = (
@@ -180,12 +182,13 @@ def preflight_bulk_delete_portfolios(*, uids: list[str]) -> BulkActionPreflightR
         if allowed
         else "The portfolio selection cannot be deleted as submitted."
     )
-    return BulkActionPreflightResponse(
+    return BulkDeletePreflightResponse(
         allowed=allowed,
         detail=detail,
         matched_count=matched_count,
         blockers=blockers,
-        warnings=[],
+        warnings=impact.warnings,
+        impact=impact.impact,
     )
 
 
@@ -276,6 +279,13 @@ def _bulk_delete_portfolio_records(context, **kwargs):
     from msm_portfolios.services import bulk_delete_portfolio_records
 
     return bulk_delete_portfolio_records(context, **kwargs)
+
+
+def _portfolio_delete_impact():
+    from msm.models import PortfolioTable
+    from msm.services import delete_rows_impact
+
+    return delete_rows_impact(PortfolioTable)
 
 
 def _portfolio_delete_preflight_item(context, *, uid: str) -> tuple[bool, list[str]]:
