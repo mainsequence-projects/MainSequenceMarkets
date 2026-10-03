@@ -12,6 +12,16 @@ and this project follows versioned releases.
 - Requires `mainsequence>=9.0.5,<10` and `mainsequence-metatable>=0.1.9,<0.2`;
   the lock and exported `requirements.txt` select `mainsequence` 9.0.5 and
   `mainsequence-metatable` 0.1.9.
+- The Markets API deployment workflow (`.mainsequence/workflows/fastapi.yaml`)
+  moves to workflow API 2.3.0 and runs a migration Job,
+  `jobs/migrate_markets.py`, from the candidate image before the API deploys. The
+  Job applies `msm_migrations:migration` with
+  `metatables.upgrade_application(...)`; a failed migration blocks the rollout.
+- Migration docs and the shipped `metatable_migrations` skill scope manual
+  `metatables migrations upgrade` to the local runtime (`--local`). Hosted
+  environments are migrated only by the deployment workflow's Job, and
+  applications that deploy code reading ms-markets tables apply
+  `msm_migrations:migration` in their own migration Job first.
 
 ## [2.0.2] - 2026-10-02
 

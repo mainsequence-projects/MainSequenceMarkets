@@ -76,8 +76,10 @@ Runtime startup must not call:
 - schema reconciliation for application tables.
 
 Missing backend `MetaTable` or `TimeIndexMetaTable` resources are deployment
-errors. Fix them by running the MetaTables migration upgrade flow or by
-performing an explicit platform repair.
+errors. In a hosted environment, the deployment workflow's migration Job
+(`jobs/migrate_markets.py`) applies the provider before the API rolls out; fix
+a failed Job and deploy again, or perform an explicit platform repair. Locally,
+run `metatables --local migrations upgrade`.
 
 ## Adding A Table Or Schema Change
 
@@ -90,8 +92,10 @@ performing an explicit platform repair.
 5. Review the generated revision. Reject revisions that only drop and recreate
    unchanged foreign keys because one side is `schema=None` and the other is
    `schema="public"`.
-6. Upgrade through the `metatables migrations upgrade` CLI.
+6. Upgrade the local runtime through `metatables --local migrations upgrade`.
 7. Start application code through `msm.start_engine(...)` after the upgrade.
+8. Commit the revision. Hosted environments receive it from the deployment
+   workflow's migration Job, never from a developer session.
 
 There is no hand-authored YAML, JSON, or operation manifest. Migration
 history is the Alembic revision graph plus the provider's version table.

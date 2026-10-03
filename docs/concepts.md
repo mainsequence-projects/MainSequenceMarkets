@@ -67,9 +67,13 @@ Schema mutation belongs to the `metatables migrations` command, not to row opera
 startup:
 
 ```bash
-metatables --json migrations current --provider msm_migrations:migration
-metatables migrations upgrade --provider msm_migrations:migration head
+metatables --local --json migrations current --provider msm_migrations:migration
+metatables --local migrations upgrade --provider msm_migrations:migration head
 ```
+
+These commands target the local runtime. Hosted environments are migrated by
+the deployment workflow's migration Job before the API rolls out; see
+[Hosted Deployments](knowledge/msm/migrations/index.md#hosted-deployments).
 
 Only after migrations are current does `start_engine(...)` resolve and bind the
 finalized backend tables. Do not call model `.register()` methods or local

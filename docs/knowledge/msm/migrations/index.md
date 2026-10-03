@@ -40,6 +40,42 @@ commands are not available in Main Sequence SDK 9.
 There is no `msm migrations ...` command group. The `msm` package integration is
 the provider object.
 
+Run `upgrade` and `downgrade` yourself only against a local runtime
+(`metatables --local migrations ...`). Hosted environments are migrated by the
+deployment workflow, described next.
+
+## Hosted Deployments
+
+Hosted runtimes are migrated only by a Job in the deployment workflow, which
+runs from the candidate image before anything that uses the tables rolls out.
+This repository's `.mainsequence/workflows/fastapi.yaml` builds the image, runs
+`jobs/migrate_markets.py`, and deploys the Markets API with
+`needs: [migrate]`. The Job calls
+`metatables.upgrade_application("msm_migrations:migration")`; a database already
+at head is left unchanged, and a failure blocks the API rollout while the
+previous release keeps serving.
+
+An application that installs ms-markets and deploys code reading ms-markets
+tables applies `msm_migrations:migration` in its own migration Job, before its
+own providers:
+
+```python
+from metatables import upgrade_application
+
+for provider in ("msm_migrations:migration", "my_app.migrations:migration"):
+    result = upgrade_application(provider)
+```
+
+Every deployed resource that reads or writes the tables gets a deploy step with
+`needs: [migrate]`. Do not run migrations at application startup, and do not run
+`metatables migrations upgrade` or `downgrade` against a hosted API from a
+developer or agent session.
+
+Each revision must stay usable by the release that is still deployed, because
+it keeps serving during the rollout and after a failed one: add tables and
+nullable or defaulted columns first, and drop or rename in a later release.
+Redeploying an older image does not roll back the schema.
+
 `revision` creates normal Alembic revision files at the provider's
 namespace version location. Revision files and namespace-specific revision
 directories are generated authoring output; documentation must not treat them
@@ -90,11 +126,13 @@ schema back to an earlier revision.
    generate a normal Alembic revision.
 4. Review the generated Alembic operations. A no-op model state must not produce
    FK drop/create churn, index churn, or `public` versus default-schema churn.
-5. Run the MetaTables apply and finalization command:
+5. Apply and finalize the revision against the local runtime:
    ```bash
-   metatables migrations upgrade --provider msm_migrations:migration head
+   metatables --local migrations upgrade --provider msm_migrations:migration head
    ```
 6. Start runtime code with `msm.start_engine(...)`.
+7. Commit the revision with the code that needs it. The deployment workflow's
+   migration Job applies it to hosted environments before the API rolls out.
 
 `msm.start_engine(...)` is direct and read-only. It resolves selected backend
 tables by `model.__table__.name` and fails if required platform `MetaTable` or

@@ -59,7 +59,17 @@ Before changing project extension migration wiring, inspect:
 5. the project code that defines project table specs, if present
 
 Run provider commands with the project's Python provider reference, for example
-`metatables migrations upgrade --provider my_project.migrations:migration head`.
+`metatables --local migrations upgrade --provider my_project.migrations:migration head`.
+Run `upgrade` and `downgrade` from a developer or agent session only against a
+local runtime.
+
+Hosted runtimes are migrated only by the deployment workflow's migration Job,
+as `.agents/skills/metatables/metatables-migrations/SKILL.md` describes. A
+project that deploys code reading ms-markets tables applies
+`msm_migrations:migration` in that Job before its own providers, with
+`metatables.upgrade_application(...)`, and gives every deployed resource that
+uses the tables a deploy step with `needs: [migrate]`. Do not migrate at
+application startup.
 The MetaTables API needs no provider code, allowlist, or
 `application_migration_providers` alias. Keep the provider package, namespace,
 model registry, version-table binding, revision IDs, and applied revision

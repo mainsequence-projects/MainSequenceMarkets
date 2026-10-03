@@ -72,11 +72,16 @@ Implementation decisions should be recorded under `docs/ADR`.
 
 ## First Market Setup
 
-Start with the typed row API for simple workflows:
+Start with the typed row API for simple workflows. Apply the migrations to
+your local runtime first:
 
 ```bash
-metatables migrations upgrade --provider msm_migrations:migration head
+metatables --local migrations upgrade --provider msm_migrations:migration head
 ```
+
+Hosted environments are migrated by the deployment workflow's migration Job,
+not from a developer session; see
+[Hosted Deployments](knowledge/msm/migrations/index.md#hosted-deployments).
 
 ```python
 import msm

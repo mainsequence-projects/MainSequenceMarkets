@@ -1,17 +1,43 @@
-api_version: 2.1.0
+api_version: "2.3.0"
 name: mainsequence-markets-fastapi
 resources:
   - key: markets-api
-    kind: resource_release
+    kind: fastapi
     spec:
-      release_kind: fastapi
-      resource_uid: c4dc69be-5ae6-4fbf-a00d-2703cf5b8036
+      source_path: api/main.py
       cpu_request: "0.25"
       memory_request: "0.5"
       spot: false
+      automatic_deployment: true
       cors_allowed_origins:
         - "https://*.site-dev.main-sequence.app"
       automatic_redeployment:
         enabled: true
         tag_regex: null
       revision_retention_count: 3
+
+  - key: migrate-markets
+    kind: job
+    spec:
+      name: ms-markets migrations
+      execution_path: jobs/migrate_markets.py
+      cpu_request: "1"
+      memory_request: "1"
+      max_runtime_seconds: 1800
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+execution:
+  steps:
+    image:
+      prepare_image: markets-api
+    migrate:
+      run_job: migrate-markets
+      image_from: image
+      needs: [image]
+    deploy_api:
+      deploy: markets-api
+      image_from: image
+      needs: [migrate]
