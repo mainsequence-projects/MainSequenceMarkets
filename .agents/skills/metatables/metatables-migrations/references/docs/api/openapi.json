@@ -6001,6 +6001,96 @@
         ]
       }
     },
+    "/meta-tables/{table_uid}/impact/": {
+      "get": {
+        "description": "Read-only pre-flight; the confirmed delete runs the same planner (ADR 0016).",
+        "operationId": "get_impact_meta_tables__table_uid__impact__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "table_uid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Table Uid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "enum": [
+                "delete_rows",
+                "update_keys",
+                "drop_table"
+              ],
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "delete_referencing_meta_tables",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Delete Referencing Meta Tables",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "delete_referencing_time_index_meta_tables",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Delete Referencing Time Index Meta Tables",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "override_schema_management_protection",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Override Schema Management Protection",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Impact Meta Tables  Table Uid  Impact  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Impact",
+        "tags": [
+          "MetaTables"
+        ]
+      }
+    },
     "/meta-tables/{table_uid}/introspect/": {
       "post": {
         "operationId": "introspect_meta_table_meta_tables__table_uid__introspect__post",
@@ -8973,6 +9063,96 @@
           }
         },
         "summary": "Get Time Index Stats",
+        "tags": [
+          "TimeIndexMetaTables"
+        ]
+      }
+    },
+    "/time-index-meta-tables/{table_uid}/impact/": {
+      "get": {
+        "description": "Read-only pre-flight; the confirmed delete runs the same planner (ADR 0016).",
+        "operationId": "time_index_get_impact_time_index_meta_tables__table_uid__impact__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "table_uid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Table Uid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "enum": [
+                "delete_rows",
+                "update_keys",
+                "drop_table"
+              ],
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "delete_referencing_meta_tables",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Delete Referencing Meta Tables",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "delete_referencing_time_index_meta_tables",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Delete Referencing Time Index Meta Tables",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "override_schema_management_protection",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Override Schema Management Protection",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Time Index Get Impact Time Index Meta Tables  Table Uid  Impact  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Time Index Get Impact",
         "tags": [
           "TimeIndexMetaTables"
         ]

@@ -525,6 +525,14 @@ class PortfolioAnalyticsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
+_PORTFOLIO_EVENT_LEDGER_DIMENSIONS = [
+    PORTFOLIO_IDENTIFIER_DIMENSION,
+    "event_identifier",
+    "event_revision",
+    "record_identifier",
+]
+
+
 class PortfolioEventLedgerStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Authoritative typed records for position-aware portfolio accounting."""
 
@@ -536,11 +544,26 @@ class PortfolioEventLedgerStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
-        PORTFOLIO_IDENTIFIER_DIMENSION,
-        "event_identifier",
-        "event_revision",
-        "record_identifier",
+        *_PORTFOLIO_EVENT_LEDGER_DIMENSIONS,
     ]
+    # The default layout names the lookup index by joining the identity
+    # dimensions (70 characters here), which exceeds PostgreSQL's 63-character
+    # identifier limit. MetaTables never shortens derived names, so the table
+    # declares its own. Keep this name stable: it is the physical index name.
+    __storage_layout__: ClassVar[dict] = {
+        "version": 1,
+        "time_index": {"name": "time_index"},
+        "identity_dimensions": _PORTFOLIO_EVENT_LEDGER_DIMENSIONS,
+        "index_progress": {"grain": _PORTFOLIO_EVENT_LEDGER_DIMENSIONS},
+        "uniqueness": {"columns": ["time_index", *_PORTFOLIO_EVENT_LEDGER_DIMENSIONS]},
+        "tail_delete": {"scope_dimensions": _PORTFOLIO_EVENT_LEDGER_DIMENSIONS},
+        "secondary_indexes": [
+            {
+                "name": "portfolio_event_ledger_identity",
+                "columns": _PORTFOLIO_EVENT_LEDGER_DIMENSIONS,
+            }
+        ],
+    }
     __table_args__ = (
         UniqueConstraint(
             "portfolio_identifier",

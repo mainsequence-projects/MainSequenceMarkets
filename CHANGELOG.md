@@ -7,6 +7,31 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-10-03
+
+### Changed
+
+- Requires `mainsequence-metatable>=0.1.17,<0.2`; the lock and exported
+  `requirements.txt` select `mainsequence-metatable` 0.1.17. Earlier releases
+  refuse to finalize tables with cascading foreign keys
+  (`cascading_foreign_key_unsupported`), so the ms-markets provider could not
+  finish `migrations upgrade`. MetaTables 0.1.17 allows them: writing a table
+  requires write access on every table its cascades modify. The ms-markets
+  cascades are unchanged.
+- Refreshed the MetaTables agent skills to 0.1.17. They document explicit
+  `__storage_layout__` names, cascading foreign keys and the `get_impact`
+  pre-flight.
+
+### Fixed
+
+- `PortfolioEventLedgerTS` declares an explicit `__storage_layout__` whose
+  lookup index is named `portfolio_event_ledger_identity`. The default layout
+  derived a 70-character name from its four identity dimensions, which
+  MetaTables rejects (it never shortens derived names), so the ms-markets
+  migration provider could not be applied in any new environment
+  ([#19](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/19)).
+  A test runs the MetaTables layout check on every provider time-index model.
+
 ## [2.2.1] - 2026-10-03
 
 ### Changed

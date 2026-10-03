@@ -80,6 +80,25 @@ the time name for updater compatibility. The mixin automatically creates the
 unique index for the full grain; add only additional lookup indexes. Declare
 `__cadence__` when the stable observation interval is known.
 
+The default storage layout names its lookup index by joining the identity
+columns (`__index_names__[1:]`) with `_`. MetaTables never shortens that name: if
+it exceeds 63 characters, registration raises and names the model. Declare an
+explicit `__storage_layout__` with a short `secondary_indexes[0].name` (at most
+59 characters, leaving room for the `_idx` suffix); the other fields must restate
+the grain:
+
+```python
+__storage_layout__ = {
+    "version": 1,
+    "time_index": {"name": "time_index"},
+    "identity_dimensions": DIMENSIONS,  # __index_names__[1:]
+    "index_progress": {"grain": DIMENSIONS},
+    "uniqueness": {"columns": ["time_index", *DIMENSIONS]},
+    "tail_delete": {"scope_dimensions": DIMENSIONS},
+    "secondary_indexes": [{"name": "portfolio_event_lookup", "columns": DIMENSIONS}],
+}
+```
+
 Physical names remain stable across schema changes. Evolve through new Alembic
 revisions; do not recompute identity from columns or rewrite applied history.
 
@@ -118,6 +137,14 @@ inclusive time cutoff and explicit dimension/coordinate scope when appropriate.
 A null cutoff requires a scope. Do not replace that workflow with ad hoc SQL.
 Deletion/cascade requires edit access, relevant protection checks, and explicit
 cascade intent; it is not an administrator-role bypass or migration repair.
+
+Before a destructive action, or to show impact in an application UI, call
+`table.get_impact(action=...)` with `delete_rows`, `update_keys` or `drop_table`.
+The API returns whether the caller may run it, every blocker, and a graph of
+affected tables, foreign-key effects and reading updates; render that result
+rather than re-deriving foreign-key or permission rules in the client. Cascading
+foreign keys are allowed, but write on a table requires write on every table its
+cascades modify; a cascade into an unregistered table makes the parent read-only.
 
 On a TimescaleDB DataSource, time-index tables are hypertables. Their compression
 and retention policies are set only through `TimeIndexMetaTable.set_timescale_policies`
