@@ -54,6 +54,13 @@ assertions, migration passwords, or TLS keys. SDK logging/tracing integration is
 optional behavior; catalog membership and storage authorization are not derived
 from logging context.
 
+The `metatables.bootstrap` logger records unexpected runtime database failures
+(inspection, migration, registration and the Local selection file) with their
+traceback, redacting passwords, tokens and connection-string credentials as run
+logs do. The matching API error names only the exception type and, when the database
+server answered, its SQLSTATE and message. See the
+[deployment gate](hosted-runtime.md#deployment-gate).
+
 Distinguish HTTP availability, catalog readiness, caller admission, source grants,
 physical capabilities, and actual database connectivity when diagnosing failures.
 The [testing guide](../contributing/testing.md) distinguishes isolated tests from
