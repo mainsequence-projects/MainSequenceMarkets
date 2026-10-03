@@ -5,8 +5,8 @@ from typing import Any
 
 from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
 from apps.v1.schemas.common import FrontEndDetailSummary
-from command_center.contracts import TabularFrameResponse
-from command_center.widgets.asset_monitor import (
+from msm_command_center.contracts import TabularFrameResponse
+from msm_command_center.widgets.asset_monitor import (
     ASSET_MONITOR_OPERATION_ID,
     build_asset_monitor_frame,
 )

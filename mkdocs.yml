@@ -125,6 +125,7 @@ nav:
       - Position Cash Flows In Portfolio Accounting: ADR/0042-position-cash-flow-portfolio-accounting.md
       - SDK 9 And MetaTables Client Hard Cut: ADR/0043-sdk-9-metatables-client-hard-cut.md
       - Namespaced Migration Provider Package: ADR/0044-namespaced-migration-provider-package.md
+      - Squashed Initial Schema And Namespaced Packages: ADR/0045-squashed-initial-schema-and-namespaced-packages.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - FastAPI v1:
           - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md

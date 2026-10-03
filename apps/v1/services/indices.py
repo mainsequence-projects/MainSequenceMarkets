@@ -15,7 +15,7 @@ from apps.v1.schemas.indices import (
     IndexUpdate,
     RelatedMetaTable,
 )
-from command_center.contracts import (
+from msm_command_center.contracts import (
     TabularFrameResponse,
     build_tabular_field,
     build_tabular_frame,

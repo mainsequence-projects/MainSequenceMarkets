@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from command_center.widgets.asset_monitor import (
+from msm_command_center.widgets.asset_monitor import (
     ASSET_MONITOR_OPERATION_ID,
     ASSET_MONITOR_WIDGET_ID,
 )

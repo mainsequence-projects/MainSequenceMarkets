@@ -17,7 +17,7 @@ from apps.v1.schemas.command_center_adapter import (
     CommandCenterOperationParameters,
     CommandCenterOperationRequestBody,
 )
-from command_center.contracts import CORE_TABULAR_FRAME_CONTRACT
+from msm_command_center.contracts import CORE_TABULAR_FRAME_CONTRACT
 
 ADAPTER_ID = "ms-markets.apps-v1"
 ADAPTER_TITLE = "MainSequence Markets API"

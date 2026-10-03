@@ -11,7 +11,8 @@ from typing import Any
 from mainsequence.scaffold_skills import ScaffoldSkillCopyBlocked, copy_scaffold_skills
 
 SOURCE_MSM_SKILLS_PATH = (".agents", "skills", "ms_markets")
-BUNDLED_MSM_SKILLS_PATH = SOURCE_MSM_SKILLS_PATH
+# The wheel ships the skills inside this package, never as a top-level `.agents`.
+BUNDLED_MSM_SKILLS_PATH = ("msm_cli", "_skills", "ms_markets")
 MSM_SKILL_NAMESPACE = "ms_markets"
 MSM_SKILL_COPY_COMMAND = "msm copy-msm-skills"
 
@@ -110,12 +111,10 @@ def bundled_msm_skills_root() -> Path:
     source_root = source_tree_msm_skills_root()
     if source_root.is_dir():
         return source_root
-
-    try:
-        dist = distribution("ms-markets")
-    except PackageNotFoundError as exc:
-        raise RuntimeError("ms-markets package metadata is unavailable.") from exc
-    return Path(dist.locate_file("/".join(BUNDLED_MSM_SKILLS_PATH)))
+    bundled_root = Path(__file__).resolve().parent.joinpath(*BUNDLED_MSM_SKILLS_PATH[1:])
+    if not bundled_root.is_dir():
+        raise RuntimeError("The installed ms-markets skill bundle is missing. Reinstall ms-markets.")
+    return bundled_root
 
 
 def source_tree_msm_skills_root() -> Path:

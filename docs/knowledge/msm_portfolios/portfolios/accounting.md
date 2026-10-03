@@ -16,7 +16,7 @@ converts or appends to a legacy weight-only portfolio.
     execution simulation, explicit instrument sizing and settlement terms,
     strategy-owned execution costs, dividend recognition and settlement,
     explicit price/FX valuation, ledger restart, read projections, storage
-    schemas, and migration `0017` are implemented. Issue #11 removed the
+    schemas, and their migrations are implemented. Issue #11 removed the
     erroneous external execution ingress; there is no replay lane or fallback.
     Correction-tail publication, optimized reducer parity, projection publishers,
     and option/bond acceptance fixtures remain implementation work inside
@@ -423,7 +423,7 @@ values = project_portfolio_values(ledger, initial_nav=1_000_000.0)
   derives normalized `close = nav_after / initial_nav` and linked returns.
 
 `PortfolioStateStorage` and `PortfolioCashFlowsStorage` are additive schemas
-installed by migration `0017`. Dedicated projection publisher updaters are not
+installed by the ms-markets migration provider. Dedicated projection publisher updaters are not
 yet implemented; callers must not describe the schemas as independent accounting
 authorities.
 
@@ -486,8 +486,8 @@ stale valuation, inverse FX guess, or weight-only fallback.
 
 ## Migration And Validation
 
-Migration `0017` adds the canonical ledger and rebuildable state/cash-flow
-schemas. Apply it through the repository's existing MetaTables migration
+The ms-markets migration provider creates the canonical ledger and rebuildable
+state/cash-flow schemas. Apply it through the repository's existing MetaTables migration
 deployment workflow before runtime attachment. This is an ordinary deployment
 step, not a client development dependency.
 

@@ -142,16 +142,17 @@ def test_migration_version_packages_do_not_assume_generated_history() -> None:
     assert versions_root.joinpath("mainsequence_examples").is_dir()
 
 
-def test_general_portfolio_rebalance_revision_follows_current_head() -> None:
-    revision = importlib.import_module(
-        "msm_migrations.versions.mainsequence_markets.0016_add_general_portfolio_rebalance_"
-    )
+def test_history_is_one_initial_schema_revision() -> None:
+    versions_root = resources.files("msm_migrations").joinpath("versions", "mainsequence_markets")
+    revisions = sorted(item.name for item in versions_root.iterdir() if item.name[:4].isdigit())
+    assert revisions == ["0001_initial_schema.py"]
+    revision = importlib.import_module("msm_migrations.versions.mainsequence_markets.0001_initial_schema")
     source = inspect.getsource(revision)
 
-    assert revision.revision == "0016"
-    assert revision.down_revision == "0015"
+    assert revision.revision == "0001"
+    assert revision.down_revision is None
     assert "ms_markets__portfoliocalendareventsts" in source
-    assert "ms_markets__portfoliorebalancestatets" in source
+    assert "ms_markets__portfolioeventledgerts" in source
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:

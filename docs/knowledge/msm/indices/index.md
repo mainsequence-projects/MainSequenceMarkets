@@ -194,9 +194,9 @@ msm.start_engine(
 )
 ```
 
-Revision `0015` is a one-way formula/custom replacement. It refuses to infer
-source MetaTable UIDs from old calculation rows. Remediate those rows before
-applying it; no runtime compatibility layer exists.
+The formula/custom model is the only Index methodology schema. Old calculation
+definitions have no migration path; republish them as formula or custom
+definitions. No runtime compatibility layer exists.
 
 ## Related Documentation
 

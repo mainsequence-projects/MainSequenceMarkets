@@ -43,7 +43,7 @@ core.tabular_frame@v1
 Use the project-owned contract model for provider APIs:
 
 ```python
-from command_center.contracts import TabularFrameResponse
+from msm_command_center.contracts import TabularFrameResponse
 ```
 
 Do not add synthetic columns unless the active widget registry explicitly

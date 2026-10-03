@@ -219,9 +219,9 @@ confirmation secrets, signing tokens, journals, or custom executors.
 
 ## Migration Rules
 
-Revision `0015` is a hard one-way replacement. It must fail when old
-calculation definitions remain because exact source MetaTable UIDs cannot be
-inferred. Do not add compatibility aliases or automatic semantic conversion.
+The formula/custom schema has no migration from old calculation definitions:
+exact source MetaTable UIDs cannot be inferred. Republish them instead.
+Do not add compatibility aliases or automatic semantic conversion.
 
 After schema changes, keep provider migrations, runtime model registration,
 tests, OpenAPI, docs, examples, tutorial, changelog, and this skill aligned.

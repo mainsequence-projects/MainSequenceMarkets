@@ -7,11 +7,24 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-03
+
 ### Changed
 
-- Requires `mainsequence>=9.0.5,<10` and `mainsequence-metatable>=0.1.9,<0.2`;
+- **Breaking:** the migration history is one revision, `0001_initial_schema`,
+  generated from the models; `0001`–`0017` are removed. A database at a 2.x
+  revision cannot upgrade: drop its ms-markets tables and apply 3.0.0 from empty.
+  The provider key, `MarketsAlembicVersion` and its table are unchanged. The
+  history now builds on the MetaTables local SQLite runtime as well as PostgreSQL
+  ([ADR 0045](docs/ADR/0045-squashed-initial-schema-and-namespaced-packages.md),
+  #12, #15).
+- **Breaking:** the `cli` and `command_center` packages are renamed `msm_cli` and
+  `msm_command_center`, and bundled skills ship inside `msm_cli/_skills`. The
+  wheel installs only `msm*` packages; the `msm` console script is unchanged
+  (#14).
+- Requires `mainsequence>=9.0.5,<10` and `mainsequence-metatable>=0.1.12,<0.2`;
   the lock and exported `requirements.txt` select `mainsequence` 9.0.5 and
-  `mainsequence-metatable` 0.1.9.
+  `mainsequence-metatable` 0.1.12.
 - The Markets API deployment workflow (`.mainsequence/workflows/fastapi.yaml`)
   moves to workflow API 2.3.0 and runs a migration Job,
   `jobs/migrate_markets.py`, from the candidate image before the API deploys. The

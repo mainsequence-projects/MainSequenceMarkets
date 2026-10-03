@@ -21,7 +21,7 @@ from apps.v1.services.assets import (
     list_assets_response,
 )
 from apps.v1.services.resource_collections import resource_collection_response
-from command_center.contracts import TabularFrameResponse
+from msm_command_center.contracts import TabularFrameResponse
 
 router = APIRouter(prefix="/asset", tags=["asset"])
 

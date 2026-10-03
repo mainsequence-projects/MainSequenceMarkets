@@ -44,7 +44,7 @@ signal, strategy observation, lifecycle, valuation, and FX sources and publishes
 the long event ledger. Portfolio execution is simulated only by the configured
 `RebalanceStrategy`; no broker/account execution source is accepted. The ledger
 grain is `(time_index, portfolio_identifier,
-event_identifier, event_revision, record_identifier)`. Migration `0017` adds
+event_identifier, event_revision, record_identifier)`. The migration provider creates
 that table plus additive state and completed-cash-flow projection schemas.
 The pure reducer can also reconstruct positions, cash, obligations, applied
 event revisions, and the latest NAV from a complete active ledger after

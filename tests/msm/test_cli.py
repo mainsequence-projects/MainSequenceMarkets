@@ -6,9 +6,9 @@ import pathlib
 
 import pytest
 
-from cli.main import bundled_msm_skills_root, main, source_tree_msm_skills_root
+from msm_cli.main import bundled_msm_skills_root, main, source_tree_msm_skills_root
 
-cli_main = importlib.import_module("cli.main")
+cli_main = importlib.import_module("msm_cli.main")
 
 
 def _bundled_bundle_names() -> list[str]:

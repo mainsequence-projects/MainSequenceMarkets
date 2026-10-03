@@ -12,7 +12,7 @@ from msm.models import (
 
 
 ROOT = Path(__file__).resolve().parents[3]
-REVISION = ROOT / "src/msm_migrations/versions/mainsequence_markets/0015_index_formula_and_custom_calculation.py"
+REVISION = ROOT / "src/msm_migrations/versions/mainsequence_markets/0001_initial_schema.py"
 
 
 def test_index_model_owns_calculation_and_display_format() -> None:
@@ -53,12 +53,10 @@ def test_model_registry_has_no_legacy_index_models() -> None:
     assert "IndexResolvedLegsStorage" not in names
 
 
-def test_0015_is_a_strict_non_compatibility_migration() -> None:
+def test_initial_schema_creates_formula_index_tables_without_units() -> None:
     source = REVISION.read_text()
-    assert 'revision: str = "0015"' in source
-    assert 'down_revision: Union[str, Sequence[str], None] = "0014"' in source
-    assert "cannot infer exact source MetaTable UIDs" in source
-    assert "ms_markets__indexformuladefinition" in source
-    assert "ms_markets__indexformulainput" in source
-    assert 'op.drop_column("ms_markets__indexvaluests", "unit")' in source
-    assert "has no legacy downgrade" in source
+    assert "revision: str = '0001'" in source
+    assert "op.create_table('ms_markets__indexformuladefinition'" in source
+    assert "op.create_table('ms_markets__indexformulainput'" in source
+    values = source[source.index("op.create_table('ms_markets__indexvaluests'"):]
+    assert "sa.Column('unit'" not in values[: values.index("    )\n")]

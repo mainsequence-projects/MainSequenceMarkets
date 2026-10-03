@@ -21,7 +21,7 @@ response as widget-ready only because a response mapping exists.
 Use the library helpers when building a project-specific API:
 
 ```python
-from command_center.widgets.asset_monitor import build_asset_monitor_frame
+from msm_command_center.widgets.asset_monitor import build_asset_monitor_frame
 
 frame = build_asset_monitor_frame(asset_rows)
 ```
@@ -103,7 +103,7 @@ GET /api/v1/asset/monitor/frame/?unique_identifiers=MXN-BONO-2031&unique_identif
 Use the workspace helper to build the standard workspace payload:
 
 ```python
-from command_center.workspaces.asset_monitor import (
+from msm_command_center.workspaces.asset_monitor import (
     build_asset_monitor_workspace_document,
 )
 

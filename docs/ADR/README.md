@@ -43,6 +43,7 @@ Recommended sections:
 - [0042. Position Cash Flows In Portfolio Accounting](0042-position-cash-flow-portfolio-accounting.md)
 - [0043. SDK 9 And MetaTables Client Hard Cut For The 2.0 Package Contract](0043-sdk-9-metatables-client-hard-cut.md)
 - [0044. Namespaced Migration Provider Package](0044-namespaced-migration-provider-package.md)
+- [0045. Squashed Initial Schema And Namespaced Packages](0045-squashed-initial-schema-and-namespaced-packages.md)
 
 ## Command Center Decisions
 

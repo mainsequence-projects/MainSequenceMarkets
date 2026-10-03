@@ -7,7 +7,7 @@ The helpers live in the library package, not in the local `apps/v1` FastAPI
 application:
 
 ```text
-src/command_center/
+src/msm_command_center/
 ```
 
 Downstream projects can import these helpers from their own FastAPI app,

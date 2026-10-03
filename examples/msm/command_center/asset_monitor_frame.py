@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from command_center.widgets.asset_monitor import build_asset_monitor_frame
+from msm_command_center.widgets.asset_monitor import build_asset_monitor_frame
 
 
 def main() -> None:

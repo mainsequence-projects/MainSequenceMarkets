@@ -1,6 +1,6 @@
 """FastAPI-facing imports for the project-owned Command Center contracts."""
 
-from command_center.contracts import (
+from msm_command_center.contracts import (
     TabularFrameFieldResponse,
     TabularFrameResponse,
     TabularFrameSourceResponse,

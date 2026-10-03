@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from command_center.widgets.asset_monitor import build_asset_monitor_frame
-from command_center.workspaces.asset_monitor import build_asset_monitor_workspace_document
+from msm_command_center.widgets.asset_monitor import build_asset_monitor_frame
+from msm_command_center.workspaces.asset_monitor import build_asset_monitor_workspace_document
 
 
 def test_build_asset_monitor_frame_uses_ticker_without_symbol_alias() -> None:

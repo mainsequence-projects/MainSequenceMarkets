@@ -197,7 +197,7 @@ Default monitor:
 import json
 import os
 
-from command_center.workspaces.asset_monitor import build_asset_monitor_workspace_document
+from msm_command_center.workspaces.asset_monitor import build_asset_monitor_workspace_document
 
 payload = build_asset_monitor_workspace_document(
     connection_id=os.environ["CONNECTION_UID"],
@@ -217,7 +217,7 @@ Pre-scoped monitor using repeated `unique_identifiers`:
 import json
 import os
 
-from command_center.workspaces.asset_monitor import build_asset_monitor_workspace_document
+from msm_command_center.workspaces.asset_monitor import build_asset_monitor_workspace_document
 
 payload = build_asset_monitor_workspace_document(
     connection_id=os.environ["CONNECTION_UID"],
