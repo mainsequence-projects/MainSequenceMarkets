@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from mainsequence.client.exceptions import ConflictError
 from pydantic import BaseModel
 
 from apps.v1.schemas.resource_contracts import ResourceCollection as CompatibilityCollection
@@ -71,6 +72,18 @@ def test_structured_errors_sanitize_unexpected_dependency_details() -> None:
         "code": "dependency_unavailable",
         "message": "The operation could not be completed by a required service.",
         "retryable": True,
+    }
+    assert "SECRET" not in str(error.detail)
+
+
+def test_structured_errors_map_sdk_conflicts_to_sanitized_409() -> None:
+    error = api_http_error(ConflictError("SECRET duplicate key value violates unique constraint"))
+
+    assert error.status_code == 409
+    assert error.detail == {
+        "code": "conflict",
+        "message": "The request conflicts with the current state of the resource.",
+        "retryable": False,
     }
     assert "SECRET" not in str(error.detail)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import HTTPException
+from mainsequence.client.exceptions import ConflictError
 from pydantic import Field
 
 from ._base import HttpContractModel
@@ -69,6 +70,9 @@ def api_http_error(exc: Exception) -> HTTPException:
 
     if isinstance(exc, HTTPException):
         return exc
+    if isinstance(exc, ConflictError):
+        # The SDK message carries the upstream request and response body; keep it out.
+        return conflict("The request conflicts with the current state of the resource.")
     if isinstance(exc, LookupError):
         return not_found(str(exc))
     if isinstance(exc, (TypeError, ValueError)):

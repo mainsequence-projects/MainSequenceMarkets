@@ -7,6 +7,13 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- `api_http_error` maps the SDK `ConflictError` to a non-retryable `409`
+  `conflict` response with a fixed message, instead of a retryable `503`
+  `dependency_unavailable`. Fixes
+  [#13](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/13).
+
 ## [2.1.0] - 2026-10-03
 
 ### Changed
