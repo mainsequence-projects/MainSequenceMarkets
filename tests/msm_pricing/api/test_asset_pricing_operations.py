@@ -146,7 +146,7 @@ def test_asset_pricing_support_lists_registered_bond_operations() -> None:
     )
     assert cashflows_operation["frame_response_model"] == "TabularFrameResponse"
     assert cashflows_operation["frame_response_contract"] == "core.tabular_frame@v1"
-    assert cashflows_operation["response_mappings"][0]["contract"] == "core.tabular_frame@v1"
+    assert "response_mappings" not in cashflows_operation
 
     curve_preview_operation = next(
         operation for operation in support["operations"] if operation["key"] == "curve-preview"

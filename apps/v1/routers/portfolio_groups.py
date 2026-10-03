@@ -4,12 +4,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 
-from apps.v1.schemas.common import ErrorResponse
-from apps.v1.schemas.bulk_actions import (
-    BULK_ACTION_PREFLIGHT_CONTRACT,
-    BulkActionExecutionRequest,
-    BulkActionPreflightResponse,
-)
 from apps.v1.schemas.portfolio_groups import (
     PortfolioGroup,
     PortfolioGroupDeleteResponse,
@@ -19,10 +13,6 @@ from apps.v1.schemas.portfolio_groups import (
     Portfolio,
     PortfolioGroupCreateRequest,
     PortfolioGroupUpdateRequest,
-)
-from apps.v1.schemas.resource_contracts import (
-    RESOURCE_COLLECTION_CONTRACT,
-    ResourceCollection,
 )
 from apps.v1.services.portfolio_groups import (
     add_portfolio_to_group,
@@ -38,10 +28,16 @@ from apps.v1.services.portfolio_groups import (
     remove_portfolio_from_group,
     update_portfolio_group,
 )
-from apps.v1.services.resource_collections import resource_collection_response
-from apps.v1.services.bulk_actions import (
+from msm.api.http import (
+    BULK_ACTION_PREFLIGHT_CONTRACT,
+    RESOURCE_COLLECTION_CONTRACT,
+    BulkActionExecutionRequest,
+    BulkActionPreflightResponse,
+    ErrorResponse,
+    ResourceCollection,
     blocked_preflight_detail,
     explicit_uuid_selection,
+    resource_collection_response,
 )
 
 router = APIRouter(prefix="/portfolio-group", tags=["portfolio-group"])

@@ -5,8 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from apps.v1.schemas.command_center import TabularFrameResponse
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
+from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.indices import (
     Index,
@@ -18,10 +17,6 @@ from apps.v1.schemas.indices import (
     IndexType,
     IndexUpdate,
     RelatedMetaTable,
-)
-from apps.v1.schemas.resource_contracts import (
-    RESOURCE_COLLECTION_CONTRACT,
-    ResourceCollection,
 )
 from apps.v1.services.indices import (
     create_index,
@@ -40,7 +35,14 @@ from apps.v1.services.indices import (
     list_indices,
     update_index,
 )
-from apps.v1.services.resource_collections import resource_collection_response
+from msm.api.http import (
+    CORE_TABULAR_FRAME_CONTRACT,
+    RESOURCE_COLLECTION_CONTRACT,
+    ErrorResponse,
+    ResourceCollection,
+    TabularFrameResponse,
+    resource_collection_response,
+)
 from msm.services.indices import IndexActor, actor_from_user
 
 router = APIRouter(prefix="/index", tags=["index"])
@@ -330,7 +332,7 @@ def get_index_dataset_summary_by_uid(
     response_model_exclude_none=True,
     responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
     openapi_extra={
-        "x-ui-contract": "core.tabular_frame@v1",
+        "x-ui-contract": CORE_TABULAR_FRAME_CONTRACT,
         "x-ui-output-root": "response:$",
     },
 )

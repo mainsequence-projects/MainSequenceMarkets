@@ -4,12 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
-from apps.v1.schemas.common import ErrorResponse
-from apps.v1.schemas.resource_contracts import (
-    RESOURCE_DISCOVERY_CONTRACT,
-    ResourceDiscovery,
-)
 from apps.v1.services.resource_discovery import get_resource_discovery
+from msm.api.http import RESOURCE_DISCOVERY_CONTRACT, ErrorResponse, ResourceDiscovery
 
 router = APIRouter(tags=["resource-discovery"])
 

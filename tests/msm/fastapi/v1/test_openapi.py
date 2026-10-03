@@ -361,8 +361,7 @@ def test_openapi_json_documents_fixed_income_pricing_asset_endpoints() -> None:
     assert price_schema["x-ui-flat-outputs"] == ["price", "units"]
 
     cashflows_schema = payload["components"]["schemas"]["BondCashflowsResponse"]
-    assert cashflows_schema["x-response-mappings"][0]["contract"] == "core.tabular_frame@v1"
-    assert cashflows_schema["x-response-mappings"][0]["rowsPath"] == "$.legs.*[*]"
+    assert "x-response-mappings" not in cashflows_schema
 
     cashflows_frame_operation = payload["paths"][
         "/api/v1/pricing/assets/{asset_uid}/cashflows/frame/"

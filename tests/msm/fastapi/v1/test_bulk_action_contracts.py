@@ -12,12 +12,14 @@ from referencing import Registry, Resource
 from msm.api.http import (
     BULK_ACTION_EXECUTION_CONTRACT,
     BULK_ACTION_PREFLIGHT_CONTRACT,
+    CORE_TABULAR_FRAME_CONTRACT,
     BulkActionExecutionRequest,
     BulkActionPreflightResponse,
     RESOURCE_COLLECTION_CONTRACT,
     RESOURCE_DISCOVERY_CONTRACT,
     ResourceCollection,
     ResourceDiscovery,
+    TabularFrameResponse,
 )
 
 COMMAND_CENTER_SDK_TAG = "v0.1.13"
@@ -29,6 +31,7 @@ _CONTRACT_MODELS = {
     RESOURCE_DISCOVERY_CONTRACT: ResourceDiscovery,
     BULK_ACTION_EXECUTION_CONTRACT: BulkActionExecutionRequest,
     BULK_ACTION_PREFLIGHT_CONTRACT: BulkActionPreflightResponse,
+    CORE_TABULAR_FRAME_CONTRACT: TabularFrameResponse,
 }
 
 

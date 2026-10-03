@@ -5,15 +5,11 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
+from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.virtual_funds import (
     VirtualFundDetailResponse,
     VirtualFundHoldingsSnapshotResponse,
     VirtualFund,
-)
-from apps.v1.schemas.resource_contracts import (
-    RESOURCE_COLLECTION_CONTRACT,
-    ResourceCollection,
 )
 from apps.v1.services.virtual_funds import (
     get_virtual_fund_detail,
@@ -21,7 +17,12 @@ from apps.v1.services.virtual_funds import (
     get_virtual_fund_summary,
     list_virtual_funds,
 )
-from apps.v1.services.resource_collections import resource_collection_response
+from msm.api.http import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ErrorResponse,
+    ResourceCollection,
+    resource_collection_response,
+)
 
 router = APIRouter(prefix="/virtualfund", tags=["virtualfund"])
 

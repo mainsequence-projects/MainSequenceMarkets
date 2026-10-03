@@ -52,7 +52,8 @@ Main package areas:
 - `msm.api`: user-facing Pydantic row objects and typed class methods for
   markets MetaTable records
 - `msm.api.http`: installable provider-neutral collection, discovery,
-  bulk-preflight, observable-operation, and structured-error contracts
+  bulk-preflight, tabular-frame, observable-operation, and structured-error
+  contracts
 - `msm.constants`: static built-in keys such as asset type constants used across
   applications and examples
 - `msm.client`: client-facing Main Sequence market models and API wrappers
@@ -99,7 +100,6 @@ Recommended entry points:
 - [Getting Started](https://mainsequence-projects.github.io/MainSequenceMarkets/getting-started/)
 - [Tutorial](https://mainsequence-projects.github.io/MainSequenceMarkets/tutorial/)
 - [FastAPI v1](https://mainsequence-projects.github.io/MainSequenceMarkets/fast_api/v1/)
-- [Command Center](https://mainsequence-projects.github.io/MainSequenceMarkets/command_center/)
 - [Knowledge Base](https://mainsequence-projects.github.io/MainSequenceMarkets/knowledge/)
 - [Architecture Decision Records](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/)
 - [Changelog](https://mainsequence-projects.github.io/MainSequenceMarkets/changelog/)

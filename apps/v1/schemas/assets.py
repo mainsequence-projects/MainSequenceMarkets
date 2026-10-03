@@ -111,7 +111,6 @@ class AssetPricingOperationLinkResponse(BaseModel):
     response_contract: str
     app_component: dict[str, Any]
     parameters: list[AssetPricingOperationParameterResponse] = Field(default_factory=list)
-    response_mappings: list[dict[str, Any]] = Field(default_factory=list)
     frame_url: str | None = None
     frame_response_model: str | None = None
     frame_response_contract: str | None = None

@@ -69,6 +69,5 @@ three execution operation IDs remain mutation operations:
   `bulkDeletePortfolioGroups`
 
 The language-neutral manifest, schemas, and fixtures in command-center-sdk are
-the contract authority. Provider projects import the implementing Python models
-and helpers from `msm.api.http`; `apps.v1.schemas.bulk_actions` remains a
-compatibility import for this repository's FastAPI app.
+the contract authority. Provider projects, including this repository's FastAPI
+app, import the implementing Python models and helpers from `msm.api.http`.

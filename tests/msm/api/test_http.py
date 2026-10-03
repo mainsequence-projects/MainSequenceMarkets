@@ -3,12 +3,10 @@ from __future__ import annotations
 from mainsequence.client.exceptions import ConflictError
 from pydantic import BaseModel
 
-from apps.v1.schemas.resource_contracts import ResourceCollection as CompatibilityCollection
 from msm.api.http import (
     InMemoryOperationStore,
     OperationError,
     OperationNotFoundError,
-    ResourceCollection,
     api_http_error,
     build_resource_discovery_spec,
     resolve_resource_discovery,
@@ -19,10 +17,6 @@ from msm.api.http import (
 
 class ExampleRequest(BaseModel):
     symbols: list[str]
-
-
-def test_apps_v1_resource_contract_is_a_public_package_compatibility_import() -> None:
-    assert CompatibilityCollection is ResourceCollection
 
 
 def test_discovery_builders_validate_semantic_query_scope() -> None:

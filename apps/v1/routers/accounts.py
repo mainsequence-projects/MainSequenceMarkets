@@ -15,11 +15,7 @@ from apps.v1.schemas.accounts import (
     AccountTargetAllocationTargetSearchType,
     AccountTargetPositionsSnapshotResponse,
 )
-from apps.v1.schemas.common import ErrorResponse, FrontEndDetailSummary
-from apps.v1.schemas.resource_contracts import (
-    RESOURCE_COLLECTION_CONTRACT,
-    ResourceCollection,
-)
+from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.services.accounts import (
     add_account_holdings,
     add_account_target_positions,
@@ -31,7 +27,12 @@ from apps.v1.services.accounts import (
     list_accounts,
     search_account_target_allocation_targets,
 )
-from apps.v1.services.resource_collections import resource_collection_response
+from msm.api.http import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ErrorResponse,
+    ResourceCollection,
+    resource_collection_response,
+)
 
 router = APIRouter(prefix="/account", tags=["account"])
 

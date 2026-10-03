@@ -5,17 +5,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from apps.v1.schemas.common import ErrorResponse
 from apps.v1.schemas.portfolio_signals import (
     PortfolioSignalDeleteResponse,
     PortfolioSignalWeightsDeleteResponse,
     SignalMetadata,
     SignalMetadataCreate,
     SignalMetadataUpdate,
-)
-from apps.v1.schemas.resource_contracts import (
-    RESOURCE_COLLECTION_CONTRACT,
-    ResourceCollection,
 )
 from apps.v1.services.portfolio_signals import (
     PortfolioSignalDeleteConflictError,
@@ -26,7 +21,12 @@ from apps.v1.services.portfolio_signals import (
     list_portfolio_signals,
     update_portfolio_signal,
 )
-from apps.v1.services.resource_collections import resource_collection_response
+from msm.api.http import (
+    RESOURCE_COLLECTION_CONTRACT,
+    ErrorResponse,
+    ResourceCollection,
+    resource_collection_response,
+)
 
 router = APIRouter(prefix="/portfolio-signal", tags=["portfolio-signal"])
 

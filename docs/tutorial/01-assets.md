@@ -332,25 +332,6 @@ normal run leaves assets in the category unless the cleanup flag is used. Asset
 examples reuse shared identifiers and FIGI constants from
 `examples/msm/assets/utils/reference_data.py`.
 
-## Command Center asset monitor
-
-Use the Command Center helpers when a project wants to publish ms-markets asset
-data into a Command Center workspace:
-
-1. Load or resolve asset rows in the project API or application layer.
-2. Pass already-loaded rows into
-   `command_center.widgets.asset_monitor.build_asset_monitor_frame(...)`.
-3. Return the resulting `TabularFrameResponse` from a provider API operation
-   such as `getAssetMonitorFrame`.
-4. Expose that operation through Adapter from API discovery.
-5. Bind `connection-query.dataset` into
-   `main-sequence-markets__asset-screener.seedData`.
-
-See [Command Center Asset Monitor](../command_center/asset_monitor.md) for the
-full frame contract and workspace binding rules. See
-`examples/msm/command_center/asset_monitor_frame.py` for an import-only example
-that builds the canonical frame from sample asset rows.
-
 For timestamped facts keyed to index reference rows, use the same stamped
 TimeIndexTableUpdater workflow with `msm.data_nodes.indices.IndexTimestampedDataNode` and an
 `IndexDataNodeConfiguration` subclass. The frame contract is
