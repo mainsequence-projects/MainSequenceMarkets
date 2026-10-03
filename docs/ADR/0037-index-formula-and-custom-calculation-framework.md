@@ -7,7 +7,7 @@ Accepted and implemented in the library on 2026-07-20. Alembic revision
 revision against the configured platform remains a deployment step because the
 project endpoint was unavailable during implementation.
 
-Amended by [ADR 0045](0045-squashed-initial-schema-and-namespaced-packages.md): in 3.0.0 the formula/custom schema is part of
+Amended by [ADR 0045](0045-squashed-initial-schema-and-namespaced-packages.md): in 2.1.0 the formula/custom schema is part of
 `0018_initial_schema`, so there is no separate `0015` replacement step.
 
 ## Context

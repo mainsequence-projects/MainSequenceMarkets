@@ -7,7 +7,7 @@ Accepted - foundational implementation in progress entirely within
 no new SDK transaction, checkpoint, or publication capability. Amended on
 2026-09-12 following the event-ledger, rebalance-ownership, vectorization,
 user-extension, backward-compatibility, and portfolio/account boundary reviews.
-Amended by [ADR 0045](0045-squashed-initial-schema-and-namespaced-packages.md): in 3.0.0 the ledger and projection tables that migration
+Amended by [ADR 0045](0045-squashed-initial-schema-and-namespaced-packages.md): in 2.1.0 the ledger and projection tables that migration
 `0017` added are created by `0018_initial_schema`.
 
 This decision extends [ADR 0040](0040-portfolio-temporal-ownership.md) and

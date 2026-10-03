@@ -13,7 +13,7 @@ provider reference `migrations:migration` below is replaced by
 `msm_migrations:migration`.
 
 Amended by [ADR 0045](0045-squashed-initial-schema-and-namespaced-packages.md): the revision IDs and applied history it keeps unchanged are
-replaced by one `0018_initial_schema` revision in 3.0.0.
+replaced by one `0018_initial_schema` revision in 2.1.0.
 
 ## Context
 

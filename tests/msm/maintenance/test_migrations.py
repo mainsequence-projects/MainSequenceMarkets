@@ -149,7 +149,7 @@ def test_history_is_one_initial_schema_revision() -> None:
     revision = importlib.import_module("msm_migrations.versions.mainsequence_markets.0018_initial_schema")
     source = inspect.getsource(revision)
 
-    # 2.x databases sit at 0001-0017; reusing one would mistake them for this head.
+    # 2.0.x databases sit at 0001-0017; reusing one would mistake them for this head.
     assert int(revision.revision) > 17
     assert revision.down_revision is None
     assert "ms_markets__portfoliocalendareventsts" in source

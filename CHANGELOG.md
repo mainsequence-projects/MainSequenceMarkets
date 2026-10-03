@@ -7,15 +7,15 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
-## [3.0.0] - 2026-10-03
+## [2.1.0] - 2026-10-03
 
 ### Changed
 
 - **Breaking:** the migration history is one revision, `0018_initial_schema`,
   generated from the models; `0001`–`0017` are removed, which withdraws the
   2.0.2 promise that they stay unchanged. No old ID is reused, so a database at
-  any 2.x revision fails with an unknown-revision error instead of passing as
-  head. Downgrade it to `base` with 2.x installed, then apply 3.0.0 from empty.
+  any of them fails with an unknown-revision error instead of passing as
+  head. Downgrade it to `base` with 2.0.x installed, then apply 2.1.0 from empty.
   The provider key, `MarketsAlembicVersion` and its table are unchanged. The
   history now builds on the MetaTables local SQLite runtime as well as PostgreSQL
   ([ADR 0045](docs/ADR/0045-squashed-initial-schema-and-namespaced-packages.md),

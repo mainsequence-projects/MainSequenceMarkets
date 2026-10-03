@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted and implemented in 3.0.0. Supersedes the `0001`–`0017` revision history
+Accepted and implemented in 2.1.0. Supersedes the `0001`–`0017` revision history
 and the `cli`/`command_center` exclusion in
 [ADR 0044](0044-namespaced-migration-provider-package.md). Resolves
 [MainSequenceMarkets#12](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/12),
@@ -25,8 +25,8 @@ MetaTables local SQLite runtime (#15). The wheel also still installed top-level
 ## Decision
 
 - One revision, `0018_initial_schema`, generated from the models, creates the
-  whole schema on PostgreSQL and on the local SQLite runtime. It never reuses a
-  2.x revision ID: under a reused `0001`, a database at the old `0001` would pass
+  whole schema on PostgreSQL and on the local SQLite runtime. It never reuses an
+  earlier revision ID: under a reused `0001`, a database at the old `0001` would pass
   as already at head and skip every table. MetaTables 0.1.12
   runs `JSONB` as JSON, `Numeric` as SQLite numbers and `postgresql_where`
   predicates there. The provider key `msm:<namespace>`, `MarketsAlembicVersion`
@@ -39,10 +39,10 @@ MetaTables local SQLite runtime (#15). The wheel also still installed top-level
 
 ## Consequences
 
-- A database at any 2.x revision fails with Alembic's unknown-revision error.
-  With 2.x still installed, run
+- A database at any of `0001`–`0017` fails with Alembic's unknown-revision error.
+  With 2.0.x still installed, run
   `metatables migrations downgrade base --provider msm_migrations:migration`,
-  then install 3.0.0 and upgrade from empty.
+  then install 2.1.0 and upgrade from empty.
 - Imports of `cli` and `command_center` change to `msm_cli` and
   `msm_command_center`.
 - Later schema changes are new revisions after `0018`. MetaTables generates them
