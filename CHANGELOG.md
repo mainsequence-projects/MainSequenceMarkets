@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.4] - 2026-10-04
+
 ### Fixed
 
 - `BulkActionDefinition` omits `tone`, `confirmation` and `preflight_endpoint`,
