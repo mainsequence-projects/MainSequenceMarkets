@@ -5,10 +5,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ValidationError
 from referencing import Registry, Resource
 
+from apps.v1.main import app
 from msm.api.http import (
     BULK_ACTION_EXECUTION_CONTRACT,
     BULK_ACTION_PREFLIGHT_CONTRACT,
@@ -27,7 +29,13 @@ from msm.api.http import (
     ResourceListDiscovery,
     ResourceSearchControl,
     TabularFrameResponse,
+    TabularFrameSourceResponse,
+    build_tabular_field,
+    build_tabular_frame,
 )
+from msm.api.http import bulk_actions as bulk_action_models
+from msm.api.http import collections as collection_models
+from msm.api.http import tabular as tabular_models
 
 COMMAND_CENTER_SDK_TAG = "v0.1.13"
 COMMAND_CENTER_SDK_COMMIT = "f11c0ea8c5d3fc267997e476aa1522c798fdaced"
@@ -138,8 +146,17 @@ _REQUIRED_ONLY_ACTION = BulkActionDefinition(
             ),
         ),
         (BULK_ACTION_PREFLIGHT_CONTRACT, BulkActionPreflightResponse(allowed=True)),
+        (
+            CORE_TABULAR_FRAME_CONTRACT,
+            build_tabular_frame(
+                rows=[{"value": 1.5}],
+                fields=[build_tabular_field("value", field_type="number", nullable=None)],
+                meta={"tableVisuals": {"columns": {"value": {}}}},
+                source=TabularFrameSourceResponse(kind="records"),
+            ),
+        ),
     ],
-    ids=["resource-discovery", "bulk-action-preflight"],
+    ids=["resource-discovery", "bulk-action-preflight", "tabular-frame"],
 )
 def test_wire_models_omit_unset_optional_fields(contract_id: str, model: BaseModel) -> None:
     """The SDK accepts optional contract fields only when absent or valid, never null."""
@@ -148,3 +165,42 @@ def test_wire_models_omit_unset_optional_fields(contract_id: str, model: BaseMod
 
     assert _null_paths(payload) == []
     _contract_validator(contract_id).validate(payload)
+
+
+# Optional contract fields that may serialize as null.
+_NULL_ALLOWED_FIELDS = {
+    # Request body: Command Center sends it and the API never serializes it.
+    "BulkActionAllMatchingQuery.search",
+    # Documented as null when MetaTables cannot compute the impact. The preflight
+    # schema allows domain extensions and the SDK keeps the raw object.
+    "BulkDeletePreflightResponse.impact",
+}
+
+
+def test_command_center_contract_models_omit_every_unset_optional_field() -> None:
+    serialized_as_null = {
+        f"{model.__name__}.{name}"
+        for module in (bulk_action_models, collection_models, tabular_models)
+        for model in vars(module).values()
+        if isinstance(model, type)
+        and issubclass(model, BaseModel)
+        and model.__module__ == module.__name__
+        for name, field in model.model_fields.items()
+        if not field.is_required() and field.default is None and field.exclude_if is None
+    }
+
+    assert serialized_as_null == _NULL_ALLOWED_FIELDS
+
+
+def test_tabular_frame_keeps_null_cell_values() -> None:
+    payload = build_tabular_frame(rows=[{"value": None}]).model_dump(mode="json", by_alias=True)
+
+    assert payload == {"status": "ready", "columns": ["value"], "rows": [{"value": None}]}
+    _contract_validator(CORE_TABULAR_FRAME_CONTRACT).validate(payload)
+
+
+def test_connection_contract_matches_adapter_discovery_schema() -> None:
+    response = TestClient(app).get("/.well-known/command-center/connection-contract")
+
+    assert response.status_code == 200
+    _contract_validator("command-center.adapter_from_api.discovery@v1").validate(response.json())
