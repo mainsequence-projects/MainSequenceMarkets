@@ -26,25 +26,35 @@ TabularFrameFieldType = Literal[
 TabularFrameFieldProvenance = Literal["backend", "manual", "inferred", "derived"]
 
 
+def _omit_unset(**constraints: Any) -> Any:
+    """Declare an optional field that the payload omits while it is unset.
+
+    The ``core.tabular_frame@v1`` schema rejects ``null`` for these fields, so a frame
+    stays valid without ``response_model_exclude_none``.
+    """
+
+    return Field(default=None, exclude_if=lambda value: value is None, **constraints)
+
+
 class TabularFrameFieldResponse(HttpContractModel):
     key: str
     type: TabularFrameFieldType
-    label: str | None = None
-    description: str | None = None
-    nullable: bool | None = None
-    nativeType: str | None = None
-    provenance: TabularFrameFieldProvenance | None = None
-    reason: str | None = None
-    derivedFrom: list[str] | None = None
-    warnings: list[str] | None = None
+    label: str | None = _omit_unset()
+    description: str | None = _omit_unset()
+    nullable: bool | None = _omit_unset()
+    nativeType: str | None = _omit_unset()
+    provenance: TabularFrameFieldProvenance | None = _omit_unset()
+    reason: str | None = _omit_unset()
+    derivedFrom: list[str] | None = _omit_unset()
+    warnings: list[str] | None = _omit_unset()
 
 
 class TabularFrameSourceResponse(HttpContractModel):
     kind: str
-    id: str | int | float | None = None
-    label: str | None = None
-    updatedAtMs: int | None = None
-    context: dict[str, Any] | None = None
+    id: str | int | float | None = _omit_unset()
+    label: str | None = _omit_unset()
+    updatedAtMs: int | None = _omit_unset()
+    context: dict[str, Any] | None = _omit_unset()
 
 
 class TabularTimeSeriesMetaResponse(HttpContractModel):
@@ -53,15 +63,17 @@ class TabularTimeSeriesMetaResponse(HttpContractModel):
     timeUnit: Literal["ms"] = "ms"
     timezone: Literal["UTC"] = "UTC"
     sorted: bool
-    valueField: str | None = None
-    seriesField: str | None = None
-    seriesLabelFields: list[str] | None = None
-    valueFields: list[str] | None = None
-    frequency: str | None = None
-    calendar: str | None = None
-    gapPolicy: Literal["preserve_nulls", "drop_nulls"] | None = None
-    duplicatePolicy: Literal["error", "first", "latest", "aggregate", "preserve"] | None = None
-    unitByField: dict[str, str] | None = None
+    valueField: str | None = _omit_unset()
+    seriesField: str | None = _omit_unset()
+    seriesLabelFields: list[str] | None = _omit_unset()
+    valueFields: list[str] | None = _omit_unset()
+    frequency: str | None = _omit_unset()
+    calendar: str | None = _omit_unset()
+    gapPolicy: Literal["preserve_nulls", "drop_nulls"] | None = _omit_unset()
+    duplicatePolicy: (
+        Literal["error", "first", "latest", "aggregate", "preserve"] | None
+    ) = _omit_unset()
+    unitByField: dict[str, str] | None = _omit_unset()
 
     @model_validator(mode="after")
     def validate_shape_fields(self) -> TabularTimeSeriesMetaResponse:
@@ -76,27 +88,27 @@ class TabularTimeSeriesMetaResponse(HttpContractModel):
 class TableVisualThreshold(HttpContractModel):
     operator: Literal["gt", "gte", "lt", "lte", "eq"]
     value: float
-    backgroundColor: str | None = None
-    id: str | None = None
-    textColor: str | None = None
-    tone: Literal["neutral", "primary", "success", "warning", "danger"] | None = None
+    backgroundColor: str | None = _omit_unset()
+    id: str | None = _omit_unset()
+    textColor: str | None = _omit_unset()
+    tone: Literal["neutral", "primary", "success", "warning", "danger"] | None = _omit_unset()
 
 
 class TableVisualColorScale(HttpContractModel):
-    negative: str | None = None
-    neutral: str | None = None
-    positive: str | None = None
+    negative: str | None = _omit_unset()
+    neutral: str | None = _omit_unset()
+    positive: str | None = _omit_unset()
 
 
 class TableVisualRange(HttpContractModel):
-    min: float | None = None
-    max: float | None = None
-    midpoint: float | None = None
-    clamp: bool | None = None
+    min: float | None = _omit_unset()
+    max: float | None = _omit_unset()
+    midpoint: float | None = _omit_unset()
+    clamp: bool | None = _omit_unset()
 
 
 class TableVisualColumn(HttpContractModel):
-    label: str | None = None
+    label: str | None = _omit_unset()
     format: Literal[
         "number",
         "price",
@@ -105,8 +117,8 @@ class TableVisualColumn(HttpContractModel):
         "currency",
         "datetime",
         "formula",
-    ] | None = None
-    formulaExpression: str | None = None
+    ] | None = _omit_unset()
+    formulaExpression: str | None = _omit_unset()
     formulaResultFormat: Literal[
         "text",
         "datetime",
@@ -114,17 +126,17 @@ class TableVisualColumn(HttpContractModel):
         "currency",
         "percent",
         "bps",
-    ] | None = None
-    dateTimeInputFormat: str | None = None
-    dateTimeOutputFormat: str | None = None
-    decimals: int | None = Field(default=None, ge=0, le=6)
-    visible: bool | None = None
-    colorScale: TableVisualColorScale | None = None
-    range: TableVisualRange | None = None
-    thresholds: list[TableVisualThreshold] | None = None
-    heatmap: bool | None = None
-    barMode: Literal["none", "fill"] | None = None
-    gradientMode: Literal["none", "fill"] | None = None
+    ] | None = _omit_unset()
+    dateTimeInputFormat: str | None = _omit_unset()
+    dateTimeOutputFormat: str | None = _omit_unset()
+    decimals: int | None = _omit_unset(ge=0, le=6)
+    visible: bool | None = _omit_unset()
+    colorScale: TableVisualColorScale | None = _omit_unset()
+    range: TableVisualRange | None = _omit_unset()
+    thresholds: list[TableVisualThreshold] | None = _omit_unset()
+    heatmap: bool | None = _omit_unset()
+    barMode: Literal["none", "fill"] | None = _omit_unset()
+    gradientMode: Literal["none", "fill"] | None = _omit_unset()
     heatmapPalette: Literal[
         "auto",
         "viridis",
@@ -135,36 +147,36 @@ class TableVisualColumn(HttpContractModel):
         "jet",
         "blue-white-red",
         "red-yellow-green",
-    ] | None = None
-    gaugeMode: Literal["none", "ring"] | None = None
-    visualRangeMode: Literal["auto", "fixed"] | None = None
-    visualMin: float | None = None
-    visualMax: float | None = None
-    kind: Literal["sparkline", "bar", "heatmap"] | None = None
-    encoding: Literal["csv-number", "json-number-array", "number-array"] | None = None
-    order: Literal["oldest-to-newest", "newest-to-oldest"] | None = None
-    width: float | None = Field(default=None, gt=0)
+    ] | None = _omit_unset()
+    gaugeMode: Literal["none", "ring"] | None = _omit_unset()
+    visualRangeMode: Literal["auto", "fixed"] | None = _omit_unset()
+    visualMin: float | None = _omit_unset()
+    visualMax: float | None = _omit_unset()
+    kind: Literal["sparkline", "bar", "heatmap"] | None = _omit_unset()
+    encoding: Literal["csv-number", "json-number-array", "number-array"] | None = _omit_unset()
+    order: Literal["oldest-to-newest", "newest-to-oldest"] | None = _omit_unset()
+    width: float | None = _omit_unset(gt=0)
 
 
 class TableFrameVisualsMetadata(HttpContractModel):
-    columns: dict[str, TableVisualColumn] | None = None
+    columns: dict[str, TableVisualColumn] | None = _omit_unset()
 
 
 class TabularFrameMetaResponse(HttpContractModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    timeSeries: TabularTimeSeriesMetaResponse | None = None
-    tableVisuals: TableFrameVisualsMetadata | None = None
+    timeSeries: TabularTimeSeriesMetaResponse | None = _omit_unset()
+    tableVisuals: TableFrameVisualsMetadata | None = _omit_unset()
 
 
 class TabularFrameResponse(HttpContractModel):
     status: TabularFrameStatus
     columns: list[str]
     rows: list[dict[str, Any]]
-    error: str | None = None
-    fields: list[TabularFrameFieldResponse] | None = None
-    meta: TabularFrameMetaResponse | None = None
-    source: TabularFrameSourceResponse | None = None
+    error: str | None = _omit_unset()
+    fields: list[TabularFrameFieldResponse] | None = _omit_unset()
+    meta: TabularFrameMetaResponse | None = _omit_unset()
+    source: TabularFrameSourceResponse | None = _omit_unset()
 
     @field_validator("columns")
     @classmethod

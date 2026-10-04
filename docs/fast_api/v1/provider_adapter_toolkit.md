@@ -45,6 +45,11 @@ transform consumers read. A route that returns a frame declares it with
 `openapi_extra={"x-ui-contract": CORE_TABULAR_FRAME_CONTRACT}`; Adapter from API
 discovery reads the contract from that declaration only.
 
+The contract models omit unset optional fields instead of serializing them as
+`null`, which the Command Center schemas reject, so a route does not need
+`response_model_exclude_none`. `null` cell values in `rows` are kept. The
+bulk-action and resource-collection models follow the same rule.
+
 ## Bulk actions and preflight
 
 The public package contains the Command Center execution and preflight models,
