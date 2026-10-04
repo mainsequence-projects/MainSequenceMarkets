@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.5] - 2026-10-04
+
 ### Fixed
 
 - `TabularFrameResponse` and its field, source, time-series and table-visual
