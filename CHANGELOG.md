@@ -7,6 +7,20 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- `TabularFrameResponse` and its field, source, time-series and table-visual
+  models omit unset optional fields instead of serializing them as `null`,
+  which the `core.tabular_frame@v1` schema rejects. A plain dump of
+  `build_tabular_frame(...)` failed the schema on `error`, `meta`, `source`
+  and the field `label`, `provenance`, `derivedFrom` and `warnings`; only routes
+  declared with `response_model_exclude_none=True`, as every ms-markets frame
+  route is, returned a valid frame. `null` cell values in `rows` are kept. A
+  test fails if any optional field of the bulk-action, resource-collection or
+  tabular-frame contract models serializes as `null`, other than
+  `BulkDeletePreflightResponse.impact`, and the Command Center connection
+  contract is validated against the Adapter from API discovery schema.
+
 ## [2.2.4] - 2026-10-04
 
 ### Fixed
@@ -23,17 +37,6 @@ and this project follows versioned releases.
   contract test dumps the resource-discovery and preflight models with only
   their required fields and checks that the output has no `null` values and
   validates against the pinned SDK schemas.
-- `TabularFrameResponse` and its field, source, time-series and table-visual
-  models omit unset optional fields instead of serializing them as `null`,
-  which the `core.tabular_frame@v1` schema rejects. A plain dump of
-  `build_tabular_frame(...)` failed the schema on `error`, `meta`, `source`
-  and the field `label`, `provenance`, `derivedFrom` and `warnings`; only routes
-  declared with `response_model_exclude_none=True`, as every ms-markets frame
-  route is, returned a valid frame. `null` cell values in `rows` are kept. A
-  test fails if any optional field of the bulk-action, resource-collection or
-  tabular-frame contract models serializes as `null`, other than
-  `BulkDeletePreflightResponse.impact`, and the Command Center connection
-  contract is validated against the Adapter from API discovery schema.
 
 ## [2.2.3] - 2026-10-03
 
