@@ -95,9 +95,15 @@ class BulkActionDefinition(HttpContractModel):
     method: Literal["POST"]
     selection_modes: list[Literal["explicit", "all_matching"]] = Field(min_length=1)
     options: list[BulkActionOption]
-    tone: Literal["default", "primary", "warning", "danger"] | None = None
-    confirmation: BulkActionConfirmation | None = None
-    preflight_endpoint: str | None = None
+    tone: Literal["default", "primary", "warning", "danger"] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    confirmation: BulkActionConfirmation | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    preflight_endpoint: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @field_validator("endpoint", "preflight_endpoint")
     @classmethod
@@ -129,10 +135,14 @@ class BulkActionPreflightResponse(HttpContractModel):
     model_config = HttpContractModel.model_config | {"extra": "allow"}
 
     allowed: bool
-    detail: str | None = None
-    matched_count: int | None = Field(default=None, ge=0)
-    blockers: list[str] | None = None
-    warnings: list[str] | None = None
+    detail: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    matched_count: int | None = Field(
+        default=None,
+        ge=0,
+        exclude_if=lambda value: value is None,
+    )
+    blockers: list[str] | None = Field(default=None, exclude_if=lambda value: value is None)
+    warnings: list[str] | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class BulkDeletePreflightResponse(BulkActionPreflightResponse):
