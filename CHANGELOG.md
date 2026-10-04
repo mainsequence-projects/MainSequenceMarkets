@@ -7,6 +7,23 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.4] - 2026-10-04
+
+### Fixed
+
+- `BulkActionDefinition` omits `tone`, `confirmation` and `preflight_endpoint`,
+  and `BulkActionPreflightResponse` omits `detail`, `matched_count`, `blockers`
+  and `warnings`, when they are unset, instead of serializing them as `null`.
+  The Command Center SDK accepts these fields only when they are absent or
+  valid, so a discovery route that advertised an action without a `tone` or
+  `confirmation` failed with "Bulk-action discovery returned an invalid action
+  definition.", and a preflight that left any of those fields unset failed to
+  parse ([#22](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/22)).
+  The ms-markets bulk-delete routes set every field and were not affected. A
+  contract test dumps the resource-discovery and preflight models with only
+  their required fields and checks that the output has no `null` values and
+  validates against the pinned SDK schemas.
+
 ## [2.2.3] - 2026-10-03
 
 ### Added
