@@ -50,7 +50,7 @@ index_type_router = APIRouter(prefix="/index-type", tags=["index"])
 
 
 def _request_actor(request: Request) -> IndexActor | None:
-    """Return the platform-injected human caller, or `None` for an anonymous request."""
+    """Return the caller that request identity verified, or `None` on an unauthenticated request."""
 
     user = getattr(request.state, "user", None)
     if user is None:
