@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -130,7 +131,7 @@ def prepare_equal_weight_portfolio_schema(
             revision_message=revision_message,
         )
         before_revision_files = _migration_revision_files()
-        _run_mainsequence(
+        _run_metatables(
             [
                 "migrations",
                 "revision",
@@ -155,7 +156,7 @@ def prepare_equal_weight_portfolio_schema(
     print_detail("dynamic_revision_file", revision_file)
 
     print_step(4, "Applying the dynamic migration revision.")
-    _run_mainsequence(
+    _run_metatables(
         [
             "migrations",
             "upgrade",
@@ -250,14 +251,14 @@ def _active_version_directory() -> Path:
     return Path(str(traversable))
 
 
-def _run_mainsequence(
+def _run_metatables(
     args: list[str],
     *,
     env: dict[str, str],
     allow_failure: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     command_env = _command_env(env)
-    command = [sys.executable, "-m", "mainsequence", *args]
+    command = [_metatables_executable(), *args]
     print_detail("command", " ".join(command))
     result = subprocess.run(
         command,
@@ -269,6 +270,16 @@ def _run_mainsequence(
     if result.returncode != 0 and not allow_failure:
         raise subprocess.CalledProcessError(result.returncode, command)
     return result
+
+
+def _metatables_executable() -> str:
+    candidate = Path(sys.executable).with_name("metatables")
+    if candidate.is_file():
+        return str(candidate)
+    executable = shutil.which("metatables")
+    if executable is None:
+        raise RuntimeError("The metatables CLI is not installed in this Python environment.")
+    return executable
 
 
 def _command_env(extra_env: dict[str, str]) -> dict[str, str]:

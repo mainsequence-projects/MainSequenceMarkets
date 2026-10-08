@@ -237,7 +237,7 @@ def test_prepare_schema_runs_upgrade_when_metadata_already_exists(
     )
     monkeypatch.setattr(
         prep,
-        "_run_mainsequence",
+        "_run_metatables",
         lambda args, *, env, allow_failure=False: commands.append((args, env)),
     )
 
