@@ -54,6 +54,41 @@ The platform supplies current Team membership through the SDK. MetaTables contro
 the permissions assigned to a Team, not who belongs to that Team. Removing Bob
 from Research removes the access that membership supplied on the next request. A direct grant to Bob can still provide access.
 
+## Workload Users
+
+A deployed Job, FastAPI release or Agent calls MetaTables as its own workload User,
+not as the person who deployed it. Grant it access like a person, directly or
+through a Team an Organization admin adds it to:
+
+- Search for it by its Job, release or Agent name. Alternatively, pass its UID,
+  the `workload_user_uid` of the Job, release or Agent, to `set_access`, or add
+  it to the users in `assignments`. MetaTables labels a workload by its Job,
+  release or Agent name when you can view that workload, otherwise by its kind
+  and UID.
+- **The person who manages a workload can grant it.** They can give it Reader on
+  any table they can read, and lower or remove that grant, without being the
+  table's Writer. Everything else needs a Writer or an admin.
+- A workload User whose workload was deleted is inactive and cannot be granted.
+
+The MetaTables Analyst ([ADR 0019](../adr/agent/0019-metatables-analyst-agent.md))
+is a workload that holds no grants: it reads as the person it is answering
+([ADR 0020](../adr/agent/0020-analyst-reads-as-its-requester.md)), with that person's own
+and Team grants, and never writes. An Organization admin reads through it only what they
+are granted. Do not grant its workload User Reader: everyone who can use the Analyst
+could then read those tables through it.
+
+## Who you can find
+
+Sharing candidates, search and principal checks show what you can see in the
+platform directory. They don't show what the API's own identity can see:
+
+- people and Teams under the platform's directory rules;
+- the workloads you can view.
+
+Previewing another User's access counts the Teams granted on the table, or on its
+namespace, whose members you can see. Any granted Team you cannot see is listed in
+`unreadable_team_uids`.
+
 ## Live namespace inheritance
 
 A catalog namespace groups table access. It is not a SQL schema, a migration
@@ -126,8 +161,9 @@ review intervening changes.
 | Endpoint | Authority |
 | --- | --- |
 | `GET /meta-tables/{uid}/permissions` | Table Reader or application admin |
-| `PUT /meta-tables/{uid}/permissions` | Table Writer or application admin |
+| `PUT /meta-tables/{uid}/permissions` | Table Writer or application admin; a workload's manager for that workload's Reader grant |
 | `GET /meta-tables/{uid}/effective-access/` | Reader for self; Writer/admin for another User |
+| `GET /security/principals/?search=` | Any caller; searches the caller's own platform directory |
 | `GET /meta-tables/{uid}/access-history/` | Table Writer or application admin |
 | `GET /namespaces/{uid}/permissions` | Visible namespace or application admin |
 | `PUT /namespaces/{uid}/permissions` | Application admin |
@@ -141,5 +177,6 @@ These wire names mean Reader and Writer; every Writer must also appear in `view`
 The response contains current grants, effective access, and contributing sources.
 `without_grant_uid` previews removing one contribution; it does not modify access.
 Namespace-wide grants are changed through global Security. Directory choices and
-new grant recipients are obtained or validated through existing SDK User/Team
-operations. An unavailable directory cannot create an unverified grant.
+new grant recipients, workload Users included, are obtained or validated through
+existing SDK User/Team operations. An unavailable directory cannot create an
+unverified grant.

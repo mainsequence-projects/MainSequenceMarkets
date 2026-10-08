@@ -7,6 +7,41 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Requires `mainsequence>=9.0.19,<10` and `mainsequence-metatable>=0.1.26,<0.2`;
+  the lock and exported `requirements.txt` select `mainsequence` 9.0.19 and
+  `mainsequence-metatable` 0.1.26. MetaTables 0.1.24 and later require
+  `mainsequence[mcp]>=9.0.19` and always install `fastembed`, so `onnxruntime`,
+  `tokenizers`, `huggingface-hub` and `mcp` are new runtime dependencies (about
+  100 MB installed). The API does not import them at startup. No ms-markets
+  code uses an API that changed in this range.
+- The local MetaTables API is now one per laptop. After upgrading, restart
+  `metatables serve --local` and apply the local system migration
+  `0011_table_search` (`metatables --local runtime upgrade`); projects on
+  MetaTables 0.1.21 or earlier then fail against the shared local file.
+- Every request to the Markets API is authenticated before its handler (see
+  Fixed). A local request must send the signed-in user's
+  `Authorization: Bearer` token, which is checked against
+  `MAINSEQUENCE_ENDPOINT`; without one it receives `401`.
+- Refreshed the Main Sequence SDK agent skills and the managed `AGENTS.md`
+  block to 9.0.19, and the MetaTables agent skills to 0.1.26. The 0.1.18
+  MetaTables skills said registered foreign keys must use `RESTRICT` or
+  `NO ACTION`; 0.1.26 allows any referential action, including the cascades
+  ms-markets declares.
+
+### Fixed
+
+- The Markets API installs the SDK request identity with
+  `install_request_identity(app)` in `create_app()`. The platform launcher
+  refuses to serve an application that does not install it, and SDK releases
+  before 9.0.18 reject the platform's current caller assertions. Handlers read
+  the verified caller from `request.state.user`, which the platform never
+  injected, so the Index routes treated every hosted request as anonymous.
+- The Index actor takes its Teams from the request identity's `team_uids`. It
+  read `organization_teams`, which a request identity does not have, so an
+  HTTP caller's Teams were always empty.
+
 ## [2.2.5] - 2026-10-04
 
 ### Fixed

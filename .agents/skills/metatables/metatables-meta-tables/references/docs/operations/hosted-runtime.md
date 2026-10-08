@@ -9,7 +9,9 @@ new image, and a failure stops the rollout. API pods only open it. See
 [ADR 0014](../adr/api/0014-main-sequence-release-jobs-and-production-migrations.md).
 
 The repository's `.mainsequence/workflows/metatables-api.yaml` declares the
-automatic FastAPI deployment at `api/metatables/main.py`. This file imports
+automatic FastAPI deployment at `api/metatables/main.py`, and the MetaTables Analyst
+Harness Agent at `api/tau/main.py`
+([ADR 0019](../adr/agent/0019-metatables-analyst-agent.md)), which deploys after the API. This file imports
 `metatables.api.metatables.main:app`; the server and its deployment-specific
 `configuration.yaml` are installed under `metatables.api`. That configuration
 disables local controls and declares the runtime database. The workflow uses no
@@ -31,8 +33,11 @@ deployment; resolve duplicates within it. Hosted clients leave
 `METATABLES_API_URL` unset; that variable accepts only loopback development URLs.
 
 Serve `metatables.api.app.main:app` with hosted execution and one runtime DataSource. Start one
-worker per runtime instance, configure the ordinary SDK session and caller verifier,
-and set `local_mode_available: false` in `configuration.yaml` on shared deployments.
+worker per runtime instance, configure the ordinary SDK session and the platform's
+caller-assertion trust configuration (`MAINSEQUENCE_CALLER_AUTH_MODE=assertion`,
+`MAINSEQUENCE_CALLER_ASSERTION_ISSUER`, `MAINSEQUENCE_CALLER_ASSERTION_JWKS_URL`,
+`APP_NAME` and `MAINSEQUENCE_ORGANIZATION_ENVIRONMENT_UID`), and set
+`local_mode_available: false` in `configuration.yaml` on shared deployments.
 
 ```bash
 uvicorn metatables.api.app.main:app --host 0.0.0.0 --port 18473
@@ -41,6 +46,13 @@ uvicorn metatables.api.app.main:app --host 0.0.0.0 --port 18473
 The ingress must provide signed caller assertions. Unsigned User UIDs and the
 runtime's own workload token cannot identify the human requesting a table
 operation. The SDK verifies caller proof; MetaTables applies local resource policy.
+
+The app installs the SDK request identity when it is created, and the platform's
+FastAPI launcher checks that declaration before it serves a revision
+([ADR 0017](../adr/api/0017-hosted-request-identity.md)). Releases before 0.1.21 do
+not install it, so the launcher refuses their new hosted revisions. Without the
+trust configuration the app installs nothing and admits no caller; an incomplete
+configuration stops startup.
 
 ## Declare the runtime database
 
@@ -110,7 +122,10 @@ lists what MetaTables requires.
 In `.mainsequence/workflows/metatables-api.yaml`, the `migrate-system` Job
 (`jobs/migrate_system.py`, exactly `metatables runtime upgrade`) runs from the
 candidate image before the API rolls out, on every deployment. It reads
-`configuration.yaml` and the Secret itself; it does not call the running API. It:
+`configuration.yaml` and the Secret itself; it does not call the running API.
+The Job and the API run as their own workload Users, so each declares
+`access.secrets` view on the `uri_secret` Secret, and on any TLS Secret you set;
+the platform grants it on push. It:
 
 1. checks that the login can secure the database: `CREATEROLE`, `CREATE` on the
    database or ownership of the `metatables` schema, and `CREATE` on the default schema;
@@ -166,14 +181,6 @@ application tables stay in that one database.
 
 The verified hosted Environment remains display metadata supplied through ordinary SDK
 interfaces. The declared database does not change SDK context or Environment requirements.
-
-## Developer launcher in Hosted mode
-
-After `metatables serve --local --admin` is switched to Hosted, the launcher reads
-the API's packaged deployment configuration and the same Secret, resolved in the
-developer's SDK Environment, so it uses the same database as the deployed API.
-It never migrates. If the local branch has newer migrations than the deployed API,
-it reports `migration_required` until that code is deployed.
 
 ## Application grants
 

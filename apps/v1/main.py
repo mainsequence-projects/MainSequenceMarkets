@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
+from mainsequence.server.fastapi import install_request_identity
 
 from apps.v1.routers.accounts import router as accounts_router
 from apps.v1.routers.asset_categories import router as asset_categories_router
@@ -232,6 +233,10 @@ def create_app() -> FastAPI:
         return app.openapi_schema
 
     app.openapi = custom_openapi
+    # Authenticates every request before its handler: the gateway's signed caller
+    # assertion when hosted, the caller's Bearer token locally. The platform
+    # launcher refuses to serve an application without it.
+    install_request_identity(app)
     return app
 
 

@@ -6,6 +6,12 @@
 > conflicting application-migration execution and credential restrictions;
 > governed API operations and MetaTables system migrations remain separate.
 
+> Amendment (2026-10-03): the developer launcher is always Local. Runtime switching
+> (`POST /runtime-mode/`, **Settings → Runtime mode**, `.local/runtime-selection.json`
+> and the launcher's Hosted worker) is removed, superseding this ADR's switching
+> sections. Hosted data is reached through the deployed API and Admin, or from a
+> client without `--local`.
+
 
 Date: 2026-09-28
 

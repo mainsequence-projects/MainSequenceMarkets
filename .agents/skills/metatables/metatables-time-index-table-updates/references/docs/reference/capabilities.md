@@ -72,7 +72,6 @@ This inventory records the support status of public resource methods and CLI com
 | `MetaTable.patch` | tested | `PATCH /meta-tables/{table_uid}/` | Client/API behavior covered with isolated catalog and adapters; live storage checks are separate. Tests: `tests/e2e/test_remaining_client_routes.py::test_public_cascade_and_inherited_crud` |
 | `MetaTable.patch_by_uid` | implemented | `PATCH /meta-tables/{table_uid}/` | Generic resource operation with a mounted API route. Check route constraints; method-specific evidence is not claimed. |
 | `MetaTable.read_rows` | tested | `POST /meta-tables/{table_uid}/read/` | Import creates relational external registrations (preview by default); bounded reads enforce existing MetaTable grants and never accept SQL. Inherited methods use the shared MetaTable endpoint. Tests: `tests/database_backend/test_relation_import.py::test_python_client_import_read_and_writer_refresh` |
-| `MetaTable.refresh_table_search_index` | unsupported |  | No public search-refresh route. |
 | `MetaTable.register` | tested | `POST /meta-tables/register/` | Client/API behavior covered with isolated catalog and adapters; live storage checks are separate. Tests: `tests/e2e/test_remaining_client_routes.py::test_public_registration_bulk_and_time_index_get_or_create` |
 | `MetaTable.remove_from_edit` | unsupported |  | No public action route. Catalog grants are managed through server repositories; labels can be replaced with table PATCH. |
 | `MetaTable.remove_from_view` | unsupported |  | No public action route. Catalog grants are managed through server repositories; labels can be replaced with table PATCH. |
@@ -82,6 +81,7 @@ This inventory records the support status of public resource methods and CLI com
 | `MetaTable.request_to_datetime` | internal |  | Transport, serialization, or model lifecycle helper; not a separate API operation. |
 | `MetaTable.revoke_access` | tested | `GET /meta-tables/{uid}/permissions`<br>`PUT /meta-tables/{uid}/permissions` | Reader/Writer sharing through the application security API; changes require Writer or application admin, with revision conflict checks. Tests: `tests/permissions/test_security_api.py::test_public_client_access_roundtrip` |
 | `MetaTable.run_query` | tested | `POST /meta-tables/run-query/` | Client/API behavior covered with isolated catalog and adapters; live storage checks are separate. Tests: `tests/e2e/test_remaining_client_routes.py::test_public_sql_and_migration_connection_check_local_scope` |
+| `MetaTable.search` | tested | `GET /meta-tables/search/` | Ranks visible tables by BM25 keywords and the local embedding model, merged by rank, with matched columns (ADR 0018). Tests: `tests/e2e/test_table_search_api.py::test_client_search_returns_ranked_tables` |
 | `MetaTable.serialize_for_json` | internal |  | Transport, serialization, or model lifecycle helper; not a separate API operation. |
 | `MetaTable.set_access` | tested | `GET /meta-tables/{uid}/permissions`<br>`PUT /meta-tables/{uid}/permissions` | Reader/Writer sharing through the application security API; changes require Writer or application admin, with revision conflict checks. Tests: `tests/permissions/test_security_api.py::test_public_client_access_roundtrip` |
 | `MetaTable.users_can_edit` | unsupported |  | No public action route. Catalog grants are managed through server repositories; labels can be replaced with table PATCH. |
@@ -128,7 +128,6 @@ This inventory records the support status of public resource methods and CLI com
 | `TimeIndexMetaTable.delete_table` | implemented |  | Deletes through the MetaTables API and shared lifecycle for every supported source. |
 | `TimeIndexMetaTable.delete_with_cascade` | implemented |  | Client helper; requires its documented input and registered-table context. |
 | `TimeIndexMetaTable.delete_with_cascade_by_uid` | tested | `POST /time-index-meta-tables/{table_uid}/delete-with-cascade/` | Client/API behavior covered with isolated catalog and adapters; live storage checks are separate. Tests: `tests/e2e/test_remaining_client_routes.py::test_public_cascade_and_inherited_crud` |
-| `TimeIndexMetaTable.description_search` | unsupported |  | No description or vector-search route. |
 | `TimeIndexMetaTable.destroy_by_uid` | tested | `DELETE /time-index-meta-tables/{table_uid}/` | Client/API behavior covered with isolated catalog and adapters; live storage checks are separate. Tests: `tests/e2e/test_table_delete_client_api.py::test_public_delete_requires_edit_and_journals_physical_drop` |
 | `TimeIndexMetaTable.execute_operation` | tested | `POST /time-index-meta-tables/execute-operation/` | Client/API behavior covered with isolated catalog and adapters; live storage checks are separate. Tests: `tests/e2e/test_remaining_client_routes.py::test_public_sql_and_migration_connection_check_local_scope` |
 | `TimeIndexMetaTable.filter` | implemented | `GET /time-index-meta-tables/` | Generic resource operation with a mounted API route. Check route constraints; method-specific evidence is not claimed. |
@@ -163,7 +162,6 @@ This inventory records the support status of public resource methods and CLI com
 | `TimeIndexMetaTable.patch` | tested | `PATCH /time-index-meta-tables/{table_uid}/` | Client/API behavior covered with isolated catalog and adapters; live storage checks are separate. Tests: `tests/e2e/test_remaining_client_routes.py::test_public_cascade_and_inherited_crud` |
 | `TimeIndexMetaTable.patch_by_uid` | implemented | `PATCH /time-index-meta-tables/{table_uid}/` | Generic resource operation with a mounted API route. Check route constraints; method-specific evidence is not claimed. |
 | `TimeIndexMetaTable.read_rows` | tested | `POST /meta-tables/{table_uid}/read/` | Import creates relational external registrations (preview by default); bounded reads enforce existing MetaTable grants and never accept SQL. Inherited methods use the shared MetaTable endpoint. Tests: `tests/database_backend/test_relation_import.py::test_python_client_import_read_and_writer_refresh` |
-| `TimeIndexMetaTable.refresh_table_search_index` | unsupported |  | No public search-refresh route. |
 | `TimeIndexMetaTable.register` | tested | `POST /time-index-meta-tables/register/` | Client/API behavior covered with isolated catalog and adapters; live storage checks are separate. Tests: `tests/e2e/test_remaining_client_routes.py::test_public_registration_bulk_and_time_index_get_or_create` |
 | `TimeIndexMetaTable.remove_from_edit` | unsupported |  | No public action route. Catalog grants are managed through server repositories; labels can be replaced with table PATCH. |
 | `TimeIndexMetaTable.remove_from_view` | unsupported |  | No public action route. Catalog grants are managed through server repositories; labels can be replaced with table PATCH. |
@@ -173,6 +171,7 @@ This inventory records the support status of public resource methods and CLI com
 | `TimeIndexMetaTable.request_to_datetime` | internal |  | Transport, serialization, or model lifecycle helper; not a separate API operation. |
 | `TimeIndexMetaTable.revoke_access` | tested | `GET /meta-tables/{uid}/permissions`<br>`PUT /meta-tables/{uid}/permissions` | Reader/Writer sharing through the application security API; changes require Writer or application admin, with revision conflict checks. Tests: `tests/permissions/test_security_api.py::test_public_client_access_roundtrip` |
 | `TimeIndexMetaTable.run_query` | tested | `POST /time-index-meta-tables/run-query/` | Client/API behavior covered with isolated catalog and adapters; live storage checks are separate. Tests: `tests/e2e/test_remaining_client_routes.py::test_public_sql_and_migration_connection_check_local_scope` |
+| `TimeIndexMetaTable.search` | tested | `GET /time-index-meta-tables/search/` | Ranks visible tables by BM25 keywords and the local embedding model, merged by rank, with matched columns (ADR 0018). Tests: `tests/e2e/test_table_search_api.py::test_client_search_returns_ranked_tables` |
 | `TimeIndexMetaTable.serialize_for_json` | internal |  | Transport, serialization, or model lifecycle helper; not a separate API operation. |
 | `TimeIndexMetaTable.set_access` | tested | `GET /meta-tables/{uid}/permissions`<br>`PUT /meta-tables/{uid}/permissions` | Reader/Writer sharing through the application security API; changes require Writer or application admin, with revision conflict checks. Tests: `tests/permissions/test_security_api.py::test_public_client_access_roundtrip` |
 | `TimeIndexMetaTable.users_can_edit` | unsupported |  | No public action route. Catalog grants are managed through server repositories; labels can be replaced with table PATCH. |
@@ -239,6 +238,8 @@ This inventory records the support status of public resource methods and CLI com
 | --- | --- | --- | --- |
 | `copy-metatables-skills` | tested | visible | Offline client skill copying delegated to the SDK scaffold helper; bundles matching guide/example resources, supports dry-run and global JSON output, and records the installed version. |
 | `code-repository time-index-table-updates list` | implemented | visible | Lists updates in the active API scope; repository UID overrides are rejected. |
+| `meta-table column-search` | implemented | hidden | Uses the client/runtime workflow described in the CLI reference. |
+| `meta-table search` | implemented | visible | Table search by default; --mode column keeps column search. |
 | `meta-table add-label` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `meta-table add_label` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `meta-table add_team_to_edit` | unsupported | hidden | No public action endpoint; command fails before transport. |
@@ -257,6 +258,8 @@ This inventory records the support status of public resource methods and CLI com
 | `meta-table remove_team_from_edit` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `meta-table remove_team_from_view` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `meta-table run_query` | implemented | visible | Uses the client/runtime workflow described in the CLI reference. |
+| `meta_table column-search` | implemented | hidden | Uses the client/runtime workflow described in the CLI reference. |
+| `meta_table search` | implemented | hidden | Uses the client/runtime workflow described in the CLI reference. |
 | `meta_table add-label` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `meta_table add_label` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `meta_table add_team_to_edit` | unsupported | hidden | No public action endpoint; command fails before transport. |
@@ -290,17 +293,15 @@ This inventory records the support status of public resource methods and CLI com
 | `time-index-table can_view` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `time-index-table column-search` | implemented | hidden | Uses the client/runtime workflow described in the CLI reference. |
 | `time-index-table delete` | implemented | visible | Uses the client/runtime workflow described in the CLI reference. |
-| `time-index-table description-search` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `time-index-table detail` | implemented | visible | Uses the client/runtime workflow described in the CLI reference. |
 | `time-index-table list` | implemented | visible | Uses the client/runtime workflow described in the CLI reference. |
-| `time-index-table refresh-search-index` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `time-index-table remove-label` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `time-index-table remove_from_edit` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `time-index-table remove_from_view` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `time-index-table remove_team_from_edit` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `time-index-table remove_team_from_view` | unsupported | hidden | No public action endpoint; command fails before transport. |
 | `time-index-table run_query` | implemented | visible | Uses the client/runtime workflow described in the CLI reference. |
-| `time-index-table search` | tested | visible | Column search only. Description and combined modes are rejected. |
+| `time-index-table search` | tested | visible | Table search by default; --mode column keeps column search. |
 | `credentials initialize` | implemented | visible | Admin-only API-owned local key provisioning after catalog migration. |
 | `credentials rotate-key` | implemented | visible | Resumable local encryption-key rotation; stable credential UUIDs. |
 | `credentials import-sdk` | implemented | visible | Explicit local import of SDK references, preserving Secrets and UUIDs. |

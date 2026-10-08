@@ -95,18 +95,23 @@ choice, not an authorization mechanism.
 
 ## Deployment and revocation
 
-The platform User response must supply `is_organization_admin` and
-`active_team_uids`; use the compatible published SDK prerequisite described in
-[installation](../client/installation-and-connection.md). Hosted admission verifies
-the existing signed caller assertion, then obtains that User's facts through the
-SDK User detail operation. Local admission resolves facts for the running SDK user.
-The deployment's existing User-directory access must permit that lookup.
+Use the compatible published SDK prerequisite described in
+[installation](../client/installation-and-connection.md). In hosted mode the SDK
+request identity verifies the existing signed caller assertion. Admission takes the
+caller, its active Team UIDs and its admin flag from `User.get_logged_user()`, as
+the platform signed them, and looks up no User
+([ADR 0017](../adr/api/0017-hosted-request-identity.md)). Workload Users are
+admitted like people. An assertion without those facts admits the caller with no
+Teams and no admin access. Local admission resolves facts for the running SDK user,
+whose platform User response must supply `is_organization_admin` and
+`active_team_uids`.
 
-The API caches successful User facts for one hour per caller and runtime. Startup
-seeds the developer's entry; cache hits do not contact the platform, and concurrent
-refreshes share one SDK request. Reads do not extend expiry. Platform membership,
-admin and User-deactivation changes take effect at the next admission after expiry
-or an API restart. Already admitted work may finish. Expired facts are never used
+The API caches the developer's successful User facts for one hour. Startup
+seeds that entry; cache hits do not contact the platform, and concurrent
+refreshes share one SDK request. Reads do not extend expiry. The developer's
+platform membership, admin and User-deactivation changes take effect at the next
+admission after expiry or an API restart; a hosted caller's take effect with its
+next caller assertion. Already admitted work may finish. Expired facts are never used
 if refresh fails; missing facts, an inactive User, or an unavailable platform then
 fails closed with 503. MetaTables stores no independent Team membership.
 

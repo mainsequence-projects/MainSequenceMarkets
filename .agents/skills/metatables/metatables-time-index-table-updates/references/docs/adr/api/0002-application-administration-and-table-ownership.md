@@ -266,6 +266,10 @@ authentication mechanisms are unchanged.
 
 ### Amendment: bounded platform-fact caching (2026-09-29)
 
+Hosted admission no longer looks up or caches User facts; it reads them from the
+caller assertion ([ADR 0017](0017-hosted-request-identity.md), 2026-10-05
+amendment). The cache below now serves the developer's admission only.
+
 This amendment replaces the requirement to fetch User facts on every request.
 Repeated User and Environment lookups added seconds to ordinary table reads and
 runtime initialization without changing their results.
@@ -306,6 +310,39 @@ Acceptance includes startup reuse, repeated and concurrent requests, isolation
 between callers and runtimes, fixed expiry, revocation after expiry, failed
 refresh without stale access, live catalog grant revocation, and Admin request
 sharing with independent cancellation.
+
+### Amendment: principals as the caller sees them (2026-10-06)
+
+Since platform ADR-0048 the hosted API calls the platform as its own workload
+User, which starts with no teams and no grants. Its directory reads saw almost no
+one, so the hosted sharing panel offered no principals and refused grants to people
+and Teams. Deployed Jobs, FastAPI releases and Agents also call MetaTables as
+their own workload Users, which need to be granted like people.
+
+- **Reads as the caller.** Every directory read (sharing candidates, principal
+  validation, names of granted principals and Team members) runs inside the SDK's
+  `reads_as_caller()`. That call presents the caller assertion the request arrived
+  with, and the platform answers with what the caller may see. Local and
+  developer runtimes have no assertion; their SDK session already belongs to the
+  developer.
+- **Workload Users are `user` principals.** Writers and admins grant them like
+  people. `GET /security/principals/?search=` finds people by email or name,
+  workloads by their Job, release or Agent name, and Teams, within the caller's
+  directory. A grant by UID (`workload_user_uid` from the Job, release or Agent)
+  needs no search. A workload User has no name of its own: it is labelled by its
+  Job, release or Agent name (`workload_name`) when the caller can view that
+  workload, otherwise by its kind and UID. An inactive one, whose workload was
+  deleted, cannot be granted.
+- **A workload's manager grants it.** As in platform ADR-0048 section 5, a person
+  who manages a workload (the platform's `managed_by_caller`) may grant it Reader
+  on a table they can read, and lower or remove that grant, without being a
+  Writer. Any other change still needs a Writer or an admin.
+- **Effective access for another User.** That User's Teams are the members of
+  each Team granted on the table or its namespace that the caller can see. The
+  preview lists any granted Team it could not read in `unreadable_team_uids`.
+- The SDK requirement becomes `mainsequence>=9.0.14,<10`, the first SDK with
+  `reads_as_caller()`, the User `search` filter, `managed_by_caller`,
+  `workload_name` and Team members that may be workload Users.
 
 ## Superseded behavior and preserved boundaries
 

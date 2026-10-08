@@ -26,6 +26,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | POST | `/meta-tables/import-from-data-source/` | Import Source | 200 |
 | POST | `/meta-tables/register/` | Register | 200 |
 | POST | `/meta-tables/run-query/` | Run Query | 200 |
+| GET | `/meta-tables/search/` | Search | 200 |
 | POST | `/meta-tables/validate-contract` | Validate Contract | 200 |
 | DELETE | `/meta-tables/{table_uid}/` | Destroy Meta Table | 204 |
 | GET | `/meta-tables/{table_uid}/` | Retrieve Table | 200 |
@@ -49,6 +50,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | PUT | `/meta-tables/{uid}/permissions` | Set Table Permissions | 200 |
 | GET | `/namespaces/` | List Namespaces | 200 |
 | GET | `/namespaces/{namespace_uid}/` | Retrieve Namespace | 200 |
+| PATCH | `/namespaces/{namespace_uid}/` | Patch Namespace | 200 |
 | GET | `/namespaces/{namespace_uid}/tables/` | Namespace Tables | 200 |
 | GET | `/namespaces/{uid}/permissions` | Namespace Permissions | 200 |
 | PUT | `/namespaces/{uid}/permissions` | Set Namespace Permissions | 200 |
@@ -58,10 +60,10 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | POST | `/runtime-bootstrap/migrate/` | Migrate | 200 |
 | GET | `/runtime-context/` | Runtime Context | 200 |
 | POST | `/runtime-migrations/{lease_uid}/release/` | Release Migration | 200 |
-| POST | `/runtime-mode/` | Select Runtime | 202 |
 | GET | `/security/access-history/` | Security History | 200 |
 | GET | `/security/database-permissions/` | Database Permission Status | 200 |
 | POST | `/security/namespaces/` | Create Namespace | 201 |
+| GET | `/security/principals/` | Principal Search | 200 |
 | POST | `/security/reconcile/` | Reconcile Database Permissions | 200 |
 | GET | `/security/resources/` | Security Resources | 200 |
 | GET | `/table-update-runs/` | List Runs | 200 |
@@ -81,6 +83,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | POST | `/time-index-meta-tables/get-or-create/` | Register Time Index | 200 |
 | POST | `/time-index-meta-tables/register/` | Register Time Index | 200 |
 | POST | `/time-index-meta-tables/run-query/` | Time Index Run Query | 200 |
+| GET | `/time-index-meta-tables/search/` | Time Index Search | 200 |
 | POST | `/time-index-meta-tables/validate-contract` | Time Index Validate Contract | 200 |
 | DELETE | `/time-index-meta-tables/{table_uid}/` | Time Index Destroy Meta Table | 204 |
 | GET | `/time-index-meta-tables/{table_uid}/` | Retrieve Table | 200 |
