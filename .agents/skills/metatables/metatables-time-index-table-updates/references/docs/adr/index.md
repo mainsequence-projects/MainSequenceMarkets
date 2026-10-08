@@ -7,8 +7,8 @@ user guides remain the reference for available behavior until the corresponding
 implementation is verified.
 
 Records are separated by the component that owns the decision: `client/` for the
-installed Python client and its CLI, and `api/` for service behavior, storage and
-authorization. A record can describe consequences for the other component without
+installed Python client and its CLI, `api/` for service behavior, storage and
+authorization, and `agent/` for the agents this repository deploys. A record can describe consequences for the other component without
 transferring ownership. ADR numbers remain unique across both directories. SDK
 decisions belong in the SDK repository and are linked as dependencies.
 
@@ -37,3 +37,13 @@ decisions belong in the SDK repository and are linked as dependencies.
 | [0014: System migrations in the deployment workflow](api/0014-main-sequence-release-jobs-and-production-migrations.md) | Accepted; implemented on development; hosted verification pending | A Main Sequence Job verifies, migrates and registers the declared runtime database from the candidate image before each API rollout, including the first. |
 | [0015: TimescaleDB compression and retention policies](api/0015-timescale-compression-and-retention-policies.md) | Accepted; implemented on branch; TimescaleDB verification pending | Time-index tables on TimescaleDB become hypertables; Writers set compression and retention through the API/Admin; Timescale keeps the jobs, and the Admin shows their status. |
 | [0016: Impact pre-flight for cascades and deletes](api/0016-impact-preflight.md) | Accepted; implemented; container engine verification pending | `get_impact` returns what a row delete, key update or table drop reaches, every blocker and whether the caller may write each table, from the planner the confirmed delete runs; cascade effects never block. Projects render it in their own UIs. |
+| [0017: Hosted caller identity through the SDK request identity](api/0017-hosted-request-identity.md) | Accepted; implemented for 0.1.21; hosted rollout verification pending | The hosted API installs the SDK request identity that the platform launcher requires; the SDK verifies each caller assertion once and admission reads `User.get_logged_user()`, including the caller's signed Teams and admin flag. Local keeps its loopback token admission. |
+| [0018: Table search by meaning and columns](api/0018-table-search.md) | Accepted; implemented; container engine verification pending | One route ranks visible tables by BM25 keywords and a local English embedding model over a per-table document that includes columns, merges the rankings and returns `matched_columns`; the index refreshes on every metadata write. |
+
+## Agents
+
+| ADR | Status | Scope |
+| --- | --- | --- |
+| [0019: MetaTables Analyst agent](agent/0019-metatables-analyst-agent.md) | Accepted; implemented on development; not deployed | A Harness Agent that always deep-searches before SQL, describes and queries MetaTables through the API as the person each turn serves (ADR 0020), with a MetaTables directive and vendored `pg-aiguide` skills. |
+| [0020: The Analyst reads as its requester](agent/0020-analyst-reads-as-its-requester.md) | Accepted; implemented on development; not deployed | The Analyst holds no grants and reads only as its requester through delegated platform calls (ADR-0051, ms-tau-sdk 2.0.7); the API admits such calls as that person, without the admin flag and read-only, with SQL on their own database role. |
+| [0021: The API serves the Analyst's tools over MCP](agent/0021-api-serves-the-analyst-tools-over-mcp.md) | Accepted; implemented on development; not deployed | The hosted API serves the Analyst's six read tools at `/mcp`, authorized as REST through its own routes; the hosted Analyst declares them as `mcp_applications` and its extension serves only local sessions. |

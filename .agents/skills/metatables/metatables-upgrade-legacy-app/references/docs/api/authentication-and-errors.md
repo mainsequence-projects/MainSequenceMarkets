@@ -5,19 +5,30 @@ Reader/Writer ownership, live namespace inheritance, and sharing endpoints.
 
 ## Hosted requests
 
-The API's request boundary calls the verifier from `mainsequence[server]` for
-platform-signed caller assertions. The SDK owns issuer, key discovery, claim,
-request-target, signature, and expiry verification. MetaTables only maps
-its verified identity and exceptions into request context and HTTP responses.
-Unsigned user headers are not identity evidence.
+The hosted API installs the `mainsequence` SDK's request identity once, when it is
+created; the platform's FastAPI launcher requires it before serving a deployment
+([ADR 0017](../adr/api/0017-hosted-request-identity.md)). The SDK verifies the
+platform-signed caller assertion before any route runs and owns issuer, key
+discovery, claim, request-target, signature, and expiry verification. It answers a
+missing or invalid assertion with 401 and unavailable key discovery with 503.
+Admission then reads the caller from `User.get_logged_user()` and never verifies the
+assertion again. Unsigned user headers, Bearer tokens and the runtime's own SDK
+account are not identity evidence.
 
-After verification, the API reads the admitted User through the SDK to obtain
-current admin status and active Team UIDs. It evaluates table/namespace grants
-in its runtime database. User and Team facts remain platform-owned; no local
-membership registry is used. The API caches successful User facts for one hour
-per caller and runtime; concurrent refreshes share one SDK lookup. Expired facts
-are never used if refresh fails. Existing platform User-directory access must permit
-the deployment's lookup. This adds no authentication mechanism.
+The API installs the integration when the process carries the platform's
+caller-assertion configuration, as every hosted deployment does, and accepts no
+other SDK mode. Once it is installed, every route not declared in the deployment's
+`FASTAPI_PUBLIC_INGRESS` requires a caller, including `/` and the OpenAPI pages;
+MetaTables declares no anonymous route. A hosted API started without that
+configuration installs nothing, and admission rejects every caller.
+
+The assertion also carries the caller's active Team UIDs and admin flag, which
+the SDK exposes on `User.get_logged_user()`. Admission uses them as signed and
+performs no User lookup, so workload Users, such as applications and Jobs that run
+as their own User, are admitted like people. Each request's assertion states
+current facts, so hosted facts are not cached. The API evaluates table/namespace
+grants in its runtime database. User and Team facts remain platform-owned; no local
+membership registry is used. This adds no authentication mechanism.
 
 ## Local requests
 
@@ -26,7 +37,9 @@ A local server binds only a loopback listener supplied by `metatables serve
 one-hour fact cache used by subsequent requests. Each request checks
 loopback peer, exact Host, the private local process token, and browser-origin
 policy. Hosted caller assertions are rejected in local mode; request headers
-cannot choose an authentication mode or supply another user.
+cannot choose an authentication mode or supply another user. Local does not install
+the SDK request identity, whose local mode would require a platform Bearer token on
+every request.
 
 `METATABLES_LOCAL_ALLOWED_ORIGINS` lists exact loopback browser origins with ports.
 The default permits no browser-origin write requests. Native requests without
@@ -36,13 +49,15 @@ of arbitrary cross-origin browser support.
 
 ## Fact freshness
 
-User deactivation, Team membership and admin changes take effect on the next
-admission after cache expiry, with a maximum one-hour cache lifetime. Reads do
+Hosted facts are as fresh as each request's caller assertion, which lives at most
+five minutes. For the Local developer, User deactivation, Team membership and admin
+changes take effect on the next admission after cache expiry, with a maximum
+one-hour cache lifetime. Reads do
 not extend that lifetime. Table and namespace grants are checked live against
 the catalog, so their revocation does not wait for the platform-fact cache.
 An expired entry whose refresh fails returns 503; it cannot supply stale access.
-Restart the API after changing its SDK account or endpoint. Worker restarts and
-runtime-mode changes discard caches. No cache environment variables are needed.
+Restart the API after changing its SDK account or endpoint. Worker restarts
+discard caches. No cache environment variables are needed.
 
 Environment display metadata is cached separately for one hour, including
 not-found and unavailable results. `/runtime-context/` still reads current runtime,

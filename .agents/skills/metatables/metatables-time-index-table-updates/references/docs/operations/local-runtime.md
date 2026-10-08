@@ -35,16 +35,18 @@ credentials already set in the environment. The launch prints which one it used
 (`credentials: saved session` or `credentials: exported tokens`).
 
 In another terminal, use `metatables --local runtime status`. Python applications
-call `metatables.configure_local_client()` before client operations. The private
-`.local/development-client.json` binds the project, token and live launcher process;
-`init` adds `.local/` to `.gitignore`. Stop the launcher with Ctrl-C to stop its
-owned services and remove its connection file. A second launcher for the same
-project fails without replacing that connection.
+call `metatables.configure_local_client()` before client operations. The laptop
+runs one local API, like its one local runtime: the launcher publishes its address,
+private token and live process in `server.json` in the local storage directory, and
+every checkout connects through it. `metatables serve --local` in another project
+prints `MetaTables API already running: http://127.0.0.1:18473` and exits; it never
+starts a second API. Stop the launcher with Ctrl-C to stop its owned services and
+remove its connection file. `init` adds `.local/` to `.gitignore`.
 
 The launcher validates a private loopback listener and uses the ordinary SDK login
 for user identity and independent Git discovery. Browser writes require the configured
-exact loopback origin. Native clients use the private token and their Git descriptor.
-A client from another branch or checkout is rejected. The SDK provides developer identity. Local DataSource credentials use the API
+exact loopback origin. Native clients from any checkout or branch use the private
+token; commits and branch changes never require an API restart. The SDK provides developer identity. Local DataSource credentials use the API
 CredentialStore without a hosted Secret requirement.
 
 ## Initialize explicitly
@@ -65,34 +67,23 @@ Apply application providers through the client with
 `metatables --local migrations upgrade --provider ledger.migrations:migration`. See the
 [write/read example](../examples/local_app/README.md).
 
-## Switch modes in one Admin site
+## Local only
 
-Each mode lists only its own runtime catalog's DataSources. Local shows the workspace
-catalog and keeps its passwords in the local CredentialStore; Hosted shows the catalog
-of the deployed runtime database and keeps passwords as managed Main Sequence Secrets.
-A DataSource registered in Local never appears in Hosted, and neither mode copies the
-other's registrations or credentials.
-
-To use the hosted database, choose Hosted under **Settings → Runtime mode** and click
-**Switch to Hosted**. The worker restarts in Hosted and opens the database the API's
-deployment declares: it reads the API's packaged deployment configuration and the same
-Environment Secret, resolved in your SDK Environment. Hosted Settings is read-only and
-the launcher never migrates. If your branch has newer system migrations than the
-deployed API, it reports `migration_required` until that code is deployed. See
-[the developer launcher in Hosted mode](hosted-runtime.md#developer-launcher-in-hosted-mode).
-Switching stops the old worker before starting the selected mode; it never copies data.
-Failed worker startup restores the previous worker. Mode selection is recorded in
-`.local/runtime-selection.json`; the Local SQLite selection is recorded separately
+The local API always runs Local; it has no switch to a hosted runtime. Its Admin lists
+the workspace catalog's DataSources and keeps their passwords in the local
+CredentialStore. Hosted data and its DataSources, whose passwords are managed Main
+Sequence Secrets, are reached through the deployed API and Admin, or from a client
+that omits `--local` and `configure_local_client()`. Neither runtime copies the
+other's registrations, credentials or data. The Local SQLite selection is recorded
 under `local` in `.local/runtime-data-sources.json`.
 
-The API refuses switching or source reconfiguration while other requests, open
-migration connections, reserved migrations, unfinished updates or unresolved physical
-operations exist. Stale runtime-instance headers are rejected after a transition.
-Migration connections use the selected runtime credentials and hold supervised
-runtime switching until the client releases them.
+The API refuses source reconfiguration while other requests, open migration
+connections, reserved migrations, unfinished updates or unresolved physical
+operations exist. Stale runtime-instance headers are rejected after the runtime
+binding changes. Migration connections use the runtime credentials and hold
+reconfiguration until the client releases them.
 
-`metatables serve --local` starts with Local selected and uses the shared supervisor.
-Shared hosted deployments disable local mode. Switching affects the whole API instance.
+Shared hosted deployments disable local mode.
 
 ## Workspace storage
 
@@ -108,9 +99,7 @@ configure another absolute SQLite file. A new file's identity derives from its
 location; an existing file keeps the identity recorded in its scope marker, so a file
 moved together with its marker keeps its DataSource UID and run logs. The selected
 file is stored under the single `local` entry in `.local/runtime-data-sources.json`.
-Branch changes and restarts reuse it, its credentials and its DataSource UID. Git
-context still describes the running code; changing that context requires restarting
-the API.
+Branch changes and restarts reuse it, its credentials and its DataSource UID.
 
 Existing files retain their paths, storage markers and IDs. A checkout that saved a
 per-checkout file under an earlier release keeps using it after an upgrade; select

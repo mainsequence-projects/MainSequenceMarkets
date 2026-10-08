@@ -5,6 +5,13 @@
 > Applications now load providers and execute Alembic through the client using
 > their environment connection. Launcher/Admin installation decisions remain valid.
 
+> Amendment (2026-10-03): the laptop runs one local API, matching its one local
+> runtime. The launcher publishes its connection as `server.json` in the local storage
+> directory instead of a per-project `.local/development-client.json`, and every
+> checkout connects through it. `serve --local` in another project reports the
+> running API and exits. The API no longer rejects clients from another checkout
+> or branch, and commits never require an API restart.
+
 
 Date: 2026-09-30
 
@@ -200,7 +207,8 @@ SDK authentication and API identity refresh requirements still apply.
 | Location | Contents and execution context |
 | --- | --- |
 | Consuming application's Python environment | Installed MetaTables client/API and application migration providers. Use this interpreter to start the API. |
-| Consuming application directory | `configuration.yaml`, Git context, runtime selection and `.local/development-client.json`. This is the API working directory. |
+| Consuming application directory | `configuration.yaml`, Git context and runtime selection of the project that launched the API. This is the API working directory. |
+| Local storage directory | The shared SQLite runtime and `server.json`, the running API's private connection for every checkout. |
 | Managed Admin directory or `--admin-path` | Frontend source, `package-lock.json` and `node_modules`. This is Vite's working directory. |
 | Existing API-selected storage | SQLite system catalog, credentials and application rows; initialization and selection remain API-owned. |
 

@@ -281,7 +281,6 @@
         "type": "object"
       },
       "CredentialStoreDescriptor": {
-        "additionalProperties": false,
         "properties": {
           "error": {
             "anyOf": [
@@ -765,7 +764,6 @@
         "type": "object"
       },
       "HostedEnvironment": {
-        "additionalProperties": false,
         "properties": {
           "is_production": {
             "anyOf": [
@@ -1772,6 +1770,24 @@
           "results"
         ],
         "title": "NamespacePage",
+        "type": "object"
+      },
+      "NamespacePatch": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "title": "NamespacePatch",
         "type": "object"
       },
       "NamespaceRecord": {
@@ -2894,7 +2910,6 @@
         "type": "object"
       },
       "RuntimeBootstrapDescriptor": {
-        "additionalProperties": false,
         "properties": {
           "active": {
             "title": "Active",
@@ -3035,7 +3050,6 @@
         "type": "object"
       },
       "RuntimeContext": {
-        "additionalProperties": false,
         "properties": {
           "api_endpoint": {
             "default": "",
@@ -3111,8 +3125,8 @@
             "anyOf": [
               {
                 "enum": [
-                  "sqlite",
                   "postgresql",
+                  "sqlite",
                   "mysql",
                   "mssql"
                 ],
@@ -3148,16 +3162,6 @@
               }
             ]
           },
-          "hosted_environment_target": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/HostedEnvironment"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "is_admin": {
             "default": false,
             "title": "Is Admin",
@@ -3177,8 +3181,8 @@
             "anyOf": [
               {
                 "enum": [
-                  "named",
                   "pyformat",
+                  "named",
                   "qmark"
                 ],
                 "type": "string"
@@ -3199,22 +3203,6 @@
               }
             ],
             "title": "Runtime Instance Id"
-          },
-          "runtime_switch_available": {
-            "default": false,
-            "title": "Runtime Switch Available",
-            "type": "boolean"
-          },
-          "runtime_switch_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Runtime Switch Error"
           },
           "transfer_limits": {
             "anyOf": [
@@ -3246,24 +3234,6 @@
           "default_schema"
         ],
         "title": "RuntimeContext",
-        "type": "object"
-      },
-      "RuntimeSelection": {
-        "additionalProperties": false,
-        "properties": {
-          "mode": {
-            "enum": [
-              "local",
-              "hosted"
-            ],
-            "title": "Mode",
-            "type": "string"
-          }
-        },
-        "required": [
-          "mode"
-        ],
-        "title": "RuntimeSelection",
         "type": "object"
       },
       "RuntimeSourceInput": {
@@ -4399,7 +4369,6 @@
         "type": "object"
       },
       "TransferLimits": {
-        "additionalProperties": false,
         "properties": {
           "chunk_receipts": {
             "default": true,
@@ -5737,6 +5706,30 @@
         ]
       }
     },
+    "/meta-tables/search/": {
+      "get": {
+        "description": "Merge keyword and meaning rankings over the caller's visible tables.",
+        "operationId": "search_meta_tables_search__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Search Meta Tables Search  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Search",
+        "tags": [
+          "MetaTables"
+        ]
+      }
+    },
     "/meta-tables/validate-contract": {
       "post": {
         "description": "Normalize a submitted contract without accessing catalog or physical data.",
@@ -6307,7 +6300,7 @@
     },
     "/meta-tables/{table_uid}/search-document/": {
       "get": {
-        "description": "Build a deterministic document from current, permission-filtered catalog metadata.",
+        "description": "The document search indexes; built from the table's own metadata, never other tables'.",
         "operationId": "get_table_search_document_meta_tables__table_uid__search_document__get",
         "parameters": [
           {
@@ -7024,6 +7017,58 @@
         "tags": [
           "Namespaces"
         ]
+      },
+      "patch": {
+        "description": "Describe the namespace's application or source; its Writers and admins may edit it.",
+        "operationId": "patch_namespace_namespaces__namespace_uid___patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_uid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Uid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NamespacePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NamespaceRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Namespace",
+        "tags": [
+          "Namespaces"
+        ]
       }
     },
     "/namespaces/{namespace_uid}/tables/": {
@@ -7371,45 +7416,6 @@
         ]
       }
     },
-    "/runtime-mode/": {
-      "post": {
-        "operationId": "select_runtime_runtime_mode__post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeSelection"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Select Runtime",
-        "tags": [
-          "Runtime"
-        ]
-      }
-    },
     "/security/access-history/": {
       "get": {
         "operationId": "security_history_security_access_history__get",
@@ -7527,6 +7533,49 @@
           }
         },
         "summary": "Create Namespace",
+        "tags": [
+          "Security"
+        ]
+      }
+    },
+    "/security/principals/": {
+      "get": {
+        "description": "People, workloads and Teams to share with, as the caller sees them in the platform directory.",
+        "operationId": "principal_search_security_principals__get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Search",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Principal Search",
         "tags": [
           "Security"
         ]
@@ -8591,6 +8640,30 @@
         ]
       }
     },
+    "/time-index-meta-tables/search/": {
+      "get": {
+        "description": "Merge keyword and meaning rankings over the caller's visible tables.",
+        "operationId": "time_index_search_time_index_meta_tables_search__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Time Index Search Time Index Meta Tables Search  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Time Index Search",
+        "tags": [
+          "TimeIndexMetaTables"
+        ]
+      }
+    },
     "/time-index-meta-tables/validate-contract": {
       "post": {
         "description": "Normalize a submitted contract without accessing catalog or physical data.",
@@ -9321,7 +9394,7 @@
     },
     "/time-index-meta-tables/{table_uid}/search-document/": {
       "get": {
-        "description": "Build a deterministic document from current, permission-filtered catalog metadata.",
+        "description": "The document search indexes; built from the table's own metadata, never other tables'.",
         "operationId": "time_index_get_table_search_document_time_index_meta_tables__table_uid__search_document__get",
         "parameters": [
           {

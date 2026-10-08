@@ -31,7 +31,10 @@ Read `docs/client/define-and-migrate-tables.md`,
 `src/metatables/examples/tables.py`. Managed authoring is migration-first: define SQLAlchemy
 models, select a provider, author and apply a revision with the client, then
 finalize catalog bindings through the API. Use the
-[table skill](../metatables-meta-tables/SKILL.md) for contract design.
+[table skill](../metatables-meta-tables/SKILL.md) for contract design. The catalog
+sync in `metatables migrations upgrade` also copies changed table descriptions,
+labels and column metadata to existing tables; a metadata-only change needs no
+revision (see the [table discovery skill](../metatables-table-discovery/SKILL.md)).
 
 Check `docs/reference/capabilities.md` and `metatables migrations --help` before
 promising a command. The API's own catalog migrations are a separate history: a

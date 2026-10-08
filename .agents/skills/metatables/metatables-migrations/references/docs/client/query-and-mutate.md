@@ -92,9 +92,13 @@ permission model; `operation="select"` alone does not establish that boundary.
 ## Metadata and search
 
 `MetaTable.filter_by_body(...)` supports catalog filtering and pagination.
-`MetaTable.column_search(...)` searches column metadata within visible tables.
-Description/vector search and explicit search-index refresh are currently
-unavailable. The CLI's `time-index-table search` defaults to column search.
+`MetaTable.search("bond prices")` ranks the tables you can read by meaning and
+columns and returns a `TableSearchResult`: `semantic` and `hits`, each hit with
+`table`, `score` and `matched_columns`. `TimeIndexMetaTable.search(...)` returns
+time-index tables only. Both accept `limit` and the list filters. The CLI's
+`meta-table search` and `time-index-table search` use it; `--mode column` runs
+`MetaTable.column_search(...)`, which matches column metadata only. Search quality
+depends on descriptions: follow the table discovery skill when writing them.
 
 `table.patch(labels=[...], description=...)` updates supported metadata. The
 inherited separate add/remove-label and grant-action methods have no public route.

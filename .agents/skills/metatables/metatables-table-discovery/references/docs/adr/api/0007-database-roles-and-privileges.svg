@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="780" viewBox="0 0 1240 780" role="img" aria-labelledby="f1-title f1-desc">
+  <title id="f1-title">Reader and Writer in PostgreSQL</title>
+  <desc id="f1-desc">Alice logs in as her own role. A Reader grant gives her role SELECT on a table; a Writer grant gives SELECT, INSERT, UPDATE and DELETE. Team and namespace grants reach her through role membership. The metatables catalog schema is not accessible. mt_owner owns every table and cannot log in.</desc>
+  <style>
+    .sans { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .title { font-size: 21px; font-weight: 700; fill: #0f172a; }
+    .sub { font-size: 13.5px; fill: #475569; }
+    .col { font-size: 11.5px; font-weight: 700; fill: #64748b; letter-spacing: 0.08em; }
+    .name { font-size: 14px; font-weight: 700; fill: #0f172a; }
+    .acl { font-size: 12.5px; fill: #1e293b; }
+    .note { font-size: 12.5px; fill: #475569; }
+    .strong { font-weight: 700; fill: #0f172a; }
+    .tag { font-size: 11.5px; font-weight: 600; fill: #64748b; }
+    .label { font-size: 12px; font-weight: 600; }
+    .read { fill: #1d4ed8; }
+    .write { fill: #c2410c; }
+    .member { fill: #64748b; }
+    .deny { fill: #b91c1c; }
+  </style>
+  <defs>
+    <marker id="f1-arrow-read" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d4ed8"/></marker>
+    <marker id="f1-arrow-write" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c2410c"/></marker>
+    <marker id="f1-arrow-member" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="780" rx="16" fill="#ffffff"/>
+
+  <text x="40" y="48" class="sans title">Reader and Writer in PostgreSQL</text>
+  <text x="40" y="74" class="sans sub">Each User logs in as their own role. PostgreSQL checks these grants on every statement; the API does not parse the SQL.</text>
+
+  <text x="40" y="112" class="sans col">LOGIN ROLE · ONE PER USER</text>
+  <text x="390" y="112" class="sans col">GROUP ROLES</text>
+  <text x="800" y="112" class="sans col">TABLES AND THEIR GRANTS</text>
+
+  <!-- Login role -->
+  <rect x="40" y="126" width="250" height="506" rx="12" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.5"/>
+  <text x="60" y="156" class="mono name">mt_u_alice</text>
+  <text x="60" y="178" class="sans note">Alice's login role</text>
+
+  <!-- Group roles -->
+  <rect x="390" y="320" width="300" height="64" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+  <text x="406" y="346" class="mono name">mt_t_research</text>
+  <text x="406" y="368" class="sans note">Team role</text>
+
+  <rect x="390" y="412" width="300" height="48" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+  <text x="406" y="432" class="mono name">mt_n_markets_r</text>
+  <text x="406" y="451" class="sans note">Namespace reader role</text>
+
+  <rect x="390" y="470" width="300" height="48" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+  <text x="406" y="490" class="mono name">mt_n_markets_w</text>
+  <text x="406" y="509" class="sans note">Namespace writer role</text>
+
+  <!-- Tables -->
+  <rect x="800" y="130" width="400" height="64" rx="10" fill="#ffffff" stroke="#334155" stroke-width="1.2"/>
+  <text x="816" y="154" class="mono name">public.prices</text>
+  <text x="1184" y="154" text-anchor="end" class="sans tag">Reader grant</text>
+  <text x="816" y="178" class="mono acl">mt_u_alice: SELECT</text>
+
+  <rect x="800" y="214" width="400" height="64" rx="10" fill="#ffffff" stroke="#334155" stroke-width="1.2"/>
+  <text x="816" y="238" class="mono name">public.orders</text>
+  <text x="1184" y="238" text-anchor="end" class="sans tag">Writer grant</text>
+  <text x="816" y="262" class="mono acl">mt_u_alice: SELECT, INSERT, UPDATE, DELETE</text>
+
+  <rect x="800" y="320" width="400" height="64" rx="10" fill="#ffffff" stroke="#334155" stroke-width="1.2"/>
+  <text x="816" y="344" class="mono name">public.research_notes</text>
+  <text x="1184" y="344" text-anchor="end" class="sans tag">Team Reader grant</text>
+  <text x="816" y="368" class="mono acl">mt_t_research: SELECT</text>
+
+  <rect x="800" y="404" width="400" height="110" rx="10" fill="#ffffff" stroke="#334155" stroke-width="1.2"/>
+  <text x="816" y="428" class="mono name">public.markets</text>
+  <text x="1184" y="428" text-anchor="end" class="sans tag">in namespace markets</text>
+  <text x="816" y="458" class="mono acl">mt_n_markets_r: SELECT</text>
+  <text x="816" y="484" class="mono acl">mt_n_markets_w: SELECT, INSERT, UPDATE, DELETE</text>
+
+  <rect x="800" y="548" width="400" height="68" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+  <text x="816" y="572" class="mono name">metatables.*</text>
+  <text x="1184" y="572" text-anchor="end" class="sans tag">catalog and grants</text>
+  <text x="816" y="598" class="sans note">No User, Team or namespace role can use this schema.</text>
+
+  <!-- Direct grants -->
+  <line x1="290" y1="162" x2="798" y2="162" stroke="#1d4ed8" stroke-width="2.2" marker-end="url(#f1-arrow-read)"/>
+  <text x="545" y="153" text-anchor="middle" class="sans label read">Reader → SELECT</text>
+  <line x1="290" y1="246" x2="798" y2="246" stroke="#c2410c" stroke-width="2.2" marker-end="url(#f1-arrow-write)"/>
+  <text x="545" y="237" text-anchor="middle" class="sans label write">Writer → SELECT, INSERT, UPDATE, DELETE</text>
+
+  <!-- Team grant -->
+  <line x1="290" y1="352" x2="388" y2="352" stroke="#64748b" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#f1-arrow-member)"/>
+  <text x="339" y="343" text-anchor="middle" class="sans label member">member</text>
+  <line x1="690" y1="352" x2="798" y2="352" stroke="#1d4ed8" stroke-width="2.2" marker-end="url(#f1-arrow-read)"/>
+  <text x="744" y="343" text-anchor="middle" class="sans label read">read</text>
+
+  <!-- Namespace grants -->
+  <line x1="690" y1="436" x2="798" y2="436" stroke="#1d4ed8" stroke-width="2.2" marker-end="url(#f1-arrow-read)"/>
+  <text x="744" y="427" text-anchor="middle" class="sans label read">read</text>
+  <line x1="290" y1="494" x2="388" y2="494" stroke="#64748b" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#f1-arrow-member)"/>
+  <text x="339" y="485" text-anchor="middle" class="sans label member">member</text>
+  <line x1="690" y1="494" x2="798" y2="494" stroke="#c2410c" stroke-width="2.2" marker-end="url(#f1-arrow-write)"/>
+  <text x="744" y="485" text-anchor="middle" class="sans label write">write</text>
+
+  <!-- Catalog: no access -->
+  <line x1="290" y1="582" x2="774" y2="582" stroke="#b91c1c" stroke-width="2" stroke-dasharray="7 5"/>
+  <path d="M780,574 L796,590 M796,574 L780,590" stroke="#b91c1c" stroke-width="2.6" stroke-linecap="round"/>
+  <text x="545" y="573" text-anchor="middle" class="sans label deny">no access</text>
+
+  <!-- Ownership -->
+  <rect x="40" y="656" width="1160" height="68" rx="12" fill="#f1f5f9" stroke="#64748b" stroke-width="1.2"/>
+  <text x="60" y="684" class="sans note"><tspan class="mono strong">mt_owner</tspan> owns every table and cannot log in, so no User ever holds owner rights.</text>
+  <text x="60" y="708" class="sans note">The API's own role runs <tspan class="mono">GRANT</tspan>, <tspan class="mono">REVOKE</tspan> and schema changes, and never runs caller SQL.</text>
+
+  <!-- Legend -->
+  <line x1="40" y1="754" x2="80" y2="754" stroke="#1d4ed8" stroke-width="2.2"/>
+  <text x="88" y="758" class="sans note">read · SELECT</text>
+  <line x1="230" y1="754" x2="270" y2="754" stroke="#c2410c" stroke-width="2.2"/>
+  <text x="278" y="758" class="sans note">write · SELECT, INSERT, UPDATE, DELETE</text>
+  <line x1="590" y1="754" x2="630" y2="754" stroke="#64748b" stroke-width="1.6" stroke-dasharray="5 4"/>
+  <text x="638" y="758" class="sans note">member of (inherits its grants)</text>
+  <line x1="880" y1="754" x2="920" y2="754" stroke="#b91c1c" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="928" y="758" class="sans note">no access</text>
+</svg>

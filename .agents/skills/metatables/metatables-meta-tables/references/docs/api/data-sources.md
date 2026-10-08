@@ -201,9 +201,19 @@ responsibility.
 Hosted sources require a password Secret to derive per-User database credentials.
 MySQL global mandatory roles are unsupported. Registration admits ordinary tables
 only; it does not transfer external ownership. Privileged routines and triggers
-must not provide owner access, and registered foreign keys must use `RESTRICT` or
-`NO ACTION`. Setup and schema changes verify these safeguards, while the database
-checks permissions during each query. See [security](../security/index.md).
+must not provide owner access. Setup and schema changes verify these safeguards,
+while the database checks permissions during each query. See
+[security](../security/index.md).
+
+Registered foreign keys may use any referential action, including `CASCADE`,
+`SET NULL` and `SET DEFAULT`. The database runs a cascade as the table owner,
+authorized by the referencing table's own foreign key, so writing a referenced
+table needs no access to the tables that reference it. Local SQLite runtimes are
+the exception: SQLite's authorizer cannot tell a foreign-key action from the
+caller's own statement, so a local delete or key update on a referenced table
+fails unless the caller can access every referencing table. See
+[ADR 0007](../adr/api/0007-database-enforced-table-access.md#sqlite) and
+[ADR 0016](../adr/api/0016-impact-preflight.md).
 
 MySQL uses `pyformat` parameters and SQL Server uses ordered `qmark` parameters.
 Both share the normal compiled SQL endpoint and limits. SQL Server upserts use a

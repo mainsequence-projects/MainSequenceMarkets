@@ -30,6 +30,22 @@ scaffold/TLS tests, and executable example tests. Loopback tests need permission
 to bind local sockets. Tests inject identity and SDK responses where appropriate;
 they do not claim a hosted SDK deployment has been verified.
 
+## Hosted request identity
+
+The `platform_caller_assertions` fixture simulates a hosted deployment's trust
+configuration and signs genuine EdDSA caller assertions that the SDK verifies.
+`tests/auth/test_request_identity.py` also runs PodDeploymentOrchestrator's
+`require_request_identity` and `serve_fastapi` against the deployed entrypoint when
+that launcher is importable; otherwise those two tests are skipped:
+
+```bash
+PYTHONPATH=/path/to/PodDeploymentOrchestrator/src python -m pytest -q tests/auth/test_request_identity.py
+```
+
+The suite removes platform caller-authentication variables inherited from the
+shell. These checks do not establish a hosted rollout
+([ADR 0017](../adr/api/0017-hosted-request-identity.md)).
+
 ## Local CLI workflow
 
 Focused manual checks for ADR 0011:
@@ -104,7 +120,7 @@ The distribution check requires exactly one wheel and one sdist in `dist/` and
 compares packaged Python modules with current source. Also test importing the
 wheel in a fresh environment with the compatible published SDK installed, and verify
 both catalog migrations and application revision templates are packaged.
-The package requires published SDK 9.0.4 or newer within its declared major version.
+The package requires published SDK 9.0.19 or newer within its declared major version.
 
 Run the installed-wheel smoke tests manually from outside the checkout, using a
 fresh virtual environment with the compatible SDK and built MetaTables wheel:

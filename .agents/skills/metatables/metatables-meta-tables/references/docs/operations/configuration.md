@@ -19,21 +19,20 @@ to the platform and Environment and retains only the resolved endpoint
 and target identity; `/runtime-context/` continues to supply fresh DataSource
 state. See [client connection](../client/installation-and-connection.md).
 
-The supervisor passes runtime mode and listener/token parameters directly to each
-worker through a private inherited descriptor. `METATABLES_LOCAL_RUNTIME` is
+The supervisor passes listener/token parameters directly to its Local worker
+through a private inherited descriptor. `METATABLES_LOCAL_RUNTIME` is
 ignored. Deployment configuration is read from `configuration.yaml` in the working
 directory, or the explicit `--configuration` path on the launcher/CLI; there is no
 environment-variable override for that capability or configuration path. The
-migration Job and the launcher's Hosted mode read `runtime_database` from the
-API's packaged `configuration.yaml` instead.
+migration Job reads `runtime_database` from the API's packaged `configuration.yaml`
+instead.
 
-A developer's selected mode is persisted separately in ignored
-`.local/runtime-selection.json`, only after successful startup. Shared deployments
-use `local_mode_available: false`; the developer checkout uses `true`.
-See [mode switching](local-runtime.md#switch-modes-in-one-admin-site).
+Shared deployments use `local_mode_available: false`; the developer checkout uses
+`true`. The launcher always runs Local; see [Local only](local-runtime.md#local-only).
 
 Configure the API’s SDK session for ordinary platform Secret access and supply
-trusted caller-verifier settings. Use the SDK's own configuration contract;
+the platform's caller-assertion trust configuration, which the SDK request identity
+reads ([ADR 0017](../adr/api/0017-hosted-request-identity.md)). Use the SDK's own configuration contract;
 MetaTables passes no user-supplied issuer, key URL, or target scope to verification.
 The [SDK capability check](../client/installation-and-connection.md) establishes
 interface availability, not deployment credentials or network readiness.
@@ -49,7 +48,7 @@ by the API, and persistent across restarts. Hosted writes no selection file.
 Resolved passwords and TLS material remain in memory, never in files.
 
 Separate catalog URLs, physical-file overrides and default-source UID overrides are
-retired. Neither startup nor runtime-mode selection automatically runs Alembic.
+retired. Startup never automatically runs Alembic.
 
 Application providers run in their own Python process through the client. Use
 `metatables migrations upgrade --provider ledger.migrations:migration` with the

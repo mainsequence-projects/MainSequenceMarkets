@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="650" viewBox="0 0 1240 650" role="img" aria-labelledby="f2-title f2-desc">
+  <title id="f2-title">How a query is checked</title>
+  <desc id="f2-desc">The caller sends SQL to the MetaTables API. The API authenticates the caller and logs in to PostgreSQL as the caller's own role, then runs one statement. PostgreSQL checks the privilege for every table the statement touches and returns rows or a permission error. Grant changes update the catalog and run GRANT or REVOKE in one transaction.</desc>
+  <style>
+    .sans { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .title { font-size: 21px; font-weight: 700; fill: #0f172a; }
+    .sub { font-size: 13.5px; fill: #475569; }
+    .head { font-size: 15px; font-weight: 700; fill: #0f172a; }
+    .step { font-size: 13px; font-weight: 700; fill: #0f172a; }
+    .msg { font-size: 12.5px; font-weight: 600; fill: #0f172a; }
+    .note { font-size: 12.5px; fill: #475569; }
+    .read { fill: #1d4ed8; font-weight: 600; }
+    .write { fill: #c2410c; font-weight: 600; }
+    .deny { fill: #b91c1c; font-weight: 600; }
+  </style>
+  <defs>
+    <marker id="f2-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="650" rx="16" fill="#ffffff"/>
+
+  <text x="40" y="48" class="sans title">How a query is checked</text>
+  <text x="40" y="74" class="sans sub">The API authenticates the caller and logs in as their role. PostgreSQL decides what the statement may touch.</text>
+
+  <!-- Lifelines -->
+  <line x1="160" y1="146" x2="160" y2="620" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6 6"/>
+  <line x1="590" y1="146" x2="590" y2="620" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6 6"/>
+  <line x1="1040" y1="146" x2="1040" y2="620" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6 6"/>
+
+  <rect x="40" y="100" width="240" height="46" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+  <text x="160" y="129" text-anchor="middle" class="sans head">Caller</text>
+  <rect x="470" y="100" width="240" height="46" rx="10" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.2"/>
+  <text x="590" y="129" text-anchor="middle" class="sans head">MetaTables API</text>
+  <rect x="920" y="100" width="240" height="46" rx="10" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.2"/>
+  <text x="1040" y="129" text-anchor="middle" class="sans head">PostgreSQL</text>
+
+  <!-- 1. SQL -->
+  <line x1="160" y1="190" x2="588" y2="190" stroke="#334155" stroke-width="1.8" marker-end="url(#f2-arrow)"/>
+  <text x="375" y="181" text-anchor="middle" class="sans msg">1 · SQL from the explorer or client</text>
+
+  <!-- 2. authenticate -->
+  <rect x="450" y="212" width="280" height="54" rx="10" fill="#ffffff" stroke="#4f46e5" stroke-width="1.2"/>
+  <text x="466" y="235" class="sans step">2 · Authenticate the caller</text>
+  <text x="466" y="255" class="sans note">as today: User and current Teams</text>
+
+  <!-- 3-4. log in and run -->
+  <line x1="590" y1="304" x2="1038" y2="304" stroke="#334155" stroke-width="1.8" marker-end="url(#f2-arrow)"/>
+  <text x="815" y="295" text-anchor="middle" class="sans msg">3 · log in as the caller's role, e.g. <tspan class="mono">mt_u_alice</tspan></text>
+
+  <line x1="590" y1="364" x2="1038" y2="364" stroke="#334155" stroke-width="1.8" marker-end="url(#f2-arrow)"/>
+  <text x="815" y="355" text-anchor="middle" class="sans msg">4 · run one statement</text>
+  <text x="815" y="382" text-anchor="middle" class="sans note">in a READ ONLY transaction for read-only requests</text>
+
+  <!-- 5. check -->
+  <rect x="860" y="402" width="360" height="110" rx="10" fill="#ffffff" stroke="#1d4ed8" stroke-width="1.4"/>
+  <text x="876" y="426" class="sans step">5 · Check every table the statement touches</text>
+  <text x="876" y="452" class="sans note"><tspan class="read">read</tspan> → needs SELECT</text>
+  <text x="876" y="474" class="sans note"><tspan class="write">insert, update, delete</tspan> → needs that privilege</text>
+  <text x="876" y="496" class="sans note"><tspan class="deny">missing</tspan> → permission denied, nothing changes</text>
+
+  <!-- 6-7. results -->
+  <line x1="1040" y1="548" x2="592" y2="548" stroke="#334155" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#f2-arrow)"/>
+  <text x="815" y="539" text-anchor="middle" class="sans msg">6 · rows, or permission denied</text>
+  <line x1="590" y1="598" x2="162" y2="598" stroke="#334155" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#f2-arrow)"/>
+  <text x="375" y="589" text-anchor="middle" class="sans msg">7 · result</text>
+
+  <!-- Grant changes -->
+  <rect x="190" y="300" width="360" height="130" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.1"/>
+  <text x="206" y="324" class="sans step">When access changes</text>
+  <text x="206" y="348" class="sans note">A Writer shares or revokes access through</text>
+  <text x="206" y="366" class="sans note">the API. In one transaction, the API</text>
+  <text x="206" y="384" class="sans note">updates the catalog and runs <tspan class="mono">GRANT</tspan> or</text>
+  <text x="206" y="402" class="sans note"><tspan class="mono">REVOKE</tspan>. The next statement of every</text>
+  <text x="206" y="420" class="sans note">session sees the change.</text>
+</svg>
