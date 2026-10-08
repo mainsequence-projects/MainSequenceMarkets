@@ -41,6 +41,12 @@ and this project follows versioned releases.
 - The Index actor takes its Teams from the request identity's `team_uids`. It
   read `organization_teams`, which a request identity does not have, so an
   HTTP caller's Teams were always empty.
+- The `markets-api` release and the `migrate-markets` Job declare
+  `access.branches` view on the MetaTables repository in the deployment
+  workflow, and the platform grants it to their workload Users on every push.
+  They run as their own workload Users, and MetaTables API discovery failed
+  without that access: "No visible FastAPI deployment named 'metatables'",
+  then "Cannot verify the Environment of every visible API deployment".
 
 ## [2.2.5] - 2026-10-04
 

@@ -64,3 +64,13 @@ def test_main_fastapi_workflow_migrates_before_the_api_deploys() -> None:
         "image_from": "image",
         "needs": ["migrate"],
     }
+
+
+def test_main_fastapi_workflow_grants_metatables_access_to_its_workloads() -> None:
+    workflow_path = PROJECT_ROOT / ".mainsequence" / "workflows" / "ms-markets-api.yaml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+
+    for resource in workflow["resources"]:
+        assert resource["access"] == {
+            "branches": [{"repository": "MetaTables", "level": "view"}]
+        }, resource["key"]

@@ -15,6 +15,13 @@ resources:
         enabled: true
         tag_regex: null
       revision_retention_count: 3
+    # The API and the migration Job run as their own workload Users. To use
+    # MetaTables they must see the Environment's MetaTables deployment and its
+    # branch; the platform grants this on every push.
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
   - key: migrate-markets
     kind: job
@@ -28,6 +35,10 @@ resources:
       automatic_redeployment:
         enabled: true
         tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          level: view
 
 execution:
   steps:
