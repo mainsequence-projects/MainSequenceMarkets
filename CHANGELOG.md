@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.6] - 2026-10-09
+
 ### Added
 
 - `scripts/bootstrap_metatables_access.py` gives the deployment's workload Users
