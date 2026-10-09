@@ -7,6 +7,20 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/bootstrap_metatables_access.py` gives the deployment's workload Users
+  Writer on the `mainsequence.markets` MetaTables namespace in one Environment, for
+  an Organization admin to run once from a checkout of `development` or `main`.
+  It creates the Team `ms-markets-<environment>` from the checkout's Environment
+  name, adds the migration Job's and FastAPI release's workload Users from the
+  deployment workflow, creates the namespace if it is missing and grants the Team
+  Writer on it. Every other grant is kept, and `--dry-run` only reports. Without
+  this grant the migration Job could not register tables. In `development` it got
+  `422 MetaTable is not editable` on `msm.alembic_version`, which a previous runtime
+  identity had registered. See [MetaTables#43](https://github.com/mainsequence-projects/MetaTables/issues/43)
+  and "MetaTables access in each Environment" in `docs/releasing.md`.
+
 ### Changed
 
 - Requires `mainsequence>=9.0.19,<10` and `mainsequence-metatable>=0.1.26,<0.2`;

@@ -129,6 +129,48 @@ rebuilds the image, runs the `migrate-markets` Job and redeploys the API. Pushes
 `main` happen only through release merges, so the `main` deployment follows
 stable releases.
 
+### MetaTables access in each Environment
+
+The `migrate-markets` Job and the `markets-api` release run as their own workload
+Users, which start with no grants. The workflow gives both `view` on the MetaTables
+repository (`access.branches`), so they can find the Environment's MetaTables API.
+A workflow cannot grant MetaTables table access, so an Organization admin runs
+`scripts/bootstrap_metatables_access.py` once per Environment. Run it from a
+checkout of the branch deployed there: `development` for the development
+Environment, `main` for Production.
+
+```bash
+uv run --frozen --all-extras python -m scripts.bootstrap_metatables_access --dry-run
+uv run --frozen --all-extras python -m scripts.bootstrap_metatables_access
+```
+
+The script names the Team after the checkout's Environment (`ms-markets-development`,
+`ms-markets-production`). It:
+
+- creates the Team if it doesn't exist;
+- adds the workload Users of the Job and release declared in the workflow;
+- creates the `mainsequence.markets` namespace if it is missing;
+- grants the Team Writer on the namespace.
+
+Tables in that namespace inherit the grant, including the ones the migration
+registers later. Once `msm.alembic_version` is registered, the script checks each
+workload User's effective access to it.
+
+Re-running the script changes only what is missing. Run it again whenever the
+platform recreates the Job or the release, because the new workload User is not
+in the Team.
+
+A workload User exists only after the workload's first deployment. In an
+Environment where the Job has not run yet:
+
+1. Run the script, then push. The Job's first run fails, because its workload User
+   is not in the Team yet.
+2. Run the script again.
+3. Run the Job with `mainsequence code-repository jobs run <JOB_UID>`.
+
+The API rolls out on the next push to the branch, because the CLI cannot retry a
+blocked deployment.
+
 ## Failure recovery
 
 Before upload, failed checks publish nothing. Correct the problem on
