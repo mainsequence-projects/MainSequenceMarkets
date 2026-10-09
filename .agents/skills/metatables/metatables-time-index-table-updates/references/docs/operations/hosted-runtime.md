@@ -18,8 +18,9 @@ disables local controls and declares the runtime database. The workflow uses no
 release or branch UIDs. Apply it through the platform's repository workflow lifecycle;
 installing or debugging the Python client does not deploy the API.
 
-The FastAPI target declares `min_scale: 1`, requesting at least one runtime
-replica. The platform applies this setting on the next successful deployment.
+The FastAPI target requests 1 CPU and 2 GiB per pod and declares `min_scale: 2`,
+at least two runtime replicas; see [pods and connections](#size-pods-and-database-connections).
+The platform applies these settings on the next successful deployment.
 
 The Python package bundles this same workflow for [client discovery](../client/installation-and-connection.md).
 Workflow API `2.3.0` derives a FastAPI release name from the directory containing
@@ -71,6 +72,8 @@ runtime_database:
     ca_secret: null                         # optional Environment Secret names
     client_certificate_secret: null
     client_key_secret: null                 # set together with the certificate
+serving:
+  concurrency: 20                           # T; see "Size pods and database connections"
 ```
 
 The Secret named by `uri_secret` holds a URI such as
@@ -181,6 +184,69 @@ application tables stay in that one database.
 
 The verified hosted Environment remains display metadata supplied through ordinary SDK
 interfaces. The declared database does not change SDK context or Environment requirements.
+
+## Size pods and database connections
+
+One number, `serving.concurrency` in the API's `configuration.yaml` (T, default 20),
+sizes each pod ([ADR 0022](../adr/api/0022-concurrent-requests-and-connection-reuse.md)):
+
+- Route handlers run on T threads per process; further requests wait for a thread.
+  MCP tool calls run on their own threads, and the route calls they make take route
+  threads like any request.
+- The catalog pool holds at most T connections, with no overflow.
+- Caller sessions and table operations hold at most T connections per database server,
+  idle or in use. A connection is reused only by the login that opened it, with the
+  same password; each use sets its own timeout, read-only or write mode and search
+  path, and PostgreSQL runs `DISCARD ALL` before the next use. A use that fails, is
+  cancelled or leaves rows unread closes its connection. Idle connections close after
+  60 seconds and every connection after 30 minutes, which bounds how long a session
+  outlives a password change.
+- When every connection to a server is busy, a request waits within its deadline,
+  then answers 503 with `database_connections_busy` and `Retry-After: 1`. No statement
+  ran, so retrying is safe.
+
+On MySQL and SQL Server, a User's login-role connection closes after each use: neither
+driver can reset a session, and SQL Server may keep a session's role memberships. It
+still counts against T. The DataSource's own login is reused. Connection probes,
+relation discovery and relation reads connect per call, outside T.
+
+Keep maximum pods × 3T within the database's `max_connections`, minus a reserve for the
+migration Job, the Admin and other clients. Per pod that counts T catalog connections, T
+capped connections, and about T per-call connections, which the pod's T threads bound.
+Each database server the API connects to has its own budget. At 10 pods and T = 20 that
+is 600 connections. Raise T only when the budget allows it; changing it is a configuration
+change and a deployment. The workflow requests 1 CPU per pod because one process uses
+one core, 2 GiB for results in flight, and at least two pods so a burst lands on two
+while more start. These are starting values until a load test against the development
+deployment replaces them.
+
+### Read the signals before changing T
+
+Each request's "HTTP request completed" log line carries, next to `duration_ms` and
+`active_requests_at_start`, where the API spent the time, in milliseconds:
+
+| Field | Time spent |
+| --- | --- |
+| `thread_wait_ms` | From reaching the routes until the request's first step ran on one of the pod's T threads. Later steps of a request on a saturated pod can wait again; that time stays in `duration_ms`. |
+| `admission_wait_ms` | Data requests only: waiting for one of the T data-request slots. |
+| `connection_wait_ms` | Getting database connections: waiting for one under the cap, or opening one when none can be reused. |
+| `db_ms` | Running statements and fetching their rows. |
+
+The rest of `duration_ms` is the API's own work, such as reading the body, permission
+checks and serialization. Once a minute each pod also logs a line such as
+`database_connections total=42 max_connections=200 active=3 idle=27 unknown=12`: the
+sessions open on the runtime database server, from every pod and client, by state.
+Sessions of roles the `metatables` login cannot inspect count as `unknown`. The line
+carries no role, user or query. Only PostgreSQL and TimescaleDB runtime databases are
+counted; local runtimes log nothing.
+
+| Signal | Limit | Action |
+| --- | --- | --- |
+| High thread or admission wait, low connection wait, CPU headroom | The pod's T threads | Raise T if maximum pods × 3T stays within `max_connections` minus the reserve; otherwise add pods. |
+| High thread or admission wait with the pod's CPU near one core | The process | Add pods, not T. |
+| High connection wait | The connection cap or connecting | The connection budget, not T. |
+| High `db_ms` | The database | Queries or database size; neither T nor pods help. |
+| `total` near `max_connections` | The database's connection limit | Neither T nor maximum pods can grow until the database allows more connections. |
 
 ## Application grants
 

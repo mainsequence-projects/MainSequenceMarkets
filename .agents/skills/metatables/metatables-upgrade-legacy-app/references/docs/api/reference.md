@@ -7,6 +7,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | Method | Path | Operation | Success responses |
 | --- | --- | --- | --- |
 | GET | `/` | Hello | 200 |
+| GET | `/caller/` | Admitted Caller | 200 |
 | GET | `/data-sources/` | List Sources | 200 |
 | POST | `/data-sources/` | Create Source | 201 |
 | POST | `/data-sources/test-connection/` | Test Source Connection | 200 |
@@ -51,6 +52,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | GET | `/namespaces/` | List Namespaces | 200 |
 | GET | `/namespaces/{namespace_uid}/` | Retrieve Namespace | 200 |
 | PATCH | `/namespaces/{namespace_uid}/` | Patch Namespace | 200 |
+| GET | `/namespaces/{namespace_uid}/access-map/` | Namespace Access Map | 200 |
 | GET | `/namespaces/{namespace_uid}/tables/` | Namespace Tables | 200 |
 | GET | `/namespaces/{uid}/permissions` | Namespace Permissions | 200 |
 | PUT | `/namespaces/{uid}/permissions` | Set Namespace Permissions | 200 |

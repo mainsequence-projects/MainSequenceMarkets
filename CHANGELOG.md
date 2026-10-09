@@ -23,6 +23,20 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Requires `mainsequence-metatable>=0.1.28,<0.2`; the lock and exported
+  `requirements.txt` select 0.1.28. Changes in MetaTables 0.1.28
+  ([MetaTables#49](https://github.com/mainsequence-projects/MetaTables/pull/49)):
+  - The client finalizes at most 10 tables per request, the Alembic version
+    table first. A rerun of the migration Job finalizes whatever an
+    interrupted run left. Finalizing all 62 ms-markets tables in one request
+    ran past the hosted request limit, so the migration could never finish
+    ([MetaTables#46](https://github.com/mainsequence-projects/MetaTables/issues/46)).
+  - The hosted API reuses connections and serves concurrent requests on more
+    resources, so a long request no longer leaves it refusing connections
+    ([MetaTables#45](https://github.com/mainsequence-projects/MetaTables/issues/45)).
+  - A busy API answers `503` `database_connections_busy` with `Retry-After`;
+    nothing ran, and the call can be retried.
+  - The vendored MetaTables agent skills are refreshed to 0.1.28.
 - Requires `mainsequence-metatable>=0.1.27,<0.2`; the lock and exported
   `requirements.txt` select 0.1.27. Changes in MetaTables 0.1.27
   ([MetaTables#44](https://github.com/mainsequence-projects/MetaTables/pull/44)):

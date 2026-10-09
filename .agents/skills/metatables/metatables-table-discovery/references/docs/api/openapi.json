@@ -4439,7 +4439,7 @@
             "type": "integer"
           },
           "concurrent_requests": {
-            "default": 8,
+            "default": 20,
             "title": "Concurrent Requests",
             "type": "integer"
           },
@@ -4499,7 +4499,7 @@
             "type": "integer"
           },
           "queue_seconds": {
-            "default": 1,
+            "default": 60,
             "title": "Queue Seconds",
             "type": "integer"
           },
@@ -4916,6 +4916,26 @@
           }
         },
         "summary": "Hello"
+      }
+    },
+    "/caller/": {
+      "get": {
+        "description": "Who this request runs as: the User, Teams and admin flag the API admitted, named\nthrough the platform directory as that User sees it.\n\nHosted, the identity comes from the platform-signed caller assertion (ADR 0017);\nLocal and developer runtimes admit the developer's own SDK session.",
+        "operationId": "admitted_caller_caller__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Admitted Caller",
+        "tags": [
+          "Runtime"
+        ]
       }
     },
     "/data-sources/": {
@@ -7119,6 +7139,58 @@
           }
         },
         "summary": "Patch Namespace",
+        "tags": [
+          "Namespaces"
+        ]
+      }
+    },
+    "/namespaces/{namespace_uid}/access-map/": {
+      "get": {
+        "description": "Principals, Teams, grants and tables of one namespace, as the caller may see them.",
+        "operationId": "namespace_access_map_namespaces__namespace_uid__access_map__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_uid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Uid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "relationships",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Relationships",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Namespace Access Map",
         "tags": [
           "Namespaces"
         ]

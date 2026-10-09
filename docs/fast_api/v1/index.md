@@ -173,7 +173,7 @@ push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
 The published `ms-markets` 2.x package therefore declares
-`mainsequence>=9.0.19,<10` and `mainsequence-metatable>=0.1.27,<0.2` without
+`mainsequence>=9.0.19,<10` and `mainsequence-metatable>=0.1.28,<0.2` without
 exact patch pins. The lower bounds enforce the SDK 9 and MetaTables client
 extraction hard cut and the SDK request identity that the platform's current
 caller assertions require (SDK 9.0.18 and later), while the project lock and exported runtime requirements

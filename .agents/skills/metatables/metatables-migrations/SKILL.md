@@ -54,10 +54,13 @@ migrations. Read `docs/client/deploy-application-migrations.md`.
    Environment, the application's tables need an owning Team: one platform Team
    per Environment (for example `ledger-development`), whose members are the
    migration Job's workload User and the workload User of every resource that
-   reads or writes the tables. An Organization admin creates the application's
-   namespace in that Environment and grants the Team Writer on it. Tell the user
-   these steps; they are made in the platform and in MetaTables Security, not in
-   the repository.
+   reads or writes the tables. An Organization admin creates, in that
+   Environment, each namespace the provider registers tables in, and grants the
+   Team Writer on it. Recommend one namespace per application, owned by its Team;
+   it is not required (see "Namespaces and applications" in
+   `docs/security/ownership-and-sharing.md`).
+   Tell the user these steps; they are made in the platform and in MetaTables
+   Security, not in the repository.
 4. **Deploy.** The application's `.mainsequence/workflows/` file declares a
    migration Job that calls `upgrade_application` for each provider, in
    dependency order, from the candidate image. The Job and every resource that
@@ -83,8 +86,9 @@ Rules:
   with each Environment and each recreated Job; a new one needs Team membership
   only. Do not ask for direct table grants to a workload User, and do not run the
   Job as an Organization admin to get around a refusal.
-- Every table a provider registers goes in the Team's namespace. A table
-  registered in a namespace the caller already writes gets no grant of its own.
+- A table registered in a namespace the caller already writes gets no grant of
+  its own; the namespace's Writers own it. The Team needs Writer on every
+  namespace the provider uses.
 
 ## Source and runtime context
 
@@ -236,6 +240,10 @@ Read `docs/operations/recovery-and-observability.md`.
 - Inspect partial DDL before retrying, especially on engines without transactional
   DDL. A finalization-only failure can be retried without reapplying committed
   revisions. Client DDL has no API executor journal.
+- Finalization sends at most 10 tables per request, the version table first, and
+  reports `Finalizing MetaTables 11-20 of 62.` for larger providers (client 0.1.28
+  and later). A run that stops partway leaves earlier batches active; rerun the
+  same upgrade to finalize the rest.
 - Destructive catalog deletion is not migration recovery and never bypasses
   schema-management protection.
 

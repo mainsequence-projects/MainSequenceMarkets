@@ -93,11 +93,14 @@ application's tables belong to a platform Team instead:
 2. **Add the workload Users.** Add the migration Job's workload User, and the
    workload User of every resource that reads or writes the tables (FastAPI
    release, Agent, other Jobs). Each resource's `workload_user_uid` names it.
-3. **Grant the Team the namespace.** An Organization admin creates the
-   application's namespace in that Environment's MetaTables, under
-   **Security**, or with `POST /security/namespaces/`, and grants the Team Writer
-   on it (`PUT /namespaces/{uid}/permissions`). Every table registered in the
-   namespace inherits the grant.
+3. **Grant the Team its namespaces.** For each namespace the tables are
+   registered in, an Organization admin creates it in that Environment's
+   MetaTables if it doesn't exist yet, under **Security** or with
+   `POST /security/namespaces/`, and grants the Team Writer on it
+   (`PUT /namespaces/{uid}/permissions`). Every table registered in the namespace
+   inherits the grant. One namespace per application is the recommended layout,
+   not a rule; see
+   [Namespaces and applications](../security/ownership-and-sharing.md#namespaces-and-applications).
 
 The Job also needs platform `view` on the Environment's `metatables` release and
 its branch to discover the API; declare it on the Job:
@@ -142,8 +145,8 @@ writes gets no grant of its own, so the Team stays its only owner.
 - The Job finds the Environment's MetaTables API the same way any client does
   ([installation and connection](installation-and-connection.md)). That API must
   be deployed with its system migrations applied; otherwise the Job fails. Its
-  workload User needs Writer on the application's namespace through the Team
-  above.
+  workload User needs Writer, through the Team above, on every namespace the
+  provider registers tables in.
 
 ## Keep each release compatible with the previous one
 

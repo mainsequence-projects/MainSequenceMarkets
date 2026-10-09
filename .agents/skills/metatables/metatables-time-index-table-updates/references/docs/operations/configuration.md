@@ -8,6 +8,7 @@ implement a second platform HTTP client or token exchange.
 | `METATABLES_API_URL` | Python client / CLI | Local development only: loopback HTTP(S) base URL, set automatically by `--local` or `configure_local_client()`. Unset/empty resolves the packaged API deployment in the caller's SDK-owned Environment. Hosted URL overrides are rejected. |
 | `local_mode_available` in `configuration.yaml` | API / launcher | Enables developer Local/Hosted selection; strict boolean, default false. |
 | `runtime_database` in the API's `configuration.yaml` | Hosted API, migration Job, launcher in Hosted mode | Declares the hosted runtime database: engine, the Environment Secret holding its URI, schema and TLS. See [hosted runtime](hosted-runtime.md#declare-the-runtime-database). |
+| `serving.concurrency` in `configuration.yaml` | API | T, a strict positive integer, default 20: route threads per process, catalog connections, and connections per database server for caller sessions and table operations. See [pods and connections](hosted-runtime.md#size-pods-and-database-connections). |
 | `METATABLES_LOCAL_TOKEN` | Local launcher and client | Private ASCII token of at least 40 characters. |
 | `METATABLES_LOCAL_ALLOWED_ORIGINS` | Local API | Comma-separated exact loopback HTTP(S) origins with explicit ports; empty by default. |
 | `METATABLES_LOCAL_STORAGE_DIR` | Local API | Directory of the laptop's single local runtime SQLite file, shared by every checkout and branch; defaults to `~/.local/share/metatables`. |
@@ -59,4 +60,9 @@ the environment operator configures the login's DDL privileges. Remove the retir
 
 ## Transfer capacity
 
-Transfer contract v1 uses API-owned defaults from `metatables.transfer_contract.DEFAULT_LIMITS`: 8 concurrent data requests per process, 1 second admission wait, 60 second request deadline, and an 8 MiB serialized response limit. Ingress must admit the documented 12,100,000-byte body limit or clients will encounter the lower proxy limit. More workers multiply admitted concurrency and memory usage. Client budgets can be smaller; they do not enlarge server limits. See [all units and defaults](../client/bounded-transfers.md#discover-limits).
+Transfer contract v1 uses API-owned defaults from `metatables.transfer_contract.DEFAULT_LIMITS`: `serving.concurrency` (T) concurrent data requests per process, each waiting for a slot within its 60 second request deadline, and an 8 MiB serialized response limit. Ingress must admit the documented 12,100,000-byte body limit or clients will encounter the lower proxy limit. More workers multiply admitted concurrency and memory usage. Client budgets can be smaller; they do not enlarge server limits. See [all units and defaults](../client/bounded-transfers.md#discover-limits).
+
+Admitted data requests also share the process's `serving.concurrency` route threads
+and database connections with every other request. A request that finds every
+connection to its database server busy until its deadline answers 503 with
+`database_connections_busy` and `Retry-After: 1`; no statement ran, so it is safe to retry.

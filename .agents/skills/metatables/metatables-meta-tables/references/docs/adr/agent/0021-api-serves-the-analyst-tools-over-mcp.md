@@ -34,6 +34,7 @@ The hosted API serves the read tools at `/mcp`, and the hosted Analyst uses them
 | Authorization | A tool's calls run through the API's own routes, in process, with the caller assertion of the `/mcp` request. The SDK verifies the same caller, or the person it works for, and each route authorizes exactly as over REST, including ADR 0020's read-only rule. |
 | Analyst | The agent declares `mcp_applications: [{resource: metatables}]` and gets `metatables__list_tools` and `metatables__call_tool`. Its extension registers the tools only in a local `ms-tau` session, where they call the local API as the developer. |
 | Key | The API's workflow key is `metatables`, because MCP keys become tool prefixes and must match `^[a-z][a-z0-9_]{0,39}$`. |
+| Time limits | Each tool declares how long an Agent should wait in its MCP `_meta` under `mainsequence.ai/timeout-seconds/v1` (ms-tau-sdk 2.0.9): 120 s, the bound of one in-process API call, and 300 s for `deep_search`, which the release's 300 s request timeout bounds. An undeclared tool would get the Agent's default of 60 s. |
 
 ## Consequences
 

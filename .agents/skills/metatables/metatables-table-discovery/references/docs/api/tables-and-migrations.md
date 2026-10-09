@@ -183,6 +183,9 @@ but does not expire the configured database login.
 After execution, the client closes its database connection and calls
 `finalize-managed` with actual revision IDs (or explicit null at base). Finalization
 reconciles physical contracts, dropped provider tables and SQL permission projections.
+The client finalizes at most 10 tables per request, the Alembic version table first,
+so each request holds the catalog lock briefly and finishes within the hosted request
+limit. If a run stops partway, rerunning it finalizes the tables still reserved.
 The former `/application-migrations/upgrade/` endpoint and provider allowlist are
 removed. MetaTables system migrations run in the hosted deployment's migration Job,
 or through Settings in Local mode. See

@@ -32,6 +32,29 @@
 > Reconciliation still records each table's cascade targets, but only so the
 > [impact pre-flight](0016-impact-preflight.md) can show their effects.
 
+> Amendment (2026-10-09): On PostgreSQL and TimescaleDB, a catalog change applies
+> only what it changed. Reconciliation used to rebuild every role, re-inspect every
+> table and re-secure every routine on each change, all under the catalog lock, so
+> one registration could hold the lock for minutes and stop every other request.
+> Now a change:
+>
+> - re-inspects the policies of the tables it changed, plus the tables whose
+>   recorded cascade targets they affect;
+> - rebuilds only roles that are new or whose definition changed, and grants or
+>   revokes only the memberships and privileges that differ from the applied
+>   manifest;
+> - re-secures routines only when the owned schemas, routines or `PUBLIC` grants
+>   changed since the last sweep.
+>
+> The full sweep still runs when the runtime DataSource changes, at initialization
+> (the migration Job of every deployment) and from the admin repair action. Those
+> are when grants changed outside MetaTables are repaired, not on every catalog
+> change. MySQL and SQL Server keep the full sweep on every change.
+
+> Amendment (2026-10-09): [ADR 0022](0022-concurrent-requests-and-connection-reuse.md)
+> reuses login-role connections within a pod, only by the login role that opened them
+> and never through `SET ROLE`; no session state carries over from one use to the next.
+
 
 Date: 2026-09-29
 

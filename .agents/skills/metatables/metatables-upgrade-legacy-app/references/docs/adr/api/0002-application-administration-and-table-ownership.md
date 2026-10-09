@@ -353,9 +353,13 @@ identity of the same application could not re-register its own tables
 ([#43](https://github.com/mainsequence-projects/MetaTables/issues/43)).
 
 - **A Team owns an application's tables.** Before an application's first
-  migration in an Environment, an Organization admin creates its namespace and
-  grants Writer on it to a platform Team. The application's migration Job and
-  every workload User that reads or writes its tables are members of that Team.
+  migration in an Environment, an Organization admin grants a platform Team Writer
+  on each namespace the application's tables are registered in, creating any that
+  don't exist. The application's migration Job and every workload User that reads
+  or writes its tables are members of that Team. One namespace per application is
+  recommended, not enforced: MetaTables authorizes identities and has no trusted
+  fact about which project a caller runs, so any Writer of a namespace may
+  register tables in it from any project.
   Use one Team per Environment, so that one Environment's workloads are not
   Writers in another. A new workload User needs Team membership only; the tables
   keep their owner.
@@ -433,9 +437,9 @@ schema baseline/recreation policy remains governed by ADR 0001.
   resources through counts, search, lineage, or error details.
 - A Writer can grant/revoke Reader and Writer access only on tables they control.
   Re-registering an existing table never grants the caller ownership.
-- A new member of the Team with Writer on an application's namespace registers and
-  migrates that application's existing tables; a caller outside it is refused with
-  a recovery path that reveals nothing it cannot read.
+- A new member of a Team with Writer on a table's namespace registers and migrates
+  that existing table; a caller outside it is refused with a recovery path that
+  reveals nothing it cannot read.
 - Team changes and namespace revocation/moves change effective access under the
   documented freshness rules; independent grants remain visible and effective.
 - Non-admins cannot manage DataSources, runtime selection, system migrations,
