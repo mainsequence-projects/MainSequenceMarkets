@@ -25,6 +25,22 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Requires `mainsequence-metatable>=0.1.29,<0.2`; the lock and exported
+  `requirements.txt` select 0.1.29. Changes in MetaTables 0.1.29
+  ([MetaTables#52](https://github.com/mainsequence-projects/MetaTables/pull/52)):
+  - Hosted migrations no longer create application tables in the `metatables`
+    catalog schema. The migration connection pins `search_path=public`, the
+    client checks it, and the PostgreSQL version table is always schema-qualified
+    ([MetaTables#50](https://github.com/mainsequence-projects/MetaTables/issues/50)).
+    The first ms-markets migration in `development`, on 2026-10-03, had created
+    all its tables in `metatables`, so every later migration found its version
+    table at head, ran no DDL and failed finalization. MetaTables removed those
+    tables, so the next deployment creates them in `public`.
+  - Before issuing a migration connection, the API refuses misplaced provider
+    tables with `provider_tables_misplaced`.
+  - Finalization deletes a catalog binding only for a table the client names as
+    removed. It no longer drops the bindings of current tables it can't find.
+  - The vendored MetaTables agent skills are refreshed to 0.1.29.
 - Requires `mainsequence-metatable>=0.1.28,<0.2`; the lock and exported
   `requirements.txt` select 0.1.28. Changes in MetaTables 0.1.28
   ([MetaTables#49](https://github.com/mainsequence-projects/MetaTables/pull/49)):

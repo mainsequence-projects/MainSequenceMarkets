@@ -244,6 +244,23 @@ Read `docs/operations/recovery-and-observability.md`.
   reports `Finalizing MetaTables 11-20 of 62.` for larger providers (client 0.1.28
   and later). A run that stops partway leaves earlier batches active; rerun the
   same upgrade to finalize the rest.
+- If the migration connection is refused with `provider_tables_misplaced`, provider
+  tables sit in the `metatables` catalog schema (MetaTables #50). Don't stamp, rerun or
+  hand-edit revisions. An administrator moves or drops those tables, then rerun.
+- If it is refused with `provider_tables_owner_unreachable`, the tables belong to a
+  retired role, named in `owners`. A database administrator runs
+  `REASSIGN OWNED BY <role> TO mt_owner;` in that database, then rerun.
+- If the client refuses because the connection "resolves unqualified names" outside the
+  default schema, it isn't the connection MetaTables issued. Use that connection, or set
+  `search_path` to the default schema.
+- If finalization reports `physical_table_missing`, a current table is absent and nothing
+  named it as removed. Its catalog binding is kept; check `other_schemas` and where your
+  revisions created it. Client 0.1.29 and later name tables removed from the models or
+  dropped by the run, such as on downgrade. Older clients fail this way after a removal or
+  downgrade, so upgrade the client.
+- `physical_table_inaccessible` means the table exists, but the MetaTables login can't
+  read all its columns or use its owner. Fix ownership or privileges; the stored contract
+  is kept.
 - Destructive catalog deletion is not migration recovery and never bypasses
   schema-management protection.
 

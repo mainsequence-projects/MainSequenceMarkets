@@ -679,6 +679,15 @@
               }
             ],
             "title": "Migration Provider Key"
+          },
+          "removed_meta_table_uids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Removed Meta Table Uids",
+            "type": "array"
           }
         },
         "required": [

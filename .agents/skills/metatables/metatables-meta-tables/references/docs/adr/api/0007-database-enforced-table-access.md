@@ -55,6 +55,16 @@
 > reuses login-role connections within a pod, only by the login role that opened them
 > and never through `SET ROLE`; no session state carries over from one use to the next.
 
+> Amendment (2026-10-09, [MetaTables #50](https://github.com/mainsequence-projects/MetaTables/issues/50)):
+> Application migrations use the shared `metatables` login ([ADR 0013](0013-application-owned-migrations.md)),
+> whose `"$user"` schema is the catalog. The invariant that they cannot accidentally create
+> tables in the catalog therefore rests on the migration connection, not on a separate login:
+>
+> - the connection is pinned to `search_path=public`, and the client verifies that path;
+> - the API refuses a provider whose tables are in `metatables`.
+>
+> This guards against accidents, not misuse: the login keeps its privileges.
+
 
 Date: 2026-09-29
 
