@@ -4,8 +4,7 @@ from mainsequence import logger as _mainsequence_logger
 
 
 def get_portfolios_logger():
-    _mainsequence_logger.bind(sub_application="portfolios")
-    return _mainsequence_logger
+    return _mainsequence_logger.bind(sub_application="portfolios")
 
 
 logger = get_portfolios_logger()

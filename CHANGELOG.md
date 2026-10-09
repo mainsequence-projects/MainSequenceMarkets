@@ -88,6 +88,17 @@ and this project follows versioned releases.
   They run as their own workload Users, and MetaTables API discovery failed
   without that access: "No visible FastAPI deployment named 'metatables'",
   then "Cannot verify the Environment of every visible API deployment".
+- `msm_portfolios.utils.get_portfolios_logger()` returns the logger bound with
+  `sub_application="portfolios"`. It discarded the result of `.bind()` and
+  returned the unbound SDK logger, so `msm_portfolios.utils.logger` and the
+  `msm_portfolios.configuration` logger never carried the binding.
+- `examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` runs the
+  dynamic Alembic revision and upgrade through the `metatables migrations` CLI.
+  It invoked `python -m mainsequence migrations ...`, which the SDK no longer
+  provides, so schema preparation failed unless `--check-only` was set.
+- Removed a stray module-level developer note from
+  `msm_portfolios/configuration.py` that referenced the retired SDK
+  `data_publishing` skill by a local absolute path.
 
 ## [2.2.5] - 2026-10-04
 

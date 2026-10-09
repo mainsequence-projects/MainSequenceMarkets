@@ -580,11 +580,3 @@ class PortfolioConfiguration(PortfolioConfigBaseModel):
         ...,
         description="Defines portfolio metadata used when syncing to the markets platform.",
     )
-
-
-"""
-be sure to include in meta_tables 
-/Users/jose/code/MainSequenceClientSide/mainsequence-sdk/agent_scaffold/skills/data_publishing
-
-how to migrate or add another skill inside of data_publishing for migrating metatables
-"""
