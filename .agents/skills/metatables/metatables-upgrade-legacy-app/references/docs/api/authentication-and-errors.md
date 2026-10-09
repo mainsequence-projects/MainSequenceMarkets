@@ -73,7 +73,7 @@ DataSource and bootstrap state and returns `Cache-Control: no-store`.
 | 404 | Resource missing or not visible to the current actor. |
 | 409 | Lifecycle, capability, protection, reference, or physical-state conflict. |
 | 422 | Request/schema validation failure. |
-| 503 | Catalog, SDK verification/source access, physical connection, or an uncertain operation outcome is unavailable. |
+| 503 | Catalog, SDK verification/source access, physical connection, or an uncertain operation outcome is unavailable; or every database connection the API may hold stayed busy (`database_connections_busy`, `Retry-After: 1`). |
 
 Most framework errors use a `detail` field. Some domain operations provide a
 structured code and field information. Raw-query validation errors can be returned
@@ -87,4 +87,4 @@ An unknown physical commit outcome requires reconciliation, not a blind retry.
 
 ## Transfer errors
 
-Data routes return 413 for request/row/response byte limits, 408 for the overall transfer deadline, and 429 with `Retry-After: 1` when per-process admission capacity is exhausted. Existing SQL/driver errors can retain their engine-specific deadline codes and status. Upload conflicts use 409 and uncertainty can use 503. A limit enforced by schema validation can return 422. See [typed client exceptions and recovery](../client/bounded-transfers.md).
+Data routes return 413 for request/row/response byte limits, 408 for the overall transfer deadline, and 429 `transfer_capacity_exceeded` with `Retry-After: 1` when no data-request slot freed up within the request deadline (each API process runs `serving.concurrency` data requests at once). A 503 `database_connections_busy` with `Retry-After: 1` means every database connection stayed busy until the deadline. In both cases no statement ran, so any request, including SQL and writes, is safe to retry. Existing SQL/driver errors can retain their engine-specific deadline codes and status. Upload conflicts use 409 and uncertainty can use 503. A limit enforced by schema validation can return 422. See [typed client exceptions and recovery](../client/bounded-transfers.md).

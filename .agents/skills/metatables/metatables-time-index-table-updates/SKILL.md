@@ -124,3 +124,7 @@ for restart recovery. On an uncertain outcome, inspect `upload_receipt()` before
 resubmitting; do not assign a fresh key to bypass uncertainty. Administrator
 reconciliation requires verified physical evidence. This workflow uses the Main
 Sequence API and has no Artifact or temporary-URL dependency.
+
+A 429 `transfer_capacity_exceeded` or 503 `database_connections_busy` means the
+API was at capacity and nothing ran. Retry after `Retry-After`, an upload with the
+same operation UUID; it is not an uncertain outcome.

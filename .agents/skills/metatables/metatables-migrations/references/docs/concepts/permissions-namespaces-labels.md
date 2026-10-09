@@ -20,6 +20,11 @@ removes that contribution; independent direct or Team grants remain effective.
 Moving a table requires its Writer and destination namespace Writer, or admin
 authority for the destination. Table Writer alone cannot change global grants.
 
+A namespace is not tied to a project. Registering a table in it needs Writer on
+the namespace, whatever project the caller runs. One namespace per application,
+owned by a Team per Environment, is the recommended layout; see
+[Namespaces and applications](../security/ownership-and-sharing.md#namespaces-and-applications).
+
 ## Labels
 
 Labels classify resources and never authorize an operation. The catalog owns

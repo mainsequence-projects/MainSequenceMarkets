@@ -15,8 +15,9 @@ can restore access when no Writer remains.
 
 Deployed Jobs, releases and Agents run as their own workload Users, which change
 with each Environment and each recreated Job. Give an application's tables to a
-Team instead: grant the Team Writer on the application's namespace and make the
-workload Users members. See
+Team instead: grant the Team Writer on the namespaces those tables are registered
+in, and make the workload Users members. See
+[Namespaces and applications](#namespaces-and-applications) and
 [Migrate in the deployment workflow](../client/deploy-application-migrations.md#give-the-job-access-through-a-team).
 
 ## One central table-access model
@@ -116,6 +117,63 @@ addressed by someone authorized to manage that grant.
 A table Writer
 can manage direct grants on their table, but cannot revoke a global namespace
 grant for all its tables through the table's Access panel.
+
+## Namespaces and applications
+
+MetaTables decides access by identity: the calling User and the Teams the
+platform says it belongs to. It never asks which project, repository or
+migration provider a request comes from. A namespace is an access group, and its
+Writers decide what goes in it.
+
+![Two applications in one Environment. The prices migration Job and API are members of Team prices-development, which is Writer on namespace prices. The trading migration Job and API are members of trading-development, which is Writer on namespace trading and Reader on namespace prices. Registering a table in a namespace and reading or writing a table are enforced; which project uses which namespace is not.](../assets/diagrams/namespace-access.svg)
+
+[Open the full-size diagram](../assets/diagrams/namespace-access.svg).
+
+The Admin draws this live for any namespace you can see, on its **Access map**
+tab: users and workloads, their Teams, the Reader and Writer grants on the
+namespace and its tables, and optionally the foreign keys and updater inputs that
+link its tables to others. It reads `GET /namespaces/{uid}/access-map/`, which
+returns only what you could already read through the namespace's and tables'
+Access tabs.
+
+What MetaTables enforces:
+
+- **Registering a new table in a namespace** needs Writer on that namespace,
+  directly or through a Team. An Organization admin may register in any
+  namespace. Anyone else gets `403 namespace_not_writable`.
+- **Reading or writing a table** needs a grant on the table or on its namespace.
+  The API checks it, and the database enforces it through the caller's own role
+  ([ADR 0007](../adr/api/0007-database-enforced-table-access.md)).
+- **A Writer's new table gets no grant of its own.** The namespace's Writers own
+  it, so it does not depend on the identity that registered it.
+
+What it does not enforce: which project's tables go in which namespace. Any
+Writer of a namespace may register tables in it from any project, and a person or
+workload in two Teams can register in both Teams' namespaces. A project may use
+several namespaces, share one with another project, or register tables without a
+namespace.
+
+### Recommended: one namespace per application
+
+Give each application its own namespace in each Environment, and make a Team for
+that Environment its Writer, as in the diagram:
+
+- One grant covers all of the application's tables, including the ones its later
+  migrations add.
+- Workload Users change with each Environment and each recreated Job. A new one
+  needs only Team membership; the tables keep their owner.
+- Another application gets read access through a single Reader grant on the
+  namespace, like `trading-development` on `prices`. Removing that grant removes
+  the access from every table at once.
+- A Team per Environment keeps one Environment's workloads from being Writers in
+  another.
+
+It is a recommendation, not a rule. The platform signs who the caller is and its
+Teams, not which project it runs. A project or provider name sent by the client
+is only a claim that any Writer could change, so a project-to-namespace check
+would block legitimate layouts without stopping anyone. The boundary is the
+grant: give Writer on a namespace only to principals that should own everything
+in it, and keep each application's workload Users in its own Team.
 
 ## The table Access panel
 

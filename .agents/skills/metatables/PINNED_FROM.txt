@@ -1,7 +1,7 @@
 schema=1
 library_name=mainsequence-metatable
 namespace=metatables
-pinned_version=0.1.27
+pinned_version=0.1.28
 skills_path=/Users/jose/mainsequence-dev/main-sequence-workbench/projects/mainsequencemarkets-fc293183-14af-4322-bd9d-5c0f91caecca/.venv/lib/python3.13/site-packages/metatables/_client_skills
-copied_at_utc=2026-10-09T07:36:02Z
+copied_at_utc=2026-10-09T11:31:28Z
 command=metatables copy-metatables-skills
