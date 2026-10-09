@@ -69,6 +69,15 @@ ms-markets schema is migrated only by the ms-markets deployment's
 `migrate-markets` Job. A project that installs ms-markets to read or write its
 tables does not apply `msm_migrations:migration`; its own migration Job applies
 only its own providers. Do not migrate at application startup.
+
+Required in every Environment: the `migrate-markets` Job and the `markets-api`
+release run as their own workload Users, which have no MetaTables grants until an
+Organization admin runs `scripts/bootstrap_metatables_access.py` from a checkout
+of the branch deployed there. Without it the Job fails, for example with
+`422 MetaTable is not editable`, and the API is not deployed. Do not work around a
+failed migration by changing revisions or table definitions. Check the Job run
+logs, then have an admin run the bootstrap. `docs/releasing.md` ("MetaTables access
+in each Environment") has the steps.
 The MetaTables API needs no provider code, allowlist, or
 `application_migration_providers` alias. Keep the provider package, namespace,
 model registry, version-table binding, revision IDs, and applied revision

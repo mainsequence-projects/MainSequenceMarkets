@@ -155,6 +155,12 @@ image, and `deploy_api` deploys the API with `needs: [migrate]`. A failed
 migration blocks the rollout and the previous release keeps serving; see
 [Hosted Deployments](../../knowledge/msm/migrations/index.md#hosted-deployments).
 
+!!! warning "Required before deploying to an Environment"
+    The Job and the API run as their own workload Users. They can't migrate or
+    use the ms-markets tables until an Organization admin runs
+    `scripts/bootstrap_metatables_access.py` for that Environment; see
+    [MetaTables access in each Environment](../../releasing.md#metatables-access-in-each-environment).
+
 Publish repository changes with a plain `git push` of the tracked branch; the
 workflow files decide what deploys. The tracked `main` branch changes only through
 release pull requests from `development`; see [Releasing](../../releasing.md). Since Main Sequence SDK 9.0.5,

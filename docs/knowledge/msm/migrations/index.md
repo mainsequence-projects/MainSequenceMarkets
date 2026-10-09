@@ -60,6 +60,13 @@ This repository's `.mainsequence/workflows/ms-markets-api.yaml` builds the image
 at head is left unchanged, and a failure blocks the API rollout while the
 previous release keeps serving.
 
+!!! warning "Required: MetaTables access for the deployment"
+    The migration Job runs as its own workload User, which has no MetaTables
+    grants until an Organization admin runs `scripts/bootstrap_metatables_access.py`
+    for that Environment. Until then every hosted migration fails and the API is not
+    deployed; see
+    [MetaTables access in each Environment](../../../releasing.md#metatables-access-in-each-environment).
+
 The ms-markets schema is owned and migrated only by this repository's
 deployment. An application that installs ms-markets to read or write its tables
 does not apply `msm_migrations:migration`; its own migration Job, if it has one,

@@ -131,6 +131,18 @@ stable releases.
 
 ### MetaTables access in each Environment
 
+!!! warning "Required in every Environment"
+    An Organization admin must run `scripts/bootstrap_metatables_access.py` for an
+    Environment before ms-markets can be deployed there. Without it:
+
+    - the `migrate-markets` Job fails, for example with
+      `422 MetaTable is not editable` or
+      `Writer access to the destination namespace is required`;
+    - the API rollout is blocked and no release becomes active.
+
+    Run it before the first deployment to a new Environment, and again whenever
+    the platform recreates the Job or the release.
+
 The `migrate-markets` Job and the `markets-api` release run as their own workload
 Users, which start with no grants. The workflow gives both `view` on the MetaTables
 repository (`access.branches`), so they can find the Environment's MetaTables API.
