@@ -344,6 +344,42 @@ their own workload Users, which need to be granted like people.
   `reads_as_caller()`, the User `search` filter, `managed_by_caller`,
   `workload_name` and Team members that may be workload Users.
 
+### Amendment: Teams own application tables (2026-10-09)
+
+Since platform ADR-0048 every Job, release and Agent runs as its own workload
+User. Each Environment, and each recreated Job, has a new one. A table's creator
+grant tied the table to the workload User that first registered it, so the next
+identity of the same application could not re-register its own tables
+([#43](https://github.com/mainsequence-projects/MetaTables/issues/43)).
+
+- **A Team owns an application's tables.** Before an application's first
+  migration in an Environment, an Organization admin creates its namespace and
+  grants Writer on it to a platform Team. The application's migration Job and
+  every workload User that reads or writes its tables are members of that Team.
+  Use one Team per Environment, so that one Environment's workloads are not
+  Writers in another. A new workload User needs Team membership only; the tables
+  keep their owner.
+- **No creator grant under a namespace Writer.** Registering a new table into a
+  namespace where the caller is already a Writer, directly or through a Team, adds
+  no creator grant: the namespace's Writers control the table. Otherwise the
+  creator still receives Writer, including an admin registering into a namespace
+  where they have no grant, so no table starts without a Writer.
+- **Creator attribution is a column.** `meta_table.created_by_user_uid` records
+  who registered each table and grants nothing. System migration
+  `0012_table_creator` adds it and fills it from each table's first self-granted
+  Writer in the grant history.
+- **Refusals say how to recover.** Registration refusals are 403s with a `code`:
+  `table_not_editable` for an existing table the caller cannot edit,
+  `namespace_not_writable` for a namespace that is missing or that the caller
+  cannot write. Both name the caller's User UID and the recovery: add it to the
+  Team with Writer on the namespace, or ask an Organization admin. The table's
+  namespace is named when the caller requested it or can read the table; its
+  Writers are listed only when the caller can read the table.
+
+Tables whose only Writer is a replaced identity are recovered the same way: an
+admin grants the application's Team Writer on their namespace. There is no admin
+bypass and no automatic adoption.
+
 ## Superseded behavior and preserved boundaries
 
 This decision supersedes ADR 0001's pending-runtime configurator/existing-source
@@ -397,6 +433,9 @@ schema baseline/recreation policy remains governed by ADR 0001.
   resources through counts, search, lineage, or error details.
 - A Writer can grant/revoke Reader and Writer access only on tables they control.
   Re-registering an existing table never grants the caller ownership.
+- A new member of the Team with Writer on an application's namespace registers and
+  migrates that application's existing tables; a caller outside it is refused with
+  a recovery path that reveals nothing it cannot read.
 - Team changes and namespace revocation/moves change effective access under the
   documented freshness rules; independent grants remain visible and effective.
 - Non-admins cannot manage DataSources, runtime selection, system migrations,

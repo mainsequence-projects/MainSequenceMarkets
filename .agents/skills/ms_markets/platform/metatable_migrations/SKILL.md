@@ -73,9 +73,13 @@ only its own providers. Do not migrate at application startup.
 Required in every Environment: the `migrate-markets` Job and the `markets-api`
 release run as their own workload Users, which have no MetaTables grants until an
 Organization admin runs `scripts/bootstrap_metatables_access.py` from a checkout
-of the branch deployed there. Without it the Job fails, for example with
-`422 MetaTable is not editable`, and the API is not deployed. Do not work around a
-failed migration by changing revisions or table definitions. Check the Job run
+of the branch deployed there. The script creates the Team that owns the tables in
+that Environment (`ms-markets-<environment>`), as
+`.agents/skills/metatables/metatables-migrations/SKILL.md` prescribes. Without it the
+Job fails with `403` `table_not_editable` or `namespace_not_writable` (`422 MetaTable
+is not editable` from a MetaTables API before 0.1.27), and the API is not deployed.
+Do not work around a failed migration by changing revisions or table definitions,
+asking for direct table grants or running the Job as an admin. Check the Job run
 logs, then have an admin run the bootstrap. `docs/releasing.md` ("MetaTables access
 in each Environment") has the steps.
 The MetaTables API needs no provider code, allowlist, or

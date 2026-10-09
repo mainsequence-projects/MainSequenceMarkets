@@ -22,7 +22,8 @@ Organization admin status comes from the platform through the SDK.
 
 Creation checks the selected DataSource's storage access mode and the table's
 lifecycle requirements. The table and its creator's Writer grant are recorded
-together. Re-registering an existing table cannot give another caller ownership.
+together, unless the namespace already makes the creator a Writer. Re-registering
+an existing table cannot give another caller ownership.
 
 Initial runtime setup must check the platform admin fact before the application
 grant tables exist. Configuring a pending database does not make the first caller

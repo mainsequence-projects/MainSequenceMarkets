@@ -299,8 +299,12 @@ and [MySQL implicit commits](https://dev.mysql.com/doc/refman/8.4/en/implicit-co
 - Physical table names become visible to explorer users.
 - Cascading foreign keys are allowed. Tables that reference a table never change
   who may write it.
-- Team membership reaches the database at the pace of the existing one-hour
-  platform-fact cache.
+- Team membership reaches the database on the caller's next query. Each SQL
+  admission compares the caller's current Teams with the ones its role was last
+  given and reconciles the roles first when they differ. A hosted caller's Teams
+  come from its signed assertion on every request
+  ([ADR 0017](0017-hosted-request-identity.md), 2026-10-05 amendment); only the
+  developer's own facts in Local and developer mode are cached for up to an hour.
 
 ## Implementation
 

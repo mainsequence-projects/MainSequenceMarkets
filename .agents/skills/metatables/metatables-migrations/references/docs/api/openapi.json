@@ -763,6 +763,49 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HostedAgent": {
+        "description": "The Harness Agent this API's branch deploys, as the API's workload sees it.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "status": {
+            "enum": [
+              "verified",
+              "not_found",
+              "unavailable",
+              "not_configured"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "uid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uid"
+          }
+        },
+        "required": [
+          "uid",
+          "status"
+        ],
+        "title": "HostedAgent",
+        "type": "object"
+      },
       "HostedEnvironment": {
         "properties": {
           "is_production": {
@@ -3151,6 +3194,16 @@
               }
             ],
             "title": "Git Source"
+          },
+          "hosted_agent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HostedAgent"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "hosted_environment": {
             "anyOf": [

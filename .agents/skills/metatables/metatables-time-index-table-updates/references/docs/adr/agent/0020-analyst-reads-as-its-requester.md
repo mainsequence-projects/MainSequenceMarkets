@@ -3,7 +3,7 @@
 Status: Accepted.
 
 Implementation status: implemented on `development`; not deployed. It builds on platform
-ADR-0051 (requester-bound access, implemented 2026-10-06), ms-tau-sdk 2.0.8.dev44 for the
+ADR-0051 (requester-bound access, implemented 2026-10-06), ms-tau-sdk 2.0.8 for the
 Analyst and mainsequence 9.0.19, whose `User.get_requester()` the API reads. Tests cover
 admission through real signed assertions; a hosted turn has not run.
 
