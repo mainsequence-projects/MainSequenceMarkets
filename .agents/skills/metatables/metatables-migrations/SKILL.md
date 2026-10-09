@@ -1,6 +1,6 @@
 ---
 name: metatables-migrations
-description: "Create and evolve managed application tables through Alembic migration providers with the installed MetaTables Python client. Covers provider scope and placement, scaffolding, revision authoring, local execution, the deployment-workflow migration Job for hosted runtimes, and reservation or finalization failures. Excludes API catalog migrations, client-library implementation, API/server changes and repository tooling."
+description: "Create and evolve managed application tables through Alembic migration providers with the installed MetaTables Python client. Covers provider scope and placement, scaffolding, revision authoring, local execution, the deployment-workflow migration Job for hosted runtimes, the Team that owns an application's tables in each Environment, and reservation or finalization failures. Excludes API catalog migrations, client-library implementation, API/server changes and repository tooling."
 ---
 
 # MetaTables client application migrations
@@ -50,11 +50,21 @@ migrations. Read `docs/client/deploy-application-migrations.md`.
 1. **Develop locally.** Author the revision and apply it to verified local SQLite
    with the [local development skill](../metatables-local-development/SKILL.md).
 2. **Commit the revision with the code that needs it.**
-3. **Deploy.** The application's `.mainsequence/workflows/` file declares a
+3. **Give a Team the tables.** Before the first hosted migration in each
+   Environment, the application's tables need an owning Team: one platform Team
+   per Environment (for example `ledger-development`), whose members are the
+   migration Job's workload User and the workload User of every resource that
+   reads or writes the tables. An Organization admin creates the application's
+   namespace in that Environment and grants the Team Writer on it. Tell the user
+   these steps; they are made in the platform and in MetaTables Security, not in
+   the repository.
+4. **Deploy.** The application's `.mainsequence/workflows/` file declares a
    migration Job that calls `upgrade_application` for each provider, in
-   dependency order, from the candidate image. Every deployed resource that reads
-   or writes the tables (FastAPI, `harness_agent` and others) has a deploy step
-   with `needs: [migrate]`. A failed migration blocks the rollout.
+   dependency order, from the candidate image. The Job and every resource that
+   uses MetaTables declare `access.branches: [{repository: MetaTables, level: view}]`.
+   Every deployed resource that reads or writes the tables (FastAPI,
+   `harness_agent` and others) has a deploy step with `needs: [migrate]`. A failed
+   migration blocks the rollout.
 
 Rules:
 
@@ -69,6 +79,12 @@ Rules:
   during and after a failed rollout. Add first; drop or rename in a later release.
 - Redeploying an older image does not roll back the schema. Downgrade is never a
   deployment step.
+- Tables belong to the Team, never to one workload User. Workload Users change
+  with each Environment and each recreated Job; a new one needs Team membership
+  only. Do not ask for direct table grants to a workload User, and do not run the
+  Job as an Organization admin to get around a refusal.
+- Every table a provider registers goes in the Team's namespace. A table
+  registered in a namespace the caller already writes gets no grant of its own.
 
 ## Source and runtime context
 
@@ -205,8 +221,15 @@ Read `docs/operations/recovery-and-observability.md`.
   another install overwrote it. Move the provider as the
   [legacy upgrade skill](../metatables-upgrade-legacy-app/SKILL.md) describes;
   do not edit files in `site-packages`.
-- If reservation fails, compare provider scope and physical identities before
-  changing code. Do not create a second catalog row for the same table.
+- If reservation fails with `namespace_not_writable` or `table_not_editable`
+  (403), the caller lacks Writer through the owning Team. Add the
+  `caller_user_uid` from the error to the Team with Writer on the namespace, or,
+  when the namespace or Team is missing, set them up as in step 3. A table
+  registered before the Team existed may have only a retired workload User as
+  Writer; an Organization admin grants the Team Writer on its namespace. Do not
+  change code or physical names to get around it.
+- If reservation fails otherwise, compare provider scope and physical identities
+  before changing code. Do not create a second catalog row for the same table.
 - If Alembic succeeds but finalization fails, physical DDL may already be
   committed. Inspect every per-table result and the actual schema before
   retrying.
@@ -220,5 +243,6 @@ Read `docs/operations/recovery-and-observability.md`.
 
 Verify provider scope and placement, revision content, the selected environment
 connection, repeat execution, and final active bindings. Check that the deployment
-workflow runs the migration Job before every resource that uses the tables. Report
+workflow runs the migration Job before every resource that uses the tables, and
+that each Environment has its owning Team with the Job's workload User. Report
 separately what was checked offline and what was exercised against a configured API.

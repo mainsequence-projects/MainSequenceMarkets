@@ -797,7 +797,7 @@ mcp = [
 
 [[package]]
 name = "mainsequence-metatable"
-version = "0.1.26"
+version = "0.1.27"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -829,9 +829,9 @@ dependencies = [
     { name = "urllib3" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cc/32/759d7bc308aea88d18e5c0fc878b2805b223e7b4d47a8393c783b6c7836a/mainsequence_metatable-0.1.26.tar.gz", hash = "sha256:b5e5f7e98800dc80655808773f73018c1e3f11c2ff7c4917af2e24ab60c031dd", size = 1150414, upload-time = "2026-10-08T13:48:38.13Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bb/fa/f9065c580c8313592e39d92c666c17ea9685d1a4ed3fc1433939e8f304bc/mainsequence_metatable-0.1.27.tar.gz", hash = "sha256:02ebc60a518336daeac374db1bb97409aaf3fd42b4adbfe272f7f1ade031d698", size = 1157157, upload-time = "2026-10-09T07:17:30.327Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9b/19/da9bae757def5e92079204551960d93157223c3d9831e418c6eaa4344d09/mainsequence_metatable-0.1.26-py3-none-any.whl", hash = "sha256:ee521a7546b5f7cca5da4f21871a2192b110185c33500d4d5ffd575b3c6d6070", size = 2541405, upload-time = "2026-10-08T13:48:36.033Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/a7/37855bdeb24c1efbedc9841e8eca1d149f14f5b77fd6a8ca0c7676b9ad3e/mainsequence_metatable-0.1.27-py3-none-any.whl", hash = "sha256:8a9a3a7d5c5062d5293140721264a6b762a39c20889dd4509aabd13b404f475e", size = 2558998, upload-time = "2026-10-09T07:17:28.548Z" },
 ]
 
 [[package]]
@@ -1226,7 +1226,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'public-api'", specifier = ">=0.136.3" },
     { name = "joblib", marker = "extra == 'portfolios'" },
     { name = "mainsequence", specifier = ">=9.0.19,<10" },
-    { name = "mainsequence-metatable", specifier = ">=0.1.26,<0.2" },
+    { name = "mainsequence-metatable", specifier = ">=0.1.27,<0.2" },
     { name = "matplotlib", marker = "extra == 'pricing'" },
     { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6" },

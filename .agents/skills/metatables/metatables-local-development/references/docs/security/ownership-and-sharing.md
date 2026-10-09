@@ -2,14 +2,22 @@
 
 ## Ownership is Writer access
 
-The creator receives Writer access when a new table is registered. A Writer can
-grant Reader or Writer access to other platform Users and Teams, change a direct
-grant, or revoke it. Readers cannot change grants.
+The creator receives Writer access when a new table is registered, unless the
+table's namespace already makes the creator a Writer, directly or through a Team.
+Then the namespace's Writers control the table and no creator grant is added. A
+Writer can grant Reader or Writer access to other platform Users and Teams, change
+a direct grant, or revoke it. Readers cannot change grants.
 
 Several principals can be Writers. The original creator has no permanent
-permission separate from grants: creator attribution records who created the
+permission separate from grants: `created_by_user_uid` records who created the
 table, while effective access determines who controls it now. Organization admins
 can restore access when no Writer remains.
+
+Deployed Jobs, releases and Agents run as their own workload Users, which change
+with each Environment and each recreated Job. Give an application's tables to a
+Team instead: grant the Team Writer on the application's namespace and make the
+workload Users members. See
+[Migrate in the deployment workflow](../client/deploy-application-migrations.md#give-the-job-access-through-a-team).
 
 ## One central table-access model
 

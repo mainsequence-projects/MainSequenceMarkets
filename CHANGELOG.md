@@ -23,6 +23,19 @@ and this project follows versioned releases.
 
 ### Changed
 
+- Requires `mainsequence-metatable>=0.1.27,<0.2`; the lock and exported
+  `requirements.txt` select 0.1.27. Changes in MetaTables 0.1.27
+  ([MetaTables#44](https://github.com/mainsequence-projects/MetaTables/pull/44)):
+  - One platform Team per Environment owns an application's tables, with the
+    application's workload Users as members. This is what
+    `scripts/bootstrap_metatables_access.py` sets up.
+  - A table registered in a namespace the caller already writes gets no grant of
+    its own.
+  - A refused registration answers `403` `table_not_editable` or
+    `namespace_not_writable`, with the caller's User UID.
+  - The vendored MetaTables agent skills are refreshed to 0.1.27. The
+    `metatables-migrations` skill makes the per-Environment Team a deployment
+    step.
 - Requires `mainsequence>=9.0.19,<10` and `mainsequence-metatable>=0.1.26,<0.2`;
   the lock and exported `requirements.txt` select `mainsequence` 9.0.19 and
   `mainsequence-metatable` 0.1.26. MetaTables 0.1.24 and later require
