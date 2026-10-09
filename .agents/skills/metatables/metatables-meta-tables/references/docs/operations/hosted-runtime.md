@@ -120,6 +120,16 @@ lists what MetaTables requires.
 6. Open **Settings** and check the declaration, the resolved connection, the
    `ready` status and the applied migration revisions.
 
+The login and the catalog schema are both named `metatables`, so the login's default
+search path (`"$user", public`) starts in the catalog. Application migration connections
+are therefore pinned to `public`, and a provider with tables in `metatables` is refused
+with `provider_tables_misplaced`
+([MetaTables #50](https://github.com/mainsequence-projects/MetaTables/issues/50)). Tables
+created before 2026-09-30 may still belong to a retired `ms_ds_*_migration_owner` role. When
+a migration reports `provider_tables_owner_unreachable`, a database administrator runs
+`REASSIGN OWNED BY <role> TO mt_owner;` in that database. Granting the login that role
+doesn't fix it.
+
 ## Deployment gate
 
 In `.mainsequence/workflows/metatables-api.yaml`, the `migrate-system` Job

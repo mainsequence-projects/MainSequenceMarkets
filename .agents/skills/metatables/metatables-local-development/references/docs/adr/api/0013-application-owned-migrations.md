@@ -1,5 +1,22 @@
 # ADR 0013: Application-owned migrations through the client
 
+> Amendment (2026-10-09, [MetaTables #50](https://github.com/mainsequence-projects/MetaTables/issues/50)
+> and [#51](https://github.com/mainsequence-projects/MetaTables/issues/51)): The configured login is
+> named `metatables`, so its default `"$user", public` search path starts in the catalog schema.
+>
+> - The migration connection carries `search_path=public`, the only default schema hosted
+>   PostgreSQL accepts. The client refuses a session whose effective path is anything else
+>   before it reads Alembic state. On PostgreSQL the version table is always qualified:
+>   `public` when the provider declares no schema.
+> - Before issuing the connection, the API refuses a provider whose tables are in the
+>   `metatables` schema or belong to a role the login can't use. Nothing is stamped or
+>   replayed.
+> - Lifecycle step 5 never infers removal from absence. Finalization deletes a catalog binding
+>   only for a table the client names as removed (dropped from its models, or dropped by this
+>   run, as on downgrade) and that is confirmed absent. Any other missing or unreadable table
+>   keeps its binding and fails. Older clients name nothing, so their removal and downgrade
+>   cleanup fails safe until they upgrade.
+
 Date: 2026-10-01
 
 Status: Accepted and implemented.

@@ -110,7 +110,7 @@ history is the Alembic revision graph plus the provider's version table.
 
 ## Client Requirement
 
-The implementation requires `mainsequence-metatable>=0.1.28,<0.2` with
+The implementation requires `mainsequence-metatable>=0.1.29,<0.2` with
 `mainsequence>=9.0.19,<10`. The client exposes `AlembicMetaTableMigration`,
 `AlembicVersionMetaTable`, application-owned Alembic execution, and the command
 shape where

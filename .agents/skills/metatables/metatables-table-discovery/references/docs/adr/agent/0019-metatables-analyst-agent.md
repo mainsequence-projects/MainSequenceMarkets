@@ -70,7 +70,7 @@ refuses anything else.
 
 | Part | Rule |
 | --- | --- |
-| Runtime | `ms-tau-sdk` 2.0.9, `openai-codex` / `gpt-5.6-luna`, thinking `medium`. |
+| Runtime | `ms-tau-sdk` 2.0.10, `openai-codex` / `gpt-5.6-luna`, thinking `medium`. |
 | Identity | The person each turn serves (ADR 0020); the agent's own identity holds no grants. |
 | Tools | The six tools below, served by the API over MCP when hosted (ADR 0021), and the SDK's skill-scoped `read`. No shell, file writes or Main Sequence MCP. |
 | Instructions | `.tau/SYSTEM.md` covers MetaTables; vendored `pg-aiguide` skills cover PostgreSQL and TimescaleDB. |
