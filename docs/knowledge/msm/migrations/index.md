@@ -70,7 +70,7 @@ previous release keeps serving.
 
 ### Migration diagnostics and repeated runs
 
-The minimum client is MetaTables 0.1.31. `upgrade_application()` automatically
+The minimum client is MetaTables 0.1.33. `upgrade_application()` automatically
 uses fresh table inventories and batched physical inspections; PostgreSQL
 reflection is batched by schema. Finalization requests remain bounded to ten
 tables each, with the version table first. No batching option or project-specific
@@ -92,6 +92,14 @@ skip the Job or finalization because `migrated=False`. If DDL committed but
 finalization failed, inspect the actual schema and per-table errors, then rerun
 the same migration through a new deployment. Do not stamp, rewrite applied
 revisions, or downgrade to recover catalog state.
+
+The runner carries changed, non-empty authored table descriptions, labels, and
+column descriptions, labels, and logical names in each finalization batch. An
+unchanged revision can therefore refresh catalog metadata without new DDL.
+Empty or absent metadata preserves existing values; fresh physical inspection
+still owns types, keys, indexes, and nullability. Equal-valued reruns avoid
+catalog writes. This payload requires the matching MetaTables API update, which
+also corrects SQLite schema reflection for multi-batch downgrades.
 
 Client improvements require an updated application image. API-side batching,
 unchanged-contract write avoidance, and startup optimizations require the shared

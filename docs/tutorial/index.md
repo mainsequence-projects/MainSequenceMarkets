@@ -17,7 +17,7 @@ helpers for time-indexed facts).
 
 ### Prepare the schema before starting runtime code
 
-1. Install the locked dependencies, including MetaTables 0.1.31 or later.
+1. Install the locked dependencies, including MetaTables 0.1.33 or later.
 2. For local ms-markets schema development, verify the local MetaTables runtime
    and use `metatables --local migrations upgrade --provider msm_migrations:migration head`.
    For a hosted environment, the ms-markets deployment's migration Job applies
@@ -28,7 +28,10 @@ helpers for time-indexed facts).
 
 Run `python examples/msm/platform/metatable_migration_lifecycle.py` for a safe,
 print-only walkthrough. The shared runner batches inspections automatically and
-reconciles the catalog even at the current revision. See
+reconciles the catalog even at the current revision. Changed, non-empty authored
+descriptions, labels, and column metadata refresh during finalization without a
+new revision; empty values preserve existing metadata. The shared MetaTables API
+must support that payload too. See
 [Migrations](../knowledge/msm/migrations/index.md) for the workflow and timing logs.
 
 ## Installing MS Markets Agent Skills

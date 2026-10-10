@@ -169,6 +169,39 @@ flowchart TD
   replaying already-applied DDL. The response contract and client calls stay the
   same; no consuming-application opt-in is required.
 
+### Authored metadata and SQLite policy reflection (2026-10-10 amendment)
+
+The public migration runner sends current authored table descriptions, labels and
+column descriptions, labels and logical names in each finalization batch, including
+when Alembic is already at the requested revision. Reusing an existing binding at
+reservation time must not suppress metadata refresh ([#57](https://github.com/mainsequence-projects/MetaTables/issues/57)).
+The runner compares authored values with the fresh reservation lookup and sends
+only changed, non-empty metadata; it never caches equality across deployments.
+
+The optional `authored_metadata` map is keyed only by UIDs in that request. The API
+applies it after Writer/provider/source admission and fresh physical inspection,
+inside the table's savepoint. The physical snapshot remains authoritative for
+types, nullability, indexes, keys and binding identity. As with registration,
+empty/absent metadata preserves existing descriptions and labels. Equal metadata
+does not dirty rows or replace label links; the next unchanged upgrade still
+performs no catalog DML. Failed reconciliation rolls back metadata and can retry.
+Older clients may omit the map; clients that send it require an API supporting it.
+
+Security dependency reflection uses the backend's physical schema normalization.
+SQLite maps logical provider schemas and physical `main` cascade targets to the
+same physical namespace, rather than querying `PRAGMA public.foreign_key_list`.
+This keeps per-batch checks scoped when a downgrade has dropped tables belonging
+to later batches ([#58](https://github.com/mainsequence-projects/MetaTables/issues/58)).
+The conservative full policy sweep on a genuine reflection failure remains, and
+unexpected missing tables still fail without losing their catalog bindings. Only
+explicitly removed, freshly confirmed absent tables may lose bindings.
+
+Regression coverage runs the public client against a real disposable SQLite API:
+metadata changes at an unchanged revision, zero-write reruns, a provider larger
+than a finalization batch with later-batch drops, and a subsequent normal upgrade.
+Route coverage additionally checks physical-shape rejection, Writer admission,
+unrequested metadata UIDs, and failed metadata finalization/retry.
+
 ## MetaTables system migrations
 
 Hosted system upgrades also run as a deployment prerequisite Job

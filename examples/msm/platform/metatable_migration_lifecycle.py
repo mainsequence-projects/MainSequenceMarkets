@@ -18,8 +18,11 @@ def main() -> None:
 
     print("\nHosted: candidate image -> jobs/migrate_markets.py -> API rollout")
     print(f"The Job calls metatables.upgrade_application({PROVIDER!r}) on every deployment.")
-    print("MetaTables >=0.1.31 batches inspections and waits up to 300s for a waking API.")
+    print("MetaTables >=0.1.33 batches inspections and waits up to 300s for a waking API.")
     print("At head, catalog reconciliation still runs; migrated=False is not a skip signal.")
+    print("Changed non-empty authored metadata refreshes without a new Alembic revision.")
+    print("Empty metadata preserves existing values; equal-valued reruns avoid catalog writes.")
+    print("Metadata finalization also requires the matching shared MetaTables API update.")
     print("INFO logs from metatables.migrations.runner report each phase's elapsed time.")
     print("Consumers migrate only their own providers, not the ms-markets provider.")
 

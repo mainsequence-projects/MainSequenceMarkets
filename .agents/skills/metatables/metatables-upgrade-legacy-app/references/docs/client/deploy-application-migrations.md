@@ -37,6 +37,12 @@ scheduling and workflow coordination.
 An already-current database still reconciles the provider's catalog contracts.
 Checks use fresh table inventories and batched physical reflection; an unchanged
 revision does not skip missing-table checks, permissions or metadata refresh.
+Each finalization batch carries current authored descriptions, labels and column
+descriptions/labels/logical names. Non-empty values refresh existing bindings
+without a new revision; empty or absent values preserve catalog metadata, as in
+registration. Physical shape always comes from fresh database inspection. The
+next equal-valued upgrade skips catalog writes. This metadata payload requires
+the corresponding API update as well as the updated client.
 PostgreSQL batches metadata queries by schema; other dialects use SQLAlchemy's
 bulk reflection and its supported fallbacks. Caches do not survive the request.
 Client improvements require updating the application's installed MetaTables package

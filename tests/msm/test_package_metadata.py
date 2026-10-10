@@ -40,7 +40,9 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     requirement = _requirement("mainsequence-metatable")
 
     assert Version("0.1.30") not in requirement.specifier
-    assert Version("0.1.31") in requirement.specifier
+    assert Version("0.1.31") not in requirement.specifier
+    assert Version("0.1.32") not in requirement.specifier
+    assert Version("0.1.33") in requirement.specifier
     assert Version("0.1.99") in requirement.specifier
     assert Version("0.2.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

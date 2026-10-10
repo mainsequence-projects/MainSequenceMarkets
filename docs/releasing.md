@@ -131,15 +131,18 @@ stable releases.
 
 ### Upgrading the migration client
 
-The project requires `mainsequence-metatable>=0.1.31,<0.2`; `uv.lock` and
-`requirements.txt` select 0.1.31. After changing the dependency, run
+The project requires `mainsequence-metatable>=0.1.33,<0.2`; `uv.lock` and
+`requirements.txt` select 0.1.33. After changing the dependency, run
 `mainsequence code-repository sync --path .`, refresh the MetaTables-owned
 guidance with `metatables copy-metatables-skills --path .`, and run the checks
 above. Keep the provider identity, version table, and applied revisions unchanged.
 
-The candidate image uses the shared `upgrade_application()` runner. Version
-0.1.31 adds batched inspections and a 300-second discovery budget for a waking
-API. The Job enables its INFO phase timings and must run even when Alembic is
+The candidate image uses the shared `upgrade_application()` runner. It retains
+the batched inspections and 300-second discovery budget introduced in 0.1.31.
+The updated runner also sends changed, non-empty authored table and column
+metadata during finalization, even without a new Alembic revision. That payload
+requires the matching MetaTables API; the updated API also fixes SQLite
+multi-batch downgrade finalization. The Job enables INFO phase timings and must run even when Alembic is
 already at head: catalog reconciliation is not optional. The workflow remains
 image → migration Job → API deployment, all from the same candidate image.
 

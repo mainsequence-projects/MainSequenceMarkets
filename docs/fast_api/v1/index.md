@@ -173,13 +173,14 @@ push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
 The published `ms-markets` 2.x package therefore declares
-`mainsequence>=9.0.19,<10` and `mainsequence-metatable>=0.1.31,<0.2` without
+`mainsequence>=9.0.19,<10` and `mainsequence-metatable>=0.1.33,<0.2` without
 exact patch pins. The lower bounds enforce the SDK 9 and MetaTables client
 extraction hard cut and the SDK request identity that the platform's current
 caller assertions require (SDK 9.0.18 and later), while the project lock and exported runtime requirements
-select the exact releases validated for this repository. MetaTables 0.1.31 also
-provides batched migration inspections and a five-minute migration API discovery
-budget. Do not replace the
+select the exact releases validated for this repository. MetaTables 0.1.33 retains
+batched migration inspections and a five-minute migration API discovery budget,
+and refreshes changed authored metadata at unchanged revisions. Metadata
+finalization requires the corresponding shared MetaTables API update. Do not replace the
 published dependencies with machine-local `[tool.uv.sources]` path overrides.
 
 `create_app()` installs the SDK request identity with

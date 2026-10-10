@@ -18,6 +18,85 @@
         "title": "Assignments",
         "type": "object"
       },
+      "AuthoredColumnMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "logical_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logical Name"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AuthoredColumnMetadata",
+        "type": "object"
+      },
+      "AuthoredTableMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/AuthoredColumnMetadata"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          }
+        },
+        "title": "AuthoredTableMetadata",
+        "type": "object"
+      },
       "BatchDetailsPatch": {
         "properties": {
           "update_map": {
@@ -621,6 +700,23 @@
               }
             ],
             "title": "Alembic Version Meta Table Uid"
+          },
+          "authored_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/AuthoredTableMetadata"
+                },
+                "propertyNames": {
+                  "format": "uuid"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authored Metadata"
           },
           "code_repository_context": {
             "anyOf": [
