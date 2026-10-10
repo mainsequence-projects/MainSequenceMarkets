@@ -7,15 +7,21 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
-### Fixed
+## [2.2.6] - 2026-10-10
 
-- Repair the portfolio event ledger's TimescaleDB-incompatible non-time unique
-  constraint through forward migration `0019`, preserving applied `0018`, all
-  existing rows, and full-grain uniqueness. Canonical publication, restart, and
-  projections reject duplicate economic record identities across timestamps
-  and event revisions split across times. Exact retries remain idempotent.
-- Align ADR 0042, accounting and migration documentation, the portfolio tutorial,
-  and the offline dividend/FX example with the storage and validation boundary.
+### Added
+
+- `scripts/bootstrap_metatables_access.py` gives the deployment's workload Users
+  Writer on the `mainsequence.markets` MetaTables namespace in one Environment, for
+  an Organization admin to run once from a checkout of `development` or `main`.
+  It creates the Team `ms-markets-<environment>` from the checkout's Environment
+  name, adds the migration Job's and FastAPI release's workload Users from the
+  deployment workflow, creates the namespace if it is missing and grants the Team
+  Writer on it. Every other grant is kept, and `--dry-run` only reports. Without
+  this grant the migration Job could not register tables. In `development` it got
+  `422 MetaTable is not editable` on `msm.alembic_version`, which a previous runtime
+  identity had registered. See [MetaTables#43](https://github.com/mainsequence-projects/MetaTables/issues/43)
+  and "MetaTables access in each Environment" in `docs/releasing.md`.
 
 ### Changed
 
@@ -37,25 +43,6 @@ and this project follows versioned releases.
   Provider identity, version-table binding, and applied revisions are unchanged.
 - Refreshed the MetaTables-owned skills and guide snapshots to 0.1.33; aligned
   migration documentation, release guidance, tutorial, and print-only example.
-
-## [2.2.6] - 2026-10-09
-
-### Added
-
-- `scripts/bootstrap_metatables_access.py` gives the deployment's workload Users
-  Writer on the `mainsequence.markets` MetaTables namespace in one Environment, for
-  an Organization admin to run once from a checkout of `development` or `main`.
-  It creates the Team `ms-markets-<environment>` from the checkout's Environment
-  name, adds the migration Job's and FastAPI release's workload Users from the
-  deployment workflow, creates the namespace if it is missing and grants the Team
-  Writer on it. Every other grant is kept, and `--dry-run` only reports. Without
-  this grant the migration Job could not register tables. In `development` it got
-  `422 MetaTable is not editable` on `msm.alembic_version`, which a previous runtime
-  identity had registered. See [MetaTables#43](https://github.com/mainsequence-projects/MetaTables/issues/43)
-  and "MetaTables access in each Environment" in `docs/releasing.md`.
-
-### Changed
-
 - Requires `mainsequence-metatable>=0.1.29,<0.2`; the lock and exported
   `requirements.txt` select 0.1.29. Changes in MetaTables 0.1.29
   ([MetaTables#52](https://github.com/mainsequence-projects/MetaTables/pull/52)):
@@ -122,6 +109,13 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- Repair the portfolio event ledger's TimescaleDB-incompatible non-time unique
+  constraint through forward migration `0019`, preserving applied `0018`, all
+  existing rows, and full-grain uniqueness. Canonical publication, restart, and
+  projections reject duplicate economic record identities across timestamps
+  and event revisions split across times. Exact retries remain idempotent.
+- Align ADR 0042, accounting and migration documentation, the portfolio tutorial,
+  and the offline dividend/FX example with the storage and validation boundary.
 - The Markets API installs the SDK request identity with
   `install_request_identity(app)` in `create_app()`. The platform launcher
   refuses to serve an application that does not install it, and SDK releases
