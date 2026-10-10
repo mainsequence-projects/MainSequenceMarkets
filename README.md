@@ -108,7 +108,7 @@ Recommended entry points:
 ## Quick Start
 
 `ms-markets` 2.x requires Python 3.13, Main Sequence SDK `>=9.0.19,<10`, and
-the MetaTables client `mainsequence-metatable>=0.1.29,<0.2`, which is imported
+the MetaTables client `mainsequence-metatable>=0.1.31,<0.2`, which is imported
 as `metatables`. SDK 8 and earlier are not supported; install a 1.x
 `ms-markets` release when maintaining an SDK 8 project. See
 [ADR 0043](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0043-sdk-9-metatables-client-hard-cut/)
@@ -226,7 +226,7 @@ The core stack starts with:
 
 - `mainsequence>=9.0.19,<10` for identity, login, Git source context,
   CodeRepository, jobs, and agents
-- `mainsequence-metatable>=0.1.29,<0.2` (import `metatables`) for MetaTables,
+- `mainsequence-metatable>=0.1.31,<0.2` (import `metatables`) for MetaTables,
   time-index table updaters, governed compiled SQL, and application-owned
   Alembic migrations
 - `SQLAlchemy` for market-domain ORM models

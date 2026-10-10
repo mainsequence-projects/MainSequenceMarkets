@@ -32,8 +32,10 @@ Every run executes the same steps:
 1. Check that the login can secure the database (ADR 0007 prerequisites).
 2. Apply the system migrations.
 3. Register the runtime DataSource, or update its connection to the declaration.
-4. Reapply access setup. Per-User role passwords derive from the login password,
-   so a rotated password reaches them on the next deployment.
+4. Freshly validate access setup and repair changes. Per-User role passwords
+   derive from the login password, so a rotated password reaches them on the
+   next deployment. The conditional reconciliation amendment below replaces
+   unconditional rebuilding on every deployment.
 
 The first deployment therefore initializes the database. A missing declaration
 or Secret, an unreachable database or unmet prerequisites fail the Job and block
@@ -44,6 +46,89 @@ The Job prints `initialized`, `upgraded` or `up_to_date` with the revisions.
 Settings' **Run MetaTables migrations** and `metatables runtime initialize` remain
 for Local mode only. The original decision follows. The amendment supersedes
 steps 1–2, the skip rules and the Settings initialization paragraph.
+
+### Conditional system bootstrap (2026-10-10 amendment)
+
+An unchanged deployment remains a validation gate, but does not restart completed
+work or rewrite an identical catalog/security projection. This concerns the
+MetaTables **system** Job, separate from application-provider finalization in
+[ADR 0013](0013-application-owned-migrations.md).
+
+```text
+resolve declaration and Secret
+  -> bootstrap lock
+  -> fresh history, recovery and runtime-binding checks
+  -> current heads + completed journal?
+       yes: fresh physical system-schema validation; preserve journal
+       no: existing Alembic execution and durable recovery; validate schema
+  -> reconcile runtime registration if changed
+  -> security-state lock; fresh native security and login validation
+  -> unchanged evidence? fresh table-policy checks; apply only grant differences
+       otherwise: full security repair, including credential rotation
+  -> commit; fresh registration/reference verification; release bootstrap lock
+```
+
+Hosted configuration defers database inspection to the authoritative preflight
+inside the bootstrap lock. The local path retains its pre-lock check, so an old
+store cannot be replaced or a new file created before compatibility is checked.
+Registration/reference validation is read again after commit under the lock;
+it does not repeat schema reflection or the already verified migration history.
+Startup and explicit activation continue their existing fresh checks.
+
+Matching Alembic heads alone are insufficient. Only a **completed** progress
+journal allows skipping Alembic and journal writes, after fresh schema validation.
+A missing journal is established through the existing path. An incomplete
+journal retains plan/binding checks, acknowledged-step recovery and rejection
+of unknown outcomes. A completed journal records its original execution; a
+source-code change without new revisions does not reset that history. Schema
+drift still blocks deployment and is not silently repaired by replaying Alembic.
+
+On PostgreSQL/TimescaleDB, the existing private `SQLSecurityState.manifest` stores
+versioned native-security evidence and a domain-separated credential checksum,
+alongside roles, memberships, privileges and routine evidence. No schema revision
+is needed. Initialization compares fresh database evidence: role attributes and
+memberships; schema, relation, column, routine, database and default ACLs; owners,
+routine definitions and row-security policies. Table data and statistics are
+excluded. Declared schemas and grant-target tables are included even when the
+login has grant authority without owning them. Fresh per-login authentication
+uses the configured TLS material and a new connection, never a pooled session
+that could conceal a password change.
+The security-state row stays locked until commit to serialize with catalog
+changes and caller admission.
+
+All registered table policies are freshly checked even on the unchanged path.
+Unchanged table owners and `PUBLIC` grants cause no ownership/revoke writes.
+Policies and grant differences still apply when a trigger or catalog change
+affects access. Native drift, credential rotation, pending/unready state or
+missing evidence invokes full repair. Login authentication failures likewise
+require repair. Exhausted login connection capacity conservatively falls back
+to the existing repair. libpq can omit SQLSTATE on a connection/authentication
+failure; these ambiguous driver connection errors also require repair rather
+than allowing a skip. Other probe failures fail deployment. An old installation
+therefore performs one full repair to establish evidence, then converges.
+Explicit admin repair remains a full sweep; MySQL/SQL Server keep their existing
+security initialization behavior.
+
+The complete manifest is compared and persisted once, including backend fields;
+reconciliation must not remove and then restore the routine fingerprint. Ordinary
+incremental changes cannot checkpoint unverified native drift as success. Failed
+security work rolls back its catalog checkpoint and remains repairable on retry.
+
+Named timings cover declaration/Secret resolution, bootstrap/security lock waits,
+preflight, catalog/Alembic execution, system-schema validation, registration,
+native security and login authentication validation, routine repair, table
+policies, roles/grants, credential-store setup, commit and final registration
+verification. Each timing
+reports completion/failure without connection strings, passwords, checksums or
+driver exception text. Successful security setup logs the selected path and its
+reason, including first-run evidence establishment.
+
+Focused verification uses disposable SQLite catalog transactions and recording
+PostgreSQL adapters: unchanged deployments invoke no Alembic or catalog/journal
+DML; unchanged native security emits no role/grant DDL or manifest UPDATE;
+schema drift, interrupted/ambiguous recovery, credential rotation, permission
+drift and failed repair remain checked. Live PostgreSQL/TimescaleDB validation is
+separate from these non-container checks.
 
 ### Original decision (2026-10-02)
 

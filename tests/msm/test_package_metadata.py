@@ -39,8 +39,8 @@ def test_package_metadata_enforces_sdk_9_floor_without_exact_patch_pin() -> None
 def test_package_metadata_requires_extracted_metatables_client() -> None:
     requirement = _requirement("mainsequence-metatable")
 
-    assert Version("0.1.28") not in requirement.specifier
-    assert Version("0.1.29") in requirement.specifier
+    assert Version("0.1.30") not in requirement.specifier
+    assert Version("0.1.31") in requirement.specifier
     assert Version("0.1.99") in requirement.specifier
     assert Version("0.2.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

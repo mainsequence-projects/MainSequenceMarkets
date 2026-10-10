@@ -190,11 +190,42 @@ API Writer checks govern connection admission and provider catalog operations.
 The client reserves catalog entries, runs Alembic, closes its physical connection,
 and finalizes contracts through the API. Treat connection material as private.
 
-Python code can call `metatables.upgrade_application("ledger.migrations:migration")`;
-`src/metatables/examples/scripts/setup_metatables.py` shows the pattern, and the
-deployment migration Job uses the same call. Remove the retired
+Applications and consuming libraries use the same public Python entry point in
+an explicit setup function or deployment migration Job:
+
+```python
+from metatables import upgrade_application
+
+result = upgrade_application("ledger.migrations:migration")
+```
+
+`src/metatables/examples/scripts/setup_metatables.py` shows the pattern. Keep
+migration execution out of a library's import-time side effects. Remove the retired
 `application_migration_providers` setting and use Python references instead of aliases.
 Application migration histories remain separate from API system migrations.
+
+## Repeated runs and migration performance
+
+Use the shared `upgrade_application` path for every provider. Table-inventory and
+physical-inspection batching are automatic in the client/API implementation; no
+separate batching import, private backend helper or opt-in flag is needed.
+An unchanged Alembic revision still reconciles physical contracts and refreshes
+table descriptions, labels and column metadata. Do not skip finalization based
+only on `migrated=False` or equal revision heads: missing/unreadable tables must
+still fail, and only explicit removals may delete a catalog binding.
+
+For a slow migration, read the "Migration timings" section in
+`docs/client/deploy-application-migrations.md`. Enable INFO logging for
+`metatables.migrations.runner` to see preparation, database setup, table checks,
+Alembic, finalization and total duration. The API logs inspection and total time
+per finalization batch. Measure these separately from platform job scheduling
+and workflow coordination before attributing the delay to schema validation.
+
+Check the installed client and deployed API versions. Client optimizations need
+a package update and application image rebuild; API batching needs a shared API
+deployment. After installing a release containing the changes, refresh copied
+skills with `metatables copy-metatables-skills --path /path/to/application`.
+This command copies guidance; Python imports alone do not refresh it.
 
 ## Lifecycle invariants
 

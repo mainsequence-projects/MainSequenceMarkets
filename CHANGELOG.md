@@ -7,6 +7,21 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Requires `mainsequence-metatable>=0.1.31,<0.2`; the lock and runtime export
+  select 0.1.31, while Main Sequence remains 9.0.19. The shared migration runner
+  batches table inventories and inspections and waits up to 300 seconds for a
+  waking API, addressing the 30-second discovery timeout in the failed Markets
+  deployment ([MetaTables#55](https://github.com/mainsequence-projects/MetaTables/pull/55)).
+  Server-side batching, unchanged-contract write avoidance, and startup
+  improvements also require deployment of the updated shared MetaTables API.
+- The migration Job exposes the shared runner's INFO phase timings, always
+  reconciles the catalog even at head, and propagates failures to block rollout.
+  Provider identity, version-table binding, and applied revisions are unchanged.
+- Refreshed the MetaTables-owned skills and guide snapshots to 0.1.31; aligned
+  migration documentation, release guidance, tutorial, and print-only example.
+
 ## [2.2.6] - 2026-10-09
 
 ### Added

@@ -74,7 +74,7 @@ application migrations, persistence and credentials.
 
 ## Copy client skills into an application
 
-After installing MetaTables, explicitly copy its five client usage skills into a
+After installing MetaTables, explicitly copy its client usage skills into a
 consuming project:
 
 ```bash
@@ -88,11 +88,16 @@ metatables --json copy-metatables-skills --path /path/to/application
 `metatables` does not copy skills.
 
 The destination is `<application>/.agents/skills/metatables/`. It contains the
-local development, table, application migration, time-index updater and legacy
+local development, table, application migration, table discovery, time-index updater and legacy
 application upgrade skills, with matching
 guide/example snapshots in each skill's `references/` folder. The installed client
 version is recorded in `PINNED_FROM.txt`. Skills for API implementation or
 MetaTables project development are outside this bundle.
+
+After upgrading the installed package, run the copy command again to refresh the
+matching guidance. The migration skill includes the public `upgrade_application`
+import, repeated-run behavior and migration timing diagnostics. Python imports
+use the installed library independently of these copied agent instructions.
 
 Running the command again replaces the whole `metatables` namespace: folders the
 installed client does not ship, including any added there, are removed. Keep the

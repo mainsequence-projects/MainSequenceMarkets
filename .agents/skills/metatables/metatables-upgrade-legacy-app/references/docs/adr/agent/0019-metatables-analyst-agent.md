@@ -1,5 +1,15 @@
 # ADR 0019: MetaTables Analyst agent
 
+> Amendment (2026-10-09): Both Environment and Agent discovery allow 30 seconds for
+> the platform lookup, including credential renewal. Environment lookup failures
+> stay outside the one-hour cache, just like Agent lookup failures, so the next
+> request can restore the Analyst after a temporary platform outage. Successful
+> facts still expire normally; an expired verified result is never served on failure.
+> A hosted API also fails startup when its declared database is unavailable,
+> allowing the deployment's restart policy to retry instead of serving a replica
+> whose failed bootstrap cannot recover. Secret lookup allows 30 seconds and
+> distinguishes a missing Secret from a failed platform request in its message.
+>
 > Amendment (2026-10-08): The API names this branch's Analyst to applications.
 > `GET /runtime-context/` returns `hosted_agent` (`uid`, `name`, `status`) beside
 > `hosted_environment`: the Agent the API's own branch deploys, which the API finds with its

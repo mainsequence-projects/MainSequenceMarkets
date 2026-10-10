@@ -56,7 +56,7 @@ belong to their component documentation and project instructions.
 | --- | --- |
 | `.agents/skills/client/metatables-local-development/SKILL.md` | Local-first application development, runtime/DataSource checks, isolated verification and explicit return to the environment. |
 | `.agents/skills/client/metatables-meta-tables/SKILL.md` | SQLAlchemy contracts, external registration, governed queries and client access operations. |
-| `.agents/skills/client/metatables-migrations/SKILL.md` | Alembic providers, offline revisions, approved API-side execution and migration recovery for managed application tables. |
+| `.agents/skills/client/metatables-migrations/SKILL.md` | Application-owned Alembic providers, offline revisions, shared migration execution, timing diagnostics and recovery for managed application tables. |
 | `.agents/skills/client/metatables-table-discovery/SKILL.md` | Table search, and the authoritative rules for table descriptions, labels and column metadata (ADR 0018). |
 | `.agents/skills/client/metatables-time-index-table-updates/SKILL.md` | Producers, dependencies, incremental frames and existing-table readers. |
 

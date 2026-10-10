@@ -26,6 +26,28 @@ upgrade` or `downgrade` against a hosted API from a developer machine or agent
 session. Do not migrate at application startup either: several pods would race,
 and a failure would not stop the rollout.
 
+## Migration timings
+
+At INFO level, `metatables.migrations.runner` logs preparation, database setup,
+table-presence checks before and after Alembic, Alembic execution, catalog
+finalization and total duration. The API logs physical inspection and total time
+for each finalization batch. Use these to distinguish database work from platform
+scheduling and workflow coordination.
+
+An already-current database still reconciles the provider's catalog contracts.
+Checks use fresh table inventories and batched physical reflection; an unchanged
+revision does not skip missing-table checks, permissions or metadata refresh.
+PostgreSQL batches metadata queries by schema; other dialects use SQLAlchemy's
+bulk reflection and its supported fallbacks. Caches do not survive the request.
+Client improvements require updating the application's installed MetaTables package
+and rebuilding its image; API improvements require deploying the shared API.
+Applications and libraries continue to use `from metatables import upgrade_application`;
+batching is automatic in this shared path, with no new import or opt-in flag.
+After updating the installed package, refresh its agent guidance with
+`metatables copy-metatables-skills --path /path/to/application`. This copies the
+matching migration skill and its guide snapshots; importing Python code does not
+update a project's copied skills.
+
 ## Declare the migration Job
 
 Add one Job script that applies every provider the application owns, in
@@ -116,6 +138,10 @@ its branch to discover the API; declare it on the Job:
         - repository: MetaTables
           level: view
 ```
+
+`upgrade_application()` waits up to five minutes for the API to wake or finish
+replacing its pods before it fails with `ApiResolutionError`; other client calls
+wait 30 seconds.
 
 Team membership takes effect on the workload's next request, in the catalog and in
 the database. When a workload User changes, add the new one to the Team; nothing

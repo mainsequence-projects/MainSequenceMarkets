@@ -51,6 +51,15 @@
 > are when grants changed outside MetaTables are repaired, not on every catalog
 > change. MySQL and SQL Server keep the full sweep on every change.
 
+> Amendment (2026-10-10): [ADR 0014](0014-main-sequence-release-jobs-and-production-migrations.md#conditional-system-bootstrap-2026-10-10-amendment)
+> replaces the unconditional deployment sweep on PostgreSQL/TimescaleDB with
+> fresh native-security and login validation under the security-state lock.
+> Every deployment still checks table policies. Unchanged security evidence uses
+> incremental grant application and one conditional write of the complete
+> manifest; drift, credential rotation, pending state or missing evidence retains
+> full repair. An explicit admin repair remains a full sweep. A routine catalog
+> update must not establish a new native baseline for unverified outside drift.
+
 > Amendment (2026-10-09): [ADR 0022](0022-concurrent-requests-and-connection-reuse.md)
 > reuses login-role connections within a pod, only by the login role that opened them
 > and never through `SET ROLE`; no session state carries over from one use to the next.

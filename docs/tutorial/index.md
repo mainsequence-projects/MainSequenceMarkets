@@ -15,6 +15,22 @@ Before starting, set up your environment with
 (typed `msm.api` row APIs, explicit MetaTable runtime attachment, and TimeIndexTableUpdater
 helpers for time-indexed facts).
 
+### Prepare the schema before starting runtime code
+
+1. Install the locked dependencies, including MetaTables 0.1.31 or later.
+2. For local ms-markets schema development, verify the local MetaTables runtime
+   and use `metatables --local migrations upgrade --provider msm_migrations:migration head`.
+   For a hosted environment, the ms-markets deployment's migration Job applies
+   this provider before the API rolls out; do not run it from your laptop.
+3. Start tutorial code with `msm.start_engine(...)` only after the tables have
+   been finalized. A consuming project uses the schema owned by the ms-markets
+   deployment and migrates only its own providers.
+
+Run `python examples/msm/platform/metatable_migration_lifecycle.py` for a safe,
+print-only walkthrough. The shared runner batches inspections automatically and
+reconciles the catalog even at the current revision. See
+[Migrations](../knowledge/msm/migrations/index.md) for the workflow and timing logs.
+
 ## Installing MS Markets Agent Skills
 
 Use the `msm` CLI when a host Main Sequence CodeRepository should receive the

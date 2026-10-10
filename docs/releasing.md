@@ -129,6 +129,27 @@ rebuilds the image, runs the `migrate-markets` Job and redeploys the API. Pushes
 `main` happen only through release merges, so the `main` deployment follows
 stable releases.
 
+### Upgrading the migration client
+
+The project requires `mainsequence-metatable>=0.1.31,<0.2`; `uv.lock` and
+`requirements.txt` select 0.1.31. After changing the dependency, run
+`mainsequence code-repository sync --path .`, refresh the MetaTables-owned
+guidance with `metatables copy-metatables-skills --path .`, and run the checks
+above. Keep the provider identity, version table, and applied revisions unchanged.
+
+The candidate image uses the shared `upgrade_application()` runner. Version
+0.1.31 adds batched inspections and a 300-second discovery budget for a waking
+API. The Job enables its INFO phase timings and must run even when Alembic is
+already at head: catalog reconciliation is not optional. The workflow remains
+image → migration Job → API deployment, all from the same candidate image.
+
+Deploy the shared MetaTables API as well to receive its server-side inspection,
+unchanged-contract, and startup improvements. A client-only upgrade cannot
+change an older deployed API. Verify image preparation, successful migration
+finalization, and API rollout separately; a push or an `already current` Alembic
+revision alone is not proof of deployment success. See
+[Migration diagnostics](knowledge/msm/migrations/index.md#migration-diagnostics-and-repeated-runs).
+
 ### MetaTables access in each Environment
 
 !!! warning "Required in every Environment"

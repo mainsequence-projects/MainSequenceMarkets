@@ -10,6 +10,13 @@ new image, and a failure blocks the rollout. Settings is read-only in Hosted mod
 See [the deployment gate](hosted-runtime.md#deployment-gate) and
 [ADR 0014](../adr/api/0014-main-sequence-release-jobs-and-production-migrations.md).
 
+The deployment gate checks revisions and registration during preflight, then
+validates the full system schema once inside the migration runner, including when
+the database is already current. Registration and permission setup finish under
+the same bootstrap lock. Schema reflection is batched across the required tables;
+the job logs the number of tables validated and elapsed time. Startup and explicit
+activation still perform their own fresh schema validation.
+
 Local mode initializes its SQLite file explicitly in Settings:
 
 1. Open **Settings**. Local mode prefills the single local SQLite runtime file,

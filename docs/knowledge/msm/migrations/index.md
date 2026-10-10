@@ -60,6 +60,36 @@ This repository's `.mainsequence/workflows/ms-markets-api.yaml` builds the image
 at head is left unchanged, and a failure blocks the API rollout while the
 previous release keeps serving.
 
+### Migration diagnostics and repeated runs
+
+The minimum client is MetaTables 0.1.31. `upgrade_application()` automatically
+uses fresh table inventories and batched physical inspections; PostgreSQL
+reflection is batched by schema. Finalization requests remain bounded to ten
+tables each, with the version table first. No batching option or project-specific
+runner is required.
+
+Discovery during a migration waits up to 300 seconds for MetaTables to wake or
+finish replacing its pods. Ordinary client calls retain a 30-second discovery
+budget. A discovery failure still fails the Job and blocks deployment.
+
+`jobs/migrate_markets.py` enables INFO logging for `metatables.migrations.runner`.
+Its logs separate preparation, database setup, table checks, Alembic execution,
+catalog finalization, and total time. Measure these separately from platform
+scheduling and workflow coordination; do not log migration connection responses
+or credentials.
+
+An already-current revision **still runs catalog reconciliation**, including
+missing-table checks and description, label, and column metadata refresh. Do not
+skip the Job or finalization because `migrated=False`. If DDL committed but
+finalization failed, inspect the actual schema and per-table errors, then rerun
+the same migration through a new deployment. Do not stamp, rewrite applied
+revisions, or downgrade to recover catalog state.
+
+Client improvements require an updated application image. API-side batching,
+unchanged-contract write avoidance, and startup optimizations require the shared
+MetaTables API to be deployed with that release too. Update matching guidance
+with `metatables copy-metatables-skills --path .` after updating the client.
+
 !!! warning "Required: MetaTables access for the deployment"
     The migration Job runs as its own workload User, which has no MetaTables
     grants until an Organization admin runs `scripts/bootstrap_metatables_access.py`
