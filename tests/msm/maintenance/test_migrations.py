@@ -148,11 +148,13 @@ def test_migration_version_packages_do_not_assume_generated_history() -> None:
     assert versions_root.joinpath("mainsequence_examples").is_dir()
 
 
-def test_history_is_one_initial_schema_revision() -> None:
+def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
     versions_root = resources.files("msm_migrations").joinpath("versions", "mainsequence_markets")
     revisions = sorted(item.name for item in versions_root.iterdir() if item.name[:4].isdigit())
-    assert revisions == ["0018_initial_schema.py"]
-    revision = importlib.import_module("msm_migrations.versions.mainsequence_markets.0018_initial_schema")
+    assert revisions == ["0018_initial_schema.py", "0019_ledger_hypertable_uniqueness.py"]
+    revision = importlib.import_module(
+        "msm_migrations.versions.mainsequence_markets.0018_initial_schema"
+    )
     source = inspect.getsource(revision)
 
     # 2.0.x databases sit at 0001-0017; reusing one would mistake them for this head.
@@ -160,6 +162,11 @@ def test_history_is_one_initial_schema_revision() -> None:
     assert revision.down_revision is None
     assert "ms_markets__portfoliocalendareventsts" in source
     assert "ms_markets__portfolioeventledgerts" in source
+    fix = importlib.import_module(
+        "msm_migrations.versions.mainsequence_markets.0019_ledger_hypertable_uniqueness"
+    )
+    assert fix.revision == "0019"
+    assert fix.down_revision == "0018"
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:

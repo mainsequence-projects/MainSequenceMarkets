@@ -5,11 +5,14 @@ from __future__ import annotations
 import pandas as pd
 import numpy as np
 
+from .reducer import _validate_ledger_record_identities
+
 
 def project_state(ledger: pd.DataFrame) -> pd.DataFrame:
     """Project end-of-timestamp position, cash, and obligation quantities."""
 
     flat = ledger.copy().reset_index()
+    _validate_ledger_record_identities(flat)
     columns = [
         "time_index",
         "portfolio_identifier",
@@ -30,9 +33,7 @@ def project_state(ledger: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=columns).set_index(columns[:3])
 
     changes = flat[
-        flat["record_kind"].isin(
-            {"position_delta", "cash_delta", "cost", "obligation_delta"}
-        )
+        flat["record_kind"].isin({"position_delta", "cash_delta", "cost", "obligation_delta"})
     ].copy()
     if changes.empty:
         return pd.DataFrame(columns=columns).set_index(columns[:3])
@@ -56,9 +57,9 @@ def project_state(ledger: pd.DataFrame) -> pd.DataFrame:
         ["position", "obligation"],
         default="cash",
     )
-    changes["quantity_delta"] = pd.to_numeric(
-        changes["quantity_delta"], errors="raise"
-    ).astype("float64")
+    changes["quantity_delta"] = pd.to_numeric(changes["quantity_delta"], errors="raise").astype(
+        "float64"
+    )
 
     event_keys = [
         "time_index",
@@ -75,9 +76,7 @@ def project_state(ledger: pd.DataFrame) -> pd.DataFrame:
     event_changes = (
         changes.groupby(event_keys, sort=False, dropna=False, as_index=False)["quantity_delta"]
         .sum()
-        .sort_values(
-            ["portfolio_identifier", "event_sequence", "state_identifier"], kind="stable"
-        )
+        .sort_values(["portfolio_identifier", "event_sequence", "state_identifier"], kind="stable")
     )
     state_keys = ["portfolio_identifier", "state_identifier"]
     event_changes["quantity"] = event_changes.groupby(state_keys, sort=False)[
@@ -105,6 +104,7 @@ def project_cash_flows(ledger: pd.DataFrame) -> pd.DataFrame:
     """Project completed cash movements; obligations remain outside this view."""
 
     flat = ledger.copy().reset_index()
+    _validate_ledger_record_identities(flat)
     if flat.empty:
         return pd.DataFrame(
             columns=[
@@ -154,6 +154,7 @@ def project_portfolio_values(ledger: pd.DataFrame, *, initial_nav: float) -> pd.
     """Project normalized portfolio close and linked returns from summary records."""
 
     flat = ledger.copy().reset_index()
+    _validate_ledger_record_identities(flat)
     summaries = flat[flat["record_kind"] == "valuation_summary"].copy()
     if summaries.empty:
         return pd.DataFrame(

@@ -17,6 +17,7 @@ from msm_portfolios.accounting import (
     PortfolioAccountingConfiguration,
     event_digest,
 )
+from msm_portfolios.accounting.reducer import _validate_ledger_record_identities
 from msm_portfolios.rebalance_strategy import (
     AccountingRebalanceEvent,
     RebalanceStrategyBase,
@@ -88,12 +89,10 @@ class PortfolioEngine(PortfolioCanonicalDataNode):
                 portfolio_identifier=portfolio_identifier,
                 accounting_configuration=accounting,
                 signal_weights_instance=(
-                    portfolio_configuration.portfolio_build_configuration
-                    .backtesting_weights_configuration.signal_weights_instance
+                    portfolio_configuration.portfolio_build_configuration.backtesting_weights_configuration.signal_weights_instance
                 ),
                 rebalance_strategy_instance=(
-                    portfolio_configuration.portfolio_build_configuration
-                    .backtesting_weights_configuration.rebalance_strategy_instance
+                    portfolio_configuration.portfolio_build_configuration.backtesting_weights_configuration.rebalance_strategy_instance
                 ),
             ),
             namespace=namespace,
@@ -286,9 +285,7 @@ class PortfolioEngine(PortfolioCanonicalDataNode):
             observed_inputs=rebalance_inputs,
             valuation_observations=valuation_observations,
             fx_observations=fx,
-            valuation_asset_identifier=(
-                accounting_configuration.valuation_asset_identifier
-            ),
+            valuation_asset_identifier=(accounting_configuration.valuation_asset_identifier),
         )
         reducer = PortfolioAccounting(
             portfolio_identifier=portfolio_identifier,
@@ -353,6 +350,7 @@ def normalize_portfolio_event_ledger_frame(
 def _validate_complete_event_groups(frame: pd.DataFrame) -> None:
     if frame.empty:
         return
+    _validate_ledger_record_identities(frame)
     keys = ["portfolio_identifier", "event_identifier", "event_revision"]
     grouped = frame.groupby(keys, sort=False, dropna=False)
     sizes = grouped.size()
@@ -424,7 +422,11 @@ class _CoordinatedExecutionSimulator:
         self.fx_observations = fx_observations
         self.valuation_asset_identifier = str(valuation_asset_identifier)
         for name, frame in observed_inputs.items():
-            if frame is not None and not frame.empty and "source_revision" not in frame.reset_index():
+            if (
+                frame is not None
+                and not frame.empty
+                and "source_revision" not in frame.reset_index()
+            ):
                 raise ValueError(
                     f"Position-aware rebalance dependency {name!r} requires source_revision."
                 )
@@ -457,9 +459,7 @@ class _CoordinatedExecutionSimulator:
         )
         from msm_portfolios.configuration import canonical_rebalance_strategy_configuration
 
-        self._strategy_revision = _digest(
-            canonical_rebalance_strategy_configuration(strategy)
-        )
+        self._strategy_revision = _digest(canonical_rebalance_strategy_configuration(strategy))
         model = strategy.execution_model_instance
         if model is None:
             raise ValueError(
@@ -560,10 +560,12 @@ def _validate_replay_against_existing(
 ) -> None:
     """Allow exact idempotent replay and block unsupported correction publication."""
 
+    new = _flat_ledger(calculated)
+    _validate_ledger_record_identities(new)
     if existing is None or existing.empty:
         return
     old = _flat_ledger(existing)
-    new = _flat_ledger(calculated)
+    _validate_ledger_record_identities(old)
     identity_columns = ["event_identifier", "source_revision", "event_revision"]
     old_events = (
         old[identity_columns].drop_duplicates("event_identifier").set_index("event_identifier")

@@ -7,6 +7,16 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- Repair the portfolio event ledger's TimescaleDB-incompatible non-time unique
+  constraint through forward migration `0019`, preserving applied `0018`, all
+  existing rows, and full-grain uniqueness. Canonical publication, restart, and
+  projections reject duplicate economic record identities across timestamps
+  and event revisions split across times. Exact retries remain idempotent.
+- Align ADR 0042, accounting and migration documentation, the portfolio tutorial,
+  and the offline dividend/FX example with the storage and validation boundary.
+
 ### Changed
 
 - Requires `mainsequence-metatable>=0.1.31,<0.2`; the lock and runtime export

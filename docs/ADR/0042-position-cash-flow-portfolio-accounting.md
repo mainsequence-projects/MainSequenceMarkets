@@ -9,6 +9,10 @@ no new SDK transaction, checkpoint, or publication capability. Amended on
 user-extension, backward-compatibility, and portfolio/account boundary reviews.
 Amended by [ADR 0045](0045-squashed-initial-schema-and-namespaced-packages.md): in 2.1.0 the ledger and projection tables that migration
 `0017` added are created by `0018_initial_schema`.
+Amended on 2026-10-10: revision `0019` retains time-first database uniqueness
+and moves cross-time economic-identity validation into the canonical engine
+path, allowing the ledger to become a TimescaleDB hypertable without deleting
+history or introducing a second authoritative table.
 
 This decision extends [ADR 0040](0040-portfolio-temporal-ownership.md) and
 preserves the pricing boundary in
@@ -836,9 +840,20 @@ The table requires:
 - signed quantities and amounts with explicit units and currencies;
 - `event_sequence`, `event_record_count`, and a deterministic `event_digest`;
   and
-- a database uniqueness constraint on `(portfolio_identifier,
-  event_identifier, event_revision, record_identifier)` independent of
-  `time_index`, preventing a corrected timestamp from duplicating one revision.
+- database uniqueness on the full grain, including `time_index`, as required
+  by TimescaleDB partitioning; and
+- mandatory vectorized validation of `(portfolio_identifier,
+  event_identifier, event_revision, record_identifier)` independent of time,
+  plus one timestamp per event revision, before publication, restart, or
+  projection. Comparison with existing event digests rejects changing a
+  committed revision's timestamp; a correction requires a new revision.
+
+The cross-time guarantee belongs to the canonical `msm_portfolios` publication
+and reader path, not an incompatible SQL constraint. Direct SQL writes bypass
+that validation and are not a supported ledger publication API. Revision `0019`
+removes only the incompatible constraint from `0018`; it retains all rows and
+the full-grain unique index. This does not add a global identity registry,
+checkpoint, trigger, or multi-table transaction requirement.
 
 Every calculated event is validated as a complete group before the updater
 returns it. Readers accept a group only when its record count and digest match.
@@ -990,8 +1005,9 @@ introduced by this decision.
    acceptance above before changing configuration serialization, hashing, or
    shared storage.
 2. Define and migrate `PortfolioEventLedgerStorage` and additive projection
-   schemas using the SDK-managed migration provider. Add the independent
-   economic-identity uniqueness constraint and strict record-kind validation.
+   schemas using the MetaTables-managed migration provider. Retain full-grain
+   database uniqueness and add cross-time economic-identity guards, committed
+   revision comparisons, and strict record-kind validation.
    Runtime startup attaches only already-migrated tables.
 3. Implement the pure accounting state machine and readable reference reducer,
    plus small lifecycle fixtures including physical/cash option settlement,

@@ -22,11 +22,19 @@ does not change the provider key `msm:<namespace>` or the
 `ms_markets__alembic_version` table. See
 [ADR 0044](../../../ADR/0044-namespaced-migration-provider-package.md).
 
-Since 2.1.0 the history is one revision, `0018_initial_schema`, which replaces
+Since 2.1.0 the history starts at `0018_initial_schema`, which replaces
 `0001`–`0017` without reusing their IDs. A database left at any of those
 revisions fails with an unknown-revision error: downgrade it to `base` with
 2.0.x installed, then apply 2.1.0 from empty. See
 [ADR 0045](../../../ADR/0045-squashed-initial-schema-and-namespaced-packages.md).
+
+Revision `0019_ledger_hypertable_uniqueness` removes the event ledger's extra
+unique constraint that omitted the TimescaleDB partition key. The full-grain
+unique index and existing rows remain intact; the accounting engine validates
+cross-time economic identities. This is a forward repair, including when `0018`
+committed but hypertable/catalog finalization failed. Do not rewrite or stamp
+the applied revision. Once the ledger is a hypertable, TimescaleDB rejects a
+downgrade restoring the old non-time constraint; use a forward repair instead.
 
 ## Admin Commands
 

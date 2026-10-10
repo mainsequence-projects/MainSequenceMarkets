@@ -376,6 +376,12 @@ Important envelope and integrity fields include:
 A cash movement is not automatically P&L: a trade exchanges cash for an
 instrument, and dividend payment exchanges a receivable for cash.
 
+Database uniqueness covers the full time-first grain. TimescaleDB requires its
+partition column in every unique key. The canonical normalizer, publication
+comparison, restart, and projections additionally reject duplicate economic
+record identities across timestamps and event revisions split across times.
+Do not publish ledger rows through raw SQL: it bypasses these accounting guards.
+
 ## Retry, Restart, And Corrections
 
 Exact retries are idempotent. Reprocessing the same economic event with the same
@@ -387,6 +393,8 @@ obligations, execution progress, applied revisions, latest NAV, and event
 sequence from a complete active ledger. It validates:
 
 - one portfolio identity;
+- unique economic record identities independent of timestamp, and one timestamp
+  per event revision;
 - contiguous event and record sequences;
 - record counts and event digests;
 - exactly one valuation summary per event;
@@ -494,6 +502,13 @@ ms-markets provider themselves. During ms-markets development, apply it to the
 local runtime with
 `metatables --local migrations upgrade --provider msm_migrations:migration head`
 before runtime attachment.
+
+Revision `0019` repairs the ledger's incompatible non-time unique constraint
+without deleting rows or changing the full-grain unique index. It also recovers
+an environment where `0018` committed but ledger hypertable finalization failed:
+the normal deployment Job applies `0019` and reconciles catalog finalization.
+After hypertable conversion, downgrading to the incompatible `0018` constraint
+is not supported by TimescaleDB; use a forward migration instead.
 
 For changes to this accounting surface, run at least:
 
